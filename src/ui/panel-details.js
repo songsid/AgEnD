@@ -1,3 +1,4 @@
+import { NativePaneRecovery } from "./native-pane-recovery.js";
 // #1523 N2 (§3.3, Q1 = B): Details — "the Fleet side of one instance", at /ui/fleet/agent/<name>. Behind the session
 // gate (/ui/js/). What it holds:
 // - runtime and recent activity (what Chat's details dialog showed, now a page);
@@ -158,7 +159,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   }
   return html`<div data-effect-panel="details" class="panel p-details">
     <${PanelHeader} title=${name} sub=${sub} nav=${html`<${InstanceSwitch} name=${name} current="details" />`}><${HeaderTools} navKey=${navKey} /><${Menu} items=${items} label=${t("app.more")} /></${PanelHeader}>
-    <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}>${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
+    <div data-trust="panel-content" class="panel-body"><div class="col" ref=${body}><${NativePaneRecovery} name=${name} inst=${inst} lease=${lease} />${busy ? html`<p class="note" role="status">${t("chat.dWorking")}</p>` : null}<${IdentityCard} name=${name} card=${card} />
       <${AgentWidget} slot="details" widget=${widgetFor(name, "details")} binds=${instanceBinds(inst, exec, awaiting)} />${content}</div></div>
   </div>`;
 }

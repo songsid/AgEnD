@@ -174,10 +174,9 @@ export class RuntimePaneHost {
   }
   private recover(request: Extract<RuntimePaneRequest, { action: "recover" }>): RuntimePaneSnapshot {
     const record = this.options.store.get(request.paneId);
-    if (!record || record.snapshot.launchId !== request.launchId || record.snapshot.hostBootId !== request.hostBootId
-      || this.live.has(request.paneId)) throw Error("Recovery needs the exact retained pane with no live host owner");
+    if (!record || record.snapshot.launchId !== request.launchId || record.snapshot.hostBootId !== request.hostBootId) throw Error("Recovery needs the exact retained pane with no live host owner");
     if (record.snapshot.state === "exited") return structuredClone(record.snapshot);
-    if (record.snapshot.state !== "unknown" || record.bootId === this.options.bootId || request.confirmedStopped !== true) throw Error("The retained pane is not eligible for stopped-process recovery");
+    if (this.live.has(request.paneId) || record.snapshot.state !== "unknown" || record.bootId === this.options.bootId || request.confirmedStopped !== true) throw Error("The retained pane is not eligible for stopped-process recovery");
     record.snapshot.state = "exited"; record.snapshot.exitProof = "admin-confirmed";
     delete record.snapshot.exitCode; this.options.store.put(record);
     return structuredClone(record.snapshot);

@@ -23,6 +23,15 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 }
 
 const enMessages = {
+  "native_pane.host_upgrade": "The Windows pane host uses an older adapter. Stop its Windows agents, restart Windows, then choose Start. Saved conversations are kept.",
+  "native_pane.exit_unconfirmed": "The previous Windows pane exit is unconfirmed. Stop its Windows processes, then use the administrator recovery action. The saved conversation is kept; no input was replayed.",
+  "native_pane.no_pin": "The original conversation is not proven; recovery cannot start a fresh conversation.",
+  "native_pane.changed": "The held native launch changed; refresh before recovery.",
+  "native_pane.authority_expired": "Native recovery authority expired.",
+  "native_pane.still_running": "This Windows pane is still running; stop it before recovery.",
+  "native_pane.scope": "Native recovery lacks an exact retained host receipt.",
+  "native_pane.unavailable": "Persistent pane recovery is unavailable.",
+
     "setup.admin.cancelled": "Setup cancelled; no admin selected.",
     "setup.discord_admin.connecting": "Connecting to Discord to detect your account…",
     "setup.discord_admin.wait": "Send a message in server {0}, or DM @{1}. Waiting up to 30 seconds…",
@@ -1497,6 +1506,15 @@ const enMessages = {
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
+  "native_pane.host_upgrade": "Windows 終端主機仍使用舊版轉接器。請先停止這台電腦的 Windows 代理，重新啟動 Windows，再按「啟動」。已儲存的對話會保留。",
+  "native_pane.exit_unconfirmed": "無法確認上一個 Windows 終端是否已結束。請先停止這個代理的 Windows 程序，再由管理員復原。已儲存的對話會保留，也不會重送舊輸入。",
+  "native_pane.no_pin": "尚無法確認原本的對話；復原不會另開新對話。",
+  "native_pane.changed": "保留的 Windows 終端已變更，請重新整理後再復原。",
+  "native_pane.authority_expired": "Windows 終端復原的授權已失效。",
+  "native_pane.still_running": "這個 Windows 終端仍在執行，請先停止再復原。",
+  "native_pane.scope": "Windows 終端復原缺少身分相符的保留收據。",
+  "native_pane.unavailable": "目前無法復原持續執行的 Windows 終端。",
+
     "setup.admin.cancelled": "設定已取消，未選取管理員。",
     "setup.discord_admin.connecting": "正在連線到 Discord，以偵測你的帳號…",
     "setup.discord_admin.wait": "請在伺服器 {0} 發一則訊息，或私訊 @{1}。最多等待 30 秒…",

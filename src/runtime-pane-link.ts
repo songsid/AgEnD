@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { spawn } from "./child-process.js";
+import { readPaneSystemBootId } from "./runtime-pane-boot.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
 import { protectPaneDirectory, readPaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
@@ -37,8 +38,9 @@ export class RuntimePaneLink {
     await protectPaneDirectory(directory);
     const scope = runtimeJobDigest({ server: options.server, machineId: options.machineId });
     let descriptor = readPaneHostDescriptor(directory, scope);
+    const systemBootId = await readPaneSystemBootId();
     let live = false;
-    if (descriptor) {
+    if (descriptor && !(descriptor.systemBootId && systemBootId && descriptor.systemBootId !== systemBootId)) {
       live = true;
       try { process.kill(descriptor.pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") live = false; }
     }

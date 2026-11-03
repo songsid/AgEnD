@@ -124,7 +124,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     await new Promise<void>((accept, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.removeListener("error", reject); accept(); }); });
     const address = server.address(); if (!address || typeof address === "string") throw Error("Pane host listen failed");
     port = address.port;
-    descriptor = { version: 1, scope: options.scope, hostBootId: bootId, pid: process.pid, port: address.port, token };
+    descriptor = { version: 1, scope: options.scope, hostBootId: bootId, ...(systemBootId ? { systemBootId } : {}), pid: process.pid, port: address.port, token };
     savePaneHostDescriptor(options.directory, descriptor);
     return { descriptor, close: closeService };
   } catch (error) { clearInterval(flush); server.close(); wss.close(); unlock(); throw error; }
