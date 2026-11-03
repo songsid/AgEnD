@@ -114,6 +114,7 @@ try {
   phase = 'switch-on';
   const empty = await endpoint.call({ action: 'list' }); assert.notEqual(empty.hostBootId, before.hostBootId);
   assert(empty.panes.every(row => row.state === 'exited')); receipt.switchOnNewHost = true;
+  const restartedHost = await control('state'); assert(restartedHost.descriptorPresent && restartedHost.hostsAlive === 1);
   // No second real turn is needed; unit tests cover no-launch/refusal/unknown boundaries.
   await hub.shutdownPaneHosts(); await control('close', 'closed'); await until(() => closed, 'runner exit');
   receipt.passed = true;
