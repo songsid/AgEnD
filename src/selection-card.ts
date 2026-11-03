@@ -11,6 +11,7 @@
  * not a harmless skip (Claude's trust screen exits the CLI), and the dialog's own options say every choice there is.
  */
 import type { RemoteCardOption, RemoteQuestionCard } from "./backend/types.js";
+import { createHash } from "node:crypto";
 
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 const CURSOR_OPTION = /^([ \t]*)[❯›][ \t]*(\d{1,2})[.)][ \t]+(\S.*)$/;
@@ -28,28 +29,23 @@ const SEPARATOR = /^[ \t]*[╌┄┈\-]{8,}[ \t]*$/;
 const SIDES = /^[ \t]*[│┃][ \t]?(.*?)[ \t]*[│┃]?[ \t]*$/;
 /** Rows a dialog may have below its last option (a hint footer: "Esc to cancel · Tab to amend"). */
 const FOOTER_ROWS = 3;
-/** How far above the first option the dialog's words are read. */
-const BODY_ROWS = 14;
-/** Rows of the dialog's words kept, and their length. */
-export const SELECTION_BODY_LINES = 10;
-export const SELECTION_LINE_MAX = 200;
-/** An option's text, at most. */
-const OPTION_MAX = 160;
-
-function clean(raw: string, max = SELECTION_LINE_MAX): string {
-  const text = raw.replace(/[\x00-\x1f\x7f]/g, " ").replace(/\s+/g, " ").trim();
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-/** A countdown in the dialog's words ("auto-deny in 30s", "block this request in 1:55") never makes the card another card. */
-const COUNTDOWN = /\b\d+\s*(?:s|sec|secs|seconds?)\b|\b\d{1,2}:\d{2}\b/gi;
+/** Refuse oversized captures rather than offering an approval for a truncated request. */
+export const SELECTION_REQUEST_MAX = 128_000;
+const SHELL_TITLE = /^[ \t]*(?:Bash|PowerShell) command[ \t]*$/;
+const CODEX_COMMAND_TITLE = /^[ \t]*Would you like to run the following command\?[ \t]*$/;
+/** Only a provider-owned whole countdown row is mutable; command arguments and option labels never are. */
+const AUTO_DENY_ROW = /^[ \t]*⚠[ \t]+Claude Code will automatically (?:deny|block) this request in (?:\d+:\d\d|about \d+ (?:minute|second)s?)(?:, to avoid (?:blocking progress on|holding up) an unattended session)?[ \t]*$/;
 
 /**
  * The numbered-choice dialog at the bottom of `pane`, as a question card titled `title` (the CLI's name), or null.
  * `rowWidth` is unused here (no typed answer); the card offers no Esc (`noSkip`) and is posted only on a web-only fleet.
  */
 export function selectionCard(pane: string, title: string): RemoteQuestionCard | null {
-  const rows = pane.replace(ANSI, "").replace(/\r/g, "").split("\n").map(r => r.trimEnd()).map(r => SIDES.exec(r)?.[1] ?? r);
+  if (pane.length > SELECTION_REQUEST_MAX) return null;
+  const text = pane.replace(ANSI, "").replace(/\r/g, "");
+  if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)) return null;
+  const sourceRows = text.split("\n");
+  const rows = sourceRows.map(r => SIDES.exec(r)?.[1] ?? r);
   let lastFilled = rows.length - 1;
   while (lastFilled >= 0 && rows[lastFilled]!.trim() === "") lastFilled--;
   if (lastFilled < 0) return null;
@@ -89,30 +85,87 @@ export function selectionCard(pane: string, title: string): RemoteQuestionCard |
     const m = OPTION.exec(rows[i]!);
     if (m && isOption(rows[i]!)) {
       if (CURSOR_OPTION.test(rows[i]!)) cursor = options.length;
-      options.push({ n: Number(m[2]), title: m[3]!, recommended: false, description: null });
+      options.push({ n: Number(m[2]), title: m[3]!.trimEnd(), recommended: false, description: null });
     } else if (options.length) {
       options[options.length - 1]!.title += ` ${rows[i]!.trim()}`;
     }
   }
   if (options.length < 2 || cursor === null || !options.every((o, i) => o.n === i + 1)) return null;
-  for (const o of options) o.title = clean(o.title, OPTION_MAX);
 
   // The dialog's words: up from the first option to its top border (Claude's plain rule — its words may hold a double blank
   // row, as the dangerous-rm dialog does), separators skipped; a dialog with no such border (Codex) ends at a double blank
   // row — never the transcript above it (#2928 review).
   let border = -1;
-  for (let i = first - 1; i >= 0 && first - i <= BODY_ROWS; i--) if (BORDER.test(rows[i]!)) { border = i; break; }
-  const body: string[] = [];
-  for (let i = first - 1, blanks = 0; i > border && first - i <= BODY_ROWS; i--) {
-    const r = rows[i]!;
-    if (r.trim() === "") { if (border < 0 && ++blanks >= 2 && body.length) break; continue; }
-    blanks = 0;
-    if (BOX_EDGE.test(r)) break;
-    if (SEPARATOR.test(r)) continue;
-    body.unshift(clean(r));
+  for (let i = first - 1; i >= 0; i--) {
+    if (BOX_EDGE.test(rows[i]!)) break;
+    if (BORDER.test(rows[i]!)) { border = i; break; }
   }
-  const words = body.slice(-SELECTION_BODY_LINES);
-  const question = words.join("\n");
-  const identity = ["selection", title, question.replace(COUNTDOWN, "#s"), ...options.map(o => `${o.n}. ${o.title.replace(COUNTDOWN, "#s")}`)].join("\n");
+  // Codex separates a command's explanation and its options by two blanks. Its explicit request header, rather than
+  // that interior spacing, proves the start. A missing header must not turn a clipped command into a generic menu.
+  const codexCommand = title === "Codex" && options.some(o => /^Yes, proceed\b/.test(o.title));
+  let commandHeader = -1;
+  if (codexCommand) {
+    const headers = rows.slice(0, first).flatMap((row, index) => CODEX_COMMAND_TITLE.test(row) ? [index] : []);
+    if (headers.length !== 1) return null;
+    commandHeader = headers[0]!;
+  }
+  const rawBody: string[] = [];
+  let bodyTextSeen = false;
+  for (let i = first - 1, blanks = 0; i > border; i--) {
+    const r = rows[i]!;
+    if (r.trim() === "") { if (border < 0 && commandHeader < 0 && ++blanks >= 2 && bodyTextSeen) break; rawBody.push(r); continue; }
+    blanks = 0;
+    bodyTextSeen = true;
+    if (BOX_EDGE.test(r)) break;
+    rawBody.push(r);
+    if (i === commandHeader) break;
+  }
+  rawBody.reverse();
+  if (codexCommand && !CODEX_COMMAND_TITLE.test(rawBody.find(r => r.trim()) ?? "")) return null;
+  const shell = rawBody.some(r => SHELL_TITLE.test(r));
+  if ((shell || title === "Claude Code" && rawBody.some(r => /^[ \t]*Do you want to proceed\?[ \t]*$/.test(r)))
+    && (border < 0 || !SHELL_TITLE.test(rawBody.find(r => r.trim()) ?? ""))) return null;
+  // A command can itself print dialog-looking rows. More than one possible native header is ambiguous: do not
+  // recover a suffix after a command-owned rule and present it as the complete request.
+  let shellHeaders = 0, previousFilled = -1;
+  for (let i = 0; i < first; i++) {
+    if (SHELL_TITLE.test(rows[i]!) && previousFilled >= 0 && BORDER.test(rows[previousFilled]!)) shellHeaders++;
+    if (rows[i]!.trim()) previousFilled = i;
+  }
+  if (shell && shellHeaders !== 1) return null;
+
+  // Keep every command row and option, including characters after the former 200/160-column limits. Preserve spaces
+  // inside a command: indentation, quotes and doubled spaces can change what the person is authorizing.
+  const commandStart = rawBody.findIndex(r => SEPARATOR.test(r));
+  let commandEnd = -1;
+  for (let i = rawBody.length - 1; i > commandStart; i--) {
+    if (commandStart >= 0 && rawBody[i]!.trim() === rawBody[commandStart]!.trim()) { commandEnd = i; break; }
+  }
+  if (shell && (commandStart < 0 || commandEnd < 0)) return null;
+  const codexCode = commandHeader < 0 ? -1 : rawBody.findIndex(r => /^[ \t]*\$[ \t]/.test(r));
+  if (commandHeader >= 0 && codexCode < 0) return null;
+  const bodyStart = first - rawBody.length;
+  const codeRow = (index: number) => sourceRows[bodyStart + index]!.replace(/^[ \t]*[│┃][ \t]?/, "");
+  const commandRows = shell || codexCode >= 0
+    ? rawBody.map((_, index) => codeRow(index)).slice(shell ? commandStart + 1 : codexCode, shell ? commandEnd : undefined) : [];
+  if ((shell || codexCommand) && commandRows.some(r => /^[ \t]*(?:…|\.\.\.)[ \t]*\+?\d+[ \t]+lines?\b.*(?:ctrl|expand)/i.test(r))) return null;
+  const padding = commandRows
+    .reduce((min, row) => row.trim() ? Math.min(min, indentOf(row)) : min, Infinity);
+  const body: string[] = [];
+  const identityBody: string[] = [];
+  for (const [index, row] of rawBody.entries()) {
+    const source = sourceRows[bodyStart + index]!;
+    const inCommand = shell ? index > commandStart && index < commandEnd : codexCode >= 0 && index >= codexCode;
+    if (shell ? index === commandStart || index === commandEnd : codexCode < 0 && SEPARATOR.test(row)) { identityBody.push(source); continue; }
+    if (!(shell && index > commandEnd && AUTO_DENY_ROW.test(row))) identityBody.push(source);
+    if (!row.trim() && !inCommand) continue;
+    body.push(inCommand ? codeRow(index).slice(Number.isFinite(padding) ? padding : 0) : row.trim());
+  }
+  const question = body.join("\n");
+  // Hash the complete request, never its presentation or a masked/clipped tail. Cursor movement is deliberately not
+  // included. Only a known, separate native countdown row may tick without replacing the request.
+  const optionRows = sourceRows.slice(first, last + 1).map((row, index) => CURSOR_OPTION.test(rows[first + index]!) ? row.replace(/[❯›]/, " ") : row);
+  const request = [title, ...identityBody, optionRows];
+  const identity = `selection:${createHash("sha256").update(JSON.stringify(request)).digest("hex")}`;
   return { kind: "question", identity, title, question, page: "options", options, freeText: false, cursor, typed: null, rowWidth: 0, noSkip: true, webOnly: true };
 }
