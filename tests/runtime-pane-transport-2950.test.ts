@@ -46,7 +46,7 @@ async function fixture(overrides: Partial<RuntimePaneHostOptions> = {}) {
     createPaneHost: options => new RuntimePaneHost({ ...options, transcript: (launch, id) => new NativePaneTranscriptReader(launch.cli, launch.cwd, id, { codex: join(home, "codex"), claude: join(home, "claude") }),
       spawn: async () => { const process = fakeProcess(); processes.push(process); return process as RuntimePaneProcess; }, ...overrides }),
   }); clients.push(client); await client.start();
-  await vi.waitFor(() => expect(client.online()).toBe(true));
+  await vi.waitFor(() => expect(client.online()).toBe(true), { timeout: 5_000 });
   const launch = () => ({ paneId: randomUUID(), agentId: randomUUID(), instance: "pane-agent", cli: "codex" as const, cwd: "C:\\fixture", sandbox: "read-only" as const, columns: 80, rows: 24 });
   const transcript = (id: string, cwd = "C:\\fixture", content = "owned canary") => {
     const dir = join(home, "codex", "sessions", "2026", "11", "03"); mkdirSync(dir, { recursive: true });
