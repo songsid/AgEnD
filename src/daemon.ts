@@ -9564,7 +9564,7 @@ export class Daemon extends EventEmitter {
     if (!current()) return false;
     let composer = false;
     try {
-      if (this.deliveryBlockingDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
+      if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
       if (backend?.readInputRow) composer = backend.readInputRow(pane) != null;
       else if (backend?.inputDraft) composer = backend.inputDraft(pane) != null;
       else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane);
@@ -9572,12 +9572,13 @@ export class Daemon extends EventEmitter {
       else if (backend) {
         // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
         const shape = unrecognisedPromptShape(pane);
-        if (!selectionCard(pane, "CLI") && (!shape || this.cliComposerShowing(pane, shape))) {
+        const ownComposer = backend.selectionIsInComposer?.(pane) === true;
+        if ((!selectionCard(pane, "CLI") || ownComposer) && (!shape || ownComposer || this.cliComposerShowing(pane, shape))) {
           const bottom = backend.getBottomReadyPattern?.();
           const ready = backend.getReadyPattern();
           ready.lastIndex = 0;
-          composer = bottom ? bottomRowIsReady(pane, bottom)
-            : ready.test(pane.trimEnd().split("\n").slice(-COMPOSER_TAIL_ROWS).join("\n"));
+          composer = ownComposer || (bottom ? bottomRowIsReady(pane, bottom)
+            : ready.test(pane.trimEnd().split("\n").slice(-COMPOSER_TAIL_ROWS).join("\n")));
         }
       }
     } catch { return hold(); }
@@ -9847,7 +9848,7 @@ export class Daemon extends EventEmitter {
           verdict.proof = "input-not-verified";
           return false;
         }
-        if (steerComposerProof && !steerCurrent()) {
+        if (!steerCurrent()) {
           verdict.phase = "submit-enter";
           verdict.proof = "fenced-before-enter";
           return false;
@@ -10652,17 +10653,24 @@ export class Daemon extends EventEmitter {
    * `guard` is for a paste that must not outlive the reason it was made (the continue nudge): `accept` judges the ONE
    * capture taken here — the same picture is the baseline, the expected-screen check and the idle check — and `current`
    * is asked again after every await that precedes a write, so a cancelled paste adds no further paste and no key
-   * (the retries included). Without a guard it is exactly the old unconditional path.
+   * (the retries included). Every system paste also keeps the pane owner from before its first await.
    */
   private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }, admission?: () => void): Promise<boolean> {
-    const current = guard || admission ? () => { admission?.(); return guard?.current() ?? true; } : undefined;
-    if (current && !current()) return false;
-    if (!this.tmux) return false;
+    const tmux = this.tmux, generation = this.spawnGeneration, fence = this.launchFenceEpoch;
+    const windowId = tmux?.getWindowId();
+    const current = () => {
+      admission?.();
+      return !!tmux && !!windowId && this.tmux === tmux && tmux.getWindowId() === windowId
+        && this.spawnGeneration === generation && this.launchFenceEpoch === fence
+        && !this.deliveryWritesStopping && (guard?.current() ?? true);
+    };
+    if (!current()) return false;
+    if (!tmux) return false;
     const signature = this.submissionSignature(text);
     let baseline: PaneEvidence | null;
     if (guard) {
       let pane: string;
-      try { pane = await this.tmux.capturePane(); } catch { return false; }
+      try { pane = await tmux.capturePane(); } catch { return false; }
       if (!current!() || !guard.accept(pane)) return false;
       baseline = this.paneEvidence(pane, signature);
     } else {
@@ -10670,7 +10678,7 @@ export class Daemon extends EventEmitter {
     }
     if (current && !current()) return false;
     const pasteGeneration = this.spawnGeneration;
-    const pasted = current ? await this.tmux.pasteBuffer(text, { guard: current }) : await this.tmux.pasteBuffer(text);
+    const pasted = current ? await tmux.pasteBuffer(text, { guard: current }) : await tmux.pasteBuffer(text);
     if (!pasted) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;

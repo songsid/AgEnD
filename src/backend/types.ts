@@ -629,6 +629,9 @@ export interface CliBackend {
    */
   isDeliveryInputReadyPane?(pane: string): boolean;
 
+  /** A numbered cursor is inside this CLI's own composer box, not a selection dialog. Final-key tie-breaker only. */
+  selectionIsInComposer?(pane: string): boolean;
+
   /**
    * #2682: whether this screen positively shows the CLI's own idle input box, asked before an idle delivery. False
    * (another program owns the pane, a frame it cannot read) makes the delivery wait. Absent: not asked.

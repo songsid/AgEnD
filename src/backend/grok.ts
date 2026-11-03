@@ -264,6 +264,22 @@ export class GrokBackend implements CliBackend {
     }
   }
 
+  /** Numbered multi-line input shares the menu cursor glyph; require the actual bottom composer box and footer. */
+  selectionIsInComposer(pane: string): boolean {
+    const rows = pane.replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "").replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+    const trim = () => { while (rows.length && !rows.at(-1)!.trim()) rows.pop(); };
+    trim();
+    const footer = rows.pop() ?? "";
+    if (!/^\s*(?:Logged in\b.*|Shift\+Tab:mode\s*│\s*Ctrl\+x:shortcuts)\s*$/.test(footer)) return false;
+    trim();
+    if (!/^\s*╰─{10,}.*╯$/.test(rows.pop() ?? "")) return false;
+    const input: string[] = [];
+    while (/^\s*│.*│$/.test(rows.at(-1) ?? "")) input.unshift(rows.pop()!);
+    if (!/^\s*╭─{10,}╮$/.test(rows.pop() ?? "")) return false;
+    // The highlighted numbered row itself must be in the composer, never a card above an empty input box.
+    return input.length > 0 && /^\s*│\s*❯\s*\d{1,2}[.)]\s+\S/.test(input[0]!);
+  }
+
   getReadyPattern(): RegExp {
     // Verified: `❯` is the idle input prompt inside the TUI box; the Grok Build
     // header ("Grok Build" / "Grok <n>") also identifies the ready screen.

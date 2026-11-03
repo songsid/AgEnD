@@ -4,6 +4,9 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Daemon } from "../src/daemon.js";
+import { GrokBackend } from "../src/backend/grok.js";
+import { AntigravityBackend } from "../src/backend/antigravity.js";
+import { OpenCodeBackend } from "../src/backend/opencode.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 
 const pane = (name: string) => readFileSync(join(__dirname, `fixtures/${name}.pane.txt`), "utf8");
@@ -132,13 +135,58 @@ it("explicit human card answers still walk the verified cursor and confirm the c
   expect(f.mark).not.toHaveBeenCalled();
 });
 
-it("a pane replaced during paste settle cannot receive the old delivery's Enter", async () => {
+it.each(["delivery", "system"])("%s paste replacement cannot receive the old pane's Enter", async kind => {
   const f = fixture(pasted);
   const replacement = { ...f.tmux, sendSpecialKey: vi.fn(async () => true) };
   Object.assign(f.tmux, {
     pasteBuffer: vi.fn(async () => { f.daemon.tmux = replacement; return true; }),
   });
-  expect(await f.daemon.writeMessageToPane("[from:private-proof] old pane only", "@owned", false)).toBe(false);
+  const result = kind === "system"
+    ? await f.daemon.submitSystemPaste("[from:private-proof] old pane only", "system-proof")
+    : await f.daemon.writeMessageToPane("[from:private-proof] old pane only", "@owned", false);
+  expect(result).toBe(false);
   expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
   expect(replacement.sendSpecialKey).not.toHaveBeenCalled();
+});
+
+it("Grok's own boxed numbered draft remains a composer, not a permission card", async () => {
+  const ready = pane("grok-1.0.70-audit/1.0.70-120/02-ready");
+  const numbered = ready.replace(/^  │ ❯.*│$/m, "  │ ❯ 1. fix the build │\n  │   2. run the tests │\n  │   3. push │");
+  const f = fixture(numbered);
+  f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
+  expect(f.daemon.backend.selectionIsInComposer(numbered)).toBe(true);
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
+});
+it("Grok's actual approval card cannot borrow the boxed-composer tie-breaker", async () => {
+  const approval = pane("grok-1.0.70-audit/1.0.70-approval/20-approval");
+  const f = fixture(approval);
+  f.daemon.backend = new GrokBackend(f.daemon.config.working_directory);
+  expect(f.daemon.backend.selectionIsInComposer(approval)).toBe(false);
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
+  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+});
+it.each(["antigravity", "opencode"])("%s still submits a numbered draft in its own composer", async backend => {
+  const agy = pane("agy-1.3.1-idle-after-reply").replace(/^>$/m, "> 1. fix the build\n  2. run the tests\n  3. push");
+  const oc = pane("opencode-1.18.34-ready-after-tool").replace(/  ┃\n  ┃\n  ┃\n/, "  ┃ 1. fix the build\n  ┃ 2. run the tests\n  ┃ 3. push\n");
+  const f = fixture(backend === "antigravity" ? agy : oc);
+  f.daemon.backend = backend === "antigravity" ? new AntigravityBackend(f.daemon.config.working_directory) : new OpenCodeBackend(f.daemon.config.working_directory);
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
+});
+
+it("an automatically resolved runtime dialog never borrows a delivery's Enter", async () => {
+  const f = fixture("automatic modal\n❯");
+  f.daemon.backend = {
+    getRuntimeDialogs: () => [{ pattern: /automatic modal/, keys: ["Enter"], description: "automatic modal" }],
+    getReadyPattern: () => /❯/,
+  };
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
+  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+});
+it("Antigravity's real trust card remains held", async () => {
+  const f = fixture(pane("agy-1.3.1-trust-dialog"));
+  f.daemon.backend = new AntigravityBackend(f.daemon.config.working_directory);
+  expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(false);
+  expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
 });
