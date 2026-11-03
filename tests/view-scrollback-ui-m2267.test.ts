@@ -101,7 +101,9 @@ describe("scrolling up reads the scrollback once, and nothing yanks the reader",
     expect(term().scrollTop).toBe(at);                                          // …at the same place
     expect(button(".v-term-latest")!.textContent).toContain("New output below");
     expect(historyReads()).toBe(1);                                             // the refresh read the screen only
-    (button(".v-term-latest") as any).click(); await settle(10);
+    (button(".v-term-latest") as any).click();
+    expect(pre().textContent).toBe("SCREEN 2");                                 // the newest screen at once, not after a read
+    await settle(10);
     expect([pre().textContent, term().className.includes("is-reading"), !!button(".v-term-earlier")]).toEqual(["SCREEN 2", false, true]);
   });
   it("scrolling to the bottom follows again; End too", async () => {
