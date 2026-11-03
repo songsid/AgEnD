@@ -62,7 +62,8 @@ if (mode === 'pids') {
    await new Promise(done => setTimeout(done, 100));
   }
  }
- process.stdout.write(JSON.stringify({ boot: descriptor.hostBootId, pid: descriptor.pid, alive: alive(descriptor.pid), processesAlive: panes.filter(p => p.pid && alive(p.pid)).length,
+ const lock = JSON.parse(await readFile(join(directory, 'runtime.lock'), 'utf8'));
+ process.stdout.write(JSON.stringify({ hostLockBootProof: !!descriptor.systemBootId && lock.systemBootId === descriptor.systemBootId, boot: descriptor.hostBootId, pid: descriptor.pid, alive: alive(descriptor.pid), processesAlive: panes.filter(p => p.pid && alive(p.pid)).length,
   systemBootProof: !!descriptor.systemBootId }) + '\n');
 } else if (mode === 'paired') {
  const [{ RuntimeClient, pairRuntime }, { RuntimeClientStore }] = await Promise.all(['runtime-client', 'runtime-client-store'].map(load));

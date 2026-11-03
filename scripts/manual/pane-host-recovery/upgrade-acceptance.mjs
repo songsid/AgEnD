@@ -127,7 +127,7 @@ try {
  assert.equal(store.get(owner.agent.id).activeId, undefined); assert.equal(await hashLedger(), ledgerHash);
  const resumed = await acquire(owner); assert.equal(resumed.sessionId, pin); assert.notEqual(resumed.launchId, before.launchId);
  assert.deepEqual(await count(pin, marker), { user: 1, assistant: 1 }); receipt.sameSessionNoInputReplay = true; receipt.oldLedgerUnchangedAfterRecovery = true;
- receipt.newHostBootProof = inspect('state').systemBootProof; assert(receipt.newHostBootProof);
+ const bootState = inspect('state'); receipt.newHostBootProof = bootState.systemBootProof; receipt.hostLockBootProof = bootState.hostLockBootProof; assert(receipt.newHostBootProof && receipt.hostLockBootProof);
  await native.release('close'); phase = 'cleanup';
  const inventory = await endpoint.call({ action: 'list' }); assert(inventory.panes.every(p => p.state === 'exited'));
  await endpoint.call({ action: 'shutdown', hostBootId: inventory.hostBootId }); await stopTransport(); receipt.passed = true;
