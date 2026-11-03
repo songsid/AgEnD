@@ -1,3 +1,4 @@
+import { nativePaneToolRefusal } from "./native-pane-tools.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
 import { sendPackSources } from "./web-office-pack-read.js";
@@ -24,7 +25,7 @@ import { assertNoSessionOomStop, readSessionOomStop, writeSessionOomStop, Sessio
 import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
-import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
+import { resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource, type TranscriptSource } from "./transcript-sources.js";
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
@@ -54,7 +55,8 @@ import { HangDetector } from "./hang-detector.js";
 import { writeSecretFile } from "./secret-file.js";
 import { PaneWriteLock } from "./pane-write-lock.js";
 import { answerRemoteCard, type RemoteCardAction, type RemoteCardOutcome } from "./remote-card-answer.js";
-import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
+import type { Pane, PaneHost, PaneObservation, PaneOutputEvent, PaneOutputEventName } from "./pane-port.js";
+import { tmuxPaneHost } from "./tmux-pane-host.js";
 import { buildFleetInstructions } from "./instructions.js";
 import { formatHumanInboundMessage, prepareDeliveryWire, steerInboundEnvelope, BTW_INBOUND_PREFIX,
   humanBodyHash, humanOwnerObjectId, type HumanReceiptAttempt, type HumanWriteMode, type HumanPositiveTag } from "./human-delivery-receipts.js";
@@ -73,12 +75,15 @@ import { CLAUDE_CREDIT_BALANCE_LOW, CLAUDE_MODEL_USAGE_LIMIT, CLAUDE_USAGE_LIMIT
 import { t } from "./locale.js";
 import { claudeResetTime, quotaPausedLine } from "./quota-notice.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
+import { reconcileNativePaneTarget } from "./native-pane-reconciliation.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
 import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
 import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
+import type { NativePaneLifecycle } from "./native-pane-lifecycle.js";
+import type { RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import {
   buildResumeContinuation,
   clearInFlightTurnMarker,
@@ -647,7 +652,7 @@ interface SubmissionSignature {
    */
   transcript?: {
     /** Bounded, incremental looks from the attempt's checkpoint (each ≤256 KiB, ≤250 ms). */
-    reader: TranscriptDeltaReader;
+    reader: Pick<TranscriptDeltaReader, "look">;
     /**
      * The write's fence: its spawn and launch, not stopping, and the caller's own fence. Asked after every await
      * before a hit is used — a look that returns after a stop or respawn proves nothing for the replacement.
@@ -818,6 +823,10 @@ type DurableDeliveryAttempt = {
   /** sha256 of the text as this daemon received it, before formatting (#856). */
   contentSha256?: string;
 };
+type DurableTranscriptCheckpoint = { backend: string } & (
+  | { path: string; offset: number; runtime?: never }
+  | { path?: never; offset?: never; runtime: RuntimeTranscriptReference }
+);
 type DeliveryVerdict = {
   reached: boolean;
   phase?: string;
@@ -829,7 +838,7 @@ type DeliveryVerdict = {
   /** #829: the caller's lifecycle fence went stale before anything was written. */
   fenced?: boolean;
   /** Where this attempt's transcript stood before the paste (#758), for a delivery only the output edge vouches for. */
-  transcriptCheckpoint?: { backend: string; path: string; offset: number };
+  transcriptCheckpoint?: DurableTranscriptCheckpoint;
   /** How the attempt was written (#1201: steer and native-queue hand-offs get a late consumed watch). */
   submissionMode?: DurableSubmissionMode;
   /** The submission was proven by the CLI's transcript rather than the pane: the evidence the outbox records. */
@@ -1355,7 +1364,7 @@ export class Daemon extends EventEmitter {
   private deliveryOutbox?: DaemonDeliveryPort;
   private logger: Logger;
   private tmuxSessionName: string;
-  private tmux: TmuxManager | null = null;
+  private tmux: Pane | null = null;
   private ipcServer: IpcServer | null = null;
   private messageBus: MessageBus;
   private transcriptMonitor: TranscriptMonitor | null = null;
@@ -1411,7 +1420,7 @@ export class Daemon extends EventEmitter {
   // injected by FleetManager below.
   private healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private crashCount = 0;
-  private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: TmuxManager } | null = null;
+  private cliOomObservation: { identity: CliOomIdentity; key: string; owner: InteractionOwner; tmux: Pane } | null = null;
   private consecutiveOoms: SessionOomCount | null = null;
   private collateralOomRecovery = false;
   private unclearOomStopped = false;
@@ -1646,8 +1655,8 @@ export class Daemon extends EventEmitter {
   private unknownLayoutStableSince = 0;
   private unknownLayoutWarned = false;
   private instanceStateStuckTimer: ReturnType<typeof setTimeout> | null = null;
-  private instanceStateOutputListener: ((event: TmuxPaneOutputEvent) => void) | null = null;
-  private instanceStateOutputEventName: string | null = null;
+  private instanceStateOutputListener: ((event: PaneOutputEvent) => void) | null = null;
+  private instanceStateOutputEventName: PaneOutputEventName | null = null;
   private instanceStateSafetyListener: (() => void) | null = null;
   private instanceStateLastOutputAt = 0;
   private instanceStateIdleDebounceMs = DEFAULT_STATE_IDLE_DEBOUNCE_MS;
@@ -2201,19 +2210,77 @@ export class Daemon extends EventEmitter {
     this.activeErrorPatternKey = null;
   }
 
+  /** Lazy default also preserves bare-prototype diagnostic/test construction. */
+  private get paneHost(): PaneHost { return this.paneTransport ?? tmuxPaneHost; }
+  private nativePaneLifecycle?: NativePaneLifecycle;
+  private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
+  private nativeTranscriptSource?: TranscriptSource;
+  usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+  nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
+  nativePaneHasExited():boolean{
+    const snapshot=this.nativePaneLifecycle?.snapshot?.();return snapshot?.state==="exited"&&snapshot.instance===this.name&&this.tmux?.getWindowId()===snapshot.paneId;
+  }
+  /** Positive native exit evidence only, fenced to this exact launch and Daemon owner. */
+  nativePaneExitCurrent(snapshot: import("./runtime-pane-protocol.js").RuntimePaneSnapshot, owner: InteractionOwner): boolean {
+    const actual=this.nativePaneLifecycle?.snapshot?.();
+    return !!actual && actual.state==="exited" && snapshot.state==="exited" && !!snapshot.sessionId
+      && sameInteractionOwner(owner,this.interactionOwner()) && !this.runtimeMonitorsFrozen && !this.startupAborted
+      && ["hostBootId","paneId","launchId","agentId","instance","sessionId","commandSequence","exitCode"].every(key=>actual[key as keyof typeof actual]===snapshot[key as keyof typeof snapshot])
+      && this.tmux?.getWindowId()===snapshot.paneId;
+  }
+
+  async reconcileNativeDeliveries(outbox: import("./delivery-outbox.js").DeliveryOutbox, current: () => boolean): Promise<boolean> {
+    if (!this.nativePaneLifecycle) return false;
+    return reconcileNativePaneTarget(outbox, this.name, this.nativePaneLifecycle, current);
+  }
+
+
+  /** Same-process transport for the owned native daemon; never exposed as a runner RPC. */
+  setNativeFleetBridge(bridge: { current(): boolean; send(message: Record<string, unknown>): void }): void {
+    if (!this.nativePaneLifecycle || this.nativeFleetBridge?.current()) throw Error("Native Fleet bridge requires one bound pane owner");
+    this.nativeFleetBridge = bridge;
+  }
+
+  /** Fleet admission and generation checks happen before this synchronous handoff. */
+  acceptNativeFleetMessage(message: Record<string, unknown>): boolean {
+    if (!this.nativePaneLifecycle || !this.nativeFleetBridge?.current() || this.deliveryWritesStopping || this.runtimeMonitorsFrozen) return false;
+    if (typeof message.type === "string" && FLEET_RESPONSE_TYPES.has(message.type)) { this.routeFleetResponse(message); return true; }
+    const bridge = this.nativeFleetBridge;
+    const current = () => this.nativeFleetBridge === bridge && bridge.current() && !this.deliveryWritesStopping && !this.runtimeMonitorsFrozen;
+    return this.handleFleetMessage(message, reply => { if (current()) this.broadcastFleetMessage(reply); }, current);
+  }
+
+  private broadcastFleetMessage(message: Record<string, unknown>): void {
+    if (this.nativePaneLifecycle) {
+      if (this.nativeFleetBridge?.current() && !this.runtimeMonitorsFrozen && !this.deliveryWritesStopping) this.nativeFleetBridge.send(message);
+    } else this.ipcServer?.broadcast(message);
+  }
+
+  private fleetTransportAvailable(): boolean {
+    return this.nativePaneLifecycle ? !!this.nativeFleetBridge?.current() && !this.runtimeMonitorsFrozen : !!this.ipcServer;
+  }
+
+
+  /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
+  setNativePaneLifecycle(native: NativePaneLifecycle): void {
+    if (this.tmux || this.ipcServer || this.nativePaneLifecycle) throw Error("Native pane adapter must be bound before daemon startup");
+    this.nativePaneLifecycle = native; this.backend = native.backend; this.paneTransport = native.host; this.controlClient = native.observation;
+  }
+
   constructor(
     private name: string,
     private config: InstanceConfig,
     private instanceDir: string,
     private topicMode = false,
     private backend?: CliBackend,
-    private controlClient?: TmuxControlClient,
+    private controlClient?: PaneObservation,
     rootLogger?: Logger,
     private runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
     private spawnGate?: SpawnGate,
     private stormWindow?: StormWindow,
     /** Fleet-level "is this CLI's backend down?" memory — see backend-outage.ts. */
     private backendOutage?: BackendOutageView,
+    private paneTransport?: PaneHost,
   ) {
     super();
     // The live process owns its adopted configuration. Fleet defaults may be re-resolved in place after a save;
@@ -2310,9 +2377,14 @@ export class Daemon extends EventEmitter {
     steer: boolean,
     rawPaste = false,
   ): Promise<DeliveryAttemptEvidence> {
-    let checkpoint = null;
-    try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
-    catch (err) { this.logger.debug({ err }, "Could not checkpoint transcript before durable delivery"); }
+    let checkpoint = null, runtimeTranscript: RuntimeTranscriptReference | null = null;
+    if (this.nativePaneLifecycle) {
+      runtimeTranscript = await this.transcriptMonitor?.reconciliationRuntimeCheckpoint() ?? null;
+      if (!runtimeTranscript || !this.nativePaneLifecycle.current(runtimeTranscript)) throw Error("Native transcript checkpoint is not current; no delivery was written");
+    } else {
+      try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
+      catch (err) { this.logger.debug({ err }, "Could not checkpoint transcript before durable delivery"); }
+    }
     const submissionMode: DurableSubmissionMode = rawPaste ? "raw_paste" : steer
       ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
@@ -2327,8 +2399,9 @@ export class Daemon extends EventEmitter {
       backendVersion,
       windowId: windowId ?? this.tmux?.getWindowId() ?? null,
       transcriptPath: checkpoint?.path ?? null,
-      transcriptOffset: checkpoint?.offset ?? null,
-      transcriptSessionId: checkpoint?.sessionId ?? null,
+      transcriptOffset: runtimeTranscript?.cursor.offset ?? checkpoint?.offset ?? null,
+      transcriptSessionId: runtimeTranscript?.cursor.sessionId ?? checkpoint?.sessionId ?? null,
+      ...(runtimeTranscript ? { runtimeTranscript } : {}),
       submissionMode,
       queueResumePolicy: queueResumePolicyForAttempt(backend, backendVersion, submissionMode),
     };
@@ -2373,15 +2446,18 @@ export class Daemon extends EventEmitter {
     const checkpoint = verdict.transcriptCheckpoint;
     const outbox = this.deliveryOutbox;
     if (!checkpoint || !outbox?.markConsumed) return;
+    if (this.nativePaneLifecycle && !checkpoint.runtime) return;
     if (verdict.submissionMode !== "steer" && verdict.submissionMode !== "native_queue_handoff") return;
     if (!["claude-code", "codex"].includes(checkpoint.backend)) return;
     const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, boot = this.bootId;
+    let location: { path: string; offset: number } | { reader: ReturnType<NativePaneLifecycle["proofReader"]> };
+    try { location = checkpoint.runtime ? { reader: this.nativeTranscriptReader(checkpoint.runtime, delivery.deliveryId) } : { path: checkpoint.path, offset: checkpoint.offset }; }
+    catch { return; } // The owner changed; an unavailable consumed watch proves nothing.
     consumedWatches.start({
       deliveryId: delivery.deliveryId,
       attemptNo: delivery.attemptNo,
       backend: checkpoint.backend,
-      path: checkpoint.path,
-      offset: checkpoint.offset,
+      ...location,
       current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch,
       consumed: (via, evidence) => {
         try {
@@ -2464,29 +2540,34 @@ export class Daemon extends EventEmitter {
    */
   private async proveDeliveryFromTranscript(
     delivery: { deliveryId: string; attemptNo: number },
-    checkpoint: { backend: string; path: string; offset: number },
+    checkpoint: DurableTranscriptCheckpoint,
     rawPaste?: { text: string; unproven: string },
   ): Promise<void> {
     const spawn = this.spawnGeneration;
     const fence = this.launchFenceEpoch;
     let last: "no-match" | "unavailable" = "unavailable";
-    let outcome: "delivered" | "uncertain" = "delivered";
-    let evidence = OUTPUT_EDGE_ONLY_EVIDENCE;
+    const native = !!checkpoint.runtime || !!this.nativePaneLifecycle;
+    let outcome: "delivered" | "uncertain" = native ? "uncertain" : "delivered";
+    let evidence = native ? "runtime-transcript-unconfirmed" : OUTPUT_EDGE_ONLY_EVIDENCE;
     // #1647: a raw paste has no marker; its text is the needle, and its pane proof already failed — so without the turn
     // in the transcript it stays uncertain (with the pane's reason), never the output-edge outcome.
     const needle: TranscriptNeedle = rawPaste ? { rawText: rawPaste.text } : delivery.deliveryId;
     let found = false;
     try {
+      if (this.nativePaneLifecycle && !checkpoint.runtime) throw Error("Native proof cannot read a coordinator-local transcript path");
+      const nativeReader = checkpoint.runtime ? this.nativeTranscriptReader(checkpoint.runtime, needle) : null;
       for (let polls = 0; polls <= TRANSCRIPT_PROOF_WINDOW_MS / TRANSCRIPT_PROOF_POLL_MS; polls++) {
         if (this.deliveryWritesStopping) return; // reconciliation owns the row now
-        const look = await scanTranscriptForDeliveryMarker(checkpoint.path, checkpoint.offset, checkpoint.backend, needle);
+        const look = nativeReader ? await nativeReader.look() : await scanTranscriptForDeliveryMarker(checkpoint.path!, checkpoint.offset!, checkpoint.backend, needle);
+        if (this.deliveryWritesStopping) return;
+        if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
         if (look === "user" || look === "absorbed" || look === "queued") {
           found = true;
           outcome = "delivered";
           evidence = transcriptMarkerEvidence(look, !!rawPaste);
           break;
         }
-        last = look;
+        last = look === "pending" ? "unavailable" : look;
         if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) { last = "unavailable"; break; }
         await new Promise(r => setTimeout(r, TRANSCRIPT_PROOF_POLL_MS));
       }
@@ -2494,12 +2575,12 @@ export class Daemon extends EventEmitter {
       // pause/freeze or respawn during the final sleep must end the wait with today's labelled outcome, not
       // `uncertain`: re-check the same fixed epochs after the last await, before settling (#1207 P2).
       if (spawn !== this.spawnGeneration || fence !== this.launchFenceEpoch) last = "unavailable";
-      if (last === "no-match" && evidence === OUTPUT_EDGE_ONLY_EVIDENCE) {
+      if (last === "no-match" && !found) {
         outcome = "uncertain";
         evidence = "unverifiable-no-transcript-marker";
       }
     } catch (err) {
-      this.logger.debug({ err }, "Transcript proof of a delivery failed — keeping the output-edge outcome");
+      this.logger.debug({ err }, "Transcript proof unavailable — preserving the conservative outcome");
     }
     if (rawPaste && !found) {
       outcome = "uncertain";
@@ -2673,6 +2754,7 @@ export class Daemon extends EventEmitter {
       }
     } catch { /* corrupt/missing — ignore */ }
 
+    if (!this.nativePaneLifecycle) {
     // 1. IPC server — bridge between MCP server (Claude's child) and daemon
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath, this.logger);
@@ -2714,42 +2796,34 @@ export class Daemon extends EventEmitter {
         }
         // Batch response for prune path
         this.ipcServer?.send(socket, { type: "query_sessions_response", sessions });
-      } else if (msg.type === "fleet_inbound") {
-        // Fleet manager routed a message to us (topic mode)
-        const meta = msg.meta as Record<string, string>;
-        const targetSession = msg.targetSession as string | undefined;
-        const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
-        void this.wake().then(() => {
-          this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
-        }).catch(err => {
-          this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
-          this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
-        });
-      } else if (msg.type === "raw_paste") {
-        this.handleRawPasteIpcMessage(msg);
-      } else if (msg.type === "config_update") {
-        this.applyConfigUpdate(msg.config);
-      } else if (msg.type === "steer") {
-        const meta = (msg.meta ?? {}) as Record<string, string>;
-        this.steerMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
-      } else if (msg.type === "btw") {
-        const meta = (msg.meta ?? {}) as Record<string, string>;
-        this.btwMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
-      } else if (msg.type === "fleet_schedule_trigger") {
-        const payload = msg.payload as Record<string, unknown>;
-        const meta = msg.meta as Record<string, string>;
-        const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
-        void this.wake().then(() => this.pushChannelMessage(payload.message as string, meta, undefined, deliveryEpoch)).catch(err => {
-          this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
-        });
-      } else if (msg.type === "query_instance_state") {
-        void this.respondToInstanceStateQuery(msg, socket);
-      }
+      } else this.handleFleetMessage(msg, reply => { this.ipcServer?.send(socket, reply); });
     });
 
+    }
+
+    let nativeDisposition: "reattached" | "resumed" | "fresh" | undefined;
+    if (this.nativePaneLifecycle) {
+      this.beginSpawn();
+      try {
+        const acquired = await this.nativePaneLifecycle.acquire(() => {
+          this.startupAdmission?.(); if (this.startupAborted) throw Error("Native launch was superseded");
+        });
+        this.tmux = acquired.pane; this.nativeTranscriptSource = acquired.source; nativeDisposition = acquired.disposition;
+        this.lastSpawnAt = Date.now(); this.setProcessStatus("running");
+        this.bindInstanceStateOutputListener(this.tmux.getWindowId()); this.saveSessionId();
+        // New/resumed native processes can still be painting their first frame. Keep deliveries behind the same
+        // bounded dialog/readiness scan as local startup. An already-running reattachment may be busy: do not
+        // wait for that work to finish or inject a startup key into it.
+        if (acquired.disposition !== "reattached") {
+          if (!await this.finishStartupScan(120_000)) throw Error("Native CLI exited during startup; retained session was not replaced");
+          this.startupAdmission?.();
+          if (this.startupAborted || this.deliveryWritesStopping || !this.nativePaneLifecycle.current()) throw Error("Native launch was superseded");
+        }
+      } finally { this.endSpawn(); }
+    } else {
     // 2. Tmux — ensure session, create window if not alive
-    await TmuxManager.ensureSession(this.tmuxSessionName); this.startupAdmission?.();
-    this.tmux = new TmuxManager(
+    await this.paneHost.ensureSession(this.tmuxSessionName); this.startupAdmission?.();
+    this.tmux = this.paneHost.bind(
       this.tmuxSessionName,
       "",
       resolveTmuxLogicalSize(this.config.terminal),
@@ -2762,7 +2836,7 @@ export class Daemon extends EventEmitter {
     if (existsSync(windowIdFile)) {
       const savedId = readFileSync(windowIdFile, "utf-8").trim();
       if (savedId) {
-        const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
+        const oldTmux = this.paneHost.bind(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
           this.startupAdmission?.();
           await this.checkpointSessionId(); this.startupAdmission?.();
@@ -2781,10 +2855,13 @@ export class Daemon extends EventEmitter {
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
     }
 
+    }
+    if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
+
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached; the gate
     // consumes its one-shot marker first and never throws into boot.
-    const legacyResume = this.maybeResumeInterruptedTurn().catch(() => "unknown");
+    const legacyResume = this.nativePaneLifecycle ? Promise.resolve("unknown") : this.maybeResumeInterruptedTurn().catch(() => "unknown");
 
     const recoveryOwner = JSON.stringify(this.interactionOwner());
     void Promise.allSettled([legacyResume]).then(() => {
@@ -2802,7 +2879,7 @@ export class Daemon extends EventEmitter {
       // (statusline transcript); codex/kiro/opencode read their CLI's own
       // conversation store via a pluggable source. Backends with no known
       // source stay inert exactly as before.
-      this.transcriptMonitor = this.buildTranscriptMonitor(createTranscriptSource(
+      this.transcriptMonitor = this.buildTranscriptMonitor(this.nativeTranscriptSource ?? createTranscriptSource(
         this.config.backend ?? "claude-code",
         this.config.working_directory,
         this.credentialProfileStore(),
@@ -2867,6 +2944,7 @@ export class Daemon extends EventEmitter {
         this.hangDetector = new HangDetector();
       }
 
+      if (!this.nativePaneLifecycle) {
       // 8. Context guardian
       const statusFile = join(this.instanceDir, "statusline.json");
       this.guardian = new ContextGuardian(this.config.context_guardian ?? {}, this.logger, statusFile);
@@ -2875,6 +2953,7 @@ export class Daemon extends EventEmitter {
       this.guardian.on("status_update", () => {
         this.saveSessionId();
       });
+      }
       // Context rotation removed: all CLI backends have built-in auto-compact.
       // Crash recovery (health check + respawn with snapshot) is retained below.
 
@@ -2929,7 +3008,7 @@ export class Daemon extends EventEmitter {
         this.socketPids.delete(socket);
         // Notify fleet manager so it can clean up sessionRegistry
         if (sessionName !== this.name) {
-          this.ipcServer?.broadcast({ type: "session_disconnected", sessionName });
+          this.broadcastFleetMessage({ type: "session_disconnected", sessionName });
         }
       });
     }
@@ -2946,11 +3025,15 @@ export class Daemon extends EventEmitter {
       // sub-agent's server may have left a dead pid in the slot).
       this.noteMcpProofOfLife("mcp_ready", typeof msg.pid === "number" ? msg.pid : undefined);
     }
-    this.ipcServer?.broadcast({ type: "mcp_ready", sessionName });
+    this.broadcastFleetMessage({ type: "mcp_ready", sessionName });
   }
 
     private checkMcpServerAlive(): void {
     if (this.isPaused) return;
+    if (this.nativePaneLifecycle) {
+      if (this.nativePaneLifecycle.mcpProof() === "alive") this.noteMcpProofOfLife("connection");
+      return; // No native PID/socket guessing or restart from an unknown helper observation.
+    }
     const status = mcpServerState(this.instanceDir);
     if (status.state === "alive") {
       this.mcpServedGeneration = this.spawnGeneration;
@@ -3034,6 +3117,7 @@ export class Daemon extends EventEmitter {
    * server from a third-party one, and failed the whole launch for either.
    */
   private checkFleetMcpNeverConnected(): void {
+    if (this.nativePaneLifecycle) return; // Native helper presence owns this observation.
     if (this.config.agent_mode === "cli") return; // no MCP server by design
     if (this.lastSpawnAt === 0 || this.mcpServedGeneration === this.spawnGeneration) return;
     if (this.mcpNeverConnectedReportedGeneration === this.spawnGeneration) return;
@@ -3236,6 +3320,7 @@ export class Daemon extends EventEmitter {
    * proof that tools are being served, whatever channel.mcp.pid says.
    */
   private mcpServerAlive(): { alive: boolean; source: "pid" | "connection" | "none"; pid?: number } {
+    if (this.nativePaneLifecycle) return this.nativePaneLifecycle.mcpProof() === "alive" ? { alive: true, source: "connection" } : { alive: false, source: "none" };
     const status = mcpServerState(this.instanceDir);
     if (status.state === "alive") return { alive: true, source: "pid", pid: status.pid };
     const sockets = this.liveMcpSockets();
@@ -3295,7 +3380,7 @@ export class Daemon extends EventEmitter {
     this.mcpDeathNotifiedForPid = null;
     this.mcpDeathDeferredForPid = null;
     this.clearMcpRestartRequest();
-    if (pid && mcpServerState(this.instanceDir).state !== "alive") this.repairMcpPidSlot(pid, source);
+    if (!this.nativePaneLifecycle && pid && mcpServerState(this.instanceDir).state !== "alive") this.repairMcpPidSlot(pid, source);
   }
 
   private emitMcpRecovered(source: string, pid?: number): void {
@@ -3344,6 +3429,19 @@ export class Daemon extends EventEmitter {
         // ended this instance's health loop because scheduleNext() sat after the
         // throwing code. Catch, log, and keep checking.
         try {
+          if (this.nativePaneLifecycle) {
+            if (this.healthCheckPaused) { scheduleNext(); return; }
+            const native = this.nativePaneLifecycle, pane = this.tmux;
+            const status = await pane?.getPaneStatus();
+            if (this.runtimeMonitorsFrozen || native !== this.nativePaneLifecycle || pane !== this.tmux) return;
+            const snapshot = native.snapshot?.();
+            if (status?.alive === false && snapshot?.state === "exited") {
+              this.healthCheckPaused = true;
+              this.setProcessStatus(snapshot.exitCode===0?"stopped":"crashed");
+              this.emit("native_pane_exited", { name: this.name, snapshot, owner: this.interactionOwner() });
+            } else if (status?.alive) this.checkMcpServerAlive();
+            scheduleNext(); return;
+          }
           // Instance directory removed externally (e.g. `rm -rf ~/.agend/instances/<name>`).
           // Stop the loop permanently — otherwise every tick triggers a respawn, whose
           // writeRotationSnapshot fails with ENOENT and gets caught as "Failed to respawn",
@@ -3456,12 +3554,12 @@ export class Daemon extends EventEmitter {
           let inWindowLossBurst = false;
           let nullReason: string | undefined;
           if (!paneStatus) {
-            const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
+            const serverAlive = await this.paneHost.sessionExists(this.tmuxSessionName);
             if (discardStaleHealth()) return;
             // A server may have already restarted before this daemon's health
             // tick. The new PID is the durable generation boundary: treat it as
             // a fleet storm even though `has-session` is true again.
-            const serverPid = serverAlive ? await TmuxManager.getServerPid(this.tmuxSessionName) : null;
+            const serverPid = serverAlive ? await this.paneHost.getServerPid(this.tmuxSessionName) : null;
             if (discardStaleHealth()) return;
             const generationChanged = serverAlive && this.stormWindow?.observeServerAlive(serverPid) === true;
             if (generationChanged) this.emit("tmux_server_crash", this.name);
@@ -3484,7 +3582,7 @@ export class Daemon extends EventEmitter {
               // the window truly no longer exists vs a transient query glitch.
               nullReason = "no_window";
               try {
-                const windows = await TmuxManager.listWindowsStrict(this.tmuxSessionName, this.controlClient);
+                const windows = await this.paneHost.listWindowsStrict(this.tmuxSessionName, this.controlClient);
                 if (discardStaleHealth()) return;
                 this.windowQueryFailureTicks = 0;
                 const currentWindowId = this.tmux.getWindowId();
@@ -3731,10 +3829,10 @@ export class Daemon extends EventEmitter {
             // Wrapped in try-catch: if tmux server is dead, listWindows throws —
             // must not block spawnClaudeWindow (which calls ensureSession).
             try {
-              const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+              const windows = await this.paneHost.listWindows(this.tmuxSessionName);
               for (const w of windows) {
                 if (w.name === this.name) {
-                  const tm = new TmuxManager(this.tmuxSessionName, w.id);
+                  const tm = this.paneHost.bind(this.tmuxSessionName, w.id);
                   await tm.killWindow();
                 }
               }
@@ -3866,7 +3964,7 @@ export class Daemon extends EventEmitter {
       // Force the next ready capture to emit a fresh transition after respawn.
       this.instanceState = "working";
     }
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "instance_process_state",
       instanceName: this.name,
       status,
@@ -4051,11 +4149,13 @@ export class Daemon extends EventEmitter {
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
               if (stale()) return;
+              const keyScreen = this.nativePaneLifecycle ? await pollTmux.capturePane() : currentPane;
+              if (stale() || !Daemon.dialogMatches(dialog, keyScreen)) return;
               let sent = false;
               if (SPECIAL_KEYS.has(key)) {
-                sent = await pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+                sent = await (this.nativePaneLifecycle ? pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left", undefined, { kind: "dialog", screen: keyScreen }) : pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left"));
               } else if (dialog.literalKeys) {
-                sent = await pollTmux.sendKeys(key);                     // typed, no Enter (#2872)
+                sent = await (this.nativePaneLifecycle ? pollTmux.sendKeys(key, { kind: "dialog", screen: keyScreen }) : pollTmux.sendKeys(key)); // typed, no Enter (#2872)
               } else {
                 sent = await pollTmux.pasteText(key, this.systemPasteOptions());
               }
@@ -4466,7 +4566,7 @@ export class Daemon extends EventEmitter {
       try { pane = await tmux.capturePaneWithHistory(KIRO_COMPACT_PANE_LINES); } catch { continue; }
       if (!standing()) return;
       const outcome = follower.look(pane);
-      if (outcome) { this.ipcServer?.broadcast({ type: "compact_pane_result", id, owner, outcome }); return; }
+      if (outcome) { this.broadcastFleetMessage({ type: "compact_pane_result", id, owner, outcome }); return; }
     }
   }
 
@@ -4492,7 +4592,7 @@ export class Daemon extends EventEmitter {
   ): void {
     const reportSwitch = (result: OwnSwitchOutcome) => {
       if (!ownSwitch) return;
-      this.ipcServer?.broadcast({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
+      this.broadcastFleetMessage({ type: "runtime_switch_result", id: ownSwitch.id, ...result });
     };
     // Board 003648ac: the fleet follows a web /compact from just before its paste is written: the transcript's end then
     // (taken here, under this launch, before the write) and the launch it was written under ride with the notice — once.
@@ -4506,7 +4606,7 @@ export class Daemon extends EventEmitter {
     const tellWritten = (written: boolean) => {
       if (!notifyWritten || told) return;
       told = true;
-      this.ipcServer?.broadcast({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
+      this.broadcastFleetMessage({ type: "raw_paste_written", id: notifyWritten, outcome: written ? "written" : "not_written",
         ...(written ? { owner, checkpoint, ...(paneFollower ? { pane: true } : {}) } : {}) });
       if (written && paneFollower) void this.followCompactPane(notifyWritten, owner, paneFollower);
     };
@@ -4643,9 +4743,10 @@ export class Daemon extends EventEmitter {
     /** One key on a dialog re-read under the lock: still the same target, and (when given) the cursor where expected. */
     const press = (target: string, cursor: 1 | 2 | null, key: "Enter" | "Escape" | "Up") => this.paneWriteLock.run(async () => {
       if (this.tmux !== tmux) return false;
-      const now = claudeSwitchDialog(await read());
+      const screen = await read();
+      const now = claudeSwitchDialog(screen);
       if (!now || now.kind !== "model" || now.target !== target || (cursor !== null && now.cursor !== cursor)) return false;
-      return tmux.sendSpecialKey(key);
+      return this.nativePaneLifecycle ? tmux.sendSpecialKey(key, undefined, { kind: "dialog", screen }) : tmux.sendSpecialKey(key);
     });
     const gone = async () => {
       const until = performance.now() + OWN_SWITCH_SETTLE_MS;
@@ -4723,9 +4824,11 @@ export class Daemon extends EventEmitter {
           if (!matches(currentPane)) return false;
           const specialKeys = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
           for (const key of dialog.keys) {
+            const keyScreen = this.nativePaneLifecycle ? await this.tmux!.capturePane() : currentPane;
+            if (!matches(keyScreen)) return false;
             const ok = specialKeys.has(key)
-              ? await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left")
-              : await this.tmux!.sendKeys(key);
+              ? await (this.nativePaneLifecycle ? this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left", undefined, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left"))
+              : await (this.nativePaneLifecycle ? this.tmux!.sendKeys(key, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendKeys(key));
             if (!ok) return false;
             await new Promise(resolve => setTimeout(resolve, 100));
           }
@@ -4958,7 +5061,7 @@ export class Daemon extends EventEmitter {
     return true;
   }
 
-  async stop(): Promise<void> {
+  async stop(options: { nativePane?: "detach" | "close" } = {}): Promise<void> {
     this.publishWorkingState("before_stop");
     this.logger.info("Stopping daemon instance");
     this.clearQuitRelaunchWatch();
@@ -4979,8 +5082,15 @@ export class Daemon extends EventEmitter {
     }
     if (this.adapter) await this.adapter.stop();
 
+    if (this.nativePaneLifecycle) {
+      this.healthCheckPaused = true; this.saveSessionId();
+      await this.nativePaneLifecycle.release(options.nativePane ?? "detach");
+      try { unlinkSync(join(this.instanceDir, "daemon.pid")); } catch { /* metadata only */ }
+      return;
+    }
+
     // Notify MCP servers of graceful shutdown (prevents reconnect attempts)
-    this.ipcServer?.broadcast({ type: "shutdown" });
+    this.broadcastFleetMessage({ type: "shutdown" });
 
     // Quit CLI FIRST — this kills MCP server child processes cleanly.
     // IPC must stay open during quit so MCP servers receive the shutdown message.
@@ -5143,7 +5253,10 @@ export class Daemon extends EventEmitter {
         if (!current() || !input || input.text !== "" || input.collapsedPastes !== 0 || input.queued
           || !this.paneAuthoritativelyIdle(pane) || this.inputTransientInPane(pane)
           || this.backend?.backgroundWorkRunning?.(pane) === true) return;
-        if (await tmux.getPaneInputMode?.() !== "raw" || !current()) return;
+        if (this.nativePaneLifecycle ? !this.nativePaneLifecycle.current() || this.nativePaneLifecycle.mcpProof() !== "alive"
+          || !!this.backend?.isDeliveryInputReadyPane && !this.backend.isDeliveryInputReadyPane(pane)
+          : await tmux.getPaneInputMode?.() !== "raw") return;
+        if (!current()) return;
         const evidence = await this.durableAttemptEvidence(tmux.getWindowId(), false, false);
         if (!current()) return;
         const signature = this.submissionSignature(content), baseline = this.paneEvidence(pane, signature);
@@ -5226,7 +5339,7 @@ export class Daemon extends EventEmitter {
       this.logger.debug({ err }, "Interaction listener failed");
     }
     try {
-      this.ipcServer?.broadcast({ type: "instance_interaction", instanceName: this.name, interaction });
+      this.broadcastFleetMessage({ type: "instance_interaction", instanceName: this.name, interaction });
     } catch (err) {
       this.logger.debug({ err }, "Interaction broadcast failed");
     }
@@ -5309,6 +5422,44 @@ export class Daemon extends EventEmitter {
     return true;
   }
 
+  /** Shared Fleet inputs: socket and native transports retain the same wake, epoch and raw-paste semantics. */
+  private handleFleetMessage(msg: Record<string, unknown>, send: (reply: Record<string, unknown>) => void, current = () => true): boolean {
+    if (msg.type === "query_sessions") {
+      send({ type: "query_sessions_response", sessions: [] });
+    } else if (msg.type === "fleet_inbound") {
+      const meta = msg.meta as Record<string, string>;
+      const targetSession = msg.targetSession as string | undefined;
+      const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
+      void this.wake().then(() => {
+        if (!current()) { this.deferDurableDelivery(meta, "native channel owner changed before pane submission"); return; }
+        this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
+      }).catch(err => {
+        this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
+        this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
+      });
+    } else if (msg.type === "raw_paste") {
+      this.handleRawPasteIpcMessage(msg);
+    } else if (msg.type === "config_update") {
+      this.applyConfigUpdate(msg.config);
+    } else if (msg.type === "steer") {
+      const meta = (msg.meta ?? {}) as Record<string, string>;
+      this.steerMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
+    } else if (msg.type === "btw") {
+      const meta = (msg.meta ?? {}) as Record<string, string>;
+      this.btwMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
+    } else if (msg.type === "fleet_schedule_trigger") {
+      const payload = msg.payload as Record<string, unknown>;
+      const meta = msg.meta as Record<string, string>;
+      const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
+      void this.wake().then(() => { if (current()) this.pushChannelMessage(payload.message as string, meta, undefined, deliveryEpoch); }).catch(err => {
+        this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
+      });
+    } else if (msg.type === "query_instance_state") {
+      void this.respondToInstanceStateQuery(msg, undefined, send);
+    } else return false;
+    return true;
+  }
+
   /**
    * Answer a FleetManager state query. Most callers only need the cached state,
    * but lifecycle decisions such as post-reply Cancel retirement need an
@@ -5318,7 +5469,8 @@ export class Daemon extends EventEmitter {
    */
   private async respondToInstanceStateQuery(
     msg: Record<string, unknown>,
-    socket: import("node:net").Socket,
+    socket: import("node:net").Socket | undefined,
+    send?: (reply: Record<string, unknown>) => void,
   ): Promise<void> {
     try {
       if (msg.deliveryIdle === true) {
@@ -5327,7 +5479,7 @@ export class Daemon extends EventEmitter {
         await this.captureAndEvaluateInstanceState("state_query");
       }
       const snapshot = this.getInstanceStateSnapshot();
-      this.ipcServer?.send(socket, {
+      const reply = {
         type: "instance_state_response",
         requestId: msg.requestId,
         instanceName: this.name,
@@ -5335,7 +5487,8 @@ export class Daemon extends EventEmitter {
         state: this.isPaused ? "paused" : snapshot.state,
         processStatus: this.processStatus,
         pausedAt: this.lastPausedAt,
-      });
+      };
+      if (send) send(reply); else if (socket) this.ipcServer?.send(socket, reply);
     } catch (err) {
       this.logger.debug({ err: (err as Error).message }, "Instance state query failed");
     }
@@ -5375,7 +5528,31 @@ export class Daemon extends EventEmitter {
   /** Why the deferred pause was requested; what its marker records (Phase 2a). */
   private pendingPauseReason: PauseReason = "auth";
 
+  private nativePauseProof: (() => boolean) | null = null;
+  /** Consume the exact idle proof synchronously after the lifecycle's await, before fencing and closing. */
+  nativePauseStillReady(): boolean {
+    const proof = this.nativePauseProof; this.nativePauseProof = null;
+    if (proof?.()) return true;
+    this.pauseRequested = false; return false;
+  }
+  /** Native lifecycle pause uses the ordinary idle/background/admission proof before closing its owned Job. */
+  async nativePauseReady(admission?: CapacityNudgePauseGuard): Promise<boolean> {
+    this.nativePauseProof = null;
+    const native = this.nativePaneLifecycle, pane = this.tmux, owner = this.interactionOwner();
+    const allowStuck = this.pauseAllowStuck; this.pauseAllowStuck = false;
+    const ready = () => !!native && native === this.nativePaneLifecycle && native.current() && this.tmux === pane
+      && sameInteractionOwner(owner, this.interactionOwner()) && !this.runtimeMonitorsFrozen && !this.spawning
+      && this.processStatus === "running" && this.pasteQueueDepth === 0
+      && (this.instanceState === "idle" || allowStuck && this.instanceState === "stuck") && (!admission || admission.current());
+    if (!pane || !ready()) { this.pauseRequested = false; return false; }
+    let text: string; try { text = await pane.capturePane(); } catch { this.pauseRequested = false; return false; }
+    if (!ready() || admission && !admission.accepts(text) || this.backend?.backgroundWorkRunning?.(text)
+      || !allowStuck && !this.paneAuthoritativelyIdle(text)) { this.pauseRequested = false; return false; }
+    this.nativePauseProof = ready; return true;
+  }
+
   async pause(reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
+    if (this.nativePaneLifecycle) throw Error("Native pause is owned by its Fleet lifecycle transition");
     if (admission && !admission.current()) return;
     if (this.pauseWakeState === "paused") return;
     if (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking") {
@@ -5465,7 +5642,7 @@ export class Daemon extends EventEmitter {
         writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now(), reason);
         this.publishWorkingState("execution");
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
-        this.ipcServer?.broadcast({
+        this.broadcastFleetMessage({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
         });
         this.emit("auto_paused", { name: this.name, pausedAt: this.lastPausedAt });
@@ -5551,7 +5728,7 @@ export class Daemon extends EventEmitter {
         this.resumeRuntimeMonitors();
         this.publishWorkingState("execution");
         this.logger.info("Instance auto-woke");
-        this.ipcServer?.broadcast({
+        this.broadcastFleetMessage({
           type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
         });
         this.emit("auto_woke", { name: this.name });
@@ -5708,7 +5885,7 @@ export class Daemon extends EventEmitter {
       this.logStateEdge(previous, snapshot);
       this.publishWorkingState("execution");
       this.emit("instance_state", { name: this.name, ...snapshot });
-      this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
+      this.broadcastFleetMessage({ type: "instance_state", instanceName: this.name, ...snapshot });
       if (snapshot.state === "stuck" && pane && this.instanceStateReadyPattern) {
         this.handleStuckTransition(pane, snapshot, this.instanceStateReadyPattern);
       }
@@ -5809,7 +5986,7 @@ export class Daemon extends EventEmitter {
     // during the continuation boots clean instead of chaining resumes.
     // #2544: a reply that settled before this arm already answered the person —
     // writing a marker would re-inject a continuation for a finished turn.
-    if (!meta.resumedContinuationOf && !armed.completionDelivered) {
+    if (!this.nativePaneLifecycle && !meta.resumedContinuationOf && !armed.completionDelivered) {
       const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
       const resumeCwd = this.config.working_directory ?? "";
       writeInFlightTurnMarker(this.instanceDir, {
@@ -6054,7 +6231,7 @@ export class Daemon extends EventEmitter {
     // outbound action suppresses a duplicate proxy; only a delivered
     // human-facing channel action satisfies the completion guard below.
     if (!turn.outboundDelivered && this.config.mcp_proxy_reply === true
-      && mcpServerState(this.instanceDir).state === "dead") {
+      && (this.nativePaneLifecycle ? this.nativePaneLifecycle.mcpProof() === "dead" : mcpServerState(this.instanceDir).state === "dead")) {
       this.turnReplyGuard.complete(turn.generation);
       void this.sendProxyReply(pane, turn.target);
       return;
@@ -6436,7 +6613,7 @@ export class Daemon extends EventEmitter {
         }
       });
     }
-    if (!this.ipcServer) {
+    if (!this.fleetTransportAvailable()) {
       this.logger.error(`${logLabel} failed — no adapter or fleet IPC route`);
       return Promise.resolve(false);
     }
@@ -6458,7 +6635,7 @@ export class Daemon extends EventEmitter {
         resolve(delivered);
       });
       try {
-        this.ipcServer!.broadcast({
+        this.broadcastFleetMessage({
           type: "fleet_outbound",
           tool: "reply",
           args,
@@ -6810,7 +6987,7 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  private handleInstancePaneOutput(event: TmuxPaneOutputEvent): void {
+  private handleInstancePaneOutput(event: PaneOutputEvent): void {
     if (!this.instanceStateMonitorActive || this.runtimeMonitorsFrozen) return;
     const windowId = this.tmux?.getWindowId();
     if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
@@ -7019,7 +7196,7 @@ export class Daemon extends EventEmitter {
     const next = activity && activity.trim() ? activity.trim() : null;
     if (next === this.currentActivity) return;
     this.currentActivity = next;
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "instance_activity",
       instanceName: this.name,
       activity: next,
@@ -7157,7 +7334,7 @@ export class Daemon extends EventEmitter {
     if (rendered === this.lastProgressBroadcast) return;
     this.lastProgressBroadcast = rendered;
     this.lastProgressBroadcastAt = Date.now();
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "instance_progress",
       instanceName: this.name,
       progress: rendered,
@@ -7174,7 +7351,7 @@ export class Daemon extends EventEmitter {
     if (this.lastProgressBroadcast !== "") {
       this.lastProgressBroadcast = "";
       this.lastProgressBroadcastAt = Date.now();
-      this.ipcServer?.broadcast({ type: "instance_progress", instanceName: this.name, progress: "" });
+      this.broadcastFleetMessage({ type: "instance_progress", instanceName: this.name, progress: "" });
     }
   }
 
@@ -7326,7 +7503,7 @@ export class Daemon extends EventEmitter {
   /** Tell the fleet when an already-accepted cross-instance pane write failed. */
   private reportCrossInstanceDeliveryFailure(meta: Record<string, string>, verdict?: DeliveryVerdict, error?: string): void {
     if (!meta.from_instance) return;
-    this.ipcServer?.broadcast({
+    this.broadcastFleetMessage({
       type: "cross_instance_delivery_failed",
       senderSession: meta.from_instance,
       targetInstance: this.name,
@@ -8618,13 +8795,14 @@ export class Daemon extends EventEmitter {
     if (!tmux || readers.length === 0) return { outcome: "stale" };
     if (this.remoteCardAnswering) return { outcome: "refused", reason: "another answer to this card is being keyed in" };
     this.remoteCardAnswering = true;
+    let answerScreen: string | null = null;
     try {
       const outcome = await answerRemoteCard({
         locked: fn => this.paneWriteLock.run(fn),
         // An unreadable screen (a failed capture, another spawn's pane) is unknown — never "the card closed".
-        read: () => this.tmux === tmux ? tmux.capturePane().catch(() => null) : Promise.resolve(null),
-        key: key => this.tmux !== tmux ? Promise.resolve(false) : key === "Space" ? tmux.sendKeys(" ") : tmux.sendSpecialKey(key),
-        paste: text => this.tmux !== tmux ? Promise.resolve(false) : tmux.pasteBuffer(text),
+        read: async () => answerScreen = this.tmux === tmux ? await tmux.capturePane().catch(() => null) : null,
+        key: key => this.tmux !== tmux || answerScreen === null ? Promise.resolve(false) : key === "Space" ? (this.nativePaneLifecycle ? tmux.sendKeys(" ", { kind: "dialog", screen: answerScreen }) : tmux.sendKeys(" ")) : (this.nativePaneLifecycle ? tmux.sendSpecialKey(key, undefined, { kind: "dialog", screen: answerScreen }) : tmux.sendSpecialKey(key)),
+        paste: text => this.tmux !== tmux || answerScreen === null ? Promise.resolve(false) : this.nativePaneLifecycle ? tmux.pasteBuffer(text, { proof: { kind: "dialog", screen: answerScreen } }) : tmux.pasteBuffer(text),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
         now: () => performance.now(),
       }, pane => {
@@ -8814,7 +8992,7 @@ export class Daemon extends EventEmitter {
    * await. Null when unreadable, late or no longer this write's: never evidence of an empty or a full box. The pane
    * comes back with the mode, so what follows judges the same capture.
    */
-  private async steerComposerWithin(tmux: TmuxManager, deadline: number, current: () => boolean): Promise<{ mode: SteerComposerMode; pane: string } | null> {
+  private async steerComposerWithin(tmux: Pane, deadline: number, current: () => boolean): Promise<{ mode: SteerComposerMode; pane: string } | null> {
     const read = this.backend?.readSteerComposer;
     const left = deadline - performance.now();
     if (!read || left <= 0 || !current()) return null;
@@ -8870,9 +9048,15 @@ export class Daemon extends EventEmitter {
     const check = this.backend?.isDeliveryInputReadyPane;
     if (!check || !this.tmux) return !check;
     try {
-      const mode = await this.tmux.getPaneInputMode?.();
-      if (mode !== "raw") { this.resetFooterFallback(); return false; }
-      return this.deliveryInputReadyPane(await this.tmux.capturePane());
+      const inputActive = this.nativePaneLifecycle
+        ? this.nativePaneLifecycle.current() && this.nativePaneLifecycle.mcpProof() === "alive"
+        : await this.tmux.getPaneInputMode?.() === "raw";
+      // ConPTY has no POSIX termios mode. Its closed launch plus current helper handshake is the input barrier;
+      // the same strict composer detector below is still required. Never grant native unknown-layout fallback.
+      if (!inputActive) { this.resetFooterFallback(); return false; }
+      const pane = await this.tmux.capturePane();
+      if (this.nativePaneLifecycle && (!this.nativePaneLifecycle.current() || this.nativePaneLifecycle.mcpProof() !== "alive")) return false;
+      return this.deliveryInputReadyPane(pane);
     } catch {
       this.resetFooterFallback();
       return false;
@@ -9527,9 +9711,10 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
+    onInputHeld?: () => void,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
-    return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt);
+    return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt, onInputHeld);
   }
 
   /** Write half only: callers must finish the availability wait before any final recovery ownership proof. */
@@ -9537,10 +9722,52 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
+    onInputHeld?: () => void,
   ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn
     // replaced the delivery. Check at the last point before the tmux write.
-    if (this.deliveryWritesStopping || (stillCurrent && !stillCurrent())) return false;
+    const tmux = this.tmux;
+    const backend = this.backend;
+    const generation = this.spawnGeneration;
+    const fence = this.launchFenceEpoch;
+    const windowId = tmux?.getWindowId();
+    const current = () => !!tmux && !!windowId && this.tmux === tmux && this.backend === backend
+      && this.spawnGeneration === generation && this.launchFenceEpoch === fence && tmux.getWindowId() === windowId
+      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    if (!current()) return false;
+    // A paste-settle wait or retry can outlive the composer it saw. Passive startup-transient checks do not prove
+    // that a permission card has not replaced it. Read this exact pane again, without resolving any dialog.
+    const hold = () => {
+      onInputHeld?.();
+      this.logger.warn({ phase }, "Delivery input is not a verified composer; Enter withheld");
+      return false;
+    };
+    let pane: string;
+    try { pane = await tmux!.capturePane(); }
+    catch { return current() ? hold() : false; }
+    if (!current()) return false;
+    let composer = false;
+    try {
+      if (this.runtimeDialogs().some(dialog => Daemon.dialogMatches(dialog, pane))) return hold();
+      if (backend?.readInputRow) composer = backend.readInputRow(pane) != null;
+      else if (backend?.inputDraft) composer = backend.inputDraft(pane) != null;
+      else if (backend?.isDeliveryInputReadyPane) composer = this.deliveryInputReadyPane(pane);
+      else if (backend?.readSteerComposer?.(pane) != null) composer = true;
+      else if (backend) {
+        // Legacy backends still need their own current ready chrome, never a menu's cursor or old transcript row.
+        const shape = unrecognisedPromptShape(pane);
+        const ownComposer = backend.isDeliveryComposerPane?.(pane) === true;
+        if ((!selectionCard(pane, "CLI") || ownComposer) && (!shape || ownComposer || this.cliComposerShowing(pane, shape))) {
+          const bottom = backend.getBottomReadyPattern?.();
+          const ready = backend.getReadyPattern();
+          ready.lastIndex = 0;
+          composer = ownComposer || (bottom ? bottomRowIsReady(pane, bottom)
+            : ready.test(pane.trimEnd().split("\n").slice(-COMPOSER_TAIL_ROWS).join("\n")));
+        }
+      }
+    } catch { return hold(); }
+    if (!composer) return hold();
+    if (!current()) return false;
     // W1: persist the "Enter may have happened" boundary before tmux receives
     // the key. A crash after this commit is never auto-replayed without a
     // positive transcript marker, even if the stale pane still shows composer.
@@ -9550,7 +9777,7 @@ export class Daemon extends EventEmitter {
       this.logger.error({ phase, deliveryId: durableAttempt.deliveryId }, "Could not commit durable Enter write-ahead fence");
       return false;
     }
-    const sent = await this.tmux!.sendSpecialKey("Enter");
+    const sent = await (this.nativePaneLifecycle ? tmux!.sendSpecialKey("Enter", undefined, { kind: "composer", screen: pane }) : tmux!.sendSpecialKey("Enter"));
     if (!sent) {
       this.logger.error({
         phase,
@@ -9665,11 +9892,11 @@ export class Daemon extends EventEmitter {
         }
         verdict.durableBeginCommitted = true;
         verdict.submissionMode = attemptEvidence.submissionMode;
-        if (attemptEvidence.transcriptPath && attemptEvidence.transcriptOffset !== null) {
-          verdict.transcriptCheckpoint = {
+        if (attemptEvidence.runtimeTranscript || attemptEvidence.transcriptPath && attemptEvidence.transcriptOffset !== null) {
+          verdict.transcriptCheckpoint = attemptEvidence.runtimeTranscript ? { backend: attemptEvidence.backend, runtime: attemptEvidence.runtimeTranscript } : {
             backend: attemptEvidence.backend,
-            path: attemptEvidence.transcriptPath,
-            offset: attemptEvidence.transcriptOffset,
+            path: attemptEvidence.transcriptPath!,
+            offset: attemptEvidence.transcriptOffset!,
           };
           // From here every proof of this write may also ask the CLI's transcript (the pane can lose the echo to the
           // reply, or still be painting the paste) — this delivery's exact marker only, or a raw paste's exact text (#1647).
@@ -9797,14 +10024,21 @@ export class Daemon extends EventEmitter {
       let enterAt = Date.now();
       const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt))) {
-        if (steerComposerProof && !steerCurrent()) {
+      let inputHeld = false;
+      if (!(await this.sendDeliveryEnter("initial-submit", steerEnterCurrent, durableAttempt, () => { inputHeld = true; }))) {
+        if (inputHeld) {
+          // The paste may still be in the CLI. Keep the existing uncertain path; no false failure or blind replay.
+          verdict.phase = "submit-enter";
+          verdict.proof = "input-not-verified";
+          return false;
+        }
+        if (!steerCurrent()) {
           verdict.phase = "submit-enter";
           verdict.proof = "fenced-before-enter";
           return false;
         }
         if (steerComposerProof && performance.now() > steerEnterDeadline) return this.failDelivery(verdict, status, "submit-enter", "pre-enter-deadline");
-        return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
+        return this.failDelivery(verdict, status, "submit-enter", "enter-not-sent");
       }
       // The proof's whole budget, from the Enter: every capture and dialog probe inside it, a late answer dropped.
       const steerProofDeadline = performance.now() + NATIVE_QUEUE_PASTE_VERIFY_MS + POST_ENTER_PROOF_WINDOW_MS;
@@ -9827,7 +10061,7 @@ export class Daemon extends EventEmitter {
       if (!rawPaste && !steerComposerProof && this.backend?.requiresDeliveryEnterRetry?.() === true) {
         await new Promise(r => setTimeout(r, 1_000));
         const retryAt = Date.now();
-        if (await this.sendDeliveryEnter("queue-less-defensive-retry")) {
+        if (await this.sendDeliveryEnter("queue-less-defensive-retry", steerCurrent)) {
           enterAt = retryAt;
           enterRetry = true;
           this.logger.debug("Sent defensive Enter retry (queue-less TUI can swallow the first)");
@@ -9955,7 +10189,7 @@ export class Daemon extends EventEmitter {
           // again. The prompt is back now, so an Enter can land.
           this.logger.warn("Message still in the input row after idle — submitting the existing text instead of pasting it again");
           const strandedAt = Date.now();
-          if (!(await this.sendDeliveryEnter("native-queue-stranded-submit"))) {
+          if (!(await this.sendDeliveryEnter("native-queue-stranded-submit", steerCurrent))) {
             return this.failDelivery(verdict, status, "native-queue-submit", "tmux-send-keys-failed");
           }
           // The recovery Enter can be accepted before Codex paints its new
@@ -10011,7 +10245,7 @@ export class Daemon extends EventEmitter {
         }
         await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
         const retryAt = Date.now();
-        if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery"))) {
+        if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery", steerCurrent))) {
           return this.failDelivery(verdict, status, "native-queue-redelivery", "tmux-send-keys-failed");
         }
         if (windowId && this.controlClient) {
@@ -10060,7 +10294,7 @@ export class Daemon extends EventEmitter {
           this.logger.warn("Message not submitted after Enter — waiting for the prompt, then re-sending Enter once");
           const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
           const retryAt = Date.now();
-          if (promptBack && !(await this.sendDeliveryEnter("stranded-text-retry"))) {
+          if (promptBack && !(await this.sendDeliveryEnter("stranded-text-retry", steerCurrent))) {
             return this.failDelivery(verdict, status, "stranded-text-retry", "tmux-send-keys-failed");
           }
           submitted = promptBack && await this.confirmSubmittedAfterEnter(windowId, retryAt, formatted);
@@ -10147,7 +10381,7 @@ export class Daemon extends EventEmitter {
         }
         // No control client to observe output: fall back to the legacy double-Enter.
         await new Promise(r => setTimeout(r, 1000));
-        await this.sendDeliveryEnter("unobserved-defensive-retry");
+        await this.sendDeliveryEnter("unobserved-defensive-retry", steerCurrent);
         if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
       }
       return true;
@@ -10350,19 +10584,26 @@ export class Daemon extends EventEmitter {
    * and the caller's own fence — so a look that lands after any of them is never used (#1380 review).
    */
   private transcriptProofFor(
-    checkpoint: { backend: string; path: string; offset: number },
+    checkpoint: DurableTranscriptCheckpoint,
     needle: TranscriptNeedle,
     spawnAtWrite: number,
     stillCurrent: (() => boolean) | undefined,
     onProof: (kind: TranscriptMarkerKind) => void,
   ): NonNullable<SubmissionSignature["transcript"]> {
+    if (this.nativePaneLifecycle && !checkpoint.runtime) throw Error("Native proof cannot read a coordinator-local transcript path");
     const launchAtWrite = this.launchFenceEpoch;
     return {
-      reader: new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle),
+      reader: checkpoint.runtime ? this.nativeTranscriptReader(checkpoint.runtime, needle) : new TranscriptDeltaReader(checkpoint.path, checkpoint.offset, checkpoint.backend, needle),
       current: () => !this.deliveryWritesStopping && this.spawnGeneration === spawnAtWrite
-        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true),
+        && this.launchFenceEpoch === launchAtWrite && (stillCurrent?.() ?? true)
+        && (!checkpoint.runtime || this.nativePaneLifecycle?.current(checkpoint.runtime) === true),
       onProof,
     };
+  }
+
+  private nativeTranscriptReader(reference: RuntimeTranscriptReference, needle: TranscriptNeedle): ReturnType<NativePaneLifecycle["proofReader"]> {
+    if (!this.nativePaneLifecycle || !this.nativePaneLifecycle.current(reference)) throw Error("Native delivery transcript owner is unavailable");
+    return this.nativePaneLifecycle.proofReader(reference, needle);
   }
 
   /** The CLI this daemon drives, for log lines shared by every backend ("claude-code", "codex", …). */
@@ -10603,17 +10844,24 @@ export class Daemon extends EventEmitter {
    * `guard` is for a paste that must not outlive the reason it was made (the continue nudge): `accept` judges the ONE
    * capture taken here — the same picture is the baseline, the expected-screen check and the idle check — and `current`
    * is asked again after every await that precedes a write, so a cancelled paste adds no further paste and no key
-   * (the retries included). Without a guard it is exactly the old unconditional path.
+   * (the retries included). Every system paste also keeps the pane owner from before its first await.
    */
   private async submitSystemPaste(text: string, label: string, guard?: { current: () => boolean; accept: (pane: string) => boolean }, admission?: () => void): Promise<boolean> {
-    const current = guard || admission ? () => { admission?.(); return guard?.current() ?? true; } : undefined;
-    if (current && !current()) return false;
-    if (!this.tmux) return false;
+    const tmux = this.tmux, generation = this.spawnGeneration, fence = this.launchFenceEpoch;
+    const windowId = tmux?.getWindowId();
+    const current = () => {
+      admission?.();
+      return !!tmux && !!windowId && this.tmux === tmux && tmux.getWindowId() === windowId
+        && this.spawnGeneration === generation && this.launchFenceEpoch === fence
+        && !this.deliveryWritesStopping && (guard?.current() ?? true);
+    };
+    if (!current()) return false;
+    if (!tmux) return false;
     const signature = this.submissionSignature(text);
     let baseline: PaneEvidence | null;
     if (guard) {
       let pane: string;
-      try { pane = await this.tmux.capturePane(); } catch { return false; }
+      try { pane = await tmux.capturePane(); } catch { return false; }
       if (!current!() || !guard.accept(pane)) return false;
       baseline = this.paneEvidence(pane, signature);
     } else {
@@ -10621,7 +10869,7 @@ export class Daemon extends EventEmitter {
     }
     if (current && !current()) return false;
     const pasteGeneration = this.spawnGeneration;
-    const pasted = current ? await this.tmux.pasteBuffer(text, { guard: current }) : await this.tmux.pasteBuffer(text);
+    const pasted = current ? await tmux.pasteBuffer(text, { guard: current }) : await tmux.pasteBuffer(text);
     if (!pasted) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
@@ -10704,11 +10952,11 @@ export class Daemon extends EventEmitter {
       && sameInteractionOwner(recoveryOwner, this.interactionOwner());
     const previousWindowId = this.tmux?.getWindowId();
     try {
-      const windows = await TmuxManager.listWindows(this.tmuxSessionName, this.controlClient);
+      const windows = await this.paneHost.listWindows(this.tmuxSessionName, this.controlClient);
       if (!recoveryCurrent() || this.tmux !== previousTmux) return undefined;
       const match = windows.find(w => w.name === this.name);
       if (!match) return undefined;
-      this.tmux = new TmuxManager(
+      this.tmux = this.paneHost.bind(
         this.tmuxSessionName,
         match.id,
         resolveTmuxLogicalSize(this.config.terminal),
@@ -10779,6 +11027,7 @@ export class Daemon extends EventEmitter {
   }
 
   private getWindowId(): string | undefined {
+    if (this.nativePaneLifecycle) return this.nativePaneLifecycle.current() ? this.tmux?.getWindowId() : undefined;
     try {
       return readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim() || undefined;
     } catch {
@@ -10809,7 +11058,42 @@ export class Daemon extends EventEmitter {
    * Handle a tool call from the MCP server (forwarded by Claude).
    * Routes to the channel adapter via MessageBus.
    */
-  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket): void {
+  /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string }> {
+    const refusal = nativePaneToolRefusal(input.tool, input.args);
+    if (refusal) return Promise.resolve({ result: null, error: refusal });
+    if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
+    const fence = this.launchFenceEpoch;
+    const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (value: { result: unknown; error?: string }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
+      timer.unref?.();
+      try {
+        this.handleToolCall({ ...input, requestId: ++this.fleetRequestSeq }, undefined, {
+          current,
+          dispatch: (tool, args, respond) => {
+            if (!current()) { respond(null, "Pane tool permission was revoked before dispatch"); return true; }
+            const dispatched = lease.dispatch?.(tool, args);
+            if (!dispatched) return false;
+            void dispatched.then(result => respond(result), () => respond(null, "Pane tool operation was refused"));
+            return true;
+          },
+          // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
+          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}) }); return false; },
+        });
+      } catch { finish({ result: null, error: "Pane tool operation failed" }); }
+    });
+  }
+
+  /** Only the authority lease with a verified helper stdout ACK calls this internal barrier. */
+  paneToolResponseWritten(operationId: string, current: () => boolean): void {
+    if (!current() || this.deliveryWritesStopping || !/^[a-f0-9-]{36}$/i.test(operationId)) return;
+    this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
+  }
+
+  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket | undefined, peer?: { current(): boolean; send(value: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>, respond: (result: unknown, error?: string) => void): boolean }): void {
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
@@ -10818,8 +11102,8 @@ export class Daemon extends EventEmitter {
     this.logger.debug({ tool, requestId }, "Tool call from MCP server");
     // A tool call can only come from a live MCP server of ours — proof of life
     // that outranks whatever the pid slot says.
-    if (this.socketSessionNames.get(socket) === this.name) {
-      this.noteMcpProofOfLife("tool_call", this.socketPids.get(socket));
+    if (peer?.current() || socket && this.socketSessionNames.get(socket) === this.name) {
+      this.noteMcpProofOfLife("tool_call", socket ? this.socketPids.get(socket) : undefined);
     }
 
     // A tool invocation is not delivery evidence. Capture which obligation it
@@ -10827,7 +11111,7 @@ export class Daemon extends EventEmitter {
     // Explicitly mapped sibling sessions must not satisfy this instance's turn;
     // an unmapped socket is retained for legacy/tests where mcp_ready was not
     // observed before the first tool call.
-    const sourceSession = this.socketSessionNames.get(socket);
+    const sourceSession = peer ? this.name : socket ? this.socketSessionNames.get(socket) : undefined;
     const replyAttempt = TURN_OUTBOUND_TOOLS.has(tool) && (!sourceSession || sourceSession === this.name)
       ? this.turnReplyGuard.beginToolAttempt(tool === "reply", TURN_COMPLETION_TOOLS.has(tool))
       : null;
@@ -10873,13 +11157,18 @@ export class Daemon extends EventEmitter {
         // failed" and report unknown immediately rather than starting recovery.
         this.turnReplyGuard.settleToolAttempt(replyAttempt, false);
       }
-      const sent = this.ipcServer?.send(socket, { requestId, result, error, operationId }) ?? false;
+      const packet = { requestId, result, error, operationId };
+      const sent = peer ? peer.current() && peer.send(packet) : socket ? this.ipcServer?.send(socket, packet) ?? false : false;
       if (!sent) {
-        this.logger.warn({ tool, requestId }, "Tool result could not be returned — originating MCP socket is closed");
+        if (peer) this.logger.debug({ tool, requestId }, "Native MCP result awaits transport-written confirmation");
+        else this.logger.warn({ tool, requestId }, "Tool result could not be returned — originating MCP socket is closed");
       } else if (operationId) {
         this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
       }
     };
+
+    // Native Fleet/task operations carry their lease to the existing dispatcher mutation admission points.
+    if (peer?.dispatch?.(tool, args, respond)) return;
 
     // Repo checkout — handled locally in daemon (no fleet-manager)
     if (tool === "checkout_repo") {
@@ -10910,7 +11199,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type,
         payload: args,
         meta: { instance_name: this.name },
@@ -10936,7 +11225,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           resolve({ result: respMsg.result, error: respMsg.error as string | undefined });
         });
-        this.ipcServer?.broadcast({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
+        this.broadcastFleetMessage({ type: WEB_THEME_IPC[tool], payload, meta: { instance_name: this.name }, fleetRequestId: fleetReqId });
       });
       void (async () => {
         if (tool === "preview_web_appearance") {
@@ -10990,7 +11279,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: "fleet_task",
         payload: args,
         meta: { instance_name: this.name },
@@ -11014,7 +11303,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: typeMap[tool],
         payload: args,
         meta: { instance_name: this.name, working_directory: this.config.working_directory },
@@ -11044,7 +11333,7 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: typeMap[tool],
         payload: args,
         meta: {
@@ -11060,11 +11349,11 @@ export class Daemon extends EventEmitter {
 
     if (CROSS_INSTANCE_TOOLS.has(tool)) {
       // Route to fleet manager via IPC (topic mode only)
-      if (this.topicMode && this.ipcServer) {
+      if (this.topicMode && this.fleetTransportAvailable()) {
         // Use fleetRequestId (not requestId) to avoid MCP server resolving the
         // pending tool call prematurely when it receives the broadcast.
         const fleetReqId = `xmsg_${++this.fleetRequestSeq}_${requestId}`;
-        const senderSessionName = this.socketSessionNames.get(socket);
+        const senderSessionName = sourceSession;
         // Shared table, so delete_instance and the deployment tools get the same
         // budget here as the MCP client expects (the ad-hoc list omitted them).
         const crossTimeoutMs = daemonBudgetMs(tool);
@@ -11076,7 +11365,7 @@ export class Daemon extends EventEmitter {
           clearTimeout(timeout);
           respond(respMsg.result, respMsg.error as string | undefined);
         });
-        this.ipcServer.broadcast({
+        this.broadcastFleetMessage({
           type: "fleet_outbound",
           tool,
           args,
@@ -11135,7 +11424,7 @@ export class Daemon extends EventEmitter {
       // Register the waiter before broadcasting. A fast/mock adapter can settle
       // immediately; broadcasting first left a response-before-registration
       // window that degraded into a timeout despite a completed POST.
-      this.ipcServer?.broadcast({
+      this.broadcastFleetMessage({
         type: "fleet_outbound",
         tool,
         args,
@@ -11601,6 +11890,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async spawnClaudeWindow(): Promise<boolean> {
+    if (this.nativePaneLifecycle) throw Error("Native panes never enter local resume/fresh fallback");
     this.assertSessionOomAdmission();
     this.beginSpawn();
     let resumedSuccessfully = false;
@@ -12116,6 +12406,11 @@ export class Daemon extends EventEmitter {
       await this.museUsageRelay.stop().catch(() => {});
       this.museUsageRelay = null;
     }
+    if (this.nativePaneLifecycle) {
+      await this.nativePaneLifecycle.release("detach");
+      try { unlinkSync(join(this.instanceDir, "daemon.pid")); } catch { /* metadata only */ }
+      return;
+    }
     try { await this.killProcessTree("SIGTERM", "startup aborted"); } catch { /* nothing running */ }
     if (this.tmux) {
       const windowId = this.tmux.getWindowId();
@@ -12131,12 +12426,13 @@ export class Daemon extends EventEmitter {
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */
   private async killProcessTree(signal: NodeJS.Signals = "SIGTERM", reason = "unspecified"): Promise<void> {
+    if (this.nativePaneLifecycle) throw Error("Native processes can only be closed through their owned runtime pane");
     const windowId = this.tmux?.getWindowId();
     // Before createWindow succeeds there is no pane owned by this daemon.
     // tmux interprets an empty selector as the session's active window.
     if (!windowId?.trim()) return;
     try {
-      const pid = await TmuxManager.getPanePid(this.tmuxSessionName, windowId);
+      const pid = await this.paneHost.getPanePid(this.tmuxSessionName, windowId);
       if (pid) {
         this.noteStopRequest(signal, reason);
         process.kill(-pid, signal);
@@ -12354,6 +12650,7 @@ export class Daemon extends EventEmitter {
   }
 
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    if (this.nativePaneLifecycle) throw Error("Native relaunch requires its owned exit and a new lifecycle reservation");
     this.assertSessionOomAdmission();
     this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
@@ -12459,8 +12756,8 @@ export class Daemon extends EventEmitter {
     }
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
-    await TmuxManager.ensureSession(this.tmuxSessionName);
-    if (this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName))) {
+    await this.paneHost.ensureSession(this.tmuxSessionName);
+    if (this.stormWindow?.observeServerAlive(await this.paneHost.getServerPid(this.tmuxSessionName))) {
       this.emit("tmux_server_crash", this.name);
     }
     this.startupAdmission?.();
@@ -12722,10 +13019,12 @@ export class Daemon extends EventEmitter {
                 // Before every key, synchronously: the lock wait, the capture and the gap after the previous key can
                 // each have seen a respawn, pause or stop.
                 if (!owned()) return false;
+                const keyScreen = this.nativePaneLifecycle ? await this.tmux!.capturePane() : answeredPane;
+                if (!owned() || !Daemon.dialogMatches(dialog, keyScreen)) return false;
                 if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
-                  if (!await this.tmux!.sendSpecialKey(key)) return false;
+                  if (!await (this.nativePaneLifecycle ? this.tmux!.sendSpecialKey(key, undefined, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendSpecialKey(key))) return false;
                 } else {
-                  if (!await this.tmux!.sendKeys(key)) return false;
+                  if (!await (this.nativePaneLifecycle ? this.tmux!.sendKeys(key, { kind: "dialog", screen: keyScreen }) : this.tmux!.sendKeys(key))) return false;
                 }
                 await new Promise(r => setTimeout(r, 200));
               }
@@ -12738,7 +13037,8 @@ export class Daemon extends EventEmitter {
             // Wait for next screen to render — bounded by what is left of the budget.
             const renderWait = Math.max(0, Math.min(10_000, remaining()));
             if (this.controlClient) {
-              const wid = readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim();
+              const wid = this.nativePaneLifecycle ? ownerTmux!.getWindowId()
+                : readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim();
               await this.controlClient.waitForIdle(wid, renderWait);
             } else {
               await new Promise(r => setTimeout(r, Math.min(3_000, renderWait)));
@@ -12771,7 +13071,9 @@ export class Daemon extends EventEmitter {
         // scan parked on the old limit text.
         const codexReady = this.backend!.binaryName !== "codex"
           || this.isCodexLivePaneSnapshot(pane);
-        if (readyPatternMatches && codexReady) {
+        const nativeComposerReady = !this.nativePaneLifecycle || (this.backend?.readInputRow
+          ? this.backend.readInputRow(pane) !== null : this.backend?.isDeliveryInputReadyPane?.(pane) === true);
+        if (readyPatternMatches && codexReady && nativeComposerReady) {
           cleanReadyPolls++;
           if (cleanReadyPolls >= 2 || remaining() <= 0) {
             // A real ready prompt (with no fatal dialog on screen — those are
@@ -12892,6 +13194,11 @@ export class Daemon extends EventEmitter {
   }
 
   private saveSessionId(): void {
+    if (this.nativePaneLifecycle) {
+      try { this.nativePaneLifecycle.checkpointSession(); this.ownedWorkingSession = this.backend?.getSessionId() ?? null; }
+      catch (err) { this.logger.warn({ err }, "Native conversation checkpoint is unconfirmed"); }
+      return;
+    }
     // When a resume failure has forced a fresh start, don't persist the stale id
     // back from statusline.json — that would re-arm --continue and re-loop.
     if (this.skipResume) return;

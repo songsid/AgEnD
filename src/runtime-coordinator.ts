@@ -10,7 +10,9 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
-import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH,
+import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
+import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
 
@@ -72,9 +74,10 @@ const COMMAND_HARD_CAP = 4096, COMMAND_SOFT_CAP = 2048, COMMAND_KEEP_MS = 7 * 24
 const TOMBSTONE_CAP = 65_536, TOMBSTONE_KEEP_MS = 30 * 24 * 3_600_000;
 interface Connection { ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout }
 interface Pending { machineId: string; generation: number; resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
-export interface RuntimeCoordinatorEvent { type: "machine" | "task"; machineId: string; task?: WindowsCliTask }
+export interface RuntimeCoordinatorEvent { type: "machine" | "task" | "pane"; machineId: string; task?: WindowsCliTask; pane?: RuntimePaneSnapshot }
 export interface RuntimeCoordinatorOptions {
   changed?(event?: RuntimeCoordinatorEvent): void;
+  handlePaneMcp?(machineId: string, body: PaneMcpBody, current: () => boolean): Promise<unknown>;
   handleMcp?(machineId: string, runId: string, body: unknown): Promise<unknown>;
   /** Injectable clock for pairing expiry and offline tests. */
   now?(): number;
@@ -83,11 +86,14 @@ export interface RuntimeCoordinatorOptions {
 export type { RuntimeMachine } from "./runtime-protocol.js";
 
 export class RuntimeCoordinator {
+  private readonly paneEpoch = randomUUID();
   private readonly path: string;
   private state: State;
   private readonly server = new WebSocketServer({ noServer: true, maxPayload: RUNTIME_MAX_FRAME_BYTES, perMessageDeflate: false });
   private readonly connections = new Map<string, Connection>();
   private readonly pending = new Map<string, Pending>();
+  private readonly paneToolPending = new Set<string>();
+  private readonly panePending = new Map<string, Pending>();
   private readonly listeners = new Set<(event: RuntimeCoordinatorEvent) => void>();
   private readonly limits = new Map<string, { count: number; until: number }>();
   private readonly heartbeat: NodeJS.Timeout;
@@ -108,6 +114,7 @@ export class RuntimeCoordinator {
       || this.state.machines.some(row => !record(row) || !record(row.machine) || !UUID.test(String(row.machine.id)) || !text(row.machine.name, 100)
         || row.machine.platform !== "win32" || !["pending", "offline", "online", "revoked"].includes(String(row.machine.status))
         || !Number.isSafeInteger(row.machine.generation) || row.machine.generation < 0
+        || row.machine.pairingFingerprint !== undefined && (typeof row.machine.pairingFingerprint !== "string" || !/^[A-F0-9]{4}(?:-[A-F0-9]{4}){2}$/.test(row.machine.pairingFingerprint))
         || row.credentialHash !== undefined && !/^[a-f0-9]{64}$/.test(row.credentialHash)
         || row.claimHash !== undefined && !/^[a-f0-9]{64}$/.test(row.claimHash))
       || new Set(this.state.machines.map(row => row.machine.id)).size !== this.state.machines.length
@@ -116,7 +123,10 @@ export class RuntimeCoordinator {
         || !["probe", "workspace", "run", "cancel", "reconcile", "recover"].includes(row.operation)
         || !["pending", "accepted", "failed", "uncertain"].includes(row.state) || !Number.isSafeInteger(row.seq) || row.seq < 0)) throw Error("Malformed runtime machine store");
     // A coordinator restart never grants execution authority or redelivers an in-flight command.
-    for (const row of this.state.machines) if (row.machine.status === "online") row.machine.status = "offline";
+    for (const row of this.state.machines) {
+      if (row.machine.status === "online") row.machine.status = "offline";
+      if (row.claimHash) row.machine.pairingFingerprint = runtimeFingerprintFromHash(row.claimHash);
+    }
     for (const command of this.state.commands) if (command.state === "pending") command.state = "uncertain";
     this.save();
     this.heartbeat = setInterval(() => {
@@ -165,7 +175,7 @@ export class RuntimeCoordinator {
     if (!pairing) throw Error("Pairing code is invalid, used or expired");
     const machineId = randomUUID(), claimSecret = secret();
     this.state.pairings = this.state.pairings.filter(row => row !== pairing);
-    this.state.machines.push({ machine: { id: machineId, name: input.name.trim(), platform: "win32", ...(input.hostname ? { hostname: input.hostname as string } : {}), status: "pending", createdAt: this.now(), generation: 0 }, claimHash: hash(claimSecret), claimExpiresAt: pairing.expiresAt });
+    this.state.machines.push({ machine: { id: machineId, name: input.name.trim(), platform: "win32", ...(input.hostname ? { hostname: input.hostname as string } : {}), status: "pending", createdAt: this.now(), generation: 0, pairingFingerprint: runtimeFingerprintFromHash(hash(claimSecret)) }, claimHash: hash(claimSecret), claimExpiresAt: pairing.expiresAt });
     this.save(); this.emit({ type: "machine", machineId });
     return { machineId, claimSecret, status: "pending", expiresAt: pairing.expiresAt };
   }
@@ -177,9 +187,10 @@ export class RuntimeCoordinator {
     const credential = secret(); row.credentialHash = hash(credential); delete row.claimHash; delete row.claimExpiresAt; this.save();
     return { machineId: row.machine.id, credential, status: "approved" };
   }
-  approve(id: string): RuntimeMachine {
+  approve(id: string, fingerprint: unknown): RuntimeMachine {
     const row = this.entry(id);
     if (row.machine.status !== "pending" || !row.claimExpiresAt || row.claimExpiresAt <= this.now()) throw Error("Runtime pairing is no longer pending");
+    if (!fingerprint || fingerprint !== row.machine.pairingFingerprint) throw Error("Compare the pairing fingerprint shown by this Runtime before approving");
     row.machine.approvedAt = this.now(); row.machine.status = "offline"; this.save(); this.emit({ type: "machine", machineId: id }); return structuredClone(row.machine);
   }
   rename(id: string, name: unknown): RuntimeMachine {
@@ -191,22 +202,75 @@ export class RuntimeCoordinator {
     this.save(); const connection = this.connections.get(id); if (connection) { this.connections.delete(id); this.rejectPending(connection, "Runtime machine was revoked"); connection.ws.close(1008, "Machine revoked"); }
     this.emit({ type: "machine", machineId: id }); return structuredClone(row.machine);
   }
-  private rate(req: IncomingMessage, claim = false): boolean {
-    const key = `${claim ? "claim" : "pair"}:${req.socket.remoteAddress ?? "unknown"}`, now = this.now();
-    if (this.limits.size > 512) for (const [key, value] of this.limits) if (value.until < now) this.limits.delete(key);
+  private credentialOwner(auth: unknown): MachineRecord | undefined {
+    if (typeof auth !== "string" || !/^Bearer [a-f0-9]{64}$/i.test(auth)) return;
+    return this.state.machines.find(row => row.credentialHash && row.machine.status !== "revoked" && row.machine.approvedAt && equal(auth.slice(7), row.credentialHash));
+  }
+  /** Valid capabilities never share the invalid-traffic bucket of a loopback proxy. Forwarding headers are untrusted. */
+  private rate(key: string, limit: number): boolean {
+    const now = this.now();
+    for (const [id, value] of this.limits) if (value.until <= now) this.limits.delete(id);
+    if (!this.limits.has(key) && this.limits.size >= 512) {
+      const invalid = [...this.limits.keys()].find(id => id.startsWith("invalid:"));
+      if (!invalid || key.startsWith("invalid:")) return false;
+      this.limits.delete(invalid);
+    }
     const old = this.limits.get(key), row = old && old.until > now ? old : { count: 0, until: now + 60_000 };
-    this.limits.set(key, row); return ++row.count <= (claim ? 120 : 30);
+    this.limits.set(key, row); return ++row.count <= limit;
+  }
+  private requestRateKey(path: string, input: unknown, req: IncomingMessage): string {
+    if (path === RUNTIME_ROTATE_PATH) {
+      const row = this.credentialOwner(req.headers.authorization);
+      if (row) return `rotate:${row.machine.id}`;
+    } else if (record(input)) {
+      if (path === RUNTIME_PAIR_PATH && text(input.code, 32)) {
+        const code = input.code.replaceAll("-", "").toUpperCase();
+        const row = this.state.pairings.find(row => row.expiresAt > this.now() && equal(code, row.codeHash));
+        if (row) return `pair:${row.id}`;
+      }
+      if (path === RUNTIME_CLAIM_PATH && text(input.claimSecret, 128)) {
+        const row = this.state.machines.find(row => row.machine.id === input.machineId && row.claimHash && row.claimExpiresAt! > this.now()
+          && row.machine.status !== "revoked" && equal(input.claimSecret as string, row.claimHash));
+        if (row) return `claim:${row.machine.id}`;
+      }
+    }
+    return `invalid:${req.socket.remoteAddress ?? "unknown"}`;
+  }
+  rotateCredential(auth: unknown, input: unknown): { machineId: string; status: "rotated" } {
+    const row = this.credentialOwner(auth);
+    if (!row || !record(input) || Object.keys(input).some(key => !["machineId", "credential"].includes(key))
+      || input.machineId !== row.machine.id || typeof input.credential !== "string" || !/^[a-f0-9]{64}$/.test(input.credential)) throw Error("Invalid runtime credential rotation");
+    if (!equal(input.credential, row.credentialHash!)) {
+      const before = { credentialHash: row.credentialHash, status: row.machine.status };
+      row.credentialHash = hash(input.credential); row.machine.status = "offline";
+      try { this.save(); } catch (error) { row.credentialHash = before.credentialHash; row.machine.status = before.status; throw error; }
+      const connection = this.connections.get(row.machine.id);
+      if (connection) { this.connections.delete(row.machine.id); this.rejectPending(connection, "Runtime credential rotated; reconnect to reconcile"); connection.ws.close(1012, "Credential rotated"); }
+      this.emit({ type: "machine", machineId: row.machine.id });
+    }
+    return { machineId: row.machine.id, status: "rotated" };
   }
   handlePublicRequest(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
-    if (![RUNTIME_PAIR_PATH, RUNTIME_CLAIM_PATH].includes(url.pathname)) return false;
+    if (![RUNTIME_PAIR_PATH, RUNTIME_CLAIM_PATH, RUNTIME_ROTATE_PATH].includes(url.pathname)) return false;
     const answer = (status: number, body: unknown) => { if (!res.destroyed && !res.writableEnded) { res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" }); res.end(JSON.stringify(body)); } };
     if (this.closed || req.method !== "POST" || url.search || !privateTransport(req)) { answer(403, { error: "Runtime pairing requires a protected non-browser connection" }); return true; }
-    if (!this.rate(req, url.pathname === RUNTIME_CLAIM_PATH)) { answer(429, { error: "Too many runtime pairing requests" }); return true; }
+    let charged = false;
     void readBoundedWebBody(req, 4096).then(bytes => {
       const value: unknown = JSON.parse(bytes.toString("utf8"));
+      if (this.closed) { answer(403, { error: "Runtime coordinator is closed" }); return; }
+      const key = this.requestRateKey(url.pathname, value, req);
+      charged = true;
+      if (!this.rate(key, key.startsWith("claim:") ? 120 : 30)) { answer(429, { error: "Too many runtime pairing requests" }); return; }
+      if (url.pathname === RUNTIME_ROTATE_PATH) {
+        if (!this.credentialOwner(req.headers.authorization)) { answer(401, { error: "Runtime credential was refused" }); return; }
+        answer(200, this.rotateCredential(req.headers.authorization, value)); return;
+      }
       if (url.pathname === RUNTIME_PAIR_PATH) answer(201, this.pair(value));
       else { const result = this.claim(value); answer(result.status === "pending" ? 202 : 200, result); }
-    }).catch(() => answer(400, { error: "Runtime pairing request is invalid, expired or already used" }));
+    }).catch(() => {
+      const allowed = charged || this.rate(`invalid:${req.socket.remoteAddress ?? "unknown"}`, 30);
+      answer(allowed ? 400 : 429, { error: "Runtime pairing request is invalid, expired or already used" });
+    });
     return true;
   }
   handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): boolean {
@@ -215,7 +279,7 @@ export class RuntimeCoordinator {
     const refuse = () => { socket.end("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"); };
     const auth = req.headers.authorization;
     if (this.closed || req.method !== "GET" || url.search || !privateTransport(req) || typeof auth !== "string" || !/^Bearer [a-f0-9]{64}$/i.test(auth)) { refuse(); return true; }
-    const credential = auth.slice(7), row = this.state.machines.find(row => row.credentialHash && row.machine.status !== "revoked" && row.machine.approvedAt && equal(credential, row.credentialHash));
+    const row = this.credentialOwner(auth);
     if (!row) { refuse(); return true; }
     this.server.handleUpgrade(req, socket, head, ws => this.attach(ws, row)); return true;
   }
@@ -245,6 +309,9 @@ export class RuntimeCoordinator {
     connection.ws.send(frame);
   }
   private rejectPending(connection: Connection, reason: string): void {
+    for (const [id, pending] of this.panePending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
+      this.panePending.delete(id); clearTimeout(pending.timer); pending.reject(Error(reason));
+    }
     let changed = false;
     for (const [id, pending] of this.pending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
       this.pending.delete(id); clearTimeout(pending.timer);
@@ -278,10 +345,46 @@ export class RuntimeCoordinator {
       if (value.type !== "hello" || !text(value.bootId, 128)) throw Error("Runtime hello required");
       connection.ready = true; connection.bootId = value.bootId; clearTimeout(connection.helloTimer);
       row.machine.bootId = value.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
+      if (value.paneProtocol === 1) row.machine.paneProtocol = 1; else delete row.machine.paneProtocol;
       if (value.inventory !== undefined) { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); }
       this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId }); return;
     }
     row.machine.lastSeenAt = this.now();
+    if (value.type === "pane.tool.request") {
+      if (row.machine.paneProtocol !== 1 || Object.keys(value).some(key => !["v", "type", "id", "body"].includes(key)) || !UUID.test(String(value.id))) throw Error("Invalid pane MCP transport request");
+      const body = validatePaneMcpBody(value.body), id = value.id as string;
+      const key = `${connection.machineId}:${connection.generation}:${id}`;
+      if (this.paneToolPending.size >= 128 || this.paneToolPending.has(key)) throw Error("Pane MCP transport backlog or duplicate request");
+      let active = true;
+      const current = (): boolean => active && !this.closed && this.current(connection) && connection.ready && connection.ws.readyState === WebSocket.OPEN;
+      this.paneToolPending.add(key);
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        if (!current() || !this.options.handlePaneMcp) throw Error("Pane MCP scope unavailable");
+        const result = await Promise.race([this.options.handlePaneMcp(connection.machineId, body, current), new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => { active = false; reject(Error("Pane MCP deadline")); }, 80_000); timer.unref();
+        })]);
+        if (current()) this.send(connection, { v: 1, type: "pane.tool.result", id, ok: true, result });
+      } catch { if (current()) this.send(connection, { v: 1, type: "pane.tool.result", id, ok: false }); }
+      finally { active = false; clearTimeout(timer); this.paneToolPending.delete(key); }
+      return;
+    }
+    if (value.type === "pane.output") {
+      if (row.machine.paneProtocol !== 1) throw Error("Pane protocol was not negotiated");
+      const snapshot = validateRuntimePaneSnapshot(value.snapshot);
+      this.emit({ type: "pane", machineId: connection.machineId, pane: snapshot });
+      return;
+    }
+    if (value.type === "pane.response") {
+      if (row.machine.paneProtocol !== 1 || !UUID.test(String(value.id)) || typeof value.ok !== "boolean") throw Error("Invalid pane transport response");
+      const pending = this.panePending.get(value.id as string);
+      if (!pending) return; // A late reply proves nothing and never replays a command.
+      if (pending.machineId !== connection.machineId || pending.generation !== connection.generation) throw Error("Pane response belongs to another connection");
+      this.panePending.delete(value.id as string); clearTimeout(pending.timer);
+      if (value.ok) pending.resolve(value.result);
+      else pending.reject(Error(typeof value.error === "string" ? value.error.slice(0, 1000) : "Pane operation failed"));
+      return;
+    }
     if (value.type === "inventory") { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); this.save(); this.emit({ type: "machine", machineId: connection.machineId }); return; }
     if (value.type === "task") {
       if (!record(value.task) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1) throw Error("Invalid runtime task event");
@@ -374,6 +477,26 @@ export class RuntimeCoordinator {
   task(id: string): WindowsCliTask | null { const task = this.state.commands.find(command => command.id === id && command.operation === "run")?.task; return task ? structuredClone(task) : null; }
   tasks(): Array<{ machineId: string; task: WindowsCliTask }> { return this.state.commands.flatMap(command => command.operation === "run" && command.task ? [{ machineId: command.machineId, task: structuredClone(command.task) }] : []); }
   hasActiveTask(machineId: string): boolean { return this.state.commands.some(command => command.machineId === machineId && command.operation === "run" && command.state !== "failed" && (!command.task || !terminal(command.task) || command.task.outcomeConfirmed === false)); }
+  paneTransportEpoch(machineId: string): string | null {
+    const connection = this.connections.get(machineId);
+    return connection?.ready && connection.ws.readyState === WebSocket.OPEN && this.current(connection) ? `${this.paneEpoch}:${machineId}:${connection.generation}` : null;
+  }
+  /** Pane input replay/sequence authority lives in its pane ledger; reads never fill the exec-task journal. */
+  async callPane(machineId: string, raw: RuntimePaneRequest, maxAgents = 4): Promise<unknown> {
+    const request = validateRuntimePaneRequest(raw);
+    if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) throw Error("Invalid machine pane limit");
+    const machine = this.entry(machineId).machine, connection = this.connections.get(machineId);
+    if (this.closed || machine.status !== "online" || machine.paneProtocol !== 1 || !connection?.ready || !this.current(connection)) throw Error("Pane runtime is offline or unsupported");
+    if (this.panePending.size >= 64) throw Error("Pane transport capacity reached");
+    const id = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.panePending.delete(id); reject(Error("Pane response timed out; reconcile before another input")); }, this.options.requestTimeoutMs ?? 30_000);
+      timer.unref();
+      this.panePending.set(id, { machineId, generation: connection.generation, resolve, reject, timer });
+      try { this.send(connection, { v: 1, type: "pane.request", id, maxAgents, request }); }
+      catch (error) { this.panePending.delete(id); clearTimeout(timer); reject(error); }
+    });
+  }
   async call(machineId: string, operation: RuntimeOperation, payload: unknown): Promise<unknown> {
     if (this.closed || !["probe", "workspace", "run", "cancel", "reconcile", "recover"].includes(operation)) throw Error("Unsupported runtime operation");
     const machine = this.entry(machineId).machine;

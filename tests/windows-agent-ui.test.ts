@@ -45,7 +45,7 @@ async function setWindowsIdentity(name="Windows helper") {
   inputs[1].value=name;fire(inputs[1],"input");await settle();
 }
 const modelSelect = () => p.root.querySelector(".agent-runtime-fields .model-pick select");
-const permissionSelect = () => p.root.querySelectorAll(".agent-runtime-fields select").find((item:any)=>!item.closest(".model-pick"));
+const permissionSelect = () => p.root.querySelector("#native-create-sandbox");
 async function setNativePermissions() { const select=permissionSelect();select.value="workspace-write";fire(select,"change");await settle(); }
 async function setOtherModel(model:string) {
   const select=modelSelect();select.value="\u0000other";fire(select,"change");await settle();
@@ -324,4 +324,15 @@ describe("runtime-first creation",()=>{
     expect(modelSelect().value).toBe("grok-code-fast-1");expect(permissionSelect().value).toBe("workspace-write");
     expect(sent.some(request=>request.path==="/ui/instances" || request.path==="/ui/windows-cli/agents")).toBe(false);
   });
+});
+
+const adapterSelect=()=>p.root.querySelector('#native-create-adapter');
+it('per-message remains the default and omits the opt-in field',async()=>{
+ await openWindows();await next();await setWindowsIdentity();expect(adapterSelect().value).toBe('exec');button('Create').click();await settle(8);expect(sent.find(row=>row.path==='/ui/instances')?.body).not.toHaveProperty('native_adapter');
+});
+it.each(['codex','claude-code'])('an explicit %s persistent choice submits pane without changing the read-only scope',async cli=>{
+ probe=allCliProbe();await openWindows();await chooseCli(cli);await next();await setWindowsIdentity();adapterSelect().value='pane';fire(adapterSelect(),'change');await settle();button('Create').click();await settle(8);expect(sent.find(row=>row.path==='/ui/instances')?.body).toMatchObject({native_adapter:'pane',backend:cli,sandbox:'read-only'});
+});
+it.each(['grok','antigravity'])('switching a pane draft to unsupported %s restores exec and disables pane',async cli=>{
+ probe=allCliProbe();await openWindows();await next();await setWindowsIdentity();adapterSelect().value='pane';fire(adapterSelect(),'change');await settle();button('Back').click();await settle();await chooseCli(cli);await next();expect(adapterSelect().value).toBe('exec');expect(adapterSelect().querySelectorAll('option').find((row:any)=>row.value==='pane').disabled).toBe(true);await setNativePermissions();button('Create').click();await settle(8);expect(sent.find(row=>row.path==='/ui/instances')?.body).not.toHaveProperty('native_adapter');
 });

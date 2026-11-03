@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import type { ChannelAdapter } from "./channel/types.js";
-import type { IpcClient } from "./channel/ipc-bridge.js";
+import type { InstanceClient } from "./channel/ipc-bridge.js";
 import type { Logger } from "./logger.js";
 import type { RoutingEngine } from "./routing-engine.js";
 import type { InstanceLifecycle, LifecycleCreateArgs } from "./instance-lifecycle.js";
@@ -81,7 +81,7 @@ export interface OutboundContext {
   readonly adapters?: Map<string, ChannelAdapter>;
   readonly logger: Logger;
   readonly routing: RoutingEngine;
-  readonly instanceIpcClients: Map<string, IpcClient>;
+  readonly instanceIpcClients: Map<string, InstanceClient>;
   readonly lifecycle: InstanceLifecycle;
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
@@ -1364,6 +1364,7 @@ export type InstanceConfigPatch = Omit<z.infer<typeof UpdateInstanceConfigArgs>[
  */
 export function applyInstanceConfigPatch(ctx: OutboundContext, name: string, patch: InstanceConfigPatch, respond: Respond): void {
   const inst = ctx.fleetConfig?.instances[name];
+  if (isWindowsInstance(inst)) { respond(null, WINDOWS_CONFIG_REFUSED); return; }
   if (!inst) {
     const isClassic = (ctx.classicChannels?.getAll() ?? [])
       .some(channel => channel.instanceName === name);

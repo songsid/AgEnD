@@ -983,7 +983,8 @@ const CLAUDE_BYPASS_ENTRIES = [
 /** Startup budget for a resuming claude-code launch (fresh starts keep the default). */
 export const CLAUDE_RESUME_STARTUP_BUDGET_MS = 60_000;
 
-export class ClaudeCodeBackend implements CliBackend {
+/** Pane-only detectors: construction performs no provider, config or session discovery. */
+export class ClaudePaneDetectors {
   readonly binaryName = "claude";
   readonly replyCompletionGuard = true;
 
@@ -995,121 +996,6 @@ export class ClaudeCodeBackend implements CliBackend {
    */
   getStartupBudgetMs(ctx: { resume: boolean }): number | undefined {
     return ctx.resume ? CLAUDE_RESUME_STARTUP_BUDGET_MS : undefined;
-  }
-  private binaryPath: string;
-
-  constructor(private instanceDir: string) {
-    this.binaryPath = resolveBinary("claude");
-  }
-
-  /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
-  private quietLaunchNotes: string[] = [];
-  consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
-
-  buildCommand(config: CliBackendConfig): string {
-    const settingsPath = join(this.instanceDir, "claude-settings.json");
-    const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
-    const envPrefix = ["CMUX_CLAUDE_HOOKS_DISABLED=1", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"];
-    // #1699: a named credential profile is its own config dir — its login, account, trust and conversations. No profile:
-    // nothing added, nothing created (the command is exactly what it was).
-    const profileDir = claudeProfileConfigDir(config.backendOptions);
-    if (profileDir) {
-      prepareCredentialProfileHome(credentialHomeSpec("claude-code")!, profileDir);
-      // #1754: the project's auto-memory is the shared one, as on the default login.
-      linkSharedClaudeMemory(profileDir, config.workingDirectory, credentialHomeSpec("claude-code")!.sharedRoot());
-      envPrefix.push(`CLAUDE_CONFIG_DIR=${shellQuote(profileDir)}`);
-    }
-    if (process.env.ANTHROPIC_BASE_URL) envPrefix.push(`ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
-    // #2010: an opt-in prompt-cache TTL for the main thread and its subagents. Unset: nothing added, the CLI chooses.
-    const ttl = promptCacheTtl(config.backendOptions);
-    if (ttl) envPrefix.push(`CLAUDE_CODE_PROMPT_CACHE_TTL=${ttl}`, `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=${ttl}`);
-    // The fleet's API key only where this instance's own config dir has no OAuth login: a key in the environment wins
-    // over the login, so reading another dir here bills the wrong account (#1699).
-    if (process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession(profileDir)) {
-      envPrefix.push(`ANTHROPIC_API_KEY=${shellQuote(process.env.ANTHROPIC_API_KEY)}`);
-    }
-    let cmd = `${envPrefix.join(" ")} ${this.binaryPath} --settings ${settingsPath} --mcp-config ${mcpConfigPath}`;
-    if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
-
-    const sessionIdFile = join(this.instanceDir, "session-id");
-    // `session-id` belongs to the instance, not the backend. A ClassicBot can
-    // switch from Kiro (or another CLI) to Claude while retaining that marker.
-    // Claude's bare `--continue` then looks for a conversation in this cwd and
-    // exits when the workspace has never had a Claude session. Treat Claude's
-    // own project transcript as the source of truth instead of the generic
-    // marker alone. This also makes an empty/missing Classic workspace start
-    // fresh rather than entering a resume crash loop.
-    if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
-      cmd += " --continue";
-    }
-
-    if (config.model) {
-      const model = validateModel(config.model);
-      warnIfModelMismatch("claude-code", model);
-      cmd += ` --model ${shellQuote(model)}`;
-    }
-    // #1811: the configured effort, where this claude takes it (launch-effort.ts); else a quiet note.
-    const effort = flagEffort("claude-code", config.effort, this.binaryPath);
-    if (effort.arg) cmd += effort.arg;
-    this.quietLaunchNotes = effort.note ? [effort.note] : [];
-
-    // Additive system prompt: append fleet instructions without overriding Claude's built-in prompt
-    const instrFile = join(this.instanceDir, "fleet-instructions.md");
-    if (existsSync(instrFile)) {
-      cmd += ` --append-system-prompt-file ${instrFile}`;
-    }
-
-    return cmd;
-  }
-
-  private hasProjectSession(workingDirectory: string, profileDir: string | null): boolean {
-    const cwd = workingDirectory.trim();
-    if (!cwd) return false;
-    const configDir = claudeConfigDirFor(profileDir);
-    const encodedCwd = claudeProjectKey(cwd);
-    try {
-      return readdirSync(join(configDir, "projects", encodedCwd), { withFileTypes: true })
-        .some(entry => entry.isFile() && entry.name.endsWith(".jsonl"));
-    } catch {
-      return false;
-    }
-  }
-
-  writeConfig(config: CliBackendConfig): void {
-    // 1. Write mcp-config.json to instance dir (loaded via --mcp-config)
-    const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
-    const mcpConfig = { mcpServers: config.mcpServers };
-    writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
-
-    // 2. Write statusline script
-    const statusLineCommand = this.writeStatusLineScript();
-
-    // 3. Write claude-settings.json (permissions handled by --dangerously-skip-permissions)
-    const settings: Record<string, unknown> = {
-      statusLine: {
-        type: "command",
-        command: statusLineCommand,
-      },
-    };
-    // The Bypass Permissions warning appears on a first run (and whenever the
-    // user's own settings have not recorded the acceptance) for every launch
-    // with --dangerously-skip-permissions. AgEnD passes that flag deliberately,
-    // so record the acceptance in the flag-level settings this file is loaded as
-    // (--settings): claude 2.1.286 then never paints the dialog (verified live).
-    // Only when the flag is actually passed — see buildCommand.
-    if (config.skipPermissions !== false) settings.skipDangerousModePermissionPrompt = true;
-    writeFileSync(
-      join(this.instanceDir, "claude-settings.json"),
-      JSON.stringify(settings),
-    );
-
-    // 4. Pre-approve API key to skip interactive prompt on startup
-    this.preApproveApiKey(config);
-
-    // 5. Write fleet instructions file (loaded via --append-system-prompt-file)
-    if (config.instructions) {
-      try { writeFileSync(join(this.instanceDir, "fleet-instructions.md"), config.instructions); } catch { /* best effort */ }
-    }
   }
 
   /**
@@ -1225,27 +1111,6 @@ export class ClaudeCodeBackend implements CliBackend {
     if (!this.periodicRedrawFrom(pane)) return false;
     const box = readClaudeInputBox(pane);
     return box !== null && box.queued !== true && !this.getBusyPattern().test(pane);
-  }
-
-  getContextUsage(): number | null {
-    try {
-      const sf = join(this.instanceDir, "statusline.json");
-      const data = JSON.parse(readFileSync(sf, "utf-8"));
-      return data.context_window?.used_percentage ?? null;
-    } catch (err) {
-      // File may not exist yet during startup — return null to signal unavailable
-      return null;
-    }
-  }
-
-  getSessionId(): string | null {
-    try {
-      const sf = join(this.instanceDir, "statusline.json");
-      const data = JSON.parse(readFileSync(sf, "utf-8"));
-      return data.session_id ?? null;
-    } catch {
-      return null;
-    }
   }
 
   getErrorPatterns(): ErrorPattern[] {
@@ -1532,6 +1397,146 @@ export class ClaudeCodeBackend implements CliBackend {
   getClearCommand(): string { return "/clear"; }
 
   getCancelKey(): string { return "Escape"; }
+}
+
+export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend {
+  private binaryPath: string;
+
+  constructor(private instanceDir: string) {
+    super();
+    this.binaryPath = resolveBinary("claude");
+  }
+
+  /** #1811: what the last launch left out and why — the Log tab and daemon.log, never a channel. */
+  private quietLaunchNotes: string[] = [];
+  consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
+
+  buildCommand(config: CliBackendConfig): string {
+    const settingsPath = join(this.instanceDir, "claude-settings.json");
+    const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
+    const envPrefix = ["CMUX_CLAUDE_HOOKS_DISABLED=1", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"];
+    // #1699: a named credential profile is its own config dir — its login, account, trust and conversations. No profile:
+    // nothing added, nothing created (the command is exactly what it was).
+    const profileDir = claudeProfileConfigDir(config.backendOptions);
+    if (profileDir) {
+      prepareCredentialProfileHome(credentialHomeSpec("claude-code")!, profileDir);
+      // #1754: the project's auto-memory is the shared one, as on the default login.
+      linkSharedClaudeMemory(profileDir, config.workingDirectory, credentialHomeSpec("claude-code")!.sharedRoot());
+      envPrefix.push(`CLAUDE_CONFIG_DIR=${shellQuote(profileDir)}`);
+    }
+    if (process.env.ANTHROPIC_BASE_URL) envPrefix.push(`ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
+    // #2010: an opt-in prompt-cache TTL for the main thread and its subagents. Unset: nothing added, the CLI chooses.
+    const ttl = promptCacheTtl(config.backendOptions);
+    if (ttl) envPrefix.push(`CLAUDE_CODE_PROMPT_CACHE_TTL=${ttl}`, `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=${ttl}`);
+    // The fleet's API key only where this instance's own config dir has no OAuth login: a key in the environment wins
+    // over the login, so reading another dir here bills the wrong account (#1699).
+    if (process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession(profileDir)) {
+      envPrefix.push(`ANTHROPIC_API_KEY=${shellQuote(process.env.ANTHROPIC_API_KEY)}`);
+    }
+    let cmd = `${envPrefix.join(" ")} ${this.binaryPath} --settings ${settingsPath} --mcp-config ${mcpConfigPath}`;
+    if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
+
+    const sessionIdFile = join(this.instanceDir, "session-id");
+    // `session-id` belongs to the instance, not the backend. A ClassicBot can
+    // switch from Kiro (or another CLI) to Claude while retaining that marker.
+    // Claude's bare `--continue` then looks for a conversation in this cwd and
+    // exits when the workspace has never had a Claude session. Treat Claude's
+    // own project transcript as the source of truth instead of the generic
+    // marker alone. This also makes an empty/missing Classic workspace start
+    // fresh rather than entering a resume crash loop.
+    if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
+      cmd += " --continue";
+    }
+
+    if (config.model) {
+      const model = validateModel(config.model);
+      warnIfModelMismatch("claude-code", model);
+      cmd += ` --model ${shellQuote(model)}`;
+    }
+    // #1811: the configured effort, where this claude takes it (launch-effort.ts); else a quiet note.
+    const effort = flagEffort("claude-code", config.effort, this.binaryPath);
+    if (effort.arg) cmd += effort.arg;
+    this.quietLaunchNotes = effort.note ? [effort.note] : [];
+
+    // Additive system prompt: append fleet instructions without overriding Claude's built-in prompt
+    const instrFile = join(this.instanceDir, "fleet-instructions.md");
+    if (existsSync(instrFile)) {
+      cmd += ` --append-system-prompt-file ${instrFile}`;
+    }
+
+    return cmd;
+  }
+
+  private hasProjectSession(workingDirectory: string, profileDir: string | null): boolean {
+    const cwd = workingDirectory.trim();
+    if (!cwd) return false;
+    const configDir = claudeConfigDirFor(profileDir);
+    const encodedCwd = claudeProjectKey(cwd);
+    try {
+      return readdirSync(join(configDir, "projects", encodedCwd), { withFileTypes: true })
+        .some(entry => entry.isFile() && entry.name.endsWith(".jsonl"));
+    } catch {
+      return false;
+    }
+  }
+
+  writeConfig(config: CliBackendConfig): void {
+    // 1. Write mcp-config.json to instance dir (loaded via --mcp-config)
+    const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
+    const mcpConfig = { mcpServers: config.mcpServers };
+    writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+
+    // 2. Write statusline script
+    const statusLineCommand = this.writeStatusLineScript();
+
+    // 3. Write claude-settings.json (permissions handled by --dangerously-skip-permissions)
+    const settings: Record<string, unknown> = {
+      statusLine: {
+        type: "command",
+        command: statusLineCommand,
+      },
+    };
+    // The Bypass Permissions warning appears on a first run (and whenever the
+    // user's own settings have not recorded the acceptance) for every launch
+    // with --dangerously-skip-permissions. AgEnD passes that flag deliberately,
+    // so record the acceptance in the flag-level settings this file is loaded as
+    // (--settings): claude 2.1.286 then never paints the dialog (verified live).
+    // Only when the flag is actually passed — see buildCommand.
+    if (config.skipPermissions !== false) settings.skipDangerousModePermissionPrompt = true;
+    writeFileSync(
+      join(this.instanceDir, "claude-settings.json"),
+      JSON.stringify(settings),
+    );
+
+    // 4. Pre-approve API key to skip interactive prompt on startup
+    this.preApproveApiKey(config);
+
+    // 5. Write fleet instructions file (loaded via --append-system-prompt-file)
+    if (config.instructions) {
+      try { writeFileSync(join(this.instanceDir, "fleet-instructions.md"), config.instructions); } catch { /* best effort */ }
+    }
+  }
+
+  getContextUsage(): number | null {
+    try {
+      const sf = join(this.instanceDir, "statusline.json");
+      const data = JSON.parse(readFileSync(sf, "utf-8"));
+      return data.context_window?.used_percentage ?? null;
+    } catch (err) {
+      // File may not exist yet during startup — return null to signal unavailable
+      return null;
+    }
+  }
+
+  getSessionId(): string | null {
+    try {
+      const sf = join(this.instanceDir, "statusline.json");
+      const data = JSON.parse(readFileSync(sf, "utf-8"));
+      return data.session_id ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   /** #1217: Claude's own words for a session that is not there to resume. */
   resumeMissingPattern(): RegExp {

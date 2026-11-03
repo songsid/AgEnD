@@ -1,5 +1,7 @@
 # Paired Windows runtimes
 
+The default adapter remains per-turn **exec**. For the 2.3.5 alpha line's opt-in persistent Codex/Claude panes, see [Persistent Windows agents](windows-persistent-panes.md) ([繁體中文](windows-persistent-panes.zh-TW.md)). Its disconnect/stop/revocation rules replace the exec-only lifecycle below; ordinary runtime-client exit preserves those resident panes.
+
 This preview lets a native Windows computer connect **outbound** to a central AgEnD coordinator. The computer reports its installed coding CLIs and executes Agents assigned to that machine. Its own CLI login, filesystem, ADB and serial devices stay on that computer. Opening the dashboard from another computer does not provide that browser's local tools.
 
 The coordinator still owns the shared Fleet, Agent settings, task board, delegation, chat and permissions. A runtime owns local processes and a bounded execution journal. An Agent is pinned to its selected machine; a disconnected machine never causes its Agent's prompt to be automatically rerun on another machine.
@@ -10,19 +12,19 @@ Design references, source-review scope and bundled license notices are recorded 
 
 Turn on **Allow other Windows PCs to pair** in **Settings → Runtime** (fleet.yaml `runtimes.remote_runtime: true`; off by default). Turning it on asks a fleet admin to confirm, like other access settings; it applies without a restart. This machine stays your fleet; the other PC runs only the small runner below, never a fleet. Remote Windows agents work even when this machine is a Linux machine without Windows interoperability. **Use this PC's Windows CLIs** (`runtimes.windows_cli`) is the separate switch for this machine's own Windows CLIs.
 
-Turning the switch off disconnects paired PCs at once and keeps their approvals; their agents stay stopped until it is on again. **Agents at once on each Windows PC** (`runtimes.max_agents_per_machine`, 1–16, default 4) limits each PC once Windows agents keep running between messages.
+Turning the switch off fences new work immediately and keeps machine approvals. Persistent panes drain through confirmed owned cleanup; offline or unconfirmed outcomes remain held. **Agents at once on each Windows PC** (`runtimes.max_agents_per_machine`, 1–16, default 4) limits each PC separately. Lowering it blocks new starts without stopping existing agents.
 
 The environment variable `AGEND_REMOTE_RUNTIME` still overrides the setting: `1` forces it on and `0` forces it off (Settings then shows "Set by the environment" and cannot change it). Any other value, or none, leaves it to Settings.
 
 1. On the coordinator, open **Settings → Runtimes** and create a pairing code.
-2. Click **Download Windows Runtime (ZIP)** on that page. Transfer the ZIP to the Windows computer and extract its `agend-runtime` folder. The package comes from the currently installed AgEnD program, so no repository checkout or build is required. It contains only the runtime modules and reviewed pure-JavaScript `ws` dependency; it does not install the full coordinator, SQLite, Linux native dependencies or a Node binary. Install a supported Windows Node release separately.
+2. Click **Download Windows Runtime (ZIP)** on that page. Transfer the ZIP to the Windows computer and extract its `agend-runtime` folder. The package comes from the currently installed AgEnD program, so no repository checkout or build is required. It contains runtime modules, reviewed `ws` and headless-terminal dependencies, and pinned Windows ConPTY prebuilds; it does not install the full coordinator, SQLite, Linux native dependencies or a Node binary. Install a supported Windows Node release separately.
 3. In a Windows terminal, under the user whose CLIs are installed and signed in, run:
 
    ```powershell
    .\agend-runtime.cmd connect --server https://your-agend-host --name "Windows desktop"
    ```
 
-4. Enter the one-time code interactively. Do not put the code in command arguments or environment variables. Approve the pending machine in AgEnD Settings. Approval is required before a permanent machine credential is issued.
+4. Enter the one-time code interactively. Do not put the code in command arguments or environment variables. Compare the **Pairing fingerprint** printed in the runtime terminal with the fingerprint on the pending machine card, then approve that machine in AgEnD Settings. Do not approve if they differ. Approval is required before a permanent machine credential is issued.
 5. Keep the terminal running. After pairing, `connect` automatically runs the resident client. Press **Ctrl+C** to stop. Later, use `agend-runtime.cmd run` to reconnect the saved profile.
 6. In **New Agent**, select the paired machine, its CLI, then configure the Agent. Working directories are paths on that selected computer; leaving the directory empty creates its managed local workspace.
 
@@ -34,7 +36,7 @@ The download requires an administrator session on the local dashboard and is una
 
 The runtime uses `/runtime/v1/connect` on the same externally reachable AgEnD service as pairing and the dashboard. Remote origins require HTTPS/WSS and a valid certificate. HTTP is accepted only for exact loopback hostnames, for example `http://localhost:19280` through a private SSH forward. The client refuses credential-bearing URLs and redirects.
 
-The existing coordinator listener still binds to loopback. Publishing a new port, changing a firewall or configuring TLS/proxy access is a separate host operation; pairing does not make the listener reachable automatically. A proxy must pass WebSocket upgrades on `/runtime/v1/connect` and POST requests on `/runtime/v1/pair` and `/runtime/v1/claim`. Pairing codes expire after ten minutes and are single-use. The runtime machine credential is unrelated to browser sessions; browser cookies and origins cannot authenticate the runtime channel.
+The existing coordinator listener still binds to loopback. Publishing a new port, changing a firewall or configuring TLS/proxy access is a separate host operation; pairing does not make the listener reachable automatically. A proxy must pass WebSocket upgrades on `/runtime/v1/connect` and POST requests on `/runtime/v1/pair`, `/runtime/v1/claim` and `/runtime/v1/rotate`. Pairing codes expire after ten minutes and are single-use. The runtime machine credential is unrelated to browser sessions; browser cookies and origins cannot authenticate the runtime channel.
 
 This preview does not open a runtime listener for other computers. Its per-turn MCP relay binds an ephemeral port to **127.0.0.1 only**, and requires a separate random capability for the active execution. It relays scoped AgEnD tool calls over the authenticated outbound runtime connection. The CLI never receives the permanent machine credential. Existing local `/agent` restrictions remain in place.
 
@@ -63,7 +65,7 @@ Install and sign in to Tailscale on the coordinator host and the Windows runtime
 
 **Never use `tailscale funnel` for this setup.** Funnel publishes the service to the internet; Serve is intended for access within the tailnet. Tailnet membership and its access rules become part of the trust boundary for the reachable pairing/claim endpoints. Admit only intended devices and users, and retain AgEnD's single-use code, local administrator approval and machine-credential checks. Tailscale identity headers do not replace AgEnD authentication.
 
-Mount the origin at `/`, without rewriting paths. The proxy must preserve both JSON POSTs (`/runtime/v1/pair` and `/runtime/v1/claim`) and the HTTP/1.1 WebSocket upgrade (`/runtime/v1/connect`), including the runtime's Authorization header. Verify a complete pairing/approval/claim and an online Runtime connection through the chosen proxy; loading the dashboard alone does not establish that the WebSocket path works. Record the Tailscale version and confirm that the connection remains online, including a reconnect, when validating an actual tailnet deployment. Automated proxy tests do not by themselves certify a particular Tailscale installation or its access policy.
+Mount the origin at `/`, without rewriting paths. The proxy must preserve both JSON POSTs (`/runtime/v1/pair`, `/runtime/v1/claim` and `/runtime/v1/rotate`) and the HTTP/1.1 WebSocket upgrade (`/runtime/v1/connect`), including the runtime's Authorization header. Verify a complete pairing/approval/claim and an online Runtime connection through the chosen proxy; loading the dashboard alone does not establish that the WebSocket path works. Record the Tailscale version and confirm that the connection remains online, including a reconnect, when validating an actual tailnet deployment. Automated proxy tests do not by themselves certify a particular Tailscale installation or its access policy.
 
 ### SSH local forward
 
@@ -108,7 +110,7 @@ Only installed, execution-compatible CLIs are selectable. Each CLI retains its n
 
 The default local profile is `%USERPROFILE%\.agend-runtime`; `--profile DIRECTORY` or `AGEND_RUNTIME_HOME` selects another private profile. `connection.json` contains the permanent machine credential, and `jobs.json` contains bounded result snapshots and argument hashes. The runtime does not save a separate input-prompt field or provider login credentials in that journal. A CLI result can quote its input, so treat result snapshots as private too. The CLI itself may retain its ordinary local conversation history.
 
-Files are created privately under the user's profile. **The machine credential is not encrypted by this preview.** Do not share or synchronize the runtime profile. Existing CLI authentication files are not modified.
+The default Windows profile inherits the user's profile ACL; POSIX mode bits do not enforce Windows privacy. A custom profile directory must already have an appropriate private ACL; this preview does not harden a custom directory. **The machine credential is not encrypted by this preview.** Do not share or synchronize the runtime profile. Existing CLI authentication files are not modified.
 
 ```powershell
 .\agend-runtime.cmd status
@@ -116,3 +118,18 @@ Files are created privately under the user's profile. **The machine credential i
 ```
 
 `status` prints machine identity and job states, without the credential or prompts. Stop the foreground client before `disconnect`; it forgets the local connection. To invalidate a credential centrally, **revoke the machine in AgEnD Settings**. Revoke rejects new runtime connections and closes an existing connection. Local process shutdown remains subject to the explicit completion/cancellation rules above.
+
+## Rotate a machine credential without pairing again
+
+Stop the foreground runtime with **Ctrl+C**, then, in the same extracted Runtime folder and under the same Windows user, run:
+
+```powershell
+.\agend-runtime.cmd rotate
+.\agend-runtime.cmd run
+```
+
+Pass the same `--profile DIRECTORY` to both commands if you use a non-default profile. Rotation refuses while that profile is in use; it never stops an execution automatically. It keeps the machine identity, approval, inventory and job journal. Once the coordinator commits the rotation, the previous credential can no longer connect. Neither credential appears in command arguments or status output.
+
+The replacement is saved privately in `connection.json` before the request. If a response is lost or the final local save fails, keep the profile intact and retry `rotate`, or use `run` to finish the saved rotation before connecting. `status` reports `rotationPending` without the credential. Do not downgrade or delete the saved candidate while rotation is pending. A revoked machine cannot rotate itself back into authorization. Anyone holding the current credential can request a rotation, so rotation is not recovery from credential theft; revoke a compromised machine.
+
+Valid pairing codes, claims and rotations have independent rate-limit buckets even when a proxy or SSH forward makes every connection appear to come from loopback. Invalid traffic has a separate bounded bucket; forwarding headers do not grant identity or bypass limits. The comparison fingerprint is not a password or a replacement for HTTPS and administrator approval.

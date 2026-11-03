@@ -1,3 +1,4 @@
+import type { Pane } from "./pane-port.js";
 import { execFile } from "./child-process.js";
 import { promisify } from "node:util";
 import type { TerminalConfig } from "./types.js";
@@ -96,7 +97,7 @@ export function resolveTmuxLogicalSize(config?: TerminalConfig): TmuxLogicalSize
 /** Hard bound for tmux operations on the remote login/install path: a wedged tmux must never hold a teardown open. */
 const LOGIN_TMUX_OP_TIMEOUT_MS = 10_000;
 
-export class TmuxManager {
+export class TmuxManager implements Pane {
   private static ensureSessionInFlight = new Map<string, Promise<void>>();
   private windowId: string;
   private lastSendSpecialKeyError: string | null = null;

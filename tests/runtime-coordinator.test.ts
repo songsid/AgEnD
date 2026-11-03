@@ -12,7 +12,7 @@ const homes: string[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] =
 const taskInput = { requestId: "12345678-1234-4321-abcd-123456789012", cli: "codex", cwd: "C:\\test", prompt: "Read only", sandbox: "read-only" };
 function home() { const value = mkdtempSync(join(tmpdir(), "agend-runtime-hub-")); homes.push(value); return value; }
 function hub(options: ConstructorParameters<typeof RuntimeCoordinator>[1] = {}) { const value = new RuntimeCoordinator(home(), options); hubs.push(value); return value; }
-function pair(h: RuntimeCoordinator, name = "Desk") { const p = h.createPairing(), pending = h.pair({ code: p.code, name, platform: "win32" }); h.approve(pending.machineId); const claim = h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret }); if (claim.status !== "approved") throw Error("Claim not approved"); return claim; }
+function pair(h: RuntimeCoordinator, name = "Desk") { const p = h.createPairing(), pending = h.pair({ code: p.code, name, platform: "win32" }); h.approve(pending.machineId, h.machine(pending.machineId)?.pairingFingerprint); const claim = h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret }); if (claim.status !== "approved") throw Error("Claim not approved"); return claim; }
 async function listen(h: RuntimeCoordinator) {
   const server = createServer((req, res) => { if (!h.handlePublicRequest(req, res, new URL(req.url ?? "/", "http://localhost"))) { res.writeHead(404); res.end(); } });
   servers.push(server); server.on("upgrade", (req, socket, head) => { if (!h.handleUpgrade(req, socket, head)) socket.destroy(); });
@@ -37,7 +37,7 @@ describe("runtime pairing durable identity", () => {
     const pending = h.pair({ code: p.code, name: "Desk", platform: "win32" });
     expect(h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret })).toEqual({ status: "pending" });
     expect(() => h.pair({ code: p.code, name: "Second", platform: "win32" })).toThrow(/invalid|used/);
-    expect(h.machine(pending.machineId)?.status).toBe("pending"); h.approve(pending.machineId);
+    expect(h.machine(pending.machineId)?.status).toBe("pending"); h.approve(pending.machineId, h.machine(pending.machineId)?.pairingFingerprint);
     const claimed = h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret }); expect(claimed.status).toBe("approved");
     expect(() => h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret })).toThrow();
     const raw = readFileSync(join(homes[0], "runtime-machines.json"), "utf8");
@@ -49,7 +49,7 @@ describe("runtime pairing durable identity", () => {
     let now = 100; const h = hub({ now: () => now }), p = h.createPairing(); now += 10 * 60_000;
     expect(() => h.pair({ code: p.code, name: "Desk", platform: "win32" })).toThrow();
     const next = h.createPairing(), pending = h.pair({ code: next.code, name: "Desk", platform: "win32" }); now += 10 * 60_000;
-    expect(() => h.approve(pending.machineId)).toThrow(); expect(() => h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret })).toThrow();
+    expect(() => h.approve(pending.machineId, h.machine(pending.machineId)?.pairingFingerprint)).toThrow(); expect(() => h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret })).toThrow();
   });
   it("fails closed on malformed persisted identity rather than overwriting it", () => {
     const path = home(), file = join(path, "runtime-machines.json"), raw = JSON.stringify({ version: 1, machines: [{ machine: { id: "forged", name: "Wrong", platform: "win32", status: "online", generation: 0 } }], pairings: [], commands: [] });

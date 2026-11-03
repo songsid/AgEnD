@@ -112,9 +112,4 @@ export function codexPackageWarning(binary: string, fs?: CodexPackageFs): string
  * The tool output codex itself records in the rollout when the host is missing — never model text. The whole output
  * must be this one line; the package root is read from the path it names.
  */
-const CODE_MODE_HOST_SPAWN_FAILED = /^failed to spawn code-mode host (\/[^\n]*)\/bin\/codex-code-mode-host: No such file or directory \(os error 2\)$/;
-
-/** The package root a rollout tool output reports a missing code-mode host under, or null. */
-export function codexCodeModeHostMissingRoot(output: unknown): string | null {
-  return typeof output === "string" ? CODE_MODE_HOST_SPAWN_FAILED.exec(output)?.[1] ?? null : null;
-}
+export { codexCodeModeHostMissingRoot } from "../transcript-records.js";

@@ -4,7 +4,8 @@ import { z } from "zod";
 import { readBoundedWebBody } from "./web-body.js";
 import { nativeCliAuthorization } from "./windows-cli-api.js";
 import { windowsCliEnabled } from "./windows-cli.js";
-import { isWindowsInstance } from "./native-instance-registry.js";
+import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
+import { isWindowsInstance, isNativePaneInstance } from "./native-instance-registry.js";
 import type { WebApiContext } from "./web-api.js";
 import { settingsRequestExecution } from "./settings-request-capability.js";
 import { parseNativeInstanceCreate } from "./native-instance-input.js";
@@ -32,9 +33,11 @@ function admission(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiCont
 export async function createNativeInstance(req:IncomingMessage,res:ServerResponse,url:URL,ctx:WebApiContext,body:unknown):Promise<void> {
   const allowed=admission(req,res,url,ctx);if(!allowed)return;
   try {
-    const {profile}=parseNativeInstanceCreate(body);
+    const {profile,input}=parseNativeInstanceCreate(body);
     const runtime=ctx.nativeInstanceRuntime!(),execution=settingsRequestExecution(req);
-    const result=execution ? await runtime.create(profile,allowed,execution) : await runtime.create(profile,allowed);
+    const result=input.native_adapter==="pane"
+      ? await (()=>{if(!execution||!ctx.createNativePaneInstance)throw Error("Persistent pane creation requires its approved Settings operation");return ctx.createNativePaneInstance(profile,input.channel_id,allowed,execution);})()
+      : execution ? await runtime.create(profile,allowed,execution) : await runtime.create(profile,allowed);
     // A committed settings execution has already checked authority and persisted the identity. Its capability
     // cannot authorize another write, but the completed operation must still return its success receipt.
     if(!execution?.completed && !allowed()){json(res,403,{error:"Authorization expired"});return;}
@@ -56,16 +59,22 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
     if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
     const body=raw.length?JSON.parse(raw.toString("utf8")):{};
     if(method==="PATCH" && !operation){
-      const result=await service.update(name,Patch.parse(body),allowed);
+      const patch=Patch.parse(body);
+      const result=isNativePaneInstance(ctx.fleetConfig?.instances[name])
+        ? await (()=>{if(!ctx.updateNativePaneConfig)throw Error("Persistent pane settings are unavailable");return ctx.updateNativePaneConfig(name,patch,allowed);})()
+        : await service.update(name,patch,allowed);
       if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,result);return;
     }
     if(method==="DELETE" && !operation){
-      z.object({}).strict().parse(body);await service.remove(name,allowed);
+      z.object({}).strict().parse(body);
+      if (isNativePaneInstance(ctx.fleetConfig?.instances[name])) await ctx.removeInstance(name,authorizeExplicitInstanceRemoval("dashboard-confirmed"),settingsRequestExecution(req));
+      else await service.remove(name,allowed);
       if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,{deleted:name});return;
     }
     if(method==="POST" && operation==="messages"){
+      if(isNativePaneInstance(ctx.fleetConfig?.instances[name]))throw Error("Use the shared chat endpoint for a persistent Windows pane");
       const input=Message.parse(body);
       if(!input.prompt.trim())throw new Error("Enter a message");
       const existing=service.get(name)?.turns.find(turn=>turn.id===input.requestId);
@@ -79,9 +88,15 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
       json(res,202,{accepted:true,agent:service.get(name)});return;
     }
     if(method==="POST" && operation==="cancel"){
-      z.object({}).strict().parse(body);const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
+      z.object({}).strict().parse(body);
+      if (isNativePaneInstance(ctx.fleetConfig?.instances[name])) {
+        if (!ctx.cancelInstance || !ctx.cancelInstance(name)) throw Error("The native pane is not running");
+        json(res,202,{agent:service.get(name),task:null});return;
+      }
+      const result=service.cancel(name);json(res,202,{agent:service.get(name),task:result});return;
     }
     if(method==="POST" && operation==="recover"){
+      if(isNativePaneInstance(ctx.fleetConfig?.instances[name]))throw Error("Use the shared Start or Restart control to reconcile the retained pane");
       const input=z.object({confirmedStopped:z.literal(true)}).strict().parse(body);json(res,200,{agent:service.recoverAsync ? await service.recoverAsync(name,input.confirmedStopped) : service.recover(name,input.confirmedStopped)});return;
     }
     json(res,405,{error:"Unsupported instance operation"});

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RuntimeClient, pairRuntime, type RuntimeBridge } from "../src/runtime-client.js";
+import { runtimeClaimFingerprint } from "../src/runtime-protocol.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { WindowsCliBridge, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "../src/windows-cli.js";
@@ -37,17 +38,17 @@ class FakeBridge implements RuntimeBridge {
   close(): void { for (const task of this.tasks.values()) if (!task.finishedAt) this.cancel(task.id); }
   releaseUnknown(_id: string): void {}
 }
-async function fixture(options: ConstructorParameters<typeof RuntimeCoordinator>[1] = {}) {
+async function fixture(options: ConstructorParameters<typeof RuntimeCoordinator>[1] = {},clientOptions:Partial<ConstructorParameters<typeof RuntimeClient>[0]>={}) {
   const hubHome = home(), state = { hub: new RuntimeCoordinator(hubHome, options) }; hubs.push(state.hub);
   const pairing = state.hub.createPairing(), pending = state.hub.pair({ code: pairing.code, name: "Fixture Windows", platform: "win32" });
-  state.hub.approve(pending.machineId);
+  state.hub.approve(pending.machineId, state.hub.machine(pending.machineId)?.pairingFingerprint);
   const claim = state.hub.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret }); if (claim.status !== "approved") throw Error("Pairing fixture failed");
   const server = createServer((req, res) => { if (!state.hub.handlePublicRequest(req, res, new URL(req.url ?? "/", "http://localhost"))) { res.writeHead(404); res.end(); } });
   servers.push(server); server.on("upgrade", (req, socket, head) => { if (!state.hub.handleUpgrade(req, socket, head)) socket.destroy(); });
   server.listen(0, "127.0.0.1"); await once(server, "listening"); const address = server.address(); if (!address || typeof address === "string") throw Error("No fixture port");
   const base = `http://127.0.0.1:${address.port}`, store = new RuntimeClientStore(home()), bridge = new FakeBridge();
   store.saveCredentials({ server: base, machineId: claim.machineId, credential: claim.credential, name: "Fixture Windows" });
-  const client = new RuntimeClient({ store, bridge, reconnectMs: 25, disconnectGraceMs: 500, pollMs: 10 }); clients.push(client); await client.start();
+  const client = new RuntimeClient({ store, bridge, reconnectMs: 25, disconnectGraceMs: 500, pollMs: 10,...clientOptions }); clients.push(client); await client.start();
   await vi.waitFor(() => expect(client.online()).toBe(true));
   return { state, hubHome, server, base, store, bridge, client, machineId: claim.machineId, credential: claim.credential };
 }
@@ -200,7 +201,10 @@ describe("runtime interactive pairing protocol", () => {
     });
     servers.push(server); server.listen(0, "127.0.0.1"); await once(server, "listening"); const address = server.address(); if (!address || typeof address === "string") throw Error("No fixture port");
     const store = new RuntimeClientStore(home());
-    const paired = await pairRuntime({ server: `http://127.0.0.1:${address.port}`, code: "interactive-code", name: "Fixture", store, pollMs: 1 });
+    const report=vi.fn();
+    const paired = await pairRuntime({ report, server: `http://127.0.0.1:${address.port}`, code: "interactive-code", name: "Fixture", store, pollMs: 1 });
+    expect(report).toHaveBeenCalledWith(expect.stringContaining(runtimeClaimFingerprint("c".repeat(64))));
+    expect(JSON.stringify(report.mock.calls)).not.toContain("c".repeat(64));
     expect(paired.credential).toBe("d".repeat(64)); expect(store.credentials()?.machineId).toBe(machineId); expect(requests).toEqual(["/runtime/v1/pair", "/runtime/v1/claim", "/runtime/v1/claim"]);
     const redirect = createServer((req, res) => { req.resume(); res.writeHead(307, { Location: `http://127.0.0.1:${address.port}/runtime/v1/pair` }); res.end(); }); servers.push(redirect);
     redirect.listen(0, "127.0.0.1"); await once(redirect, "listening"); const other = redirect.address(); if (!other || typeof other === "string") throw Error("No fixture port");
@@ -229,4 +233,17 @@ describe("manual recovery when a submitted command never reached the runtime", (
     await expect(client.operation("recover", { runId: task.requestId, confirmedStopped: true, original: { task: { ...task, prompt: "changed" } } })).rejects.toThrow(/arguments/);
     expect(bridge.launches).toBe(0);
   });
+});
+
+function paneLinkFixture(){return{hostBootId:randomUUID(),request:vi.fn(async()=>({hostBootId:randomUUID(),panes:[]})),connectionChanged:vi.fn(),retireOwned:vi.fn(async()=>{}),stop:vi.fn(async()=>{})};}
+it('an authenticated Machine revoked close retires the opened enrollment panes before detaching',async()=>{
+ const link=paneLinkFixture(),f=await fixture({},{openPaneLink:async()=>link as never});await f.state.hub.callPane(f.machineId,{action:'list'});f.state.hub.revoke(f.machineId);await vi.waitFor(()=>expect(link.stop).toHaveBeenCalledOnce());expect(link.retireOwned).toHaveBeenCalledOnce();expect(link.retireOwned.mock.invocationCallOrder[0]).toBeLessThan(link.stop.mock.invocationCallOrder[0]);expect(f.client.online()).toBe(false);
+});
+it.each(['normal stop','connection replaced'])('%s detaches its opened pane transport without retiring resident Jobs',async reason=>{
+ const link=paneLinkFixture(),f=await fixture({},{openPaneLink:async()=>link as never});await f.state.hub.callPane(f.machineId,{action:'list'});
+ if(reason==='normal stop')await f.client.stop();else{const hub:any=f.state.hub;hub.connections.get(f.machineId).ws.close(1008,'Connection replaced');await vi.waitFor(()=>expect(link.stop).toHaveBeenCalledOnce());}
+ expect(link.retireOwned).not.toHaveBeenCalled();expect(link.stop).toHaveBeenCalledOnce();
+});
+it('unconfirmed revocation retirement still detaches without any restart or retry',async()=>{
+ const link=paneLinkFixture(),report=vi.fn(),f=await fixture({},{openPaneLink:async()=>link as never,report});link.retireOwned.mockRejectedValue(Error('unknown exit'));await f.state.hub.callPane(f.machineId,{action:'list'});f.state.hub.revoke(f.machineId);await vi.waitFor(()=>expect(link.stop).toHaveBeenCalledOnce());expect(link.retireOwned).toHaveBeenCalledOnce();expect(report).toHaveBeenCalledWith('Pane cleanup is unconfirmed; its durable reservations remain held.');expect(f.bridge.launches).toBe(0);expect(f.client.online()).toBe(false);
 });

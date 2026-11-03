@@ -1,4 +1,5 @@
 /** Per-turn, instance-bound MCP capabilities for native Windows CLI children. */
+import { nativeAgentAdmissionContext } from "./native-agent-admission.js";
 import { windowsCliEnabled } from "./windows-cli.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, randomBytes } from "node:crypto";
@@ -129,25 +130,13 @@ export class NativeMcpSessions {
    * Bind other methods to the real context so FleetManager's private state and getters keep their owner.
    */
   private dispatcherContext(session:Session,name:string,args:Record<string,unknown>):AgentEndpointContext {
-    const assert=():void=>{if(!this.current(session) || !this.canCall(session,name,args))throw Error("Native MCP capability or tool access was revoked before admission");};
-    return new Proxy(this.ctx,{
-      get:(target,key)=>{
-        const value=Reflect.get(target,key,target);
-        if(key==="admitDurableDelivery" && typeof value==="function")return (...parameters:unknown[])=>{
-          assert();
-          const input=parameters[0];
-          if(!object(input) || input.sourceInstance!==session.instance)throw Error("Native MCP delivery source does not match its capability");
-          return Reflect.apply(value,target,parameters);
-        };
-        if(key==="handleTaskCrudHttp" && typeof value==="function")return (...parameters:unknown[])=>{
-          assert();
-          if(parameters[0]!==session.instance || !object(parameters[1]) || !this.canCall(session,"task",parameters[1]))throw Error("Native MCP task access was revoked before admission");
-          return Reflect.apply(value,target,parameters);
-        };
-        return typeof value==="function" ? value.bind(target) : value;
-      },
+    return nativeAgentAdmissionContext(this.ctx, {
+      instance: session.instance,
+      current: () => this.current(session) && this.canCall(session, name, args),
+      taskAllowed: value => this.canCall(session, "task", value),
     });
   }
+
   private menu(session:Session):typeof TOOLS {
     return TOOLS.filter(tool=>this.allowed(session,tool.name)).map(tool=>{
       const readTask=tool.name==="task" && this.readOnly(session);

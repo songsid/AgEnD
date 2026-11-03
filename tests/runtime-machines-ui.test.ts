@@ -7,7 +7,7 @@ const originalFetch=globalThis.fetch;
 const idA="12345678-1234-4321-abcd-123456789012", idB="22345678-1234-4321-abcd-123456789012";
 const requests:Array<{path:string;body:any}>=[];
 const cli=()=>({id:"codex",path:"C:\\tools\\codex.exe",runnable:true,authenticated:true,version:"1.0",readOnlySupport:true,supports:{execution:true,resume:true,mcp:true},models:[]});
-const machine=(id:string,name:string,status="online")=>({id,name,status,platform:"win32",version:"1.0",lastSeenAt:Date.now(),inventoryUpdatedAt:Date.now(),inventory:{home:`C:\\${name}`,clis:[cli(),{id:"muse",path:null,runnable:false}]}});
+const machine=(id:string,name:string,status="online")=>({id,name,status,...(status==="pending"?{pairingFingerprint:"ABCD-1234-5678"}:{}),platform:"win32",version:"1.0",lastSeenAt:Date.now(),inventoryUpdatedAt:Date.now(),inventory:{home:`C:\\${name}`,clis:[cli(),{id:"muse",path:null,runnable:false}]}});
 let machines:any[], enabled:boolean;
 const response=(body:any,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
 const button=(text:string)=>p.root.querySelectorAll("button").find((item:any)=>item.textContent.trim()===text);
@@ -43,8 +43,9 @@ describe("remote machine UI",()=>{
     await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);
     expect(p.root.textContent).toContain("Desktop");expect(p.root.textContent).toContain("Awaiting approval");
     expect(p.root.querySelectorAll('[data-cli="codex"]').length).toBe(2);expect(p.root.querySelector('[data-cli="muse"]')).toBeNull();
+    expect(p.root.querySelector(".runtime-pairing-fingerprint").textContent).toBe("ABCD-1234-5678");
     button("Approve computer").click();await settle(8);
-    expect(requests).toContainEqual({path:`/ui/runtimes/machines/${idB}/approve`,body:{}});
+    expect(requests).toContainEqual({path:`/ui/runtimes/machines/${idB}/approve`,body:{fingerprint:"ABCD-1234-5678"}});
     expect(p.root.querySelector(`[data-machine-id="${idB}"]`).textContent).toContain("Online");
   });
   it("creates a transient pairing code with an interactive CLI command, then hides it",async()=>{
@@ -85,10 +86,12 @@ describe("remote machine UI",()=>{
   });
   it("isolates machine drafts, directories and model catalogs",async()=>{
     machines=[machine(idA,"Desktop"),machine(idB,"Laptop")];await p.mount(h(Create,{onClose(){}}));await settle(8);await choose(idA);button("Next").click();await settle(8);
+    const adapter=()=>p.root.querySelector("#native-create-adapter");adapter().value="pane";fire(adapter(),"change");await settle();
     let dir=p.root.querySelector(".agent-runtime-fields input");dir.value="C:\\DesktopOnly";fire(dir,"input");await settle();button("Back").click();await settle();await choose(idB);button("Next").click();await settle(8);
-    dir=p.root.querySelector(".agent-runtime-fields input");expect(dir.value).toBe("");
+    dir=p.root.querySelector(".agent-runtime-fields input");expect(dir.value).toBe("");expect(adapter().value).toBe("exec");
     const ids=p.root.querySelectorAll(".model-pick option").map((item:any)=>item.value);expect(ids).toContain("model-b");expect(ids).not.toContain("model-a");
-    button("Back").click();await settle();await choose(idA);button("Next").click();await settle(8);expect(p.root.querySelector(".agent-runtime-fields input").value).toBe("C:\\DesktopOnly");
+    button("Back").click();await settle();await choose(idA);button("Next").click();await settle(8);expect(p.root.querySelector(".agent-runtime-fields input").value).toBe("C:\\DesktopOnly");expect(adapter().value).toBe("pane");
+    button("Create").click();await settle(8);expect(requests.find(row=>row.path==="/ui/instances")?.body).toMatchObject({native_adapter:"pane",machineId:idA});
   });
   it("shows offline machines without enabling selection or silently falling back to another computer",async()=>{
     machines=[machine(idA,"Desktop","offline")];await p.mount(h(Create,{onClose(){}}));await settle(8);

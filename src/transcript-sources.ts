@@ -32,7 +32,7 @@ import { open as openFile, readdir, readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { sharedRolloutIndex, type RolloutIndex } from "./rollout-index.js";
-import { codexCodeModeHostMissingRoot } from "./backend/codex-package.js";
+import { codexTurnRecord, codexToolRecord, codexWholeLine, codexLongHead, codexCodeModeHostMissingRoot, type TranscriptRecordEvent } from "./transcript-records.js";
 import Database from "better-sqlite3";
 import { sharedKiroTranscriptLane, type KiroDbLane, type KiroDbLease } from "./kiro-transcript-lane.js";
 import type { KiroDbCursor } from "./kiro-db-reader.js";
@@ -45,6 +45,8 @@ import { performance } from "node:perf_hooks";
 export interface ToolUseEvent { name: string; input: unknown }
 
 export interface TranscriptEvents {
+  /** Ordered provider-specific records (native Claude preserves API errors, informational notes and prompts). */
+  records?: TranscriptRecordEvent[];
   toolUses: ToolUseEvent[];
   toolResults: Array<{ name: string }>;
   assistantTexts: string[];
@@ -70,6 +72,8 @@ export interface TranscriptSource {
   reset(): void;
   /** Optional durable-delivery checkpoint taken immediately before pane paste. */
   checkpoint?(): Promise<TranscriptCheckpoint | null>;
+  /** Native runner checkpoint: scoped identities only; never encoded as a coordinator-local path. */
+  runtimeCheckpoint?(): Promise<import("./runtime-pane-transcript-protocol.js").RuntimeTranscriptReference | null>;
   /** Release anything held between polls; the next poll may acquire it again. */
   close?(): void;
   /**
@@ -325,30 +329,10 @@ export class CodexRolloutSource implements TranscriptSource {
    * the open turn as another user message.
    */
   private turnRecord(entry: Record<string, unknown>, turns: TranscriptTurnEvent[]): boolean {
-    const p = entry.payload as Record<string, unknown> | undefined;
-    if (!p) return false;
-    if (entry.type === "event_msg") {
-      if (p.type === "task_started" && typeof p.turn_id === "string") {
-        this.openTurnId = p.turn_id;
-        this.openTurn = p.turn_id;
-        this.turnKnown = true;
-        turns.push({ kind: "start", turnId: p.turn_id });
-      } else if ((p.type === "task_complete" || p.type === "turn_aborted") && typeof p.turn_id === "string") {
-        const end = p.type === "turn_aborted" ? "aborted" : p.last_agent_message == null ? "error" : "complete";
-        if (this.openTurn === p.turn_id) this.openTurn = null;
-        this.turnKnown = true;
-        turns.push({ kind: "end", turnId: p.turn_id, end });
-      }
-      return true;
-    }
-    if (entry.type === "response_item" && p.type === "message" && p.role === "user") {
-      const text = (p.content as Array<Record<string, unknown>> | undefined ?? [])
-        .map(block => typeof block.text === "string" ? block.text : "").join("\n");
-      const at = Date.parse(String(entry.timestamp ?? ""));
-      if (text.trim() && Number.isFinite(at)) turns.push({ kind: "user", turnId: this.openTurnId, text, at });
-      return true;
-    }
-    return false;
+    const state = { openTurnId: this.openTurnId, openTurn: this.openTurn, turnKnown: this.turnKnown };
+    const handled = codexTurnRecord(entry, state, turns);
+    this.openTurnId = state.openTurnId; this.openTurn = state.openTurn; this.turnKnown = state.turnKnown;
+    return handled;
   }
 
   private snapshotExistingFiles(): void {
@@ -464,48 +448,11 @@ export class CodexRolloutSource implements TranscriptSource {
       if (!p) continue;
       if (this.turnRecord(entry, turns)) continue;
       if (entry.type !== "response_item") continue;
-      if (p.type === "function_call") {
-        let input: unknown = p.arguments;
-        if (typeof input === "string") { try { input = JSON.parse(input); } catch { /* keep raw */ } }
-        events.toolUses.push({ name: String(p.name ?? "unknown"), input });
-      } else if (p.type === "custom_tool_call") {
-        events.toolUses.push({ name: String(p.name ?? "unknown"), input: p.input });
-      } else if (p.type === "local_shell_call") {
-        const action = p.action as Record<string, unknown> | undefined;
-        events.toolUses.push({ name: "shell", input: { command: action?.command } });
-      } else if (p.type === "function_call_output" || p.type === "custom_tool_call_output") {
-        events.toolResults.push({ name: String(p.name ?? "unknown") });
-        const root = codexCodeModeHostMissingRoot(p.output);
-        if (root) (events.codexPackageMissingHost ??= []).push(root);
-      } else if (p.type === "message" && p.role === "assistant") {
-        const content = p.content as Array<Record<string, unknown>> | undefined;
-        for (const block of content ?? []) {
-          const text = block.text;
-          if (typeof text === "string" && text.trim()) events.assistantTexts.push(text);
-        }
-      }
+      codexToolRecord(entry, events);
     }
     if (turns.length) events.turns = turns;
     return events;
   }
-}
-
-/** #1786 review: the long rollout lines read whole — turn records (event_msg) and messages (a pasted prompt, a long reply). */
-function codexWholeLine(head: string): boolean {
-  return head.includes('"type":"event_msg"') || (head.includes('"type":"response_item"') && /"payload":\{"type":"message"/.test(head));
-}
-
-/**
- * #1218 P0: a rollout line too long to parse (an output of MBs, a huge call input) — what its head still says, so the
- * bubble keeps the step: a call by its name, or an output. Turn records and messages are read whole (codexWholeLine).
- */
-function codexLongHead(head: string, events: TranscriptEvents): void {
-  if (!head.includes('"type":"response_item"')) return;
-  const type = /"payload":\{[^{}]{0,400}?"type":"(function_call|custom_tool_call|function_call_output|custom_tool_call_output)"/.exec(head)?.[1];
-  if (type === "function_call" || type === "custom_tool_call") {
-    const name = /"name":"([^"]{1,200})"/.exec(head)?.[1];
-    events.toolUses.push({ name: name ?? "unknown", input: undefined });
-  } else if (type) events.toolResults.push({ name: "unknown" });
 }
 
 /* -------------------------------------------------------------------- muse */

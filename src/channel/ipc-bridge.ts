@@ -309,3 +309,6 @@ export class IpcClient extends EventEmitter {
     if (!socket.destroyed) socket.destroy();
   }
 }
+
+/** Fleet transport surface shared by local sockets and owned in-process native daemons. */
+export type InstanceClient = Pick<IpcClient, "connected" | "connect" | "send" | "close"> & EventEmitter;

@@ -10,7 +10,7 @@
  * Positive only: the verdict is this delivery's exact marker in a consumed or queued shape, or nothing.
  */
 import { open, stat } from "node:fs/promises";
-import { transcriptDeltaNeedle, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
+import { transcriptDeltaNeedle, type TranscriptMarkerKind, type TranscriptNeedle } from "./transcript-needles.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 
 export const TRANSCRIPT_PROOF_READ = {

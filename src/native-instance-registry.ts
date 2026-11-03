@@ -18,6 +18,12 @@ export function nativeInstanceName(agentId: string): string {
 export function isWindowsInstance(config: Partial<InstanceConfig> | null | undefined): config is InstanceConfig & {runtime:"windows"} {
   return config?.runtime === "windows";
 }
+export function isNativePaneInstance(config: Partial<InstanceConfig> | null | undefined): config is InstanceConfig & {runtime:"windows";native_adapter:"pane"} {
+  return isWindowsInstance(config) && config.native_adapter === "pane";
+}
+export function isNativeExecInstance(config: Partial<InstanceConfig> | null | undefined): config is InstanceConfig & {runtime:"windows";native_adapter?:"exec"} {
+  return isWindowsInstance(config) && config.native_adapter !== "pane";
+}
 export function nativeAgentId(config: Partial<InstanceConfig> | null | undefined): string | null {
   return isWindowsInstance(config) && validWindowsAgentId(config.native_agent_id) ? config.native_agent_id.toLowerCase() : null;
 }
@@ -58,7 +64,7 @@ export function registerWindowsProfiles(fleet: FleetConfig, store: WindowsAgents
 }
 
 /** Copy common instance settings into provider state before use, keeping session/history untouched. */
-export function syncWindowsProfile(config: InstanceConfig, store: WindowsAgents, authorized: () => boolean = () => true): WindowsAgent {
+function windowsProfilePatch(config: InstanceConfig, store: WindowsAgents): {id:string;current:WindowsAgent;patch:WindowsAgentPatch} {
   const id = nativeAgentId(config);
   if (!id) throw new Error("Instance does not name a Windows runtime agent");
   const current = store.get(id);
@@ -76,5 +82,11 @@ export function syncWindowsProfile(config: InstanceConfig, store: WindowsAgents,
   for (const key of Object.keys(desired) as Array<keyof WindowsAgentPatch>) {
     if ((desired[key] ?? "") !== (current[key] ?? "")) (patch as Record<string,unknown>)[key] = desired[key];
   }
-  return Object.keys(patch).length ? store.update(id,patch,authorized) : current;
+  return {id,current,patch};
+}
+export function previewWindowsProfile(config: InstanceConfig, store: WindowsAgents): WindowsAgent {
+  const {id,current,patch}=windowsProfilePatch(config,store);return Object.keys(patch).length ? store.previewUpdate(id,patch) : current;
+}
+export function syncWindowsProfile(config: InstanceConfig, store: WindowsAgents, authorized: () => boolean = () => true): WindowsAgent {
+  const {id,current,patch}=windowsProfilePatch(config,store);return Object.keys(patch).length ? store.update(id,patch,authorized) : current;
 }

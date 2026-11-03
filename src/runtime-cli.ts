@@ -4,7 +4,7 @@ import { homedir, hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline/promises";
-import { RuntimeClient, pairRuntime } from "./runtime-client.js";
+import { RuntimeClient, pairRuntime, rotateRuntimeCredentials } from "./runtime-client.js";
 import { RuntimeClientStore, validateRuntimeServer } from "./runtime-client-store.js";
 
 const HELP = `AgEnD native Windows runtime
@@ -12,18 +12,20 @@ const HELP = `AgEnD native Windows runtime
   agend-runtime connect --server https://agend.example.com [--name NAME] [--profile DIRECTORY]
   agend-runtime run [--profile DIRECTORY]
   agend-runtime status [--profile DIRECTORY]
+  agend-runtime rotate [--profile DIRECTORY]
   agend-runtime disconnect [--profile DIRECTORY]
 
 connect asks for a one-time pairing code, waits for approval in AgEnD, then runs in the foreground.
 run reconnects an existing profile. Press Ctrl+C to stop. disconnect forgets a stopped local profile;
 revoke the machine in AgEnD Settings to invalidate its credential centrally.
+rotate replaces a stopped profile's machine credential without pairing again. Stop run/connect first.
 HTTP is accepted only for loopback, for example an SSH-forwarded localhost endpoint.
 CLI login, workspaces and devices stay on this computer. No CLI login data is uploaded.
 `;
 export async function runtimeMain(argv = process.argv.slice(2)): Promise<void> {
   if (!argv.length || argv.includes("--help") || argv[0] === "help") { process.stdout.write(HELP); return; }
   const [command, ...args] = argv;
-  if (!["connect", "run", "status", "disconnect"].includes(command)) throw new Error("Unknown runtime command. Use agend-runtime --help.");
+  if (!["connect", "run", "status", "disconnect", "rotate"].includes(command)) throw new Error("Unknown runtime command. Use agend-runtime --help.");
   const flags: Record<string, string> = {};
   for (let index = 0; index < args.length; index += 2) {
     const key = args[index], value = args[index + 1];
@@ -35,12 +37,18 @@ export async function runtimeMain(argv = process.argv.slice(2)): Promise<void> {
   if (command === "status") {
     const credentials = store.credentials();
     process.stdout.write(`${JSON.stringify({ paired: !!credentials, ...(credentials ? { server: credentials.server, machineId: credentials.machineId, name: credentials.name } : {}),
-      blocked: store.blocked(), jobs: store.list().map(job => ({ id: job.task.id, seq: job.seq, status: job.task.status, uncertain: job.uncertain })) }, null, 2)}\n`);
+      rotationPending: !!credentials?.pendingCredential, blocked: store.blocked(), jobs: store.list().map(job => ({ id: job.task.id, seq: job.seq, status: job.task.status, uncertain: job.uncertain })) }, null, 2)}\n`);
     return;
   }
   if (command === "disconnect") {
     const unlock = store.lock("disconnect");
     try { store.forgetCredentials(); process.stdout.write("Local connection forgotten. Revoke the machine in AgEnD Settings to invalidate its credential centrally.\n"); }
+    finally { unlock(); }
+    return;
+  }
+  if (command === "rotate") {
+    const unlock = store.lock("rotate");
+    try { await rotateRuntimeCredentials({ store }); process.stdout.write("Runtime machine credential rotated. Run agend-runtime run to reconnect; no pairing is needed.\n"); }
     finally { unlock(); }
     return;
   }

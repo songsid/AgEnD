@@ -54,7 +54,7 @@ async function fixture() {
   const { server, base } = await http((req, res) => { if (!state.hub.handlePublicRequest(req, res, new URL(req.url ?? "/", "http://localhost"))) { res.writeHead(404); res.end(); } });
   server.on("upgrade", (req, socket, head) => { if (!state.hub.handleUpgrade(req, socket, head)) socket.destroy(); });
   const add = async (label: string, drive: string) => {
-    const p = state.hub.createPairing(), pending = state.hub.pair({ code: p.code, name: label, platform: "win32" }); state.hub.approve(pending.machineId);
+    const p = state.hub.createPairing(), pending = state.hub.pair({ code: p.code, name: label, platform: "win32" }); state.hub.approve(pending.machineId, state.hub.machine(pending.machineId)?.pairingFingerprint);
     const identity = state.hub.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret }); if (identity.status !== "approved") throw Error("Fixture pairing failed");
     const store = new RuntimeClientStore(home()); store.saveCredentials({ server: base, machineId: identity.machineId, credential: identity.credential, name: label });
     const worker = new FixtureBridge(label, drive), client = new RuntimeClient({ store, bridge: worker, reconnectMs: 15, disconnectGraceMs: 1000, pollMs: 5 }); clients.push(client); await client.start();

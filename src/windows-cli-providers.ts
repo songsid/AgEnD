@@ -154,6 +154,16 @@ export interface NativeInvocation {
   env?: Record<string, string>;
 }
 
+/** Launch-local file policy, supported by the audited native Claude release. No account settings are rewritten.
+ * acceptEdits alone can still honor broader ambient allow rules. This hard file-tool check takes precedence over
+ * those grants. User/project/local settings are excluded so inherited additionalDirectories cannot widen the file
+ * boundary. Managed organization policy remains provider-owned. This is not an OS sandbox for shell commands or MCP
+ * tools. Both the exec and persistent adapter must use this exact policy.
+ */
+export function nativeClaudeFilePolicyArgs(): string[] {
+  return ["--setting-sources", "", "--settings", JSON.stringify({ permissions: { blockWritesOutsideWorkingDirectories: true } })];
+}
+
 /** Only an argv plan. The caller supplies cwd to spawn({ shell: false, stdio: ['pipe', ...] }). */
 export function buildNativeInvocation(task: NativeProviderTask, options: NativeInvocationOptions = {}): NativeInvocation {
   const provider = nativeProvider(task.cli);
@@ -178,17 +188,15 @@ export function buildNativeInvocation(task: NativeProviderTask, options: NativeI
       return { args: [...nativeUpdateGuard("codex"),...prefix,...withModel(args), "-"], stdin: task.prompt };
     }
     case "claude-code": {
-      const args = ["--print", "--verbose", "--input-format", "text", "--output-format", "stream-json", "--permission-prompts", "none"];
+      const args = ["--print", "--verbose", "--input-format", "text", "--output-format", "stream-json", "--permission-prompts", "none", ...nativeClaudeFilePolicyArgs()];
       if (task.sandbox === "read-only") {
         // Only built-in read tools; disallow MCP tools even if user/project config enables them.
         // No allowedTools flag: that would override the user's approval policy for the listed tools.
         args.push("--permission-mode", "plan", "--tools", "Read,Glob,Grep", "--strict-mcp-config");
         if (!options.mcp) args.push("--mcp-config", '{"mcpServers":{}}');
       } else {
-        // S-30 (leader decision): "workspace" means what it says. File edits inside the agent's working directory are
-        // accepted without a prompt; no --add-dir, so anything outside it still needs an approval, and headless has none
-        // (--permission-prompts none): denied. Shell commands and network still need approval too, so they are denied
-        // unless the user's own Claude Code settings already allow them. This also overrides a looser defaultMode.
+        // Accept file edits in the CLI's working directories, with the hard file-tool boundary above. Shell/network
+        // still use the CLI policy; headless denies requests needing a prompt, while ambient allow rules may allow them.
         args.push("--permission-mode", "acceptEdits");
       }
       if (options.mcp) args.push("--mcp-config",options.mcp.configPath,"--allowedTools",options.mcp.tools.map(tool=>`mcp__${options.mcp!.serverName ?? NATIVE_MCP_SERVER}__${tool}`).join(","));

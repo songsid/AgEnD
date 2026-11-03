@@ -1,3 +1,7 @@
+import { NativePaneCrashBudget } from "./native-pane-crash-budget.js";
+import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
+import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import type { InteractionOwner } from "./backend/types.js";
 import { SettingsExecution, settingsUndo, undoSettingsPaths, type SettingsUndo } from "./settings-transaction.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
@@ -24,7 +28,7 @@ import {
   secureGitHubRemotesForWorktree,
 } from "./remote-credential-check.js";
 import type { Logger } from "./logger.js";
-import type { IpcClient } from "./channel/ipc-bridge.js";
+import type { InstanceClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
@@ -42,7 +46,7 @@ import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import type { DeliveryOutbox } from "./delivery-outbox.js";
-import { WINDOWS_CREATE_REFUSED } from "./native-instance-registry.js";
+import { WINDOWS_CREATE_REFUSED, isNativePaneInstance } from "./native-instance-registry.js";
 import {
   capturePendingTargetReconciliation,
   finishTargetReconciliation,
@@ -176,12 +180,19 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * FleetManager implements this.
  */
 export interface LifecycleContext {
+  /** Prepared native ownership replaces local launch files/configuration, never a failed-local fallback. */
+  nativePaneFor?(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle>;
+  reconcileNativePaneBeforeStart?(name: string, daemon: Daemon): Promise<boolean>;
+  closeRetainedNativePane?(name: string): Promise<void>;
+  nativePanePinnedSession?(name:string):string|null;
+  onNativePaneRecoverySettled?(name:string):void;
+  setNativePanePaused?(name: string, paused: boolean): void;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
   getSettingsConfigPath?(): string;
   readonly routing: RoutingEngine;
-  readonly instanceIpcClients: Map<string, IpcClient>;
+  readonly instanceIpcClients: Map<string, InstanceClient>;
   readonly ipcStoppingInstances: Set<string>;
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
@@ -340,6 +351,8 @@ export function peerWorkingDirectories(fleetConfig: FleetConfig | null, name: st
 
 /** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
 export interface IncidentEventSource {
+  usesNativePane?(): boolean;
+  confirmAuthFailure?(): void;
   on(event: string, handler: (...args: any[]) => void): unknown;
   requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean; reason?: PauseReason }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
@@ -541,6 +554,7 @@ export class InstanceLifecycle {
   private activeTransition = new Map<string, symbol>();
   /** Bumped synchronously by stop/restart: a start begun under an older epoch must not publish. */
   private lifecycleEpochs = new Map<string, number>();
+  private nativeExitOwners = new Map<string,{token:symbol;daemon:Daemon;timer?:ReturnType<typeof setTimeout>}>();
   /** Single wake flight per instance: concurrent wakes share it. */
   private wakeFlights = new Map<string, Promise<void>>();
   /** Starts that begin their idle window now instead of at the persisted last inbound. */
@@ -919,7 +933,63 @@ export class InstanceLifecycle {
     }, this.ctx.logger, `daemon.human_messages_cancelled[${name}]`));
   }
 
+  nativeRecoveryPending(name:string):boolean{return this.nativeExitOwners.has(name);}
+  cancelNativeRecovery(name?:string,owner?:symbol):void{
+    for(const [target,run] of this.nativeExitOwners){if(name!==undefined&&target!==name||owner!==undefined&&run.token!==owner)continue;clearTimeout(run.timer);this.nativeExitOwners.delete(target);}
+  }
+  resetNativeCrashBudget(name:string):void{
+    this.cancelNativeRecovery(name);const pin=this.ctx.nativePanePinnedSession?.(name);if(pin){ensureInstanceDir(this.ctx.getInstanceDir(name));new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).reset(pin);}
+  }
+  private async nativePaneExited(name:string,daemon:Daemon,data:{name:string;snapshot:RuntimePaneSnapshot;owner:InteractionOwner}):Promise<void>{
+    const config=this.ctx.fleetConfig?.instances[name],epoch=this.epochOf(name),pin=data.snapshot.sessionId;
+    if(!isNativePaneInstance(config)||data.name!==name||this.daemons.get(name)!==daemon||!daemon.nativePaneExitCurrent(data.snapshot,data.owner)
+      ||!pin||this.ctx.nativePanePinnedSession?.(name)!==pin||this.nativeExitOwners.has(name)||this.ctx.isPlannedRestart())return;
+    const token=Symbol(name),run={token,daemon,timer:undefined as ReturnType<typeof setTimeout>|undefined};this.nativeExitOwners.set(name,run);
+    const current=()=>this.nativeExitOwners.get(name)===run&&this.daemons.get(name)===daemon&&this.epochOf(name)===epoch
+      &&this.ctx.fleetConfig?.instances[name]===config&&this.ctx.nativePanePinnedSession?.(name)===pin&&!this.isPaused(name)&&!this.ctx.isPlannedRestart()
+      &&(config.machine_id?remoteRuntimeEnabled():localWindowsCliEnabled());
+    daemon.fenceDeliveryWritesForStop();
+    try{
+      const decision=new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).observe(pin,data.snapshot.exitCode,config.restart_policy);
+      await this.runTransition(name,async()=>{
+        if(!current())return;
+        if(!await daemon.waitForDeliveryWritesToDrain(RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS)||!current())throw Error("Native input writes have not drained");
+        if(this.ctx.deliveryOutbox){
+          this.ctx.deliveryOutbox.markTargetReconciliationPending(name,daemon.bootId);
+          if(!await daemon.reconcileNativeDeliveries(this.ctx.deliveryOutbox,current)||!current())throw Error("Native delivery reconciliation is unconfirmed");
+        }
+        // Close finalizes the exact positive exit; no PID lookup or signal exists on this path.
+        await daemon.stop({nativePane:"close"});
+        if(!current())return;
+        this.ctx.eventLog?.insert(name,"native_pane_exited",{exitCode:data.snapshot.exitCode??null,sessionId:pin,decision:decision.kind,count:decision.count});
+        if(decision.kind!=="retry"){
+          if(decision.kind==="normal")await this.ctx.notifyNormalExit(name);
+          else this.notifyIncident(name,decision.kind==="loop"?"crash_loop":"supervision_ended",t("inst.respawn_paused",name));
+          this.ctx.setTopicIcon(name,"red");return;
+        }
+        const timer=setTimeout(()=>{
+          run.timer=undefined;
+          void this.runTransition(name,async()=>{
+            if(!current())return;
+            await this.stopInTransition(name,token);
+            // Our own stop advances once. An operator's concurrent stop/config change prevents publication.
+            if(this.nativeExitOwners.get(name)!==run||this.epochOf(name)!==epoch+1||this.daemons.has(name)
+              ||this.ctx.fleetConfig?.instances[name]!==config||this.ctx.nativePanePinnedSession?.(name)!==pin||this.isPaused(name)||this.ctx.isPlannedRestart()
+              ||!(config.machine_id?remoteRuntimeEnabled():localWindowsCliEnabled()))return;
+            await this.startInTransition(name,config,true,{kind:"fleet-topic",backend:config.backend??"codex",model:config.model||"default"});
+            if(this.nativeExitOwners.get(name)!==run||this.epochOf(name)!==epoch+1||this.ctx.isPlannedRestart())return;
+            await this.ctx.connectIpcToInstance(name);
+          }).catch(error=>{if(this.nativeExitOwners.get(name)===run&&!this.ctx.isPlannedRestart()){this.ctx.logger.error({name,err:error},"Native conversation resume failed; its pin was retained");this.notifyIncident(name,"supervision_ended",t("inst.respawn_paused",name));}})
+            .finally(()=>{this.cancelNativeRecovery(name,token);this.ctx.onNativePaneRecoverySettled?.(name);});
+        },decision.delay);timer.unref?.();run.timer=timer;
+      });
+      if(!run.timer)this.cancelNativeRecovery(name,token);
+    }catch(error){if(this.nativeExitOwners.get(name)===run&&!this.ctx.isPlannedRestart()){this.ctx.logger.error({name,err:error},"Native crash recovery held without a fresh fallback");this.notifyIncident(name,"supervision_ended",t("inst.respawn_paused",name));}this.cancelNativeRecovery(name,token);}
+    finally{if(!run.timer)this.ctx.onNativePaneRecoverySettled?.(name);}
+  }
+
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
+    if(daemon.usesNativePane?.())daemon.on("native_pane_exited",safeHandler((data:{name:string;snapshot:RuntimePaneSnapshot;owner:InteractionOwner})=>this.nativePaneExited(name,daemon as Daemon,data),this.ctx.logger,`daemon.native_pane_exited[${name}]`));
     daemon.on("capacity_nudge_cancelled", safeHandler((data: { reason: string; target: string }) => {
       const reason = data.reason === "the user cancelled" ? t("inst.codex_retry_cancel_reason_user")
         : data.reason === "the instance was stopped, paused or respawned" || data.reason === "the instance is not running" ? t("inst.codex_retry_cancel_reason_stopped")
@@ -1333,6 +1403,17 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
+      if (daemon.usesNativePane?.()) {
+        // Native credentials and quotas belong to its runner. Never probe a Linux login or group its peers with it.
+        if (this.daemons.get(name) !== daemon) return;
+        this.notifyIncident(name, data.type, data.notice ?? data.message);
+        if (data.action === "pause") {
+          if (data.type === "auth_error") { daemon.confirmAuthFailure?.(); daemon.requestPauseWhenIdle({ reconfirmAuth: true, reason: "auth" }); }
+          else daemon.requestPauseWhenIdle({ reason: "error" });
+        }
+        return;
+      }
+
       // Antigravity's account-level cap is visible ONLY here: the quota summary
       // API keeps reporting its buckets as barely used while the CLI is blocked
       // (verified live — 0% used and "Individual quota reached" in the same
@@ -1671,7 +1752,8 @@ export class InstanceLifecycle {
   }
 
   /** Invalidate every start/wake already running for `name` (they will not publish). */
-  invalidate(name: string): void {
+  invalidate(name: string, nativeOwner?:symbol): void {
+    const native=this.nativeExitOwners.get(name);if(native&&native.token!==nativeOwner)this.cancelNativeRecovery(name);
     this.lifecycleEpochs.set(name, this.epochOf(name) + 1);
   }
 
@@ -1761,7 +1843,14 @@ export class InstanceLifecycle {
       return;
     }
 
-    if (!existsSync(config.working_directory)) {
+    const native = isNativePaneInstance(config) ? await this.ctx.nativePaneFor?.(name, config, check) : undefined;
+    let nativePublished=false;
+    try {
+    check();
+    if (isNativePaneInstance(config) && !native) throw Error("Native pane ownership is unavailable; no local CLI was started");
+    if (native) config = { ...config, agent_mode: "mcp" };
+
+    if (!native && !existsSync(config.working_directory)) {
       this.ctx.logger.info({ name, working_directory: config.working_directory }, "Working directory does not exist — creating it");
       mkdirSync(config.working_directory, { recursive: true });
     }
@@ -1789,7 +1878,7 @@ export class InstanceLifecycle {
 
     // Verify backend binary is in PATH before spawning
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (installation && !checkBinaryInstalled(installation.binary)) {
+    if (!native && installation && !checkBinaryInstalled(installation.binary)) {
       this.ctx.logger.error(
         { binary: installation.binary, backend: backendName, instance: name },
         `Backend binary "${installation.binary}" not found in PATH`,
@@ -1798,14 +1887,14 @@ export class InstanceLifecycle {
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
     // Unless IS_SANDBOX=1 is set (recognized sandbox environment)
-    if (process.getuid?.() === 0 && backendName === "claude-code" && !process.env.IS_SANDBOX) {
+    if (!native && process.getuid?.() === 0 && backendName === "claude-code" && !process.env.IS_SANDBOX) {
       const msg = `⚠️ claude-code cannot run with --dangerously-skip-permissions as root. Set IS_SANDBOX=1 or use a non-root user.`;
       this.ctx.logger.error({ name, backend: backendName }, msg);
       this.ctx.notifyInstanceTopic(name, t("inst.root_skip_perms"));
       return;
     }
 
-    const backend = createBackend(backendName, instanceDir);
+    const backend = native?.backend ?? createBackend(backendName, instanceDir);
     const daemon = new Daemon(
       name,
       config,
@@ -1823,6 +1912,7 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
@@ -1873,7 +1963,9 @@ export class InstanceLifecycle {
       if (recovered.queued || recovered.reconciliationPending) {
         this.ctx.logger.warn({ name, ...recovered }, "Preparing durable outbox rows before target generation start");
       }
-      const reconciled = await reconcileTargetBeforeStart(
+      const reconciled = native
+        ? { uncertain: 0, safeToStart: await this.ctx.reconcileNativePaneBeforeStart?.(name, daemon) === true }
+        : await reconcileTargetBeforeStart(
         this.ctx.deliveryOutbox,
         name,
         instanceDir,
@@ -1900,7 +1992,7 @@ export class InstanceLifecycle {
     // before the handlers below exist and before this daemon is registered;
     // hold it and deliver it once both are true.
     (daemon as IncidentEventSource).holdStartupIncidents?.();
-    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger, execution ? check : undefined);
+    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger, execution || native ? check : undefined);
     // Publication fence (Phase 2a): the spawn cannot be cancelled, so a stop or
     // restart requested meanwhile has been waiting behind this transition. A
     // superseded start must not register, signal ready, or keep its window.
@@ -1911,6 +2003,7 @@ export class InstanceLifecycle {
     }
     this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
+    nativePublished=!!native;
     published?.(daemon); // Exact publication, synchronously after the ownership fence.
     if (seedNow) this.noteWokeForWork(name);
     this.ctx.onDaemonReady?.(name, daemon.bootId);
@@ -1956,6 +2049,11 @@ export class InstanceLifecycle {
     // Last: handlers attached and daemon registered, so a held startup incident
     // (pause, notify) finds both.
     (daemon as IncidentEventSource).releaseStartupIncidents?.();
+    }catch(error){
+      // The factory registered helper authority before acquire(). A superseded pre-window start must release it too.
+      if(native&&!nativePublished)await native.release("detach").catch(err=>this.ctx.logger.warn({name,err},"Prepared native authority could not detach"));
+      throw error;
+    }
   }
 
   isPaused(name: string): boolean {
@@ -1967,10 +2065,25 @@ export class InstanceLifecycle {
   }
 
   async pause(name: string, reason: PauseReason = "operator", admission?: CapacityNudgePauseGuard): Promise<void> {
+    this.cancelNativeRecovery(name);
     // Final backstop shared by slash, MCP, Settings, warm-cap, and any future
     // caller. General is the coordinator and must remain resident to route work.
     if (isGeneralInstance(this.ctx.fleetConfig, name)) {
       throw new Error(GENERAL_PAUSE_ERROR);
+    }
+    const nativeDaemon = this.daemons.get(name);
+    if (nativeDaemon?.usesNativePane?.()) {
+      if (admission && !admission.current()) return;
+      await this.runTransition(name, async () => {
+        if (this.daemons.get(name) !== nativeDaemon || admission && !admission.current()) return;
+        if (!nativeDaemon.nativePaneHasExited() && (!await nativeDaemon.nativePauseReady(admission) || this.daemons.get(name) !== nativeDaemon || !nativeDaemon.nativePauseStillReady())) return;
+        if(this.daemons.get(name)!==nativeDaemon||admission&&!admission.current())return;
+        await this.stopInTransition(name);
+        this.ctx.setNativePanePaused?.(name, true);
+        writePausedMarker(this.ctx.getInstanceDir(name), Date.now(), reason);
+        this.ctx.onAttentionChanged?.(name);
+      });
+      return;
     }
     // B1: cancel any pending capacity backoff — a user-initiated pause should
     // not be undone by a queued restart 30–120s later.
@@ -2048,15 +2161,17 @@ export class InstanceLifecycle {
       clearPausedMarker(instanceDir);
       this.markActivitySeedNow(name);
       try {
+        if (isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) this.ctx.setNativePanePaused?.(name, false);
         await this.ctx.startPersistedPausedInstance(name, transition);
       } catch (err) {
         this.clearActivitySeedNow(name);
         writePausedMarker(instanceDir, pausedAt, reason);
+        if (isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) this.ctx.setNativePanePaused?.(name, true);
         throw err;
       }
     }
     this.noteWokeForWork(name);
-    this.ctx.startStatuslineWatcher(name);
+    if (!isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) this.ctx.startStatuslineWatcher(name);
   }
 
   /**
@@ -2094,8 +2209,8 @@ export class InstanceLifecycle {
     return this.runTransition(name, () => this.stopInTransition(name), transition);
   }
 
-  private async stopInTransition(name: string): Promise<void> {
-    this.invalidate(name);
+  private async stopInTransition(name: string,nativeOwner?:symbol): Promise<void> {
+    this.invalidate(name,nativeOwner);
     this.wokeAt.delete(name);
     this.ctx.setTopicIcon(name, "remove");
     // #2897: a stopped instance holds no dialog — its "needs a human" notices are out of date.
@@ -2119,7 +2234,11 @@ export class InstanceLifecycle {
         const drained = await daemon.waitForDeliveryWritesToDrain(RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS);
         if (!drained) this.ctx.logger.warn({ name }, "Pane write did not drain before durable reconciliation capture; relying on the Enter write-ahead fence");
         this.ctx.deliveryOutbox.markTargetReconciliationPending(name, daemon.bootId);
-        captured = await capturePendingTargetReconciliation(
+        if(daemon.usesNativePane?.()){
+          const reconciled=await daemon.reconcileNativeDeliveries(this.ctx.deliveryOutbox,()=>this.daemons.get(name)===daemon);
+          if(!reconciled)this.ctx.logger.warn({name},"Native stop could not settle every old delivery; retained attempts will not be replayed");
+        }
+        if (!daemon.usesNativePane?.()) captured = await capturePendingTargetReconciliation(
           this.ctx.deliveryOutbox,
           name,
           this.ctx.getInstanceDir(name),
@@ -2129,7 +2248,8 @@ export class InstanceLifecycle {
       }
       let stopped = false;
       try {
-        await daemon.stop();
+        if (daemon.usesNativePane?.()) await daemon.stop({ nativePane: "close" });
+        else await daemon.stop();
         stopped = true;
       } finally {
         if (captured && this.ctx.deliveryOutbox) {
@@ -2155,6 +2275,9 @@ export class InstanceLifecycle {
       // registered a FRESH daemon under this name — deleting by name alone
       // would drop it from supervision while its CLI keeps running.
       if (this.daemons.get(name) === daemon) this.daemons.delete(name);
+    } else if (isNativePaneInstance(this.ctx.fleetConfig?.instances[name])) {
+      if (!this.ctx.closeRetainedNativePane) throw Error("Retained native pane owner is unavailable; no local PID was signalled");
+      await this.ctx.closeRetainedNativePane(name);
     } else {
       const instanceDir = this.ctx.getInstanceDir(name);
       const pidPath = join(instanceDir, "daemon.pid");

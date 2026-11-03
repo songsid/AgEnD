@@ -40,8 +40,12 @@ export function nativeMcpHttp(connection:NativeMcpConnection,body:NativeMcpReque
   });
 }
 
+export function nativeMcpCallId(token: string, id: string | number, clientSessionId?: string): string {
+  return createHmac("sha256", token).update(JSON.stringify(clientSessionId ? [clientSessionId, id] : id)).digest("hex");
+}
+
 /** Testable protocol surface. Never executes tools for notifications or unrecognized method names. */
-export async function nativeMcpRpc(raw:unknown,connection:NativeMcpConnection,transport:NativeMcpTransport=body=>nativeMcpHttp(connection,body)):Promise<ObjectValue|null> {
+export async function nativeMcpRpc(raw:unknown,connection:NativeMcpConnection,transport:NativeMcpTransport=body=>nativeMcpHttp(connection,body), context?: { clientSessionId: string; instructions?: string }):Promise<ObjectValue|null> {
   const id=object(raw) && (typeof raw.id === "string" && raw.id.length<=128 || typeof raw.id === "number" && Number.isSafeInteger(raw.id)) ? raw.id : null;
   const error=(code:number,message:string):ObjectValue=>({jsonrpc:"2.0",id,error:{code,message}});
   if(!object(raw) || raw.jsonrpc!=="2.0" || typeof raw.method!=="string")return error(-32600,"Invalid request");
@@ -51,7 +55,7 @@ export async function nativeMcpRpc(raw:unknown,connection:NativeMcpConnection,tr
     let result:unknown;
     if(raw.method==="initialize") {
       const offered=object(raw.params) ? raw.params.protocolVersion : undefined;
-      result={protocolVersion:["2024-11-05","2025-03-26","2025-06-18"].includes(String(offered))?offered:"2024-11-05",capabilities:{tools:{}},serverInfo:{name:"agend-native",version:"1.0.0"},instructions:"AgEnD tools are limited to this agent, execution turn and configured permissions."};
+      result={protocolVersion:["2024-11-05","2025-03-26","2025-06-18"].includes(String(offered))?offered:"2024-11-05",capabilities:{tools:{}},serverInfo:{name:"agend-native",version:"1.0.0"},instructions:context?.instructions ?? "AgEnD tools are limited to this agent, execution turn and configured permissions."};
     }else if(raw.method==="ping")result={};
     else if(raw.method==="tools/list"){
       const listed=await transport({op:"native-mcp",method:"tools/list",params:{}});
@@ -59,7 +63,7 @@ export async function nativeMcpRpc(raw:unknown,connection:NativeMcpConnection,tr
       result={tools:listed.tools.filter(tool=>object(tool)&&typeof tool.name==="string"&&connection.tools.includes(tool.name))};
     }else if(raw.method==="tools/call"){
       if(!object(raw.params)||typeof raw.params.name!=="string"||!connection.tools.includes(raw.params.name)||raw.params.arguments!==undefined&&!object(raw.params.arguments))return error(-32602,"Tool is unavailable for this execution");
-      const callId=createHmac("sha256",connection.token).update(JSON.stringify(id)).digest("hex");
+      const callId=nativeMcpCallId(connection.token,id,context?.clientSessionId);
       result=await transport({op:"native-mcp",method:"tools/call",callId,params:{name:raw.params.name,arguments:raw.params.arguments ?? {}}});
       if(!object(result)||!Array.isArray(result.content))throw new Error("Invalid AgEnD tool result");
     }else return error(-32601,"Method not found");

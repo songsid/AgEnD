@@ -1,3 +1,4 @@
+import type { PaneObservation } from "./pane-port.js";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "./child-process.js";
 import { EventEmitter } from "node:events";
@@ -85,7 +86,7 @@ const CONTROL_DRAIN_MS = 10_000;
  *   await ctrl.waitForIdle("@5");  // wait until window @5 is idle
  *   tmux.pasteText(msg);
  */
-export class TmuxControlClient extends EventEmitter implements TmuxReadPort {
+export class TmuxControlClient extends EventEmitter implements TmuxReadPort, PaneObservation {
   /** A retired child still owns this slot until exit/close proves it is gone. */
   private attachment: Attachment | null = null;
   private activeRead: ControlRead | null = null;

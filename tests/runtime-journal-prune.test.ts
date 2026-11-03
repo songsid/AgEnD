@@ -85,7 +85,7 @@ describe("M-2239 P2-1: the coordinator compacts settled commands into replay tom
   it("a run that settled and was compacted is refused, never sent again", async () => {
     let now = 100 * DAY;
     const h = new RuntimeCoordinator(home(), { now: () => now }); hubs.push(h);
-    const p = h.createPairing(), pending = h.pair({ code: p.code, name: "Desk", platform: "win32" }); h.approve(pending.machineId);
+    const p = h.createPairing(), pending = h.pair({ code: p.code, name: "Desk", platform: "win32" }); h.approve(pending.machineId, h.machine(pending.machineId)?.pairingFingerprint);
     const claim = h.claim({ machineId: pending.machineId, claimSecret: pending.claimSecret }); if (claim.status !== "approved") throw Error("not approved");
     const server = createServer((req, res) => { if (!h.handlePublicRequest(req, res, new URL(req.url ?? "/", "http://localhost"))) { res.writeHead(404); res.end(); } });
     servers.push(server); server.on("upgrade", (req, socket, head) => { if (!h.handleUpgrade(req, socket, head)) socket.destroy(); });
@@ -115,7 +115,7 @@ describe("M-2239 P2-1: the coordinator compacts settled commands into replay tom
     await h.call(claim.machineId, "probe", { force: true });           // the socket is still serving
     expect(ws.readyState).toBe(WebSocket.OPEN);
     // Another machine that names this machine's compacted run is still closed: a tombstone belongs to one machine.
-    const p2 = h.createPairing(), pending2 = h.pair({ code: p2.code, name: "Other", platform: "win32" }); h.approve(pending2.machineId);
+    const p2 = h.createPairing(), pending2 = h.pair({ code: p2.code, name: "Other", platform: "win32" }); h.approve(pending2.machineId, h.machine(pending2.machineId)?.pairingFingerprint);
     const { machineId: id2, claimSecret: s2 } = pending2, claim2 = h.claim({ machineId: id2, claimSecret: s2 }); if (claim2.status !== "approved") throw Error("not approved");
     const other = new WebSocket(`ws://127.0.0.1:${port}/runtime/v1/connect`, { headers: { Authorization: `Bearer ${claim2.credential}` } }); clients.push(other);
     await once(other, "open"); const welcome2 = once(other, "message"); other.send(JSON.stringify({ v: 1, type: "hello", bootId: "b2", inventory: { home: "C:\\U", clis: [] } })); await welcome2;

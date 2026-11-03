@@ -160,7 +160,7 @@ async function findNode(shim: string): Promise<string | null> {
   candidates.push(join(process.env.ProgramFiles || "C:\\Program Files", "nodejs", "node.exe"));
   return candidates.map(p => p.trim()).find(isNativeFile) ?? null;
 }
-async function findCli(id: NativeCliId): Promise<NativeCliExecutable | null> {
+export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | null> {
   const provider = nativeProvider(id);
   const names = provider.binaryNames.flatMap(name => [name, ...(NPM_CLI_TARGETS[id] ? [name.replace(/\.exe$/i, ".cmd")] : [])]);
   const found = await Promise.all(names.map(name => output(join(process.env.SystemRoot || "C:\\Windows", "System32", "where.exe"), [name])));

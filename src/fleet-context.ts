@@ -1,7 +1,7 @@
 import type { PaneContextSource } from "./pane-context-cache.js";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
-import type { IpcClient } from "./channel/ipc-bridge.js";
+import type { InstanceClient } from "./channel/ipc-bridge.js";
 import type { Scheduler } from "./scheduler/index.js";
 import type { Logger } from "./logger.js";
 import type { CostGuard } from "./cost-guard.js";
@@ -46,7 +46,7 @@ export interface FleetContext {
   readonly adapters?: Map<string, ChannelAdapter>;
   readonly fleetConfig: FleetConfig | null;
   readonly routingTable: Map<string, RouteTarget>;
-  readonly instanceIpcClients: Map<string, IpcClient>;
+  readonly instanceIpcClients: Map<string, InstanceClient>;
   readonly scheduler: Scheduler | null;
   readonly logger: Logger;
   readonly dataDir: string;

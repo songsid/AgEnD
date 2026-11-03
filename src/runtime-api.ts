@@ -46,8 +46,8 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     }
     if (!route) throw Error("Unknown runtime operation");
     const id = route[1], op = route[2];
-    if (Object.keys(input).some(key => op !== "rename" || key !== "name")) throw Error("Unknown runtime operation field");
-    if (op === "approve") json(res, 200, { machine: hub.approve(id) });
+    if (Object.keys(input).some(key => op === "rename" ? key !== "name" : op === "approve" ? key !== "fingerprint" : true)) throw Error("Unknown runtime operation field");
+    if (op === "approve") json(res, 200, { machine: hub.approve(id, input.fingerprint) });
     else if (op === "revoke") json(res, 200, { machine: hub.revoke(id) });
     else if (op === "rename") json(res, 200, { machine: hub.rename(id, input.name) });
     else if (op === "refresh" || op === "probe") {

@@ -18,7 +18,7 @@ const BYTE_HEADROOM = 512 * 1024;
 const MAX_STORE_BYTES = 12 * 1024 * 1024;
 const ID = /^[A-Za-z0-9-]{16,80}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-export interface RuntimeCredentials { server: string; machineId: string; credential: string; name: string }
+export interface RuntimeCredentials { server: string; machineId: string; credential: string; name: string; pendingCredential?: string }
 export interface RuntimeStoredJob { digest: string; seq: number; task: WindowsCliTask; uncertain: boolean }
 interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string>; usedAt?: Record<string, number> }
 
@@ -179,12 +179,14 @@ export class RuntimeClientStore {
     const file = join(this.directory, "connection.json"); if (!existsSync(file)) return null;
     const raw = readPrivate(file);
     if (!object(raw) || typeof raw.server !== "string" || typeof raw.machineId !== "string" || !UUID.test(raw.machineId) || typeof raw.credential !== "string"
-      || !/^[a-f0-9]{64}$/.test(raw.credential) || typeof raw.name !== "string" || !raw.name.trim() || raw.name.length > 100) throw new Error("Invalid runtime connection");
+      || !/^[a-f0-9]{64}$/.test(raw.credential) || typeof raw.name !== "string" || !raw.name.trim() || raw.name.length > 100
+      || raw.pendingCredential !== undefined && (typeof raw.pendingCredential !== "string" || !/^[a-f0-9]{64}$/.test(raw.pendingCredential) || raw.pendingCredential === raw.credential)) throw new Error("Invalid runtime connection");
     validateRuntimeServer(raw.server); return raw as unknown as RuntimeCredentials;
   }
   saveCredentials(value: RuntimeCredentials): void {
     validateRuntimeServer(value.server);
-    if (!UUID.test(value.machineId) || !/^[a-f0-9]{64}$/.test(value.credential) || !value.name.trim() || value.name.length > 100) throw new Error("Invalid runtime credential");
+    if (!UUID.test(value.machineId) || !/^[a-f0-9]{64}$/.test(value.credential) || !value.name.trim() || value.name.length > 100
+      || value.pendingCredential !== undefined && (!/^[a-f0-9]{64}$/.test(value.pendingCredential) || value.pendingCredential === value.credential)) throw new Error("Invalid runtime credential");
     atomic(join(this.directory, "connection.json"), value);
   }
   forgetCredentials(): void { const file = join(this.directory, "connection.json"); if (existsSync(file)) unlinkSync(file); }

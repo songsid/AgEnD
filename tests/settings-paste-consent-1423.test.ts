@@ -14,7 +14,7 @@ vi.mock("node:child_process", async original => ({
     if (args.includes("load-buffer")) {
       io.loads.push(err => cb(err, "", ""));
       if (io.failFirst && io.loads.length === 1) queueMicrotask(() => cb(Object.assign(new Error("inert fd pressure"), { code: "EMFILE" }), "", ""));
-    } else queueMicrotask(() => cb(null, "", ""));
+    } else queueMicrotask(() => cb(null, { stdout: args.includes("capture-pane") ? "❯ ordinary context" : "", stderr: "" } as any, ""));
     return { stdin: { on() {}, end() {} } };
   }),
 }));
@@ -36,7 +36,7 @@ function harness() {
     join(root, "instance"), false, undefined, undefined, logger);
   let alive = true;
   const cap = new SettingsExecution({ current: () => alive, snapshot: () => null }); caps.push(cap);
-  daemon.tmux = new TmuxManager("inert-session", "@1"); daemon.backend = {};
+  daemon.tmux = new TmuxManager("inert-session", "@1"); daemon.backend = { getReadyPattern: () => /^❯/ };
   daemon.buildSnapshotPrompt = vi.fn(() => "approved context"); daemon.capturePaneEvidence = vi.fn(async () => null);
   daemon.confirmSubmitted = vi.fn(async () => "submitted"); daemon.waitForInputTransientToClear = vi.fn(async () => true);
   const event = vi.fn(); daemon.on("snapshot_injected", event);

@@ -171,3 +171,12 @@ describe("native creation fields remain scoped to their schema-owned effect", ()
     expect(() => settingsChangeDiff({}, { unknown: { [key]: "sensitive-canary" } }, { operation: "unsupported" })).toThrow("unsupported_sensitive_effect");
   });
 });
+
+it('persistent pane creation replays its original local administrator once with the approved topic owner',async()=>{
+ const h=harness();h.cfg.channels=[{id:'pane-world',type:'telegram',group_id:-100123}];
+ const pane=vi.fn(async(profile:any,_channel:any,allowed:any,execution:any)=>h.create(profile,allowed,execution));Object.assign(h.context,{createNativePaneInstance:pane});
+ const body={...BODY,native_adapter:'pane'},pending=await h.request(body);expect(pending.status).toBe(202);expect(pane).not.toHaveBeenCalled();
+ expect(pending.body.pending_change.summary.join('\n')).toContain('pane-world');
+ const result=await h.store.decide(pending.body.pending_change.id,'confirm',{label:'Host administrator',current:()=>true});expect(result.state).toBe('applied');expect(pane).toHaveBeenCalledOnce();expect(pane.mock.calls[0][0]).not.toHaveProperty('native_adapter');expect(pane.mock.calls[0][3]).toBeInstanceOf(SettingsExecution);
+ const replay=await h.request(body);expect(replay.body.pending_change.state).toBe('applied');expect(pane).toHaveBeenCalledOnce();
+});
