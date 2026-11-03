@@ -42,7 +42,13 @@ export async function createNativeInstance(req:IncomingMessage,res:ServerRespons
     // cannot authorize another write, but the completed operation must still return its success receipt.
     if(!execution?.completed && !allowed()){json(res,403,{error:"Authorization expired"});return;}
     ctx.emitSseEvent("status",ctx.getUiStatus());json(res,201,result);
-  } catch(error) {json(res,allowed()?400:403,{error:allowed()?(error instanceof Error?error.message:"Could not create instance"):"Authorization expired"});}
+  } catch(error) {
+    // S-35: an approved Settings replay answers only the server's own collector, never a browser. Its execution ends with the
+    // failure, so allowed() is false there; answering "Authorization expired" hid the real cause (a relay that did not
+    // start, a startup race, the per-PC agent limit). A real browser request keeps the old rule.
+    const replay=settingsRequestExecution(req)!=null,ok=replay||allowed();
+    json(res,ok?400:403,{error:ok?(error instanceof Error?error.message:"Could not create instance"):"Authorization expired"});
+  }
 }
 
 /** Common CRUD/message routes. The old native URLs remain compatibility aliases. */

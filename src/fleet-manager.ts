@@ -1307,6 +1307,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         import("./local-pane-endpoint.js"), import("./local-pane-launcher.js"), this.runtimeWindowsExecutor().probe({ force: false }),
       ]); admit(); this.localPaneRelay?.stop();
       const relay = await LocalPaneEndpoint.open({ scope: localPaneScope(this.dataDir), admit, maxAgents: maxAgentsPerMachine,
+        diagnostic: text => this.logger.warn({ stderr: text }, "Local Windows pane relay wrote to stderr"),
         version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
         launch: () => launchLocalPaneRelay(this.dataDir, admit),
         mcp: async (body, current) => (await this.nativePanes()).handle("local", body, current),
@@ -15506,6 +15507,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const target = this.fleetNoticeTarget(world);
         return target ? { chatId: target.chatId, ...(target.opts.threadId !== undefined ? { threadId: String(target.opts.threadId) } : {}) } : null;
       },
+      // The name the web page shows for the instance (its View alias, else its own name), never the raw id alone.
+      instanceName: instance => resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[instance], profile: profileIdentities(this.dataDir).get(instance) }).display_name || instance,
       instanceTopic: instance => {
         const topic = this.fleetConfig?.instances[instance]?.topic_id;
         if (topic != null) return String(topic);

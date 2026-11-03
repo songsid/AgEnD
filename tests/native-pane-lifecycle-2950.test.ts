@@ -71,3 +71,27 @@ it('transient capture failures during startup and status repaint retry only read
  f.options.endpoint.call=async request=>{if(request.action==='capture'&&(!initial||f.write.mock.calls.some(row=>row[0]==='/status')&&!paint)){if(!initial)initial=true;else paint=true;throw Error('output arrived during capture');}return call(request);};
  const native=f.make();await native.acquire(()=>{});expect(initial&&paint).toBe(true);expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(f.options.pin).toHaveBeenCalledWith(f.launch.launchId,f.actual);
 });
+it('a typed /status still painting at the first read is re-read until it shows, then submitted exactly once (S-35 B)',async()=>{
+ const f=await fixture(),paintScreen=f.write.getMockImplementation()!;
+ f.write.mockImplementation((text:string)=>{if(text==='/status'){setTimeout(()=>paintScreen(text),900);return;}paintScreen(text);});
+ const native=f.make();await native.acquire(()=>{});
+ expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(f.options.pin).toHaveBeenCalledExactlyOnceWith(f.launch.launchId,f.actual);expect(native.backend.getSessionId()).toBe(f.actual);
+},30_000);
+it('a /status that never paints fails inside the bound with no Enter and no retyped /status (S-35 B)',async()=>{
+ const f=await fixture();f.write.mockImplementation((text:string)=>{if(text!=='/status')f.output('\x1b[2J\x1b[H› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n');});
+ const native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('composer changed; no Enter was sent');
+ expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status']);expect(f.options.pin).not.toHaveBeenCalled();await native.release('detach');
+},40_000);
+it('a lost Enter acknowledgement after a painted /status is never resubmitted (S-35 B)',async()=>{
+ const f=await fixture(),call=f.options.endpoint.call;let inputs=0;
+ f.options.endpoint.call=async request=>{const result=await call(request);if(request.action==='key'){inputs++;if(inputs===1)throw Error('lost Enter ACK');}return result;};
+ const native=f.make();await expect(native.acquire(()=>{})).rejects.toThrow('submission is unconfirmed');
+ expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(f.options.pin).not.toHaveBeenCalled();await native.release('detach');
+});
+it('the native Enter proof accepts a long owned pasted envelope, and refuses one under a transcript output row (S-35 A)',async()=>{
+ const f=await fixture(),native=f.make();const inputIsComposer=(native.port as unknown as {inputIsComposer(screen:string):boolean}).inputIsComposer;
+ const envelope=Array.from({length:6},(_,i)=>`  wrapped envelope line ${i+1} of the pasted message body`);
+ const owned=['› [agend-human-id:hmsg-1] first line of the pasted message',...envelope,'','  Context 95% left'].join('\n');
+ const history=['› old echoed prompt','  wrapped history','• Called agend.reply',...envelope,'','  Context 95% left'].join('\n');
+ expect(inputIsComposer(owned)).toBe(true);expect(inputIsComposer(history)).toBe(false);await native.release('detach');
+});

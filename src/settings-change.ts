@@ -391,6 +391,13 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
     if (visibilityPath(path)) return;                                // judged as a whole, by direction (below)
     if (dashboardPath(path)) return;                                 // likewise: the dashboard switches, by direction
+    // S-35: a new Windows agent's CLI and model are what will run on that PC with the person's sign-in; the confirmer sees
+    // them (they were "ordinary" keys and silently left out of the card).
+    if (path.length === 2 && path[0] === "new_instance" && (path[1] === "backend" || path[1] === "model")
+      && (next === undefined || (typeof next === "string" && next.length <= 128 && !/[\p{Cc}\p{Cf}]/u.test(next)))) {
+      if (next !== undefined && next !== "") add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "absent")} → ${settingsDisplay(next)}`);
+      return;
+    }
     if (ordinary(path, old, next) || plainList(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));

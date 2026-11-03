@@ -196,7 +196,9 @@ export async function confirmedWrite(path, { method = "POST", body, key = newKey
 /** A decided request as the write's own answer. */
 export function outcomeResponse(view) {
   if (view.state === "applied") return { ok: true, status: 200, body: (view.outcome && view.outcome.result) || {}, confirmed: view };
-  const reason = (view.outcome && (view.outcome.message || view.outcome.reason_code)) || view.state;
+  const base = (view.outcome && (view.outcome.message || view.outcome.reason_code)) || view.state;
+  // S-35: a failed apply says why (the store bounds and sanitizes the reason).
+  const reason = view.outcome && view.outcome.detail ? `${base} (${view.outcome.detail})` : base;
   return { ok: false, status: 409, body: { error: reason, pending_state: view.state }, confirmed: view };
 }
 

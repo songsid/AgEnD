@@ -200,3 +200,29 @@ it.each(["ordinary multi-line draft", "numbered multi-line draft"])("Grok submit
   expect(await f.daemon.sendDeliveryEnter("initial-submit")).toBe(true);
   expect(f.tmux.sendSpecialKey).toHaveBeenCalledExactlyOnceWith("Enter");
 });
+
+it("S-35: on a native pane, a capture refused while output is still arriving is read again (never typed), then Enter is sent once", async () => {
+  const f = fixture(idle);
+  f.daemon.nativePaneLifecycle = {};
+  let refusals = 2;
+  f.tmux.capturePane.mockImplementation(async () => { f.order.push("capture"); if (refusals-- > 0) throw Error("Pane changed during capture; observe it again"); return idle; });
+  expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(true);
+  expect(f.order).toEqual(["capture", "capture", "capture", "durable", "Enter"]);
+  expect(f.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+});
+
+it("S-35: a native capture that never settles still holds — bounded reads, no Enter, and the log names the reason", async () => {
+  const f = fixture(idle); const warns: unknown[][] = [];
+  f.daemon.nativePaneLifecycle = {}; f.daemon.logger = { info() {}, error() {}, debug() {}, warn: (...a: unknown[]) => warns.push(a) };
+  f.tmux.capturePane.mockImplementation(async () => { f.order.push("capture"); throw Error("Pane changed during capture; observe it again"); });
+  expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(false);
+  expect(f.order.filter(step => step === "capture")).toHaveLength(5); expect(f.order).not.toContain("Enter"); expect(f.mark).not.toHaveBeenCalled();
+  expect(warns.some(([fields]) => (fields as { reason?: string }).reason === "capture_failed")).toBe(true);
+});
+
+it("S-35: a tmux (non-native) capture failure holds at once, as before — no retry loop on Linux panes", async () => {
+  const f = fixture(idle);
+  f.tmux.capturePane.mockImplementation(async () => { f.order.push("capture"); throw Error("tmux gone"); });
+  expect(await f.daemon.sendDeliveryEnter("initial-submit", undefined, f.attempt)).toBe(false);
+  expect(f.order).toEqual(["capture"]);
+});

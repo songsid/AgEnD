@@ -67,3 +67,26 @@ it('the actual switch-off drain waits for owned pane closes, shuts the host, the
  f.setAllowed(false);finished();await pending;await vi.waitFor(()=>expect(f.stop).toHaveBeenCalledOnce());
  expect(order).toEqual(['pane-closed','host-shutdown']);expect(f.child.kill).not.toHaveBeenCalled();expect(fleet.localPaneRelay).toBeNull();
 });
+it('S-35 P1: with no injected open, the relay calls RuntimePaneLink.open bound to its class (its own this.attach), so a default local pane starts',async()=>{
+ // RuntimePaneLink.open ends with `return this.attach(descriptor, options)`. Passed unbound as a default parameter it ran with
+ // this === undefined: the relay exited 0 with no output on every real Windows host (S-35). The stand-in does exactly that tail.
+ const {RuntimePaneLink:Link}=await import('../src/runtime-pane-link.js');const hostBootId=randomUUID(),request=vi.fn(async()=>({hostBootId,panes:[]})),stop=vi.fn(async()=>{});
+ const attach=vi.spyOn(Link as unknown as {attach:(...a:unknown[])=>unknown},'attach').mockImplementation(async()=>({hostBootId,request,stop,connectionChanged:vi.fn()}) as never);
+ let seenThis:unknown='unset';
+ const open=vi.spyOn(Link,'open').mockImplementation(async function(this:unknown,options:PaneLinkOptions){seenThis=this;return (this as {attach:(d:unknown,o:PaneLinkOptions)=>Promise<RuntimePaneLink>}).attach({},options);});
+ try{
+  const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()});
+  stops.push(serveLocalPaneRelay(input,output));
+  const endpoint=await LocalPaneEndpoint.open({scope:'b'.repeat(64),admit:()=>{},maxAgents:()=>4,version:()=>'Codex 0.165.0',launch:async()=>child as never,mcp:vi.fn(async()=>({tools:[]}))});stops.push(()=>endpoint.stop());
+  expect(open).toHaveBeenCalledOnce();expect(seenThis).toBe(Link);expect(attach).toHaveBeenCalledOnce();expect(endpoint.online()).toBe(true);
+  await expect(endpoint.call({action:'list'})).resolves.toHaveProperty('panes',[]);
+ }finally{open.mockRestore();attach.mockRestore();}
+});
+it('S-35: the relay\'s stderr reaches the fleet diagnostic, bounded and with control characters removed (it was discarded)',async()=>{
+ const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()});
+ const seen:string[]=[];
+ const opening=LocalPaneEndpoint.open({scope:'c'.repeat(64),admit:()=>{},maxAgents:()=>4,version:()=>null,launch:async()=>child as never,mcp:vi.fn(async()=>({tools:[]})),diagnostic:text=>seen.push(text)});
+ stderr.write('TypeError: Cannot read properties of undefined (reading \'attach\')\u0007\n');stderr.write('x'.repeat(10_000));output.end();
+ await expect(opening).rejects.toThrow('Local pane relay startup unconfirmed');
+ expect(seen.join('').startsWith("TypeError: Cannot read properties of undefined (reading 'attach') x")).toBe(true);expect(seen.join('').length).toBeLessThanOrEqual(8_192);expect(seen.join('')).not.toMatch(/[\u0000-\u001f]/);
+});

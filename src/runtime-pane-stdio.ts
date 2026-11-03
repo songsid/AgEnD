@@ -7,7 +7,8 @@ import type { Readable, Writable } from "node:stream";
 import { RuntimePaneLink, type PaneLinkOptions } from "./runtime-pane-link.js";
 import { PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT,type PaneStdioOutput } from "./runtime-pane-stdio-protocol.js";
 interface Pending {resolve(value:unknown):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}
-export function serveLocalPaneRelay(input:Readable,output:Writable,open:(options:PaneLinkOptions)=>Promise<RuntimePaneLink>=RuntimePaneLink.open):()=>void{
+export function serveLocalPaneRelay(input:Readable,output:Writable,open:(options:PaneLinkOptions)=>Promise<RuntimePaneLink>=options=>RuntimePaneLink.open(options)):()=>void{
+ // S-35: bound to its class — RuntimePaneLink.open ends with this.attach(...); an unbound default ran it with this === undefined.
  const framer=new PaneStdioFramer(),pending=new Map<string,Pending>();let link:RuntimePaneLink|undefined,epoch="",online=false,maxAgents=4,requests=0,closed=false,initializing=false,lastLease=0,leaseGeneration=0;
  const current=()=>!closed&&online&&performance.now()-lastLease<15_000;
  const stop=()=>{if(closed)return;closed=true;online=false;clearTimeout(initTimer);clearInterval(leaseTimer);for(const row of pending.values()){clearTimeout(row.timer);row.reject(Error("Local pane relay detached"));}pending.clear();void link?.stop();input.off("data",data);input.pause();};

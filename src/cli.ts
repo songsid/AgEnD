@@ -226,6 +226,8 @@ settingsCommand.command("confirm <id>").option("--yes", "Explicit noninteractive
       }
       const result = await requestSettingsConfirmation(DATA_DIR, { action: confirmed ? "confirm" : "reject", ticket: inspected.ticket });
       console.log(result.pending_change.outcome?.message ?? result.pending_change.state);
+      // S-35: the reason a confirmed change failed, on its own line.
+      if (result.pending_change.outcome?.detail) console.log(`  ${result.pending_change.outcome.detail}`);
       if (result.pending_change.state !== "applied" && confirmed) process.exitCode = 1;
     } catch (err) { console.error((err as Error).message); process.exitCode = 1; }
   });
