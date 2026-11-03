@@ -1418,6 +1418,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const run=Promise.resolve().then(async()=>{
       const results=await Promise.allSettled(targets.filter(([,config])=>isNativePaneInstance(config)).map(([name])=>this.stopInstance(name)));
       results.forEach((result,index)=>{if(result.status==="rejected")this.logger.warn({err:result.reason,remote,index},"Windows pane cleanup unconfirmed; its reservation is retained");});
+      try {
+        if(remote)await hub?.shutdownPaneHosts();else await relay?.shutdownHost();
+      } catch(error) { this.logger.warn({err:error,remote},"Windows pane host shutdown unconfirmed; owned state is retained"); }
     }).finally(()=>{
       if(remote){hub?.close();if(this.runtimeHub===hub)this.runtimeHub=null;}
       else{relay?.stop();if(this.localPaneRelay===relay)this.localPaneRelay=null;closeWindowsBridge(this);}

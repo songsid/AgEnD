@@ -1,5 +1,5 @@
 /** Private local pane-host discovery. Never contains a provider or machine credential. */
-import { chmodSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -30,4 +30,10 @@ export function readPaneHostDescriptor(directory: string, scope: string): PaneHo
 }
 export function savePaneHostDescriptor(directory: string, value: PaneHostDescriptor): void {
   atomicWriteFileSync(join(directory, "host.json"), JSON.stringify(value), { mode: 0o600 });
+}
+/** Called under the host's profile lock, after its listener has closed. Never remove another boot's discovery. */
+export function removePaneHostDescriptor(directory: string, value: PaneHostDescriptor): void {
+  const current = readPaneHostDescriptor(directory, value.scope);
+  if (!current || current.hostBootId !== value.hostBootId || current.pid !== value.pid || current.token !== value.token) throw Error("Pane host discovery changed during shutdown");
+  unlinkSync(join(directory, "host.json"));
 }

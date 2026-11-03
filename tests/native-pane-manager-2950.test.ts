@@ -35,6 +35,33 @@ it("only positive close allows a new launch, which resumes the same pinned conve
  const f=await fixture(),first=await f.manager.prepare("native",f.config,()=>{});await first.acquire(()=>{});const original=first.port.ownedSnapshot()!;await first.release("close");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(JSON.parse(readFileSync(join(f.root,"native-panes",f.agent.id,"active.json"),"utf8")).exited.state).toBe("exited");
  const second=await f.manager.prepare("native",f.config,()=>{});await second.acquire(()=>{});expect(second.port.ownedSnapshot()).toMatchObject({sessionId:original.sessionId,state:"running"});expect(second.port.ownedSnapshot()?.launchId).not.toBe(original.launchId);expect(f.spawn).toHaveBeenCalledTimes(2);await second.release("close");
 });
+it("a positive exit while the coordinator is detached releases the slot and resumes the same pin on a new launch",async()=>{
+ const f=await fixture(),first=await f.manager.prepare("native",f.config,()=>{});await first.acquire(()=>{});const old=first.port.ownedSnapshot()!;await first.release("detach");
+ f.process.kill();expect(f.store.get(f.agent.id).activeId).toBe(old.launchId);
+ const next=await new NativePaneManager(f.options).prepare("native",f.config,()=>{});expect(f.store.get(f.agent.id).activeId).toBeUndefined();
+ await next.acquire(()=>{});expect(f.store.get(f.agent.id).threadId).toBe(old.sessionId);expect(next.port.ownedSnapshot()?.launchId).not.toBe(old.launchId);
+ expect(f.spawn).toHaveBeenCalledTimes(2);await next.release("close");
+});
+it("a lost definitive admission refusal is inspected as no-launch and releases only its exact reservation",async()=>{
+ const f=await fixture();
+ for(let i=0;i<4;i++){
+  let exit=(value:any)=>{};f.spawn.mockImplementationOnce(async()=>({...f.process,kill:vi.fn(()=>exit({exitCode:0})),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}}));
+  await f.host.request({action:"open",operationId:randomUUID(),launch:{paneId:randomUUID(),agentId:randomUUID(),instance:`other-${i}`,cli:"codex",cwd:"C:\\scratch",sandbox:"read-only",columns:80,rows:24}});
+ }
+ const native=await f.manager.prepare("native",f.config,()=>{}),call=f.endpoint.call.getMockImplementation()!;
+ f.endpoint.call.mockImplementationOnce(async request=>{const result:any=await call(request);expect(result.noLaunch).toBe(true);throw Error("refusal ACK lost");});
+ await expect(native.acquire(()=>{})).rejects.toThrow("ACK lost");expect(f.store.get(f.agent.id).activeId).toBeDefined();
+ f.endpoint.call.mockClear();await native.release("close");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBeUndefined();
+ expect(f.endpoint.call.mock.calls.some(([request])=>request.action==="open")).toBe(false);expect(f.spawn).toHaveBeenCalledTimes(4);expect(f.process.kill).not.toHaveBeenCalled();
+});
+it("a mismatched exit and an absent inventory row cannot release a retained profile",async()=>{
+ const f=await fixture(),first=await f.manager.prepare("native",f.config,()=>{});await first.acquire(()=>{});const old=first.port.ownedSnapshot()!;await first.release("detach");
+ const call=f.endpoint.call.getMockImplementation()!;
+ f.endpoint.call.mockImplementationOnce(async request=>{const inventory:any=await call(request);return{...inventory,panes:[{...inventory.panes[0],launchId:randomUUID(),state:"exited"}]};});
+ await expect(new NativePaneManager(f.options).prepare("native",f.config,()=>{})).rejects.toThrow("exit scope");expect(f.store.get(f.agent.id).activeId).toBe(old.launchId);
+ f.endpoint.call.mockImplementationOnce(async request=>{const inventory:any=await call(request);return{...inventory,panes:[]};});
+ const next=await new NativePaneManager(f.options).prepare("native",f.config,()=>{});expect(f.store.get(f.agent.id).activeId).toBe(old.launchId);expect(f.spawn).toHaveBeenCalledOnce();await next.release("detach");
+});
 it("changed retained settings or an unknown active profile hold instead of fresh or exec fallback",async()=>{
  const f=await fixture(),first=await f.manager.prepare("native",f.config,()=>{});await first.acquire(()=>{});await first.release("detach");f.config.model="different-model";
  await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("settings differ");expect(f.spawn).toHaveBeenCalledOnce();expect(f.process.kill).not.toHaveBeenCalled();

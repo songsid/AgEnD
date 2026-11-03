@@ -11,7 +11,7 @@ import { validateNativeTask } from "./windows-cli-worker.js";
 import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
-import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
@@ -496,6 +496,17 @@ export class RuntimeCoordinator {
       try { this.send(connection, { v: 1, type: "pane.request", id, maxAgents, request }); }
       catch (error) { this.panePending.delete(id); clearTimeout(timer); reject(error); }
     });
+  }
+  /** Explicit switch-off only, after owned pane closes. A normal hub close/restart never shuts its hosts down. */
+  async shutdownPaneHosts(): Promise<void> {
+    const machines = this.listMachines().filter(machine => machine.status === "online" && machine.paneProtocol === 1);
+    const outcomes = await Promise.allSettled(machines.map(async machine => {
+      const raw = await this.callPane(machine.id, { action: "list" }) as { hostBootId?: unknown; panes?: unknown };
+      if (!raw || typeof raw.hostBootId !== "string" || !/^[a-f0-9-]{36}$/i.test(raw.hostBootId) || !Array.isArray(raw.panes) || raw.panes.length > 4096) throw Error("Pane shutdown inventory is unconfirmed");
+      if (raw.panes.map(validateRuntimePaneSnapshot).some(pane => pane.state !== "exited")) throw Error("Pane shutdown still has live or unconfirmed work");
+      validateRuntimePaneShutdown(await this.callPane(machine.id, { action: "shutdown", hostBootId: raw.hostBootId }), raw.hostBootId);
+    }));
+    if (outcomes.some(result => result.status === "rejected")) throw Error("One or more pane hosts could not confirm empty shutdown; retained work stays reserved");
   }
   async call(machineId: string, operation: RuntimeOperation, payload: unknown): Promise<unknown> {
     if (this.closed || !["probe", "workspace", "run", "cancel", "reconcile", "recover"].includes(operation)) throw Error("Unsupported runtime operation");

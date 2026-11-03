@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
-import { PANE_EDIT_KEYS, validateRuntimePaneRequest, validateRuntimePaneSnapshot, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { PANE_EDIT_KEYS, validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneOpenResult, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type { Pane, PaneHost, PaneInputProof, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 import { validateRuntimeTranscriptReference, validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
@@ -67,10 +67,16 @@ export class RuntimePanePort implements Pane {
   async open(): Promise<{ windowId: string; reattached: boolean }> {
     return this.serialize(async () => {
       if (this.closing || this.record.pendingClose) throw Error("Pane close outcome is retained; inspect its exit before starting again");
-      const reattached = !!this.record.snapshot;
       this.save(); // The open identity exists before the runtime may spawn.
-      const snapshot = this.accept(await this.endpoint.call({ action: "open", operationId: this.record.openId, launch: this.record.launch }));
+      const { reattached, ...raw } = validateRuntimePaneOpenResult(await this.endpoint.call({ action: "open", operationId: this.record.openId, launch: this.record.launch }));
+      if (this.record.snapshot && !reattached) throw Error("Retained pane was not reattached by its host");
+      const snapshot = this.accept(raw);
       this.record.snapshot = snapshot; this.save();
+      // Exit/no-launch proof settles even an interrupted input or close. It is never permission to replay either.
+      if (snapshot.state === "exited") {
+        delete this.record.pending; delete this.record.pendingClose; this.save();
+        throw Error(snapshot.noLaunch ? "Pane admission refused before launch" : "Retained pane has exited");
+      }
       if (this.record.pending) {
         // Exact identity only. The host returns a prior applied result or holds an uncertain input; never resubmits it.
         const result = this.accept(await this.endpoint.call(this.record.pending));

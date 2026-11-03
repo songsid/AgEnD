@@ -84,7 +84,10 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
   private async codexIdentity(assertCurrent: () => void, reattached: boolean): Promise<void> {
     const expected = this.port.ownedSnapshot()?.sessionId;
     // A reattached live pane may be busy. Its durable pin is already tied to that same launch: never type /status into it.
-    if (reattached && expected) return;
+    if (reattached) {
+      if (expected) return;
+      throw Error("Reattached native conversation is unconfirmed; retained status needs inspection, no startup input was sent");
+    }
     // Output can invalidate a capture while the VT parser is settling. Retrying a read cannot replay input;
     // admission, the exact pane owner and the original wall-clock deadline still apply to every attempt.
     const observe = async (deadline: number, history = false): Promise<string> => {

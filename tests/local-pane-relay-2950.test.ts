@@ -1,11 +1,12 @@
 import {afterEach,expect,it,vi} from 'vitest';
 import {PassThrough} from 'node:stream';import {EventEmitter} from 'node:events';import {randomUUID} from 'node:crypto';
 import {LocalPaneEndpoint} from '../src/local-pane-endpoint.js';import {serveLocalPaneRelay} from '../src/runtime-pane-stdio.js';import {PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT} from '../src/runtime-pane-stdio-protocol.js';import type {PaneLinkOptions, RuntimePaneLink} from '../src/runtime-pane-link.js';
+import {FleetManager} from '../src/fleet-manager.js';
 const stops:Array<()=>unknown>=[];afterEach(()=>{for(const f of stops.splice(0).reverse())f();vi.useRealTimers();});
 async function fixture(){
  const input=new PassThrough(),output=new PassThrough(),stderr=new PassThrough();const child=Object.assign(new EventEmitter(),{stdin:input,stdout:output,stderr,kill:vi.fn()}),request=vi.fn<RuntimePaneLink["request"]>(async()=>({hostBootId,panes:[]})),stop=vi.fn(async()=>{}),changed=vi.fn();let settings!:PaneLinkOptions,allowed=true,limit=4;const hostBootId=randomUUID();
  const detach=serveLocalPaneRelay(input,output,async options=>{settings=options;return{hostBootId,request,stop,connectionChanged:changed} as never;});stops.push(detach);const mcp=vi.fn(async()=>({tools:[]}));
- const options={scope:'a'.repeat(64),admit:()=>{if(!allowed)throw Error('off');},maxAgents:()=>limit,version:()=> 'Codex 0.165.0',launch:async()=>child as never,mcp};const endpoint=await LocalPaneEndpoint.open(options);stops.push(()=>endpoint.stop());return{endpoint,settings,options,input,output,child,request,stop,changed,mcp,setAllowed:(value:boolean)=>{allowed=value;},setLimit:(value:number)=>{limit=value;}};
+ const options={scope:'a'.repeat(64),admit:()=>{if(!allowed)throw Error('off');},maxAgents:()=>limit,version:()=> 'Codex 0.165.0',launch:async()=>child as never,mcp};const endpoint=await LocalPaneEndpoint.open(options);stops.push(()=>endpoint.stop());return{endpoint,hostBootId,settings,options,input,output,child,request,stop,changed,mcp,setAllowed:(value:boolean)=>{allowed=value;},setLimit:(value:number)=>{limit=value;}};
 }
 it('fragments UTF-8, coalesces frames and rejects malformed/oversized/arbitrary-command frames',()=>{
  const got:unknown[]=[],framer=new PaneStdioFramer(),epoch=randomUUID(),line=Buffer.from(JSON.stringify({label:'中文'})+'\n');for(const byte of line)framer.feed(Buffer.from([byte]),value=>got.push(value));framer.feed(Buffer.from('{}\n{}\n'),value=>got.push(value));expect(got).toEqual([{label:'中文'},{},{}]);
@@ -35,14 +36,36 @@ it('expired parent progress revokes the relay lease even when its own timer stil
  const endpoint:any=f.endpoint;clearInterval(endpoint.interval);await vi.advanceTimersByTimeAsync(20_000);expect(f.settings.online()).toBe(false);expect(f.endpoint.online()).toBe(false);expect(f.child.kill).not.toHaveBeenCalled();
 });
 
-it('switch cleanup keeps only snapshot/close alive while refusing every input and MCP dispatch',async()=>{
+it('switch cleanup keeps owned inspection/close/shutdown alive while refusing every input and MCP dispatch',async()=>{
  const f=await fixture(),paneId=randomUUID(),launchId=randomUUID();f.endpoint.beginCleanup();f.setAllowed(false);
  expect(f.endpoint.online()).toBe(true);
  await f.endpoint.call({action:'snapshot',paneId,launchId});await f.endpoint.call({action:'close',paneId,launchId,operationId:randomUUID(),sequence:1});
- for(const action of ['list','open','input','key','resize','capture','transcript'])await expect(f.endpoint.call({action} as never)).rejects.toThrow('cleanup');
+ await f.endpoint.call({action:'list'});
+ for(const action of ['open','input','key','resize','capture','transcript'])await expect(f.endpoint.call({action} as never)).rejects.toThrow('cleanup');
  const body={op:'pane-mcp' as const,owner:{hostBootId:randomUUID(),paneId,launchId,agentId:randomUUID(),instance:'native'},helperId:randomUUID(),method:'tools/list' as const,params:{}};
  void f.settings.mcp!(body,()=>true).catch(()=>{});await new Promise(resolve=>setTimeout(resolve,20));expect(f.mcp).not.toHaveBeenCalled();
- expect(f.request.mock.calls.map(([value])=>(value as any).action)).toEqual(['snapshot','close']);expect(f.child.kill).not.toHaveBeenCalled();
+ expect(f.request.mock.calls.map(([value])=>(value as any).action)).toEqual(['snapshot','close','list']);expect(f.child.kill).not.toHaveBeenCalled();
+});
+
+it('explicit host shutdown requires cleanup ownership and a positive exact-boot reply',async()=>{
+ const f=await fixture();await expect(f.endpoint.shutdownHost()).rejects.toThrow('cleanup owner');expect(f.request).not.toHaveBeenCalled();
+ f.endpoint.beginCleanup();f.setAllowed(false);f.request.mockResolvedValueOnce({hostBootId:randomUUID(),shutdown:true});
+ await expect(f.endpoint.shutdownHost()).rejects.toThrow('unconfirmed');expect(f.stop).not.toHaveBeenCalled();
+ f.request.mockResolvedValueOnce({hostBootId:f.hostBootId,shutdown:true});await f.endpoint.shutdownHost();
+ expect(f.request.mock.calls.map(([value])=>value)).toEqual([{action:'shutdown',hostBootId:f.hostBootId},{action:'shutdown',hostBootId:f.hostBootId}]);
+ expect(f.child.kill).not.toHaveBeenCalled();
+});
+it('the actual switch-off drain waits for owned pane closes, shuts the host, then detaches the relay',async()=>{
+ const f=await fixture(),fleet:any=Object.create(FleetManager.prototype),order:string[]=[];
+ Object.defineProperty(fleet,"daemons",{value:new Map()});
+ Object.assign(fleet,{localPaneRelay:f.endpoint,localPaneDrain:null,runtimeHub:null,shuttingDown:true,
+  fleetConfig:{instances:{local:{runtime:'windows',native_adapter:'pane'},remote:{runtime:'windows',native_adapter:'pane',machine_id:randomUUID()}}},
+  lifecycle:{cancelNativeRecovery:vi.fn(),invalidate:vi.fn()},logger:{warn:vi.fn()},emitSseEvent:vi.fn(),getUiStatus:()=>({})});
+ let finished!:()=>void;fleet.stopInstance=vi.fn(async(name:string)=>{expect(name).toBe('local');await new Promise<void>(done=>{finished=done;});order.push('pane-closed');});
+ f.request.mockImplementation(async request=>{expect(request).toEqual({action:'shutdown',hostBootId:f.hostBootId});order.push('host-shutdown');return{hostBootId:f.hostBootId,shutdown:true};});
+ const pending=fleet.drainNativeRuntime(false);await vi.waitFor(()=>expect(fleet.stopInstance).toHaveBeenCalledOnce());expect(f.request).not.toHaveBeenCalled();
+ f.setAllowed(false);finished();await pending;await vi.waitFor(()=>expect(f.stop).toHaveBeenCalledOnce());
+ expect(order).toEqual(['pane-closed','host-shutdown']);expect(f.child.kill).not.toHaveBeenCalled();expect(fleet.localPaneRelay).toBeNull();
 });
 it('S-35 P1: with no injected open, the relay calls RuntimePaneLink.open bound to its class (its own this.attach), so a default local pane starts',async()=>{
  // RuntimePaneLink.open ends with `return this.attach(descriptor, options)`. Passed unbound as a default parameter it ran with

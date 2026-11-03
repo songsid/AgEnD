@@ -7,8 +7,8 @@ import WebSocket, { WebSocketServer } from "ws";
 import { RuntimePaneHost, type RuntimePaneHostOptions } from "./runtime-pane-host.js";
 import { RuntimePaneStore } from "./runtime-pane-store.js";
 import { RuntimeClientStore } from "./runtime-client-store.js";
-import { protectPaneDirectory, savePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
-import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
+import { validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { PaneMcpRelay } from "./runtime-pane-mcp-relay.js";
 export interface PaneServiceOptions {
   directory: string;
@@ -30,7 +30,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   const host = options.createHost?.(hostOptions) ?? new RuntimePaneHost(hostOptions);
   const mcpPending = new Map<string, { epoch: string; socket: WebSocket; accept(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   const cancelMcp = (): void => { for (const row of mcpPending.values()) { clearTimeout(row.timer); row.reject(Error("Pane MCP connection changed")); } mcpPending.clear(); };
-  let port = 0;
+  let port = 0, descriptor: PaneHostDescriptor | undefined, closePromise: Promise<void> | undefined;
   relay = new PaneMcpRelay({ secret: token, endpoint: () => `http://127.0.0.1:${port}/agent`,
     owned: owner => !closing && owner.hostBootId === bootId && host.owns(owner),
     forward: (body, owned) => {
@@ -88,7 +88,19 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
         }
         if (value.type !== "request" || Object.keys(value).some(key => !["type", "id", "epoch", "request"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id) || value.epoch !== leaseEpoch) throw Error("Invalid pane frame");
         pending++;
-        try { const result = await host.request(value.request, () => current === socket && generation === epoch && value.epoch === leaseEpoch && hostOptions.online()); if (current === socket) send(socket, { type: "response", id: value.id, ok: true, result }); }
+        try {
+          const result = await host.request(value.request, () => current === socket && generation === epoch && value.epoch === leaseEpoch && hostOptions.online());
+          if (value.request?.action === "shutdown") {
+            validateRuntimePaneShutdown(result, bootId); closing = true;
+            // Flush the positive no-live-work ACK before closing the link. A lost ACK still closes only an idle host.
+            try {
+              if (current === socket && socket.readyState === WebSocket.OPEN) await new Promise<void>(done => {
+                const timer = setTimeout(done, 1000);
+                socket.send(JSON.stringify({ type: "response", id: value.id, ok: true, result }), () => { clearTimeout(timer); done(); });
+              });
+            } finally { await closeService(); }
+          } else if (current === socket) send(socket, { type: "response", id: value.id, ok: true, result });
+        }
         catch { if (current === socket) send(socket, { type: "response", id: value.id, ok: false, error: "Pane operation refused; refresh its owned state before retrying" }); }
         finally { pending--; }
       })().catch(() => socket.close(1008, "Invalid pane frame"));
@@ -98,17 +110,21 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     if (current) for (const snapshot of output.values()) send(current, { type: "output", snapshot });
     output.clear();
   }, 100);
+  const closeService = (): Promise<void> => closePromise ??= (async () => {
+    closing = true; onlineUntil = 0; clearInterval(flush); cancelMcp();
+    for (const socket of wss.clients) socket.terminate();
+    await host.stop();
+    const closed = new Promise<void>(done => server.close(() => done()));
+    server.closeAllConnections(); await closed; wss.close();
+    try { if (descriptor) removePaneHostDescriptor(options.directory, descriptor); } finally { unlock(); }
+  })();
   try {
     await new Promise<void>((accept, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => { server.removeListener("error", reject); accept(); }); });
     const address = server.address(); if (!address || typeof address === "string") throw Error("Pane host listen failed");
     port = address.port;
-    const descriptor: PaneHostDescriptor = { version: 1, scope: options.scope, hostBootId: bootId, pid: process.pid, port: address.port, token };
+    descriptor = { version: 1, scope: options.scope, hostBootId: bootId, pid: process.pid, port: address.port, token };
     savePaneHostDescriptor(options.directory, descriptor);
-    return { descriptor, close: async () => {
-      if (closing) return; closing = true; onlineUntil = 0; clearInterval(flush); cancelMcp();
-      for (const socket of wss.clients) socket.terminate();
-      await host.stop(); await new Promise<void>(done => server.close(() => done())); wss.close(); unlock();
-    } };
+    return { descriptor, close: closeService };
   } catch (error) { clearInterval(flush); server.close(); wss.close(); unlock(); throw error; }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
