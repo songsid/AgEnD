@@ -335,7 +335,8 @@ export class LoginController {
   async start(backendArg: string, chat: LoginChat, opts: LoginStartOptions = {}): Promise<string | null> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
-    if (!flow) return t("login.unsupported", backendArg);
+    // #2981 §8.2: the API-key sentence is OpenCode's; any other backend without a flow (muse…) gets the generic line.
+    if (!flow) return backend === "opencode" ? t("login.unsupported", backendArg) : t("login.no_remote_flow", backendArg);
     if (flow.remoteLogin === "unsupported") {
       this.audit("declined_unsupported", { backend, requester: chat.userId ?? null });
       return t("login.remote_unsupported_agent_cli", backend, flow.command);
@@ -530,6 +531,13 @@ export class LoginController {
         }
         if (wantTunnel) {
           this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null });
+          return Promise.resolve();
+        }
+        // #2981 (the user's minimal step, hmsg-b2832097): a terminal login (Claude Code, kiro) shows the provider's
+        // sign-in URL and code in the AgEnD terminal the person opens — posting them to chat too was a second link and
+        // code for one sign-in. Only a device flow (codex, grok), which has no terminal link, relays them here.
+        if (!flow.deviceAuth) {
+          this.audit("hint_not_relayed", { backend, requester: userId, hadCode: code !== null, reason: "terminal_shows_it" });
           return Promise.resolve();
         }
         return this.sendHint(chat, shown, url, code);
