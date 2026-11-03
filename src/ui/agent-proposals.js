@@ -12,39 +12,57 @@
 import { appStore } from "/assets/app-store.js";
 
 let installed = false, reading = null, again = false;
+// #2997 review r2 (Prism P2): the newest revision a status frame showed, and the one the list was last READ at — a read
+// that failed (the network, a 5xx, an answer that is not a list) leaves `loaded` behind, so the next status frame (the
+// same revision included) or the bounded retry reads again; never a revision taken as read before a read succeeded.
+let observed = null, loaded = null, retries = 0, retryTimer = null;
+const RETRY_MS = 5000, RETRY_MAX = 5;
 
-/** Read the list again (one read at a time; a change meanwhile reads once more). */
+/** Read the list again (one read at a time; a change meanwhile reads once more). Resolves true when it was read. */
 export function refreshProposals() {
   if (reading) { again = true; return reading; }
+  const want = observed;
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
   reading = fetch("/ui/agent-proposals", { headers: { Accept: "application/json" } })
-    .then((r) => (r.ok ? r.json() : null))
+    .then((r) => { if (!r.ok) throw new Error(`agent proposals: ${r.status}`); return r.json(); })
     .then((d) => {
-      const list = d && Array.isArray(d.proposals) ? d.proposals : [];
-      appStore.set({ proposals: list, proposalsOwner: !!(d && d.owner) });
+      if (!d || !Array.isArray(d.proposals)) throw new Error("agent proposals: not a list");
+      appStore.set({ proposals: d.proposals, proposalsOwner: !!d.owner });
+      loaded = want; retries = 0;
+      return true;
     })
-    .catch(() => null)
-    .finally(() => { reading = null; if (again) { again = false; void refreshProposals(); } });
+    .catch(() => {
+      // Not read: try again a few times on its own (a page whose stream sends no more status frames), and at any status
+      // frame meanwhile (its revision is still ahead of `loaded`).
+      if (retries < RETRY_MAX && !retryTimer) { retries++; retryTimer = setTimeout(() => { retryTimer = null; void refreshProposals(); }, RETRY_MS); }
+      return false;
+    })
+    .finally(() => {
+      reading = null;
+      // A change while it was out (a ping, a newer revision): read once more.
+      if (again) { again = false; void refreshProposals(); }
+    });
   return reading;
 }
 
 /**
- * Once per page: read once, then again on the stream's `agent_proposals` ping (live) and whenever a status frame's
- * `agent_proposals_rev` moves (#2997 review: a page that polls /ui/poll, one that reconnected, and a tab from before the
- * upgrade — whose stream knows no `agent_proposals` event — all still apply status frames). Never on the public link.
+ * Once per page: read once, then again on the stream's `agent_proposals` ping (live) and whenever a status frame shows a
+ * revision the list was not read at yet (#2997 review: a page that polls /ui/poll, one that reconnected, and a tab from
+ * before the upgrade — whose stream knows no `agent_proposals` event — all still apply status frames; r2: until a read
+ * at that revision succeeds). Never on the public link.
  */
 export function installProposals() {
   if (installed) return;
   if (typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1") return;
   installed = true;
   const on = appStore.get().streamOn;
-  let rev = null;
   if (typeof on === "function") {
     on("agent_proposals", () => { void refreshProposals(); });
     on("status", (d) => {
       const next = d && Number.isSafeInteger(d.agent_proposals_rev) ? d.agent_proposals_rev : null;
-      if (next === null || next === rev) return;
-      rev = next;
-      void refreshProposals();                                         // the first frame too: a change before it is not missed
+      if (next === null) return;
+      observed = next;
+      if (observed !== loaded) void refreshProposals();              // a newer revision, or one not yet read successfully
     });
   }
   void refreshProposals();
@@ -65,4 +83,7 @@ export async function decideProposal(id, decision) {
 }
 
 /** For tests: as on a fresh page. */
-export function resetProposals() { installed = false; reading = null; again = false; }
+export function resetProposals() {
+  installed = false; reading = null; again = false; observed = null; loaded = null; retries = 0;
+  if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+}

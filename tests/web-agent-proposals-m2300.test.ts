@@ -300,6 +300,67 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
     expect(gets()).toBe(4);                                                                  // the live ping too
     app.appStore.set({ streamOn: undefined });
   });
+  it("#2997 review r2: a read that failed (5xx, not a list) is never taken as read — the same revision reads again, and succeeds", async () => {
+    const handlers: Record<string, Array<(d: unknown) => void>> = {};
+    app.appStore.set({ streamOn: (name: string, fn: (d: unknown) => void) => { (handlers[name] ??= []).push(fn); return () => {}; } });
+    const status = async (rev: number) => { for (const fn of handlers.status) fn({ instances: [], agent_proposals_rev: rev }); await settle(3); };
+    answer = () => ({ owner: true, proposals: [] });
+    AP.installProposals(); await settle(2);
+    let mode: "500" | "bad" | "ok" = "500";
+    answer = () => mode === "500" ? { __status: 500, error: "boom" } : mode === "bad" ? { owner: true } : { owner: true, proposals: [PROPOSAL] };
+    await status(7);                                                                         // a request came: its read fails
+    expect(app.appStore.get().proposals).toEqual([]);
+    mode = "bad";
+    await status(7);                                                                         // the same revision: read again (an answer with no list: not read)
+    expect(app.appStore.get().proposals).toEqual([]);
+    mode = "ok";
+    await status(7);                                                                         // …again, and now it is read
+    expect(app.appStore.get().proposals.map((x: any) => x.id)).toEqual([PROPOSAL.id]);
+    const before = reqs.length;
+    await status(7);                                                                         // read at 7 now: nothing more
+    expect(reqs.length).toBe(before);
+    app.appStore.set({ streamOn: undefined });
+  });
+  it("#2997 review r2: a failed read retries on its own, a bounded number of times (a stream that sends no more status frames)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let fails = 2;
+      answer = () => (fails-- > 0 ? { __status: 503, error: "busy" } : { owner: true, proposals: [PROPOSAL] });
+      AP.installProposals();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(app.appStore.get().proposals).toEqual([]);
+      await vi.advanceTimersByTimeAsync(5_000);                                              // retry 1: fails
+      await vi.advanceTimersByTimeAsync(5_000);                                              // retry 2: read
+      expect(app.appStore.get().proposals.map((x: any) => x.id)).toEqual([PROPOSAL.id]);
+      const n = reqs.length;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(reqs.length).toBe(n);                                                            // read: no more timers
+      // Always failing: at most 1 + 5 reads, then it waits for a status frame or a ping.
+      AP.resetProposals(); reqs = []; answer = () => ({ __status: 500, error: "down" });
+      AP.installProposals();
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(reqs.length).toBe(6);
+    } finally { vi.useRealTimers(); }
+  });
+  it("#2997 review r2: a newer revision while a read is out reads once more after it; the newer list wins", async () => {
+    const handlers: Record<string, Array<(d: unknown) => void>> = {};
+    app.appStore.set({ streamOn: (name: string, fn: (d: unknown) => void) => { (handlers[name] ??= []).push(fn); return () => {}; } });
+    answer = () => ({ owner: true, proposals: [] });
+    AP.installProposals(); await settle(2);
+    let release!: () => void;
+    const held = new Promise<void>(r => { release = r; });
+    let n = 0;
+    answer = async () => { n++; if (n === 1) { await held; return { owner: true, proposals: [] }; } return { owner: true, proposals: [PROPOSAL] }; };
+    for (const fn of handlers.status) fn({ instances: [], agent_proposals_rev: 7 });   // read 1 goes out, held
+    await settle(2);
+    for (const fn of handlers.status) fn({ instances: [], agent_proposals_rev: 8 });   // newer while it is out: queued, not a 2nd GET now
+    await settle(2);
+    expect(n).toBe(1);
+    release(); await settle(6);
+    expect(n).toBe(2);
+    expect(app.appStore.get().proposals.map((x: any) => x.id)).toEqual([PROPOSAL.id]);
+    app.appStore.set({ streamOn: undefined });
+  });
   it("#2997 review: a click whose POST fails (network) while the request still waits: said here, and the next click is taken", async () => {
     app.appStore.set({ proposals: [PROPOSAL] });
     await mount();
