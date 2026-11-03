@@ -97,7 +97,10 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     let id: string | null = null;
     if (await this.port.beginStatusRequest()) {
       assertCurrent();
-      if (!await this.port.pasteBuffer("/status", { guard: () => { try { assertCurrent(); this.options.admit(); return this.current(); } catch { return false; } } })) throw Error("Native status paste is unconfirmed");
+      // This is an owned CLI command, not user pasted content. Codex treats bracketed slash-command pastes as
+      // literal prompt text; type this fixed, newline-free command only on the composer proved above.
+      assertCurrent(); this.options.admit();
+      if (!this.current() || !await this.port.sendKeys("/status")) throw Error("Native status input is unconfirmed");
       await new Promise(resolve => setTimeout(resolve, 500)); assertCurrent(); this.options.admit();
       if (!await this.port.sendSpecialKey("Enter")) throw Error("Native status submission is unconfirmed");
       until = performance.now() + 15_000;
