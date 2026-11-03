@@ -38,6 +38,7 @@ export interface RuntimePaneSnapshot extends PaneSize {
   sessionId?: string;
   /** Durable positive receipt: admission refused before any native launch factory ran. */
   noLaunch?: true;
+  exitProof?: "system-reboot" | "admin-confirmed";
 }
 /** Host-origin open outcome, never inferred from a coordinator's possibly lost ACK. */
 export type RuntimePaneOpenResult = RuntimePaneSnapshot & { reattached: boolean };
@@ -46,6 +47,7 @@ export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: strin
 export type RuntimePaneRequest =
   | { action: "list" }
   | { action: "shutdown"; hostBootId: string }
+  | { action: "recover"; paneId: string; launchId: string; hostBootId: string; confirmedStopped: true }
   | { action: "open"; operationId: string; launch: RuntimePaneLaunch }
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
   | { action: "snapshot"; paneId: string; launchId: string }
@@ -95,6 +97,10 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
       if (value.history !== undefined) dimension(value.history, 0, 2000);
       if ([value.joined, value.ansi].some(item => item !== undefined && typeof item !== "boolean")) throw Error("Invalid pane capture options");
       break;
+    case "recover":
+      closed(value, ["action", "paneId", "launchId", "hostBootId", "confirmedStopped"]); id(value.hostBootId);
+      if (value.confirmedStopped !== true) throw Error("Explicit stopped-process confirmation is required");
+      break;
     case "snapshot":
       closed(value, ["action", "paneId", "launchId"]); break;
     case "output":
@@ -133,13 +139,13 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
   if (value.action !== "list") {
     if (["input", "key", "edit"].includes(value.action)) dimension(value.expectedSeq, 0, Number.MAX_SAFE_INTEGER);
     id(value.paneId); id(value.launchId);
-    if (!["capture", "snapshot", "output", "transcript", "transcript-baseline", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
+    if (!["capture", "snapshot", "output", "transcript", "transcript-baseline", "bind-session", "recover"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
   }
   return value as unknown as RuntimePaneRequest;
 }
 
 export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot {
-  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "inputRefused", "columns", "rows", "exitCode", "sessionId", "noLaunch"]);
+  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "inputRefused", "columns", "rows", "exitCode", "sessionId", "noLaunch", "exitProof"]);
   if (value.noLaunch !== undefined && (value.noLaunch !== true || value.state !== "exited" || value.commandSequence !== 0 || value.exitCode !== undefined)) throw Error("Invalid pane no-launch receipt");
   if(value.inputRefused!==undefined&&value.inputRefused!==true)throw Error("Invalid pane input refusal");
   id(value.hostBootId); id(value.paneId); id(value.agentId); id(value.launchId);
@@ -149,6 +155,7 @@ export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot
   dimension(value.seq, 0, Number.MAX_SAFE_INTEGER); dimension(value.commandSequence, 0, Number.MAX_SAFE_INTEGER);
   if (typeof value.outputAt !== "number" || !Number.isFinite(value.outputAt) || value.outputAt < 0
     || value.exitCode !== undefined && (!Number.isSafeInteger(value.exitCode) || (value.exitCode as number) < 0)) throw Error("Invalid pane snapshot state");
+  if (value.exitProof !== undefined && (value.state !== "exited" || !["system-reboot", "admin-confirmed"].includes(String(value.exitProof)))) throw Error("Invalid pane exit proof");
   if (value.sessionId !== undefined && !validNativeSessionId("codex", value.sessionId)) throw Error("Invalid pane conversation identity");
   return value as unknown as RuntimePaneSnapshot;
 }

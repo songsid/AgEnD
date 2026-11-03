@@ -36,6 +36,7 @@ export interface NativePaneLifecycleOptions {
   exited(snapshot: RuntimePaneSnapshot): void;
   mcpProof(): "alive" | "dead" | "unknown";
   releaseAuthority(): void;
+  acquired?(): void;
   bindDaemon?(daemon: import("./daemon.js").Daemon): void;
 }
 export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
@@ -161,6 +162,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.checkpointSession(); assertCurrent();
     const pane = this.port.ownedSnapshot(); if (!pane?.sessionId) throw Error("Native conversation is not pinned");
     this.source ??= new RuntimeTranscriptSource(this.transcriptPort, this.port.runtimeTranscriptReference({ sessionId: pane.sessionId, offset: 0, fileId: null, anchor: PANE_TRANSCRIPT_EMPTY_ANCHOR }), !this.options.launch.sessionId);
+    this.options.acquired?.();
     return { pane: this.port, source: this.source, disposition: opened.reattached ? "reattached" : this.options.launch.sessionId ? "resumed" : "fresh" };
   }
   proofReader(reference: RuntimeTranscriptReference, needle: TranscriptNeedle): RuntimeTranscriptDeltaReader {

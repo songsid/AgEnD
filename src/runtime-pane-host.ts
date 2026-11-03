@@ -19,6 +19,7 @@ export type RuntimePaneProcess = Pick<IPty, "pid" | "write" | "resize" | "kill" 
 export interface RuntimePaneHostOptions {
   store: RuntimePaneStore;
   bootId: string;
+  systemBootId?: string;
   online(): boolean;
   maxAgents(): number;
   /** Internal local launch factory, never a field in the remote request. */
@@ -60,7 +61,7 @@ export class RuntimePaneHost {
   }
   async request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (request.action === "list") return { hostBootId: this.options.bootId, panes: this.list() };
+    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true }, panes: this.list() };
     if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
     if (request.action === "shutdown") {
       // No await between the inventory, admission fence and reply. An accepted/queued launch or an unknown
@@ -75,7 +76,7 @@ export class RuntimePaneHost {
     queue.count++; this.queues.set(id, queue);
     const operation = queue.tail.catch(() => {}).then(async () => {
       if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
-      return request.action === "open" ? this.open(request) : this.operate(request, current);
+      return request.action === "open" ? this.open(request) : request.action === "recover" ? this.recover(request) : this.operate(request, current);
     });
     queue.tail = operation;
     try { return await operation; }
@@ -97,6 +98,7 @@ export class RuntimePaneHost {
     if (!Number.isInteger(limit) || limit < 1 || limit > 16) throw Error("Invalid machine pane limit");
     if (launch.launchId && rows.some(row => row.snapshot.launchId === launch.launchId)) throw Error("Pane launch identity already belongs to another pane");
     const record: RuntimePaneRecord = {
+      ...(this.options.systemBootId ? { systemBootId: this.options.systemBootId } : {}),
       launch, openDigest: digest, openOperationId: operationId, bootId: this.options.bootId,
       snapshot: { hostBootId: this.options.bootId, paneId: launch.paneId, agentId: launch.agentId, instance: launch.instance, launchId: launch.launchId ?? randomUUID(), columns: launch.columns, rows: launch.rows,
         state: "starting", seq: 0, outputAt: 0, commandSequence: 0 },
@@ -170,7 +172,17 @@ export class RuntimePaneHost {
       throw error;
     }
   }
-  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" | "shutdown" }>, current: () => boolean): Promise<unknown> {
+  private recover(request: Extract<RuntimePaneRequest, { action: "recover" }>): RuntimePaneSnapshot {
+    const record = this.options.store.get(request.paneId);
+    if (!record || record.snapshot.launchId !== request.launchId || record.snapshot.hostBootId !== request.hostBootId
+      || this.live.has(request.paneId)) throw Error("Recovery needs the exact retained pane with no live host owner");
+    if (record.snapshot.state === "exited") return structuredClone(record.snapshot);
+    if (record.snapshot.state !== "unknown" || record.bootId === this.options.bootId || request.confirmedStopped !== true) throw Error("The retained pane is not eligible for stopped-process recovery");
+    record.snapshot.state = "exited"; record.snapshot.exitProof = "admin-confirmed";
+    delete record.snapshot.exitCode; this.options.store.put(record);
+    return structuredClone(record.snapshot);
+  }
+  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" | "shutdown" | "recover" }>, current: () => boolean): Promise<unknown> {
     const live = this.live.get(request.paneId);
     const stored = this.options.store.get(request.paneId);
     if (!stored || stored.snapshot.launchId !== request.launchId) throw Error("Pane launch identity is stale");

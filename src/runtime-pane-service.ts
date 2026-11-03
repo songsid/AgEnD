@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import WebSocket, { WebSocketServer } from "ws";
 import { RuntimePaneHost, type RuntimePaneHostOptions } from "./runtime-pane-host.js";
+import { readPaneSystemBootId } from "./runtime-pane-boot.js";
 import { RuntimePaneStore } from "./runtime-pane-store.js";
 import { RuntimeClientStore } from "./runtime-client-store.js";
 import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
@@ -22,10 +23,11 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   const bootId = randomUUID(), token = randomBytes(32).toString("hex");
   const unlock = new RuntimeClientStore(options.directory).lock(bootId);
   let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false, leaseEpoch = "";
-  const store = new RuntimePaneStore(join(options.directory, "state")); store.recoverInterrupted();
+  const systemBootId = await readPaneSystemBootId();
+  const store = new RuntimePaneStore(join(options.directory, "state")); store.recoverInterrupted(systemBootId);
   const output = new Map<string, RuntimePaneSnapshot>();
   let relay!: PaneMcpRelay;
-  const hostOptions: RuntimePaneHostOptions = { store, bootId, online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
+  const hostOptions: RuntimePaneHostOptions = { store, bootId, ...(systemBootId ? { systemBootId } : {}), online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
     maxAgents: () => limit, mcpConnection: (owner, tools) => relay.connection(owner, tools), output: snapshot => { output.set(snapshot.paneId, snapshot); } };
   const host = options.createHost?.(hostOptions) ?? new RuntimePaneHost(hostOptions);
   const mcpPending = new Map<string, { epoch: string; socket: WebSocket; accept(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();

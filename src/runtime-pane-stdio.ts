@@ -21,6 +21,7 @@ export function serveLocalPaneRelay(input:Readable,output:Writable,open:(options
    // Keep the path short for PS5.1 Job exit receipts; the descriptor still verifies the full digest.
    const directory=join(process.env.LOCALAPPDATA||join(homedir(),"AppData","Local"),"AgEnD","pane-adapter",value.scope.slice(0,16),"state");
    void open({directory,server:"http://127.0.0.1",machineId:value.scope,online:current,maxAgents:()=>maxAgents,epoch:()=>epoch,
+    disconnected:()=>{stop();output.destroy();},
     output:snapshot=>{if(!link)return;try{send({type:"output",epoch,snapshot});}catch{stop();}},
     mcp:(body,owner)=>new Promise((resolve,reject)=>{
      if(!link||!current()||!owner()||pending.size>=32){reject(Error("Local pane MCP admission refused"));return;}

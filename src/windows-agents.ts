@@ -1,3 +1,4 @@
+import type { NativePaneRecovery } from "./native-pane-recovery.js";
 /** Named Windows CLI conversations; independent of Linux/tmux instances. Local administrator only. */
 import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
@@ -19,6 +20,7 @@ export interface WindowsAgent {
   activeId?: string; turns: WindowsTurn[];
   /** Also occupies activeId so an older exec-only coordinator fails closed after rollback. */
   paneLaunchId?: string;
+  paneRecovery?: NativePaneRecovery;
   paused?: boolean;
   /** Once linked, removal from fleet.yaml must not import this provider state again. */
   fleet_instance?: string;
@@ -101,6 +103,11 @@ export class WindowsAgents {
     if (!agent.activeId) this.admitMachineSlot(agent);
     if (agent.paneLaunchId !== launchId || agent.activeId !== launchId) this.change(() => { agent.activeId = launchId; agent.paneLaunchId = launchId; });
     return structuredClone(agent);
+  }
+  setPaneRecovery(id: string, recovery: NativePaneRecovery | undefined): void {
+    const agent = this.find(id);
+    if (JSON.stringify(agent.paneRecovery) === JSON.stringify(recovery)) return;
+    this.change(() => { if (recovery) agent.paneRecovery = structuredClone(recovery); else delete agent.paneRecovery; });
   }
   pinPaneSession(id: string, launchId: string, sessionId: string): void {
     const agent = this.find(id);

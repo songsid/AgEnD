@@ -90,3 +90,10 @@ it('S-35: the relay\'s stderr reaches the fleet diagnostic, bounded and with con
  await expect(opening).rejects.toThrow('Local pane relay startup unconfirmed');
  expect(seen.join('').startsWith("TypeError: Cannot read properties of undefined (reading 'attach') x")).toBe(true);expect(seen.join('').length).toBeLessThanOrEqual(8_192);expect(seen.join('')).not.toMatch(/[\u0000-\u001f]/);
 });
+
+it('host loss invalidates the shared local relay so another agent can discover a host without replay',async()=>{
+ const f=await fixture();expect(f.endpoint.online()).toBe(true);
+ f.settings.disconnected!();await vi.waitFor(()=>expect(f.endpoint.online()).toBe(false));
+ await expect(f.endpoint.call({action:'list'})).rejects.toThrow('unavailable');
+ expect(f.request).not.toHaveBeenCalled();expect(f.child.kill).not.toHaveBeenCalled();
+});

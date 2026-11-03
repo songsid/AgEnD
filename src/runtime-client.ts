@@ -237,6 +237,8 @@ export class RuntimeClient {
   }
   private publish(job: RuntimeStoredJob): void { if (this.online()) this.send({ v: 1, type: "task", seq: job.seq, task: job.task }); }
   private panes(): Promise<RuntimePaneHost | RuntimePaneLink> {
+    // A detached host link is not a live cache. Rediscover on the next independent request; never replay this RPC.
+    if (this.paneHost && "connected" in this.paneHost && !this.paneHost.connected()) { this.paneHost = null; this.paneOpening = null; }
     if (!this.paneOpening) {
       const output: RuntimePaneHostOptions["output"] = snapshot => { if (this.online()) this.send({ v: 1, type: "pane.output", snapshot }); };
       if (this.options.createPaneHost) this.paneOpening = import("./runtime-pane-store.js").then(({ RuntimePaneStore }) => {
@@ -247,6 +249,8 @@ export class RuntimeClient {
         directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
         online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, output, mcp: (body, current) => this.paneMcp(body, current),
       })).then(host => this.paneHost = host);
+      const opening = this.paneOpening;
+      void opening.catch(() => { if (this.paneOpening === opening) this.paneOpening = null; });
     }
     return this.paneOpening;
   }

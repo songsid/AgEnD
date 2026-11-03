@@ -173,3 +173,19 @@ it('streams only the owned pane raw output into its ordinary diagnostic log acro
   await expect(f.hub().callPane(f.machineId,{action:'output',paneId:launch.paneId,launchId:other.launchId,offset:0})).rejects.toThrow('stale');expect(f.processes[0].write).not.toHaveBeenCalled();
  }finally{port.closeOutput();}
 });
+it("a dead paired host link is rediscovered only on the next independent request",async()=>{
+ const f=await fixture(),client:any=f.client;client.options.createPaneHost=undefined;
+ let connected=true;const firstBoot=randomUUID(),nextBoot=randomUUID();
+ const oldRequest=vi.fn(async()=>({hostBootId:firstBoot,panes:[]})),nextRequest=vi.fn(async()=>({hostBootId:nextBoot,panes:[]}));
+ const open=client.options.openPaneLink=vi.fn().mockResolvedValueOnce({connected:()=>connected,request:oldRequest,stop:async()=>{}}).mockResolvedValueOnce({connected:()=>true,request:nextRequest,stop:async()=>{}});
+ expect(await f.hub().callPane(f.machineId,{action:'list'})).toMatchObject({hostBootId:firstBoot});connected=false;
+ expect(await f.hub().callPane(f.machineId,{action:'list'})).toMatchObject({hostBootId:nextBoot});
+ expect(open).toHaveBeenCalledTimes(2);expect(oldRequest).toHaveBeenCalledOnce();expect(nextRequest).toHaveBeenCalledOnce();expect(f.processes).toHaveLength(0);
+});
+it("a rejected paired host attachment cannot poison later independent discoveries",async()=>{
+ const f=await fixture(),client:any=f.client;client.options.createPaneHost=undefined;
+ const boot=randomUUID(),request=vi.fn(async()=>({hostBootId:boot,panes:[]}));
+ const open=client.options.openPaneLink=vi.fn().mockRejectedValueOnce(Error('attachment failed')).mockResolvedValueOnce({connected:()=>true,request,stop:async()=>{}});
+ await expect(f.hub().callPane(f.machineId,{action:'list'})).rejects.toThrow('attachment failed');expect(request).not.toHaveBeenCalled();
+ expect(await f.hub().callPane(f.machineId,{action:'list'})).toMatchObject({hostBootId:boot});expect(open).toHaveBeenCalledTimes(2);expect(request).toHaveBeenCalledOnce();
+});
