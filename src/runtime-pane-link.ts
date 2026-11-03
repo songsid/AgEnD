@@ -7,7 +7,7 @@ import { spawn } from "./child-process.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
 import { protectPaneDirectory, readPaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
-import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type {} from "./runtime-pane-service.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 export interface PaneLinkOptions {
@@ -117,7 +117,7 @@ export class RuntimePaneLink {
   }
   request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if(this.cleanupOnly&&!["list","snapshot","close"].includes(request.action))return Promise.reject(Error("Pane link only permits owned retirement"));
+    if(this.cleanupOnly&&!["list","snapshot","close","shutdown"].includes(request.action))return Promise.reject(Error("Pane link only permits owned retirement"));
     if (!current() || this.closed || this.socket.readyState !== WebSocket.OPEN || !(this.cleanupOnly || this.options.online())) return Promise.reject(Error("Pane client is disconnected"));
     if (this.pending.size >= 64 || this.socket.bufferedAmount > 256 * 1024) return Promise.reject(Error("Pane client backpressure limit"));
     this.lease();
@@ -157,6 +157,8 @@ export class RuntimePaneLink {
       const exited=validateRuntimePaneSnapshot(await request({action:"close",paneId:current.paneId,launchId:current.launchId,sequence:current.commandSequence+1,operationId:randomUUID()}));
       if(exited.hostBootId!==this.hostBootId||exited.paneId!==pane.paneId||exited.launchId!==pane.launchId||exited.agentId!==pane.agentId||exited.instance!==pane.instance||exited.state!=="exited")throw Error("Owned pane retirement exit is unconfirmed");
     }
+    // Only explicit disable/revoke calls retireOwned. A transport/coordinator restart merely detaches via stop().
+    validateRuntimePaneShutdown(await request({action:"shutdown",hostBootId:this.hostBootId}),this.hostBootId);
   }
   async stop(): Promise<void> { this.closePending(); this.socket.terminate(); }
 }

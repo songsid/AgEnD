@@ -64,6 +64,7 @@ export class RuntimePaneStore {
           || !Number.isSafeInteger(row.snapshot.commandSequence) || row.snapshot.commandSequence < 0
           || !/^[a-f0-9]{64}$/.test(row.openDigest) || !/^[a-f0-9-]{36}$/i.test(row.openOperationId)
           || typeof row.bootId !== "string" || (row.pid !== undefined && (!Number.isSafeInteger(row.pid) || row.pid < 1))
+          || row.snapshot.noLaunch && (row.pid !== undefined || row.lastCommand !== undefined)
           || (row.lastCommand && (!/^[a-f0-9-]{36}$/i.test(row.lastCommand.id) || !/^[a-f0-9]{64}$/.test(row.lastCommand.digest)
             || !["prepared", "applied"].includes(row.lastCommand.state)))) throw Error("Invalid pane record");
       }

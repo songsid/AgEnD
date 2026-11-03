@@ -89,16 +89,17 @@ describe("#2950 persistent pane ownership and replay", () => {
     const fixture = setup(2);
     const first = await fixture.open(), second = await fixture.open();
     expect(first.agentId).not.toBe(second.agentId);
-    await expect(fixture.open()).rejects.toThrow("limit");
+    expect(await fixture.open()).toMatchObject({state:"exited",noLaunch:true});
     fixture.limit(1);
-    expect(fixture.host.list()).toHaveLength(2);
+    expect(fixture.host.list().filter(row=>row.state!=="exited")).toHaveLength(2);
     expect(fixture.processes.every(process => process.kill.mock.calls.length === 0)).toBe(true);
-    await expect(fixture.open()).rejects.toThrow("limit");
+    expect(await fixture.open()).toMatchObject({state:"exited",noLaunch:true});
   });
   it("parallel opens cannot oversubscribe a single machine slot", async () => {
     const fixture = setup(1);
     const results = await Promise.allSettled([fixture.open(), fixture.open()]);
-    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(result => result.status === "fulfilled" && result.value.state === "running")).toHaveLength(1);
+    expect(results.filter(result => result.status === "fulfilled" && result.value.noLaunch)).toHaveLength(1);
     expect(fixture.spawn).toHaveBeenCalledOnce();
   });
   it("keeps an admitted launch alive when its connection drops during native startup", async () => {
@@ -113,9 +114,9 @@ describe("#2950 persistent pane ownership and replay", () => {
   it("joins duplicate opens without starting another CLI and keeps one pane per agent", async () => {
     const fixture = setup(), config = launch(), operationId = randomUUID();
     const first = await fixture.open(config, operationId);
-    expect(await fixture.open(config, operationId)).toEqual(first);
+    expect(await fixture.open(config, operationId)).toEqual({...first,reattached:true});
     expect(fixture.spawn).toHaveBeenCalledOnce();
-    await expect(fixture.open({ ...config, paneId: randomUUID() })).rejects.toThrow("already");
+    expect(await fixture.open({ ...config, paneId: randomUUID() })).toMatchObject({state:"exited",noLaunch:true});
     await expect(fixture.open(config)).rejects.toThrow("another launch");
   });
   it("records a command before writing and duplicate response recovery never repeats Enter", async () => {
@@ -164,7 +165,7 @@ describe("#2950 persistent pane ownership and replay", () => {
     const spawn = vi.fn(async () => fakeProcess());
     const host = new RuntimePaneHost({ store: restarted, bootId: randomUUID(), online: () => true, maxAgents: () => 4, spawn });
     await expect(host.request({ action: "open", launch: config, operationId })).rejects.toThrow("unknown");
-    await expect(host.request({ action: "open", launch: { ...config, paneId: randomUUID() }, operationId: randomUUID() })).rejects.toThrow("already");
+    expect(await host.request({ action: "open", launch: { ...config, paneId: randomUUID() }, operationId: randomUUID() })).toMatchObject({state:"exited",noLaunch:true});
     expect(spawn).not.toHaveBeenCalled();
     await host.request({ action: "open", launch: launch(), operationId: randomUUID() });
     expect(spawn).toHaveBeenCalledOnce();

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
 import { RuntimePaneStore, type RuntimePaneRecord } from "./runtime-pane-store.js";
 import { RuntimePaneScreen } from "./runtime-pane-screen.js";
-import { PANE_EDIT_KEYS, validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { PANE_EDIT_KEYS, validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot, type RuntimePaneOpenResult } from "./runtime-pane-protocol.js";
 import { spawnNativePane } from "./runtime-pane-process.js";
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
@@ -62,6 +62,13 @@ export class RuntimePaneHost {
     const request = validateRuntimePaneRequest(raw);
     if (request.action === "list") return { hostBootId: this.options.bootId, panes: this.list() };
     if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
+    if (request.action === "shutdown") {
+      // No await between the inventory, admission fence and reply. An accepted/queued launch or an unknown
+      // reservation prevents shutdown; disconnect/lease loss alone never tears down a persistent host.
+      if (request.hostBootId !== this.options.bootId || this.queues.size || this.list().some(pane => pane.state !== "exited")) throw Error("Pane host still has live or unconfirmed work");
+      this.closing = true;
+      return { hostBootId: this.options.bootId, shutdown: true };
+    }
     const id = request.action === "open" ? request.launch.paneId : request.paneId;
     const queue = this.queues.get(id) ?? { tail: Promise.resolve(), count: 0 };
     if (queue.count >= 16) throw Error("Pane operation queue is full");
@@ -74,7 +81,7 @@ export class RuntimePaneHost {
     try { return await operation; }
     finally { if (--queue.count === 0 && this.queues.get(id) === queue) this.queues.delete(id); }
   }
-  private async open(request: Extract<RuntimePaneRequest, { action: "open" }>): Promise<RuntimePaneSnapshot> {
+  private async open(request: Extract<RuntimePaneRequest, { action: "open" }>): Promise<RuntimePaneOpenResult> {
     const { launch, operationId } = request;
     const digest = RuntimePaneStore.digest(launch);
     const existing = this.options.store.get(launch.paneId);
@@ -82,14 +89,12 @@ export class RuntimePaneHost {
       if (existing.openOperationId !== operationId || existing.openDigest !== digest) throw Error("Pane id already belongs to another launch");
       const live = this.live.get(launch.paneId);
       if (!live && existing.snapshot.state !== "exited") throw Error("Pane launch outcome is unknown; no replacement was started");
-      return structuredClone(live?.record.snapshot ?? existing.snapshot);
+      return { ...structuredClone(live?.record.snapshot ?? existing.snapshot), reattached: true };
     }
     this.list();
     const rows = this.options.store.list();
-    if (rows.some(row => row.launch.agentId === launch.agentId && row.snapshot.state !== "exited")) throw Error("This agent already has a live or uncertain pane");
     const limit = this.options.maxAgents();
     if (!Number.isInteger(limit) || limit < 1 || limit > 16) throw Error("Invalid machine pane limit");
-    if (rows.filter(row => row.snapshot.state !== "exited").length >= limit) throw Error("Machine concurrent-agent limit reached");
     if (launch.launchId && rows.some(row => row.snapshot.launchId === launch.launchId)) throw Error("Pane launch identity already belongs to another pane");
     const record: RuntimePaneRecord = {
       launch, openDigest: digest, openOperationId: operationId, bootId: this.options.bootId,
@@ -98,6 +103,14 @@ export class RuntimePaneHost {
     };
     const sessionId = launch.sessionId ?? (launch.cli === "claude-code" ? record.snapshot.launchId : undefined);
     if (sessionId) record.snapshot.sessionId = sessionId;
+    if (rows.some(row => row.launch.agentId === launch.agentId && row.snapshot.state !== "exited")
+      || rows.filter(row => row.snapshot.state !== "exited").length >= limit) {
+      // A durable tombstone consumes this open identity. Even a lost refusal ACK cannot turn its retry into a launch.
+      // Never issue this proof for a spawn exception: the factory may have created a child before throwing.
+      record.snapshot.state = "exited"; record.snapshot.noLaunch = true;
+      this.options.store.put(record);
+      return { ...structuredClone(record.snapshot), reattached: false };
+    }
     // Synchronous reservation before the first await: parallel opens cannot oversubscribe the machine.
     this.options.store.put(record);
     let process: RuntimePaneProcess | undefined;
@@ -148,7 +161,7 @@ export class RuntimePaneHost {
       });
       this.options.store.put(record);
       if (this.closing) { process.kill(); throw Error("Pane host stopped during launch"); }
-      return structuredClone(record.snapshot);
+      return { ...structuredClone(record.snapshot), reattached: false };
     } catch (error) {
       if (process) { try { process.kill(); } catch { /* retain uncertain reservation */ } }
       // A launch factory may fail after creating a native child. Only onExit proves there is no process.
@@ -157,7 +170,7 @@ export class RuntimePaneHost {
       throw error;
     }
   }
-  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" }>, current: () => boolean): Promise<unknown> {
+  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" | "shutdown" }>, current: () => boolean): Promise<unknown> {
     const live = this.live.get(request.paneId);
     const stored = this.options.store.get(request.paneId);
     if (!stored || stored.snapshot.launchId !== request.launchId) throw Error("Pane launch identity is stale");

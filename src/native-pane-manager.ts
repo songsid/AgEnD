@@ -72,7 +72,21 @@ export class NativePaneManager {
   const hostBootId=(inventory as any).hostBootId as string,panes=((inventory as any).panes as unknown[]).map(validateRuntimePaneSnapshot);
   const sameAgent=panes.filter(row=>row.agentId===id&&row.state!=="exited");
   if(sameAgent.length>1||sameAgent.some(row=>!manifest||row.paneId!==manifest.launch.paneId||row.launchId!==manifest.launch.launchId||row.instance!==name))throw Error("Another live or unknown native pane must be reconciled first");
+  if(manifest&&!manifest.exited){
+   const matches=panes.filter(row=>row.paneId===manifest!.launch.paneId);
+   if(matches.length>1)throw Error("Native host returned duplicate retained panes");
+   const ended=matches[0],old=manifest.launch;
+   if(ended?.state==="exited"){
+    const session=agent.threadId??old.sessionId??(old.cli==="claude-code"?old.launchId:undefined);
+    if(ended.agentId!==id||ended.instance!==name||ended.launchId!==old.launchId||session!==undefined&&ended.sessionId!==session)throw Error("Native retained exit scope differs");
+    // The host reconciles exact helper exits before listing. Persist its positive evidence before releasing the slot.
+    manifest={...manifest,exited:ended};this.save(file,manifest);
+   }
+  }
   if(manifest?.exited){
+   if(!manifest.exited.noLaunch&&manifest.exited.sessionId&&!agent.threadId&&agent.activeId){
+    this.options.store.pinPaneSession(id,manifest.exited.launchId,manifest.exited.sessionId);agent=this.options.store.get(id);
+   }
    if(agent.activeId){this.options.store.releasePane(id,manifest.exited);agent=this.options.store.get(id);}
    manifest=null;
   }

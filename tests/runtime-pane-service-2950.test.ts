@@ -87,14 +87,15 @@ it('explicit retirement after coordinator loss closes only this authenticated ho
  const f=await setup();let online=true;const client=await RuntimePaneLink.attach(f.service.descriptor,{online:()=>online,maxAgents:()=>4});cleanup.push(()=>client.stop());
  for(let i=0;i<2;i++)await client.request({action:'open',launch:f.launch(),operationId:randomUUID()});online=false;await client.retireOwned();expect(f.processes).toHaveLength(2);for(const process of f.processes){expect(process.kill).toHaveBeenCalledOnce();expect(process.write).not.toHaveBeenCalled();}
  await expect(client.request({action:'open',launch:f.launch(),operationId:randomUUID()})).rejects.toThrow('retirement');
- const inventory:any=await client.request({action:'list'});expect(inventory.panes.every((pane:any)=>pane.state==='exited')).toBe(true);
+ await vi.waitFor(()=>expect(readPaneHostDescriptor(f.directory,'a'.repeat(64))).toBeNull());
+ await expect(client.request({action:'list'})).rejects.toThrow();
 });
 it('retirement refuses a changed host before any close or input request',async()=>{
  const f=await setup(),client=await f.connect();await client.request({action:'open',launch:f.launch(),operationId:randomUUID()});const original=client.request.bind(client);
  vi.spyOn(client,'request').mockImplementation(async(raw:any)=>raw.action==='list'?{hostBootId:randomUUID(),panes:[]}:original(raw));await expect(client.retireOwned()).rejects.toThrow('inventory');expect(f.processes[0].kill).not.toHaveBeenCalled();expect(f.processes[0].write).not.toHaveBeenCalled();
 });
 it('retirement does not promote a mismatched or nonterminal close response into success',async()=>{
- const f=await setup(),client=await f.connect(),pane:any=await client.request({action:'open',launch:f.launch(),operationId:randomUUID()});const original=client.request.bind(client);
+ const f=await setup(),client=await f.connect(),{reattached,...pane}=await client.request({action:'open',launch:f.launch(),operationId:randomUUID()}) as any;const original=client.request.bind(client);
  vi.spyOn(client,'request').mockImplementation((raw:any)=>raw.action==='close'?Promise.resolve({...pane,state:'running'}):original(raw));await expect(client.retireOwned()).rejects.toThrow('exit is unconfirmed');expect(f.processes[0].kill).not.toHaveBeenCalled();
 });
 it('a stalled retirement is bounded and sends no replacement command after its deadline',async()=>{
@@ -102,6 +103,6 @@ it('a stalled retirement is bounded and sends no replacement command after its d
 });
 
 it('retirement keeps positive exited history from an older host without trying to retire it again',async()=>{
- const f=await setup(),client=await f.connect(),pane:any=await client.request({action:'open',launch:f.launch(),operationId:randomUUID()}),original=client.request.bind(client);
+ const f=await setup(),client=await f.connect(),{reattached,...pane}=await client.request({action:'open',launch:f.launch(),operationId:randomUUID()}) as any,original=client.request.bind(client);
  vi.spyOn(client,'request').mockImplementation(async(raw:any)=>{const result:any=await original(raw);return raw.action==='list'?{...result,panes:[...result.panes,{...pane,paneId:randomUUID(),launchId:randomUUID(),hostBootId:randomUUID(),state:'exited',exitCode:0}]}:result;});await client.retireOwned();expect(f.processes[0].kill).toHaveBeenCalledOnce();
 });

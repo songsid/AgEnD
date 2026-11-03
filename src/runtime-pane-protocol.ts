@@ -36,10 +36,16 @@ export interface RuntimePaneSnapshot extends PaneSize {
   inputRefused?: true;
   exitCode?: number;
   sessionId?: string;
+  /** Durable positive receipt: admission refused before any native launch factory ran. */
+  noLaunch?: true;
 }
+/** Host-origin open outcome, never inferred from a coordinator's possibly lost ACK. */
+export type RuntimePaneOpenResult = RuntimePaneSnapshot & { reattached: boolean };
+export interface RuntimePaneShutdown { hostBootId: string; shutdown: true }
 export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: string }
 export type RuntimePaneRequest =
   | { action: "list" }
+  | { action: "shutdown"; hostBootId: string }
   | { action: "open"; operationId: string; launch: RuntimePaneLaunch }
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
   | { action: "snapshot"; paneId: string; launchId: string }
@@ -82,6 +88,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
   if (!object(value) || typeof value.action !== "string") throw Error("Invalid pane request");
   switch (value.action) {
     case "list": closed(value, ["action"]); break;
+    case "shutdown": closed(value, ["action", "hostBootId"]); id(value.hostBootId); return value as unknown as RuntimePaneRequest;
     case "open": closed(value, ["action", "operationId", "launch"]); id(value.operationId); return { action: "open", operationId: value.operationId, launch: validateRuntimePaneLaunch(value.launch) };
     case "capture":
       closed(value, ["action", "paneId", "launchId", "history", "joined", "ansi"]);
@@ -132,7 +139,8 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
 }
 
 export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot {
-  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "inputRefused", "columns", "rows", "exitCode", "sessionId"]);
+  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "inputRefused", "columns", "rows", "exitCode", "sessionId", "noLaunch"]);
+  if (value.noLaunch !== undefined && (value.noLaunch !== true || value.state !== "exited" || value.commandSequence !== 0 || value.exitCode !== undefined)) throw Error("Invalid pane no-launch receipt");
   if(value.inputRefused!==undefined&&value.inputRefused!==true)throw Error("Invalid pane input refusal");
   id(value.hostBootId); id(value.paneId); id(value.agentId); id(value.launchId);
   if (typeof value.instance !== "string" || !/^[\p{L}\p{N}_.-]{1,160}$/u.test(value.instance)
@@ -143,4 +151,15 @@ export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot
     || value.exitCode !== undefined && (!Number.isSafeInteger(value.exitCode) || (value.exitCode as number) < 0)) throw Error("Invalid pane snapshot state");
   if (value.sessionId !== undefined && !validNativeSessionId("codex", value.sessionId)) throw Error("Invalid pane conversation identity");
   return value as unknown as RuntimePaneSnapshot;
+}
+
+export function validateRuntimePaneOpenResult(value: unknown): RuntimePaneOpenResult {
+  if (!object(value) || typeof value.reattached !== "boolean") throw Error("Pane open disposition is unconfirmed");
+  const { reattached, ...snapshot } = value;
+  return { ...validateRuntimePaneSnapshot(snapshot), reattached };
+}
+export function validateRuntimePaneShutdown(value: unknown, hostBootId: string): RuntimePaneShutdown {
+  closed(value, ["hostBootId", "shutdown"]);
+  if (value.hostBootId !== hostBootId || value.shutdown !== true) throw Error("Pane host shutdown is unconfirmed");
+  return value as unknown as RuntimePaneShutdown;
 }
