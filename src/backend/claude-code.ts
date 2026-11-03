@@ -926,8 +926,6 @@ const FILE_SEND_QUESTION = /(?:Do you want to proceed\?|Choose No, and no files 
 export const CLAUDE_FILE_SEND_PATTERN = /Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\./;
 const FILE_SEND_MARK = /^[ \t│┃]*\* (?:the file at )?"|^[ \t│┃]*\* Name may not be what it looks like\./;
 const FILE_SEND_OPTION = /^[ \t]*[❯›]?[ \t]*(?:\d{1,2}\.[ \t]+)?(Yes|No)\b/;
-/** The menu's first row: a numbered option, or an option the cursor is on (an unnumbered, default-No menu). */
-const FILE_SEND_START = /^[ \t]*(?:[❯›][ \t]*(?:\d{1,2}\.[ \t]+)?|[ \t]*\d{1,2}\.[ \t]+)(?:Yes|No)\b|^[ \t]*[❯›]?[ \t]*\d{1,2}\.[ \t]/;
 export function claudeFileSendCardActive(pane: string): boolean {
   const rows = claudeRows(pane).filter(row => row.trim() !== "");
   if (!rows.length || !/^[ \t]*Esc(?:ape)? to cancel\b/.test(rows[rows.length - 1])) return false;
@@ -939,8 +937,9 @@ export function claudeFileSendCardActive(pane: string): boolean {
   for (let k = 1; k < block.length; k++) {
     const menu = block.slice(block.length - k), above = block.slice(0, block.length - k);
     const titles: string[] = [];
-    // An unnumbered (default-No) menu whose cursor moved down starts on a plain option row: the cursor is below it.
-    let parses = FILE_SEND_START.test(menu[0]) || (FILE_SEND_OPTION.test(menu[0]) && menu.some(row => /^[ \t]*[❯›]/.test(row)));
+    // The menu's first row is an option. (A wrapped question row may begin "No," too: the split that makes it one
+    // leaves "…Choose" as the question, which is no file-send question, so that split never wins.)
+    let parses = FILE_SEND_OPTION.test(menu[0]) || /^[ \t]*[❯›]?[ \t]*\d{1,2}\.[ \t]/.test(menu[0]);
     for (const row of menu) {
       const option = FILE_SEND_OPTION.exec(row);
       if (option) { titles.push(option[1]); continue; }
