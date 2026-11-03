@@ -508,12 +508,14 @@ function BottomTabs({ route, viewOnly }) {
   </nav>`;
 }
 
-function ConnectionLine() {
+export function ConnectionLine() {
   const { connection, hydration, retryHydration } = useStore(appStore);
   // A late catch-up that is not done: the chat may be missing what was open before it loaded (#1425 review).
+  // M-2260: never a dead end — beside Try again, a reload reads everything current, whatever kept the catch-up from it.
   if (hydration === "retrying" || hydration === "failed") {
     return html`<div data-trust="status" class="conn" role="status">${hydration === "failed" ? t("app.hydrateFailed") : t("app.hydrating")}
-      ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}</div>`;
+      ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}
+      ${hydration === "failed" ? html` <button type="button" class="btn btn-sm" onClick=${() => location.reload()}>${t("app.reloadPage")}</button>` : null}</div>`;
   }
   if (connection === "reconnecting") return html`<${Reconnecting} />`;
   // #1603: polling is a working transport (the public link polls by design; a buffering proxy makes a page poll), not

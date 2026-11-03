@@ -472,6 +472,6 @@ describe("Discord forwarded message images", () => {
     }));
     const fm = await classic(got, false);
     expect(fm.forwardToClassicInstance).toHaveBeenCalledOnce();
-    expect(ClassicChannelManager.logMessage).toHaveBeenCalledWith("classic-room", expect.any(String), expect.any(String), expect.any(Date), "the forwarded words");
+    expect(ClassicChannelManager.logMessage).toHaveBeenCalledWith("classic-room", expect.any(String), expect.any(String), expect.any(Date), "the forwarded words", expect.any(String));   // #2940: and its message id
   });
 });

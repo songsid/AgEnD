@@ -70,8 +70,10 @@ it.each(['startup','runtime'] as const)('native Claude %s trust keys require the
 });
 
 it('Windows Claude shell choices are held and exposed verbatim, never automatically answered',()=>{
- const backend=createNativePaneBackend('claude-code',state),screen='PowerShell command\nnode -e "scratch sentinel"\nDo you want to proceed?\n❯ 1. Yes\n  2. Yes, allow this command\n  3. No\nEsc to cancel · Tab to amend\n';
+ // The real Windows Claude 2.1.316 PowerShell card (captured in S-35, identifiers replaced): #2968 requires the complete request
+ // shape — its top rule and the dashed rules around the command — before it is a card at all.
+ const backend=createNativePaneBackend('claude-code',state),screen=readFileSync(new URL('./fixtures/native-pane-claude-windows-shell-card.txt',import.meta.url),'utf8');
  const dialog=backend.getRuntimeDialogs!().find(row=>row.description.startsWith('Claude Windows shell permission'))!;
- expect(dialog.isActive?.(screen)).toBe(true);expect(dialog.isActive?.(screen.replace('3. No','3. Type here to tell Claude what to do differently'))).toBe(true);const painted=dialog.remoteCard?.(screen.replace('3. No','3. Nostale scratch fragment'));if(painted?.kind!=='question')throw Error('Expected the captured question');expect(painted.options[2]?.title).toBe('Nostale scratch fragment');expect(dialog.keys).toEqual([]);expect(dialog.holdOnly&&dialog.blocksDelivery&&dialog.inputBlocked).toBe(true);expect(dialog.remoteCard?.(screen)).toMatchObject({kind:'question',options:[{n:1,title:'Yes'},{n:2,title:'Yes, allow this command'},{n:3,title:'No'}]});
+ expect(dialog.isActive?.(screen)).toBe(true);expect(dialog.isActive?.(screen.replace('3. No','3. Type here to tell Claude what to do differently'))).toBe(true);const painted=dialog.remoteCard?.(screen.replace('3. No','3. Nostale scratch fragment'));if(painted?.kind!=='question')throw Error('Expected the captured question');expect(painted.options[2]?.title).toBe('Nostale scratch fragment');expect(dialog.keys).toEqual([]);expect(dialog.holdOnly&&dialog.blocksDelivery&&dialog.inputBlocked).toBe(true);expect(dialog.remoteCard?.(screen)).toMatchObject({kind:'question',options:[{n:1,title:'Yes'},{n:2,title:'Yes, and don’t ask again for: New-Item *'},{n:3,title:'No'}]});
  for(const text of [screen+'\n'+'─'.repeat(40)+'\n❯ \n'+'─'.repeat(40),screen.replace('PowerShell command','ordinary quoted text'),screen.replace('❯ 1.','  1.'),screen.replace('Esc to cancel · Tab to amend','unrecognised footer')])expect(dialog.isActive?.(text)).toBe(false);
 });

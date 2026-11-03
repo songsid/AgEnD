@@ -61,9 +61,10 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 - **Desks** draws a room per team with a desk per instance; General and the instances in no team share the lobby. A delegation in progress is a folder on the worker's desk. A Desks office smaller than the panel is centred in it.
 - **Studio** is one scene with four areas (Work, Lounge, Help desk and Nap corner). Each instance walks to the area for its state, along corridors.
 - **Cozy** is the same kind of scene in a warm pixel-art room drawn as one picture that ships with AgEnD: desks, a sofa and coffee, beanbags and a whiteboard. Its notice board says a skin pack can restyle the room. Cozy is the default for a browser that hasn't picked a style and for a new office. A saved office keeps its own style.
+- **Guild** and **School** (#2947) are two more pictures on Cozy's arrangement: an adventurers' guild hall (map desks, a tavern corner, inn beds, a quest board) and a classroom (student desks, a sofa corner with a vending machine, the nurse's beds, a chalkboard).
 - An **uploaded skin pack** is either kind of scene: a zones scene like Studio, or a Desks-like layout with its own pictures.
 
-Studio, Cozy and zones packs are called **zones styles** below. Only they have walking, seats, Edit layout, bedtime, strolls and mail.
+Studio, Cozy, Guild, School and zones packs are called **zones styles** below. Only they have walking, seats, Edit layout, bedtime, strolls and mail.
 
 **Crowds.** An area with more people than seats packs the rest into a tighter grid, then shows "+N" in its corner. There only calls and work get bubbles (a few at most), and name tags show on hover or focus.
 
@@ -77,7 +78,7 @@ A fleet admin, on the dashboard reached directly (not over the public link), use
 
 1. **Add office**, and give it a name.
 2. **Who is in it**: **Everyone**; **Picked**, then whole teams or single instances (with none ticked yet it still shows everyone); or **Nobody (NPCs only)**: no agent sits there, only its style's NPCs (#2752). In `web-offices.json` everyone is `"members": []` and nobody is `"members": ["team:"]`, a team with no name, which no team has.
-3. **Style**: Desks, Studio, Cozy or a kept skin pack.
+3. **Style**: Desks, Studio, Cozy, Guild, School or a kept skin pack.
 4. **Save.**
 
 Offices are the fleet's: everyone sees the same ones. The host keeps them in `web-offices.json` in the AgEnD home (`GET` / `PUT /ui/offices`), never in fleet.yaml, so a change restarts nothing. There can be at most 20 offices, and one person can save at most 20 times a minute.
@@ -225,7 +226,7 @@ An agent can check, upload, replace, delete and restore skin packs itself, for e
 | `office_pack_upload` | the web upload's checks and limits; an id the fleet keeps is **replaced** at once |
 | `office_pack_restore` | brings back the kept previous version (the replaced one becomes the previous, so a restore can be undone the same way) |
 | `office_pack_delete` | deletes a pack, and its previous version too unless `keep_previous: true` |
-| `office_set_style` | points a stored office at a kept pack or a built-in style (`pixel` = Desks, `studio`, `cozy`) |
+| `office_set_style` | points a stored office at a kept pack or a built-in style (`pixel` = Desks, `studio`, `cozy`, `guild`, `school`) |
 
 **Sending a pack.** A pack is a folder (`dir`) holding its `manifest.json` and the PNGs at the paths the manifest names, or a `manifest` object plus `files` (`{ "<name it uses>": "<path>" }`). `packs: [...]` sends several as one batch. The agent's side reads only those files, in its working directory or the fleet's shared folder (`~/.agend/shared`). Symlinks are followed but must stay inside. The fleet receives the bytes, never a path.
 
@@ -326,7 +327,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | Key | Required | What it is |
 |---|---|---|
 | `format` | ✅ | `1` |
-| `id` | ✅ | 1–40 letters, digits, `_` or `-`. Not `pixel`, `studio` or `cozy`; ids that differ only in case clash |
+| `id` | ✅ | 1–40 letters, digits, `_` or `-`. Not `pixel`, `studio`, `cozy`, `guild` or `school`; ids that differ only in case clash |
 | `scale` | ❌ | logical units per image pixel, 1–8 (default 2) |
 | `background` | with `stateZones` | the scene's picture, 16:9 |
 | `foreground` | ❌ | a 16:9 picture over the scene (with `stateZones` only) |

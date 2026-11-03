@@ -328,7 +328,7 @@ export const OfficePackRestoreArgs = z.object({
 export const OfficePackListArgs = z.object({}).strict();
 export const OfficeSetStyleArgs = z.object({
   office: z.string().min(1).max(40).describe("A stored office's id"),
-  pack: z.string().min(1).max(40).describe("A pack the fleet keeps, or a built-in style (pixel, studio, cozy)"),
+  pack: z.string().min(1).max(40).describe("A pack the fleet keeps, or a built-in style (pixel, studio, cozy, guild, school)"),
 }).strict();
 
 export const SetDescriptionArgs = z.object({
@@ -367,6 +367,9 @@ export const StartInstanceArgs = z.object({
 
 export const RestartInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to restart"),
+  // M-2266: a one-shot for the next launch only; codex instances only.
+  resume_session_id: z.string().regex(/^[0-9a-fA-F-]{36}$/).optional()
+    .describe("Codex only: resume this conversation (its session id) on this restart only. It must be a rollout in the instance's own sessions, for its working directory, started by the CLI; otherwise nothing is restarted and the reason is returned."),
 });
 
 export const PauseInstanceArgs = z.object({

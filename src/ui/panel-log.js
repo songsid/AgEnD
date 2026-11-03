@@ -49,6 +49,7 @@ register("log", {
     user: "Asked", assistant: "Replied", error: "Error", errorCode: "Error {0}", turnEnd: "Turn ended", turnEndIn: "Turn ended · {0}",
     compacted: "Conversation compacted", turn: "Turn",
     running: "running", done: "done", failed: "failed", interrupted: "interrupted", exit: "exit {0}",
+    showScreen: "Show what was on screen", hideScreen: "Hide what was on screen",
     showOutput: "Show output", hideOutput: "Hide output", args: "Arguments", output: "Output", noOutput: "No output.",
     showAll: "Show all", showLess: "Show less", cut: "… {0} more characters not shown.", tooLarge: "Output of {0}: only its start is shown.",
     times: "×{0}", newer: "{0} new",
@@ -87,6 +88,7 @@ register("log", {
     user: "收到要求", assistant: "回覆", error: "錯誤", errorCode: "錯誤 {0}", turnEnd: "回合結束", turnEndIn: "回合結束 · {0}",
     compacted: "對話已壓縮", turn: "回合",
     running: "執行中", done: "完成", failed: "失敗", interrupted: "中斷", exit: "結束碼 {0}",
+    showScreen: "顯示當時的畫面", hideScreen: "隱藏當時的畫面",
     showOutput: "顯示輸出", hideOutput: "隱藏輸出", args: "參數", output: "輸出", noOutput: "沒有輸出。",
     showAll: "顯示全部", showLess: "收合", cut: "… 還有 {0} 個字元沒有顯示。", tooLarge: "輸出共 {0}，只顯示開頭。",
     times: "×{0}", newer: "{0} 則新的",
@@ -402,7 +404,11 @@ function Row({ x, prev }) {
   };
   let row;
   if (x.kind === "event") {
-    row = html`${head(KIND_ICON.event, eventLabel(x.type))}${x.detail ? html`<div class="log-text muted">${x.detail}</div>` : null}`;
+    // M-2269: a dialog or prompt AgEnD saw (the CLI never writes it to its transcript): its text as it was on screen,
+    // folded until asked for. Text only (a text node), masked by the server.
+    row = html`${head(KIND_ICON.event, eventLabel(x.type))}${x.detail ? html`<div class="log-text muted">${x.detail}</div>` : null}
+      ${x.screen ? html`<button type="button" class="link-btn log-toggle log-screen-toggle" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>${open ? tl("hideScreen") : tl("showScreen")}</button>` : null}
+      ${x.screen && open ? html`<div class="log-detail"><div class="log-text mono log-screen">${x.screen}</div></div>` : null}`;
   } else if (x.kind === "user" || x.kind === "assistant") {
     row = html`${head(KIND_ICON[x.kind], tl(x.kind))}${text(x.body, x.bodyCut)}`;
   } else if (x.kind === "error") {

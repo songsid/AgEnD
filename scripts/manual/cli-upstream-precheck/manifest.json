@@ -897,7 +897,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/daemon.ts",
-     "line": 1165,
+     "line": 1166,
      "symbol": "detectMalformedClaudeToolCall.closingTags"
     },
     {
@@ -1469,7 +1469,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/codex.ts",
-     "line": 1011,
+     "line": 1027,
      "symbol": "CodexPaneDetectors.isDeliveryInputReadyPane"
     },
     {
@@ -1477,7 +1477,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 1222,
+     "line": 1238,
      "symbol": "CodexPaneDetectors.isStableUnknownLayoutIdlePane"
     },
     {
@@ -1485,7 +1485,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1246,
+     "line": 1262,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1493,7 +1493,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1246,
+     "line": 1262,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1501,7 +1501,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1246,
+     "line": 1262,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1509,7 +1509,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1246,
+     "line": 1262,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1517,7 +1517,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1246,
+     "line": 1262,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1525,7 +1525,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1252,
+     "line": 1268,
      "symbol": "CodexPaneDetectors.getErrorPatterns.notice"
     },
     {
@@ -1533,7 +1533,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1259,
+     "line": 1275,
      "symbol": "CodexPaneDetectors.getErrorPatterns.type"
     },
     {
@@ -1541,7 +1541,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1260,
+     "line": 1276,
      "symbol": "CodexPaneDetectors.getErrorPatterns.action"
     },
     {
@@ -1549,7 +1549,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1271,
+     "line": 1287,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1557,7 +1557,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1271,
+     "line": 1287,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1565,7 +1565,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1271,
+     "line": 1287,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1573,7 +1573,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1271,
+     "line": 1287,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1581,7 +1581,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1271,
+     "line": 1287,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1589,7 +1589,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1284,
+     "line": 1300,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1597,7 +1597,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1284,
+     "line": 1300,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1605,7 +1605,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1284,
+     "line": 1300,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1613,7 +1613,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1284,
+     "line": 1300,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1621,7 +1621,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1284,
+     "line": 1300,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1629,7 +1629,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1287,
+     "line": 1303,
      "symbol": "CodexPaneDetectors.getErrorPatterns.type"
     },
     {
@@ -1637,7 +1637,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1294,
+     "line": 1310,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1645,7 +1645,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1320,
+     "line": 1336,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1653,7 +1653,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1320,
+     "line": 1336,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1661,7 +1661,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1320,
+     "line": 1336,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1669,7 +1669,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1321,
+     "line": 1337,
      "symbol": "CodexPaneDetectors.getErrorPatterns.type"
     },
     {
@@ -1677,7 +1677,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1344,
+     "line": 1360,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1685,7 +1685,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1373,
+     "line": 1389,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1693,7 +1693,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1373,
+     "line": 1389,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1701,7 +1701,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1377,
+     "line": 1393,
      "symbol": "CodexPaneDetectors.getErrorPatterns.notice"
     },
     {
@@ -1709,7 +1709,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1382,
+     "line": 1398,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1717,7 +1717,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1382,
+     "line": 1398,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1725,7 +1725,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1382,
+     "line": 1398,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1733,7 +1733,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1391,
+     "line": 1407,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1741,7 +1741,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1391,
+     "line": 1407,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1749,7 +1749,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1395,
+     "line": 1411,
      "symbol": "CodexPaneDetectors.getErrorPatterns.notice"
     },
     {
@@ -1757,7 +1757,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1411,
+     "line": 1427,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1765,7 +1765,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1411,
+     "line": 1427,
      "symbol": "CodexPaneDetectors.getErrorPatterns.pattern"
     },
     {
@@ -1773,7 +1773,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/codex.ts",
-     "line": 1516,
+     "line": 1532,
      "symbol": "CodexPaneDetectors.rateSwitchPickerDialog.pattern"
     },
     {
@@ -1781,7 +1781,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/codex.ts",
-     "line": 1530,
+     "line": 1546,
      "symbol": "CodexPaneDetectors.updatePickerDialog.pattern"
     },
     {
@@ -1789,7 +1789,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1733,
+     "line": 1749,
      "symbol": "CodexBackend.resolveShortHome"
     },
     {
@@ -1797,7 +1797,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1743,
+     "line": 1759,
      "symbol": "CodexBackend.resolveShortHome"
     },
     {
@@ -1805,7 +1805,7 @@
      "kind": "template",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1744,
+     "line": 1760,
      "symbol": "CodexBackend.resolveShortHome"
     },
     {
@@ -1813,7 +1813,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1928,
+     "line": 1959,
      "symbol": "CodexBackend.disableStartupUpdateCheck.existing"
     },
     {
@@ -1821,7 +1821,7 @@
      "kind": "string",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1930,
+     "line": 1961,
      "symbol": "CodexBackend.disableStartupUpdateCheck.updated"
     },
     {
@@ -1829,7 +1829,7 @@
      "kind": "string",
      "surface": "other",
      "file": "src/backend/codex.ts",
-     "line": 1937,
+     "line": 1968,
      "symbol": "CodexBackend.disableStartupUpdateCheck.LINE"
     },
     {
@@ -1837,7 +1837,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 2006,
+     "line": 2037,
      "symbol": "CodexBackend.enableContextStatusLine"
     },
     {
@@ -1845,7 +1845,7 @@
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 2018,
+     "line": 2049,
      "symbol": "CodexBackend.enableContextStatusLine"
     },
     {
@@ -1853,7 +1853,7 @@
      "kind": "template",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 2039,
+     "line": 2070,
      "symbol": "CodexBackend.enableContextStatusLine.reason"
     },
     {
@@ -1861,7 +1861,7 @@
      "kind": "string",
      "surface": "idle-busy",
      "file": "src/backend/codex.ts",
-     "line": 2039,
+     "line": 2070,
      "symbol": "CodexBackend.enableContextStatusLine.reason"
     },
     {
@@ -1869,15 +1869,23 @@
      "kind": "string",
      "surface": "resume",
      "file": "src/backend/codex.ts",
-     "line": 2092,
+     "line": 2123,
      "symbol": "CodexBackend.SHARED_SESSION_DIRS"
+    },
+    {
+     "text": " resume --last ",
+     "kind": "template",
+     "surface": "other",
+     "file": "src/backend/codex.ts",
+     "line": 2408,
+     "symbol": "CodexBackend.plannedCommand"
     },
     {
      "text": "no conversation found",
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1885,7 +1893,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1893,7 +1901,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -1901,7 +1909,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 4953,
+     "line": 4964,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2033,7 +2041,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2041,7 +2049,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2049,7 +2057,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2057,7 +2065,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12874,
+     "line": 12888,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2065,7 +2073,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12875,
+     "line": 12889,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2073,7 +2081,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12875,
+     "line": 12889,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2081,7 +2089,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12875,
+     "line": 12889,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2089,7 +2097,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12875,
+     "line": 12889,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2097,7 +2105,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12875,
+     "line": 12889,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2105,7 +2113,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12875,
+     "line": 12889,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2113,7 +2121,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12876,
+     "line": 12890,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2121,7 +2129,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 12969,
+     "line": 12983,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2129,7 +2137,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13088,
+     "line": 13105,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2137,7 +2145,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13088,
+     "line": 13105,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -3441,7 +3449,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3449,7 +3457,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3457,7 +3465,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3733,7 +3741,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3741,7 +3749,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3749,7 +3757,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3921,7 +3929,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3929,7 +3937,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3937,7 +3945,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 804,
+     "line": 805,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {

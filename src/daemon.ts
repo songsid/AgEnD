@@ -1,4 +1,5 @@
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
+import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
 import { sendPackSources } from "./web-office-pack-read.js";
@@ -4041,7 +4042,9 @@ export class Daemon extends EventEmitter {
         );
         if (interactivePrompt) {
           this.logger.warn(interactivePrompt, "Interactive terminal prompt is waiting for human input");
-          this.emit("interactive_prompt", { name: this.name, ...interactivePrompt });
+          // M-2269: the prompt as it was on screen, from this capture, for the Log.
+          const screen = dialogScreenText(pane);
+          this.emit("interactive_prompt", { name: this.name, ...interactivePrompt, ...(screen ? { screen } : {}) });
           // A prompt is not an error and must not enter the PTY recovery gate.
           // Continue scanning real errors in this same snapshot.
         }
@@ -4218,14 +4221,14 @@ export class Daemon extends EventEmitter {
           } else if (dialog.verifyAfterKeys && !resolved) {
             this.logger.warn({ dialog: dialog.description }, "Safety dialog choice was sent but follow-up verification or notice submission failed");
           }
-          this.trackDialogParked(blockingSeen);
+          this.trackDialogParked(blockingSeen, pane);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
         // Reached only when no dialog was answered this poll (none on screen, a fenced one, or one waiting out its
         // backoff): unless it is the one backing off, the screen that was being answered is gone, and the next dialog is
         // a new one.
         if (!answersBackedOff && this.dialogAnswers) { this.dialogAnswers = null; this.retireParkedNotice("answer"); }
-        this.trackDialogParked(blockingSeen);
+        this.trackDialogParked(blockingSeen, pane);
         this.trackRemoteCard(blockingSeen, pane, captureMono);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
@@ -8495,7 +8498,7 @@ export class Daemon extends EventEmitter {
       if (dialog.verifyAfterKeys && dialog.autoResolutionKey
         && this.hasAutoDialogClaim(dialog)
         && dialogs.some(other => other !== dialog && Daemon.dialogMatches(other, pane))) continue;
-      this.trackDialogParked(dialog);
+      this.trackDialogParked(dialog, pane);
       this.trackRemoteCard(dialog, pane, probeMono);
       return { state: "dialog", dialog };
     }
@@ -8843,7 +8846,8 @@ export class Daemon extends EventEmitter {
     this.emit("dialog_unparked", { name: this.name });
   }
 
-  private trackDialogParked(dialog: RuntimeDialog | null): void {
+  /** `pane`: the capture the caller already holds — M-2269 keeps the dialog's text from it for the Log (no new capture). */
+  private trackDialogParked(dialog: RuntimeDialog | null, pane = ""): void {
     if (!dialog) {
       if (this.dialogParkedSince !== 0) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
       this.dialogParkedSince = 0;
@@ -8878,7 +8882,9 @@ export class Daemon extends EventEmitter {
       this.parkedNoticeOut = "parked";
       this.logger.warn({ dialog: dialog.description, parkedForMs: Date.now() - this.dialogParkedSince },
         "CLI dialog is still on screen — not auto-answering, reporting for a human");
+      const screen = dialogScreenText(pane);
       this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true,
+        ...(screen ? { screen } : {}),
         ...(dialog.parkedAdvice ? { advice: dialog.parkedAdvice } : {}),
         ...(episode !== null && interaction.kind ? { kind: interaction.kind, episode, backend: this.config.backend ?? "claude-code" } : {}),
         ...(unrecognised ? { unrecognised: true, question: this.unrecognisedPrompt?.shape.question ?? null } : {}) });
@@ -12956,7 +12962,7 @@ export class Daemon extends EventEmitter {
             // ones included: if the auto-dismiss keeps failing here, the human
             // report should count from first sight, not from the runtime scan.
             if (!dialog.fatal && this.deliveryBlockingDialogs().some(d => Daemon.dialogKey(d) === Daemon.dialogKey(dialog))) {
-              this.trackDialogParked(dialog);
+              this.trackDialogParked(dialog, pane);
             }
             // A fatal startup screen cannot be dismissed by keypresses (e.g. a
             // corrupt claude.json modal offering only "exit" / "reset config").
@@ -12985,7 +12991,7 @@ export class Daemon extends EventEmitter {
                 if (Object.keys(reason).length) this.heldReasonLoggedKey = Daemon.dialogKey(dialog);
                 this.logger.warn({ description: dialog.description, ...reason }, "Startup dialog held — not auto-answering, deliveries stay blocked");
               }
-              this.trackDialogParked(dialog);
+              this.trackDialogParked(dialog, pane);
               matched = true;
               break;
             }

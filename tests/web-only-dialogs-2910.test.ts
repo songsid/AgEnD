@@ -47,9 +47,9 @@ describe("#2910 D4 the card read from a CLI's own dialog", () => {
     const card = selectionCard(fixture(file), title)!;
     expect([card.options.map(o => o.title), card.cursor, question.test(card.question)], card.question).toEqual([options, 0, true]);
   });
-  it("a countdown in the dialog's words never makes it another card", () => {
+  it("arbitrary time-like request text is never masked as a provider countdown", () => {
     const at = (n: number) => `\n────────────────────\n Do you want to proceed? (auto-deny in ${n}s)\n ❯ 1. Yes\n   2. No\n`;
-    expect(selectionCard(at(30), "x")!.identity).toBe(selectionCard(at(29), "x")!.identity);
+    expect(selectionCard(at(30), "x")!.identity).not.toBe(selectionCard(at(29), "x")!.identity);
   });
   it("the same card wherever the cursor is (identity is what is asked); another question is another card", () => {
     const pane = fixture("claude-2.1.291-background-work-exit.pane.txt");
