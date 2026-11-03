@@ -335,7 +335,8 @@ export class LoginController {
   async start(backendArg: string, chat: LoginChat, opts: LoginStartOptions = {}): Promise<string | null> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
-    if (!flow) return t("login.unsupported", backendArg);
+    // #2981 §8.2: the API-key sentence is OpenCode's; any other backend without a flow (muse…) gets the generic line.
+    if (!flow) return backend === "opencode" ? t("login.unsupported", backendArg) : t("login.no_remote_flow", backendArg);
     if (flow.remoteLogin === "unsupported") {
       this.audit("declined_unsupported", { backend, requester: chat.userId ?? null });
       return t("login.remote_unsupported_agent_cli", backend, flow.command);

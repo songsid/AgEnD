@@ -205,7 +205,19 @@ describe("authorization gate", () => {
   it("web_terminal.enabled: false refuses with guidance; unknown backend is unsupported", async () => {
     const { controller, sessions } = make({ config: { web_terminal: { enabled: false } } });
     expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_disabled"));
-    expect(await controller.start("nonesuch", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.unsupported", "nonesuch"));
+    expect(await controller.start("nonesuch", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.no_remote_flow", "nonesuch"));
+    expect(sessions).toHaveLength(0);
+  });
+
+  it("#2981 §8.2: only OpenCode gets the API-key sentence; muse (no flow) gets the generic host-login line", async () => {
+    const { controller, sessions } = make();
+    for (const locale of ["en", "zh-TW"] as const) {
+      setLocale(locale);
+      const muse = await controller.start("muse", chat(adapterOf("telegram")), CONFIRMED);
+      expect(muse).toBe(t("login.no_remote_flow", "muse"));
+      expect(muse).not.toMatch(/opencode/i);
+      expect(await controller.start("opencode", chat(adapterOf("telegram")), CONFIRMED)).toBe(t("login.unsupported", "opencode"));
+    }
     expect(sessions).toHaveLength(0);
   });
 
