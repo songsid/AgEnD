@@ -4,7 +4,7 @@ import { REMOVED_BACKENDS, isRemovedBackend, removedBackendMessage } from "./bac
 import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statSync } from "node:fs";
 import { ensureInstanceDir } from "./private-dir.js";
 import { assertNoSessionOomStop } from "./session-oom-stop.js";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
@@ -116,6 +116,19 @@ export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallat
 /** Check one executable using the same PATH visible to the fleet process. */
 export function checkBinaryInstalled(binary: string): boolean {
   return measureSyncWork("lifecycle.checkBinaryInstalled", () => checkBinaryInstalledSync(binary));
+}
+/**
+ * M-2281 (#2980): the same check without holding the fleet loop — for paths a chat click runs (`/login`'s install
+ * routing), where a slow PATH (WSL's /mnt/c entries) would otherwise stall every adapter for up to the timeout.
+ */
+export function checkBinaryInstalledAsync(binary: string): Promise<boolean> {
+  return new Promise(resolve => {
+    try {
+      execFile("which", [binary], { timeout: 2000 }, err => resolve(!err));
+    } catch {
+      resolve(false);
+    }
+  });
 }
 function checkBinaryInstalledSync(binary: string): boolean {
   try {
