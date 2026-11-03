@@ -905,17 +905,77 @@ function claudeCommandRequestIdentity(pane: string): string {
     .map(row => row.trim()).filter(Boolean).join("\n");
 }
 
+/**
+ * M-2296: Claude Code 2.1.317's connector file-send safety card (`circuitBreaker: "connectorFileSend"`): an MCP
+ * connector call (the email connector's attachments by reference) that would send files from this computer asks
+ * first. It is bypass-immune (`bypassImmune: true, waivableInBypass: false` in the bundle), so it appears under
+ * --dangerously-skip-permissions too, and its focus starts on "Yes" unless the request defaults to No — an Enter
+ * meant for a delivery would send the files. Never answered by AgEnD: held for a person, shown in Needs-you.
+ *
+ * Shape (2.1.317 bundle: TIe/Rwt/Njo/Ljo/Twt and the `* ` file gutter; chrome as captured from a real MCP card):
+ * the card's last question row is "Do you want to proceed?", or a refusal-only variant ending "…no files are sent."
+ * (a list too long to show, or a call that does not say which files) or "…or choose No." (a terminal too short to
+ * show every file); Yes / No options (numbered, or unnumbered when it defaults to No); the "Esc to cancel" footer
+ * last; and, between the card's top and its question, a file row `* "<path>"` / `* the file at "<path>"` or the
+ * `* Name may not be what it looks like.` warning — the marks of a file-send card that no other card carries. A
+ * question variant that only this card asks counts on its own. A Bash card (its own entry) never matches here.
+ */
+const FILE_SEND_ONLY_QUESTION = /(?:Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
+const FILE_SEND_QUESTION = /(?:Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
+/** Pre-filter only (anywhere in the pane); claudeFileSendCardActive decides. */
+export const CLAUDE_FILE_SEND_PATTERN = /Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\./;
+const FILE_SEND_MARK = /^[ \t│┃]*\* (?:the file at )?"|^[ \t│┃]*\* Name may not be what it looks like\./;
+const FILE_SEND_OPTION = /^[ \t]*[❯›]?[ \t]*(?:\d{1,2}\.[ \t]+)?(Yes|No)\b/;
+export function claudeFileSendCardActive(pane: string): boolean {
+  const rows = claudeRows(pane).filter(row => row.trim() !== "");
+  if (!rows.length || !/^[ \t]*Esc(?:ape)? to cancel\b/.test(rows[rows.length - 1])) return false;
+  // The question and the menu above the footer, as one bounded run of rows. A narrow pane wraps the question
+  // (#2992 review, Prism P2: "…Choose" / "No, and no files are sent."), and a wrapped row can even look like an
+  // option, so every split is tried from the bottom: the menu is the rows below it, the question is what the rows
+  // above it read as one line; the first split whose menu parses and whose question is a file-send question wins.
+  const block = rows.slice(Math.max(0, rows.length - 1 - 16), rows.length - 1);
+  for (let k = 1; k < block.length; k++) {
+    const menu = block.slice(block.length - k), above = block.slice(0, block.length - k);
+    const titles: string[] = [];
+    // The menu's first row is an option. (A wrapped question row may begin "No," too: the split that makes it one
+    // leaves "…Choose" as the question, which is no file-send question, so that split never wins.)
+    let parses = FILE_SEND_OPTION.test(menu[0]) || /^[ \t]*[❯›]?[ \t]*\d{1,2}\.[ \t]/.test(menu[0]);
+    for (const row of menu) {
+      const option = FILE_SEND_OPTION.exec(row);
+      if (option) { titles.push(option[1]); continue; }
+      if (/^[ \t]*[❯›]?[ \t]*\d{1,2}\.[ \t]/.test(row) || /^[ \t]{3,}\S/.test(row)) continue;  // another option, or a wrapped one
+      parses = false; break;
+    }
+    if (!parses || !titles.includes("No")) continue;
+    // The question: the rows just above the menu, read as one line (at most six physical rows).
+    const question = above.slice(-6).map(row => row.trim()).join(" ");
+    if (!FILE_SEND_QUESTION.test(question)) continue;
+    const refusalOnly = FILE_SEND_ONLY_QUESTION.test(question);
+    // A refusal-only variant may offer No alone; every other shape offers Yes as well.
+    if (!titles.includes("Yes") && !refusalOnly) continue;
+    // The card's own rows: up from the menu to the rule that opens it (or 40 rows at most).
+    const card: string[] = [];
+    for (let i = rows.length - 2 - k; i >= 0 && rows.length - 2 - k - i <= 40; i--) {
+      if (/^[ \t]*─{20,}[ \t]*$/.test(rows[i])) break;
+      card.push(rows[i]);
+    }
+    if (card.some(row => /^[ \t]*Bash command[ \t]*$/.test(row))) return false;
+    return refusalOnly || card.some(row => FILE_SEND_MARK.test(row));
+  }
+  return false;
+}
+
 const dangerPromptOnYes = (pane: string): boolean => {
   const state = claudeDangerousCommandPromptState(pane);
-  return state.active && state.cursor === "yes";
+  return state.active && state.cursor === "yes" && !claudeFileSendCardActive(pane);
 };
 const dangerPromptOnNo = (pane: string): boolean => {
   const state = claudeDangerousCommandPromptState(pane);
-  return state.active && state.cursor === "no";
+  return state.active && state.cursor === "no" && !claudeFileSendCardActive(pane);
 };
 const dangerPromptUnknown = (pane: string): boolean => {
   const state = claudeDangerousCommandPromptState(pane);
-  return state.active && state.cursor === "unknown";
+  return state.active && state.cursor === "unknown" && !claudeFileSendCardActive(pane);
 };
 
 /** This text is code-owned and intentionally never includes the command. */
@@ -1427,6 +1487,21 @@ export class ClaudeCodeBackend implements CliBackend {
         blocksDelivery: true,
         inputBlocked: true,
         description: COLD_RESUME_HOLD_DESCRIPTION,
+      },
+      // M-2296: the 2.1.317 connector file-send card — ahead of the dangerous-command entries, whose two-option
+      // shape it can share: it is never auto-answered (not even "No", which would tell the agent its call was a
+      // dangerous command) and never takes a delivery's keys.
+      {
+        pattern: CLAUDE_FILE_SEND_PATTERN,
+        isActive: claudeFileSendCardActive,
+        requestIdentity: pane => claudeSelectionCard(pane)?.identity ?? null,
+        interactionKind: "permission",
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        remoteCard: claudeSelectionCard,
+        description: "Claude connector file-send approval — waiting for a human choice, never auto-approving",
       },
       // Claude's shell-command safety menu is the one runtime prompt AgEnD is
       // allowed to answer automatically. Keep cursor-known entries ahead of
