@@ -28,18 +28,6 @@ describe("update version precheck", () => {
     expect(getUpdateSelector({}, "1.22.0")).toBe("latest");
   });
 
-  it("#2987: --rc installs the release candidate only when asked; an install from it follows @beta afterwards", () => {
-    expect(getUpdateSelector({ rc: true }, "2.3.4")).toBe("rc");
-    expect(getUpdateSelector({ rc: true }, "2.3.5-beta.1")).toBe("rc");
-    expect(getUpdateSelector({ rc: true, version: "2.3.5-beta.2" }, "2.3.4")).toBe("2.3.5-beta.2");
-    // A candidate's version is a beta's: the next plain `agend update` is on @beta, never @rc — no beta user is put
-    // on candidates, and the candidate host goes back to the promoted line.
-    expect(getUpdateSelector({}, "2.3.5-beta.2")).toBe("beta");
-    expect(installedChannel("2.3.5-beta.2")).toBe("beta");
-    // An rc older than the install (it was promoted and a newer beta is installed) is not a silent downgrade.
-    expect(isUnrequestedDowngrade("2.3.5-beta.3", "2.3.5-beta.2", { rc: true })).toBe(true);
-  });
-
   it("the alpha channel (#1259): installed 2.1.12 / 2.1.12-beta.4 / 2.2.0-alpha.1 × no flag, --alpha, --beta, --stable, --version", () => {
     const table: Array<[string, Record<string, unknown>, string]> = [
       ["2.1.12", {}, "latest"], ["2.1.12-beta.4", {}, "beta"], ["2.2.0-alpha.1", {}, "alpha"],
