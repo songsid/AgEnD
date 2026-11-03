@@ -29,11 +29,11 @@ let hub, server, runner, reader, endpoint, manager, native, machine = 'local', h
 const receipt = { sourceHead, oldHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: oldRoot, encoding: 'utf8' }).trim(), mode, scratchCwd: nativeRoot,
  passed: false, turns: 0, archived: [] }, threads = new Set(), mutations = [], configs = new Map();
 const delay = ms => new Promise(done => setTimeout(done, ms));
-const until = async (check, label, timeout = 120000) => { const end = performance.now() + timeout; while (!await check()) { assert(performance.now() < end, 'Deadline: ' + label); await delay(200); } };
+const until = async (check, label, timeout = 120000) => { const end = performance.now() + timeout; while (!await check()) { if (workerFailure) throw Error('Scratch worker: ' + JSON.stringify(workerFailure)); assert(performance.now() < end, 'Deadline: ' + label); await delay(200); } };
 const inspect = action => JSON.parse(execFileSync(node, [worker, win32.join(nativeRoot, 'new'), nativeRoot, 'inspect', action, hostDirectory], { encoding: 'utf8', timeout: 45000, maxBuffer: 8192 }));
 const bridge = { get: () => null, prepareWorkspace() { throw Error('No exec'); }, start() { throw Error('No exec'); } };
 const store = new WindowsAgents(scratch, bridge);
-let program = 'old';
+let program = 'old', workerFailure;
 const mcp = (body, current) => manager.handle(machine, body, current);
 const startTransport = async (pair = false) => {
  if (mode === 'local') {
@@ -41,9 +41,9 @@ const startTransport = async (pair = false) => {
    mcp, launch: async () => spawn(node, [worker, win32.join(nativeRoot, program), nativeRoot, 'local'], { shell: false, stdio: ['pipe', 'pipe', 'pipe'] }) });
   hostDirectory = win32.join(nativeRoot, 'localdata', 'AgEnD', 'pane-adapter', runtimeJobDigest({ proof: tag }).slice(0, 16), 'state', 'pane-host');
  } else {
-  const messages = [];
+  const messages = []; workerFailure = null;
   runner = spawn(node, [worker, win32.join(nativeRoot, program), nativeRoot, 'paired'], { shell: false, stdio: ['pipe', 'pipe', 'pipe'] });
-  runner.stderr.resume(); reader = createInterface({ input: runner.stdout }); reader.on('line', line => { try { messages.push(JSON.parse(line)); } catch {} });
+  runner.stderr.resume(); reader = createInterface({ input: runner.stdout }); reader.on('line', line => { try { const value = JSON.parse(line); messages.push(value); if (value.failed) workerFailure = value; } catch {} });
   const pairing = pair ? hub.createPairing() : null;
   runner.stdin.write(JSON.stringify({ server: 'http://127.0.0.1:' + server.address().port, ...(pairing ? { code: pairing.code } : {}) }) + '\n');
   if (pair) {

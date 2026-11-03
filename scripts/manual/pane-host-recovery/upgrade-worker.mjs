@@ -6,9 +6,12 @@ import { readFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createInterface } from 'node:readline';
+let phase = 'arguments';
+process.on('uncaughtException', error => { process.stdout.write(JSON.stringify({ failed: true, phase, kind: error.name, code: error.code || error.cause?.code }) + '\n'); process.stdin.destroy(); process.exitCode = 1; });
 const [bundle, root, mode, action, arg] = process.argv.slice(2);
 assert(process.platform === 'win32' && win32.normalize(root).toLowerCase().startsWith('c:\\users\\changhansung\\agend-adapter-proto\\upgrade-'));
 const load = name => import(pathToFileURL(join(bundle, 'dist', name + '.js')).href);
+phase = 'imports';
 if (mode === 'local') {
  process.env.LOCALAPPDATA = join(root, 'localdata');
  const { serveLocalPaneRelay } = await load('runtime-pane-stdio');
@@ -37,8 +40,10 @@ if (mode === 'local') {
 } else if (mode === 'paired') {
  const [{ RuntimeClient, pairRuntime }, { RuntimeClientStore }] = await Promise.all(['runtime-client', 'runtime-client-store'].map(load));
  const lines = createInterface({ input: process.stdin });
+ phase = 'initial-frame';
  const initial = await new Promise(done => lines.once('line', line => done(JSON.parse(line))));
  const store = new RuntimeClientStore(join(root, 'profile'));
+ phase = 'pairing';
  if (initial.code) {
   await pairRuntime({ ...initial, store, name: 'scratch-upgrade-proof', pollMs: 100,
    report: text => { const fp = /Pairing fingerprint: ([A-F0-9-]+)/.exec(text)?.[1]; if (fp) process.stdout.write(JSON.stringify({ fingerprint: fp }) + '\n'); } });
