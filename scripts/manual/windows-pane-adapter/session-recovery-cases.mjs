@@ -46,7 +46,9 @@ export async function deliverStates({ fleet, row, replies, until, resumed = fals
     const canary=expected+'_'+suffix.toUpperCase().replaceAll('-','_');
     const accepted = await fleet.deliverToInstance(row.name, {
       type: 'fleet_inbound',
-      content: `Acceptance ${suffix}: this is a separate request with its own reply. Use the AgEnD reply tool once with exactly ${canary}. If the earlier request is still in flight, finish its separate reply first. Do not run commands or edit files. Then finish.`,
+      content: suffix === 'idle'
+        ? `Idle acceptance: first use the AgEnD reply tool once with exactly ${canary}. After that tool returns, continue working by writing a 600-word story in the terminal only. Do not send the story to chat or use the reply tool for it. Do not run commands or edit files.`
+        : `Acceptance ${suffix}: use the AgEnD reply tool once with exactly ${canary}. Do not run commands or edit files. Then finish.`,
       meta: { source: 'user', adapter_id: 'private-acceptance', chat_id: 'private-chat', thread_id: row.name,
         message_id: randomUUID(), user: 'private-person', runtime: 'native-proof' },
     });
@@ -54,6 +56,9 @@ export async function deliverStates({ fleet, row, replies, until, resumed = fals
   };
   await deliver(resumed ? 'just-resumed' : 'idle');
   if (!resumed) {
+    // The idle request must be acknowledged before a second user input can be coalesced into its turn.
+    // Its terminal-only continuation supplies genuine ongoing work for the busy-delivery probe.
+    await until(() => replies.slice(before).some(reply => reply.name === row.name && reply.text === expected + '_IDLE'), 'idle reply before busy probe ' + row.agent.cli, 180000);
     await until(async () => {
       const pane = await daemon.tmux.capturePane();
       return daemon.backend.getBusyPattern?.()?.test(pane) === true;
