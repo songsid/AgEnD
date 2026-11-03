@@ -361,6 +361,8 @@ export interface WebApiContext {
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
   modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
+  /** Existing CLI-owned model metadata only; must never launch a CLI or refresh a vendor catalog. */
+  cliModelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
@@ -1705,6 +1707,11 @@ export function handleWebRequest(
     if (machineId !== null && (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(machineId) || runtime === "wsl")) { json(res,400,{error:"Invalid model runtime machine"});return true; }
     if ((runtime !== null && runtime !== "wsl" && runtime !== "windows") || (refresh !== null && refresh !== "1")) { json(res, 400, { error: "Invalid model catalog options" }); return true; }
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
+    const cliModels = ctx.cliModelCatalogFor?.(backend, instance) ?? [];
+    if (cliModels.length) {
+      json(res, 200, { backend, models: cliModels, source: "cli-cache" });
+      return true;
+    }
     const models = ctx.modelCatalogFor?.(backend, instance) ?? [];
     if (backend === "claude-code" && !models.length) {
       const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;

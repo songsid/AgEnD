@@ -43,6 +43,28 @@ function seed(file: string, env: Record<string, unknown>) {
 }
 
 describe("a credential profile has its own catalog", () => {
+  it("reads Grok's CLI-owned catalog without probing and keeps Windows catalogs separate", async () => {
+    const grokHome = join(home, "grok-cache");
+    mkdirSync(grokHome);
+    writeFileSync(join(grokHome, "models_cache.json"), JSON.stringify({
+      models: { "grok-4.7": { info: { name: "Grok 4.7" }, api_key: "fixture-private-key" } },
+    }));
+    const original = process.env.GROK_HOME;
+    process.env.GROK_HOME = grokHome;
+    try {
+      FakeProbeWorker.answer = () => { throw new Error("a cache read must not probe"); };
+      const fm = await makeFleet({ w: { backend: "grok" }, windows: { runtime: "windows", backend: "grok" } });
+      expect(fm.modelCatalogFor("grok", "w")).toEqual([]);
+      expect(fm.cliModelCatalogFor("grok", "w")).toEqual([{ id: "grok-4.7", label: "Grok 4.7" }]);
+      expect(fm.cliModelCatalogFor("grok", "windows")).toEqual([]);
+      expect(fm.cliModelCatalogFor("codex", "w")).toEqual([]);
+      expect(fm.cliModelCatalogFor("claude-code", "w")).toEqual([]);
+      expect(existsSync(join(home, "cli-env", "grok.json"))).toBe(false);
+      expect(FakeProbeWorker.workers).toEqual([]);
+    } finally {
+      if (original === undefined) delete process.env.GROK_HOME; else process.env.GROK_HOME = original;
+    }
+  });
   it("probes with the profile's login store and writes the profile's own cache file", async () => {
     const seen: any[] = [];
     FakeProbeWorker.answer = (input) => { seen.push(input); return { models: [{ id: "opus", label: "opus" }], apiModels: [{ id: "claude-work-1", label: "claude-work-1" }] }; };

@@ -130,6 +130,7 @@ import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
+import { readGrokModelCache } from "./backend/grok-model-cache.js";
 import { CLI_ENV_TTL_MS, isModelCompatible, noteResolvedBinary, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, ResumeBlockedError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
@@ -21535,6 +21536,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const seen = new Set<string>(), out: import("./backend/types.js").ModelOption[] = [];
     for (const m of [...(env?.models ?? []), ...(env?.apiModels ?? [])]) if (!seen.has(m.id)) { seen.add(m.id); out.push(m); }
     return out;
+  }
+
+  /** Read an existing CLI-owned catalog without constructing a backend or starting a probe. */
+  cliModelCatalogFor(backend: string, instance: string | null): import("./backend/types.js").ModelOption[] {
+    if (backend !== "grok" || instance && isWindowsInstance(this.fleetConfig?.instances[instance])) return [];
+    return readGrokModelCache();
   }
 
   /**
