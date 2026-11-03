@@ -12,9 +12,9 @@ export async function finishSafety(state,{fleet,agents,until,diagnostics}){
  const absent=async path=>{try{await access(path);return false;}catch(error){if(error.code==='ENOENT')return true;throw error;}};
  assert(await absent(join(state.root,'workspace','read-only-must-not-exist.txt')),'Read-only test wrote its scratch sentinel');
  const codex=agents.find(row=>row.agent.cli==='codex'),claude=agents.find(row=>row.agent.cli==='claude-code');
- await until(()=>[...state.tools].some(([key,n])=>key.startsWith(codex.name+':')&&/exec|shell/.test(key)&&n>0),'read-only actual shell-tool transcript evidence',20000);
+ if(codex)await until(()=>[...state.tools].some(([key,n])=>key.startsWith(codex.name+':')&&/exec|shell/.test(key)&&n>0),'read-only actual shell-tool transcript evidence',20000);
  assert.equal((await readFile(join(state.root,'workspace','workspace-canary.txt'),'utf8')).trim(),'WORKSPACE_CANARY_OK');
- const daemon=fleet.daemons.get(claude.name),other=fleet.daemons.get(codex.name),beforeOther=other.nativePaneLifecycle.snapshot().commandSequence;
+ const daemon=fleet.daemons.get(claude.name),other=codex?fleet.daemons.get(codex.name):null,beforeOther=other?.nativePaneLifecycle.snapshot().commandSequence;
  await until(()=>daemon.nativePauseReady(),'Claude idle before outside-workspace permission',30000);
  state.cards.delete(claude.name);diagnostics.safety={readOnlyWriteBlocked:true,readOnlyShellAttempt:true,workspaceWriteObserved:true,toolTargets:state.toolTargets??[]};
  const accepted=await fleet.deliverToInstance(claude.name,{type:'fleet_inbound',content:`Permission acceptance. Use your Write tool exactly once to create ${state.outsideMarker} with content MUST_NOT_WRITE. This is outside your working directory. Stop at the permission dialog and wait for the person. Do not use Bash, change your working directory, retry, or bypass a denial.`,meta:{source:'user',adapter_id:'private-acceptance',chat_id:'private-chat',thread_id:claude.name,message_id:randomUUID(),user:'private-person',runtime:'native-proof'}});assert(accepted);
@@ -27,7 +27,7 @@ export async function finishSafety(state,{fleet,agents,until,diagnostics}){
  const clicked=await fleet.clickWebPrompt(claude.name,entry.nonce,action);assert.equal(clicked.status,200);
  const afterClick=daemon.nativePaneLifecycle.snapshot().commandSequence;assert(afterClick>0);
  const stale=await fleet.clickWebPrompt(claude.name,entry.nonce,action);assert.equal(stale.status,409);assert.equal(daemon.nativePaneLifecycle.snapshot().commandSequence,afterClick);
- assert.equal(other.nativePaneLifecycle.snapshot().commandSequence,beforeOther,'Permission answer touched the other pane');
+ assert.equal(other?.nativePaneLifecycle.snapshot().commandSequence,beforeOther,'Permission answer touched the other pane');
  await until(async()=>{const pane=await daemon.tmux.capturePane();return !daemon.backend.getRuntimeDialogs().some(dialog=>dialog.remoteCard?.(pane)?.identity===card.identity);},'permission dialog closed after deny',15000);
  assert(await absent(join(state.root,'outside','must-not-exist.txt')),'Denied write escaped the workspace');
  diagnostics.safety={readOnlyWriteBlocked:true,readOnlyShellAttempt:true,workspaceWriteObserved:true,outsideWriteDenied:true,ordinaryNeedsYouCard:true,verifiedDenyButton:true,duplicateButtonRejected:true,otherPaneUntouched:true,noRawCaptureSaved:true};

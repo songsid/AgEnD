@@ -1,6 +1,7 @@
 /** Terminal operations used by the daemon. A handle's object identity fences in-flight work. */
 export interface PaneSize { columns: number; rows: number }
 export type PaneKey = "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q";
+export interface PaneInputProof { kind: "composer" | "dialog"; screen: string }
 export interface PaneStatus { alive: boolean; exitCode?: number; pid?: number }
 export interface PaneOutputEvent { paneId: string; windowId?: string; at: number }
 export type PaneOutputEventName = `output:${string}`;
@@ -15,15 +16,15 @@ export interface Pane {
   getPaneStatus(): Promise<PaneStatus | null>;
   getWindowGeometry(): Promise<PaneSize & { mode: string }>;
   getPaneInputMode(): Promise<"raw" | "cooked" | "unknown">;
-  sendKeys(text: string): Promise<boolean>;
+  sendKeys(text: string, proof?: PaneInputProof): Promise<boolean>;
   sendKeySequence(keys: readonly string[]): Promise<boolean>;
-  sendSpecialKey(key: PaneKey, timeoutMs?: number): Promise<boolean>;
+  sendSpecialKey(key: PaneKey, timeoutMs?: number, proof?: PaneInputProof): Promise<boolean>;
   deleteBackward(count: number, timeoutMs?: number): Promise<boolean>;
   getLastSendSpecialKeyError(): string | null;
   getLastPasteError(): string | null;
   isLastPasteFailureRecoverable(): boolean;
   pasteText(text: string, opts?: { retryEnter?: boolean }): Promise<boolean>;
-  pasteBuffer(text: string, opts?: { guard?: () => boolean; timeoutMs?: number }): Promise<boolean>;
+  pasteBuffer(text: string, opts?: { guard?: () => boolean; timeoutMs?: number; proof?: PaneInputProof }): Promise<boolean>;
   pipeOutput(logPath: string): Promise<void>;
   capturePane(timeoutMs?: number): Promise<string>;
   capturePaneWithHistory(lines?: number, timeoutMs?: number): Promise<string>;

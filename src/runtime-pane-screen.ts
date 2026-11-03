@@ -57,7 +57,9 @@ export class RuntimePaneScreen {
     this.terminal.resize(columns, rows);
   }
   bracketedPaste(text: string): string {
-    return this.terminal.modes.bracketedPasteMode ? `\x1b[200~${text.replace(/\n/g, "\r")}\x1b[201~` : text.replace(/\n/g, "\r");
+    // Both audited TUIs understand bracketed paste. A missing/late ConPTY advertisement must never degrade multiline
+    // payloads into raw Enter keys that start a task before its separately fenced submit key arrives.
+    return `\x1b[200~${text.replace(/\r\n|\r|\n/g, "\r")}\x1b[201~`;
   }
   dispose(): void { this.disposed = true; this.terminal.dispose(); }
 }

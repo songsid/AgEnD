@@ -32,6 +32,8 @@ export interface RuntimePaneSnapshot extends PaneSize {
   seq: number;
   outputAt: number;
   commandSequence: number;
+  /** Positive no-input receipt for the last command, retained across replay/reconciliation. */
+  inputRefused?: true;
   exitCode?: number;
   sessionId?: string;
 }
@@ -45,10 +47,10 @@ export type RuntimePaneRequest =
   | { action: "bind-session"; paneId: string; launchId: string; sessionId: string }
   | { action: "transcript"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
   | { action: "transcript-baseline"; paneId: string; launchId: string; cursor: PaneTranscriptCursor }
-  | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; kind: "literal" | "paste"; text: string }
-  | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; key: PaneKey }
+  | { action: "input"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq?: number; kind: "literal" | "paste"; text: string }
+  | { action: "key"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq?: number; key: PaneKey }
   | { action: "resize"; paneId: string; launchId: string; operationId: string; sequence: number; columns: number; rows: number }
-  | { action: "edit"; paneId: string; launchId: string; operationId: string; sequence: number; keys: PaneEditKey[]; repeat?: number }
+  | { action: "edit"; paneId: string; launchId: string; operationId: string; sequence: number; expectedSeq?: number; keys: PaneEditKey[]; repeat?: number }
   | { action: "reconcile"; paneId: string; launchId: string; operationId: string; sequence: number; digest: string }
   | { action: "close"; paneId: string; launchId: string; operationId: string; sequence: number };
 
@@ -98,17 +100,18 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
     case "transcript":
       closed(value, ["action", "paneId", "launchId", "cursor"]); validatePaneTranscriptCursor(value.cursor); break;
     case "input":
-      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "kind", "text"]);
+      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "expectedSeq", "kind", "text"]);
       if (value.kind !== "literal" && value.kind !== "paste") throw Error("Invalid pane input kind");
       if (typeof value.text !== "string" || Buffer.byteLength(value.text) > PANE_MAX_INPUT_BYTES || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value.text)) throw Error("Invalid pane literal input");
+      if(value.kind === "literal" && /[\r\n]/.test(value.text as string))throw Error("Multiline input requires bracketed paste");
       break;
     case "key":
-      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "key"]);
+      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "expectedSeq", "key"]);
       if (!["Enter", "Escape", "Up", "Down", "Right", "Left", "C-c", "C-q"].includes(String(value.key))) throw Error("Invalid pane key");
       break;
     case "resize": closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "columns", "rows"]); dimension(value.columns, 40, 300); dimension(value.rows, 10, 120); break;
     case "edit":
-      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "keys", "repeat"]);
+      closed(value, ["action", "paneId", "launchId", "operationId", "sequence", "expectedSeq", "keys", "repeat"]);
       if (!Array.isArray(value.keys) || !value.keys.length || value.keys.length > 64 || value.keys.some(key => typeof key !== "string" || !Object.hasOwn(PANE_EDIT_KEYS, key))
         || value.repeat !== undefined && (!Number.isInteger(value.repeat) || (value.repeat as number) < 1)
         || value.keys.length * ((value.repeat as number | undefined) ?? 1) > 8192) throw Error("Invalid pane editing keys");
@@ -121,6 +124,7 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
     default: throw Error("Unknown pane operation");
   }
   if (value.action !== "list") {
+    if(value.expectedSeq!==undefined)dimension(value.expectedSeq,0,Number.MAX_SAFE_INTEGER);
     id(value.paneId); id(value.launchId);
     if (!["capture", "snapshot", "output", "transcript", "transcript-baseline", "bind-session"].includes(value.action)) { id(value.operationId); dimension(value.sequence, 1, Number.MAX_SAFE_INTEGER); }
   }
@@ -128,7 +132,8 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
 }
 
 export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot {
-  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "columns", "rows", "exitCode", "sessionId"]);
+  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "inputRefused", "columns", "rows", "exitCode", "sessionId"]);
+  if(value.inputRefused!==undefined&&value.inputRefused!==true)throw Error("Invalid pane input refusal");
   id(value.hostBootId); id(value.paneId); id(value.agentId); id(value.launchId);
   if (typeof value.instance !== "string" || !/^[\p{L}\p{N}_.-]{1,160}$/u.test(value.instance)
     || !["starting", "running", "exited", "unknown"].includes(String(value.state))) throw Error("Invalid pane snapshot");

@@ -165,7 +165,11 @@ export class RuntimePaneHost {
     const record = live.record;
     if (request.action === "output") return live.output.read(request.offset, record.snapshot.state === "exited");
     await live.parsed;
-    if (request.action === "capture") return { snapshot: structuredClone(record.snapshot), text: await live.screen.capture(request) };
+    if (request.action === "capture") {
+      const seq=record.snapshot.seq,text=await live.screen.capture(request);
+      if(seq!==record.snapshot.seq)throw Error("Pane changed during capture; observe it again");
+      return {snapshot:structuredClone(record.snapshot),text};
+    }
     if (request.action === "bind-session") {
       const expected = record.snapshot.sessionId ?? record.launch.sessionId ?? (record.launch.cli === "claude-code" ? record.snapshot.launchId : undefined);
       if (expected && expected !== request.sessionId) throw Error("Pane conversation identity is already pinned elsewhere");
@@ -200,6 +204,11 @@ export class RuntimePaneHost {
     if (record.snapshot.state !== "running" && request.action !== "close") throw Error("Pane process is not confirmed running");
     record.snapshot.commandSequence = request.sequence;
     record.lastCommand = { id: request.operationId, digest, state: "prepared" };
+    delete record.snapshot.inputRefused;
+    if((request.action==="input"||request.action==="key"||request.action==="edit")&&request.expectedSeq!==undefined&&request.expectedSeq!==record.snapshot.seq){
+      // Positively no input. Consume this command identity: a lost refusal ACK must never become a later key.
+      record.snapshot.inputRefused=true;record.lastCommand.state="applied";this.options.store.put(record);return structuredClone(record.snapshot);
+    }
     // Durable before input: a crash after this write must hold, never duplicate Enter.
     this.options.store.put(record);
     if (request.action === "input") live.process.write(request.kind === "paste" ? live.screen.bracketedPaste(request.text) : request.text);

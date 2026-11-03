@@ -94,6 +94,11 @@ describe("native argv and prompt boundaries", () => {
     const read = buildNativeInvocation({ ...task, cli: "claude-code", sandbox: "read-only" });
     expect(read.args.slice(read.args.indexOf("--permission-mode"), read.args.indexOf("--permission-mode") + 2)).toEqual(["--permission-mode", "plan"]);
     expect(read.args).not.toContain("acceptEdits");
+    for(const invocation of [read,write]){
+      const index=invocation.args.indexOf("--settings");expect(index).toBeGreaterThanOrEqual(0);
+      expect(JSON.parse(invocation.args[index+1])).toEqual({permissions:{blockWritesOutsideWorkingDirectories:true}});
+      expect(invocation.args.filter(arg=>arg==="--settings")).toHaveLength(1);
+    }
   });
   it("uses Antigravity's documented stdin user event and exact conversation resume", () => {
     const invocation = buildNativeInvocation({ ...task, cli: "antigravity", sandbox: "workspace-write", model: "Gemini 3.8 Flash (Medium)" }, { resumeSessionId: sessionId });

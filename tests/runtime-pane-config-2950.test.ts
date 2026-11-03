@@ -74,3 +74,11 @@ it('cache and final launch version gates accept real lines and refuse stale or a
  expect(()=>assertAuditedNativePaneVersion('codex','codex-cli 0.165.0')).not.toThrow();expect(()=>assertAuditedNativePaneVersion('claude-code','2.1.316 (Claude Code)')).not.toThrow();
  for(const line of ['codex-cli 0.166.0','codex-cli 0.165.0-beta','0.165.0 0.166.0','0.165.0+changed','unknown'])expect(()=>assertAuditedNativePaneVersion('codex',line)).toThrow('not passed');expect(()=>assertAuditedNativePaneVersion('kiro-cli','0.165.0')).toThrow();
 });
+
+it.each(['read-only','workspace-write'] as const)('Claude pane %s has a launch-local hard file policy without account or shell permission bypass',sandbox=>{
+ const f=rig('claude-code'),config=f.prepare(),args=persistentNativeArguments({...f.launch,sandbox},config),index=args.indexOf('--settings');
+ expect(index).toBeGreaterThanOrEqual(0);expect(JSON.parse(args[index+1])).toEqual({permissions:{blockWritesOutsideWorkingDirectories:true}});
+ expect(args.filter(arg=>arg==='--settings')).toHaveLength(1);expect(args).not.toContain('--add-dir');expect(args).not.toContain('--dangerously-skip-permissions');
+ expect(args[args.indexOf('--permission-mode')+1]).toBe(sandbox==='workspace-write'?'acceptEdits':'default');
+ config.cleanup();
+});

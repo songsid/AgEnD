@@ -2,7 +2,7 @@
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneConfig } from "./runtime-pane-config.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
-import { nativeUpdateGuard } from "./windows-cli-providers.js";
+import { nativeUpdateGuard, nativeClaudeFilePolicyArgs } from "./windows-cli-providers.js";
 /** Cache admission and the owned worker's final pre-spawn check share the same audited release set. */
 export function assertAuditedNativePaneVersion(provider:string,line:string|null):void{
  const expected=provider==="codex"?"0.165.0":provider==="claude-code"?"2.1.316":null;
@@ -55,7 +55,7 @@ export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: Na
     ...(launch.instructions ? ["-c", nativeDeveloperInstructions(launch.instructions)] : []),
     "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
     ...model, ...(launch.sessionId ? ["resume", launch.sessionId] : [])];
-  return [...model, ...(config?.instructionsFile ? ["--append-system-prompt-file", config.instructionsFile] : []),
+  return [...model, ...nativeClaudeFilePolicyArgs(), ...(config?.instructionsFile ? ["--append-system-prompt-file", config.instructionsFile] : []),
     ...(mcp ? ["--strict-mcp-config", "--mcp-config", mcp.configPath, "--allowedTools", mcp.tools.map(tool => `mcp__${mcp.serverName}__${tool}`).join(",")] : []), "--permission-mode", launch.sandbox === "workspace-write" ? "acceptEdits" : "default", ...(launch.sandbox === "read-only" ? ["--tools", "Read,Glob,Grep"] : []),
     ...(launch.sessionId ? ["--resume", launch.sessionId] : config?.sessionId ? ["--session-id", config.sessionId] : [])];
 }
