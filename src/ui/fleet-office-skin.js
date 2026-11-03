@@ -244,13 +244,21 @@ function drawDeskFront(ctx, d, look, env) {
   if (look.match) { ctx.save(); ctx.strokeStyle = pal.focus; ctx.lineWidth = 2; ctx.strokeRect(d.x + 2, d.y + 2, d.w - 4, d.h - 6); ctx.restore(); }
 }
 
-const Q = 2;                                             // a prop's art pixel
+const Q = 2;                                             // a prop's art pixel, before PROP_SCALE
+/**
+ * #2946: the built-in props are drawn this much larger than their 16 px art (a pack's own `props` keep their size). In
+ * the scene's units, so they scale with the room as its people do (zoom, a phone, an All offices tile).
+ */
+export const PROP_SCALE = 1.75;
 function drawProp(ctx, it, ms, env) {
-  const c = env.pal.fx[it.hue] || env.pal.fx.send, x0 = it.x - 8, y0 = it.y - 8 - Math.sin(Math.PI * it.t) * 10;
-  const b = (c2, r, w, h, col) => px(ctx, x0 + c2 * Q, y0 + r * Q, w * Q, h * Q, col);
+  const c = env.pal.fx[it.hue] || env.pal.fx.send, lift = Math.sin(Math.PI * it.t) * 10;
+  const b = (c2, r, w, h, col) => px(ctx, -8 + c2 * Q, -8 + r * Q, w * Q, h * Q, col);
   ctx.save();
+  ctx.translate(it.x, it.y);
+  ctx.scale(PROP_SCALE, PROP_SCALE);
   ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
-  ctx.beginPath(); ctx.ellipse(it.x, it.y + 4, 7, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 4, 7, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.translate(0, -lift);
   if (it.hue === "task") { b(0, 0, 4, 2, c); b(0, 1, 8, 6, c); b(0, 2, 8, 1, "rgba(255, 255, 255, 0.35)"); }
   else if (it.hue === "report") { b(1, 0, 6, 8, "#fbfbfb"); b(1, 0, 6, 1, c); b(2, 4, 1, 1, c); b(3, 5, 1, 1, c); b(4, 4, 1, 1, c); b(5, 3, 1, 1, c); }
   else if (it.hue === "broadcast") { b(0, 3, 2, 2, c); b(2, 2, 2, 4, c); b(4, 1, 2, 6, c); if (frameAt(ms, 2, 6)) { b(7, 1, 1, 2, c); b(7, 5, 1, 2, c); } else b(7, 3, 1, 2, c); }

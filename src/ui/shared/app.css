@@ -1886,6 +1886,12 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .oo-canvas.hot { cursor: pointer; }
 /* The canvas controls, as the org chart canvas's (.oc-zoom, .oc-mini): over the stage's corners. */
+/* #2946: the key to the items carried between desks — a strip under the bar, as the org chart's (.oc-legend). */
+.oo-key { font-size: var(--fs-xs); color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); padding: 4px 10px; }
+.oo-key-rows { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin: 0; padding: 0; list-style: none; }
+.oo-key-row { display: inline-flex; align-items: center; gap: 6px; }
+.oo-key-icon { width: 32px; height: 32px; flex: none; image-rendering: pixelated; }
+.oo-key-btn.on { border-color: var(--accent); }
 .oo-zoom { z-index: 6; }
 .oo-zoom .icon-btn { color: var(--text); }
 /* The overview's box (left, top, width, height) is set by the page, inside the stage and scaled to it (miniBox). */
