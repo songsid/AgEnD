@@ -207,7 +207,8 @@ const HEAD_REF_X = 10 - (10 * HEAD.BACK) / HEAD.LEN;
 /**
  * The key to the lines (#2052): a **Key** toggle in the toolbar; open, its rows are a strip between the toolbar and the
  * canvas — never over the canvas, so it covers no card (it used to sit in the canvas's bottom-left corner, over the
- * team there at the opening view). Folded until the person opens it; kept per device.
+ * team there at the opening view). Folded until the person opens it; kept per device. The lines' key: the Office has its
+ * own, for the items it carries (fleet-office.js OfficeKey, #2946).
  */
 function readKeyOpen() { try { return localStorage.getItem(KEY_KEY) === "1"; } catch { return false; } }
 function KeyToggle({ open, onToggle }) {
@@ -490,13 +491,13 @@ export function OrgCanvas({ org, app, lease }) {
         ${mode !== "list" ? html`<label class="s-search oc-find"><${Icon} name="search" size=${14} /><span class="sr-only">${tc("find")}</span>
           <input type="search" value=${query} placeholder=${tc("findShort")} autocomplete="off" onInput=${(e) => setQuery(e.target.value)} onKeyDown=${onFind} />
           ${q ? html`<span class="oc-found" role="status">${found ? (found === 1 ? tc("foundOne") : tc("found", found)) : tc("noMatch")}</span>` : null}</label>` : null}
-        ${mode !== "list" && live ? html`<${KeyToggle} open=${keyOpen} onToggle=${toggleKey} />` : null}
+        ${mode === "canvas" && live ? html`<${KeyToggle} open=${keyOpen} onToggle=${toggleKey} />` : null}
         <button type="button" class=${`btn btn-sm oc-live${live ? " on" : ""}`} aria-pressed=${live ? "true" : "false"} title=${live ? tc("liveOn") : tc("liveOff")}
           onClick=${() => setLive((v) => !v)}><span class="oc-live-dot" aria-hidden="true"></span>${tc("live")}</button>
         <div class="seg-inline" role="group" aria-label=${tc("view")}>${modeBtn("canvas")}${modeBtn("list")}${modeBtn("office")}</div>
       </div>
     </div>
-    ${mode !== "list" && live && keyOpen ? html`<${Legend} />` : null}
+    ${mode === "canvas" && live && keyOpen ? html`<${Legend} />` : null}
     ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${sending} />`
       : mode === "office" ? html`<${Office} view=${view} traffic=${live ? traffic : null} q=${q} lease=${lease} onOpen=${openChat} />`
       : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} traffic=${live ? traffic : null} />`}

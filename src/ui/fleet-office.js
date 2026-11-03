@@ -64,7 +64,7 @@ import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
-import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
+import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf } from "./fleet-office-levels.js";
@@ -96,6 +96,8 @@ register("orgo", {
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
     fill: "Fill", fillTitle: "Fill the panel (the scene's overflow is cropped; drag to see it)", zoomLevel: "Zoom {0}",
     allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Double-click a tile to open that office.",
+    key: "Key", keyTitle: "What the items carried between desks are", keyLabel: "Carried between desks",
+    keyTask: "Folder: a task", keySend: "Envelope: a message", keyReport: "Paper: a report", keyBroadcast: "Horn: a broadcast",
     tileLabel: "{0} ({1})", openOffice: "Open the office {0}", lobbyTile: "Lobby tile (in no office)", lobbyEveryone: "Everyone is in an office", overviewNoEdit: "Pick one office to edit offices or a layout",
   },
   "zh-TW": {
@@ -114,6 +116,8 @@ register("orgo", {
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
     fill: "填滿", fillTitle: "填滿整個面板（超出的部分會被裁切，拖曳即可看到）", zoomLevel: "縮放 {0}",
     allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。雙擊一格即可開啟那間辦公室。",
+    key: "圖例", keyTitle: "桌子之間傳遞的物品代表什麼", keyLabel: "桌子之間傳遞的物品",
+    keyTask: "資料夾：任務", keySend: "信封：訊息", keyReport: "紙張：回報", keyBroadcast: "喇叭：廣播",
     tileLabel: "{0}（{1}）", openOffice: "開啟辦公室「{0}」", lobbyTile: "大廳格（不在任何辦公室）", lobbyEveryone: "每個成員都已在某間辦公室", overviewNoEdit: "請先選一間辦公室，再編輯辦公室或配置",
   },
 });
@@ -584,6 +588,28 @@ function People({ nodes, pinned, onChange }) {
   </div>`;
 }
 
+/** #2946: the key's rows — each kind's item as the scene draws it (the built-in prop, in the theme's colour), and its words. */
+export const KEY_KINDS = [["task", "keyTask"], ["send", "keySend"], ["report", "keyReport"], ["broadcast", "keyBroadcast"]];
+const KEY_PX = 32;
+/**
+ * #2946 (hxhsandy): the key to the items carried between desks — a strip under the Office's bar (never over the scene),
+ * opened by its Key toggle. The shapes are drawn by the built-in skin, so they are the ones in the air, at their size.
+ */
+export function OfficeKey({ pal }) {
+  const paint = (hue) => (cv) => {
+    const g = cv && typeof cv.getContext === "function" ? cv.getContext("2d") : null;
+    if (!g) return;
+    const r = Math.max(1, Math.round(globalThis.devicePixelRatio || 1));
+    if (cv.width !== KEY_PX * r) { cv.width = KEY_PX * r; cv.height = KEY_PX * r; }
+    g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, KEY_PX, KEY_PX);
+    try { pixelSkin.drawProp(g, { hue, kind: hue, x: KEY_PX / 2, y: KEY_PX / 2 + 4, t: 0 }, 0, { pal }); } catch { /* left blank */ }
+  };
+  return html`<div class="oo-key" role="region" aria-label=${to("keyLabel")}>
+    <ul class="oo-key-rows">${KEY_KINDS.map(([hue, k]) => html`<li key=${hue} class="oo-key-row" data-kind=${hue}>
+      <canvas class="oo-key-icon" width=${KEY_PX} height=${KEY_PX} aria-hidden="true" ref=${paint(hue)}></canvas><span>${to(k)}</span></li>`)}</ul>
+  </div>`;
+}
+
 /**
  * The view: `view` buildOrgView's answer; `traffic` the live items (null: Live is off); `q` the Find box's needle;
  * `lease` the tab's (its reads); `onOpen(name)` what a desk opens (the canvas's: the chat; none: a desk opens nothing,
@@ -609,6 +635,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [hideAsleep, setHideAsleep] = useState(() => store.hideAsleep());
   // Bedtime (#2568), when it is on here: the idle sleep from NIGHT.FROM to NIGHT.TO on this device's clock (read every NIGHT.TICK).
   const [nightOn, setNightOn] = useState(() => store.nightOn());
+  const [keyOpen, setKeyOpen] = useState(() => store.keyOpen());
   const [nightNow, setNightNow] = useState(() => isNight());
   useEffect(() => { if (!nightOn) return undefined; setNightNow(isNight()); const h = setInterval(() => setNightNow(isNight()), NIGHT.TICK); return () => clearInterval(h); }, [nightOn]);
   const night = nightOn && nightNow;
@@ -1458,6 +1485,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${custom && baseSkin.id !== custom.skin && !loading ? html`<span class="muted oo-note">${to("skinUnknown", styleName(custom.skin))}</span>` : null}
       ${placed.ignored ? html`<span class="muted oo-note">${to("layoutIgnored")}</span>` : null}
       ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
+      ${traffic ? html`<button type="button" class=${`btn btn-sm oo-key-btn${keyOpen ? " on" : ""}`} aria-expanded=${keyOpen ? "true" : "false"} title=${to("keyTitle")}
+        onClick=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }}>${to("key")}</button>` : null}
       ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview) setEditing(true); }} disabled=${!!layout || overview}
         title=${overview ? to("overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
@@ -1465,6 +1494,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
     </div>
+    ${traffic && keyOpen ? html`<${OfficeKey} pal=${pal} />` : null}
     ${editing && !overview ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}
       ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
     ${overview || people.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}

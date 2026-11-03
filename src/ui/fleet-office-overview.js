@@ -13,8 +13,7 @@
 //   contain); a tie keeps the narrower. The same input always gives the same picture.
 // - Traffic between people in different tiles is a straight flight between their seats in overview coordinates
 //   (createCrossFlights); between two people in the same tile it is that tile's own (createFlights, along its corridors).
-import { FLIGHT, along, desksOf, membersOf, pathLength } from "./fleet-office-model.js";
-import { hue } from "./fleet-traffic.js";
+import { FLIGHT, createTrips, desksOf, membersOf } from "./fleet-office-model.js";
 
 /** The switcher's "All offices" value: '*' is never in a stored office's id (fleet-office-model.js officeOk). */
 export const ALL_ID = "*all";
@@ -127,41 +126,10 @@ export function crossPath(parts, from, to) {
   return a && z ? [a, z] : null;
 }
 
-const MAX_SEEN = 2000;
 /**
- * The items in the air between tiles — fleet-office-model.js createFlights's lifecycle (each new item once; none for a
- * stale delegation or with reduced motion), on crossPath's straight line: `frame(now, parts)` → { id, hue, kind, from, x, y,
- * t } in overview units; a trip with no crossing (both in one tile, or either gone) is dropped.
+ * The items in the air between tiles — fleet-office-model.js createTrips (each new item once; none for a stale delegation
+ * or with reduced motion; at most `max` at once, newest first, of those with a crossing), on crossPath's straight line:
+ * `frame(now, parts)` → { id, hue, kind, from, x, y, t } in overview units; one with no crossing (both in one tile, or
+ * either gone) is not this one's.
  */
-export function createCrossFlights({ max = FLIGHT.MAX } = {}) {
-  const seen = new Set();
-  let trips = [];
-  return {
-    sync(items, now, still = false) {
-      let k = 0, started = 0;
-      for (const it of items || []) {
-        if (seen.has(it.id)) continue;
-        seen.add(it.id);
-        if (seen.size > MAX_SEEN) seen.delete(seen.values().next().value);
-        if (still || it.phase === "stale") continue;
-        trips.push({ id: it.id, from: it.from, to: it.to, kind: it.kind, hue: hue(it.kind), start: now + k++ * FLIGHT.STAGGER_MS, parts: null, pts: null, ms: 0 });
-        started++;
-      }
-      if (trips.length > max) trips = trips.slice(trips.length - max);
-      return started;
-    },
-    frame(now, parts) {
-      const out = [];
-      trips = trips.filter((f) => {
-        if (f.parts !== parts) { f.parts = parts; f.pts = crossPath(parts, f.from, f.to); f.ms = f.pts ? Math.min(FLIGHT.MAX_MS, Math.max(FLIGHT.MIN_MS, pathLength(f.pts) / FLIGHT.SPEED)) : 0; }
-        if (!f.pts) return false;
-        const t = (now - f.start) / f.ms;
-        if (t >= 1) return false;
-        if (t >= 0) { const p = along(f.pts, t); out.push({ id: f.id, hue: f.hue, kind: f.kind, from: f.from, x: p.x, y: p.y, t }); }
-        return true;
-      });
-      return out;
-    },
-    size: () => trips.length,
-  };
-}
+export const createCrossFlights = ({ max = FLIGHT.MAX } = {}) => createTrips((parts, from, to) => (parts ? crossPath(parts, from, to) : null), { max });
