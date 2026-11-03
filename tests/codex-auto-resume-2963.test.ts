@@ -131,6 +131,16 @@ describe("#2963 auto-resume of a conversation codex's database no longer lists",
     expect(existsSync(join(instanceDir, CODEX_RESUME_FAILED_FILE))).toBe(false);
   });
 
+  it("#2964 review: an attempt and a database that cannot be read prove nothing — usual planning, no failure notice, nothing blacklisted", () => {
+    rollout(OLD, ws);
+    writeFileSync(join(shared, "state_5.sqlite"), "not a database");
+    writeFileSync(join(instanceDir, CODEX_RESUME_ATTEMPT_FILE), JSON.stringify({ id: OLD }));
+    const { warning } = launch();
+    expect(String(warning)).not.toMatch(/could not resume/);
+    expect(existsSync(join(instanceDir, CODEX_RESUME_FAILED_FILE))).toBe(false);
+    expect(existsSync(join(instanceDir, CODEX_RESUME_ATTEMPT_FILE)), "the attempt is consumed").toBe(false);
+  });
+
   it("zh-TW notices", () => {
     setLocale("zh-TW");
     stateDb();
@@ -169,6 +179,16 @@ describe("#2963 the one-shot resume id (restart_instance resume_session_id)", ()
     expect(resumes(launch().cmd, TODAY)).toBe(true);
   });
 
+  it("#2964 review: a pending one-shot wins over an earlier attempt that did not take — the person's explicit choice", () => {
+    stateDb([{ id: TODAY, cwd: ws }]);
+    rollout(OLD, ws);
+    writeFileSync(join(instanceDir, CODEX_RESUME_ATTEMPT_FILE), JSON.stringify({ id: OTHER }));   // no row for it: did not take
+    writeFileSync(join(instanceDir, CODEX_RESUME_NEXT_FILE), JSON.stringify({ id: OLD }));
+    const { cmd, warning } = launch();
+    expect(resumes(cmd, OLD)).toBe(true);
+    expect(warning).toBe(`Resumed the Codex conversation ${OLD} for ${ws}, as asked.`);
+  });
+
   it("an id that no longer qualifies at launch → usual planning, and the notice says why", () => {
     stateDb([{ id: TODAY, cwd: ws }]);
     writeFileSync(join(instanceDir, CODEX_RESUME_NEXT_FILE), JSON.stringify({ id: OLD }));   // its rollout is gone
@@ -200,6 +220,21 @@ describe("#2963 restart_instance { resume_session_id }", () => {
     expect(r.error).toBeFalsy();
     expect(r.restarted).toEqual(["worker"]);
     expect(JSON.parse(readFileSync(join(instanceDir, CODEX_RESUME_NEXT_FILE), "utf8")).id).toBe(OLD);
+  });
+
+  it("#2964 review: a restart that fails does not leave the one-shot armed", async () => {
+    rollout(OLD, ws);
+    const { outboundHandlers } = await import("../src/outbound-handlers.js") as any;
+    const ctx: any = {
+      dataDir: root,
+      fleetConfig: { instances: { worker: { working_directory: ws, backend: "codex" } }, defaults: {} },
+      restartSingleInstance: vi.fn(async () => { throw new Error("tmux gone"); }),
+      logger: { warn() {}, info() {}, error() {}, debug() {} },
+    };
+    let error: unknown;
+    await outboundHandlers.get("restart_instance")(ctx, { name: "worker", resume_session_id: OLD }, (_r: unknown, e?: unknown) => { error = e; });
+    expect(String(error)).toMatch(/Failed to restart/);
+    expect(existsSync(join(instanceDir, CODEX_RESUME_NEXT_FILE))).toBe(false);
   });
 
   it("a bad, unknown or other-directory id, or a non-codex instance → refused with the reason, nothing restarted, nothing written", async () => {

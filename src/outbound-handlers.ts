@@ -1025,6 +1025,8 @@ const restartInstance: Handler = async (ctx, rawArgs, respond) => {
     await ctx.restartSingleInstance(targetName, { explicit: true });
     respond({ success: true, status: "restarted" });
   } catch (err) {
+    // #2964 review: the one-shot is for this restart only — a restart that failed does not leave it armed.
+    if (resumeId !== undefined) await disarmCodexResume(ctx, targetName);
     respond(null, `Failed to restart instance '${targetName}': ${sanitizeError(err, ctx, `restart_instance(${targetName})`)}`);
   }
 };
@@ -1054,6 +1056,14 @@ async function armCodexResume(ctx: OutboundContext, name: string, id: string): P
   try { writeFileSync(join(instanceDir, CODEX_RESUME_NEXT_FILE), JSON.stringify({ id: check.rollout.id, at: new Date().toISOString() }), { mode: 0o600 }); }
   catch (err) { return `Cannot resume ${id} on '${name}': ${(err as Error).message}. Nothing was restarted.`; }
   return null;
+}
+
+/** M-2266: remove a one-shot armCodexResume wrote (its restart failed). */
+async function disarmCodexResume(ctx: OutboundContext, name: string): Promise<void> {
+  const { join } = await import("node:path");
+  const { rmSync } = await import("node:fs");
+  const { CODEX_RESUME_NEXT_FILE } = await import("./backend/codex.js");
+  try { rmSync(join(ctx.dataDir, "instances", name, CODEX_RESUME_NEXT_FILE), { force: true }); } catch { /* already gone */ }
 }
 
 const pauseInstance: Handler = async (ctx, rawArgs, respond) => {

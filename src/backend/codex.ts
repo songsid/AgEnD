@@ -2370,7 +2370,6 @@ export class CodexBackend implements CliBackend {
     return null;
   }
 
-  /** Which Codex session this launch resumes (#984). Reads, never writes, Codex state. */
   /** The launch as the database plans it — and, when it has no conversation for this directory, an auto-resume (M-2266). */
   private plannedCommand(config: CliBackendConfig, approvalFlag: string, sessionsDir: string,
     resumeBy: (id: string, why: string, bytes: number | null) => string): string {
@@ -2430,6 +2429,7 @@ export class CodexBackend implements CliBackend {
     catch { /* without it a failed resume is only retried, as any failed launch is */ }
   }
 
+  /** Which Codex session this launch resumes (#984). Reads, never writes, Codex state. */
   private planResume(config: CliBackendConfig): CodexResumePlan {
     // Read the database Codex actually writes: the one in this instance's
     // CODEX_HOME. Normally that is a link to the shared file (same result).
