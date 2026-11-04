@@ -74,6 +74,25 @@ The user has already been shown the plain notice in this topic. When they ask, e
 - Never run `kiro-cli` yourself, and never delete or edit anything under `~/.kiro` or kiro's data directory.
 - Never reply to the `[system:kiro-incompat]` notice itself. It is information, not a request.
 
+## Preparing for Kiro CLI 3.x
+
+1. Call `kiro_engine_status` with no name filter. Its `kiro3_readiness` summary counts **all** Kiro Agents and
+   Classic rooms, including General; filtering to one Agent still keeps that whole-fleet count. A Classic Agent
+   is not ready for Kiro 3.x. This readiness describes the removal of Classic, not a promise that every 3.x
+   release supports every session or tool.
+2. Keep a compatible Kiro **2.x** installed. For each Classic fleet Agent, ask the owner to confirm the existing
+   `migrate_kiro_instance` move described below. Do not change `kiro_ui` by hand. Wait for the same conversation
+   and model to pass both verification starts; failure stops the Agent for inspection. The migration itself is
+   unchanged and is not available on 3.x.
+3. A **ClassicBot room** cannot use `migrate_kiro_instance`: its owner must change the room to another backend
+   in Classic settings, or continue using Kiro 2.x. Such rooms count as still Classic until their effective Kiro
+   configuration no longer selects Classic. Do not present a fleet-Agent migration tool as room recovery.
+4. Check `kiro_engine_status` again: every remaining Kiro Agent must use TUI (or already use V3), and the
+   `still_classic` count must be zero before recommending an upgrade. General is subject to the same check.
+5. The owner then upgrades Kiro themselves. AgEnD neither installs the CLI nor answers a V2/V3 menu. If a menu
+   or an unverified resume blocks startup, inspect Needs-you; do not clear the pin or start a fresh conversation
+   to make the check pass. The version-specific exact-resume evidence is documented separately from readiness.
+
 ## Moving an instance from classic to the TUI engine (#2598)
 
 kiro-cli 3.0 drops the classic engine (`kiro_ui: legacy`), so classic instances are being moved to the TUI engine,
