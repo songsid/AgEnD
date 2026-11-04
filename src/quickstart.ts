@@ -413,10 +413,13 @@ export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: st
  * #2910 (the user, hmsg-41f549f7: web first): a web-only fleet — no channel, no token — and its one agent, bound to
  * no connection (the setup page's web-only write, src/quickstart-api.ts draftWebOnly, makes the same entry).
  */
-export function newWebOnlyFleet(projectRoots: string[], backend: string, agent: { name: string; workingDirectory: string }): Record<string, any> {
+export function newWebOnlyFleet(projectRoots: string[], backend: string, agent: { name: string; workingDirectory: string; ownWorkspace?: boolean }): Record<string, any> {
   const fleetObj = newQuickstartFleet([], projectRoots, backend);
   delete fleetObj.channels;
-  fleetObj.instances = { [agent.name]: { working_directory: agent.workingDirectory, backend } };
+  // alpha.3: an agent called `general` is the General by its name — ticked when it works in its own workspace (the
+  // fleet's ticked General, as the setup page makes it), unticked in a folder of the user's (#2744): never half a General.
+  const general = agent.name === "general" ? { general_topic: agent.ownWorkspace === true } : {};
+  fleetObj.instances = { [agent.name]: { working_directory: agent.workingDirectory, backend, ...general } };
   return fleetObj;
 }
 

@@ -1,0 +1,134 @@
+/**
+ * #3008 ② Settings → Access & security → "Connections from outside" (src/ui/settings-outside.js), as rendered — the
+ * leader's wording (cid-alpha3-design, strings 1–13 and 17):
+ *  - a fleet with a chat connection: no card;
+ *  - this computer's admin, nothing set up: the switch can't be turned on, the hint says to set up an app first; "Set up
+ *    authenticator app" shows a QR code (drawn by the vendored encoder as one SVG path), the key in groups of four and
+ *    the code field; Continue waits for 6 digits; a wrong code says to check the phone's clock; a right one closes it;
+ *  - set up: the date, the lost-phone line, "Set up again" (asks, with the leader's words) and "Remove" (asks); the
+ *    switch turns it on (POST /ui/outside/switch) and the status says where it is open, a quick link's note included;
+ *  - a wait in force says how long, as words;
+ *  - from elsewhere (the server's `here: false`): "Only on the AgEnD computer.", the switch read-only, no buttons.
+ * Pure helpers too: the wait's words, the key's groups, the QR path from the real vendored encoder.
+ */
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
+
+const schema = buildSettingsImpactSchema();
+let p: AppPage, status: any, chat = false;
+let sent: Array<{ method: string; path: string; body: any }> = [];
+let answers: Record<string, { status: number; body: any }> = {};
+const realFetch = (globalThis as any).fetch;
+const ENROLL = { secret: "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP", uri: "otpauth://totp/AgEnD%3Apc?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=AgEnD&algorithm=SHA1&digits=6&period=30", expiresInMs: 600000 };
+const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
+  const method = init.method ?? "GET";
+  sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
+  const preset = answers[`${method} ${path}`];
+  if (preset) return { ok: preset.status < 300, status: preset.status, json: async () => preset.body };
+  const body = (() => {
+    if (method === "POST" && path === "/ui/outside/enroll") return ENROLL;
+    if (method !== "GET") return { ok: true };
+    if (path === "/ui/outside") return status;
+    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [] };
+    if (path === "/api/settings/guests") return { enabled: false, chat: true, instances: [], connections: [], guests: [] };
+    if (path === "/api/settings/schema") return schema;
+    if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, ...(chat ? { channels: [{ type: "telegram", id: "telegram" }] } : {}), web: {} };
+    if (path === "/api/settings/classic") return { channels: {}, defaults: {} };
+    if (path === "/api/settings/connections") return [];
+    if (path === "/api/fleet") return { version: "2.3.5", instances: [] };
+    return [];
+  })();
+  return { ok: true, status: 200, json: async () => body };
+};
+beforeAll(() => { p = page({ url: "http://127.0.0.1:19280/settings/access" }); (globalThis as any).fetch = fakeFetch; });
+afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
+beforeEach(() => { sent = []; answers = {}; chat = false; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
+afterEach(async () => { await p.unmount(); });
+
+const base = { webOnly: true, here: true, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
+async function open(over: Record<string, unknown> = {}) {
+  status = { ...base, ...over };
+  const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+  await p.unmount();
+  await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "access" }, navKey: "settings:access" }));
+  await settle(14);
+  const $ = (sel: string) => p.root.querySelector(sel) as any;
+  const click = async (el: any) => { fire(el, "click"); await settle(8); };
+  const type = async (el: any, v: string) => { el.value = v; fire(el, "input"); await settle(); };
+  const check = async (el: any, on: boolean) => { el.checked = on; fire(el, "change"); await settle(8); };
+  const posts = () => sent.filter(s => s.method === "POST" && s.path.startsWith("/ui/outside")).map(s => [s.path, s.body]);
+  return { $, click, type, check, posts };
+}
+
+describe("#3008 ② the helpers", () => {
+  it("a wait as words, the key in groups, the QR code as one path from the real vendored encoder", async () => {
+    const { waitWords, keyGroups, qrPath } = await import("/ui/js/settings-outside.js");
+    expect([waitWords(15 * 60_000), waitWords(60_000), waitWords(2 * 3600_000)]).toEqual(["15 minutes", "1 minute", "2 hours"]);
+    expect(keyGroups("JBSWY3DPEHPK3PXP")).toBe("JBSW Y3DP EHPK 3PXP");
+    const src = readFileSync(join(process.cwd(), "src", "ui", "shared", "qrcode.module.js"), "utf8");
+    const mod = await import("data:text/javascript;base64," + Buffer.from(src).toString("base64"));
+    const shape = qrPath(mod.default, ENROLL.uri);
+    expect(shape.size).toBeGreaterThan(29);                                                   // version ≥ 3 + the quiet zone
+    expect(shape.d).toMatch(/^(M\d+ \d+h1v1h-1z)+$/);
+  });
+});
+
+describe("#3008 ② Settings → Access & security → Connections from outside", () => {
+  it("a fleet with a chat connection (the server says webOnly: false): no card", async () => {
+    const w = await open({ webOnly: false });
+    expect(w.$("#outsideCard")).toBeNull();
+  });
+  it("nothing set up: the switch can't be turned on; set up shows the QR code, the key and the code field; a wrong code, then a right one", async () => {
+    const w = await open();
+    expect([w.$("#outsideCard h3").textContent, w.$("#outSwitch").disabled, w.$("#outNeedApp").textContent])
+      .toEqual(["Connections from outside", true, "Set up an authenticator app first. Signing in from outside will ask for its code."]);
+    await w.click(w.$("#outSetUp"));
+    await settle(10);
+    expect(w.$("#outEnroll .note").textContent).toBe("Scan this with Authy, Google Authenticator or Microsoft Authenticator, or type the key. Then enter the 6-digit code it shows.");
+    expect(w.$("#outKey").textContent).toBe("JBSW Y3DP EHPK 3PXP JBSW Y3DP EHPK 3PXP");
+    expect(w.$("#outConfirm").disabled).toBe(true);
+    await w.type(w.$("#outCode"), "123456");
+    expect(w.$("#outConfirm").disabled).toBe(false);
+    answers["POST /ui/outside/enroll/confirm"] = { status: 400, body: { error: "wrong" } };
+    await w.click(w.$("#outConfirm"));
+    expect(w.$("#outMsg").textContent).toBe("That code didn't work. Check that your phone's clock is right and try the newest code.");
+    answers["POST /ui/outside/enroll/confirm"] = { status: 200, body: { ok: true } };
+    status = { ...base, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) };
+    await w.click(w.$("#outConfirm"));
+    expect(w.$("#outEnroll")).toBeNull();
+    expect(w.posts()).toEqual([["/ui/outside/enroll", {}], ["/ui/outside/enroll/confirm", { code: "123456" }], ["/ui/outside/enroll/confirm", { code: "123456" }]]);
+    expect(w.$("#outSetUpOn").textContent).toMatch(/^Authenticator app set up on .+\.$/);
+  });
+  it("the QR code is drawn (one SVG path, no inline style)", async () => {
+    const w = await open();
+    await w.click(w.$("#outSetUp"));
+    for (let n = 0; n < 40 && !w.$("#outQr"); n++) await settle(4);
+    const svg = w.$("#outQr");
+    expect(svg).not.toBeNull();
+    expect(svg.querySelector("path").getAttribute("d")).toMatch(/^(M\d+ \d+h1v1h-1z)+$/);
+    expect(svg.getAttribute("style")).toBeNull();
+  });
+  it("set up: the switch turns it on; the status says where it is open (a quick link's note); Set up again and Remove ask first", async () => {
+    const w = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
+    expect(p.root.textContent).toContain("Lost your phone? On the AgEnD computer, choose “Set up again”.");
+    status = { ...base, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4), outside: true, link: { state: "open", url: "https://abc.trycloudflare.com/signin", quick: true } };
+    await w.check(w.$("#outSwitch"), true);
+    expect(w.$("#outOpenAt").textContent).toBe("Open at https://abc.trycloudflare.com/signin. A quick link gets a new address each time it opens.");
+    await w.click(w.$("#outRemove"));
+    await settle(10);
+    expect(w.posts()).toEqual([["/ui/outside/switch", { on: true }], ["/ui/outside/remove", {}]]);
+  });
+  it("a wait in force says how long", async () => {
+    const w = await open({ enrolled: true, enrolledAt: 1, pausedForMs: 2 * 3600_000 });
+    expect(w.$("#outPaused").textContent).toBe("Too many wrong codes. Try again in 2 hours.");
+  });
+  it("from elsewhere: only on the AgEnD computer — the switch read-only, no buttons", async () => {
+    const w = await open({ here: false, enrolled: true, enrolledAt: 1, outside: true, link: { state: "open", quick: true } });
+    expect([w.$("#outHereOnly").textContent, w.$("#outSwitch").disabled, w.$("#outSwitch").checked, w.$("#outAgain"), w.$("#outRemove"), w.$("#outSetUp"), w.$("#outOpenAt")])
+      .toEqual(["Only on the AgEnD computer.", true, true, null, null, null, null]);
+  });
+});

@@ -166,13 +166,20 @@ describe("#2726 the setup form in a language", () => {
     p.$("name").value = "helper"; p.$("name").listeners.get("input")();
     expect(p.$("dirHint").textContent).toContain("/root/.agend/workspaces/helper,");
   });
-  it("M-2069: a chat setup's first agent is general, said under the field; web only is agent-1; a typed name is kept", async () => {
+  it("M-2069: a setup's first agent is general, said under the field (alpha.3: web only too); a typed directory makes agent-1; a typed name is kept", async () => {
     const p = form(); await p.flush();
     expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["general", false]);
     p.$("pickWeb").onclick();
-    expect([p.$("name").value, p.$("generalNote").hidden, p.$("dirHint").textContent.includes("/workspaces/agent-1,")]).toEqual(["agent-1", true, true]);
+    expect([p.$("name").value, p.$("generalNote").hidden, p.$("dirHint").textContent.includes("/workspaces/general,")]).toEqual(["general", false, true]);
+    // …in web only's own words (the leader's, cid-alpha3-design); the chat platforms keep theirs.
+    expect(p.$("generalNote").textContent).toBe("This agent is the General: you talk to it in the web chat, and it hands work to the agents you add later.");
+    p.$("dir").value = "/home/you/projects/app"; p.$("dir").listeners.get("input")();
+    expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["agent-1", true]);
+    p.$("dir").value = ""; p.$("dir").listeners.get("input")();
+    expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["general", false]);
     p.$("pickDiscord").onclick();
     expect([p.$("name").value, p.$("generalNote").hidden]).toEqual(["general", false]);
+    expect(p.$("generalNote").textContent).toBe("This agent is the General: it answers in the chat's own General topic and hands work to the agents you add later.");
     p.$("name").value = "boss"; p.$("name").listeners.get("input")();
     p.$("pickWeb").onclick(); p.$("pickTelegram").onclick();
     expect(p.$("name").value, "a typed name is never replaced").toBe("boss");

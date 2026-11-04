@@ -99,7 +99,8 @@ describe("#2726 on the real SetupHost (web only)", () => {
     expect(JSON.stringify(await inspectSetup(h.dir, pending.body.pending_change.id))).toContain(want);
     expect((await decideSetup(h.dir, pending.body.pending_change.id)).pending_change.state).toBe("applied");
     const written = yaml.load(readFileSync(join(h.dir, "fleet.yaml"), "utf8")) as Record<string, any>;
-    expect(written.instances).toEqual({ "agent-1": { working_directory: want, backend: "claude-code" } });
+    // alpha.3: web only's first agent in its own workspace is the fleet's ticked General (whatever its name, as on a chat).
+    expect(written.instances).toEqual({ "agent-1": { working_directory: want, backend: "claude-code", general_topic: true } });
     expect(statSync(want).mode & 0o777).toBe(0o700);
     expect(existsSync(join(want, ".git"))).toBe(true);
     // What the fleet then reads: the same folder (loadFleetConfig gives a missing entry this path too).

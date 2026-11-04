@@ -1,5 +1,5 @@
 {
-  "note": "Vendored for #1408 (Preact + htm, no build). Every file below is byte-checked by tests/web-vendor-1408.test.ts.",
+  "note": "Vendored for #1408 (Preact + htm, no build) and #3008 (the QR code of an authenticator's setup). Every file below is byte-checked by tests/web-vendor-1408.test.ts.",
   "packages": {
     "preact": {
       "version": "10.29.8",
@@ -17,7 +17,10 @@
           "upstream": "package/hooks/dist/hooks.module.js",
           "sha256": "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38",
           "upstreamSha256": "a6ee626f2d01570592dd569a792e3f050154aa02890eead8c223fa3ed5aa3d5a",
-          "rewrite": { "from": "from\"preact\"", "to": "from\"./preact.module.js\"" }
+          "rewrite": {
+            "from": "from\"preact\"",
+            "to": "from\"./preact.module.js\""
+          }
         }
       }
     },
@@ -32,6 +35,20 @@
           "upstream": "package/dist/htm.module.js",
           "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4",
           "upstreamSha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+        }
+      }
+    },
+    "qrcode-generator": {
+      "version": "2.0.4",
+      "tarball": "https://registry.npmjs.org/qrcode-generator/-/qrcode-generator-2.0.4.tgz",
+      "integrity": "sha512-mZSiP6RnbHl4xL2Ap5HfkjLnmxfKcPWpWe/c+5XxCuetEenqmNFf1FH/ftXPCtFG5/TDobjsjz6sSNL0Sr8Z9g==",
+      "license": "MIT",
+      "licenseFile": "vendor/qrcode-generator.LICENSE",
+      "files": {
+        "qrcode.module.js": {
+          "upstream": "package/dist/qrcode.mjs",
+          "sha256": "ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0",
+          "upstreamSha256": "ea91d7118a5395289170da848b7c6758b996163bfbccf312591ab65a4911b7c0"
         }
       }
     }

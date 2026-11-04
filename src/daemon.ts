@@ -1,4 +1,5 @@
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
+import { generalByName } from "./general-instance.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
@@ -7292,7 +7293,7 @@ export class Daemon extends EventEmitter {
       if (update.auto_pause_after === null) delete this.config.auto_pause_after;
       else this.config.auto_pause_after = nextAutoPause;
       if (nextAutoPause !== previousAutoPause) {
-        const isGeneral = this.config.general_topic === true || this.name === "general";
+        const isGeneral = this.config.general_topic === true || generalByName(this.name, this.config);
         this.autoPauseController.reconfigure((isGeneral ? 0 : nextAutoPause) * 60_000);
       }
     }
@@ -11718,7 +11719,7 @@ export class Daemon extends EventEmitter {
     // The daemon used to read `general_topic` alone while `isGeneralInstance`
     // also accepted the name, so an instance called `general` without the flag
     // was a worker here and a general everywhere else.
-    const isGeneral = this.config.general_topic === true || this.name === "general";
+    const isGeneral = this.config.general_topic === true || generalByName(this.name, this.config);
     // No third argument for an ordinary instance: the default is `worker` now,
     // and naming it here would be a second place to change it.
     const toolSet = isGeneral

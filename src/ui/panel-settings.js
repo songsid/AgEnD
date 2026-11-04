@@ -53,6 +53,7 @@ import { OfficeSharesCard } from "./office-share-dialog.js";
 import { PageSharesCard } from "./page-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
+import { OutsideCard } from "./settings-outside.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
 
@@ -1377,6 +1378,8 @@ function WebSection({ ctx, staged, part = "all" }) {
     ${has("access") ? html`<${OfficeSharesCard} />` : null}
     ${has("access") ? html`<${PageSharesCard} />` : null}
     ${has("access") && !overPublicLink ? html`<${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
+    ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
+    ${has("access") ? html`<${OutsideCard} />` : null}
     ${has("chat") ? lock(html`<section class="card"><h3>${tn("webChat")}</h3>
       <label class=${fc("check", "echo")}><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
       <p class="note">${tn("webEchoHint")}</p>

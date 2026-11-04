@@ -300,6 +300,15 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
     expect(gets()).toBe(4);                                                                  // the live ping too
     app.appStore.set({ streamOn: undefined });
   });
+  it("#3008: on the public link too — this computer's admin signed in from outside reads it (the server answers anyone else empty)", async () => {
+    p.document.body.dataset.publicLink = "1";
+    try {
+      answer = () => ({ owner: true, proposals: [PROPOSAL] });
+      AP.installProposals(); await settle(3);
+      expect(reqs.map(r => [r.method, r.url])).toEqual([["GET", "/ui/agent-proposals"]]);
+      expect(app.appStore.get().proposals.map((x: any) => x.id)).toEqual([PROPOSAL.id]);
+    } finally { delete p.document.body.dataset.publicLink; }
+  });
   it("#2997 review r2: a read that failed (5xx, not a list) is never taken as read — the same revision reads again, and succeeds", async () => {
     const handlers: Record<string, Array<(d: unknown) => void>> = {};
     app.appStore.set({ streamOn: (name: string, fn: (d: unknown) => void) => { (handlers[name] ??= []).push(fn); return () => {}; } });
