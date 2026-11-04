@@ -92,14 +92,15 @@ An instance doing the work under the `worker` profile — the default when no
 ## team and team leader
 
 A team is a named group of instances (`fleet.yaml` `teams`) for targeted
-broadcasts and display grouping. There is no team-leader role in the code:
-coordination sits with whoever delegates or dispatches the work.
+broadcasts and display grouping. A team leader is an instance that runs a
+team, given the `coordinator` (or `full`) tool set — a convention, not a
+separate role in code (approved by the user 2026-11-04).
 
 - Can: address several instances at once; group the sidebar and Office.
 - Can't: confer any authority — no leader election, no extra tools.
 - Code: `create_team`, `list_teams`, `update_team`, `delete_team`
   (`src/channel/mcp-tools.ts`).
-- Refs: see Mismatches.
+- Refs: —
 
 ## topic / General topic
 
@@ -155,7 +156,9 @@ answers its own prompts.
 
 A platform user id listed in a channel's `access.allowed_users` (fleet), or in
 `defaults.admin_users` / `allowed_users` (ClassicBot). Admin is granted per
-person, never per instance.
+person, never per instance. Fleet admin = the people; General = the
+administrator agent that carries out admin work for whoever may talk to it in
+the General topic (approved by the user 2026-11-04).
 
 - Can: admin-gated commands, confirming sensitive changes, managing access.
 - Can't: anything while unlisted — an empty list grants nobody, and open
@@ -366,28 +369,15 @@ proves nothing.
 
 ## Mismatches
 
-Questions for the user, with proposed answers. Nothing here is papered over.
+Real code-vs-decision gaps only. Nothing here is papered over.
 
-1. **Team leader — is it an instance that runs a team, given the
-   `coordinator` (or `full`) tool set?** Proposed: yes. Teams exist, but code
-   and docs define no leader role, election, or extra tool — it is a
-   convention, not a separate role. Nothing to change unless the user wants a
-   distinct role.
-2. **General's orchestration tools (temporal, expected to resolve).** Code on
+1. **General's orchestration tools (temporal, expected to resolve).** Code on
    main is pre-beta.8: the `general` profile
    (`src/tool-permissions.ts:107-136`) holds only
    `create/start/restart/wake_instance`. Fleet decision 9e3bea6c moves it to
    the full ORCHESTRATION set in beta.8 (agy's PR). No live mismatch once beta.8
    lands; until then the code half is verified and the change half is the
    decision's word.
-3. **Fleet admin vs General — is admin the PEOPLE (`allowed_users` /
-   `admin_users`) while General is the administrator AGENT that carries out
-   admin work for whoever may talk to it in the General topic?** Proposed:
-   yes. The code grants admin per platform user id, not per instance — there
-   is no instance-bound administrator identity. Fleet decision 9e3bea6c
-   already splits it this way: the tool verbs go to General's profile, while
-   confirmations for sensitive config (tokens, access) stay with the
-   fleet-admin person, and #804 still refuses privilege escalation.
 
 [繁體中文](concepts.zh-TW.md)
 

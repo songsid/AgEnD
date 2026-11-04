@@ -49,12 +49,12 @@
 
 ## team 與 team leader
 
-team 是 instance 的具名分組（`fleet.yaml` 的 `teams`），用於定點廣播與顯示分群。程式碼裡沒有 team leader 這個角色：協調落在委派或分派工作的那個 instance 身上。
+team 是 instance 的具名分組（`fleet.yaml` 的 `teams`），用於定點廣播與顯示分群。Team leader 是指帶著 `coordinator`（或 `full`）工具組、在跑一個 team 的 instance——是慣例，不是程式碼裡獨立的角色（使用者 2026-11-04 批准）。
 
 - 能做什麼：一次對多個 instance 說話；側欄與辦公室分群顯示。
 - 不能做什麼：不授予任何權限——沒有推選、沒有 leader 專屬工具。
 - 程式碼：`create_team`、`list_teams`、`update_team`、`delete_team`（`src/channel/mcp-tools.ts`）。
-- 相關決議與議題：見「不一致之處」。
+- 相關決議與議題：—
 
 ## topic / General topic
 
@@ -94,7 +94,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## fleet admin（`admin_users`）
 
-列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance。
+列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理者 AGENT（使用者 2026-11-04 批准）。
 
 - 能做什麼：管理員限定的指令、確認敏感變更、管理存取權。
 - 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或 pairing 核准本身不授予這個角色（`docs/SECURITY.md:13`）。
@@ -226,10 +226,8 @@ web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt
 
 ## 不一致之處
 
-給使用者的問題，附建議答案。這裡不粉飾。
+只列程式碼跟決議真的對不上的地方。這裡不粉飾。
 
-1. **Team leader——是不是指帶著 `coordinator`（或 `full`）工具組、在跑一個 team 的 instance？** 建議答案：是。Team 存在，但程式碼與文件沒有 leader 角色、推選或專屬工具——是慣例，不是獨立角色。除非使用者想要一個真的角色，否則不用改。
-2. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance`。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
-3. **Fleet admin 與 General——admin 是指人（`allowed_users`／`admin_users`），General 是指替能在 General topic 跟它說話的人辦事的管理者 AGENT 嗎？** 建議答案：是。程式碼按平台使用者 id 授權管理員，沒有綁在 instance 身上的管理員身分。Fleet decision 9e3bea6c 本來就是這樣分的：工具動詞給 General 的 profile，敏感設定（token、存取權）的確認留在 fleet admin 那個人手上，#804 照樣擋提權。
+1. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance`。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
 
 [English](concepts.md)
