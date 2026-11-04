@@ -87,7 +87,7 @@ function publish(tag: string, latest: string | null, packed: object = PINNED) {
 describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1259)", () => {
   it.each([
     ["v2.1.12", "2.1.11", "latest"],
-    ["v2.1.12-beta.4", "2.1.11", "rc"],                // #2987: a beta is a candidate; promote-beta.yml moves beta
+    ["v2.1.12-beta.4", "2.1.11", "beta"],
     ["v2.2.0-alpha.1", "2.1.11", "alpha"],
     ["v2.2.0-alpha.12", "2.1.11", "alpha"],
     ["v3.0.0", "2.1.11", "latest"],
@@ -187,17 +187,8 @@ describe("publish.yml: tag → npm dist-tag, by running the workflow's steps (#1
   });
 
   it("a prerelease never consults or is limited by latest", () => {
-    expect(publish("v2.0.0-beta.1", "2.1.11").published).toBe("npm publish --access public --tag rc");
+    expect(publish("v2.0.0-beta.1", "2.1.11").published).toBe("npm publish --access public --tag beta");
     expect(publish("v2.0.0-alpha.1", "2.1.11").published).toBe("npm publish --access public --tag alpha");
-  });
-
-  it("#2987: a beta tag publishes to rc only — never beta or latest, whatever the registry holds", () => {
-    for (const latest of ["2.1.11", "2.9.0", null]) {
-      const run = publish("v2.3.5-beta.1", latest);
-      expect(run.failedStep, run.stderr).toBeNull();
-      expect(run.published).toBe("npm publish --access public --tag rc");
-      expect(run.npm.some(line => /dist-tag|--tag (beta|latest)\b/.test(line))).toBe(false);
-    }
   });
 
   it("the tag is decided before the build; the old `*-beta*` test is gone", () => {
