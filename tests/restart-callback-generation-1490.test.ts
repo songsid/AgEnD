@@ -12,6 +12,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager, RestartSupersededError } from "../src/fleet-manager.js";
 import { t } from "../src/locale.js";
+import { installKiroCompatibilityFixture } from "./helpers/kiro-process-stub.js";
+
+installKiroCompatibilityFixture();   // the restart-effort case runs a kiro-cli instance (no real CLI)
 
 const dirs: string[] = [];
 const timers: Array<ReturnType<typeof setTimeout>> = [];
@@ -154,6 +157,13 @@ describe("/effort and /model menus: the lifecycle the menu was offered to (#1490
     const save = vi.spyOn(fm as any, "saveFleetConfig").mockImplementation(() => {});
     expect(await fm.applyEffort("worker", "high", { current: () => false })).toBe(t("menu.instance_replaced", "worker"));
     expect(save).not.toHaveBeenCalled();
+    expect(transitions).not.toHaveBeenCalled();
+  });
+
+  it("applyEffort (restart backend): the pin travels into the restart, which refuses a replaced instance", async () => {
+    const { fm, any, replace, transitions } = rig("kiro-cli");        // kiro-cli's effort is applied by a restart
+    vi.spyOn(any, "saveFleetConfig").mockImplementation(() => { replace(); });   // replaced at the last step
+    await expect(fm.applyEffort("worker", "high", { current: any.lifecyclePin("worker") })).rejects.toBeInstanceOf(RestartSupersededError);
     expect(transitions).not.toHaveBeenCalled();
   });
 
