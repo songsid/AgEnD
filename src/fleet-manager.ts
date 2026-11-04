@@ -228,7 +228,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   return tasks;
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
-import { windowsCliEnabled, closeWindowsBridge, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
+import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
@@ -2585,7 +2585,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // alpha.2 polish: a paired machine whose CLI inventory has not arrived yet (just paired) is asked for its own
         // report first (it runs on that PC), so the creation validates against what is installed there — never a refusal
         // that only a manual Refresh would undo. Its answer or failure changes nothing else; the fence is asked again.
-        if (machineId && online() && !this.runtimeCoordinator().machine(machineId)?.inventory) {
+        if (machineId && online() && !inventoryProbed(this.runtimeCoordinator().machine(machineId)?.inventory)) {
           try { await this.runtimeCoordinator().call(machineId, "probe", {}); } catch { /* validation says what is missing */ }
           execution.assert();
         }

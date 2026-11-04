@@ -26,7 +26,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 const MACHINE = "6f1c2d3e-4b5a-4c6d-8e9f-0a1b2c3d4e5f";
-const INVENTORY = { home: "C:\\Users\\pc", clis: [{ id: "codex", runnable: true, supports: { resume: true }, readOnlySupport: true, models: [] }] };
+const INVENTORY = { home: "C:\\Users\\pc", probedAt: 1_793_000_000_000, clis: [{ id: "codex", runnable: true, supports: { resume: true }, readOnlySupport: true, models: [] }] };
 
 function rig(machine: { status: string; inventory?: unknown } | null, probe: () => Promise<unknown>) {
   process.env.AGEND_REMOTE_RUNTIME = "1"; process.env.AGEND_WINDOWS_CLI = "1";
@@ -58,6 +58,12 @@ describe("alpha.2 polish: a paired machine with no CLI inventory is asked for it
     const done = await r.decide(view.id);
     expect(done.state).toBe("applied");
     expect(r.call.mock.calls.map(c => [c[0], c[1]])).toEqual([[MACHINE, "probe"]]);
+    expect(r.order).toEqual(["probe:probe", "create:inventory=true:allowed=true"]);
+  });
+  it("#3004 rig: the placeholder a just-paired runner reports ({clis: [], home: \"\", probedAt: null}) counts as none: probed first", async () => {
+    const r = rig({ status: "online", inventory: { clis: [], home: "", probedAt: null } }, async () => INVENTORY);
+    const done = await r.decide((await r.propose()).id);
+    expect([done.state, r.call.mock.calls.length]).toEqual(["applied", 1]);
     expect(r.order).toEqual(["probe:probe", "create:inventory=true:allowed=true"]);
   });
   it("an inventory already there: no probe", async () => {

@@ -13,6 +13,14 @@ import { parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpCo
 const exec = promisify(execFile);
 /** `probedAt`: when an administrator last ran detection (ms), null when it never ran — then `clis` is empty. */
 export interface WindowsCliProbe { clis: NativeCliRow[]; home: string; probedAt: number | null }
+/**
+ * alpha.2 (#3004, dev-claude's rig): whether a runner's CLI inventory is a real report. A just-paired runner's hello
+ * carries a placeholder — `{ clis: [], home: "", probedAt: null }` — that says nothing about what is installed: it is
+ * as missing as no inventory at all, and the coordinator asks that runner for its report.
+ */
+export function inventoryProbed(probe: WindowsCliProbe | null | undefined): boolean {
+  return !!probe && (typeof probe.probedAt === "number" || probe.clis.length > 0);
+}
 export interface WindowsCliTask {
   id: string; cli: NativeProviderId; model?: string; cwd: string; sandbox: NativeTaskInput["sandbox"];
   status: "starting" | "running" | "cancelling" | "completed" | "failed" | "cancelled";
