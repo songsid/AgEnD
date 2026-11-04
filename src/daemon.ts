@@ -2577,12 +2577,20 @@ export class Daemon extends EventEmitter {
     try { entries = this.handoffStore().list().filter(e => e.holder !== this.handoffHolder()); }
     catch (err) { this.logger.warn({ err }, "Could not read the queued hand-off records"); return; }
     if (!entries.length) return;
+    // Captured before any await: a reconciliation that outlives its CLI can never claim the next CLI's holder.
+    const holder = this.handoffHolder();
     const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, epoch = this.deliveryEpoch;
-    const fresh = () => spawn === this.spawnGeneration && fence === this.launchFenceEpoch && !this.deliveryWritesStopping;
+    const fresh = () => spawn === this.spawnGeneration && fence === this.launchFenceEpoch && epoch === this.deliveryEpoch
+      && !this.deliveryWritesStopping;
     let redelivered = 0, taken = 0, unverifiable = 0;
     for (const entry of entries) {
       const kind = await scanTranscriptForDeliveryMarker(entry.path, entry.offset, entry.backend, { marker: entry.marker });
-      if (!fresh()) return; // this CLI is gone already: the next one settles them
+      // This CLI is gone already, or a cancel came: the next CLI settles them (a cancel cleared them).
+      if (!fresh()) return;
+      // …and the record is still the one that was read (another reconciliation or a cancel did not change it meanwhile).
+      let current: QueuedHandoff | undefined;
+      try { current = this.handoffStore().get(entry.id); } catch { current = undefined; }
+      if (!current || current.holder !== entry.holder || current.redeliveries !== entry.redeliveries) continue;
       if (markerConsumed(kind as TranscriptMarkerKind)) { taken++; this.settleQueuedHandoff(entry, "taken", `restart-transcript:${kind}`); continue; }
       if (kind === "unavailable" || entry.redeliveries >= QUEUED_HANDOFF_MAX_REDELIVERIES) {
         unverifiable++;
@@ -2590,7 +2598,7 @@ export class Daemon extends EventEmitter {
         continue;
       }
       // Proven not taken: the CLI that queued it is gone and its transcript, read to the end, never took it.
-      const next: QueuedHandoff = { ...entry, holder: this.handoffHolder(), redeliveries: entry.redeliveries + 1 };
+      const next: QueuedHandoff = { ...entry, holder, redeliveries: entry.redeliveries + 1 };
       try { this.handoffStore().put(next); }
       catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not update a queued hand-off record; not redelivered now"); continue; }
       redelivered++;

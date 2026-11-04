@@ -281,12 +281,53 @@ describe("after a restart: the records of a CLI that is gone", () => {
     expect(r.push).not.toHaveBeenCalled();
   });
 
+  it("a CLI replaced while its reconciliation reads a transcript: the next CLI's reconciliation alone redelivers — one push", async () => {
+    const path = join(scratch("t"), "t.jsonl");
+    writeFileSync(path, claudeEnqueue(`${MARKER}\nhello`));
+    const r = fresh([entry({ path })]);
+    const first = r.daemon.reconcileQueuedHandoffs();      // its scan is pending
+    r.daemon.spawnGeneration++;                             // the CLI crashed and was respawned meanwhile
+    const second = r.daemon.reconcileQueuedHandoffs();
+    await Promise.all([first, second]);
+    expect(r.push).toHaveBeenCalledTimes(1);
+    expect((r.push.mock.calls[0] as [string, Record<string, string>])[1].handoff_holder).toBe(r.daemon.handoffHolder());
+    expect(r.store.list()).toEqual([expect.objectContaining({ holder: r.daemon.handoffHolder(), redeliveries: 1 })]);
+  });
+
+  it("a cancel while its transcript is read: nothing redelivered, no record left for a later restart", async () => {
+    const path = join(scratch("t"), "t.jsonl");
+    writeFileSync(path, claudeEnqueue(`${MARKER}\nhello`));
+    const r = fresh([entry({ path })]);
+    const pending = r.daemon.reconcileQueuedHandoffs();
+    r.daemon.clearPendingDeliveries();
+    await pending;
+    expect(r.push).not.toHaveBeenCalled();
+    expect(r.store.list()).toEqual([]);
+  });
+
   it("the current CLI's own records are not judged (it still holds them)", async () => {
     const r = fresh([]);
     r.store.put(entry({ holder: r.daemon.handoffHolder() }));
     await r.daemon.reconcileQueuedHandoffs();
     expect(r.push).not.toHaveBeenCalled();
     expect(r.store.list()).toHaveLength(1);
+  });
+});
+
+describe("the idle clock the not-taken end reads", () => {
+  it("starts at the first idle snapshot and keeps running through repeated ones; any other state stops it", () => {
+    const h = makeDaemon(scratch("idleclock"), () => BUSY_EMPTY, null);
+    let now = 1_000;
+    vi.spyOn(performance, "now").mockImplementation(() => now);
+    const snap = (state: string) => ({ state, unchangedForMs: 0, observedAt: Date.now(), stateChangedAt: Date.now() });
+    h.daemon.applyInstanceStateSnapshot(snap("working"));
+    expect(h.daemon.instanceIdleSinceMono).toBeNull();
+    h.daemon.applyInstanceStateSnapshot(snap("idle"));
+    expect(h.daemon.instanceIdleSinceMono).toBe(1_000);
+    for (now = 2_000; now <= 200_000; now += 50_000) h.daemon.applyInstanceStateSnapshot(snap("idle"));
+    expect(h.daemon.instanceIdleSinceMono).toBe(1_000);   // still the stretch's start: 90 s can be reached
+    h.daemon.applyInstanceStateSnapshot(snap("working"));
+    expect(h.daemon.instanceIdleSinceMono).toBeNull();
   });
 });
 
