@@ -1168,16 +1168,14 @@ topic
   .argument("<topic-id>", "Topic ID")
   .action(async (instance: string, topicId: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    config.instances[instance].topic_id = topicId;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], value: topicId }]);
     console.log(`Bound ${instance} \u2192 topic #${topicId}`);
   });
 
@@ -1187,16 +1185,14 @@ topic
   .argument("<instance>", "Instance name")
   .action(async (instance: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    delete config.instances[instance].topic_id;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], remove: true }]);
     console.log(`Unbound ${instance} from topic`);
   });
 
