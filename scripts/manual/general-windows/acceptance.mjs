@@ -83,7 +83,7 @@ try{
   await fleet.startInstance(name,config,true);const daemon=fleet.daemons.get(name);assert(daemon?.usesNativePane());
   for(const method of ['arm','settleToolAttempt']){const original=daemon.turnReplyGuard[method].bind(daemon.turnReplyGuard);daemon.turnReplyGuard[method]=(...args)=>{const value=original(...args);if(daemon.turnReplyGuard.snapshot()?.completionDelivered)guards.add(name);return value;};}
   daemon.on('mcp_tool_response_written',()=>{proofs.add(name);if(daemon.turnReplyGuard.snapshot()?.completionDelivered)guards.add(name);});
-  await deliverStates({fleet,row,replies,until});receipt.states[cli]={idle:true,busy:true};
+  await deliverStates({fleet,row,replies,until,independentStates:locationMode});receipt.states[cli]={idle:true,busy:true};
  }
  phase='reattach';const identities=agents.map(row=>({name:row.name,pin:store.get(row.agent.id).threadId,snapshot:fleet.daemons.get(row.name).nativePaneLifecycle.snapshot()}));
  for(const row of agents){const daemon=fleet.daemons.get(row.name);await daemon.stop({nativePane:'detach'});fleet.daemons.delete(row.name);await fleet.instanceIpcClients.get(row.name)?.close();fleet.instanceIpcClients.delete(row.name);}
