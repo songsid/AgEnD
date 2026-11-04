@@ -120,6 +120,15 @@ describe("restartSingleInstance's owner fence (#1490 row 27)", () => {
     expect([pin(), other()]).toEqual([false, true]);
     expect(any.lifecyclePin("worker")()).toBe(true);                // the replacement's own pin
   });
+  it("the pin fails closed: a lifecycle that cannot say its epoch holds nothing, and the prompt still posts", async () => {
+    const { fm, any, adapter, transitions } = rig();
+    vi.spyOn(fm.lifecycle, "epochOf").mockImplementation(() => { throw new Error("unavailable"); });
+    expect(any.lifecyclePin("worker")()).toBe(false);
+    await fm.sendHangNotification("worker");
+    const id = adapter.notifyAlert.mock.calls[0][1].choices[0].id as string;
+    await any.handleHangPrompt(click(id), "telegram-main");
+    expect(transitions).not.toHaveBeenCalled();
+  });
 });
 
 describe("/effort and /model menus: the lifecycle the menu was offered to (#1490 row 27)", () => {

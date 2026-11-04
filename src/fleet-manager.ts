@@ -1550,8 +1550,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or menu is claimed or offered, asked after every await before acting by name.
    */
   private lifecyclePin(name: string): () => boolean {
-    const epoch = this.lifecycle?.epochOf(name);
-    return () => !this.shuttingDown && this.lifecycle?.epochOf(name) === epoch;
+    // Fail closed: a lifecycle that cannot say its epoch holds nothing (and never stops a prompt from being posted).
+    let epoch: number | undefined;
+    try { epoch = this.lifecycle?.epochOf(name); } catch { return () => false; }
+    return () => { try { return !this.shuttingDown && this.lifecycle?.epochOf(name) === epoch; } catch { return false; } };
   }
 
   private webChatGeneration(name: string): number { return this.webChatGenerations.get(name) ?? 0; }
