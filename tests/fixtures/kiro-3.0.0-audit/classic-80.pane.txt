@@ -1,0 +1,40 @@
+Kiro CLI 3.0 is here. It runs in the terminal UI and brings workflows,
+simplified permissions, cloud sessions, sandbox, specs, and more. The Classic
+experience is no longer supported.
+
+❯ Continue with V3
+  Exit
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

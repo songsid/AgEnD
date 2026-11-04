@@ -46,7 +46,7 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
-import { shellQuote, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
+import { shellQuote, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -12556,7 +12556,11 @@ export class Daemon extends EventEmitter {
         || this.startupAborted || this.deliveryWritesStopping || this.runtimeMonitorsFrozen || this.healthCheckPaused)) {
         throw new Error("OOM recovery cancelled: the instance was stopped, paused or replaced while memory was unavailable");
       }
-      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
+      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs).catch(err => {
+        // Includes an in-place binary replacement during asynchronous launch preparation.
+        if (err instanceof KiroCompatibilityError) this.emit("kiro_compatibility_hold", err.message);
+        throw err;
+      });
     };
     const ready = !this.spawnGate ? await enter() : await this.spawnGate.run({
       instanceName: this.name,
@@ -12756,6 +12760,12 @@ export class Daemon extends EventEmitter {
     this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
+
+    // A compatibility refusal is not a failed resume: no configuration, pin, history or pane may change.
+    if (this.backend?.assertLaunchSupported) {
+      this.backend.assertLaunchSupported(backendConfig);
+      this.emit("kiro_compatibility_hold", null);
+    }
 
     // #1633: decided before prev-instructions is first written — its absence is what says "never launched before".
     this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));

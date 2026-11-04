@@ -347,7 +347,7 @@ export class NeedsYouHub {
     // #2822: a usage-limit hold names its model in the title (the chat shows no detail line).
     const reason = item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
-      : this.ctx.t(`needs.reason.${item.reason}`);
+      : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);
     return (item.type === "task" || item.type === "config") && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 

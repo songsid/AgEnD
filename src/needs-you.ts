@@ -44,6 +44,8 @@ export interface NeedsYouItem {
    */
   lane?: string;
   configIssue?: ConfigIssue;
+  /** Keep reason=dialog for tabs loaded before this compatibility hold existed. */
+  kiroChoice?: true;
 }
 
 export type NeedsYouReason =
@@ -84,6 +86,7 @@ export interface InstanceInput {
   signIn?: { backend: string; profile?: string } | null;
   /** #2822: on a usage-limit hold (no known reset time): the model, and since when. */
   usageHold?: { model: string; since: number } | null;
+  kiroCompatibility?: { message: string; since: number } | null;
 }
 
 export interface DeliveryInput {
@@ -143,6 +146,7 @@ const INTERACTION_REASON: Record<string, NeedsYouReason> = {
   dangerous_command: "dangerous_command",
   login: "login",
   dialog: "dialog",
+  kiro_choice: "dialog",
   suspected_terminal_input: "terminal_input",
 };
 
@@ -178,9 +182,14 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
         items.push({
           id: `awaiting:${inst.name}:${owner ?? "-"}:${episode ?? "-"}`, type: "awaiting_input", instance: inst.name,
           reason: INTERACTION_REASON[inst.interaction.kind ?? ""] ?? "dialog",
-          detail: oneLine(inst.interactionSummary ?? ""), since: inst.interaction.since ?? 0,
+          ...(inst.interaction.kind === "kiro_choice" ? { kiroChoice: true as const } : {}),
+          detail: inst.interaction.kind === "kiro_choice" ? inst.interactionSummary ?? "" : oneLine(inst.interactionSummary ?? ""), since: inst.interaction.since ?? 0,
         });
       }
+    }
+    if (inst.kiroCompatibility) {
+      items.push({ id: `kiro-choice:${inst.name}:${inst.kiroCompatibility.since}`, type: "instance", instance: inst.name,
+        reason: "dialog", kiroChoice: true, detail: inst.kiroCompatibility.message, since: inst.kiroCompatibility.since });
     }
     // §3.3 instance: paused for sign-in, or crashed.
     if (inst.pauseReason === "auth") {
@@ -191,7 +200,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       items.push({ id: `usage:${inst.name}:${inst.usageHold.since}`, type: "instance", instance: inst.name, reason: "usage_limit",
         detail: inst.usageHold.model, since: inst.usageHold.since });
     }
-    if (inst.crashedAt != null) {
+    if (inst.crashedAt != null && !inst.kiroCompatibility) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });
     }
   }

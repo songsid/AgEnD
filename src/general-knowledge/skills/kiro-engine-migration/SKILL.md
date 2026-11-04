@@ -10,6 +10,24 @@ roles: [general]
   instances as configured, so AgEnD stopped them and will not retry.
 - Or the user asks about kiro's engine change: Classic/legacy UI being deprecated, kiro-cli 3.0, or V3.
 
+## Kiro CLI 3.0: current refusal and migration instructions
+
+Kiro CLI 3.0 removed Classic. AgEnD refuses a Classic launch on major 3 or later before launching it or changing
+its saved conversation. Needs you names the Agent and explains how to continue. If a retirement/V2-V3 choice appears
+in an already running pane, AgEnD blocks messages and leaves the choice to the owner; never answer it for them.
+An explicitly pinned TUI/V2 launch remains allowed: it is not a Classic launch.
+
+For Classic today, ask the host owner to use a compatible Kiro CLI 2.x. The existing admin-confirmed Classic→TUI
+migration below requires **2.34+ within 2.x**, not 3.x. Do not remove the migration version fence or edit `kiro_ui` to
+bypass it. Keep the original pin, history and receipts; never resume a frozen Classic copy after work continued on V2.
+
+The guided **admin-confirmed migration on 2.x followed by a safe upgrade to 3.0 (plan C, #3047)** is coming separately.
+It is not implemented by this refusal/Needs-you change. Do not promise an automatic conversion or an upgrade date.
+
+繁體中文：Kiro CLI 3.0 已移除 Classic。請由主機管理者改用相容的 2.x；這個拒絕啟動的保護不會更動已存對話。
+既有管理員確認的 Classic→TUI 遷移只接受 2.34 以上的 **2.x**。先在 2.x 經管理員確認遷移、再安全升級到 3.0
+的引導流程（計畫 C，#3047）會另外提供，並未包含在這次保護裡。不要直接改 `kiro_ui` 或刪除版本檢查來繞過。
+
 ## What is true
 
 - **Each kiro instance's conversation lives in its engine's own store:**

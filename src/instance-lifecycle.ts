@@ -266,6 +266,8 @@ export interface LifecycleContext {
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
   notifySessionOomStop?(name: string, unclear?: boolean): Promise<void>;
+  /** A pre-launch refusal is still a visible wait when no daemon was published. */
+  setKiroCompatibilityHold?(name: string, message: string | null): void;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -1870,6 +1872,12 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
+    daemon.on("kiro_compatibility_hold", (message: string | null) => {
+      const owner = this.daemons.get(name);
+      if (owner ? owner !== daemon : this.epochOf(name) !== epoch) return;
+      this.ctx.setKiroCompatibilityHold?.(name, message);
+    });
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
@@ -1982,6 +1990,7 @@ export class InstanceLifecycle {
       this.ctx.touchActivity(name);
     });
 
+    this.ctx.setKiroCompatibilityHold?.(name, null);
     this.attachIncidentHandlers(name, daemon);
     // #2897: a new daemon starts with no dialog held; a notice the last one left (a crash, a respawn) is out of date.
     this.ctx.resolveParkedNotice?.(name);
