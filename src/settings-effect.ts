@@ -1,4 +1,5 @@
 import { officeInputPatch } from "./dashboard-permissions.js";
+import { generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { setNoticeMode } from "./notice-delivery.js";
 import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
@@ -207,6 +208,11 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       }
       force = !exists;
     }
+  }
+  // #3008 G1: a fleet with no chat connection has at most one General — a change that would make a second is refused
+  // before it is proposed (untick the one there is first).
+  if (after.fleet && isWebOnlyFleetConfig(after.fleet as never) && generalNames(after.fleet as never).length > Math.max(1, generalNames(before.fleet as never).length)) {
+    throw new SettingsConfirmationError(409, "one_general");
   }
   if (after.fleet && !validateFleetConfig(after.fleet).valid && validateFleetConfig(before.fleet).valid) throw new SettingsConfirmationError(400, "invalid_settings_effect");
   if (!validateClassicBotConfig(after.classic).valid && validateClassicBotConfig(before.classic).valid) throw new SettingsConfirmationError(400, "invalid_classic_effect");

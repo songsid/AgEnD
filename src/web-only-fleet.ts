@@ -18,3 +18,13 @@ export function isWebOnlyFleetConfig(cfg: ChannelShape | null | undefined): bool
 export function daemonTopicMode(cfg: ChannelShape | null | undefined): boolean {
   return cfg?.channel?.mode === "topic" || !!cfg?.channels?.some(channel => channel.mode === "topic") || isWebOnlyFleetConfig(cfg);
 }
+
+/**
+ * #3008 G1: the agents that are the General — `general_topic` on the agent, or (not set there) in the defaults. On a
+ * fleet with no chat connection there may be one (the agent its owner ticked), never two.
+ */
+export function generalNames(cfg: { defaults?: { general_topic?: unknown } | null; instances?: Record<string, { general_topic?: unknown } | null | undefined> | null } | null | undefined): string[] {
+  const fallback = cfg?.defaults?.general_topic === true;
+  return Object.entries(cfg?.instances ?? {})
+    .filter(([, inst]) => inst?.general_topic === true || (inst?.general_topic === undefined && fallback)).map(([name]) => name);
+}
