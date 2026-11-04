@@ -81,16 +81,16 @@ describe("#3008 the rule: signed in from outside with the code is this computer'
     // …and the code's own session is not held back by that option (the switch is its opt-in).
     expect(judge({ policy: { ...webAuthorityPolicy({ verified_authority: { quick_link: false, named_link: false } } as never) } }).refusal).toBeNull();
   });
-  it("#3015 review 2: a receipt authorized before the last revocation (Off, a new app, removal) reads as none, the switch on again or not", () => {
-    const stored = judge().authority as HumanAuthority;                                   // authorized_at NOW - 500
+  it("#3015 review 2 (r3): a receipt from outside holds only while its session is one admitted since the last revocation", () => {
+    const stored = judge().authority as HumanAuthority;                                   // handle 0123456789abcdef
     const state = { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 3, outside: true };
-    expect(authorityNow(stored, { ...state, outsideSince: NOW - 1000 }).kind).toBe("web-verified");
-    expect(authorityNow(stored, { ...state, outsideSince: NOW })).toMatchObject({ kind: "none", downgraded: "revoked" });
-    expect(authorityNow({ ...stored, session: { ...stored.session!, authorized_at: "garbled" } } as HumanAuthority, { ...state, outsideSince: 0 })).toMatchObject({ kind: "none" });
+    expect(authorityNow(stored, { ...state, outsideHandles: new Set(["0123456789abcdef"]) }).kind).toBe("web-verified");
+    expect(authorityNow(stored, { ...state, outsideHandles: new Set(["fedcba9876543210"]) })).toMatchObject({ kind: "none", downgraded: "revoked" });
+    expect(authorityNow(stored, state)).toMatchObject({ kind: "none", downgraded: "revoked" });   // no list: nobody
   });
   it("its receipts hold while the switch is on — whatever the link options say — and read as none once it is off", () => {
     const stored = judge().authority as HumanAuthority;
-    const state = { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 3 };
+    const state = { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 3, outsideHandles: new Set(["0123456789abcdef"]) };
     expect(authorityNow(stored, { ...state, outside: true }).kind).toBe("web-verified");
     expect(authorityNow(stored, { ...state, outside: false })).toMatchObject({ kind: "none", downgraded: "outside_off" });
     expect(authorityNow(stored, { ...state, outside: true, loopbackOnly: true })).toMatchObject({ kind: "none", downgraded: "loopback_only" });
@@ -449,6 +449,19 @@ describe("#3008 a real fleet: connections from outside", () => {
     h.fm.webAuthorityState();                                                             // the options seen off
     expect([!!auth.get(remoteHandle), !!auth.get(account.handle)]).toEqual([true, false]);
     expect(parse(await h.outside("GET", "/ui/agent-proposals", { session: remote })).owner).toBe(true);
+  }, 20_000);
+
+  it("#3015 review r3: a sign-in from outside whose session cannot be admitted (saved) answers 503 and leaves no session", async () => {
+    const h = await startFleet();
+    const s = await h.hostSignIn();
+    const key = await h.enroll(s);
+    await h.local(s, "POST", "/ui/outside/switch", { on: true });
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
+    vi.spyOn(h.any.webRemoteAccess(), "admit").mockReturnValueOnce(false);
+    const r = await h.codeIn(key);
+    expect([r.status, parse(r.res).error]).toEqual([503, "unavailable"]);
+    expect(h.any.webSessions.list(undefined, (x: SessionRecord) => x.remote === "totp")).toEqual([]);
+    expect(h.notices().some(n => n.startsWith("Signed in from outside"))).toBe(false);
   }, 20_000);
 });
 

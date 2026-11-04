@@ -169,17 +169,64 @@ describe("#3008 TOTP: the store", () => {
     vi.advanceTimersByTime(OUTSIDE_SAVE_RETRY_MS);
     expect([r.store.unsaved, r.open().enrolled, r.open().outside]).toEqual([false, false, false]);
   });
-  it("#3015 review 2: Off, removal and a new app mark the last revocation of remote authority (since); On does not", () => {
-    const r = rig(), t0 = r.clock.wall;
+  it("#3015 review 2 (r3): sessions admitted from outside are forgotten by Off, a new app and removal — on the clock's word never; On admits none back", () => {
+    const r = rig(), H1 = "a".repeat(16), H2 = "b".repeat(16), H3 = "c".repeat(16);
     r.enroll();
-    expect(r.store.since).toBe(0);                                                        // the first app revokes nothing
-    r.store.setOutside(true); expect(r.store.since).toBe(0);
-    r.clock.wall += 1000; r.store.setOutside(false); expect(r.store.since).toBe(r.clock.wall);
-    r.clock.wall += 1000; r.enroll();                                                     // a new app
-    expect(r.store.since).toBeGreaterThan(t0 + 1000);
-    const afterNew = r.store.since;
-    r.clock.wall += 1000; r.store.remove(); expect(r.store.since).toBeGreaterThan(afterNew);
-    expect(r.open().since).toBe(r.store.since);                                           // it survives a restart
+    expect(r.store.admit(H1)).toBe(false);                                                // the switch off: nobody is admitted
+    r.store.setOutside(true);
+    expect([r.store.admit(H1), r.store.admitted.has(H1), r.open().admitted.has(H1)]).toEqual([true, true, true]);
+    r.clock.wall -= 60_000;                                                              // the clock set back meanwhile
+    r.store.setOutside(false);
+    expect(r.store.admitted.size).toBe(0);
+    r.store.setOutside(true);
+    expect([r.store.admitted.has(H1), r.open().admitted.has(H1)]).toEqual([false, false]);   // On again: never back
+    r.store.admit(H2);
+    r.clock.wall -= 60_000;
+    r.enroll();                                                                          // a new app (the clock behind)
+    expect([r.store.admitted.has(H2), r.open().admitted.has(H2)]).toEqual([false, false]);
+    r.store.setOutside(true); r.store.admit(H3);
+    expect(r.store.admitted.has(H3)).toBe(true);                                         // a freshly admitted control
+    r.store.remove();
+    expect([r.store.admitted.size, r.open().admitted.size]).toEqual([0, 0]);
+  });
+  it("#3015 review 2 (r3): a receipt from outside holds only while its session is admitted — the clock set back before a new app changes nothing", async () => {
+    const { authorityNow } = await import("../src/authority/web-authority.js");
+    const r = rig(), H = "d".repeat(16);
+    r.enroll(); r.store.setOutside(true); r.store.admit(H);
+    const receipt = { kind: "web-verified", actor: { adapter_id: "host", user_id: "operator" }, authority_epoch: 3,
+      session: { handle: H, peer: "quick_link", signed_in_at: new Date(r.clock.wall).toISOString(), authorized_at: new Date(r.clock.wall).toISOString() } } as never;
+    const reads = () => (authorityNow(receipt, { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 3, outside: r.store.outside, outsideHandles: r.store.admitted }) as { kind: string }).kind;
+    expect(reads()).toBe("web-verified");
+    r.clock.wall -= 60_000;
+    r.enroll();
+    r.store.setOutside(true);
+    expect(reads()).toBe("none");
+    expect(new WebRemoteAccess(r.path, quiet, () => r.clock.wall).admitted.has(H)).toBe(false);   // …and after a restart
+  });
+  it("#3015 review 1 (r3): a failed new app keeps an Off still owed to the disk owed — it is written once writing works; a clean state stays clean", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const r = rig(); r.enroll(); r.store.setOutside(true);
+    chmodSync(r.dir, 0o500);
+    expect(r.store.setOutside(false)).toBe("unsaved");
+    const { secret } = r.store.beginEnrollment("h1", "pc");
+    expect(r.store.confirmEnrollment("h1", hotp(base32Decode(secret)!, totpStep(r.clock.wall)))).toBe("unsaved");
+    expect([r.store.unsaved, r.store.outside]).toEqual([true, false]);                    // still owed, still off
+    chmodSync(r.dir, 0o700);
+    vi.advanceTimersByTime(OUTSIDE_SAVE_RETRY_MS);
+    expect([r.store.unsaved, r.open().outside]).toEqual([false, false]);
+    // Control: nothing owed before → a failed new app leaves nothing owed (and no timer writing it).
+    const c = rig(); c.enroll();
+    chmodSync(c.dir, 0o500);
+    const b = c.store.beginEnrollment("h1", "pc");
+    expect(c.store.confirmEnrollment("h1", hotp(base32Decode(b.secret)!, totpStep(c.clock.wall)))).toBe("unsaved");
+    expect(c.store.unsaved).toBe(false);
+    chmodSync(c.dir, 0o700);
+  });
+  it("#3015 review r3: a sign-in whose handle cannot be saved is not admitted (and the state before is what stays)", () => {
+    const r = rig(); r.enroll(); r.store.setOutside(true);
+    chmodSync(r.dir, 0o500);
+    expect([r.store.admit("e".repeat(16)), r.store.admitted.has("e".repeat(16)), r.store.unsaved]).toEqual([false, false, false]);
+    chmodSync(r.dir, 0o700);
   });
 });
 

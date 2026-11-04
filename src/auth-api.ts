@@ -90,7 +90,7 @@ export interface AuthApiContext {
    */
   outsideSignIn?(exposureId: string | undefined, code: string): { kind: "ok" } | { kind: "wrong" } | { kind: "paused"; retryAfterMs: number } | { kind: "closed" } | { kind: "unavailable" };
   /** #3008: the session outsideSignIn's "ok" made is this computer's admin (and a Notice says who signed in). */
-  authorizeOutsideSession?(record: SessionRecord, peer: WebPeer, label: string): void;
+  authorizeOutsideSession?(record: SessionRecord, peer: WebPeer, label: string): boolean;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1920 step 4b: a guest's sign-in makes this browser a guest's returning device (its own caps). The cookie, or null. */
@@ -310,7 +310,10 @@ export function handleAuthRequest(
       const { sessionId, record } = sessions.create({ tier: "admin", surface: gateway.surface, label, tokenEpoch: tokenEpoch(token), exposureId: gateway.exposureId, remote: "totp" });
       if (record.remote !== "totp") { sessions.revokeById(sessionId); json(res, 404, { error: "not_found" }); return; }
       ctx.logger.info({ handle: record.handle, label, surface: record.surface }, "Web sign-in from outside");
-      try { ctx.authorizeOutsideSession?.(record, gateway.named === true ? "named_link" : "quick_link", label); } catch (err) { ctx.logger.debug({ err }, "outside session not authorized"); }
+      // #3015 review r3: admitted (its handle saved) and authorized, or no session at all.
+      let admitted = false;
+      try { admitted = ctx.authorizeOutsideSession?.(record, gateway.named === true ? "named_link" : "quick_link", label) === true; } catch (err) { ctx.logger.debug({ err }, "outside session not authorized"); }
+      if (!admitted) { sessions.revokeById(sessionId); json(res, 503, { error: "unavailable" }); return; }
       const session = buildSessionCookie(sessionId, isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000, token);
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, { "Set-Cookie": session });
     }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); });

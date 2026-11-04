@@ -134,12 +134,17 @@ interface Saved {
   /** Wall clock: no code is tried before this. */
   pausedUntil: number;
   /**
-   * #3008 review (Prism P2 2): wall clock of the last revocation of remote authority — the switch turned off (by hand or
-   * its link's lifetime), the app removed or replaced. A go-ahead receipt of this computer's admin from outside
-   * authorized before it reads as none, whatever the switch is now (authorityNow `outsideSince`).
+   * #3015 review (Prism P2 2, r3): the sessions authorized from outside since the last revocation of remote authority —
+   * the switch turned off (by hand or its link's lifetime), the app removed or replaced. Revoking empties it; a sign-in
+   * is admitted only once its handle is saved here. A go-ahead receipt of this computer's admin from outside holds only
+   * while its session's handle is in it (authorityNow `outsideHandles`): no clock is involved, so neither a clock set
+   * back nor a restart can bring an old one back. The newest OUTSIDE_HANDLES_MAX are kept (an older one reads as none).
    */
-  since: number;
+  handles: string[];
 }
+
+/** How many sessions from outside one generation remembers (each is a sign-in with a code; older ones read as revoked). */
+export const OUTSIDE_HANDLES_MAX = 64;
 
 export type TotpVerdict =
   | { kind: "ok" }
@@ -160,7 +165,7 @@ export interface RemoteAccessStatus {
   pausedForMs: number;
 }
 
-const blank = (since = 0): Saved => ({ v: 1, outside: false, wrong: 0, level: 0, pausedUntil: 0, since });
+const blank = (): Saved => ({ v: 1, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] });
 
 export class WebRemoteAccess {
   private state: Saved = blank();
@@ -189,7 +194,9 @@ export class WebRemoteAccess {
         outside: v.outside === true && !!totp,
         wrong: Math.min(count(v.wrong), TOTP_WRONG_LIMIT - 1), level: Math.min(count(v.level), 32),
         // A wait never longer than the longest there is (a clock set back, or a hand edit).
-        pausedUntil: Math.min(count(v.pausedUntil), this.now() + TOTP_PAUSE_MAX_MS), since: count(v.since) };
+        pausedUntil: Math.min(count(v.pausedUntil), this.now() + TOTP_PAUSE_MAX_MS),
+        // A file without the list (or a garbled one) admits nobody: every older receipt from outside reads as none.
+        handles: Array.isArray(v.handles) ? v.handles.filter((h): h is string => typeof h === "string" && /^[0-9a-f]{16}$/.test(h)).slice(-OUTSIDE_HANDLES_MAX) : [] };
     } catch {
       log.warn({ path }, "Outside connections state unreadable — off, nothing set up");
       this.state = blank();
@@ -201,8 +208,28 @@ export class WebRemoteAccess {
       pausedForMs: Math.max(0, this.state.pausedUntil - this.now()) };
   }
   get enrolled(): boolean { return !!this.state.totp; }
-  /** The last revocation of remote authority (wall clock, 0: none). */
-  get since(): number { return this.state.since; }
+  /** The sessions authorized from outside since the last revocation (their receipts hold). */
+  get admitted(): ReadonlySet<string> { return new Set(this.state.handles); }
+
+  /**
+   * A session just signed in from outside: its handle is saved as admitted before it is authorized. False: not saved —
+   * the sign-in must not go on (a restart would not know it, and the next revocation could not be proven to end it).
+   */
+  admit(handle: string): boolean {
+    if (!/^[0-9a-f]{16}$/.test(handle) || !this.state.totp || !this.state.outside) return false;
+    const before = this.state, wasDirty = this.dirty;
+    this.state = { ...this.state, handles: [...this.state.handles.filter(h => h !== handle), handle].slice(-OUTSIDE_HANDLES_MAX) };
+    if (this.flush()) return true;
+    this.restore(before, wasDirty);
+    return false;
+  }
+
+  /** Undo a change whose write failed, keeping whatever was already owed to the disk before it (#3015 review r3, P2 1). */
+  private restore(before: Saved, wasDirty: boolean): void {
+    this.state = before; this.dirty = wasDirty;
+    if (!wasDirty && this.retry) { clearTimeout(this.retry); this.retry = null; }
+    if (wasDirty) this.flush();                                                // still owed: keep trying (re-arms the timer)
+  }
   get outside(): boolean { return this.state.outside && !!this.state.totp; }
 
   /**
@@ -224,14 +251,12 @@ export class WebRemoteAccess {
     if (!p || p.handle !== handle || this.monotonic() > p.until) { if (p && this.monotonic() > p.until) this.pending = null; return "expired"; }
     const step = matchTotp(base32Decode(p.secret)!, code, this.now(), -1);
     if (step === null) return "wrong";
-    const before = this.state;
-    // A new app replaces the old one: what was authorized under the old one ends (since).
-    this.state = { ...this.state, totp: { secret: p.secret, enrolledAt: this.now(), lastStep: step }, wrong: 0, level: 0, pausedUntil: 0,
-      since: before.totp ? this.now() : before.since };
+    const before = this.state, wasDirty = this.dirty;
+    // A new app replaces the old one: what was authorized under the old one ends (the admitted sessions are forgotten).
+    this.state = { ...this.state, totp: { secret: p.secret, enrolledAt: this.now(), lastStep: step }, wrong: 0, level: 0, pausedUntil: 0, handles: [] };
     if (!this.flush()) {
-      // Not set up: the old state stands (as it is on disk), and the pending secret may be confirmed again.
-      this.state = before; this.dirty = false;
-      if (this.retry) { clearTimeout(this.retry); this.retry = null; }
+      // Not set up: the state before stands — and if it was itself still owed to the disk (an unsaved Off), it still is.
+      this.restore(before, wasDirty);
       return "unsaved";
     }
     this.pending = null;
@@ -239,23 +264,23 @@ export class WebRemoteAccess {
   }
 
   /**
-   * Forget the app; the outside switch goes off with it, and what was authorized from outside ends (since). In force in
+   * Forget the app; the outside switch goes off with it, and what was authorized from outside ends (handles). In force in
    * memory at once; false: not saved yet (retried — a restart before that would read the old file).
    */
   remove(): boolean {
     this.pending = null;
-    this.state = { ...blank(this.now()) };
+    this.state = { ...blank() };
     return this.flush();
   }
 
   /**
-   * The switch. On only with an app set up. Off ends what was authorized from outside (since). "unsaved": in force in
+   * The switch. On only with an app set up. Off ends what was authorized from outside (handles). "unsaved": in force in
    * memory, not on disk yet (retried; asking again writes it again).
    */
   setOutside(on: boolean): "ok" | "not_enrolled" | "unsaved" {
     if (on && !this.state.totp) return "not_enrolled";
     if (this.state.outside === on && !this.dirty) return "ok";
-    if (this.state.outside !== on) this.state = { ...this.state, outside: on, ...(on ? {} : { since: this.now() }) };
+    if (this.state.outside !== on) this.state = { ...this.state, outside: on, ...(on ? {} : { handles: [] }) };
     return this.flush() ? "ok" : "unsaved";
   }
 

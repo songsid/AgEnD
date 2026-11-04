@@ -229,7 +229,7 @@ export function confirmAfterBody(arrival: WebAuthorityResult, now: WebAuthorityR
  * authorize" is on, or (named_link, §0.2; quick_link, §0.3) while that link's option is off.
  * Platform and none are unchanged. The receiver applies the rule to this, never to the stored value.
  */
-export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; quickLink: boolean; epoch: number; outside?: boolean; outsideSince?: number }): HumanAuthority {
+export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; quickLink: boolean; epoch: number; outside?: boolean; outsideHandles?: ReadonlySet<string> }): HumanAuthority {
   if (stored.kind !== "web-verified") return stored;
   const down = (downgraded: AuthorityDowngrade): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
   if (!state.enabled) return down("disabled");
@@ -240,10 +240,9 @@ export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; 
   if (stored.actor?.adapter_id === HOST_OPERATOR.adapterId && stored.actor.user_id === HOST_OPERATOR.userId
     && (stored.session?.peer === "named_link" || stored.session?.peer === "quick_link")) {
     if (state.outside !== true) return down("outside_off");
-    // #3008 review (Prism P2 2): authorized before the last revocation of remote authority (the switch off, the app
-    // removed or replaced) — never back, even with the switch on again. A receipt that cannot say when reads as none.
-    const at = Date.parse(stored.session.authorized_at);
-    return Number.isFinite(at) && at > (state.outsideSince ?? 0) ? stored : down("revoked");
+    // #3015 review (Prism P2 2): its session must be one admitted since the last revocation of remote authority (the
+    // switch off, the app removed or replaced) — never back after one, whatever the clock or a restart says.
+    return state.outsideHandles?.has(stored.session.handle) === true ? stored : down("revoked");
   }
   // §0.2: the named-link option off — every receipt from a session over it reads as none at once.
   if (!state.namedLink && stored.session?.peer === "named_link") return down("named_link_off");

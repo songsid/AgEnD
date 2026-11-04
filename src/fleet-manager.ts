@@ -16465,7 +16465,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * admin from outside the switch and the last revocation of remote authority (Prism P2 2).
    */
   receiptAuthorityNow(stored: HumanAuthority, state: AuthorityState = this.webAuthorityState()): HumanAuthority {
-    return authorityNow(stored, { ...state, outside: this.outsideOn(), outsideSince: this.webRemoteAccess()?.since ?? 0 });
+    return authorityNow(stored, { ...state, outside: this.outsideOn(), outsideHandles: this.webRemoteAccess()?.admitted ?? new Set() });
   }
 
   /** What Settings shows: set up or not, the switch, a wait in force, the link — its address only to this computer. */
@@ -16600,10 +16600,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { kind: "wrong" };
   }
 
-  /** #3008: a session just made by outsideSignIn's "ok" is this computer's admin for its authorization's life. */
-  authorizeOutsideSession(session: SessionRecord, peer: WebPeer, label: string): void {
+  /**
+   * #3008: a session just made by outsideSignIn's "ok" is this computer's admin for its authorization's life. False: it
+   * could not be admitted (its handle not saved, #3015 review r3) — the caller ends it.
+   */
+  authorizeOutsideSession(session: SessionRecord, peer: WebPeer, label: string): boolean {
     const store = this.sessionAuthorizationStore(), link = this.outsideLink();
-    if (!store || session.remote !== "totp" || session.owner || !link || session.exposureId !== link.exposureId) return;
+    if (!store || session.remote !== "totp" || session.owner || !link || session.exposureId !== link.exposureId) return false;
+    if (!this.webRemoteAccess()?.admit(session.handle)) { this.logger.warn({ handle: session.handle }, "Session from outside not admitted: it could not be saved"); return false; }
     const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
     const check = evaluateWebAuthority({
       session, gateway: true, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
@@ -16612,14 +16616,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
       hostOperator: true, outside: link,
     });
-    if (check.refusal) { this.logger.info({ handle: session.handle, refusal: check.refusal }, "Session from outside not authorized"); }
-    else {
+    if (check.refusal) { this.logger.info({ handle: session.handle, refusal: check.refusal }, "Session from outside not authorized"); return false; }
+    {
       const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
       store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
       const { durable } = store.authorize(session.handle, HOST_OPERATOR, now, state.epoch, now + policy.maxSessionMs, peer);
       this.logger.info({ handle: session.handle, durable }, "Session from outside authorized (this computer's admin)");
     }
     this.recordWebNotice("fleet", t("outside.notice_signed_in", label));
+    return true;
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
