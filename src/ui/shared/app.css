@@ -3934,3 +3934,14 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .runtime-cli-table { font-size: var(--fs-xs); }
   .p-settings .runtime-machine { padding: 16px; }
 }
+.agent-runtime-settings{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--border);border-radius:10px;margin-bottom:20px;min-width:0}
+.agent-runtime-settings>div{min-width:0}.agent-runtime-settings p{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 0;overflow-wrap:anywhere}
+.agent-runtime-settings>.btn{flex:0 0 auto}.agent-runtime-change .field{margin-top:0}.agent-runtime-change .check{align-items:flex-start}.agent-runtime-change .check input{flex:0 0 auto}
+.agent-runtime-removed{color:var(--warn);font-weight:600}
+.agent-runtime-change>p{margin:0}
+.agent-runtime-change-dialog.dlg{height:fit-content;max-height:88dvh;margin:auto;overflow:hidden}
+.agent-runtime-change-dialog .dlg-box{height:auto;min-height:0;max-height:88dvh;overflow:hidden}
+.agent-runtime-change-dialog .dlg-head,.agent-runtime-change-dialog .dlg-actions{flex:0 0 auto}
+.agent-runtime-change-dialog .dlg-body{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+@media(max-width:600px){.agent-runtime-change-dialog.dlg{width:100vw;max-width:none;height:100dvh;max-height:100dvh;margin:0;border-radius:0}.agent-runtime-change-dialog .dlg-box{height:100%;max-height:100dvh}}
+@media(max-width:600px){.agent-runtime-settings{align-items:flex-start;flex-direction:column}.agent-runtime-settings>.btn{align-self:flex-end}}

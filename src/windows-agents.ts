@@ -252,7 +252,8 @@ export class WindowsAgents {
     if (agent.paneLaunchId) throw new Error("Persistent panes are cancelled through the Fleet daemon, never the exec worker");
     return agent.activeId ? this.bridge.cancel(agent.activeId) : null;
   }
-  async create(input: unknown, authorized: () => boolean = () => true): Promise<WindowsAgent> {
+  async create(input: unknown, authorized: () => boolean = () => true, binding?:{instance:string}): Promise<WindowsAgent> {
+    if(binding&&!/^[\p{L}\p{N}_-]{1,160}$/u.test(binding.instance))throw Error("Invalid Fleet instance binding");
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Agent must be an object");
     const v = input as Record<string, unknown>;
     if (Object.keys(v).some(k => !["name", "cwd", "description", "instructions", "sandbox", "cli", "model", "machineId"].includes(k))) throw new Error("Unknown Windows agent field");
@@ -267,20 +268,22 @@ export class WindowsAgents {
     if (suppliedCwd === null || suppliedCwd && !validWindowsDirectory(suppliedCwd)) throw new Error("Enter an absolute Windows working directory or leave it empty");
     if (v.sandbox !== "read-only" && v.sandbox !== "workspace-write") throw new Error("Choose a file access mode");
     if (!shortText(v.description ?? "", 512) || !shortText(v.instructions ?? "", 8000)) throw new Error("Agent description or instructions are too long");
-    if (this.data.agents.length >= 16) throw new Error("This preview supports at most 16 Windows agents");
-    if (this.data.agents.some(a => a.name.toLowerCase() === (v.name as string).trim().toLowerCase())) throw new Error("A Windows agent already uses that name");
+    const available=()=>{
+      const owners=new Set(this.data.agents.map(a=>a.fleet_instance?`instance:${a.fleet_instance}`:`profile:${a.id}`));
+      if(owners.size>=16&&(!binding||!owners.has(`instance:${binding.instance}`)))throw Error("This preview supports at most 16 Windows agents");
+      if(this.data.agents.some(a=>a.name.toLowerCase()===(v.name as string).trim().toLowerCase()&&(!binding||a.fleet_instance!==binding.instance)))throw Error("A Windows agent already uses that name");
+    };available();
     if (!authorized()) throw new Error("Authorization expired before creating the Windows agent");
     const id = randomUUID(), name = v.name.trim();
     const machineId = v.machineId as string | undefined;
     // Managed workspaces are created by the selected machine; supplied paths are checked again before execution.
     const cwd = suppliedCwd || await (machineId ? this.bridge.prepareWorkspace(id, authorized, machineId) : this.bridge.prepareWorkspace(id, authorized));
     if (!validWindowsDirectory(cwd)) throw new Error("Could not create a valid Windows workspace");
-    const agent: WindowsAgent = { id, name, cli, ...(model ? { model } : {}), ...(machineId ? {machineId} : {}), cwd, sandbox: v.sandbox, description: String(v.description ?? ""), instructions: String(v.instructions ?? ""), createdAt: Date.now(), turns: [] };
+    const agent: WindowsAgent = { id, name, cli, ...(model ? { model } : {}), ...(machineId ? {machineId} : {}), ...(binding?{fleet_instance:binding.instance,paused:true}:{}), cwd, sandbox: v.sandbox, description: String(v.description ?? ""), instructions: String(v.instructions ?? ""), createdAt: Date.now(), turns: [] };
     this.change(() => {
       if (!authorized()) throw new Error("Authorization expired while creating the Windows agent");
       // Another creation may have completed while native Windows prepared this workspace.
-      if (this.data.agents.length >= 16) throw new Error("This preview supports at most 16 Windows agents");
-      if (this.data.agents.some(a => a.name.toLowerCase() === name.toLowerCase())) throw new Error("A Windows agent already uses that name");
+      available();
       this.data.agents.push(agent);
     });
     return structuredClone(agent);

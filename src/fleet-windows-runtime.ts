@@ -14,6 +14,7 @@ import type { NativeHistoryMessage, WebChatHistory } from "./web-chat-history.js
 import type { SettingsExecution } from "./settings-transaction.js";
 import type { NativeMcpLease } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
+import type { AgentRuntimeTarget, PreparedAgentRuntime } from "./agent-runtime-change.js";
 
 export interface FleetWindowsRuntimeHost {
   owner: object & { dataDir?: string };
@@ -28,6 +29,8 @@ export interface FleetWindowsRuntimeHost {
   machineAvailable?(machineId: string): boolean;
   paneCurrent?(name: string): boolean;
   validateMachine?(machineId: string, cli: string, sandbox?: unknown): void;
+  machineGeneration?(machineId:string):string|null;
+  paneAvailable?(machineId:string):boolean;
 }
 export interface NativeRuntimeDeliveryOptions {
   /** The handoff fence: checked before the turn is journaled (it may include the sending request's own lifetime). */
@@ -94,6 +97,36 @@ export class FleetWindowsRuntime {
     let agent:ReturnType<FleetWindowsRuntime["get"]>;
     try { agent=this.get(name); } catch { return null; }
     return !agent || agent.paused || agent.blocked || !switchedOn(agent) ? null : agent.activeId ? "working" : "idle";
+  }
+  /** Prepare a separate, pre-bound profile. The old conversation remains intact; startup cannot import an orphan. */
+  async prepareRuntimeChange(name:string,before:InstanceConfig,target:AgentRuntimeTarget,current:()=>boolean):Promise<PreparedAgentRuntime>{
+    const identity=target.machineId?this.host.machineGeneration?.(target.machineId):undefined;let revoked=false;
+    const targetCurrent=()=>{
+      if(revoked)return false;
+      try{
+      if(target.machineId){if(!remoteRuntimeEnabled()||!this.host.validateMachine)throw Error("Remote runtime is disabled");this.host.validateMachine(target.machineId,target.backend,target.sandbox);}
+      else if(!localWindowsCliEnabled())throw Error(LOCAL_WINDOWS_CLI_OFF);
+      if(target.machineId&&this.host.machineGeneration&&(!identity||this.host.machineGeneration(target.machineId)!==identity))throw Error("Runtime connection changed");
+      if(target.machineId&&target.adapter==="pane"&&this.host.paneAvailable?.(target.machineId)===false)throw Error("This Runtime does not support persistent terminals; update it before switching");
+      return true;
+      }catch{revoked=true;return false;}
+    };
+    const validate=()=>{if(!current()||!targetCurrent())throw Error("Selected Runtime is unavailable or changed during the operation");};validate();
+    if(!target.machineId){
+      const inventory=await this.bridge.probe({force:false});validate();
+      if(!inventory.clis.some(cli=>cli.id===target.backend&&cli.runnable&&cli.supports.resume))throw Error("Choose an available CLI on the selected Windows computer");
+    }
+    const agent=await this.store.create({name:before.display_name||name,cli:target.backend,model:target.model,
+      ...(target.directory.trim()?{cwd:target.directory.trim()}:{}),...(target.machineId?{machineId:target.machineId}:{}),
+      sandbox:target.sandbox,description:before.description??"",instructions:before.systemPrompt??""},()=>{try{validate();return true;}catch{return false;}},{instance:name});
+    const discard=()=>{this.store.remove(agent.id);};
+    try{validate();if(target.adapter==="pane")this.store.setPaused(agent.id,false);
+      const config:InstanceConfig={...before,runtime:"windows",native_agent_id:agent.id,native_adapter:target.adapter,
+      native_sandbox:agent.sandbox,working_directory:agent.cwd,backend:agent.cli,model:agent.model||"",agent_mode:"cli"};
+      if(agent.machineId)config.machine_id=agent.machineId;else delete config.machine_id;
+      delete config.backend_options;if(before.backend!==target.backend)config.model_failover=[];
+      return {config,discard,current:targetCurrent};}
+    catch(error){discard();throw error;}
   }
   available(name: string): boolean {
     let agent:ReturnType<FleetWindowsRuntime["get"]>;
@@ -204,9 +237,10 @@ export class FleetWindowsRuntime {
     const result=this.get(name)!;this.changed(name);return result;
   }
   /** Idempotently bring existing native conversations into shared chat history and search. */
-  importHistory(): void {
+  importHistory(instance?:string): void {
     if (!this.host.history) return;
     for (const [name,config] of Object.entries(this.host.fleet()?.instances ?? {})) {
+      if(instance&&name!==instance)continue;
       if (!isWindowsInstance(config)) continue;
       const agent=this.store.get(this.id(name));
       const expected: NativeHistoryMessage[]=[];

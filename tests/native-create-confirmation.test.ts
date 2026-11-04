@@ -32,7 +32,7 @@ afterEach(() => {
   for (const dir of roots.splice(0)) { if (!resolve(dir).startsWith(resolve(tmpdir()) + sep)) throw Error("Unsafe confirmation test cleanup"); rmSync(dir, { recursive: true, force: true }); }
 });
 
-function harness(tier: "admin" | "read" | "guest" = "admin") {
+function harness(tier: "admin" | "read" | "guest" = "admin", directAgentCreation = false) {
   const cfg: any = { defaults: { backend: "claude-code" }, instances: {} };
   const sessions = new WebSessionStore();
   const session = sessions.create({ tier, surface: "local", label: "Native create test", tokenEpoch: tokenEpoch(TOKEN),
@@ -53,6 +53,7 @@ function harness(tier: "admin" | "read" | "guest" = "admin") {
     emitSseEvent: vi.fn(), getUiStatus: () => ({ instances: [] }), logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } } as unknown as WebApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const gate = new SettingsHttpConfirmation(store, {
+    directAgentCreation,
     principal(req) {
       const allowed = evaluateWebRequest(req as unknown as WebGateRequest, new URL("http://localhost/ui/instances"), TOKEN, sessions, { touch: false });
       if (allowed.kind !== "allow" || allowed.via !== "session" || allowed.session.tier !== "admin") return null;
@@ -79,6 +80,36 @@ function harness(tier: "admin" | "read" | "guest" = "admin") {
 }
 
 describe("native Agent creation through settings confirmation", () => {
+  it("admits the same ordinary Linux create flow without a General, while role-bearing additions keep confirmation",async()=>{
+    const h=harness("admin",true),create=vi.fn(async(input:any,respond:any,_source:any,execution:SettingsExecution)=>{
+      execution.commit(()=>{h.cfg.instances.linux={working_directory:"/inert",backend:input.backend};h.save();});respond({name:"linux"});
+    });Object.assign(h.context,{lifecycle:{handleCreate:create}});
+    const response=await h.request({topic_name:"Linux helper",backend:"grok"});expect(response.body.pending_change.confirmation.kind).toBe("web");
+    await vi.waitFor(()=>expect(h.store.get(response.body.pending_change.id,h.sessionId)?.state).toBe("applied"));expect(create).toHaveBeenCalledOnce();
+    const role=await h.request({topic_name:"GENERAL",backend:"grok"});expect(role.body.pending_change.state).toBe("pending");expect(create).toHaveBeenCalledOnce();
+  });
+  it.each([false,true])("a dashboard administrator creates an ordinary %s remote Agent without a General and retains the exact request claim", async remote => {
+    const h=harness("admin",true),body={...BODY,...(remote?{machineId:MACHINE_ID}: {})};
+    const response=await h.request(body);
+    expect(response.status).toBe(202);
+    expect(response.body.pending_change.confirmation.kind).toBe("web");
+    await vi.waitFor(()=>expect(h.store.get(response.body.pending_change.id,h.sessionId)?.state).toBe("applied"));
+    expect(h.create).toHaveBeenCalledOnce();expect(h.save).toHaveBeenCalledOnce();
+    const repeated=await h.request(body);
+    expect(repeated.body.pending_change.id).toBe(response.body.pending_change.id);
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0][0]).toMatchObject({cli:"codex",name:"CodexTest",...(remote?{machineId:MACHINE_ID}:{})});
+  });
+  it("does not create when dashboard authority expires during the claimed operation",async()=>{
+    const h=harness("admin",true),original=h.create.getMockImplementation()!;
+    let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;});
+    h.create.mockImplementationOnce(async(...args)=>{await held;return original(...args);});
+    const response=await h.request();
+    await vi.waitFor(()=>expect(h.create).toHaveBeenCalledOnce());
+    Object.assign(h.context,{webToken:null});release();
+    await vi.waitFor(()=>expect(h.store.get(response.body.pending_change.id,h.sessionId)?.state).toBe("failed"));
+    expect(h.save).not.toHaveBeenCalled();expect(h.cfg.instances).toEqual({});
+  });
   it.each([false, true])("holds %s remote creation without allocating a profile, then replays the approved request exactly once", async remote => {
     const h = harness(), body = { ...BODY, ...(remote ? { machineId: MACHINE_ID, directory: "D:\\Projects\\Runtime" } : {}) };
     const pending = await h.request(body);
@@ -166,7 +197,7 @@ describe("native creation fields remain scoped to their schema-owned effect", ()
   it("projects native identity without Linux channel effects and confirms schema-owned tag labels", () => {
     const cfg: any = { defaults: {}, instances: {}, channels: [{ id: "main", type: "telegram", group_id: "-1001" }] };
     const effect = prepareSettingsEffect("POST", "/ui/instances", { ...BODY, tags: ["review", "windows"] }, { config: cfg, classic: {} });
-    expect(effect.diff?.authority).toEqual({ connections: [], primaryGeneral: false, unknown: false });
+    expect(effect.diff?.authority).toEqual({ connections: [], primaryGeneral: true, unknown: false });
     expect(effect.diff?.summary.join("\n")).toContain("review"); expect(effect.diff?.summary.join("\n")).not.toMatch(/channels|group_id/);
   });
   it.each(["runtime", "machineId", "sandbox"])("still refuses an unknown free-text %s outside native creation", key => {

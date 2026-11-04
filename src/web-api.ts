@@ -74,6 +74,7 @@ import { xmsgShown } from "./search/search-docs.js";
 import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
 import { handleWindowsCliRequest, nativeCliAuthorization } from "./windows-cli-api.js";
 import { createNativeInstance, handleNativeInstanceRequest } from "./native-instance-api.js";
+import {handleAgentRuntimeChange} from "./agent-runtime-api.js";
 import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance } from "./native-instance-registry.js";
 import { handleNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
@@ -354,6 +355,7 @@ export interface WebApiContext {
   recoverNativePane?(name:string,launchId:string,authorized:()=>boolean):Promise<void>;
   startFreshNativePane?(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>;
   nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
+  agentRuntimeChanges?(): import("./agent-runtime-change.js").AgentRuntimeChanges;
   createNativePaneInstance?(profile:Record<string,unknown>,channelId:string|undefined,authorized:()=>boolean,execution:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
   updateNativePaneConfig?(name:string,patch:Partial<import("./fleet-windows-runtime.js").NativeRuntimePatch>,authorized:()=>boolean,execution?:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
   runtimeCoordinator?(): RuntimeCoordinator;
@@ -1660,6 +1662,7 @@ export function handleWebRequest(
     json(res,403,{error:"Windows runtime requires an administrator on the local dashboard"});return true;
   }
 
+  if (handleAgentRuntimeChange(req, res, url, ctx)) return true;
   if (handleNativeInstanceRequest(req, res, url, ctx)) return true;
   if (handleWindowsCliRequest(req, res, url, ctx)) return true;
   if (handleRuntimeRequest(req, res, url, ctx)) return true;

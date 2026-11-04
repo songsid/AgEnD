@@ -238,7 +238,8 @@ describe("Settings P0 redesign shell", () => {
       instances: { "kiro-t2": { status: "running" } } });
     await mountSettings("agents");
     await click(button("Settings"));
-    expect(p.root.querySelector("#ag-be")!.value).toBe("kiro-cli");
+    expect(p.root.querySelector("#ag-be")).toBeNull();   // the backend moved to "Change runtime / CLI"
+    expect(p.root.querySelector(".agent-runtime-settings")).not.toBeNull();
     expect(p.root.querySelector("dialog")!.textContent).toContain("Stored but inactive: kiro-cli in mcp mode does not support reply-drop recovery.");
   });
 

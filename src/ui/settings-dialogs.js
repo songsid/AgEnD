@@ -17,6 +17,7 @@ import { startOperation } from "./settings-apply.js";
 import { goToTarget } from "./settings-registry.js";
 import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
+import {AgentRuntimeSettings} from "./agent-runtime-settings.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalogState } from "./settings-catalog.js";
 import {
@@ -303,13 +304,12 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
   const inheritedBackend = !inst.backend && f.backend === (defaults.backend || "claude-code");
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${tn("idLine", name)} onClose=${onClose} onStage=${stage} ready=${ready} drawer=${true} impacts=${Object.keys(pending()).map((k) => `instance.${k}`)} schema=${schema}>
+    <${AgentRuntimeSettings} name=${name} inst=${{...inst,backend:f.backend}} inherited=${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null} disabled=${Object.keys(pending()).length>0||ctx.staged?.size>0} onChanged=${()=>{ctx.reload();onClose();}}/>
     <div class="grid2">
       <div class="field">${L(tn("displayName"), "instance.display_name", "ag-dn")}
         <${Override} inherit=${f.inherit.display_name} onInherit=${setInherit("display_name")} inherited=${inh("display_name", defaults.display_name || name, null, "", !!defaults.display_name)}>
           <input id="ag-dn" type="text" placeholder=${name} disabled=${f.inherit.display_name} value=${shown("display_name", f.display_name, defaults.display_name || "")} onInput=${(e) => set("display_name")(e.target.value)} /></${Override}></div>
       <div class="field">${L(tn("description"), "instance.description", "ag-desc")}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} /></div>
-      <div class="field">${L(tn("backend"), "instance.backend", "ag-be")}<${BackendSelect} id="ag-be" value=${f.backend} onChange=${set("backend")} />
-        ${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null}</div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
         backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
     </div>

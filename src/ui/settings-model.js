@@ -76,6 +76,14 @@ export const replyGuardSupported = (backend, mode, kiroUi = "legacy") =>
   mode === "mcp" && (["claude-code", "codex", "muse"].includes(backend) || (backend === "kiro-cli" && ["legacy", "tui"].includes(kiroUi || "legacy")));
 
 /**
+ * Backends AgEnD no longer runs, with the one to use instead (#1280). The browser cannot import src/backend/removed.ts;
+ * tests/settings-removed-backend-1280.test.ts keeps this list equal to it.
+ */
+export const REMOVED_BACKEND_REPLACEMENTS = Object.freeze({ "gemini-cli": "antigravity" });
+export const removedBackendReplacement = (backend) =>
+  typeof backend === "string" && Object.prototype.hasOwnProperty.call(REMOVED_BACKEND_REPLACEMENTS, backend) ? REMOVED_BACKEND_REPLACEMENTS[backend] : null;
+
+/**
  * The backend picker's options. A current value it does not offer (the removed gemini-cli, #1280 review) stays first
  * and selected: otherwise the select falls to its first option and an unrelated edit switches the CLI and account.
  */

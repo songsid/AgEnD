@@ -7,6 +7,8 @@ import { prepareSettingsEffect, isSettingsMutation, type SettingsEffectContext }
 import { SettingsConfirmationStore, SettingsConfirmationError, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsExecution, settingsFingerprint } from "./settings-transaction.js";
 import { gatewayRequestContext } from "./web-request-context.js";
+import {basename} from "node:path";
+import {sanitizeInstanceName} from "./instance-names.js";
 
 export interface SettingsPrincipal {
   id: string; label: string; source: SettingsPendingView["source"]; current(): boolean;
@@ -36,6 +38,9 @@ export class SettingsHttpConfirmation {
     applied?(path: string, result: unknown, execution: SettingsExecution): void | Promise<void>;
     /** #2170: this request's own confirmation, or null (the chat or host confirmation, as before). */
     selfConfirm?(req: IncomingMessage, id: string): SettingsSelfConfirmation | null;
+    /** A running Fleet may admit an ordinary New Agent request from its current local-dashboard admin.
+     * Still uses the store's exact request claim, replay and execution fences; never grants this to agent requests. */
+    directAgentCreation?: boolean;
   }) {}
   handle(req: IncomingMessage, res: ServerResponse, url: URL, next: SettingsRequestHandler): boolean {
     if (settingsRequestExecution(req) || this.passed.has(req)) return false;
@@ -137,7 +142,20 @@ export class SettingsHttpConfirmation {
     // #2170: a web-verified admin of exactly this change's effect owners confirms it by applying it. The store claims it
     // (state "applying") before the chat prompt is queued to run, so no card is posted; every check of a confirmation
     // still runs at execution, with this requester's authority asked again (self.current()).
-    const self = result.reused ? null : this.options.selfConfirm?.(req, result.view.id) ?? null;
+    // Creating on an already authorized runtime is an administrator's ordinary dashboard operation. General is
+    // not a per-runtime prerequisite. Keep the server-owned claim/replay (including deduplication) and ask the
+    // administrator capability again at execution. SetupHost, public links and agent proposals keep consent.
+    const createBody=body&&typeof body==="object"&&!Array.isArray(body)?body as Record<string,unknown>:null;
+    const ordinaryCreate = method === "POST" && url.pathname === "/ui/instances" && createBody
+      && Object.keys(createBody).every(key => ["runtime", "native_adapter", "channel_id", "machineId",
+        "directory", "topic_name", "backend", "model", "description", "systemPrompt", "sandbox", "tags", "branch",
+        "detach", "worktree_path", "workflow", "backend_options"].includes(key))
+      && (createBody.runtime==="windows"||sanitizeInstanceName(typeof createBody.topic_name==="string"?createBody.topic_name:basename(typeof createBody.directory==="string"?createBody.directory:""))!=="general");
+    const direct = this.options.directAgentCreation === true && ordinaryCreate && principal.source === "web_session"
+      && !gatewayRequestContext(req) && localAdmin?.() === true;
+    const self = result.reused ? null : direct
+      ? { label: principal.label, current: () => localAdmin?.() === true }
+      : this.options.selfConfirm?.(req, result.view.id) ?? null;
     if (self) {
       const decided = this.store.decide(result.view.id, "confirm", { ...self, via: "web" });
       void decided.then(view => self.done?.(view)).catch(() => {});
