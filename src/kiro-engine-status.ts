@@ -61,7 +61,11 @@ export function kiroEngineCandidates(fleet: FleetConfig | null | undefined, clas
   return out;
 }
 
+/** Classic-removal readiness only; not certification of a particular CLI version/session. */
+export interface Kiro3Readiness { ready: boolean; message: string; }
+
 export interface KiroEngineStatusInstance {
+  kiro3_readiness: Kiro3Readiness;
   name: string;
   classic: boolean;
   kiro_ui: KiroUi;
@@ -79,6 +83,8 @@ export interface KiroEngineStatusInstance {
 }
 
 export interface KiroEngineStatus {
+  /** Whole-fleet count, even when instances is filtered by name. Includes ClassicBot rooms. */
+  kiro3_readiness: Kiro3Readiness & { total: number; still_classic: number };
   /** The kiro-cli AgEnD last probed for a launch, and when; nulls before any kiro launch since the fleet started. */
   kiro_cli: { binary: string | null; version: string | null; probed_at: string | null };
   instances: KiroEngineStatusInstance[];
@@ -112,6 +118,8 @@ export function kiroEngineStatus(candidates: readonly KiroEngineCandidate[], opt
     if (floor && UI_RANK[c.kiroUi] < UI_RANK[floor]) nextLaunch = { refused: t("kiro.engine_floor", c.name, c.kiroUi, floor) };
     const entry = ledger[c.name];
     return {
+      kiro3_readiness: { ready: c.kiroUi !== "legacy", message: t(c.kiroUi !== "legacy"
+        ? "kiro3.readiness_ready" : c.classic ? "kiro3.readiness_room" : "kiro3.readiness_classic") },
       name: c.name,
       classic: c.classic,
       kiro_ui: c.kiroUi,
@@ -124,7 +132,11 @@ export function kiroEngineStatus(candidates: readonly KiroEngineCandidate[], opt
       engine_floor: floor,
     };
   });
+  const stillClassic = candidates.filter(c => c.kiroUi === "legacy").length;
   return {
+    kiro3_readiness: { ready: stillClassic === 0, total: candidates.length, still_classic: stillClassic,
+      message: t(candidates.length === 0 ? "kiro3.readiness_none" : stillClassic === 0
+        ? "kiro3.readiness_all" : "kiro3.readiness_remaining", stillClassic) },
     kiro_cli: { binary: snapshot?.binaryPath ?? null, version: compat?.version ?? null, probed_at: snapshot?.at ?? null },
     instances,
   };

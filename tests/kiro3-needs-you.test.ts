@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Daemon } from '../src/daemon.js';
+import { ClaudeCodeBackend } from '../src/backend/claude-code.js';
 import { KiroBackend, probeKiroCliCompatibility } from '../src/backend/kiro.js';
 import { KiroCompatibilityError } from '../src/backend/types.js';
 import { FleetManager } from '../src/fleet-manager.js';
@@ -52,6 +53,20 @@ describe('Kiro3 compatibility hold reaches Needs-you without a pane',()=>{
   captured.emit('kiro_compatibility_hold',null);expect(f.needsYouInstances()[0].kiroCompatibility).toBeUndefined();
   captured.emit('kiro_compatibility_hold','current wake refusal');expect(f.needsYouInstances()[0].kiroCompatibility?.message).toBe('current wake refusal');
   lifecycle.daemons.set('general',{} as any);captured.emit('kiro_compatibility_hold',null);expect(f.needsYouInstances()[0].kiroCompatibility?.message).toBe('current wake refusal');
+ });
+ it('a successful switch to a backend without Kiro admission clears the old compatibility hold',async()=>{
+  const dir=scratch(),f=fleet();vi.stubEnv('AGEND_HOME',dir);
+  f.setKiroCompatibilityHold('general','old Classic refusal');
+  const backend=new ClaudeCodeBackend(dir);expect(backend).not.toHaveProperty('assertLaunchSupported');
+  vi.spyOn(factory,'createBackend').mockReturnValue(backend);
+  vi.spyOn(availability,'resolveBackendBinary').mockResolvedValue('/never-execute');
+  const ctx:any={logger,getInstanceDir:()=>dir,setTopicIcon:vi.fn(),touchActivity:vi.fn(),
+   setKiroCompatibilityHold:(name:string,message:string|null)=>f.setKiroCompatibilityHold(name,message)};
+  const lifecycle=new InstanceLifecycle(ctx);
+  vi.spyOn(InstanceLifecycle,'startOrDispose').mockResolvedValue(undefined);
+  await lifecycle.start('general',{backend:'claude-code',working_directory:dir} as any,false);
+  expect(lifecycle.daemons.has('general')).toBe(true);
+  expect(f.needsYouInstances()[0].kiroCompatibility).toBeUndefined();
  });
  it('repeated refusal keeps one item and its age; resolution clears it, rather than hiding it on read',()=>{
   const f=fleet();f.setKiroCompatibilityHold('general','reason');const first=f.needsYouInstances();f.setKiroCompatibilityHold('general','reason');
