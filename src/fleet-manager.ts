@@ -130,6 +130,7 @@ import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
+import { readGrokModelCache } from "./backend/grok-model-cache.js";
 import { CLI_ENV_TTL_MS, isModelCompatible, noteResolvedBinary, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, ResumeBlockedError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
@@ -21535,6 +21536,35 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const seen = new Set<string>(), out: import("./backend/types.js").ModelOption[] = [];
     for (const m of [...(env?.models ?? []), ...(env?.apiModels ?? [])]) if (!seen.has(m.id)) { seen.add(m.id); out.push(m); }
     return out;
+  }
+
+  /** Host-default fallback only: Grok has no modeled profile home. Never construct a backend or start a probe. */
+  async cliModelCatalogFor(backend: string, instance: string | null): Promise<import("./backend/types.js").ModelOption[]> {
+    if (backend !== "grok") return [];
+    const fleet = this.fleetConfig;
+    const configured = instance && Object.prototype.hasOwnProperty.call(fleet?.instances ?? {}, instance) ? fleet!.instances[instance] : undefined;
+    const classic = this.classicChannels;
+    const room = instance && !configured ? classic?.getAll().find(channel => channel.instanceName === instance) : undefined;
+    if (instance && !configured && !room) return [];
+    const daemon = room ? this.daemons.get(instance!) : undefined;
+    const grokHome = process.env.GROK_HOME?.trim() || join(homedir(), ".grok");
+    const stillHostDefault = (): boolean => {
+      if (this.fleetConfig !== fleet || (process.env.GROK_HOME?.trim() || join(homedir(), ".grok")) !== grokHome) return false;
+      if (configured && (isWindowsInstance(configured) || !Object.prototype.hasOwnProperty.call(fleet?.instances ?? {}, instance!) || fleet!.instances[instance!] !== configured)) return false;
+      if (room && (this.classicChannels !== classic || classic?.getAll().find(channel => channel.instanceName === instance) !== room || this.daemons.get(instance!) !== daemon)) return false;
+      // The ordinary profile helpers deliberately ignore Grok: it has no credential-home mapping yet.
+      // Check raw declarations, including invalid ones, rather than mistaking them for the host login.
+      const defaults = fleet?.defaults?.backend_options;
+      const profiles = configured
+        ? [configured.backend_options?.grok?.credential_profile, defaults?.grok?.credential_profile]
+        : room
+          ? [mergeBackendOptions(defaults, room.backendOptions)?.grok?.credential_profile, daemon?.getConfigSnapshot?.().backend_options?.grok?.credential_profile]
+          : [defaults?.grok?.credential_profile];
+      return profiles.every(profile => profile === undefined || profile === null || profile === "");
+    };
+    if (!stillHostDefault()) return [];
+    const models = await readGrokModelCache(grokHome);
+    return stillHostDefault() ? models : [];
   }
 
   /**
