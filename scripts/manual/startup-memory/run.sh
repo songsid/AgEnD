@@ -23,9 +23,13 @@ cleanup() {
   echo "Evidence: $output"
 }
 trap cleanup EXIT
-docker run -d --privileged --cgroupns=private --memory=1536m --memory-swap=1536m --cpus=2 \
-  --network=none --tmpfs /run --tmpfs /run/lock --label "agend.startup-memory=$nonce" \
-  --name "$container" "${STARTUP_MEMORY_IMAGE:-agend-rh-b16-bus}" > "$output/container-id"
+# Never --privileged: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
+. "$repo/scripts/manual/lib/systemd-container.sh"
+image=$(systemd_container_image "${STARTUP_MEMORY_IMAGE:-agend-rh-b16-bus}")
+systemd_container_guard "$image"
+docker run -d "${SYSTEMD_CONTAINER_FLAGS[@]}" --memory=1536m --memory-swap=1536m --cpus=2 \
+  --network=none --label "agend.startup-memory=$nonce" \
+  --name "$container" "$image" > "$output/container-id"
 docker exec "$container" mkdir -p /opt/rehearsal/pkg /opt/rehearsal/baseline-dist
 (cd "$repo" && tar -chf - dist src launcher templates e2e/mock-servers node_modules package.json) |
   docker exec -i "$container" tar -xf - -C /opt/rehearsal/pkg

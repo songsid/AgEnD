@@ -6,7 +6,6 @@ mkdir -p "$repo/.artifacts"
 output=$(mktemp -d "$repo/.artifacts/oom-rehearsal-XXXXXX")
 nonce=$(basename "$output")
 container="sentinel-$nonce"
-image=${OOM_REHEARSAL_IMAGE:-agend-rh-b16-bus}
 cleanup() {
   docker cp "$container:/opt/rehearsal/results.json" "$output/results.json" 2>/dev/null || true
   docker cp "$container:/opt/rehearsal/guard-tests.log" "$output/guard-tests.log" 2>/dev/null || true
@@ -25,8 +24,12 @@ cleanup() {
 trap cleanup EXIT
 # The outer cap and zero swap contain even a misconfigured inner unit. Private
 # PID/cgroup/network namespaces; no host mounts, account/provider or npm traffic.
-docker run -d --privileged --cgroupns=private --memory=1536m --memory-swap=1536m --cpus=2 \
-  --network=none --tmpfs /run --tmpfs /run/lock --label "agend.oom-rehearsal=$nonce" \
+# Never --privileged: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
+. "$repo/scripts/manual/lib/systemd-container.sh"
+image=$(systemd_container_image "${OOM_REHEARSAL_IMAGE:-agend-rh-b16-bus}")
+systemd_container_guard "$image"
+docker run -d "${SYSTEMD_CONTAINER_FLAGS[@]}" --memory=1536m --memory-swap=1536m --cpus=2 \
+  --network=none --label "agend.oom-rehearsal=$nonce" \
   --name "$container" "$image" > "$output/container-id"
 docker exec "$container" mkdir -p /opt/rehearsal/pkg
 # Build beforehand in a capped unit; copy only this checkout's assets/deps.
