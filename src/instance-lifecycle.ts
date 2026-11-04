@@ -941,6 +941,21 @@ export class InstanceLifecycle {
       }
       this.ctx.notifyInstanceTopic(name, t("delivery.cancelled_unsent", messages.length, name));
     }, this.ctx.logger, `daemon.human_messages_cancelled[${name}]`));
+    // #3030: messages handed to the busy CLI's own queue that it never took (it went idle without them), or that a
+    // restart left unverifiable (its transcript could not be read, so they were not sent again). Each is marked ❌ and
+    // the person is told once — never a silent ✅.
+    daemon.on("human_handoffs_unsettled", safeHandler((data: { reason: "not-taken" | "unverifiable"; messages: Array<{ chatId: string; messageId: string; threadId?: string }> }) => {
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      if (!messages.length) return;
+      const reason = data.reason === "unverifiable" ? "unverifiable" : "not-taken";
+      this.ctx.eventLog?.insert(name, "handoffs_unsettled", { reason, count: messages.length });
+      this.ctx.logger.warn({ name, reason, count: messages.length }, "Queued messages not taken by the CLI — telling the person");
+      for (const m of messages) {
+        if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+        else this.ctx.reactMessageStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+      }
+      this.ctx.notifyInstanceTopic(name, t(reason === "unverifiable" ? "delivery.handoff_unverified_after_restart" : "delivery.handoff_not_taken", messages.length, name));
+    }, this.ctx.logger, `daemon.human_handoffs_unsettled[${name}]`));
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
