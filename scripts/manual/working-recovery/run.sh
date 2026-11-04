@@ -26,7 +26,7 @@ trap cleanup EXIT
 (cd "$repo" && npm pack --ignore-scripts --json --pack-destination "$output") > "$output/pack.json"
 package=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["filename"])' "$output/pack.json")
 sha256sum "$output/$package" > "$output/package.sha256"
-# Never --privileged: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
+# Never in privileged mode: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
 . "$repo/scripts/manual/lib/systemd-container.sh"
 image=$(systemd_container_image "${WORKING_RECOVERY_IMAGE:-agend-rh-b16-bus}")
 systemd_container_guard "$image"

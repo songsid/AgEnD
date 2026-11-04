@@ -23,7 +23,7 @@ cleanup() {
   echo "Evidence: $output"
 }
 trap cleanup EXIT
-# Never --privileged: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
+# Never in privileged mode: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
 . "$repo/scripts/manual/lib/systemd-container.sh"
 image=$(systemd_container_image "${STARTUP_MEMORY_IMAGE:-agend-rh-b16-bus}")
 systemd_container_guard "$image"

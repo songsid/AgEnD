@@ -35,21 +35,30 @@ DOCKERFILE
   printf '%s\n' "$derived"
 }
 
-# systemd_container_guard <image>: exit status 0 only when the image has no binfmt unit that could run and no binfmt.d
-# entry. Checked inside a throwaway container with no network, no privileges and no systemd running.
+# The check itself, POSIX sh, against the filesystem under $1 ("" = /): prints one line per problem, nothing when clean.
+# Every known binfmt unit must be masked in /etc/systemd/system (the highest-priority location: a mask there wins over
+# an enabled copy in /run or a vendor directory, and over a wants/ link) whether or not a vendor copy exists, so a unit
+# enabled only by configuration is caught too; no binfmt.d entry may exist; the non-privileged entrypoint must.
+SYSTEMD_CONTAINER_CHECK='R=$1
+for u in systemd-binfmt.service binfmt-support.service proc-sys-fs-binfmt_misc.automount proc-sys-fs-binfmt_misc.mount; do
+  m=$R/etc/systemd/system/$u
+  if [ ! -L "$m" ] || [ "$(readlink "$m")" != /dev/null ]; then echo "unit $u is not masked"; fi
+done
+for d in /usr/lib/binfmt.d /lib/binfmt.d /etc/binfmt.d /usr/local/lib/binfmt.d /run/binfmt.d; do
+  for f in "$R$d"/*; do if [ -e "$f" ] || [ -L "$f" ]; then echo "binfmt.d entry ${f#"$R"}"; fi; done
+done
+[ -x "$R/usr/local/sbin/systemd-container-init" ] || echo "no non-privileged systemd entrypoint"
+exit 0'
+
+# systemd_container_check_root <dir>: SYSTEMD_CONTAINER_CHECK against a directory tree (for tests; no container).
+systemd_container_check_root() { sh -c "$SYSTEMD_CONTAINER_CHECK" sh "$1"; }
+
+# systemd_container_guard <image>: exit status 0 only when the image is clean by SYSTEMD_CONTAINER_CHECK. Checked
+# inside a throwaway container with no network, no privileges and no systemd running.
 systemd_container_guard() {
   local found
-  found=$(docker run --rm --network none --entrypoint /bin/sh "$1" -c '
-    for u in systemd-binfmt.service binfmt-support.service proc-sys-fs-binfmt_misc.automount proc-sys-fs-binfmt_misc.mount; do
-      for d in /lib/systemd/system /usr/lib/systemd/system; do
-        if [ -e "$d/$u" ] && [ "$(readlink -f /etc/systemd/system/$u 2>/dev/null)" != /dev/null ]; then echo "unit $u is not masked"; break; fi
-      done
-    done
-    for d in /usr/lib/binfmt.d /lib/binfmt.d /etc/binfmt.d /usr/local/lib/binfmt.d /run/binfmt.d; do
-      for f in "$d"/*; do [ -e "$f" ] && echo "binfmt.d entry $f"; done
-    done
-    [ -x /usr/local/sbin/systemd-container-init ] || echo "no non-privileged systemd entrypoint"
-    exit 0' 2>&1) || { echo "could not inspect $1: $found" >&2; return 1; }
+  found=$(docker run --rm --network none --entrypoint /bin/sh "$1" -c "$SYSTEMD_CONTAINER_CHECK" sh "" 2>&1) \
+    || { echo "could not inspect $1: $found" >&2; return 1; }
   if [ -n "$found" ]; then
     printf 'Refusing to start %s: it could change the host binfmt_misc (or cannot boot without --privileged):\n%s\n' "$1" "$found" >&2
     return 1

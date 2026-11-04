@@ -24,7 +24,7 @@ cleanup() {
 trap cleanup EXIT
 # The outer cap and zero swap contain even a misconfigured inner unit. Private
 # PID/cgroup/network namespaces; no host mounts, account/provider or npm traffic.
-# Never --privileged: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
+# Never in privileged mode: binfmt_misc is host-global (see scripts/manual/lib/systemd-container.sh).
 . "$repo/scripts/manual/lib/systemd-container.sh"
 image=$(systemd_container_image "${OOM_REHEARSAL_IMAGE:-agend-rh-b16-bus}")
 systemd_container_guard "$image"
