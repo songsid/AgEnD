@@ -95,8 +95,8 @@ describe.each(["telegram", "discord"] as const)("#1490 row11 %s: fallback never 
     expect(p.apply).toHaveBeenCalledOnce();
     expect(r.store.get(p.view.id, "browser")!.state).toBe("applied");
   });
-  it("a stopped primary General does not transfer fleet-wide authority to its delivery fallback", async () => {
-    const r = rig(platform); r.any.daemons.delete("general_a");
+  it("a disconnected primary General route does not transfer fleet-wide authority to its delivery fallback", async () => {
+    const r = rig(platform); r.any.daemons.delete("general_a"); r.any.adapterState.set("a", { status: "disconnected", retryCount: 1 });
     const p = propose(r, false), { data } = await prompt(r);
     await r.any.dispatchAdapterCallback({ ...data, userId: "b-F" }, "b", r.adapters[1]); expect(p.apply).not.toHaveBeenCalled();
     await r.any.dispatchAdapterCallback({ ...data, userId: "a-F" }, "b", r.adapters[1]); expect(p.apply).toHaveBeenCalledOnce();

@@ -131,18 +131,34 @@ describe("#1423 actual General nonce handler", () => {
     await h.fm.dispatchAdapterCallback({ ...data, userId: "other-F" }, "secondary", second); expect(p.apply).not.toHaveBeenCalled();
     await h.fm.dispatchAdapterCallback({ ...data, userId: "admin" }, "secondary", second); expect(p.apply).toHaveBeenCalledOnce();
   });
-  it("a stopped, stopping or replaced General cannot approve an old prompt", async () => {
+  it("a stopping or invalidated General route cannot approve an old prompt", async () => {
     const h = harness(), p = proposal(h), { data } = await promptData(h);
     h.fm.ipcStoppingInstances.add("general");
-    await h.fm.dispatchAdapterCallback(data, "primary", h.adapter);
-    expect(p.apply).not.toHaveBeenCalled();
-    const second = harness(); second.fm.daemons.delete("general"); proposal(second);
-    await new Promise(resolve => setTimeout(resolve, 5));
-    expect(second.adapter.notifyAlert).not.toHaveBeenCalled();
-    const third = harness(), q = proposal(third), click = await promptData(third);
-    third.fm.daemons.set("general", new EventEmitter());
-    await third.fm.dispatchAdapterCallback(click.data, "primary", third.adapter);
-    expect(q.apply).not.toHaveBeenCalled();
+    await h.fm.dispatchAdapterCallback(data, "primary", h.adapter); expect(p.apply).not.toHaveBeenCalled();
+    h.fm.ipcStoppingInstances.delete("general"); h.fm.lifecycle.invalidate("general");
+    await h.fm.dispatchAdapterCallback(data, "primary", h.adapter); expect(p.apply).not.toHaveBeenCalled();
+  });
+  it.each(["absent", "replaced"])("General model %s does not remove the human's server-owned confirmation", async mode => {
+    const h = harness(); h.fm.daemons.delete("general"); const p = proposal(h), { data } = await promptData(h, "stranger");
+    if (mode === "replaced") h.fm.daemons.set("general", new EventEmitter());
+    await h.fm.dispatchAdapterCallback(data, "primary", h.adapter); expect(p.apply).not.toHaveBeenCalled();
+    await h.fm.dispatchAdapterCallback({ ...data, userId: "admin" }, "primary", h.adapter); expect(p.apply).toHaveBeenCalledOnce();
+    await h.fm.dispatchAdapterCallback({ ...data, userId: "admin" }, "primary", h.adapter); expect(p.apply).toHaveBeenCalledOnce();
+  });
+  it("a delayed posting ACK cannot revive a card after its lifecycle was invalidated", async () => {
+    const h = harness(), wait = held<any>(); h.adapter.notifyAlert.mockImplementationOnce(() => wait.promise);
+    const p = proposal(h); await vi.waitFor(() => expect(h.adapter.notifyAlert).toHaveBeenCalledOnce());
+    h.fm.lifecycle.invalidate("general"); h.fm.ipcStoppingInstances.add("general"); h.fm.ipcStoppingInstances.delete("general");
+    wait.resolve({ chatId: "100", messageId: "late-prompt", threadId: "200" });
+    await vi.waitFor(() => expect(h.fm.pendingNonceButtons.size).toBe(0)); expect(p.apply).not.toHaveBeenCalled();
+    expect(p.store.get(p.view.id, "browser")!.confirmation.kind).toBe("host_cli");
+  });
+  it("a claimed offline-model card keeps its lifecycle fence across the baseline await", async () => {
+    const h = harness(), wait = held<boolean>(); h.fm.daemons.delete("general");
+    const unchanged = vi.fn(() => wait.promise), p = proposal(h, { unchanged }), { data } = await promptData(h);
+    const deciding = h.fm.dispatchAdapterCallback(data, "primary", h.adapter); await vi.waitFor(() => expect(unchanged).toHaveBeenCalledOnce());
+    h.fm.lifecycle.invalidate("general"); wait.resolve(true); await deciding;
+    expect(p.apply).not.toHaveBeenCalled(); expect(p.store.get(p.view.id, "browser")!.state).toBe("stale");
   });
   it("the approving F must still be an admin after the actual baseline await", async () => {
     let release!: (value: boolean) => void;

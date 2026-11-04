@@ -1,3 +1,5 @@
+import { buildNativeFleetInstructions } from "./instructions.js";
+import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-tools.js";
 import { windowsAgentsFor } from "./windows-agents.js";
@@ -1347,7 +1349,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const now = this.fleetConfig?.instances[name];
         if (this.shuttingDown || !isNativePaneInstance(now) || now?.native_agent_id !== config.native_agent_id
           || now?.machine_id !== config.machine_id || now?.working_directory !== config.working_directory || now?.backend !== config.backend
-          || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow)
+          || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow
+          || now?.general_topic !== config.general_topic || now?.native_general_binding !== config.native_general_binding)
           throw Error("Native pane configuration or lifetime changed");
         if (config.machine_id ? this.remotePaneDrain || !remoteRuntimeEnabled() : this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
       },
@@ -1367,10 +1370,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }, subscribe: listener => hub.subscribe(listener),
           epoch: () => hub.paneTransportEpoch(machineId), version: provider => hub.machine(machineId)?.inventory?.clis.find(row => row.id === provider && row.runnable)?.version ?? null };
       },
-      instructions: (name, config) => buildFleetInstructions({ instanceName: name, workingDirectory: config.working_directory,
+      instructions: (name, config) => buildNativeFleetInstructions({ instanceName: name, workingDirectory: config.working_directory,
         displayName: config.display_name, description: config.description, customPrompt: config.systemPrompt,
         workflow: config.workflow, taskBoard: !dashboardRefusalIn(this.fleetConfig, name, "task"),
-        runtimeIdentity: { kind: "fleet-topic", backend: config.backend ?? "codex", model: config.model || "default" } }),
+        runtimeIdentity: { kind: "fleet-topic", backend: config.backend ?? "codex", model: config.model || "default" } }, config.general_topic === true),
       menu: name => TOOLS.filter(tool => allowed(name, tool.name)).map(tool => ({ ...tool })),
       allowed: (name, tool, args) => allowed(name, tool) && !nativePaneToolRefusal(tool, args), published: (name, daemon) => this.daemons.get(name) === daemon,
       invoke: async (daemon, input, current, name) => {
@@ -1392,6 +1395,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }), name, ops[tool], args, input.operationId) : undefined });
       },
     });
+  }
+  /** Prepare only bundled role files; this neither switches General nor starts a provider process. */
+  async prepareWindowsGeneralWorkspace(name: string, machineId: string, cli: "codex" | "claude-code", bindingId: string, authorized: () => boolean): Promise<import("./runtime-general-protocol.js").GeneralWorkspaceReceipt> {
+    const config = this.fleetConfig?.instances[name], hub = this.runtimeCoordinator(), epoch = hub.paneTransportEpoch(machineId);
+    if (!config?.general_topic || !epoch) throw Error("General or its paired runtime is unavailable");
+    const current = (): boolean => authorized() && !this.shuttingDown && remoteRuntimeEnabled() && this.runtimeHub === hub
+      && this.fleetConfig?.instances[name] === config && hub.paneTransportEpoch(machineId) === epoch;
+    const [{ loadGeneralKnowledge }, { validateGeneralWorkspaceRequest, validateGeneralWorkspaceReceipt, generalWorkspaceUpgrade }, { assertAuditedNativePaneVersion }] = await Promise.all([
+      import("./runtime-general-workspace.js"), import("./runtime-general-protocol.js"), import("./runtime-pane-native.js"),
+    ]);
+    if (!current()) throw Error("General workspace authority expired");
+    assertAuditedNativePaneVersion(cli, hub.machine(machineId)?.inventory?.clis.find(row => row.id === cli && row.runnable)?.version ?? null);
+    const request = validateGeneralWorkspaceRequest({ action: "general-workspace", bindingId, instance: name, cli, packHash: loadGeneralKnowledge(cli).hash });
+    const inventory: any = await hub.callPane(machineId, { action: "list" }, maxAgentsPerMachine());
+    if (!current()) throw Error("General workspace authority expired");
+    if (inventory?.capabilities?.generalWorkspace !== true) throw new NativePaneRecoveryError({ kind: "host-upgrade" });
+    const result = await hub.callPane(machineId, request, maxAgentsPerMachine());
+    if (!current()) throw Error("General workspace authority expired");
+    if (generalWorkspaceUpgrade(result, request)) throw new NativePaneRecoveryError({ kind: "host-upgrade" });
+    return validateGeneralWorkspaceReceipt(result, request);
   }
   async nativePaneFor(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle> {
     return (await this.nativePanes()).prepare(name, config, assertCurrent);
@@ -2418,12 +2441,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const own = channels.filter(ch => (ch.id ?? ch.type) === actor.adapter_id);
     if (own.length !== 1 || own[0].type !== chat.platform || !chat.admin(actor.user_id)) return null;
     const affected = [...store.affectedConnections(id)];                 // read now: a finished change no longer has them
-    if (!this.settingsNoticeGenerals(affected, chat.platform).length) return null;
+    const destinations = this.settingsNoticeGenerals(affected, chat.platform);
+    if (!destinations.length) return null;
     const name = this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
     return {
       label: t("settings_confirm.web_verified_label", name),
       // admin() asks chat.current() too; a General a card could go to must still be there (else the host CLI's).
-      current: () => !!verified() && chat.admin(actor.user_id) && this.settingsNoticeGenerals(affected, chat.platform).length > 0,
+      current: () => !!verified() && chat.admin(actor.user_id) && destinations.some(route => route.current()),
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
   }
@@ -2493,17 +2517,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /** #2170: the Generals a chat card could be posted in (promptSettingsChange's rule): connected, on the platform, unaffected. */
-  private settingsNoticeGenerals(affected: readonly string[], platform: "telegram" | "discord"): Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string }> {
-    const excluded = new Set(affected), found: Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string }> = [];
-    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
-      if (!config.general_topic || !this.daemons.get(name)) continue;
-      const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
-      if (!adapterId || !adapter || excluded.has(adapterId) || adapter.type !== platform || this.adapterState.get(adapterId)?.status !== "connected") continue;
-      const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
-      if (chatId && topic) found.push({ adapterId, adapter, chatId, topic });
-    }
-    return found;
+  /** A confirmation belongs to the server route/lifetime, not the availability of General's model. */
+  private settingsGeneralRoute(name: string, platform: "telegram" | "discord", excluded: ReadonlySet<string>):
+    { adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean } | null {
+    const config = this.fleetConfig?.instances[name];
+    if (!config?.general_topic || this.shuttingDown || this.ipcStoppingInstances.has(name)) return null;
+    const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
+    if (!adapterId || !adapter || excluded.has(adapterId) || adapter.type !== platform) return null;
+    const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? ""), epoch = this.lifecycle.epochOf(name);
+    if (!chatId || !topic) return null;
+    const current = (): boolean => !this.shuttingDown && !this.ipcStoppingInstances.has(name)
+      && this.lifecycle.epochOf(name) === epoch && this.fleetConfig?.instances[name]?.general_topic === true
+      && this.adapterState.get(adapterId)?.status === "connected"
+      && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
+      && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic;
+    return current() ? { adapterId, adapter, chatId, topic, current } : null;
+  }
+
+  /** Connected, same-platform, unaffected server routes can post cards even while the model is offline. */
+  private settingsNoticeGenerals(affected: readonly string[], platform: "telegram" | "discord"):
+    Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean }> {
+    const excluded = new Set(affected);
+    return Object.keys(this.fleetConfig?.instances ?? {}).flatMap(name => {
+      const route = this.settingsGeneralRoute(name, platform, excluded); return route ? [route] : [];
+    });
   }
 
   /**
@@ -2660,22 +2697,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const excluded = new Set(store.affectedConnections(view.id));
-    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
-      if (!config.general_topic) continue;
-      const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
-      const general = this.daemons.get(name);
-      if (!adapterId || !adapter || !general || excluded.has(adapterId) || adapter.type !== authority.platform) continue;
-      const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
-      if (!chatId || !topic) continue;
+    for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
+      const route = this.settingsGeneralRoute(name, authority.platform, excluded);
+      if (!route) continue;
+      const { adapterId, adapter, chatId, topic } = route;
       let retired = false, attached = false;
       const postingDeadline = performance.now() + Math.min(5000, view.remaining_ms);
-      const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && !this.shuttingDown && this.settingsGeneration === generation
-        && this.fleetConfig?.instances[name]?.general_topic === true
-        && this.daemons.get(name) === general && !this.ipcStoppingInstances.has(name)
-        && this.adapterState.get(adapterId)?.status === "connected"
-        && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
-        && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic
-        && authority.current();
+      const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && this.settingsGeneration === generation
+        && route.current() && authority.current();
       if (!current()) continue;
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
@@ -19334,36 +19363,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     "mock": "CLAUDE.md",
   };
 
-  private static GENERAL_INSTRUCTIONS = `# Fleet Coordinator
-
-You are the fleet coordinator — the central entry point for this AgEnD fleet.
-You route tasks, manage instances, enforce policies, and synthesize results.
-Do NOT modify project files directly — delegate file changes to the project's instance.
-You CAN write code snippets, explain code, and answer technical questions directly.
-
-## Task Routing
-
-- **Handle directly**: no file/exec access needed, answerable from knowledge, ≤2 reasoning steps (Q&A, translation, status queries, code snippets).
-- **Delegate to 1 instance**: scoped to one project/repo, needs file access or execution.
-- **Coordinate multiple**: spans repos, outputs feed each other, or parallel helps (max 3 per task).
-
-Instance discovery: start with list_instances(); follow the guidance in its response. Prefer reuse; never duplicate a running instance.
-
-## Reply Contract
-
-Every final response to the user contains: the result (the actual answer or deliverable) and gaps (anything incomplete — omit if none). Summarize instance reports; omit internal coordination noise.
-
-## After Restart
-
-BEFORE processing any new messages: 1. list_instances() 2. list_teams() 3. list_decisions(). Only then handle requests.
-
-## Playbooks (on-demand skills)
-
-Detailed procedures live in your skills — consult them when the situation comes up rather than from memory:
-- **delegation-playbook** — delegation protocol, loop prevention, parallel vs sequential, result/failure handling, team management, instance configuration tips.
-- **development-workflow** — the fleet-wide code-change policy you enforce when delegating code tasks.
-Plus the operational skills (fleet-health, instance-lifecycle, scheduling, session-management, …).
-`;
+  private static GENERAL_INSTRUCTIONS = GENERAL_ROLE_INSTRUCTIONS;
 
   /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {

@@ -1,4 +1,5 @@
 import { RuntimePaneOutputBuffer } from "./runtime-pane-output.js";
+import { RuntimeGeneralWorkspace, loadGeneralKnowledge } from "./runtime-general-workspace.js";
 /** Runner-owned, persistent CLI panes. A coordinator reconnect neither launches nor replays anything. */
 import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
@@ -46,7 +47,8 @@ export class RuntimePaneHost {
   private readonly live = new Map<string, LivePane>();
   private readonly queues = new Map<string, { tail: Promise<unknown>; count: number }>();
   private closing = false;
-  constructor(private readonly options: RuntimePaneHostOptions) {}
+  private readonly general: RuntimeGeneralWorkspace;
+  constructor(private readonly options: RuntimePaneHostOptions) { this.general = new RuntimeGeneralWorkspace(options.store.directory); }
   list(): RuntimePaneSnapshot[] {
     for (const row of this.options.store.list()) if (!this.live.has(row.launch.paneId)) this.options.store.reconcileExit(row.launch.paneId);
     return this.options.store.list().map(row => structuredClone(this.live.get(row.launch.paneId)?.record.snapshot ?? row.snapshot));
@@ -62,8 +64,14 @@ export class RuntimePaneHost {
   }
   async request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true, claudeSessionProof: true, codexSessionProof: true }, panes: this.list() };
+    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true, claudeSessionProof: true, codexSessionProof: true, generalWorkspace: true }, panes: this.list() };
     if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
+    if (request.action === "general-workspace") {
+      const installed = loadGeneralKnowledge(request.cli).hash;
+      if (installed !== request.packHash) return { version: 1, bindingId: request.bindingId, instance: request.instance, cli: request.cli, packHash: installed, upgradeRequired: true };
+      return this.general.prepare(request, current, cwd => !this.list().some(row => row.state !== "exited"
+        && this.options.store.get(row.paneId)?.launch.cwd.toLowerCase() === cwd.toLowerCase()));
+    }
     if (request.action === "shutdown") {
       // No await between the inventory, admission fence and reply. An accepted/queued launch or an unknown
       // reservation prevents shutdown; disconnect/lease loss alone never tears down a persistent host.
@@ -114,6 +122,7 @@ export class RuntimePaneHost {
       this.options.store.put(record);
       return { ...structuredClone(record.snapshot), reattached: false };
     }
+    if (launch.generalWorkspace) this.general.verify({ action: "general-workspace", ...launch.generalWorkspace, instance: launch.instance, cli: launch.cli }, launch.cwd);
     // Synchronous reservation before the first await: parallel opens cannot oversubscribe the machine.
     this.options.store.put(record);
     let process: RuntimePaneProcess | undefined;
@@ -182,7 +191,7 @@ export class RuntimePaneHost {
     delete record.snapshot.exitCode; this.options.store.put(record);
     return structuredClone(record.snapshot);
   }
-  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" | "shutdown" | "recover" }>, current: () => boolean): Promise<unknown> {
+  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" | "shutdown" | "recover" | "general-workspace" }>, current: () => boolean): Promise<unknown> {
     const live = this.live.get(request.paneId);
     const stored = this.options.store.get(request.paneId);
     if (!stored || stored.snapshot.launchId !== request.launchId) throw Error("Pane launch identity is stale");

@@ -1,4 +1,6 @@
 import { t } from "./locale.js";
+import { loadGeneralKnowledge } from "./runtime-general-workspace.js";
+import { generalWorkspaceUpgrade, validateGeneralWorkspaceReceipt } from "./runtime-general-protocol.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 /** Fleet-owned native launch registry. No process IDs, credentials or provider paths cross this boundary. */
 import {lstatSync,readFileSync,mkdirSync} from "node:fs";
@@ -65,12 +67,14 @@ export class NativePaneManager {
  }
  private save(file:string,value:Manifest):void{atomicWriteFileSync(file,JSON.stringify(value),{mode:0o600});}
  private configurationHash(agent:WindowsAgent,config:InstanceConfig):string{
-  return runtimeJobDigest({cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,model:config.model||"",prompt:config.systemPrompt||"",workflow:config.workflow??null});
+  return runtimeJobDigest({cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,model:config.model||"",prompt:config.systemPrompt||"",workflow:config.workflow??null,
+   ...(config.general_topic?{general:true,binding:config.native_general_binding}: {})});
  }
  private newManifest(name:string,config:InstanceConfig,agent:WindowsAgent,machineId:string,resume=true,identity?:Pick<RuntimePaneLaunch,"paneId"|"launchId">):Manifest{
   const launch=validateRuntimePaneLaunch({cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,instructions:this.options.instructions(name,config),
    ...(config.model?{model:config.model}:{}),agentId:agent.id,instance:name,paneId:identity?.paneId??randomUUID(),launchId:identity?.launchId??randomUUID(),
-   columns:120,rows:40,...(resume&&agent.threadId?{sessionId:agent.threadId}:{}),mcpTools:this.options.menu(name).map(tool=>tool.name)});
+   columns:120,rows:40,...(resume&&agent.threadId?{sessionId:agent.threadId}:{}),mcpTools:this.options.menu(name).map(tool=>tool.name),
+   ...(config.general_topic?{generalWorkspace:{bindingId:config.native_general_binding,packHash:loadGeneralKnowledge(agent.cli as "codex"|"claude-code").hash}}: {})});
   return {version:1,machineId,configuration:this.configurationHash(agent,config),launch};
  }
  private freshIntent(file:string,manifest:Manifest,automatic:boolean,config:InstanceConfig,agent:WindowsAgent):Manifest{
@@ -122,6 +126,7 @@ export class NativePaneManager {
   assertCurrent();this.options.admit(name,config);
   const id=config.native_agent_id;if(!id||!UUID.test(id))throw Error("Native pane profile is missing");
   let agent=this.options.store.get(id);if(agent.fleet_instance!==name||agent.machineId!==config.machine_id||agent.cli!==config.backend||agent.cwd!==config.working_directory)throw Error("Native pane profile scope differs");
+  if(config.general_topic&&(!agent.machineId||!UUID.test(config.native_general_binding??"")))throw Error("Windows General requires its prepared paired-machine binding");
   const directory=this.directory(id),file=join(directory,"active.json");let manifest=this.load(file);
   if(manifest&&(manifest.launch.agentId!==id||manifest.launch.instance!==name||manifest.machineId!==(agent.machineId??"local")))throw Error("Native launch manifest scope differs");
   if(this.bindings.has(id))throw Error("Native pane still has a coordinator owner");
@@ -137,6 +142,7 @@ export class NativePaneManager {
   if(runtimeJobDigest({id:latest.id,cli:latest.cli,cwd:latest.cwd,machineId:latest.machineId,activeId:latest.activeId,paneLaunchId:latest.paneLaunchId,threadId:latest.threadId,paused:latest.paused})!==runtimeJobDigest({id:agent.id,cli:agent.cli,cwd:agent.cwd,machineId:agent.machineId,activeId:agent.activeId,paneLaunchId:agent.paneLaunchId,threadId:agent.threadId,paused:agent.paused}))throw Error("Native profile changed during host observation");
   const hostBootId=(inventory as any).hostBootId as string,panes=((inventory as any).panes as unknown[]).map(validateRuntimePaneSnapshot);
   if ((inventory as any).capabilities?.openDisposition !== true) throw new NativePaneRecoveryError({kind:"host-upgrade",...(manifest?{launchId:manifest.launch.launchId}: {})});
+  if(config.general_topic&&(inventory as any).capabilities?.generalWorkspace!==true)throw new NativePaneRecoveryError({kind:"host-upgrade",...(manifest?{launchId:manifest.launch.launchId}: {})});
   const sameAgent=panes.filter(row=>row.agentId===id&&row.state!=="exited");
   if(sameAgent.length>1||sameAgent.some(row=>!manifest||row.paneId!==manifest.launch.paneId||row.launchId!==manifest.launch.launchId||row.instance!==name))throw Error("Another live or unknown native pane must be reconciled first");
   let preparedFresh=false;
@@ -193,6 +199,14 @@ export class NativePaneManager {
   }
   // Hot identity metadata and bundled instruction-template edits do not retire a live pane on coordinator update.
   const configurationHash=this.configurationHash(agent,config);
+  if(config.general_topic&&(!manifest||preparedFresh)){
+   const request={action:"general-workspace" as const,bindingId:config.native_general_binding!,instance:name,cli:agent.cli as "codex"|"claude-code",packHash:loadGeneralKnowledge(agent.cli as "codex"|"claude-code").hash};
+   const epoch=endpoint.epoch(),before=runtimeJobDigest(agent),raw=await endpoint.call(request);
+   assertCurrent();this.options.admit(name,config);
+   if(!endpoint.online()||endpoint.epoch()!==epoch||runtimeJobDigest(this.options.store.get(id))!==before)throw Error("General profile or transport changed during workspace preparation");
+   if(generalWorkspaceUpgrade(raw,request))throw new NativePaneRecoveryError({kind:"host-upgrade"});
+   if(validateGeneralWorkspaceReceipt(raw,request).cwd.toLowerCase()!==agent.cwd.toLowerCase())throw Error("General workspace does not match its retained profile");
+  }
   if(manifest){
    const old=manifest.launch;
    if(manifest.configuration!==configurationHash)throw Error("Retained native launch settings differ; close its owned pane before applying changes");

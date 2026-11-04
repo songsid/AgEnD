@@ -6,6 +6,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createRuntimeBundle, RUNTIME_BUNDLE_MODULES } from "../src/runtime-bundle.js";
 import { RUNTIME_PANE_ASSETS, PANE_NATIVE_SHA256 } from "../src/runtime-pane-assets.js";
+import { GENERAL_KNOWLEDGE_FILES } from "../src/general-role.js";
 
 const homes: string[] = [];
 function fixture(version = "8.22.0") {
@@ -13,6 +14,7 @@ function fixture(version = "8.22.0") {
   const moduleDirectory = join(root,"dist"), wsDirectory = join(root,"ws"), licensePath = join(root,"LICENSE");
   mkdirSync(moduleDirectory); cpSync(dirname(createRequire(import.meta.url).resolve("ws/package.json")),wsDirectory,{recursive:true});
   for(const name of RUNTIME_BUNDLE_MODULES)writeFileSync(join(moduleDirectory,name),`// isolated fixture ${name}\nexport {};\n`);
+  for(const name of GENERAL_KNOWLEDGE_FILES){const file=join(moduleDirectory,"general-knowledge",name);mkdirSync(dirname(file),{recursive:true});writeFileSync(file,"# Fixed bundled General fixture\n");}
   writeFileSync(join(moduleDirectory,"runtime-cli.js"),"123456789");
   const ws = JSON.parse(readFileSync(join(wsDirectory,"package.json"),"utf8"));ws.version=version;writeFileSync(join(wsDirectory,"package.json"),JSON.stringify(ws));
   writeFileSync(licensePath,"MIT License\nRuntime fixture\n");
@@ -60,7 +62,7 @@ describe("Windows runtime download archive",()=>{
     const bundle=createRuntimeBundle(f),files=unzip(bundle.bytes);
     expect(bundle.filename).toBe("agend-runtime-windows-2.3.5-preview.1.zip");
     expect(bundle.sha256).toBe(createHash("sha256").update(bundle.bytes).digest("hex"));
-    expect([...files.keys()].filter(name=>name.startsWith("agend-runtime/dist/"))).toEqual(RUNTIME_BUNDLE_MODULES.map(name=>"agend-runtime/dist/"+name));
+    expect([...files.keys()].filter(name=>name.startsWith("agend-runtime/dist/"))).toEqual([...RUNTIME_BUNDLE_MODULES.map(name=>"agend-runtime/dist/"+name), ...GENERAL_KNOWLEDGE_FILES.map(name=>"agend-runtime/dist/general-knowledge/"+name)]);
     expect(files.get("agend-runtime/agend-runtime.cmd")?.toString()).toBe('@echo off\r\nnode.exe "%~dp0dist\\runtime-cli.js" %*\r\n');
     const pkg=JSON.parse(files.get("agend-runtime/package.json")!.toString());expect(pkg.dependencies).toEqual({ws:version,"node-pty":"1.1.0","@xterm/headless":"6.0.0","@xterm/addon-serialize":"0.14.0"});expect(pkg.type).toBe("module");
     expect(files.has("agend-runtime/dist/runtime-pane-boot.js")).toBe(true);
