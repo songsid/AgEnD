@@ -1,4 +1,5 @@
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
+import { addsSecondGeneral } from "./web-only-fleet.js";
 import { NativePaneCrashBudget } from "./native-pane-crash-budget.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
@@ -2488,6 +2489,12 @@ export class InstanceLifecycle {
     // create_instance, deploy_template or any other path that reaches here — an agent holding create_instance could
     // otherwise start one on the Windows host, in any drive path, with write access.
     if (args.runtime === "windows") { respond(null, WINDOWS_CREATE_REFUSED); return; }
+    // #3021 review: on a fleet with no chat connection a new agent never becomes a second General (it would inherit
+    // defaults.general_topic: true while the fleet has one).
+    if (this.ctx.fleetConfig && addsSecondGeneral(this.ctx.fleetConfig as never)) {
+      respond(null, "one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true — set it to false in the defaults first");
+      return;
+    }
     if (args.sandbox !== undefined) { respond(null,"sandbox is supported only by the Windows runtime"); return; }
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
@@ -2763,6 +2770,11 @@ export class InstanceLifecycle {
       createdConfig = instanceConfig;
       const beforeCreate = structuredClone(this.ctx.fleetConfig);
       const persist = (): void => {
+        // #3021 review r2: asked again at the commit, after every await — two creates that both saw no General at entry
+        // (defaults.general_topic: true) must not both become one.
+        if (addsSecondGeneral(this.ctx.fleetConfig as never, { general_topic: instanceConfig.general_topic })) {
+          throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true — set it to false in the defaults first");
+        }
         this.ctx.fleetConfig!.instances[newInstanceName!] = instanceConfig;
         if (createdTopicId != null) this.ctx.routing.register(createdTopicId, { kind: "instance", name: newInstanceName! });
         try { this.ctx.saveFleetConfig(); }

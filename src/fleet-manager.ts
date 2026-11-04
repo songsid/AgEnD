@@ -56,7 +56,7 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, lstatSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { freemem, totalmem, homedir } from "node:os";
+import { freemem, totalmem, homedir, hostname } from "node:os";
 import { effectiveCpuCount } from "./cpu-quota.js";
 import { access } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -360,6 +360,7 @@ import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninP
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
+import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
@@ -2586,8 +2587,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return null;
-    // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there.
-    if (gatewayRequestContext(req)) return null;
+    // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there. #3008: except
+    // this computer's admin signed in from outside (the authenticator's code, over the link connections from outside
+    // opened): the web-only fleet's owner, judged below by the same authority as here (hostOperator).
+    if (gatewayRequestContext(req) && auth.session.remote !== "totp") return null;
     // …and never a change that turns the named-link option on: that one needs a General's card or the host.
     if (!store.selfConfirmable(id)) return null;
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
@@ -2644,23 +2647,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private agentProposalsRev = 0;
   private agentProposalOwner(req: IncomingMessage): { label: string; current(): boolean } | null {
-    if (!this.isWebOnlyFleet() || gatewayRequestContext(req)) return null;
-    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
-    if (auth.kind !== "ok") return null;
-    // Each check twice over: here, and in the authority itself (it refuses the public link and a chat fleet's session).
-    // #2997 review (Prism P2): asked of the LIVE session each time — the request's own cookie authenticated again, the
-    // same handle — never a record captured at the click: a sign-out, an expiry or a revocation while the request is
-    // being applied fences it.
-    const handle = auth.session.handle, peer = webPeerOf(req), gateway = !!gatewayRequestContext(req);
-    const owner = (): boolean => {
-      if (!this.isWebOnlyFleet()) return false;
-      const live = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
-      if (live.kind !== "ok" || live.session.handle !== handle) return false;
-      const now = this.webAuthority({ session: live.session, gateway, peer });
-      const a = now.authority.kind === "web-verified" && now.authority.session?.handle === handle ? now.authority.actor : null;
-      return !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId;
-    };
-    return owner() ? { label: t("settings_confirm.host_operator_label"), current: owner } : null;
+    // #3008: this computer's admin here, or signed in from outside (over the link connections from outside opened) —
+    // asked of the LIVE session each time (#2997 review): a sign-out, an expiry, a revocation or the switch going off
+    // while the request is applied fences it.
+    return this.liveOwner(req, { hostOnly: false });
   }
 
   /** alpha.2: the agents' requests waiting for this web-only fleet's owner, or null when the reader is not that owner. */
@@ -3499,7 +3489,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const state = page.items.some(item => item.authority) ? this.webAuthorityState() : null;
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
       if (!item.authority || !state) return item;
-      const authority = authorityNow(item.authority, state);
+      const authority = this.receiptAuthorityNow(item.authority, state);
       return { ...item, authority, ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
     };
     // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
@@ -7698,6 +7688,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       log: () => this.logger.warn("Managed tunnel cleanup requires attention") }));
   }
   private publicOwnerCurrent(owner: LoginCodeOwner): boolean {
+    // #3008: the outside link is this computer's admin's — while "Allow connections from outside" is on, web-only.
+    if (isOutsideLinkOwner(owner)) return !this.shuttingDown && this.outsideOn();
     if (this.shuttingDown || !this.hasFleetAdmins(owner.adapterId) || !this.isFleetAdmin(owner.userId, owner.adapterId)) return false;
     const configured = (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).find(ch => (ch.id ?? ch.type) === owner.adapterId);
     if (!configured || String(configured.group_id ?? "") !== owner.chatId) return false;
@@ -7771,7 +7763,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private getPublicWebLink(): PublicWebLink {
     this.initializeWebSessions();
-    return this.publicWebLink ??= new PublicWebLink({
+    return this.publicWebLink ??= new PublicWebLink(this.publicWebLinkDeps());
+  }
+  /** The public link's wiring to this fleet (a test builds one with the tunnel itself stubbed: `ensure`, `provider`). */
+  private publicWebLinkDeps(): ConstructorParameters<typeof PublicWebLink>[0] {
+    return {
       dataDir: this.dataDir, web: () => this.fleetConfig?.web,
       permitted: owner => this.publicOwnerCurrent(owner),
       reserve: id => this.getTunnelLane().reserve("dashboard", id),
@@ -7800,7 +7796,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const world = this.worlds.get(owner.adapterId);
         if (world && world.adapter === owner.binding) void world.adapter.sendText(owner.chatId, t("dashboard.public_cleanup"), { threadId: owner.threadId }).catch(() => {});
       },
-    });
+      onClose: (owner, reason) => { if (isOutsideLinkOwner(owner)) this.outsideLinkClosed(reason); },
+    };
   }
   private publicLinkAutoOpen: PublicLinkAutoOpen | null = null;
   /**
@@ -9589,6 +9586,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #named-link-ttl: a named link with auto_open comes back now — after the web listener and the chat connections.
       this.startPublicLinkAutoOpen();
     }
+    // #3008: connections from outside were on when the fleet stopped: the link opens again (its address is new for a
+    // quick link — Settings shows it on this computer).
+    if (this.outsideOn()) this.openOutsideLink([0, ...OUTSIDE_LINK_RETRY_MS]);
 
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
     // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
@@ -16576,7 +16576,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
       policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now: Date.now(),
-      hostOperator: this.isWebOnlyFleet(),
+      hostOperator: this.isWebOnlyFleet(), outside: this.outsideLink(),
     });
   }
 
@@ -16633,6 +16633,225 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ handle: session.handle, durable }, "Host web session authorized (this computer's admin)");
   }
 
+  // ── #3008: connections from outside (a web-only fleet; decision 28c2d3a3 rule 3, the user's simplified form) ──
+  private webRemoteAccessState: WebRemoteAccess | null = null;
+  /** The authenticator, the outside switch and the wrong-code limiter (web-remote-access.json), read on first use. */
+  webRemoteAccess(): WebRemoteAccess | null {
+    if (!this.dataDir) return null;
+    this.webRemoteAccessState ??= new WebRemoteAccess(join(this.dataDir, WEB_REMOTE_ACCESS_FILE), this.logger);
+    return this.webRemoteAccessState;
+  }
+  /** "Allow connections from outside" is on (an app set up) and this is a web-only fleet. */
+  private outsideOn(): boolean {
+    return this.isWebOnlyFleet() && (this.webRemoteAccess()?.outside ?? false);
+  }
+  /** The link connections from outside opened, while it is open and still theirs: its exposure. Else null. */
+  private outsideLink(): { exposureId: string } | null {
+    if (!this.outsideOn()) return null;
+    const open = this.publicWebLink?.openSignin();
+    return open && isOutsideLinkOwner(open.owner) ? { exposureId: open.exposureId } : null;
+  }
+
+  /**
+   * The request's live session, asked again each time `current()` is called (its own cookie authenticated anew, the same
+   * handle): this web-only fleet's owner — this computer's admin, on this computer (`hostOnly`), or also signed in from
+   * outside — and web-verified now. Null when it is not (a guest, a LAN session, a chat fleet's admin, nobody).
+   */
+  private liveOwner(req: IncomingMessage, opts: { hostOnly: boolean }): { label: string; handle: string; current(): boolean } | null {
+    if (!this.isWebOnlyFleet()) return null;
+    if (opts.hostOnly && gatewayRequestContext(req)) return null;
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok") return null;
+    const handle = auth.session.handle, peer = webPeerOf(req), gateway = !!gatewayRequestContext(req);
+    const owner = (): boolean => {
+      if (!this.isWebOnlyFleet()) return false;
+      const live = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (live.kind !== "ok" || live.session.handle !== handle) return false;
+      if (opts.hostOnly && (live.session.host !== true || peer !== "loopback")) return false;
+      const now = this.webAuthority({ session: live.session, gateway, peer });
+      const a = now.authority.kind === "web-verified" && now.authority.session?.handle === handle ? now.authority.actor : null;
+      return !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId;
+    };
+    return owner() ? { label: t("settings_confirm.host_operator_label"), handle, current: owner } : null;
+  }
+
+  /** Every session signed in from outside ends (and the authorizations kept for them). */
+  private endOutsideSessions(): void {
+    const ended = new Set(this.webSessions?.list(undefined, r => r.remote === "totp").map(r => r.handle) ?? []);
+    if (!ended.size) return;
+    this.sessionAuthorizationStore()?.prune(a => !ended.has(a.handle));
+    const result = this.webSessions?.revokeAll(r => r.remote === "totp");
+    if (result && !result.durable) this.logger.warn("Outside sessions ended, but that could not be saved");
+    this.logger.info({ count: ended.size }, "Sessions signed in from outside ended");
+  }
+
+  /**
+   * #1939 §10 / #3008: a stored receipt's authority as it reads now — the web authority state, and for this computer's
+   * admin from outside the switch and the last revocation of remote authority (Prism P2 2).
+   */
+  receiptAuthorityNow(stored: HumanAuthority, state: AuthorityState = this.webAuthorityState()): HumanAuthority {
+    return authorityNow(stored, { ...state, outside: this.outsideOn(), outsideHandles: this.webRemoteAccess()?.admitted ?? new Set() });
+  }
+
+  /** What Settings shows: set up or not, the switch, a wait in force, the link — its address only to this computer. */
+  webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
+    pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
+    const store = this.webRemoteAccess(), status = store?.status();
+    const here = !!this.liveOwner(req, { hostOnly: true });
+    const open = this.outsideOn() ? this.publicWebLink?.openSignin() : null;
+    const mine = !!open && isOutsideLinkOwner(open.owner);
+    const linkStatus = this.outsideOn() ? this.getPublicWebStatus() : null;
+    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null,
+      outside: this.outsideOn(), pausedForMs: status?.pausedForMs ?? 0,
+      link: linkStatus && linkStatus.state !== "closed" ? { ...linkStatus, ...(here && mine ? { url: open!.url } : {}), quick: !publicLinkNamedHostname(this.fleetConfig?.web) } : null };
+  }
+
+  /** Set up (or set up again): a new secret, shown once to this computer's admin. Null: not them. */
+  webOutsideBeginEnrollment(req: IncomingMessage): { secret: string; uri: string; expiresInMs: number } | null {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store) return null;
+    return store.beginEnrollment(owner.handle, hostname() || "fleet");
+  }
+
+  /** The new app's first code: on "ok" it replaces the old one, whose sessions from outside end. */
+  webOutsideConfirmEnrollment(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here" {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store || !owner.current()) return "not_here";
+    const had = store.enrolled;
+    const r = store.confirmEnrollment(owner.handle, code);
+    if (r === "ok") {
+      this.logger.info({ again: had }, "Authenticator app set up for connections from outside");
+      if (had) this.endOutsideSessions();
+    }
+    return r;
+  }
+
+  /** Forget the app: the switch goes off, the link closes, every session from outside ends. */
+  webOutsideRemove(req: IncomingMessage): "ok" | "unsaved" | "not_here" {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store || !owner.current()) return "not_here";
+    // #3008 review (Prism P2 1): shut at once whatever the disk says; say so when it could not be saved (retried).
+    const saved = store.remove();
+    this.closeOutsideLink("outside removed");
+    this.logger.info({ saved }, "Authenticator app removed; connections from outside off");
+    return saved ? "ok" : "unsaved";
+  }
+
+  /** The switch. On: needs an app set up; the link opens. Off: it closes and every session from outside ends. */
+  webOutsideSwitch(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved" {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store || !owner.current()) return "not_here";
+    if (on && !publicLinkSettings(this.fleetConfig?.web).allowed) return "not_allowed";
+    const r = store.setOutside(on);
+    if (r === "not_enrolled") return r;
+    this.logger.info({ on, saved: r === "ok" }, "Connections from outside switched");
+    // #3008 review (Prism P2 1): Off shuts at once even when it could not be saved (the store retries); On opens only
+    // once saved — a switch the disk does not hold would not survive a restart.
+    if (!on) this.closeOutsideLink("outside off");
+    else if (r === "ok") this.openOutsideLink([0, ...OUTSIDE_LINK_RETRY_MS]);
+    return r;
+  }
+
+  private outsideAttempt: { cancel(): void } | null = null;
+  private outsideOpening = false;
+  /**
+   * Open the outside link: an attempt after each delay in turn until one opens (#3008 B: twice more at most — the quick
+   * link's address service limits how often it may be asked). Every attempt asks again: the switch still on, the fleet
+   * running. A final failure: one Notice; the switch stays on, so the next start tries again.
+   */
+  private openOutsideLink(delays: readonly number[]): void {
+    this.outsideAttempt?.cancel(); this.outsideAttempt = null;
+    const attempt = (n: number): void => {
+      this.outsideAttempt = null;
+      if (this.shuttingDown || !this.outsideOn() || this.outsideOpening) return;
+      this.outsideOpening = true;
+      void this.getPublicWebLink().openUnattended(OUTSIDE_LINK_OWNER).catch(() => "failed" as const).then(outcome => {
+        this.outsideOpening = false;
+        if (outcome === "opened") { this.logger.info({ attempt: n + 1 }, "Outside link opened"); return; }
+        if (outcome === "busy" && this.outsideLink()) return;                      // already open (ours)
+        if (this.shuttingDown || !this.outsideOn()) return;
+        if (n + 1 < delays.length) { this.outsideAttempt = outsideTimer(() => attempt(n + 1), delays[n + 1]!); return; }
+        this.logger.warn({ attempts: n + 1 }, "Outside link could not be opened; giving up until the next start or switch");
+        this.recordWebNotice("fleet", t("outside.notice_ended", t("outside.reason_failed")));
+      });
+    };
+    this.outsideAttempt = outsideTimer(() => attempt(0), delays[0] ?? 0);
+  }
+  private closeOutsideLink(reason: string): void {
+    this.outsideAttempt?.cancel(); this.outsideAttempt = null;
+    const open = this.publicWebLink?.openSignin();
+    if (this.publicWebLink && (!open || isOutsideLinkOwner(open.owner))) void this.publicWebLink.close(reason);
+    this.endOutsideSessions();
+  }
+  /** PublicWebLink.onClose for the outside link: what closed it decides what happens next (#3008 B). */
+  private outsideLinkClosed(reason: string): void {
+    if (this.shuttingDown || OUTSIDE_OWN_CLOSES.has(reason) || !this.outsideOn()) return;
+    // #3008 review (Prism P2 3): expiry first — its lifetime counts from the opening request, so it can run out while the
+    // opening is still under way: the switch goes off then too, and that attempt's end (outsideOn false) retries nothing.
+    if (reason === "expired") {
+      // Its lifetime ran out: the switch goes off (only this computer turns it on again — a session from outside can't).
+      this.outsideAttempt?.cancel(); this.outsideAttempt = null;
+      if (this.webRemoteAccess()?.setOutside(false) === "unsaved") this.logger.warn("Outside link expired; the switch's Off could not be saved yet (retried)");
+      this.endOutsideSessions();
+      this.logger.info("Outside link expired; connections from outside off");
+      this.recordWebNotice("fleet", t("outside.notice_ended", t("outside.reason_expired")));
+      return;
+    }
+    if (this.outsideOpening) return;                                           // that attempt's own failure: its retry
+    // Dropped (the tunnel exited, the gateway failed, the configuration changed): reopened up to twice.
+    this.logger.info({ reason }, "Outside link closed; reopening");
+    this.openOutsideLink(OUTSIDE_LINK_RETRY_MS);
+  }
+
+  /**
+   * #3008 (auth-api POST /auth/totp): a sign-in through the outside link with the authenticator's code. "ok": the caller
+   * makes the session (SessionRecord.remote) and then calls authorizeOutsideSession. Each wrong code counts; a wait that
+   * starts is a Notice; a code that matches a step just outside the window logs how far this clock seems to be off.
+   */
+  outsideSignIn(exposureId: string | undefined, code: string): { kind: "ok" } | { kind: "wrong" } | { kind: "paused"; retryAfterMs: number } | { kind: "closed" } | { kind: "unavailable" } {
+    const link = this.outsideLink(), store = this.webRemoteAccess();
+    if (!link || !store || !exposureId || link.exposureId !== exposureId) return { kind: "closed" };
+    const v = store.verify(code);
+    if (v.kind === "ok") return { kind: "ok" };
+    if (v.kind === "paused") return v;
+    if (v.kind === "not_enrolled") return { kind: "closed" };
+    if (v.kind === "unavailable") return v;
+    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+    if (v.paused) {
+      this.logger.warn({ waitMs: v.retryAfterMs }, "Sign-in from outside paused after wrong codes");
+      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
+      return { kind: "paused", retryAfterMs: v.retryAfterMs };
+    }
+    return { kind: "wrong" };
+  }
+
+  /**
+   * #3008: a session just made by outsideSignIn's "ok" is this computer's admin for its authorization's life. False: it
+   * could not be admitted (its handle not saved, #3015 review r3) — the caller ends it.
+   */
+  authorizeOutsideSession(session: SessionRecord, peer: WebPeer, label: string): boolean {
+    const store = this.sessionAuthorizationStore(), link = this.outsideLink();
+    if (!store || session.remote !== "totp" || session.owner || !link || session.exposureId !== link.exposureId) return false;
+    if (!this.webRemoteAccess()?.admit(session.handle)) { this.logger.warn({ handle: session.handle }, "Session from outside not admitted: it could not be saved"); return false; }
+    const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    const check = evaluateWebAuthority({
+      session, gateway: true, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      isAdmin: () => false,
+      authorization: { handle: session.handle, owner: HOST_OPERATOR, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
+      hostOperator: true, outside: link,
+    });
+    if (check.refusal) { this.logger.info({ handle: session.handle, refusal: check.refusal }, "Session from outside not authorized"); return false; }
+    {
+      const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+      store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
+      const { durable } = store.authorize(session.handle, HOST_OPERATOR, now, state.epoch, now + policy.maxSessionMs, peer);
+      this.logger.info({ handle: session.handle, durable }, "Session from outside authorized (this computer's admin)");
+    }
+    this.recordWebNotice("fleet", t("outside.notice_signed_in", label));
+    return true;
+  }
+
   private authorityStateStore: AuthorityStateStore | null = null;
   /**
    * #1939 §10: the switch, "Only this computer can authorize" and the revocation epoch in force for the configuration as
@@ -16651,6 +16870,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const session = this.webSessions?.findByHandle(a.handle);
         if (!session) return true;
         if (session.surface === "local") return false;
+        // #3008 review (Prism P2 4): signed in from outside with the authenticator's code — its opt-in is the outside
+        // switch, not these options (the authority judges it so): it keeps its authorization.
+        if (session.remote === "totp") return false;
         const peer = a.peer ?? "named_link";
         return (!!state.namedLinkClosed && peer === "named_link") || (!!state.quickLinkClosed && peer === "quick_link");
       };
@@ -16786,7 +17008,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
       policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
       // #2910 D1: a host operator's session is never asked about (no account to ask): only a sign-in authorizes it.
-      hostOperator: this.isWebOnlyFleet(),
+      hostOperator: this.isWebOnlyFleet(), outside: this.outsideLink(),
     });
     return r.refusal;
   }
@@ -22480,6 +22702,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const settingsControlStopped = settingsControl?.close();
     this.publicLinkAutoOpen?.stop();
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
+    this.webRemoteAccessState?.close();                                // #3008: an unsaved switch gets its last write
     const sharesStopped = this.officeSharesInstance?.close();   // #2636: every Office share ends, and its tunnel
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
