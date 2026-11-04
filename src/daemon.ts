@@ -3577,9 +3577,6 @@ export class Daemon extends EventEmitter {
             scheduleNext();
             return;
           }
-          // The CLI owns the MCP server process, so the daemon can only observe it.
-          measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
-
           // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
           const cliLabel = this.backend?.binaryName ?? "CLI";
           const healthTmux = this.tmux;
@@ -3599,6 +3596,9 @@ export class Daemon extends EventEmitter {
           // began just before pause must not classify that exit as a crash.
           if (discardStaleHealth()) return;
           if (paneStatus?.alive) {
+            // A CLI shutdown also closes its MCP children. Revive tools only for
+            // a positively live pane, never while its exit is being classified.
+            measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
             // Capture only a known primary while it lives. No extra tmux call: PID comes
             // from this same status read. Fast/unobserved deaths remain ordinary crashes.
             const key = this.oomSessionKey();
@@ -3636,6 +3636,26 @@ export class Daemon extends EventEmitter {
             if (discardStaleHealth()) return;
             if (paneStatus?.alive) {
               this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
+              this.windowQueryFailureTicks = 0;
+              this.stormWindow?.noteWindowAlive(this.name);
+              scheduleNext();
+              return;
+            }
+          }
+
+          // tmux marks the PTY dead when its fd closes, before SIGCHLD can fill
+          // pane_dead_status. Claude /exit (and any other CLI) can hit this gap.
+          // Give the status four bounded re-probes; missing is never exit zero.
+          if (paneStatus && !paneStatus.alive && paneStatus.exitCode === undefined) {
+            for (let attempt = 0; attempt < 4; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 250));
+              if (discardStaleHealth()) return;
+              const observed = await healthTmux.getPaneStatus();
+              if (discardStaleHealth()) return;
+              if (observed) paneStatus = observed;
+              if (paneStatus.alive || paneStatus.exitCode !== undefined) break;
+            }
+            if (paneStatus.alive) {
               this.windowQueryFailureTicks = 0;
               this.stormWindow?.noteWindowAlive(this.name);
               scheduleNext();
