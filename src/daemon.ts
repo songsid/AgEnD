@@ -2223,6 +2223,11 @@ export class Daemon extends EventEmitter {
   logNativeInputRefusal(details: import("./pane-port.js").PaneInputDiagnostic): void {
     this.logger.warn({ component: "runtime-pane-host", reason: "expected_seq_changed", ...details }, "Native pane input refused before write");
   }
+  logNativeToolFailure(details: import("./runtime-pane-mcp.js").PaneToolFailure): void {
+    const turn = this.turnReplyGuard.snapshot();
+    this.logger.warn({ ...details, currentMessageId: turn?.target.messageId ?? null,
+      guardGeneration: turn?.generation ?? null, guardPhase: turn?.phase ?? null }, "Native pane tool operation failed");
+  }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
   private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
   /** Per-launch attention for a native delivery whose bounded input attempts were refused or uncertain, including non-outbox input. */
@@ -11243,7 +11248,7 @@ export class Daemon extends EventEmitter {
    * Routes to the channel adapter via MessageBus.
    */
   /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
-  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string }> {
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string; errorCode?: string | number }> {
     const refusal = nativePaneToolRefusal(input.tool, input.args);
     if (refusal) return Promise.resolve({ result: null, error: refusal });
     if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
@@ -11251,7 +11256,7 @@ export class Daemon extends EventEmitter {
     const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
     return new Promise(resolve => {
       let settled = false;
-      const finish = (value: { result: unknown; error?: string }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      const finish = (value: { result: unknown; error?: string; errorCode?: string | number }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
@@ -11265,7 +11270,8 @@ export class Daemon extends EventEmitter {
             return true;
           },
           // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
-          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}) }); return false; },
+          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}),
+            ...(typeof value.errorCode === "string" || typeof value.errorCode === "number" ? { errorCode: value.errorCode } : {}) }); return false; },
         });
       } catch { finish({ result: null, error: "Pane tool operation failed" }); }
     });
@@ -11301,7 +11307,7 @@ export class Daemon extends EventEmitter {
       : null;
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
-    const respond = (result: unknown, error?: string) => {
+    const respond = (result: unknown, error?: string, errorCode?: string | number) => {
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
@@ -11341,7 +11347,7 @@ export class Daemon extends EventEmitter {
         // failed" and report unknown immediately rather than starting recovery.
         this.turnReplyGuard.settleToolAttempt(replyAttempt, false);
       }
-      const packet = { requestId, result, error, operationId };
+      const packet = { requestId, result, error, operationId, ...(errorCode !== undefined ? { errorCode } : {}) };
       const sent = peer ? peer.current() && peer.send(packet) : socket ? this.ipcServer?.send(socket, packet) ?? false : false;
       if (!sent) {
         if (peer) this.logger.debug({ tool, requestId }, "Native MCP result awaits transport-written confirmation");
@@ -11603,7 +11609,7 @@ export class Daemon extends EventEmitter {
       }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(outboundKey, (respMsg) => {
         clearTimeout(timeout);
-        respond(respMsg.result, respMsg.error as string | undefined);
+        respond(respMsg.result, respMsg.error as string | undefined, respMsg.errorCode as string | number | undefined);
       });
       // Register the waiter before broadcasting. A fast/mock adapter can settle
       // immediately; broadcasting first left a response-before-registration

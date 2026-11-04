@@ -5,9 +5,11 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
 import { validatePaneMcpBody, validatePaneMcpOwner, samePaneMcpOwner, type PaneMcpBody, type PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import { OUTBOUND_TOOL_SCHEMAS } from "./channel/mcp-tools.js";
+import { redactDiagnostics } from "./diagnostic-redaction.js";
 interface ToolMenu { name: string; [key: string]: unknown }
 interface Call { digest: string; operationId: string; responseId: string; state: "prepared" | "done" | "written" }
 interface Ledger { version: 1; machineId: string; owner: PaneMcpOwner; calls: Record<string, Call> }
+export interface PaneToolFailure { tool: string; operationId: string; reason: string; code: string | number | null }
 export interface PaneMcpAuthority {
   machineId: string;
   owner: PaneMcpOwner;
@@ -15,7 +17,8 @@ export interface PaneMcpAuthority {
   current(): boolean;
   menu(): ToolMenu[];
   allowed(tool: string, args: Record<string, unknown>): boolean;
-  invoke(input: { tool: string; args: Record<string, unknown>; operationId: string }, current: () => boolean): Promise<{ result: unknown; error?: string }>;
+  invoke(input: { tool: string; args: Record<string, unknown>; operationId: string }, current: () => boolean): Promise<{ result: unknown; error?: string; errorCode?: string | number }>;
+  toolFailed?(details: PaneToolFailure): void;
   responseWritten(operationId: string): void;
   /** Stable authenticated connection generation, distinct from one RPC's short-lived current() fence. */
   transportEpoch?(): string | null;
@@ -96,7 +99,17 @@ export class PaneMcpAuthorityLease {
       let response: Record<string, unknown>;
       try {
         const value = await this.authority.invoke({ tool, args: checked, operationId: call.operationId }, allowed);
-        if (value.error) response = errorResult("AgEnD tool operation failed; inspect its operation before retrying");
+        if (value.error) {
+          // No args, reply bodies or raw provider errors in diagnostics. Redact BEFORE truncating so a
+          // credential cannot survive as a partial token. An absent lower-level code stays explicitly unknown.
+          const reason = value.error.length > 65_536 ? "Tool failure reason exceeded the diagnostic limit"
+            : redactDiagnostics(value.error).replace(/[\r\n]+/g, " ").slice(0, 1000);
+          const code = typeof value.errorCode === "number" && Number.isSafeInteger(value.errorCode) ? value.errorCode
+            : typeof value.errorCode === "string" ? (value.errorCode.length > 4096 ? "[REDACTED]" : redactDiagnostics(value.errorCode)).slice(0, 80) : null;
+          try { this.authority.toolFailed?.({ tool, operationId: call.operationId, reason, code }); } catch { /* Logging cannot change a settled tool outcome. */ }
+          response = errorResult(`AgEnD tool operation failed: ${reason}${code === null ? "" : ` (code: ${code})`}. Inspect operation ${call.operationId} before retrying.`);
+          response.structuredContent = { error: { reason, code, operationId: call.operationId } };
+        }
         else {
           const text = typeof value.result === "string" ? value.result : JSON.stringify(value.result);
           response = text === undefined ? errorResult("AgEnD returned no tool result") : { content: [{ type: "text", text }] };

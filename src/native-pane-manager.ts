@@ -33,7 +33,7 @@ export interface NativePaneManagerOptions {
  allowed(name:string,tool:string,args:Record<string,unknown>):boolean;
  published(name:string,daemon:Daemon):boolean;
  freshNotice?(name:string,provider?:"codex"|"claude-code"):Promise<void>|void;
- invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean,name:string):Promise<{result:unknown;error?:string}>;
+ invoke(daemon:Daemon,input:{tool:string;args:Record<string,unknown>;operationId:string},current:()=>boolean,name:string):Promise<{result:unknown;error?:string;errorCode?:string|number}>;
 }
 interface Binding {native:RuntimeNativePaneLifecycle;lease:PaneMcpAuthorityLease;bind(daemon:Daemon):void}
 export class NativePaneManager {
@@ -231,6 +231,7 @@ export class NativePaneManager {
    menu:()=>this.options.menu(name),allowed:(tool,args)=>current()&&this.options.allowed(name,tool,args),
    invoke:(input,proof)=>{if(!owned()||!proof())throw Error("Native daemon is not published");return this.options.invoke(daemon!,input,()=>owned()&&proof(),name);},
    responseWritten:operationId=>daemon?.paneToolResponseWritten(operationId,owned),
+   toolFailed:details=>daemon?.logNativeToolFailure(details),
   });
   const native:RuntimeNativePaneLifecycle=new RuntimeNativePaneLifecycle({endpoint,launch,receiptFile:join(directory,`${launch.launchId}.pane.json`),...(launch.cli==="codex"&&retained.fresh?{freshPrevious:retained.fresh.previous}:{}),
    admit:()=>{assertCurrent();this.options.admit(name,config);},reserve:launchId=>{this.options.store.reservePane(id,launchId);},pin:(launchId,sessionId)=>{

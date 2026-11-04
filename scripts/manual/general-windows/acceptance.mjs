@@ -29,7 +29,7 @@ const actualOutbound=fleet.handleOutboundFromInstance.bind(fleet);
 let runner,reader,closed=false,phase='setup',passed=false,cleanup=false,machine,model,upgradePaused=false;
 const receipt={...source,...await codeBundleReceipt(bundle),kind:'paired-General-native',scratchCwd:nativeRoot,states:{},archived:[]};
 const until=async(check,label,timeout=120000)=>{const end=performance.now()+timeout;while(!await check()){
- assert(!messages.some(m=>m.failed),'Scratch runner failed');assert(!closed,'Scratch runner closed');assert(performance.now()<end,'Deadline: '+label);await new Promise(done=>setTimeout(done,200));}};
+ assert(!receipt.toolFailureDiagnostics?.some(row=>row.tool==='reply'),'Native reply failure captured; stop acceptance');assert(!messages.some(m=>m.failed),'Scratch runner failed');assert(!closed,'Scratch runner closed');assert(performance.now()<end,'Deadline: '+label);await new Promise(done=>setTimeout(done,200));}};
 const hub=new RuntimeCoordinator(join(home,'hub'),{requestTimeoutMs:45000,handlePaneMcp:async(machineId,body,current)=>(await fleet.nativePanes()).handle(machineId,body,current)});
 fleet.runtimeHub=hub;setConfiguredRuntimeSwitches({remote_runtime:true,max_agents_per_machine:4});
 fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true,max_agents_per_machine:4},instances:{}};
@@ -37,6 +37,8 @@ const toolCalls=[];
 // Observe the production metadata diagnostic, without changing input or retry decisions.
 const {Daemon}=await load('daemon'),logRefusal=Daemon.prototype.logNativeInputRefusal;receipt.inputDiagnostics=[];
 Daemon.prototype.logNativeInputRefusal=function(details){receipt.inputDiagnostics.push({instance:this.name,...details});return logRefusal.call(this,details);};
+const logToolFailure=Daemon.prototype.logNativeToolFailure;receipt.toolFailureDiagnostics=[];
+Daemon.prototype.logNativeToolFailure=function(details){receipt.toolFailureDiagnostics.push({instance:this.name,...details});return logToolFailure.call(this,details);};
 const store=windowsAgentsFor(fleet,{get:()=>null,start(){throw Error('No exec fallback');},prepareWorkspace(){throw Error('No host workspace');}});
 fleet.readCliEnv=()=>{throw Error('No coordinator account/catalog probe');};
 fleet.localNativePaneEndpoint=()=>{throw Error('General proof requires the paired runtime');};
@@ -151,7 +153,7 @@ try{
   receipt.hostProvider='inert private-tmux sleep; exact vendor resume argv covered by fixture tests';receipt.settingsWriter='isolated fixture; confirmation/revision exercised by browser and API tests';
  }
  passed=true;
-}catch(error){receipt.failure={phase,kind:error.name,reason:String(error.message).slice(0,220)};}
+}catch(error){receipt.failure={phase,kind:error.name,reason:String(error.message).slice(0,220)};await new Promise(done=>setTimeout(done,1500));try{await cp(join(home,'daemon.log'),'.artifacts/general-native-failure-daemon.log');receipt.failureLog='general-native-failure-daemon.log';}catch{}}
 finally{
  receipt.toolCalls=toolCalls;receipt.replyStates=replies.map(r=>({provider:r.name.includes('codex')?'codex':'claude-code',state:r.text.split('_FLEET_OK_')[1]}));
  for(const row of agents){const daemon=fleet.daemons.get(row.name);try{const screen=await daemon.tmux.capturePane();const ds=[...(daemon.backend.getRuntimeDialogs?.()??[]),...(daemon.backend.getStartupDialogs?.()??[])];(receipt.finalScreens??=[]).push({provider:row.agent.cli,lastInput:daemon.tmux.getLastInputDiagnostic?.()??null,deliveryHold:!!daemon.nativeDeliveryHold(),ready:daemon.backend.isDeliveryInputReadyPane?.(screen)??daemon.backend.getReadyPattern().test(screen),busy:daemon.backend.getBusyPattern?.()?.test(screen)??false,dialogs:ds.filter(d=>d.pattern.test(screen)&&(!d.isActive||d.isActive(screen))).map(d=>d.description)});}catch{}}
