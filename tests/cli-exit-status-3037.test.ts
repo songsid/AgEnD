@@ -49,6 +49,18 @@ it("a permanently missing status is bounded and is never guessed to be zero", as
   expect(r.daemon.getProcessStatus()).toBe("crashed"); expect(r.d.healthCheckPaused).toBe(true);
   expect(r.ended).toHaveBeenCalledOnce(); expect(r.ended.mock.calls[0][0].exitCode).toBeUndefined();
 });
+it("failed status rechecks retain unknown rather than inventing a normal exit", async () => {
+  const r = rig(); r.read.mockResolvedValueOnce("1  1234\n").mockResolvedValue("");
+  r.d.startHealthCheck(); await vi.advanceTimersByTimeAsync(1_275);
+  expect(r.ended).toHaveBeenCalledOnce(); expect(r.ended.mock.calls[0][0].exitCode).toBeUndefined();
+  expect(r.daemon.getProcessStatus()).toBe("crashed"); expect(r.read).toHaveBeenCalledTimes(5);
+});
+it("a positively live CLI still receives its MCP liveness check", async () => {
+  const r = rig(); r.read.mockResolvedValue("0  \n");
+  r.d.startHealthCheck(); await vi.advanceTimersByTimeAsync(25);
+  expect(r.d.checkMcpServerAlive).toHaveBeenCalledOnce(); expect(r.ended).not.toHaveBeenCalled();
+  expect(r.kill).not.toHaveBeenCalled(); expect(r.d.healthCheckTimer).not.toBeNull();
+});
 it("a changed launch during the exit-status wait cannot stop or report on the replacement", async () => {
   const r = rig(); r.read.mockResolvedValueOnce("1  1234\n").mockResolvedValue("1 0 1234\n");
   r.d.startHealthCheck(); await vi.advanceTimersByTimeAsync(25); r.d.spawnGeneration++;
