@@ -79,7 +79,8 @@ export async function decideProposal(id, decision) {
     try { body = await res.json(); } catch { body = null; }
   } catch { return { ok: false, view: null, agent: null, message: null }; }
   void refreshProposals();
-  return { ok: !!res.ok, view: (body && body.view) || null, agent: (body && body.agent) || null, message: (body && body.message) || null };
+  return { ok: !!res.ok, view: (body && body.view) || null, agent: (body && body.agent) || null, message: (body && body.message) || null,
+    error: (body && typeof body.error === "string" && body.error) || (res.ok ? null : `http_${res.status}`) };
 }
 
 /** For tests: as on a fresh page. */

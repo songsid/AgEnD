@@ -76,7 +76,10 @@ it("rotates one approved machine, immediately invalidates the old credential and
   expect(result.credential).not.toBe(p.credential);expect(result.pendingCredential).toBeUndefined();expect(h.listMachines()).toHaveLength(2);
   expect((await post(base,"/runtime/v1/rotate",{machineId:p.machineId,credential:next},p.credential)).status).toBe(401);
   expect((await post(base,"/runtime/v1/rotate",{machineId:p.machineId,credential:result.credential},result.credential)).status).toBe(200);
-  const persisted=readFileSync(join(directories[0],"runtime-machines.json"),"utf8");expect(persisted).not.toContain(result.credential);expect(JSON.parse(persisted).commands).toEqual(before);
+  const persisted=readFileSync(join(directories[0],"runtime-machines.json"),"utf8");expect(persisted).not.toContain(result.credential);
+  // alpha.2 polish: this fixture's hello brings no inventory, so the coordinator asks for one (a read-only probe the closed
+  // connection then settles as failed) — rotation itself changes no command.
+  const others=(rows:Array<{operation:string}>)=>rows.filter(row=>row.operation!=="probe");expect(others(JSON.parse(persisted).commands)).toEqual(others(before));
   const newSocket=new WebSocket(base.replace("http:","ws:")+"/runtime/v1/connect",{headers:{Authorization:`Bearer ${result.credential}`}});sockets.push(newSocket);await once(newSocket,"open");
 });
 it("lost HTTP response retains one candidate and retries it after a coordinator restart",async()=>{

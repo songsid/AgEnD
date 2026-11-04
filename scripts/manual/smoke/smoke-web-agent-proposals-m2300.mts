@@ -21,6 +21,9 @@ process.env.AGEND_WINDOWS_CLI = "1";
 const SMOKE = "smoke-web-agent-proposals-m2300";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48923), classic: false, instances: 3, webYaml: "  verified_authority:\n    enabled: true" });
 const fm = fx.fm as any;
+// alpha.2 polish: the fleet speaks zh-TW (its own messages, the server's outcome words), the page is English — the
+// result line must be the page's language (dev-claude's e2e read 「變更已套用。」 on an English page).
+(await import(process.env.REPO + "/src/locale.ts")).setLocale("zh-TW");
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const results: Array<{ name: string; ok: boolean; failed: string[]; info?: unknown }> = [];
 const windowsAgents = () => Object.entries(fm.fleetConfig.instances).filter(([, c]: any) => c.runtime === "windows").map(([n]) => n);
@@ -66,6 +69,7 @@ for (const c of [{ device: "desk", width: 1366, height: 900 }, { device: "phone"
       const created = windowsAgents().length - before;
       info.created = created; info.result = await page.locator(".n-proposals .n-title strong").first().textContent();
       need(created === 1, `exactly one Windows agent created (${created})`);
+      need(info.result === "Approved: the change is applied.", `the result in the page's language, not the fleet's (${info.result})`);
       const href = await page.locator(".n-proposals a.btn").first().getAttribute("href").catch(() => null);
       need(!!href && href.startsWith("/ui/chat/"), `"Open chat" to the new agent (${href})`);
       await page.screenshot({ path: shotPath(SMOKE, name, "approved") });

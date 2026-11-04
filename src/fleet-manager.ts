@@ -2582,6 +2582,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // The store's own fence (this confirming admin, the session, the state) plus the switch and machine now.
       apply: async (actorCurrent, execution) => {
         execution.assert();
+        // alpha.2 polish: a paired machine whose CLI inventory has not arrived yet (just paired) is asked for its own
+        // report first (it runs on that PC), so the creation validates against what is installed there — never a refusal
+        // that only a manual Refresh would undo. Its answer or failure changes nothing else; the fence is asked again.
+        if (machineId && online() && !this.runtimeCoordinator().machine(machineId)?.inventory) {
+          try { await this.runtimeCoordinator().call(machineId, "probe", {}); } catch { /* validation says what is missing */ }
+          execution.assert();
+        }
         return input.apply(() => actorCurrent() && online(), execution);
       } });
     return view;
