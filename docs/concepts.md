@@ -2,7 +2,12 @@
 
 Draft. Each term states what the code on main does today, verified against the
 listed files. Anything inferred is marked. Role names follow the user's
-definitions; where code and a decision disagree, see Mismatches at the end.
+definitions (fleet decision 9af8d799, "Role definitions are the user's", user
+2026-11-04: this doc defines the roles and terms, approved by the user; a PR
+that changes what a role can do must quote the definition in its body, and
+reviewers check this). Where code and a decision disagree, see Mismatches at
+the end. Fleet decisions are scoped to the leader's project root and cannot be
+opened by readers, so each citation carries its user-facing summary inline.
 
 ## fleet
 
@@ -31,24 +36,29 @@ runtime word (`fleet.yaml` `instances`); `agent` is the everyday word.
 
 ## General
 
-The user's definition: AgEnD's administrator. General is the fleet's admin
-instance — the first agent on a new fleet — and owns the General topic. An
-instance runs under the `general` tool set when `general_topic: true` or its
-name is `general`.
+The user's definition (fleet decision 9e3bea6c, "General is the AgEnD
+administrator", user 2026-11-04): as of beta.8 the `general` tool profile gets
+the full ORCHESTRATION set — instance create, delete, replace, start, stop,
+pause, wake and restart; templates; teams; `update_fleet_defaults`;
+`update_instance_config`; the kiro migrate and reconcile tools;
+`update_decision`; web settings — with no extra confirmation. The existing
+confirmations stay: sensitive config (tokens and access) is confirmed by a
+fleet admin, and #804 still refuses `tool_set` or `skipPermissions` escalation.
+It supersedes the 2026-09-21 "dispatcher" rationale and lands in beta.8 (agy's
+PR). General is the fleet's admin instance — the first agent on a new fleet —
+and owns the General topic. An instance runs under the `general` tool set when
+`general_topic: true` or its name is `general`.
 
-- Can (as of beta.8): everything in the `general` profile — full worker
-  abilities plus `create/start/restart/wake_instance`, delegation, schedules,
-  and the user's web-appearance settings (`src/tool-permissions.ts:107-136`).
-- Can't (as of beta.8): the rest of the orchestration verbs —
-  `delete/stop/pause/replace_instance`, teams, templates, fleet
-  defaults/instance config, `migrate/reconcile_kiro_instance`,
-  `update_decision`. Per the user's decision it is to receive all orchestration
-  tools via an in-flight change; that change could not be located among the
-  open PRs at draft time (marked unverified).
+- Can (as of beta.8): everything in the worker profile plus the full
+  ORCHESTRATION set, delegation, schedules, and the user's web-appearance
+  settings.
+- Can't: exceed that set. Note the code on main is pre-beta.8 and still shows
+  the smaller subset (`src/tool-permissions.ts:107-136` holds only
+  `create/start/restart/wake_instance` of the orchestration verbs) — expected
+  to change when beta.8 lands; see Mismatches.
 - Code: `src/tool-permissions.ts:107-136`, `:201-208`;
   `src/instance-lifecycle.ts:2741` (the General instance cannot be replaced).
-- Refs: user decision 9e3bea6c (reference could not be resolved via
-  `list_decisions` at draft time — see Mismatches).
+- Refs: fleet decision 9e3bea6c.
 
 ## coordinator (role) vs `coordinator` tool set
 
@@ -180,10 +190,9 @@ defaults to `worker` (`resolveToolSet`, `:201-208`).
   (the env-only fallback excepted, `:212-222`).
 - `coordinator`: worker abilities plus all orchestration verbs — the profile
   for running the fleet.
-- `general`: worker abilities plus a slice of orchestration
-  (`create/start/restart/wake_instance`) and the user's web settings. Smaller
-  than coordinator on purpose: a dispatcher has no business deleting instances
-  or rewriting fleet defaults.
+- `general`: worker abilities plus orchestration — a slice of it
+  (`create/start/restart/wake_instance`) on main today, the full set as of
+  beta.8 (see General) — and the user's web settings.
 - `worker`: the default. Doing the work, with reporting (`report_result`)
   that `standard` lacks.
 - `standard`: broad read access plus own schedules and themes, but no
@@ -347,22 +356,27 @@ Nothing here is papered over.
 2. **Paired PC.** The term is not defined in code or docs. The verified
    pieces: `agend access pair` pairing codes (`src/cli.ts:1241`) and the
    Windows runtime alpha (`release/2.3.5-alpha`, decision 72353fdf).
-3. **General's orchestration tools.** Code's `general` profile
+3. **General's orchestration tools (temporal, expected to resolve).** Code on
+   main is pre-beta.8: the `general` profile
    (`src/tool-permissions.ts:107-136`) holds only
-   `create/start/restart/wake_instance`, while the user's decision says
-   General, as administrator, gets all orchestration tools via an in-flight
-   change. No such open PR could be located at draft time — the code half is
-   verified, the change half is not.
-4. **Decision ref 9e3bea6c.** Not resolvable via `list_decisions` (titles,
-   archived, tag filters) and not a commit in this clone. The General entry
-   above cites it as given; the link stays unverified until the leader
-   supplies the correct reference (asked via `request_information`,
-   `cid-concepts-doc`).
-5. **Administrator vs `allowed_users`.** The user defines General as the
-   administrator, but the code grants admin per platform user id
-   (`access.allowed_users`), not per instance — there is no instance-bound
-   administrator identity. Pending the decision text in (4) for how the two
-   are meant to meet.
+   `create/start/restart/wake_instance`. Fleet decision 9e3bea6c moves it to
+   the full ORCHESTRATION set in beta.8 (agy's PR). No live mismatch once beta.8
+   lands; until then the code half is verified and the change half is the
+   decision's word.
+4. **Fleet decision references.** Decisions of the form 9e3bea6c / 9af8d799 are
+   scoped to the leader's project root: they do not resolve via
+   `list_decisions` from other scopes and are not commits. Per the leader's
+   instruction they are cited as-is (`fleet decision 9e3bea6c`) with the
+   user-facing summary inline, since readers cannot open them. Any further
+   reference that does not resolve is handled the same way.
+5. **Administrator vs `allowed_users` (clarified by the decision).** The user
+   defines General as the administrator, while the code grants admin per
+   platform user id (`access.allowed_users`), not per instance. Fleet decision
+   9e3bea6c keeps both halves: the tool verbs go to General's profile, while
+   confirmations for sensitive config (tokens, access) stay with the
+   fleet-admin person, and #804 still refuses privilege escalation. No
+   instance-bound administrator identity exists in code; the administrator acts
+   through General's tool set plus the fleet admin's confirmations.
 
 [繁體中文](concepts.zh-TW.md)
 

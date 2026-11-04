@@ -1,6 +1,6 @@
 # AgEnD 概念與定義
 
-草稿。每個詞條描述 main 上程式碼今天的行為，皆已對照所列檔案驗證。推論之處會標明。角色名稱採用使用者的定義；程式碼與決議不一致之處，見文末「不一致之處」。
+草稿。每個詞條描述 main 上程式碼今天的行為，皆已對照所列檔案驗證。推論之處會標明。角色名稱採用使用者的定義（fleet decision 9af8d799，「Role definitions are the user's」，使用者 2026-11-04：由本文件定義角色與用詞，經使用者批准；改變角色能力的 PR 必須在內文引用定義，reviewer 會核對）。程式碼與決議不一致之處，見文末「不一致之處」。Fleet decision 只存在於 leader 的專案範圍，讀者打不開，所以每次引用都把使用者看得懂的摘要寫在內文。
 
 ## fleet（艦隊）
 
@@ -22,12 +22,12 @@
 
 ## General
 
-使用者的定義：AgEnD 的管理者。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
+使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的確認保留：敏感設定（token 與存取權）由 fleet admin 確認，#804 照樣擋下 `tool_set` 或 `skipPermissions` 提權。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
 
-- 能做什麼（beta.8 時點）：`general` profile 裡的全部——完整 worker 能力，加上 `create/start/restart/wake_instance`、委派、排程，以及使用者的網頁外觀設定（`src/tool-permissions.ts:107-136`）。
-- 不能做什麼（beta.8 時點）：其餘 orchestration 動詞——`delete/stop/pause/replace_instance`、team、template、fleet 預設值與 instance 設定、`migrate/reconcile_kiro_instance`、`update_decision`。依使用者決議，它將透過一個進行中的改動取得全部 orchestration 工具；截稿時在 open PR 中找不到該改動（標為未驗證）。
+- 能做什麼（beta.8 起）：worker 能力的全部，加上完整的 ORCHESTRATION、委派、排程，以及使用者的網頁外觀設定。
+- 不能做什麼：超出上述範圍。注意 main 上的程式碼還在 beta.8 之前，看到的仍是較小的子集（`src/tool-permissions.ts:107-136` 的 orchestration 動詞只有 `create/start/restart/wake_instance`）——beta.8 落地就會換掉；見「不一致之處」。
 - 程式碼：`src/tool-permissions.ts:107-136`、`:201-208`；`src/instance-lifecycle.ts:2741`（General instance 不能被 replace）。
-- 相關決議與議題：使用者決議 9e3bea6c（截稿時無法用 `list_decisions` 查到——見「不一致之處」）。
+- 相關決議與議題：fleet decision 9e3bea6c。
 
 ## coordinator（角色）與 `coordinator` 工具組
 
@@ -116,7 +116,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 - `full`：全部工具。只能明示指定；預設不會拿到（環境變數 fallback 除外，`:212-222`）。
 - `coordinator`：worker 能力加全部 orchestration 動詞——經營艦隊用的 profile。
-- `general`：worker 能力加一部分 orchestration（`create/start/restart/wake_instance`）與使用者的網頁設定。刻意比 coordinator 小：分派的人不需要刪除 instance 或重寫 fleet 預設值。
+- `general`：worker 能力加 orchestration——main 上今天是一部分（`create/start/restart/wake_instance`），beta.8 起是完整的一套（見 General）——以及使用者的網頁設定。
 - `worker`：預設值。負責做事，有 `standard` 沒有的回報能力（`report_result`）。
 - `standard`：讀取範圍廣，也有自己的排程與主題，但沒有 `report_result`、`delegate_task`、`request_information`——走不完「委派→做事→回報」。
 - `minimal`：窄小的發送者——回覆、轉交、查送達、讀決議、下載附件、看 emoji／貼圖列表。
@@ -219,8 +219,8 @@ web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt
 
 1. **Team leader。** 題目要的詞沒有對應物：team 存在，但程式碼與文件裡沒有 leader 角色、推選或專屬工具。建議的理解：協調落在委派或分派工作的 instance 身上。
 2. **Paired PC。** 這個詞在程式碼與文件裡不存在。已驗證的碎片：`agend access pair` 發放的存取碼（`src/cli.ts:1241`）與 Windows runtime alpha（`release/2.3.5-alpha`，決議 72353fdf）。
-3. **General 的 orchestration 工具。** 程式碼的 `general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance`，但使用者決議說身為管理者的 General 將透過一個進行中的改動取得全部 orchestration 工具。截稿時找不到這樣的 open PR——程式碼那一半已驗證，改動那一半沒有。
-4. **決議 9e3bea6c。** 用 `list_decisions`（標題、已封存、標籤篩選）查不到，這個 clone 裡也不是 commit。上面的 General 詞條照題目引用它；領導給出正確出處前，這個連結保持未驗證（已用 `request_information` 問過，`cid-concepts-doc`）。
-5. **Administrator 與 `allowed_users`。** 使用者定義 General 是管理者，但程式碼按平台使用者 id（`access.allowed_users`）授權管理員，沒有綁在 instance 身上的管理員身分。兩者如何對上，等 (4) 的決議原文再定。
+3. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance`。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
+4. **Fleet decision 的引用。** 9e3bea6c／9af8d799 這種決議只存在於 leader 的專案範圍：從別的範圍用 `list_decisions` 查不到，也不是 commit。按 leader 的指示，一律照原樣引用（`fleet decision 9e3bea6c`），並把使用者看得懂的摘要寫在內文，因為讀者打不開。以後遇到查不到的引用，比照辦理。
+5. **Administrator 與 `allowed_users`（決議已釐清）。** 使用者定義 General 是管理者，但程式碼按平台使用者 id（`access.allowed_users`）授權管理員，沒有綁在 instance 身上的管理員身分。Fleet decision 9e3bea6c 兩邊都留著：工具動詞給 General 的 profile，敏感設定（token、存取權）的確認留在 fleet admin 那個人手上，#804 照樣擋提權。程式碼裡不存在綁在 instance 身上的管理員身分；管理者透過 General 的工具組加上 fleet admin 的確認來行事。
 
 [English](concepts.md)
