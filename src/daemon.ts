@@ -10310,8 +10310,10 @@ export class Daemon extends EventEmitter {
         // #3030: what follows is an idle submission (or a failure the caller reports): no longer a queued hand-off.
         if (verdict.handoff && !verdict.trackHandoff?.id) this.dropQueuedHandoff(verdict);
         verdict.handoff = undefined;
-        if (windowId && this.controlClient) {
-          await this.controlClient.waitUntilIdle(windowId);
+        if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
+          verdict.phase = "native-queue-idle-wait";
+          verdict.proof = "idle-wait-failed";
+          return false;
         }
 
         // Re-read before doing anything: the CLI had a whole turn to flush its

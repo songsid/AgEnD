@@ -166,10 +166,14 @@ const personMeta = (over: Record<string, string> = {}) => ({
 });
 const busyScreen = (s: Screen) => (!s.pasted ? BUSY_EMPTY : s.enters === 0 ? BUSY_PASTED : BUSY_QUEUED);
 
-async function handOff(meta: Record<string, string>, transcript: string | null = "/scratch/t.jsonl") {
+async function handOff(meta: Record<string, string>, transcript: string | null = "/scratch/t.jsonl",
+  opts: { screen?: (s: Screen) => string; idleWait?: boolean; onIdleWait?: (instanceDir: string) => void } = {}) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"] });
   const root = scratch("daemon");
-  const h = makeDaemon(root, busyScreen, transcript);
+  const h = makeDaemon(root, opts.screen ?? busyScreen, transcript);
+  if (opts.idleWait !== undefined) {
+    h.daemon.controlClient.waitUntilIdle.mockImplementation(async () => { opts.onIdleWait?.(h.instanceDir); return opts.idleWait; });
+  }
   const watches: ConsumedWatchTarget[] = [];
   vi.spyOn(consumedWatches, "start").mockImplementation((t: ConsumedWatchTarget) => { watches.push(t); return true; });
   h.daemon.pushChannelMessage("hello", meta);
@@ -214,6 +218,22 @@ describe("a person's message handed to a busy Claude", () => {
     const b = await handOff(personMeta(), null);
     expect(b.store.list()).toEqual([]);
     expect(b.events.filter(([e]) => e === "message_confirmed")).toHaveLength(1);
+  });
+
+  it("not confirmed as queued and the idle wait fails (#3027): the record goes before the wait, no ✅, no watch, nothing pasted again", async () => {
+    // The text stays in the input row after its Enter (never queued): the native-queue path falls back to the idle wait,
+    // which fails (a stop or an abandoned window, #3027) — the delivery returns there with its phase, never as a hand-off.
+    const stranded = (s: Screen) => (!s.pasted ? BUSY_EMPTY : BUSY_PASTED);
+    let onRecordAtWait: number | null = null;
+    const r = await handOff(personMeta(), "/scratch/t.jsonl", { screen: stranded, idleWait: false,
+      onIdleWait: dir => { onRecordAtWait = new QueuedHandoffStore(dir).list().length; } });
+    expect(r.daemon.controlClient.waitUntilIdle).toHaveBeenCalledTimes(1);
+    expect(onRecordAtWait).toBe(0);
+    expect(r.store.list()).toEqual([]);
+    expect(r.watches).toEqual([]);
+    expect(r.events.filter(([e]) => e === "message_confirmed")).toEqual([]);
+    expect(r.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(r.s.enters).toBe(1);
   });
 
   it("a cancel clears the records: nothing of it is redelivered or reported later", async () => {

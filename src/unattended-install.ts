@@ -19,10 +19,10 @@
  *
  * The exit code is the install's own: the session judges success by it.
  */
-import { accessSync, constants as fsConstants } from "node:fs";
 import { userInfo } from "node:os";
 import { isAbsolute } from "node:path";
 import { shellQuote } from "./backend/types.js";
+import { spawnProbeCommand, PROBE_DEADLINE_MS } from "./binary-probe.js";
 
 /** Runs `$1` detached from any terminal, at low priority; HUP/INT/TERM on this shell reach its whole process group. */
 export const UNATTENDED_INSTALL_SCRIPT = [
@@ -41,15 +41,32 @@ export const UNATTENDED_INSTALL_SCRIPT = [
 ].join("\n");
 
 /** The account's login shell, when it is an absolute path to an executable; else undefined (keep the inherited one). */
-export function loginShell(read: () => string | null | undefined = () => userInfo().shell): string | undefined {
+export async function loginShell(read: () => string | null | undefined = () => userInfo().shell): Promise<string | undefined> {
   let shell: string | null | undefined;
   try { shell = read(); } catch { return undefined; }
   if (!shell || !isAbsolute(shell)) return undefined;
-  try { accessSync(shell, fsConstants.X_OK); return shell; } catch { return undefined; }
+  // Child `sh` `[ -f && -x ]`, same as resolveBackendBinary's install-dir probe: an accessSync on a dead mount
+  // can hang a pool thread forever (#3009); a child can be killed (binary-probe.ts).
+  const child = spawnProbeCommand("sh", ["-c", '[ -f "$1" ] && [ -x "$1" ] && echo "$1"', "sh", shell]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const found = await Promise.race([
+      child.answer,
+      new Promise<undefined>((r) => {
+        timer = setTimeout(() => { child.kill(); r(undefined); }, PROBE_DEADLINE_MS);
+        timer.unref?.();
+      }),
+    ]);
+    return found ?? undefined;
+  } catch {
+    return undefined;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** The window's command for an install command. `shell`: the $SHELL to give it; null keeps the inherited one. */
-export function unattendedInstallCommand(command: string, shell: string | null = loginShell() ?? null): string {
+export function unattendedInstallCommand(command: string, shell: string | null = null): string {
   const env = shell ? `SHELL=${shellQuote(shell)} ` : "";
   return `${env}sh -c ${shellQuote(UNATTENDED_INSTALL_SCRIPT)} agend-install ${shellQuote(command)}`;
 }
