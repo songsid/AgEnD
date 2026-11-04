@@ -10056,8 +10056,10 @@ export class Daemon extends EventEmitter {
         // confirmation ladder. "stranded" is the case that used to be a silent
         // ✅ — the text was visible, so the old check called it delivered.
         this.logger.warn({ proof }, "Native-queue paste not confirmed as submitted — retrying via idle-gated delivery");
-        if (windowId && this.controlClient) {
-          await this.controlClient.waitUntilIdle(windowId);
+        if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
+          verdict.phase = "native-queue-idle-wait";
+          verdict.proof = "idle-wait-failed";
+          return false;
         }
 
         // Re-read before doing anything: the CLI had a whole turn to flush its
