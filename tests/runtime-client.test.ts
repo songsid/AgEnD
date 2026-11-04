@@ -247,3 +247,20 @@ it.each(['normal stop','connection replaced'])('%s detaches its opened pane tran
 it('unconfirmed revocation retirement still detaches without any restart or retry',async()=>{
  const link=paneLinkFixture(),report=vi.fn(),f=await fixture({},{openPaneLink:async()=>link as never,report});link.retireOwned.mockRejectedValue(Error('unknown exit'));await f.state.hub.callPane(f.machineId,{action:'list'});f.state.hub.revoke(f.machineId);await vi.waitFor(()=>expect(link.stop).toHaveBeenCalledOnce());expect(link.retireOwned).toHaveBeenCalledOnce();expect(report).toHaveBeenCalledWith('Pane cleanup is unconfirmed; its durable reservations remain held.');expect(f.bridge.launches).toBe(0);expect(f.client.online()).toBe(false);
 });
+
+describe("#3005 rig recheck: a fresh pairing gets a real CLI inventory with no Refresh", () => {
+  it("the runner's real client on a never-probed store: the coordinator's probe forces detection, and the machine's inventory is the report", async () => {
+    // As the real bridge: without `force` the cached answer — on a fresh profile the placeholder; with it, detection.
+    const report = { home: "C:\\Users\\fixture", probedAt: 1_793_000_000_000, clis: [{ id: "codex", path: "C:\\fixture\\codex.exe", version: "fixture",
+      authenticated: true, runnable: true, readOnlySupport: true, supports: { execution: true, resume: true, model: true, mcp: true }, permissionNote: "fixture", models: [] }] };
+    const placeholder = { clis: [], home: "", probedAt: null };
+    const realLike = async (options?: { force?: boolean }) => (options?.force ? report : placeholder) as unknown as WindowsCliProbe;
+    class UnprobedBridge extends FakeBridge { override readonly probe = vi.fn(realLike); }
+    const f = await fixture({}, { bridge: new UnprobedBridge() });
+    await vi.waitFor(() => expect(f.state.hub.machine(f.machineId)?.inventory?.probedAt).toBe(report.probedAt));
+    expect(f.state.hub.machine(f.machineId)?.inventory?.clis.map(c => c.id)).toEqual(["codex"]);
+    const bridge = (f.client as any).options.bridge as UnprobedBridge;
+    expect(bridge.probe.mock.calls.some(c => (c[0] as { force?: boolean } | undefined)?.force === true)).toBe(true);
+  });
+});
+

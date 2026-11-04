@@ -2586,7 +2586,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // report first (it runs on that PC), so the creation validates against what is installed there — never a refusal
         // that only a manual Refresh would undo. Its answer or failure changes nothing else; the fence is asked again.
         if (machineId && online() && !inventoryProbed(this.runtimeCoordinator().machine(machineId)?.inventory)) {
-          try { await this.runtimeCoordinator().call(machineId, "probe", {}); } catch { /* validation says what is missing */ }
+          // `force`: the runner's cached answer on a fresh profile is the placeholder itself (#3005 rig recheck).
+          try { await this.runtimeCoordinator().call(machineId, "probe", { force: true }); } catch { /* validation says what is missing */ }
           execution.assert();
         }
         return input.apply(() => actorCurrent() && online(), execution);
