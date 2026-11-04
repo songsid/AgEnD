@@ -188,11 +188,26 @@ describe("#2233 where Sign in is offered", () => {
       { backend: "claude-code", profile: "work", state: "not_signed_in", signIn: true },
     ] });
     await p.mount(h(S.SignInList, {})); await settle(6);
-    const rows = p.root.querySelectorAll(".s-row").map((r: any) => r.querySelectorAll("span").map((s: any) => s.textContent.trim()).filter(Boolean).join(" "));
+    const renderedRows = p.root.querySelectorAll(".s-row");
+    const rows = renderedRows.map((r: any) => [
+      r.getAttribute("data-backend"), r.querySelector(".s-name").textContent,
+      r.querySelector(".s-auth-state").textContent, r.querySelector(".s-actions button")?.textContent || "",
+      r.querySelectorAll(".s-host-cli-command code").map((code: any) => code.textContent).join(" "),
+    ]);
     expect(rows).toEqual([
-      "claude-code signed in Sign in again", "codex not signed in Sign in", "antigravity not signed in Sign in on the machine: agy",
-      "grok not installed Install on the machine: curl -fsSL https://x.ai/cli/install.sh | bash",
-      "kiro-cli too old Update on the machine: curl -fsSL https://cli.kiro.dev/install | bash", "claude-code · profile work not signed in Sign in"]);
+      ["claude-code", "Claude Code", "signed in", "Sign in again", ""],
+      ["codex", "Codex", "not signed in", "Sign in", ""],
+      ["antigravity", "Antigravity", "not signed in", "", "Sign in on the machine: agy"],
+      ["grok", "Grok", "not installed", "", "Install on the machine: curl -fsSL https://x.ai/cli/install.sh | bash"],
+      ["kiro-cli", "Kiro", "too old", "", "Update on the machine: curl -fsSL https://cli.kiro.dev/install | bash"],
+      ["claude-code", "Claude Code", "not signed in", "Sign in", ""],
+    ]);
+    expect(renderedRows[5].querySelector(".s-host-cli-identity small").textContent).toBe("Credential profile: work");
+    for (const row of renderedRows) {
+      expect(row.querySelector(".cli-product-mark").getAttribute("data-cli")).toBe(row.getAttribute("data-backend"));
+      const help = row.querySelector(".s-host-cli-help");
+      if (help) expect(help.getAttribute("open")).toBeNull();       // host commands are available without cluttering every row
+    }
     fire(p.root.querySelectorAll(".s-row")[5].querySelector("button"), "click"); await settle(2);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
     S.signInStore.set({ login: { ...TERMINAL, mine: false } }); await settle(4);

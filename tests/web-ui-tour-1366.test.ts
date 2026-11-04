@@ -1,6 +1,6 @@
 /**
  * #1366 item 4: the chat tour in /ui, dismissed by Got it / Skip / Esc, and built from classes only (#1300: no style
- * attribute, no inline style). #1854 rank 6: it never starts by itself — Settings → This device → Chat tour starts it on
+ * attribute, no inline style). #1854 rank 6: it never starts by itself — Settings → Preferences → Replay tour starts it on
  * the remembered agent's chat (and says so when there is none) — and it walks only the steps whose target is there. The tour
  * (chat-tour.js) and the shell's key handling (app-shell.js) run as the app imports them, in the mini DOM; what a
  * browser does with them is the smoke in the PR.
@@ -179,9 +179,9 @@ describe("the chat tour (#1366, #1854)", () => {
     expect([p.card(), p.doc.activeElement?.id]).toEqual([null, "sbOpen"]);
   });
 
-  it("Settings → This device's Chat tour button does the same, on the remembered agent's chat: the drawer closes first and the card opens (#1366, #1604, #1854)", async () => {
+  it("Settings → Preferences' Replay tour button does the same, on the remembered agent's chat: the drawer closes first and the card opens (#1366, #1604, #1854)", async () => {
     const p = await load({ storage: { [TOUR_KEY]: "1", agend_last_instance: "w" }, narrow: true, install: false, start: false });
-    // The chat's boot() installs the tour; its replay lives in Settings → This device now (#1604), not the sidebar.
+    // The chat's boot() installs the tour; its replay lives in Preferences' local guidance group (#1604).
     // @ts-expect-error — a JS module of the app, with no types (as app-harness.ts does for preact)
     const panel = await import("../src/ui/panel-chat.js");
     const { appStore } = await import("/assets/app-store.js");
@@ -196,8 +196,8 @@ describe("the chat tour (#1366, #1854)", () => {
     const host = p.doc.createElement("div"); p.doc.body.append(host);
     preact.render(preact.h(settings.DeviceSection, {}), host);
     await settle();
-    const btn = host.querySelector("#tourBtn") as any;
-    expect(btn.textContent).toBe("Chat tour");
+    const btn = host.querySelector(".s-local #tourBtn") as any;
+    expect(btn.textContent).toBe("Replay tour");
     p.shell.openDrawer();
     (p.doc.getElementById("sbOpen") as any).focus();
     // #1608 review: it waits for the CHAT (its Send button), not the shell's #main that every page has.

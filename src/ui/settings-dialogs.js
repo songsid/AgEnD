@@ -146,9 +146,9 @@ export function ChipList({ items, onChange, placeholder, label }) {
 const replyHint = (backend, mode, kiroUi) => (replyGuardSupported(backend, mode, kiroUi) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", backend, mode));
 
 /** The dialog every editor uses: Cancel / Stage change; the footer says what the changes made so far will cost (#2346: only the fields that changed). */
-function EditDialog({ title, subtitle, onClose, onStage, impacts, schema, children, ready = true, wide = true }) {
+function EditDialog({ title, subtitle, onClose, onStage, impacts, schema, children, ready = true, wide = true, drawer = false }) {
   const kinds = [...new Set((impacts || []).map((f) => impactOf(schema, f)))];
-  return html`<${Dialog} title=${title} label=${subtitle ? `${title} — ${subtitle}` : title} onClose=${onClose} wide=${wide}
+  return html`<${Dialog} title=${title} label=${subtitle ? `${title} — ${subtitle}` : title} onClose=${onClose} wide=${wide} drawer=${drawer}
     actions=${html`${kinds.length ? html`<span class="note dlg-impact">${kinds.map(impactText).join(" · ")}</span>` : null}
       <button type="button" class="btn" onClick=${onClose}>${tn("cancel")}</button>
       <button type="button" class="btn btn-primary" disabled=${!ready} onClick=${onStage}>${tn("modalDone")}</button>`}>
@@ -302,7 +302,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
   const inh = (k, value, target, kind, set = hasOwn(defaults, k)) => ({ text: valueText(value, kind), builtin: !set, from: target ? inAgentDefaults(target) : null });
   const inheritedBackend = !inst.backend && f.backend === (defaults.backend || "claude-code");
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
-  return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${tn("idLine", name)} onClose=${onClose} onStage=${stage} ready=${ready} impacts=${Object.keys(pending()).map((k) => `instance.${k}`)} schema=${schema}>
+  return html`<${EditDialog} title=${ctx.shortName(name, inst)} subtitle=${tn("idLine", name)} onClose=${onClose} onStage=${stage} ready=${ready} drawer=${true} impacts=${Object.keys(pending()).map((k) => `instance.${k}`)} schema=${schema}>
     <div class="grid2">
       <div class="field">${L(tn("displayName"), "instance.display_name", "ag-dn")}
         <${Override} inherit=${f.inherit.display_name} onInherit=${setInherit("display_name")} inherited=${inh("display_name", defaults.display_name || name, null, "", !!defaults.display_name)}>

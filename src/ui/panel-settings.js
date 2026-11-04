@@ -56,6 +56,11 @@ import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
+import { ProviderMark } from "./provider-marks.js";
+import { CliProductMark, cliLabel } from "./cli-picker.js";
+import { SettingsPageHead, SettingsTabs, SettingsTabPanel, useSettingsTabs, revealSettingsTarget, layoutText } from "./settings-layout.js";
+import { AgentFilters, agentFilterText, agentRuntime, agentRuntimeOffline, agentStatus, filterAgentGroups } from "./settings-agent-filters.js";
+import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 import { GeneralLocation } from "./general-location.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -107,7 +112,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const live = {}, classicLive = {};
   if (f.ok && f.body && Array.isArray(f.body.instances)) for (const i of f.body.instances) {
-    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported, runtime:i.runtime, capabilities:i.capabilities };
+    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported, runtime:i.runtime, capabilities:i.capabilities, machine_id:i.machine_id, machine_name:i.machine_name, machine_status:i.machine_status };
     if (i.classic) classicLive[i.name] = { status: i.status, state: i.state };
   }
   // /api/fleet carries live state for ClassicBot rooms; the profiles are the fallback for one not listed there yet.
@@ -381,20 +386,23 @@ export function SettingsPanel({ route, navKey }) {
   const formKey = data && !data.error ? `${data.loadedAt}:${draftEpoch}` : "";
   // #2347 regrouping: each card where the person looks for it (the IA in #2347 §3); a form split across sections (the
   // defaults, Web) is one form with one draft, shown a part at a time.
-  const sectionBody = section === "preferences" ? html`<${DeviceSection} key=${you.key} /><${AppearanceSection} ...${you} part="device" />`
+  const sectionBody = section === "preferences" ? html`<${DeviceSection} key=${you.key} />`
     : section === "look" ? html`<${AppearanceSection} ...${you} part="look" />`
     : section === "runtimes" ? html`<${RuntimesPanel} navKey=${navKey} />`
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
-    : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`
+    : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
+        <div class="s-auth-scope"><${Icon} name="view" size=${18} /><div><strong>${layoutText("aiHostScope")}</strong><p>${layoutText("aiAccountsHint")}</p><a href=${settingsPath("runtimes")}>${layoutText("aiWindowsLink")}<span aria-hidden="true">→</span></a></div></div>
+        <${SignInList} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
+      </div></details>`
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
     : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
         <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
-        <div id="classicbot" class="s-anchor"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} />
-          <${General} key=${formKey} ctx=${ctx} part="classic" /></div>`
+        <div id="classicbot" class="s-anchor s-classic-area"><section class="card s-chat-classic"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} /></section>
+          <details class="s-ui-disclosure s-classic-defaults"><summary>${layoutText("classicDefaults")}</summary><div class="s-disclosure-body"><${General} key=${formKey} ctx=${ctx} part="classic" /></div></details></div>`
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
-    : html`<${Developer} key=${`dev:${draftEpoch}`} ctx=${ctx} /><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="readonly" />`;
+    : html`<${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
   const wanted = useRef(null);
@@ -413,6 +421,7 @@ export function SettingsPanel({ route, navKey }) {
         if (++tries < 40) timer = setTimeout(find, 50); else wanted.current = null;
         return;
       }
+      if (revealSettingsTarget(el)) { timer = setTimeout(find, 0); return; }
       wanted.current = null;
       // #2347 §10: a setting in a closed drawer (Advanced) is shown — every drawer around it opens first.
       for (let d = el.closest && el.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
@@ -453,7 +462,14 @@ export function SettingsPanel({ route, navKey }) {
     if (!id) return;
     let el = null;
     try { el = document.getElementById(decodeURIComponent(id)); } catch { el = null; }
-    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+    if (!el) return;
+    const show = () => {
+      // Hash links, like settings-search targets, must reveal every enclosing disclosure before scrolling.
+      for (let d = el.closest && el.closest("details"); d; d = d.parentElement && d.parentElement.closest("details")) d.open = true;
+      if (typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+    };
+    if (revealSettingsTarget(el)) { const timer = setTimeout(show, 0); return () => clearTimeout(timer); }
+    show();
   }, [section, navKey, !!data]);
   // A dialog belongs to the navigation that opened it (its draft names one object, never another).
   const open = dialog && dialog.key === navKey ? dialog : null;
@@ -472,18 +488,27 @@ export function SettingsPanel({ route, navKey }) {
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
       ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
-    <div data-trust="panel-content" class="panel-body"><div class="col">
+    <div data-trust="panel-content" class="panel-body"><div class="col" data-settings-section=${section}>
       <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>
+      ${section !== "runtimes" ? html`<${SettingsPageHead} section=${section}>${section === "agents" && ctx ? html`<button type="button" id="newAgentBtn" class="btn btn-primary" disabled=${yamlStaged(staged)} onClick=${() => toDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button>` : null}</${SettingsPageHead}>` : null}
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
       ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
       <${PendingChanges} inline=${true} />
       ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${openWizard} />` : null}
-      ${sectionBody}
+      <div class="s-section-layout" data-section=${section}>${sectionBody}</div>
     </div></div>
     ${staged.size ? html`<${PendingBar} staged=${staged} busy=${opBusy(op)} onApply=${apply} onDiscard=${discard} section=${section} />` : null}
     ${open && ctx ? renderDialog(open, ctx, close) : null}
     ${open && open.kind === "help" ? html`<${HelpDialog} onClose=${close} />` : null}
+  </div>`;
+}
+
+function AdvancedSettings({ ctx, staged, formKey, draftEpoch }) {
+  const [tab, setTab] = useSettingsTabs("advanced", "editor");
+  return html`<div class="s-advanced-layout"><${SettingsTabs} id="advanced" value=${tab} onChange=${setTab} items=${[{ id: "editor", label: layoutText("editor") }, { id: "effective", label: layoutText("effective") }]} />
+    <${SettingsTabPanel} group="advanced" id="editor" active=${tab === "editor"}><${Developer} key=${`dev:${draftEpoch}`} ctx=${ctx} /></${SettingsTabPanel}>
+    <${SettingsTabPanel} group="advanced" id="effective" active=${tab === "effective"}><${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="readonly" /></${SettingsTabPanel}>
   </div>`;
 }
 
@@ -608,17 +633,23 @@ export function DeviceSection() {
     setTimeout(go, 0);
   };
   const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
-  return html`<${ProfileCard} />
-  <section class="card s-device s-synced"><h3>${tn("syncedTitle")}</h3>
-    <p class="sub">${publicLink ? tn("syncedPublicLink") : tn("syncedLead")}</p>
-    <${DevicePrefs} labels=${true} />
-    ${P() ? html`<label class="check"><input id="pref-previews" type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} />
-      <span>${t("chat.previews")}</span></label>` : null}
-  </section>
-  <section class="card s-device s-local"><h3>${tn("deviceTitle")}</h3>
-    <p class="sub">${tn("deviceLead")}</p>
-    <div class="s-device-row"><button type="button" id="tourBtn" class="btn" title=${t("chat.tourBtnTitle")} onClick=${replay}><${Icon} name="info" size=${16} />${t("chat.tour")}</button></div>
-  </section>`;
+  return html`<div class="s-pref-stack">
+    <section class="card s-device s-pref-personal"><h3>${tn("prefsProfileGroup")}</h3>
+      <${ProfileCard} embedded=${true} />
+      <div class="s-pref-name-format"><${DevicePrefs} labels=${true} fields=${["names"]} /></div>
+    </section>
+    <section class="card s-device s-synced s-pref-content"><div class="s-pref-group-head"><h3>${tn("prefsContentGroup")}</h3><span class="s-scope" title=${publicLink ? tn("syncedPublicLink") : tn("syncedLead")}>${tn("prefsAccountScope")}</span></div>
+      ${publicLink ? html`<p class="sub">${tn("syncedPublicLink")}</p>` : null}
+      <${DevicePrefs} labels=${true} fields=${["language"]} />
+      ${P() ? html`<label class="check s-pref-preview"><span>${t("chat.previews")}</span><input id="pref-previews" class="s-ui-toggle" type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} /><small>${layoutText("previewsPersonalHint")}</small></label>` : null}
+    </section>
+    <section class="card s-device s-local s-pref-help"><h3>${tn("prefsHelpGroup")}</h3>
+      <div class="s-pref-help-row"><div><strong>${t("chat.tour")}</strong><p class="sub">${tn("prefsTourHint")}</p></div>
+        <button type="button" id="tourBtn" class="btn" title=${t("chat.tourBtnTitle")} onClick=${replay}><${Icon} name="info" size=${16} />${tn("prefsReplayTour")}</button></div>
+      <${ShortcutsHelpRow} />
+    </section>
+    <a class="s-pref-look-link" href=${settingsPath("look")}>${tn("prefsLookHint")}<${Icon} name="chevron" size=${16} /></a>
+  </div>`;
 }
 
 /**
@@ -628,7 +659,7 @@ export function DeviceSection() {
  * refuses one; this only shows what it says.
  */
 const view = (b) => ({ phase: "ready", name: b.name || "", shown: b.shown || "", id: b.id || "", bound: b.bound === true, platform: b.platform_name || "", error: "" });
-export function ProfileCard() {
+export function ProfileCard({ embedded = false } = {}) {
   const [state, setState] = useState({ phase: "loading", name: "", shown: "", id: "", bound: false, platform: "", error: "" });
   const [draft, setDraft] = useState("");
   const lease = useLease();
@@ -655,16 +686,22 @@ export function ProfileCard() {
   };
   const busy = state.phase !== "ready";
   const changed = draft.trim() !== state.name;
-  return html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3>
-    <p class="sub">${state.bound ? tn("profileLeadBound") : tn("profileLeadUnbound")}</p>
-    <div class="field"><label for="profile-name">${tn("profileName")}</label>
-      <input id="profile-name" type="text" maxlength="200" autocomplete="nickname" value=${draft} disabled=${busy}
+  const initial = [...(state.shown || state.name || "web-user")][0]?.toUpperCase() || "W";
+  const fields = html`<div class="s-pref-profile-layout">
+    ${embedded ? html`<span class="s-pref-avatar" aria-hidden="true">${initial}</span>` : null}
+    <div class="s-pref-profile-main"><div class="field"><label for="profile-name">${tn("profileName")}</label>
+      <div class="s-pref-name-action"><input id="profile-name" type="text" maxlength="200" autocomplete="nickname" value=${draft} disabled=${busy}
         placeholder=${state.platform || "web-user"} aria-invalid=${state.error ? "true" : "false"} aria-describedby="profile-help"
         onInput=${(e) => setDraft(e.target.value)} onKeyDown=${(e) => { if (e.key === "Enter" && changed && draft.trim()) save(false); }} />
-      <p class="sub" id="profile-help">${state.error ? html`<span class="err" role="alert">${state.error}</span>` : tn("profileHelp", state.shown || "web-user", state.id)}</p></div>
-    <div class="s-device-row"><button type="button" class="btn primary" disabled=${busy || !changed || !draft.trim()} onClick=${() => save(false)}>${tn("profileSave")}</button>
-      ${state.name ? html`<button type="button" class="btn" disabled=${busy} onClick=${() => save(true)}>${state.bound ? tn("profileUseAccount", state.platform || "web-user") : tn("profileClear")}</button>` : null}</div>
-  </section>`;
+        <button type="button" class="btn primary" disabled=${busy || !changed || !draft.trim()} onClick=${() => save(false)}>${embedded ? tn("prefsSaveName") : tn("profileSave")}</button></div>
+      <p class="sub" id="profile-help">${state.error ? html`<span class="err" role="alert">${state.error}</span>` : tn("profileHelp", state.shown || "web-user", state.id)}</p>
+    </div>
+    <p class="sub s-pref-immediate">${tn("prefsNameImmediate")}</p>
+    ${state.name ? html`<div class="s-device-row"><button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${() => save(true)}>${state.bound ? tn("profileUseAccount", state.platform || "web-user") : tn("profileClear")}</button></div>` : null}
+    <details class="s-pref-identity-details"><summary>${layoutText("profileIdentityDetails")}</summary><p class="sub">${state.bound ? tn("profileLeadBound") : tn("profileLeadUnbound")}</p></details>
+    </div></div>`;
+  return embedded ? html`<div class="s-profile s-pref-profile-fields">${fields}</div>`
+    : html`<section class="card s-device s-profile"><h3>${tn("profileTitle")}</h3>${fields}</section>`;
 }
 
 /** The operation in hand still owns Apply: its writes and job, or a restart of AgEnD from the press to its end. */
@@ -761,60 +798,63 @@ function agentChannelLabel(inst, chs) {
   return idx >= 0 ? `${chs[idx].type} (${chLabel(idx)})` : inst.channel_id;
 }
 
-function Agents({ ctx, search, openDialog }) {
+function Agents({ ctx, search, clearSearch, openDialog }) {
   const insts = ctx.fleet.instances || {};
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [busy, setBusy] = useState(() => new Map());     // name → the action under way
+  const [runtime, setRuntime] = useState("");
+  const [status, setStatus] = useState("");
   const chs = channelsOf(ctx.fleet);
   // #2172: the sidebar's grouping — an agent in a team under its team, else under its first tag.
   const teamsOf = (name) => Object.keys(ctx.fleet.teams || {}).filter((t) => Array.isArray(ctx.fleet.teams[t]?.members) && ctx.fleet.teams[t].members.includes(name));
-  const groups = groupAgents(insts, ctx.live, search, (name) => navGroupOf({ tags: insts[name]?.tags, teams: teamsOf(name) }), groupLabel);
+  const groups = filterAgentGroups(groupAgents(insts, ctx.live, search, (name) => navGroupOf({ tags: insts[name]?.tags, teams: teamsOf(name) }), groupLabel), insts, ctx.live, { runtime, status });
+  const active = !!(runtime || status || search.trim());
   // One action per agent at a time: the whole row is off (Settings and ⋯ too), and the pressed button says it is working.
   const run = async (name, action, work) => {
     if (busy.has(name)) return;
     setBusy((b) => new Map(b).set(name, action));
     try { await work(); } finally { setBusy((b) => { const n = new Map(b); n.delete(name); return n; }); }
   };
-  const head = html`<div class="list-head"><span>${Object.keys(insts).length === 1 ? tn("countAgent") : tn("countAgents", Object.keys(insts).length)}</span>
-    <button type="button" id="newAgentBtn" class="btn btn-primary" onClick=${() => openDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button></div>`;
-  // #2233: after the agents, each login on this machine with Sign in (backend-signin.js).
-  const signIns = html`<${SignInList} />`;
-  if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />${signIns}`;
-  if (!groups.length) return html`${head}<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />${signIns}`;
-  return html`${head}<div class="s-list">${groups.map(({ group, names }) => {
-    const folded = collapsed.has(group) && !search.trim();      // searching opens every group
+  const head = html`<${AgentFilters} instances=${insts} live=${ctx.live} runtime=${runtime} status=${status} active=${active}
+    matched=${groups.reduce((count, group) => count + group.names.length, 0)} total=${Object.keys(insts).length} onRuntime=${setRuntime} onStatus=${setStatus}
+    onClear=${() => { setRuntime(""); setStatus(""); clearSearch(); }} />`;
+  if (!Object.keys(insts).length) return html`${head}<${Empty} icon="bot" title=${tn("noAgents")} />`;
+  if (!groups.length) return html`${head}<${Empty} icon="search" title=${search.trim() ? tn("noAgentMatch", search.trim()) : agentFilterText("noMatch")} hint=${agentFilterText("noMatchHint")} />`;
+  return html`${head}<div class="s-list s-agents-list">
+    <div class="s-list-columns s-agent-columns" aria-hidden="true"><span>${tn("uiAgentColumnName")}</span><span>${agentFilterText("runtime")}</span><span>${tn("uiAgentColumnCli")}</span><span>${tn("uiListColumnState")}</span><span>${tn("uiListColumnActions")}</span></div>${groups.map(({ group, names }) => {
+    const folded = collapsed.has(group) && !active;      // searching/filtering opens every matching group
     return html`<section key=${group} class="s-group">
       <button type="button" class="s-group-head" aria-expanded=${folded ? "false" : "true"}
         onClick=${() => setCollapsed((c) => { const n = new Set(c); n.has(group) ? n.delete(group) : n.add(group); return n; })}>
         <${Icon} name="chevron" size=${14} cls=${folded ? "caret folded" : "caret"} /><${GroupMark} group=${group} /><span class="grow">${groupLabel(group)}</span><span class="count">${names.length}</span></button>
       ${folded ? null : names.map((name) => {
         const inst = insts[name];
-        const st = (ctx.live[name] && ctx.live[name].status) || "stopped";
+        const st = agentStatus(ctx.live[name]);
         const sum = effectiveSummary(ctx.live[name] || {}, inst, ctx.fleet.defaults || {});
         const ch = agentChannelLabel(inst, chs);
         const working = busy.has(name), doing = busy.get(name);
         const label = (action, text) => (doing === action ? tn("working") : text);
-        return html`<div key=${name} class="s-row">
-          <span class=${dotClass(st)} title=${tn(STATUS_KEY[st] || "stStopped")} aria-hidden="true"></span>
-          <span class="s-name" title=${name}>${shortName(name, inst)}</span>
-          ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
-          <span class="s-meta" title=${sum.backend}>${sum.model}</span>
-          <span class="s-br" aria-hidden="true"></span>
-          ${inst.runtime !== "windows" || ctx.live[name]?.capabilities?.effort === true ? html`<span class="tag">${tn("effortTag", sum.effort)}</span>` : null}
-          ${ch ? html`<span class=${`tag${ch.includes("persona") ? " persona" : ""}`}>${ch}</span>` : null}
-          <span class="sr-only">${tn(STATUS_KEY[st] || "stStopped")}</span>
+        const runtimeLabel = agentRuntime(inst, ctx.live[name]).label;
+        return html`<div key=${name} class="s-row s-agent-row">
+          <div class="s-agent-identity"><span class="s-name" title=${name}>${shortName(name, inst)}</span>
+            <div class="s-agent-context">${inst.runtime !== "windows" || ctx.live[name]?.capabilities?.effort === true ? html`<span class="tag">${tn("effortTag", sum.effort)}</span>` : null}
+              ${ch ? html`<span class=${`tag${ch.includes("persona") ? " persona" : ""}`}>${ch}</span>` : null}</div>
+          </div>
+          <div class="s-agent-runtime"><span class="tag">${runtimeLabel}</span></div>
+          <div class="s-agent-cli"><${CliProductMark} id=${sum.backend} size=${20} /><span><strong>${cliLabel(sum.backend)}</strong><span class="s-meta" title=${sum.model}>${sum.model}</span></span></div>
+          <span class="s-agent-status"><span class=${dotClass(agentStatus(ctx.live[name]))} aria-hidden="true"></span><span>${agentFilterText(agentStatus(ctx.live[name]))}${agentRuntimeOffline(inst, ctx.live[name]) ? html`<small class="s-agent-runtime-state">${agentFilterText("offline")}</small>` : null}</span></span>
           <span class="s-actions">
             ${inst.runtime === "windows" ? html`<a class="btn btn-sm" href=${chatPath(name)}>${t("app.chat")}</a>` : null}
             <button type="button" class="btn btn-sm" disabled=${working} onClick=${() => openDialog({ kind: "agent", name, inst })}>${tn("settingsButton")}</button>
             ${st === "running" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "pause", () => ctx.pauseWake(name, "pause"))}>${label("pause", tn("pause"))}</button>` : null}
             ${st === "paused" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "wake", () => ctx.pauseWake(name, "wake"))}>${label("wake", tn("wake"))}</button>` : null}
-            ${st !== "paused" ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "startStop", () => ctx.startStop(name, st === "running"))}>${label("startStop", st === "running" ? tn("stop") : tn("start"))}</button>` : null}
-            <${Menu} label=${t("app.more")} items=${[{ key: "delete", label: tn("deleteAgentMenu"), icon: "trash", danger: true, disabled: working, onSelect: () => ctx.deleteAgent(name) }]} />
+            ${["running", "stopped", "crashed"].includes(st) ? html`<button type="button" class="btn btn-sm" disabled=${working} onClick=${() => run(name, "startStop", () => ctx.startStop(name, st === "running"))}>${label("startStop", st === "running" ? tn("stop") : tn("start"))}</button>` : null}
+            <${Menu} cls="s-agent-menu" fit=${true} label=${t("app.more")} items=${[{ key: "delete", label: tn("deleteAgentMenu"), icon: "trash", danger: true, disabled: working, onSelect: () => ctx.deleteAgent(name) }]} />
           </span>
         </div>`;
       })}
     </section>`;
-  })}</div>${signIns}`;
+  })}</div>`;
 }
 
 function ConnectionRetry({ id, ctx }) {
@@ -844,10 +884,10 @@ function Bots({ ctx, search, openDialog }) {
   const all = channelsOf(ctx.fleet);
   const needle = search.trim().toLowerCase();
   const rows = all.map((ch, i) => ({ ch, i })).filter(({ ch }) => !needle || [ch.id, ch.type, ch.group_id, ch.bot_token_env].some((v) => String(v ?? "").toLowerCase().includes(needle)));
-  const head = html`<div class="list-head"><span>${all.length === 1 ? tn("countBot") : tn("countBots", all.length)}</span>
+  const head = html`<div class="list-head s-list-toolbar"><span>${all.length === 1 ? tn("countBot") : tn("countBots", all.length)}</span>
     <button type="button" id="newBotBtn" class="btn btn-primary" onClick=${() => openDialog({ kind: "newBot" })}><${Icon} name="plus" size=${16} />${tn("newBot")}</button></div>`;
-  return html`${head}
-    ${!rows.length ? html`<${Empty} icon="plug" title=${needle ? tn("noAgentMatch", search.trim()) : tn("noBots")} />` : html`<div class="s-list">${rows.map(({ ch, i }) => {
+  return html`<section class="card s-chat-connections"><div class="s-chat-section-head"><h3>${layoutText("chatConnections")}</h3>${head}</div>
+    ${!rows.length ? html`<div class="s-chat-empty"><${Icon} name="plug" size=${22} /><p>${needle ? tn("noAgentMatch", search.trim()) : tn("noBots")}</p></div>` : html`<div class="s-list s-connections-list"><div class="s-list-columns s-connection-columns" aria-hidden="true"><span>${tn("uiConnectionColumnService")}</span><span>${tn("uiConnectionColumnInfo")}</span><span>${tn("uiListColumnActions")}</span></div>${rows.map(({ ch, i }) => {
       const users = (ch.access && ch.access.allowed_users) || [];
       const meta = ctx.connections.find((c, j) => channelId(c, j) === channelId(ch, i)) || {};
       const token = meta.token_present;
@@ -872,7 +912,7 @@ function Bots({ ctx, search, openDialog }) {
           ${!overPublicLink && ctx.fleetUp && meta.status !== "connected" ? html`<${ConnectionRetry} id=${channelId(ch, i)} ctx=${ctx} />` : null}
           <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span>
       </div>`;
-    })}</div>`}`;
+    })}</div>`}</section>`;
 }
 
 /**
@@ -922,40 +962,40 @@ function ProviderKeys({ ctx }) {
     } catch { say(spec.id, { error: tn("failed") }); }
     finally { inFlight.current.delete(spec.id); if (lease.current()) setBusy(new Set(inFlight.current)); }
   };
-  return html`<section class="card s-provider-keys"><h3>${tn("providerKeys")}</h3>
-    ${!ctx.providerSecrets.length ? html`<p class="note">${tn("noProviderVerifiers")}</p>` : ctx.providerSecrets.map((spec) => html`<div key=${spec.id} class="s-key">
-      <div class="s-key-row"><strong>${spec.display_name}</strong><span class="tag">${spec.token_present ? tn("keyConfigured") : tn("keyNotConfigured")}</span>
-        ${spec.verifier === "available" ? html`<input type="password" autocomplete="new-password" aria-label=${tn("providerKeyInput", spec.display_name)}
-            placeholder=${spec.token_present ? tn("keyConfigured") : tn("keyNotConfigured")} value=${keys[spec.id] || ""} onInput=${(e) => setKeys((k) => ({ ...k, [spec.id]: e.target.value }))} />
-          <button type="button" class="btn btn-sm btn-primary" disabled=${busy.has(spec.id)} onClick=${() => go(spec)}>${tn("verifyApply")}</button>`
-          : html`<span class="tag">${tn("unsupportedVerifier")}</span>`}</div>
-      ${spec.verifier === "available" ? null : html`<p class="note">${tn("unsupportedVerifierHint")}</p>`}
-      ${notes[spec.id] ? html`<p class=${`feedback${notes[spec.id].error ? " error" : ""}`} role="status">${notes[spec.id].error || notes[spec.id].text}</p>` : null}
-    </div>`)}
+  return html`<section class="card s-provider-keys s-auth-section"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div></header>
+    ${!ctx.providerSecrets.length ? html`<p class="note">${tn("noProviderVerifiers")}</p>` : html`<div class="s-api-key-list">${ctx.providerSecrets.map((spec) => {
+      const provider = spec.id.split(".")[0], mark = ["openai", "anthropic"].includes(provider) ? provider : null;
+      return html`<div key=${spec.id} class="s-key s-api-key-row">
+        <div class="s-api-key-heading"><span class="s-provider-symbol">${mark ? html`<${ProviderMark} provider=${mark} size=${22} />` : html`<${Icon} name="key" size=${22} />`}</span><strong>${spec.display_name}</strong><span class=${`s-auth-state${spec.token_present ? " is-usable" : ""}`}>${spec.token_present ? tn("keyConfigured") : tn("keyNotConfigured")}</span></div>
+        ${spec.verifier === "available" ? html`<div class="s-api-key-form"><label><span>${tn("providerKeyInput", spec.display_name)}</span><input type="password" autocomplete="new-password" aria-label=${tn("providerKeyInput", spec.display_name)}
+            placeholder=${layoutText(spec.token_present ? "apiReplacePlaceholder" : "apiNewPlaceholder")} value=${keys[spec.id] || ""} onInput=${(e) => setKeys((k) => ({ ...k, [spec.id]: e.target.value }))} /></label>
+          <button type="button" class="btn btn-sm btn-primary" disabled=${busy.has(spec.id)} onClick=${() => go(spec)}>${tn("verifyApply")}</button></div>`
+          : html`<div class="s-api-key-unsupported"><span class="s-auth-state">${tn("unsupportedVerifier")}</span><p class="note">${tn("unsupportedVerifierHint")}</p></div>`}
+        ${notes[spec.id] ? html`<p class=${`feedback${notes[spec.id].error ? " error" : ""}`} role="status">${notes[spec.id].error || notes[spec.id].text}</p>` : null}
+      </div>`;
+    })}</div>`}
+    <p class="note s-api-action-note">${tn("uiProviderKeyActionHint")}</p>
   </section>`;
 }
 
 function Classic({ ctx, search, openDialog }) {
   const rooms = Object.entries((ctx.classic && ctx.classic.channels) || {}).map(([key, ch]) => ({ key, ...ch }));
-  if (!rooms.length) return html`<${Empty} icon="room" title=${tn("noClassic")} />`;
+  if (!rooms.length) return html`<div class="s-chat-empty"><${Icon} name="room" size=${22} /><p>${tn("noClassic")}</p></div>`;
   const needle = search.trim().toLowerCase();
   const list = rooms.filter((c) => !needle || String(c.name || "").toLowerCase().includes(needle) || String(c.instanceName || "").toLowerCase().includes(needle))
     .sort((a, b) => ((STATUS_ORDER[ctx.classicRuntime(a.instanceName).status] ?? 9) - (STATUS_ORDER[ctx.classicRuntime(b.instanceName).status] ?? 9))
       || String(a.name || "").localeCompare(String(b.name || "")));
-  if (!list.length) return html`<${Empty} icon="search" title=${tn("noAgentMatch", search.trim())} />`;
-  return html`<div class="list-head"><span>${rooms.length === 1 ? tn("countRoom") : tn("countRooms", rooms.length)}</span></div><div class="s-list">${list.map((c) => {
+  if (!list.length) return html`<div class="s-chat-empty"><${Icon} name="search" size=${22} /><p>${tn("noAgentMatch", search.trim())}</p></div>`;
+  return html`<div class="list-head s-list-toolbar"><span>${rooms.length === 1 ? tn("countRoom") : tn("countRooms", rooms.length)}</span></div><div class="s-list s-classic-list"><div class="s-list-columns s-classic-columns" aria-hidden="true"><span>${tn("uiClassicColumnRoom")}</span><span>${tn("uiAgentColumnCli")}</span><span>${tn("uiListColumnState")}</span><span>${tn("uiListColumnActions")}</span></div>${list.map((c) => {
     const rt = ctx.classicRuntime(c.instanceName);
     const sum = effectiveSummary(ctx.live[c.instanceName] || {}, c, ctx.fleet.defaults || {}, (ctx.classic && ctx.classic.defaults) || {});
     const adapter = c.adapterId || "discord";
-    return html`<div key=${c.key} class="s-row">
-      <span class=${dotClass(rt.execution)} title=${tn(`exec_${rt.execution}`)} aria-hidden="true"></span>
-      <span class="s-name" title=${c.instanceName || ""}>${shortName(c.name || c.instanceName || "?", { display_name: c.display_name })}</span>
-      <span class="s-meta" title=${sum.backend}>${sum.model}</span>
-      <span class="s-br" aria-hidden="true"></span>
-      <span class="tag">${tn("effortTag", sum.effort)}</span>
-      <span class=${`tag${adapter !== "discord" ? " persona" : ""}`}>${adapter}</span>
-      ${c.collab ? html`<span class="tag">collab</span>` : null}
-      <span class="tag">${tn(`exec_${rt.execution}`)}</span>
+    return html`<div key=${c.key} class="s-row s-classic-row">
+      <div class="s-classic-identity"><span class="s-name" title=${c.instanceName || ""}>${shortName(c.name || c.instanceName || "?", { display_name: c.display_name })}</span>
+        <div class="s-agent-context"><span class="tag">${tn("effortTag", sum.effort)}</span><span class=${`tag${adapter !== "discord" ? " persona" : ""}`}>${adapter}</span>${c.collab ? html`<span class="tag">collab</span>` : null}</div>
+      </div>
+      <div class="s-classic-cli"><${CliProductMark} id=${sum.backend} size=${20} /><span><strong>${cliLabel(sum.backend)}</strong><span class="s-meta" title=${sum.model}>${sum.model}</span></span></div>
+      <span class="s-classic-status"><span class=${dotClass(rt.execution)} aria-hidden="true"></span><span>${tn(`exec_${rt.execution}`)}</span></span>
       <span class="s-actions">
         <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "classic", room: c })}>${tn("settingsButton")}</button>
         ${rt.status === "running" ? html`<button type="button" class="btn btn-sm" onClick=${() => ctx.pauseWake(c.instanceName, "pause")}>${tn("pause")}</button>` : null}
@@ -1091,30 +1131,43 @@ function General({ ctx, part = "all" }) {
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
   // #2347: Agent defaults show the fleet's part; Chat & connections ClassicBot's. One form, one draft either way.
   const fleetPart = part !== "classic", classicPart = part !== "fleet";
-  return html`<div class=${`form s-general s-part-${part}`}>
-    ${fleetPart ? html`<section class="card"><h3>${tn("defaultsTitle")}</h3>
+  return html`<div class=${fleetPart ? "s-defaults-layout" : "s-classic-layout"}><div class=${`form s-general s-part-${part}`}>
+    ${fleetPart ? html`<section class="card s-defaults-model"><h3>${tn("uiDefaultsModelsTitle")}</h3>
       <div class="grid2">
-        <div class=${fc("field", "locale")}>${L(tn("language"), "defaults.locale", "g-locale", "locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
-          options=${localeOptions(f.locale).map((o) => (o.auto ? { value: "", label: tn("localeAuto") } : o))} /></div>
         <div class=${fc("field", "backend")}>${L(tn("defaultBackend"), "defaults.backend", "g-be", "backend")}<${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} /></div>
         <div class=${fc("field", "model")}>${L(tn("defaultModel"), "defaults.model", "g-model", "model")}<${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
           backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} /></div>
+        <div class=${fc("field", "locale")}>${L(tn("language"), "defaults.locale", "g-locale", "locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
+          options=${localeOptions(f.locale).map((o) => (o.auto ? { value: "", label: tn("localeAuto") } : o))} /></div>
+      </div>
+    </section>
+    <section class="card s-defaults-work"><h3>${tn("uiDefaultsWorkTitle")}</h3>
+      <div class="grid2">
         <div class=${fc("field", "auto")}>${L(`${tn("autoPause")} (${tn("minutes")})`, "defaults.auto_pause_after", "g-auto", "auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
         <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
+        <div class=${fc("field", "tips")}>${L(tn("dailyTips"), "defaults.tips", "g-tips", "tips")}<${Select} id="g-tips" value=${f.tips} onChange=${set("tips")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.tips))} /><p class="note">${tn("dailyTipsHint")}</p></div>
+      </div>
+    </section>
+    <section class="card s-defaults-collaboration"><h3>${tn("uiDefaultsCollaborationTitle")}</h3>
+      <div class="grid2">
         <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
-        <div class=${fc("field", "tips")}>${L(tn("dailyTips"), "defaults.tips", "g-tips", "tips")}<${Select} id="g-tips" value=${f.tips} onChange=${set("tips")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.tips))} /><p class="note">${tn("dailyTipsHint")}</p></div>
-        <div class=${fc("field", "replyTriggers")}><label class="check"><input id="g-reply-triggers" type="checkbox" checked=${f.replyTriggers} onChange=${(e) => set("replyTriggers")(e.target.checked)} /><span>${tn("replyTriggers")}</span>${dm("replyTriggers")}<${Impact} schema=${schema} field="defaults.reply_triggers" /></label><p class="note">${tn("replyTriggersHint")}</p></div>
-        <div class=${fc("field", "reply")}><label class="check"><input id="g-reply" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} /><span>${tn("replyCompletionGuard")}</span>${dm("reply")}<${Impact} schema=${schema} field="defaults.reply_completion_guard" /></label>
-          <p class="note">${fleetReply}</p></div>
+        <div class=${fc("field", "replyTriggers")}><label for="g-reply-triggers" class="s-defaults-toggle-label"><span>${tn("replyTriggers")}</span>${dm("replyTriggers")}</label>
+          <input id="g-reply-triggers" class="s-ui-toggle" type="checkbox" checked=${f.replyTriggers} onChange=${(e) => set("replyTriggers")(e.target.checked)} />
+          <div class="s-defaults-toggle-help"><details class="s-defaults-explanation"><summary>${layoutText("replyRulesHelp")}</summary><p class="note">${tn("replyTriggersHint")}</p></details><${Impact} schema=${schema} field="defaults.reply_triggers" /></div></div>
+        <div class=${fc("field", "reply")}><label for="g-reply" class="s-defaults-toggle-label"><span>${tn("replyCompletionGuard")}</span>${dm("reply")}</label>
+          <input id="g-reply" class="s-ui-toggle" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} />
+          <div class="s-defaults-toggle-help"><details class="s-defaults-explanation"><summary>${layoutText("replySupportHelp")}</summary><p class="note">${fleetReply}</p></details><${Impact} schema=${schema} field="defaults.reply_completion_guard" /></div></div>
       </div>
+    </section>
+    <details class="s-ui-disclosure s-defaults-permissions"><summary>${tn("uiDefaultsCapabilitiesTitle")}</summary><div class="s-ui-disclosure-body">
       <fieldset id="g-dash" class=${fc("field dash-perms", ...DASHBOARD_FEATURES.map((k) => `dash_${k}`))}><legend>${L(tn("dashboardAccess"), "defaults.dashboard")}</legend>
         <p class="note">${tn("dashboardDefaultsHint")}</p>
         ${DASHBOARD_FEATURES.map((k) => html`<label key=${k} class="check"><input type="checkbox" checked=${f[`dash_${k}`]}
           onChange=${(e) => set(`dash_${k}`)(e.target.checked)} /><span>${tn(`dashboard_${k}`)}</span></label>`)}
       </fieldset>
-    </section>` : null}
-    ${classicPart ? html`<section class="card"><h3>${tn("classicDefaultsTitle")}</h3>
+    </div></details>` : null}
+    ${classicPart ? html`<section class="card s-classic-defaults-card"><h3>${tn("classicDefaultsTitle")}</h3>
       <div class="grid2">
         <div class=${fc("field", "classicBackend")}>${L(tn("classicBackend"), "classic_defaults.backend", "g-cbe")}<${BackendSelect} id="g-cbe" value=${f.classicBackend} onChange=${set("classicBackend")} />
           ${!c.backend && f.classicBackend === base.classicBackend ? html`<${Inherited} text=${valueText(f.classicBackend, "backend")} builtin=${!d.backend} from=${inAgentDefaults("#g-be")} />` : null}</div>
@@ -1135,12 +1188,12 @@ function General({ ctx, part = "all" }) {
         <div id="g-guilds" class=${fc("field", "guilds")}>${L(tn("allowedGuilds"), "classic.allowed_guilds")}<${ChipList} items=${f.guilds} onChange=${set("guilds")} placeholder=${tn("guildIdPlaceholder")} label=${tn("allowedGuilds")} /></div>
       </div>
     </section>` : null}
-    ${fleetPart ? html`<section class="card" id="project-roots"><h3>${tn("projectRootsTitle")}</h3>
+    ${fleetPart ? html`<details class="s-ui-disclosure s-defaults-workspace" id="project-roots"><summary>${tn("uiDefaultsWorkspaceTitle")}</summary><div class="s-ui-disclosure-body"><section class="card"><h3>${tn("projectRootsTitle")}</h3>
       <p class="note">${tn("projectRootsHint")}</p>
       <div id="g-roots" class=${fc("field", "roots")}>${L(tn("projectRootsTitle"), "fleet.project_roots")}<${ChipList} items=${f.roots} onChange=${set("roots")} placeholder="/path/to/projects" label=${tn("projectRootsTitle")} />
         ${f.roots.length ? null : html`<${InEffect} text=${tn("projectRootsAnywhere")} />`}</div>
-    </section>` : null}
-    ${fleetPart ? html`<${Drawer} title=${tn("advancedSection")}>
+    </section></div></details>` : null}
+    ${fleetPart ? html`<${Drawer} title=${tn("uiDefaultsAdvancedTitle")}>
       <section class="card"><h3>${tn("runtimeResources")}</h3><div class="grid2">
         <div class=${fc("field", "tool_set")}>${L(tn("toolSet"), "defaults.tool_set", "g-ts", "tool_set")}<${Select} id="g-ts" value=${f.tool_set} onChange=${set("tool_set")}
           options=${[{ value: "", label: tn("toolSetUnset", toolSetDefault({}, {}), toolSetDefault({}, { general_topic: true })) }, ...TOOL_SETS]} /></div>
@@ -1159,7 +1212,7 @@ function General({ ctx, part = "all" }) {
       <section class="card"><h3>${tn("accessTitle")}</h3>
         <p class="note">${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</p></section>
     </${Drawer}>` : null}
-  </div>`;
+  </div></div>`;
 }
 
 /**
@@ -1199,6 +1252,7 @@ export function uploadMbInEffect(web) {
 }
 function WebSection({ ctx, staged, part = "all" }) {
   const { schema } = ctx;
+  const [accessTab, setAccessTab] = useSettingsTabs("access", "login");
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
   // Over the public link the fields read only; the Guests and Web authority cards are not offered (the server never
   // serves their reads there).
@@ -1329,17 +1383,31 @@ function WebSection({ ctx, staged, part = "all" }) {
     if (v === undefined) return html`${roText(webReadOnlyDefault(path, ctx.fleet))} <${DefaultMark} />${capped ? html` <span class="tag">${tn("cappedByTotal")}</span>` : null}`;
     return applies === v ? roText(v) : html`${roText(v)} <span class="tag">${tn("inEffectShort", roText(applies))}</span>`;
   };
-  // #2347: one form, one draft, shown where each part belongs — Access & security (sessions, the browser terminal, the
-  // public link and its fixed address, guests, web authority), Chat & connections (web echo), Web dashboard (the Log tab,
-  // usage over the public link), Advanced (what only fleet.yaml sets).
+  // One Web draft remains mounted across the Access tabs. A tab only changes what is visible;
+  // validation, confirmation and staged writes continue to belong to the existing form.
   const has = (p) => part === "all" || part === p;
   const lock = (body) => html`<fieldset class="s-web-fields" disabled=${overPublicLink}>${body}</fieldset>`;
+  const tabs = [
+    { id: "login", label: layoutText("accessLogin") },
+    { id: "guests", label: layoutText("accessGuests") },
+    { id: "sharing", label: layoutText("accessSharing") },
+  ];
+  const toggleRow = (key, id, label, hint, impact) => html`<div class=${fc("s-setting-row", key)}>
+    <div class="s-setting-copy"><label for=${id}>${part === "dashboard" ? layoutText(`revDashboard_${key}`) : tn(label)}<${Impact} schema=${schema} field=${impact} /></label>
+      <p class="note" id=${`${id}-hint`}>${part === "dashboard" ? layoutText(`revDashboardHint_${key}`) : tn(hint)}</p>
+      ${part === "dashboard" ? html`<details class="s-setting-details"><summary>${layoutText("revDetails")}</summary><p class="note"><strong>${tn(label)}</strong> ${tn(hint)}</p></details>` : null}
+    </div>
+    <input class="s-ui-toggle" id=${id} type="checkbox" checked=${f[key]} aria-describedby=${`${id}-hint`} onChange=${(e) => set(key)(e.target.checked)} />
+  </div>`;
+  const configured = (path) => { const [top, key] = path.split("."); return (top === "web" ? web : term)[key] !== undefined; };
   return html`<div class=${`form s-web s-part-${part}`}>
-    ${has("access") ? html`<p class="sub">${tn("webLead")}</p>` : null}
-    ${overPublicLink && part !== "readonly" ? html`<p class="note" role="status" id="webPublicRefused">${tn("webPublicRefused")}</p>` : null}
-    ${has("access") ? lock(html`<section class="card"><h3>${tn("webSessionTitle")}</h3>
-      <p class="note">${tn("webSessionHint")}</p>
-      <div class=${fc("field", "notify")}><label for="webNotifyLogin">${tn("webNotifyLogin")}<${Impact} schema=${schema} field="web.notify_login" /></label><${Select} id="webNotifyLogin" value=${f.notify} onChange=${set("notify")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.notify))} />${web.notify_login === undefined ? html`<${DefaultMark} />` : null}<p class="note">${tn("webNotifyLoginHint")}</p></div>
+    ${overPublicLink && part !== "readonly" ? html`<p class="note s-access-notice" role="status" id="webPublicRefused">${tn("webPublicRefused")}</p>` : null}
+    ${has("access") ? html`<${SettingsTabs} id="access" value=${accessTab} onChange=${setAccessTab} items=${tabs} />
+      <div class="s-access-banner"><${Icon} name="info" size=${18} /><p>${layoutText("revAccessPolicy")}</p><details class="s-access-policy"><summary>${layoutText("revDetails")}</summary><p class="note">${tn("webLead")}</p></details></div>
+      <${SettingsTabPanel} group="access" id="login" active=${accessTab === "login"}>
+        <div class="s-access-login-layout"><div class="s-access-stack">
+          ${lock(html`<section class="card s-access-session"><h3>${layoutText("revLoginSessions")}</h3>
+      <div class=${fc("field", "notify")}><label for="webNotifyLogin">${tn("webNotifyLogin")}<${Impact} schema=${schema} field="web.notify_login" /></label><${Select} id="webNotifyLogin" value=${f.notify} onChange=${set("notify")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.notify))} /></div>
       <div class="grid2">
         <div class=${fc("field", "abs")}><label for="webSessionAbsolute">${tn("sessionAbsolute")}</label><input id="webSessionAbsolute" type="number" min="1" max="720" step="any"
           class=${errors.abs ? "invalid" : ""} value=${f.abs} onInput=${(e) => set("abs")(e.target.value)} /><${Feedback} error=${errors.abs} />
@@ -1348,8 +1416,13 @@ function WebSection({ ctx, staged, part = "all" }) {
           class=${errors.idle ? "invalid" : ""} value=${f.idle} onInput=${(e) => set("idle")(e.target.value)} /><${Feedback} error=${errors.idle} />
           ${value(f.idle) === null && !errors.abs ? html`<${InEffect} text=${tn("hoursValue", idle)} why=${idle < 48 ? tn("cappedBySession") : null} />` : null}</div>
       </div>
-    </section>
-    <section class="card"><h3>${tn("webTerminalTitle")}</h3>
+    <p class="note s-session-ceiling">${layoutText("revPublicSessionLimit")}</p>
+      <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("webSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
+    </section>`)}
+          ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
+          ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
+          <${OutsideCard} />
+          <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
       <div class="grid2">
@@ -1357,8 +1430,18 @@ function WebSection({ ctx, staged, part = "all" }) {
           class=${errors.termTtl ? "invalid" : ""} value=${f.termTtl} onInput=${(e) => set("termTtl")(e.target.value)} /><${Feedback} error=${errors.termTtl} />
           ${value(f.termTtl) === null ? html`<${InEffect} text=${tn("minutesValue", 10)} />` : null}</div>
       </div>
-    </section>
-    <section class="card"><h3>${tn("publicLinkTitle")}</h3>
+    </section>`)}</div></details>
+        </div><aside class="card s-access-related"><h3>${layoutText("revRelatedAccess")}</h3>
+          <button type="button" onClick=${() => setAccessTab("guests")}><${Icon} name="user" size=${18} /><span><strong>${layoutText("accessGuests")}</strong><small>${layoutText("revRelatedGuests")}</small></span><${Icon} name="chevron" size=${16} /></button>
+          <button type="button" onClick=${() => setAccessTab("sharing")}><${Icon} name="globe" size=${18} /><span><strong>${layoutText("accessSharing")}</strong><small>${layoutText("revRelatedSharing")}</small></span><${Icon} name="chevron" size=${16} /></button>
+        </aside></div>
+      </${SettingsTabPanel}>
+      <${SettingsTabPanel} group="access" id="guests" active=${accessTab === "guests"}>
+        ${!overPublicLink ? html`<${GuestsCard} ctx=${ctx} staged=${staged} />` : html`<p class="note">${tn("webPublicRefused")}</p>`}
+      </${SettingsTabPanel}>
+      <${SettingsTabPanel} group="access" id="sharing" active=${accessTab === "sharing"}>
+        <div class="s-access-stack">
+          ${lock(html`<section class="card s-public-entry"><h3>${layoutText("revPublicEntry")}</h3>
       <label class=${fc("check", "pub")}><input id="publicWebLink" type="checkbox" checked=${f.pub} onChange=${(e) => set("pub")(e.target.checked)} /><span>${tn("publicLink")}</span><${Impact} schema=${schema} field="web.public_link.allow_public" /></label>
       <p class="note">${tn("publicLinkHint")}</p>
       <div class="grid2">
@@ -1374,35 +1457,31 @@ function WebSection({ ctx, staged, part = "all" }) {
       ${named ? html`<p class="note" id="publicTtlNamedHint">${tn("publicTtlNamedHint")}</p>` : null}
       ${named || f.autoOpen ? html`<label class=${fc("check", "autoOpen")}><input id="publicAutoOpen" type="checkbox" checked=${f.autoOpen} onChange=${(e) => set("autoOpen")(e.target.checked)} /><span>${tn("publicAutoOpen")}</span><${Impact} schema=${schema} field="web.public_link.auto_open" /></label>
       <p class="note">${tn("publicAutoOpenHint")}</p><${Feedback} error=${errors.autoOpen} />` : null}
+
+      ${!overPublicLink ? html`<div class="s-public-credentials"><${PublicTunnelToken} /></div>` : null}
+    </section>`)}
+          <div class="s-sharing-list"><h3>${layoutText("revReadOnlySharing")}</h3><p class="note">${layoutText("revSharingOrigin")}</p><${OfficeSharesCard} /><${PageSharesCard} /></div>
+        </div>
+      </${SettingsTabPanel}>` : null}
+    ${has("chat") ? lock(html`<section class="card s-web-chat"><h3>${layoutText("messageBehavior")}</h3>
+      ${toggleRow("echo", "webEchoToChannel", "webEcho", "webEchoHint", "web.echo_to_channel")}
     </section>`) : null}
-    ${has("access") && !overPublicLink ? html`<${PublicTunnelToken} />` : null}
-    ${has("access") ? html`<${OfficeSharesCard} />` : null}
-    ${has("access") ? html`<${PageSharesCard} />` : null}
-    ${has("access") && !overPublicLink ? html`<${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
-    ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
-    ${has("access") ? html`<${OutsideCard} />` : null}
-    ${has("chat") ? lock(html`<section class="card"><h3>${tn("webChat")}</h3>
-      <label class=${fc("check", "echo")}><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
-      <p class="note">${tn("webEchoHint")}</p>
+    ${has("dashboard") ? lock(html`<section class="card s-dashboard-features"><h3>${layoutText("dashboardFeatures")}</h3>
+      ${toggleRow("log", "webLogTab", "webLogTab", "webLogTabHint", "web.log_tab")}
+      ${toggleRow("usagePub", "webUsagePublic", "webUsagePublic", "webUsagePublicHint", "web.usage_report_on_public_link")}
+      ${toggleRow("levels", "webOfficeLevels", "webOfficeLevels", "webOfficeLevelsHint", "web.office_levels")}
+      ${toggleRow("cdn", "webPreviewCdn", "webPreviewCdn", "webPreviewCdnHint", "web.preview_cdn")}
     </section>`) : null}
-    ${has("dashboard") ? lock(html`<section class="card"><h3>${tn("webDashboardTitle")}</h3>
-      <label class=${fc("check", "log")}><input id="webLogTab" type="checkbox" checked=${f.log} onChange=${(e) => set("log")(e.target.checked)} /><span>${tn("webLogTab")}</span><${Impact} schema=${schema} field="web.log_tab" /></label>
-      <p class="note">${tn("webLogTabHint")}</p>
-      <label class=${fc("check", "usagePub")}><input id="webUsagePublic" type="checkbox" checked=${f.usagePub} onChange=${(e) => set("usagePub")(e.target.checked)} /><span>${tn("webUsagePublic")}</span><${Impact} schema=${schema} field="web.usage_report_on_public_link" /></label>
-      <p class="note">${tn("webUsagePublicHint")}</p>
-      <label class=${fc("check", "levels")}><input id="webOfficeLevels" type="checkbox" checked=${f.levels} onChange=${(e) => set("levels")(e.target.checked)} /><span>${tn("webOfficeLevels")}</span><${Impact} schema=${schema} field="web.office_levels" /></label>
-      <p class="note">${tn("webOfficeLevelsHint")}</p>
-      <label class=${fc("check", "cdn")}><input id="webPreviewCdn" type="checkbox" checked=${f.cdn} onChange=${(e) => set("cdn")(e.target.checked)} /><span>${tn("webPreviewCdn")}</span><${Impact} schema=${schema} field="web.preview_cdn" /></label>
-      <p class="note">${tn("webPreviewCdnHint")}</p>
-    </section>`) : null}
-    ${has("readonly") ? html`<section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
-      <p class="note">${tn("webReadOnlyLead")}</p>
-      <dl class="s-web-ro">${WEB_READ_ONLY.map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd>${shown(k)}</dd></div>`)}</dl>
-      <p class="note">${tn("webSearchHint")}</p>
-    </section>` : null}
+    ${has("readonly") ? html`<div class="s-effective-view"><p class="s-effective-notice"><${Icon} name="info" size=${18} />${layoutText("revEffectiveHint")}</p>
+      <section class="card s-web-readonly"><h3 class="sr-only">${tn("webReadOnlyTitle")}</h3>
+        <div class="s-ro-columns" aria-hidden="true"><span>${layoutText("effectiveKey")}</span><span>${layoutText("effectiveValue")}</span><span>${layoutText("effectiveSource")}</span></div>
+        ${["web", "web_terminal"].map(group => html`<h4 class="s-ro-group">${group === "web" ? tn("sec_web-dashboard") : tn("webTerminalTitle")}</h4>
+          <dl class="s-web-ro">${WEB_READ_ONLY.filter(k => k.startsWith(`${group}.`)).map((k) => html`<div key=${k}><dt><code>${k}</code></dt><dd class="s-ro-value">${shown(k)}</dd><dd class="s-ro-source" aria-label=${layoutText("effectiveSource")}><span class="tag">${layoutText(configured(k) ? "effectiveSourceConfig" : "effectiveSourceDefault")}</span></dd></div>`)}</dl>`)}
+      </section><div class="s-effective-footnotes"><p class="note">${tn("webReadOnlyLead")}</p><p class="note">${tn("webSearchHint")}</p></div>
+      <div class="s-effective-actions"><button type="button" class="btn" onClick=${() => revealSettingsTarget(document.getElementById("advanced-panel-editor"))}><${Icon} name="edit" size=${16} />${layoutText("revGoEditor")}</button></div>
+    </div>` : null}
   </div>`;
 }
-
 /**
  * Developer: the fleet model as YAML or JSON, to read, copy, download — or edit. #2347: an edit's Apply stages its
  * writes in the Save bar like every form's change (Save writes them, in order, then one apply; Discard drops them),
@@ -1456,14 +1535,15 @@ function Developer({ ctx }) {
   return html`<section class="card s-dev">
     <div class="s-dev-bar">
       <div class="seg-inline" role="group" aria-label=${tn("format")}>
-        ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div>
-      <button type="button" class="btn btn-sm" disabled=${blocked && !editing} title=${blocked && !editing ? tn("devFormsUnsaved") : undefined} onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
+        ${["yaml", "json"].map((k) => html`<button key=${k} type="button" class=${`btn btn-sm${fmt === k ? " on" : ""}`} aria-pressed=${fmt === k ? "true" : "false"} onClick=${() => setFmt(k)}>${k.toUpperCase()}</button>`)}</div><p class="s-dev-context"><${Icon} name="info" size=${15} />${layoutText("revEditorContext")}</p>
+      <div class="s-dev-actions"><button type="button" class="btn btn-sm" disabled=${blocked && !editing} title=${blocked && !editing ? tn("devFormsUnsaved") : undefined} onClick=${() => setEditing(!editing)}>${editing ? tn("viewMode") : tn("editMode")}</button>
       <button type="button" class="btn btn-sm" title=${tn("copy")} onClick=${copy}><${Icon} name="copy" size=${14} /><span class="lbl">${tn("copy")}</span></button>
-      <button type="button" class="btn btn-sm" title=${tn("devDownload")} onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">${tn("devDownload")}</span></button>
+      <button type="button" class="btn btn-sm" title=${tn("devDownload")} onClick=${download}><${Icon} name="download" size=${14} /><span class="lbl">${tn("devDownload")}</span></button></div>
     </div>
     ${editing ? html`<textarea class="s-yaml" aria-label=${tn("devEditor")} spellcheck=${false} wrap="off" value=${draft} onInput=${(e) => setDraft(e.target.value)}></textarea>
         <div class="save-row"><button type="button" class="btn btn-primary" disabled=${blocked} onClick=${save}>${tn("devApply")}</button><span class="note">${tn("devApplyHint")}</span></div>`
-      : html`<pre class="s-yaml">${text}</pre>`}
+      : html`<pre class="s-yaml" tabindex="0">${text}</pre>`}
+    <div class="s-dev-state"><span class="s-dev-file">fleet.yaml</span><${Icon} name=${editing ? "edit" : "view"} size=${14} /><span>${layoutText(editing ? "developerEditing" : "developerReadOnly")}</span></div>
     ${blocked ? html`<p class="note s-dev-blocked" role="status">${tn("devFormsUnsaved")}</p>`
       : held && !msg ? html`<p class="note s-dev-held" role="status">${tn("devStaged", heldCount)}</p>` : null}
     ${msg ? html`<p class=${`feedback${msg.error ? " error" : ""}`} role="status">${msg.error || msg.text}</p>` : null}
@@ -1480,12 +1560,13 @@ function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const invalid = changes.filter((c) => c.invalid).length;
   // #2382 review: a field to fix in another section is named, and the message goes there (its field focused).
   const elsewhere = changes.find((c) => c.invalid && c.section && c.section !== section);
+  const problem = elsewhere || changes.find((c) => c.invalid && c.target);
   const count = changes.reduce((n, c) => n + (Number.isInteger(c.count) && c.count > 0 ? c.count : 1), 0);
   return html`<div data-trust="panel-controls" class="s-pending" role="region" aria-label=${tn("pendingRegion")}>
     <strong>${tn("changesPending", count)}</strong>
     <span class="note">${kinds.map(impactText).join(" · ")}</span>
     <span class="s-pending-actions">
-      ${!invalid ? null : elsewhere ? html`<button type="button" class="link-btn feedback error s-fix" role="status" onClick=${() => goToTarget(elsewhere.section, elsewhere.target)}>${tn("fixToSaveIn", invalid, tn(`sec_${elsewhere.section}`))}</button>`
+      ${!invalid ? null : problem ? html`<button type="button" class="link-btn feedback error s-fix" role="status" onClick=${() => goToTarget(problem.section || section, problem.target)}>${elsewhere ? tn("fixToSaveIn", invalid, tn(`sec_${elsewhere.section}`)) : tn("fixToSave", invalid)}</button>`
         : html`<span class="feedback error s-fix" role="status">${tn("fixToSave", invalid)}</span>`}
       <button type="button" class="btn" onClick=${onDiscard} disabled=${busy}>${tn("discard")}</button>
       <button type="button" class="btn btn-primary" onClick=${onApply} disabled=${busy || invalid > 0} title=${busy ? tn("applyBusyLocal") : undefined}>${tn("applyChanges")}</button>
@@ -1592,12 +1673,11 @@ function PublicTunnelToken() {
     } catch { if (lease.current()) setMessage(tn("applyFailed")); }
     finally { inFlight.current = false; if (lease.current()) setBusy(false); }
   };
-  return html`<section class="card"><h3>${tn("namedToken")}</h3>
+  return html`<section class="card s-tunnel-token"><div class="s-token-head"><h3>${tn("namedToken")}</h3><span class="tag">${present ? tn("keyConfigured") : tn("keyNotConfigured")}</span></div>
     <p class="note">${tn("namedTokenHint")}</p>
-    <span class="tag">${present ? tn("keyConfigured") : tn("keyNotConfigured")}</span>
-    <input id="publicTunnelToken" type="password" autocomplete="new-password" aria-label=${tn("namedToken")} value=${secret} onInput=${e => { setSecret(e.target.value); setTypedTunnelToken(e.target.value); }} />
-    <button type="button" class="btn btn-sm" disabled=${busy || !secret} onClick=${() => go(false)}>${tn("namedTokenSet")}</button>
-    <button type="button" class="btn btn-sm" disabled=${busy || !present} onClick=${() => go(true)}>${tn("namedTokenClear")}</button>
+    <details class="s-token-editor"><summary>${layoutText(present ? "revUpdateCredential" : "revSetCredential")}</summary><div class="s-token-editor-body"><input class="s-token-input" id="publicTunnelToken" type="password" autocomplete="new-password" aria-label=${tn("namedToken")} value=${secret} onInput=${e => { setSecret(e.target.value); setTypedTunnelToken(e.target.value); }} />
+    <div class="s-token-actions"><button type="button" class="btn btn-sm" disabled=${busy || !secret} onClick=${() => go(false)}>${tn("namedTokenSet")}</button>
+    <button type="button" class="btn btn-sm" disabled=${busy || !present} onClick=${() => go(true)}>${tn("namedTokenClear")}</button></div></div></details>
     ${message ? html`<p class="note" role="status">${message}</p>` : null}
   </section>`;
 }

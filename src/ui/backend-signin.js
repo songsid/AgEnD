@@ -12,6 +12,7 @@ import { closeDialog, shellStore, showDialog } from "/assets/app-shell.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
 import { mountStructuredSignIns } from "./structured-signin.js";
+import { CliProductMark, cliLabel } from "./cli-picker.js";
 
 register("signin", {
   en: {
@@ -231,11 +232,12 @@ export function BrowserSignInDialog({ backend, backends, onClose }) {
     if (!result.ok) { toast(tn("failed")); return; }
     showDialog(SignInDialog, { backend: chosen });
   };
-  return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", backend)} onClose=${close}>
-    <div ref=${root}></div>
+  const actions = html`<div class="signin-browser-actions">
     ${backends ? backends.filter(b => b !== "antigravity").map(b => html`<button type="button" class="btn" onClick=${() => fallback(b)}>${b} · ${tn("consoleFallback")}</button>`) : null}
-    <div class="s-actions">${backend ? html`<button type="button" class="btn" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button>` : null}
-    <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>
+    ${backend ? html`<button type="button" class="btn" onClick=${() => fallback(backend)}>${tn("consoleFallback")}</button>` : null}
+    <button type="button" class="btn" onClick=${close}>${tn("close")}</button></div>`;
+  return html`<${Dialog} title=${backends ? tn("listTitle") : tn("title", cliLabel(backend))} onClose=${close} actions=${actions}>
+    <div class="signin-browser" ref=${root}></div>
   </${Dialog}>`;
 }
 
@@ -327,28 +329,41 @@ export function SignInLine() {
 
 const STATE_KEY = { usable: "stUsable", not_signed_in: "stNotSignedIn", not_installed: "stNotInstalled", too_old: "stTooOld", unknown: "stUnknown" };
 
-/** Settings → Agents: each login on this machine, with Sign in where the dashboard can do it. */
+register("signin", {
+  en: {
+    hostTitle: "CLI sign-ins", hostHint: "Accounts used by CLIs on the host running AgEnD.",
+    hostBadge: "AgEnD host", hostProfile: "Credential profile: {0}", hostLoading: "Reading CLI sign-ins…", hostEmpty: "No CLI sign-ins were reported on this host.",
+    installHelp: "Installation instructions", updateHelp: "Update instructions", hostHelp: "Sign-in instructions",
+    commandHint: "Run these instructions in a terminal on the host running AgEnD.",
+  },
+  "zh-TW": {
+    hostTitle: "CLI 登入", hostHint: "執行 AgEnD 的主機上，各個 CLI 使用的帳號。",
+    hostBadge: "AgEnD 主機", hostProfile: "憑證設定檔：{0}", hostLoading: "正在讀取 CLI 登入狀態…", hostEmpty: "這台主機尚未回報 CLI 登入項目。",
+    installHelp: "安裝說明", updateHelp: "更新說明", hostHelp: "登入說明",
+    commandHint: "請在執行 AgEnD 的主機終端機中操作。",
+  },
+});
+
+/** Settings → Agents: existing host sign-in actions, with commands disclosed only when needed. */
 export function SignInList() {
   const { targets, loaded, login, structured } = useStore(signInStore);
-  // Not over the temporary public link: only the dashboard reached directly signs a backend in, and the link does not
-  // serve this read (it was a 404 in the console there, found by smoke-1939-authorize-defaults).
+  // Public-link authority remains unchanged: this page neither reads nor offers host sign-in there.
   const offered = signInOffered();
   useEffect(() => { if (offered) void refreshSignIn(); }, []);
-  if (!offered || !loaded || !targets.length) return null;
+  if (!offered) return null;
   const active = structured?.login;
   const running = (login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason));
-  return html`<section class="s-group signin-list" aria-label=${tn("listTitle")}>
-    <div class="list-head"><span>${tn("listTitle")}</span></div>
-    <p class="sub">${tn("listHint")}</p>
-    ${targets.map((x) => html`<div key=${`${x.backend}:${x.profile || ""}`} class="s-row">
-      <span class="s-name">${shownOf(x.backend, x.profile)}</span>
-      <span class="tag">${tn(STATE_KEY[x.state] || "stUnknown")}</span>
-      <span class="s-br" aria-hidden="true"></span>
-      ${x.install ? html`<span class="s-meta"><code>${tn("install", x.install)}</code></span>` : null}
-      ${x.update ? html`<span class="s-meta"><code>${tn("update", x.update)}</code></span>` : null}
-      ${x.hostCommand ? html`<span class="s-meta"><code>${tn("onHost", x.hostCommand)}</code></span>` : null}
-      <span class="s-actions">${x.signIn ? html`<button type="button" class=${x.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${!!running}
-        onClick=${() => openSignIn(x)}>${x.state === "usable" ? tn("signInAgain") : tn("signIn")}</button>` : null}</span>
-    </div>`)}
+  return html`<section class="s-group signin-list s-auth-section" aria-label=${tn("hostTitle")}>
+    <header class="s-auth-section-head"><div><h3>${tn("hostTitle")}</h3><p>${tn("hostHint")}</p></div><span class="s-auth-host-badge">${tn("hostBadge")}</span></header>
+    ${!loaded ? html`<p class="note" role="status">${tn("hostLoading")}</p>` : !targets.length ? html`<p class="note">${tn("hostEmpty")}</p>` : html`<div class="s-host-cli-list">${targets.map((x) => {
+      const commands = [["install", x.install], ["update", x.update], ["onHost", x.hostCommand]].filter(([, value]) => value);
+      return html`<div key=${`${x.backend}:${x.profile || ""}`} class="s-row s-host-cli-row" data-backend=${x.backend}>
+        <div class="s-host-cli-identity"><${CliProductMark} id=${x.backend} size=${24} /><div><strong class="s-name">${cliLabel(x.backend)}</strong>${x.profile ? html`<small>${tn("hostProfile", x.profile)}</small>` : null}</div></div>
+        <span class=${`tag s-auth-state is-${x.state || "unknown"}`}>${tn(STATE_KEY[x.state] || "stUnknown")}</span>
+        ${x.signIn ? html`<span class="s-actions"><button type="button" class=${x.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${!!running}
+          onClick=${() => openSignIn(x)}>${x.state === "usable" ? tn("signInAgain") : tn("signIn")}</button></span>` : null}
+        ${commands.length ? html`<details class="s-host-cli-help" data-inline-help=${x.signIn ? "false" : "true"}><summary>${tn(x.install ? "installHelp" : x.update ? "updateHelp" : "hostHelp")}</summary><div><p class="note">${tn("commandHint")}</p>${commands.map(([kind, command]) => html`<p class="s-host-cli-command"><code>${tn(kind, command)}</code></p>`)}</div></details>` : null}
+      </div>`;
+    })}</div>`}
   </section>`;
 }

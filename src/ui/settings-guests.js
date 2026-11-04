@@ -16,6 +16,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { api } from "./settings-confirm.js";
 import { DEFAULT_SCHEMA, impactOf } from "./settings-model.js";
 import "./settings-strings.js";
+import { layoutText } from "./settings-layout.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 const PLATFORMS = { discord: "Discord", telegram: "Telegram" };
@@ -93,6 +94,7 @@ export function GuestsSection({ ctx, staged }) {
   const [overview, setOverview] = useState(null), [failed, setFailed] = useState(false);
   const [people, setPeople] = useState(null), [query, setQuery] = useState(""), [editing, setEditing] = useState(null);
   const [sendState, setSendState] = useState({}), [now, setNow] = useState(() => Date.now());
+  const [viewedGuest, setViewedGuest] = useState(null);
   const [status, setStatus] = useState(null);                 // { kind: "waiting" } | { kind: "failed", error }
   const load = async () => {
     let r = null;
@@ -211,6 +213,7 @@ export function GuestsSection({ ctx, staged }) {
   };
 
   const rows = f.grants ? [...new Set([...Object.keys(f.grants), ...Object.keys(original.grants || {})])] : [];
+  const activeGuest = rows.includes(editing) ? editing : rows.includes(viewedGuest) ? viewedGuest : rows[0];
   const q = query.trim().toLowerCase();
   const candidates = (people || []).filter((p) => !(f.grants && own(f.grants, accountKey(p))))
     .filter((p) => !q || [p.name, p.username, p.userId].some((x) => typeof x === "string" && x.toLowerCase().includes(q))).slice(0, 8);
@@ -218,21 +221,32 @@ export function GuestsSection({ ctx, staged }) {
   return html`<section class="card s-guests" id="guests"><h3>${tn("guestsTitle")}</h3>
     <p class="note">${tn("grantsHint")}</p>
     <fieldset class="s-guest-fields" disabled=${readOnly}>
-      <label class=${`check${f.enabled !== original.enabled ? " s-dirty" : ""}`}><input id="guestsEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${tn("guestsEnabled")}</span></label>
+<div class="s-guest-policy"><div>      <label class=${`check${f.enabled !== original.enabled ? " s-dirty" : ""}`}><input class="s-ui-toggle" id="guestsEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${tn("guestsEnabled")}</span></label>
       <p class="note">${tn("guestsEnabledHint")}</p>
-      <label class=${`check${f.chat !== original.chat ? " s-dirty" : ""}`}><input id="guestsChat" type="checkbox" checked=${f.chat} onChange=${(e) => set({ chat: e.target.checked })} /><span>${tn("guestsChat")}</span></label>
+</div><div>      <label class=${`check${f.chat !== original.chat ? " s-dirty" : ""}`}><input class="s-ui-toggle" id="guestsChat" type="checkbox" checked=${f.chat} onChange=${(e) => set({ chat: e.target.checked })} /><span>${tn("guestsChat")}</span></label>
       <p class="note">${tn("guestsChatHint")}</p>
+</div></div>
       ${failed ? html`<p class="note" role="status">${tn("guestsLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`
         : !overview ? html`<p class="note">${t("app.loading")}</p>` : null}
       ${!f.grants && overview ? html`<div class="g-legacy"><p class="note">${tn("grantsLegacy")}</p>
         ${readOnly ? null : html`<button type="button" class="btn btn-sm" id="grantsConvert" onClick=${convert}>${tn("grantsConvert")}</button>`}</div>` : null}
-      <h4>${tn("grantsWithAccess")}</h4>
-      ${!rows.length ? html`<p class="note" id="grantsNone">${tn("grantsNoneYet")}</p>` : html`<ul class="guest-list">${rows.map((k) => {
+<div class="s-guest-workbench"><section class="s-guest-list-card"><h4>${layoutText("revGuestManagement")}</h4>
+      <div class="s-guest-columns" aria-hidden="true"><span>${tn("guestsTitle")}</span><span>${layoutText("revVisibleAgents")}</span><span>${layoutText("revGuestLevel")}</span><span>${tn("settingsButton")}</span></div>
+      ${!rows.length ? html`<p class="note" id="grantsNone">${tn("grantsNoneYet")}</p>` : html`<ul class="guest-list">${rows.map(k => {
+        const person=who(k), grant=f.grants?.[k] || original.grants?.[k];
+        return html`<li key=${k} class=${`guest-summary${activeGuest === k ? " is-selected" : ""}`}>
+          <span class="g-summary-name"><strong>${person.name}</strong><small>${PLATFORMS[person.platform] || person.platform}</small></span>
+          <span class="g-summary-agents">${(grant?.instances || []).map(n => html`<span key=${n}>${shownName(rooms,n)}</span>`)}</span>
+          <span>${tn(levelOf(grant) === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat")}</span>
+          <button type="button" class="btn btn-sm" aria-pressed=${activeGuest === k ? "true" : "false"} aria-controls=${`guest-detail-${encodeURIComponent(k)}`} onClick=${() => {setViewedGuest(k);setEditing(k);}}>${tn("settingsButton")}</button>
+        </li>`;
+      })}</ul>`}</section>
+      <aside class="s-guest-detail-card" aria-label=${layoutText("revGuestDetail")}>${rows.map((k) => {
         const person = who(k), draft = f.grants && f.grants[k], saved = original.grants && original.grants[k];
         const removed = !draft, added = !saved, dirty = removed || added || !sameGrant(draft, saved);
         const applied = !!saved && saved.instances.length > 0 && !dirty;
         const ss = sendState[k] || {}, cooling = ss.until && ss.until > now;
-        return html`<li key=${k} class=${`guest-row${dirty ? " s-dirty" : ""}${removed ? " g-removed" : ""}`} data-account=${k}>
+        return html`<section key=${k} hidden=${!readOnly && activeGuest !== k} id=${`guest-detail-${encodeURIComponent(k)}`} class=${`guest-row${dirty ? " s-dirty" : ""}${removed ? " g-removed" : ""}`} data-account=${k}>
           <div class="g-head"><span class="g-av" aria-hidden="true">${(person.name || "?").slice(0, 1).toUpperCase()}</span>
             <div class="g-id"><strong>${person.name}</strong> <span class="note">${PLATFORMS[person.platform] || person.platform}${person.username ? ` · @${person.username}` : ""}</span></div>
             ${removed ? html`<span class="g-state">${tn("grantsWillBeRemoved")}</span>` : added ? html`<span class="g-state">${tn("grantsNew")}</span>` : pill(person)}</div>
@@ -255,23 +269,23 @@ export function GuestsSection({ ctx, staged }) {
               : html`<button type="button" class="btn btn-sm" onClick=${() => setGrant(k, { ...saved })}>${tn("grantsUndoRemove")}</button>`}
             ${person.guest && (person.guest.sessions || person.guest.devices) ? html`<button type="button" class="btn btn-sm" onClick=${() => signOut(person)}>${tn("guestSignOut")}</button>` : null}
           </div>`}
-        </li>`;
-      })}</ul>`}
-      ${readOnly ? null : html`<h4>${tn("grantsAdd")}</h4>
+        </section>`;
+      })}${!rows.length ? html`<p class="note">${layoutText("revSelectGuest")}</p>` : null}</aside></div>
+      ${readOnly ? null : html`<details class="s-guest-add"><summary>${tn("grantsAdd")}</summary><div>
         <input type="search" class="input g-search" id="grantsSearch" value=${query} aria-label=${tn("grantsSearch")} placeholder=${tn("grantsSearch")} onInput=${(e) => setQuery(e.target.value)} />
         ${people === null ? html`<p class="note">${t("app.loading")}</p>` : !candidates.length ? html`<p class="note" id="grantsNoPeople">${tn("grantsNoPeople")}</p>`
           : html`<ul class="g-pick">${candidates.map((p) => html`<li key=${accountKey(p)} class="g-cand" data-account=${accountKey(p)}>
             <span class="g-av" aria-hidden="true">${(p.name || "?").slice(0, 1).toUpperCase()}</span>
             <div class="g-id"><strong>${p.name}</strong> <span class="note">${PLATFORMS[p.platform] || p.platform}${p.username ? ` · @${p.username}` : ""} · <span class="g-when">${tn("grantsLastSeen", new Date(p.lastSeen).toLocaleString())}</span></span>
               ${p.instances && p.instances.length ? html`<div class="note">${wroteTo(p.instances)}</div>` : null}</div>
-            <button type="button" class="btn btn-sm" onClick=${() => { const k = accountKey(p); setGrant(k, { ...(p.name ? { name: p.name } : {}), instances: choosable.filter((n) => (p.instances || []).includes(n)) }); setEditing(k); }}>${tn("grantsChoose")}</button></li>`)}</ul>`}`}
+            <button type="button" class="btn btn-sm" onClick=${() => { const k = accountKey(p); setGrant(k, { ...(p.name ? { name: p.name } : {}), instances: choosable.filter((n) => (p.instances || []).includes(n)) }); setEditing(k); }}>${tn("grantsChoose")}</button></li>`)}</ul>`}</div></details>`}
     </fieldset>
-    ${overview && overview.audit ? html`<h4>${tn("grantsRecent")}</h4>${!overview.audit.length ? html`<p class="note" id="grantsRecentNone">${tn("grantsRecentNone")}</p>`
+    ${overview && overview.audit ? html`<details class="s-guest-audit"><summary>${tn("grantsRecent")}</summary>${!overview.audit.length ? html`<p class="note" id="grantsRecentNone">${tn("grantsRecentNone")}</p>`
       : html`<ul class="g-audit" id="grantsRecentList">${overview.audit.map((e, i) => html`<li key=${`${e.at}-${i}`} class="g-audit-row" data-kind=${e.kind}>
         <span class="g-when">${new Date(e.at).toLocaleString()}</span> <strong>${e.name}</strong>
         ${e.kind === "grant" ? html`${e.added.map((n) => html` <span key=${`+${n}`} class="g-wrote g-add">+${n}</span>`)}${e.removed.map((n) => html` <span key=${`-${n}`} class="g-wrote g-del">−${n}</span>`)}${e.level ? html` <span class="g-wrote g-level-to">${tn("grantsAuditLevel", tn(e.level === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat"))}</span>` : null}
           <span class="note"> · <span class="g-wrote">${tn(e.via === "confirmed" ? "grantsAuditConfirmed" : "grantsAuditDirect")}</span>${e.endedSessions ? html` · <span class="g-wrote">${tn("grantsAuditEnded", e.endedSessions)}</span>` : null}</span>`
-        : html` <span class="note">${e.outcome === "sent" ? tn("grantsAuditCodeSent") : tn("grantsAuditCodeNot", auditOutcome(e.outcome))}</span>`}</li>`)}</ul>`}` : null}
+        : html` <span class="note">${e.outcome === "sent" ? tn("grantsAuditCodeSent") : tn("grantsAuditCodeNot", auditOutcome(e.outcome))}</span>`}</li>`)}</ul>`}</details>` : null}
     ${status && status.kind === "waiting" ? html`<p class="note" role="status">${tn("grantsWaiting")}</p>` : null}
     ${status && status.kind === "failed" ? html`<p class="note g-error" role="alert">${tn("grantsSaveFailed", status.error)}</p>` : null}
   </section>`;

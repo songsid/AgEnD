@@ -8,6 +8,7 @@ import { confirmedWrite } from "./settings-confirm.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { WindowsCliPanel } from "./panel-windows-cli.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
+import { useWindowsCliCatalog } from "./windows-cli-catalog.js";
 
 register("machines", {
   en: {
@@ -66,6 +67,14 @@ register("machines", {
   },
 });
 export const machineText = (key,...values) => t(`machines.${key}`,...values);
+register("machines", {
+  en: { computersTitle:"Computers and CLIs", firstConnection:"Connecting for the first time?", stepDownload:"Download the Runtime", stepRun:"Run it on another computer", stepApprove:"Return here to approve", connectionNote:"Each computer keeps its own CLI sign-ins.", fleetScope:"Entire fleet", nativeWindows:"Native Windows", nativeHint:"CLIs and existing sign-ins on this computer's Windows installation.", inventoryHint:"Open diagnostics to inspect CLI availability and sign-ins." },
+  "zh-TW": { computersTitle:"電腦與 CLI", firstConnection:"初次連接？", stepDownload:"下載 Runtime", stepRun:"在另一台電腦執行", stepApprove:"回來核准", connectionNote:"每台電腦保留自己的 CLI 登入。", fleetScope:"整個 Fleet", nativeWindows:"Windows 本機", nativeHint:"使用這台電腦 Windows 上的 CLI 與既有登入。", inventoryHint:"前往診斷查看 CLI 可用性與登入狀態。" },
+});
+register("machines", {
+  en: { policies:"Runtime policies", policySummary:"Windows CLIs, remote pairing and per-computer limits", diagnostics:"CLI diagnostics and test tasks", diagnosticsHint:"Use this PC's Windows CLI sign-ins and inspect one-off task results.", openDiagnostics:"View local Windows CLIs", hostRuntime:"WSL / Linux", operationsNote:"Connections, approvals and test tasks are confirmed in their own flows." },
+  "zh-TW": { policies:"Runtime 政策", policySummary:"本機 Windows CLI、遠端配對與每台電腦的並行數", diagnostics:"CLI 診斷與測試", diagnosticsHint:"使用這台電腦的 Windows CLI 登入，查看診斷或一次性測試任務。", openDiagnostics:"查看本機 Windows CLI", hostRuntime:"WSL / Linux", operationsNote:"連接、核准與測試任務會在各自流程中確認。" },
+});
 /** Only an origin composed of inert hostname/port characters is placed in a copyable shell command. */
 export function runtimeConnectCommand(server) {
   try {
@@ -97,12 +106,20 @@ const SWITCHES = [
   { name: "remote_runtime", id: "runtimeRemoteRuntime", env: "AGEND_REMOTE_RUNTIME", label: "remoteRuntime" },
 ];
 export const RUNTIME_DOCS = "https://github.com/songsid/AgEnD/blob/main/docs/remote-runtime.md#connecting-over-a-private-network";
+function LocalWindowsRuntime({ openDiagnostics }) {
+  // Reuse the same cached inventory as the diagnostics below; this summary never forces a CLI probe.
+  const inventory = useWindowsCliCatalog();
+  const installed = (inventory.data?.clis || []).filter(cli => cli.path);
+  return html`<article class="runtime-local runtime-native-local"><div><h3><${Icon} name="fleet" size=${20} />${machineText("nativeWindows")}</h3><p class="note">${machineText("nativeHint")}</p>
+    ${installed.length ? html`<ul class="runtime-local-cli-tags" aria-label=${machineText("cli")}>${installed.map(cli => html`<li key=${cli.id}><${CliProductMark} id=${cli.id} size=${19} /><span>${cliLabel(cli.id)}</span></li>`)}</ul>` : html`<p class="note">${machineText("inventoryHint")}</p>`}
+  </div><button type="button" class="btn btn-sm" onClick=${openDiagnostics}>${machineText("openDiagnostics")}<span aria-hidden="true">→</span></button></article>`;
+}
 /**
  * M-2255 (the user, hmsg-71c25c9b): "Use this PC's Windows CLIs" and "Allow other Windows computers to pair", saved in
  * fleet.yaml like any setting: on is confirmed by a fleet admin, off applies at once (after asking here). A switch the
  * environment sets is shown as such and cannot be changed here.
  */
-function RuntimeSwitches({ lease, onChanged }) {
+function RuntimeSwitches({ lease, onChanged, computers, diagnosticsPanel }) {
   const [view,setView]=useState(null), [busy,setBusy]=useState(""), [pending,setPending]=useState(""), [error,setError]=useState(""), [unavailable,setUnavailable]=useState(false);
   const [limit,setLimit]=useState(""), [limitNote,setLimitNote]=useState("");
   // A number being typed is the person's: a reload (a switch's answer) never replaces it; a save of it does.
@@ -150,28 +167,29 @@ function RuntimeSwitches({ lease, onChanged }) {
   const origin=view?.local_origin || "http://127.0.0.1:19280", port=(() => { try { return new URL(origin).port || "80"; } catch { return "19280"; } })();
   // Commands, not words: the same in every language (built here, never translated).
   const serveCommand=`tailscale serve --https=443 ${origin}`, sshCommand=`ssh -N -L 127.0.0.1:${port}:127.0.0.1:${port} user@this-computer`;
-  const guide=html`<details class="runtime-guide" open=${switches?.remote_runtime?.on === true}>
+  const guide=html`<aside class="runtime-connect-guide"><h3>${machineText("firstConnection")}</h3><ol><li>${machineText("stepDownload")}</li><li>${machineText("stepRun")}</li><li>${machineText("stepApprove")}</li></ol><details class="runtime-guide">
     <summary>${machineText("guide")}</summary>
     <p>${machineText("guideAddress")}</p><pre><code>${serveCommand}</code></pre>
     <p>${machineText("guideSsh",port)}</p><pre><code>${sshCommand}</code></pre>
     <p class="runtime-guide-warn">${machineText("guideFunnel")}</p><p class="runtime-guide-warn">${machineText("guideLan")}</p>
     <p>${machineText("guidePair")}</p><p>${machineText("guideApprove")}</p>
     <a class="runtime-guide-link" href=${RUNTIME_DOCS} target="_blank" rel="noopener noreferrer">${machineText("remoteRuntimeDocs")}<${Icon} name="external" size=${14} /></a>
-  </details>`;
-  if (unavailable) return html`<section class="runtime-switches" aria-label=${machineText("switches")}><h3>${machineText("switches")}</h3><p class="note">${machineText("switchesUnavailable")}</p></section>`;
-  return html`<section class="runtime-switches" aria-label=${machineText("switches")}>
+  </details><p class="note">${machineText("connectionNote")}</p></aside>`;
+  if (unavailable) return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}><div class="runtime-switches-main"><h3>${machineText("switches")}</h3><p class="note">${machineText("switchesUnavailable")}</p></div></section>${diagnosticsPanel}</div></div>`;
+  return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}>
+    <details class="runtime-policy s-ui-disclosure"><summary><${Icon} name="settings" size=${22} /><span><strong>${machineText("policies")}</strong><small>${machineText("policySummary")}</small></span></summary>
+    <div class="runtime-switches-main">
     <h3>${machineText("switches")}</h3>
     ${SWITCHES.map(item => {
       const state=switches?.[item.name];
       return html`<div key=${item.name} class="runtime-switch" data-switch=${item.name}>
         <label class="runtime-switch-row" for=${item.id}>
-          <input id=${item.id} type="checkbox" role="switch" checked=${state?.on === true} aria-describedby=${`${item.id}Help`}
+          <input id=${item.id} class="s-ui-toggle" type="checkbox" role="switch" checked=${state?.on === true} aria-describedby=${`${item.id}Help`}
             disabled=${!state || !!state.environment || !!busy} onChange=${e => { const want=e.target.checked; e.target.checked=!want; void change(item,want); }} />
           <span><strong>${machineText(item.label)}</strong><small id=${`${item.id}Help`}>${machineText(`${item.label}Help`)}</small></span>
         </label>
         ${pending === item.name ? html`<p class="note runtime-switch-pending" role="status">${machineText("switchPending")}</p>` : null}
         ${state?.environment ? html`<p class="note runtime-switch-env">${machineText("setByEnv",item.env,state.environment === "on" ? "1" : "0")}</p>` : null}
-        ${item.name === "remote_runtime" ? guide : null}
       </div>`;
     })}
     <form class="runtime-limit" onSubmit=${saveLimit}>
@@ -183,12 +201,15 @@ function RuntimeSwitches({ lease, onChanged }) {
     </form>
     <p class="note">${machineText("switchesNote")}</p>
     ${error ? html`<p class="runtime-error" role="alert">${error}</p>` : null}
-  </section>`;
+    </div></details></section>${diagnosticsPanel}</div>
+    ${guide}
+  </div>`;
 }
 export function RuntimesPanel({navKey}) {
   const lease=useLease(`runtimes:${navKey}`), state=useRuntimeCatalog(), {windowsCli}=useStore(appStore);
   const [pairing,setPairing]=useState(null), [busy,setBusy]=useState(""), [error,setError]=useState("");
   const [server,setServer]=useState(() => typeof location === "undefined" ? "" : location.origin);
+  const diagnostics=useRef(null);
   useEffect(() => {
     if (!pairing) return;
     const remaining = new Date(pairing.expiresAt).getTime()-Date.now();
@@ -217,15 +238,17 @@ export function RuntimesPanel({navKey}) {
   const machines=state.data?.machines || [];
   const command=runtimeConnectCommand(server);
   const download=()=>html`<a class="btn btn-sm runtime-bundle-download" href="/ui/runtimes/download/windows" download><${Icon} name="download" size=${15} />${machineText("download")}</a>`;
+  const computers = html`<section class="runtime-computers"><h3>${machineText("computersTitle")}</h3>${windowsCli ? html`<${LocalWindowsRuntime} openDiagnostics=${() => {if (diagnostics.current) {diagnostics.current.open=true;diagnostics.current.scrollIntoView?.({block:"start"});}}} />` : null}
+    <section class="runtime-machines" aria-label=${machineText("machines")}>${machines.map(machine => html`<${MachineCard} key=${machine.id} machine=${machine} busy=${!!busy} action=${action} />`)}${state.data && !machines.length ? html`<p class="note">${machineText("empty")}</p>` : null}</section>
+    <article class="runtime-host-note"><${Icon} name="info" size=${18} /><span>${machineText("localHint")}</span></article></section>`;
+  const diagnosticsPanel = windowsCli ? html`<details ref=${diagnostics} class="runtime-local-diagnostics s-ui-disclosure"><summary><${Icon} name="view" size=${22} /><span><strong>${machineText("diagnostics")}</strong><small>${machineText("localWindows")}</small></span></summary><div class="s-disclosure-body"><${WindowsCliPanel} navKey=${`${navKey}:local`} embedded=${true} /></div></details>` : null;
   return html`<section class="runtime-settings">
-    <header class="runtime-heading"><div><h2>${machineText("title")}</h2><p class="note">${machineText("lead")}</p></div><div>${state.data?.enabled === true && !pairing ? download() : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button></div></header>
-    <${RuntimeSwitches} lease=${lease} onChanged=${state.refresh} />
+    <header class="runtime-heading s-page-head"><div><h2>${machineText("title")}<span class="s-scope">${machineText("fleetScope")}</span></h2><p class="s-page-lead">${machineText("lead")}</p></div><div><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button>${state.data?.enabled === true && !pairing ? download() : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button></div></header>
     ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
     ${state.loading && !state.data ? html`<p role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${machineText("loading")}</p>` : null}
     ${error || state.error ? html`<div class="runtime-error" role="alert"><p>${error || state.error}</p>${state.data && state.error ? html`<p>${machineText("seenCached")}</p>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${machineText("retry")}</button></div>` : null}
     ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><h3>${machineText("pairing")}</h3><p>${machineText("pairingHint")}</p><div class="runtime-bundle-step">${download()}<p class="note">${machineText("downloadHint")}</p></div><label><span>${machineText("server")}</span><input type="url" value=${server} spellcheck=${false} onInput=${event => setServer(event.target.value)} /></label><p class="note">${machineText("serverHint")}</p>${command ? html`<label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label>` : html`<p role="alert">${machineText("serverInvalid")}</p>`}<label><span>${machineText("pairingCode")}</span><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p role="status">${machineText("pairingWait")}</p><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></section>` : null}
-    <article class="runtime-local"><h3><${Icon} name="code" size=${18} />${machineText("local")}</h3><p class="note">${machineText("localHint")}</p></article>
-    <section aria-label=${machineText("machines")}>${machines.map(machine => html`<${MachineCard} key=${machine.id} machine=${machine} busy=${!!busy} action=${action} />`)}${state.data && !machines.length ? html`<p class="note">${machineText("empty")}</p>` : null}</section>
-    ${windowsCli ? html`<details class="runtime-local-diagnostics"><summary>${machineText("localWindows")}</summary><${WindowsCliPanel} navKey=${`${navKey}:local`} embedded=${true} /></details>` : null}
+    <${RuntimeSwitches} lease=${lease} onChanged=${state.refresh} computers=${computers} diagnosticsPanel=${diagnosticsPanel} />
+    <p class="note runtime-operations-note">${machineText("operationsNote")}</p>
   </section>`;
 }

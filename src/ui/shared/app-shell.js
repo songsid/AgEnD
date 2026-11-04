@@ -21,6 +21,7 @@ import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
+import { initSettingsContentWidth } from "./settings-width.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null, banner: null });
@@ -127,6 +128,13 @@ export function clampSidebarWidth(w, vw) {
   return Math.round(Math.min(max, Math.max(SIDEBAR_W.min, w)));
 }
 function storedSidebarWidth() { try { const v = Number(localStorage.getItem(SIDEBAR_W_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; } }
+
+// #2978 merge (stale tabs, quality rule 3): Settings' content width lives in its own module — a tab opened before an
+// upgrade keeps this shell module, and a lazily loaded Settings panel that imported these names from here would fail to
+// load at all. Re-exported, so the shell and its callers are unchanged.
+export { SETTINGS_CONTENT_WIDTH_KEY, SETTINGS_CONTENT_WIDTHS, DEFAULT_SETTINGS_CONTENT_WIDTH, settingsContentWidthStore,
+  initSettingsContentWidth, setSettingsContentWidth } from "./settings-width.js";
+
 /** { width: px | null } — null: the default width (tokens.css). */
 export const sidebarWidthStore = createStore({ width: null });
 /** Set the width (clamped to this viewport); `save`: this device keeps it. null: back to the default, nothing kept. */
@@ -422,23 +430,24 @@ function ViewOnlyNav({ route }) {
  * This browser's theme and language (#1604: Settings → This device; for the anonymous View reader, the footer's
  * popover). The same stores as ever: AgendTheme (theme.js) and setLang (app-i18n.js) — only where they are shown moved.
  */
-export function DevicePrefs({ labels = false } = {}) {
+export function DevicePrefs({ labels = false, fields = ["theme", "language", "names"] } = {}) {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
   const [l, setL] = useState(lang());
   const names = useStore(namesStore);   // #1722
   // #1665: what is in force, as it changes — another device's choice arriving while this is open is shown at once.
   useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
   useEffect(() => onLang(setL), []);
+  const shows = (field) => fields.includes(field);
   return html`<div class=${`prefs${labels ? " labelled" : ""}`}>
-    <label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
+    ${shows("theme") ? html`<label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
       <select id=${labels ? "pref-theme" : undefined} value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>
-        <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option></select></label>
-    <label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
+        <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option></select></label>` : null}
+    ${shows("language") ? html`<label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
       <select id=${labels ? "pref-lang" : undefined} value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
-        <option value="en">English</option><option value="zh-TW">中文</option></select></label>
-    <label class="pref"><${Icon} name="user" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.names")}</span>
+        <option value="en">English</option><option value="zh-TW">中文</option></select></label>` : null}
+    ${shows("names") ? html`<label class="pref"><${Icon} name="user" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.names")}</span>
       <select id=${labels ? "pref-names" : undefined} value=${names.primary} aria-label=${t("app.names")} onChange=${(e) => setNamesPrimary(e.target.value)}>
-        <option value="nickname">${t("app.namesNickname")}</option><option value="instance">${t("app.namesInstance")}</option></select></label>
+        <option value="nickname">${t("app.namesNickname")}</option><option value="instance">${t("app.namesInstance")}</option></select></label>` : null}
   </div>`;
 }
 
@@ -769,6 +778,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   const nav = useStore(navStore);
   const shell = useStore(shellStore);
   const root = useRef(null);
+  useLayoutEffect(() => { initSettingsContentWidth(); }, []);
   usePageTheme(root, nav.route);
   const [, relang] = useState(0);
   // A language switch re-renders everything and gives the panel a new lease (its key includes the language).

@@ -103,6 +103,19 @@ describe("#2347 §6: the registry is what Settings draws", () => {
       || [reg.settingLabel(e, "en"), reg.settingLabel(e, "zh-TW")].some((l: string) => !l || l.startsWith("settings.") || l.startsWith("app.") || l.startsWith("chat.")));
     expect([bad.map((e: any) => e.id), ids.length === new Set(ids).size]).toEqual([[], true]);
   });
+  it.each(["prefs.theme", "device.motion", "device.css-off"])("the moved %s entry opens Look and reveals its field", async (id) => {
+    const entry = reg.SETTINGS_REGISTRY.find((e: any) => e.id === id);
+    expect(entry.section).toBe("look");
+    await open("agents");
+    reg.goToSetting(entry); await settle(4);
+    await open("look");
+    const target: any = p.root.querySelector(entry.target);
+    const field: any = target.matches("input, select, textarea, button") ? target : target.querySelector("input, select, textarea, button");
+    const closedDisclosures: any[] = [];
+    for (let node = field?.parentElement; node; node = node.parentElement) if (node.tagName === "DETAILS" && !node.open) closedDisclosures.push(node);
+    expect([nav.navStore.get().route, !!field, p.document.activeElement === field, closedDisclosures.length])
+      .toEqual([{ panel: "settings", section: "look" }, true, true, 0]);
+  });
 });
 
 describe("#2347 §6: what a search finds", () => {

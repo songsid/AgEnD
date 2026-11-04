@@ -154,6 +154,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "fx-motion.js",
     // #1958: identity colours on the page and the Color dialog (static code; the colours come in the status frame).
     "identity-color.js",
+    // #2936 / #2978 merge: Settings' content width (this device's), shared by the shell and the lazy Settings panel.
+    "settings-width.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
     // #3008: the QR code of an authenticator's setup (qrcode-generator 2.0.4, MIT; shared/vendor/vendor.json, byte-checked).
     // Static code, no data — the secret is drawn by Settings behind the gate; loaded only when an app is being set up.

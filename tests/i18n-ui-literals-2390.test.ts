@@ -26,18 +26,19 @@ const ALLOWED = new Map<string, string>([
   ["settings-dialogs.js\tplaceholder\te.g. file:prompts/dev.md", "an example value (file: syntax)"],
   ["panel-settings.js\ttext\tcollab", "the config mode's name (channel collab)"],
   ["panel-settings.js\ttext\tClassicBot", "a product name"],
+  ["panel-settings.js\ttext\tfleet.yaml", "the configuration file's literal filename"],
   ["panel-settings.js\tplaceholder\tagend.example.com", "an example hostname"],
   ["panel-settings.js\tplaceholder\t/path/to/projects", "an example path (Agent defaults → Project folders, moved from Fleet → Config by #2347 §10)"],
   ["backend-signin.js\tlabel\tURL", "an acronym, the same in both languages"],
   ["native-instance-settings.js\ttext\tWindows ·", "the runtime product name and separator"],
   ["panel-chat.js\ttext\tWindows", "the runtime product name"],
   ["panel-fleet.js\ttext\tRuntime", "the execution runtime's technical label"],
-  ["panel-settings.js\ttext\tWindows", "the runtime product name"],
   ["panel-windows-agent.js\ttext\tWindows ·", "the runtime product name and separator"],
   ["panel-windows-cli.js\ttext\tCLI", "an acronym, the same in both languages"],
   ["panel-windows-cli.js\tlabel\tCLI", "an acronym, the same in both languages"],
   ["panel-windows-cli.js\tplaceholder\tJ:\\Project\\Game", "an example Windows path"],
   ["panel-windows-cli.js\ttitle\tWindows CLI", "the runtime product name and CLI acronym"],
+  ["settings-shortcuts.js\ttext\tEscape", "the keyboard key's printed name"],
 ]);
 
 const parse = (code: string, at = "inline.js") => ts.createSourceFile(at, code, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);

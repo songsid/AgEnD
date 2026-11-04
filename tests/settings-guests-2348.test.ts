@@ -368,6 +368,22 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     expect(w.$(".s-guest-fields")).toBeNull();
     expect(sent.filter((s) => s.path.startsWith("/api/settings/guests"))).toEqual([]);
   });
+  it("a read-only card keeps every guest's details visible while edits and immediate actions remain unavailable", async () => {
+    fleet = { defaults: {}, instances: { alpha: {}, beta: {} }, web: { guests: { enabled: true, grants: structuredClone(GRANTS) } } };
+    overview = structuredClone(OVERVIEW);
+    const { GuestsSection } = await import("/ui/js/settings-guests.js");
+    await p.mount(h(GuestsSection, { ctx: { fleet, schema, readOnly: true, stage: () => {}, unstage: () => {} } }));
+    await settle(12);
+    const details = [...p.root.querySelectorAll(".guest-row")];
+    expect(details.map((row: any) => [row.getAttribute("data-account"), row.hasAttribute("hidden")]))
+      .toEqual([["dc:111", false], ["tg:222", false]]);
+    expect(details.map((row: any) => [...row.querySelectorAll(".g-chip")].map((chip: any) => chip.textContent)))
+      .toEqual([["alpha"], ["beta"]]);
+    expect(p.root.querySelector(".s-guest-fields")?.disabled).toBe(true);
+    expect(p.root.querySelectorAll(".guest-actions")).toHaveLength(0);
+    expect(p.root.querySelector("#grantsSearch")).toBeNull();
+    expect(sent.filter((s) => s.method !== "GET" || s.path === "/api/settings/guests/people")).toEqual([]);
+  });
 });
 
 describe("#2667: the ClassicBot rooms in the picker", () => {

@@ -31,7 +31,7 @@ export function NativeInstanceSettings({ name, inst, ctx, onClose }) {
     if (Object.keys(patch).length) ctx.stageAgent(name,inst,patch);
     onClose();
   };
-  return html`<${Dialog} title=${ctx.shortName(name,inst)} onClose=${onClose} wide=${true} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tn("cancel")}</button><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${stage}>${tn("modalDone")}</button>`}>
+  return html`<${Dialog} title=${ctx.shortName(name,inst)} onClose=${onClose} wide=${true} drawer=${true} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tn("cancel")}</button><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${stage}>${tn("modalDone")}</button>`}>
     <div class="form native-instance-settings"><p class="note"><${CliProductMark} id=${inst.backend} size=${20} /> Windows · ${cliLabel(inst.backend)} — ${t("nativeInstance.fixed")}</p>${machineId ? html`<p class="note runtime-instance-machine">${tr("machine")}: ${machine?.name || inst.machine_name || machineId}</p>` : null}
       <label class="field"><span>${tn("displayName")}</span><input value=${form.display_name} maxLength=${64} onInput=${event => set("display_name")(event.target.value)} /></label>
       <label class="field"><span>${tn("description")}</span><input value=${form.description} maxLength=${512} onInput=${event => set("description")(event.target.value)} /></label>
