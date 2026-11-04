@@ -27,6 +27,16 @@ export interface WindowsAgent {
   fleet_instance?: string;
   machineId?: string;
 }
+/**
+ * M-2297: the per-PC agent limit is reached. The message keeps its original first sentence (callers match on it) and
+ * names the limit and what holds the slots; `limit` and `holders` carry the same for a localised view.
+ */
+export class MachineSlotLimitError extends Error {
+  constructor(readonly limit: number, readonly holders: Array<{ name: string; unknown: boolean }>) {
+    super(`This Windows computer has reached its concurrent agent limit (${limit}): ${holders.map(h => h.unknown ? `${h.name} (outcome unknown — check and unlock it)` : h.name).join(", ")}`);
+    this.name = "MachineSlotLimitError";
+  }
+}
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
 export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string }
 interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string }> }
@@ -93,8 +103,12 @@ export class WindowsAgents {
   /** Synchronous profile reservation is shared by exec and pane starts. Unknown owners still occupy a slot. */
   private admitMachineSlot(agent: WindowsAgent): void {
     const machine = agent.machineId?.toLowerCase();
-    const occupied = this.data.agents.filter(other => other.id !== agent.id && other.machineId?.toLowerCase() === machine && !!other.activeId).length;
-    if (occupied >= maxAgentsPerMachine()) throw Error("This Windows computer has reached its concurrent agent limit");
+    const holders = this.data.agents.filter(other => other.id !== agent.id && other.machineId?.toLowerCase() === machine && !!other.activeId);
+    const limit = maxAgentsPerMachine();
+    if (holders.length >= limit) {
+      // M-2297: say which agents hold the slots (an "unknown outcome" one needs a person to check and unlock it).
+      throw new MachineSlotLimitError(limit, holders.map(other => ({ name: other.fleet_instance ?? other.name, unknown: this.get(other.id).blocked })));
+    }
   }
   /** Metadata reservation before a pane can spawn. Exec and persistent adapters can never own one profile together. */
   reservePane(id: string, launchId: string): WindowsAgent {

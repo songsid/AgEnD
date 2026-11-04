@@ -106,6 +106,8 @@ export interface OutboundContext {
   requestWindowsCreate?(requester: string, rawArgs: Record<string, unknown>): Promise<{ id: string; state: string }>;
   /** #2942: a Windows agent's settings (display_name, description, model) an agent asked to change — held the same way. */
   requestWindowsConfig?(requester: string, name: string, patch: Record<string, unknown>): Promise<{ id: string; state: string }>;
+  /** M-2297: the fleet's stop (lifecycle transition; a native pane closed, never detached). Throws when it cannot. */
+  stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean; carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null } }): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
@@ -1103,8 +1105,11 @@ const stopInstance: Handler = async (ctx, rawArgs, respond) => {
   try {
     const daemon = ctx.lifecycle.daemons.get(v.data.name);
     if (!daemon) { respond(null, `Instance '${v.data.name}' is not running`); return; }
-    await daemon.stop();
-    ctx.lifecycle.daemons.delete(v.data.name);
+    // M-2297: the fleet's own stop (lifecycle transition), never a bare daemon.stop(). The bare stop DETACHED a native
+    // Windows pane — its CLI kept running unsupervised and kept a machine slot — and this then answered "stopped". The
+    // lifecycle closes a native pane (kill confirmed → its positive exit → the slot released) and throws when that exit
+    // is unconfirmed, which is answered as a failure below, never "stopped".
+    await ctx.stopInstance(v.data.name);
     respond({ success: true, status: "stopped" });
   } catch (err) {
     respond(null, `Failed to stop '${v.data.name}': ${(err as Error).message}`);
