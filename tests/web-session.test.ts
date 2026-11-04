@@ -244,6 +244,23 @@ describe("revocation", () => {
     expect(store.authenticate(second.sessionId, EPOCH, gateway)).not.toBeNull();
   });
 
+  it("activate bumps lastSeen so a live local session is the LRU, not the admitted candidate", () => {
+    const { clock, opts } = clocked();
+    const store = new WebSessionStore({ ...opts, maxSessions: 1 });
+    const local = store.create(input);
+    clock.now += 1000;
+    const exposureId = "a".repeat(32);
+    const candidate = store.create({ ...input, surface: "gateway", exposureId, pending: true, label: "public candidate" });
+    const gateway = { surface: "gateway" as const, exposureId };
+
+    clock.now += 120_000;
+    expect(store.authenticate(local.sessionId, EPOCH)).not.toBeNull();
+    clock.now += 1000;
+    expect(store.activate(candidate.sessionId)).toBe(true);
+    expect(store.authenticate(candidate.sessionId, EPOCH, gateway)).not.toBeNull();
+    expect(store.authenticate(local.sessionId, EPOCH)).toBeNull();
+  });
+
   it("marks the caller's own session in the list", () => {
     const store = new WebSessionStore();
     const a = store.create({ ...input, label: "phone" });
