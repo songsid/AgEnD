@@ -59,8 +59,8 @@ The user has already been shown the plain notice in this topic. When they ask, e
 ## Moving an instance from classic to the TUI engine (#2598)
 
 kiro-cli 3.0 drops the classic engine (`kiro_ui: legacy`), so classic instances are being moved to the TUI engine,
-**one batch at a time and only with the user's OK for that batch**. The move is `migrate_kiro_instance` (a
-coordinator-level tool; you do not have it). It carries the conversation: the instance's classic conversation is
+**one batch at a time and only with the user's OK for that batch**. The move is `migrate_kiro_instance` (available
+in the `general`, `coordinator` and `full` tool sets). It carries the conversation: the instance's classic conversation is
 resumed once under the TUI and becomes its own. A fleet admin confirms each move in this General topic: a
 "Move it / Cancel" prompt. Explain it if asked; never press it on the user's behalf.
 
@@ -92,8 +92,8 @@ session identity after `/chat` or `/clear`.
   this instance's. When it can't be proven, or the check passes its 30 s / 2 GiB limit, the instance resumes the
   conversation on record and the Log tab says why.
 - **Two conversations after an interrupted carry (#2753).** When a stopped TUI instance has its original carried
-  conversation and a newer one with work, recovery holds instead of choosing. `reconcile_kiro_instance` (full and
-  coordinator tool sets) asks a fleet admin to confirm, in General, keeping the original and archiving the named
+  conversation and a newer one with work, recovery holds instead of choosing. `reconcile_kiro_instance` (general,
+  coordinator and full tool sets) asks a fleet admin to confirm, in General, keeping the original and archiving the named
   newer one intact. Offer it only after the user chose those exact ids; docs/kiro-reconciliation.md explains it.
 - **"Kiro's terminal is in use by another program" (#2682).** While a kiro pane runs `/editor`, `/transcript`, a
   `!` command or a focused `/kvim` panel (legacy: `/editor`, `/reply`, `!`), AgEnD holds deliveries. Tell the user

@@ -413,7 +413,7 @@ agent 能做什麼，由每個 instance 的 `tool_set` 決定，而且是由 fle
 
 **`coordinator` 和 `full` 目前是同樣的 55 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
 
-`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。
+`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。General 是 AgEnD 的管理入口，因此 `general` 權限組合包含所有編排工具（`ORCHESTRATION`：建立、刪除、替換、啟動、停止、暫停、喚醒與重啟 instance；部署與拆除模板；team 增刪改；`update_instance_config` 與 `update_fleet_defaults`；`migrate_kiro_instance` 與 `reconcile_kiro_instance`；`update_decision`；以及 `get_web_settings`／`set_web_settings`），同時預設不納入工作倉租用與主機原始設定／紀錄檢視工具（`checkout_repo`、`release_repo`、`get_fleet_config`、`get_instance_logs`、`list_deployments`、`validate_config`）。
 
 `delegate_task` 刻意設計成 worker 工具。它不建立任何東西、不刪除任何東西，而且目標必須已經存在，所以一般 agent 可以把工作交給同伴，卻不能自己生出一個同伴。
 
@@ -723,7 +723,7 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 `kiro_engine_status`（除了 `minimal` 以外每種權限組合都有的唯讀工具）會針對每個 kiro instance 和 ClassicBot 頻道，顯示它的 `kiro_ui`、下次啟動會用的引擎旗標（或 kiro-cli 會拒絕的原因）、歷次啟動紀錄（每次變動時的 kiro-cli 和 AgEnD 版本）、它的 V3 session，以及它的憑證 profile。它讀的是 AgEnD 在上次啟動時記錄的內容，自己從不執行 kiro-cli。它也會顯示 `engine_floor`（見下）。
 
-**從經典引擎搬到 TUI（`migrate_kiro_instance`，#2598）。** kiro-cli 3.0 拿掉了經典引擎。手動設 `kiro_ui: tui` 會讓 instance 在空的 TUI 對話上啟動。`migrate_kiro_instance`（coordinator 與 full 權限組合才有）一次搬一個 fleet instance，並帶著它的對話：
+**從經典引擎搬到 TUI（`migrate_kiro_instance`，#2598）。** kiro-cli 3.0 拿掉了經典引擎。手動設 `kiro_ui: tui` 會讓 instance 在空的 TUI 對話上啟動。`migrate_kiro_instance`（general、coordinator 與 full 權限組合才有）一次搬一個 fleet instance，並帶著它的對話：
 - 它會在 General 貼出「搬過去／取消」提示，fleet admin 在那裡確認之前什麼都不會變。
 - 確認後，AgEnD 會設定 `kiro_ui: tui`，把 instance 的經典對話預備為它的 TUI 對話，並重啟執行中的 instance。第一次 TUI 啟動會接續那個對話一次（kiro 因此把整段歷史複製到它的 session 檔），並登記為 instance 自己的對話。
 - 結果會貼在 General 和該 instance 的 topic。

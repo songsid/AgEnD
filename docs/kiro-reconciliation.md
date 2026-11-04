@@ -2,7 +2,7 @@
 
 Use this only when a TUI fleet instance has its original carried conversation and a newer conversation with work. Automatic recovery deliberately holds instead of choosing between them.
 
-`reconcile_kiro_instance` is available to full/coordinator tool profiles. It requests a fleet-admin **Confirm in General**; the tool call itself does not archive or change anything. It supports keeping the proven original carry, not selecting an arbitrary new session. The instance's CLI must already be stopped (a parked instance is accepted only if stopped-process proof also passes).
+`reconcile_kiro_instance` is available to general, coordinator and full tool profiles. It requests a fleet-admin **Confirm in General**; the tool call itself does not archive or change anything. It supports keeping the proven original carry, not selecting an arbitrary new session. The instance's CLI must already be stopped (a parked instance is accepted only if stopped-process proof also passes).
 
 ```json
 {

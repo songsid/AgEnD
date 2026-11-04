@@ -4,12 +4,14 @@ description: restart vs replace vs pause/wake; when to use each
 roles: [general]
 ---
 
-## Restart vs Replace
+## Restart vs Replace vs Stop / Delete
 
 - `restart_instance("<name>")` — keeps the session, reloads config. Use when config changed.
 - `replace_instance("<name>")` — kills old, creates a fresh instance with handover context.
   Use when the session is the problem: hallucinating / referencing stale info, stuck in a
   tool-call loop, or context is degrading (only backends that report context % surface that).
+- `stop_instance("<name>")` / `start_instance("<name>")` — stop or start an instance without removing its configuration or topic.
+- `delete_instance("<name>")` — stop and remove the instance (plus its schedules and team memberships; pass `delete_topic: true` to delete its topic as well).
 
 ## Pause / Wake (resource management)
 
