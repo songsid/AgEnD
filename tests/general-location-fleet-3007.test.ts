@@ -83,3 +83,35 @@ it("the positive-stop boundary terminates old queued input and holds begun input
     expect(outbox.needsAttention("2000-01-01T00:00:00Z").map(row => row.deliveryId).sort()).toEqual([begun.deliveryId, queued.deliveryId].sort());
   } finally { outbox.close(); }
 });
+
+it("the real Fleet can reverse a config-save interruption while Windows is offline without recapturing the stopped host", async () => {
+  const r = rig(); r.fm.saveFleetConfig.mockImplementationOnce(() => { throw Error("config save interrupted"); });
+  await expect(r.fm.switchGeneralLocation(r.request(), () => true, r.execution())).rejects.toThrow("config save interrupted");
+  expect(r.fm.daemons.has("general")).toBe(false); expect(r.fm.fleetConfig.instances.general.runtime).not.toBe("windows");
+  r.fm.runtimeHub.machine().status = "offline";
+  const retry = { ...r.request(), target: { location: "host" } };
+  expect((await r.fm.switchGeneralLocation(retry, () => true, r.execution())).started).toBe(true);
+  expect(r.fm.fleetConfig.instances.general.runtime).not.toBe("windows"); expect(r.start).toHaveBeenCalledOnce();
+  expect(r.store.read("general")!.active).toBe("host");
+});
+
+it("revocation during selected startup reaches the production startup capability and leaves a visible start hold", async () => {
+  const r = rig(); r.fm.startInstance.mockImplementation(async (...args: any[]) => {
+    const capability = args[6]; expect(capability).toBeInstanceOf(SettingsExecution); expect(capability.current()).toBe(true);
+    r.revoke(); await Promise.resolve(); capability.assert(); throw Error("must not publish");
+  });
+  expect((await r.fm.switchGeneralLocation(r.request(), () => true, r.execution())).started).toBe(false);
+  expect(r.fm.daemons.has("general")).toBe(false); expect(r.store.read("general")).toMatchObject({ hold: "start", pending: { phase: "selected" } });
+});
+
+it("the runtime disconnect callback immediately holds only that Windows General's old waiting input", async () => {
+  const r = rig(), machineId = r.request().target.machineId;
+  r.fm.fleetConfig.instances.general = { ...r.fm.fleetConfig.instances.general, runtime: "windows", machine_id: machineId };
+  r.fm.fleetConfig.instances.worker = { ...r.fm.fleetConfig.instances.general, general_topic: false };
+  r.fm.runtimeHub = null; const hub = r.fm.runtimeCoordinator();
+  const hold = vi.spyOn(r.fm, "holdGeneralOldDeliveries").mockImplementation(() => {}), cancel = vi.spyOn(r.fm, "cancelPendingDeliveries").mockImplementation(() => {});
+  try {
+    hub.options.changed({ type: "machine", machineId }); await Promise.resolve();
+    expect(hold).toHaveBeenCalledExactlyOnceWith("general"); expect(cancel).toHaveBeenCalledExactlyOnceWith("general"); expect(r.start).not.toHaveBeenCalled();
+  } finally { hub.close(); }
+});

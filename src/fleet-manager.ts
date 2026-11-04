@@ -1214,7 +1214,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
       changed:event=>{
         if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {
-          for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId)this.nativeMcpStore?.closeInstance(name);
+          for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId) {
+            this.nativeMcpStore?.closeInstance(name);
+            if (config.general_topic) { this.cancelPendingDeliveries(name); this.holdGeneralOldDeliveries(name); }
+          }
+          this.needsYou?.poke();
         }
         if(this.runtimeStatusScheduled || this.shuttingDown)return;
         this.runtimeStatusScheduled=true;
@@ -1540,7 +1544,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           },
           start: async () => {
             check(); if (!execution.completed) throw Error("General's selected binding has no committed approval");
-            await this.startInstance(name, expected, true, "fleet-topic", false, transition); check();
+            // The committed receipt permits only this selected startup. Live authority still fences every awaited spawn boundary.
+            const startup = new SettingsExecution({ current: () => current() && execution.completed && execution.remainingMs > 0,
+              snapshot: () => this.fleetConfig });
+            try { await this.startInstance(name, expected, true, "fleet-topic", false, transition, startup); }
+            finally { startup.close(); }
+            check();
             const daemon = this.daemons.get(name);
             if (!daemon || daemon.getProcessStatus() !== "running" || isNativePaneInstance(expected) && !daemon.nativePaneCurrent()) throw Error(t("general_location.start_failed"));
             await this.connectIpcToInstance(name); check();
@@ -1559,7 +1568,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } finally { lease?.release(); if (this.generalLocationFlights.get(name) === token) this.generalLocationFlights.delete(name); this.needsYou?.poke(); }
     });
   }
-  /** After the old owner exits, old waiting input becomes visible terminal attention, never a new binding's queue. */
+  /** An offline PC or a confirmed binding boundary holds old waiting input; it never becomes another conversation's queue. */
   private holdGeneralOldDeliveries(name: string): void {
     const outbox = this.deliveryOutbox; if (!outbox) return;
     for (const row of outbox.listPending().filter(row => row.targetInstance === name)) {

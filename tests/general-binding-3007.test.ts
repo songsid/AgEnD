@@ -174,6 +174,7 @@ it("a selected config-save gap can switch back while the selected PC is offline,
   await expect(switchGeneralLocation(r.deps, r.request(), r.execution())).rejects.toThrow("save gap");
   expect(r.current()).toBe(r.original); expect(r.store.read(r.name)!.active).toBe(r.windows.id);
   r.deps.prepare.mockRejectedValue(Error("PC is offline; must not publish"));
+  r.deps.stop.mockImplementation(async () => { expect(r.current().runtime).toBe("windows"); return undefined as never; });
   await switchGeneralLocation(r.deps, r.request({ location: "host" }), r.execution());
   expect(r.current()).toEqual(r.original); expect(r.deps.stop).toHaveBeenCalledTimes(2); expect(r.deps.start).toHaveBeenCalledTimes(1);
   expect(r.store.read(r.name)!.active).toBe("host");
