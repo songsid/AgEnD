@@ -26,6 +26,8 @@ function tn(key, values = {}) {
   for (const [k, v] of Object.entries(values)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }
+/** A remote computer by its name; with no name yet, by the start of its id, never the whole id. The 8-character cut matches `shortId` in src/ui/settings-agent-filters.js; keep the two in step. */
+export const machineName = (id, name) => name || tn("machineShort", { value: String(id).slice(0, 8) });
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 /** A row's instance name: `name` (status frames) or `instance_name` (View's roster). */
 const nameOf = (it) => (it && (it.name != null ? it.name : it.instance_name)) || "";
@@ -145,7 +147,7 @@ export function instanceTooltip(it) {
   else lines.push(name);
   lines.push(line("tooltipBackend", backendLabel(it.backend)));
   if (it.runtime) lines.push(`Runtime: ${runtimeLabel(it.runtime)}`);
-  if (it.machine_id) lines.push(line("tooltipMachine",it.machine_name || it.machine_id));
+  if (it.machine_id) lines.push(line("tooltipMachine",machineName(it.machine_id,it.machine_name)));
   if (it.machine_id && it.machine_status !== "online") lines.push(tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline"));
   const src = (s) => (s === "instance" || s === "classic" ? tn("srcConfigured") : s === "fleet-default" ? tn("srcFleetDefault") : "");
   lines.push(line("tooltipModel", (modelText(it) || tn("tooltipUnavailable")) + src(it.model_source)));
@@ -630,7 +632,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           <span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span></span>
         ${two ? html`<span class="inst-line inst-line2"><span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>
           ${mins != null ? html`<span class=${`inst-when${fade > 0 ? " fresh" : ""}`} title=${tn("replyTitle", { time: new Date(Date.parse(it.last_reply)).toLocaleString() })}>${replyText(mins)}</span>` : null}</span>` : null}
-        ${it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:it.machine_name || it.machine_id})}><span class="inst-machine-name">${it.machine_name || it.machine_id}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
+        ${it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:machineName(it.machine_id,it.machine_name)})}><span class="inst-machine-name">${machineName(it.machine_id,it.machine_name)}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
         ${facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>
     </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })}

@@ -27,6 +27,8 @@ beforeAll(async()=>{
     if(diagnostic){const target=machines.find(item=>item.id===diagnostic[1]);return response(diagnostic[2]==="tasks"?{tasks:[]}:{inventory:target?.inventory || null});}
     if(path==="/api/settings/runtimes")return response({switches:{windows_cli:{on:false,configured:false,environment:null},remote_runtime:{on:enabled,configured:enabled,environment:null}},max_agents_per_machine:{value:4,min:1,max:16,default:4},local_origin:"http://127.0.0.1:19280"});
     if(path==="/ui/runtimes/pairing")return response({pairingId:"test",code:"PAIR-TEST-CODE",expiresAt:Date.now()+60000});
+    const revoking=/^\/ui\/runtimes\/machines\/([^/]+)\/revoke$/.exec(path);
+    if(revoking){machines=machines.map(item=>item.id===revoking[1]?{...item,status:"revoked"}:item);return response({ok:true});}
     if(path===`/ui/runtimes/machines/${idB}/approve`){machines=machines.map(item=>item.id===idB?{...item,status:"online"}:item);return response({ok:true});}
     if(path.startsWith("/ui/models?")){const id=new URL(path,"http://localhost").searchParams.get("machineId");return response({models:[{id:id===idA?"model-a":"model-b",label:id===idA?"Model A":"Model B"}],source:"cli-cache"});}
     if(path==="/ui/backends")return response({backends:[{name:"claude-code",installed:true}],defaultBackend:"claude-code"});
@@ -245,6 +247,46 @@ describe("remote machine UI",()=>{
     const ids=p.root.querySelectorAll(".model-pick option").map((item:any)=>item.value);expect(ids).toContain("model-b");expect(ids).not.toContain("model-a");
     button("Back").click();await settle();await choose(idA);button("Next").click();await settle(8);expect(p.root.querySelector(".agent-runtime-fields input").value).toBe("C:\\DesktopOnly");expect(adapter().value).toBe("pane");
     button("Create").click();await settle(8);expect(requests.find(row=>row.path==="/ui/instances")?.body).toMatchObject({native_adapter:"pane",machineId:idA});
+  });
+  it("does not list a revoked computer on load, nor offer it when creating an Agent",async()=>{
+    machines=[machine(idA,"Desktop"),machine(idB,"Laptop","revoked")];
+    await p.mount(h(Panel,{navKey:"revoked-on-load"}));await settle(12);
+    expect(p.root.querySelector(`[data-machine-id="${idA}"]`)).not.toBeNull();expect(p.root.querySelector(`[data-machine-id="${idB}"]`)).toBeNull();
+    expect(p.root.textContent).not.toContain("Laptop");expect(p.root.querySelector(".runtime-computers-heading .note").textContent).toBe("1 computers");
+    await p.unmount();catalog.forgetRuntimeCatalog();
+    await p.mount(h(Create,{onClose(){}}));await settle(8);
+    const values=p.root.querySelectorAll(".agent-runtime-picker input").map((item:any)=>item.value);
+    expect(values).toContain(`machine:${idA}`);expect(values).not.toContain(`machine:${idB}`);
+  });
+  it("keeps a computer revoked on this page as a revoked card, through polling, until the page is left",async()=>{
+    (globalThis as any).confirm=()=>true;await p.mount(h(Panel,{navKey:"revoked-here"}));await settle(12);
+    const card=()=>p.root.querySelector(`[data-machine-id="${idA}"]`);
+    expect(card().querySelector(".runtime-kind").textContent).toBe("Paired");
+    card().querySelector(".runtime-machine-menu button").click();await settle();button("Revoke connection").click();await settle();
+    await settle(12);
+    expect(requests).toContainEqual({path:`/ui/runtimes/machines/${idA}/revoke`,body:{}});
+    expect(card()).not.toBeNull();expect(card().className).toContain("is-revoked");
+    expect(card().querySelector(".runtime-status").textContent).toBe("Revoked");expect(card().querySelector(".runtime-kind")).toBeNull();expect(card().textContent).not.toContain("Paired");
+    expect(card().querySelector(".runtime-cli-table")).toBeNull();expect(card().querySelector(".runtime-inspect")).toBeNull();
+    expect(card().querySelector(".runtime-revoked-note").textContent).toBe("Revoked. It leaves this list when you refresh the page.");
+    button("Refresh machines").click();await settle(12);
+    expect(card()).not.toBeNull();expect(card().className).toContain("is-revoked");
+    expect(p.root.querySelector(`[data-machine-id="${idB}"]`)).not.toBeNull();expect(p.root.querySelector(".runtime-empty-remotes")).toBeNull();
+    await p.unmount();catalog.forgetRuntimeCatalog();
+    await p.mount(h(Panel,{navKey:"revoked-here-reloaded"}));await settle(12);
+    expect(card()).toBeNull();expect(p.root.textContent).not.toContain("Desktop");expect(p.root.querySelector(`[data-machine-id="${idB}"]`)).not.toBeNull();
+  });
+  it("drops a computer revoked on the page when the page is left and opened again, with the loaded list still cached",async()=>{
+    (globalThis as any).confirm=()=>true;await p.mount(h(Panel,{navKey:"revoked-leave"}));await settle(12);
+    p.root.querySelector(`[data-machine-id="${idA}"] .runtime-machine-menu button`).click();await settle();button("Revoke connection").click();await settle(12);
+    expect(p.root.querySelector(`[data-machine-id="${idA}"]`).className).toContain("is-revoked");
+    await p.unmount(); // the catalog is NOT forgotten: only the page's own memory of the revocation goes
+    await p.mount(h(Panel,{navKey:"revoked-leave-again"}));await settle(12);
+    expect(p.root.querySelector(`[data-machine-id="${idA}"]`)).toBeNull();expect(p.root.querySelector(`[data-machine-id="${idB}"]`)).not.toBeNull();
+  });
+  it("shows the empty note once the only computer is revoked and the page is reloaded",async()=>{
+    machines=[machine(idA,"Desktop","revoked")];await p.mount(h(Panel,{navKey:"only-revoked"}));await settle(12);
+    expect(p.root.querySelector(".runtime-machine")).toBeNull();expect(p.root.querySelector(".runtime-empty-remotes").textContent).toBe("No remote computers connected yet.");
   });
   it("shows offline machines without enabling selection or silently falling back to another computer",async()=>{
     machines=[machine(idA,"Desktop","offline")];await p.mount(h(Create,{onClose(){}}));await settle(8);

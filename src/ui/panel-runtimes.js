@@ -86,6 +86,10 @@ register("machines", {
   "zh-TW": { versionColumn:"版本", signInColumn:"登入", authShort:"未確認", noLocalClis:"尚未偵測到 CLI，可開啟診斷進行偵測。", lastSeenLabel:"最近連線", hostLocationNote:"WSL / Linux Agent 在 AgEnD 主機上執行；Windows Agent 使用選定的電腦。", connectionHelp:"連線說明", localBadge:"本機", pairedBadge:"已配對", available:"可用", cliCount:"{0} 個 CLI", machineCount:"{0} 台電腦", diagnosticTitle:"CLI 診斷", machineInfo:"電腦資訊", machineActions:"{0} 的操作", diagnosticClose:"關閉", hostName:"主機名稱", machineName:"名稱", home:"使用者目錄", neverDetected:"尚未偵測", probeAgain:"重新偵測", probeBusy:"正在偵測…", diagnosticHint:"查看這台電腦的版本、登入與執行檔路徑；需要確認執行能力時，再展開「測試 CLI」。" },
 });
 register("machines", {
+  en: { revokedNote:"Revoked. It leaves this list when you refresh the page." },
+  "zh-TW": { revokedNote:"已撤銷，重新整理頁面後會從清單移除。" },
+});
+register("machines", {
   en: { versionNotReported:"This Runtime does not provide version information", versionUnreadable:"Runtime version information is unavailable", buildId:"Code Build ID", buildUnavailable:"Build ID is unavailable", protocols:"Supported protocols", compatibility:"Protocol compatibility", compatible:"Compatible", legacy:"Connected using protocol v1; version metadata unavailable", incompatible:"No common reported protocol", protocolUnknown:"Not reported yet", capabilities:"Reported capabilities", capability_exec:"One-off execution", capability_mcp:"AgEnD tools (MCP)", capability_panes:"Persistent terminals" },
   "zh-TW": { versionNotReported:"此 Runtime 未提供版本資訊", versionUnreadable:"無法讀取 Runtime 版本資訊", buildId:"程式碼 Build ID", buildUnavailable:"無法取得 Build ID", protocols:"支援的協定", compatibility:"協定相容狀態", compatible:"相容", legacy:"已使用協定 v1 連線，未提供版本資訊", incompatible:"回報的協定與主機不相容", protocolUnknown:"尚未回報協定資訊", capabilities:"回報功能", capability_exec:"單次任務", capability_mcp:"AgEnD 工具（MCP）", capability_panes:"持續終端" },
 });
@@ -110,15 +114,15 @@ function MachineCard({ machine, busy, action, openDiagnostics, probe }) {
   const probing = machine.probing || detection.loading;
   const clis = (machine.inventory?.clis || []).filter(cli => cli.path);
   const local = machine.isLocal === true, status = local ? machine.inventory ? "available" : "unknown" : machine.status;
-  const ready = local || ["online","offline"].includes(status);
+  const ready = local || ["online","offline"].includes(status), revoked = !local && status === "revoked";
   const menuItems = [{key:"info",label:machineText("machineInfo"),icon:"info",onSelect:()=>setInfo(true)},
     !local && status !== "revoked" && {key:"rename",label:machineText("rename"),icon:"edit",onSelect:()=>setEditing(true)},
     !local && status !== "revoked" && {key:"revoke",label:machineText("revoke"),icon:"close",danger:true,onSelect:()=>action(machine,"revoke")}];
-  return html`<article class=${`runtime-machine${local ? " runtime-native-local" : ""}`} data-machine-id=${local ? "local" : machine.id}>
-    <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}<span class="runtime-kind">${machineText(local ? "localBadge" : "pairedBadge")}</span></h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText("cliCount",clis.length)}</p></div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
-    <p class="runtime-inventory-time note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("neverDetected")}</p>
+  return html`<article class=${`runtime-machine${local ? " runtime-native-local" : ""}${revoked ? " is-revoked" : ""}`} data-machine-id=${local ? "local" : machine.id}>
+    <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}${revoked ? null : html`<span class="runtime-kind">${machineText(local ? "localBadge" : "pairedBadge")}</span>`}</h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText("cliCount",clis.length)}</p></div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
+    ${revoked ? null : html`<p class="runtime-inventory-time note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("neverDetected")}</p>`}
     ${status === "pending" ? html`<div class="runtime-approval"><p>${machineText("fingerprintLabel")}<code class="runtime-pairing-fingerprint">${machine.pairingFingerprint || machineText("unknown")}</code></p><p class="note">${machineText("approvalHint")}</p></div>` : null}
-    ${clis.length ? html`<table class="runtime-cli-table" aria-label=${machineText("cli")}><thead><tr><th>${machineText("cli")}</th><th>${machineText("versionColumn")}</th><th>${machineText("signInColumn")}</th></tr></thead><tbody>${clis.map(cli=>html`<tr key=${cli.id}><td><span class="runtime-cli-product"><${CliProductMark} id=${cli.id} size=${21} /><strong>${cliLabel(cli.id)}</strong></span>${cli.supports?.execution === false ? html`<small>${machineText("detectionOnly")}</small>` : null}</td><td><span class="runtime-cli-version" title=${cli.version || ""}>${cli.version || "—"}</span></td><td><span class=${`runtime-cli-auth ${cli.authenticated === true ? "is-signed-in" : ""}`}><span class="windows-cli-dot"></span>${machineText(cli.authenticated === true ? "signedIn" : cli.authenticated === false ? "signedOut" : "authShort")}</span></td></tr>`)}</tbody></table>` : html`<p class="note runtime-no-clis">${machineText(local ? "noLocalClis" : "noClis")}</p>`}
+    ${revoked ? html`<p class="note runtime-revoked-note" role="status">${machineText("revokedNote")}</p>` : clis.length ? html`<table class="runtime-cli-table" aria-label=${machineText("cli")}><thead><tr><th>${machineText("cli")}</th><th>${machineText("versionColumn")}</th><th>${machineText("signInColumn")}</th></tr></thead><tbody>${clis.map(cli=>html`<tr key=${cli.id}><td><span class="runtime-cli-product"><${CliProductMark} id=${cli.id} size=${21} /><strong>${cliLabel(cli.id)}</strong></span>${cli.supports?.execution === false ? html`<small>${machineText("detectionOnly")}</small>` : null}</td><td><span class="runtime-cli-version" title=${cli.version || ""}>${cli.version || "—"}</span></td><td><span class=${`runtime-cli-auth ${cli.authenticated === true ? "is-signed-in" : ""}`}><span class="windows-cli-dot"></span>${machineText(cli.authenticated === true ? "signedIn" : cli.authenticated === false ? "signedOut" : "authShort")}</span></td></tr>`)}</tbody></table>` : html`<p class="note runtime-no-clis">${machineText(local ? "noLocalClis" : "noClis")}</p>`}
     <div class="runtime-machine-actions">${ready ? html`<button type="button" class="btn btn-sm runtime-inspect" onClick=${() => openDiagnostics(local ? "" : machine.id)}>${machineText("diagnosticTitle")}</button><button type="button" class="btn btn-sm runtime-probe" disabled=${busy || probing || !local && status !== "online"} onClick=${() => probe(local ? "" : machine.id)}><${Icon} name="restart" size=${14} cls=${probing ? "out-spin" : ""} />${machineText(probing ? "probeBusy" : "probeAgain")}</button>` : null}
       ${status === "pending" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy || !machine.pairingFingerprint} onClick=${() => action(machine,"approve",{fingerprint:machine.pairingFingerprint})}>${machineText("approve")}</button>` : null}
       <${Menu} cls="runtime-machine-menu" label=${machineText("machineActions",machine.name)} disabled=${busy} items=${menuItems} />
@@ -239,6 +243,8 @@ export function RuntimesPanel({navKey}) {
   const drafts=useRef(new Map()), taskSessions=useRef(new Map()), downloadClaim=useRef(false);
   const [downloadedFor,setDownloadedFor]=useState(""), [copied,setCopied]=useState(false);
   const [diagnosticMachineId,setDiagnosticMachineId]=useState(null);
+  // Computers revoked on this page stay on screen as revoked until the page is left or reloaded; the server keeps the record.
+  const [revokedHere,setRevokedHere]=useState(() => new Map());
   const openDiagnostics=id=>setDiagnosticMachineId(id);
   useEffect(() => {
     if (!pairing) return;
@@ -261,13 +267,20 @@ export function RuntimesPanel({navKey}) {
     if(operation === "revoke" && !await confirmDialog({message:machineText("revokeAsk"),confirmLabel:machineText("revoke"),danger:true}))return false;
     if(!lease.current())return false;
     setBusy(machine.id);setError("");
-    try {await post(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/${operation}`,body);if(!lease.current())return false;await state.refresh();return lease.current();}
+    try {
+      await post(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/${operation}`,body);if(!lease.current())return false;
+      // Kept before the refresh, so the card is never dropped between the answer and the new list.
+      if(operation === "revoke")setRevokedHere(seen=>new Map(seen).set(machine.id,{...machine,status:"revoked"}));
+      await state.refresh();return lease.current();
+    }
     catch(e){if(lease.current())setError(operation === "refresh" ? `${machineText("cliFailed")} ${e.message}` : e.message);return false;}
     finally{if(lease.current())setBusy("");}
   };
   const machines=state.data?.machines || [];
   const localMachine={id:"",isLocal:true,name:localInventory.data?.hostname || machineText("nativeWindows"),platform:"win32",status:windowsCli ? "online" : "offline",inventory:localInventory.data,inventoryUpdatedAt:localInventory.data?.probedAt,probing:localInventory.loading};
-  const allMachines=[...(windowsCli ? [localMachine] : []),...machines.map(machine=>({...machine,probing:busy===machine.id}))];
+  const listed=machines.filter(machine=>machine.status !== "revoked" || revokedHere.has(machine.id));
+  const gone=[...revokedHere.values()].filter(machine=>!machines.some(row=>row.id === machine.id));
+  const allMachines=[...(windowsCli ? [localMachine] : []),...[...listed,...gone].map(machine=>({...machine,...(revokedHere.has(machine.id) ? {status:"revoked"} : {}),probing:busy===machine.id}))];
   const target=diagnosticMachineId === "" ? localMachine : machines.find(machine=>machine.id===diagnosticMachineId);
   if(diagnosticMachineId !== null && !taskSessions.current.has(diagnosticMachineId)) taskSessions.current.set(diagnosticMachineId,{requestId:null,pending:false,error:""});
   const probeTarget=async(id="")=>{
@@ -300,7 +313,7 @@ export function RuntimesPanel({navKey}) {
 
   const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><span class="note">${machineText("machineCount",allMachines.length)}</span></div>
     <section class="runtime-machines" aria-label=${machineText("machines")}>${allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} />`)}</section>
-    ${state.data && !machines.length ? html`<p class="note runtime-empty-remotes">${machineText("empty")}</p>` : null}
+    ${state.data && !allMachines.some(machine=>!machine.isLocal) ? html`<p class="note runtime-empty-remotes">${machineText("empty")}</p>` : null}
     <article class="runtime-host-note"><${Icon} name="info" size=${18} /><span>${machineText("hostLocationNote")}</span></article></section>`;
 
   return html`<section class="runtime-settings">

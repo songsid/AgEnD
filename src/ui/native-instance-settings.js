@@ -29,7 +29,7 @@ export function NativeInstanceSettings({ name, inst, ctx, onClose }) {
     onClose();
   };
   return html`<${Dialog} title=${ctx.shortName(name,inst)} onClose=${onClose} wide=${true} drawer=${true} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tn("cancel")}</button><button type="button" class="btn btn-primary" disabled=${!ready} onClick=${stage}>${tn("modalDone")}</button>`}>
-    <div class="form native-instance-settings"><${AgentRuntimeSettings} name=${name} inst=${{...inst,machine_name:machine?.name||inst.machine_name}} disabled=${dirty||ctx.staged?.size>0} onChanged=${()=>{ctx.reload();onClose();}}/>
+    <div class="form native-instance-settings"><${AgentRuntimeSettings} name=${name} inst=${{...inst,machine_name:machine?.name||inst.machine_name,machine_status:machine?.status||inst.machine_status,machine_missing:!!machineId&&!!machines.data&&machines.data.enabled!==false&&!machine}} disabled=${dirty||ctx.staged?.size>0} onChanged=${()=>{ctx.reload();onClose();}}/>
       <label class="field"><span>${tn("displayName")}</span><input value=${form.display_name} maxLength=${64} onInput=${event => set("display_name")(event.target.value)} /></label>
       <label class="field"><span>${tn("description")}</span><input value=${form.description} maxLength=${512} onInput=${event => set("description")(event.target.value)} /></label>
       <div class="field"><label for="native-instance-model">${tn("model")}</label><${ModelSelect} id="native-instance-model" value=${form.model} onChange=${set("model")} backend=${inst.backend} instance=${name} runtime="windows" machineId=${machineId} inherit=${tr("model")} /></div>
