@@ -28,3 +28,14 @@ export function generalNames(cfg: { defaults?: { general_topic?: unknown } | nul
   return Object.entries(cfg?.instances ?? {})
     .filter(([, inst]) => inst?.general_topic === true || (inst?.general_topic === undefined && fallback)).map(([name]) => name);
 }
+
+/**
+ * #3021 review (Prism P2): a new agent on a fleet with no chat connection would be a second General — it is ticked
+ * (`entry.general_topic`), or inherits `defaults.general_topic: true` — while the fleet has one. Every door that creates
+ * an agent asks this (Settings, New agent, the web-only setup, an agent's create_instance, a Windows agent).
+ */
+export function addsSecondGeneral(cfg: Parameters<typeof generalNames>[0] & Parameters<typeof isWebOnlyFleetConfig>[0], entry: { general_topic?: unknown } = {}): boolean {
+  if (!isWebOnlyFleetConfig(cfg)) return false;
+  const becomes = entry.general_topic === true || (entry.general_topic === undefined && cfg?.defaults?.general_topic === true);
+  return becomes && generalNames(cfg).length >= 1;
+}

@@ -17,6 +17,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import { validateFleetConfig } from "../src/config-validator.js";
+import { prepareSettingsEffect } from "../src/settings-effect.js";
+import { addsSecondGeneral } from "../src/web-only-fleet.js";
 import { csrfTokenFor } from "../src/web-session.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 
@@ -34,6 +36,11 @@ describe("#3008 G1 the validator", () => {
     expect(warnings({ instances: { a: { working_directory: "/w/a", general_topic: true }, b: { working_directory: "/w/b", general_topic: true } } }))
       .toEqual(["more than one general_topic instance on a fleet with no chat connection — keep one General (untick the others)"]);
     expect(warnings({ channel: TG, instances: { a: { working_directory: "/w/a" } } })).toEqual(["no general_topic instance — there is no general dispatcher to receive un-topic'd messages"]);
+  });
+  it("#3021 review P3: inherited flags count — defaults.general_topic with two agents is warned; an explicit false is not a General", () => {
+    const two = "more than one general_topic instance on a fleet with no chat connection — keep one General (untick the others)";
+    expect(warnings({ defaults: { general_topic: true }, instances: { a: { working_directory: "/w/a" }, b: { working_directory: "/w/b" } } })).toEqual([two]);
+    expect(warnings({ defaults: { general_topic: true }, instances: { a: { working_directory: "/w/a" }, b: { working_directory: "/w/b", general_topic: false } } })).toEqual([]);
   });
 });
 
@@ -144,3 +151,47 @@ describe("#3008 G3 adding a chat connection later never makes two Generals", () 
     expect(Object.values(fm.fleetConfig.instances).filter((c: any) => c.general_topic === true)).toHaveLength(1);
   });
 });
+
+describe("#3021 review P2: every door that creates an agent — never a second General on a web-only fleet", () => {
+  // A web-only fleet with one General by the defaults (`defaults.general_topic: true`, one agent): a new agent from ANY
+  // door would inherit it. Control: the same fleet without that default creates an ordinary agent.
+  const viaDefaults = { defaults: { general_topic: true }, instances: { a: { working_directory: "/w/a" } } };
+  const ticked = { defaults: {}, instances: { a: { working_directory: "/w/a", general_topic: true } } };
+  const effect = (config: Record<string, unknown>, method: string, path: string, body: unknown) => {
+    try { prepareSettingsEffect(method, path, body, { config: config as never, classic: {} }); return "proposed"; }
+    catch (err) { return (err as { code?: string }).code ?? String(err); }
+  };
+  it.each([
+    ["Settings → New agent (Linux)", "POST", "/ui/instances", { topic_name: "b" }],
+    ["Settings → New agent (Windows)", "POST", "/ui/instances", { runtime: "windows", topic_name: "b", backend: "codex", directory: "C:\\w\\b", sandbox: "read-only" }],
+    ["the web-only setup", "POST", "/api/settings/quickstart/commit", { web_only: true, instance_name: "b", backend: "claude-code" }],
+    ["Settings → Agents (create)", "POST", "/api/settings/fleet/instances", { name: "b", working_directory: "/w/b" }],
+  ] as const)("%s: refused before it is proposed (409 one_general); without the default it is proposed", (_door, method, path, body) => {
+    expect(effect(viaDefaults, method, path, body)).toBe("one_general");
+    expect(effect(ticked, method, path, body)).not.toBe("one_general");
+  });
+  it("ticking \"every agent is a General\" in the defaults is refused on a web-only fleet, even with one agent; a chat fleet is unchanged", () => {
+    expect(effect({ defaults: {}, instances: { a: { working_directory: "/w/a" } } }, "PUT", "/api/settings/fleet/defaults", { general_topic: true })).toBe("one_general");
+    expect(effect({ channel: TG, defaults: {}, instances: { a: { working_directory: "/w/a" } } }, "PUT", "/api/settings/fleet/defaults", { general_topic: true })).not.toBe("one_general");
+  });
+  it("an agent's create_instance and a Windows agent ask the same rule", async () => {
+    expect([addsSecondGeneral(viaDefaults as never), addsSecondGeneral(ticked as never), addsSecondGeneral({ ...viaDefaults, channel: TG } as never),
+      addsSecondGeneral({ defaults: { general_topic: true }, instances: {} } as never)]).toEqual([true, false, false, false]);
+    const h = await fleet(viaDefaults);
+    try {
+      const respond = vi.fn();
+      await h.fm.lifecycle.handleCreate({ topic_name: "b" } as never, respond);
+      expect(respond.mock.calls[0]?.[1]).toMatch(/^one_general:/);
+      expect(Object.keys(h.fm.fleetConfig!.instances)).toEqual(["a"]);
+    } finally { await h.stop(); }
+  }, 20_000);
+  it("over HTTP: the web-only setup and New agent answer 409 one_general before anything is made", async () => {
+    const h = await fleet(viaDefaults);
+    try {
+      expect(await h.call("POST", "/ui/instances", { topic_name: "b" })).toMatchObject({ status: 409, body: { error: "one_general" } });
+      expect(await h.call("POST", "/api/settings/quickstart/commit", { web_only: true, instance_name: "b", backend: "claude-code" })).toMatchObject({ status: 409, body: { error: "one_general" } });
+      expect(Object.keys(h.fm.fleetConfig!.instances)).toEqual(["a"]);
+    } finally { await h.stop(); }
+  }, 20_000);
+});
+

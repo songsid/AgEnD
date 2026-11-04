@@ -1,4 +1,5 @@
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
+import { addsSecondGeneral } from "./web-only-fleet.js";
 import { NativePaneCrashBudget } from "./native-pane-crash-budget.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
@@ -2486,6 +2487,12 @@ export class InstanceLifecycle {
     // create_instance, deploy_template or any other path that reaches here — an agent holding create_instance could
     // otherwise start one on the Windows host, in any drive path, with write access.
     if (args.runtime === "windows") { respond(null, WINDOWS_CREATE_REFUSED); return; }
+    // #3021 review: on a fleet with no chat connection a new agent never becomes a second General (it would inherit
+    // defaults.general_topic: true while the fleet has one).
+    if (this.ctx.fleetConfig && addsSecondGeneral(this.ctx.fleetConfig as never)) {
+      respond(null, "one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true — set it to false in the defaults first");
+      return;
+    }
     if (args.sandbox !== undefined) { respond(null,"sandbox is supported only by the Windows runtime"); return; }
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;

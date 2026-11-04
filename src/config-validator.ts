@@ -1,5 +1,5 @@
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
-import { isWebOnlyFleetConfig } from "./web-only-fleet.js";
+import { generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
@@ -676,7 +676,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
   // #3008 G1: a web-only fleet (no chat connection) needs no General — its Notices and Needs you need no model — and may
   // have one, opted into by ticking an agent; never two (Settings refuses a second; a hand-edited fleet.yaml is warned).
   if (isWebOnlyFleetConfig(config as Parameters<typeof isWebOnlyFleetConfig>[0])) {
-    if (generalCount > 1) warn("instances", "more than one general_topic instance on a fleet with no chat connection — keep one General (untick the others)");
+    if (generalNames(config as Parameters<typeof generalNames>[0]).length > 1) warn("instances", "more than one general_topic instance on a fleet with no chat connection — keep one General (untick the others)");
   } else if (generalCount === 0) {
     warn("instances", "no general_topic instance — there is no general dispatcher to receive un-topic'd messages");
   }
