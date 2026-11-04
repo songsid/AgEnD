@@ -1346,6 +1346,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
   /** Unsupported-CLI refusals waiting to go out, grouped by reason (#1109). */
   private unsupportedCliNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
+  private kiroCompatibilityHolds = new Map<string, { message: string; since: number }>();
   private kiroIncompatNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
   /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
   static readonly STARTUP_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
@@ -6342,6 +6343,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.queueUnsupportedCliNotice(name, err.message);
     this.queueKiroIncompatNotice(name, err.message);
     return true;
+  }
+
+  /** No pane is needed for a compatibility refusal to remain in Needs you. */
+  setKiroCompatibilityHold(name: string, message: string | null): void {
+    const holds = this.kiroCompatibilityHolds ??= new Map();
+    if ((message === null && !holds.has(name)) || (message !== null && holds.get(name)?.message === message)) return;
+    if (message === null) holds.delete(name);
+    else holds.set(name, { message, since: Date.now() });
+    this.needsYou?.poke();
   }
 
   /**
@@ -15055,7 +15065,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       out.push({
         name, state: p.state ?? undefined,
         interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
-        interactionSummary: p.interaction_summary ?? null,
+        interactionSummary: p.interaction?.kind === "kiro_choice" ? t("kiro3.running") : p.interaction_summary ?? null,
+        kiroCompatibility: this.kiroCompatibilityHolds?.get(name),
         pauseReason, pausedAt,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
