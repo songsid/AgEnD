@@ -77,6 +77,7 @@ import {
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
+import { startStallReporter, type StallReporter } from "./stall-reporter.js";
 import { sdNotify, sdNotifyBlocking, setSdNotifyWarn, startSdWatchdog } from "./sd-notify.js";
 import { StartupMemoryDeadline, fleetStopConcurrency } from "./startup-memory-deadline.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
@@ -103,7 +104,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -1479,6 +1480,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startupMemoryDeadline: StartupMemoryDeadline | null = null;
   private eventLoopWatch: EventLoopWatch | null = null;
+  private stallReporter: StallReporter | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private memoryLogAt: number | null = null;
@@ -8099,6 +8101,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.watchdogTimer = startSdWatchdog();
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
+    // #3009: the event-loop watch runs on the main thread; this one does not, so a stall that never ends is still named.
+    this.stallReporter?.stop();
+    this.stallReporter = startStallReporter({ logFile: join(this.dataDir, "daemon.log") });
     try {
       await this.startAllWithinDeadline(configPath, deadline);
     } finally {
@@ -8110,6 +8115,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.watchdogTimer = null;
           this.eventLoopWatch?.stop();
           this.eventLoopWatch = null;
+          this.stallReporter?.stop();
+          this.stallReporter = null;
         }
       }
     }
@@ -18139,7 +18146,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!handoff || handoff.cancelled || this.installHandoff !== handoff) return;
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
-        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? this.locateInInstallerBinDirs(info);
+        // #3009 (leader, cid-3017-3029-overlap): both lookups off the fleet's main thread — the login shell's own check,
+        // then the installer's own directories through backend-availability's check (a killable child tests each one).
+        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? (await this.locateInstalledBackend(backend));
         if (handoff.cancelled || this.installHandoff !== handoff) return;
         if (!installedAt) {
           this.installHandoff = null;
@@ -18237,33 +18246,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async locateBinaryOnLoginShell(binary: string): Promise<string | null> {
     try {
-      const result = await runOnLoginShell(`command -v ${binary}`);
+      // #3009: the executable-file check runs inside the same login shell (a killable child), never as accessSync/statSync
+      // on the fleet's thread — a path on a filesystem that stopped answering held the whole fleet there.
+      const result = await runOnLoginShell(`p=$(command -v ${binary}) && [ -f "$p" ] && [ -x "$p" ] && printf '%s\n' "$p"`);
       if (result.status !== 0) return null;
       const path = result.stdout.trim().split("\n").pop()?.trim() ?? "";
-      if (!isAbsolute(path)) return null;
-      accessSync(path, fsConstants.X_OK);
-      return statSync(path).isFile() ? path : null;
+      return isAbsolute(path) ? path : null;
     } catch {
       return null;
     }
   }
 
   /**
-   * #1092: the binary in one of the directories its own installer installs to,
-   * when no login shell can see it (the installer recorded its PATH in an
-   * interactive-only rc file). The same executable-file check as the login
-   * shell lookup; a symlink to an executable counts, as codex's launcher is one.
+   * #1092: the binary in one of the directories its own installer installs to, when no login shell can see it (the
+   * installer recorded its PATH in an interactive-only rc file) — only those directories (#1092). #3009: through
+   * backend-availability's install-directory check (the one resolveBackendBinary uses): one killable child, never
+   * accessSync/statSync on the fleet's thread. An executable file counts, a symlink to one too (codex's launcher is one).
    */
-  private locateInInstallerBinDirs(info: BackendInstallationInfo): string | null {
-    for (const dir of info.binDirs?.(process.env, homedir()) ?? []) {
-      if (!isAbsolute(dir)) continue;
-      const path = join(dir, info.binary);
-      try {
-        accessSync(path, fsConstants.X_OK);
-        if (statSync(path).isFile()) return path;
-      } catch { /* not there */ }
-    }
-    return null;
+  private async locateInstalledBackend(backend: string): Promise<string | null> {
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    return info ? (await findExecutableIn(info.binary, info.binDirs?.(process.env, homedir()) ?? [])) ?? null : null;
   }
 
   /** Put an installed binary's directory on the fleet's PATH (#1059), once. */
@@ -21541,6 +21543,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = null;
+    this.stallReporter?.stop();
+    this.stallReporter = null;
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
