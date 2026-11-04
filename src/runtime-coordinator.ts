@@ -8,7 +8,7 @@ import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { readBoundedWebBody } from "./web-body.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
-import type { WindowsCliProbe, WindowsCliTask } from "./windows-cli.js";
+import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
@@ -357,7 +357,8 @@ export class RuntimeCoordinator {
       // alpha.2 polish (dev-claude's no-chat e2e): a runner that brings no CLI inventory (just paired, nothing detected
       // yet) is asked for its own report now — its detection runs on that PC, never on this fleet's loop — so the first
       // approval of an agent's request there is not refused for "no available CLI" until someone presses Refresh.
-      if (!row.machine.inventory) void this.call(connection.machineId, "probe", {}).catch(() => { /* Refresh, or the next connect, asks again */ });
+      // (#3004 rig: the runner's hello may carry a placeholder — `probedAt: null`, no CLIs — which is no report either.)
+      if (!inventoryProbed(row.machine.inventory)) void this.call(connection.machineId, "probe", {}).catch(() => { /* Refresh, or the next connect, asks again */ });
       return;
     }
     row.machine.lastSeenAt = this.now();
