@@ -1306,7 +1306,6 @@ next minor, e.g. 2.2.0-alpha.N while 2.1.x is current). Install pre-release vers
 agend update            # Stay on the installed channel: an alpha from @alpha, a beta from @beta, a stable from @latest
 agend update --alpha    # Install from the @alpha npm dist-tag
 agend update --beta     # Install from the @beta npm dist-tag
-agend update --rc       # Install the current release candidate (@rc), before it is promoted to @beta
 agend update --stable   # Install from @latest, even from a beta or alpha install
 ```
 
@@ -1328,10 +1327,7 @@ send that timed out on AgEnD's side may still have landed, so nothing else is se
 twice.
 
 A release is a pushed `v*` tag. The publish workflow maps it strictly: `vX.Y.Z` → `@latest`, `vX.Y.Z-beta.N`
-→ `@rc` (a release candidate), `vX.Y.Z-alpha.N` → `@alpha`. A candidate reaches `@beta` only when it is promoted
-(#2987): after it has run on a test host (`agend update --rc`), the `Promote beta` workflow moves `@beta` to that
-exact version, so beta users never install an untried build. A candidate's version is a beta's, so an install from
-`@rc` follows `@beta` afterwards. Any other tag (an `-rc.N`, a typo) fails the job before anything is
+→ `@beta`, `vX.Y.Z-alpha.N` → `@alpha`. Any other tag (an `-rc.N`, a typo) fails the job before anything is
 built, and a stable older than the current `@latest` is refused. When a minor goes stable (2.2.0), point
 `@alpha` at it too (`npm dist-tag add @songsid/agend@2.2.0 alpha`): an alpha install's `/update` then installs it, and the
 notice says to run `/update`.

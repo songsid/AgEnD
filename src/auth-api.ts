@@ -360,8 +360,8 @@ export function handleAuthRequest(
       const guestCodes = ctx.webGuestLoginCodes ?? null;
       const audience = gateway?.exposureId ?? "local";
       const guestPausedMs = guestCodes?.pausedForMs() ?? 0;
-      const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs()) }
-        : codes.pausedForMs() > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
+      const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs(audience)) }
+        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
         : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience);
       if (result.kind === "invalid") guestCodes?.recordWrong(body.code);
       if (result.kind === "paused") {

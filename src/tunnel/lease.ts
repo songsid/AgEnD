@@ -1,4 +1,4 @@
-import { ensureAgendHome } from "../agend-home.js";
+import { ensureAgendHomeOffThread } from "../agend-home.js";
 /**
  * The record that says "a tunnel process may exist right now".
  *
@@ -12,7 +12,7 @@ import { ensureAgendHome } from "../agend-home.js";
  * has to run the reaper too, and it runs in a process where no FleetManager
  * exists. Everything here takes a data directory and nothing else.
  */
-import { closeSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import { open, readFile, rename, unlink } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
@@ -50,29 +50,33 @@ export function leasePath(dataDir: string): string {
  * The fsync is not ceremony: the lease has to survive the crash that makes it
  * matter, and a rename that is only in page cache does not.
  */
-export function writeLease(dataDir: string, lease: TunnelLease): void {
-  ensureAgendHome(dataDir);
+export async function writeLease(dataDir: string, lease: TunnelLease): Promise<void> {
+  // #3009: asynchronous (libuv's threadpool), never on the fleet's main thread. A login's tunnel writes this right
+  // around its cloudflared spawn; an fsync or rename that blocks in the kernel then holds one pool thread, not the
+  // event loop — the systemd watchdog keeps being pinged and every other agent keeps running.
+  // #3017 review (Prism P1): the home's privacy checks too run off the main thread (synchronous lstat/mkdir/open there).
+  await ensureAgendHomeOffThread(dataDir);
   const path = leasePath(dataDir);
   const temp = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
-  const fd = openSync(temp, "wx", 0o600);
+  const handle = await open(temp, "wx", 0o600);
   try {
-    writeSync(fd, JSON.stringify(lease));
-    fsyncSync(fd);
+    await handle.writeFile(JSON.stringify(lease));
+    await handle.sync();
   } finally {
-    closeSync(fd);
+    await handle.close();
   }
   try {
-    renameSync(temp, path);
+    await rename(temp, path);
   } catch (err) {
-    try { unlinkSync(temp); } catch { /* already gone */ }
+    try { await unlink(temp); } catch { /* already gone */ }
     throw err;
   }
 }
 
-export function readLease(dataDir: string): TunnelLease | null {
+export async function readLease(dataDir: string): Promise<TunnelLease | null> {
   let raw: string;
   try {
-    raw = readFileSync(leasePath(dataDir), "utf8");
+    raw = await readFile(leasePath(dataDir), "utf8");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
     // Unreadable is not absent. Saying "no lease" here would let a second
@@ -109,8 +113,8 @@ const CORRUPT: TunnelLease = {
   providerPid: null, strongIdentity: null, expiresAt: 0, ownerPid: 0, ownerIdentity: null,
 };
 
-export function clearLease(dataDir: string): void {
-  try { unlinkSync(leasePath(dataDir)); } catch { /* already gone */ }
+export async function clearLease(dataDir: string): Promise<void> {
+  try { await unlink(leasePath(dataDir)); } catch { /* already gone */ }
 }
 
 export type ReapOutcome =
@@ -148,7 +152,7 @@ export async function reapStaleTunnel(dataDir: string, opts: ReapOptions = {}): 
 
   let lease: TunnelLease | null;
   try {
-    lease = readLease(dataDir);
+    lease = await readLease(dataDir);
   } catch (err) {
     // A lease we cannot read is not a lease that is absent. Letting this throw
     // meant an unreadable file took the whole start down instead of closing it:
@@ -194,14 +198,14 @@ export async function reapStaleTunnel(dataDir: string, opts: ReapOptions = {}): 
 
   const before = probe(lease.providerPid);
   if (before.kind === "gone") {
-    clearLease(dataDir);
+    await clearLease(dataDir);
     return { kind: "reaped", how: "already-gone", pid: lease.providerPid };
   }
   if (before.kind === "identified" && lease.strongIdentity && before.identity !== lease.strongIdentity) {
     // The pid belongs to something else now, which proves the original died.
     // Signalling it would kill an innocent process — the single most damaging
     // thing a reaper can do, and the reason the fingerprint is recorded at all.
-    clearLease(dataDir);
+    await clearLease(dataDir);
     return { kind: "reaped", how: "pid-reused", pid: lease.providerPid };
   }
   if (before.kind === "unknown" || !lease.strongIdentity) {
@@ -220,11 +224,11 @@ export async function reapStaleTunnel(dataDir: string, opts: ReapOptions = {}): 
     await wait(graceMs);
     const after = probe(lease.providerPid);
     if (after.kind === "gone") {
-      clearLease(dataDir);
+      await clearLease(dataDir);
       return { kind: "reaped", how: "killed", pid: lease.providerPid };
     }
     if (after.kind === "identified" && after.identity !== lease.strongIdentity) {
-      clearLease(dataDir);
+      await clearLease(dataDir);
       return { kind: "reaped", how: "pid-reused", pid: lease.providerPid };
     }
   }

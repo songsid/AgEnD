@@ -51,6 +51,23 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
   return { ...real, execFile: fakeExecFile };
 });
+const loginHang = vi.hoisted(() => ({
+  wait: null as null | { promise: Promise<string | undefined>; release: (v?: string | undefined) => void },
+  held: 0,
+}));
+vi.mock("../src/unattended-install.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/unattended-install.js")>();
+  return {
+    ...real,
+    async loginShell(...args: Parameters<typeof real.loginShell>) {
+      if (loginHang.wait) {
+        loginHang.held++;
+        return loginHang.wait.promise;
+      }
+      return real.loginShell(...args);
+    },
+  };
+});
 vi.mock("../src/login-manager.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/login-manager.js")>();
   class FakeLoginSession {
@@ -75,7 +92,7 @@ vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
   return { ...real, checkBinaryInstalled: (binary: string) => installedBinaries.has(binary), checkBinaryInstalledAsync: async (binary: string) => installedBinaries.has(binary) };
 });
 
-import { unattendedInstallCommand } from "../src/unattended-install.js";
+import { unattendedInstallCommand, loginShell } from "../src/unattended-install.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale, t } from "../src/locale.js";
 import { TmuxManager } from "../src/tmux-manager.js";
@@ -93,9 +110,14 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     fakeSessions.length = 0;
     installedBinaries.clear();
     tmuxGuard.withoutL.length = 0;
+    loginHang.wait = null;
+    loginHang.held = 0;
     TmuxManager.setSocketName(TMUX_SOCKET);
   });
   afterEach(() => {
+    loginHang.wait?.release(undefined);
+    loginHang.wait = null;
+    loginHang.held = 0;
     // The -L guard fails fast inside the stub; this pins the invariant
     // explicitly so a silent pass-through can never hide a leak.
     expect(tmuxGuard.withoutL, "tmux without -L socket isolation").toEqual([]);
@@ -126,7 +148,7 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     expect(fakeSessions).toHaveLength(1);
     // Nobody types into the install window: codex's install.sh must not ask "Start Codex now?" on /dev/tty.
     // M-2281: wrapped so no prompt can wait at all (no tty, stdin /dev/null) — the codex variable stays inside.
-    expect(fakeSessions[0].flow.command).toBe(unattendedInstallCommand("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh"));
+    expect(fakeSessions[0].flow.command).toBe(unattendedInstallCommand("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh", (await loginShell()) ?? null));
     expect(fakeSessions[0].started).toBe(true);
 
     // The installed CLI is on PATH now: the sign-in that follows is a login.
@@ -212,7 +234,7 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue(null);
     // Found nowhere: not by a login shell, and not in grok's own installer
     // directory either (#1092) — this host may have a real ~/.grok/bin/grok.
-    vi.spyOn(fm as any, "locateInInstallerBinDirs").mockReturnValue(null);
+    vi.spyOn(fm as any, "locateInstalledBackend").mockResolvedValue(null);
     const signIn = vi.spyOn(fm as any, "launchSignIn");
     await fm.startInstallSession("grok", chat);
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
@@ -248,6 +270,33 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     expect(await fm.startInstallSession("codex", chat)).toBe((await import("../src/locale.js")).t("install.busy"));
     // And the reverse: an install blocks /login.
     expect(await fm.startLoginSession("codex", chat)).toContain("install");
+  });
+
+  it("a shutdown during loginShell never starts the install session", async () => {
+    const { fm, chat } = setup();
+    let release!: (v?: string | undefined) => void;
+    loginHang.wait = { promise: new Promise(r => { release = r; }), release: (v) => release(v) };
+    const starting = fm.startInstallSession("grok", chat);
+    await vi.waitFor(() => expect(loginHang.held).toBeGreaterThan(0));
+    await (fm as any).shutdownLoginWindows();
+    loginHang.wait.release("/bin/sh");
+    loginHang.wait = null;
+    expect(await starting).toBe(t("login.web_shutting_down"));
+    expect(fakeSessions).toEqual([]);
+  });
+
+  it("a current install still starts after loginShell", async () => {
+    const { fm, chat } = setup();
+    let release!: (v?: string | undefined) => void;
+    loginHang.wait = { promise: new Promise(r => { release = r; }), release: (v) => release(v) };
+    const starting = fm.startInstallSession("grok", chat);
+    await vi.waitFor(() => expect(loginHang.held).toBeGreaterThan(0));
+    loginHang.wait.release("/bin/sh");
+    loginHang.wait = null;
+    expect(await starting).toBe(t("install.started", "grok"));
+    expect(fakeSessions).toHaveLength(1);
+    expect(fakeSessions[0].started).toBe(true);
+    expect(fakeSessions[0].cancelled).toBe(false);
   });
 
   it("cancel ends the session with a single message", async () => {

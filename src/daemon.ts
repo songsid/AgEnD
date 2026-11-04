@@ -685,6 +685,12 @@ const BOTTOM_READY_POLL_MS = 250;
 /** M-2267: how often a pane left in a tmux mode is looked at again, and how long the delivery Enter waits for it to end. */
 const PANE_MODE_POLL_MS = 500;
 const PANE_MODE_ENTER_WAIT_MS = 10 * 60_000;
+/** Why a delivery's Enter was withheld with the paste possibly in the CLI: a tmux mode past the bound, or a dialog (M-2290). */
+/**
+ * Why a delivery's Enter was withheld (the paste may be in the box: kept uncertain, never pasted twice). Main's M-2290
+ * reasons (a tmux mode; a recognised dialog on the pane) and the alpha's native-Windows safety checks (S-35).
+ */
+type EnterHeldReason = "pane-in-mode" | "dialog" | "capture_failed" | "check_failed" | "output_changed";
 /** Consecutive unreadable pane probes tolerated by the delivery gate before the delivery is failed (≈10s at the poll cadence). */
 const DIALOG_PROBE_UNKNOWN_MAX = 40;
 /** Startup dialog scan: poll cadence and wall-clock budget (keys and waits included). */
@@ -9773,7 +9779,7 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: (reason: string) => void,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
     return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt, onInputHeld);
@@ -9810,29 +9816,35 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: (reason: string) => void,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn replaced the delivery: check here, and
     // again after every wait below, at the last point before the tmux write.
+    // M-2290 (#2985 review, Fable): the mode wait can last up to 10 minutes, and a respawn or relaunch reuses the same
+    // tmux object and window — so the spawn generation and launch fence are part of the fence too: an Enter meant for
+    // the CLI this paste went to is never sent to its successor.
     const tmux = this.tmux;
     const backend = this.backend;
     const native = !!this.nativePaneLifecycle;
     const generation = this.spawnGeneration;
     const fence = this.launchFenceEpoch;
     const windowId = native ? tmux?.getWindowId() : undefined;
-    // A native Windows pane keeps #2958's full fence (its launch can be replaced under the same handle).
-    const current = () => this.tmux === tmux && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent())
-      && (!native || (!!windowId && !!backend && this.backend === backend && this.spawnGeneration === generation
-        && this.launchFenceEpoch === fence && tmux!.getWindowId() === windowId));
+    // M-2290 (#2985 review, Fable): the mode wait can last up to 10 minutes, and a respawn or relaunch reuses the same
+    // tmux object and window — so the spawn generation and launch fence are part of every pane's fence: an Enter meant
+    // for the CLI this paste went to is never sent to its successor. A native Windows pane keeps #2958's full fence too
+    // (its launch can be replaced under the same handle).
+    const current = () => this.tmux === tmux && this.spawnGeneration === generation && this.launchFenceEpoch === fence
+      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent())
+      && (!native || (!!windowId && !!backend && this.backend === backend && tmux!.getWindowId() === windowId));
     if (!current()) return false;
     // The pasted text may still be in the box: the caller keeps it uncertain (no false failure, no second paste).
     // S-35: say which check withheld Enter.
-    const hold = (reason: "capture_failed" | "dialog" | "check_failed" | "pane_mode" | "output_changed") => {
+    const hold = (reason: EnterHeldReason) => {
       onInputHeld?.(reason);
       if (reason === "output_changed" && current() && !this.nativeDeliveryHold()) this.nativeEnterHold = {
         key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence,
       };
-      if (reason === "pane_mode") this.logger.warn({ phase, reason }, "The pane stayed in a tmux mode; Enter withheld");
+      if (reason === "pane-in-mode") this.logger.warn({ phase, reason }, "The pane stayed in a tmux mode; Enter withheld");
       else this.logger.warn({ ...tmux?.getLastInputDiagnostic?.(), phase, reason, retryCount: positiveRefusals }, "Native delivery Enter withheld by its safety check");
       return false;
     };
@@ -9843,11 +9855,11 @@ export class Daemon extends EventEmitter {
     // The fresh capture still binds the native host output sequence; ownership and positive-ACK-only retries remain.
     const modeDeadline = performance.now() + PANE_MODE_ENTER_WAIT_MS;
     let pane: string | undefined;
-    let positiveRefusals = 0, enterMarked = false, positiveRetryDeadline = Infinity;
+    let positiveRefusals = 0, enterMarked = false, positiveRetryDeadline = Infinity, linuxDialogRead = false;
     for (;;) {
       const mode = await this.waitWhilePaneInMode(phase, current, Math.min(modeDeadline, positiveRetryDeadline));
       if (mode === "stale") return false;
-      if (mode === "held") return hold("pane_mode");
+      if (mode === "held") return hold("pane-in-mode");
       if (native) {
         // S-35: a native pane's capture refuses while output is still arriving ("Pane changed during capture; observe it
         // again"). Right after a turn the CLI repaints for a moment; one refused read left the message unsent for ever.
@@ -9872,12 +9884,31 @@ export class Daemon extends EventEmitter {
       }
       if (await this.paneInTmuxMode(phase)) {
         if (!current()) return false;
-        if (performance.now() >= modeDeadline) return hold("pane_mode");
+        if (performance.now() >= modeDeadline) return hold("pane-in-mode");
         await new Promise(r => setTimeout(r, PANE_MODE_POLL_MS));
         if (!current()) return false;
         continue;
       }
       if (!current()) return false;
+      // M-2290 (the simple half of the #2957 redesign, leader xmsg-1793712561468; main): on a Linux pane, a dialog the
+      // backend RECOGNISES (runtimeDialogs: a permission card, the dangerous-command card, …) that painted between the
+      // paste and this Enter would take the key as its answer. Read the pane once more: such a dialog withholds the
+      // Enter (the caller keeps the delivery uncertain → Needs-you; the dialog scanner parks it for a person). Nothing
+      // else is judged — an unknown or unreadable screen sends: #2958's composer proof (decision f57474aa) is NOT back.
+      // Only a caller that can hold asks (onInputHeld); a native pane read its own screen above, every round.
+      if (!native && onInputHeld && !linuxDialogRead) {
+        linuxDialogRead = true;
+        let finalPane: string | null = null;
+        try { finalPane = await tmux!.capturePane(); } catch { finalPane = null; }
+        if (!current()) return false;
+        let dialog: string | undefined;
+        try { dialog = finalPane === null ? undefined : (this.backend?.getRuntimeDialogs?.() ?? []).find(d => Daemon.dialogMatches(d, finalPane!))?.description; } catch { dialog = undefined; }
+        if (dialog !== undefined) {
+          onInputHeld("dialog");
+          this.logger.warn({ phase, dialog }, "A dialog is on the pane; the delivery's Enter is withheld (it would answer it)");
+          return false;
+        }
+      }
       if (positiveRefusals && performance.now() >= positiveRetryDeadline) return hold("output_changed");
       // W1: persist the "Enter may have happened" boundary before tmux receives
       // the key. A crash after this commit is never auto-replayed without a
@@ -10215,12 +10246,16 @@ export class Daemon extends EventEmitter {
       let enterAt = Date.now();
       const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
-      let inputHeld = "";
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof || nativeOwner ? steerEnterCurrent : undefined, durableAttempt, reason => { inputHeld = reason; }))) {
+      let inputHeld: EnterHeldReason | null = null;
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof || nativeOwner ? steerEnterCurrent : undefined, durableAttempt, (why) => { inputHeld = why; }))) {
         if (inputHeld) {
-          // #2971: held in a tmux mode past the bound. The paste may still be in the CLI: keep it uncertain, never re-paste.
+          // #2971: held in a tmux mode past the bound; M-2290: a recognised dialog on the pane. The paste may still be in
+          // the CLI: keep it uncertain (Needs-you), never re-paste, never answer the dialog.
           verdict.phase = "submit-enter";
-          verdict.proof = inputHeld === "pane_mode" ? "pane-in-mode-held" : `native-input-${inputHeld}`;
+          // The merge of #2957/M-2290 (main) and the alpha's native holds: a tmux mode, a recognised dialog on a Linux pane,
+          // and each native safety check say which.
+          verdict.proof = inputHeld === "pane-in-mode" ? "pane-in-mode-held" : nativeOwner ? `native-input-${inputHeld}`
+            : inputHeld === "dialog" ? "dialog-on-pane" : `input-held-${inputHeld}`;
           return false;
         }
         if ((steerComposerProof || nativeOwner) && !steerCurrent()) {
@@ -10359,8 +10394,10 @@ export class Daemon extends EventEmitter {
         // confirmation ladder. "stranded" is the case that used to be a silent
         // ✅ — the text was visible, so the old check called it delivered.
         this.logger.warn({ proof }, "Native-queue paste not confirmed as submitted — retrying via idle-gated delivery");
-        if (windowId && this.controlClient) {
-          await this.controlClient.waitUntilIdle(windowId);
+        if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
+          verdict.phase = "native-queue-idle-wait";
+          verdict.proof = "idle-wait-failed";
+          return false;
         }
 
         // Re-read before doing anything: the CLI had a whole turn to flush its

@@ -205,7 +205,19 @@ describe("authorization gate", () => {
   it("web_terminal.enabled: false refuses with guidance; unknown backend is unsupported", async () => {
     const { controller, sessions } = make({ config: { web_terminal: { enabled: false } } });
     expect(await controller.start("claude-code", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_disabled"));
-    expect(await controller.start("nonesuch", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.unsupported", "nonesuch"));
+    expect(await controller.start("nonesuch", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.no_remote_flow", "nonesuch"));
+    expect(sessions).toHaveLength(0);
+  });
+
+  it("#2981 §8.2: only OpenCode gets the API-key sentence; muse (no flow) gets the generic host-login line", async () => {
+    const { controller, sessions } = make();
+    for (const locale of ["en", "zh-TW"] as const) {
+      setLocale(locale);
+      const muse = await controller.start("muse", chat(adapterOf("telegram")), CONFIRMED);
+      expect(muse).toBe(t("login.no_remote_flow", "muse"));
+      expect(muse).not.toMatch(/opencode/i);
+      expect(await controller.start("opencode", chat(adapterOf("telegram")), CONFIRMED)).toBe(t("login.unsupported", "opencode"));
+    }
     expect(sessions).toHaveLength(0);
   });
 
@@ -535,9 +547,8 @@ describe("two messages: link to the chat, token only privately", () => {
 
   it("B2: a hint delivery error carrying the device code is logged without its message", async () => {
     const adapter = adapterOf("telegram");
-    adapter.sendText.mockImplementationOnce(async () => ({ messageId: "link", chatId: "chat" }));
     const { controller, sessions, logger } = make();
-    await controller.start("claude-code", chat(adapter), CONFIRMED);
+    await controller.start("codex", chat(adapter), CONFIRMED);              // a device flow: the one that relays (#2981)
     adapter.sendText.mockImplementation(async (_c: string, text: string) => { throw new Error(`rejected: ${text}`); });
     await sessions[0].events.onHint!("https://auth.example/device?user_code=ZZZZ-9999", "ZZZZ-9999");
     expect(allText(logger.warn)).not.toContain("ZZZZ-9999");
@@ -570,14 +581,30 @@ describe("two messages: link to the chat, token only privately", () => {
 });
 
 describe("session outcome", () => {
-  it("device URL + code observed in the pane is relayed as a spoiler-style hint to the chat", async () => {
+  it("a device flow (codex): the URL + code observed in the pane is relayed as a spoiler-style hint to the chat", async () => {
     const adapter = adapterOf("telegram");
     const { controller, sessions } = make();
-    await controller.start("claude-code", chat(adapter), CONFIRMED);
+    await controller.start("codex", chat(adapter), CONFIRMED);
     await sessions[0].events.onHint!("https://auth.example/device?user_code=ABCD-1234", "ABCD-1234");
     const hint = String(adapter.sendText.mock.calls.at(-1)![1]);
     expect(hint).toContain("<tg-spoiler>");
     expect(hint).toContain("ABCD-1234");
+  });
+
+  // #2981 (the user, hmsg-b2832097): a terminal login shows the provider's URL and code in the AgEnD terminal it opens;
+  // the chat gets the terminal link only — never a second link and code for the same sign-in.
+  it.each([["claude-code", "discord"], ["claude-code", "telegram"], ["kiro", "telegram"]])("#2981: a terminal login (%s, %s): the provider's URL and code stay out of the chat", async (backend, platform) => {
+    const adapter = adapterOf(platform as "discord" | "telegram");
+    const { controller, sessions, events } = make();
+    await controller.start(backend, chat(adapter), CONFIRMED);
+    const before = adapter.sendText.mock.calls.length;
+    await sessions[0].events.onHint!("https://claude.ai/oauth/authorize?code=true&client_id=x", "ABCD-1234");
+    const after = adapter.sendText.mock.calls.slice(before).map((c: unknown[]) => String(c[1])).join("\n");
+    expect(after).not.toContain("claude.ai/oauth");
+    expect(after).not.toContain("ABCD-1234");
+    expect(adapter.sendText.mock.calls.length).toBe(before);
+    expect(events).toContainEqual(["login_web_hint_not_relayed", expect.objectContaining({ reason: "terminal_shows_it", hadCode: true })]);
+    await controller.cancel();
   });
 
   it("success → instances recovered and reported; the slot and window are released", async () => {

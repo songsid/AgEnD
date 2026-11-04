@@ -19,6 +19,12 @@ vi.mock("../src/logger.js", async original => {
 });
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: (s: string) => { calls.notify.push(s); }, sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn(), startSdWatchdog: () => setInterval(() => {}, 10_000) }));
 vi.mock("../src/tmux-exec-helper.js", () => ({ tmuxExecHelper: { reopen() {}, start() {}, maintain() {}, async stop() {} } }));
+// startInstance now awaits resolveBackendBinary before lifecycle.start (#3029). The probe is a child; this suite forbids those.
+vi.mock("../src/binary-probe.js", async original => {
+  const real = await original<typeof import("../src/binary-probe.js")>();
+  const inert = { answer: Promise.resolve<string | null>(null), kill() {}, exited: Promise.resolve() };
+  return { ...real, spawnProbeCommand: () => inert, spawnWhich: () => inert, binaryProbe: new real.BinaryProbe(() => inert) };
+});
 
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { TmuxManager } = await import("../src/tmux-manager.js");

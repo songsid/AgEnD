@@ -42,7 +42,6 @@ agend restart <name>            # 立即重啟單一實例；fleet 照常運作
 agend update                    # 依已安裝的頻道更新（alpha 留在 alpha、beta 留在 beta）並重啟服務
 agend update --alpha            # 從 alpha 頻道安裝（下一個次版本的預覽）
 agend update --beta             # 從 beta 頻道安裝
-agend update --rc               # 安裝目前的候選版（@rc），在它升為 beta 之前
 agend update --stable           # 從穩定頻道安裝，即使目前是 beta（可能回到較舊的版本）
 agend update --version 2.1.9    # 安裝指定版本
 agend update --force            # 即使已是最新也強制重裝並重啟
