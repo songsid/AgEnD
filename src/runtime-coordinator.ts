@@ -73,6 +73,12 @@ interface State { version: 1; machines: MachineRecord[]; pairings: PairRecord[];
 const COMMAND_HARD_CAP = 4096, COMMAND_SOFT_CAP = 2048, COMMAND_KEEP_MS = 7 * 24 * 3_600_000;
 const TOMBSTONE_CAP = 65_536, TOMBSTONE_KEEP_MS = 30 * 24 * 3_600_000;
 interface Connection { ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout }
+/**
+ * alpha.2 polish: what an interrupted command becomes. A probe only reads the runner's CLI inventory — nothing to reconcile
+ * if its answer was lost — so it settles as failed (compacted like any settled command); every other operation stays
+ * uncertain (never compacted, never sent again). The automatic probe on connect must not leave a trail in the journal.
+ */
+const interrupted = (command: { operation: RuntimeOperation }): "failed" | "uncertain" => command.operation === "probe" ? "failed" : "uncertain";
 interface Pending { machineId: string; generation: number; resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }
 export interface RuntimeCoordinatorEvent { type: "machine" | "task" | "pane"; machineId: string; task?: WindowsCliTask; pane?: RuntimePaneSnapshot }
 export interface RuntimeCoordinatorOptions {
@@ -127,7 +133,7 @@ export class RuntimeCoordinator {
       if (row.machine.status === "online") row.machine.status = "offline";
       if (row.claimHash) row.machine.pairingFingerprint = runtimeFingerprintFromHash(row.claimHash);
     }
-    for (const command of this.state.commands) if (command.state === "pending") command.state = "uncertain";
+    for (const command of this.state.commands) if (command.state === "pending") command.state = interrupted(command);
     this.save();
     this.heartbeat = setInterval(() => {
       for (const connection of this.connections.values()) {
@@ -315,7 +321,7 @@ export class RuntimeCoordinator {
     let changed = false;
     for (const [id, pending] of this.pending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
       this.pending.delete(id); clearTimeout(pending.timer);
-      const command = this.state.commands.find(row => row.id === id); if (command?.state === "pending") { command.state = "uncertain"; command.error = reason; changed = true; }
+      const command = this.state.commands.find(row => row.id === id); if (command?.state === "pending") { command.state = interrupted(command); command.error = reason; changed = true; }
       pending.reject(Error(reason));
     }
     if (changed) this.save();
@@ -347,7 +353,12 @@ export class RuntimeCoordinator {
       row.machine.bootId = value.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
       if (value.paneProtocol === 1) row.machine.paneProtocol = 1; else delete row.machine.paneProtocol;
       if (value.inventory !== undefined) { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); }
-      this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId }); return;
+      this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId });
+      // alpha.2 polish (dev-claude's no-chat e2e): a runner that brings no CLI inventory (just paired, nothing detected
+      // yet) is asked for its own report now — its detection runs on that PC, never on this fleet's loop — so the first
+      // approval of an agent's request there is not refused for "no available CLI" until someone presses Refresh.
+      if (!row.machine.inventory) void this.call(connection.machineId, "probe", {}).catch(() => { /* Refresh, or the next connect, asks again */ });
+      return;
     }
     row.machine.lastSeenAt = this.now();
     if (value.type === "pane.tool.request") {
@@ -551,11 +562,11 @@ export class RuntimeCoordinator {
     this.state.commands.push(command); this.save();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(id); command.state = "uncertain"; command.error = "Runtime acknowledgment timed out; reconcile before retrying"; this.save(); reject(Error(command.error));
+        this.pending.delete(id); command.state = interrupted(command); command.error = command.state === "failed" ? "Runtime inventory request timed out" : "Runtime acknowledgment timed out; reconcile before retrying"; this.save(); reject(Error(command.error));
       }, this.options.requestTimeoutMs ?? (operation === "probe" ? 90_000 : 30_000)); timer.unref();
       this.pending.set(id, { machineId, generation: connection.generation, resolve, reject, timer });
       try { this.send(connection, { v: 1, type: "request", id, operation, payload: normalized }); }
-      catch (error) { this.pending.delete(id); clearTimeout(timer); command.state = "uncertain"; this.save(); reject(error); }
+      catch (error) { this.pending.delete(id); clearTimeout(timer); command.state = interrupted(command); this.save(); reject(error); }
     });
   }
   close(): void {

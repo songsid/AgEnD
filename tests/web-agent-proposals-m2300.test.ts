@@ -245,7 +245,7 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
     await settle(6);
     expect(reqs.filter(r => r.method === "POST").map(r => [r.url, r.body])).toEqual([[`/ui/agent-proposals/${PROPOSAL.id}`, { decision: "confirm" }]]);
     app.appStore.set({ proposals: [] }); await settle(4);
-    expect(p.root.querySelector(".n-proposals .n-title strong").textContent).toBe("Settings change applied.");
+    expect(p.root.querySelector(".n-proposals .n-title strong").textContent).toBe("Approved: the change is applied.");
     expect(p.root.querySelector(".n-proposals a").getAttribute("href")).toBe("/ui/chat/win-builder");
   });
   it("an answer that is not applied (already decided, run out, failed with its reason) is said, with no agent link", async () => {
@@ -257,7 +257,7 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
     fire(p.root.querySelectorAll(".n-proposals button")[1], "click");                        // Reject (the answer is the server's)
     await settle(6);
     app.appStore.set({ proposals: [] }); await settle(4);
-    expect(p.root.querySelector(".n-proposals .n-title strong").textContent).toBe("Could not be applied.");
+    expect(p.root.querySelector(".n-proposals .n-title strong").textContent).toBe("It could not be applied.");
     expect(p.root.querySelector(".n-proposals .note").textContent).toBe("Reason: machine offline");
     expect(p.root.querySelector(".n-proposals a")).toBeNull();
   });
@@ -379,8 +379,22 @@ describe("alpha.2 the page: Needs you lists an agent's request for the owner", (
       fire(p.root.querySelectorAll(".n-proposals button")[1], "click"); await settle(6);
       expect(reqs.filter(r => r.method === "POST").map(r => r.body.decision)).toEqual(["confirm", "reject"]);   // the second click was taken
       app.appStore.set({ proposals: [] }); await settle(4);
-      expect(p.root.querySelector(".n-proposals .n-title strong").textContent).toBe("Rejected.");
+      expect(p.root.querySelector(".n-proposals .n-title strong").textContent).toBe("Rejected: nothing was changed.");
     } finally { (globalThis as any).fetch = realFetch; }
+  });
+  it("alpha.2 polish: an outcome in the page's language, never the fleet's (an English page read 「變更已套用。」); a code it does not know: the server's words", () => {
+    const zhServer = (state: string, reason_code: string) => ({ state, reason_code, message: "變更已套用。", decided_at: 1 });
+    expect(N.outcomeText(zhServer("applied", "applied"))).toBe("Approved: the change is applied.");
+    expect(N.outcomeText(zhServer("failed", "apply_failed"))).toBe("It could not be applied.");
+    expect(N.outcomeText(zhServer("expired", "expired"))).toBe("This request ran out before it was decided: nothing was changed.");
+    expect(N.outcomeText(zhServer("stale", "settings_changed"))).toBe("The settings changed since the request: nothing was changed.");
+    expect(N.outcomeText({ state: "weird", reason_code: "new_code", message: "server words", decided_at: 1 })).toBe("server words");
+    expect(N.decideErrorText({ error: "owner_required", message: "只有…" })).toBe("Only this fleet's owner, signed in on the AgEnD computer itself, can decide an agent's request.");
+    expect(N.decideErrorText({ error: "confirmation_not_pending", message: "這個設定確認已不在等待中。" })).toBe("This request was already decided or ran out.");
+    expect(N.decideErrorText({ error: "http_502", message: null })).toBe(I.t("app.failed"));
+    I.setLang("zh-TW", { store: false });
+    try { expect(N.outcomeText({ state: "applied", reason_code: "applied", message: "Change applied.", decided_at: 1 })).toBe("已核准：變更已套用。"); }
+    finally { I.setLang("en", { store: false }); }
   });
   it("its words in zh-TW", () => {
     I.setLang("zh-TW", { store: false });

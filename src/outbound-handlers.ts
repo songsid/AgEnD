@@ -1821,7 +1821,11 @@ const WINDOWS_MCP_EDITABLE = new Set(["display_name", "description", "model"]);
 function windowsRequestAnswer(view: { id: string; state: string }): Record<string, unknown> {
   return view.state === "pending"
     ? { pending_id: view.id, state: "pending", message: "pending — waiting for a fleet admin to confirm (in General; on a fleet with no chat connection, the owner in the web dashboard's Needs you). Nothing is changed until then." }
-    : { pending_id: view.id, state: view.state, message: `This request is already ${view.state}.` };
+    // alpha.2 polish: the same request again (an identical request is answered by the one already decided, for about ten
+    // minutes) — say what to do instead of repeating it.
+    : { pending_id: view.id, state: view.state, message: view.state === "applied" || view.state === "applying"
+      ? `This identical request is already ${view.state}; nothing more is needed.`
+      : `This identical request was already ${view.state}. Asking the same thing again gets the same answer: change something (the name, the folder or the model) to ask again, or try again in about ten minutes.` };
 }
 
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {

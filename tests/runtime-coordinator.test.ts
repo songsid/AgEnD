@@ -142,3 +142,41 @@ describe("runtime execution delivery and reconciliation", () => {
     const denied = once(ws, "message"); ws.send(JSON.stringify({ v: 1, type: "tool.call", id: "tool-2", runId: taskInput.requestId, body: {} })); expect(JSON.parse((await denied)[0].toString()).ok).toBe(false); expect(handleMcp).toHaveBeenCalledOnce();
   });
 });
+
+describe("alpha.2 polish: a runner that connects with no CLI inventory is asked for its own report", () => {
+  async function bare(base: string, credential: string, inventory?: unknown) {
+    const ws = new WebSocket(base.replace("http:", "ws:") + "/runtime/v1/connect", { headers: { Authorization: `Bearer ${credential}` } }); clients.push(ws);
+    const frames: any[] = []; ws.on("message", (b) => frames.push(JSON.parse(b.toString())));
+    await once(ws, "open");
+    ws.send(JSON.stringify({ v: 1, type: "hello", bootId: "boot-1", ...(inventory ? { inventory } : {}) }));
+    await vi.waitFor(() => expect(frames.some(f => f.type === "welcome")).toBe(true));
+    return { ws, frames };
+  }
+  it("just paired (no inventory in its hello): one probe request after the welcome; its answer is the machine's inventory", async () => {
+    const h = hub(), base = await listen(h), claim = pair(h);
+    const { ws, frames } = await bare(base, claim.credential);
+    await vi.waitFor(() => expect(frames.filter(f => f.type === "request" && f.operation === "probe")).toHaveLength(1));
+    const probe = frames.find(f => f.type === "request" && f.operation === "probe");
+    expect(h.machine(claim.machineId)?.inventory).toBeUndefined();
+    ws.send(JSON.stringify({ v: 1, type: "response", id: probe.id, ok: true, result: { home: "C:\\Users\\pc", clis: [] } }));
+    await vi.waitFor(() => expect(h.machine(claim.machineId)?.inventory?.home).toBe("C:\\Users\\pc"));
+  });
+  it("a probe interrupted (the runner gone before it answered) settles as failed — compacted like any settled command, never left uncertain", async () => {
+    const h = hub(), base = await listen(h), claim = pair(h), dir = homes.at(-1)!;
+    const { ws, frames } = await bare(base, claim.credential);
+    await vi.waitFor(() => expect(frames.some(f => f.type === "request" && f.operation === "probe")).toBe(true));
+    ws.terminate();
+    await vi.waitFor(() => {
+      const cmds = JSON.parse(readFileSync(join(dir, "runtime-machines.json"), "utf8")).commands.filter((c: any) => c.operation === "probe");
+      expect(cmds.map((c: any) => c.state)).toEqual(["failed"]);
+    });
+  });
+  it("a runner that brings its inventory: no probe (nothing runs that its report already says)", async () => {
+    const h = hub(), base = await listen(h), claim = pair(h);
+    const { frames } = await bare(base, claim.credential, { home: "C:\\Users\\test", clis: [] });
+    await new Promise(r => setTimeout(r, 150));
+    expect(frames.filter(f => f.type === "request")).toEqual([]);
+    expect(h.machine(claim.machineId)?.inventory?.home).toBe("C:\\Users\\test");
+  });
+});
+
