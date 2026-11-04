@@ -57,7 +57,7 @@ describe("alpha.2 polish: a paired machine with no CLI inventory is asked for it
     const view = await r.propose();
     const done = await r.decide(view.id);
     expect(done.state).toBe("applied");
-    expect(r.call.mock.calls.map(c => [c[0], c[1]])).toEqual([[MACHINE, "probe"]]);
+    expect(r.call.mock.calls).toEqual([[MACHINE, "probe", { force: true }]]);   // forced: the cached answer would be the placeholder
     expect(r.order).toEqual(["probe:probe", "create:inventory=true:allowed=true"]);
   });
   it("#3004 rig: the placeholder a just-paired runner reports ({clis: [], home: \"\", probedAt: null}) counts as none: probed first", async () => {

@@ -157,6 +157,7 @@ describe("alpha.2 polish: a runner that connects with no CLI inventory is asked 
     const { ws, frames } = await bare(base, claim.credential);
     await vi.waitFor(() => expect(frames.filter(f => f.type === "request" && f.operation === "probe")).toHaveLength(1));
     const probe = frames.find(f => f.type === "request" && f.operation === "probe");
+    expect(probe.payload).toEqual({ force: true });                                // detection, never the runner's cached answer
     expect(h.machine(claim.machineId)?.inventory).toBeUndefined();
     ws.send(JSON.stringify({ v: 1, type: "response", id: probe.id, ok: true, result: { home: "C:\\Users\\pc", clis: [] } }));
     await vi.waitFor(() => expect(h.machine(claim.machineId)?.inventory?.home).toBe("C:\\Users\\pc"));

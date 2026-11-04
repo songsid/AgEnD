@@ -358,7 +358,9 @@ export class RuntimeCoordinator {
       // yet) is asked for its own report now — its detection runs on that PC, never on this fleet's loop — so the first
       // approval of an agent's request there is not refused for "no available CLI" until someone presses Refresh.
       // (#3004 rig: the runner's hello may carry a placeholder — `probedAt: null`, no CLIs — which is no report either.)
-      if (!inventoryProbed(row.machine.inventory)) void this.call(connection.machineId, "probe", {}).catch(() => { /* Refresh, or the next connect, asks again */ });
+      // (#3005 rig recheck: `force` — without it the runner answers with its cached inventory, on a fresh profile the same
+      // placeholder; Refresh sends force, and so does this: detection runs on that PC.)
+      if (!inventoryProbed(row.machine.inventory)) void this.call(connection.machineId, "probe", { force: true }).catch(() => { /* Refresh, or the next connect, asks again */ });
       return;
     }
     row.machine.lastSeenAt = this.now();
