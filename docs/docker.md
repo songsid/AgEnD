@@ -212,8 +212,8 @@ docker compose run --rm -T agend sh -c 'mkdir -p ~/.agend && chmod 700 ~/.agend 
 docker compose run --rm agend agend validate
 ```
 
-`agend validate` must report no errors. On a web-only fleet it warns that no channel and no General are configured:
-that is expected.
+`agend validate` must report no errors. On a web-only fleet it warns that no channel is configured: that is expected. A
+web-only fleet needs no General; it may have one, an agent ticked as **General** in Settings (#3008), and never two.
 
 ## 6. Start and verify
 

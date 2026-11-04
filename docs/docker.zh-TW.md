@@ -202,7 +202,7 @@ docker compose run --rm -T agend sh -c 'mkdir -p ~/.agend && chmod 700 ~/.agend 
 docker compose run --rm agend agend validate
 ```
 
-`agend validate` 必須沒有錯誤。只用網頁的 fleet 會警告沒有設定頻道和 General，這是預期的。
+`agend validate` 必須沒有錯誤。只用網頁的 fleet 會警告沒有設定頻道，這是預期的。只用網頁的 fleet 不需要 General；也可以在設定裡把一個 agent 勾選為 **General**（#3008），但不會有兩個。
 
 ## 6. 啟動並驗證
 

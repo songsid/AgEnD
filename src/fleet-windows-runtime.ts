@@ -1,4 +1,5 @@
 /** Windows execution adapter for the ordinary Fleet instance registry and delivery facade. */
+import { addsSecondGeneral } from "./web-only-fleet.js";
 import { randomUUID } from "node:crypto";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import { windowsAgentsFor, type WindowsAgent, type WindowsAgents } from "./windows-agents.js";
@@ -105,6 +106,8 @@ export class FleetWindowsRuntime {
     this.enabled();
     const fleet = this.host.fleet();
     if (!fleet) throw new Error("Fleet configuration is unavailable");
+    // #3021 review: a Windows agent inherits the defaults too — never a second General on a fleet with no chat connection.
+    if (addsSecondGeneral(fleet as never)) throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true");
     const {tags,...profile} = input;
     if (profile.machineId !== undefined) {
       if (typeof profile.machineId !== "string" || !this.host.validateMachine) throw new Error("Remote runtime is not enabled");
@@ -115,6 +118,8 @@ export class FleetWindowsRuntime {
       const persist=()=>{
         if (!authorized()) throw new Error("Authorization expired");
         if (Object.hasOwn(fleet.instances,name)) throw new Error("Instance name already exists");
+        // #3021 review r2: asked again at the commit, after the profile's await — a create made meanwhile counts.
+        if (addsSecondGeneral(fleet as never)) throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true");
         fleet.instances[name] = {...nativeInstanceConfig(agent),...binding,...(Array.isArray(tags) ? {tags:tags as string[]} : {})};
         this.host.save();
       };
