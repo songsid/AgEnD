@@ -61,7 +61,9 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
     try {
       await open("windows-cli");
       expect(p.root.querySelector('.s-nav a[href="/settings/runtimes"]')?.textContent.trim()).toBe("Runtime");
-      expect(p.root.querySelector("#windows-cwd")?.value).toBe("C:\\Test");
+      expect(has(".runtime-machines")).toBe(true);   // the old address lands on the Runtime page …
+      (p.root.querySelector(".runtime-native-local .runtime-inspect") as any).click(); await settle(14);   // … where the diagnostic dialog (opened from the local computer's card) has the old form
+      expect((p.root.querySelector("#windows-cwd") as any)?.value).toBe("C:\\Test");
       expect(p.root.querySelectorAll(".panel-head").length).toBe(1);
       expect(route.parseRoute("/ui/windows-cli")).toEqual({ panel: "settings", section: "runtimes" });
       expect(route.routePath(route.parseRoute("/ui/windows-cli"))).toBe("/settings/runtimes");

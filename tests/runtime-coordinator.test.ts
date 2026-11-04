@@ -1,4 +1,6 @@
-import { createServer, type Server } from "node:http";
+import { Readable } from "node:stream";
+import { handleRuntimeRequest, type RuntimeApiContext } from "../src/runtime-api.js";
+import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { once } from "node:events";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,6 +27,7 @@ async function connect(base: string, credential: string, bootId = "boot-1") {
 }
 function responseTask(payload: unknown): WindowsCliTask { const task = (payload as { task: typeof taskInput }).task; return { id: task.requestId, cli: "codex", cwd: task.cwd, sandbox: "read-only", status: "running", output: "", startedAt: 1 }; }
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const ws of clients.splice(0)) ws.terminate();
   for (const h of hubs.splice(0)) h.close();
   for (const s of servers.splice(0)) await new Promise<void>(done => s.close(() => done()));
@@ -193,3 +196,47 @@ describe("alpha.2 polish: a runner that connects with no CLI inventory is asked 
   });
 });
 
+// Real coordinator and private loopback sockets, with inert peers instead of provider CLIs.
+describe("selected-computer diagnostic task API", () => {
+  const token="d".repeat(48);
+  const callApi=(h:RuntimeCoordinator,path:string,method="GET",body:unknown={},context?:RuntimeApiContext)=>{
+    vi.stubEnv("AGEND_REMOTE_RUNTIME","1");
+    const req=Readable.from([JSON.stringify(body)]) as unknown as IncomingMessage;
+    req.method=method;req.headers={host:"localhost","x-agend-token":token};
+    Object.defineProperty(req,"socket",{value:{remoteAddress:"127.0.0.1"}});
+    const result={status:0,body:""};
+    const res={writeHead(code:number){result.status=code;},end(value:unknown){result.body=String(value);}} as unknown as ServerResponse;
+    handleRuntimeRequest(req,res,new URL(path,"http://localhost"),context || {webToken:token,runtimeCoordinator:()=>h});return result;
+  };
+  it("routes execution, history and cancellation only to the selected approved computer",async()=>{
+    const h=hub(),one=pair(h),two=pair(h,"Laptop"),base=await listen(h),ws=await connect(base,one.credential),other=await connect(base,two.credential);
+    const received:any[]=[],foreign:any[]=[];
+    other.on("message",raw=>foreign.push(JSON.parse(raw.toString())));
+    ws.on("message",raw=>{const m=JSON.parse(raw.toString());if(m.type!=="request")return;received.push(m);
+      ws.send(JSON.stringify({v:1,type:"response",id:m.id,ok:true,result:m.operation==="run"?responseTask(m.payload):{...responseTask({task:taskInput}),status:"cancelled",finishedAt:2,outcomeConfirmed:true}}));});
+    const root=`/ui/runtimes/machines/${one.machineId}/tasks`,foreignRoot=`/ui/runtimes/machines/${two.machineId}/tasks`;
+    const result=callApi(h,root,"POST",taskInput);await vi.waitFor(()=>expect(result.status).toBe(202));
+    expect(received.map(m=>m.operation)).toEqual(["run"]);expect(received[0].payload.task).toEqual(taskInput);
+    expect(JSON.parse(callApi(h,root).body).tasks).toHaveLength(1);expect(JSON.parse(callApi(h,foreignRoot).body).tasks).toEqual([]);
+    const wrong=callApi(h,`${foreignRoot}/${taskInput.requestId}/cancel`,"POST");await vi.waitFor(()=>expect(wrong.status).toBe(400));
+    expect(foreign).toEqual([]);
+    const cancel=callApi(h,`${root}/${taskInput.requestId}/cancel`,"POST");await vi.waitFor(()=>expect(cancel.status).toBe(202));expect(received.map(m=>m.operation)).toEqual(["run","cancel"]);
+    expect(JSON.stringify(callApi(h,root))).not.toContain(taskInput.prompt);
+  });
+  it("preserves a lost acknowledgement as an owned uncertain task and rejects changed replay",async()=>{
+    const h=hub({requestTimeoutMs:20}),identity=pair(h),base=await listen(h),ws=await connect(base,identity.credential),root=`/ui/runtimes/machines/${identity.machineId}/tasks`;
+    let count=0;ws.on("message",raw=>{if(JSON.parse(raw.toString()).type==="request")count++;});
+    const sent=callApi(h,root,"POST",taskInput);await vi.waitFor(()=>expect(sent.status).toBe(202));
+    expect(JSON.parse(sent.body).task).toMatchObject({id:taskInput.requestId,status:"failed",outcomeConfirmed:false});
+    expect(JSON.parse(callApi(h,root).body).tasks[0]).toMatchObject({id:taskInput.requestId,outcomeConfirmed:false});
+    const changed=callApi(h,root,"POST",{...taskInput,prompt:"Different"});await vi.waitFor(()=>expect(changed.status).toBe(400));expect(count).toBe(1);
+  });
+  it("rechecks authorization before dispatch and after a held remote reply",async()=>{
+    const h=hub(),identity=pair(h),base=await listen(h),ws=await connect(base,identity.credential),root=`/ui/runtimes/machines/${identity.machineId}/tasks`;
+    const ctx={webToken:token as string|null,runtimeCoordinator:()=>h};let count=0;
+    let release=()=>{};
+    ws.on("message",raw=>{const m=JSON.parse(raw.toString());if(m.type!=="request")return;count++;release=()=>ws.send(JSON.stringify({v:1,type:"response",id:m.id,ok:true,result:responseTask(m.payload)}));});
+    const denied=callApi(h,root,"POST",taskInput,ctx);ctx.webToken=null;await vi.waitFor(()=>expect(denied.status).toBe(403));expect(count).toBe(0);
+    ctx.webToken=token;const held=callApi(h,root,"POST",taskInput,ctx);await vi.waitFor(()=>expect(count).toBe(1));ctx.webToken=null;release();await vi.waitFor(()=>expect(held.status).toBe(403));expect(held.body).not.toContain(taskInput.cwd);
+  });
+});

@@ -7,7 +7,7 @@ import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { readBoundedWebBody } from "./web-body.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { validateNativeTask } from "./windows-cli-worker.js";
+import { validateNativeTask, type NativeTaskInput } from "./windows-cli-worker.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
@@ -490,6 +490,20 @@ export class RuntimeCoordinator {
   }
   task(id: string): WindowsCliTask | null { const task = this.state.commands.find(command => command.id === id && command.operation === "run")?.task; return task ? structuredClone(task) : null; }
   tasks(): Array<{ machineId: string; task: WindowsCliTask }> { return this.state.commands.flatMap(command => command.operation === "run" && command.task ? [{ machineId: command.machineId, task: structuredClone(command.task) }] : []); }
+  /** Include journaled sends whose acknowledgement is still missing, so reopening diagnostics cannot hide an uncertain run. */
+  diagnosticTasks(machineId: string): WindowsCliTask[] {
+    return this.state.commands.flatMap(command => {
+      if (command.operation !== "run" || command.machineId !== machineId) return [];
+      if (command.task) return [structuredClone(command.task)];
+      let input: NativeTaskInput;
+      try { input = validateNativeTask((command.payload as RuntimeRunPayload).task); } catch { return []; }
+      const uncertain = command.state === "uncertain", rejected = command.state === "failed";
+      return [{ id: command.id, cli: input.cli, cwd: input.cwd, sandbox: input.sandbox, ...(input.model ? { model: input.model } : {}),
+        startedAt: command.createdAt, status: uncertain || rejected ? "failed" as const : "starting" as const, output: "",
+        ...(rejected ? { outcomeConfirmed: true, error: command.error || "Runtime request failed" } : {}),
+        ...(uncertain ? { outcomeConfirmed: false, error: "Remote execution outcome is unconfirmed. Reconnect this runtime to reconcile before sending another task." } : {}) }];
+    }).sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
+  }
   hasActiveTask(machineId: string): boolean { return this.state.commands.some(command => command.machineId === machineId && command.operation === "run" && command.state !== "failed" && (!command.task || !terminal(command.task) || command.task.outcomeConfirmed === false)); }
   paneTransportEpoch(machineId: string): string | null {
     const connection = this.connections.get(machineId);

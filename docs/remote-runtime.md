@@ -8,6 +8,14 @@ The coordinator still owns the shared Fleet, Agent settings, task board, delegat
 
 Design references, source-review scope and bundled license notices are recorded in [Remote Runtime provenance](remote-runtime-provenance.md).
 
+## CLI diagnostics on a selected computer
+
+In **Settings → Runtime**, the host's Windows installation and approved paired computers use the same machine cards. Each card shows detected CLIs, versions and sign-ins. Click **CLI diagnostics** on a card to open a dialog fixed to that computer. Paired-computer diagnostics also work when the coordinator has no local Windows CLI support.
+
+Opening the dialog reads saved inventory. **Detect Windows CLIs** explicitly refreshes that computer only. Expand a CLI row for its executable path and reported models. Expand **Test CLI** for the optional one-off task form and results; it starts collapsed until a test is active. Closing the dialog does not cancel submitted work; reopen the same computer to read its task status. Working directories, models and drafts stay separate for each computer. Offline computers show saved inventory with detection and dispatch disabled. Revocation never moves diagnostics to another computer.
+
+Test tasks use the existing per-turn execution protocol and task journal. An unconfirmed acknowledgement remains visible and blocks another task until the Runtime reconciles its outcome; reopening the panel never replays the request.
+
 ## First connection
 
 Turn on **Allow other Windows PCs to pair** in **Settings → Runtime** (fleet.yaml `runtimes.remote_runtime: true`; off by default). Turning it on asks a fleet admin to confirm, like other access settings; it applies without a restart. This machine stays your fleet; the other PC runs only the small runner below, never a fleet. Remote Windows agents work even when this machine is a Linux machine without Windows interoperability. **Use this PC's Windows CLIs** (`runtimes.windows_cli`) is the separate switch for this machine's own Windows CLIs.

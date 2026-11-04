@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
 
@@ -44,6 +44,7 @@ describe("native Windows CLI discovery", () => {
     expect([...started]).toEqual([...NATIVE_CLI_IDS]);
     release();
     const result = await pending;
+    expect(result.hostname).toBe(hostname());
     expect(result.clis).toHaveLength(7);
     expect(result.clis.every(row => row.path === null && !row.runnable && row.authenticated === null && /not installed/.test(row.reason ?? ""))).toBe(true);
   });
