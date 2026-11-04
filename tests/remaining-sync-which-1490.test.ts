@@ -109,6 +109,64 @@ describe("#1490 row 67: spawn PATH probe is async", () => {
   });
 });
 
+function fleetStart(root: string) {
+  const config = {
+    working_directory: join(root, "w"),
+    backend: "codex",
+    restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+    context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    log_level: "info",
+  } as never;
+  const fm = new FleetManager(root);
+  fm.fleetConfig = { defaults: {}, instances: { worker: config } } as never;
+  vi.spyOn(Daemon.prototype, "start").mockResolvedValue(undefined as never);
+  vi.spyOn(Daemon.prototype, "stop").mockResolvedValue();
+  vi.spyOn(Daemon.prototype, "abortStartup").mockResolvedValue();
+  vi.spyOn(IpcServer.prototype, "listen").mockResolvedValue();
+  vi.spyOn(fm.memoryPressure, "start").mockImplementation(() => {});
+  vi.spyOn(fm as unknown as { connectIpcToInstance(name: string): Promise<void> }, "connectIpcToInstance").mockResolvedValue(undefined);
+  vi.spyOn(fm as unknown as { requestDiscordUsagePresenceRefresh(): void }, "requestDiscordUsagePresenceRefresh").mockImplementation(() => {});
+  vi.spyOn(fm as unknown as { syncRoleSkills(): void }, "syncRoleSkills").mockImplementation(() => {});
+  return { fm, config };
+}
+
+describe("#1490 row 67: outer FleetManager resolve is fenced by stop/lifecycle ownership", () => {
+  it("a Stop during the outer resolve does not start the old operation", async () => {
+    noteResolvedBinary("codex", null);
+    let finish!: (value: string | null | undefined) => void;
+    let calls = 0;
+    const resolveStarted = new Promise<void>(resolve => {
+      vi.spyOn(availability, "resolveBackendBinary").mockImplementation(() => {
+        calls++;
+        if (calls === 1) {
+          resolve();
+          return new Promise(r => { finish = r; });
+        }
+        return Promise.resolve("/usr/bin/codex");
+      });
+    });
+    const { fm, config } = fleetStart(scratch());
+    const starting = fm.startInstance("worker", config, true);
+    await resolveStarted;
+    await fm.stopInstance("worker");
+    finish(null);
+    await expect(starting).rejects.toBeInstanceOf(SupersededStartError);
+    expect(Daemon.prototype.start).not.toHaveBeenCalled();
+    expect(fm.daemons.has("worker")).toBe(false);
+    expect(hooks.syncWhich).toEqual([]);
+  });
+
+  it("a current FleetManager start still starts after the outer resolve", async () => {
+    noteResolvedBinary("codex", null);
+    vi.spyOn(availability, "resolveBackendBinary").mockResolvedValue("/usr/bin/codex");
+    const { fm, config } = fleetStart(scratch());
+    await fm.startInstance("worker", config, true);
+    expect(Daemon.prototype.start).toHaveBeenCalledOnce();
+    expect(fm.daemons.has("worker")).toBe(true);
+    expect(hooks.syncWhich).toEqual([]);
+  });
+});
+
 function makeFleet() {
   const dir = scratch();
   const fm = new FleetManager(dir) as any;

@@ -5839,9 +5839,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (resumePaused) this.lifecycle.markActivitySeedNow(name);
       const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
       // #1490 row 67: off-loop resolve before skill/instruction publication
-      // constructs a backend (resolveKnowledgeWorkDir). Lifecycle start looks
-      // up again before its own createBackend; the probe cache makes that cheap.
+      // constructs a backend (resolveKnowledgeWorkDir). Capture stop/lifecycle
+      // ownership first: a Stop during this wait finishes and bumps the epoch,
+      // and the inner lifecycle check would otherwise capture the new epoch and
+      // accept the stale start. Lifecycle start looks up again before its own
+      // createBackend; the probe cache makes that cheap.
+      const epoch = this.lifecycle.epochOf(name);
+      const stopGen = this.explicitStopGeneration.get(name) ?? 0;
       const resolved = await resolveBackendBinary(backend);
+      execution?.assert();
+      if (this.lifecycle.epochOf(name) !== epoch
+        || (this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
+        throw new SupersededStartError(name);
+      }
       const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
       if (binary) noteResolvedBinary(binary, resolved ?? binary);
       if (config.general_topic) {
