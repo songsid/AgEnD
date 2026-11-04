@@ -32,7 +32,7 @@ export interface HumanAuthority {
 }
 
 /** §10: what turned a web-verified receipt into none after it was written. */
-export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only" | "named_link_off" | "quick_link_off";
+export type AuthorityDowngrade = "disabled" | "revoked" | "loopback_only" | "named_link_off" | "quick_link_off" | "outside_off";
 
 /** Why a web request carries no authority — the first §3 check it failed. */
 export type WebAuthorityRefusal =
@@ -45,6 +45,7 @@ export type WebAuthorityRefusal =
   | "token_rotated"        // §3.1: the session's token epoch is not the current one
   | "no_account"           // §3.2: an `agend web --code` session — the host operator, not an account
   | "host_sign_in"         // #2910 D1 (web-only fleet): no host operator's authorization now (none, revoked, run out): sign in again on this computer
+  | "outside_sign_in"      // #3008: signed in from outside, but connections from outside are off now, or its authorization ended: sign in again with a new code
   | "not_admin"            // §3.3: no longer in its adapter's access.allowed_users
   | "other_namespace"      // §3.3: the target instance belongs to another adapter
   | "loopback_only"        // §3.4: "Only this computer can authorize" is on and this request is not loopback
@@ -140,6 +141,12 @@ export interface WebAuthorityInput {
    * on this computer only. Absent or false: a host session is the operator, not an account (no_account), as before.
    */
   hostOperator?: boolean;
+  /**
+   * #3008: connections from outside are on for this web-only fleet — an authenticator app is set up, the switch is on —
+   * and this is the public link it opened (that exposure). A session signed in through it with the app's code
+   * (SessionRecord.remote) is then this computer's admin too. Absent: no such session qualifies.
+   */
+  outside?: { exposureId: string } | null;
 }
 
 export const noAuthority = (epoch: number): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: epoch });
@@ -159,10 +166,16 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   // §3.5 / §0.2: the public link never qualifies — except the admin's own named tunnel (provenance, exact hostname)
   // while the option is on and "Only this computer can authorize" is off. A peer that says named off the gateway is not.
   // §0.3: the temporary public link (a gateway request that is not named) likewise, by its own option.
+  // #3008: a session signed in from outside with the authenticator's code — over the link connections from outside
+  // opened. That switch is its opt-in (the user's decision 1), in place of the named/quick link options; "Only this
+  // computer can authorize" still refuses it. Off, or another link: it is no one's (and the switch's Off ends it anyway).
+  const remote = i.gateway && s?.remote === "totp" && !s.owner && i.hostOperator === true;
   if (i.gateway) {
     if (i.peer !== "named_link" && i.peer !== "quick_link") return refuse("public_link");
     if (i.policy.loopbackOnly) return refuse("loopback_only");
-    if (i.peer === "named_link" ? !i.policy.namedLink : !i.policy.quickLink) return refuse(i.peer === "named_link" ? "named_link_off" : "quick_link_off");
+    if (remote) {
+      if (!i.outside || s!.exposureId !== i.outside.exposureId) return refuse("outside_sign_in");
+    } else if (i.peer === "named_link" ? !i.policy.namedLink : !i.policy.quickLink) return refuse(i.peer === "named_link" ? "named_link_off" : "quick_link_off");
   } else if (i.peer === "named_link" || i.peer === "quick_link") return refuse("public_link");
   if (!s) return refuse("not_session");
   if (s.tier !== "admin") return refuse("not_admin_session");
@@ -171,12 +184,14 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   // #2910 D1: the host operator — a host session with no account, on a web-only fleet. It has no adapter to be an admin
   // of or a namespace in (a web-only fleet has none): it is this computer's admin, so only from this computer.
   const host = s.host === true && !s.owner && i.hostOperator === true;
-  const owner = host ? HOST_OPERATOR : s.owner;
+  const owner = host || remote ? HOST_OPERATOR : s.owner;
   // #2910 D1: on a web-only fleet a session with no account (one from before, or another `agend web` sign-in) is told
   // the one way there: a new sign-in with the host's code on this computer.
   if (!owner?.adapterId || !owner.userId) return refuse(i.hostOperator === true ? "host_sign_in" : "no_account");
   if (host) {
     if (i.peer !== "loopback") return refuse("loopback_only");
+  } else if (remote) {
+    // Checked above: the link connections from outside opened, the switch on, "Only this computer…" off.
   } else {
     if (!i.isAdmin(owner.userId, owner.adapterId)) return refuse("not_admin");
     if (i.target && i.target.adapterId !== owner.adapterId) return refuse("other_namespace");
@@ -184,9 +199,9 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
   }
   // §0: authorized once, by this account, for this session, under the current epoch, and not longer ago than allowed.
   const a = i.authorization;
-  if (!a || a.handle !== s.handle || a.owner.adapterId !== owner.adapterId || a.owner.userId !== owner.userId || a.epoch !== i.epoch) return refuse(host ? "host_sign_in" : "not_authorized");
+  if (!a || a.handle !== s.handle || a.owner.adapterId !== owner.adapterId || a.owner.userId !== owner.userId || a.epoch !== i.epoch) return refuse(host ? "host_sign_in" : remote ? "outside_sign_in" : "not_authorized");
   // §0.1: the end it was given with, or sooner if the hours were lowered since — never later.
-  if (!(i.now <= Math.min(a.until, a.authorizedAt + i.policy.maxSessionMs))) return refuse(host ? "host_sign_in" : "authorization_expired");
+  if (!(i.now <= Math.min(a.until, a.authorizedAt + i.policy.maxSessionMs))) return refuse(host ? "host_sign_in" : remote ? "outside_sign_in" : "authorization_expired");
   return {
     authority: {
       kind: "web-verified", actor: { adapter_id: owner.adapterId, user_id: owner.userId },
@@ -214,12 +229,16 @@ export function confirmAfterBody(arrival: WebAuthorityResult, now: WebAuthorityR
  * authorize" is on, or (named_link, §0.2; quick_link, §0.3) while that link's option is off.
  * Platform and none are unchanged. The receiver applies the rule to this, never to the stored value.
  */
-export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; quickLink: boolean; epoch: number }): HumanAuthority {
+export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; quickLink: boolean; epoch: number; outside?: boolean }): HumanAuthority {
   if (stored.kind !== "web-verified") return stored;
   const down = (downgraded: AuthorityDowngrade): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
   if (!state.enabled) return down("disabled");
   if (stored.authority_epoch < state.epoch) return down("revoked");
   if (state.loopbackOnly && stored.session?.peer !== "loopback") return down("loopback_only");
+  // #3008: this computer's admin signed in from outside (over the link connections from outside opened) — its receipts
+  // hold while that switch is on (its opt-in, not the link options); off, they read as none at once.
+  if (stored.actor?.adapter_id === HOST_OPERATOR.adapterId && stored.actor.user_id === HOST_OPERATOR.userId
+    && (stored.session?.peer === "named_link" || stored.session?.peer === "quick_link")) return state.outside === true ? stored : down("outside_off");
   // §0.2: the named-link option off — every receipt from a session over it reads as none at once.
   if (!state.namedLink && stored.session?.peer === "named_link") return down("named_link_off");
   // §0.3: the quick-link option off — likewise for every receipt from a session over the temporary public link.
