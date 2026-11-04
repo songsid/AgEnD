@@ -422,7 +422,16 @@ gets you nothing extra and opts you out of every future refinement.
 `standard` (30 tools) and `minimal` (9) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9, and `list_stickers` and `preview_stickers` in 2.1.12.
 **`general` is an identity, not a profile you can pick**: it is assigned to
 instances with `general_topic: true`, and writing it by hand fails validation —
-two ways of being a General would eventually disagree.
+two ways of being a General would eventually disagree. Because General is
+AgEnD's administrator, the `general` profile includes every orchestration tool
+(`ORCHESTRATION`: creating, deleting, replacing, starting, stopping, pausing,
+waking and restarting instances; deploying and tearing down templates; team
+CRUD; `update_instance_config` and `update_fleet_defaults`;
+`migrate_kiro_instance` and `reconcile_kiro_instance`; `update_decision`; and
+`get_web_settings` / `set_web_settings`), while leaving repository leases and
+raw host-config/log inspection (`checkout_repo`, `release_repo`,
+`get_fleet_config`, `get_instance_logs`, `list_deployments`, `validate_config`)
+out of its default tool list.
 
 `delegate_task` is deliberately a worker tool. It creates nothing, destroys
 nothing, and needs a target that already exists, so an ordinary agent can hand
@@ -750,7 +759,7 @@ kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a 
 
 `kiro_engine_status` (a read-only tool every profile except `minimal` has) shows, for each kiro instance and ClassicBot channel, its `kiro_ui`, the engine flags its next launch would use or why kiro-cli would refuse it, its recorded launches (kiro-cli and AgEnD versions per change), its V3 session and its credential profile. It reads what AgEnD recorded at the last launch and never runs kiro-cli itself. It also shows `engine_floor` (see below).
 
-**Moving from classic to the TUI (`migrate_kiro_instance`, #2598).** kiro-cli 3.0 drops the classic engine. Setting `kiro_ui: tui` by hand would start the instance on an empty TUI conversation. `migrate_kiro_instance` (coordinator and full tool sets) moves one fleet instance and carries its conversation:
+**Moving from classic to the TUI (`migrate_kiro_instance`, #2598).** kiro-cli 3.0 drops the classic engine. Setting `kiro_ui: tui` by hand would start the instance on an empty TUI conversation. `migrate_kiro_instance` (general, coordinator and full tool sets) moves one fleet instance and carries its conversation:
 - It posts a **Move it / Cancel** prompt in General, and nothing changes until a fleet admin confirms it there.
 - On the confirm, AgEnD sets `kiro_ui: tui`, arms the instance's classic conversation as its TUI conversation and restarts a running instance. The first TUI launch resumes that conversation once, which makes kiro copy the whole history into its session files, and records it as the instance's own.
 - The outcome is posted in General and in the instance's topic.

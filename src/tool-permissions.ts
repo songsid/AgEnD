@@ -97,8 +97,11 @@ const ALL_TOOLS = TOOLS.map(t => t.name);
 /**
  * Three tiers plus the three that already existed.
  *
- * `general` is not `coordinator` plus channel I/O — it is deliberately smaller:
- * a dispatcher has no business deleting instances or rewriting fleet defaults.
+ * `general` includes the full `ORCHESTRATION` list (fleet decision 9e3bea6c, #3043):
+ * General is AgEnD's administrator, so it gets every orchestration tool without a
+ * separate confirmation gate, while keeping repository leases and raw host-config/log
+ * inspection (`checkout_repo`, `release_repo`, `get_fleet_config`, `get_instance_logs`,
+ * `list_deployments`, `validate_config`) out of its default profile.
  */
 export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   full: ALL_TOOLS,
@@ -110,7 +113,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     // Read-only: what each kiro instance runs on, for explaining a kiro incompatibility.
     "kiro_engine_status",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
-    "create_instance", "start_instance", "restart_instance", "wake_instance",
+    ...ORCHESTRATION,
     "task", "list_decisions", "post_decision",
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
     // Persona emoji (v2.1.9): every instance can see the server's emojis, and
@@ -131,8 +134,6 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "office_view", "office_set",
     // The Office view's skin packs (#2692), as a worker's: off until a person switches office_pack_access on.
     "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
-    // #2056: Settings → Web appearance for the user (the page's own checks; a worker's are its own theme only).
-    "get_web_settings", "set_web_settings",
   ],
   standard: [
     "reply", "react", "edit_message", "close_poll",

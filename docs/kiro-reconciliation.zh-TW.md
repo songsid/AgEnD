@@ -2,7 +2,7 @@
 
 TUI fleet agent 同時有原本帶入的對話，以及含有工作的較新對話時，才使用此功能。自動恢復會維持等待，不會自行選擇要放棄哪份工作。
 
-`reconcile_kiro_instance` 提供給 full／coordinator 工具權限。呼叫只會在 **General 請 fleet admin 確認**，不會立即封存或變更資料。目前只支援保留已證明屬於該 agent 的原始帶入對話，不能任意指定另一份新對話。CLI 必須已停止；暫停的 agent 也必須通過程序已停止的檢查。
+`reconcile_kiro_instance` 提供給 general、coordinator 與 full 工具權限。呼叫只會在 **General 請 fleet admin 確認**，不會立即封存或變更資料。目前只支援保留已證明屬於該 agent 的原始帶入對話，不能任意指定另一份新對話。CLI 必須已停止；暫停的 agent 也必須通過程序已停止的檢查。
 
 ```json
 {
