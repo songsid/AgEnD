@@ -2963,9 +2963,35 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .runtime-cli-list li > span:nth-child(2) { flex: 1; }
 .runtime-cli-list small { display: block; color: var(--text-3); font-size: var(--fs-sm); }
 .runtime-machine-actions { margin-top: 14px; }
-/* S-30: the ZIP step is a button with its hint beside it (wrapping under it on a phone), not text flush against it. */
-.runtime-bundle-step { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
-.runtime-bundle-step .note { margin: 0; flex: 1 1 220px; }
+/* Connect a computer: numbered steps beside a pairing-code status card (stacked on a narrow page). */
+.runtime-pairing > header h3 { margin: 0 0 4px; }
+.runtime-pairing > header .note { margin: 0; }
+.runtime-pairing-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; min-width: 0; }
+.runtime-steps { display: grid; gap: 16px; padding: 0; margin: 0; list-style: none; min-width: 0; }
+.runtime-step { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.runtime-step > div { flex: 1; min-width: 0; }
+.runtime-step h4 { margin: 3px 0 6px; font-size: var(--fs-md); line-height: 1.4; }
+.runtime-step .note { margin: 0 0 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--text-3); }
+.runtime-step-n { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 50%; color: var(--text-3); background: var(--bg); border: 1px solid var(--border); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.runtime-step[aria-current="step"] .runtime-step-n { color: var(--accent); background: var(--accent-dim); border-color: var(--accent); }
+.runtime-step.is-done .runtime-step-n { color: var(--ok); border-color: var(--ok); }
+.runtime-step.is-done h4 { color: var(--text-2); }
+.runtime-step input[type=url], .runtime-step .runtime-command { max-width: 520px; }
+.runtime-pair-card { align-self: start; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+.runtime-pair-card.is-pending { border-color: var(--warn); }
+.runtime-pair-card label { margin: 0 0 8px; }
+.runtime-pair-code-row { display: flex; align-items: center; gap: 8px; }
+.runtime-pair-code-row .runtime-pair-code { flex: 1; font-size: var(--fs-lg); font-weight: var(--fw-semibold); }
+.runtime-pair-code-row .btn { flex: none; }
+.runtime-pair-card .note { margin: 0 0 10px; font-size: var(--fs-sm); color: var(--text-3); }
+.runtime-pair-status { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: var(--fs-sm); color: var(--text-2); }
+.runtime-pair-card.is-pending .runtime-pair-status { color: var(--warn); }
+.runtime-pair-status .windows-cli-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.runtime-pair-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@container settings-page (min-width: 860px) {
+  .runtime-pairing-body { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); gap: 24px; }
+  .runtime-pair-card { position: sticky; top: 12px; }
+}
 .runtime-pairing label, .runtime-rename label { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; }
 .runtime-pairing input, .runtime-rename input { width: 100%; min-width: 0; font-family: var(--font-ui); font-size: var(--fs-md); }
 .runtime-pair-code { letter-spacing: .14em; }

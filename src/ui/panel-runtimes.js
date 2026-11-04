@@ -21,9 +21,9 @@ register("machines", {
     lastSeen:"Last seen: {0}", inventoryAt:"CLI inventory: {0}", noInventory:"CLI inventory has not been reported yet.", noClis:"No installed CLIs reported.",
     approve:"Approve computer", revoke:"Revoke connection", rename:"Rename", save:"Save name", cancel:"Cancel", name:"Computer name", probe:"Refresh CLI inventory",
     fingerprint:"Pairing fingerprint", fingerprintLabel:"Pairing fingerprint: ", approvalHint:"Compare this fingerprint with the one shown in the requesting Runtime before approving.", identity:"Computer identity", signedIn:"Signed in", signedOut:"Not signed in", authUnknown:"Sign-in unknown", detectionOnly:"Detection only", ready:"Tasks supported",
-    pairing:"Connect a computer", pairingHint:"On the other computer, extract this version's portable Runtime bundle and run the command below from its folder. Paste the one-time code when asked, then approve the computer here. Keep that runtime window open.",
-    pairingCode:"One-time pairing code", expires:"Expires: {0}", command:"Run on the other computer", pairingWait:"Waiting for the computer to request approval. This page updates automatically.",
-    server:"AgEnD address", serverHint:"Use an address reachable from the other computer. A localhost address works only with a connection forwarded on that computer.", serverInvalid:"Enter an HTTPS origin, or a localhost HTTP origin with a forwarded connection. Leave out paths, credentials and query strings.", closeCode:"Hide pairing code", revokeAsk:"Revoke this computer's connection? New work will be refused. A task already running may need to be stopped on that computer.",
+    pairing:"Connect a computer",
+    pairingCode:"One-time pairing code", expires:"Expires: {0}", command:"Run on the other computer", pairingWait:"Waiting for the computer to connect",
+    server:"AgEnD address", serverHint:"Must be reachable from the other computer. localhost works only over a forwarded connection.", serverInvalid:"Enter an HTTPS origin, or a localhost HTTP origin with a forwarded connection. Leave out paths, credentials and query strings.", closeCode:"Hide pairing code", revokeAsk:"Revoke this computer's connection? New work will be refused. A task already running may need to be stopped on that computer.",
     failed:"Could not update Runtime", cliFailed:"CLI refresh failed; the last reported inventory is still shown.", retry:"Retry", seenCached:"Showing the last successfully loaded machine list.",
     machines:"Connected computers", cli:"CLI", version:"Runtime version", platform:"Platform",
     switches:"What this fleet may use", switchesNote:"Turning one on asks a fleet admin to confirm, like other access settings. Turning one off needs no fleet admin; it applies as soon as you confirm here.",
@@ -48,9 +48,9 @@ register("machines", {
     lastSeen:"最近連線：{0}", inventoryAt:"CLI 清單更新：{0}", noInventory:"尚未回報 CLI 清單。", noClis:"尚未回報已安裝的 CLI。",
     approve:"核准電腦", revoke:"撤銷連線", rename:"重新命名", save:"儲存名稱", cancel:"取消", name:"電腦名稱", probe:"更新 CLI 清單",
     fingerprint:"配對指紋", fingerprintLabel:"配對指紋：", approvalHint:"核准前，請比對提出要求的 Runtime 視窗所顯示的配對指紋。", identity:"電腦識別碼", signedIn:"已登入", signedOut:"尚未登入", authUnknown:"登入狀態未知", detectionOnly:"僅偵測", ready:"支援派工",
-    pairing:"連接電腦", pairingHint:"在另一台電腦解壓縮此版本的可攜式 Runtime 套件，從其資料夾執行下方指令，在提示時貼上一次性配對碼，再回到這裡核准電腦。請保持 Runtime 視窗開啟。",
-    pairingCode:"一次性配對碼", expires:"到期時間：{0}", command:"在另一台電腦執行", pairingWait:"正在等待電腦提出核准要求。此頁會自動更新。",
-    server:"AgEnD 位址", serverHint:"請使用另一台電腦連得到的位址。localhost 只有在另一台電腦已建立連線轉發時才適用。", serverInvalid:"請填入 HTTPS 來源位址，或已轉發連線的 localhost HTTP 位址，不包含路徑、帳密或查詢參數。", closeCode:"隱藏配對碼", revokeAsk:"要撤銷這台電腦的連線嗎？新的派工會被拒絕；已在執行的任務可能需要在該電腦上停止。",
+    pairing:"連接電腦",
+    pairingCode:"一次性配對碼", expires:"到期時間：{0}", command:"在另一台電腦執行", pairingWait:"等待電腦連線",
+    server:"AgEnD 位址", serverHint:"須為另一台電腦連得到的位址。localhost 僅適用於已轉發的連線。", serverInvalid:"請填入 HTTPS 來源位址，或已轉發連線的 localhost HTTP 位址，不包含路徑、帳密或查詢參數。", closeCode:"隱藏配對碼", revokeAsk:"要撤銷這台電腦的連線嗎？新的派工會被拒絕；已在執行的任務可能需要在該電腦上停止。",
     failed:"無法更新 Runtime", cliFailed:"CLI 更新失敗，目前仍顯示上次回報的清單。", retry:"重試", seenCached:"目前顯示上次成功載入的機器清單。",
     machines:"已連接的電腦", cli:"CLI", version:"Runtime 版本", platform:"平台",
     switches:"這個 Fleet 可以使用", switchesNote:"開啟時，和其他存取設定一樣需要 Fleet 管理員確認；關閉不需 Fleet 管理員確認，你在這裡確認後就會立即生效。",
@@ -90,8 +90,8 @@ register("machines", {
   "zh-TW": { versionNotReported:"此 Runtime 未提供版本資訊", versionUnreadable:"無法讀取 Runtime 版本資訊", buildId:"程式碼 Build ID", buildUnavailable:"無法取得 Build ID", protocols:"支援的協定", compatibility:"協定相容狀態", compatible:"相容", legacy:"已使用協定 v1 連線，未提供版本資訊", incompatible:"回報的協定與主機不相容", protocolUnknown:"尚未回報協定資訊", capabilities:"回報功能", capability_exec:"單次任務", capability_mcp:"AgEnD 工具（MCP）", capability_panes:"持續終端" },
 });
 register("machines", {
-  en: { downloadBuilding:"Preparing ZIP…", bundledAddress:"The ZIP includes this AgEnD address. After extracting it, double-click connect-agend.bat.", launchBatch:"On the other computer, double-click connect-agend.bat. Enter the pairing code below on first connection; an existing profile reconnects directly.", manualCommand:"Manual connection command", downloadedFor:"Downloaded for: {0}", downloadFailed:"Could not download the Runtime", pairingHint:"Confirm the AgEnD address reachable from the other computer, download the Runtime ZIP and extract it there. Start connect-agend.bat, then return here to approve the computer. Keep the Runtime window open." },
-  "zh-TW": { downloadBuilding:"正在準備 ZIP…", bundledAddress:"ZIP 會包含此 AgEnD 位址，解壓縮後雙擊 connect-agend.bat 即可連線。", launchBatch:"在另一台電腦雙擊 connect-agend.bat。首次連線時輸入下方配對碼；已有配對資料時會直接重連。", manualCommand:"手動連線指令", downloadedFor:"已下載，連線位址：{0}", downloadFailed:"無法下載 Runtime", pairingHint:"先確認另一台電腦可連到的 AgEnD 位址，下載 Runtime ZIP 並在該電腦解壓縮。執行 connect-agend.bat 後回到此處核准電腦，並保持 Runtime 視窗開啟。" },
+  en: { downloadBuilding:"Preparing ZIP…", stepZipHint:"Includes the address above. Extract it on the other computer.", stepLaunch:"Double-click connect-agend.bat there", stepLaunchHint:"Enter the pairing code when asked. A saved profile reconnects without it.", stepApproveHint:"Keep the Runtime window open.", pairingApprove:"A computer is waiting for your approval", copyCode:"Copy", codeCopied:"Copied", newCode:"New code", manualCommand:"Manual connection command", downloadedFor:"Downloaded for: {0}", downloadFailed:"Could not download the Runtime", pairingHint:"Follow the four steps. This page updates automatically." },
+  "zh-TW": { downloadBuilding:"正在準備 ZIP…", stepZipHint:"已內含上方位址，請在另一台電腦解壓縮。", stepLaunch:"在那台電腦雙擊 connect-agend.bat", stepLaunchHint:"提示時輸入配對碼；已有配對資料時會直接重連。", stepApproveHint:"請保持 Runtime 視窗開啟。", pairingApprove:"有電腦正在等待你核准", copyCode:"複製", codeCopied:"已複製", newCode:"重新產生", manualCommand:"手動連線指令", downloadedFor:"已下載，連線位址：{0}", downloadFailed:"無法下載 Runtime", pairingHint:"依下列四步操作，此頁會自動更新。" },
 });
 /** Only an origin composed of inert hostname/port characters is placed in a copyable shell command. */
 export function runtimeConnectCommand(server) {
@@ -237,7 +237,7 @@ export function RuntimesPanel({navKey}) {
   const [pairing,setPairing]=useState(null), [busy,setBusy]=useState(""), [error,setError]=useState("");
   const [server,setServer]=useState(() => typeof location === "undefined" ? "" : location.origin);
   const drafts=useRef(new Map()), taskSessions=useRef(new Map()), downloadClaim=useRef(false);
-  const [downloadedFor,setDownloadedFor]=useState("");
+  const [downloadedFor,setDownloadedFor]=useState(""), [copied,setCopied]=useState(false);
   const [diagnosticMachineId,setDiagnosticMachineId]=useState(null);
   const openDiagnostics=id=>setDiagnosticMachineId(id);
   useEffect(() => {
@@ -276,7 +276,12 @@ export function RuntimesPanel({navKey}) {
     catch(error){if(lease.current())setError(error.message);}
     finally{if(lease.current())setBusy("");}
   };
+  const copyCode=async() => {
+    try {await navigator.clipboard.writeText(pairing.code);if(!lease.current())return;setCopied(true);lease.timeout(() => setCopied(false),2000);}catch { /* the code is on screen to copy by hand */ }
+  };
   const command=runtimeConnectCommand(server);
+  const awaitingApproval=machines.some(machine => machine.status === "pending"), currentStep=awaitingApproval ? 4 : downloadedFor ? 3 : 2;
+  const step=(n,title,body) => html`<li class=${`runtime-step${n < currentStep ? " is-done" : ""}`} aria-current=${n === currentStep ? "step" : undefined}><span class="runtime-step-n" aria-hidden="true">${n}</span><div><h4>${title}</h4>${body}</div></li>`;
   const downloadRuntime=async()=>{
     if(downloadClaim.current || !command)return;
     const target=new URL(server).origin;downloadClaim.current=true;setBusy("download");setError("");setDownloadedFor("");
@@ -303,7 +308,12 @@ export function RuntimesPanel({navKey}) {
     ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
     ${state.loading && !state.data ? html`<p role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${machineText("loading")}</p>` : null}
     ${error || state.error ? html`<div class="runtime-error" role="alert"><p>${error || state.error}</p>${state.data && state.error ? html`<p>${machineText("seenCached")}</p>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${machineText("retry")}</button></div>` : null}
-    ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><h3>${machineText("pairing")}</h3><p>${machineText("pairingHint")}</p><label><span>${machineText("server")}</span><input type="url" value=${server} disabled=${busy === "download"} spellcheck=${false} onInput=${event => setServer(event.target.value)} /></label><p class="note">${machineText("serverHint")}</p><div class="runtime-bundle-step">${download()}<p class="note">${machineText("bundledAddress")}</p></div>${downloadedFor ? html`<p class="note" role="status">${machineText("downloadedFor",downloadedFor)}</p>` : null}<p>${machineText("launchBatch")}</p>${command ? html`<details class="runtime-manual-command"><summary>${machineText("manualCommand")}</summary><label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label></details>` : html`<p role="alert">${machineText("serverInvalid")}</p>`}<label><span>${machineText("pairingCode")}</span><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p role="status">${machineText("pairingWait")}</p><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></section>` : null}
+    ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><header><h3>${machineText("pairing")}</h3><p class="note">${machineText("pairingHint")}</p></header><div class="runtime-pairing-body"><ol class="runtime-steps">
+      ${step(1,machineText("server"),html`<input type="url" aria-label=${machineText("server")} value=${server} disabled=${busy === "download"} spellcheck=${false} onInput=${event => setServer(event.target.value)} /><p class="note">${machineText("serverHint")}</p>${command ? null : html`<p role="alert">${machineText("serverInvalid")}</p>`}`)}
+      ${step(2,machineText("stepDownload"),html`<p class="note">${machineText("stepZipHint")}</p>${download()}${downloadedFor ? html`<p class="note" role="status">${machineText("downloadedFor",downloadedFor)}</p>` : null}`)}
+      ${step(3,machineText("stepLaunch"),html`<p class="note">${machineText("stepLaunchHint")}</p>${command ? html`<details class="runtime-manual-command"><summary>${machineText("manualCommand")}</summary><label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label></details>` : null}`)}
+      ${step(4,machineText("stepApprove"),html`<p class="note">${machineText("stepApproveHint")}</p>`)}
+    </ol><aside class=${`runtime-pair-card${awaitingApproval ? " is-pending" : ""}`}><label><span>${machineText("pairingCode")}</span><div class="runtime-pair-code-row"><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /><button type="button" class="btn btn-sm" onClick=${copyCode}><${Icon} name="copy" size=${15} />${machineText(copied ? "codeCopied" : "copyCode")}</button></div></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p class="runtime-pair-status" role="status"><span class="windows-cli-dot"></span>${machineText(awaitingApproval ? "pairingApprove" : "pairingWait")}</p><div class="runtime-pair-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${connect}>${machineText("newCode")}</button><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></div></aside></div></section>` : null}
     <${RuntimeSwitches} lease=${lease} onChanged=${state.refresh} computers=${computers} />
     ${diagnosticMachineId !== null ? html`<${RuntimeDiagnosticsDialog} key=${diagnosticMachineId || "local"} navKey=${navKey} machineId=${diagnosticMachineId} machine=${target} enabled=${diagnosticMachineId !== "" || windowsCli} drafts=${drafts.current} session=${taskSessions.current.get(diagnosticMachineId)} taskLease=${lease} onChanged=${state.refresh} onClose=${()=>setDiagnosticMachineId(null)} />` : null}
     <p class="note runtime-operations-note">${machineText("operationsNote")}</p>

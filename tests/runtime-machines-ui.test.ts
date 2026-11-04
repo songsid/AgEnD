@@ -176,7 +176,13 @@ describe("remote machine UI",()=>{
     const download=p.root.querySelector(".runtime-pairing .runtime-bundle-download");
     expect(download.textContent).toContain("Download Windows Runtime");
     expect(download.tagName).toBe("BUTTON");expect(download.disabled).toBe(false);
-    expect(p.root.textContent).toContain("double-click connect-agend.bat");
+    expect(p.root.textContent).toContain("Double-click connect-agend.bat there");
+    // The four steps are an ordered list, the code card shows the waiting state, and a repeated explanation is gone.
+    expect([...p.root.querySelectorAll(".runtime-pairing .runtime-step h4")].map(el=>el.textContent)).toEqual(["AgEnD address","Download the Runtime","Double-click connect-agend.bat there","Return here to approve"]);
+    // The fixture has a computer awaiting approval, so the flow is at its last step and the card says so.
+    expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Return here to approve");
+    expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("A computer is waiting for your approval");
+    expect(p.root.textContent.split("connect-agend.bat").length-1).toBe(1);
     expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
     expect(p.root.querySelector(".runtime-command").value).toContain("agend-runtime.cmd connect --server");
     expect(p.root.querySelector(".runtime-command").value).not.toContain("PAIR-TEST-CODE");
@@ -184,6 +190,13 @@ describe("remote machine UI",()=>{
     expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);
     button("Hide pairing code").click();await settle();expect(p.root.querySelector(".runtime-pair-code")).toBeNull();
     expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);   // the header's is back
+  });
+  it("shows the pairing card as waiting for a computer, at the download step, while nothing is pending",async()=>{
+    machines=[machine(idA,"Desktop")];
+    await p.mount(h(Panel,{navKey:"runtime-waiting"}));await settle(8);button("Connect a computer").click();await settle(8);
+    expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Download the Runtime");
+    expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("Waiting for the computer to connect");
+    expect(p.root.querySelector(".runtime-pair-card .expires, .runtime-pair-card .note").textContent).toContain("Expires");
   });
   it("downloads a connection-ready ZIP with the reviewed address in a protected POST and claims one download",async()=>{
     const fixtureFetch=globalThis.fetch;let release!:(value:unknown)=>void;const create=vi.spyOn(URL,"createObjectURL").mockReturnValue("blob:runtime-fixture"),revoke=vi.spyOn(URL,"revokeObjectURL").mockImplementation(()=>{});
