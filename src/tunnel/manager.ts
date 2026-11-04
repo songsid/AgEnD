@@ -62,8 +62,7 @@ export class ManagedTunnel {
   async reap(): Promise<ReapOutcome> {
     const outcome = await reapStaleTunnel(this.opts.dataDir, this.opts);
     if (outcome.kind === "manual") {
-      this.blocked = manualCleanupMessage(outcome);
-      this.log(this.blocked);
+      this.log(manualCleanupMessage(outcome));
     }
     return outcome;
   }
