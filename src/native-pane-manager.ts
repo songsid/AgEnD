@@ -98,7 +98,7 @@ export class NativePaneManager {
   const profile=this.options.store.get(snapshot.agentId);
   if(!snapshot.noLaunch&&!profile.threadId&&snapshot.sessionId&&profile.activeId)this.options.store.pinPaneSession(snapshot.agentId,snapshot.launchId,snapshot.sessionId);
   if(this.options.store.get(snapshot.agentId).activeId){
-   if(next.launch.cli==="codex"&&next.fresh?.previous.sessionId&&!snapshot.sessionId)this.options.store.releaseUnpinnedCodexPane(snapshot.agentId,next.fresh.previous,snapshot);
+   if(!snapshot.noLaunch&&next.launch.cli==="codex"&&next.fresh?.previous.sessionId&&!snapshot.sessionId)this.options.store.releaseUnpinnedCodexPane(snapshot.agentId,next.fresh.previous,snapshot);
    else this.options.store.releasePane(snapshot.agentId,snapshot);
   }
   if(!snapshot.noLaunch&&(!snapshot.sessionId||!profile.threadId))this.options.store.setPaneRecovery(snapshot.agentId,{kind:"session-unconfirmed",launchId:snapshot.launchId,sessionId:this.options.store.get(snapshot.agentId).threadId,...(next.launch.cli==="codex"?{provider:"codex" as const}:{})});
