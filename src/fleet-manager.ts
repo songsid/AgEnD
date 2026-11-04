@@ -7637,7 +7637,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // removed it, and nothing it asks for may then go out.
     if (!this.returningDevices!.current(device, tokenEpoch(token))) return { kind: "refused" };
     if (device.tier === "guest") return this.requestGuestDeviceCode(device, input, token);
-    const paused = this.webLoginCodes!.pausedForMs();
+    const paused = this.webLoginCodes!.pausedForMs(input.exposureId ?? "local");
     if (paused > 0) return { kind: "limited", retryAfterMs: paused };
     const admitted = this.codeRequestLimiter.admit(device.idHash);
     if (!admitted.ok) return { kind: "limited", retryAfterMs: admitted.retryAfterMs };
