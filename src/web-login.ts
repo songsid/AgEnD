@@ -103,8 +103,9 @@ export interface WebLoginCodesOptions {
 
 export class WebLoginCodes {
   private outstanding: Outstanding | null = null;
-  private failures: number[] = [];
-  private pausedUntil = 0;
+  /** Per-audience wrong-try times. A public guesser must not pause or burn a local code. */
+  private readonly failuresByAudience = new Map<string, number[]>();
+  private readonly pausedUntilByAudience = new Map<string, number>();
   private readonly now: () => number;
   private readonly generate: () => string;
   private readonly onEvent: (event: "issued" | "spent" | "burned" | "breaker-open") => void;
@@ -135,8 +136,8 @@ export class WebLoginCodes {
   }
 
   /** #1570: how long redemption stays paused by the breaker (0 when it is closed). A code request is refused meanwhile. */
-  pausedForMs(): number {
-    return Math.max(0, this.pausedUntil - this.now());
+  pausedForMs(audience = "local"): number {
+    return Math.max(0, (this.pausedUntilByAudience.get(audience) ?? 0) - this.now());
   }
 
   /** Whether a redemption right now would be compared against anything. */
@@ -160,7 +161,8 @@ export class WebLoginCodes {
 
   redeem(input: string, currentEpoch: string, audience = "local"): LoginRedeemResult {
     const now = this.now();
-    if (now < this.pausedUntil) return { kind: "paused", retryAfterMs: this.pausedUntil - now };
+    const pausedUntil = this.pausedUntilByAudience.get(audience) ?? 0;
+    if (now < pausedUntil) return { kind: "paused", retryAfterMs: pausedUntil - now };
 
     const provided = normalizeOneTimeCode(input);
     // Nothing typed is not a guess; it costs nothing (same as the setup page).
@@ -177,14 +179,19 @@ export class WebLoginCodes {
       return { kind: "invalid" };
     }
 
-    if (constantTimeMatches(provided, active.code) && active.audience === audience) {
+    const matches = constantTimeMatches(provided, active.code);
+    if (matches && active.audience === audience) {
       this.outstanding = null;
       this.onEvent("spent");
       return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}), ...(active.host ? { host: true as const } : {}) };
     }
 
+    // Foreign-audience guesses still compare in constant time and still feed that
+    // audience's breaker; they must not consume or burn the outstanding code (#1490 row 23).
+    this.recordFailure(now, audience);
+    if (active.audience !== audience) return { kind: "invalid" };
+
     active.failures += 1;
-    this.recordFailure(now);
     if (active.failures >= MAX_LOGIN_CODE_ATTEMPTS) {
       this.outstanding = null;
       this.onEvent("burned");
@@ -198,15 +205,17 @@ export class WebLoginCodes {
     return this.outstanding;
   }
 
-  private recordFailure(now: number): void {
-    this.failures.push(now);
+  private recordFailure(now: number, audience: string): void {
     const cutoff = now - LOGIN_BREAKER_WINDOW_MS;
-    this.failures = this.failures.filter(t => t > cutoff);
-    if (this.failures.length >= LOGIN_BREAKER_THRESHOLD) {
-      this.pausedUntil = now + LOGIN_BREAKER_PAUSE_MS;
-      this.failures = [];
+    const failures = (this.failuresByAudience.get(audience) ?? []).filter(t => t > cutoff);
+    failures.push(now);
+    if (failures.length >= LOGIN_BREAKER_THRESHOLD) {
+      this.pausedUntilByAudience.set(audience, now + LOGIN_BREAKER_PAUSE_MS);
+      this.failuresByAudience.set(audience, []);
       this.onEvent("breaker-open");
+      return;
     }
+    this.failuresByAudience.set(audience, failures);
   }
 }
 

@@ -19,7 +19,7 @@ import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { sanitizeInstanceName } from "./instance-names.js";
-import { isModelCompatible } from "./backend/types.js";
+import { isModelCompatible, noteResolvedBinary } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
@@ -1915,13 +1915,22 @@ export class InstanceLifecycle {
       return;
     }
 
-    // Verify backend binary is in PATH before spawning
+    // Verify backend binary is in PATH before spawning. Off-loop resolve pins a
+    // hint so createBackend's resolveBinary does not run synchronous `which`
+    // (#1490 row 67). Missing still only logs; start continues.
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (!native && installation && !checkBinaryInstalled(installation.binary)) {
-      this.ctx.logger.error(
-        { binary: installation.binary, backend: backendName, instance: name },
-        `Backend binary "${installation.binary}" not found in PATH`,
-      );
+    // alpha: a native Windows pane's CLI is on that PC — nothing to look for on this one.
+    if (!native && installation) {
+      const { resolveBackendBinary } = await import("./backend-availability.js");
+      const path = await resolveBackendBinary(backendName);
+      noteResolvedBinary(installation.binary, path ?? installation.binary);
+      check();
+      if (!path) {
+        this.ctx.logger.error(
+          { binary: installation.binary, backend: backendName, instance: name },
+          `Backend binary "${installation.binary}" not found in PATH`,
+        );
+      }
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast

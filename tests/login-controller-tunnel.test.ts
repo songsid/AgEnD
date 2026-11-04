@@ -605,15 +605,25 @@ describe("the provider's own sign-in URL and code stay out of a public-link logi
     await controller.cancel();
   });
 
-  it("a local-only login still relays it, exactly as before (Telegram keeps its spoiler)", async () => {
+  it("a local-only device login (codex) still relays it, exactly as before (Telegram keeps its spoiler)", async () => {
     const { controller, sessions } = make({ config: ON });
     const adapter = adapterOf("telegram");
-    await controller.start("kiro-cli", chat(adapter), CONFIRMED);
+    await controller.start("codex", chat(adapter), CONFIRMED);
     await sessions[0]!.events.onHint!(DEVICE_URL, "ABCD-EFGH");
     const said = all(adapter.sendText);
     expect(said).toContain("awsapps.com");
     expect(said).toContain("ABCD-EFGH");
     expect(said).toContain("<tg-spoiler>");
+    await controller.cancel();
+  });
+  it("#2981: a local-only terminal login (kiro) no longer relays it — the AgEnD terminal shows it", async () => {
+    const { controller, sessions } = make({ config: ON });
+    const adapter = adapterOf("telegram");
+    await controller.start("kiro-cli", chat(adapter), CONFIRMED);
+    await sessions[0]!.events.onHint!(DEVICE_URL, "ABCD-EFGH");
+    const said = all(adapter.sendText);
+    expect(said).not.toContain("awsapps.com");
+    expect(said).not.toContain("ABCD-EFGH");
     await controller.cancel();
   });
 });

@@ -1170,16 +1170,14 @@ topic
   .argument("<topic-id>", "Topic ID")
   .action(async (instance: string, topicId: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    config.instances[instance].topic_id = topicId;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], value: topicId }]);
     console.log(`Bound ${instance} \u2192 topic #${topicId}`);
   });
 
@@ -1189,16 +1187,14 @@ topic
   .argument("<instance>", "Instance name")
   .action(async (instance: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    delete config.instances[instance].topic_id;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], remove: true }]);
     console.log(`Unbound ${instance} from topic`);
   });
 
@@ -1317,13 +1313,12 @@ program
   .option("--version <ver>", "Specific version to install")
   .option("--alpha", "Install from the alpha channel (the default when an alpha is installed)")
   .option("--beta", "Install from the beta channel (the default when a beta is installed)")
-  .option("--rc", "Install the current release candidate (@rc), before it is promoted to beta")
   .option("--stable", "Install from the stable channel, even from a beta install (may go back a version)")
   .option("--force", "Force reinstall and restart even when already up to date")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (opts: { version?: string; alpha?: boolean; beta?: boolean; rc?: boolean; stable?: boolean; force?: boolean; yes?: boolean }) => {
-    if ([opts.alpha, opts.beta, opts.rc, opts.stable].filter(Boolean).length > 1) {
-      console.error("  --alpha, --beta, --rc and --stable choose different channels; pass one.");
+  .action(async (opts: { version?: string; alpha?: boolean; beta?: boolean; stable?: boolean; force?: boolean; yes?: boolean }) => {
+    if ([opts.alpha, opts.beta, opts.stable].filter(Boolean).length > 1) {
+      console.error("  --alpha, --beta and --stable choose different channels; pass one.");
       process.exit(1);
     }
     if (!gateFleetControl(DATA_DIR, "update", { yes: opts.yes })) process.exit(1);

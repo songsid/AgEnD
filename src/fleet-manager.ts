@@ -39,7 +39,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
-import { unattendedInstallCommand } from "./unattended-install.js";
+import { unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
@@ -89,6 +89,7 @@ import {
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
+import { startStallReporter, type StallReporter } from "./stall-reporter.js";
 import { sdNotify, sdNotifyBlocking, setSdNotifyWarn, startSdWatchdog } from "./sd-notify.js";
 import { StartupMemoryDeadline, fleetStopConcurrency } from "./startup-memory-deadline.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
@@ -115,7 +116,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -583,6 +584,11 @@ export interface RestartOpts {
   sessionOomRetry?: SessionOomRetry;
   /** Internal pre-invalidation owner fence for an unclear-OOM action. */
   recoveryCurrent?: () => boolean;
+  /**
+   * #1490 row 27: the lifecycle the caller acts for (lifecyclePin), asked before anything is invalidated. A button or
+   * menu offered for one instance never restarts a later one of the same name, or one restarted since.
+   */
+  ownerCurrent?: () => boolean;
   carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null };
 }
 /** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
@@ -758,6 +764,11 @@ export interface ModelCatalog {
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
+  /**
+   * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
+   * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
+   */
+  lifecycleCurrent?: () => boolean;
   pendingChangeId?: string;
   sessionOomRetry?: SessionOomRetry;
   confirmationCurrent?: () => boolean;
@@ -1102,6 +1113,15 @@ interface WebChatIdentity { generation: number; daemon: unknown }
 export type GuestAuditEntry =
   | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }
   | { kind: "code"; at: number; account: string; name: string; outcome: string };
+
+/** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
+export class RestartSupersededError extends Error {
+  /** `shown`: the instance as the chat list names it (shownInstanceName). */
+  constructor(shown: string) {
+    super(t("restart.superseded", shown));
+    this.name = "RestartSupersededError";
+  }
+}
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
@@ -1937,8 +1957,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
-  private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
-  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
+  private pendingEffortSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
+  private pendingModelSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** #1806: in-flight /backend steps, keyed by nonce (see handleBackendSelection). */
   private pendingBackendSelects = new Map<string, PendingBackendSelect>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
@@ -2073,6 +2093,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startupMemoryDeadline: StartupMemoryDeadline | null = null;
   private eventLoopWatch: EventLoopWatch | null = null;
+  private stallReporter: StallReporter | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private memoryLogAt: number | null = null;
@@ -2118,6 +2139,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly webChatRemovals = new Map<string, { below: number; daemon?: unknown }>();
   /** #1774: a removal under way — its replies' fate waits for its outcome (success: theirs no more; failure: theirs). */
   private readonly webChatRemovalsPending = new Map<string, { below: number; daemon?: unknown; done: Promise<void> }>();
+  /**
+   * #1490 row 27: "still the same lifecycle of `name`" — its lifecycle epoch, moved on synchronously by every stop,
+   * restart and removal (the map is never pruned, so a same-name replacement has a later one). Taken when a button
+   * or menu is claimed or offered, asked after every await before acting by name.
+   */
+  /** #1490 row 27: an instance as the chat list names it — its display name where it has one, else its name. */
+  private shownInstanceName(name: string): string {
+    try {
+      const classic = this.classicChannels?.getAll().find(ch => ch.instanceName === name) ?? null;
+      return resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic, profile: profileIdentities(this.dataDir).get(name) }).display_name || name;
+    } catch { return name; }
+  }
+
+  private lifecyclePin(name: string): () => boolean {
+    // Fail closed: a lifecycle that cannot say its epoch holds nothing (and never stops a prompt from being posted).
+    let epoch: number | undefined;
+    try { epoch = this.lifecycle?.epochOf(name); } catch { return () => false; }
+    return () => { try { return !this.shuttingDown && this.lifecycle?.epochOf(name) === epoch; } catch { return false; } };
+  }
+
   private webChatGeneration(name: string): number { return this.webChatGenerations.get(name) ?? 0; }
   /** #1774: who an instance's reply is from, taken when it is sent: the name's generation and its daemon then. */
   private webChatIdentity(name: string): WebChatIdentity { return { generation: this.webChatGeneration(name), daemon: this.daemons.get(name) }; }
@@ -6718,7 +6759,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // reconcile starts keep the persisted last-inbound seed (Phase 2a).
       if (resumePaused) this.lifecycle.markActivitySeedNow(name);
       const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-      if (!isWindowsInstance(config) && config.general_topic) {
+      // #1490 row 67 (main): off-loop resolve before skill/instruction publication
+      // constructs a backend (resolveKnowledgeWorkDir). Capture stop/lifecycle
+      // ownership first: a Stop during this wait finishes and bumps the epoch,
+      // and the inner lifecycle check would otherwise capture the new epoch and
+      // accept the stale start. Lifecycle start looks up again before its own
+      // createBackend; the probe cache makes that cheap. (alpha: a native Windows
+      // agent's CLI is on that PC — nothing to resolve on this one.)
+      const epoch = this.lifecycle.epochOf(name);
+      const stopGen = this.explicitStopGeneration.get(name) ?? 0;
+      const windows = isWindowsInstance(config);
+      const resolved = windows ? null : await resolveBackendBinary(backend);
+      execution?.assert();
+      if (this.lifecycle.epochOf(name) !== epoch
+        || (this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
+        throw new SupersededStartError(name);
+      }
+      const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+      if (binary && !windows) noteResolvedBinary(binary, resolved ?? binary);
+      if (!windows && config.general_topic) {
         this.ensureGeneralInstructions(config.working_directory, backend, name);
       } else if (!isWindowsInstance(config) && kind === "fleet-topic") {
         // Workers get only role-eligible on-demand skills. Classic instances are
@@ -7361,6 +7420,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
+    if (opts?.ownerCurrent && !opts.ownerCurrent()) throw new RestartSupersededError(this.shownInstanceName(name));
     if (isNativeExecInstance(this.fleetConfig?.instances[name])) {
       const runtime=this.nativeInstanceRuntime();
       if (runtime.get(name)?.blocked) throw new Error("Verify the disconnected Windows process stopped and recover this agent before restarting");
@@ -8535,7 +8595,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // removed it, and nothing it asks for may then go out.
     if (!this.returningDevices!.current(device, tokenEpoch(token))) return { kind: "refused" };
     if (device.tier === "guest") return this.requestGuestDeviceCode(device, input, token);
-    const paused = this.webLoginCodes!.pausedForMs();
+    const paused = this.webLoginCodes!.pausedForMs(input.exposureId ?? "local");
     if (paused > 0) return { kind: "limited", retryAfterMs: paused };
     const admitted = this.codeRequestLimiter.admit(device.idHash);
     if (!admitted.ok) return { kind: "limited", retryAfterMs: admitted.retryAfterMs };
@@ -8997,6 +9057,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.watchdogTimer = startSdWatchdog();
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
+    // #3009: the event-loop watch runs on the main thread; this one does not, so a stall that never ends is still named.
+    this.stallReporter?.stop();
+    this.stallReporter = startStallReporter({ logFile: join(this.dataDir, "daemon.log") });
     try {
       await this.startAllWithinDeadline(configPath, deadline);
     } finally {
@@ -9008,6 +9071,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.watchdogTimer = null;
           this.eventLoopWatch?.stop();
           this.eventLoopWatch = null;
+          this.stallReporter?.stop();
+          this.stallReporter = null;
         }
       }
     }
@@ -9300,6 +9365,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalDir = join(getAgendHome(), name);
       mkdirSync(generalDir, { recursive: true, mode: 0o700 });
       const backendName = fleet.defaults.backend ?? "claude-code";
+      const resolved = await resolveBackendBinary(backendName);
+      const binary = BACKEND_INSTALLATION_INFO[backendName]?.binary;
+      if (binary) noteResolvedBinary(binary, resolved ?? binary);
       this.ensureGeneralInstructions(generalDir, backendName, name);
       fleet.instances[name] = autoGeneralInstanceConfig(fleet.defaults, generalDir, need.adapterId);   // #2598: its kiro_ui is the fleet's
       generalsCreated = true;
@@ -13798,6 +13866,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
       else await this.lifecycle.remove(name, authorization);
+      // #1490 row 27: its hang/exit offers were for the instance now gone (stopInstance clears them; removal stops
+      // through the lifecycle directly). The offers' own lifecycle pins refuse them too.
+      this.clearNoncePromptsForInstance(name);
       // #1774: removed — its replies still copying their files are no one's to show, replaced or not (a failed removal
       // throws above: its replies stay its own).
       this.webChatRemovals.set(name, { below: removedBelow, ...(removedDaemon !== undefined ? { daemon: removedDaemon } : {}) });
@@ -15417,6 +15488,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       threadId: opts.threadId,
       expiredText: opts.expiredText,
       createdAt: Date.now(),
+      lifecycleCurrent: this.lifecyclePin(opts.instanceName),
       ...opts.extra,
     };
     entry.timer = setTimeout(() => {
@@ -17409,6 +17481,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, oom ? "session_oom_action" : "normal_exit_action", { action, userId: data.userId });
     if (action === "ignore") {
@@ -17420,13 +17494,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("exit.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
         ...(pending.confirmationCurrent ? { recoveryCurrent: pending.confirmationCurrent } : {}) } : {}) });
       await pending.adapter.editMessage(
         pending.chatId,
@@ -17440,7 +17518,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("exit.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("exit.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show normal-exit restart error"));
@@ -18632,7 +18710,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.browserBackendSignInsInstance ??= new BrowserBackendSignIns({
       dataDir: this.dataDir, lock: this.loginWindow,
       current: owner => this.browserSignInOwnerCurrent(owner),
-      installed: async () => ONBOARDING_BACKENDS.filter(backend => this.isCliInstalled(backend)),
+      installed: async () => {
+        const found = await Promise.all(ONBOARDING_BACKENDS.map(async backend =>
+          (await this.isCliInstalledOffLoop(backend)) ? backend : null));
+        return found.filter((backend): backend is typeof ONBOARDING_BACKENDS[number] => backend !== null);
+      },
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       checkConsoleAuth: () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
       transport: () => createStructuredSignInTransport(),
@@ -18730,12 +18812,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2233: `/login` for a dashboard requester. The same controller and checks; a CLI that is not installed is refused
    * with its install command (chat's install-first runs a terminal of its own, which the dashboard does not offer).
    */
-  private startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
+  private async startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    if (isRemovedBackend(wanted)) return Promise.resolve(removedBackendMessage(wanted));
+    if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
     const info = BACKEND_INSTALLATION_INFO[wanted];
-    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !this.isCliInstalled(wanted)) {
-      return Promise.resolve(t("login.web_dashboard_not_installed", wanted, info.install));
+    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !(await this.isCliInstalledOffLoop(wanted))) {
+      return t("login.web_dashboard_not_installed", wanted, info.install);
     }
     if (!opts.skipAuthCheck) this.recordLoginFlow(wanted, "login", chat.userId);
     return this.webLogin.start(backendArg, chat, opts);
@@ -18784,8 +18866,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? removedBackendMessage(backend)
         : !installed.has(backend)
         ? (BACKEND_INSTALLATION_INFO[backend] ? t("login.install_by_name", backend) : t("login.install_on_host", backend))
+        // #2981: one short line in the bare /login list — the full refusal (why, and what to run) is `/login <it>`'s;
+        // a bare /login used to post Antigravity's whole paragraph to someone who never asked about it.
         : flow?.remoteLogin === "unsupported"
-        ? t("login.remote_unsupported_agent_cli", backend, flow.command)
+        ? t("login.host_only", flow.command)
         : backend === "opencode" ? t("login.unsupported", backend) : t("login.no_remote_flow", backend)}`).join("\n");
       await chat.adapter.sendText(chat.chatId, guidance, { threadId: chat.threadId })
         .catch(err => this.logger.warn({ err }, "Failed to post unsupported login guidance"));
@@ -19274,9 +19358,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // session only judges that verdict; it does not read the output for URLs or prompts.
     // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
     // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
+    const shell = (await loginShell()) ?? null;
+    if (!this.loginWindow.isCurrent(claim)) {
+      this.loginWindow.release(claim);
+      return t("login.web_shutting_down");
+    }
     const flow: LoginFlow = {
       backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install),
+      command: unattendedInstallCommand(info.unattended ?? info.install, shell),
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };
@@ -19319,7 +19408,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!handoff || handoff.cancelled || this.installHandoff !== handoff) return;
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
-        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? this.locateInInstallerBinDirs(info);
+        // #3009 (leader, cid-3017-3029-overlap): both lookups off the fleet's main thread — the login shell's own check,
+        // then the installer's own directories through backend-availability's check (a killable child tests each one).
+        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? (await this.locateInstalledBackend(backend));
         if (handoff.cancelled || this.installHandoff !== handoff) return;
         if (!installedAt) {
           this.installHandoff = null;
@@ -19417,33 +19508,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async locateBinaryOnLoginShell(binary: string): Promise<string | null> {
     try {
-      const result = await runOnLoginShell(`command -v ${binary}`);
+      // #3009: the executable-file check runs inside the same login shell (a killable child), never as accessSync/statSync
+      // on the fleet's thread — a path on a filesystem that stopped answering held the whole fleet there.
+      const result = await runOnLoginShell(`p=$(command -v ${binary}) && [ -f "$p" ] && [ -x "$p" ] && printf '%s\n' "$p"`);
       if (result.status !== 0) return null;
       const path = result.stdout.trim().split("\n").pop()?.trim() ?? "";
-      if (!isAbsolute(path)) return null;
-      accessSync(path, fsConstants.X_OK);
-      return statSync(path).isFile() ? path : null;
+      return isAbsolute(path) ? path : null;
     } catch {
       return null;
     }
   }
 
   /**
-   * #1092: the binary in one of the directories its own installer installs to,
-   * when no login shell can see it (the installer recorded its PATH in an
-   * interactive-only rc file). The same executable-file check as the login
-   * shell lookup; a symlink to an executable counts, as codex's launcher is one.
+   * #1092: the binary in one of the directories its own installer installs to, when no login shell can see it (the
+   * installer recorded its PATH in an interactive-only rc file) — only those directories (#1092). #3009: through
+   * backend-availability's install-directory check (the one resolveBackendBinary uses): one killable child, never
+   * accessSync/statSync on the fleet's thread. An executable file counts, a symlink to one too (codex's launcher is one).
    */
-  private locateInInstallerBinDirs(info: BackendInstallationInfo): string | null {
-    for (const dir of info.binDirs?.(process.env, homedir()) ?? []) {
-      if (!isAbsolute(dir)) continue;
-      const path = join(dir, info.binary);
-      try {
-        accessSync(path, fsConstants.X_OK);
-        if (statSync(path).isFile()) return path;
-      } catch { /* not there */ }
-    }
-    return null;
+  private async locateInstalledBackend(backend: string): Promise<string | null> {
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    return info ? (await findExecutableIn(info.binary, info.binDirs?.(process.env, homedir()) ?? [])) ?? null : null;
   }
 
   /** Put an installed binary's directory on the fleet's PATH (#1059), once. */
@@ -19752,6 +19836,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, "hang_action", { action, userId: data.userId });
     if (action === "wait") {
@@ -19763,13 +19849,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("hang.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true });
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current });
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
@@ -19782,7 +19872,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("hang.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("hang.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show hang restart error"));
@@ -19835,6 +19925,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
     // Backend resolution may create/normalize the real cwd. Instructions and
     // skills must land where the CLI actually runs, not an assumed path.
+    // Caller pins resolveBackendBinary first so createBackend does not `which`.
     try {
       const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
         .resolveWorkingDirectory?.(workDir, instanceName);
@@ -21174,7 +21265,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }));
     const timer = setTimeout(() => this.pendingEffortSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName: name, userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
+    this.pendingEffortSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
     try {
       await data.respondChoices(t("effort.menu", this.effortMenuHeader(name)), choices);
     } catch (err) {
@@ -21217,7 +21308,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName, userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingEffortSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
     try {
       const menuMessageId = await adapter.promptUser(
         chatId, t("effort.menu", this.effortMenuHeader(instanceName)), choices, { threadId },
@@ -21240,6 +21331,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!match) return true;
     const pending = this.pendingEffortSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingEffortSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -21281,13 +21380,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyEffort(pending.instanceName, level)) : t("menu.click_stale");
+            }, () => this.applyEffort(pending.instanceName, level, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
         result = t("effort.switch_failed", level, err instanceof Error ? err.message : String(err));
@@ -21333,7 +21433,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const choices = this.modelMenuChoices(name, nonce, options, currentModel);
     const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
+    this.pendingModelSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
     try {
       await data.respondChoices(t("model.menu", `**${currentDisplay}**`), choices);
     } catch (err) {
@@ -21381,7 +21481,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
 
-    this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingModelSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
 
     try {
       const menuMessageId = await adapter.promptUser(
@@ -21413,7 +21513,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Replace a consumed "/model" menu with the full account catalog tier. */
   private async expandClaudeModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -21481,7 +21581,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * menu, because a picker with no rows cannot even offer another refresh.
    */
   private async refreshModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -21575,6 +21675,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!match) return true;
     const pending = this.pendingModelSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingModelSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -21640,13 +21748,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyModel(pending.instanceName, model)) : t("menu.click_stale");
+            }, () => this.applyModel(pending.instanceName, model, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
         result = t("model.switch_failed", model, err instanceof Error ? err.message : String(err));
@@ -21735,7 +21844,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * restart backends only read it at launch, so it is persisted and the
    * instance respawns.
    */
-  async applyEffort(instanceName: string, requested: string): Promise<string> {
+  async applyEffort(instanceName: string, requested: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27 (main): a menu's choice is for the lifecycle it was offered to — asked first and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return t("effort.unsupported", this.backendNameForInstance(instanceName));
     const level = requested.trim().toLowerCase();
     const backendName = this.backendNameForInstance(instanceName);
@@ -21772,11 +21883,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
       return `${warn}${t("effort.runtime_success", instanceName, applied)}`;
     }
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("effort.restart_success", instanceName, applied)}`;
   }
 
-  async applyModel(instanceName: string, model: string): Promise<string> {
+  async applyModel(instanceName: string, model: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first, after the runtime switch's
+    // await, and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     // Reject model names with newlines or control characters: they would be
     // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
     if (/[\x00-\x1f\x7f]/.test(model)) {
@@ -21814,6 +21928,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1690: claude-code's runtime switch reports what it came to; the model is saved unless claude was told No.
     if (strategy === "runtime" && backendName === "claude-code") {
       const result = await this.runRuntimeModelSwitch(instanceName, model);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (result.outcome === "mismatch") return `${warn}${t("model.switch_mismatch", instanceName, result.shown, model)}`;
       if (result.outcome === "not_sent") return `${warn}${t("model.switch_not_sent", instanceName, model)}`;
       const persistedNow = this.persistInstanceModel(instanceName, model);
@@ -21833,7 +21948,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return `${warn}${t("model.runtime_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
     }
 
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("model.restart_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
   }
 
@@ -22760,6 +22875,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = null;
+    this.stallReporter?.stop();
+    this.stallReporter = null;
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).

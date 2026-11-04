@@ -417,9 +417,12 @@ export class WebSessionStore {
   /** A candidate has no usable credential until the public notice and final fence passed. */
   activate(sessionId: string): boolean {
     const hash = sessionIdHash(sessionId);
-    if (!this.byHash.has(hash) || !this.pending.delete(hash)) return false;
+    const record = this.byHash.get(hash);
+    if (!record || !this.pending.delete(hash)) return false;
+    record.lastSeen = this.now();
+    this.enforceCaps();
     this.persistNow();
-    return true;
+    return this.byHash.has(hash);
   }
 
   revokeExposure(exposureId: string): { count: number; durable: boolean } {
@@ -549,18 +552,29 @@ export class WebSessionStore {
   /**
    * The caps: admins' and read sessions together; guests apart (#1920) — per account, then all guests — so a guest
    * signing in never drops an admin's session, and one account cannot fill the guests' room.
+   *
+   * Pending public candidates (#1490 row 20) sit in their own pool at the same cap: they must not evict an
+   * active session, and admission (`activate`) then applies the active cap. Guests keep their separate caps.
    */
   private enforceCaps(): void {
     const notGuest = (r: SessionRecord) => r.tier !== "guest";
-    while (this.count(notGuest) > this.maxSessions) this.evictLeastRecentlyUsed(notGuest);
+    this.enforcePool(notGuest, this.maxSessions);
     const accounts = new Set<string>();
     for (const r of this.byHash.values()) if (r.tier === "guest") accounts.add(accountKey(r.owner!));
     for (const key of accounts) {
       const mine = (r: SessionRecord) => r.tier === "guest" && accountKey(r.owner!) === key;
-      while (this.count(mine) > MAX_GUEST_SESSIONS_PER_ACCOUNT) this.evictLeastRecentlyUsed(mine);
+      this.enforcePool(mine, MAX_GUEST_SESSIONS_PER_ACCOUNT);
     }
     const guest = (r: SessionRecord) => r.tier === "guest";
-    while (this.count(guest) > MAX_GUEST_SESSIONS) this.evictLeastRecentlyUsed(guest);
+    this.enforcePool(guest, MAX_GUEST_SESSIONS);
+  }
+
+  /** Cap active and pending members of `which` separately, each at `cap`, so a candidate cannot bump a live session. */
+  private enforcePool(which: (r: SessionRecord) => boolean, cap: number): void {
+    const active = (r: SessionRecord) => which(r) && !this.pending.has(r.idHash);
+    const pending = (r: SessionRecord) => which(r) && this.pending.has(r.idHash);
+    while (this.count(active) > cap) this.evictLeastRecentlyUsed(active);
+    while (this.count(pending) > cap) this.evictLeastRecentlyUsed(pending);
   }
 
   private count(which: (r: SessionRecord) => boolean): number {

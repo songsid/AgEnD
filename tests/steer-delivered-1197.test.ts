@@ -32,7 +32,7 @@ const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return 
 interface Opts {
   backend?: any;
   /** What the pane shows on each capture; `pasted` is true once the paste has been written. */
-  pane?: (state: { pasted: boolean; captures: number; daemon: any }) => string;
+  pane?: (state: { pasted: boolean; entered: boolean; captures: number; daemon: any }) => string;
   enterOk?: boolean;
   dialogOnVerify?: boolean;
   windowAfterPaste?: string;
@@ -61,7 +61,7 @@ async function steer(opts: Opts = {}) {
     targetInstance: "worker", kind: "steer", payload: { type: "steer", content: "hello", meta: {} },
   }).delivery;
   const claimed = outbox.claimNext("manager-test", () => daemon.bootId, new Set())!;
-  const state = { pasted: false, captures: 0, daemon, confirmed: false };
+  const state = { pasted: false, entered: false, captures: 0, daemon, confirmed: false };
   const tmux = {
     capturePane: vi.fn(async () => {
       state.captures++;
@@ -70,7 +70,7 @@ async function steer(opts: Opts = {}) {
       return opts.pane ? opts.pane(state) : (state.pasted ? `${BUSY}${MARKER_ROWS}` : BUSY);
     }),
     pasteBuffer: vi.fn(async () => { state.pasted = true; if (opts.windowAfterPaste) writeFileSync(join(instanceDir, "window-id"), opts.windowAfterPaste); return true; }),
-    sendSpecialKey: vi.fn(async () => opts.enterOk !== false),
+    sendSpecialKey: vi.fn(async () => { state.entered = true; return opts.enterOk !== false; }),
     getLastPasteError: vi.fn(), isLastPasteFailureRecoverable: vi.fn(() => true), getLastSendSpecialKeyError: vi.fn(),
     getWindowId: () => "@worker",
   };
@@ -152,8 +152,9 @@ describe("a steer into a busy pane of a CLI whose input row is unreadable", () =
 
   it("is NOT delivered when a new spawn began while the evidence was being read", async () => {
     const r = await steer({
-      pane: ({ pasted, captures, daemon }) => {
-        if (pasted && captures >= 2) daemon.spawnGeneration += 1;       // the pane changed hands between the paste and the acceptance check
+      // After the Enter (M-2290: the pane is read once more right before it, for a dialog — not part of this case).
+      pane: ({ pasted, entered, daemon }) => {
+        if (pasted && entered) daemon.spawnGeneration += 1;              // the pane changed hands between the Enter and the acceptance check
         return pasted ? `${BUSY}${MARKER_ROWS}` : BUSY;
       },
     });

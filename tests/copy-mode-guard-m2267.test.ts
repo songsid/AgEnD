@@ -181,6 +181,22 @@ describe("a delivery to a pane left in copy-mode", () => {
     expect([r.s.keysInMode, r.s.enters]).toEqual([0, 0]);
     expect(r.state).not.toBe("delivered");
   });
+  // M-2290 (#2985 review, Fable): a respawn or relaunch reuses the same tmux object and window, so only the daemon's
+  // spawn generation / launch fence tell the CLI that took the paste from its successor.
+  it.each([
+    ["a respawn (spawnGeneration)", (d: any) => { d.spawnGeneration++; }],
+    ["a relaunch (launchFenceEpoch)", (d: any) => { d.launchFenceEpoch++; }],
+  ])("%s while the Enter waits for the mode: no Enter for the new CLI when the mode ends", async (_n, bump) => {
+    let daemonRef: any = null, since = -1;
+    const r = await deliver(claude, (s) => {
+      if (!s.pasted) return false;
+      if (since < 0) since = s.modeReads;
+      if (s.modeReads - since === 4 && daemonRef) bump(daemonRef);
+      return s.modeReads - since < 10;
+    }, 60_000, (d) => { daemonRef = d; });
+    expect([r.s.keysInMode, r.s.enters]).toEqual([0, 0]);
+    expect(r.state).not.toBe("delivered");
+  });
   it("still in a mode when the Enter's wait runs out: the Enter is withheld — never reported delivered", async () => {
     const r = await deliver(claude, (s) => s.pasted > 0, 12 * 60_000);
     expect(r.s.keysInMode).toBe(0);
@@ -214,9 +230,11 @@ describe("the readiness wait holds while the pane is in a mode", () => {
 
 describe("TmuxManager.paneInMode, against a real tmux", () => {
   it("1 in copy-mode, 0 out of it; a read only (the mode is the person's)", () => {
-    const socket = getTmuxSocketName();
-    expect(socket).toBeTruthy();
-    TmuxManager.setSocketName(socket);                                // never the live server
+    // Its own private socket (never the live server): the AGEND_HOME socket is every test worker's, and another file's
+    // real-tmux test (view-scrollback-api) ends that server with kill-server — run together, they raced (#2991).
+    expect(getTmuxSocketName()).toBeTruthy();
+    const socket = `agend-test-copy-mode-unit-${process.pid}`;
+    TmuxManager.setSocketName(socket);
     try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }
     const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf8" });
     try {
@@ -233,5 +251,56 @@ describe("TmuxManager.paneInMode, against a real tmux", () => {
         expect(await new TmuxManager("cm", "").paneInMode()).toBeNull();
       })().finally(() => { TmuxManager.setSocketName(null); try { tmux("kill-server"); } catch { /* gone */ } });
     } catch (e) { try { tmux("kill-server"); } catch { /* gone */ } throw e; }
+  });
+});
+
+describe("M-2290: the pre-Enter dialog check (the simple half of #2957) — unit", () => {
+  const CARD = readFileSync(join(process.cwd(), "tests/fixtures/claude-2.1.316-danger-enter-swallowed.pane.txt"), "utf8");
+  function bare() {
+    const root = mkdtempSync(join(tmpdir(), "agend-pre-enter-2290-")); roots.push(root);
+    const { daemon, tmux } = makeDaemon(root, () => BUSY_EMPTY, () => false);
+    return { daemon, tmux };
+  }
+  it("a recognised card: no Enter, held as `dialog`", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockResolvedValue(CARD);
+    const held: string[] = [];
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, (why: string) => held.push(why))).toBe(false);
+    expect(held).toEqual(["dialog"]);
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+  });
+  it("an unreadable pane still sends (no composer proof)", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockRejectedValue(new Error("capture failed"));
+    const held: string[] = [];
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, (why: string) => held.push(why))).toBe(true);
+    expect(held).toEqual([]);
+    expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+  });
+  it("AgEnD's own unrecognised-prompt guess is not a recognised dialog: it sends", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockResolvedValue(CARD);
+    // Only the backend's own dialogs count: with none, even this card's screen sends (what a backend without it would do).
+    const matching = new ClaudeCodeBackend(join(tmpdir(), "x")).getRuntimeDialogs().find(d => (Daemon as any).dialogMatches(d, CARD));
+    expect(matching).toBeDefined();                                               // the guess WOULD match this screen…
+    daemon.backend.getRuntimeDialogs = () => [];
+    daemon.unrecognisedPromptCurrent = () => ({ active: true });
+    daemon.unrecognisedPromptDialog = matching;
+    expect(daemon.runtimeDialogs()).toContain(matching);                          // …and the scanner's own list has it
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, () => {})).toBe(true);
+    expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+  });
+  it("a caller that cannot hold is never asked: no extra capture, the Enter goes as before", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockResolvedValue(CARD);
+    expect(await daemon.sendDeliveryEnterAfterAvailability("stranded-text-retry")).toBe(true);
+    expect(tmux.capturePane).not.toHaveBeenCalled();
+    expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+  });
+  it("the fence trips during the capture: no Enter", async () => {
+    const { daemon, tmux } = bare();
+    tmux.capturePane.mockImplementation(async () => { daemon.spawnGeneration++; return BUSY_EMPTY; });
+    expect(await daemon.sendDeliveryEnterAfterAvailability("initial-submit", undefined, undefined, () => {})).toBe(false);
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
   });
 });

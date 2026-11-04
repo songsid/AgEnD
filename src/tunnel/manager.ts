@@ -62,8 +62,7 @@ export class ManagedTunnel {
   async reap(): Promise<ReapOutcome> {
     const outcome = await reapStaleTunnel(this.opts.dataDir, this.opts);
     if (outcome.kind === "manual") {
-      this.blocked = manualCleanupMessage(outcome);
-      this.log(this.blocked);
+      this.log(manualCleanupMessage(outcome));
     }
     return outcome;
   }
@@ -103,7 +102,7 @@ export class ManagedTunnel {
     // Reserved before the spawn, not after: between these two writes a child
     // may come into existence, and a crash in that window must leave evidence
     // rather than silence.
-    writeLease(this.opts.dataDir, {
+    await writeLease(this.opts.dataDir, {
       sid: ctx.sid,
       provider: provider.name,
       originPort: Number(ctx.origin.port),
@@ -126,7 +125,7 @@ export class ManagedTunnel {
         // Best effort, and never allowed to throw past the block below: a full disk here must not turn
         // "a child we cannot prove dead" into a rejected start with no block and no announcement.
         try {
-          writeLease(this.opts.dataDir, {
+          await writeLease(this.opts.dataDir, {
             sid: ctx.sid,
             provider: provider.name,
             originPort: Number(ctx.origin.port),
@@ -152,7 +151,7 @@ export class ManagedTunnel {
       }
       // The provider proved its child is gone (or never made one), so the lease
       // describes nothing and may go.
-      clearLease(this.opts.dataDir);
+      await clearLease(this.opts.dataDir);
       return {
         ok: false,
         errorKind: startError?.errorKind ?? "spawn-failed",
@@ -166,7 +165,7 @@ export class ManagedTunnel {
     // tunnel is stopped on proof — and if that cannot be proven the failure says so and blocks the next start.
     this.active = handle;
     try {
-      writeLease(this.opts.dataDir, {
+      await writeLease(this.opts.dataDir, {
         sid: ctx.sid,
         provider: provider.name,
         originPort: Number(ctx.origin.port),
@@ -207,7 +206,7 @@ export class ManagedTunnel {
     const result = await handle.stop(reason);
     this.active = null;
     if (result.confirmed) {
-      clearLease(this.opts.dataDir);
+      await clearLease(this.opts.dataDir);
       return result;
     }
     this.unconfirmed = { reason: result.reason, pid: result.pid, identity: result.identity };

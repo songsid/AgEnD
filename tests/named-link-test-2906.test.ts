@@ -252,7 +252,7 @@ describe("#2907 review: the production lane — the managed start (lease, proven
     const lane = new TunnelPurposeLane(new ManagedTunnel({ dataDir: dir, probe, wait: async () => {}, graceMs: 1 }));
     if (options.holder) lane.reserve(options.holder, "open-link");
     const binary = join(dir, "cloudflared"); writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
-    const reserve = namedTestLane(lane, { registerMs: options.registerMs ?? 300, provider: o => new CloudflaredProvider({ ...o, spawnProcess: spawn as never, probe, graceMs: 20, env: { PATH: "/usr/bin", HOST_SECRET: "x" } }) });
+    const reserve = namedTestLane(lane, { registerMs: options.registerMs ?? 300, provider: o => new CloudflaredProvider({ access: async () => {} /* #3009: preflight answered at once (timing-tight fixture) */, ...o, spawnProcess: spawn as never, probe, graceMs: 20, env: { PATH: "/usr/bin", HOST_SECRET: "x" } }) });
     return { lane, reserve, child, spawned, binary, dir };
   }
   const startInput = (binary: string, port: number, signal = new AbortController().signal) => ({ binary, hostname: HOST, token: TOKEN, protocol: "http2" as const, origin: new URL(`http://127.0.0.1:${port}`), signal });
@@ -306,7 +306,7 @@ describe("#2906 at launch: a registered tunnel whose self-probe cannot connect i
     const binary = join(dir, "inert-cloudflared"); writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
     const child = new Child();
     const p = new CloudflaredProvider({ binaryName: binary, named: { hostname: HOST, token: TOKEN }, spawnProcess: (() => child) as never,
-      probe: () => ({ kind: "gone" }), deadlineMs: 5, graceMs: 1,
+      probe: () => ({ kind: "gone" }), access: async () => {}, deadlineMs: 5, graceMs: 1,
       fetchPage: async () => { child.say(log); throw error; } });
     const ctx: TunnelStartContext = { sid: "inert2906", origin: new URL("http://127.0.0.1:19282"), pagePath: "/signin", readinessMarker: "m2906", expiresAt: Date.now() + 60_000, signal: new AbortController().signal };
     return { p, ctx };
