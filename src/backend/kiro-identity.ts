@@ -204,6 +204,8 @@ export type KiroIdentityDecision =
     mode: "fresh"; notice?: "shared-directory" | "claimed-conversation" | "unknown-peers";
     /** #2714: the recorded conversation this fresh start gave up, and why (its claim was not this instance's). */
     lost?: { id: string; claim: "missing" | "incomplete" | "other-owner" | "abandoned" };
+    /** #1490 row 49: the state file that could not be fully read — kept as it is; this fresh start is not recorded. */
+    unrecorded?: string;
   };
 
 export type KiroCompactionKept =
@@ -362,7 +364,7 @@ export function kiroIdentityNeedsStore(opts: Omit<ResolveKiroIdentityOptions, "r
   const record = read.kind === "ok" ? read.state.keys[key] : undefined;
   const pending = readPending(p.pending);
   if (pending === "unreadable") return false; // the resolver refuses this launch
-  if (read.kind === "bad") return false; // the resolver runs this launch unrecorded (#1490 row 49)
+  if (read.kind === "bad") return false; // the resolver starts fresh unrecorded, with no store read (#1490 row 49)
   const pendingId = Object.hasOwn(pending, key) ? pending[key]! : null;
   if (pendingId && !record) {
     if (opts.skipResume) return true;
@@ -487,16 +489,15 @@ export function resolveKiroIdentity(opts: ResolveKiroIdentityOptions): KiroIdent
   // An adoption under way for THIS key (recorded before its claim; see below) is settled before anything else —
   // whether there is no state file yet or other keys have been written since. It is never forgotten or bypassed:
   //  - an explicit fresh start gives its conversation up for good (claim marked, id listed abandoned);
-  //  - an unreadable or malformed state file never gets here (legacy above: nothing is recorded or given up);
+  //  - an unreadable or malformed state file never gets here (an unrecorded fresh start above: nothing is given up);
   //  - otherwise it is taken up exactly — held or still claimable — or, someone else's by now, the key starts fresh.
   const pendingMap = readPending(p.pending);
   if (pendingMap === "unreadable") throw new KiroIdentityError(`cannot read ${p.pending}`);
   // #1490 row 49: an unreadable or malformed state file may still hold other keys' records (and their claims). It is
-  // never written back — a save would replace every key with this one — so it stays as evidence, nothing is given up,
-  // and this launch runs unrecorded (legacy) until the file is repaired or removed.
-  if (read.kind === "bad") {
-    return { mode: "legacy", reason: `the identity record ${p.state} is unreadable; it is kept as it is, never overwritten — repair or remove it` };
-  }
+  // never written back — a save would replace every key with this one — so it stays as evidence and nothing is given
+  // up. The launch is still isolated: a fresh conversation as the instance's agent (never kiro's own newest-in-directory
+  // resume), just not recorded, until the file is repaired or removed.
+  if (read.kind === "bad") return { mode: "fresh", unrecorded: p.state };
   const pendingId = Object.hasOwn(pendingMap, key) ? pendingMap[key]! : null;
   /** Settled: this key's entry goes, the other keys' adoptions stay. */
   const settlePending = () => {

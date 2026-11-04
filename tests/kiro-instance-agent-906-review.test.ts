@@ -137,11 +137,11 @@ describe("#6 take-up needs creation evidence, and an abandoned id stays given up
     expect(r({ skipResume: true })).toEqual({ mode: "fresh" });
     writeFileSync(join(home(), "kiro-identity", "instances", stateName("a")), "{ corrupt");
     store = { kind: "unreadable", detail: "x" };
-    // #1490 row 49: the corrupt file is kept, never rewritten; launches run unrecorded (legacy), never resuming X
-    expect(r()).toMatchObject({ mode: "legacy" });
+    // #1490 row 49: the corrupt file is kept, never rewritten; launches start fresh unrecorded, never resuming X
+    expect(r()).toMatchObject({ mode: "fresh", unrecorded: expect.stringContaining("kiro-identity") });
     now = 9_000;
     store = { kind: "ok", sessions: [{ id: "X", updatedAt: 8_000 }], createdAt: () => 8_500 }; // even a misleading created_at
-    expect(r()).toMatchObject({ mode: "legacy" });
+    expect(r()).toMatchObject({ mode: "fresh", unrecorded: expect.stringContaining("kiro-identity") });
     expect(readFileSync(join(home(), "kiro-identity", "instances", stateName("a")), "utf-8")).toBe("{ corrupt");
   });
 });
@@ -162,12 +162,12 @@ describe("#6 the two abandonment barriers each hold on their own", () => {
     store = { kind: "ok", sessions: [{ id: "X", updatedAt: 8_000 }], createdAt: () => 8_500 };
     expect(r()).toEqual({ mode: "fresh" });
   });
-  it("a state file of an unknown version is not 'no state': unrecorded (#1490 row 49), never an adoption", () => {
+  it("a state file of an unknown version is not 'no state': fresh, unrecorded (#1490 row 49), never an adoption", () => {
     mkdirSync(join(home(), "kiro-identity", "instances"), { recursive: true });
     writeFileSync(join(home(), "kiro-identity", "instances", stateName("a")), JSON.stringify({ version: 99, instance: "a", keys: {} }));
     const store: KiroStoreRead = { kind: "ok", sessions: [{ id: "c1", updatedAt: 10 }], createdAt: () => 10 };
     expect(resolveKiroIdentity({ instance: "a", engine: "v1", workingDirectory: join(root, "work"), credentialProfile: null,
-      agendHome: home(), readStore: () => store, launchedBefore: () => true })).toMatchObject({ mode: "legacy" });
+      agendHome: home(), readStore: () => store, launchedBefore: () => true })).toMatchObject({ mode: "fresh", unrecorded: expect.stringContaining("kiro-identity") });
   });
 });
 

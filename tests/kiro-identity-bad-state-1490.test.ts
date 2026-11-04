@@ -36,18 +36,18 @@ function validPlusMalformed(): string {
 }
 
 describe("#1490 row 49: a bad identity read never overwrites the other keys", () => {
-  it("another key's launch keeps the file byte for byte and runs unrecorded (legacy)", () => {
+  it("another key's launch keeps the file byte for byte and starts fresh, unrecorded", () => {
     const before = validPlusMalformed();
     const decision = resolve("p2");
-    expect(decision).toMatchObject({ mode: "legacy", reason: expect.stringContaining("never overwritten") });
+    expect(decision).toMatchObject({ mode: "fresh", unrecorded: statePath() });
     expect(readFileSync(statePath(), "utf-8")).toBe(before);
     expect(readFileSync(claimPath("X"), "utf-8")).toBe("a\n"); // still held, never marked abandoned
   });
 
   it("an explicit fresh start (skipResume) does not rewrite it either", () => {
     const before = validPlusMalformed();
-    expect(resolve("p2", { skipResume: true })).toMatchObject({ mode: "legacy" });
-    expect(resolve(null, { skipResume: true })).toMatchObject({ mode: "legacy" });
+    expect(resolve("p2", { skipResume: true })).toEqual({ mode: "fresh", unrecorded: statePath() });
+    expect(resolve(null, { skipResume: true })).toEqual({ mode: "fresh", unrecorded: statePath() });
     expect(readFileSync(statePath(), "utf-8")).toBe(before);
     expect(readFileSync(claimPath("X"), "utf-8")).toBe("a\n");
   });
@@ -68,17 +68,17 @@ describe("#1490 row 49: a bad identity read never overwrites the other keys", ()
     writeFileSync(pendingPath(), JSON.stringify({ [key]: "P" }) + "\n");
     mkdirSync(join(home(), "kiro-identity", "claims", "v1"), { recursive: true });
     writeFileSync(claimPath("P"), "a\n");
-    expect(resolve(null)).toMatchObject({ mode: "legacy" });
+    expect(resolve(null)).toEqual({ mode: "fresh", unrecorded: statePath() });
     expect(readFileSync(statePath(), "utf-8")).toBe("{ corrupt");
     expect(JSON.parse(readFileSync(pendingPath(), "utf-8"))).toEqual({ [key]: "P" });
     expect(readFileSync(claimPath("P"), "utf-8")).toBe("a\n");
   });
 
-  it("an unknown version is not 'no state' either: legacy, never an adoption, never rewritten", () => {
+  it("an unknown version is not 'no state' either: fresh unrecorded, never an adoption, never rewritten", () => {
     mkdirSync(join(home(), "kiro-identity", "instances"), { recursive: true });
     const text = JSON.stringify({ version: 99, instance: "a", keys: {} });
     writeFileSync(statePath(), text);
-    expect(resolve(null)).toMatchObject({ mode: "legacy" });
+    expect(resolve(null)).toEqual({ mode: "fresh", unrecorded: statePath() });
     expect(readFileSync(statePath(), "utf-8")).toBe(text);
     expect(existsSync(claimPath("X"))).toBe(false);
   });

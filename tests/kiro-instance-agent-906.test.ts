@@ -363,11 +363,11 @@ describe("§2 the conversation identity", () => {
     expect(resolveAs("a")).toEqual({ mode: "resume", id: "X", agentConfirmed: false });
   });
 
-  it("a malformed state file is not 'no state': never a selection, never rewritten (#1490 row 49: runs unrecorded)", () => {
+  it("a malformed state file is not 'no state': never a selection, never rewritten (#1490 row 49: fresh, unrecorded)", () => {
     mkdirSync(join(home(), "kiro-identity", "instances"), { recursive: true });
     writeFileSync(join(home(), "kiro-identity", "instances", stateName("a")), "{ nope");
     store.read = ok(["c1", 10]);
-    expect(resolveAs("a")).toMatchObject({ mode: "legacy" });
+    expect(resolveAs("a")).toMatchObject({ mode: "fresh", unrecorded: expect.stringContaining("kiro-identity") });
     expect(readFileSync(join(home(), "kiro-identity", "instances", stateName("a")), "utf-8")).toBe("{ nope");
   });
 
