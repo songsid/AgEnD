@@ -32,6 +32,13 @@ function rig() {
   return { home, store, name, original, windows, target, deps, execution, request, current: () => current, revoke: () => { allowed = false; } };
 }
 describe("General's durable location binding", () => {
+  it("a busy General writes no binding and cannot stop, save or start", async () => {
+    const r = rig(), write = vi.spyOn(r.store, "write"); r.deps.idle.mockResolvedValue(false);
+    await expect(switchGeneralLocation(r.deps, r.request(), r.execution())).rejects.toThrow("Wait for General to be idle");
+    expect(write).not.toHaveBeenCalled(); expect(r.store.read(r.name)).toBeNull();
+    expect(r.deps.stop).not.toHaveBeenCalled(); expect(r.deps.save).not.toHaveBeenCalled(); expect(r.deps.start).not.toHaveBeenCalled();
+    expect(r.current()).toBe(r.original);
+  });
   it("closes the old owner before saving or starting, keeps its exact pin and uses the same route", async () => {
     const r = rig(), events: string[] = [], pin = randomUUID();
     const save = r.deps.save.getMockImplementation()!;

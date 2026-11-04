@@ -13,6 +13,11 @@ import { SettingsExecution } from "../src/settings-transaction.js";
 import { SettingsRouteLifetime } from "../src/settings-route-lifetime.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
+import { windowsAgentsFor } from "../src/windows-agents.js";
+import { request as httpRequest } from "node:http";
+import { AccessManager } from "../src/channel/access-manager.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } from "../src/web-auth.js";
+import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 const roots: string[] = [], executions: SettingsExecution[] = [];
 afterEach(() => { for (const e of executions.splice(0)) e.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); proof.exited = true; vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 function rig() {
@@ -30,7 +35,10 @@ function rig() {
   vi.spyOn(fm, "saveFleetConfig").mockImplementation(() => {}); vi.spyOn(fm.routing, "rebuild").mockImplementation(() => {});
   vi.spyOn(fm, "connectIpcToInstance").mockResolvedValue(undefined); vi.spyOn(fm, "notifyInstanceTopic").mockImplementation(() => {}); vi.spyOn(fm, "emitSseEvent").mockImplementation(() => {}); vi.spyOn(fm, "getUiStatus").mockReturnValue({});
   const stop = vi.spyOn(fm, "stopInstance").mockImplementation(async () => { fm.explicitStopGeneration.set("general", (fm.explicitStopGeneration.get("general") ?? 0) + 1); fm.lifecycle.invalidate("general"); fm.daemons.delete("general"); });
-  const start = vi.spyOn(fm, "startInstance").mockImplementation(async () => { fm.assertGeneralBindingStart("general", fm.fleetConfig.instances.general); fm.daemons.set("general", { getProcessStatus: () => "running", nativePaneCurrent: () => true }); });
+  const start = vi.spyOn(fm, "startInstance").mockImplementation(async () => { fm.assertGeneralBindingStart("general", fm.fleetConfig.instances.general); fm.daemons.set("general", {
+    getProcessStatus: () => "running", nativePaneCurrent: () => true, getInstanceStateSnapshot: () => ({ state: "idle" }),
+    getWorkingRecoveryState: () => ({ idle: true }), getInteractionSnapshot: () => ({ phase: "clear" }),
+  }); });
   const store = new GeneralBindings(home);
   const request = () => ({ name: "general", revision: generalBindingRevision(store.read("general"), fm.fleetConfig.instances.general), target: { location: "windows", machineId, cli: "claude-code", model: "haiku" } });
   const execution = () => { const route = new SettingsRouteLifetime("general", () => allowed, () => fm.lifecycle.epochOf("general"), () => false);
@@ -42,6 +50,95 @@ it("the real Fleet switch crosses only its own route stop and retains the exact 
   expect(result.started).toBe(true); expect(r.stop).toHaveBeenCalledOnce(); expect(r.start).toHaveBeenCalledOnce();
   expect(r.store.read("general")).toMatchObject({ host: { pin: { sessionId: r.pin } } }); expect(r.store.read("general")!.pending).toBeUndefined();
   expect(r.fm.generalLocationDeliveryHold("general")).toBeNull();
+});
+it.each(["busy", "interaction", "work-lease", "recent-delivery"])("the Fleet idle gate refuses %s before writing, stopping or saving", async condition => {
+  const r = rig(), daemon = r.fm.daemons.get("general"), write = vi.spyOn(r.store, "write");
+  if (condition === "busy") daemon.getInstanceStateSnapshot = () => ({ state: "working" });
+  if (condition === "interaction") daemon.getInteractionSnapshot = () => ({ phase: "waiting" });
+  if (condition === "work-lease") vi.spyOn(r.fm.lifecycle, "hasWorkLease").mockReturnValue(true);
+  if (condition === "recent-delivery") r.fm.lastDeliveryAt.set("general", Date.now());
+  await expect(r.fm.switchGeneralLocation(r.request(), () => true, r.execution())).rejects.toThrow("Wait for General to be idle");
+  expect(write).not.toHaveBeenCalled(); expect(r.store.read("general")).toBeNull();
+  expect(r.stop).not.toHaveBeenCalled(); expect(r.fm.saveFleetConfig).not.toHaveBeenCalled(); expect(r.start).not.toHaveBeenCalled();
+});
+it.each(["activeId", "paneLaunchId"])("switch-back holds visibly if Windows retains %s after Stop", async retained => {
+  const r = rig(); await r.fm.switchGeneralLocation(r.request(), () => true, r.execution());
+  const config = r.fm.fleetConfig.instances.general, windows = windowsAgentsFor(r.fm, r.fm.runtimeWindowsExecutor()), launchId = randomUUID();
+  windows.reservePane(config.native_agent_id, launchId);
+  // Exercise each reservation independently, even if a partial/interrupted writer left only one field.
+  const get = windows.get.bind(windows);
+  vi.spyOn(windows, "get").mockImplementation((id: string) => { const row = get(id); delete row.activeId; delete row.paneLaunchId; row[retained as "activeId" | "paneLaunchId"] = launchId; return row; });
+  r.stop.mockClear(); r.start.mockClear(); r.fm.saveFleetConfig.mockClear();
+  await expect(r.fm.switchGeneralLocation({ ...r.request(), target: { location: "host" } }, () => true, r.execution())).rejects.toThrow("No replacement was started");
+  expect(r.stop).toHaveBeenCalledOnce(); expect(r.start).not.toHaveBeenCalled(); expect(r.fm.saveFleetConfig).not.toHaveBeenCalled();
+  expect(r.fm.fleetConfig.instances.general).toBe(config); expect(r.store.read("general")).toMatchObject({ hold: "exit", pending: { phase: "prepared", to: "host" } });
+  const attention = r.fm.generalLocationAttention("general");
+  expect(attention).toMatchObject({ offline: false, detail: expect.stringContaining("No replacement was started") });
+  expect(deriveNeedsYou({ instances: [{ name: "general", generalLocation: attention }], deliveries: [], prompts: [], ownerOf: () => "dc" }))
+    .toMatchObject([{ generalLocation: true, reason: "general_location_hold" }]);
+});
+it("Windows preparation and the persisted fleet instance omit all host credential and shell settings", async () => {
+  const r = rig(), host = r.fm.fleetConfig.instances.general;
+  Object.assign(host, { backend_options: { cli_path: "/host/private/claude", env: { HOST_ONLY: "fixture" } }, credential_profile: "host-profile", pre_task_command: "host-only-hook" });
+  r.fm.saveFleetConfig.mockImplementation((patches: any[]) => {
+    const saved = patches.find(row => row.path.join(".") === "instances.general").value;
+    for (const key of ["backend_options", "credential_profile", "pre_task_command"]) expect(saved).not.toHaveProperty(key);
+  });
+  await r.fm.switchGeneralLocation(r.request(), () => true, r.execution());
+  const record = r.store.read("general")!, prepared = record.windows[0].config;
+  for (const key of ["backend_options", "credential_profile", "pre_task_command"]) {
+    expect(prepared).not.toHaveProperty(key); expect(r.fm.fleetConfig.instances.general).not.toHaveProperty(key);
+    expect(record.host.config).toHaveProperty(key, host[key]);
+  }
+  expect(r.fm.saveFleetConfig).toHaveBeenCalledOnce();
+});
+it("a switch awaiting capture holds web, platform and durable input before a pending journal exists", async () => {
+  const r = rig(), daemon = r.fm.daemons.get("general"), outbox = new DeliveryOutbox(join(r.home, "in-flight-outbox.db"));
+  r.fm.deliveryOutbox = outbox;
+  let unblock!: () => void, entered!: () => void;
+  const captured = new Promise<void>(resolve => { entered = resolve; }), barrier = new Promise<void>(resolve => { unblock = resolve; });
+  const owner = daemon.generalHostOwner;
+  daemon.generalHostOwner = async () => { entered(); await barrier; return owner(); };
+  const deliver = vi.spyOn(r.fm, "deliverHumanToInstance").mockResolvedValue(true);
+  const adapter = { id: "dc", type: "telegram", sendText: vi.fn(async () => ({})), react: vi.fn(async () => {}) };
+  r.fm.adapter = adapter; r.fm.adapters.set("dc", adapter);
+  const channel = { id: "dc", type: "telegram", mode: "topic", group_id: "-1003007", bot_token_env: "FIXTURE", access: { mode: "open", allowed_users: ["admin"] } };
+  r.fm.fleetConfig.channels = [channel];
+  r.fm.worlds.set("dc", { id: "dc", adapterId: "dc", adapter, groupId: channel.group_id, channelConfig: channel,
+    accessManager: new AccessManager(channel.access as never, join(r.home, "access.json")) });
+  vi.spyOn(r.fm, "findGeneralInstance").mockReturnValue("general");
+  vi.spyOn(r.fm.topicCommands, "handleInstanceCommand").mockResolvedValue(false); vi.spyOn(r.fm.topicCommands, "handleGeneralCommand").mockResolvedValue(false);
+  vi.spyOn(r.fm, "getInstanceStatus").mockReturnValue("running");
+  r.fm.runtimeHub.handlePublicRequest = () => false;
+  r.fm.initializeWebAuthTokens(); r.fm.startHealthServer(0);
+  await vi.waitFor(() => expect(r.fm.getDashboardAccess().ready).toBe(true));
+  const port = r.fm.healthServer.address().port;
+  const sid = r.fm.webSessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(r.fm.getDashboardAccess().token) }).sessionId;
+  const switching = r.fm.switchGeneralLocation(r.request(), () => true, r.execution());
+  try {
+    await captured;
+    expect(r.store.read("general")).toBeNull(); expect(r.fm.daemons.get("general")).toBe(daemon);
+    const hold = r.fm.generalLocationDeliveryHold("general"); expect(hold).toContain("No replacement was started");
+    const web = await new Promise<{ status: number; body: any }>((resolve, reject) => {
+      const req = httpRequest({ host: "127.0.0.1", port, method: "POST", path: "/ui/send", headers: {
+        host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}`, cookie: `${WEB_SESSION_COOKIE}=${sid}`,
+        [WEB_CSRF_HEADER]: csrfTokenFor(sid), "content-type": "application/json",
+      } }, res => { let body = ""; res.on("data", chunk => { body += chunk; }); res.on("end", () => resolve({ status: res.statusCode!, body: JSON.parse(body) })); });
+      req.on("error", reject); req.end(JSON.stringify({ instance: "general", message: "held web input", clientId: "c000000000000000000003007" }));
+    });
+    expect(web).toMatchObject({ status: 200, body: { serviceResponse: true } });
+    expect(r.fm.emitSseEvent).toHaveBeenCalledWith("message", expect.objectContaining({ instance: "general", role: "status", text: hold }));
+    await r.fm.handleInboundMessage({ source: "telegram", adapterId: "dc", chatId: channel.group_id, userId: "admin", username: "Admin",
+      messageId: "flight-3007-platform-input", text: "held platform input", isBotMessage: false, timestamp: new Date() });
+    expect(adapter.sendText).toHaveBeenCalledWith(channel.group_id, hold, { threadId: undefined });
+    expect(() => r.fm.admitDurableDelivery({ operationId: "flight-durable", sourceInstance: "sender", sourceDaemonBootId: "sender-boot",
+      targetInstance: "general", kind: "fleet_inbound", payload: { content: "held durable input" } })).toThrow(hold);
+    expect(deliver).not.toHaveBeenCalled(); expect(outbox.countForTarget("general", ["queued", "delivering", "submission_started"])).toBe(0);
+    expect(r.stop).not.toHaveBeenCalled(); expect(r.start).not.toHaveBeenCalled();
+  } finally {
+    unblock(); await switching;
+    await new Promise<void>(resolve => r.fm.healthServer.close(() => resolve())); outbox.close();
+  }
 });
 it("an unconfirmed old host exit is visible, retains host config and starts nothing", async () => {
   const r = rig(); proof.exited = false;
