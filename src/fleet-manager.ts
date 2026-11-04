@@ -104,7 +104,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -5838,6 +5838,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // reconcile starts keep the persisted last-inbound seed (Phase 2a).
       if (resumePaused) this.lifecycle.markActivitySeedNow(name);
       const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      // #1490 row 67: off-loop resolve before skill/instruction publication
+      // constructs a backend (resolveKnowledgeWorkDir). Capture stop/lifecycle
+      // ownership first: a Stop during this wait finishes and bumps the epoch,
+      // and the inner lifecycle check would otherwise capture the new epoch and
+      // accept the stale start. Lifecycle start looks up again before its own
+      // createBackend; the probe cache makes that cheap.
+      const epoch = this.lifecycle.epochOf(name);
+      const stopGen = this.explicitStopGeneration.get(name) ?? 0;
+      const resolved = await resolveBackendBinary(backend);
+      execution?.assert();
+      if (this.lifecycle.epochOf(name) !== epoch
+        || (this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
+        throw new SupersededStartError(name);
+      }
+      const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+      if (binary) noteResolvedBinary(binary, resolved ?? binary);
       if (config.general_topic) {
         this.ensureGeneralInstructions(config.working_directory, backend, name);
       } else if (kind === "fleet-topic") {
@@ -8405,6 +8421,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalDir = join(getAgendHome(), name);
       mkdirSync(generalDir, { recursive: true, mode: 0o700 });
       const backendName = fleet.defaults.backend ?? "claude-code";
+      const resolved = await resolveBackendBinary(backendName);
+      const binary = BACKEND_INSTALLATION_INFO[backendName]?.binary;
+      if (binary) noteResolvedBinary(binary, resolved ?? binary);
       this.ensureGeneralInstructions(generalDir, backendName, name);
       fleet.instances[name] = autoGeneralInstanceConfig(fleet.defaults, generalDir, need.adapterId);   // #2598: its kiro_ui is the fleet's
       generalsCreated = true;
@@ -17457,7 +17476,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.browserBackendSignInsInstance ??= new BrowserBackendSignIns({
       dataDir: this.dataDir, lock: this.loginWindow,
       current: owner => this.browserSignInOwnerCurrent(owner),
-      installed: async () => ONBOARDING_BACKENDS.filter(backend => this.isCliInstalled(backend)),
+      installed: async () => {
+        const found = await Promise.all(ONBOARDING_BACKENDS.map(async backend =>
+          (await this.isCliInstalledOffLoop(backend)) ? backend : null));
+        return found.filter((backend): backend is typeof ONBOARDING_BACKENDS[number] => backend !== null);
+      },
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       checkConsoleAuth: () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
       transport: () => createStructuredSignInTransport(),
@@ -17555,12 +17578,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2233: `/login` for a dashboard requester. The same controller and checks; a CLI that is not installed is refused
    * with its install command (chat's install-first runs a terminal of its own, which the dashboard does not offer).
    */
-  private startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
+  private async startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    if (isRemovedBackend(wanted)) return Promise.resolve(removedBackendMessage(wanted));
+    if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
     const info = BACKEND_INSTALLATION_INFO[wanted];
-    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !this.isCliInstalled(wanted)) {
-      return Promise.resolve(t("login.web_dashboard_not_installed", wanted, info.install));
+    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !(await this.isCliInstalledOffLoop(wanted))) {
+      return t("login.web_dashboard_not_installed", wanted, info.install);
     }
     if (!opts.skipAuthCheck) this.recordLoginFlow(wanted, "login", chat.userId);
     return this.webLogin.start(backendArg, chat, opts);
@@ -18686,6 +18709,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
     // Backend resolution may create/normalize the real cwd. Instructions and
     // skills must land where the CLI actually runs, not an assumed path.
+    // Caller pins resolveBackendBinary first so createBackend does not `which`.
     try {
       const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
         .resolveWorkingDirectory?.(workDir, instanceName);
