@@ -51,7 +51,8 @@ and owns the General topic. An instance runs under the `general` tool set when
   settings.
 - Can't: exceed that set. Note the code on main is pre-beta.8 and still shows
   the smaller subset (`src/tool-permissions.ts:107-136` holds only
-  `create/start/restart/wake_instance` of the orchestration verbs) — expected
+  `create/start/restart/wake_instance` plus the web settings
+  (`get/set_web_settings`) of the orchestration verbs) — expected
   to change when beta.8 lands; see Mismatches.
 - Code: `src/tool-permissions.ts:107-136`, `:201-208`;
   `src/instance-lifecycle.ts:2741` (the General instance cannot be replaced).
@@ -66,7 +67,7 @@ runs part of the fleet.
 - Can: create/delete/replace/start/stop/pause/wake/restart instances, manage
   teams and templates, edit fleet defaults and instance config, run kiro
   migration/reconciliation, change others' decisions and web settings
-  (`src/tool-permissions.ts:80-98`).
+  (`src/tool-permissions.ts:80-93`).
 - Can't: exceed the table — anything not listed is refused, with the reason
   naming what the instance runs under.
 - Code: `src/tool-permissions.ts:100-107`.
@@ -83,7 +84,7 @@ An instance doing the work under the `worker` profile — the default when no
   and Office character.
 - Can't: any orchestration verb. A refused call names the coordinator and
   suggests reporting back instead (`src/tool-permissions.ts:357-374`).
-- Code: `src/tool-permissions.ts:33-78` (`WORKER`), `:185-208`.
+- Code: `src/tool-permissions.ts:33-72` (`WORKER`), `:185-208`.
 - Refs: #804, #895 (own schedules only).
 
 ## team and team leader
@@ -108,7 +109,9 @@ General topic" anywhere else.
 
 - Can: reach exactly that instance by talking there.
 - Can't: run General-only commands from another topic.
-- Code: `src/topic-commands.ts`; `src/instance-lifecycle.ts:2257`;
+- Code: `src/topic-commands.ts:836-839` (a General command typed in an
+  instance topic points to General, never to that agent);
+  `src/locale.ts:880` ("works in the General topic");
   `src/tool-permissions.ts:207`.
 - Refs: —
 
@@ -179,7 +182,7 @@ chat they could already use.
 ## tool set / tool profile (`full`, `coordinator`, `general`, `worker`, `standard`, `minimal`)
 
 The server-side table that decides which MCP tools an instance may call
-(`TOOL_PROFILES`, `src/tool-permissions.ts:100-157`). `defaults.tool_set`
+(`TOOL_PROFILES`, `src/tool-permissions.ts:103-155`). `defaults.tool_set`
 applies to every instance without its own value, including General; an
 explicit `tool_set` always wins, otherwise the General instance gets `general`
 and everything else defaults to `worker` (`resolveToolSet`, `:201-208`).
@@ -198,7 +201,7 @@ and everything else defaults to `worker` (`resolveToolSet`, `:201-208`).
   complete the delegate → work → report protocol.
 - `minimal`: a narrow sender — reply, forward, check delivery, read decisions,
   download, and see emoji/sticker listings.
-- Code: `src/tool-permissions.ts:30-157`.
+- Code: `src/tool-permissions.ts:30-155`.
 - Refs: #804.
 
 ## Needs you
@@ -371,7 +374,8 @@ Real code-vs-decision gaps only. Nothing here is papered over.
 1. **General's orchestration tools (temporal, expected to resolve).** Code on
    main is pre-beta.8: the `general` profile
    (`src/tool-permissions.ts:107-136`) holds only
-   `create/start/restart/wake_instance`. Fleet decision 9e3bea6c moves it to
+   `create/start/restart/wake_instance` plus the web settings. Fleet decision
+   9e3bea6c moves it to
    the full ORCHESTRATION set in beta.8 (agy's PR). No live mismatch once beta.8
    lands; until then the code half is verified and the change half is the
    decision's word.

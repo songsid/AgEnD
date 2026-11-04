@@ -25,7 +25,7 @@
 使用者的定義（fleet decision 9e3bea6c，「General is the AgEnD administrator」，使用者 2026-11-04）：從 beta.8 起，`general` 工具組拿到完整的 ORCHESTRATION——instance 的新增、刪除、取代、啟動、停止、暫停、喚醒、重啟；template；team；`update_fleet_defaults`；`update_instance_config`；kiro 遷移與對帳工具；`update_decision`；網頁設定——不另加確認。原有的確認保留：敏感設定（token 與存取權）由 fleet admin 確認，#804 照樣擋下 `tool_set` 或 `skipPermissions` 提權。它取代 2026-09-21 的「dispatcher」說法，隨 beta.8 落地（agy 的 PR）。General 是艦隊的管理 instance——新艦隊的第一個 agent——擁有 General topic。`general_topic: true` 或名字就叫 `general` 的 instance，跑的是 `general` 工具組。
 
 - 能做什麼（beta.8 起）：worker 能力的全部，加上完整的 ORCHESTRATION、委派、排程，以及使用者的網頁外觀設定。
-- 不能做什麼：超出上述範圍。注意 main 上的程式碼還在 beta.8 之前，看到的仍是較小的子集（`src/tool-permissions.ts:107-136` 的 orchestration 動詞只有 `create/start/restart/wake_instance`）——beta.8 落地就會換掉；見「不一致之處」。
+- 不能做什麼：超出上述範圍。注意 main 上的程式碼還在 beta.8 之前，看到的仍是較小的子集（`src/tool-permissions.ts:107-136` 的 orchestration 動詞只有 `create/start/restart/wake_instance` 加上網頁設定（`get/set_web_settings`））——beta.8 落地就會換掉；見「不一致之處」。
 - 程式碼：`src/tool-permissions.ts:107-136`、`:201-208`；`src/instance-lifecycle.ts:2741`（General instance 不能被 replace）。
 - 相關決議與議題：fleet decision 9e3bea6c。
 
@@ -33,7 +33,7 @@
 
 `TOOL_PROFILES.coordinator = WORKER + ORCHESTRATION`：全部 worker 能力，加上所有「經營艦隊而非做事」的動詞——給經營艦隊其中一部分的 agent 用的。
 
-- 能做什麼：新增／刪除／取代／啟動／停止／暫停／喚醒／重啟 instance、管理 team 與 template、改 fleet 預設值與 instance 設定、跑 kiro 遷移與對帳、改別人的決議與網頁設定（`src/tool-permissions.ts:80-98`）。
+- 能做什麼：新增／刪除／取代／啟動／停止／暫停／喚醒／重啟 instance、管理 team 與 template、改 fleet 預設值與 instance 設定、跑 kiro 遷移與對帳、改別人的決議與網頁設定（`src/tool-permissions.ts:80-93`）。
 - 不能做什麼：不能超出這張表——沒列的就是拒絕，並說明這個 instance 拿的是哪個 profile。
 - 程式碼：`src/tool-permissions.ts:100-107`。
 - 相關決議與議題：`docs/design/coordinator-tool-perms.zh-TW.md`（僅有正體中文版）。
@@ -44,7 +44,7 @@
 
 - 能做什麼：跟人說話、向同伴回報（`send_to_instance`、`report_result`、`request_information`、`broadcast`、`delegate_task`、`delivery_status`）、讀艦隊狀態、跑自己的任務卡與排程、維護自己的主題與辦公室角色。
 - 不能做什麼：任何 orchestration 動詞。被拒絕時會指名 coordinator，並建議用回報代替（`src/tool-permissions.ts:357-374`）。
-- 程式碼：`src/tool-permissions.ts:33-78`（`WORKER`）、`:185-208`。
+- 程式碼：`src/tool-permissions.ts:33-72`（`WORKER`）、`:185-208`。
 - 相關決議與議題：#804、#895（只能排自己的排程）。
 
 ## team 與 team leader
@@ -62,7 +62,7 @@ topic 是一個 instance 的聊天歸屬：綁定到它的 Telegram 論壇主題
 
 - 能做什麼：在那裡說話，就能精確找到那個 instance。
 - 不能做什麼：不能在別的 topic 跑 General 專屬指令。
-- 程式碼：`src/topic-commands.ts`；`src/instance-lifecycle.ts:2257`；`src/tool-permissions.ts:207`。
+- 程式碼：`src/topic-commands.ts:836-839`（在 instance 的 topic 下的 General 指令會指回 General，不會交給那個 agent）；`src/locale.ts:880`（「要在 General topic 使用」）；`src/tool-permissions.ts:207`。
 - 相關決議與議題：—
 
 ## Classic（ClassicBot）房間
@@ -94,7 +94,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## fleet admin（`admin_users`）
 
-列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理者 AGENT（使用者 2026-11-04 批准）。
+列在某連線 `access.allowed_users`（艦隊）或 `defaults.admin_users`／`allowed_users`（ClassicBot）裡的平台使用者 id。管理員是按人授予的，不是按 instance：fleet admin 是指人，General 是指替能在 General topic 跟它說話的人辦事的管理者 agent（使用者 2026-11-04 批准）。
 
 - 能做什麼：管理員限定的指令、確認敏感變更、管理存取權。
 - 不能做什麼：沒列名就什麼都不行——空名單等於誰都不給；開放存取或 pairing 核准本身不授予這個角色（`docs/SECURITY.md:13`）。
@@ -112,7 +112,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## tool set / tool profile（`full`、`coordinator`、`general`、`worker`、`standard`、`minimal`）
 
-伺服器端的對照表，決定一個 instance 能呼叫哪些 MCP 工具（`TOOL_PROFILES`，`src/tool-permissions.ts:100-157`）。`defaults.tool_set` 對沒有自己寫值的每個 instance 生效，General 也一樣；明示的 `tool_set` 永遠優先，否則 General instance 拿 `general`，其他一律預設 `worker`（`resolveToolSet`，`:201-208`）。
+伺服器端的對照表，決定一個 instance 能呼叫哪些 MCP 工具（`TOOL_PROFILES`，`src/tool-permissions.ts:103-155`）。`defaults.tool_set` 對沒有自己寫值的每個 instance 生效，General 也一樣；明示的 `tool_set` 永遠優先，否則 General instance 拿 `general`，其他一律預設 `worker`（`resolveToolSet`，`:201-208`）。
 
 - `full`：全部工具。只能明示指定；預設不會拿到（環境變數 fallback 除外，`:212-222`）。
 - `coordinator`：worker 能力加全部 orchestration 動詞——經營艦隊用的 profile。
@@ -120,7 +120,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 - `worker`：預設值。負責做事，有 `standard` 沒有的回報能力（`report_result`）。
 - `standard`：讀取範圍廣，也有自己的排程與主題，但沒有 `report_result`、`delegate_task`、`request_information`——走不完「委派→做事→回報」。
 - `minimal`：窄小的發送者——回覆、轉交、查送達、讀決議、下載附件、看 emoji／貼圖列表。
-- 程式碼：`src/tool-permissions.ts:30-157`。
+- 程式碼：`src/tool-permissions.ts:30-155`。
 - 相關決議與議題：#804。
 
 ## Needs you（需要你）
@@ -228,6 +228,6 @@ web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt
 
 只列程式碼跟決議真的對不上的地方。這裡不粉飾。
 
-1. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance`。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
+1. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance` 加上網頁設定。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
 
 [English](concepts.md)
