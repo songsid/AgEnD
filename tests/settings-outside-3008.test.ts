@@ -139,6 +139,34 @@ describe("#3008 ② Settings → Access & security → Connections from outside"
       expect([w.$("#outSwitch").checked, w.$("#outOpenAt"), w.$("#outPaused")?.textContent]).toEqual([false, null, "Too many wrong codes. Try again in 15 minutes."]);
     } finally { Object.assign(outsidePoll, saved); }
   });
+  it("#3035 review r2: a read that fails (503, the network) keeps what the card showed and the reads going; a failed first read too", async () => {
+    const { outsidePoll } = await import("/ui/js/settings-outside.js");
+    const saved = { ...outsidePoll };
+    outsidePoll.quickMs = 30; outsidePoll.slowMs = 60;
+    try {
+      const w = await open({ enrolled: true, enrolledAt: 1, outside: true, link: { state: "open", url: "https://x.trycloudflare.com/signin", quick: true } });
+      expect(w.$("#outOpenAt")).not.toBeNull();
+      answers["GET /ui/outside"] = { status: 503, body: { error: "down" } };
+      const before = sent.filter(r => r.path === "/ui/outside").length;
+      for (let n = 0; n < 40 && sent.filter(r => r.path === "/ui/outside").length < before + 2; n++) await settle(4);
+      expect([w.$("#outsideCard") !== null, w.$("#outOpenAt") !== null]).toEqual([true, true]);       // still shown as it was
+      delete answers["GET /ui/outside"];
+      status = { ...base, enrolled: true, enrolledAt: 1, outside: false, link: null };
+      for (let n = 0; n < 60 && w.$("#outSwitch").checked; n++) await settle(4);
+      expect([w.$("#outSwitch").checked, w.$("#outOpenAt")]).toEqual([false, null]);                  // and follows again
+      // A first read that fails: no card yet, then it comes.
+      await p.unmount();
+      answers["GET /ui/outside"] = { status: 503, body: { error: "down" } };
+      const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+      await p.mount(h(SettingsPanel, { route: { panel: "settings", section: "access" }, navKey: "settings:access2" }));
+      await settle(14);
+      expect(p.root.querySelector("#outsideCard")).toBeNull();
+      delete answers["GET /ui/outside"];
+      status = { ...base };
+      for (let n = 0; n < 60 && !p.root.querySelector("#outsideCard"); n++) await settle(4);
+      expect(p.root.querySelector("#outsideCard")).not.toBeNull();
+    } finally { Object.assign(outsidePoll, saved); }
+  });
   it("a wait in force says how long", async () => {
     const w = await open({ enrolled: true, enrolledAt: 1, pausedForMs: 2 * 3600_000 });
     expect(w.$("#outPaused").textContent).toBe("Too many wrong codes. Try again in 2 hours.");

@@ -93,20 +93,29 @@ export function OutsideCard() {
   // Fences: an answer that arrives after the card is gone, or after a newer read began, is dropped; nor does a read
   // land while an action is under way (the box shows the click until the action's own read).
   const live = useRef({ mounted: true, seq: 0, busy: false });
+  // Every read that ends (answered or not) moves `rev`: the next one is scheduled from there, so a failed read (the
+  // network, a 5xx, an unreadable answer) never stops the card reading again (#3035 review r2) — and keeps what it
+  // showed meanwhile.
+  const [rev, setRev] = useState(0), failed = useRef(false);
   const load = async () => {
     const seq = ++live.current.seq;
     let r = null;
     try { r = await api("/ui/outside"); } catch { r = null; }
     if (!live.current.mounted || seq !== live.current.seq) return;
-    setS(r && r.ok && r.body && typeof r.body === "object" ? r.body : null);
+    const ok = !!(r && r.ok && r.body && typeof r.body === "object");
+    failed.current = !ok;
+    if (ok) setS(r.body);
+    setRev((n) => n + 1);
   };
   useEffect(() => { live.current.mounted = true; load(); return () => { live.current.mounted = false; }; }, []);
   useEffect(() => {
-    if (!s || !s.webOnly) return undefined;
-    const opening = s.outside && (!s.link || s.link.state !== "open");
-    const timer = setTimeout(() => { if (!live.current.busy) load(); }, opening ? outsidePoll.quickMs : outsidePoll.slowMs);
+    if (rev === 0) return undefined;                                              // the first read is still out
+    if (s && !s.webOnly && !failed.current) return undefined;                    // a chat fleet: nothing to follow
+    const opening = !!s && s.outside && (!s.link || s.link.state !== "open");
+    const delay = !s || opening ? outsidePoll.quickMs : outsidePoll.slowMs;      // none read yet, or opening: soon
+    const timer = setTimeout(() => { if (!live.current.busy) load(); else setRev((n) => n + 1); }, delay);
     return () => clearTimeout(timer);
-  }, [s]);
+  }, [rev]);
   if (!s || !s.webOnly) return null;
   const here = s.here === true;
   const act = async (fn) => {
