@@ -26,11 +26,11 @@ export function NativePaneRecovery({ name, inst, lease }) {
   if (!recovery) return ["stopped", "crashed"].includes(inst.status)
     ? html`<div class="windows-agent-blocked"><button type="button" class="btn" disabled=${busy} onClick=${() => act(`/ui/start/${encodeURIComponent(name)}`)}>${t("chat.start")}</button></div>` : null;
   if (recovery.kind === "session-unconfirmed") return html`<div class="windows-agent-blocked" role="alert">
-    <p>${t("chat.paneSessionUnconfirmed")}</p>
-    <button type="button" class="btn" disabled=${busy || !recovery.launchId || !recovery.sessionId} onClick=${() => { confirmation.current = {name,launchId:recovery.launchId,sessionId:recovery.sessionId}; setDialog(true); }}>${t("chat.paneNewConversation")}</button>
+    <p>${t(recovery.provider === "codex" ? "chat.paneCodexSessionUnconfirmed" : "chat.paneSessionUnconfirmed")}</p>
+    <button type="button" class="btn" disabled=${busy || !recovery.launchId} onClick=${() => { confirmation.current = {name,launchId:recovery.launchId,sessionId:recovery.sessionId??null}; setDialog(true); }}>${t("chat.paneNewConversation")}</button>
     ${dialog ? html`<${Dialog} title=${t("chat.paneNewConversation")} onClose=${() => { if (!busy) setDialog(false); }}>
       <p>${t("chat.paneNewConversationConfirm",inst.display_name || name)}</p>
-      <button type="button" class="btn" disabled=${busy || confirmation.current?.name !== name || confirmation.current?.launchId !== recovery.launchId || confirmation.current?.sessionId !== recovery.sessionId} onClick=${() => { const target=confirmation.current, now=latest.current; if(target?.name===now.name && target.launchId===now.recovery?.launchId && target.sessionId===now.recovery?.sessionId) act(`/ui/instances/${encodeURIComponent(name)}/new-conversation`,{confirmedNewConversation:true,launchId:target.launchId,sessionId:target.sessionId}); }}>${t("chat.paneNewConversation")}</button>
+      <button type="button" class="btn" disabled=${busy || confirmation.current?.name !== name || confirmation.current?.launchId !== recovery.launchId || confirmation.current?.sessionId !== (recovery.sessionId??null)} onClick=${() => { const target=confirmation.current, now=latest.current; if(target?.name===now.name && target.launchId===now.recovery?.launchId && target.sessionId===(now.recovery?.sessionId??null)) act(`/ui/instances/${encodeURIComponent(name)}/new-conversation`,{confirmedNewConversation:true,launchId:target.launchId,sessionId:target.sessionId}); }}>${t("chat.paneNewConversation")}</button>
     </${Dialog}>` : null}
   </div>`;
   return html`<div class="windows-agent-blocked" role="alert"><p>${t(recovery.kind === "host-upgrade" ? "chat.paneHostUpgrade" : "chat.paneRecoveryNeeded")}</p>

@@ -1,4 +1,5 @@
 /** Optional native adapter for the ordinary Daemon. The runner retains processes across coordinator detach. */
+import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import type { CliBackend } from "./backend/types.js";
 import { createNativePaneBackend } from "./backend/native-pane.js";
 import type { Pane, PaneHost, PaneObservation } from "./pane-port.js";
@@ -28,6 +29,8 @@ export interface NativePaneLifecycleOptions {
   endpoint: PaneEndpoint;
   receiptFile: string;
   launch: RuntimePaneLaunch;
+  /** Codex fresh intent keeps its previous pin until this launch reports an identity. */
+  freshPrevious?: RuntimePaneSnapshot;
   /** Checks switches, exact audited provider version, configuration, and the current daemon admission. */
   admit(): void;
   /** Must reserve the legacy profile activeId before the first remote spawn. */
@@ -103,6 +106,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     while (true) {
       text = await observe(until);
       if (this.ready(text)) break;
+      if ((await this.port.getPaneStatus())?.alive === false) throw Error("Native Codex composer needs attention before conversation verification");
       if (performance.now() >= until) throw Error("Native Codex composer needs attention before conversation verification");
       await new Promise(resolve => setTimeout(resolve, 250));
     }
@@ -158,7 +162,18 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     assertCurrent(); this.options.admit(); this.options.reserve(this.options.launch.launchId!);
     const opened = await this.port.open(); assertCurrent(); this.options.admit();
     this.observation.start(); await this.observation.registerWindow(opened.windowId); assertCurrent();
-    if (this.options.launch.cli === "codex") await this.codexIdentity(assertCurrent, opened.reattached);
+    if (this.options.launch.cli === "codex") {
+      try { await this.codexIdentity(assertCurrent, opened.reattached); }
+      catch(error) {
+        assertCurrent();this.options.admit();
+        if(!this.port.ownedSnapshot()?.sessionId&&(this.options.freshPrevious||this.port.ownedSnapshot()?.state==="exited")){
+          // End only this exact owned attempt before exposing an admin decision. Unknown close evidence keeps its slot.
+          await this.release("close");
+          throw new NativePaneRecoveryError({kind:"session-unconfirmed",provider:"codex",launchId:this.options.launch.launchId,sessionId:this.options.freshPrevious?.sessionId});
+        }
+        throw error;
+      }
+    }
     this.checkpointSession(); assertCurrent();
     const pane = this.port.ownedSnapshot(); if (!pane?.sessionId) throw Error("Native conversation is not pinned");
     this.source ??= new RuntimeTranscriptSource(this.transcriptPort, this.port.runtimeTranscriptReference({ sessionId: pane.sessionId, offset: 0, fileId: null, anchor: PANE_TRANSCRIPT_EMPTY_ANCHOR }), !this.options.launch.sessionId);

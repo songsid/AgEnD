@@ -177,6 +177,10 @@ describe("explicit fresh Claude conversation boundary",()=>{
   handleNativeInstanceRequest(req,res,url("/new-conversation"),f.context);await finish(res,200);
   expect(fresh).toHaveBeenCalledWith(name,launchId,sessionId,expect.any(Function));expect(f.service.recover).not.toHaveBeenCalled();
  });
+ it("accepts an explicit null UUID only through the same admin new-conversation boundary",async()=>{
+  const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const fresh=vi.fn(async()=>{});f.context.startFreshNativePane=fresh;
+  const req=request("POST",{confirmedNewConversation:true,launchId,sessionId:null},url("/new-conversation")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/new-conversation"),f.context);await finish(res,200);expect(fresh).toHaveBeenCalledWith(name,launchId,null,expect.any(Function));
+ });
  it.each([{}, {confirmedNewConversation:false,launchId,sessionId}, {confirmedNewConversation:true,launchId}, {confirmedNewConversation:true,launchId,sessionId,force:true}])("rejects unconfirmed/unscoped body %j",async body=>{
   const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],{native_adapter:"pane"});const fresh=vi.fn(async()=>{});f.context.startFreshNativePane=fresh;
   const req=request("POST",body,url("/new-conversation")),res=new Response(req);handleNativeInstanceRequest(req,res,url("/new-conversation"),f.context);await finish(res,400);expect(fresh).not.toHaveBeenCalled();

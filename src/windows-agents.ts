@@ -142,11 +142,31 @@ export class WindowsAgents {
       || agent.threadId !== previous.sessionId && agent.threadId !== nextSessionId) throw Error("Fresh pane conversation scope differs");
     if (agent.threadId !== nextSessionId) this.change(() => { agent.threadId = nextSessionId; delete agent.paneRecovery;delete agent.paneRecoveryAt; });
   }
+  /** The durable Codex fresh intent is committed first; only its exact observed launch may replace the old pin. */
+  pinFreshCodexSession(id: string, rawPrevious: RuntimePaneSnapshot, rawObserved: RuntimePaneSnapshot): void {
+    const previous=validateRuntimePaneSnapshot(rawPrevious),observed=validateRuntimePaneSnapshot(rawObserved),agent=this.find(id);
+    if(agent.cli!=="codex"||previous.state!=="exited"||previous.noLaunch
+      ||previous.agentId!==id||previous.instance!==agent.fleet_instance||observed.agentId!==id||observed.instance!==previous.instance
+      ||!["running","exited"].includes(observed.state)||observed.noLaunch||!observed.sessionId||!validNativeSessionId("codex",observed.sessionId)
+      ||observed.launchId===previous.launchId||observed.sessionId===previous.sessionId
+      ||agent.activeId!==observed.launchId||agent.paneLaunchId!==observed.launchId
+      ||agent.threadId!==previous.sessionId&&agent.threadId!==observed.sessionId)throw Error("Fresh Codex conversation scope differs");
+    if(agent.threadId!==observed.sessionId)this.change(()=>{agent.threadId=observed.sessionId;delete agent.paneRecovery;delete agent.paneRecoveryAt;});
+  }
+  /** A fresh Codex launch can exit before reporting any UUID. Release only that positive exit; retain the old pin. */
+  releaseUnpinnedCodexPane(id: string, rawPrevious: RuntimePaneSnapshot, rawExit: RuntimePaneSnapshot): void {
+    const previous=validateRuntimePaneSnapshot(rawPrevious),exit=validateRuntimePaneSnapshot(rawExit),agent=this.find(id);
+    if(agent.cli!=="codex"||previous.state!=="exited"||previous.noLaunch||!previous.sessionId||agent.threadId!==previous.sessionId
+      ||previous.agentId!==id||previous.instance!==agent.fleet_instance||exit.agentId!==id||exit.instance!==previous.instance
+      ||exit.state!=="exited"||exit.noLaunch||exit.sessionId!==undefined||exit.launchId===previous.launchId
+      ||agent.activeId!==exit.launchId||agent.paneLaunchId!==exit.launchId)throw Error("Unpinned Codex exit scope differs");
+    this.change(()=>{delete agent.activeId;delete agent.paneLaunchId;});
+  }
   /** Only an exact positive owned-exit snapshot releases the old exec-compatible reservation. */
   releasePane(id: string, raw: RuntimePaneSnapshot): void {
     const snapshot = validateRuntimePaneSnapshot(raw), agent = this.find(id);
     if (snapshot.agentId !== id || snapshot.state !== "exited" || agent.activeId !== snapshot.launchId || agent.paneLaunchId !== snapshot.launchId
-      || agent.fleet_instance && agent.fleet_instance !== snapshot.instance || agent.threadId && snapshot.sessionId !== agent.threadId) throw Error("Windows pane exit identity is unconfirmed");
+      || agent.fleet_instance && agent.fleet_instance !== snapshot.instance || agent.threadId && snapshot.sessionId !== undefined && snapshot.sessionId !== agent.threadId) throw Error("Windows pane exit identity is unconfirmed");
     this.change(() => { delete agent.activeId; delete agent.paneLaunchId; });
   }
   bindInstance(id: string, name: string): void {

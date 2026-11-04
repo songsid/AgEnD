@@ -111,7 +111,7 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
     }
     if(method==="POST" && operation==="new-conversation"){
       if(!isNativePaneInstance(ctx.fleetConfig?.instances[name])||!ctx.startFreshNativePane)throw Error(t("native_pane.unavailable"));
-      const input=z.object({confirmedNewConversation:z.literal(true),launchId:z.string().uuid(),sessionId:z.string().uuid()}).strict().parse(body);
+      const input=z.object({confirmedNewConversation:z.literal(true),launchId:z.string().uuid(),sessionId:z.string().uuid().nullable()}).strict().parse(body);
       await ctx.startFreshNativePane(name,input.launchId,input.sessionId,allowed);
       if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
       ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,{agent:service.get(name)});return;

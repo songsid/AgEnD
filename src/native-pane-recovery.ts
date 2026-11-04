@@ -5,10 +5,11 @@ export interface NativePaneRecovery {
   launchId?: string;
   hostBootId?: string;
   sessionId?: string;
+  provider?: "codex";
 }
 export class NativePaneRecoveryError extends Error {
   constructor(readonly recovery: NativePaneRecovery) {
-    super(t(recovery.kind === "host-upgrade" ? "native_pane.host_upgrade" : recovery.kind === "session-unconfirmed" ? "native_pane.session_unconfirmed" : "native_pane.exit_unconfirmed"));
+    super(t(recovery.kind === "host-upgrade" ? "native_pane.host_upgrade" : recovery.kind === "session-unconfirmed" ? (recovery.provider === "codex" ? "native_pane.codex_session_unconfirmed" : "native_pane.session_unconfirmed") : "native_pane.exit_unconfirmed"));
     this.name = "NativePaneRecoveryError";
   }
 }

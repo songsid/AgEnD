@@ -1338,8 +1338,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
-      freshNotice: async name => {
-        const message=t("native_pane.fresh_started");
+      freshNotice: async (name,provider) => {
+        const message=t(provider === "codex" ? "native_pane.codex_fresh_started" : "native_pane.fresh_started");
         this.eventLog?.insert(name,"native_pane_fresh_started",{});this.logger.info({name},message);
         await this.notifyInstanceTopic(name,message);
       },
@@ -1420,13 +1420,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.needsYou?.poke();
     this.emitSseEvent("status",this.getUiStatus());return true;
   }
-  async startFreshNativePane(name:string,launchId:string,sessionId:string,authorized:()=>boolean):Promise<void>{
+  async startFreshNativePane(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>{
     const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config))throw Error("Persistent Windows pane is not configured");
     const generation=this.explicitStopGeneration.get(name)??0;
     await this.lifecycle.runTransition(name,async transition=>{
       const current=()=>{if(!authorized()||this.shuttingDown||this.fleetConfig?.instances[name]!==config||(this.explicitStopGeneration.get(name)??0)!==generation)throw Error(t("native_pane.authority_expired"));};
       current();const held=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id!).paneRecovery;
-      if(held?.kind!=="session-unconfirmed"||held.launchId!==launchId||held.sessionId!==sessionId)throw Error(t("native_pane.changed"));
+      if(held?.kind!=="session-unconfirmed"||held.launchId!==launchId||(held.sessionId??null)!==sessionId)throw Error(t("native_pane.changed"));
       if(this.daemons.get(name)?.nativePaneCurrent())throw Error(t("native_pane.still_running"));
       this.cancelStartupRetry(name);this.lifecycle.cancelNativeRecovery(name);
       await this.lifecycle.stop(name,transition);current();
