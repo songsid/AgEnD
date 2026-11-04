@@ -1,6 +1,6 @@
 /** Exact coordinator/runner proof boundaries. No CLI, account, provider data or shell is touched. */
 import { afterEach, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -8,7 +8,7 @@ import { NativePaneManager } from "../src/native-pane-manager.js";
 import { WindowsAgents } from "../src/windows-agents.js";
 import { nativeInstanceConfig } from "../src/native-instance-registry.js";
 import { buildFleetInstructions, buildNativeFleetInstructions } from "../src/instructions.js";
-import { GENERAL_ROLE_INSTRUCTIONS } from "../src/general-role.js";
+import { GENERAL_ROLE_INSTRUCTIONS, GENERAL_SKILL_NAMES } from "../src/general-role.js";
 import { loadGeneralKnowledge } from "../src/runtime-general-workspace.js";
 import { generalWorkspaceUpgrade } from "../src/runtime-general-protocol.js";
 const roots: string[] = []; afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); vi.restoreAllMocks(); });
@@ -105,4 +105,43 @@ it("the real host publishes only its installed pack and re-verifies the General 
   await expect(host.request({ action: "open", operationId: randomUUID(), launch: { paneId: randomUUID(), launchId: randomUUID(), agentId: randomUUID(), instance: "general", cli: "codex",
     cwd: "C:\\not-the-published-workspace", sandbox: "read-only", columns: 80, rows: 24, generalWorkspace: { bindingId: request.bindingId, packHash: request.packHash } } })).rejects.toThrow("directory differs");
   expect(spawn).not.toHaveBeenCalled(); expect((await host.request({ action: "list" }) as any).panes).toEqual([]);
+});
+
+
+it("the actual host refuses repairing a running or unknown General cwd until its positive exit, without blocking another cwd", async () => {
+  const { RuntimePaneHost } = await import("../src/runtime-pane-host.js"), { RuntimePaneStore } = await import("../src/runtime-pane-store.js");
+  // A drive-spelled private relative directory on POSIX lets the real wire validator and filesystem both run.
+  // On Windows use its real temporary directory; no drive-root or user profile is touched.
+  const root = process.platform === "win32" ? mkdtempSync(join(tmpdir(), "general-live-host-")) : `C:\\agend-general-test-${randomUUID()}`; roots.push(root);
+  const callbacks: Array<{ exit: (value: { exitCode: number }) => void; fail: () => void }> = [];
+  const spawn = vi.fn(async () => {
+    const callback = { exit: (_value: { exitCode: number }) => {}, fail: () => {} }; callbacks.push(callback);
+    return { pid: 12345 + callbacks.length, write: vi.fn(), resize: vi.fn(), pause: vi.fn(), resume: vi.fn(), kill: () => callback.exit({ exitCode: 0 }),
+      onData: () => ({ dispose() {} }), onExit: (fn: typeof callback.exit) => { callback.exit = fn; return { dispose() {} }; },
+      onFailure: (fn: typeof callback.fail) => { callback.fail = fn; return { dispose() {} }; } };
+  });
+  const host = new RuntimePaneHost({ store: new RuntimePaneStore(root), bootId: randomUUID(), online: () => true, maxAgents: () => 4, spawn });
+  try {
+    const request = { action: "general-workspace" as const, bindingId: randomUUID(), instance: "general", cli: "codex" as const, packHash: loadGeneralKnowledge("codex").hash };
+    const prepared: any = await host.request(request), launch = { paneId: randomUUID(), launchId: randomUUID(), agentId: randomUUID(), instance: "general", cli: "codex" as const,
+      cwd: prepared.cwd, sandbox: "read-only" as const, columns: 80, rows: 24, generalWorkspace: { bindingId: request.bindingId, packHash: request.packHash } };
+    await host.request({ action: "open", operationId: randomUUID(), launch });
+    await host.request({ action: "open", operationId: randomUUID(), launch: { ...launch, paneId: randomUUID(), launchId: randomUUID(), agentId: randomUUID(), instance: "unrelated", cwd: "C:\\unrelated", generalWorkspace: undefined } });
+    const file = join(prepared.cwd, "AGENTS.md"), owned = join(prepared.cwd, ".agend-general.json"), before = readFileSync(owned, "utf8"); rmSync(file);
+    await expect(host.request(request)).rejects.toThrow("live or unconfirmed"); expect(existsSync(file)).toBe(false); expect(readFileSync(owned, "utf8")).toBe(before);
+    callbacks[0].fail(); // Uncertain evidence must continue to hold, even though the process may already be gone.
+    await expect(host.request(request)).rejects.toThrow("live or unconfirmed"); expect(existsSync(file)).toBe(false); expect(readFileSync(owned, "utf8")).toBe(before);
+    callbacks[0].exit({ exitCode: 0 });
+    expect((await host.request(request) as any).packHash).toBe(request.packHash); expect(existsSync(file)).toBe(true);
+    expect((await host.request({ action: "list" }) as any).panes.find((p: any) => p.instance === "unrelated").state).toBe("running"); expect(spawn).toHaveBeenCalledTimes(2);
+  } finally { await host.stop(); }
+});
+
+it("the fixed runner skill list stays equal to all bundled General-role frontmatter", async () => {
+  const { load } = await import("js-yaml"), skills = join("src", "general-knowledge", "skills");
+  const installed = readdirSync(skills, { withFileTypes: true }).filter(row => row.isDirectory()).filter(row => {
+    const text = readFileSync(join(skills, row.name, "SKILL.md"), "utf8"), front = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1];
+    const value = front ? load(front) as { roles?: string[] } : undefined; return value?.roles?.includes("general");
+  }).map(row => row.name).sort();
+  expect([...GENERAL_SKILL_NAMES].sort()).toEqual(installed);
 });
