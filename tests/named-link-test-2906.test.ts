@@ -252,7 +252,7 @@ describe("#2907 review: the production lane — the managed start (lease, proven
     const lane = new TunnelPurposeLane(new ManagedTunnel({ dataDir: dir, probe, wait: async () => {}, graceMs: 1 }));
     if (options.holder) lane.reserve(options.holder, "open-link");
     const binary = join(dir, "cloudflared"); writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
-    const reserve = namedTestLane(lane, { registerMs: options.registerMs ?? 300, provider: o => new CloudflaredProvider({ ...o, spawnProcess: spawn as never, probe, graceMs: 20, env: { PATH: "/usr/bin", HOST_SECRET: "x" } }) });
+    const reserve = namedTestLane(lane, { registerMs: options.registerMs ?? 300, provider: o => new CloudflaredProvider({ access: async () => {} /* #3009: preflight answered at once (timing-tight fixture) */, ...o, spawnProcess: spawn as never, probe, graceMs: 20, env: { PATH: "/usr/bin", HOST_SECRET: "x" } }) });
     return { lane, reserve, child, spawned, binary, dir };
   }
   const startInput = (binary: string, port: number, signal = new AbortController().signal) => ({ binary, hostname: HOST, token: TOKEN, protocol: "http2" as const, origin: new URL(`http://127.0.0.1:${port}`), signal });

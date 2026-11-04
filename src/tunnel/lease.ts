@@ -1,4 +1,4 @@
-import { ensureAgendHome } from "../agend-home.js";
+import { ensureAgendHomeOffThread } from "../agend-home.js";
 /**
  * The record that says "a tunnel process may exist right now".
  *
@@ -54,7 +54,8 @@ export async function writeLease(dataDir: string, lease: TunnelLease): Promise<v
   // #3009: asynchronous (libuv's threadpool), never on the fleet's main thread. A login's tunnel writes this right
   // around its cloudflared spawn; an fsync or rename that blocks in the kernel then holds one pool thread, not the
   // event loop — the systemd watchdog keeps being pinged and every other agent keeps running.
-  ensureAgendHome(dataDir);
+  // #3017 review (Prism P1): the home's privacy checks too run off the main thread (synchronous lstat/mkdir/open there).
+  await ensureAgendHomeOffThread(dataDir);
   const path = leasePath(dataDir);
   const temp = `${path}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
   const handle = await open(temp, "wx", 0o600);

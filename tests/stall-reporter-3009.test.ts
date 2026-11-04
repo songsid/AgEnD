@@ -26,7 +26,10 @@ describe.skipIf(process.platform !== "linux")("the stall reporter (#3009)", () =
     blockMainThread(1_500);
     // Written while the main thread was blocked: it cannot have been this thread that wrote it.
     const during = read(log);
-    expect(during).toMatch(/ERROR: The fleet's main thread has not run for \d+ s \(#3009 stall report\): state=S wchan=\S+ syscall=202 /);
+    // The call number is the architecture's (#3017 review, Prism P3): futex is 202 on x86_64, 98 on arm64.
+    expect(during).toMatch(/ERROR: The fleet's main thread has not run for \d+ s \(#3009 stall report\): state=S wchan=\S+ syscall=\d+ /);
+    const futex = ({ x64: "202", arm64: "98" } as Record<string, string>)[process.arch];
+    if (futex) expect(during).toContain(` syscall=${futex} `);
     await sleep(300);
     expect(read(log)).toMatch(/WARN: The fleet's main thread is running again after \d+ s/);
   }, 15_000);

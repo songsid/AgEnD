@@ -266,16 +266,25 @@ export class CloudflaredProvider implements TunnelProvider {
       throw new TunnelStartError("bad-url", `refusing to expose ${ctx.origin.origin}: only http://127.0.0.1:<port> may be tunnelled`);
     }
 
-    // #3009: preflight is asynchronous, and a filesystem that never answers must not hold the login past its budget.
+    // #3009: preflight is asynchronous, and a filesystem that never answers must not hold the login past its budget —
+    // nor past a cancel (#3017 review, Prism P2): the caller's abort ends the wait too.
     let preTimer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
     const pre = await Promise.race([
       this.preflight(ctx.signal),
       new Promise<PreflightResult>(resolve => {
         preTimer = setTimeout(() => resolve({ ok: false, errorKind: "timeout", detail: "the cloudflared binary could not be checked in time (its filesystem did not answer)" }),
           Math.max(0, deadline - now()));
       }),
-    ]).finally(() => clearTimeout(preTimer));
+      new Promise<PreflightResult>(resolve => {
+        onAbort = () => resolve({ ok: false, errorKind: "cancelled", detail: "cancelled during preflight" });
+        if (ctx.signal.aborted) onAbort(); else ctx.signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]).finally(() => { clearTimeout(preTimer); if (onAbort) ctx.signal.removeEventListener("abort", onAbort); });
     if (!pre.ok) throw new TunnelStartError(pre.errorKind, pre.detail);
+    // The last word before a process exists: a cancel or the deadline that landed while preflight was answering wins.
+    if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled before the tunnel was started");
+    if (now() >= deadline) throw new TunnelStartError("timeout", "the tunnel's startup deadline passed before it was started");
 
     const named = this.opts.named;
     const namedBase = named ? validateQuickTunnelUrl(`https://${named.hostname}`, named.hostname) : null;
