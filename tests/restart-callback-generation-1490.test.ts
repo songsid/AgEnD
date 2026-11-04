@@ -84,6 +84,15 @@ describe("hang / clean-exit Restart: the lifecycle the click was for (#1490 row 
       expect(transitions).not.toHaveBeenCalled();
       expect(lastEdit(adapter)).toBe(t("restart.superseded", "worker"));
     });
+    it(`${k.kind}: replaced between the offer and the click (removal leaves the prompt) — nothing restarted, said so`, async () => {
+      const { fm, any, adapter, transitions, replace } = rig();
+      await k.post(fm);
+      const id = adapter.notifyAlert.mock.calls[0][1].choices[0].id as string;
+      replace();                                                    // lifecycle.remove → stop → invalidate; no prompt clearing
+      await any[k.handle](click(id), "telegram-main");
+      expect(transitions).not.toHaveBeenCalled();
+      expect(adapter.editMessageRemoveButtons.mock.calls.at(-1)?.[2]).toBe(t("restart.superseded", "worker"));
+    });
     it(`${k.kind}: unchanged — the click restarts it (control)`, async () => {
       const { fm, any, adapter, transitions } = rig();
       await k.post(fm);
@@ -150,6 +159,53 @@ describe("/effort and /model menus: the lifecycle the menu was offered to (#1490
     await select(); await settle();
     expect(apply).toHaveBeenCalledExactlyOnceWith("worker", "high", { current: expect.any(Function) });
     expect(apply.mock.calls[0][2]!.current!()).toBe(true);
+  });
+
+  async function modelMenu() {
+    const r = rig();
+    vi.spyOn(r.any, "getModelOptions").mockResolvedValue([{ id: "gpt-5.5", label: "gpt-5.5" }, { id: "gpt-5.4", label: "gpt-5.4" }]);
+    vi.spyOn(r.any, "menuClickStillCurrent").mockReturnValue(true);
+    const apply = vi.spyOn(r.fm, "applyModel");
+    const persist = vi.spyOn(r.any, "persistInstanceModel").mockReturnValue(true);
+    expect(await r.fm.promptModelMenu("worker", "admin", "worker-topic", r.adapter, "fleet-group", "worker-topic", "telegram-main")).toBeNull();
+    const ids = r.adapter.promptUser.mock.calls[0][2].map((c: { id: string }) => c.id) as string[];
+    const pick = ids.find(id => id.endsWith(":gpt-5.4"))!;
+    for (const tm of r.any.pendingModelSelects.values()) timers.push(tm.timer);
+    return { ...r, apply, persist, select: () => r.any.handleModelSelection(click(pick, "menu"), "telegram-main") };
+  }
+
+  it("model: replaced between the menu and the click — not applied, nothing saved, the menu says why", async () => {
+    const { apply, persist, replace, select, adapter } = await modelMenu();
+    replace();
+    await select(); await settle();
+    expect(apply).not.toHaveBeenCalled();
+    expect(persist).not.toHaveBeenCalled();
+    expect(adapter.sendText).toHaveBeenCalledWith("fleet-group", t("menu.instance_replaced", "worker"), { threadId: "worker-topic" });
+  });
+  it("model: replaced during the progress edit — not applied, nothing saved", async () => {
+    const { apply, persist, replace, select, adapter } = await modelMenu();
+    const gate = held();
+    adapter.editMessageRemoveButtons.mockImplementationOnce(gate.impl);
+    const running = select();
+    await gate.reached; replace(); gate.release();
+    await running; await settle();
+    expect(apply).not.toHaveBeenCalled();
+    expect(persist).not.toHaveBeenCalled();
+    expect(lastEdit(adapter)).toBe(t("menu.instance_replaced", "worker"));
+  });
+  it("model: unchanged — applied with the menu's pin (control)", async () => {
+    const { apply, select } = await modelMenu();
+    apply.mockResolvedValue("APPLIED");
+    await select(); await settle();
+    expect(apply).toHaveBeenCalledExactlyOnceWith("worker", "gpt-5.4", { current: expect.any(Function) });
+    expect(apply.mock.calls[0][2]!.current!()).toBe(true);
+  });
+  it("applyModel (restart backend): a pin that ended is refused before the model is saved", async () => {
+    const { fm, any, transitions } = rig("codex");
+    const persist = vi.spyOn(any, "persistInstanceModel").mockReturnValue(true);
+    expect(await fm.applyModel("worker", "gpt-5.5", { current: () => false })).toBe(t("menu.instance_replaced", "worker"));
+    expect(persist).not.toHaveBeenCalled();
+    expect(transitions).not.toHaveBeenCalled();
   });
 
   it("applyEffort (restart backend): a pin that ended is refused before the config is touched", async () => {
