@@ -11,15 +11,15 @@
  *  - a wrong code that matches 2 steps out says so (the host's clock offset, logged), and is still wrong;
  *  - the secret is never in a status.
  */
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { base32Decode, base32Encode, hotp, matchTotp, otpauthUri, outsideDuration, totpSkew, totpStep, TOTP_PAUSE_MAX_MS, TOTP_PAUSE_MS, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
+import { base32Decode, base32Encode, hotp, matchTotp, otpauthUri, outsideDuration, OUTSIDE_SAVE_RETRY_MS, totpSkew, totpStep, TOTP_PAUSE_MAX_MS, TOTP_PAUSE_MS, WebRemoteAccess, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 import { setLocale } from "../src/locale.js";
 
 const dirs: string[] = [];
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); setLocale("en"); });
+afterEach(() => { for (const d of dirs.splice(0)) { try { chmodSync(d, 0o700); } catch { /* gone */ } rmSync(d, { recursive: true, force: true }); } setLocale("en"); vi.useRealTimers(); });
 const RFC_SECRET = Buffer.from("12345678901234567890");
 const quiet = { warn: () => {} };
 
@@ -121,9 +121,9 @@ describe("#3008 TOTP: the store", () => {
   });
   it("the switch: on only with an app set up; removal turns it off; a file that says on without an app reads off", () => {
     const r = rig();
-    expect(r.store.setOutside(true)).toBe(false);
+    expect(r.store.setOutside(true)).toBe("not_enrolled");
     r.enroll();
-    expect([r.store.setOutside(true), r.store.outside, r.open().outside]).toEqual([true, true, true]);
+    expect([r.store.setOutside(true), r.store.outside, r.open().outside]).toEqual(["ok", true, true]);
     r.store.remove();
     expect([r.store.enrolled, r.store.outside, r.open().outside]).toEqual([false, false, false]);
     writeFileSync(r.path, JSON.stringify({ v: 1, outside: true, wrong: 0, level: 0, pausedUntil: 0 }));
@@ -150,4 +150,36 @@ describe("#3008 TOTP: the store", () => {
     setLocale("zh-TW");
     expect([outsideDuration(TOTP_PAUSE_MS), outsideDuration(2 * 60 * 60_000)]).toEqual(["15 分鐘", "2 小時"]);
   });
+  it("#3015 review 1: Off and Remove that cannot be saved say so, are in force at once, and are written again (asked again, or by the timer)", () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const r = rig(); r.enroll(); r.store.setOutside(true);
+    chmodSync(r.dir, 0o500);                                                              // the disk refuses writes
+    expect([r.store.setOutside(false), r.store.outside, r.store.unsaved]).toEqual(["unsaved", false, true]);
+    expect(r.open().outside).toBe(true);                                                  // what a restart now would read
+    expect(r.store.setOutside(false)).toBe("unsaved");                                    // asked again: written again (still refused)
+    chmodSync(r.dir, 0o700);
+    expect(r.store.setOutside(false)).toBe("ok");                                         // asked again once it works: saved
+    expect(r.open().outside).toBe(false);
+    // Remove: refused → in force → the timer writes it.
+    r.store.setOutside(true);
+    chmodSync(r.dir, 0o500);
+    expect([r.store.remove(), r.store.enrolled]).toEqual([false, false]);
+    expect(r.open().enrolled).toBe(true);
+    chmodSync(r.dir, 0o700);
+    vi.advanceTimersByTime(OUTSIDE_SAVE_RETRY_MS);
+    expect([r.store.unsaved, r.open().enrolled, r.open().outside]).toEqual([false, false, false]);
+  });
+  it("#3015 review 2: Off, removal and a new app mark the last revocation of remote authority (since); On does not", () => {
+    const r = rig(), t0 = r.clock.wall;
+    r.enroll();
+    expect(r.store.since).toBe(0);                                                        // the first app revokes nothing
+    r.store.setOutside(true); expect(r.store.since).toBe(0);
+    r.clock.wall += 1000; r.store.setOutside(false); expect(r.store.since).toBe(r.clock.wall);
+    r.clock.wall += 1000; r.enroll();                                                     // a new app
+    expect(r.store.since).toBeGreaterThan(t0 + 1000);
+    const afterNew = r.store.since;
+    r.clock.wall += 1000; r.store.remove(); expect(r.store.since).toBeGreaterThan(afterNew);
+    expect(r.open().since).toBe(r.store.since);                                           // it survives a restart
+  });
 });
+

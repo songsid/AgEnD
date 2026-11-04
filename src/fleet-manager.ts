@@ -3281,7 +3281,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const state = page.items.some(item => item.authority) ? this.webAuthorityState() : null;
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
       if (!item.authority || !state) return item;
-      const authority = authorityNow(item.authority, { ...state, outside: this.outsideOn() });
+      const authority = this.receiptAuthorityNow(item.authority, state);
       return { ...item, authority, ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
     };
     // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
@@ -16460,6 +16460,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ count: ended.size }, "Sessions signed in from outside ended");
   }
 
+  /**
+   * #1939 §10 / #3008: a stored receipt's authority as it reads now — the web authority state, and for this computer's
+   * admin from outside the switch and the last revocation of remote authority (Prism P2 2).
+   */
+  receiptAuthorityNow(stored: HumanAuthority, state: AuthorityState = this.webAuthorityState()): HumanAuthority {
+    return authorityNow(stored, { ...state, outside: this.outsideOn(), outsideSince: this.webRemoteAccess()?.since ?? 0 });
+  }
+
   /** What Settings shows: set up or not, the switch, a wait in force, the link — its address only to this computer. */
   webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
     pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
@@ -16494,25 +16502,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Forget the app: the switch goes off, the link closes, every session from outside ends. */
-  webOutsideRemove(req: IncomingMessage): boolean {
+  webOutsideRemove(req: IncomingMessage): "ok" | "unsaved" | "not_here" {
     const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
-    if (!owner || !store || !owner.current()) return false;
-    store.remove();
+    if (!owner || !store || !owner.current()) return "not_here";
+    // #3008 review (Prism P2 1): shut at once whatever the disk says; say so when it could not be saved (retried).
+    const saved = store.remove();
     this.closeOutsideLink("outside removed");
-    this.logger.info("Authenticator app removed; connections from outside off");
-    return true;
+    this.logger.info({ saved }, "Authenticator app removed; connections from outside off");
+    return saved ? "ok" : "unsaved";
   }
 
   /** The switch. On: needs an app set up; the link opens. Off: it closes and every session from outside ends. */
-  webOutsideSwitch(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" {
+  webOutsideSwitch(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved" {
     const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
     if (!owner || !store || !owner.current()) return "not_here";
     if (on && !publicLinkSettings(this.fleetConfig?.web).allowed) return "not_allowed";
-    if (!store.setOutside(on)) return "not_enrolled";
-    this.logger.info({ on }, "Connections from outside switched");
-    if (on) this.openOutsideLink([0, ...OUTSIDE_LINK_RETRY_MS]);
-    else this.closeOutsideLink("outside off");
-    return "ok";
+    const r = store.setOutside(on);
+    if (r === "not_enrolled") return r;
+    this.logger.info({ on, saved: r === "ok" }, "Connections from outside switched");
+    // #3008 review (Prism P2 1): Off shuts at once even when it could not be saved (the store retries); On opens only
+    // once saved — a switch the disk does not hold would not survive a restart.
+    if (!on) this.closeOutsideLink("outside off");
+    else if (r === "ok") this.openOutsideLink([0, ...OUTSIDE_LINK_RETRY_MS]);
+    return r;
   }
 
   private outsideAttempt: { cancel(): void } | null = null;
@@ -16548,15 +16560,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** PublicWebLink.onClose for the outside link: what closed it decides what happens next (#3008 B). */
   private outsideLinkClosed(reason: string): void {
-    if (this.shuttingDown || OUTSIDE_OWN_CLOSES.has(reason) || this.outsideOpening || !this.outsideOn()) return;
+    if (this.shuttingDown || OUTSIDE_OWN_CLOSES.has(reason) || !this.outsideOn()) return;
+    // #3008 review (Prism P2 3): expiry first — its lifetime counts from the opening request, so it can run out while the
+    // opening is still under way: the switch goes off then too, and that attempt's end (outsideOn false) retries nothing.
     if (reason === "expired") {
       // Its lifetime ran out: the switch goes off (only this computer turns it on again — a session from outside can't).
-      this.webRemoteAccess()?.setOutside(false);
+      this.outsideAttempt?.cancel(); this.outsideAttempt = null;
+      if (this.webRemoteAccess()?.setOutside(false) === "unsaved") this.logger.warn("Outside link expired; the switch's Off could not be saved yet (retried)");
       this.endOutsideSessions();
       this.logger.info("Outside link expired; connections from outside off");
       this.recordWebNotice("fleet", t("outside.notice_ended", t("outside.reason_expired")));
       return;
     }
+    if (this.outsideOpening) return;                                           // that attempt's own failure: its retry
     // Dropped (the tunnel exited, the gateway failed, the configuration changed): reopened up to twice.
     this.logger.info({ reason }, "Outside link closed; reopening");
     this.openOutsideLink(OUTSIDE_LINK_RETRY_MS);
@@ -16624,6 +16640,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const session = this.webSessions?.findByHandle(a.handle);
         if (!session) return true;
         if (session.surface === "local") return false;
+        // #3008 review (Prism P2 4): signed in from outside with the authenticator's code — its opt-in is the outside
+        // switch, not these options (the authority judges it so): it keeps its authorization.
+        if (session.remote === "totp") return false;
         const peer = a.peer ?? "named_link";
         return (!!state.namedLinkClosed && peer === "named_link") || (!!state.quickLinkClosed && peer === "quick_link");
       };
@@ -22482,6 +22501,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const settingsControlStopped = settingsControl?.close();
     this.publicLinkAutoOpen?.stop();
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
+    this.webRemoteAccessState?.close();                                // #3008: an unsaved switch gets its last write
     const sharesStopped = this.officeSharesInstance?.close();   // #2636: every Office share ends, and its tunnel
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.

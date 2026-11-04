@@ -530,8 +530,8 @@ export interface WebApiContext {
   /** #3008: set up the authenticator (this computer's admin, here only): a new secret, shown once. Null: not them. */
   webOutsideBeginEnrollment?(req: IncomingMessage): { secret: string; uri: string; expiresInMs: number } | null;
   webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here";
-  webOutsideRemove?(req: IncomingMessage): boolean;
-  webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed";
+  webOutsideRemove?(req: IncomingMessage): "ok" | "unsaved" | "not_here";
+  webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
   /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -2461,14 +2461,14 @@ export function handleWebRequest(
         return;
       }
       if (path === "/ui/outside/remove") {
-        if (!(ctx.webOutsideRemove?.(req) ?? false)) { json(res, 403, { error: "outside_not_here" }); return; }
-        json(res, 200, { ok: true });
+        const r = ctx.webOutsideRemove?.(req) ?? "not_here";
+        json(res, r === "ok" ? 200 : r === "unsaved" ? 503 : 403, r === "ok" ? { ok: true } : { error: r === "unsaved" ? "unsaved" : "outside_not_here" });
         return;
       }
       const on = body && typeof body === "object" ? body.on : undefined;
       if (typeof on !== "boolean") { json(res, 400, { error: "on must be true or false" }); return; }
       const r = ctx.webOutsideSwitch?.(req, on) ?? "not_here";
-      json(res, r === "ok" ? 200 : r === "not_here" ? 403 : 409, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
+      json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : 409, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Outside connections change failed");
       try { json(res, 500, { error: "outside_failed" }); } catch { /* already answered */ }

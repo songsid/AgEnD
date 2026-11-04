@@ -39,6 +39,8 @@ export const TOTP_WRONG_LIMIT = 5;
 /** The first wait; #3008 C(b): each further one doubles, up to TOTP_PAUSE_MAX_MS. A correct code resets it. */
 export const TOTP_PAUSE_MS = 15 * 60_000;
 export const TOTP_PAUSE_MAX_MS = 24 * 60 * 60_000;
+/** #3008 review (Prism P2 1): a state that could not be saved is written again this often until it is. */
+export const OUTSIDE_SAVE_RETRY_MS = 30_000;
 /** How long a secret being set up waits for its first code. */
 export const TOTP_ENROLL_TTL_MS = 10 * 60_000;
 const SECRET_BYTES = 20;
@@ -131,6 +133,12 @@ interface Saved {
   level: number;
   /** Wall clock: no code is tried before this. */
   pausedUntil: number;
+  /**
+   * #3008 review (Prism P2 2): wall clock of the last revocation of remote authority — the switch turned off (by hand or
+   * its link's lifetime), the app removed or replaced. A go-ahead receipt of this computer's admin from outside
+   * authorized before it reads as none, whatever the switch is now (authorityNow `outsideSince`).
+   */
+  since: number;
 }
 
 export type TotpVerdict =
@@ -152,12 +160,15 @@ export interface RemoteAccessStatus {
   pausedForMs: number;
 }
 
-const blank = (): Saved => ({ v: 1, outside: false, wrong: 0, level: 0, pausedUntil: 0 });
+const blank = (since = 0): Saved => ({ v: 1, outside: false, wrong: 0, level: 0, pausedUntil: 0, since });
 
 export class WebRemoteAccess {
   private state: Saved = blank();
   private pending: { secret: string; handle: string; until: number } | null = null;
   private warned = false;
+  /** The state in memory is not on disk yet (a write failed): written again, by the next change or the retry timer. */
+  private dirty = false;
+  private retry: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly path: string, private readonly log: { warn(obj: object, msg?: string): void },
     private readonly now: () => number = Date.now, private readonly monotonic: () => number = () => performance.now()) {
@@ -178,7 +189,7 @@ export class WebRemoteAccess {
         outside: v.outside === true && !!totp,
         wrong: Math.min(count(v.wrong), TOTP_WRONG_LIMIT - 1), level: Math.min(count(v.level), 32),
         // A wait never longer than the longest there is (a clock set back, or a hand edit).
-        pausedUntil: Math.min(count(v.pausedUntil), this.now() + TOTP_PAUSE_MAX_MS) };
+        pausedUntil: Math.min(count(v.pausedUntil), this.now() + TOTP_PAUSE_MAX_MS), since: count(v.since) };
     } catch {
       log.warn({ path }, "Outside connections state unreadable — off, nothing set up");
       this.state = blank();
@@ -190,6 +201,8 @@ export class WebRemoteAccess {
       pausedForMs: Math.max(0, this.state.pausedUntil - this.now()) };
   }
   get enrolled(): boolean { return !!this.state.totp; }
+  /** The last revocation of remote authority (wall clock, 0: none). */
+  get since(): number { return this.state.since; }
   get outside(): boolean { return this.state.outside && !!this.state.totp; }
 
   /**
@@ -212,24 +225,38 @@ export class WebRemoteAccess {
     const step = matchTotp(base32Decode(p.secret)!, code, this.now(), -1);
     if (step === null) return "wrong";
     const before = this.state;
-    this.state = { ...this.state, totp: { secret: p.secret, enrolledAt: this.now(), lastStep: step }, wrong: 0, level: 0, pausedUntil: 0 };
-    if (!this.flush()) { this.state = before; return "unsaved"; }
+    // A new app replaces the old one: what was authorized under the old one ends (since).
+    this.state = { ...this.state, totp: { secret: p.secret, enrolledAt: this.now(), lastStep: step }, wrong: 0, level: 0, pausedUntil: 0,
+      since: before.totp ? this.now() : before.since };
+    if (!this.flush()) {
+      // Not set up: the old state stands (as it is on disk), and the pending secret may be confirmed again.
+      this.state = before; this.dirty = false;
+      if (this.retry) { clearTimeout(this.retry); this.retry = null; }
+      return "unsaved";
+    }
     this.pending = null;
     return "ok";
   }
 
-  /** Forget the app; the outside switch goes off with it. */
-  remove(): void {
+  /**
+   * Forget the app; the outside switch goes off with it, and what was authorized from outside ends (since). In force in
+   * memory at once; false: not saved yet (retried — a restart before that would read the old file).
+   */
+  remove(): boolean {
     this.pending = null;
-    this.state = { ...blank() };
-    this.flush();
+    this.state = { ...blank(this.now()) };
+    return this.flush();
   }
 
-  /** The switch. On only with an app set up (false: refused). */
-  setOutside(on: boolean): boolean {
-    if (on && !this.state.totp) return false;
-    if (this.state.outside !== on) { this.state = { ...this.state, outside: on }; this.flush(); }
-    return true;
+  /**
+   * The switch. On only with an app set up. Off ends what was authorized from outside (since). "unsaved": in force in
+   * memory, not on disk yet (retried; asking again writes it again).
+   */
+  setOutside(on: boolean): "ok" | "not_enrolled" | "unsaved" {
+    if (on && !this.state.totp) return "not_enrolled";
+    if (this.state.outside === on && !this.dirty) return "ok";
+    if (this.state.outside !== on) this.state = { ...this.state, outside: on, ...(on ? {} : { since: this.now() }) };
+    return this.flush() ? "ok" : "unsaved";
   }
 
   /** A code typed at sign-in from outside. Each step is accepted once; wrong codes count toward a wait. */
@@ -254,17 +281,32 @@ export class WebRemoteAccess {
     return { kind: "wrong", paused: true, retryAfterMs: wait, wrong: TOTP_WRONG_LIMIT, skewSteps };
   }
 
-  /** Saved: true. Not saved: false (warned once until it works again); memory keeps the new state either way. */
+  /**
+   * Saved: true. Not saved: false (warned once until it works again) — memory keeps the new state, and it is written
+   * again by the next change or every OUTSIDE_SAVE_RETRY_MS until it is (#3008 review, Prism P2 1).
+   */
   private flush(): boolean {
     try {
       atomicWriteFileSync(this.path, JSON.stringify(this.state) + "\n", { mode: 0o600 });
-      this.warned = false;
+      this.warned = false; this.dirty = false;
+      if (this.retry) { clearTimeout(this.retry); this.retry = null; }
       return true;
     } catch (err) {
-      if (!this.warned) this.log.warn({ err: (err as Error).message, path: this.path }, "Outside connections state could not be saved");
-      this.warned = true;
+      if (!this.warned) this.log.warn({ err: (err as Error).message, path: this.path }, "Outside connections state could not be saved; retrying");
+      this.warned = true; this.dirty = true;
+      if (!this.retry) {
+        this.retry = setTimeout(() => { this.retry = null; if (this.dirty) this.flush(); }, OUTSIDE_SAVE_RETRY_MS);
+        this.retry.unref?.();
+      }
       return false;
     }
+  }
+  /** Whether the state in memory is still waiting to be saved. */
+  get unsaved(): boolean { return this.dirty; }
+  /** Fleet stop: one last write of an unsaved state, then no timer left. */
+  close(): void {
+    if (this.dirty) this.flush();
+    if (this.retry) { clearTimeout(this.retry); this.retry = null; }
   }
 }
 

@@ -81,6 +81,13 @@ describe("#3008 the rule: signed in from outside with the code is this computer'
     // …and the code's own session is not held back by that option (the switch is its opt-in).
     expect(judge({ policy: { ...webAuthorityPolicy({ verified_authority: { quick_link: false, named_link: false } } as never) } }).refusal).toBeNull();
   });
+  it("#3015 review 2: a receipt authorized before the last revocation (Off, a new app, removal) reads as none, the switch on again or not", () => {
+    const stored = judge().authority as HumanAuthority;                                   // authorized_at NOW - 500
+    const state = { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 3, outside: true };
+    expect(authorityNow(stored, { ...state, outsideSince: NOW - 1000 }).kind).toBe("web-verified");
+    expect(authorityNow(stored, { ...state, outsideSince: NOW })).toMatchObject({ kind: "none", downgraded: "revoked" });
+    expect(authorityNow({ ...stored, session: { ...stored.session!, authorized_at: "garbled" } } as HumanAuthority, { ...state, outsideSince: 0 })).toMatchObject({ kind: "none" });
+  });
   it("its receipts hold while the switch is on — whatever the link options say — and read as none once it is off", () => {
     const stored = judge().authority as HumanAuthority;
     const state = { enabled: true, loopbackOnly: false, namedLink: false, quickLink: false, epoch: 3 };
@@ -108,14 +115,14 @@ const parse = (r: Res) => { try { return JSON.parse(r.body); } catch { return nu
 const cookieOf = (r: Res) => { const set = r.headers["set-cookie"]; return (Array.isArray(set) ? set[0] : set)!.split(";")[0]!; };
 const HOST = "outside-test.trycloudflare.com";
 
-async function startFleet(dir?: string) {
+async function startFleet(dir?: string, opts: { ensure?: () => Promise<{ path: string; source: string }>; now?: () => number; web?: Record<string, unknown> } = {}) {
   dir ??= (() => { const d = mkdtempSync(join(tmpdir(), "agend-3008-")); dirs.push(d); return d; })();
   const fm = new FleetManager(dir), any = fm as any;
   const sink = () => {};
   const warns: string[] = [];
   fm.logger = { info: sink, warn: (_o: unknown, m?: string) => { if (m) warns.push(m); }, error: sink, debug: sink, trace: sink, fatal: sink, child: () => fm.logger } as unknown as typeof fm.logger;
   vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
-  fm.fleetConfig = { defaults: {}, instances: {}, web: { verified_authority: { enabled: true } } } as never;
+  fm.fleetConfig = { defaults: {}, instances: {}, web: { verified_authority: { enabled: true }, ...opts.web } } as never;
   any.initializeWebAuthTokens();
   any.startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
@@ -135,7 +142,8 @@ async function startFleet(dir?: string) {
     stop: vi.fn(async () => ({ confirmed: true as const })),
   };
   any.tunnelPurposeLane = new TunnelPurposeLane(manager as never);
-  any.publicWebLink = new PublicWebLink({ ...any.publicWebLinkDeps(), ensure: async () => ({ path: "/stub/cloudflared", source: "agend" }), provider: () => ({}) as never });
+  any.publicWebLink = new PublicWebLink({ ...any.publicWebLinkDeps(), ensure: opts.ensure ?? (async () => ({ path: "/stub/cloudflared", source: "agend" })), provider: () => ({}) as never,
+    ...(opts.now ? { now: opts.now } : {}) });
   const stop = async () => { await any.publicWebLink?.close("test end"); await new Promise<void>(resolve => { const s = any.healthServer as Server | null; any.healthServer = null; s ? s.close(() => resolve()) : resolve(); }); };
   stops.push(stop);
   /** This computer's admin: `agend web --code` and its sign-in, here. */
@@ -346,4 +354,101 @@ describe("#3008 a real fleet: connections from outside", () => {
     await new Promise(r => setTimeout(r, 50));
     expect(again.fm.getPublicWebStatus().state).toBe("closed");
   }, 20_000);
+
+  it("#3015 review 2: stored go-ahead receipts from outside: none after Off (and On again), after a new app, after removal; a newly authorized one holds", async () => {
+    const h = await startFleet();
+    const s = await h.hostSignIn();
+    let key = await h.enroll(s);
+    const open = async () => { await h.local(s, "POST", "/ui/outside/switch", { on: true }); await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open")); };
+    const receipt = async (offset = 0) => {
+      const r = await h.codeIn(key, offset) as { status: number; sessionId: string };
+      expect(r.status).toBe(200);
+      const record = h.any.webSessions.authenticate(r.sessionId, tokenEpoch(h.token), { touch: false, surface: "gateway", exposureId: h.any.publicWebLink.exposureId });
+      const now = h.any.webAuthority({ session: record, gateway: true, peer: "quick_link" });
+      expect(now.authority.kind).toBe("web-verified");
+      return now.authority as HumanAuthority;                                           // what a delivery receipt stores
+    };
+    const reads = (a: HumanAuthority) => h.fm.receiptAuthorityNow(a).kind;
+    await open();
+    const first = await receipt();
+    expect(reads(first)).toBe("web-verified");
+    await new Promise(r => setTimeout(r, 5));
+    await h.local(s, "POST", "/ui/outside/switch", { on: false });
+    expect(reads(first)).toBe("none");
+    await open();
+    expect(reads(first)).toBe("none");                                                   // On again: never back
+    await new Promise(r => setTimeout(r, 5));
+    const second = await receipt(1);                                                      // a newly authorized one: holds
+    expect(reads(second)).toBe("web-verified");
+    await new Promise(r => setTimeout(r, 5));
+    key = await h.enroll(s);                                                              // a new app
+    await open();
+    expect(reads(second)).toBe("none");
+    await new Promise(r => setTimeout(r, 5));
+    const third = await receipt();
+    expect(reads(third)).toBe("web-verified");
+    await new Promise(r => setTimeout(r, 5));
+    await h.local(s, "POST", "/ui/outside/remove", {});
+    expect(reads(third)).toBe("none");
+  }, 30_000);
+
+  it("#3015 review 1: an Off that cannot be saved answers 503 and still closes the link and ends the sessions; asked again once saving works: 200", async () => {
+    const h = await startFleet();
+    const s = await h.hostSignIn();
+    const key = await h.enroll(s);
+    await h.local(s, "POST", "/ui/outside/switch", { on: true });
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
+    expect((await h.codeIn(key)).status).toBe(200);
+    const store = h.any.webRemoteAccess();
+    vi.spyOn(store, "flush" as never).mockImplementationOnce(function (this: any) { this.dirty = true; return false; } as never);
+    const off = await h.local(s, "POST", "/ui/outside/switch", { on: false });
+    expect([off.status, parse(off).error]).toEqual([503, "unsaved"]);
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("closed"));
+    expect(h.any.webSessions.list(undefined, (r: SessionRecord) => r.remote === "totp")).toEqual([]);
+    expect((await h.local(s, "POST", "/ui/outside/switch", { on: false })).status).toBe(200);   // dirty: written now
+    expect(store.unsaved).toBe(false);
+  }, 20_000);
+
+  it("#3015 review 3: the link's lifetime running out while it is still opening turns the switch off; that opening retries nothing", async () => {
+    let release!: () => void;
+    let mono = 0;
+    const held = new Promise<void>(r => { release = r; });
+    const h = await startFleet(undefined, { ensure: async () => { await held; return { path: "/stub/cloudflared", source: "agend" }; }, now: () => mono,
+      web: { public_link: { ttl_minutes: 1 } } });
+    const s = await h.hostSignIn();
+    await h.enroll(s);
+    expect((await h.local(s, "POST", "/ui/outside/switch", { on: true })).status).toBe(200);
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("starting"));
+    mono += 61_000;
+    expect(h.fm.getPublicWebStatus().state).not.toBe("open");                            // the real deadline check closes it
+    await vi.waitFor(() => expect(h.any.outsideOn()).toBe(false));
+    release();
+    await vi.waitFor(() => expect(h.any.outsideOpening).toBe(false));
+    expect([h.any.outsideAttempt, h.tunnel.starts, h.fm.getPublicWebStatus().state]).toEqual([null, 0, "closed"]);
+    expect(h.notices()).toContain("The outside link has ended (its time ran out). Turn it on again on the AgEnD computer, in Settings → Access & security.");
+  }, 20_000);
+
+  it("#3015 review 4: the quick and named link options going off keep a session from outside authorized; an account's session over the link loses it", async () => {
+    const h = await startFleet(undefined, { web: { verified_authority: { enabled: true, named_link: true, quick_link: true } } });
+    const s = await h.hostSignIn();
+    const key = await h.enroll(s);
+    await h.local(s, "POST", "/ui/outside/switch", { on: true });
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
+    const remote = await h.codeIn(key) as { status: number; cookie: string; sessionId: string };
+    expect(remote.status).toBe(200);
+    h.fm.webAuthorityState();                                                             // the options seen on
+    // An account's session over the same link, authorized as one would be (control: it is pruned).
+    const exposureId = h.any.publicWebLink.exposureId;
+    const { record: account } = h.any.webSessions.create({ tier: "admin", surface: "gateway", label: "acct", tokenEpoch: tokenEpoch(h.token), exposureId, owner: { adapterId: "dc", userId: "1" } });
+    const auth = h.any.sessionAuthorizationStore();
+    const state = h.fm.webAuthorityState();
+    auth.authorize(account.handle, { adapterId: "dc", userId: "1" }, Date.now(), state.epoch, Date.now() + 3_600_000, "quick_link");
+    const remoteHandle = h.any.webSessions.list(undefined, (r: SessionRecord) => r.remote === "totp")[0].handle;
+    expect([!!auth.get(remoteHandle), !!auth.get(account.handle)]).toEqual([true, true]);
+    h.fm.fleetConfig = { ...h.fm.fleetConfig, web: { ...h.fm.fleetConfig!.web, verified_authority: { enabled: true, named_link: false, quick_link: false } } } as never;
+    h.fm.webAuthorityState();                                                             // the options seen off
+    expect([!!auth.get(remoteHandle), !!auth.get(account.handle)]).toEqual([true, false]);
+    expect(parse(await h.outside("GET", "/ui/agent-proposals", { session: remote })).owner).toBe(true);
+  }, 20_000);
 });
+
