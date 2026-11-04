@@ -8,11 +8,12 @@ import type { HostMemory } from "../src/host-memory.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 
 vi.mock("../src/sd-notify.js", () => ({ sdNotify: vi.fn(), sdNotifyBlocking: vi.fn(), setSdNotifyWarn: vi.fn(), startSdWatchdog: () => setInterval(() => {}, 10_000) }));
-// startInstance now awaits resolveBackendBinary before lifecycle.start (#3029). Fake timers leave that child's deadline unref'd and hung.
-vi.mock("../src/binary-probe.js", async original => {
-  const real = await original<typeof import("../src/binary-probe.js")>();
-  const inert = { answer: Promise.resolve<string | null>(null), kill() {}, exited: Promise.resolve() };
-  return { ...real, spawnProbeCommand: () => inert, spawnWhich: () => inert, binaryProbe: new real.BinaryProbe(() => inert) };
+// startInstance awaits resolveBackendBinary before lifecycle.start (#3029). BinaryProbe.waitOn uses an
+// unref'd deadline; fake timers sometimes never fire it, so lifecycle.start is 0 calls (main CI on
+// a691418b). Stub the await itself — production order stays: monitor starts after the gate.
+vi.mock("../src/backend-availability.js", async original => {
+  const real = await original<typeof import("../src/backend-availability.js")>();
+  return { ...real, resolveBackendBinary: async () => undefined };
 });
 // Keep the constructor on the injected reader path on every test host; Darwin policy is selected below.
 vi.mock("node:os", async importOriginal => ({ ...await importOriginal<typeof import("node:os")>(), platform: () => "linux" }));
