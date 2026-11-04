@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
@@ -39,7 +39,7 @@ beforeAll(async()=>{
   const runtimeUi=await import("/ui/js/panel-runtimes.js");Panel=runtimeUi.RuntimesPanel;connectCommand=runtimeUi.runtimeConnectCommand;Create=(await import("/ui/js/panel-fleet.js")).CreateInstanceDialog;routes=await import("/assets/app-route.js");
 });
 beforeEach(()=>{requests.length=0;enabled=true;machines=[machine(idA,"Desktop"),machine(idB,"Laptop","pending")];windowsInventory={home:"C:\\Test",hostname:"WINDOWS-DESK",probedAt:1,clis:[cli()]};windowsCatalog.forgetWindowsCliCatalog();catalog.forgetRuntimeCatalog();models.forgetCatalogs();app.appStore.set({windowsCli:false});});
-afterEach(async()=>{await p.unmount();catalog.forgetRuntimeCatalog();});
+afterEach(async()=>{await p.unmount();catalog.forgetRuntimeCatalog();vi.restoreAllMocks();});
 afterAll(()=>{p.restore();globalThis.fetch=originalFetch;});
 
 const diagnosticDialog=()=>p.root.querySelector(".runtime-diagnostics-dialog");
@@ -50,6 +50,15 @@ const openDiagnostics=async(id="")=>{
 };
 
 describe("remote machine UI",()=>{
+  it("shows the selected Runtime's reported version, build and compatibility, with an explicit legacy fallback",async()=>{
+    machines[0]={...machines[0],runtimeInfo:{version:"2.3.5-alpha",buildId:"a".repeat(64),protocolVersions:[1],capabilities:["exec","mcp","panes"]},runtimeCompatibility:"compatible"};
+    await p.mount(h(Panel,{navKey:"runtime-version-info"}));await settle(12);
+    const openInfo=async(id:string)=>{p.root.querySelector(`[data-machine-id="${id}"] .runtime-machine-menu button`).click();await settle();button("Computer information").click();await settle();};
+    await openInfo(idA);expect(p.root.querySelector(".runtime-reported-version").textContent).toBe("2.3.5-alpha");expect(p.root.querySelector(".runtime-reported-build").textContent).toBe("a".repeat(64));
+    expect(p.root.querySelector(".runtime-compatibility").textContent).toBe("Compatible");expect(p.root.querySelector(".runtime-machine-facts").textContent).toContain("Persistent terminals");
+    p.root.querySelector(".dlg-x").click();await settle();await openInfo(idB);
+    expect(p.root.querySelector(".runtime-reported-version").textContent).toBe("This Runtime does not provide version information");expect(p.root.querySelector(".runtime-reported-build")).toBeNull();
+  });
   it("uses the same machine cards and does not load task history until diagnostics open",async()=>{
     app.appStore.set({windowsCli:true});await p.mount(h(Panel,{navKey:"unified-machine-cards"}));await settle(12);
     const cards=p.root.querySelectorAll(".runtime-machine");expect(cards).toHaveLength(3);
@@ -166,8 +175,8 @@ describe("remote machine UI",()=>{
     await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);button("Connect a computer").click();await settle(8);
     const download=p.root.querySelector(".runtime-pairing .runtime-bundle-download");
     expect(download.textContent).toContain("Download Windows Runtime");
-    expect(download.getAttribute("href")).toBe("/ui/runtimes/download/windows");
-    expect(p.root.textContent).toContain("transfer the ZIP to the Windows computer");
+    expect(download.tagName).toBe("BUTTON");expect(download.disabled).toBe(false);
+    expect(p.root.textContent).toContain("double-click connect-agend.bat");
     expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
     expect(p.root.querySelector(".runtime-command").value).toContain("agend-runtime.cmd connect --server");
     expect(p.root.querySelector(".runtime-command").value).not.toContain("PAIR-TEST-CODE");
@@ -175,6 +184,23 @@ describe("remote machine UI",()=>{
     expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);
     button("Hide pairing code").click();await settle();expect(p.root.querySelector(".runtime-pair-code")).toBeNull();
     expect(p.root.querySelectorAll(".runtime-bundle-download").length).toBe(1);   // the header's is back
+  });
+  it("downloads a connection-ready ZIP with the reviewed address in a protected POST and claims one download",async()=>{
+    const fixtureFetch=globalThis.fetch;let release!:(value:unknown)=>void;const create=vi.spyOn(URL,"createObjectURL").mockReturnValue("blob:runtime-fixture"),revoke=vi.spyOn(URL,"revokeObjectURL").mockImplementation(()=>{});
+    globalThis.fetch=(async(path:any,options:any)=>{
+      if(path!=="/ui/runtimes/download/windows")return fixtureFetch(path,options);
+      requests.push({path,body:JSON.parse(options.body)});return new Promise(resolve=>{release=resolve;});
+    }) as any;
+    try{
+      await p.mount(h(Panel,{navKey:"runtime-download-config"}));await settle(12);button("Download Windows Runtime (ZIP)").click();await settle(12);
+      const address=p.root.querySelector('.runtime-pairing input[type=url]');address.value="https://fleet.example.test:10443";fire(address,"input");await settle();
+      const download=p.root.querySelector(".runtime-pairing .runtime-bundle-download");download.click();download.click();await settle(8);
+      expect(requests.filter(item=>item.path==="/ui/runtimes/download/windows")).toEqual([{path:"/ui/runtimes/download/windows",body:{server:"https://fleet.example.test:10443"}}]);expect(address.disabled).toBe(true);
+      release({ok:true,headers:{get:()=> 'attachment; filename="agend-runtime-windows-fixture.zip"'},blob:async()=>new Blob(["fixture zip"])});await settle(12);
+      expect(create).toHaveBeenCalledTimes(1);expect(p.root.textContent).toContain("Downloaded for: https://fleet.example.test:10443");
+      expect(JSON.stringify(requests.filter(item=>item.path==="/ui/runtimes/download/windows"))).not.toContain("PAIR-TEST-CODE");
+      address.value="https://user:password@fleet.example.test";fire(address,"input");await settle();expect(p.root.querySelector(".runtime-bundle-download").disabled).toBe(true);
+    }finally{globalThis.fetch=fixtureFetch;}
   });
   it("S-30: a computer card names its platform and host name, never a version slot that is always \"Not reported\"",async()=>{
     machines=[{...machine(idA,"Desktop"),version:undefined,hostname:"DESKTOP-7Q2"},{...machine(idB,"Laptop","pending"),version:undefined}];

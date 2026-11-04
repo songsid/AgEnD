@@ -20,6 +20,28 @@ export function runtimeClaimFingerprint(claim: string): string {
   return runtimeFingerprintFromHash(createHash("sha256").update(claim).digest("hex"));
 }
 export const RUNTIME_MAX_FRAME_BYTES = 256 * 1024;
+export interface RuntimeInfo {
+  version?: string;
+  /** SHA-256 of the runtime program modules and package version, not a trust signature. */
+  buildId?: string;
+  protocolVersions: number[];
+  capabilities: string[];
+}
+export const validRuntimeVersion = (value: unknown): value is string => typeof value === "string" && value.length <= 64 && /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(value);
+/** Bounded diagnostic metadata; capabilities never replace execution authorization or pane negotiation. */
+export function parseRuntimeInfo(value: unknown): RuntimeInfo | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw Error("Invalid runtime version information");
+  const input = value as Record<string, unknown>;
+  if (Buffer.byteLength(JSON.stringify(input)) > 4096 || input.version !== undefined && !validRuntimeVersion(input.version)
+    || input.buildId !== undefined && (typeof input.buildId !== "string" || !/^[a-f0-9]{64}$/.test(input.buildId))
+    || !Array.isArray(input.protocolVersions) || !input.protocolVersions.length || input.protocolVersions.length > 8
+    || input.protocolVersions.some(v => !Number.isInteger(v) || v < 1 || v > 255) || new Set(input.protocolVersions).size !== input.protocolVersions.length
+    || !Array.isArray(input.capabilities) || input.capabilities.length > 16
+    || input.capabilities.some(v => typeof v !== "string" || !/^[a-z][a-z0-9_-]{0,31}$/.test(v)) || new Set(input.capabilities).size !== input.capabilities.length) throw Error("Invalid runtime version information");
+  return { ...(input.version !== undefined ? { version: input.version as string } : {}), ...(input.buildId !== undefined ? { buildId: input.buildId as string } : {}),
+    protocolVersions: [...input.protocolVersions] as number[], capabilities: [...input.capabilities] as string[] };
+}
 export type RuntimeOperation = "probe" | "workspace" | "run" | "cancel" | "reconcile" | "recover";
 export interface RuntimeRunPayload {
   task: NativeTaskInput;
@@ -43,11 +65,13 @@ export interface RuntimeMachine {
   generation: number;
   pairingFingerprint?: string;
   paneProtocol?: 1;
+  runtimeInfo?: RuntimeInfo;
+  runtimeCompatibility?: "compatible" | "legacy" | "incompatible" | "unknown";
 }
 export interface RuntimePairing { pairingId: string; code: string; expiresAt: number }
 export interface RuntimePairResult { machineId: string; claimSecret: string; status: "pending"; expiresAt: number }
 export type RuntimeClaimResult = { status: "pending" } | { status: "approved"; machineId: string; credential: string };
-export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1 }
+export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1; runtimeInfo?: RuntimeInfo }
 export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number }
 export interface RuntimeRequest { v: 1; type: "request"; id: string; operation: RuntimeOperation; payload: unknown }
 export interface RuntimeResponse { v: 1; type: "response"; id: string; ok: boolean; result?: unknown; error?: string }

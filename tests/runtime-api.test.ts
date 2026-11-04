@@ -132,6 +132,23 @@ describe("runtime package download", () => {
     vi.stubEnv("AGEND_REMOTE_RUNTIME", ""); expect(download().status).toBe(404);
     expect(bundle).not.toHaveBeenCalled(); expect(coordinator).not.toHaveBeenCalled();
   });
+  it("creates a connection-ready download only from an authenticated bounded POST, never query or Host defaults",async()=>{
+    const {bundle,coordinator,download,file}=setup();
+    const ready=download(request(path,"POST",{server:"https://fleet.example.test:10443"}));await vi.waitFor(()=>expect(ready.status).toBe(200));expect(ready.bytes).toEqual(file.bytes);expect(bundle).toHaveBeenLastCalledWith({serverOrigin:"https://fleet.example.test:10443"});
+    expect(coordinator).not.toHaveBeenCalled();bundle.mockClear();
+    for(const body of [{server:"http://192.0.2.5"},{server:"https://user:password@fleet.example"},{server:"https://fleet.example/path"},{server:"https://fleet.example",code:"SECRET"},{server:"x".repeat(5000)}]){
+      const bad=download(request(path,"POST",body));await vi.waitFor(()=>expect(bad.status).toBe(400));
+    }
+    expect(download(request(path+"?server=https://fleet.example")).status).toBe(400);expect(bundle).not.toHaveBeenCalled();
+  });
+  it("requires browser CSRF proof and rechecks authorization after reading connection-ready download input",async()=>{
+    const {ctx,bundle,download}=setup(),store=new WebSessionStore();Object.assign(ctx,{webSessions:store});
+    const session=store.create({tier:"admin",surface:"local",label:"download",tokenEpoch:tokenEpoch(token)});
+    const req=request(path,"POST",{server:"https://fleet.example.test"});delete req.headers["x-agend-token"];req.headers.cookie=`${WEB_SESSION_COOKIE}=${session.sessionId}`;req.headers.origin="http://localhost";
+    expect(download(req).status).toBe(403);expect(bundle).not.toHaveBeenCalled();
+    req.headers["x-agend-csrf"]=csrfTokenFor(session.sessionId);const valid=download(req);await vi.waitFor(()=>expect(valid.status).toBe(200));
+    bundle.mockClear();const held=download(request(path,"POST",{server:"https://fleet.example.test"}));(ctx as {webToken:string|null}).webToken=null;await vi.waitFor(()=>expect(held.status).toBe(403));expect(bundle).not.toHaveBeenCalled();
+  });
   it("returns an actionable unavailable response without leaking host paths or a partial ZIP", () => {
     const { bundle, coordinator, download } = setup(); bundle.mockImplementation(() => { throw Error("ENOENT /private/profile/connection.json"); });
     const res = download(); expect(res.status).toBe(503); expect(res.sentHeaders["Content-Type"]).toContain("application/json");

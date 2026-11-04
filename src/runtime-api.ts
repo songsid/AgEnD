@@ -6,6 +6,7 @@ import { nativeCliAuthorization, type WindowsCliApiContext } from "./windows-cli
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { createRuntimeBundle } from "./runtime-bundle.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
+import { runtimeServerOrigin } from "./runtime-connection.js";
 
 export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator }
 function json(res: ServerResponse, status: number, value: unknown): void {
@@ -18,14 +19,25 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   if (!nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Runtime settings require a local dashboard administrator" }); return true; }
   const enabled = remoteRuntimeEnabled() && !!ctx.runtimeCoordinator;
   if (!enabled) { json(res, method === "GET" && url.pathname === "/ui/runtimes" ? 200 : 404, { enabled: false, machines: [] }); return true; }
-  if ((method === "GET" || method === "HEAD") && url.pathname === "/ui/runtimes/download/windows") {
+  if (["GET", "HEAD", "POST"].includes(method) && url.pathname === "/ui/runtimes/download/windows") {
     if (url.search) { json(res,400,{error:"Runtime downloads do not accept file paths or options"});return true; }
-    try {
-      const file=bundle();
+    const send = (serverOrigin?: string): void => { try {
+      const file=serverOrigin === undefined ? bundle() : bundle({serverOrigin});
       res.writeHead(200,{"Content-Type":"application/zip","Content-Disposition":`attachment; filename="${file.filename}"`,
         "Content-Length":file.bytes.length,"Cache-Control":"no-store","X-Content-Type-Options":"nosniff","X-Agend-SHA256":file.sha256});
       res.end(method === "HEAD" ? undefined : file.bytes);
     } catch { json(res,503,{error:"The matching Windows Runtime package is unavailable on this host. Update or reinstall AgEnD and retry."}); }
+    };
+    if (method === "POST") {
+      void (async () => {
+        const raw = await readBoundedWebBody(req,4096);
+        if (!nativeCliAuthorization(req,url,ctx)) { json(res,403,{error:"Authorization expired"});return; }
+        const body: unknown = JSON.parse(raw.toString("utf8"));
+        if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some(key=>key!=="server") || !("server" in body)) throw Error("Invalid connection information");
+        const origin=runtimeServerOrigin(body.server);
+        if (!res.destroyed && !res.writableEnded) send(origin);
+      })().catch(()=>json(res,nativeCliAuthorization(req,url,ctx)?400:403,{error:nativeCliAuthorization(req,url,ctx)?"Enter a valid HTTPS AgEnD origin (HTTP is allowed only for loopback)":"Authorization expired"}));
+    } else send();
     return true;
   }
   const hub = ctx.runtimeCoordinator!();

@@ -10,6 +10,7 @@ import { validateNativeTask, validWindowsAgentId, type NativeTaskInput } from ".
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
+import { readRuntimeInfo } from "./runtime-build-info.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
@@ -70,6 +71,7 @@ function jsonBody(req: IncomingMessage): Promise<unknown> {
 }
 export class RuntimeClient {
   readonly bootId = randomUUID();
+  private readonly runtimeInfo;
   private readonly bridge: RuntimeBridge;
   private socket: WebSocket | null = null;
   private welcomed = false;
@@ -97,6 +99,7 @@ export class RuntimeClient {
   private inventory: WindowsCliProbe | null = null;
   private readonly stoppedListeners = new Set<() => void>();
   constructor(private readonly options: RuntimeClientOptions) {
+    this.runtimeInfo = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -136,7 +139,7 @@ export class RuntimeClient {
     this.welcomed = false; this.paneEpoch = randomUUID();
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
-      this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform,
+      this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform, runtimeInfo: this.runtimeInfo,
         ...(process.platform === "win32" || this.options.createPaneHost || this.options.openPaneLink ? { paneProtocol: 1 } : {}),
         ...(this.inventory ? { inventory: this.inventory } : {}) });
     });

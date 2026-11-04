@@ -8,6 +8,14 @@ The coordinator still owns the shared Fleet, Agent settings, task board, delegat
 
 Design references, source-review scope and bundled license notices are recorded in [Remote Runtime provenance](remote-runtime-provenance.md).
 
+## Runtime version reports
+
+Current runtimes report their own package version, code Build ID, supported protocol versions and transport capabilities when connecting. Open a computer card's **Computer information** menu to inspect them. `agend-runtime --version` prints the same installation's information without connecting or reading its private profile; `status` includes it alongside profile status.
+
+The code Build ID hashes the installed fixed runtime modules (including the pane helper scripts) and package version. It distinguishes different program builds carrying the same alpha version; it is not a signature or the downloadable ZIP's SHA-256, and excludes user profiles, CLI installations and runtime dependencies. An incomplete program installation has no Build ID. Unreadable package metadata remains unknown instead of using the coordinator's version.
+
+Older runtimes keep connecting over protocol v1 and show **This Runtime does not provide version information**. Replace the portable program folder once and reconnect the existing profile to enable reporting. There is no automatic update or remote installation in this change. Protocol compatibility is diagnostic metadata based on the reported supported protocols; it does not change existing wire validation, execution authorization or pane negotiation. Reported capabilities grant no permissions. Reconnecting with an older client clears the prior connection's version report.
+
 ## CLI diagnostics on a selected computer
 
 In **Settings → Runtime**, the host's Windows installation and approved paired computers use the same machine cards. Each card shows detected CLIs, versions and sign-ins. Click **CLI diagnostics** on a card to open a dialog fixed to that computer. Paired-computer diagnostics also work when the coordinator has no local Windows CLI support.
@@ -24,21 +32,22 @@ Turning the switch off fences new work immediately and keeps machine approvals. 
 
 The environment variable `AGEND_REMOTE_RUNTIME` still overrides the setting: `1` forces it on and `0` forces it off (Settings then shows "Set by the environment" and cannot change it). Any other value, or none, leaves it to Settings.
 
-1. On the coordinator, open **Settings → Runtimes** and create a pairing code.
-2. Click **Download Windows Runtime (ZIP)** on that page. Transfer the ZIP to the Windows computer and extract its `agend-runtime` folder. The package comes from the currently installed AgEnD program, so no repository checkout or build is required. It contains runtime modules, reviewed `ws` and headless-terminal dependencies, and pinned Windows ConPTY prebuilds; it does not install the full coordinator, SQLite, Linux native dependencies or a Node binary. Install a supported Windows Node release separately.
-3. In a Windows terminal, under the user whose CLIs are installed and signed in, run:
+1. On the coordinator, open **Settings → Runtime → Connect a computer**.
+2. Review the **AgEnD address** that the other computer can reach. The page starts with the browser's origin; replace localhost with your existing reachable HTTPS origin unless the other computer has a loopback tunnel. This does not configure a proxy or change network access.
+3. Click **Download Windows Runtime (ZIP)** inside the connection section. This authenticated download includes the reviewed public origin in `agend-server.json` and a `connect-agend.bat` launcher. No pairing code, browser token or machine credential is embedded. The address is read as JSON, never interpolated into a batch command.
+4. Transfer the ZIP to the Windows computer, extract it, and double-click **connect-agend.bat** under the Windows user whose CLIs are installed and signed in. A supported Windows Node.js installation is still required. The Runtime prints the destination before asking for a pairing code.
+5. On first connection, enter the one-time code from Settings. Compare the **Pairing fingerprint** printed in the Runtime terminal with the fingerprint on the machine card, then approve it in AgEnD. Keep the terminal running. An existing profile paired with the same origin reconnects without asking for another code; a profile paired with another origin is rejected and can be kept separate with `--profile`.
+6. In Settings, explicitly detect this computer's CLI inventory when needed. Connecting alone starts no CLI discovery.
 
-   ```powershell
-   .\agend-runtime.cmd connect --server https://your-agend-host --name "Windows desktop"
-   ```
+The manual command remains available under **Manual connection command**:
 
-4. Enter the one-time code interactively. Do not put the code in command arguments or environment variables. Compare the **Pairing fingerprint** printed in the runtime terminal with the fingerprint on the pending machine card, then approve that machine in AgEnD Settings. Do not approve if they differ. Approval is required before a permanent machine credential is issued.
-5. Keep the terminal running. After pairing, `connect` automatically runs the resident client. Press **Ctrl+C** to stop. Later, use `agend-runtime.cmd run` to reconnect the saved profile.
-6. In **New Agent**, select the paired machine, its CLI, then configure the Agent. Working directories are paths on that selected computer; leaving the directory empty creates its managed local workspace.
+```powershell
+.\agend-runtime.cmd connect --server https://your-agend-host --name "Windows desktop"
+```
 
-The initial preview runs in the foreground. It does not install an auto-start task or a SYSTEM service. SYSTEM would use a different login, PATH and device permissions from the signed-in Windows user.
+`run` still reconnects a saved profile. Connection defaults never replace its credential or retarget it to another server. Generic packages without `agend-server.json` keep supporting the explicit `--server` command. The connection-ready download uses an administrator POST with the existing same-origin and CSRF protections; GET download URLs cannot embed a caller-selected server.
 
-The download requires an administrator session on the local dashboard and is unavailable through public gateway links. It includes program assets and license notices only, without pairing codes, machine credentials, CLI sign-ins or workspaces. If installed runtime assets are missing, update or reinstall AgEnD and retry. Developers can also run `npm run build:runtime` after the normal TypeScript build and transfer the resulting `.artifacts/runtime-bundle` folder.
+The download requires an administrator session on the local dashboard and is unavailable through public gateway links. It includes program assets, license notices and, for a connection-ready download, the administrator-selected public server origin. It excludes pairing codes, machine credentials, CLI sign-ins and workspaces. If installed runtime assets are missing, update or reinstall AgEnD and retry. Developers can also run `npm run build:runtime` after the normal TypeScript build and transfer the resulting `.artifacts/runtime-bundle` folder.
 
 ## Network connection
 

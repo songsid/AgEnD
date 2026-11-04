@@ -12,7 +12,7 @@ import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./wi
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
-import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash,
+import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
 
@@ -53,6 +53,11 @@ function inventory(value: unknown): WindowsCliProbe {
   }
   if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw Error("Runtime inventory is too large");
   return structuredClone(value) as unknown as WindowsCliProbe;
+}
+function machineView(machine: RuntimeMachine): RuntimeMachine {
+  return { ...structuredClone(machine), runtimeCompatibility: machine.runtimeInfo
+    ? machine.runtimeInfo.protocolVersions.includes(RUNTIME_PROTOCOL_VERSION) ? "compatible" : "incompatible"
+    : machine.bootId ? "legacy" : "unknown" };
 }
 interface MachineRecord { machine: RuntimeMachine; credentialHash?: string; claimHash?: string; claimExpiresAt?: number }
 interface PairRecord { id: string; codeHash: string; expiresAt: number }
@@ -134,6 +139,7 @@ export class RuntimeCoordinator {
       if (row.claimHash) row.machine.pairingFingerprint = runtimeFingerprintFromHash(row.claimHash);
     }
     for (const command of this.state.commands) if (command.state === "pending") command.state = interrupted(command);
+    for (const row of this.state.machines) if (row.machine.runtimeInfo !== undefined) row.machine.runtimeInfo = parseRuntimeInfo(row.machine.runtimeInfo);
     this.save();
     this.heartbeat = setInterval(() => {
       for (const connection of this.connections.values()) {
@@ -161,8 +167,8 @@ export class RuntimeCoordinator {
     for (const listener of this.listeners) { try { listener(structuredClone(event)); } catch { /* Observer isolation. */ } }
   }
   private entry(id: string): MachineRecord { const row = this.state.machines.find(v => v.machine.id === id); if (!row) throw Error("Runtime machine not found"); return row; }
-  listMachines(): RuntimeMachine[] { return this.state.machines.map(row => structuredClone(row.machine)); }
-  machine(id: string): RuntimeMachine | null { const row = this.state.machines.find(v => v.machine.id === id); return row ? structuredClone(row.machine) : null; }
+  listMachines(): RuntimeMachine[] { return this.state.machines.map(row => machineView(row.machine)); }
+  machine(id: string): RuntimeMachine | null { const row = this.state.machines.find(v => v.machine.id === id); return row ? machineView(row.machine) : null; }
   subscribe(listener: (event: RuntimeCoordinatorEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   createPairing(): RuntimePairing {
     this.state.pairings = this.state.pairings.filter(row => row.expiresAt > this.now());
@@ -349,8 +355,10 @@ export class RuntimeCoordinator {
     const row = this.entry(connection.machineId); connection.alive = true;
     if (!connection.ready) {
       if (value.type !== "hello" || !text(value.bootId, 128)) throw Error("Runtime hello required");
+      const runtimeInfo = parseRuntimeInfo(value.runtimeInfo);
       connection.ready = true; connection.bootId = value.bootId; clearTimeout(connection.helloTimer);
       row.machine.bootId = value.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
+      if (runtimeInfo) row.machine.runtimeInfo = runtimeInfo; else delete row.machine.runtimeInfo;
       if (value.paneProtocol === 1) row.machine.paneProtocol = 1; else delete row.machine.paneProtocol;
       if (value.inventory !== undefined) { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); }
       this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId });

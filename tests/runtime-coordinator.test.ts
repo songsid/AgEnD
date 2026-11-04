@@ -21,9 +21,9 @@ async function listen(h: RuntimeCoordinator) {
   server.listen(0, "127.0.0.1"); await once(server, "listening"); const address = server.address(); if (!address || typeof address === "string") throw Error("No test port");
   return `http://127.0.0.1:${address.port}`;
 }
-async function connect(base: string, credential: string, bootId = "boot-1") {
+async function connect(base: string, credential: string, bootId = "boot-1", runtimeInfo?: unknown) {
   const ws = new WebSocket(base.replace("http:", "ws:") + "/runtime/v1/connect", { headers: { Authorization: `Bearer ${credential}` } }); clients.push(ws);
-  await once(ws, "open"); const welcome = once(ws, "message"); ws.send(JSON.stringify({ v: 1, type: "hello", bootId, inventory: { home: "C:\\Users\\test", clis: [] } })); await welcome; return ws;
+  await once(ws, "open"); const welcome = once(ws, "message"); ws.send(JSON.stringify({ v: 1, type: "hello", bootId, ...(runtimeInfo === undefined ? {} : {runtimeInfo}), inventory: { home: "C:\\Users\\test", clis: [] } })); await welcome; return ws;
 }
 function responseTask(payload: unknown): WindowsCliTask { const task = (payload as { task: typeof taskInput }).task; return { id: task.requestId, cli: "codex", cwd: task.cwd, sandbox: "read-only", status: "running", output: "", startedAt: 1 }; }
 afterEach(async () => {
@@ -57,6 +57,25 @@ describe("runtime pairing durable identity", () => {
   it("fails closed on malformed persisted identity rather than overwriting it", () => {
     const path = home(), file = join(path, "runtime-machines.json"), raw = JSON.stringify({ version: 1, machines: [{ machine: { id: "forged", name: "Wrong", platform: "win32", status: "online", generation: 0 } }], pairings: [], commands: [] });
     writeFileSync(file, raw); expect(() => new RuntimeCoordinator(path)).toThrow(/Malformed/); expect(readFileSync(file, "utf8")).toBe(raw);
+  });
+  it("retains version reports across restart, computes compatibility, and clears stale metadata for a legacy reconnect",async()=>{
+    const first=hub(),identity=pair(first),base=await listen(first);
+    const info={version:"2.3.5-alpha",buildId:"a".repeat(64),protocolVersions:[1],capabilities:["exec","mcp"],credential:"NEVER_STORE_EXTRA_METADATA"};
+    await connect(base,identity.credential,"reported-boot",info);
+    expect(first.machine(identity.machineId)).toMatchObject({status:"online",runtimeCompatibility:"compatible",runtimeInfo:{version:info.version,buildId:info.buildId,protocolVersions:[1],capabilities:["exec","mcp"]}});
+    expect(JSON.stringify(first.listMachines())).not.toContain(info.credential);
+    first.close();const next=new RuntimeCoordinator(homes[0]);hubs.push(next);expect(next.machine(identity.machineId)?.runtimeInfo?.buildId).toBe(info.buildId);
+    const nextBase=await listen(next);await connect(nextBase,identity.credential,"legacy-boot");
+    expect(next.machine(identity.machineId)).toMatchObject({status:"online",runtimeCompatibility:"legacy"});expect(next.machine(identity.machineId)?.runtimeInfo).toBeUndefined();
+    clients[clients.length-1].terminate();await vi.waitFor(()=>expect(next.machine(identity.machineId)?.status).toBe("offline"));
+    await connect(nextBase,identity.credential,"other-protocol",{...info,protocolVersions:[2]});expect(next.machine(identity.machineId)?.runtimeCompatibility).toBe("incompatible");
+  });
+  it("rejects malformed version metadata before making the connection ready",async()=>{
+    const h=hub(),identity=pair(h),base=await listen(h);
+    const ws=new WebSocket(base.replace("http:","ws:")+"/runtime/v1/connect",{headers:{Authorization:`Bearer ${identity.credential}`}});clients.push(ws);await once(ws,"open");const closed=once(ws,"close");
+    ws.send(JSON.stringify({v:1,type:"hello",bootId:"invalid",runtimeInfo:{version:"2.3.5\nInjected",protocolVersions:[1],capabilities:[]}}));expect((await closed)[0]).toBe(1008);
+    expect(h.machine(identity.machineId)?.runtimeInfo).toBeUndefined();expect(h.machine(identity.machineId)?.status).toBe("offline");
+    await connect(base,identity.credential,"legacy");expect(h.machine(identity.machineId)?.status).toBe("online");
   });
   it("rejects revoked credentials and browser WebSocket origins", async () => {
     const h = hub(), identity = pair(h), base = await listen(h);
