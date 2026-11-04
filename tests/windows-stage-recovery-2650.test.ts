@@ -29,15 +29,22 @@ function scratch<T>(body:(f:ReturnType<typeof fixture>)=>T):T {const f=fixture()
 
 describe.skipIf(!pwsh)('bounded resumable Windows stages, all WSL/backend/service calls stubbed',()=>{
  it.each(['ok','headers','body'])('download byte/response deadlines abort and remove partial files: %s',mode=>scratch(f=>{
-  const out=f.run(`$script:aborted=$false;$script:disposed=$false
+  // Load only the download helpers (not the whole installer AST). TimeoutSec is [int];
+  // NoProgressSeconds 0.05 is the injected wait (Wait ~50ms). Do not parse install-agend.ps1.
+  const helpers=source.slice(source.indexOf('function New-InstallDownloadRequest'),source.indexOf('\n}\n',source.indexOf('function Invoke-InstallDownload('))+3);
+  const file=join(f.dir,'deadline.ps1');
+  writeFileSync(file,`$ErrorActionPreference='Stop'
+${helpers}
+$script:aborted=$false
 $script:stream=[IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes('download bytes'))
 ${mode==='body'?"$script:stream=[pscustomobject]@{};$script:stream|Add-Member ScriptMethod ReadAsync {param($b,$o,$n);return ([Threading.Tasks.TaskCompletionSource[int]]::new()).Task};$script:stream|Add-Member ScriptMethod Dispose {}":''}
-$response=[pscustomobject]@{};$response|Add-Member ScriptMethod GetResponseStream {return $script:stream};$response|Add-Member ScriptMethod Dispose {$script:disposed=$true}
+$response=[pscustomobject]@{};$response|Add-Member ScriptMethod GetResponseStream {return $script:stream};$response|Add-Member ScriptMethod Dispose {}
 $script:responseTask=${mode==='headers'?"([Threading.Tasks.TaskCompletionSource[object]]::new()).Task":"[Threading.Tasks.Task]::FromResult($response)"}
 $request=[pscustomobject]@{};$request|Add-Member ScriptMethod GetResponseAsync {return $script:responseTask};$request|Add-Member ScriptMethod Abort {$script:aborted=$true}
 function New-InstallDownloadRequest {return $request}
-try{Invoke-InstallDownload -Uri 'https://stub.invalid/file' -OutFile '${f.dir}/download' -TimeoutSec 2 -NoProgressSeconds 0.05;Write-Output 'DONE'}catch{Write-Output ('FAILED='+$_)}
+try{Invoke-InstallDownload -Uri 'https://stub.invalid/file' -OutFile '${f.dir}/download' -TimeoutSec 1 -NoProgressSeconds 0.05;Write-Output 'DONE'}catch{Write-Output ('FAILED='+$_)}
 Write-Output ('ABORTED='+$script:aborted+' EXISTS='+(Test-Path '${f.dir}/download'))`);
+  const out=execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',file],{encoding:'utf8',timeout:8000,env:{...process.env,HOME:f.dir,USERPROFILE:f.dir,TMPDIR:f.dir,PATH:`${f.bin}:${process.env.PATH}`}});
   expect(out).toContain('ABORTED=True');expect(out).toContain(mode==='ok'?'DONE':'no-progress deadline');
   expect(existsSync(join(f.dir,'download'))).toBe(mode==='ok');
   if(mode==='ok')expect(readFileSync(join(f.dir,'download'),'utf8')).toBe('download bytes');
