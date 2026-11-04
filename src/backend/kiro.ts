@@ -2001,7 +2001,8 @@ export class KiroBackend implements CliBackend {
       return { ...base, mode: "resume", id: decision.id, agent, agentConfirmed: decision.agentConfirmed, reason: null, notes: kiroCompactionNotes(decision) };
     }
     const reasons = [decision.notice ? t(`kiro.upgrade_${decision.notice.replaceAll("-", "_")}`) : null,
-      decision.lost ? t("kiro.claim_lost", decision.lost.id, t(`kiro.claim_lost_${decision.lost.claim.replaceAll("-", "_")}`)) : null];
+      decision.lost ? t("kiro.claim_lost", decision.lost.id, t(`kiro.claim_lost_${decision.lost.claim.replaceAll("-", "_")}`)) : null,
+      decision.unrecorded ? t("kiro.identity_unreadable", decision.unrecorded) : null];
     return { ...base, mode: "fresh", agent, agentConfirmed: true, reason: reasons.filter(r => r !== null).join("\n") || null };
   }
 
