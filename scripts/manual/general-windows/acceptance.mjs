@@ -30,7 +30,8 @@ const hub=new RuntimeCoordinator(join(home,'hub'),{requestTimeoutMs:45000,handle
 fleet.runtimeHub=hub;setConfiguredRuntimeSwitches({remote_runtime:true,max_agents_per_machine:4});
 fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true,max_agents_per_machine:4},instances:{}};
 const store=windowsAgentsFor(fleet,{get:()=>null,start(){throw Error('No exec fallback');},prepareWorkspace(){throw Error('No host workspace');}});
-fleet.runtimeWindowsExecutor=()=>{throw Error('No coordinator account/catalog probe');};
+fleet.readCliEnv=()=>{throw Error('No coordinator account/catalog probe');};
+fleet.localNativePaneEndpoint=()=>{throw Error('General proof requires the paired runtime');};
 fleet.syncRoleSkills=()=>{throw Error('No Linux skills written to Windows');};
 fleet.cacheInstanceProgress=(name,text)=>progress.push({name,present:!!text});
 fleet.handleOutboundFromInstance=async(name,message)=>{
