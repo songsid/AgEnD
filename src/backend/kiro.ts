@@ -1728,8 +1728,9 @@ export class KiroBackend implements CliBackend {
     // kiro-cli-chat injects "In a few words, summarize our conversation so far." as the first
     // user turn on resume of a non-empty conversation. AgEnD does not consume that summary;
     // the agent then reply()s it to the channel. A positional INPUT replaces the default
-    // without a model turn (kiro-resume-summary.ts). Fresh launches are unchanged.
-    if (resumeLaunch) cmd += ` ${shellQuote(KIRO_RESUME_SUMMARY_OVERRIDE)}`;
+    // without a model turn (kiro-resume-summary.ts). Proven only for classic/legacy UI
+    // (boolean --resume and --resume-id). TUI and V3 launches are unchanged.
+    if (resumeLaunch && ui === "legacy") cmd += ` ${shellQuote(KIRO_RESUME_SUMMARY_OVERRIDE)}`;
     // Deliberately NOT `--require-mcp-startup` (#1111). Kiro has no per-server
     // "required": the flag exits 3 when ANY enabled MCP server fails, and that
     // includes the user's own servers from ~/.kiro/settings/mcp.json. One

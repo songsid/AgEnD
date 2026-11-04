@@ -13,9 +13,10 @@
  * launches them with `--resume` / `--resume-id` unless `skipResume`, and the
  * previous probes themselves keep history non-empty.
  *
- * The probe is unused, so every AgEnD resume launch passes a positional INPUT
- * that replaces the default without a model turn. kiro's handle_input treats a
- * leading `!` as `bash -c <rest>`; `:` is a POSIX no-op.
+ * The probe is unused on classic/legacy UI. AgEnD's override INPUT is only
+ * appended when `kiroUi === "legacy"` (boolean `--resume` and `--resume-id`).
+ * TUI and V3 launches are unchanged. kiro's handle_input treats a leading `!`
+ * as `bash -c <rest>`; `:` is a POSIX no-op.
  */
 export const KIRO_RESUME_SUMMARY_PROMPT = "In a few words, summarize our conversation so far.";
 

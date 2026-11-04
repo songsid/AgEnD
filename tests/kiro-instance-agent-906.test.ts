@@ -428,6 +428,7 @@ describe("the backend: command and files per plan", () => {
     const backend = new KiroBackend(join(root, "agend", "instances", "worker"), COMPAT);
     const cmd = launch(backend);
     expect(cmd).toContain(" --resume-id 'conv-1'");
+    expect(cmd).toMatch(/--resume-id 'conv-1'.*'!:'$/);
     expect(cmd).toContain(` --agent '${agentName()}'`);
     expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
     expect(readFileSync(join(root, "work", ".kiro", "steering", "agend-worker.md"), "utf-8")).toContain(`agend-agent:${agentName()}`);

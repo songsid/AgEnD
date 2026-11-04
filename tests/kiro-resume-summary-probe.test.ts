@@ -15,6 +15,7 @@ import { promisify } from "node:util";
 import { KiroBackend, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import { shellQuote, type CliBackendConfig } from "../src/backend/types.js";
 import { kasBucket } from "../src/backend/kiro-kas-store.js";
+import { recordKiroLaunch } from "../src/backend/kiro-engine-ledger.js";
 import {
   KIRO_RESUME_SUMMARY_OVERRIDE, KIRO_RESUME_SUMMARY_PROMPT,
   kiroChatArgvFromLaunchCommand, kiroChatWouldInjectResumeSummary, kiroLaunchResumesConversation,
@@ -27,6 +28,7 @@ const LEGACY: KiroCliCompatibility = {
   version: "kiro-cli 2.28.0", supportsLegacyUi: true, supportsTui: true, supportsV3: true,
   agentEngines: ["v2", "v1", "v3"], supportsEffortFlag: true, supportsInstanceAgent: false, source: "version",
 };
+const AGENT: KiroCliCompatibility = { ...LEGACY, supportsInstanceAgent: true };
 
 const dirs: string[] = [];
 const scratch = (prefix: string) => { const d = mkdtempSync(join(tmpdir(), prefix)); dirs.push(d); return d; };
@@ -94,7 +96,7 @@ describe("AgEnD kiro launch: no resume-summary probe", () => {
     expect(kiroChatWouldInjectResumeSummary(argv)).toBe(false);
   });
 
-  it("a V3 --resume-id launch also appends the override", () => {
+  it("a V3 --resume-id launch is unchanged (no override)", () => {
     const h = home();
     const backend = new KiroBackend(h.inst, LEGACY);
     const fresh = backend.buildCommand(config(h, { kiroUi: "v3" }));
@@ -109,8 +111,43 @@ describe("AgEnD kiro launch: no resume-summary probe", () => {
     const argv = kiroChatArgvFromLaunchCommand(cmd);
     expect(argv).toContain("--resume-id");
     expect(argv).toContain("sess_idle");
-    expect(argv.at(-1)).toBe(KIRO_RESUME_SUMMARY_OVERRIDE);
-    expect(kiroChatWouldInjectResumeSummary(argv)).toBe(false);
+    expect(argv).not.toContain(KIRO_RESUME_SUMMARY_OVERRIDE);
+    expect(cmd).not.toContain(shellQuote(KIRO_RESUME_SUMMARY_OVERRIDE));
+  });
+
+  it("a TUI per-instance --resume-id launch is unchanged (no override)", async () => {
+    const h = home();
+    recordKiroLaunch({
+      instance: "classic-idle", workingDirectory: h.work, credentialProfile: null,
+      kiroVersion: "2.28.0", ui: "tui", flags: ["--tui", "--agent-engine=v2"],
+    });
+    const dir = join(process.env.KIRO_HOME!, "sessions", "cli");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "tui-sess.json"), JSON.stringify({
+      session_id: "tui-sess", cwd: h.work, updated_at: new Date().toISOString(),
+    }));
+    const backend = new KiroBackend(h.inst, AGENT);
+    const cfg = config(h, { kiroUi: "tui" });
+    await backend.prepareLaunch(cfg);
+    backend.writeConfig(cfg);
+    const cmd = backend.buildCommand(cfg);
+    const argv = kiroChatArgvFromLaunchCommand(cmd);
+    expect(argv).toContain("--resume-id");
+    expect(argv).toContain("tui-sess");
+    expect(argv).not.toContain(KIRO_RESUME_SUMMARY_OVERRIDE);
+    expect(cmd).not.toContain(shellQuote(KIRO_RESUME_SUMMARY_OVERRIDE));
+  });
+
+  it("mutation: a V3 resume must not pick up the classic override if the ui guard is dropped", () => {
+    const h = home();
+    const backend = new KiroBackend(h.inst, LEGACY);
+    const createdAt = new Date(Date.now() + 1000).toISOString();
+    const dir = join(process.env.KIRO_HOME!, "sessions", kasBucket(h.work), "sess_idle");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "session.json"), JSON.stringify({ id: "sess_idle", createdAt, lastModifiedAt: createdAt, schemaVersion: "1.0.0" }));
+    writeFileSync(join(dir, "messages.jsonl"), "");
+    const cmd = backend.buildCommand(config(h, { kiroUi: "v3" }));
+    expect(cmd, "V3 must stay byte-for-byte without the classic INPUT").not.toMatch(/'!:'/);
   });
 
   it("a fresh launch (skipResume) does not pass the override and does not inject", () => {
