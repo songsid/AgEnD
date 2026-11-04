@@ -2220,6 +2220,9 @@ export class Daemon extends EventEmitter {
   private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+  logNativeInputRefusal(details: import("./pane-port.js").PaneInputDiagnostic): void {
+    this.logger.warn({ component: "runtime-pane-host", reason: "expected_seq_changed", ...details }, "Native pane input refused before write");
+  }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
   private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
   /** Per-launch attention for a native delivery whose bounded input attempts were refused or uncertain, including non-outbox input. */
@@ -9823,7 +9826,7 @@ export class Daemon extends EventEmitter {
         key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence,
       };
       if (reason === "pane_mode") this.logger.warn({ phase, reason }, "The pane stayed in a tmux mode; Enter withheld");
-      else this.logger.warn({ phase, reason }, "Native delivery Enter withheld by its safety check");
+      else this.logger.warn({ ...tmux?.getLastInputDiagnostic?.(), phase, reason, retryCount: positiveRefusals }, "Native delivery Enter withheld by its safety check");
       return false;
     };
     // M-2267 (#2971): a pane in a tmux mode (a person left it in copy-mode) would take this Enter. Wait for the mode to
@@ -9879,7 +9882,7 @@ export class Daemon extends EventEmitter {
         return false;
       }
       enterMarked = true;
-      const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "delivery", screen: pane }) : tmux!.sendSpecialKey("Enter"));
+      const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "delivery", screen: pane, retryCount: positiveRefusals }) : tmux!.sendSpecialKey("Enter"));
       // A busy renderer can change seq after our capture. Only a positive zero-input ACK admits a NEW proof/key;
       // An Enter retry never re-pastes, retries an uncertain write, reuses stale proof or re-commits the durable boundary.
       if (!sent && native && tmux!.lastInputWasNotSent?.() === true
@@ -9894,10 +9897,9 @@ export class Daemon extends EventEmitter {
         continue;
       }
       if (!sent) {
-        this.logger.error({
-          phase,
-          tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure",
-        }, "tmux send-keys Enter failed during message delivery");
+        const details = { phase, tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure" };
+        if (native) this.logger.warn({ ...tmux?.getLastInputDiagnostic?.(), ...details, retryCount: positiveRefusals }, "Native delivery Enter gave up");
+        else this.logger.error(details, "tmux send-keys Enter failed during message delivery");
       }
       if (sent && native && current()) this.nativeEnterHold = null;
       return sent;
@@ -9912,13 +9914,15 @@ export class Daemon extends EventEmitter {
     const current = () => !!windowId && this.tmux === pane && this.nativePaneLifecycle === native && this.backend === backend
       && this.spawnGeneration === generation && this.launchFenceEpoch === fence && pane.getWindowId() === windowId
       && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    let retryCount = 0;
     const hold = (reason: string) => {
       if (current() && !this.nativeDeliveryHold()) this.nativeEnterHold = { key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence };
-      this.logger.warn({reason}, "Native delivery paste held by its safety check");
+      this.logger.warn({ ...pane.getLastInputDiagnostic?.(), reason, retryCount }, "Native delivery paste held by its safety check");
       return false;
     };
     const deadline = performance.now() + 2000;
     for (let attempt = 0; attempt < 5; attempt++) {
+      retryCount = attempt;
       if (!current()) return false;
       if (performance.now() >= deadline) return hold("output_changed");
       let screen: string | undefined;
@@ -9934,7 +9938,7 @@ export class Daemon extends EventEmitter {
       if (!current()) return false;
       if (performance.now() >= deadline) return hold("output_changed");
       let sent: boolean;
-      try { sent = await pane.pasteBuffer(text, {guard: current, proof: {kind: "composer", screen}}); }
+      try { sent = await pane.pasteBuffer(text, {guard: current, proof: {kind: "composer", screen, retryCount: attempt}}); }
       catch { return hold("unconfirmed"); }
       if (sent) return true; // Exactly one successful paste ends the loop, before any Enter.
       if (!current()) return false;

@@ -235,3 +235,35 @@ it('native paste dialog veto is independent of an ordinary composer that would o
  const f=await fixture(),daemon=await pasteDeliveryDaemon(f);daemon.backend.getRuntimeDialogs=()=>[{pattern:/Ask Codex/,description:'recognised runtime test card'}];const call=vi.spyOn(f.endpoint,'call');
  expect(await daemon.sendDeliveryPaste('must not write')).toBe(false);expect(call.mock.calls.some(([request])=>request.action==='input')).toBe(false);expect(f.write).not.toHaveBeenCalled();
 });
+
+it('logs every runner refusal with exact sequence/operation metadata and consecutive retry counts, without input text',async()=>{
+ const f=await fixture(),call=f.endpoint.call,log=vi.fn();f.port.setInputRefusalLogger(log);
+ f.endpoint.call=async request=>{if(request.action==='input')f.output('\x1b[?25l');return call(request);};
+ for(let retry=0;retry<2;retry++){
+  expect(await f.port.pasteBuffer('PRIVATE_PASTE_DIAGNOSTIC_CANARY')).toBe(false);
+  expect(f.port.lastInputWasNotSent()).toBe(true);
+  expect(f.port.getLastInputDiagnostic()).toMatchObject({retryCount:retry,action:'input',expectedSeq:expect.any(Number),observedSeq:expect.any(Number),operationId:expect.any(String),commandSequence:retry+1});
+  const d=f.port.getLastInputDiagnostic()!;expect(d.observedSeq).toBe(d.expectedSeq+1);
+ }
+ expect(log).toHaveBeenCalledTimes(2);expect(log.mock.calls[0][0].operationId).not.toBe(log.mock.calls[1][0].operationId);
+ expect(JSON.stringify(log.mock.calls)).not.toContain('PRIVATE_PASTE_DIAGNOSTIC_CANARY');
+ f.endpoint.call=call;expect(await f.port.pasteBuffer('successful')).toBe(true);
+ f.endpoint.call=async request=>{if(request.action==='input')f.output('\x1b[?25l');return call(request);};
+ expect(await f.port.pasteBuffer('new delivery')).toBe(false);expect(log.mock.lastCall?.[0].retryCount).toBe(0);
+});
+it('keeps an exact zero-input ACK even if its diagnostic logger throws, and respects the delivery retry count',async()=>{
+ const f=await fixture(),call=f.endpoint.call,log=vi.fn(()=>{throw Error('logger unavailable');});f.port.setInputRefusalLogger(log);
+ const screen=await f.port.capturePane();f.endpoint.call=async request=>{if(request.action==='key')f.output('\x1b[?25l');return call(request);};
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen,retryCount:3})).toBe(false);
+ expect(log).toHaveBeenCalledWith(expect.objectContaining({retryCount:3}));expect(f.port.lastInputWasNotSent()).toBe(true);
+ expect(f.port.getLastSendSpecialKeyError()).toBe('Pane changed after observation; input was not sent');expect(f.write).not.toHaveBeenCalled();
+});
+it('a lost ACK records the new operation with an unknown observed sequence, never a stale positive refusal',async()=>{
+ const f=await fixture(),call=f.endpoint.call,log=vi.fn();f.port.setInputRefusalLogger(log);
+ f.endpoint.call=async request=>{if(request.action==='input')f.output('\x1b[?25l');return call(request);};
+ expect(await f.port.pasteBuffer('first')).toBe(false);const first=f.port.getLastInputDiagnostic()!;
+ f.endpoint.call=async request=>{const result=await call(request);if(request.action==='input')throw Error('lost response');return result;};
+ expect(await f.port.pasteBuffer('second')).toBe(false);expect(f.port.lastInputWasNotSent()).toBe(false);expect(log).toHaveBeenCalledOnce();
+ expect(f.port.getLastInputDiagnostic()).toMatchObject({observedSeq:null,commandSequence:first.commandSequence+1});
+ expect(f.port.getLastInputDiagnostic()?.operationId).not.toBe(first.operationId);
+});

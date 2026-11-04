@@ -34,6 +34,9 @@ const hub=new RuntimeCoordinator(join(home,'hub'),{requestTimeoutMs:45000,handle
 fleet.runtimeHub=hub;setConfiguredRuntimeSwitches({remote_runtime:true,max_agents_per_machine:4});
 fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true,max_agents_per_machine:4},instances:{}};
 const toolCalls=[];
+// Observe the production metadata diagnostic, without changing input or retry decisions.
+const {Daemon}=await load('daemon'),logRefusal=Daemon.prototype.logNativeInputRefusal;receipt.inputDiagnostics=[];
+Daemon.prototype.logNativeInputRefusal=function(details){receipt.inputDiagnostics.push({instance:this.name,...details});return logRefusal.call(this,details);};
 const store=windowsAgentsFor(fleet,{get:()=>null,start(){throw Error('No exec fallback');},prepareWorkspace(){throw Error('No host workspace');}});
 fleet.readCliEnv=()=>{throw Error('No coordinator account/catalog probe');};
 fleet.localNativePaneEndpoint=()=>{throw Error('General proof requires the paired runtime');};
@@ -76,7 +79,7 @@ try{
   for(const skill of GENERAL_SKILL_NAMES)assert.equal(await readFile(join(workspace,skills,'skills',skill,'SKILL.md'),'utf8'),loadGeneralKnowledge(cli).files[skills+'/skills/'+skill+'/SKILL.md']);
   const before=createHash('sha256').update(await readFile(join(workspace,'.agend-general.json'))).digest('hex');
   const agent=await store.create({name,cli,cwd:publication.cwd,machineId:machine,sandbox:locationMode?'workspace-write':'read-only',model:cli==='codex'?model:'haiku'});store.bindInstance(agent.id,name);
-  const config={...nativeInstanceConfig(agent),general_topic:true,native_general_binding:bindingId,native_adapter:'pane',log_level:'silent',tool_progress:'standard',restart_policy:{max_retries:0,backoff:'linear',reset_after:60000,health_check_interval_ms:1000}};
+  const config={...nativeInstanceConfig(agent),general_topic:true,native_general_binding:bindingId,native_adapter:'pane',log_level:'warn',tool_progress:'standard',restart_policy:{max_retries:0,backoff:'linear',reset_after:60000,health_check_interval_ms:1000}};
   assert.equal(resolveToolSet(config,name),'general');fleet.fleetConfig.instances[name]=config;const row={name,agent,config,workspace,manifestHash:before};agents.push(row);
   phase='start-'+cli;process.stdout.write('phase:'+phase+'\n');
   if(!fleet.paneManager){const manager=await fleet.nativePanes(),invoke=manager.options.invoke.bind(manager.options);manager.options.invoke=async(daemon,input,...rest)=>{const result=await invoke(daemon,input,...rest);toolCalls.push({tool:input.tool,failed:!!result.error});return result;};}
@@ -151,7 +154,7 @@ try{
 }catch(error){receipt.failure={phase,kind:error.name,reason:String(error.message).slice(0,220)};}
 finally{
  receipt.toolCalls=toolCalls;receipt.replyStates=replies.map(r=>({provider:r.name.includes('codex')?'codex':'claude-code',state:r.text.split('_FLEET_OK_')[1]}));
- for(const row of agents){const daemon=fleet.daemons.get(row.name);try{const screen=await daemon.tmux.capturePane();const ds=[...(daemon.backend.getRuntimeDialogs?.()??[]),...(daemon.backend.getStartupDialogs?.()??[])];(receipt.finalScreens??=[]).push({provider:row.agent.cli,ready:daemon.backend.isDeliveryInputReadyPane?.(screen)??daemon.backend.getReadyPattern().test(screen),busy:daemon.backend.getBusyPattern?.()?.test(screen)??false,dialogs:ds.filter(d=>d.pattern.test(screen)&&(!d.isActive||d.isActive(screen))).map(d=>d.description)});}catch{}}
+ for(const row of agents){const daemon=fleet.daemons.get(row.name);try{const screen=await daemon.tmux.capturePane();const ds=[...(daemon.backend.getRuntimeDialogs?.()??[]),...(daemon.backend.getStartupDialogs?.()??[])];(receipt.finalScreens??=[]).push({provider:row.agent.cli,lastInput:daemon.tmux.getLastInputDiagnostic?.()??null,deliveryHold:!!daemon.nativeDeliveryHold(),ready:daemon.backend.isDeliveryInputReadyPane?.(screen)??daemon.backend.getReadyPattern().test(screen),busy:daemon.backend.getBusyPattern?.()?.test(screen)??false,dialogs:ds.filter(d=>d.pattern.test(screen)&&(!d.isActive||d.isActive(screen))).map(d=>d.description)});}catch{}}
  phase='cleanup';for(const row of [...agents].reverse())await fleet.stopInstance(row.name).catch(()=>{});
  const released=agents.every(row=>!store.get(row.agent.id).activeId);for(const client of fleet.instanceIpcClients.values())await client.close();fleet.memoryPressure?.stop();fleet.scheduler?.shutdown();
  if(released&&machine)await hub.shutdownPaneHosts().catch(()=>{});
