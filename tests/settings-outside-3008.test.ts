@@ -122,6 +122,23 @@ describe("#3008 ② Settings → Access & security → Connections from outside"
     await settle(10);
     expect(w.posts()).toEqual([["/ui/outside/switch", { on: true }], ["/ui/outside/remove", {}]]);
   });
+  it("#3035 review: the switch answers before the link is up — the card follows it opening, then its end, with no reload", async () => {
+    const { outsidePoll } = await import("/ui/js/settings-outside.js");
+    const saved = { ...outsidePoll };
+    outsidePoll.quickMs = 30; outsidePoll.slowMs = 60;
+    try {
+      const w = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
+      status = { ...base, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4), outside: true, link: { state: "starting", quick: true } };
+      await w.check(w.$("#outSwitch"), true);
+      expect([w.$("#outSwitch").checked, w.$("#outStarting") !== null, w.$("#outOpenAt")]).toEqual([true, true, null]);
+      status = { ...status, link: { state: "open", url: "https://late.trycloudflare.com/signin", quick: true } };
+      for (let n = 0; n < 40 && !w.$("#outOpenAt"); n++) await settle(4);
+      expect(w.$("#outOpenAt")?.textContent).toBe("Open at https://late.trycloudflare.com/signin. A quick link gets a new address each time it opens.");
+      status = { ...base, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4), outside: false, link: null, pausedForMs: 15 * 60_000 };   // its time ran out; a wait began
+      for (let n = 0; n < 60 && (w.$("#outSwitch").checked || !w.$("#outPaused")); n++) await settle(4);
+      expect([w.$("#outSwitch").checked, w.$("#outOpenAt"), w.$("#outPaused")?.textContent]).toEqual([false, null, "Too many wrong codes. Try again in 15 minutes."]);
+    } finally { Object.assign(outsidePoll, saved); }
+  });
   it("a wait in force says how long", async () => {
     const w = await open({ enrolled: true, enrolledAt: 1, pausedForMs: 2 * 3600_000 });
     expect(w.$("#outPaused").textContent).toBe("Too many wrong codes. Try again in 2 hours.");

@@ -5,7 +5,7 @@
 // Every change applies at once (an action, not a staged setting) and is this computer's only: elsewhere the card shows
 // the state, read-only. The server decides who may (GET /ui/outside's `here`) and refuses everything else regardless.
 // The words are the leader's (cid-alpha3-design, strings 1–13 and 17).
-import { html, useEffect, useState } from "/assets/app-html.js";
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
@@ -82,19 +82,36 @@ function Qr({ uri }) {
     <rect width=${shape.size} height=${shape.size} fill="#fff" /><path d=${shape.d} fill="#000" /></svg>`;
 }
 
+/**
+ * #3035 review: how often the card reads the state again while it is shown — quickly while the link is opening (the
+ * switch answers before the link is up), slowly otherwise (its lifetime ending, a wait starting or ending elsewhere).
+ */
+export const outsidePoll = { quickMs: 2000, slowMs: 15000 };
+
 export function OutsideCard() {
   const [s, setS] = useState(null), [enroll, setEnroll] = useState(null), [code, setCode] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
+  // Fences: an answer that arrives after the card is gone, or after a newer read began, is dropped; nor does a read
+  // land while an action is under way (the box shows the click until the action's own read).
+  const live = useRef({ mounted: true, seq: 0, busy: false });
   const load = async () => {
+    const seq = ++live.current.seq;
     let r = null;
     try { r = await api("/ui/outside"); } catch { r = null; }
+    if (!live.current.mounted || seq !== live.current.seq) return;
     setS(r && r.ok && r.body && typeof r.body === "object" ? r.body : null);
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { live.current.mounted = true; load(); return () => { live.current.mounted = false; }; }, []);
+  useEffect(() => {
+    if (!s || !s.webOnly) return undefined;
+    const opening = s.outside && (!s.link || s.link.state !== "open");
+    const timer = setTimeout(() => { if (!live.current.busy) load(); }, opening ? outsidePoll.quickMs : outsidePoll.slowMs);
+    return () => clearTimeout(timer);
+  }, [s]);
   if (!s || !s.webOnly) return null;
   const here = s.here === true;
   const act = async (fn) => {
-    setBusy(true); setMsg("");
-    try { await fn(); } finally { setBusy(false); load(); }
+    setBusy(true); setMsg(""); live.current.busy = true; live.current.seq++;      // a read under way is outdated now
+    try { await fn(); } finally { live.current.busy = false; if (live.current.mounted) { setBusy(false); load(); } }
   };
   const begin = () => act(async () => {
     const r = await api("/ui/outside/enroll", { method: "POST", body: "{}" });

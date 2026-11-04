@@ -2317,7 +2317,8 @@ export class Daemon extends EventEmitter {
     this.messageBus.setLogger(this.logger);
     // General is the dispatcher — it must stay warm to route messages, so it is
     // never auto-paused regardless of auto_pause_after.
-    const isGeneral = config.general_topic === true || name === "general";
+    // #3035 review: the one rule (an agent named general unticked — general_topic: false — is a worker).
+    const isGeneral = config.general_topic === true || generalByName(name, config);
     const autoPauseMinutes = isGeneral ? 0 : (typeof config.auto_pause_after === "number" ? config.auto_pause_after : 0); // default: disabled
     this.autoPauseController = new AutoPauseController(
       Math.max(0, autoPauseMinutes) * 60_000,
@@ -12796,7 +12797,7 @@ export class Daemon extends EventEmitter {
    */
   private whatsNewRoles(): WhatsNewAudience[] {
     if (this.runtimeIdentity?.kind === "classic") return ["classic"];
-    if (this.config.general_topic === true || this.name === "general") return ["general"];
+    if (this.config.general_topic === true || generalByName(this.name, this.config)) return ["general"];
     const set = resolveToolSet(this.config, this.name);
     return set === "coordinator" || set === "full" ? ["worker", "coordinator"] : ["worker"];
   }
