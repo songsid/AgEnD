@@ -18124,9 +18124,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // session only judges that verdict; it does not read the output for URLs or prompts.
     // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
     // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
+    const shell = (await loginShell()) ?? null;
+    if (!this.loginWindow.isCurrent(claim)) {
+      this.loginWindow.release(claim);
+      return t("login.web_shutting_down");
+    }
     const flow: LoginFlow = {
       backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install, (await loginShell()) ?? null),
+      command: unattendedInstallCommand(info.unattended ?? info.install, shell),
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };

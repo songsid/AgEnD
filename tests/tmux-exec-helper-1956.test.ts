@@ -16,6 +16,28 @@ import { chmodSync, closeSync, constants as fsConstants, existsSync, mkdirSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const probeHang = vi.hoisted(() => ({
+  wait: null as null | { promise: Promise<void>; release: () => void },
+  held: 0,
+}));
+vi.mock("../src/binary-probe.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../src/binary-probe.js")>();
+  return {
+    ...real,
+    spawnProbeCommand(command: string, args: string[]) {
+      const child = real.spawnProbeCommand(command, args);
+      if (!probeHang.wait) return child;
+      probeHang.held++;
+      return {
+        answer: probeHang.wait.promise.then(() => child.answer),
+        kill: () => child.kill(),
+        exited: child.exited,
+      };
+    },
+  };
+});
+
 import { ExecHelper, HELPER_SOURCE, type HelperExecOptions, type HelperExecResult } from "../src/tmux-exec-helper.js";
 
 let root: string, bin: string, log: string, helpers: ExecHelper[] = [];
@@ -37,7 +59,13 @@ esac
 `);
   chmodSync(join(bin, "tmux"), 0o755);
 });
-afterEach(() => { for (const h of helpers.splice(0)) h.stop(); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => {
+  probeHang.wait?.release();
+  probeHang.wait = null;
+  probeHang.held = 0;
+  for (const h of helpers.splice(0)) h.stop();
+  rmSync(root, { recursive: true, force: true });
+});
 const ran = () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean) : []);
 function helper(over: Partial<ConstructorParameters<typeof ExecHelper>[0]> = {}) {
   const direct = vi.fn((file: string, args: string[], _opts: HelperExecOptions) => Promise.resolve({ stdout: `direct:${file} ${args.join(" ")}`, stderr: "" }));
@@ -186,6 +214,29 @@ describe("a stalled fleet, a slow helper", () => {
     h.stop();
     expect((await call).stdout).toBe("slow");
     await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 3000 });
+  });
+  it("a Stop during a cache-miss PATH lookup goes direct once and leaves the running command to answer", async () => {
+    const { h, direct } = helper(); await h.start();
+    const slow = h.exec("tmux", [...SOCK, "slow", "0.7"], { env: env() });
+    await vi.waitFor(() => expect(ran()).toEqual(["slow 0.7"]));
+    const stdin = (h as any).proc.stdin as { write: (...args: unknown[]) => boolean };
+    const writes: string[] = [];
+    const origWrite = stdin.write.bind(stdin);
+    stdin.write = ((...args: unknown[]) => { writes.push(String(args[0])); return origWrite(...args); }) as typeof stdin.write;
+    let release!: () => void;
+    probeHang.wait = { promise: new Promise<void>(r => { release = r; }), release: () => release() };
+    const late = h.exec("tmux", [...SOCK, "send-keys", "Enter"], {
+      env: { ...env(), PATH: `${bin}:/no/such/dir:${process.env.PATH}` },
+    });
+    await vi.waitFor(() => expect(probeHang.held).toBeGreaterThan(0));
+    const stopped = h.stop();
+    probeHang.wait.release();
+    probeHang.wait = null;
+    expect((await slow).stdout).toBe("slow");
+    expect((await late).stdout).toBe("direct:tmux -L agend-test-1956 send-keys Enter");
+    expect(direct).toHaveBeenCalledOnce();
+    expect(writes).toEqual([]);
+    await stopped;
   });
   it("an error names the command as the direct call does (tmux …, not the helper's absolute path)", async () => {
     const { h } = helper(); await h.start();

@@ -274,17 +274,22 @@ export class ExecHelper {
     const goDirect = (): Promise<R> => (direct ? direct() : this.options.direct(file, args, opts) as unknown as Promise<R>);
     return (async () => {
       if (this.starting) await this.starting;
+      const proc = this.proc;
       const abs = this.usable() ? await this.absoluteFor(file, opts.env) : null;
       if (!abs) return goDirect();
+      // Stop/retire during the PATH lookup ends this helper's stdin. A write
+      // after that kills a draining helper and loses in-flight answers.
+      if (!this.usable() || this.proc !== proc) return goDirect();
       return new Promise<R>((resolve, reject) => {
+      if (!this.usable() || this.proc !== proc) { goDirect().then(resolve, reject); return; }
       const p: Pending = { id: this.nextId++, started: false, settled: false, file, abs, args, opts, resolve: resolve as (r: HelperExecResult) => void, reject, startTimer: null, answerTimer: null,
         direct: () => { goDirect().then(resolve, reject); } };
       this.pending.set(p.id, p);
       this.holdOpen();
       const request = { id: p.id, file: abs, args, timeout: opts.timeout ?? 0, maxBuffer: opts.maxBuffer ?? DEFAULT_MAX_BUFFER,
         env: opts.env ?? process.env, ...(opts.input !== undefined ? { input: opts.input } : {}) };
-      try { this.proc!.stdin!.write(JSON.stringify(request) + "\n"); }
-      catch { this.pending.delete(p.id); this.retire(this.proc!, "write_failed"); goDirect().then(resolve, reject); return; }
+      try { proc!.stdin!.write(JSON.stringify(request) + "\n"); }
+      catch { this.pending.delete(p.id); this.retire(proc, "write_failed"); goDirect().then(resolve, reject); return; }
       // The fleet's own loop may have been held (a GC, a long sync read, its own spawn) while the "started" sat in the
       // pipe: the timers phase runs before the poll that would read it, so look once that poll has run (setImmediate).
       p.startTimer = setTimeout(() => {
