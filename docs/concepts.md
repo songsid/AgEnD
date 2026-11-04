@@ -1,12 +1,9 @@
 # AgEnD concepts and definitions
 
 Draft. Each term states what the code on main does today, verified against the
-listed files. Anything inferred is marked. Role names follow the user's
-definitions (fleet decision 9af8d799, "Role definitions are the user's", user
-2026-11-04: this doc defines the roles and terms, approved by the user; a PR
-that changes what a role can do must quote the definition in its body, and
-reviewers check this). Where code and a decision disagree, see Mismatches at
-the end. Fleet decisions are scoped to the leader's project root and cannot be
+listed files. Anything inferred is marked. These definitions were approved by the project
+owner; behaviour that differs from them is a bug or needs a decision.
+Where code and a decision disagree, see Mismatches at the end. Fleet decisions are scoped to the leader's project root and cannot be
 opened by readers, so each citation carries its user-facing summary inline.
 
 ## fleet
