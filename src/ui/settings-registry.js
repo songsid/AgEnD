@@ -12,7 +12,7 @@ import { GUESTS_SETTINGS } from "./settings-guests.js";
 const L = (en, zh) => ({ en, "zh-TW": zh });
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
 const ROWS = [
-  ["general.location", "agent-defaults", "#general-location", L("Run General on", "General 執行位置"), null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"]],
+  ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
   // You · Preferences
   ["profile.name", "preferences", "#profile-name", "settings.profileTitle", null, ["name", "display name", "who agents see", "profile"], ["名字", "名稱", "顯示名稱", "個人資料"]],
   ["prefs.theme", "preferences", "#pref-theme", "app.theme", null, ["theme", "dark", "light", "dark mode", "colour scheme"], ["主題", "深色", "淺色", "外觀"]],
