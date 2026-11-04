@@ -8,7 +8,7 @@ import { join, resolve, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { sourceReceipt } from './source-receipt.mjs';
 
-const provider=process.argv[3]==='codex'?'codex':'claude-code',project=process.cwd(), compiled=resolve(process.argv[2]||'dist');
+const unbound=process.argv[4]==='unbound',provider=process.argv[3]==='codex'?'codex':'claude-code',project=process.cwd(), compiled=resolve(process.argv[2]||'dist');
 const load=name=>import(pathToFileURL(join(compiled,name)).href);
 const [{NativePaneManager},{RuntimePaneHost},{RuntimePaneStore},{WindowsAgents},{nativeInstanceConfig},
  {handleNativeInstanceRequest},{setConfiguredRuntimeSwitches},{setLocale}]=await Promise.all([
@@ -47,7 +47,7 @@ const html=`<!doctype html><html lang="en"><body><div id="app"></div><script typ
  window.refreshStatus=async()=>{state=await(await fetch('/status')).json();paint();};paint();
  </script></body></html>`;
 try{
- lifecycle=await manager.prepare(name,config,()=>{});await lifecycle.acquire(()=>{});
+ lifecycle=await manager.prepare(name,config,()=>{});if(unbound){assert.equal(provider,"codex");const intent=JSON.parse(await readFile(join(root,"native-panes",agent.id,"active.json"),"utf8"));store.reservePane(agent.id,intent.launch.launchId);await lifecycle.port.open();}else await lifecycle.acquire(()=>{});
  const pin=store.get(agent.id).threadId;await lifecycle.release('close');lifecycle=undefined;
  const launchId=JSON.parse(await readFile(join(root,'native-panes',agent.id,'active.json'),'utf8')).launch.launchId;
  // Before the upgrade the tab offers the old process-exit recovery.
@@ -82,6 +82,7 @@ try{
  // The already-open JS cannot bypass the new server policy. A real reload loads the new action.
  await page.reload();await page.getByRole('button',{name:'Start a new conversation',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Start a new conversation',exact:true}).count(),1);
+ if(!unbound){
  // The hold was real, but the runner can now read the conversation. A stale decision cannot discard it.
  await page.getByRole('button',{name:'Start a new conversation',exact:true}).click();proofState='saved';
  const recovered=page.waitForResponse(response=>response.url().endsWith('/new-conversation'));
@@ -91,18 +92,19 @@ try{
  assert.equal(store.get(agent.id).threadId,pin);assert.equal(store.get(agent.id).paneRecovery,undefined);assert.equal(actions,0);assert.equal(opens,1);
  await page.evaluate(()=>window.refreshStatus());await page.getByRole('button',{name:'Start instance',exact:true}).waitFor();
  assert.equal(await page.getByRole('button',{name:'Start a new conversation',exact:true}).count(),0);
+ }
  proofState='unknown';await assert.rejects(manager.prepare(name,config,()=>{}),error=>error.name==='NativePaneRecoveryError');
  await page.evaluate(()=>window.refreshStatus());await page.getByRole('button',{name:'Start a new conversation',exact:true}).click();
  const request=page.waitForRequest(request=>request.url().endsWith('/new-conversation'));
  const accepted=page.waitForResponse(response=>response.url().endsWith('/new-conversation'));
  await page.getByRole('dialog').getByRole('button',{name:'Start a new conversation',exact:true}).click();
- assert.deepEqual((await request).postDataJSON(),{confirmedNewConversation:true,launchId,sessionId:pin});
+ assert.deepEqual((await request).postDataJSON(),{confirmedNewConversation:true,launchId,sessionId:pin??null});
  assert.equal((await accepted).status(),200);assert.equal(actions,1);if(provider==='codex'){assert.equal(store.get(agent.id).threadId,pin);const intent=JSON.parse(await readFile(join(root,'native-panes',agent.id,'active.json'),'utf8'));assert.equal(intent.fresh.previous.sessionId,pin);assert.equal(intent.launch.sessionId,undefined);}else assert.notEqual(store.get(agent.id).threadId,pin);
  assert.equal(opens,1,'This smoke commits the explicit intent; it never launches a second inert pane');
  assert.deepEqual(errors,[]);
  const receipt={...sourceReceipt(),kind:'real-browser-stale-session-tab',provider,browser:await browser.version(),
   oldTabOpenedBeforeUpgrade:true,oldRecoveryRefused:true,pinUnchangedOnRefusal:true,
-  reloadShowsOneNewConversationAction:true,recoveredSavedSessionRefused:true,staleHoldClearedToStart:true,exactLaunchAndSessionConfirmed:true,adminIntentCommitted:true,
+  reloadShowsOneNewConversationAction:true,recoveredSavedSessionRefused:!unbound,staleHoldClearedToStart:!unbound,noUuidTarget:unbound,exactLaunchAndSessionConfirmed:true,adminIntentCommitted:true,
   noFleetOrAccountCalls:true};
  await writeFile(join(project,'.artifacts/stale-session-tab-receipt.json'),JSON.stringify(receipt,null,2)+'\n');
  process.stdout.write(JSON.stringify(receipt)+'\n');

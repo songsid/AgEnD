@@ -2,6 +2,7 @@
 import{mkdirSync,readFileSync,writeFileSync}from'node:fs';
 mkdirSync('.artifacts',{recursive:true});import{spawnSync}from'node:child_process';
 const proof='src/runtime-pane-transcript.ts',manager='src/native-pane-manager.ts',store='src/windows-agents.ts',db='src/runtime-pane-codex-index.ts';
+const daemon='src/daemon.ts',lifecycle='src/instance-lifecycle.ts',ui='src/ui/native-pane-recovery.js';
 const cases=[
  ['ignore-archive',proof,'await walk(join(roots.codex,"archived_sessions"),0,true);','', 'tests/runtime-pane-codex-session-proof.test.ts','archive cannot'],
  ['no-scan-bound',proof,'entries>16384','entries>65536','tests/runtime-pane-codex-session-proof.test.ts','partial walk'],
@@ -21,7 +22,12 @@ const cases=[
  ['partial-is-saved',proof,'proof.state==="ready"&&proof.complete&&await unchanged()','proof.state==="ready"&&await unchanged()','tests/runtime-pane-codex-session-proof.test.ts','partial cannot'],
  ['ignore-binary-id',db,"typeof(id) <> 'text' OR ",'','tests/runtime-pane-codex-session-proof.test.ts','binary ID hidden'],
  ['ignore-id-case',db,' COLLATE NOCASE','','tests/runtime-pane-codex-session-proof.test.ts','case-ambiguous'],
-];const originals=new Map([proof,manager,store,db].map(f=>[f,readFileSync(f,'utf8')])),results=[];
+ ['slot-daemon-needs-pin',daemon,'snapshot.state==="exited"\n','snapshot.state==="exited" && !!snapshot.sessionId\n','tests/native-pane-instance-lifecycle-2950.test.ts','a no-pin exited'],
+ ['slot-lifecycle-needs-pin',lifecycle,'||pin!==undefined&&profilePin!==undefined&&profilePin!==pin||','||!pin||pin!==undefined&&profilePin!==undefined&&profilePin!==pin||','tests/native-pane-instance-lifecycle-2950.test.ts','a no-pin exited'],
+ ['slot-prepare-skips-release',manager,'manifest=this.recordExit(file,manifest,manifest.exited);agent=this.options.store.get(id);','agent=this.options.store.get(id);','tests/native-pane-unwritten-codex-3000.test.ts','a positive first exit'],
+ ['slot-unknown-exit-admitted',daemon,'actual.state==="exited" && snapshot.state==="exited"','true','tests/native-pane-instance-lifecycle-2950.test.ts','a no-pin unknown'],
+ ['slot-null-target-disabled',ui,'busy || !recovery.launchId','busy || !recovery.launchId || !recovery.sessionId','tests/native-pane-session-ui-2984.test.ts','a positive no-UUID'],
+];const originals=new Map([proof,manager,store,db,daemon,lifecycle,ui].map(f=>[f,readFileSync(f,'utf8')])),results=[];
 writeFileSync('.artifacts/codex-mutation-originals.json',JSON.stringify(Object.fromEntries(originals)));
-try{for(const[name,file,from,to,test,pattern]of cases){const src=originals.get(file);if(!src.includes(from))throw Error('Missing mutation '+name);writeFileSync(file,name==='no-scan-bound'?src.replaceAll(from,to):src.replace(from,to));const r=spawnSync('npx',['vitest','run',test,'--maxWorkers=1','-t',pattern],{encoding:'utf8',timeout:25000});const out=(r.stdout??'')+(r.stderr??'');writeFileSync('.artifacts/mutation-codex-'+name+'.log',out);const caught=r.status!==0&&/AssertionError|expected| FAIL /.test(out)&&!/Transform failed/.test(out);results.push({name,caught,status:r.status});writeFileSync(file,src);if(!caught)throw Error('Uncaught '+name);}}
-finally{for(const[f,s]of originals)writeFileSync(f,s);writeFileSync('.artifacts/codex-session-mutations.json',JSON.stringify(results,null,2));}console.log(JSON.stringify(results));
+try{for(const[name,file,from,to,test,pattern]of cases.filter(row=>!process.argv.includes("--slot-only")||row[0].startsWith("slot-"))){const src=originals.get(file);if(!src.includes(from))throw Error('Missing mutation '+name);writeFileSync(file,name==='no-scan-bound'?src.replaceAll(from,to):src.replace(from,to));const r=spawnSync('npx',['vitest','run',test,'--maxWorkers=1','-t',pattern],{encoding:'utf8',timeout:25000});const out=(r.stdout??'')+(r.stderr??'');writeFileSync('.artifacts/mutation-codex-'+name+'.log',out);const caught=r.status!==0&&/AssertionError|expected| FAIL /.test(out)&&!/Transform failed/.test(out);results.push({name,caught,status:r.status});writeFileSync(file,src);if(!caught)throw Error('Uncaught '+name);}}
+finally{for(const[f,s]of originals)writeFileSync(f,s);writeFileSync(process.argv.includes('--slot-only')?'.artifacts/codex-slot-mutations.json':'.artifacts/codex-session-mutations.json',JSON.stringify(results,null,2));}console.log(JSON.stringify(results));

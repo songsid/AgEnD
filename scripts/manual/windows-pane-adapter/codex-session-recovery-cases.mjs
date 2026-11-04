@@ -28,3 +28,20 @@ export async function prepareUnwrittenCodex({fleet,store,row,coordinator,evidenc
  await fleet.startFreshNativePane(row.name,interruptedHold.launchId,interruptedHold.sessionId,()=>true);const final=remember();assert(final&&final!==held);
  evidence.codex={originalPin:original,firstFreshPin:first,finalPin:final,proof,automatic,interruptedBeforeProfileCommit:true,interruptedReattachedWithoutInput:true,needsYou:true,noAutomaticChain:true,staleDecisionRefused:true,sessionIds:[...ids]};
 }
+
+/** End an own no-turn pane before /status. A physical exit must free its slot without inventing a UUID. */
+export async function proveUnpinnedCodexExit({fleet,store,coordinator,cwd,model,nativeInstanceConfig,evidence,supplemental}){
+ const name='native-codex-unpinned-proof',agent=await store.create({name,cli:'codex',cwd,sandbox:'read-only',...(model?{model}:{})});store.bindInstance(agent.id,name);
+ const config={...nativeInstanceConfig(agent),native_adapter:'pane',log_level:'silent',restart_policy:{max_retries:0,backoff:'linear',reset_after:60000,health_check_interval_ms:1000}};
+ fleet.fleetConfig.instances[name]=config;supplemental.push({name,agent,config});let native;
+ try{
+  native=await fleet.nativePaneFor(name,config,()=>{});const file=join(coordinator,'native-panes',agent.id,'active.json'),intent=JSON.parse(await readFile(file,'utf8'));
+  store.reservePane(agent.id,intent.launch.launchId);await native.port.open();assert.equal(native.port.ownedSnapshot().sessionId,undefined);await native.release('close');native=undefined;
+  assert.equal(store.get(agent.id).activeId,undefined);assert.equal(store.get(agent.id).threadId,undefined);
+  for(let n=0;n<3;n++)await assert.rejects(fleet.startInstance(name,config,true),error=>error.name==='NativePaneRecoveryError'&&error.recovery.kind==='session-unconfirmed');
+  assert.equal(store.get(agent.id).activeId,undefined);assert.equal(store.get(agent.id).paneRecovery.sessionId,undefined);
+  await assert.rejects(fleet.startFreshNativePane(name,intent.launch.launchId,randomUUID(),()=>true));
+  await fleet.startFreshNativePane(name,intent.launch.launchId,null,()=>true);const pin=store.get(agent.id).threadId;assert(pin);assert.notEqual(pin,intent.launch.launchId);
+  evidence.codexNoPin={positiveExitReleasedSlot:true,noAutomaticResume:true,exactNullPinAdminAction:true,launchId:intent.launch.launchId,newPin:pin,sessionIds:[pin]};
+ }finally{await native?.release('close');await fleet.stopInstance(name);}
+}

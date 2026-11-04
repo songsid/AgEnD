@@ -36,3 +36,9 @@ it("a revoked page lease and guest page cannot start a fresh conversation",async
  expect(p.root.textContent).toBe("");
 });
 it("Codex unknown evidence names the correct provider and keeps the existing exact admin action",async()=>{const fetch=vi.fn(),lease={current:()=>true,fetch};await p.mount(h(Recovery,{name:"codex-native",inst:{native_adapter:"pane",native_recovery:{...first,provider:"codex"}},lease}));expect(p.root.textContent).toContain("Windows Codex's saved conversation");expect(p.root.textContent).not.toContain("Windows Claude");expect(buttons().filter(b=>b.textContent==="Start a new conversation")).toHaveLength(1);});
+
+it("a positive no-UUID exit offers the same admin action with an explicit null identity",async()=>{
+ const fetch=vi.fn(async()=>({ok:true,json:async()=>({})})),lease={current:()=>true,fetch};await p.mount(h(Recovery,{name:"native",inst:{native_adapter:"pane",native_recovery:{kind:"session-unconfirmed",provider:"codex",launchId:first.launchId}},lease}));
+ const action=buttons().find(b=>b.textContent==="Start a new conversation");expect(action.disabled).toBe(false);fire(action,"click");await settle(2);fire(buttons().filter(b=>b.textContent==="Start a new conversation").at(-1),"click");await settle(4);
+ expect(fetch).toHaveBeenCalledOnce();expect(JSON.parse((fetch.mock.calls[0] as any)[1].body)).toEqual({confirmedNewConversation:true,launchId:first.launchId,sessionId:null});
+});

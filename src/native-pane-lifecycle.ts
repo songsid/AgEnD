@@ -166,10 +166,10 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
       try { await this.codexIdentity(assertCurrent, opened.reattached); }
       catch(error) {
         assertCurrent();this.options.admit();
-        if(this.options.freshPrevious?.sessionId&&!this.port.ownedSnapshot()?.sessionId){
+        if(!this.port.ownedSnapshot()?.sessionId&&(this.options.freshPrevious||this.port.ownedSnapshot()?.state==="exited")){
           // End only this exact owned attempt before exposing an admin decision. Unknown close evidence keeps its slot.
           await this.release("close");
-          throw new NativePaneRecoveryError({kind:"session-unconfirmed",provider:"codex",launchId:this.options.launch.launchId,sessionId:this.options.freshPrevious.sessionId});
+          throw new NativePaneRecoveryError({kind:"session-unconfirmed",provider:"codex",launchId:this.options.launch.launchId,sessionId:this.options.freshPrevious?.sessionId});
         }
         throw error;
       }

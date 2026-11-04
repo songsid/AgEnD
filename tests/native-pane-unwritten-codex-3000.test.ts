@@ -3,9 +3,9 @@ import{afterEach,expect,it,vi}from"vitest";
 import{mkdtempSync,rmSync,readFileSync}from"node:fs";import{tmpdir}from"node:os";import{join}from"node:path";import{randomUUID}from"node:crypto";
 import{NativePaneManager,type NativePaneManagerOptions}from"../src/native-pane-manager.js";
 import{RuntimePaneHost}from"../src/runtime-pane-host.js";import{RuntimePaneStore}from"../src/runtime-pane-store.js";import{WindowsAgents}from"../src/windows-agents.js";
-import{nativeInstanceConfig}from"../src/native-instance-registry.js";import{NativePaneRecoveryError}from"../src/native-pane-recovery.js";
-const clean:Array<()=>unknown>=[];afterEach(async()=>{vi.restoreAllMocks();for(const close of clean.splice(0).reverse())await close();});
-async function fixture(){const root=mkdtempSync(join(tmpdir(),"codex-unwritten-"));clean.push(()=>rmSync(root,{recursive:true,force:true}));
+import{nativeInstanceConfig}from"../src/native-instance-registry.js";import{NativePaneRecoveryError}from"../src/native-pane-recovery.js";import{setConfiguredRuntimeSwitches}from"../src/runtime-switches.js";
+const clean:Array<()=>unknown>=[];afterEach(async()=>{setConfiguredRuntimeSwitches({});vi.restoreAllMocks();for(const close of clean.splice(0).reverse())await close();});
+async function fixture(unbound=false){const root=mkdtempSync(join(tmpdir(),"codex-unwritten-"));clean.push(()=>rmSync(root,{recursive:true,force:true}));
  const store=new WindowsAgents(root,{get:()=>null,start(){throw Error("No exec");}}as never),agent=await store.create({name:"Codex",cli:"codex",cwd:"C:\\scratch",sandbox:"read-only"});store.bindInstance(agent.id,"native");
  const config={...nativeInstanceConfig(agent),native_adapter:"pane"as const},proof=vi.fn(async():Promise<"saved"|"absent"|"unknown">=>"unknown"),notice=vi.fn();const processes:any[]=[];let failNext=false;
  const idle="› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n";
@@ -16,7 +16,7 @@ async function fixture(){const root=mkdtempSync(join(tmpdir(),"codex-unwritten-"
  const endpoint={machineId:"local",online:()=>true,epoch:()=>"one",version:()=>"Codex 0.165.0",call:vi.fn((r:any)=>host.request(r)),subscribe:()=>()=>{}};
  const options:NativePaneManagerOptions={home:root,store,config:()=>config,endpoint:async()=>endpoint,admit(){},instructions:()=>"Scoped",menu:()=>[{name:"reply"}],allowed:()=>false,published:()=>false,invoke:async()=>({result:null}),freshNotice:notice};
  const make=()=>new NativePaneManager(options),file=join(root,"native-panes",agent.id,"active.json"),manifest=()=>JSON.parse(readFileSync(file,"utf8"));
- const first=await make().prepare("native",config,()=>{});await first.acquire(()=>{});const old=first.port.ownedSnapshot()!,pin=store.get(agent.id).threadId!;expect(pin).not.toBe(old.launchId);await first.release("close");
+ const first=await make().prepare("native",config,()=>{});if(unbound){store.reservePane(agent.id,manifest().launch.launchId);await first.port.open();processes[0].kill();await first.release("detach");}else await first.acquire(()=>{});const old=first.port.ownedSnapshot()!,pin=store.get(agent.id).threadId!;if(!unbound){expect(pin).not.toBe(old.launchId);await first.release("close");}
  const prepare=async()=>{const n=await make().prepare("native",config,()=>{});clean.push(()=>n.release("detach"));return n;};
  return{failNext:()=>{failNext=true;},root,store,agent,config,proof,notice,spawn,processes,host,endpoint,options,make,prepare,manifest,pin,old,file};}
 it("unknown Codex proof holds before opening and keeps the old pin, receipt and Needs-you kind",async()=>{const f=await fixture(),before=readFileSync(f.file,"utf8");for(let n=0;n<3;n++)await expect(f.prepare()).rejects.toMatchObject({name:"NativePaneRecoveryError",recovery:{kind:"session-unconfirmed",provider:"codex"}});expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(readFileSync(f.file,"utf8")).toBe(before);});
@@ -46,4 +46,27 @@ it.each([true,false])("host loss during a fresh UUID binding (%s) recovers only 
  await manager.recover("native",f.config,launched.launch.launchId,true,()=>{});expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).toHaveBeenCalledTimes(2);
  if(known){expect(f.store.get(f.agent.id).threadId).toBe(launched.fresh.sessionId);expect(f.store.get(f.agent.id).paneRecovery).toBeUndefined();}
  else{expect(f.store.get(f.agent.id).threadId).toBe(f.pin);expect(f.store.get(f.agent.id).paneRecovery).toMatchObject({kind:"session-unconfirmed",provider:"codex",launchId:launched.launch.launchId,sessionId:f.pin});await manager.startFresh("native",f.config,launched.launch.launchId,f.pin,()=>{});expect(f.store.get(f.agent.id).threadId).toBe(f.pin);}
+});
+
+it("a positive first exit before any UUID releases its slot and the exact null-pin admin decision starts once",async()=>{
+ const f=await fixture(true);expect(f.store.get(f.agent.id).activeId).toBeTruthy();expect(f.store.get(f.agent.id).threadId).toBeUndefined();
+ for(let n=0;n<3;n++)await expect(f.prepare()).rejects.toMatchObject({recovery:{kind:"session-unconfirmed",provider:"codex",launchId:f.old.launchId}});
+ expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.store.get(f.agent.id).paneLaunchId).toBeUndefined();expect(f.spawn).toHaveBeenCalledOnce();expect(f.proof).not.toHaveBeenCalled();
+ await expect(f.make().startFresh("native",f.config,f.old.launchId,randomUUID(),()=>{})).rejects.toThrow("changed");
+ await f.make().startFresh("native",f.config,f.old.launchId,null,()=>{});expect(f.manifest().fresh.previous.sessionId).toBeUndefined();expect(f.manifest().fresh.automatic).toBe(false);
+ const next=await f.prepare();await next.acquire(()=>{});expect(f.store.get(f.agent.id).threadId).toBe(next.port.ownedSnapshot()?.sessionId);expect(f.store.get(f.agent.id).threadId).not.toBe(next.port.ownedSnapshot()?.launchId);expect(f.spawn).toHaveBeenCalledTimes(2);await next.release("close");
+});
+it("an unknown initial unpinned exit never releases its machine slot",async()=>{
+ const f=await fixture(true),call=f.endpoint.call.getMockImplementation()!;f.endpoint.call.mockImplementation(async req=>{const raw:any=await call(req);return req.action==="list"?{...raw,panes:raw.panes.map((p:any)=>({...p,state:"unknown",exitCode:undefined}))}:raw;});
+ await expect(f.prepare()).rejects.toMatchObject({recovery:{kind:"exit-unconfirmed"}});expect(f.store.get(f.agent.id).activeId).toBe(f.old.launchId);expect(f.spawn).toHaveBeenCalledOnce();
+});
+
+it("an initial Codex process exiting during startup is positively closed before exposing a no-pin hold",async()=>{
+ const f=await fixture(),agent=await f.store.create({name:"Early",cli:"codex",cwd:"C:\\early",sandbox:"read-only"});f.store.bindInstance(agent.id,"early");const config={...nativeInstanceConfig(agent),native_adapter:"pane" as const},manager=new NativePaneManager({...f.options,config:()=>config});f.failNext();const n=await manager.prepare("early",config,()=>{});
+ await expect(n.acquire(()=>{})).rejects.toMatchObject({recovery:{kind:"session-unconfirmed",provider:"codex"}});expect(f.store.get(agent.id).activeId).toBeUndefined();expect(f.store.get(agent.id).threadId).toBeUndefined();expect(f.store.get(agent.id).paneRecovery?.kind).toBe("session-unconfirmed");expect(f.spawn).toHaveBeenCalledTimes(2);
+});
+
+it("a positive no-pin exit admits another agent at a one-agent machine limit",async()=>{
+ const f=await fixture(true);setConfiguredRuntimeSwitches({max_agents_per_machine:1});const other=await f.store.create({name:"Other",cli:"codex",cwd:"C:\\other",sandbox:"read-only"}),launch=randomUUID();expect(()=>f.store.reservePane(other.id,launch)).toThrow("concurrent agent limit");
+ await expect(f.prepare()).rejects.toMatchObject({recovery:{kind:"session-unconfirmed"}});expect(()=>f.store.reservePane(other.id,launch)).not.toThrow();expect(f.store.get(other.id).activeId).toBe(launch);expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).toHaveBeenCalledOnce();
 });

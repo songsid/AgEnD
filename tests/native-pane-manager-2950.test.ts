@@ -134,8 +134,8 @@ it("a reboot cannot silently replace a previously launched Codex conversation wh
  f.store.reservePane(f.agent.id,manifest.launch.launchId);
  await f.endpoint.call({action:"open",operationId:randomUUID(),launch:manifest.launch});await native.release("detach");
  rebootHost(f,"b".repeat(64));
- await expect(new NativePaneManager(f.options).prepare("native",f.config,()=>{})).rejects.toThrow("exit is unconfirmed");
- expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).activeId).toBe(manifest.launch.launchId);expect(f.store.get(f.agent.id).threadId).toBeUndefined();expect(f.process.write).not.toHaveBeenCalled();
+ await expect(new NativePaneManager(f.options).prepare("native",f.config,()=>{})).rejects.toMatchObject({recovery:{kind:"session-unconfirmed",provider:"codex",launchId:manifest.launch.launchId}});
+ expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBeUndefined();expect(f.process.write).not.toHaveBeenCalled();
 });
 
 it("a positively observed unknown host pane cannot keep its old daemon tool authority",async()=>{

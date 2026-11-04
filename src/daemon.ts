@@ -2235,7 +2235,7 @@ export class Daemon extends EventEmitter {
   /** Positive native exit evidence only, fenced to this exact launch and Daemon owner. */
   nativePaneExitCurrent(snapshot: import("./runtime-pane-protocol.js").RuntimePaneSnapshot, owner: InteractionOwner): boolean {
     const actual=this.nativePaneLifecycle?.snapshot?.();
-    return !!actual && actual.state==="exited" && snapshot.state==="exited" && !!snapshot.sessionId
+    return !!actual && actual.state==="exited" && snapshot.state==="exited"
       && sameInteractionOwner(owner,this.interactionOwner()) && !this.runtimeMonitorsFrozen && !this.startupAborted
       && ["hostBootId","paneId","launchId","agentId","instance","sessionId","commandSequence","exitCode"].every(key=>actual[key as keyof typeof actual]===snapshot[key as keyof typeof snapshot])
       && this.tmux?.getWindowId()===snapshot.paneId;

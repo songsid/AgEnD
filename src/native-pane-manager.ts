@@ -52,7 +52,7 @@ export class NativePaneManager {
    if(value.exited){const exit=validateRuntimePaneSnapshot(value.exited);if(exit.state!=="exited"||exit.agentId!==value.launch.agentId||exit.instance!==value.launch.instance||exit.paneId!==value.launch.paneId||exit.launchId!==value.launch.launchId)throw Error("Native exit manifest scope differs");}
    if(value.fresh){const fresh=value.fresh,previous=validateRuntimePaneSnapshot(fresh.previous);
     if(Object.keys(fresh).some(key=>!["previous","automatic","announced","previousLaunch","sessionId","decisionLaunchId"].includes(key))||typeof fresh.automatic!=="boolean"||fresh.announced!==undefined&&fresh.announced!==true
-     ||!["claude-code","codex"].includes(value.launch.cli)||value.launch.sessionId!==undefined||previous.state!=="exited"||previous.noLaunch||!previous.sessionId
+     ||!["claude-code","codex"].includes(value.launch.cli)||value.launch.sessionId!==undefined||previous.state!=="exited"||previous.noLaunch||!previous.sessionId&&(value.launch.cli!=="codex"||fresh.automatic)
      ||previous.agentId!==value.launch.agentId||previous.instance!==value.launch.instance||previous.launchId===value.launch.launchId||previous.sessionId===value.launch.launchId)throw Error("Invalid fresh pane intent");
     if(value.launch.cli==="codex"){
      const old=validateRuntimePaneLaunch(fresh.previousLaunch);
@@ -74,9 +74,9 @@ export class NativePaneManager {
   return {version:1,machineId,configuration:this.configurationHash(agent,config),launch};
  }
  private freshIntent(file:string,manifest:Manifest,automatic:boolean,config:InstanceConfig,agent:WindowsAgent):Manifest{
-  const previous=manifest.exited?.sessionId?manifest.exited:manifest.launch.cli==="codex"?manifest.fresh?.previous:undefined;
-  const previousLaunch=manifest.exited?.sessionId?manifest.launch:manifest.fresh?.previousLaunch;
-  if(!previous?.sessionId||!manifest.exited||!["claude-code","codex"].includes(manifest.launch.cli))throw Error("A fresh conversation requires its previous positive exit");
+  const previous=manifest.exited?.sessionId?manifest.exited:manifest.launch.cli==="codex"?manifest.fresh?.previous??manifest.exited:undefined;
+  const previousLaunch=manifest.exited?.sessionId?manifest.launch:manifest.fresh?.previousLaunch??manifest.launch;
+  if(!previous||!previous.sessionId&&(agent.cli!=="codex"||automatic)||!manifest.exited||!["claude-code","codex"].includes(manifest.launch.cli))throw Error("A fresh conversation requires its previous positive exit");
   // The previous launch can have obsolete cold settings; only its positive exit is carried into this decision.
   const next:Manifest={...this.newManifest(manifest.launch.instance,config,agent,manifest.machineId,false),fresh:{previous,automatic,...(agent.cli==="codex"?{previousLaunch,decisionLaunchId:manifest.launch.launchId}: {})}};
   this.save(file,next);return next;
@@ -90,18 +90,22 @@ export class NativePaneManager {
   this.options.store.pinFreshCodexSession(launch.agentId,fresh.previous,observed);return next;
  }
  private recordExit(file:string,manifest:Manifest,snapshot:RuntimePaneSnapshot):Manifest{
-  if(manifest.launch.cli==="codex"&&manifest.fresh?.sessionId&&snapshot.sessionId!==manifest.fresh.sessionId)throw Error("Fresh Codex exit conversation differs");
+  if(manifest.launch.cli==="codex"&&manifest.fresh?.sessionId&&snapshot.sessionId!==undefined&&snapshot.sessionId!==manifest.fresh.sessionId)throw Error("Fresh Codex exit conversation differs");
   let next=manifest;
   if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
     &&this.options.store.get(snapshot.agentId).threadId!==snapshot.sessionId)next=this.bindFreshCodex(file,manifest,snapshot);
   next={...next,exited:snapshot};this.save(file,next);
+  const profile=this.options.store.get(snapshot.agentId);
+  if(!snapshot.noLaunch&&!profile.threadId&&snapshot.sessionId&&profile.activeId)this.options.store.pinPaneSession(snapshot.agentId,snapshot.launchId,snapshot.sessionId);
   if(this.options.store.get(snapshot.agentId).activeId){
-   if(next.launch.cli==="codex"&&next.fresh&&!snapshot.sessionId)this.options.store.releaseUnpinnedCodexPane(snapshot.agentId,next.fresh.previous,snapshot);
+   if(next.launch.cli==="codex"&&next.fresh?.previous.sessionId&&!snapshot.sessionId)this.options.store.releaseUnpinnedCodexPane(snapshot.agentId,next.fresh.previous,snapshot);
    else this.options.store.releasePane(snapshot.agentId,snapshot);
   }
+  if(!snapshot.noLaunch&&(!snapshot.sessionId||!profile.threadId))this.options.store.setPaneRecovery(snapshot.agentId,{kind:"session-unconfirmed",launchId:snapshot.launchId,sessionId:this.options.store.get(snapshot.agentId).threadId,...(next.launch.cli==="codex"?{provider:"codex" as const}:{})});
   return next;
  }
  private async sessionState(endpoint:NativeMachineEndpoint,previous:RuntimePaneSnapshot,supported:boolean):Promise<"absent"|"saved"|"unknown">{
+  if(!previous.sessionId)return "unknown"; // A positive process exit is independent of a provider conversation pin.
   if(!supported)throw new NativePaneRecoveryError({kind:"host-upgrade",launchId:previous.launchId}); // Use the existing host-upgrade recovery, never a conversation decision.
   const raw=await endpoint.call({action:"session-proof",paneId:previous.paneId,launchId:previous.launchId});
   try{const proof=validateRuntimePaneSessionProof(raw);if(runtimeJobDigest(proof.snapshot)===runtimeJobDigest(previous))return proof.state;}
@@ -160,11 +164,9 @@ export class NativePaneManager {
   }
   if(manifest?.exited){
    if(!manifest.exited.noLaunch&&!manifest.exited.sessionId){
-    if(agent.cli==="codex"&&manifest.fresh&&!manifest.fresh.sessionId){
-     if(agent.activeId)this.options.store.releaseUnpinnedCodexPane(id,manifest.fresh.previous,manifest.exited);
-     throw missingSession();
-    }
-    throw new NativePaneRecoveryError({kind:"exit-unconfirmed",launchId:manifest.launch.launchId,hostBootId:manifest.exited.hostBootId});
+    // The process is positively gone even if it exited before reporting its first provider UUID.
+    manifest=this.recordExit(file,manifest,manifest.exited);agent=this.options.store.get(id);
+    throw missingSession();
    }
    if(!manifest.exited.noLaunch&&manifest.exited.sessionId&&!agent.threadId&&agent.activeId){
     this.options.store.pinPaneSession(id,manifest.exited.launchId,manifest.exited.sessionId);agent=this.options.store.get(id);
@@ -235,19 +237,19 @@ export class NativePaneManager {
   return native;
  }
  /** Administrator chooses a new conversation for this exact stopped, held pin. No provider files are changed. */
- async startFresh(name:string,config:InstanceConfig,launchId:string,sessionId:string,assertCurrent:()=>void):Promise<void>{
+ async startFresh(name:string,config:InstanceConfig,launchId:string,sessionId:string|null,assertCurrent:()=>void):Promise<void>{
   config=structuredClone(config);
   const id=config.native_agent_id;if(!id||this.preparing.has(id)||this.bindings.has(id))throw Error("Native pane preparation still has an owner");
   this.preparing.add(id);try{
    assertCurrent();this.options.admit(name,config);const agent=this.options.store.get(id),file=join(this.directory(id),"active.json"),manifest=this.load(file);
    // A replay consumes its already-committed UUID only after the original decision's proof is rechecked.
-   const replay=!!(manifest?.fresh&&!manifest.exited&&!manifest.fresh.announced&&(manifest.fresh.decisionLaunchId??manifest.fresh.previous.launchId)===launchId&&manifest.fresh.previous.sessionId===sessionId);
-   const previous=replay?manifest!.fresh!.previous:manifest?.exited?.sessionId?manifest.exited:manifest?.fresh?.previous;
+   const replay=!!(manifest?.fresh&&!manifest.exited&&!manifest.fresh.announced&&(manifest.fresh.decisionLaunchId??manifest.fresh.previous.launchId)===launchId&&(manifest.fresh.previous.sessionId??null)===sessionId);
+   const previous=replay?manifest!.fresh!.previous:manifest?.exited?.sessionId?manifest.exited:manifest?.fresh?.previous??manifest?.exited;
    const targetLaunchId=replay?(manifest!.fresh!.decisionLaunchId??previous?.launchId):manifest?.exited?.launchId;
-   if(!manifest||!previous||!["claude-code","codex"].includes(manifest.launch.cli)||targetLaunchId!==launchId||previous.sessionId!==sessionId||agent.threadId!==sessionId
+   if(!manifest||!previous||!["claude-code","codex"].includes(manifest.launch.cli)||targetLaunchId!==launchId||(previous.sessionId??null)!==sessionId||(agent.threadId??null)!==sessionId
     ||agent.activeId||agent.paneLaunchId||agent.fleet_instance!==name||agent.cwd!==config.working_directory||agent.cli!==config.backend||agent.machineId!==config.machine_id
     ||manifest.machineId!==(agent.machineId??"local")||manifest.launch.instance!==name||manifest.launch.agentId!==id
-    ||agent.paneRecovery?.kind!=="session-unconfirmed"||agent.paneRecovery.launchId!==launchId||agent.paneRecovery.sessionId!==sessionId)throw Error(t("native_pane.changed"));
+    ||agent.paneRecovery?.kind!=="session-unconfirmed"||agent.paneRecovery.launchId!==launchId||(agent.paneRecovery.sessionId??null)!==sessionId)throw Error(t("native_pane.changed"));
    const unopened=()=>{if(!replay)return;try{lstatSync(join(this.directory(id),`${manifest.launch.launchId}.pane.json`));throw Error("Fresh pane launch outcome is unconfirmed");}
     catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;}};
    unopened();const endpoint=await this.options.endpoint(agent);assertCurrent();this.options.admit(name,config);

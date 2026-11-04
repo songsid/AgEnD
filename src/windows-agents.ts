@@ -128,7 +128,7 @@ export class WindowsAgents {
   /** The durable Codex fresh intent is committed first; only its exact observed launch may replace the old pin. */
   pinFreshCodexSession(id: string, rawPrevious: RuntimePaneSnapshot, rawObserved: RuntimePaneSnapshot): void {
     const previous=validateRuntimePaneSnapshot(rawPrevious),observed=validateRuntimePaneSnapshot(rawObserved),agent=this.find(id);
-    if(agent.cli!=="codex"||previous.state!=="exited"||previous.noLaunch||!previous.sessionId
+    if(agent.cli!=="codex"||previous.state!=="exited"||previous.noLaunch
       ||previous.agentId!==id||previous.instance!==agent.fleet_instance||observed.agentId!==id||observed.instance!==previous.instance
       ||!["running","exited"].includes(observed.state)||observed.noLaunch||!observed.sessionId||!validNativeSessionId("codex",observed.sessionId)
       ||observed.launchId===previous.launchId||observed.sessionId===previous.sessionId
@@ -149,7 +149,7 @@ export class WindowsAgents {
   releasePane(id: string, raw: RuntimePaneSnapshot): void {
     const snapshot = validateRuntimePaneSnapshot(raw), agent = this.find(id);
     if (snapshot.agentId !== id || snapshot.state !== "exited" || agent.activeId !== snapshot.launchId || agent.paneLaunchId !== snapshot.launchId
-      || agent.fleet_instance && agent.fleet_instance !== snapshot.instance || agent.threadId && snapshot.sessionId !== agent.threadId) throw Error("Windows pane exit identity is unconfirmed");
+      || agent.fleet_instance && agent.fleet_instance !== snapshot.instance || agent.threadId && snapshot.sessionId !== undefined && snapshot.sessionId !== agent.threadId) throw Error("Windows pane exit identity is unconfirmed");
     this.change(() => { delete agent.activeId; delete agent.paneLaunchId; });
   }
   bindInstance(id: string, name: string): void {

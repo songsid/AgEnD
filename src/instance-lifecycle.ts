@@ -1,3 +1,4 @@
+import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { NativePaneCrashBudget } from "./native-pane-crash-budget.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
@@ -969,16 +970,16 @@ export class InstanceLifecycle {
     this.cancelNativeRecovery(name);const pin=this.ctx.nativePanePinnedSession?.(name);if(pin){ensureInstanceDir(this.ctx.getInstanceDir(name));new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).reset(pin);}
   }
   private async nativePaneExited(name:string,daemon:Daemon,data:{name:string;snapshot:RuntimePaneSnapshot;owner:InteractionOwner}):Promise<void>{
-    const config=this.ctx.fleetConfig?.instances[name],epoch=this.epochOf(name),pin=data.snapshot.sessionId;
+    const config=this.ctx.fleetConfig?.instances[name],epoch=this.epochOf(name),pin=data.snapshot.sessionId,profilePin=this.ctx.nativePanePinnedSession?.(name)??undefined;
     if(!isNativePaneInstance(config)||data.name!==name||this.daemons.get(name)!==daemon||!daemon.nativePaneExitCurrent(data.snapshot,data.owner)
-      ||!pin||this.ctx.nativePanePinnedSession?.(name)!==pin||this.nativeExitOwners.has(name)||this.ctx.isPlannedRestart())return;
+      ||pin!==undefined&&profilePin!==undefined&&profilePin!==pin||this.nativeExitOwners.has(name)||this.ctx.isPlannedRestart())return;
     const token=Symbol(name),run={token,daemon,timer:undefined as ReturnType<typeof setTimeout>|undefined};this.nativeExitOwners.set(name,run);
     const current=()=>this.nativeExitOwners.get(name)===run&&this.daemons.get(name)===daemon&&this.epochOf(name)===epoch
-      &&this.ctx.fleetConfig?.instances[name]===config&&this.ctx.nativePanePinnedSession?.(name)===pin&&!this.isPaused(name)&&!this.ctx.isPlannedRestart()
+      &&this.ctx.fleetConfig?.instances[name]===config&&((this.ctx.nativePanePinnedSession?.(name)??undefined)===profilePin||profilePin===undefined&&pin!==undefined&&this.ctx.nativePanePinnedSession?.(name)===pin)&&!this.isPaused(name)&&!this.ctx.isPlannedRestart()
       &&(config.machine_id?remoteRuntimeEnabled():localWindowsCliEnabled());
     daemon.fenceDeliveryWritesForStop();
     try{
-      const decision=new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).observe(pin,data.snapshot.exitCode,config.restart_policy);
+      const decision=pin&&profilePin?new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).observe(pin,data.snapshot.exitCode,config.restart_policy):null;
       await this.runTransition(name,async()=>{
         if(!current())return;
         if(!await daemon.waitForDeliveryWritesToDrain(RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS)||!current())throw Error("Native input writes have not drained");
@@ -989,7 +990,11 @@ export class InstanceLifecycle {
         // Close finalizes the exact positive exit; no PID lookup or signal exists on this path.
         await daemon.stop({nativePane:"close"});
         if(!current())return;
-        this.ctx.eventLog?.insert(name,"native_pane_exited",{exitCode:data.snapshot.exitCode??null,sessionId:pin,decision:decision.kind,count:decision.count});
+        this.ctx.eventLog?.insert(name,"native_pane_exited",{exitCode:data.snapshot.exitCode??null,sessionId:pin,decision:decision?.kind??"no-conversation",count:decision?.count??0});
+        if(!decision){
+          this.ctx.holdNativePaneRecovery?.(name,new NativePaneRecoveryError({kind:"session-unconfirmed",launchId:data.snapshot.launchId,sessionId:this.ctx.nativePanePinnedSession?.(name)??undefined,...(config.backend==="codex"?{provider:"codex" as const}:{})}));
+          this.ctx.setTopicIcon(name,"red");return;
+        }
         if(decision.kind!=="retry"){
           if(decision.kind==="normal")await this.ctx.notifyNormalExit(name);
           else this.notifyIncident(name,decision.kind==="loop"?"crash_loop":"supervision_ended",t("inst.respawn_paused",name));
