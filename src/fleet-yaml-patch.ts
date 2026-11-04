@@ -10,6 +10,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { loadFleetConfig } from "./config.js";
 import { validateFleetConfig } from "./config-validator.js";
 import type { RawConfigPatch } from "./settings-api.js";
+import { changedOutside, detachForWrite } from "./yaml-shared-nodes.js";
 
 function sameLeaf(before: unknown, after: unknown): boolean {
   if (Object.is(before, after)) return true;
@@ -46,16 +47,24 @@ export function applyFleetYamlPatches(configPath: string, patches: RawConfigPatc
     throw new Error(`Refusing to overwrite invalid fleet.yaml: ${document.errors[0]!.message}`);
   }
 
+  // #2208: snapshot aliases expanded, unshare the place written, then refuse if
+  // anything else changed (a shared node the write still went through).
+  const fileBefore = document.toJS({ maxAliasCount: -1 });
+  const writes: Array<Array<string | number>> = [];
   let changed = false;
   for (const patch of patches) {
     if (patch.remove) {
       if (!document.hasIn(patch.path)) continue;
+      detachForWrite(document, patch.path);
+      writes.push([...patch.path]);
       document.deleteIn(patch.path);
       changed = true;
       continue;
     }
     const before = leafValue(document.getIn(patch.path, true));
     if (sameLeaf(before, patch.value)) continue;
+    detachForWrite(document, patch.path);
+    writes.push([...patch.path]);
     const currentNode = document.getIn(patch.path, true);
     if (isScalar(currentNode) && (patch.value === null || typeof patch.value !== "object")) {
       currentNode.value = patch.value;
@@ -67,6 +76,10 @@ export function applyFleetYamlPatches(configPath: string, patches: RawConfigPatc
     changed = true;
   }
   if (!changed) return;
+  const stray = changedOutside(fileBefore, document.toJS({ maxAliasCount: -1 }), writes);
+  if (stray) {
+    throw new Error(`Refusing to save fleet.yaml: this change would also change ${stray}, which shares a value with what it edits. Give each its own value in fleet.yaml.`);
+  }
 
   atomicWriteFileSync(configPath, String(document), {
     mode: statSync(configPath).mode,

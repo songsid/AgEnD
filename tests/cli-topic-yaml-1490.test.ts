@@ -9,6 +9,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { parseDocument } from "yaml";
+import { applyFleetYamlPatches } from "../src/fleet-yaml-patch.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -85,4 +87,67 @@ describe("#1490 row 54: topic bind/unbind is a raw YAML leaf edit", () => {
     expect(`${child.stderr}${child.stdout}`).toContain('Instance "no-such" not found');
     expect(readFileSync(join(dir, "fleet.yaml"), "utf8")).toBe(LEGACY_FLEET);
   }, 20_000);
+});
+
+const SHARED_HEADER = `channel:
+  type: telegram
+  group_id: 1
+  bot_token_env: T
+defaults:
+  backend: mock
+  locale: en
+instances:
+`;
+
+function sharedFile(body: string) {
+  const dir = mkdtempSync(join(tmpdir(), "agend-cli-topic-share-")); roots.push(dir);
+  const file = join(dir, "fleet.yaml");
+  writeFileSync(file, SHARED_HEADER + body);
+  return file;
+}
+
+function instancesOf(file: string) {
+  return (parseDocument(readFileSync(file, "utf8")).toJS() as { instances: Record<string, { topic_id?: unknown }> }).instances;
+}
+
+describe("#1490 row 54: a shared YAML node is unshared before the topic leaf write (#2208)", () => {
+  it("a shared topic_id scalar: bind w1 leaves w2 on the original topic", () => {
+    const file = sharedFile(`  w1:
+    working_directory: /tmp/w1
+    topic_id: &t 111
+  w2:
+    working_directory: /tmp/w2
+    topic_id: *t
+`);
+    applyFleetYamlPatches(file, [{ path: ["instances", "w1", "topic_id"], value: "999" }]);
+    const instances = instancesOf(file);
+    expect(String(instances.w1!.topic_id)).toBe("999");
+    expect(String(instances.w2!.topic_id)).toBe("111");
+  });
+
+  it("a whole-instance alias: bind w1 leaves w2 on the original topic with its own copy", () => {
+    const file = sharedFile(`  w1: &w
+    working_directory: /tmp/w1
+    topic_id: 111
+  w2: *w
+`);
+    applyFleetYamlPatches(file, [{ path: ["instances", "w1", "topic_id"], value: "999" }]);
+    const yamlText = readFileSync(file, "utf8");
+    const instances = instancesOf(file);
+    expect(String(instances.w1!.topic_id)).toBe("999");
+    expect(String(instances.w2!.topic_id)).toBe("111");
+    expect(yamlText).not.toMatch(/\*w\b/);
+  });
+
+  it("unbind through an anchored instance leaves the alias holder's topic_id", () => {
+    const file = sharedFile(`  w1: &w
+    working_directory: /tmp/w1
+    topic_id: 111
+  w2: *w
+`);
+    applyFleetYamlPatches(file, [{ path: ["instances", "w1", "topic_id"], remove: true }]);
+    const instances = instancesOf(file);
+    expect(instances.w1!.topic_id).toBeUndefined();
+    expect(String(instances.w2!.topic_id)).toBe("111");
+  });
 });
