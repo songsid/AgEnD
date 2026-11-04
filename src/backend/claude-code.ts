@@ -7,6 +7,9 @@ import { homedir } from "node:os";
 import { createHash } from "node:crypto";
 import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
+import { t } from "../locale.js";
+import { selectedGeneralHostSession } from "../general-binding.js";
+import { ResumeBlockedError } from "./types.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, promptCacheTtl, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 /** Mirror Claude Code's ~/.claude/projects key for a working directory. Exported for the detection-signal seam. */
@@ -1519,7 +1522,13 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     // own project transcript as the source of truth instead of the generic
     // marker alone. This also makes an empty/missing Classic workspace start
     // fresh rather than entering a resume crash loop.
-    if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
+    const retainedGeneral = selectedGeneralHostSession(this.instanceDir, config.instanceName, "claude-code", config.workingDirectory);
+    if (retainedGeneral) {
+      const path = join(claudeConfigDirFor(profileDir), "projects", claudeProjectKey(config.workingDirectory), `${retainedGeneral}.jsonl`);
+      try { if (!lstatSync(path).isFile()) throw Error("not regular"); }
+      catch { throw new ResumeBlockedError(t("general_location.start_failed"), t("general_location.start_failed")); }
+      cmd += ` --resume ${shellQuote(retainedGeneral)}`;
+    } else if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
       cmd += " --continue";
     }
 

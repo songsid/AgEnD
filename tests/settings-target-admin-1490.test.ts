@@ -265,3 +265,19 @@ describe.each(["telegram", "discord"] as const)("#1490 %s: real HTTP projection 
     await r.any.dispatchAdapterCallback({ ...data, userId: "a-F" }, "b", r.adapters[1]); expect(h.save).toHaveBeenCalledOnce();
   });
 });
+
+it("General's location card stays authorized across only its own synchronous lifecycle stop", async () => {
+  const r = rig("telegram", ["a"]), body = { name: "general_a", revision: "a".repeat(64), target: { location: "host" } };
+  const effect = prepareSettingsEffect("POST", "/api/settings/general-location", body,
+    { config: r.fm.fleetConfig, classic: {}, generalLocation: () => ({ summary: ["approved location confirmation"], connections: ["a"] }) });
+  const apply = vi.fn(async (_current: () => boolean, execution: any) => {
+    await execution.stopTarget("general_a", async () => { r.any.lifecycle.invalidate("general_a"); await Promise.resolve(); });
+    return execution.commit(() => "applied");
+  });
+  const view = r.store.propose({ session: "browser", key: "general-location", bytes: 1, source: "web_session", section: effect.diff!.section,
+    requestedBy: "browser", fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: [], authority: effect.diff!.authority,
+    current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+  const { entry, data } = await prompt(r); expect(entry.instanceName).toBe("general_a");
+  await r.any.dispatchAdapterCallback({ ...data, userId: "a-F" }, "a", r.adapters[0]);
+  expect(apply).toHaveBeenCalledOnce(); expect(r.store.get(view.id, "browser")!.state).toBe("applied");
+});

@@ -44,11 +44,13 @@ export interface NeedsYouItem {
    */
   lane?: string;
   configIssue?: ConfigIssue;
+  generalLocation?: true;
 }
 
 export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
+  | "general_windows_offline" | "general_location_hold"
   | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback";                                 // task
@@ -84,6 +86,7 @@ export interface InstanceInput {
   signIn?: { backend: string; profile?: string } | null;
   /** #2822: on a usage-limit hold (no known reset time): the model, and since when. */
   usageHold?: { model: string; since: number } | null;
+  generalLocation?: { key: string; detail: string; since: number; offline: boolean } | null;
   paneRecovery?: { key: string; detail: string; since: number } | null;
   nativeDeliveryHold?: { key: string; since: number } | null;
 }
@@ -171,7 +174,9 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   for (const inst of inputs.instances) {
     if (inst.nativeDeliveryHold && !inputs.deliveries.some(d => d.target === inst.name && d.state === "uncertain")) items.push({id:`native-delivery:${inst.name}:${inst.nativeDeliveryHold.key}`,type:"instance",instance:inst.name,
       reason:"delivery_uncertain",detail:"",since:inst.nativeDeliveryHold.since});
-    if (inst.paneRecovery) items.push({id:`pane:${inst.name}:${inst.paneRecovery.key}`,type:"instance",instance:inst.name,
+    if (inst.generalLocation) items.push({ id: `general:${inst.name}:${inst.generalLocation.key}`, type: "instance", instance: inst.name,
+      reason: inst.generalLocation.offline ? "general_windows_offline" : "general_location_hold", detail: inst.generalLocation.detail, since: inst.generalLocation.since, generalLocation: true });
+    if (inst.paneRecovery && !inst.generalLocation) items.push({id:`pane:${inst.name}:${inst.paneRecovery.key}`,type:"instance",instance:inst.name,
       reason:"native_pane_hold",detail:oneLine(inst.paneRecovery.detail),since:inst.paneRecovery.since});
     // §3.2 awaiting_input — folded into an interactive-assist prompt only when it was raised for this same wait.
     if (inst.state === "awaiting_input" && inst.interaction) {
@@ -197,7 +202,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       items.push({ id: `usage:${inst.name}:${inst.usageHold.since}`, type: "instance", instance: inst.name, reason: "usage_limit",
         detail: inst.usageHold.model, since: inst.usageHold.since });
     }
-    if (inst.crashedAt != null) {
+    if (inst.crashedAt != null && !inst.generalLocation) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });
     }
   }

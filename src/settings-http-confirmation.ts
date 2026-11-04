@@ -18,7 +18,8 @@ export interface SettingsBaseline extends SettingsEffectContext { fingerprint: s
  * #2170: the requester's own confirmation — a web-verified session whose account is an admin of exactly the change's
  * effect owners. `current()` is asked again at execution (store.decide); `done` hears the outcome (General's notice).
  */
-export interface SettingsSelfConfirmation { label: string; current(): boolean; done?(view: SettingsPendingView): void | Promise<void> }
+export interface SettingsSelfConfirmation { label: string; current(): boolean; done?(view: SettingsPendingView): void | Promise<void>;
+  followStop?(name: string, begin: () => Promise<unknown>): Promise<void> }
 export type SettingsRequestHandler = (req: IncomingMessage, res: ServerResponse, url: URL) => boolean;
 function json(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.headersSent) return;
@@ -71,6 +72,7 @@ export class SettingsHttpConfirmation {
     if (path === "/api/settings/fleet/appearance" && gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
     // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
     if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (path === "/api/settings/general-location" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
     void this.prepare(req, res, url, next).catch(err => json(res, err instanceof SettingsConfirmationError ? err.status : 409,
       { error: err instanceof SettingsConfirmationError ? err.code : "settings_confirmation_unavailable" }));
     return true;

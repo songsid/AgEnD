@@ -5,7 +5,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { GENERAL_KNOWLEDGE_FILES, GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
-import { validateGeneralWorkspaceRequest, type GeneralWorkspaceRequest, type GeneralWorkspaceReceipt } from "./runtime-general-protocol.js";
+import { GeneralManagedFileError, validateGeneralWorkspaceRequest, type GeneralWorkspaceRequest, type GeneralWorkspaceReceipt } from "./runtime-general-protocol.js";
 
 const hash = (text: string): string => createHash("sha256").update(text).digest("hex");
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === "ENOENT";
@@ -84,14 +84,19 @@ export class RuntimeGeneralWorkspace {
     return raw;
   }
   private existing(cwd: string, name: string): string | null {
-    try { return hash(text(child(cwd, name), 128 * 1024)); } catch (error) { if (missing(error)) return null; throw error; }
+    try { return hash(text(child(cwd, name), 128 * 1024)); } catch (error) {
+      if (missing(error)) return null;
+      throw new GeneralManagedFileError(name, "General managed file cannot be verified");
+    }
   }
   verify(raw: GeneralWorkspaceRequest, expectedCwd?: string): GeneralWorkspaceReceipt {
     const request = validateGeneralWorkspaceRequest(raw), cwd = this.path(request, false), pack = loadGeneralKnowledge(request.cli, this.moduleDirectory);
     if (request.packHash !== pack.hash || expectedCwd !== undefined && resolve(expectedCwd).toLowerCase() !== resolve(cwd).toLowerCase()) throw Error("General workspace pack or directory differs");
     const manifest = this.manifest(cwd, request);
-    if (!manifest || manifest.previous || manifest.packHash !== pack.hash || JSON.stringify(manifest.files) !== JSON.stringify(Object.fromEntries(Object.entries(pack.files).map(([name, value]) => [name, hash(value)])))
-      || Object.entries(pack.files).some(([name, value]) => this.existing(cwd, name) !== hash(value))) throw Error("General workspace publication is incomplete or changed");
+    if (!manifest || manifest.previous || manifest.packHash !== pack.hash || JSON.stringify(manifest.files) !== JSON.stringify(Object.fromEntries(Object.entries(pack.files).map(([name, value]) => [name, hash(value)])))) throw new GeneralManagedFileError(".agend-general.json");
+    for (const [name, value] of Object.entries(pack.files)) {
+      if (this.existing(cwd, name) !== hash(value)) throw new GeneralManagedFileError(name);
+    }
     return { version: 1, bindingId: request.bindingId, instance: request.instance, cli: request.cli, packHash: pack.hash, cwd };
   }
   prepare(raw: GeneralWorkspaceRequest, current: () => boolean, mayWrite: (cwd: string) => boolean): GeneralWorkspaceReceipt {
@@ -106,7 +111,7 @@ export class RuntimeGeneralWorkspace {
     const old: Record<string, string> = {};
     for (const name of known) {
       const digest = this.existing(cwd, name);
-      if (digest !== null && digest !== previous?.files[name] && digest !== previous?.previous?.[name]) throw Error("General workspace file is not an unchanged owned copy");
+      if (digest !== null && digest !== previous?.files[name] && digest !== previous?.previous?.[name]) throw new GeneralManagedFileError(name, "General workspace file is not an unchanged owned copy");
       if (digest !== null) old[name] = digest;
     }
     // Before any content write, retain both possible hashes so an interrupted update never adopts unknown bytes.
@@ -116,12 +121,12 @@ export class RuntimeGeneralWorkspace {
     for (const [name, value] of Object.entries(pack.files)) {
       if (!current()) throw Error("General workspace lease expired");
       const digest = this.existing(cwd, name);
-      if (digest !== null && digest !== next[name] && digest !== old[name]) throw Error("General workspace changed during publication");
+      if (digest !== null && digest !== next[name] && digest !== old[name]) throw new GeneralManagedFileError(name, "General workspace changed during publication");
       const file = child(cwd, name, true); if (digest !== next[name]) atomicWriteFileSync(file, value, { mode: 0o600 });
     }
     for (const name of Object.keys(old)) if (!Object.hasOwn(next, name)) {
       if (!current()) throw Error("General workspace lease expired"); const digest = this.existing(cwd, name);
-      if (digest !== null && digest !== old[name]) throw Error("Retired General skill changed");
+      if (digest !== null && digest !== old[name]) throw new GeneralManagedFileError(name, "Retired General skill changed");
       if (digest !== null) unlinkSync(child(cwd, name));
     }
     const { previous: _old, ...committed } = pending; save(committed); return this.verify(request);

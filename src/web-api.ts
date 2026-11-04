@@ -408,6 +408,7 @@ export interface WebApiContext {
   /** #2305: `copies`, the copies' own message ids, so a reaction to the web message is put on them too. */
   webMessageInChannel?(instance: string, messageId: string, copies?: readonly import("./web-reactions.js").WebEchoCopy[]): void;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
+  generalLocationDeliveryHold?(instanceName: string): string | null;
   deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
   deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
   getUiStatus(): unknown;
@@ -3500,6 +3501,15 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
           claim = seen;
           break;
         }
+      }
+      const locationHold = ctx.generalLocationDeliveryHold?.(instance);
+      if (locationHold) {
+        const messageId = newWebMessageId(), ts = new Date().toISOString();
+        // Settle this client ID as answered. A Retry after reconnect must never queue its old input.
+        acceptedId = messageId;
+        ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: typed, ts, messageId, ...(person.bound ? { from: person.voterKey } : {}), ...(clientId ? { clientId } : {}) });
+        ctx.emitSseEvent("message", { instance, role: "status", sender: "AgEnD", text: locationHold, ts, messageId: newWebMessageId() });
+        json(res, 200, { sent: true, messageId, serviceResponse: true }); return;
       }
       let files: UploadEntry[] = [];
       if (attachments.length > 0) {

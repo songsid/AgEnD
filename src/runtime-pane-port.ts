@@ -7,7 +7,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
 import { PANE_EDIT_KEYS, validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneOpenResult, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
-import type { Pane, PaneHost, PaneInputProof, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
+import type { Pane, PaneHost, PaneInputProof, PaneInputDiagnostic, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 import { validateRuntimeTranscriptReference, validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 export interface PaneEndpoint {
@@ -27,6 +27,11 @@ export class RuntimePanePort implements Pane {
   private lastObservation: RuntimePaneSnapshot | undefined;
   private inputCapture: RuntimePaneCapture | undefined;
   private inputNotSent = false;
+  private inputDiagnostic: PaneInputDiagnostic | null = null;
+  private consecutiveRefusals = 0;
+  private refusalLogger?: (details: PaneInputDiagnostic) => void;
+  setInputRefusalLogger(log: (details: PaneInputDiagnostic) => void): void { this.refusalLogger = log; }
+  getLastInputDiagnostic(): PaneInputDiagnostic | null { return this.inputDiagnostic ? { ...this.inputDiagnostic } : null; }
   constructor(private endpoint: PaneEndpoint, private file: string, launch: RuntimePaneLaunch, private inputIsComposer: (screen: string) => boolean = () => false) {
     this.record = { version: 1, machineId: endpoint.machineId, launch, openId: randomUUID() };
     try {
@@ -178,9 +183,24 @@ export class RuntimePanePort implements Pane {
         if (!("operationId" in request) || !("sequence" in request) || !("paneId" in request)) throw Error("Expected pane mutation");
         this.record.pending = { action: "reconcile", paneId: request.paneId, launchId: request.launchId,
           operationId: request.operationId, sequence: request.sequence, digest: runtimeJobDigest(request) }; this.save();
+        if (request.action === "input" || request.action === "key" || request.action === "edit") {
+          this.inputDiagnostic = { expectedSeq: request.expectedSeq, observedSeq: null, operationId: request.operationId,
+            commandSequence: request.sequence, action: request.action, retryCount: proof?.retryCount ?? this.consecutiveRefusals };
+        }
         const snapshot = this.accept(await this.endpoint.call(request));
         this.record.snapshot = snapshot; delete this.record.pending; this.save(); this.error = null;
-        if (snapshot.inputRefused) { this.inputNotSent = true; this.error = "Pane changed after observation; input was not sent"; return false; }
+        if (this.inputDiagnostic?.operationId === request.operationId) this.inputDiagnostic.observedSeq = snapshot.seq;
+        if (snapshot.inputRefused) {
+          this.inputNotSent = true; this.error = "Pane changed after observation; input was not sent";
+          if (request.action === "input" || request.action === "key" || request.action === "edit") {
+            this.inputDiagnostic = { expectedSeq: request.expectedSeq, observedSeq: snapshot.seq, operationId: request.operationId,
+              commandSequence: request.sequence, action: request.action, retryCount: proof?.retryCount ?? this.consecutiveRefusals };
+            this.consecutiveRefusals++;
+            try { this.refusalLogger?.({ ...this.inputDiagnostic }); } catch { /* Diagnostics never change a positive zero-input ACK. */ }
+          }
+          return false;
+        }
+        this.consecutiveRefusals = 0;
         return true;
       } catch { this.error = "Pane input outcome is unconfirmed; reconnect and inspect before retrying"; return false; }
     });

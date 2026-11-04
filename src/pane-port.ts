@@ -3,12 +3,15 @@ export interface PaneSize { columns: number; rows: number }
 export type PaneKey = "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q";
 /** Internal only, never a runtime wire field: delivery means the daemon checked its backend's runtime dialogs;
  * composer callers and explicit identity-bound human card answers retain their separate policies. */
-export interface PaneInputProof { kind: "composer" | "delivery" | "dialog"; screen: string }
+export interface PaneInputProof { kind: "composer" | "delivery" | "dialog"; screen: string; retryCount?: number }
+/** Metadata only: never includes pasted text, screen contents or credentials. */
+export interface PaneInputDiagnostic { expectedSeq: number; observedSeq: number | null; operationId: string; commandSequence: number; action: "input" | "key" | "edit"; retryCount: number }
 export interface PaneStatus { alive: boolean; exitCode?: number; pid?: number }
 export interface PaneOutputEvent { paneId: string; windowId?: string; at: number }
 export type PaneOutputEventName = `output:${string}`;
 
 export interface Pane {
+  getLastInputDiagnostic?(): PaneInputDiagnostic | null;
   createWindow(command: string, cwd: string, windowName?: string): Promise<string>;
   respawnWindow(command: string, cwd: string): Promise<void>;
   killWindow(): Promise<void>;

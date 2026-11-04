@@ -27,6 +27,8 @@ import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAu
 import { quickLinkEffective } from "./authority/web-authority.js";
 import { parseNativeInstanceCreate, nativePaneTopicTarget } from "./native-instance-input.js";
 import { parseRuntimesSettingsBody } from "./runtime-switches.js";
+import { parseGeneralSwitchInput } from "./general-binding.js";
+import { settingsFingerprint } from "./settings-transaction.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -36,8 +38,10 @@ export interface SettingsSecretProof {
 export interface SettingsEffectContext {
   config: FleetConfig | null; classic: Record<string, any>;
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
+  generalLocation?(input: unknown): { summary: string[]; connections: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && path === "/api/settings/general-location") return true;
   if (method === "POST" && path === "/api/settings/public-tunnel-token/apply") return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
   return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
@@ -62,6 +66,13 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
+  if (path === "/api/settings/general-location") {
+    if (method !== "POST" || !cfg || !context.generalLocation) throw new SettingsConfirmationError(400, "general_location_unavailable");
+    const input = parseGeneralSwitchInput(body), preview = context.generalLocation(input);
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, input]), summary: preview.summary,
+      affectedConnections: [], authority: { connections: preview.connections, primaryGeneral: true, unknown: false } } };
+  }
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);
     const proof = context.proof?.(kind, target, String(payload.verification_id ?? ""), binding, key);

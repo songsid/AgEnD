@@ -23,6 +23,19 @@ export function detectLocale(fleetConfig?: { defaults?: { locale?: string } }): 
 }
 
 const enMessages = {
+  "general_location.offline": "General’s Windows PC is offline. AgEnD is still running here. Reconnect that PC, or switch General back to this host in Settings. Pending or uncertain requests will not be sent again automatically.",
+  "general_location.offline_short": "General’s Windows PC is offline. AgEnD is still running here. Reconnect that PC, or switch General back to this host in Settings.",
+  "general_location.offline_title": "General’s Windows PC is offline",
+  "general_location.label": "Run General on",
+  "general_location.host": "This AgEnD host",
+  "general_location.windows": "Paired Windows PC",
+  "general_location.confirm_windows": "Run General on {0}? Its current process must stop first. The chat stays here. The host conversation is kept; Windows uses its own conversation. Pending or uncertain input will not be sent to the other conversation.",
+  "general_location.confirm_host": "Run General on this host again? The Windows process must stop first. Its conversation is kept. General resumes this host’s saved conversation, or starts one if this host has none.",
+  "general_location.exit_unconfirmed": "General was not switched: the previous process has not been confirmed stopped. Reconnect its PC or use the existing stopped-process recovery, then try again. No replacement was started.",
+  "general_location.complete": "General now runs on {0}. Its previous conversation is kept.",
+  "general_location.start_failed": "General’s location was saved, but it could not start. Check Needs you and choose Start or switch back. Its previous conversation is kept; no input was replayed.",
+  "general_location.history": "Host and Windows conversations stay separate. Switching does not copy or merge their history.",
+  "general_location.input_not_replayed": "Pending or uncertain input will not be sent to the other conversation.",
   "native_pane.session_unconfirmed": "Windows Claude's saved conversation could not be checked. This agent is stopped; an administrator can start a new conversation.",
   "native_pane.refresh_for_session": "This agent needs a new-conversation decision. Refresh this page to choose Start a new conversation.",
   "native_pane.saved_available": "The saved conversation is available again. Choose Start to resume it.",
@@ -310,6 +323,8 @@ const enMessages = {
     "config_history.history_invalid": "stored copy no longer valid",
 
     "login.browser_cleanup_failed": "Sign-in cleanup could not be confirmed. Close the AgEnD-owned login process and restart AgEnD before retrying.",
+    "needs.reason.general_windows_offline": "General’s Windows PC is offline",
+    "needs.reason.general_location_hold": "Run General on",
     "needs.reason.native_pane_hold": "Windows agent needs attention",
     "needs.reason.crashed": "Crashed",
     "needs.reason.delivery_uncertain": "Could not confirm delivery",
@@ -1531,6 +1546,19 @@ const enMessages = {
 } as const;
 
 const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
+  "general_location.offline": "General 所在的 Windows 電腦已離線。AgEnD 仍在這台主機運作。請重新連線那台電腦，或到設定把 General 切回這台主機。待處理或結果不明的請求不會自動重送。",
+  "general_location.offline_short": "General 所在的 Windows 電腦已離線。AgEnD 仍在這台主機運作。請重新連線那台電腦，或到設定把 General 切回這台主機。",
+  "general_location.offline_title": "General 所在的 Windows 電腦已離線",
+  "general_location.label": "General 執行位置",
+  "general_location.host": "這台 AgEnD 主機",
+  "general_location.windows": "已配對的 Windows 電腦",
+  "general_location.confirm_windows": "要讓 General 在 {0} 執行嗎？必須先停止目前的程序。聊天位置不變。主機上的對話會保留，Windows 使用自己的對話。待處理或結果不明的輸入不會送到另一段對話。",
+  "general_location.confirm_host": "要讓 General 回到這台主機執行嗎？必須先停止 Windows 程序，其對話會保留。General 會繼續這台主機儲存的對話；若主機沒有既有對話，才開啟新對話。",
+  "general_location.exit_unconfirmed": "General 尚未切換：還無法確認前一個程序已停止。請重新連線那台電腦，或完成現有的程序停止復原，再重試。沒有啟動替代程序。",
+  "general_location.complete": "General 現在於 {0} 執行。先前的對話已保留。",
+  "general_location.start_failed": "General 的執行位置已儲存，但未能啟動。請查看「等你處理」，選擇啟動或切回原位置。先前的對話已保留，沒有重送輸入。",
+  "general_location.history": "主機與 Windows 各自保留對話，切換時不會複製或合併對話紀錄。",
+  "general_location.input_not_replayed": "待處理或結果不明的輸入不會送到另一段對話。",
   "native_pane.session_unconfirmed": "無法確認 Windows Claude 已儲存的對話。這個代理已停止，管理員可以開始新對話。",
   "native_pane.refresh_for_session": "這個代理需要由你決定是否開始新對話。請重新整理頁面，再按「開始新對話」。",
   "native_pane.saved_available": "已儲存的對話現在可以使用了。請選擇「啟動」繼續原對話。",
@@ -1816,6 +1844,8 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "config_history.history_invalid": "儲存的副本已不再有效",
 
     "login.browser_cleanup_failed": "無法確認登入程序已關閉。請先關閉 AgEnD 的登入程序，重新啟動 AgEnD 後再試。",
+    "needs.reason.general_windows_offline": "General 所在的 Windows 電腦已離線",
+    "needs.reason.general_location_hold": "General 執行位置",
     "needs.reason.native_pane_hold": "Windows 代理需要處理",
     "needs.reason.crashed": "已崩潰",
     "needs.reason.delivery_uncertain": "無法確認是否送達",

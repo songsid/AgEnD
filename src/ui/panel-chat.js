@@ -1,4 +1,5 @@
 import { NativePaneRecovery } from "./native-pane-recovery.js";
+import { GeneralLocation } from "./general-location.js";
 // #1408 step 1: the chat panel. Behind the session gate (/ui/js/), loaded by the app with a dynamic import in "full"
 // mode only. boot() runs once per page (the chat store must hear the stream from the first frame); <ChatPanel> mounts
 // for /ui and /ui/chat/<name>.
@@ -365,6 +366,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
         ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}
         <${ChatAmbient} name=${name} surface=${effectSurface} part="layer" />
         <${AmbientMotionNote} name=${name} />
+        ${inst.general_topic ? html`<${GeneralLocation} name=${name} attentionOnly=${true} />` : null}
         <${NativePaneRecovery} name=${name} inst=${inst} lease=${lease} />
         ${inst.native_blocked ? html`<div class="windows-agent-blocked" role="alert"><p>${t("chat.nativeBlocked")}</p><button type="button" class="btn" disabled=${recovering} onClick=${recoverNative}>${t("chat.nativeRecover")}</button></div>` : null}
         <${Thread} name=${name} label=${inst.runtime === "windows" ? inst.display_name || name : name} th=${thread} />

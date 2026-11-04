@@ -145,3 +145,9 @@ it("a positively observed unknown host pane cannot keep its old daemon tool auth
  await expect(f.manager.handle("local",{op:"pane-mcp",owner:f.owner(),helperId:randomUUID(),method:"tools/call",callId:"e".repeat(64),params:{name:"reply",arguments:{text:"never sent"}}},()=>true)).rejects.toThrow("no longer current");
  expect(f.invoke).not.toHaveBeenCalled();await native.release("detach");
 });
+it('wires a lower tool failure to its bound daemon metadata logger',async()=>{
+ const f=await fixture(),failed=vi.fn();f.options.invoke=async()=>({result:null,error:'Fleet outbound timed out',errorCode:'ETIMEDOUT'});
+ const native=await f.manager.prepare('native',f.config,()=>{});native.bindDaemon({paneToolResponseWritten:vi.fn(),logNativeToolFailure:failed}as never);await native.acquire(()=>{});f.publish();
+ const response=await f.manager.handle('local',{op:'pane-mcp',owner:f.owner(),helperId:randomUUID(),method:'tools/call',callId:'e'.repeat(64),params:{name:'reply',arguments:{text:'inert'}}},()=>true)as any;
+ expect(response.result.isError).toBe(true);expect(failed).toHaveBeenCalledExactlyOnceWith({tool:'reply',operationId:expect.any(String),reason:'Fleet outbound timed out',code:'ETIMEDOUT'});await native.release('close');
+});

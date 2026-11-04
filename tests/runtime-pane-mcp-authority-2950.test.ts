@@ -66,3 +66,18 @@ it('presence expires monotonically and unknown or foreign transports never prove
  await expect(f.call({...presence,owner:{...f.owner,launchId:randomUUID()}})).rejects.toThrow('owner');expect(f.lease.serving()).toBe(false);await f.call(presence);expect(f.lease.serving()).toBe(true);
  vi.spyOn(performance,'now').mockReturnValue(performance.now()+15000);expect(f.lease.serving()).toBe(false);f.lease.close();expect(f.lease.serving()).toBe(false);
 });
+
+it('preserves the redacted lower failure reason/code in the tool result and one metadata log without persisting it',async()=>{
+ const f=rig(),failed=vi.fn();f.authority.toolFailed=failed;f.authority.invoke=vi.fn(async()=>({result:null,error:'Fleet outbound timed out after 30s; token=PRIVATE_TOKEN_CANARY; content=PRIVATE_REPLY_CANARY',errorCode:'ETIMEDOUT'}));
+ const first=await f.call()as any,detail=first.result.structuredContent.error;
+ expect(first.result.isError).toBe(true);expect(first.result.content[0].text).toContain('Fleet outbound timed out after 30s');expect(first.result.content[0].text).toContain('ETIMEDOUT');
+ expect(detail).toMatchObject({reason:expect.stringContaining('Fleet outbound timed out after 30s'),code:'ETIMEDOUT',operationId:expect.any(String)});
+ expect(failed).toHaveBeenCalledExactlyOnceWith({tool:'reply',...detail});expect(JSON.stringify(first)).not.toMatch(/PRIVATE_TOKEN_CANARY|PRIVATE_REPLY_CANARY|PRIVATE_PROMPT/);
+ expect(readFileSync(f.file,'utf8')).not.toMatch(/PRIVATE_|timed out|ETIMEDOUT/);
+ expect(await f.call()).toEqual(first);expect(f.authority.invoke).toHaveBeenCalledOnce();expect(failed).toHaveBeenCalledOnce();
+});
+it.each([undefined,-32001])('keeps an absent or numeric code %s without inventing an error or changing the outcome when logging fails',async code=>{
+ const f=rig();f.authority.invoke=async()=>({result:null,error:'No active chat context',...(code===undefined?{}:{errorCode:code})});f.authority.toolFailed=()=>{throw Error('logger offline');};
+ const response=await f.call()as any;expect(response.result).toMatchObject({isError:true,structuredContent:{error:{reason:'No active chat context',code:code??null}}});
+ expect(response.result.content[0].text).not.toContain('Tool outcome is unconfirmed');
+});

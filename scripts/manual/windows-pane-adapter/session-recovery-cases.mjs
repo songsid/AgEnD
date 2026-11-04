@@ -37,7 +37,7 @@ export async function prepareUnwrittenClaude({ fleet, store, row, coordinator, e
   evidence.staleDecisionRefused = true;
 }
 
-export async function deliverStates({ fleet, row, replies, until, resumed = false }) {
+export async function deliverStates({ fleet, row, replies, until, resumed = false, independentStates = false }) {
   const expected = 'NATIVE_' + (row.agent.cli === 'codex' ? 'CODEX' : 'CLAUDE') + '_FLEET_OK';
   const count = () => replies.filter(reply => reply.name === row.name).length;
   const before = count(), daemon = fleet.daemons.get(row.name);
@@ -46,7 +46,9 @@ export async function deliverStates({ fleet, row, replies, until, resumed = fals
     const canary=expected+'_'+suffix.toUpperCase().replaceAll('-','_');
     const accepted = await fleet.deliverToInstance(row.name, {
       type: 'fleet_inbound',
-      content: suffix === 'idle'
+      content: suffix === 'idle' && independentStates
+        ? `Idle acceptance: use the AgEnD reply tool once with exactly ${canary}. Do not run commands or edit files. Then finish.`
+        : suffix === 'idle'
         ? `Idle acceptance: first write a 600-word story in the terminal only. Then use the AgEnD reply tool once with exactly ${canary}. Do not send the story to chat or use the reply tool for it. Do not run commands or edit files.`
         : `Acceptance ${suffix}: finish the preceding request's pending reply first if it is still pending, without duplicating an already sent reply. Then use the AgEnD reply tool once with exactly ${canary}. Do not run commands or edit files. Then finish.`,
       meta: { source: 'user', adapter_id: 'private-acceptance', chat_id: 'private-chat', thread_id: row.name,
@@ -56,6 +58,12 @@ export async function deliverStates({ fleet, row, replies, until, resumed = fals
   };
   await deliver(resumed ? 'just-resumed' : 'idle');
   if (!resumed) {
+    if (independentStates) {
+      await until(() => replies.filter(reply => reply.name === row.name).slice(before).some(reply => reply.text === expected + '_IDLE'), 'independent idle reply ' + row.agent.cli, 180000);
+      await until(() => daemon.nativePauseReady(), 'settled independent idle ' + row.agent.cli, 45000);
+      assert(await fleet.deliverToInstance(row.name, { type: 'fleet_inbound', content: 'Acceptance setup only: write a 600-word story in the terminal. Do not call the reply tool for this setup. Do not run commands or edit files.',
+        meta: { source: 'system', from_instance: 'agend-system', requires_reply: 'false', message_id: randomUUID() } }));
+    }
     // Observe genuine work before the terminal-only response finishes. A provider may stop immediately after its
     // reply tool, so an after-reply continuation is not a reliable busy precondition. Both distinct canaries below
     // still have to arrive exactly once; the second request does not contain the first request's canary.

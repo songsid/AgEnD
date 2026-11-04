@@ -1,7 +1,7 @@
 /** Real paired Windows General/Fleet/Daemon/MCP, own scratch only. Signed-in test approval required. */
 import assert from 'node:assert/strict';
 import {createServer} from 'node:http';
-import {once} from 'node:events';
+import {once,EventEmitter} from 'node:events';
 import {spawn,execFileSync} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {mkdir,mkdtemp,readFile,writeFile,cp,rm} from 'node:fs/promises';
@@ -10,6 +10,7 @@ import {pathToFileURL} from 'node:url';
 import {randomUUID,createHash} from 'node:crypto';
 import {sourceReceipt,codeBundleReceipt} from '../windows-pane-adapter/source-receipt.mjs';
 import {deliverStates} from '../windows-pane-adapter/session-recovery-cases.mjs';
+const locationMode=process.argv.includes('--location');
 const source=sourceReceipt();assert(source.sourceTrackedClean,'Commit the source before acceptance');
 const compiled=resolve('dist'),bundle=resolve('.artifacts/runtime-bundle'),tag=randomUUID().slice(0,8);
 const root='/mnt/c/Users/changhansung/agend-adapter-proto/general-'+tag,nativeRoot='C:\\Users\\changhansung\\agend-adapter-proto\\general-'+tag;
@@ -20,19 +21,24 @@ const load=name=>import(pathToFileURL(join(compiled,name+'.js')).href);
 const [{FleetManager},{RuntimeCoordinator},{windowsAgentsFor},{nativeInstanceConfig},{setConfiguredRuntimeSwitches},{TmuxManager},{getTmuxSocketName},{resolveToolSet},{loadGeneralKnowledge},{GENERAL_SKILL_NAMES}]=await Promise.all([
  ...['fleet-manager','runtime-coordinator','windows-agents','native-instance-registry','runtime-switches','tmux-manager','paths','tool-permissions','runtime-general-workspace','general-role'].map(load)]);
 assert(getTmuxSocketName()&&getTmuxSocketName()!=='agend');TmuxManager.setSocketName(getTmuxSocketName());
-for(const method of ['ensureSession','createWindow','respawnWindow','killWindow','killWindowConfirmed','getPanePid'])TmuxManager.prototype[method]=()=>{throw Error('Forbidden coordinator tmux: '+method);};
+if(!locationMode)for(const method of ['ensureSession','createWindow','respawnWindow','killWindow','killWindowConfirmed','getPanePid'])TmuxManager.prototype[method]=()=>{throw Error('Forbidden coordinator tmux: '+method);};
 const fleet=new FleetManager(home),agents=[],replies=[],progress=[],proofs=new Set(),guards=new Set(),messages=[];
 const {Scheduler,DEFAULT_SCHEDULER_CONFIG}=await load('scheduler/index');
 fleet.scheduler=new Scheduler(join(home,'scheduler.db'),()=>{throw Error('No scheduled actions');},DEFAULT_SCHEDULER_CONFIG,()=>false); // Own empty DB; no init, timers or jobs.
 const actualOutbound=fleet.handleOutboundFromInstance.bind(fleet);
-let runner,reader,closed=false,phase='setup',passed=false,cleanup=false,machine,model;
+let runner,reader,closed=false,phase='setup',passed=false,cleanup=false,machine,model,upgradePaused=false;
 const receipt={...source,...await codeBundleReceipt(bundle),kind:'paired-General-native',scratchCwd:nativeRoot,states:{},archived:[]};
 const until=async(check,label,timeout=120000)=>{const end=performance.now()+timeout;while(!await check()){
- assert(!messages.some(m=>m.failed),'Scratch runner failed');assert(!closed,'Scratch runner closed');assert(performance.now()<end,'Deadline: '+label);await new Promise(done=>setTimeout(done,200));}};
+ assert(!receipt.toolFailureDiagnostics?.some(row=>row.tool==='reply'),'Native reply failure captured; stop acceptance');assert(!messages.some(m=>m.failed),'Scratch runner failed');assert(!closed,'Scratch runner closed');assert(performance.now()<end,'Deadline: '+label);await new Promise(done=>setTimeout(done,200));}};
 const hub=new RuntimeCoordinator(join(home,'hub'),{requestTimeoutMs:45000,handlePaneMcp:async(machineId,body,current)=>(await fleet.nativePanes()).handle(machineId,body,current)});
 fleet.runtimeHub=hub;setConfiguredRuntimeSwitches({remote_runtime:true,max_agents_per_machine:4});
 fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true,max_agents_per_machine:4},instances:{}};
 const toolCalls=[];
+// Observe the production metadata diagnostic, without changing input or retry decisions.
+const {Daemon}=await load('daemon'),logRefusal=Daemon.prototype.logNativeInputRefusal;receipt.inputDiagnostics=[];
+Daemon.prototype.logNativeInputRefusal=function(details){receipt.inputDiagnostics.push({instance:this.name,...details});return logRefusal.call(this,details);};
+const logToolFailure=Daemon.prototype.logNativeToolFailure;receipt.toolFailureDiagnostics=[];
+Daemon.prototype.logNativeToolFailure=function(details){receipt.toolFailureDiagnostics.push({instance:this.name,...details});return logToolFailure.call(this,details);};
 const store=windowsAgentsFor(fleet,{get:()=>null,start(){throw Error('No exec fallback');},prepareWorkspace(){throw Error('No host workspace');}});
 fleet.readCliEnv=()=>{throw Error('No coordinator account/catalog probe');};
 fleet.localNativePaneEndpoint=()=>{throw Error('General proof requires the paired runtime');};
@@ -44,7 +50,7 @@ fleet.handleOutboundFromInstance=async(name,message)=>{
  replies.push({name,text});fleet.instanceIpcClients.get(name).send({type:'fleet_outbound_response',fleetRequestId:message.fleetRequestId,result:{messageId:'scratch-'+randomUUID()}});
 };
 const server=createServer((req,res)=>{if(req.url==='/scratch-ready'){res.end('ok');return;}if(!hub.handlePublicRequest(req,res,new URL(req.url,'http://localhost'))){res.writeHead(404);res.end();}});
-server.on('upgrade',(req,socket,head)=>{if(!hub.handleUpgrade(req,socket,head))socket.destroy();});server.listen(0,'127.0.0.1');await once(server,'listening');
+server.on('upgrade',(req,socket,head)=>{if(upgradePaused||!hub.handleUpgrade(req,socket,head))socket.destroy();});server.listen(0,'127.0.0.1');await once(server,'listening');
 let node;
 try{
  await mkdir(root);await cp(bundle,join(root,'bundle'),{recursive:true});await cp('scripts/manual/general-windows/runner.mjs',join(root,'runner.mjs'));
@@ -74,15 +80,15 @@ try{
   assert((await readFile(join(workspace,file),'utf8')).includes('# Fleet Coordinator'));
   for(const skill of GENERAL_SKILL_NAMES)assert.equal(await readFile(join(workspace,skills,'skills',skill,'SKILL.md'),'utf8'),loadGeneralKnowledge(cli).files[skills+'/skills/'+skill+'/SKILL.md']);
   const before=createHash('sha256').update(await readFile(join(workspace,'.agend-general.json'))).digest('hex');
-  const agent=await store.create({name,cli,cwd:publication.cwd,machineId:machine,sandbox:'read-only',model:cli==='codex'?model:'haiku'});store.bindInstance(agent.id,name);
-  const config={...nativeInstanceConfig(agent),general_topic:true,native_general_binding:bindingId,native_adapter:'pane',log_level:'silent',tool_progress:'standard',restart_policy:{max_retries:0,backoff:'linear',reset_after:60000,health_check_interval_ms:1000}};
+  const agent=await store.create({name,cli,cwd:publication.cwd,machineId:machine,sandbox:locationMode?'workspace-write':'read-only',model:cli==='codex'?model:'haiku'});store.bindInstance(agent.id,name);
+  const config={...nativeInstanceConfig(agent),general_topic:true,native_general_binding:bindingId,native_adapter:'pane',log_level:'warn',tool_progress:'standard',restart_policy:{max_retries:0,backoff:'linear',reset_after:60000,health_check_interval_ms:1000}};
   assert.equal(resolveToolSet(config,name),'general');fleet.fleetConfig.instances[name]=config;const row={name,agent,config,workspace,manifestHash:before};agents.push(row);
   phase='start-'+cli;process.stdout.write('phase:'+phase+'\n');
   if(!fleet.paneManager){const manager=await fleet.nativePanes(),invoke=manager.options.invoke.bind(manager.options);manager.options.invoke=async(daemon,input,...rest)=>{const result=await invoke(daemon,input,...rest);toolCalls.push({tool:input.tool,failed:!!result.error});return result;};}
   await fleet.startInstance(name,config,true);const daemon=fleet.daemons.get(name);assert(daemon?.usesNativePane());
   for(const method of ['arm','settleToolAttempt']){const original=daemon.turnReplyGuard[method].bind(daemon.turnReplyGuard);daemon.turnReplyGuard[method]=(...args)=>{const value=original(...args);if(daemon.turnReplyGuard.snapshot()?.completionDelivered)guards.add(name);return value;};}
   daemon.on('mcp_tool_response_written',()=>{proofs.add(name);if(daemon.turnReplyGuard.snapshot()?.completionDelivered)guards.add(name);});
-  await deliverStates({fleet,row,replies,until});receipt.states[cli]={idle:true,busy:true};
+  await deliverStates({fleet,row,replies,until,independentStates:locationMode});receipt.states[cli]={idle:true,busy:true};
  }
  phase='reattach';const identities=agents.map(row=>({name:row.name,pin:store.get(row.agent.id).threadId,snapshot:fleet.daemons.get(row.name).nativePaneLifecycle.snapshot()}));
  for(const row of agents){const daemon=fleet.daemons.get(row.name);await daemon.stop({nativePane:'detach'});fleet.daemons.delete(row.name);await fleet.instanceIpcClients.get(row.name)?.close();fleet.instanceIpcClients.delete(row.name);}
@@ -95,11 +101,62 @@ try{
  for(const row of agents){phase='resume-'+row.agent.cli;process.stdout.write('phase:'+phase+'\n');const old=store.get(row.agent.id).threadId;await fleet.stopInstance(row.name);assert(!store.get(row.agent.id).activeId);await fleet.startInstance(row.name,row.config,true);
   assert.equal(store.get(row.agent.id).threadId,old);await deliverStates({fleet,row,replies,until,resumed:true});receipt.states[row.agent.cli].justResumed=true;}
  assert.equal(replies.length,6);assert(agents.every(row=>guards.has(row.name)&&proofs.has(row.name)));assert(progress.some(p=>p.present));
- receipt.replies=6;receipt.replyGuard=true;receipt.progress=true;receipt.fixedSkills=GENERAL_SKILL_NAMES.length;receipt.noExecFallback=true;receipt.noCoordinatorTmux=true;passed=true;
-}catch(error){receipt.failure={phase,kind:error.name,reason:String(error.message).slice(0,220)};}
+ receipt.replies=6;receipt.replyGuard=true;receipt.progress=true;receipt.fixedSkills=GENERAL_SKILL_NAMES.length;receipt.noExecFallback=true;receipt.noCoordinatorTmux=!locationMode;
+ if(locationMode){
+  const [{GeneralBindings,generalBindingRevision},{SettingsExecution},{SettingsRouteLifetime},{getTmuxSession,DEFAULT_INSTANCE_CONFIG}]=await Promise.all(['general-binding','settings-transaction','settings-route-lifetime','config'].map(load));
+  const bindingStore=new GeneralBindings(home),session=getTmuxSession(),socket=getTmuxSocketName(),hosts=new Map();
+  assert(socket&&socket!=='agend');
+  // Linux provider execution is an inert sleep pane. The production switch/exit barrier and Windows path are real.
+  execFileSync('tmux',['-L',socket,'new-session','-d','-s',session,'-n','control','exec sleep 900']);
+  const controlPid=Number(execFileSync('tmux',['-L',socket,'display-message','-p','-t',session+':control','#{pane_pid}'],{encoding:'utf8'}).trim());
+  const realStart=fleet.startInstance.bind(fleet),realStop=fleet.stopInstance.bind(fleet),oldSave=fleet.saveFleetConfig.bind(fleet),oldConnect=fleet.connectIpcToInstance.bind(fleet),oldStatus=fleet.getUiStatus.bind(fleet);
+  fleet.configPath=join(home,'fleet.yaml');fleet.getUiStatus=()=>({instances:[]});fleet.connectIpcToInstance=(name)=>hosts.has(name)?Promise.resolve():oldConnect(name);
+  fleet.saveFleetConfig=()=>{ /* isolated controller fixture: the Settings writer is separately covered by integration tests */ };
+  fleet.startInstance=async(name,cfg,...rest)=>{
+   if(cfg.runtime==='windows')return realStart(name,cfg,...rest);
+   assert(cfg.general_topic&&cfg.working_directory===join(home,'host-'+cfg.backend));
+   const windowId=execFileSync('tmux',['-L',socket,'new-window','-d','-P','-F','#{window_id}','-t',session,'-n',name,'exec sleep 900'],{encoding:'utf8'}).trim();
+   const pid=await TmuxManager.getPanePid(session,windowId),pin=bindingStore.read(name).host.pin;
+   const fake=Object.assign(new EventEmitter(),{getConfigSnapshot:()=>cfg,getProcessStatus:()=> 'running',getInstanceStateSnapshot:()=>({state:'idle'}),getWorkingRecoveryState:()=>({idle:true}),getInteractionSnapshot:()=>({phase:'clear'}),
+    generalHostOwner:async()=>({kind:'tmux',windowId,pid,pin}),stop:async()=>{await new TmuxManager(session,windowId).killWindow();await until(()=>{try{process.kill(-pid,0);return false;}catch(error){return error.code==='ESRCH';}},'private host process group exit',5000);}});
+   hosts.set(name,{fake,pin,windowId,pid});fleet.daemons.set(name,fake);
+  };
+  fleet.stopInstance=async(name,...rest)=>{
+   if(fleet.fleetConfig.instances[name].runtime==='windows')return realStop(name,...rest);
+   const item=hosts.get(name);assert(item&&fleet.daemons.get(name)===item.fake);fleet.explicitStopGeneration.set(name,(fleet.explicitStopGeneration.get(name)||0)+1);fleet.lifecycle.invalidate(name);
+   await item.fake.stop();fleet.daemons.delete(name);hosts.delete(name);return{backgroundWorkEnded:false};
+  };
+  receipt.locationSwitches=[];
+  try{for(const row of agents){
+   phase='location-'+row.agent.cli;process.stdout.write('phase:'+phase+'\n');
+   const current=fleet.fleetConfig.instances[row.name],oldPin=store.get(row.agent.id).threadId,hostPin=randomUUID(),hostConfig={...structuredClone(DEFAULT_INSTANCE_CONFIG),working_directory:join(home,'host-'+row.agent.cli),general_topic:true,backend:row.agent.cli,display_name:row.name};
+   bindingStore.write({version:1,name:row.name,revision:randomUUID(),active:current.native_general_binding,host:{config:hostConfig,pin:{backend:row.agent.cli,sessionId:hostPin}},windows:[{id:current.native_general_binding,agentId:row.agent.id,machineId:machine,cli:row.agent.cli,config:current}]});
+   const change=async(target)=>{const lifetime=new SettingsRouteLifetime(row.name,()=>true,()=>fleet.lifecycle.epochOf(row.name),()=>false);const execution=new SettingsExecution({current:()=>lifetime.current(),snapshot:()=>fleet.fleetConfig,followStop:(name,begin)=>lifetime.followStop(name,begin)});
+    try{return await fleet.switchGeneralLocation({name:row.name,revision:generalBindingRevision(bindingStore.read(row.name),fleet.fleetConfig.instances[row.name]),target},()=>true,execution);}finally{execution.close();}};
+   await until(()=>fleet.daemons.get(row.name).getWorkingRecoveryState().idle&&Date.now()-(fleet.lastDeliveryAt.get(row.name)||0)>=2000,'General idle before switch');
+   if(receipt.locationSwitches.length===0){
+    phase='offline-hold';process.stdout.write('phase:'+phase+'\n');upgradePaused=true;
+    for(const connection of hub.connections.values())connection.ws.close(1012,'scratch offline acceptance');
+    await until(()=>hub.machine(machine)?.status==='offline','paired PC disconnect');assert.match(fleet.generalLocationDeliveryHold(row.name),/offline/);
+    assert.equal(await fleet.deliverToInstance(row.name,{type:'fleet_inbound',content:'OFFLINE-MUST-NOT-BE-REPLAYED',meta:{source:'user',message_id:randomUUID()}}),false);
+    await assert.rejects(change({location:'host'}));assert.equal(fleet.fleetConfig.instances[row.name].runtime,'windows');assert.equal(hosts.size,0);assert.equal(store.get(row.agent.id).threadId,oldPin);
+    upgradePaused=false;await until(()=>hub.machine(machine)?.status==='online'&&hub.paneTransportEpoch(machine),'paired PC reconnect');
+    await realStop(row.name); // The existing explicit Stop/recovery action, after reconnect; it must positively close the retained owner.
+    receipt.offlineReconnect={realWebSocketDisconnect:true,localReplyAvailable:true,inputRefused:true,noAutomaticReplacement:true,oldPinKept:true,explicitStopThenConfirmedRetry:true};
+   }
+   assert((await change({location:'host'})).started);assert(!store.get(row.agent.id).activeId);assert.equal(hosts.get(row.name).pin.sessionId,hostPin);
+   assert((await change({location:'windows',machineId:machine,cli:row.agent.cli,model:row.agent.cli==='codex'?model:'haiku'})).started);
+   assert.equal(store.get(row.agent.id).threadId,oldPin);assert.equal(fleet.daemons.get(row.name).nativePaneLifecycle.snapshot().sessionId,oldPin);assert(!hosts.has(row.name));
+   row.config=fleet.fleetConfig.instances[row.name];assert.equal(bindingStore.read(row.name).pending,undefined);assert.equal(process.kill(controlPid,0),true);
+   receipt.locationSwitches.push({provider:row.agent.cli,positiveWindowsExit:true,privateHostGroupExited:true,independentHostPinKept:true,sameWindowsSessionResumed:true,noInputReplayed:true});
+  }}finally{fleet.startInstance=realStart;fleet.stopInstance=realStop;fleet.saveFleetConfig=oldSave;fleet.connectIpcToInstance=oldConnect;fleet.getUiStatus=oldStatus;for(const item of hosts.values())await item.fake.stop().catch(()=>{});execFileSync('tmux',['-L',socket,'kill-server']);}
+  receipt.hostProvider='inert private-tmux sleep; exact vendor resume argv covered by fixture tests';receipt.settingsWriter='isolated fixture; confirmation/revision exercised by browser and API tests';
+ }
+ passed=true;
+}catch(error){receipt.failure={phase,kind:error.name,reason:String(error.message).slice(0,220)};await new Promise(done=>setTimeout(done,1500));try{await cp(join(home,'daemon.log'),'.artifacts/general-native-failure-daemon.log');receipt.failureLog='general-native-failure-daemon.log';}catch{}}
 finally{
  receipt.toolCalls=toolCalls;receipt.replyStates=replies.map(r=>({provider:r.name.includes('codex')?'codex':'claude-code',state:r.text.split('_FLEET_OK_')[1]}));
- for(const row of agents){const daemon=fleet.daemons.get(row.name);try{const screen=await daemon.tmux.capturePane();const ds=[...(daemon.backend.getRuntimeDialogs?.()??[]),...(daemon.backend.getStartupDialogs?.()??[])];(receipt.finalScreens??=[]).push({provider:row.agent.cli,ready:daemon.backend.isDeliveryInputReadyPane?.(screen)??daemon.backend.getReadyPattern().test(screen),busy:daemon.backend.getBusyPattern?.()?.test(screen)??false,dialogs:ds.filter(d=>d.pattern.test(screen)&&(!d.isActive||d.isActive(screen))).map(d=>d.description)});}catch{}}
+ for(const row of agents){const daemon=fleet.daemons.get(row.name);try{const screen=await daemon.tmux.capturePane();const ds=[...(daemon.backend.getRuntimeDialogs?.()??[]),...(daemon.backend.getStartupDialogs?.()??[])];(receipt.finalScreens??=[]).push({provider:row.agent.cli,lastInput:daemon.tmux.getLastInputDiagnostic?.()??null,deliveryHold:!!daemon.nativeDeliveryHold(),ready:daemon.backend.isDeliveryInputReadyPane?.(screen)??daemon.backend.getReadyPattern().test(screen),busy:daemon.backend.getBusyPattern?.()?.test(screen)??false,dialogs:ds.filter(d=>d.pattern.test(screen)&&(!d.isActive||d.isActive(screen))).map(d=>d.description)});}catch{}}
  phase='cleanup';for(const row of [...agents].reverse())await fleet.stopInstance(row.name).catch(()=>{});
  const released=agents.every(row=>!store.get(row.agent.id).activeId);for(const client of fleet.instanceIpcClients.values())await client.close();fleet.memoryPressure?.stop();fleet.scheduler?.shutdown();
  if(released&&machine)await hub.shutdownPaneHosts().catch(()=>{});

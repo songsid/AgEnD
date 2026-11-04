@@ -167,3 +167,14 @@ for (const known of [true, false]) {
     expect(stop).toHaveBeenCalledTimes(known ? 0 : 1);
   });
 }
+
+describe("General location service replies do not enter a provider queue", () => {
+  it.each([false, true])("Telegram General offline (explicit topic=%s) is answered before attachments, receipts or delivery", async topic => {
+    const r = rig(); const hold = vi.spyOn(r.any, "generalLocationDeliveryHold").mockImplementation((name: unknown) => name === "general_a" ? "General’s Windows PC is offline. AgEnD is still running here." : null);
+    vi.spyOn(r.any.topicCommands, "handleInstanceCommand").mockResolvedValue(false); vi.spyOn(r.any.topicCommands, "handleGeneralCommand").mockResolvedValue(false);
+    const deliver = vi.spyOn(r.any, "deliverHumanToInstance").mockImplementation(async () => { throw Error("must not queue"); });
+    await r.any.handleInboundMessage({ ...inbound(r.a.id, "offline message", "location-" + topic), ...(topic ? { threadId: "1" } : {}) });
+    expect(hold).toHaveBeenCalledWith("general_a"); expect(r.a.sendText).toHaveBeenCalledWith(GROUP, "General’s Windows PC is offline. AgEnD is still running here.", { threadId: topic ? "1" : undefined });
+    expect(deliver).not.toHaveBeenCalled();
+  });
+});

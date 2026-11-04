@@ -33,6 +33,7 @@ function harness() {
     sendCancelButton: vi.fn(), emitSseEvent: vi.fn(),
   };
   ctx.publishTraffic = () => {};   // #1918: the org canvas's traffic; not what these tests are about
+  ctx.generalLocationDeliveryHold = FleetManager.prototype.generalLocationDeliveryHold.bind(ctx);
   ctx.admitDurableDelivery = FleetManager.prototype.admitDurableDelivery.bind(ctx);
   ctx.getDaemonBootId = FleetManager.prototype.getDaemonBootId.bind(ctx);
   ctx.queryDurableDeliveryStatus = FleetManager.prototype.queryDurableDeliveryStatus.bind(ctx);

@@ -2221,6 +2221,14 @@ export class Daemon extends EventEmitter {
   private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+  logNativeInputRefusal(details: import("./pane-port.js").PaneInputDiagnostic): void {
+    this.logger.warn({ component: "runtime-pane-host", reason: "expected_seq_changed", ...details }, "Native pane input refused before write");
+  }
+  logNativeToolFailure(details: import("./runtime-pane-mcp.js").PaneToolFailure): void {
+    const turn = this.turnReplyGuard.snapshot();
+    this.logger.warn({ ...details, currentMessageId: turn?.target.messageId ?? null,
+      guardGeneration: turn?.generation ?? null, guardPhase: turn?.phase ?? null }, "Native pane tool operation failed");
+  }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
   private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
   /** Per-launch attention for a native delivery whose bounded input attempts were refused or uncertain, including non-outbox input. */
@@ -5260,6 +5268,21 @@ export class Daemon extends EventEmitter {
       legacyCovered: this.recoveryLegacyCovered, nativeWork: !ownsInput && this.recoveryNativeWork,
       freshChoice: this.recoveryFreshChoice || this.isNewSession && !this.bootSkippedResume, crashLoopFresh: this.recoveryCrashLoopFresh,
       cancelled: this.recoveryCancelled, background: this.workingBackgroundObservation };
+  }
+
+  /** Observe this host General before its approved switch. No keys, process signals or provider writes. */
+  async generalHostOwner(): Promise<import("./general-binding.js").GeneralHostOwner> {
+    const pane = this.tmux, owner = JSON.stringify(this.interactionOwner());
+    if (!this.config.general_topic || this.nativePaneLifecycle || !pane || !/^@\d+$/.test(pane.getWindowId())) throw Error("General host owner is unavailable");
+    const status = await pane.getPaneStatus();
+    if (!status?.alive || !status.pid || status.pid <= 1) throw Error("General host process cannot be proven");
+    const checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint();
+    if (this.tmux !== pane || owner !== JSON.stringify(this.interactionOwner())) throw Error("General host owner changed during observation");
+    const backend = this.config.backend ?? "claude-code";
+    let sessionId = this.backend?.getSessionId() ?? undefined;
+    if (backend === "codex" && checkpoint) sessionId = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i.exec(checkpoint.path)?.[1];
+    return { kind: "tmux", windowId: pane.getWindowId(), pid: status.pid,
+      ...(typeof sessionId === "string" && sessionId.length > 0 && sessionId.length <= 256 && !/[\p{Cc}\p{Cf}]/u.test(sessionId) ? { pin: { backend, sessionId } } : {}) };
   }
 
   /** Local system work: no user turn, channel reply target, wake or replay of an original request. */
@@ -9810,7 +9833,7 @@ export class Daemon extends EventEmitter {
         key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence,
       };
       if (reason === "pane_mode") this.logger.warn({ phase, reason }, "The pane stayed in a tmux mode; Enter withheld");
-      else this.logger.warn({ phase, reason }, "Native delivery Enter withheld by its safety check");
+      else this.logger.warn({ ...tmux?.getLastInputDiagnostic?.(), phase, reason, retryCount: positiveRefusals }, "Native delivery Enter withheld by its safety check");
       return false;
     };
     // M-2267 (#2971): a pane in a tmux mode (a person left it in copy-mode) would take this Enter. Wait for the mode to
@@ -9866,7 +9889,7 @@ export class Daemon extends EventEmitter {
         return false;
       }
       enterMarked = true;
-      const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "delivery", screen: pane }) : tmux!.sendSpecialKey("Enter"));
+      const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "delivery", screen: pane, retryCount: positiveRefusals }) : tmux!.sendSpecialKey("Enter"));
       // A busy renderer can change seq after our capture. Only a positive zero-input ACK admits a NEW proof/key;
       // An Enter retry never re-pastes, retries an uncertain write, reuses stale proof or re-commits the durable boundary.
       if (!sent && native && tmux!.lastInputWasNotSent?.() === true
@@ -9881,10 +9904,9 @@ export class Daemon extends EventEmitter {
         continue;
       }
       if (!sent) {
-        this.logger.error({
-          phase,
-          tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure",
-        }, "tmux send-keys Enter failed during message delivery");
+        const details = { phase, tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure" };
+        if (native) this.logger.warn({ ...tmux?.getLastInputDiagnostic?.(), ...details, retryCount: positiveRefusals }, "Native delivery Enter gave up");
+        else this.logger.error(details, "tmux send-keys Enter failed during message delivery");
       }
       if (sent && native && current()) this.nativeEnterHold = null;
       return sent;
@@ -9899,13 +9921,15 @@ export class Daemon extends EventEmitter {
     const current = () => !!windowId && this.tmux === pane && this.nativePaneLifecycle === native && this.backend === backend
       && this.spawnGeneration === generation && this.launchFenceEpoch === fence && pane.getWindowId() === windowId
       && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    let retryCount = 0;
     const hold = (reason: string) => {
       if (current() && !this.nativeDeliveryHold()) this.nativeEnterHold = { key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence };
-      this.logger.warn({reason}, "Native delivery paste held by its safety check");
+      this.logger.warn({ ...pane.getLastInputDiagnostic?.(), reason, retryCount }, "Native delivery paste held by its safety check");
       return false;
     };
     const deadline = performance.now() + 2000;
     for (let attempt = 0; attempt < 5; attempt++) {
+      retryCount = attempt;
       if (!current()) return false;
       if (performance.now() >= deadline) return hold("output_changed");
       let screen: string | undefined;
@@ -9921,7 +9945,7 @@ export class Daemon extends EventEmitter {
       if (!current()) return false;
       if (performance.now() >= deadline) return hold("output_changed");
       let sent: boolean;
-      try { sent = await pane.pasteBuffer(text, {guard: current, proof: {kind: "composer", screen}}); }
+      try { sent = await pane.pasteBuffer(text, {guard: current, proof: {kind: "composer", screen, retryCount: attempt}}); }
       catch { return hold("unconfirmed"); }
       if (sent) return true; // Exactly one successful paste ends the loop, before any Enter.
       if (!current()) return false;
@@ -11226,7 +11250,7 @@ export class Daemon extends EventEmitter {
    * Routes to the channel adapter via MessageBus.
    */
   /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
-  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string }> {
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string; errorCode?: string | number }> {
     const refusal = nativePaneToolRefusal(input.tool, input.args);
     if (refusal) return Promise.resolve({ result: null, error: refusal });
     if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
@@ -11234,7 +11258,7 @@ export class Daemon extends EventEmitter {
     const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
     return new Promise(resolve => {
       let settled = false;
-      const finish = (value: { result: unknown; error?: string }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      const finish = (value: { result: unknown; error?: string; errorCode?: string | number }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
@@ -11248,7 +11272,8 @@ export class Daemon extends EventEmitter {
             return true;
           },
           // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
-          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}) }); return false; },
+          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}),
+            ...(typeof value.errorCode === "string" || typeof value.errorCode === "number" ? { errorCode: value.errorCode } : {}) }); return false; },
         });
       } catch { finish({ result: null, error: "Pane tool operation failed" }); }
     });
@@ -11284,7 +11309,7 @@ export class Daemon extends EventEmitter {
       : null;
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
-    const respond = (result: unknown, error?: string) => {
+    const respond = (result: unknown, error?: string, errorCode?: string | number) => {
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
@@ -11324,7 +11349,7 @@ export class Daemon extends EventEmitter {
         // failed" and report unknown immediately rather than starting recovery.
         this.turnReplyGuard.settleToolAttempt(replyAttempt, false);
       }
-      const packet = { requestId, result, error, operationId };
+      const packet = { requestId, result, error, operationId, ...(errorCode !== undefined ? { errorCode } : {}) };
       const sent = peer ? peer.current() && peer.send(packet) : socket ? this.ipcServer?.send(socket, packet) ?? false : false;
       if (!sent) {
         if (peer) this.logger.debug({ tool, requestId }, "Native MCP result awaits transport-written confirmation");
@@ -11586,7 +11611,7 @@ export class Daemon extends EventEmitter {
       }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(outboundKey, (respMsg) => {
         clearTimeout(timeout);
-        respond(respMsg.result, respMsg.error as string | undefined);
+        respond(respMsg.result, respMsg.error as string | undefined, respMsg.errorCode as string | number | undefined);
       });
       // Register the waiter before broadcasting. A fast/mock adapter can settle
       // immediately; broadcasting first left a response-before-registration

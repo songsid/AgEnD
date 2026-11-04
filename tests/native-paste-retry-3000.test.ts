@@ -44,3 +44,10 @@ it("the actual write path retains a native paste refusal as uncertain without le
  vi.spyOn(f.daemon,"capturePaneEvidence").mockResolvedValue(null);vi.spyOn(f.daemon,"paneInTmuxMode").mockResolvedValue(false);const fail=vi.spyOn(f.daemon,"failDelivery"),recover=vi.spyOn(f.daemon,"recoverWindow");const verdict={reached:false};
  expect(await f.daemon.writeMessageToPane("unique","@owned",false,undefined,undefined,verdict)).toBe(false);expect(verdict).toMatchObject({reached:false,paneWriteStarted:true,phase:"paste",proof:"native-paste-held"});expect(fail).not.toHaveBeenCalled();expect(recover).not.toHaveBeenCalled();expect(f.pane.pasteBuffer).toHaveBeenCalledOnce();
 });
+it('paste exhaustion logs the final operation and retry count once, without the pasted text',async()=>{
+ const f=fixture(),warn=vi.spyOn(f.daemon.logger,'warn'),details={expectedSeq:41,observedSeq:42,operationId:'private-operation',commandSequence:13,action:'input',retryCount:4};
+ Object.assign(f.pane,{getLastInputDiagnostic:()=>details});f.pane.pasteBuffer.mockResolvedValue(false);
+ expect(await f.daemon.sendDeliveryPaste('PRIVATE_PASTE_DIAGNOSTIC_CANARY')).toBe(false);
+ expect(warn).toHaveBeenCalledExactlyOnceWith({...details,reason:'output_changed'},'Native delivery paste held by its safety check');
+ expect(f.pane.pasteBuffer.mock.calls.map(call=>(call[1]as any).proof.retryCount)).toEqual([0,1,2,3,4]);expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE_PASTE_DIAGNOSTIC_CANARY');
+});

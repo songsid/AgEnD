@@ -350,7 +350,7 @@ export class NeedsYouHub {
     const reason = item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.reason}`);
-    return (item.type === "task" || item.type === "config") && item.detail ? `${reason}: ${item.detail}` : reason;
+    return (item.type === "task" || item.type === "config" || item.generalLocation) && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
   /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */

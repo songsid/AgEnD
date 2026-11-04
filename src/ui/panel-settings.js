@@ -56,6 +56,7 @@ import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
+import { GeneralLocation } from "./general-location.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 /** What a refused change says to a person: the server's code in words (the code itself only for one not listed). */
@@ -386,7 +387,7 @@ export function SettingsPanel({ route, navKey }) {
     : !data ? html`<${Skeleton} lines=${6} />`
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : null}`
-    : section === "agent-defaults" ? html`<${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
+    : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
     : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
         <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
         <div id="classicbot" class="s-anchor"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} />
