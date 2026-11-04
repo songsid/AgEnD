@@ -98,7 +98,7 @@ try{
  assert.equal(replies.length,6);assert(agents.every(row=>guards.has(row.name)&&proofs.has(row.name)));assert(progress.some(p=>p.present));
  receipt.replies=6;receipt.replyGuard=true;receipt.progress=true;receipt.fixedSkills=GENERAL_SKILL_NAMES.length;receipt.noExecFallback=true;receipt.noCoordinatorTmux=!locationMode;
  if(locationMode){
-  const [{GeneralBindings,generalBindingRevision},{SettingsExecution},{SettingsRouteLifetime},{getTmuxSession},{DEFAULT_INSTANCE_CONFIG}]=await Promise.all(['general-binding','settings-transaction','settings-route-lifetime','paths','config'].map(load));
+  const [{GeneralBindings,generalBindingRevision},{SettingsExecution},{SettingsRouteLifetime},{getTmuxSession,DEFAULT_INSTANCE_CONFIG}]=await Promise.all(['general-binding','settings-transaction','settings-route-lifetime','config'].map(load));
   const bindingStore=new GeneralBindings(home),session=getTmuxSession(),socket=getTmuxSocketName(),hosts=new Map();
   assert(socket&&socket!=='agend');
   // Linux provider execution is an inert sleep pane. The production switch/exit barrier and Windows path are real.
@@ -113,7 +113,7 @@ try{
    const windowId=execFileSync('tmux',['-L',socket,'new-window','-d','-P','-F','#{window_id}','-t',session,'-n',name,'exec sleep 900'],{encoding:'utf8'}).trim();
    const pid=await TmuxManager.getPanePid(session,windowId),pin=bindingStore.read(name).host.pin;
    const fake=Object.assign(new EventEmitter(),{getConfigSnapshot:()=>cfg,getProcessStatus:()=> 'running',getInstanceStateSnapshot:()=>({state:'idle'}),getWorkingRecoveryState:()=>({idle:true}),getInteractionSnapshot:()=>({phase:'clear'}),
-    generalHostOwner:async()=>({kind:'tmux',windowId,pid,pin}),stop:async()=>new TmuxManager(session,windowId).killWindow()});
+    generalHostOwner:async()=>({kind:'tmux',windowId,pid,pin}),stop:async()=>{await new TmuxManager(session,windowId).killWindow();await until(()=>{try{process.kill(-pid,0);return false;}catch(error){return error.code==='ESRCH';}},'private host process group exit',5000);}});
    hosts.set(name,{fake,pin,windowId,pid});fleet.daemons.set(name,fake);
   };
   fleet.stopInstance=async(name,...rest)=>{

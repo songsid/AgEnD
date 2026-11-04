@@ -21,6 +21,7 @@ import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLab
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
+import { GeneralManagedFileError } from "./runtime-general-protocol.js";
 import { GeneralBindings, generalBindingRevision, parseGeneralSwitchInput, switchGeneralLocation, type GeneralSwitchInput, type GeneralBindingRecord } from "./general-binding.js";
 import { confirmGeneralHostExit } from "./general-host-owner.js";
 import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
@@ -1457,7 +1458,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return { input, connections, summary: [t("general_location.confirm_host"), t("general_location.history")] };
     }
     const active = record?.windows.find(row => row.id === record.active);
-    if (!record?.pending && active?.machineId === input.target.machineId && active.cli === input.target.cli) throw Error("General already runs at this location");
+    if (!record?.pending && record?.hold !== "start" && active?.machineId === input.target.machineId && active.cli === input.target.cli) throw Error("General already runs at this location");
     const machine = this.runtimeHub?.machine(input.target.machineId);
     if (!remoteRuntimeEnabled() || machine?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(machine.id)) throw Error(t("general_location.offline"));
     const provider = input.target.cli;
@@ -1601,7 +1602,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ...episode, detail, offline };
   }
   async nativePaneFor(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle> {
-    return (await this.nativePanes()).prepare(name, config, assertCurrent);
+    try { return await (await this.nativePanes()).prepare(name, config, assertCurrent); }
+    catch (err) {
+      if (config.general_topic && err instanceof GeneralManagedFileError) {
+        assertCurrent();
+        const store = this.generalBindings(), record = store.read(name);
+        if (record && record.active === config.native_general_binding) { record.hold = "start"; store.write(record); }
+        this.logger.warn({ name, managedFile: err.file }, t("general_location.start_failed")); this.needsYou?.poke();
+        throw new UnsupportedCliError(t("general_location.start_failed"));
+      }
+      throw err;
+    }
   }
   async recoverNativePane(name:string,launchId:string,authorized:()=>boolean):Promise<void>{
     const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config))throw Error("Persistent Windows pane is not configured");

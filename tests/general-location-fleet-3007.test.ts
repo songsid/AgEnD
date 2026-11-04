@@ -7,6 +7,7 @@ const proof = vi.hoisted(() => ({ exited: true }));
 vi.mock("../src/general-host-owner.js", () => ({ confirmGeneralHostExit: vi.fn(async () => proof.exited) }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { DEFAULT_INSTANCE_CONFIG } from "../src/config.js";
+import { GeneralManagedFileError } from "../src/runtime-general-protocol.js";
 import { GeneralBindings, generalBindingRevision } from "../src/general-binding.js";
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { SettingsRouteLifetime } from "../src/settings-route-lifetime.js";
@@ -114,4 +115,22 @@ it("the runtime disconnect callback immediately holds only that Windows General'
     hub.options.changed({ type: "machine", machineId }); await Promise.resolve();
     expect(hold).toHaveBeenCalledExactlyOnceWith("general"); expect(cancel).toHaveBeenCalledExactlyOnceWith("general"); expect(r.start).not.toHaveBeenCalled();
   } finally { hub.close(); }
+});
+
+it("a later managed-file startup failure names the file and offers a same-binding confirmed retry without another stop", async () => {
+  const r = rig(); await r.fm.switchGeneralLocation(r.request(), () => true, r.execution());
+  r.fm.daemons.delete("general"); vi.spyOn(r.fm, "nativePanes").mockResolvedValue({ prepare: async () => { throw new GeneralManagedFileError("CLAUDE.md"); } });
+  await expect(r.fm.nativePaneFor("general", r.fm.fleetConfig.instances.general, () => {})).rejects.toThrow("could not start");
+  expect(r.store.read("general")).toMatchObject({ hold: "start" }); expect(r.store.read("general")!.pending).toBeUndefined(); expect(r.fm.generalLocationAttention("general").detail).toContain("could not start");
+  const stopped = r.stop.mock.calls.length;
+  expect((await r.fm.switchGeneralLocation(r.request(), () => true, r.execution())).started).toBe(true);
+  expect(r.stop).toHaveBeenCalledTimes(stopped); expect(r.store.read("general")!.hold).toBeUndefined();
+});
+
+it("a published same-binding Start clears a later file hold, but a stale daemon cannot clear it", async () => {
+  const r = rig(); await r.fm.switchGeneralLocation(r.request(), () => true, r.execution());
+  const record = r.store.read("general")!; record.hold = "start"; r.store.write(record);
+  const daemon = { bootId: "published", getProcessStatus: () => "running", nativePaneCurrent: () => true }; r.fm.daemons.set("general", daemon);
+  r.fm.onDaemonReady("general", "old-boot"); expect(r.store.read("general")!.hold).toBe("start");
+  r.fm.onDaemonReady("general", daemon.bootId); expect(r.store.read("general")!.hold).toBeUndefined();
 });

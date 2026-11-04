@@ -92,7 +92,10 @@ export class GeneralBindings {
   /** A selected intent already owns this exact config. Publication settles its receipt after a coordinator restart. */
   completeSelected(name: string, current: InstanceConfig): boolean {
     const record = this.read(name);
-    if (record?.pending?.phase !== "selected" || settingsFingerprint(record.pending.target) !== settingsFingerprint(current)) return false;
+    if (!record) return false;
+    const selected = record.active === "host" ? record.host.config : record.windows.find(row => row.id === record.active)!.config;
+    if (record.pending ? record.pending.phase !== "selected" || settingsFingerprint(record.pending.target) !== settingsFingerprint(current)
+      : record.hold !== "start" || settingsFingerprint(selected) !== settingsFingerprint(current)) return false;
     delete record.pending; delete record.hold; this.write(record); return true;
   }
   /** Called on every start, including boot and automatic recovery. Never guess through an unfinished switch. */
@@ -150,6 +153,11 @@ export async function switchGeneralLocation(deps: {
     && settingsFingerprint(source) === settingsFingerprint(record.pending.source)) {
     execution.mutate(() => deps.save(structuredClone(record.pending!.target)));
     source = structuredClone(deps.current());
+  }
+  if (!record.pending && record.hold === "start" && matches(input.target, record.active)) {
+    execution.commit(() => deps.save(source));
+    try { await deps.start(); } catch (err) { deps.notify("start", err); return { started: false }; }
+    delete record.hold; deps.store.write(record); deps.notify("complete"); return { started: true };
   }
   const activeWindows = record.windows.find(row => row.id === record.active);
   if (!record.pending && input.target.location === "windows" && activeWindows?.machineId === input.target.machineId && activeWindows.cli === input.target.cli) throw Error("General already runs at this location");
