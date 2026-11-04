@@ -106,8 +106,11 @@ export class WindowsAgents {
     const holders = this.data.agents.filter(other => other.id !== agent.id && other.machineId?.toLowerCase() === machine && !!other.activeId);
     const limit = maxAgentsPerMachine();
     if (holders.length >= limit) {
-      // M-2297: say which agents hold the slots (an "unknown outcome" one needs a person to check and unlock it).
-      throw new MachineSlotLimitError(limit, holders.map(other => ({ name: other.fleet_instance ?? other.name, unknown: this.get(other.id).blocked })));
+      // M-2297: say which agents hold the slots, by the name a person gave them (the instance name is windows-<uuid>).
+      // "Unknown outcome" is the exec turn's lost-task state (`blocked`); a pane holder has no exec task, so that flag
+      // says nothing about it and it is never marked from it (#3003 acceptance: every healthy pane showed as unknown).
+      throw new MachineSlotLimitError(limit, holders.map(other => ({ name: other.name || other.fleet_instance || other.id,
+        unknown: !other.paneLaunchId && this.get(other.id).blocked })));
     }
   }
   /** Metadata reservation before a pane can spawn. Exec and persistent adapters can never own one profile together. */

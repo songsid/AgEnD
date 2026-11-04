@@ -82,7 +82,7 @@ describe("the per-PC agent limit names the limit and its holders", () => {
     const bridge: any = { start: vi.fn((task: any) => ({ ...task, id: task.requestId, status: "working", output: "", startedAt: 1 })), get: () => null, prepareWorkspace: vi.fn() };
     return new WindowsAgents(dir, bridge);
   }
-  it("the error carries the limit and every holder by its instance name; the message keeps its first sentence", async () => {
+  it("the error carries the limit and every holder by the name a person gave it; healthy panes are not 'unknown'", async () => {
     setConfiguredRuntimeSwitches({ max_agents_per_machine: 2 });
     const s = store(), machine = randomUUID();
     const a = await s.create({ name: "a-profile", cwd: "C:\\a", sandbox: "read-only", machineId: machine });
@@ -95,16 +95,20 @@ describe("the per-PC agent limit names the limit and its holders", () => {
     expect(thrown).toBeInstanceOf(MachineSlotLimitError);
     const err = thrown as MachineSlotLimitError;
     expect(err.limit).toBe(2);
-    expect(err.holders.map(h => h.name).sort()).toEqual(["alpha", "b-profile"]);
+    // By the agent's own name, not its windows-<uuid> instance name; reserved panes are not "outcome unknown".
+    expect(err.holders).toEqual(expect.arrayContaining([{ name: "a-profile", unknown: false }, { name: "b-profile", unknown: false }]));
+    expect(err.holders).toHaveLength(2);
     expect(err.message).toMatch(/^This Windows computer has reached its concurrent agent limit \(2\): /);
   });
-  it("a holder whose outcome is unknown (a lost task) is marked as such", async () => {
+  it("an exec holder whose task outcome is unknown (a lost task) is marked as such", async () => {
     setConfiguredRuntimeSwitches({ max_agents_per_machine: 1 });
-    const s = store(), machine = randomUUID();
+    const dir = tmp();
+    const bridge: any = { start: vi.fn((task: any) => ({ ...task, id: task.requestId, status: "working", output: "", startedAt: 1 })), get: () => null, prepareWorkspace: vi.fn() };
+    const s = new WindowsAgents(dir, bridge), machine = randomUUID();
     const a = await s.create({ name: "stuck", cwd: "C:\\a", sandbox: "read-only", machineId: machine });
     const b = await s.create({ name: "next", cwd: "C:\\b", sandbox: "read-only", machineId: machine });
-    s.reservePane(a.id, randomUUID());
-    expect(s.get(a.id).blocked).toBe(true);                         // reserved, no task and not launching: outcome unknown
+    s.send(a.id, { requestId: randomUUID(), prompt: "exec" }, () => true);   // an exec turn whose task the runtime lost
+    expect(s.get(a.id).blocked).toBe(true);
     let thrown: any;
     try { s.reservePane(b.id, randomUUID()); } catch (e) { thrown = e; }
     expect(thrown.holders).toEqual([{ name: "stuck", unknown: true }]);
