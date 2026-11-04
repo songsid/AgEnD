@@ -20,9 +20,9 @@
 // and restarts the helper (start/maintain, from its own lifecycle and timer), never a tool handler.
 import type { ChildProcess } from "node:child_process";
 import { execFile, spawn } from "./child-process.js";
-import { accessSync, constants as fsConstants } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
+import { binaryProbe, spawnProbeCommand, PROBE_DEADLINE_MS } from "./binary-probe.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 
 export interface HelperExecOptions {
@@ -102,15 +102,39 @@ process.stdin.on("close", () => { ending = true; finish(); });
 setInterval(() => { try { process.kill(parent, 0); } catch (e) { if (e && e.code === "ESRCH") process.exit(0); } }, 1000);
 `;
 
-/** The absolute path `name` resolves to on this PATH (an executable file), or null. */
-export function resolveOnPath(name: string, path: string | undefined): string | null {
-  if (isAbsolute(name)) return name;
-  for (const dir of (path ?? "").split(delimiter)) {
-    if (!dir) continue;
-    const candidate = join(dir, name);
-    try { accessSync(candidate, fsConstants.X_OK); return candidate; } catch { /* next */ }
+/** One child tests every candidate (an fs check on a dead mount could hang a pool thread forever; a child can be killed). */
+async function firstExecutable(candidates: string[]): Promise<string | null> {
+  if (candidates.length === 0) return null;
+  const child = spawnProbeCommand("sh", ["-c", 'for p; do [ -f "$p" ] && [ -x "$p" ] && { echo "$p"; exit 0; }; done; exit 1', "sh",
+    ...candidates]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const found = await Promise.race([
+      child.answer,
+      new Promise<undefined>((r) => {
+        timer = setTimeout(() => { child.kill(); r(undefined); }, PROBE_DEADLINE_MS);
+        timer.unref?.();
+      }),
+    ]);
+    return found ?? null;
+  } catch {
+    return null;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-  return null;
+}
+
+/** The absolute path `name` resolves to on this PATH (an executable file), or null. */
+export async function resolveOnPath(name: string, path: string | undefined): Promise<string | null> {
+  if (isAbsolute(name)) return name;
+  const dirs = (path ?? "").split(delimiter).filter(Boolean);
+  if (dirs.length === 0) return null;
+  // The process PATH is the same lookup `which` does: reuse the shared probe (and its cache).
+  if (path === process.env.PATH) {
+    const onPath = await binaryProbe.probe(name);
+    if (onPath.known) return onPath.path;
+  }
+  return firstExecutable(dirs.map((d) => join(d, name)));
 }
 
 interface Pending {
@@ -150,6 +174,8 @@ export class ExecHelper {
   private restartAt = 0;
   private stopped = false;
   private resolvedPath: { path: string | undefined; byName: Map<string, string | null> } | null = null;
+  /** In-flight start() PATH probes; exec() waits so a call during start still uses the helper. */
+  private starting: Promise<void> | null = null;
   constructor(private readonly options: ExecHelperOptions) {}
 
   private now(): number { return this.options.now ? this.options.now() : performance.now(); }
@@ -157,12 +183,27 @@ export class ExecHelper {
   /** Whether calls go to the helper now. */
   usable(): boolean { return this.trusted && this.proc !== null && !this.stopped; }
 
-  /** Start the helper (the fleet's own start and timer only). */
-  start(): void {
-    if (this.proc || this.stopped) return;
+  /** Start the helper (the fleet's own start and timer only). PATH probes run off the loop. */
+  start(): Promise<void> {
+    if (this.proc || this.stopped) return Promise.resolve();
+    if (this.starting) return this.starting;
+    const wrap = this.startOffLoop().finally(() => { if (this.starting === wrap) this.starting = null; });
+    this.starting = wrap;
+    return wrap;
+  }
+
+  private async startOffLoop(): Promise<void> {
     const path = this.options.path ? this.options.path() : process.env.PATH;
-    this.allow = new Map();
-    for (const name of HELPER_BINARIES) { const abs = resolveOnPath(name, path); if (abs) this.allow.set(name, abs); }
+    const allow = new Map<string, string>();
+    const byName = new Map<string, string | null>();
+    await Promise.all(HELPER_BINARIES.map(async (name) => {
+      const abs = await resolveOnPath(name, path);
+      byName.set(name, abs);
+      if (abs) allow.set(name, abs);
+    }));
+    if (this.proc || this.stopped) return;
+    this.allow = allow;
+    this.resolvedPath = { path, byName };
     let proc: ChildProcess;
     try {
       proc = this.options.spawnHelper
@@ -171,6 +212,10 @@ export class ExecHelper {
     } catch (err) {
       this.options.log?.("start_failed", { error: (err as Error).message });
       this.scheduleRestart();
+      return;
+    }
+    if (this.stopped) {
+      try { proc.kill("SIGKILL"); } catch { /* gone */ }
       return;
     }
     this.proc = proc;
@@ -195,8 +240,8 @@ export class ExecHelper {
 
   /** The fleet's timer: start a helper that is not running, after the backoff. */
   maintain(): void {
-    if (this.stopped || this.proc || this.now() < this.restartAt) return;
-    this.start();
+    if (this.stopped || this.proc || this.starting || this.now() < this.restartAt) return;
+    void this.start();
   }
 
   /** A fleet started again after a stop may start the helper again. */
@@ -227,9 +272,11 @@ export class ExecHelper {
    */
   exec<R = HelperExecResult>(file: string, args: string[], opts: HelperExecOptions = {}, direct?: () => Promise<R>): Promise<R> {
     const goDirect = (): Promise<R> => (direct ? direct() : this.options.direct(file, args, opts) as unknown as Promise<R>);
-    const abs = this.usable() ? this.absoluteFor(file, opts.env) : null;
-    if (!abs) return goDirect();
-    return new Promise<R>((resolve, reject) => {
+    return (async () => {
+      if (this.starting) await this.starting;
+      const abs = this.usable() ? await this.absoluteFor(file, opts.env) : null;
+      if (!abs) return goDirect();
+      return new Promise<R>((resolve, reject) => {
       const p: Pending = { id: this.nextId++, started: false, settled: false, file, abs, args, opts, resolve: resolve as (r: HelperExecResult) => void, reject, startTimer: null, answerTimer: null,
         direct: () => { goDirect().then(resolve, reject); } };
       this.pending.set(p.id, p);
@@ -246,10 +293,11 @@ export class ExecHelper {
       }, this.options.startTimeoutMs ?? HELPER_START_TIMEOUT_MS);
       p.startTimer.unref?.();
     });
+    })();
   }
 
   /** The helper's absolute path for `file` when the call would start the same binary; else null (the call goes direct). */
-  private absoluteFor(file: string, env: NodeJS.ProcessEnv | undefined): string | null {
+  private async absoluteFor(file: string, env: NodeJS.ProcessEnv | undefined): Promise<string | null> {
     const name = HELPER_BINARIES.find((n) => n === file);
     const allowed = name ? this.allow.get(name) : [...this.allow.values()].find((v) => v === file);
     if (!allowed) return null;
@@ -257,8 +305,12 @@ export class ExecHelper {
     // The call's PATH must resolve the name to the helper's binary (memoized per PATH string).
     const path = (env ?? process.env).PATH;
     if (!this.resolvedPath || this.resolvedPath.path !== path) this.resolvedPath = { path, byName: new Map() };
-    let resolved = this.resolvedPath.byName.get(file);
-    if (resolved === undefined) { resolved = resolveOnPath(file, path); this.resolvedPath.byName.set(file, resolved); }
+    const cache = this.resolvedPath;
+    let resolved = cache.byName.get(file);
+    if (resolved === undefined) {
+      resolved = await resolveOnPath(file, path);
+      if (this.resolvedPath === cache) cache.byName.set(file, resolved);
+    }
     return resolved === allowed ? allowed : null;
   }
 

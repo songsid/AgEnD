@@ -31,14 +31,14 @@ const procOf = (h: ExecHelper) => (h as unknown as { proc: ChildProcess }).proc;
 
 describe("ExecHelper.stop() waits for the helper to leave", () => {
   it("resolves once the real helper has exited — not before", async () => {
-    const h = make(); h.start();
+    const h = make(); await h.start();
     const pid = procOf(h).pid!;
     await h.stop();
     expect(alive(pid)).toBe(false);
   });
 
   it("a command still running is answered first; stop() resolves after its answer and the helper's exit", async () => {
-    const h = make(); h.start();
+    const h = make(); await h.start();
     const proc = procOf(h);
     const call = h.exec("tmux", [...SOCK, "slow", "0.4"], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     await vi.waitFor(() => expect((h as unknown as { pending: Map<number, { started: boolean }> }).pending.size).toBe(1));
@@ -50,7 +50,7 @@ describe("ExecHelper.stop() waits for the helper to leave", () => {
 
   it("bounded: a helper that never leaves does not hold the stop longer than the wait", async () => {
     const h = make(() => spawn(process.execPath, ["-e", `process.stdin.on("data", () => {}); process.stdin.on("end", () => {}); setInterval(() => {}, 1000);`], { stdio: ["pipe", "pipe", "ignore"] }));
-    h.start();
+    await h.start();
     const pid = procOf(h).pid!;
     const t0 = performance.now();
     await h.stop(300);
@@ -65,7 +65,7 @@ describe("ExecHelper.stop() waits for the helper to leave", () => {
     const idle = make();
     const t0 = performance.now();
     await idle.stop();
-    const h = make(); h.start();
+    const h = make(); await h.start();
     const proc = procOf(h);
     await h.stop();
     await h.stop();                           // a second stop: the helper is gone already

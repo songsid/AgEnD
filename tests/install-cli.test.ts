@@ -75,7 +75,7 @@ vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
   return { ...real, checkBinaryInstalled: (binary: string) => installedBinaries.has(binary), checkBinaryInstalledAsync: async (binary: string) => installedBinaries.has(binary) };
 });
 
-import { unattendedInstallCommand } from "../src/unattended-install.js";
+import { unattendedInstallCommand, loginShell } from "../src/unattended-install.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale, t } from "../src/locale.js";
 import { TmuxManager } from "../src/tmux-manager.js";
@@ -126,7 +126,7 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     expect(fakeSessions).toHaveLength(1);
     // Nobody types into the install window: codex's install.sh must not ask "Start Codex now?" on /dev/tty.
     // M-2281: wrapped so no prompt can wait at all (no tty, stdin /dev/null) — the codex variable stays inside.
-    expect(fakeSessions[0].flow.command).toBe(unattendedInstallCommand("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh"));
+    expect(fakeSessions[0].flow.command).toBe(unattendedInstallCommand("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh", (await loginShell()) ?? null));
     expect(fakeSessions[0].started).toBe(true);
 
     // The installed CLI is on PATH now: the sign-in that follows is a login.

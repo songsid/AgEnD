@@ -27,7 +27,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
-import { unattendedInstallCommand } from "./unattended-install.js";
+import { unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
@@ -18103,7 +18103,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
     const flow: LoginFlow = {
       backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install),
+      command: unattendedInstallCommand(info.unattended ?? info.install, (await loginShell()) ?? null),
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };

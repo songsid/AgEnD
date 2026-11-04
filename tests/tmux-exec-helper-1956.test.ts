@@ -58,23 +58,23 @@ const alive = (pid: number | undefined) => { try { process.kill(pid!, 0); return
 
 describe("the same command, the same answer", () => {
   it("stdout, through the helper (not direct)", async () => {
-    const { h, direct } = helper(); h.start();
+    const { h, direct } = helper(); await h.start();
     expect(await h.exec("tmux", [...SOCK, "display-message", "-p", "x"], { env: env() })).toEqual({ stdout: "ok:display-message -p x", stderr: "" });
     expect(direct).not.toHaveBeenCalled();
   });
   it("a failing command: the error execFile gives — its exit code, stderr and message", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     const err = await h.exec("tmux", [...SOCK, "fail"], { env: env() }).catch((e) => e);
     expect([err instanceof Error, err.code, err.stderr, err.killed, /Command failed: .*tmux -L agend-test-1956 fail/.test(err.message), err.message.includes("can't find window")])
       .toEqual([true, 1, "can't find window: x\n", false, true, true]);
   });
   it("a timeout kills it, as execFile's does", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     const err = await h.exec("tmux", [...SOCK, "slow", "5"], { env: env(), timeout: 200 }).catch((e) => e);
     expect([err.killed, err.signal]).toEqual([true, "SIGTERM"]);
   });
   it("the call's env and stdin input reach the command", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     expect((await h.exec("tmux", [...SOCK, "env"], { env: { ...env(), TMUX: "/tmp/sock,1,0", LC_ALL: "C.UTF-8" } })).stdout).toBe("/tmp/sock,1,0|C.UTF-8");
     expect((await h.exec("tmux", [...SOCK, "cat"], { env: env(), input: "pasted\nlines" })).stdout).toBe("pasted\nlines");
   });
@@ -82,7 +82,7 @@ describe("the same command, the same answer", () => {
 
 describe("concurrent, and in each caller's order", () => {
   it("a slow capture never holds up a write: the write answers first", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     const order: string[] = [];
     const slow = h.exec("tmux", [...SOCK, "slow", "1"], { env: env() }).then(() => order.push("capture"));
     const write = h.exec("tmux", [...SOCK, "send-keys", "Enter"], { env: env() }).then(() => order.push("write"));
@@ -90,7 +90,7 @@ describe("concurrent, and in each caller's order", () => {
     expect(order).toEqual(["write", "capture"]);
   });
   it("a caller awaiting each call keeps its order", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     for (const k of ["load-buffer", "paste-buffer", "send-keys"]) await h.exec("tmux", [...SOCK, k], { env: env() });
     expect(ran()).toEqual(["load-buffer", "paste-buffer", "send-keys"]);
   });
@@ -98,17 +98,17 @@ describe("concurrent, and in each caller's order", () => {
 
 describe("exactly once", () => {
   it("no 'started' in time: the helper is ended, and once it is gone the call goes direct — once", async () => {
-    const { h, direct } = helper({ spawnHelper: fakeHelper("never"), startTimeoutMs: 150 }); h.start();
+    const { h, direct } = helper({ spawnHelper: fakeHelper("never"), startTimeoutMs: 150 }); await h.start();
     const r = await h.exec("tmux", [...SOCK, "send-keys", "Enter"], { env: env() });
     expect([r.stdout, direct.mock.calls.length, h.usable()]).toEqual(["direct:tmux -L agend-test-1956 send-keys Enter", 1, false]);
   });
   it("'started' and then no answer: the error a timed-out direct call gives — never run again directly", async () => {
-    const { h, direct } = helper({ spawnHelper: fakeHelper("started-only"), answerGraceMs: 100 }); h.start();
+    const { h, direct } = helper({ spawnHelper: fakeHelper("started-only"), answerGraceMs: 100 }); await h.start();
     const err = await h.exec("tmux", [...SOCK, "paste-buffer"], { env: env(), timeout: 100 }).catch((e) => e);
     expect([err.killed, err.signal, direct.mock.calls.length, h.usable()]).toEqual([true, "SIGTERM", 0, false]);
   });
   it("the helper killed while its command runs: the command ran once, the call fails, nothing is run again", async () => {
-    const { h, direct } = helper(); h.start();
+    const { h, direct } = helper(); await h.start();
     const call = h.exec("tmux", [...SOCK, "slow", "0.5"], { env: env() }).catch((e) => e);
     await vi.waitFor(() => expect(ran()).toEqual(["slow 0.5"]));                           // started by the helper
     (h as any).proc.kill("SIGKILL");
@@ -119,7 +119,7 @@ describe("exactly once", () => {
   // #2374 review (Prism): a failed read of the helper's stdout may have lost the "started" it wrote, so a call not seen
   // to start may have run. It fails as "outcome unknown" and is never run again directly.
   it("the helper's stdout fails before its 'started' is read: the command ran once, the call fails, nothing runs again", async () => {
-    const { h, direct } = helper(); h.start();
+    const { h, direct } = helper(); await h.start();
     const proc = (h as any).proc as ChildProcess;
     proc.stdout!.pause();                                                                  // "started" stays unread
     const call = h.exec("tmux", [...SOCK, "slow", "0.3"], { env: env() }).catch((e) => e);
@@ -131,7 +131,7 @@ describe("exactly once", () => {
     expect([direct.mock.calls.length, ran()]).toEqual([0, ["slow 0.3"]]);
   });
   it("control: the same paused stdout read on — the command ran once and answers through the helper", async () => {
-    const { h, direct } = helper(); h.start();
+    const { h, direct } = helper(); await h.start();
     const proc = (h as any).proc as ChildProcess;
     proc.stdout!.pause();
     const call = h.exec("tmux", [...SOCK, "slow", "0.3"], { env: env() });
@@ -141,7 +141,7 @@ describe("exactly once", () => {
     expect([direct.mock.calls.length, ran()]).toEqual([0, ["slow 0.3"]]);
   });
   it("calls the helper never started when it died go direct, once each", async () => {
-    const { h, direct } = helper({ spawnHelper: fakeHelper("never"), startTimeoutMs: 5_000 }); h.start();
+    const { h, direct } = helper({ spawnHelper: fakeHelper("never"), startTimeoutMs: 5_000 }); await h.start();
     const a = h.exec("tmux", [...SOCK, "a"], { env: env() }), b = h.exec("tmux", [...SOCK, "b"], { env: env() });
     (h as any).proc.kill("SIGKILL");
     expect((await Promise.all([a, b])).map((r) => r.stdout)).toEqual(["direct:tmux -L agend-test-1956 a", "direct:tmux -L agend-test-1956 b"]);
@@ -154,7 +154,7 @@ describe("a stalled fleet, a slow helper", () => {
     // As reviewed: a slow command runs; then, in a setImmediate callback, a write is sent and the fleet's loop is held
     // past the start timeout, so the timers phase comes before the poll that reads its "started".
     const events: string[] = [];
-    const { h, direct } = helper({ startTimeoutMs: 300, log: (e) => events.push(e) }); h.start();
+    const { h, direct } = helper({ startTimeoutMs: 300, log: (e) => events.push(e) }); await h.start();
     const slow = h.exec("tmux", [...SOCK, "slow", "1.5"], { env: env() });
     await vi.waitFor(() => expect(ran()).toEqual(["slow 1.5"]));
     const write = await new Promise<{ p: Promise<HelperExecResult> }>((resolve) => setImmediate(() => {
@@ -167,7 +167,7 @@ describe("a stalled fleet, a slow helper", () => {
   });
   it("taken as wedged while its command runs: not killed — that command answers, and the call it never started goes direct once it has exited", async () => {
     const events: string[] = [];
-    const { h, direct } = helper({ spawnHelper: fakeHelper("first-only"), startTimeoutMs: 10_000, log: (e, d) => events.push(`${e}:${String(d?.why)}`) }); h.start();
+    const { h, direct } = helper({ spawnHelper: fakeHelper("first-only"), startTimeoutMs: 10_000, log: (e, d) => events.push(`${e}:${String(d?.why)}`) }); await h.start();
     const pid = (h as any).proc.pid as number;
     const first = h.exec("tmux", [...SOCK, "slow"], { env: env() });
     await vi.waitFor(() => expect([...(h as any).pending.values()].some((p: { started: boolean }) => p.started)).toBe(true));
@@ -179,7 +179,7 @@ describe("a stalled fleet, a slow helper", () => {
     expect([events, direct.mock.calls.length, order]).toEqual([["retired:no_start"], 1, ["first", "second exited=true"]]);
   });
   it("stop() while a command runs: it answers (not a timeout), then the helper exits", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     const pid = (h as any).proc.pid as number;
     const call = h.exec("tmux", [...SOCK, "slow", "0.4"], { env: env() });
     await vi.waitFor(() => expect(ran()).toEqual(["slow 0.4"]));
@@ -188,7 +188,7 @@ describe("a stalled fleet, a slow helper", () => {
     await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 3000 });
   });
   it("an error names the command as the direct call does (tmux …, not the helper's absolute path)", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     const err = await h.exec("tmux", [...SOCK, "fail"], { env: env() }).catch((e) => e);
     expect(err.message.split("\n")[0]).toBe("Command failed: tmux -L agend-test-1956 fail");
   });
@@ -198,7 +198,7 @@ describe("when the helper is not used: direct", () => {
   it("not started (the fleet hasn't), stopped, or another binary than tmux/stty", async () => {
     const { h, direct } = helper();
     await h.exec("tmux", [...SOCK, "x"], { env: env() });
-    h.start();
+    await h.start();
     await h.exec("ls", ["-l"], { env: env() });
     h.stop();
     await h.exec("tmux", [...SOCK, "y"], { env: env() });
@@ -206,13 +206,13 @@ describe("when the helper is not used: direct", () => {
     expect(ran()).toEqual([]);
   });
   it("the call's PATH resolves tmux elsewhere than the helper's allowlist: direct", async () => {
-    const { h, direct } = helper(); h.start();
+    const { h, direct } = helper(); await h.start();
     const other = join(root, "other"); mkdirSync(other); writeFileSync(join(other, "tmux"), "#!/bin/sh\nexit 0\n"); chmodSync(join(other, "tmux"), 0o755);
     await h.exec("tmux", [...SOCK, "z"], { env: { ...env(), PATH: other } });
     expect([direct.mock.calls.length, ran()]).toEqual([1, []]);
   });
   it("a request the helper refuses (not allowlisted there) goes direct", async () => {
-    const { h, direct } = helper({ spawnHelper: () => spawn(process.execPath, ["-e", HELPER_SOURCE, "[]"], { stdio: ["pipe", "pipe", "ignore"] }) }); h.start();
+    const { h, direct } = helper({ spawnHelper: () => spawn(process.execPath, ["-e", HELPER_SOURCE, "[]"], { stdio: ["pipe", "pipe", "ignore"] }) }); await h.start();
     expect((await h.exec("tmux", [...SOCK, "q"], { env: env() })).stdout).toBe("direct:tmux -L agend-test-1956 q");
     expect(direct).toHaveBeenCalledTimes(1);
   });
@@ -221,14 +221,15 @@ describe("when the helper is not used: direct", () => {
 describe("its lifetime", () => {
   it("restarted only by maintain(), after its backoff", async () => {
     let now = 0;
-    const { h } = helper({ now: () => now }); h.start();
+    const { h } = helper({ now: () => now }); await h.start();
     const first = (h as any).proc as ChildProcess;
     first.kill("SIGKILL");
     await vi.waitFor(() => expect((h as any).proc).toBeNull());
     now = 500; h.maintain();
     expect((h as any).proc).toBeNull();                                                    // inside the 1 s backoff
     now = 1_200; h.maintain();
-    expect([(h as any).proc !== null, h.usable()]).toEqual([true, true]);
+    await vi.waitFor(() => expect((h as any).proc).not.toBeNull());
+    expect(h.usable()).toBe(true);
     expect((await h.exec("tmux", [...SOCK, "again"], { env: env() })).stdout).toBe("ok:again");
   });
   it("a call waiting on the helper keeps the process alive (as a direct call's child would); an idle helper never does", async () => {
@@ -238,7 +239,7 @@ describe("its lifetime", () => {
     const script = (body: string) => { const f = join(root, `s${Math.random().toString(36).slice(2)}.mts`);
       writeFileSync(f, `const { ExecHelper } = await import(${JSON.stringify(mod)});
 const h = new ExecHelper({ direct: async () => ({ stdout: "direct", stderr: "" }), path: () => ${JSON.stringify(bin)} + ":" + process.env.PATH });
-h.start();
+await h.start();
 ${body}`); return f; };
     const run = (f: string) => new Promise<{ code: number | null; out: string; ms: number }>((resolve) => {
       const t = performance.now(), c = spawn(process.execPath, ["--import", "tsx", f], { env: env(), stdio: ["ignore", "pipe", "ignore"] });
@@ -251,7 +252,7 @@ ${body}`); return f; };
     expect([idle.code, idle.out.trim(), idle.ms < 5000]).toEqual([0, "started", true]);
   });
   it("stop(): the helper's stdin ends and it exits", async () => {
-    const { h } = helper(); h.start();
+    const { h } = helper(); await h.start();
     const pid = (h as any).proc.pid as number;
     h.stop();
     await vi.waitFor(() => expect(alive(pid)).toBe(false), { timeout: 3000 });
