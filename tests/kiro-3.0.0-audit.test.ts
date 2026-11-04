@@ -28,6 +28,14 @@ describe('real3.0 help advertises a retired engine',()=>{
   }
  });
  it('recognises the3.0 missing-login menu before readiness',()=>{expect(LOGIN_FLOWS['kiro-cli'].loginScreenPattern?.test(fixture('login-required.pane.txt'))).toBe(true)});
+ it('allows the real saved-V2 explicit TUI control without a retirement hold',()=>{
+  const b=new KiroBackend(scratch(),compat()),p=fixture('tui-explicit-saved-v2.pane.txt');
+  expect(()=>b.assertLaunchSupported({kiroUi:'tui'} as any)).not.toThrow();
+  expect(p).toContain('Kiro CLI V3 is here.');
+  expect(p).toContain('No, exit');
+  expect(b.getRuntimeDialogs().some(d=>d.interactionKind==='kiro_choice'&&(d.isActive?d.isActive(p):d.pattern.test(p)))).toBe(false);
+  expect(b.getStartupDialogs().some(d=>d.isActive?d.isActive(p):d.pattern.test(p))).toBe(true);
+ });
  it('keeps explicit TUI/V2 and V3 launch plans',()=>{expect(planKiroLaunch('tui',compat()).kind).toBe('launch');expect(planKiroLaunch('v3',compat()).kind).toBe('launch')});
 });
 
