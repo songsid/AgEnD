@@ -182,17 +182,18 @@ chat they could already use.
 ## tool set / tool profile (`full`, `coordinator`, `general`, `worker`, `standard`, `minimal`)
 
 The server-side table that decides which MCP tools an instance may call
-(`TOOL_PROFILES`, `src/tool-permissions.ts:100-157`). An explicit `tool_set`
-always wins; otherwise the General instance gets `general` and everything else
-defaults to `worker` (`resolveToolSet`, `:201-208`).
+(`TOOL_PROFILES`, `src/tool-permissions.ts:100-157`). `defaults.tool_set`
+applies to every instance without its own value, including General; an
+explicit `tool_set` always wins, otherwise the General instance gets `general`
+and everything else defaults to `worker` (`resolveToolSet`, `:201-208`).
 
 - `full`: every tool. Set explicitly only; nothing resolves to it by default
   (the env-only fallback excepted, `:212-222`).
 - `coordinator`: worker abilities plus all orchestration verbs — the profile
   for running the fleet.
-- `general`: worker abilities plus orchestration — a slice of it
-  (`create/start/restart/wake_instance`) on main today, the full set as of
-  beta.8 (see General) — and the user's web settings.
+- `general`: General's administrator profile — as of beta.8, worker plus
+  every orchestration verb (fleet decision 9e3bea6c); before beta.8 only
+  `create/start/restart/wake_instance` — and the user's web settings.
 - `worker`: the default. Doing the work, with reporting (`report_result`)
   that `standard` lacks.
 - `standard`: broad read access plus own schedules and themes, but no
@@ -299,16 +300,26 @@ chat sign-in from the fleet exists for some backends only.
 ## native Windows agent / paired PC / runtime
 
 Today AgEnD runs on Linux and macOS (on Windows: under WSL, with desktop
-shortcuts from `agend shortcuts`). A native Windows runtime is alpha work on
-`release/2.3.5-alpha`, adapting the external #2934. Pairing (`agend access
-pair`) is per-instance access codes for people — "paired PC" as a term is not
-defined anywhere in code or docs.
+shortcuts from `agend shortcuts`). The rest is alpha only
+(`origin/release/2.3.5-alpha`, adapting the external #2934 — decision
+72353fdf).
 
-- Can (alpha): run the agent natively on Windows once the alpha lands.
-- Can't (today): run outside WSL on Windows.
-- Code: `src/windows-shortcuts.ts`; `src/cli.ts:1241` (pairing mode);
-  `docs/cli.md:394-398`.
-- Refs: 72353fdf; see Mismatches.
+- A native Windows agent uses this PC's Windows-side CLI: AgEnD in WSL
+  discovers native Windows CLIs and runs Windows agents in the same fleet
+  registry as Linux agents (`runtimes.windows_cli`, off by default).
+- A paired PC is another Windows computer connected over HTTPS: it runs the
+  small `agend-runtime` runner (a ZIP from Settings, never a fleet), connects
+  outbound with a one-time pairing code, and joins only after its pairing
+  fingerprint is approved in Settings (#2936). Agents pinned to it keep their
+  working directories on that PC.
+- General can run on a Windows pane: "Run General on" moves General to an
+  approved, online paired PC while the coordinator — and chat and
+  administrator authority — stay on the host (#3007).
+- Pairing of people (`agend access pair`) is the separate, older mechanism:
+  per-instance access codes, unrelated to paired PCs.
+- Code (alpha branch): `docs/remote-runtime.md`, `docs/windows-cli-preview.md`,
+  `docs/windows-general.md`; `src/runtime-bundle.ts`.
+- Refs: 72353fdf, #2936, #3007.
 
 ## public link (quick vs named)
 
@@ -325,6 +336,19 @@ with authority.
   `src/office-share-service.ts:6` (quick-tunnel 429s);
   `src/public-preview.ts:4-5`.
 - Refs: `docs/named-tunnel.md`.
+
+## connections from outside (alpha only)
+
+`origin/release/2.3.5-alpha`: a web-only fleet may open itself to the
+internet — "Allow connections from outside" — and sign the outside browser in
+with an authenticator-app TOTP code (#3008; fleet decision 0471da59).
+
+- Can (alpha): reach the dashboard from outside without a tunnel the operator
+  builds; sign in with the authenticator app's code.
+- Can't: use it on main today — alpha only.
+- Code (alpha branch): `src/auth-api.ts` (`/auth/totp`);
+  `src/authority/web-authority.ts`.
+- Refs: #3008, fleet decision 0471da59.
 
 ## web session and the verified web go-ahead
 
@@ -346,37 +370,28 @@ proves nothing.
 
 ## Mismatches
 
-Places where today's code and a decision (or the requested term) disagree.
-Nothing here is papered over.
+Questions for the user, with proposed answers. Nothing here is papered over.
 
-1. **Team leader.** The requested term has no counterpart: teams exist, but no
-   leader role, election, or extra tool is defined anywhere in code or docs.
-   Suggested reading: coordination sits with the delegating/dispatching
-   instance.
-2. **Paired PC.** The term is not defined in code or docs. The verified
-   pieces: `agend access pair` pairing codes (`src/cli.ts:1241`) and the
-   Windows runtime alpha (`release/2.3.5-alpha`, decision 72353fdf).
-3. **General's orchestration tools (temporal, expected to resolve).** Code on
+1. **Team leader — is it an instance that runs a team, given the
+   `coordinator` (or `full`) tool set?** Proposed: yes. Teams exist, but code
+   and docs define no leader role, election, or extra tool — it is a
+   convention, not a separate role. Nothing to change unless the user wants a
+   distinct role.
+2. **General's orchestration tools (temporal, expected to resolve).** Code on
    main is pre-beta.8: the `general` profile
    (`src/tool-permissions.ts:107-136`) holds only
    `create/start/restart/wake_instance`. Fleet decision 9e3bea6c moves it to
    the full ORCHESTRATION set in beta.8 (agy's PR). No live mismatch once beta.8
    lands; until then the code half is verified and the change half is the
    decision's word.
-4. **Fleet decision references.** Decisions of the form 9e3bea6c / 9af8d799 are
-   scoped to the leader's project root: they do not resolve via
-   `list_decisions` from other scopes and are not commits. Per the leader's
-   instruction they are cited as-is (`fleet decision 9e3bea6c`) with the
-   user-facing summary inline, since readers cannot open them. Any further
-   reference that does not resolve is handled the same way.
-5. **Administrator vs `allowed_users` (clarified by the decision).** The user
-   defines General as the administrator, while the code grants admin per
-   platform user id (`access.allowed_users`), not per instance. Fleet decision
-   9e3bea6c keeps both halves: the tool verbs go to General's profile, while
+3. **Fleet admin vs General — is admin the PEOPLE (`allowed_users` /
+   `admin_users`) while General is the administrator AGENT that carries out
+   admin work for whoever may talk to it in the General topic?** Proposed:
+   yes. The code grants admin per platform user id, not per instance — there
+   is no instance-bound administrator identity. Fleet decision 9e3bea6c
+   already splits it this way: the tool verbs go to General's profile, while
    confirmations for sensitive config (tokens, access) stay with the
-   fleet-admin person, and #804 still refuses privilege escalation. No
-   instance-bound administrator identity exists in code; the administrator acts
-   through General's tool set plus the fleet admin's confirmations.
+   fleet-admin person, and #804 still refuses privilege escalation.
 
 [繁體中文](concepts.zh-TW.md)
 

@@ -112,11 +112,11 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## tool set / tool profile（`full`、`coordinator`、`general`、`worker`、`standard`、`minimal`）
 
-伺服器端的對照表，決定一個 instance 能呼叫哪些 MCP 工具（`TOOL_PROFILES`，`src/tool-permissions.ts:100-157`）。寫了 `tool_set` 就以它為準；否則 General instance 拿 `general`，其他一律預設 `worker`（`resolveToolSet`，`:201-208`）。
+伺服器端的對照表，決定一個 instance 能呼叫哪些 MCP 工具（`TOOL_PROFILES`，`src/tool-permissions.ts:100-157`）。`defaults.tool_set` 對沒有自己寫值的每個 instance 生效，General 也一樣；明示的 `tool_set` 永遠優先，否則 General instance 拿 `general`，其他一律預設 `worker`（`resolveToolSet`，`:201-208`）。
 
 - `full`：全部工具。只能明示指定；預設不會拿到（環境變數 fallback 除外，`:212-222`）。
 - `coordinator`：worker 能力加全部 orchestration 動詞——經營艦隊用的 profile。
-- `general`：worker 能力加 orchestration——main 上今天是一部分（`create/start/restart/wake_instance`），beta.8 起是完整的一套（見 General）——以及使用者的網頁設定。
+- `general`：General 的管理者 profile——beta.8 起是 worker 加全部 orchestration 動詞（fleet decision 9e3bea6c）；beta.8 之前只有 `create/start/restart/wake_instance`——以及使用者的網頁設定。
 - `worker`：預設值。負責做事，有 `standard` 沒有的回報能力（`report_result`）。
 - `standard`：讀取範圍廣，也有自己的排程與主題，但沒有 `report_result`、`delegate_task`、`request_information`——走不完「委派→做事→回報」。
 - `minimal`：窄小的發送者——回覆、轉交、查送達、讀決議、下載附件、看 emoji／貼圖列表。
@@ -188,12 +188,14 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## native Windows agent / paired PC / runtime
 
-AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面捷徑用 `agend shortcuts` 建）。原生 Windows runtime 是 `release/2.3.5-alpha` 上的 alpha 工作，改寫外部 #2934 而來。Pairing（`agend access pair`）是按 instance 發給人的存取碼——「paired PC」這個詞在程式碼與文件裡都不存在。
+AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面捷徑用 `agend shortcuts` 建）。以下皆為 alpha（`origin/release/2.3.5-alpha`，改寫外部 #2934 而來——決議 72353fdf）。
 
-- 能做什麼（alpha 落地後）：在 Windows 上原生跑 agent。
-- 不能做什麼（今天）：在 WSL 之外跑 Windows。
-- 程式碼：`src/windows-shortcuts.ts`；`src/cli.ts:1241`（pairing 模式）；`docs/cli.md:394-398`。
-- 相關決議與議題：72353fdf；見「不一致之處」。
+- 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個艦隊名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
+- 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁下載的 ZIP，永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
+- General 可以跑在 Windows 窗格：「Run General on」把 General 搬到一台已批准、上線的配對 PC，coordinator——以及聊天與管理員權限——留在主機（#3007）。
+- 人的 pairing（`agend access pair`）是另一套較舊的機制：按 instance 發的存取碼，跟配對 PC 無關。
+- 程式碼（alpha 分支）：`docs/remote-runtime.md`、`docs/windows-cli-preview.md`、`docs/windows-general.md`；`src/runtime-bundle.ts`。
+- 相關決議與議題：72353fdf、#2936、#3007。
 
 ## public link（quick 與 named，公開連結）
 
@@ -203,6 +205,15 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 - 不能做什麼：需要直連儀表板的管理介面不行（訪客、網頁授權、儀表板自己的網頁設定）。
 - 程式碼：`src/config-validator.ts:424-429`；`src/office-share-service.ts:6`（quick 通道 429）；`src/public-preview.ts:4-5`。
 - 相關決議與議題：`docs/named-tunnel.md`。
+
+## connections from outside（開放外部連線，僅 alpha）
+
+`origin/release/2.3.5-alpha`：純網頁艦隊可以對網際網路打開自己——「Allow connections from outside」——外面瀏覽器用驗證器 App 的 TOTP 碼登入（#3008；fleet decision 0471da59）。
+
+- 能做什麼（alpha）：不用操作者自己架通道，也能從外面打開儀表板；用驗證器 App 的碼登入。
+- 不能做什麼：main 上今天不能用——僅 alpha。
+- 程式碼（alpha 分支）：`src/auth-api.ts`（`/auth/totp`）；`src/authority/web-authority.ts`。
+- 相關決議與議題：#3008、fleet decision 0471da59。
 
 ## web session 與 verified web go-ahead（已驗證的網頁授權）
 
@@ -215,12 +226,10 @@ web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt
 
 ## 不一致之處
 
-程式碼與決議（或題目要的詞）對不上的地方，都列在這裡，不粉飾。
+給使用者的問題，附建議答案。這裡不粉飾。
 
-1. **Team leader。** 題目要的詞沒有對應物：team 存在，但程式碼與文件裡沒有 leader 角色、推選或專屬工具。建議的理解：協調落在委派或分派工作的 instance 身上。
-2. **Paired PC。** 這個詞在程式碼與文件裡不存在。已驗證的碎片：`agend access pair` 發放的存取碼（`src/cli.ts:1241`）與 Windows runtime alpha（`release/2.3.5-alpha`，決議 72353fdf）。
-3. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance`。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
-4. **Fleet decision 的引用。** 9e3bea6c／9af8d799 這種決議只存在於 leader 的專案範圍：從別的範圍用 `list_decisions` 查不到，也不是 commit。按 leader 的指示，一律照原樣引用（`fleet decision 9e3bea6c`），並把使用者看得懂的摘要寫在內文，因為讀者打不開。以後遇到查不到的引用，比照辦理。
-5. **Administrator 與 `allowed_users`（決議已釐清）。** 使用者定義 General 是管理者，但程式碼按平台使用者 id（`access.allowed_users`）授權管理員，沒有綁在 instance 身上的管理員身分。Fleet decision 9e3bea6c 兩邊都留著：工具動詞給 General 的 profile，敏感設定（token、存取權）的確認留在 fleet admin 那個人手上，#804 照樣擋提權。程式碼裡不存在綁在 instance 身上的管理員身分；管理者透過 General 的工具組加上 fleet admin 的確認來行事。
+1. **Team leader——是不是指帶著 `coordinator`（或 `full`）工具組、在跑一個 team 的 instance？** 建議答案：是。Team 存在，但程式碼與文件沒有 leader 角色、推選或專屬工具——是慣例，不是獨立角色。除非使用者想要一個真的角色，否則不用改。
+2. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance`。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
+3. **Fleet admin 與 General——admin 是指人（`allowed_users`／`admin_users`），General 是指替能在 General topic 跟它說話的人辦事的管理者 AGENT 嗎？** 建議答案：是。程式碼按平台使用者 id 授權管理員，沒有綁在 instance 身上的管理員身分。Fleet decision 9e3bea6c 本來就是這樣分的：工具動詞給 General 的 profile，敏感設定（token、存取權）的確認留在 fleet admin 那個人手上，#804 照樣擋提權。
 
 [English](concepts.md)
