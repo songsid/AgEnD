@@ -230,9 +230,11 @@ describe("the readiness wait holds while the pane is in a mode", () => {
 
 describe("TmuxManager.paneInMode, against a real tmux", () => {
   it("1 in copy-mode, 0 out of it; a read only (the mode is the person's)", () => {
-    const socket = getTmuxSocketName();
-    expect(socket).toBeTruthy();
-    TmuxManager.setSocketName(socket);                                // never the live server
+    // Its own private socket (never the live server): the AGEND_HOME socket is every test worker's, and another file's
+    // real-tmux test (view-scrollback-api) ends that server with kill-server — run together, they raced (#2991).
+    expect(getTmuxSocketName()).toBeTruthy();
+    const socket = `agend-test-copy-mode-unit-${process.pid}`;
+    TmuxManager.setSocketName(socket);
     try { execFileSync("tmux", ["-L", "agend-test-availability", "-V"], { stdio: "ignore" }); } catch { return; }
     const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket!, ...args], { encoding: "utf8" });
     try {

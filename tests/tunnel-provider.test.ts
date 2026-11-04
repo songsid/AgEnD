@@ -786,6 +786,74 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
     expect(String((result as { message: string }).message)).toContain("4321");
   });
 
+  it("proceeds without a restart once the operator deletes a SIGKILLed start's unrecorded lease (#3010)", async () => {
+    const dir = tempDir();
+    // Left behind when the previous owner was SIGKILLed between reserving the
+    // lease and recording the spawned child's pid.
+    writeLease(dir, {
+      sid: "killed-mid-start", provider: "cloudflared", originPort: 45678, providerPid: null,
+      strongIdentity: null, expiresAt: Date.now() + 60_000, ownerPid: 999_999,
+      ownerIdentity: null,
+    });
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+
+    // (1) First attempt sees the unresolvable lease, keeps it on disk, and blocks.
+    const first = await managed.start(
+      fakeProvider({ start: async () => { throw new Error("must not start while lease exists"); } }),
+      context(),
+    );
+    expect(first).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+    expect((first as { message: string }).message).toContain(leasePath(dir));
+    expect(existsSync(leasePath(dir))).toBe(true);
+
+    // Still blocks if retried before the operator deletes the file.
+    const stillBlocked = await managed.start(
+      fakeProvider({ start: async () => { throw new Error("must not start while lease exists"); } }),
+      context(),
+    );
+    expect(stillBlocked).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+
+    // (2) The operator deletes the stale lease file as the message instructs.
+    rmSync(leasePath(dir));
+
+    // (3) The next start on the same ManagedTunnel re-checks the lease and succeeds without a restart.
+    const next = await managed.start(
+      fakeProvider({ start: async () => handleStub(777, "linux:555") }),
+      context(),
+    );
+    expect(next.ok).toBe(true);
+    expect(readLease(dir)).toMatchObject({ providerPid: 777, strongIdentity: "linux:555", ownerPid: process.pid });
+  });
+
+  it("still blocks on every attempt while a live foreign lease remains (#3010)", async () => {
+    const dir = tempDir();
+    writeLease(dir, {
+      sid: "foreign-live", provider: "cloudflared", originPort: 45678, providerPid: 4242,
+      strongIdentity: null, expiresAt: Date.now() + 60_000, ownerPid: 999_999,
+      ownerIdentity: null,
+    });
+    let probes = 0;
+    const managed = new ManagedTunnel({
+      dataDir: dir,
+      probe: pid => {
+        probes += 1;
+        return pid === 999_999
+          ? { kind: "gone" }
+          : { kind: "identified", identity: "linux:4242", comm: "cloudflared" };
+      },
+    });
+    const neverStarts = fakeProvider({ start: async () => { throw new Error("must not start"); } });
+
+    const first = await managed.start(neverStarts, context());
+    const probesAfterFirst = probes;
+    const second = await managed.start(neverStarts, context());
+
+    expect(first).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+    expect(second).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+    expect(probes).toBeGreaterThan(probesAfterFirst);
+    expect(existsSync(leasePath(dir))).toBe(true);
+  });
+
   it("releases the lease only on a confirmed stop", async () => {
     const dir = tempDir();
     const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
