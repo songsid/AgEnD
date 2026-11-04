@@ -139,6 +139,16 @@ describe("the store: a failed send stays, with Retry, Put back and Delete", () =
     s.setDraft("w", "hi"); await s.send("w");
     expect(s.state.outgoing.w[0].outgoing.error).toBe("it did not reach AgEnD — check the connection");
   });
+  it("M-2297: the per-PC limit says its number and the agents holding it, an unknown outcome marked", async () => {
+    const { s } = await store((path) => (path === "/ui/send" ? { status: 503, body: { error: "raw", reason: "machine_limit", limit: 4,
+      holders: [{ name: "alpha", unknown: false }, { name: "beta", unknown: true }] } } : { body: {} }));
+    s.setDraft("w", "hi"); await s.send("w");
+    const said = s.state.outgoing.w[0].outgoing.error;
+    expect(said).toContain("4");
+    expect(said).toContain("alpha");
+    expect(said).toMatch(/beta \(outcome unknown\)/);
+    expect(said).not.toBe("raw");
+  });
   it("a localized reason is said in the page's words (chat.sendFailure_<reason>)", async () => {
     const { s } = await store((path) => (path === "/ui/send" ? { status: 503, body: { error: "raw", reason: "delivery_changed" } } : { body: {} }));
     s.setDraft("w", "hi"); await s.send("w");

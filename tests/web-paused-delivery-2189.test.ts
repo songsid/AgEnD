@@ -1,3 +1,4 @@
+import { MachineSlotLimitError } from "../src/windows-agents.js";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -73,6 +74,13 @@ describe("web paused delivery uses the channel facade, never a cached IPC", () =
     expect(r).toMatchObject({ status: 503, body: { reason } });
     expect(r.body.error).toMatch(/Retry|retry/); expect(JSON.stringify(r)).not.toMatch(/private|secret=/);
     expect(c.emitSseEvent).not.toHaveBeenCalled();
+  });
+  it("M-2297: the per-PC agent limit is named, with its number and the agents holding the slots", async () => {
+    const { c, delivered } = fixture();
+    delivered.mockRejectedValueOnce(new MachineSlotLimitError(4, [{ name: "alpha", unknown: false }, { name: "beta", unknown: true }]));
+    const r = await request(c, "/ui/send", text).done;
+    expect(r).toMatchObject({ status: 503, body: { reason: "machine_limit", limit: 4, holders: [{ name: "alpha", unknown: false }, { name: "beta", unknown: true }] } });
+    expect(r.body.error).toMatch(/concurrent agent limit \(4\): alpha, beta \(outcome unknown/);
   });
   it("revoked admission, guest scope or registration during wake refuses the actual handoff", async () => {
     for (const change of ["token", "scope", "registration"] as const) {

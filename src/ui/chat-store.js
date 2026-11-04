@@ -400,7 +400,11 @@ export function createChatStore(deps) {
     if (r && r.reason === "reply_gone") { e.quote = undefined; e.replyTo = undefined; }
     const why = r && r.reason;
     const key = typeof why === "string" ? `chat.sendFailure_${why}` : "";
-    const localized = key ? t(key) : "";
+    // M-2297: the per-PC limit names its number and the agents holding the slots.
+    const holders = why === "machine_limit" && Array.isArray(r.holders)
+      ? r.holders.filter((h) => h && typeof h.name === "string").map((h) => (h.unknown ? t("chat.machineLimitUnknown", h.name) : h.name)).join(", ")
+      : "";
+    const localized = key ? (why === "machine_limit" ? t(key, String(r.limit ?? "?"), holders || "?") : t(key)) : "";
     e.outgoing = { state: "failed", error: localized && localized !== key ? localized : (r && r.error ? r.error : t("chat.disconnected")) };
     changed(target, "msgs"); changed(target);
     deps.toast(e.outgoing.error, false);

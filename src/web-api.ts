@@ -1,4 +1,5 @@
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
+import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
@@ -3359,8 +3360,10 @@ function uploadRecipient(ctx: WebApiContext, name: string): boolean {
     && (ctx.instanceIpcClients.has(name) || ctx.getInstanceStatus?.(name) === "paused");
 }
 /** Closed, path-free explanations; arbitrary launch errors stay in the host log. */
-function webDeliveryFailure(err: unknown): { reason: string; error: string } {
+function webDeliveryFailure(err: unknown): { reason: string; error: string; limit?: number; holders?: Array<{ name: string; unknown: boolean }> } {
   const message = err instanceof Error ? err.message : "";
+  // M-2297: the per-PC agent limit — say so, with the agents holding its slots (names only: no path, no id).
+  if (err instanceof MachineSlotLimitError) return { reason: "machine_limit", error: message, limit: err.limit, holders: err.holders.map(h => ({ name: h.name, unknown: h.unknown })) };
   if (/No warm slot is free/.test(message)) return { reason: "wake_capacity", error: "No slot is free to wake this instance. Retry when another instance is idle." };
   if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Check its account on the host, then retry." };
   if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status on the host." };
