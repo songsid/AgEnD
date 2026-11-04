@@ -22,6 +22,9 @@ const [{FleetManager},{RuntimeCoordinator},{windowsAgentsFor},{nativeInstanceCon
 assert(getTmuxSocketName()&&getTmuxSocketName()!=='agend');TmuxManager.setSocketName(getTmuxSocketName());
 for(const method of ['ensureSession','createWindow','respawnWindow','killWindow','killWindowConfirmed','getPanePid'])TmuxManager.prototype[method]=()=>{throw Error('Forbidden coordinator tmux: '+method);};
 const fleet=new FleetManager(home),agents=[],replies=[],progress=[],proofs=new Set(),guards=new Set(),messages=[];
+const {Scheduler,DEFAULT_SCHEDULER_CONFIG}=await load('scheduler/index');
+fleet.scheduler=new Scheduler(join(home,'scheduler.db'),()=>{throw Error('No scheduled actions');},DEFAULT_SCHEDULER_CONFIG,()=>false); // Own empty DB; no init, timers or jobs.
+const actualOutbound=fleet.handleOutboundFromInstance.bind(fleet);
 let runner,reader,closed=false,phase='setup',passed=false,cleanup=false,machine,model;
 const receipt={...source,...await codeBundleReceipt(bundle),kind:'paired-General-native',scratchCwd:nativeRoot,states:{},archived:[]};
 const until=async(check,label,timeout=120000)=>{const end=performance.now()+timeout;while(!await check()){
@@ -29,13 +32,14 @@ const until=async(check,label,timeout=120000)=>{const end=performance.now()+time
 const hub=new RuntimeCoordinator(join(home,'hub'),{requestTimeoutMs:45000,handlePaneMcp:async(machineId,body,current)=>(await fleet.nativePanes()).handle(machineId,body,current)});
 fleet.runtimeHub=hub;setConfiguredRuntimeSwitches({remote_runtime:true,max_agents_per_machine:4});
 fleet.fleetConfig={defaults:{},runtimes:{remote_runtime:true,max_agents_per_machine:4},instances:{}};
+const toolCalls=[];
 const store=windowsAgentsFor(fleet,{get:()=>null,start(){throw Error('No exec fallback');},prepareWorkspace(){throw Error('No host workspace');}});
 fleet.readCliEnv=()=>{throw Error('No coordinator account/catalog probe');};
 fleet.localNativePaneEndpoint=()=>{throw Error('General proof requires the paired runtime');};
 fleet.syncRoleSkills=()=>{throw Error('No Linux skills written to Windows');};
 fleet.cacheInstanceProgress=(name,text)=>progress.push({name,present:!!text});
 fleet.handleOutboundFromInstance=async(name,message)=>{
- assert.equal(message.tool,'reply','Only the minimal reply tool is allowed in signed-in acceptance');
+ if(message.tool!=='reply'){assert(['list_teams'].includes(message.tool),'Only read-only General startup and the minimal reply are allowed');return actualOutbound(name,message);}
  const text=message.args?.text??message.payload?.text;assert(/^NATIVE_(CODEX|CLAUDE)_FLEET_OK_(IDLE|WHILE_BUSY|JUST_RESUMED)$/.test(text));
  replies.push({name,text});fleet.instanceIpcClients.get(name).send({type:'fleet_outbound_response',fleetRequestId:message.fleetRequestId,result:{messageId:'scratch-'+randomUUID()}});
 };
@@ -73,7 +77,9 @@ try{
   const agent=await store.create({name,cli,cwd:publication.cwd,machineId:machine,sandbox:'read-only',model:cli==='codex'?model:'haiku'});store.bindInstance(agent.id,name);
   const config={...nativeInstanceConfig(agent),general_topic:true,native_general_binding:bindingId,native_adapter:'pane',log_level:'silent',tool_progress:'standard',restart_policy:{max_retries:0,backoff:'linear',reset_after:60000,health_check_interval_ms:1000}};
   assert.equal(resolveToolSet(config,name),'general');fleet.fleetConfig.instances[name]=config;const row={name,agent,config,workspace,manifestHash:before};agents.push(row);
-  phase='start-'+cli;await fleet.startInstance(name,config,true);const daemon=fleet.daemons.get(name);assert(daemon?.usesNativePane());
+  phase='start-'+cli;process.stdout.write('phase:'+phase+'\n');
+  if(!fleet.paneManager){const manager=await fleet.nativePanes(),invoke=manager.options.invoke.bind(manager.options);manager.options.invoke=async(daemon,input,...rest)=>{const result=await invoke(daemon,input,...rest);toolCalls.push({tool:input.tool,failed:!!result.error});return result;};}
+  await fleet.startInstance(name,config,true);const daemon=fleet.daemons.get(name);assert(daemon?.usesNativePane());
   for(const method of ['arm','settleToolAttempt']){const original=daemon.turnReplyGuard[method].bind(daemon.turnReplyGuard);daemon.turnReplyGuard[method]=(...args)=>{const value=original(...args);if(daemon.turnReplyGuard.snapshot()?.completionDelivered)guards.add(name);return value;};}
   daemon.on('mcp_tool_response_written',()=>{proofs.add(name);if(daemon.turnReplyGuard.snapshot()?.completionDelivered)guards.add(name);});
   await deliverStates({fleet,row,replies,until});receipt.states[cli]={idle:true,busy:true};
@@ -92,8 +98,10 @@ try{
  receipt.replies=6;receipt.replyGuard=true;receipt.progress=true;receipt.fixedSkills=GENERAL_SKILL_NAMES.length;receipt.noExecFallback=true;receipt.noCoordinatorTmux=true;passed=true;
 }catch(error){receipt.failure={phase,kind:error.name,reason:String(error.message).slice(0,220)};}
 finally{
+ receipt.toolCalls=toolCalls;receipt.replyStates=replies.map(r=>({provider:r.name.includes('codex')?'codex':'claude-code',state:r.text.split('_FLEET_OK_')[1]}));
+ for(const row of agents){const daemon=fleet.daemons.get(row.name);try{const screen=await daemon.tmux.capturePane();const ds=[...(daemon.backend.getRuntimeDialogs?.()??[]),...(daemon.backend.getStartupDialogs?.()??[])];(receipt.finalScreens??=[]).push({provider:row.agent.cli,ready:daemon.backend.isDeliveryInputReadyPane?.(screen)??daemon.backend.getReadyPattern().test(screen),busy:daemon.backend.getBusyPattern?.()?.test(screen)??false,dialogs:ds.filter(d=>d.pattern.test(screen)&&(!d.isActive||d.isActive(screen))).map(d=>d.description)});}catch{}}
  phase='cleanup';for(const row of [...agents].reverse())await fleet.stopInstance(row.name).catch(()=>{});
- const released=agents.every(row=>!store.get(row.agent.id).activeId);for(const client of fleet.instanceIpcClients.values())await client.close();fleet.memoryPressure?.stop();
+ const released=agents.every(row=>!store.get(row.agent.id).activeId);for(const client of fleet.instanceIpcClients.values())await client.close();fleet.memoryPressure?.stop();fleet.scheduler?.shutdown();
  if(released&&machine)await hub.shutdownPaneHosts().catch(()=>{});
  if(runner&&!closed){runner.stdin.write('close\n');runner.stdin.end();await Promise.race([once(runner,'close'),new Promise(done=>setTimeout(done,20000))]);}reader?.close();
  let archived=true;

@@ -90,3 +90,19 @@ it("a busy retained General reattaches without republishing its files, running s
   expect(f.endpoint.call.mock.calls.some(([request]) => ["general-workspace", "input", "key"].includes(request.action))).toBe(false);
   await next.release("detach");
 });
+
+it("the real host publishes only its installed pack and re-verifies the General directory before any spawn", async () => {
+  const { RuntimePaneHost } = await import("../src/runtime-pane-host.js"), { RuntimePaneStore } = await import("../src/runtime-pane-store.js");
+  const root = mkdtempSync(join(tmpdir(), "host-general-")); roots.push(root);
+  const spawn = vi.fn(async () => { throw Error("No process is allowed in this filesystem proof"); });
+  const host = new RuntimePaneHost({ store: new RuntimePaneStore(root), bootId: randomUUID(), online: () => true, maxAgents: () => 4, spawn });
+  const request = { action: "general-workspace" as const, bindingId: randomUUID(), instance: "general", cli: "codex" as const, packHash: loadGeneralKnowledge("codex").hash };
+  const old = { ...request, packHash: "a".repeat(64) };
+  expect(generalWorkspaceUpgrade(await host.request(old), old)).toBe(true);
+  const prepared: any = await host.request(request); expect(prepared.packHash).toBe(request.packHash);
+  expect((await host.request({ action: "list" }) as any).capabilities.generalWorkspace).toBe(true);
+  // The transport cannot change the runner-derived cwd to an otherwise valid user-supplied Windows directory.
+  await expect(host.request({ action: "open", operationId: randomUUID(), launch: { paneId: randomUUID(), launchId: randomUUID(), agentId: randomUUID(), instance: "general", cli: "codex",
+    cwd: "C:\\not-the-published-workspace", sandbox: "read-only", columns: 80, rows: 24, generalWorkspace: { bindingId: request.bindingId, packHash: request.packHash } } })).rejects.toThrow("directory differs");
+  expect(spawn).not.toHaveBeenCalled(); expect((await host.request({ action: "list" }) as any).panes).toEqual([]);
+});
