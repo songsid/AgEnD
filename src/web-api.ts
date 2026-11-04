@@ -525,6 +525,13 @@ export interface WebApiContext {
   /** alpha.2 (M-2300): agents' requests waiting for a web-only fleet's verified owner; null: not that owner. */
   webAgentProposals?(req: IncomingMessage): import("./settings-confirmation.js").SettingsPendingView[] | null;
   webDecideAgentProposal?(req: IncomingMessage, id: string, decision: "confirm" | "reject"): Promise<{ status: number; body: Record<string, unknown> }>;
+  /** #3008: connections from outside — what Settings shows (the link's address only to this computer's admin here). */
+  webOutsideStatus?(req: IncomingMessage): Record<string, unknown>;
+  /** #3008: set up the authenticator (this computer's admin, here only): a new secret, shown once. Null: not them. */
+  webOutsideBeginEnrollment?(req: IncomingMessage): { secret: string; uri: string; expiresInMs: number } | null;
+  webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here";
+  webOutsideRemove?(req: IncomingMessage): "ok" | "unsaved" | "not_here";
+  webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
   /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -2419,6 +2426,52 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Notices mark-read failed");
       try { json(res, 500, { error: "Mark read failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // ── #3008: connections from outside (a web-only fleet) ──
+  // GET /ui/outside: the state (any admin; over the outside link too, read-only). Everything that changes it is this
+  // computer's admin's, on this computer (the fleet asks the live session each time; the public link refuses these
+  // routes outright): POST /ui/outside/enroll (a new secret, shown once), POST /ui/outside/enroll/confirm {code},
+  // POST /ui/outside/remove, POST /ui/outside/switch {on}. Never a guest (not in GUEST_ROUTES).
+  if (method === "GET" && path === "/ui/outside") {
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, ctx.webOutsideStatus?.(req) ?? { webOnly: false, here: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null });
+    return true;
+  }
+  if (method === "POST" && (path === "/ui/outside/enroll" || path === "/ui/outside/enroll/confirm" || path === "/ui/outside/remove" || path === "/ui/outside/switch")) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "outside_not_here" }); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      res.setHeader("Cache-Control", "no-store");
+      if (path === "/ui/outside/enroll") {
+        const r = ctx.webOutsideBeginEnrollment?.(req) ?? null;
+        if (!r) { json(res, 403, { error: "outside_not_here" }); return; }
+        json(res, 200, r);
+        return;
+      }
+      if (path === "/ui/outside/enroll/confirm") {
+        const code = body && typeof body === "object" ? body.code : undefined;
+        if (typeof code !== "string" || code.length > 32) { json(res, 400, { error: "code required" }); return; }
+        const r = ctx.webOutsideConfirmEnrollment?.(req, code) ?? "not_here";
+        json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : 400, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
+        return;
+      }
+      if (path === "/ui/outside/remove") {
+        const r = ctx.webOutsideRemove?.(req) ?? "not_here";
+        json(res, r === "ok" ? 200 : r === "unsaved" ? 503 : 403, r === "ok" ? { ok: true } : { error: r === "unsaved" ? "unsaved" : "outside_not_here" });
+        return;
+      }
+      const on = body && typeof body === "object" ? body.on : undefined;
+      if (typeof on !== "boolean") { json(res, 400, { error: "on must be true or false" }); return; }
+      const r = ctx.webOutsideSwitch?.(req, on) ?? "not_here";
+      json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : 409, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Outside connections change failed");
+      try { json(res, 500, { error: "outside_failed" }); } catch { /* already answered */ }
     });
     return true;
   }
