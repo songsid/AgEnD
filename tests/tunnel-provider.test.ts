@@ -790,7 +790,7 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
     const dir = tempDir();
     // Left behind when the previous owner was SIGKILLed between reserving the
     // lease and recording the spawned child's pid.
-    writeLease(dir, {
+    await writeLease(dir, {
       sid: "killed-mid-start", provider: "cloudflared", originPort: 45678, providerPid: null,
       strongIdentity: null, expiresAt: Date.now() + 60_000, ownerPid: 999_999,
       ownerIdentity: null,
@@ -822,12 +822,12 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
       context(),
     );
     expect(next.ok).toBe(true);
-    expect(readLease(dir)).toMatchObject({ providerPid: 777, strongIdentity: "linux:555", ownerPid: process.pid });
+    expect(await readLease(dir)).toMatchObject({ providerPid: 777, strongIdentity: "linux:555", ownerPid: process.pid });
   });
 
   it("still blocks on every attempt while a live foreign lease remains (#3010)", async () => {
     const dir = tempDir();
-    writeLease(dir, {
+    await writeLease(dir, {
       sid: "foreign-live", provider: "cloudflared", originPort: 45678, providerPid: 4242,
       strongIdentity: null, expiresAt: Date.now() + 60_000, ownerPid: 999_999,
       ownerIdentity: null,
