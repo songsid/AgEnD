@@ -1811,13 +1811,18 @@ export class InstanceLifecycle {
       return;
     }
 
-    // Verify backend binary is in PATH before spawning
+    // Verify backend binary is in PATH before spawning. Async: a slow or hung PATH
+    // must not block the fleet loop (#1490 row 67). Missing still only logs; start continues.
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (installation && !checkBinaryInstalled(installation.binary)) {
-      this.ctx.logger.error(
-        { binary: installation.binary, backend: backendName, instance: name },
-        `Backend binary "${installation.binary}" not found in PATH`,
-      );
+    if (installation) {
+      const found = await checkBinaryInstalledAsync(installation.binary);
+      check();
+      if (!found) {
+        this.ctx.logger.error(
+          { binary: installation.binary, backend: backendName, instance: name },
+          `Backend binary "${installation.binary}" not found in PATH`,
+        );
+      }
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
