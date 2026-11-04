@@ -25,6 +25,7 @@ import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
+import { GeneralLocation } from "./general-location.js";
 
 register("needs", {
   en: {
@@ -242,6 +243,7 @@ function NeedsItem({ item, nowMs, owner }) {
     <div class="n-body">
       <div class="n-title"><strong>${reasonText(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
       ${detailOf(item) ? html`<p class="n-detail">${detailOf(item)}</p>` : null}
+      ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}

@@ -165,3 +165,16 @@ describe("/ui/send: a repeated clientId is the same send", () => {
     expect([toA.body.messageId !== toB.body.messageId, p1.messageId !== p2.messageId, deliver.mock.calls.length]).toEqual([true, true, 4]);
   });
 });
+
+it("General offline is answered locally once; Retry after reconnect never delivers the held input", async () => {
+  const deliver = vi.spyOn(fm, "deliverHumanToInstance").mockResolvedValue(true);
+  const hold = vi.spyOn(fm, "generalLocationDeliveryHold").mockReturnValue("General’s Windows PC is offline. AgEnD is still running here.");
+  const sid = session(), id = newClientId(), first = await send(sid, id, "a", "offline canary");
+  expect(first.status).toBe(200); expect(first.body.serviceResponse).toBe(true); expect(deliver).not.toHaveBeenCalled();
+  hold.mockReturnValue(null);
+  const retry = await send(sid, id, "a", "offline canary");
+  expect(retry.body).toMatchObject({ repeated: true, messageId: first.body.messageId }); expect(deliver).not.toHaveBeenCalled();
+  expect(rows("a", "offline canary")).toBe(1);
+  expect(rows("a", "General’s Windows PC is offline. AgEnD is still running here.")).toBe(1);
+  expect(fm.webChatHistory.list("a").find((row: any) => row.text === "General’s Windows PC is offline. AgEnD is still running here.").role).toBe("status");
+});

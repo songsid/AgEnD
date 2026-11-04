@@ -23,7 +23,7 @@ export function NativePaneRecovery({ name, inst, lease }) {
     finally { inFlight.current = false; if (lease.current()) setBusy(false); }
   };
   if (guestPage() || inst.native_adapter !== "pane") return null;
-  if (!recovery) return ["stopped", "crashed"].includes(inst.status)
+  if (!recovery) return !inst.general_topic && ["stopped", "crashed"].includes(inst.status)
     ? html`<div class="windows-agent-blocked"><button type="button" class="btn" disabled=${busy} onClick=${() => act(`/ui/start/${encodeURIComponent(name)}`)}>${t("chat.start")}</button></div>` : null;
   if (recovery.kind === "session-unconfirmed") return html`<div class="windows-agent-blocked" role="alert">
     <p>${t(recovery.provider === "codex" ? "chat.paneCodexSessionUnconfirmed" : "chat.paneSessionUnconfirmed")}</p>

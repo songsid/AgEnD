@@ -21,6 +21,8 @@ import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLab
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
+import { GeneralBindings, generalBindingRevision, parseGeneralSwitchInput, switchGeneralLocation, type GeneralSwitchInput, type GeneralBindingRecord } from "./general-binding.js";
+import { confirmGeneralHostExit } from "./general-host-owner.js";
 import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
@@ -1418,6 +1420,176 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (generalWorkspaceUpgrade(result, request)) throw new NativePaneRecoveryError({ kind: "host-upgrade" });
     return validateGeneralWorkspaceReceipt(result, request);
   }
+  private readonly generalLocationFlights = new Map<string, symbol>();
+  private readonly generalAttentionEpisodes = new Map<string, { key: string; since: number }>();
+  private generalBindings(): GeneralBindings { return new GeneralBindings(this.dataDir); }
+  generalLocations(): unknown {
+    const store = this.generalBindings();
+    return { generals: Object.entries(this.fleetConfig?.instances ?? {}).filter(([, cfg]) => cfg.general_topic).map(([name, cfg]) => {
+      const record = store.read(name), machine = cfg.machine_id ? this.runtimeHub?.machine(cfg.machine_id) : null;
+      return { name, displayName: cfg.display_name ?? name, location: isWindowsInstance(cfg) ? "windows" : "host",
+        machineId: cfg.machine_id ?? null, cli: cfg.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code", model: cfg.model ?? "",
+        revision: generalBindingRevision(record, cfg), canSwitchBack: !!record && record.active !== "host",
+        offline: isWindowsInstance(cfg) && (!remoteRuntimeEnabled() || machine?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(cfg.machine_id!)),
+        retryTarget: record?.pending?.phase === "selected" ? (record.pending.to === "host" ? { location: "host" } : (() => { const row = record.windows.find(item => item.id === record.pending!.to)!; return { location: "windows", machineId: row.machineId, cli: row.cli, model: row.config.model ?? "" }; })()) : null,
+        hold: record?.hold ?? (record?.pending ? record.pending.phase === "selected" ? "start" : "exit" : null), switching: this.generalLocationFlights.has(name) };
+    }), machines: (this.runtimeHub?.listMachines() ?? []).filter(row => row.status !== "pending" && row.status !== "revoked").map(row => ({
+      id: row.id, name: row.name, online: row.status === "online" && !!this.runtimeHub?.paneTransportEpoch(row.id),
+      clis: row.inventory?.clis.filter(cli => cli.runnable && (cli.id === "claude-code" || cli.id === "codex")).map(cli => ({ id: cli.id, version: cli.version })) ?? [],
+    })) };
+  }
+  /** Pure preflight for the confirmation diff and stale-tab refusal; never prepares files or starts a CLI. */
+  previewGeneralLocation(raw: unknown): { input: GeneralSwitchInput; summary: string[]; connections: string[] } {
+    const input = parseGeneralSwitchInput(raw), cfg = this.fleetConfig?.instances[input.name];
+    if (!cfg?.general_topic || this.shuttingDown) throw Error("General is unavailable");
+    const record = this.generalBindings().read(input.name);
+    if (input.revision !== generalBindingRevision(record, cfg)) throw Error("General location changed; read its settings again");
+    const connections = cfg.channel_id ? [cfg.channel_id] : [];
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    if (channels.length && (connections.length !== 1 || channels.filter(row => (row.id ?? row.type) === connections[0]).length !== 1)) throw Error("General's connection cannot be resolved");
+    if (input.target.location === "host") {
+      if (!record) throw Error("General's saved host location is unavailable");
+      return { input, connections, summary: [t("general_location.confirm_host"), t("general_location.history")] };
+    }
+    const active = record?.windows.find(row => row.id === record.active);
+    if (!record?.pending && active?.machineId === input.target.machineId && active.cli === input.target.cli) throw Error("General already runs at this location");
+    const machine = this.runtimeHub?.machine(input.target.machineId);
+    if (!remoteRuntimeEnabled() || machine?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(machine.id)) throw Error(t("general_location.offline"));
+    const provider = input.target.cli;
+    if (!machine.inventory?.clis.some(cli => cli.id === provider && cli.runnable)) throw Error("The chosen Windows CLI is unavailable");
+    return { input, connections, summary: [t("general_location.confirm_windows", settingsDisplay(machine.name)), t("general_location.history")] };
+  }
+  /** All entry points, including automatic native recovery, must respect an interrupted binding switch. */
+  assertGeneralBindingStart(name: string, config: InstanceConfig): void {
+    if (!config.general_topic) return;
+    try { this.generalBindings().assertStart(name, config); }
+    catch (err) {
+      this.logger.warn({ name, err }, "General location start held by its saved binding"); this.needsYou?.poke();
+      throw new UnsupportedCliError(t("general_location.exit_unconfirmed"));
+    }
+  }
+  /** Only the Settings replay's confirmed admin can enter; the whole switch owns one lifecycle transition. */
+  async switchGeneralLocation(raw: unknown, authorized: () => boolean, execution: SettingsExecution): Promise<{ started: boolean; message: string }> {
+    const { input } = this.previewGeneralLocation(raw), name = input.name;
+    return this.lifecycle.runTransition(name, async transition => {
+      execution.assert(); if (!authorized() || this.generalLocationFlights.has(name)) throw Error("General location authority expired or a switch is already running");
+      const token = Symbol(name), generation = this.settingsGeneration;
+      const destinationEpoch = input.target.location === "windows" ? this.runtimeHub?.paneTransportEpoch(input.target.machineId) : null;
+      let expected = this.fleetConfig!.instances[name], stopGeneration = this.explicitStopGeneration.get(name) ?? 0, epoch = this.lifecycle.epochOf(name);
+      const hostSnapshot = !isWindowsInstance(expected) ? structuredClone(this.daemons.get(name)?.getConfigSnapshot() ?? expected) : undefined;
+      const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation && authorized()
+        && this.generalLocationFlights.get(name) === token && this.fleetConfig?.instances[name] === expected
+        && (input.target.location !== "windows" || remoteRuntimeEnabled() && !!destinationEpoch && this.runtimeHub?.paneTransportEpoch(input.target.machineId) === destinationEpoch)
+        && (this.explicitStopGeneration.get(name) ?? 0) === stopGeneration && this.lifecycle.epochOf(name) === epoch;
+      const check = (): void => { if (!current()) throw Error("General location switch was superseded"); };
+      this.generalLocationFlights.set(name, token);
+      // Old ephemeral waiters carry this epoch; they cannot wake into the selected conversation.
+      this.cancelPendingDeliveries(name);
+      let lease: SettingsLease | null = null;
+      try {
+        lease = await waitSettingsLease([settingsFileResource(this.getSettingsConfigPath()), `general:${this.dataDir}:${name}`], () => current() && execution.current(), performance.now() + execution.remainingMs, execution.owner);
+        const store = this.generalBindings();
+        const result = await switchGeneralLocation({ store, current: () => expected, assert: check,
+          prepare: async (target, retained) => {
+            if (target.location !== "windows") return null;
+            const old = retained.windows.find(row => row.machineId === target.machineId && row.cli === target.cli);
+            const id = old?.id ?? randomUUID(), agentId = old?.agentId ?? randomUUID();
+            const publication = await this.prepareWindowsGeneralWorkspace(name, target.machineId, target.cli, id, () => current() && execution.current());
+            check(); execution.assert();
+            const config: InstanceConfig = { ...structuredClone(expected), runtime: "windows", machine_id: target.machineId,
+              native_adapter: "pane", native_agent_id: agentId, native_general_binding: id, native_sandbox: "workspace-write",
+              backend: target.cli, model: target.model, working_directory: publication.cwd, systemPrompt: "", agent_mode: "cli" };
+            // Host credentials, shell hooks and provider-specific options never become Windows launch configuration.
+            for (const key of ["backend_options", "credential_profile", "pre_task_command"] as const) delete (config as unknown as Record<string, unknown>)[key];
+            windowsAgentsFor(this, this.runtimeWindowsExecutor()).ensureGeneralBinding({ id: agentId, instance: name, machineId: target.machineId,
+              cli: target.cli, cwd: publication.cwd, name: (expected.display_name ?? name).slice(0, 64), model: target.model, instructions: "", description: expected.description ?? "" }, () => current() && execution.current());
+            return { id, agentId, machineId: target.machineId, cli: target.cli, config };
+          },
+          idle: async () => {
+            check();
+            const daemon = this.daemons.get(name);
+            return !daemon || daemon.getInstanceStateSnapshot().state === "idle" && daemon.getWorkingRecoveryState().idle
+              && daemon.getInteractionSnapshot().phase === "clear" && !this.lifecycle.hasWorkLease(name)
+              && Date.now() - (this.lastDeliveryAt.get(name) ?? 0) >= 2000;
+          },
+          hostSnapshot: () => hostSnapshot!,
+          capture: async () => {
+            if (isWindowsInstance(expected)) return undefined;
+            const daemon = this.daemons.get(name);
+            if (!daemon) throw Error(t("general_location.exit_unconfirmed"));
+            const owner = await daemon.generalHostOwner(); check(); execution.assert(); return owner;
+          },
+          stop: async owner => {
+            check();
+            const stopping = this.stopInstance(name, transition); stopGeneration++; epoch++;
+            await stopping; check();
+            if (isWindowsInstance(expected)) {
+              const profile = windowsAgentsFor(this, this.runtimeWindowsExecutor()).get(expected.native_agent_id!);
+              if (profile.activeId || profile.paneLaunchId) throw Error(t("general_location.exit_unconfirmed"));
+              execution.mutate(() => this.holdGeneralOldDeliveries(name)); return undefined;
+            }
+            if (!owner || !await confirmGeneralHostExit(owner, getTmuxSession())) throw Error(t("general_location.exit_unconfirmed"));
+            check(); execution.mutate(() => this.holdGeneralOldDeliveries(name));
+            return owner.pin;
+          },
+          save: next => {
+            check(); const previous = expected;
+            try { this.fleetConfig!.instances[name] = next; this.saveFleetConfig([{ path: ["instances", name], value: next }]); expected = next; this.routing.rebuild(this.fleetConfig!); }
+            catch (err) { this.fleetConfig!.instances[name] = previous; throw err; }
+          },
+          start: async () => {
+            check(); if (!execution.completed) throw Error("General's selected binding has no committed approval");
+            await this.startInstance(name, expected, true, "fleet-topic", false, transition); check();
+            const daemon = this.daemons.get(name);
+            if (!daemon || daemon.getProcessStatus() !== "running" || isNativePaneInstance(expected) && !daemon.nativePaneCurrent()) throw Error(t("general_location.start_failed"));
+            await this.connectIpcToInstance(name); check();
+          },
+          notify: (kind, err) => {
+            const message = t(kind === "exit" ? "general_location.exit_unconfirmed" : kind === "start" ? "general_location.start_failed" : "general_location.complete",
+              isWindowsInstance(expected) ? this.runtimeHub?.machine(expected.machine_id!)?.name ?? t("general_location.windows") : t("general_location.host"));
+            this.eventLog?.insert(name, "general_location", { phase: kind, message });
+            if (err) this.logger.warn({ name, phase: kind, err }, message); else this.logger.info({ name, phase: kind }, message);
+            this.needsYou?.poke(); this.emitSseEvent("status", this.getUiStatus());
+            this.notifyInstanceTopic(name, message);
+          },
+        }, input, execution);
+        return { ...result, message: result.started ? t("general_location.complete", isWindowsInstance(expected)
+          ? this.runtimeHub?.machine(expected.machine_id!)?.name ?? t("general_location.windows") : t("general_location.host")) : t("general_location.start_failed") };
+      } finally { lease?.release(); if (this.generalLocationFlights.get(name) === token) this.generalLocationFlights.delete(name); this.needsYou?.poke(); }
+    });
+  }
+  /** After the old owner exits, old waiting input becomes visible terminal attention, never a new binding's queue. */
+  private holdGeneralOldDeliveries(name: string): void {
+    const outbox = this.deliveryOutbox; if (!outbox) return;
+    for (const row of outbox.listPending().filter(row => row.targetInstance === name)) {
+      if (row.state !== "submission_started") outbox.failBeforeBegin(row.deliveryId, t("general_location.input_not_replayed"));
+      else if (row.targetDaemonBootId) {
+        outbox.markTargetReconciliationPending(name, row.targetDaemonBootId);
+        if (!outbox.reconcileAttempt(row.deliveryId, row.targetDaemonBootId, row.attemptNo, "uncertain", t("general_location.input_not_replayed"))) throw Error("General's old delivery could not be held");
+      } else throw Error("General's old delivery has no confirmed owner");
+    }
+    this.needsYou?.poke();
+  }
+  generalLocationDeliveryHold(name: string): string | null {
+    const config = this.fleetConfig?.instances[name]; if (!config?.general_topic) return null;
+    if (this.generalLocationFlights?.has(name)) return t("general_location.exit_unconfirmed");
+    let record: GeneralBindingRecord | null;
+    try { record = this.generalBindings().read(name); } catch { return t("general_location.start_failed"); }
+    if (record?.pending || record?.hold) return t(record.pending?.phase === "selected" || record.hold === "start" ? "general_location.start_failed" : "general_location.exit_unconfirmed");
+    if (isWindowsInstance(config) && config.machine_id && (!remoteRuntimeEnabled() || this.runtimeHub?.machine(config.machine_id)?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(config.machine_id))) return t("general_location.offline");
+    return null;
+  }
+  private generalLocationAttention(name: string): InstanceInput["generalLocation"] {
+    const cfg = this.fleetConfig?.instances[name]; if (!cfg?.general_topic) return null;
+    const detail = this.generalLocationDeliveryHold(name); if (!detail) { this.generalAttentionEpisodes.delete(name); return null; }
+    let record: GeneralBindingRecord | null = null;
+    try { record = this.generalBindings().read(name); } catch { /* a corrupt journal is a visible hold too */ }
+    const offline = !record?.pending && !record?.hold && isWindowsInstance(cfg) && detail === t("general_location.offline");
+    const key = record?.pending?.id ?? `${record?.revision ?? "unknown"}:${offline ? "offline" : "hold"}`;
+    let episode = this.generalAttentionEpisodes.get(name);
+    if (!episode || episode.key !== key) { episode = { key, since: record?.pending?.at ?? Date.now() }; this.generalAttentionEpisodes.set(name, episode); }
+    return { ...episode, detail, offline };
+  }
   async nativePaneFor(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle> {
     return (await this.nativePanes()).prepare(name, config, assertCurrent);
   }
@@ -2343,6 +2515,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
     const baselines = this.settingsBaselineReader = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
+      generalLocation: input => this.previewGeneralLocation(input),
       proof: (kind, target, id, binding, key) => {
         const map = kind === "provider" ? this.providerSecretChallenges : kind === "binding" ? this.connectionBindingChallenges : this.connectionSecretChallenges;
         const proof = map.get(id);
@@ -3288,6 +3461,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     forwards?: readonly string[];
     requestedKind?: string;
   }): { deliveryId: string; state: string; duplicate: boolean; kind: string } {
+    const bindingHold = this.generalLocationDeliveryHold(input.targetInstance);
+    if (bindingHold) throw Error(bindingHold);
     const outbox = this.deliveryOutbox;
     if (!outbox) throw new Error("Durable delivery store is unavailable");
     const currentSourceBootId = this.getDaemonBootId(input.sourceInstance);
@@ -3355,6 +3530,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   getDaemonBootId(instanceName: string): string | undefined {
+    if (this.generalLocationDeliveryHold(instanceName)) return undefined;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       return !this.shuttingDown && windowsCliEnabled() && this.nativeMcpStore?.hasActive(instanceName) ? this.managerBootId : undefined;
     }
@@ -3368,7 +3544,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Called after a replacement Daemon object is installed in lifecycle.daemons. */
   onDaemonReady(name: string, daemonBootId: string): void {
     const daemon = this.daemons.get(name);
-    if (daemon?.bootId === daemonBootId) this.listenForWorkingState(name, daemon);
+    if (daemon?.bootId === daemonBootId) {
+      this.listenForWorkingState(name, daemon);
+      const cfg = this.fleetConfig?.instances[name];
+      if (cfg?.general_topic && !this.generalLocationFlights.has(name) && daemon.getProcessStatus() === "running"
+        && (!isNativePaneInstance(cfg) || daemon.nativePaneCurrent())) {
+        try { if (this.generalBindings().completeSelected(name, cfg)) { this.needsYou?.poke(); this.logger.info({ name }, "General location's selected start receipt settled after recovery"); } }
+        catch (err) { this.logger.warn({ name, err }, "General location start receipt remains held"); }
+      }
+    }
     // #2802: no post-restart notices. The outbox still delivers or fails a row accepted before the restart, and an open
     // request is reminded by the ordinary turn-ended nudge (sweepReplyObligations) once the owner is idle.
     this.scheduleDeliveryOutboxPump();
@@ -5742,6 +5926,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     options: DeliveryOptions = {},
   ): Promise<boolean | void> {
+    if (this.generalLocationDeliveryHold(instanceName)) return false;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       return this.nativeInstanceRuntime().deliver(instanceName,payload,{stillCurrent:options.stillCurrent,
         ...(options.authorityCurrent ? {authorityCurrent:options.authorityCurrent} : {})});
@@ -11284,6 +11469,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (generalInstance) {
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+        const locationHold = this.generalLocationDeliveryHold(generalInstance);
+        if (locationHold) { await inboundAdapter.sendText(msg.chatId, locationHold, { threadId: msg.threadId || undefined }); this.needsYou?.poke(); return; }
 
         // React immediately — before any other API calls — through the status
         // path, which tracks Telegram slot ownership and Discord status adds.
@@ -11376,6 +11563,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (instanceConfig?.general_topic && await this.topicCommands.handleGeneralCommand(msg, instanceName)) {
       return;
     }
+
+    const locationHold = this.generalLocationDeliveryHold(instanceName);
+    if (locationHold) { const adapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+      await adapter.sendText(msg.chatId, locationHold, { threadId: msg.threadId || undefined }); this.needsYou?.poke(); return; }
 
     // Bind instance to the adapter that delivered this message
     if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId, true);
@@ -15721,6 +15912,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
         nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
+        generalLocation: this.generalLocationAttention(name),
         paneRecovery: (()=>{const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
           try{const profile=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id);return profile.paneRecovery?{key:`${profile.paneRecovery.kind}:${profile.paneRecovery.launchId??"-"}`,detail:new NativePaneRecoveryError(profile.paneRecovery).message,since:profile.paneRecoveryAt??profile.createdAt}:null;}catch{return null;}})(),
       });
@@ -25226,6 +25418,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
         name,
+        general_topic: nativeConfig?.general_topic === true,
         ...(isNativePaneInstance(nativeConfig) ? { runtime: "windows", native_adapter: "pane", native_agent_id: nativeConfig.native_agent_id,
           ...(() => {try {
             const profile=this.nativeInstanceRuntime().get(name),bound=this.daemons.get(name);

@@ -8,6 +8,8 @@ import { GeneralBindings, generalBindingRevision, parseGeneralSwitchInput, switc
 import { SettingsExecution } from "../src/settings-transaction.js";
 import { SettingsRouteLifetime } from "../src/settings-route-lifetime.js";
 import type { InstanceConfig } from "../src/types.js";
+import { WindowsAgents } from "../src/windows-agents.js";
+import { registerWindowsProfiles } from "../src/native-instance-registry.js";
 
 const dirs: string[] = [], executions: SettingsExecution[] = [];
 afterEach(() => { for (const e of executions.splice(0)) e.close(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -52,7 +54,7 @@ describe("General's durable location binding", () => {
     expect(r.deps.save).not.toHaveBeenCalled(); expect(r.deps.start).not.toHaveBeenCalled();
     expect(r.store.read(r.name)).toMatchObject({ active: "host", hold: "exit", pending: { phase: "prepared" } });
     expect(() => new GeneralBindings(r.home).assertStart(r.name, r.current())).toThrow("confirmed old process exit");
-    expect(r.deps.notify).toHaveBeenCalledWith("exit");
+    expect(r.deps.notify).toHaveBeenCalledWith("exit", expect.any(Error));
   });
   it("a fresh confirmed retry reuses an interrupted stop intent, without republishing or a new binding", async () => {
     const r = rig(); r.deps.stop.mockRejectedValueOnce(Error("unconfirmed"));
@@ -77,7 +79,7 @@ describe("General's durable location binding", () => {
     const r = rig(); r.deps.start.mockRejectedValueOnce(Error("changed AGENTS.md"));
     expect(await switchGeneralLocation(r.deps, r.request(), r.execution())).toEqual({ started: false });
     expect(r.store.read(r.name)).toMatchObject({ active: r.windows.id, hold: "start", pending: { phase: "selected" } });
-    expect(r.deps.notify).toHaveBeenCalledWith("start");
+    expect(r.deps.notify).toHaveBeenCalledWith("start", expect.any(Error));
     await switchGeneralLocation(r.deps, r.request(), r.execution());
     expect(r.deps.stop).toHaveBeenCalledTimes(1); expect(r.deps.prepare).toHaveBeenCalledTimes(1);
     expect(r.deps.start).toHaveBeenCalledTimes(2); expect(r.store.read(r.name)!.hold).toBeUndefined();
@@ -106,6 +108,27 @@ describe("General's durable location binding", () => {
     const path = join(r.home, "general-bindings", readdirSync(join(r.home, "general-bindings"))[0]);
     const value = JSON.parse(readFileSync(path, "utf8")); value.record.active = "host"; writeFileSync(path, JSON.stringify(value));
     expect(() => new GeneralBindings(r.home).read(r.name)).toThrow("checksum differs");
+  });
+  it("ordinary model/hot edits keep their normal start policy, while machine/cwd rebinding remains refused", async () => {
+    const r = rig(); await switchGeneralLocation(r.deps, r.request(), r.execution());
+    const next = { ...r.current(), model: "sonnet", display_name: "General" };
+    r.store.assertStart(r.name, next);
+    expect(r.store.read(r.name)!.windows[0].config.model).toBe("sonnet");
+    expect(() => r.store.assertStart(r.name, { ...next, machine_id: randomUUID() })).toThrow("binding differs");
+    expect(() => r.store.assertStart(r.name, { ...next, working_directory: "C:\\other" })).toThrow("binding differs");
+  });
+  it("a Windows General profile is linked in the same write and cannot be imported as a second worker", () => {
+    const r = rig(), start = vi.fn(() => { throw Error("no process may launch"); });
+    const agents = new WindowsAgents(r.home, { get: () => null, start } as never);
+    const input = { id: r.windows.agentId, instance: r.name, machineId: r.windows.machineId, cli: r.windows.cli,
+      cwd: r.windows.config.working_directory, name: "General", model: "haiku", instructions: "", description: "" };
+    const row = agents.ensureGeneralBinding(input, () => true);
+    expect(row.fleet_instance).toBe("general");
+    const fleet = { instances: { general: r.original } } as never;
+    expect(registerWindowsProfiles(fleet, agents, () => { throw Error("must not import"); })).toBe(false);
+    expect(agents.ensureGeneralBinding(input, () => true).id).toBe(row.id);
+    expect(agents.list()).toHaveLength(1); expect(start).not.toHaveBeenCalled();
+    expect(() => agents.ensureGeneralBinding({ ...input, machineId: randomUUID() }, () => true)).toThrow("profile differs");
   });
   it("parses a closed primitive request, refusing arrays, unknown fields and account/path inputs", () => {
     const r = rig(); expect(parseGeneralSwitchInput(r.request())).toEqual(r.request());
@@ -136,4 +159,27 @@ describe("one confirmation's operation-owned stop", () => {
     const route = new SettingsRouteLifetime("general", () => true, () => 1, () => false);
     await expect(route.followStop("general", async () => {})).rejects.toThrow("superseded");
   });
+});
+
+it("a selected interrupted start settles only after its exact target is published", async () => {
+  const r = rig(); r.deps.start.mockRejectedValueOnce(Error("restart"));
+  await switchGeneralLocation(r.deps, r.request(), r.execution());
+  expect(r.store.completeSelected(r.name, r.original)).toBe(false); expect(r.store.read(r.name)!.pending).toBeDefined();
+  expect(r.store.completeSelected(r.name, r.current())).toBe(true); expect(r.store.read(r.name)!.pending).toBeUndefined();
+  expect(r.store.completeSelected(r.name, r.current())).toBe(false);
+});
+
+it("a selected config-save gap can switch back while the selected PC is offline, but still closes that binding positively", async () => {
+  const r = rig(); r.deps.save.mockImplementationOnce(() => { throw Error("save gap"); });
+  await expect(switchGeneralLocation(r.deps, r.request(), r.execution())).rejects.toThrow("save gap");
+  expect(r.current()).toBe(r.original); expect(r.store.read(r.name)!.active).toBe(r.windows.id);
+  r.deps.prepare.mockRejectedValue(Error("PC is offline; must not publish"));
+  await switchGeneralLocation(r.deps, r.request({ location: "host" }), r.execution());
+  expect(r.current()).toEqual(r.original); expect(r.deps.stop).toHaveBeenCalledTimes(2); expect(r.deps.start).toHaveBeenCalledTimes(1);
+  expect(r.store.read(r.name)!.active).toBe("host");
+});
+it("a same-binding model request is refused before changing its profile", async () => {
+  const r = rig(); await switchGeneralLocation(r.deps, r.request(), r.execution()); const calls = r.deps.prepare.mock.calls.length;
+  await expect(switchGeneralLocation(r.deps, r.request({ ...r.target, location: "windows", machineId: r.windows.machineId, cli: "claude-code", model: "different" }), r.execution())).rejects.toThrow("already runs");
+  expect(r.deps.prepare).toHaveBeenCalledTimes(calls); expect(r.current().model).toBe("haiku");
 });

@@ -175,6 +175,26 @@ export class WindowsAgents {
     if(agent.fleet_instance===name)return;
     this.change(()=>{agent.fleet_instance=name;});
   }
+  /** A confirmed General binding is born already linked, so legacy import can never turn it into a worker. */
+  ensureGeneralBinding(input: { id: string; instance: string; machineId: string; cli: "claude-code" | "codex";
+    cwd: string; name: string; model: string; instructions: string; description: string }, authorized: () => boolean): WindowsAgent {
+    if (!validWindowsAgentId(input.id) || !validWindowsAgentId(input.machineId) || !validWindowsDirectory(input.cwd)
+      || !input.instance || input.instance.length > 128 || /[\\/\x00-\x1f\x7f]/.test(input.instance) || input.instance.includes("..")
+      || !shortText(input.name, 64) || !input.name || !shortText(input.instructions, 8000) || !shortText(input.description, 512)
+      || input.cli !== "claude-code" && input.cli !== "codex") throw Error("Invalid General Windows binding");
+    const model = validateNativeModel(input.model);
+    const found = this.data.agents.find(row => row.id === input.id);
+    if (found) {
+      if (found.fleet_instance !== input.instance || found.machineId !== input.machineId || found.cli !== input.cli || found.cwd !== input.cwd) throw Error("Retained General Windows profile differs");
+      return this.update(found.id, { name: input.name, model: model ?? "", instructions: input.instructions, description: input.description }, authorized);
+    }
+    if (!authorized()) throw Error("General binding authority expired");
+    if (this.data.agents.length >= 16) throw Error("This preview supports at most 16 Windows agents");
+    const agent: WindowsAgent = { id: input.id, name: input.name, cwd: input.cwd, machineId: input.machineId, cli: input.cli,
+      ...(model ? { model } : {}), sandbox: "workspace-write", instructions: input.instructions, description: input.description,
+      createdAt: Date.now(), turns: [], fleet_instance: input.instance };
+    return this.change(() => { if (!authorized()) throw Error("General binding authority expired"); this.data.agents.push(agent); return structuredClone(agent); });
+  }
   /** Validate without changing the retained launch or profile (used before an explicit cold-settings stop). */
   previewUpdate(id: string, patch: WindowsAgentPatch): WindowsAgent {
     const current = this.find(id);

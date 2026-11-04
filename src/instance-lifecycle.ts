@@ -195,6 +195,7 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * FleetManager implements this.
  */
 export interface LifecycleContext {
+  assertGeneralBindingStart?(name: string, config: InstanceConfig): void;
   /** Prepared native ownership replaces local launch files/configuration, never a failed-local fallback. */
   nativePaneFor?(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle>;
   reconcileNativePaneBeforeStart?(name: string, daemon: Daemon): Promise<boolean>;
@@ -1872,6 +1873,7 @@ export class InstanceLifecycle {
     const epoch = this.epochOf(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
     check();
+    this.ctx.assertGeneralBindingStart?.(name, config);
     assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const seedNow = this.activitySeedNow.delete(name);
     if (this.daemons.has(name)) {

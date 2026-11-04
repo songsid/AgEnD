@@ -1,5 +1,6 @@
 import { RuntimePaneOutputBuffer } from "./runtime-pane-output.js";
 import { RuntimeGeneralWorkspace, loadGeneralKnowledge } from "./runtime-general-workspace.js";
+import { GeneralManagedFileError } from "./runtime-general-protocol.js";
 /** Runner-owned, persistent CLI panes. A coordinator reconnect neither launches nor replays anything. */
 import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
@@ -69,8 +70,14 @@ export class RuntimePaneHost {
     if (request.action === "general-workspace") {
       const installed = loadGeneralKnowledge(request.cli).hash;
       if (installed !== request.packHash) return { version: 1, bindingId: request.bindingId, instance: request.instance, cli: request.cli, packHash: installed, upgradeRequired: true };
-      return this.general.prepare(request, current, cwd => !this.list().some(row => row.state !== "exited"
-        && this.options.store.get(row.paneId)?.launch.cwd.toLowerCase() === cwd.toLowerCase()));
+      try {
+        return this.general.prepare(request, current, cwd => !this.list().some(row => row.state !== "exited"
+          && this.options.store.get(row.paneId)?.launch.cwd.toLowerCase() === cwd.toLowerCase()));
+      } catch (err) {
+        // Closed, fixed-asset diagnostics cross the transport; raw errors, paths and file contents never do.
+        if (!(err instanceof GeneralManagedFileError)) throw err;
+        return { version: 1, bindingId: request.bindingId, instance: request.instance, cli: request.cli, packHash: request.packHash, managedFile: err.file };
+      }
     }
     if (request.action === "shutdown") {
       // No await between the inventory, admission fence and reply. An accepted/queued launch or an unknown

@@ -80,3 +80,12 @@ it("the wire request accepts only fixed publication identities and an exact Wind
   expect(validateGeneralWorkspaceReceipt(good, request)).toEqual(good);
   for (const raw of [{ ...good, cwd: "../outside" }, { ...good, bindingId: randomUUID() }, { ...good, cli: "claude-code" }, { ...good, token: "not-accepted" }]) expect(() => validateGeneralWorkspaceReceipt(raw, request)).toThrow();
 });
+
+it("managed-file diagnostics are exact-scope and fixed-name only, with no raw content", () => {
+  const request: GeneralWorkspaceRequest = { action: "general-workspace", bindingId: randomUUID(), instance: "general", cli: "codex", packHash: "a".repeat(64) };
+  const diagnostic = { version: 1, bindingId: request.bindingId, instance: request.instance, cli: request.cli, packHash: request.packHash, managedFile: "AGENTS.md" };
+  expect(() => validateGeneralWorkspaceReceipt(diagnostic, request)).toThrow("changed: AGENTS.md");
+  for (const bad of [{ ...diagnostic, managedFile: "../../credentials" }, { ...diagnostic, managedFile: ["AGENTS.md"] }, { ...diagnostic, instance: "other" }, { ...diagnostic, content: "private" }]) {
+    expect(() => validateGeneralWorkspaceReceipt(bad, request)).toThrow("Invalid General");
+  }
+});

@@ -1,6 +1,6 @@
 /** Metadata-only General location journal. Provider homes and conversations never move. */
 import { constants, closeSync, fstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { settingsFingerprint, type SettingsExecution } from "./settings-transaction.js";
@@ -9,12 +9,13 @@ import type { InstanceConfig } from "./types.js";
 export type GeneralLocation = { location: "host" } | { location: "windows"; machineId: string; cli: "claude-code" | "codex"; model: string };
 export interface GeneralSwitchInput { name: string; revision: string; target: GeneralLocation }
 export interface GeneralHostPin { backend: string; sessionId: string }
+export interface GeneralHostOwner { kind: "tmux"; windowId: string; pid: number; pin?: GeneralHostPin }
 export interface GeneralWindowsBinding { id: string; agentId: string; machineId: string; cli: "claude-code" | "codex"; config: InstanceConfig }
 export interface GeneralBindingRecord {
   version: 1; name: string; revision: string; host: { config: InstanceConfig; pin?: GeneralHostPin };
   active: "host" | string; windows: GeneralWindowsBinding[];
   pending?: { id: string; phase: "prepared" | "stopped" | "selected"; from: string; to: string;
-    source: InstanceConfig; target: InstanceConfig; at: number };
+    source: InstanceConfig; target: InstanceConfig; at: number; hostOwner?: GeneralHostOwner };
   hold?: "exit" | "start";
 }
 const uuid = (v: unknown): v is string => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -57,6 +58,12 @@ function validate(raw: unknown, name: string): GeneralBindingRecord {
     const target = p.to === "host" ? raw.host.config : raw.windows.find(row => row.id === p.to)!.config;
     if (settingsFingerprint(target) !== settingsFingerprint(p.target) || p.phase === "selected" && raw.active !== p.to
       || p.phase !== "selected" && raw.active !== p.from) throw Error("General switch configuration differs");
+    if (p.hostOwner !== undefined) {
+      const o = p.hostOwner;
+      if (!object(o) || o.kind !== "tmux" || typeof o.windowId !== "string" || !/^@\d+$/.test(o.windowId)
+        || !Number.isSafeInteger(o.pid) || (o.pid as number) <= 1
+        || o.pin !== undefined && (!object(o.pin) || !text(o.pin.backend, 64) || !text(o.pin.sessionId, 256) || !o.pin.sessionId)) throw Error("General old host owner differs");
+    }
   }
   return structuredClone(raw) as unknown as GeneralBindingRecord;
 }
@@ -82,37 +89,75 @@ export class GeneralBindings {
     mkdirSync(join(this.home, "general-bindings"), { recursive: true, mode: 0o700 });
     atomicWriteFileSync(this.path(record.name), bytes, { mode: 0o600 });
   }
+  /** A selected intent already owns this exact config. Publication settles its receipt after a coordinator restart. */
+  completeSelected(name: string, current: InstanceConfig): boolean {
+    const record = this.read(name);
+    if (record?.pending?.phase !== "selected" || settingsFingerprint(record.pending.target) !== settingsFingerprint(current)) return false;
+    delete record.pending; delete record.hold; this.write(record); return true;
+  }
   /** Called on every start, including boot and automatic recovery. Never guess through an unfinished switch. */
   assertStart(name: string, current: InstanceConfig): void {
     const record = this.read(name); if (!record) return;
     if (record.pending && (record.pending.phase !== "selected" || settingsFingerprint(record.pending.target) !== settingsFingerprint(current))) throw Error("General switch is waiting for a confirmed old process exit");
     const selected = record.active === "host" ? record.host.config : record.windows.find(row => row.id === record.active)!.config;
-    if (settingsFingerprint(selected) !== settingsFingerprint(current)) throw Error("General binding differs from the saved location");
+    const sameBinding = record.active === "host" ? current.runtime !== "windows" :
+      ["runtime", "machine_id", "native_agent_id", "native_adapter", "native_general_binding", "backend", "working_directory"].every(key =>
+        (selected as unknown as Record<string, unknown>)[key] === (current as unknown as Record<string, unknown>)[key]);
+    if (!sameBinding || !current.general_topic) throw Error("General binding differs from the saved location");
+    // Ordinary approved settings edits keep their existing policy. They must not turn a later restart into a binding hold.
+    if (!record.pending && settingsFingerprint(selected) !== settingsFingerprint(current)) {
+      if (record.active === "host") {
+        if (selected.backend !== current.backend || selected.working_directory !== current.working_directory) delete record.host.pin;
+        record.host.config = structuredClone(current);
+      } else record.windows.find(row => row.id === record.active)!.config = structuredClone(current);
+      record.revision = randomUUID(); this.write(record);
+    }
   }
+}
+
+/** Only an unfinished, selected switch-back can override the host backend's ordinary resume policy. */
+export function selectedGeneralHostSession(instanceDir: string, name: string, backend: string, cwd: string): string | null {
+  if (basename(instanceDir) !== name || basename(dirname(instanceDir)) !== "instances") return null;
+  const record = new GeneralBindings(dirname(dirname(instanceDir))).read(name);
+  if (record?.pending?.phase !== "selected" || record.pending.to !== "host" || record.active !== "host" || !record.host.pin) return null;
+  if (record.host.pin.backend !== backend || record.host.config.working_directory !== cwd || !uuid(record.host.pin.sessionId)) throw Error("General's saved host conversation scope differs");
+  return record.host.pin.sessionId;
 }
 
 /** One lifecycle-serialized switch. The injected stop must positively prove its exact old owner exited. */
 export async function switchGeneralLocation(deps: {
   store: GeneralBindings; current(): InstanceConfig; assert(): void;
   prepare(target: GeneralLocation, retained: GeneralBindingRecord): Promise<GeneralWindowsBinding | null>;
+  capture?(): Promise<GeneralHostOwner | undefined>;
+  hostSnapshot?(): InstanceConfig;
   idle(): Promise<boolean>;
-  stop(): Promise<GeneralHostPin | undefined>;
+  stop(owner?: GeneralHostOwner): Promise<GeneralHostPin | undefined>;
   save(config: InstanceConfig): void;
   start(): Promise<void>;
-  notify(kind: "exit" | "start" | "complete"): void;
+  notify(kind: "exit" | "start" | "complete", error?: unknown): void;
 }, input: GeneralSwitchInput, execution: SettingsExecution): Promise<{ started: boolean }> {
   deps.assert(); execution.assert();
-  const source = structuredClone(deps.current()), before = deps.store.read(input.name);
+  let source = structuredClone(deps.current()); const before = deps.store.read(input.name);
   if (!source.general_topic || input.revision !== generalBindingRevision(before, source)) throw Error("General location changed; read its settings again");
   const record: GeneralBindingRecord = before ?? { version: 1, name: input.name, revision: randomUUID(), active: "host", host: { config: source }, windows: [] };
   if (!before && source.runtime === "windows") throw Error("The original host General binding is not available");
+  if (!record.pending && record.active !== "host") record.windows.find(row => row.id === record.active)!.config = source;
   const matches = (target: GeneralLocation, id: string): boolean => target.location === "host" ? id === "host"
     : record.windows.some(row => row.id === id && row.machineId === target.machineId && row.cli === target.cli && (row.config.model ?? "") === target.model);
+  // Finish only the already-committed config write before reversing a selected intent. This never starts it.
+  // The ordinary stop below must still prove that selected Windows owner exited (or was never launched).
+  if (record.pending?.phase === "selected" && matches(input.target, record.pending.from)
+    && settingsFingerprint(source) === settingsFingerprint(record.pending.source)) {
+    execution.mutate(() => deps.save(structuredClone(record.pending!.target)));
+    source = structuredClone(deps.current());
+  }
+  const activeWindows = record.windows.find(row => row.id === record.active);
+  if (!record.pending && input.target.location === "windows" && activeWindows?.machineId === input.target.machineId && activeWindows.cli === input.target.cli) throw Error("General already runs at this location");
   if (record.pending && matches(input.target, record.pending.to)) {
     if (record.pending.phase === "selected") {
       if (![record.pending.source, record.pending.target].some(row => settingsFingerprint(row) === settingsFingerprint(source))) throw Error("General switch configuration was changed");
       execution.commit(() => deps.save(structuredClone(record.pending!.target)));
-      try { await deps.start(); } catch { record.hold = "start"; deps.store.write(record); deps.notify("start"); return { started: false }; }
+      try { await deps.start(); } catch (err) { record.hold = "start"; deps.store.write(record); deps.notify("start", err); return { started: false }; }
       delete record.pending; delete record.hold; deps.store.write(record); deps.notify("complete"); return { started: true };
     }
     if (settingsFingerprint(source) !== settingsFingerprint(record.pending.source)) throw Error("General switch configuration was changed");
@@ -126,25 +171,27 @@ export async function switchGeneralLocation(deps: {
   if (windows) { const old = record.windows.findIndex(row => row.id === windows.id); if (old < 0) record.windows.push(windows); else record.windows[old] = windows; }
   if (!await deps.idle()) throw Error("Wait for General to be idle before switching its location");
   deps.assert(); execution.assert();
+  const hostOwner = replay?.hostOwner ?? await deps.capture?.();
+  deps.assert(); execution.assert();
   const target = structuredClone(windows?.config ?? record.host.config);
   // The logical route always stays on the coordinator, including a retained host's older config.
   for (const key of ["general_topic", "channel_id", "topic_id"] as const) {
     if (source[key] === undefined) delete target[key]; else (target as unknown as Record<string, unknown>)[key] = source[key];
   }
   if (to === "host") record.host.config = target; else record.windows.find(row => row.id === to)!.config = target;
-  record.pending = replay ?? { id: randomUUID(), phase: "prepared", from: record.active, to, source, target, at: Date.now() };
+  record.pending = replay ?? { id: randomUUID(), phase: "prepared", from: record.active, to, source, target, at: Date.now(), ...(hostOwner ? { hostOwner } : {}) };
   execution.mutate(() => deps.store.write(record));
   let pin: GeneralHostPin | undefined;
-  try { await execution.stopTarget(input.name, async () => { pin = await deps.stop(); }); }
-  catch (err) { record.hold = "exit"; deps.store.write(record); deps.notify("exit"); throw err; }
+  try { await execution.stopTarget(input.name, async () => { pin = await deps.stop(record.pending!.hostOwner); }); }
+  catch (err) { record.hold = "exit"; deps.store.write(record); deps.notify("exit", err); throw err; }
   deps.assert(); execution.assert();
-  if (record.active === "host") { record.host.config = source; if (pin) record.host.pin = pin; }
+  if (record.active === "host") { record.host.config = structuredClone(deps.hostSnapshot?.() ?? source); if (pin) record.host.pin = pin; }
   record.pending.phase = "stopped"; execution.mutate(() => deps.store.write(record));
   // Keep the stopped intent until both configuration and selected receipt are durable. Any crash in this gap holds.
   record.active = to; record.pending.phase = "selected"; record.revision = randomUUID(); delete record.hold;
   execution.commit(() => { deps.store.write(record); deps.save(target); });
   // The committed receipt permits only starting its selected config, never another settings mutation.
   try { await deps.start(); }
-  catch { record.hold = "start"; deps.store.write(record); deps.notify("start"); return { started: false }; }
+  catch (err) { record.hold = "start"; deps.store.write(record); deps.notify("start", err); return { started: false }; }
   delete record.pending; deps.store.write(record); deps.notify("complete"); return { started: true };
 }

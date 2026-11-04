@@ -5260,6 +5260,21 @@ export class Daemon extends EventEmitter {
       cancelled: this.recoveryCancelled, background: this.workingBackgroundObservation };
   }
 
+  /** Observe this host General before its approved switch. No keys, process signals or provider writes. */
+  async generalHostOwner(): Promise<import("./general-binding.js").GeneralHostOwner> {
+    const pane = this.tmux, owner = JSON.stringify(this.interactionOwner());
+    if (!this.config.general_topic || this.nativePaneLifecycle || !pane || !/^@\d+$/.test(pane.getWindowId())) throw Error("General host owner is unavailable");
+    const status = await pane.getPaneStatus();
+    if (!status?.alive || !status.pid || status.pid <= 1) throw Error("General host process cannot be proven");
+    const checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint();
+    if (this.tmux !== pane || owner !== JSON.stringify(this.interactionOwner())) throw Error("General host owner changed during observation");
+    const backend = this.config.backend ?? "claude-code";
+    let sessionId = this.backend?.getSessionId() ?? undefined;
+    if (backend === "codex" && checkpoint) sessionId = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i.exec(checkpoint.path)?.[1];
+    return { kind: "tmux", windowId: pane.getWindowId(), pid: status.pid,
+      ...(typeof sessionId === "string" && sessionId.length > 0 && sessionId.length <= 256 && !/[\p{Cc}\p{Cf}]/u.test(sessionId) ? { pin: { backend, sessionId } } : {}) };
+  }
+
   /** Local system work: no user turn, channel reply target, wake or replay of an original request. */
   async deliverWorkingRecovery(content: string, delivery: { deliveryId: string; attemptNo: number }, admitted: () => boolean): Promise<void> {
     const tmux = this.tmux, owner = JSON.stringify(this.interactionOwner()), epoch = this.deliveryEpoch;
