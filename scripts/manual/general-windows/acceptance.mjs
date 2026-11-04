@@ -26,7 +26,7 @@ const fleet=new FleetManager(home),agents=[],replies=[],progress=[],proofs=new S
 const {Scheduler,DEFAULT_SCHEDULER_CONFIG}=await load('scheduler/index');
 fleet.scheduler=new Scheduler(join(home,'scheduler.db'),()=>{throw Error('No scheduled actions');},DEFAULT_SCHEDULER_CONFIG,()=>false); // Own empty DB; no init, timers or jobs.
 const actualOutbound=fleet.handleOutboundFromInstance.bind(fleet);
-let runner,reader,closed=false,phase='setup',passed=false,cleanup=false,machine,model;
+let runner,reader,closed=false,phase='setup',passed=false,cleanup=false,machine,model,upgradePaused=false;
 const receipt={...source,...await codeBundleReceipt(bundle),kind:'paired-General-native',scratchCwd:nativeRoot,states:{},archived:[]};
 const until=async(check,label,timeout=120000)=>{const end=performance.now()+timeout;while(!await check()){
  assert(!messages.some(m=>m.failed),'Scratch runner failed');assert(!closed,'Scratch runner closed');assert(performance.now()<end,'Deadline: '+label);await new Promise(done=>setTimeout(done,200));}};
@@ -45,7 +45,7 @@ fleet.handleOutboundFromInstance=async(name,message)=>{
  replies.push({name,text});fleet.instanceIpcClients.get(name).send({type:'fleet_outbound_response',fleetRequestId:message.fleetRequestId,result:{messageId:'scratch-'+randomUUID()}});
 };
 const server=createServer((req,res)=>{if(req.url==='/scratch-ready'){res.end('ok');return;}if(!hub.handlePublicRequest(req,res,new URL(req.url,'http://localhost'))){res.writeHead(404);res.end();}});
-server.on('upgrade',(req,socket,head)=>{if(!hub.handleUpgrade(req,socket,head))socket.destroy();});server.listen(0,'127.0.0.1');await once(server,'listening');
+server.on('upgrade',(req,socket,head)=>{if(upgradePaused||!hub.handleUpgrade(req,socket,head))socket.destroy();});server.listen(0,'127.0.0.1');await once(server,'listening');
 let node;
 try{
  await mkdir(root);await cp(bundle,join(root,'bundle'),{recursive:true});await cp('scripts/manual/general-windows/runner.mjs',join(root,'runner.mjs'));
@@ -129,6 +129,16 @@ try{
    const change=async(target)=>{const lifetime=new SettingsRouteLifetime(row.name,()=>true,()=>fleet.lifecycle.epochOf(row.name),()=>false);const execution=new SettingsExecution({current:()=>lifetime.current(),snapshot:()=>fleet.fleetConfig,followStop:(name,begin)=>lifetime.followStop(name,begin)});
     try{return await fleet.switchGeneralLocation({name:row.name,revision:generalBindingRevision(bindingStore.read(row.name),fleet.fleetConfig.instances[row.name]),target},()=>true,execution);}finally{execution.close();}};
    await until(()=>fleet.daemons.get(row.name).getWorkingRecoveryState().idle&&Date.now()-(fleet.lastDeliveryAt.get(row.name)||0)>=2000,'General idle before switch');
+   if(receipt.locationSwitches.length===0){
+    phase='offline-hold';process.stdout.write('phase:'+phase+'\n');upgradePaused=true;
+    for(const connection of hub.connections.values())connection.ws.close(1012,'scratch offline acceptance');
+    await until(()=>hub.machine(machine)?.status==='offline','paired PC disconnect');assert.match(fleet.generalLocationDeliveryHold(row.name),/offline/);
+    assert.equal(await fleet.deliverToInstance(row.name,{type:'fleet_inbound',content:'OFFLINE-MUST-NOT-BE-REPLAYED',meta:{source:'user',message_id:randomUUID()}}),false);
+    await assert.rejects(change({location:'host'}));assert.equal(fleet.fleetConfig.instances[row.name].runtime,'windows');assert.equal(hosts.size,0);assert.equal(store.get(row.agent.id).threadId,oldPin);
+    upgradePaused=false;await until(()=>hub.machine(machine)?.status==='online'&&hub.paneTransportEpoch(machine),'paired PC reconnect');
+    await realStop(row.name); // The existing explicit Stop/recovery action, after reconnect; it must positively close the retained owner.
+    receipt.offlineReconnect={realWebSocketDisconnect:true,localReplyAvailable:true,inputRefused:true,noAutomaticReplacement:true,oldPinKept:true,explicitStopThenConfirmedRetry:true};
+   }
    assert((await change({location:'host'})).started);assert(!store.get(row.agent.id).activeId);assert.equal(hosts.get(row.name).pin.sessionId,hostPin);
    assert((await change({location:'windows',machineId:machine,cli:row.agent.cli,model:row.agent.cli==='codex'?model:'haiku'})).started);
    assert.equal(store.get(row.agent.id).threadId,oldPin);assert.equal(fleet.daemons.get(row.name).nativePaneLifecycle.snapshot().sessionId,oldPin);assert(!hosts.has(row.name));
