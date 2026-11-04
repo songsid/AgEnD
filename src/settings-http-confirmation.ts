@@ -18,7 +18,8 @@ export interface SettingsBaseline extends SettingsEffectContext { fingerprint: s
  * #2170: the requester's own confirmation — a web-verified session whose account is an admin of exactly the change's
  * effect owners. `current()` is asked again at execution (store.decide); `done` hears the outcome (General's notice).
  */
-export interface SettingsSelfConfirmation { label: string; current(): boolean; done?(view: SettingsPendingView): void | Promise<void> }
+export interface SettingsSelfConfirmation { label: string; current(): boolean; done?(view: SettingsPendingView): void | Promise<void>;
+  followStop?(name: string, begin: () => Promise<unknown>): Promise<void> }
 export type SettingsRequestHandler = (req: IncomingMessage, res: ServerResponse, url: URL) => boolean;
 function json(res: ServerResponse, status: number, body: unknown): void {
   if (res.destroyed || res.headersSent) return;

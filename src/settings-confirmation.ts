@@ -231,7 +231,8 @@ export class SettingsConfirmationStore {
     if (entry.view.state === "pending") this.finish(entry, "rejected", "withdrawn", t("settings_confirm.result.withdrawn"));
     return this.snapshot(entry);
   }
-  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web" }): Promise<SettingsPendingView> {
+  async decide(id: string, decision: "confirm" | "reject", actor: { label: string; current(): boolean; via?: "web";
+    followStop?(name: string, begin: () => Promise<unknown>): Promise<void> }): Promise<SettingsPendingView> {
     const entry = this.records.get(id);
     if (entry) this.expire(entry);
     if (!entry || this.closed || entry.view.state !== "pending") throw new SettingsConfirmationError(409, "confirmation_not_pending");
@@ -251,6 +252,7 @@ export class SettingsConfirmationStore {
       if (!current() || !unchanged || entry.snapshotFingerprint !== settingsFingerprint(proposal.snapshot?.() ?? null)) this.finish(entry, "stale", "settings_changed", t("settings_confirm.result.settings_changed"), actor.label);
       else {
         const execution = new SettingsExecution({ current, snapshot: () => proposal.snapshot?.() ?? null,
+          followStop: actor.followStop,
           now: () => this.now(), expectedFingerprint: entry.snapshotFingerprint, progress: (phase, reason_code) => { entry.view.execution = { phase, ...(reason_code ? { reason_code } : {}) }; } });
         entry.execution = execution;
         try {

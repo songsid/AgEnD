@@ -20,6 +20,7 @@ import { settingsDisplay } from "./settings-change.js";
 import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
+import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
 import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
@@ -757,6 +758,7 @@ interface NonceButtonEntry {
   sessionOomRetry?: SessionOomRetry;
   confirmationCurrent?: () => boolean;
   confirmationAdmin?: (userId: string) => boolean;
+  confirmationStop?: (name: string, begin: () => Promise<unknown>) => Promise<void>;
   requesterUserId?: string;
   publicExposureId?: string;
   dashboardOwner?: LoginCodeOwner;
@@ -2448,6 +2450,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       label: t("settings_confirm.web_verified_label", name),
       // admin() asks chat.current() too; a General a card could go to must still be there (else the host CLI's).
       current: () => !!verified() && chat.admin(actor.user_id) && destinations.some(route => route.current()),
+      followStop: async (name, begin) => { const route = destinations.find(item => item.current()); if (!route) throw Error("Settings route expired"); await route.followStop(name, begin); },
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
   }
@@ -2519,24 +2522,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** A confirmation belongs to the server route/lifetime, not the availability of General's model. */
   private settingsGeneralRoute(name: string, platform: "telegram" | "discord", excluded: ReadonlySet<string>):
-    { adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean } | null {
+    { adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean; followStop(name: string, begin: () => Promise<unknown>): Promise<void> } | null {
     const config = this.fleetConfig?.instances[name];
     if (!config?.general_topic || this.shuttingDown || this.ipcStoppingInstances.has(name)) return null;
     const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
     if (!adapterId || !adapter || excluded.has(adapterId) || adapter.type !== platform) return null;
-    const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? ""), epoch = this.lifecycle.epochOf(name);
+    const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
     if (!chatId || !topic) return null;
-    const current = (): boolean => !this.shuttingDown && !this.ipcStoppingInstances.has(name)
-      && this.lifecycle.epochOf(name) === epoch && this.fleetConfig?.instances[name]?.general_topic === true
+    const route = (): boolean => !this.shuttingDown && this.fleetConfig?.instances[name]?.general_topic === true
       && this.adapterState.get(adapterId)?.status === "connected"
       && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
       && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic;
-    return current() ? { adapterId, adapter, chatId, topic, current } : null;
+    const lifetime = new SettingsRouteLifetime(name, route, () => this.lifecycle.epochOf(name), () => this.ipcStoppingInstances.has(name));
+    return lifetime.current() ? { adapterId, adapter, chatId, topic, current: lifetime.current, followStop: lifetime.followStop.bind(lifetime) } : null;
   }
 
   /** Connected, same-platform, unaffected server routes can post cards even while the model is offline. */
   private settingsNoticeGenerals(affected: readonly string[], platform: "telegram" | "discord"):
-    Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean }> {
+    Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean; followStop(name: string, begin: () => Promise<unknown>): Promise<void> }> {
     const excluded = new Set(affected);
     return Object.keys(this.fleetConfig?.instances ?? {}).flatMap(name => {
       const route = this.settingsGeneralRoute(name, platform, excluded); return route ? [route] : [];
@@ -2713,7 +2716,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             t("settings_confirm.requester", view.requested_by), ...view.summary].join("\n"),
           choices: [{ action: "confirm", label: t("settings_confirm.confirm_button") }, { action: "reject", label: t("settings_confirm.reject_button") }],
           expiredText: t("settings_confirm.no_longer_pending"), timeoutMs: view.remaining_ms,
-          extra: { pendingChangeId: view.id, confirmationCurrent: current, confirmationAdmin: userId => current() && authority.admin(userId) },
+          extra: { pendingChangeId: view.id, confirmationCurrent: current, confirmationAdmin: userId => current() && authority.admin(userId), confirmationStop: route.followStop },
         });
         void posted.then(nonce => {
           if (!retired) return;
@@ -2927,6 +2930,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const view = await this.settingsGate().store.decide(entry.pendingChangeId!, action as "confirm" | "reject", {
         label: t("settings_confirm.admin_label", data.userId ?? ""),
+        followStop: entry.confirmationStop,
         current: () => entry.confirmationCurrent?.() === true && this.getAdapterForInstance(entry.instanceName) === entry.adapter
           && !!data.userId && entry.confirmationAdmin?.(data.userId) === true,
       });
@@ -15177,7 +15181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;

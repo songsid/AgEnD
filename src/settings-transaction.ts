@@ -105,6 +105,8 @@ export class SettingsExecution {
   constructor(private readonly options: {
     current(): boolean; snapshot(): unknown; now?: () => number; expectedFingerprint?: string;
     progress?(phase: "queued" | "running" | "cleanup", reason?: string): void;
+    /** Server-created actor capability, never a payload/header or a global epoch exemption. */
+    followStop?(name: string, begin: () => Promise<unknown>): Promise<void>;
   }) {
     this.expected = options.expectedFingerprint ?? settingsFingerprint(options.snapshot()); this.deadline = this.now() + SETTINGS_OPERATION_MS;
     this.timer = setTimeout(() => { this.cancelled = true; options.progress?.("cleanup", "operation_timed_out"); }, SETTINGS_OPERATION_MS);
@@ -116,6 +118,12 @@ export class SettingsExecution {
       && this.expected === settingsFingerprint(this.options.snapshot());
   }
   assert(): void { if (!this.current()) throw new SettingsExecutionError("settings_execution_stale"); }
+  /** Keep only this confirmation alive across its one operation-owned stop. */
+  async stopTarget(name: string, begin: () => Promise<unknown>): Promise<void> {
+    this.assert();
+    if (this.options.followStop) await this.options.followStop(name, begin); else await begin();
+    this.assert();
+  }
   /** No await is permitted between the check, mutation, and expected-state update. */
   mutate<T>(effect: () => T): T {
     this.assert(); this.options.progress?.("running");
