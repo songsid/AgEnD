@@ -57,7 +57,7 @@ try{
  phase='pair';const pair=hub.createPairing();runner.stdin.write(JSON.stringify({server:'http://127.0.0.1:'+server.address().port,code:pair.code})+'\n');
  await until(()=>messages.some(row=>row.fingerprint),'fingerprint');const pending=hub.listMachines().filter(row=>row.status==='pending');assert.equal(pending.length,1);
  const fingerprint=messages.find(row=>row.fingerprint).fingerprint;assert.equal(pending[0].pairingFingerprint,fingerprint);hub.approve(pending[0].id,fingerprint);
- await until(()=>messages.some(row=>row.ready),'runner ready');const ready=messages.find(row=>row.ready);machine=ready.machineId;model=ready.model;receipt.versions=ready.versions;
+ await until(()=>messages.some(row=>row.ready),'runner ready');const ready=messages.find(row=>row.ready);machine=ready.machineId;model=ready.model;receipt.versions=ready.versions;assert.equal(ready.junctionRefused,true);receipt.junctionRefused=true;
  await until(()=>hub.machine(machine)?.status==='online'&&hub.machine(machine)?.inventory?.clis.length===2,'cached CLI inventory');
  for(const cli of ['claude-code','codex']){
   phase='publish-'+cli;process.stdout.write('phase:'+phase+'\n');
@@ -67,7 +67,7 @@ try{
   assert.equal(publication.packHash,loadGeneralKnowledge(cli).hash);assert(publication.cwd.toLowerCase().startsWith(nativeRoot.toLowerCase()+'\\'));
   const workspace=root+publication.cwd.slice(nativeRoot.length).replaceAll('\\','/'),file=cli==='codex'?'AGENTS.md':'CLAUDE.md',skills=cli==='codex'?'.agents':'.claude';
   assert((await readFile(join(workspace,file),'utf8')).includes('# Fleet Coordinator'));
-  for(const skill of GENERAL_SKILL_NAMES)assert((await readFile(join(workspace,skills,'skills',skill,'SKILL.md'),'utf8')).includes('roles: [general]'));
+  for(const skill of GENERAL_SKILL_NAMES)assert.equal(await readFile(join(workspace,skills,'skills',skill,'SKILL.md'),'utf8'),loadGeneralKnowledge(cli).files[skills+'/skills/'+skill+'/SKILL.md']);
   const before=createHash('sha256').update(await readFile(join(workspace,'.agend-general.json'))).digest('hex');
   const agent=await store.create({name,cli,cwd:publication.cwd,machineId:machine,sandbox:'read-only',model:cli==='codex'?model:'haiku'});store.bindInstance(agent.id,name);
   const config={...nativeInstanceConfig(agent),general_topic:true,native_general_binding:bindingId,native_adapter:'pane',log_level:'silent',tool_progress:'standard',restart_policy:{max_retries:0,backoff:'linear',reset_after:60000,health_check_interval_ms:1000}};
@@ -104,6 +104,6 @@ finally{
  cleanup=released&&closed&&archived;receipt.ownedProcessExit=released&&closed;receipt.passed=passed;receipt.cleaned=cleanup;
  if(cleanup){await rm(root,{recursive:true,force:true,maxRetries:10,retryDelay:200});await rm(home,{recursive:true,force:true});}
  else receipt.retainedScratch=home;
- await writeFile('.artifacts/general-native-receipt.json',JSON.stringify(receipt,null,2)+'\n');process.stdout.write(JSON.stringify(receipt)+'\n');
+ await writeFile('.artifacts/general-native-receipt.json',JSON.stringify(receipt,null,2)+'\n');process.stdout.write(JSON.stringify(receipt)+'\n',()=>process.exit(passed&&cleanup?0:1));
 }
 if(!passed||!cleanup)process.exitCode=1;
