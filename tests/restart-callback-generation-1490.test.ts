@@ -103,6 +103,21 @@ describe("hang / clean-exit Restart: the lifecycle the click was for (#1490 row 
   }
 });
 
+describe("a refusal names the agent as the chat list does (#1490 row 27, leader)", () => {
+  it("its display name where it has one", async () => {
+    const { fm, any, adapter, transitions, replace } = rig();
+    (fm.fleetConfig!.instances.worker as any).display_name = "Worker Bee";
+    await fm.sendHangNotification("worker");
+    const id = adapter.notifyAlert.mock.calls[0][1].choices[0].id as string;
+    replace();
+    await any.handleHangPrompt(click(id), "telegram-main");
+    expect(transitions).not.toHaveBeenCalled();
+    expect(adapter.editMessageRemoveButtons.mock.calls.at(-1)?.[2]).toBe(t("restart.superseded", "Worker Bee"));
+    expect(await fm.applyModel("worker", "gpt-5.5", { current: () => false })).toBe(t("menu.instance_replaced", "Worker Bee"));
+    await expect(fm.restartSingleInstance("worker", { ownerCurrent: () => false })).rejects.toThrow(t("restart.superseded", "Worker Bee"));
+  });
+});
+
 describe("restartSingleInstance's owner fence (#1490 row 27)", () => {
   it("a fence that no longer holds: refused before anything is invalidated", async () => {
     const { fm, transitions } = rig();

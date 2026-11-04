@@ -1084,8 +1084,9 @@ export type GuestAuditEntry =
 
 /** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
 export class RestartSupersededError extends Error {
-  constructor(name: string) {
-    super(t("restart.superseded", name));
+  /** `shown`: the instance as the chat list names it (shownInstanceName). */
+  constructor(shown: string) {
+    super(t("restart.superseded", shown));
     this.name = "RestartSupersededError";
   }
 }
@@ -1549,6 +1550,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * restart and removal (the map is never pruned, so a same-name replacement has a later one). Taken when a button
    * or menu is claimed or offered, asked after every await before acting by name.
    */
+  /** #1490 row 27: an instance as the chat list names it — its display name where it has one, else its name. */
+  private shownInstanceName(name: string): string {
+    try {
+      const classic = this.classicChannels?.getAll().find(ch => ch.instanceName === name) ?? null;
+      return resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic, profile: profileIdentities(this.dataDir).get(name) }).display_name || name;
+    } catch { return name; }
+  }
+
   private lifecyclePin(name: string): () => boolean {
     // Fail closed: a lifecycle that cannot say its epoch holds nothing (and never stops a prompt from being posted).
     let epoch: number | undefined;
@@ -6524,7 +6533,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
-    if (opts?.ownerCurrent && !opts.ownerCurrent()) throw new RestartSupersededError(name);
+    if (opts?.ownerCurrent && !opts.ownerCurrent()) throw new RestartSupersededError(this.shownInstanceName(name));
     const migration = this.kiroMigrationRuns?.get(name);
     if (migration && migration.token !== opts?.kiroMigration) throw new Error(t("kiro_migrate.in_progress"));
     if (opts?.recoveryCurrent && !opts.recoveryCurrent()) throw new Error(t("exit.expired", name));
@@ -16310,7 +16319,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     if (!current()) {
-      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", pending.instanceName));
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
       return true;
     }
     await this.retireNonceButtons(
@@ -18657,7 +18666,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     if (!current()) {
-      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", pending.instanceName));
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
       return true;
     }
     await this.retireNonceButtons(
@@ -20155,8 +20164,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!pending.instanceCurrent()) {
       this.pendingEffortSelects.delete(match[1]);
       clearTimeout(pending.timer);
-      data.ack?.(t("menu.instance_replaced", pending.instanceName));
-      await pending.respond(t("menu.instance_replaced", pending.instanceName)).catch(() => {});
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
       return true;
     }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
@@ -20200,7 +20209,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = !pending.instanceCurrent() ? t("menu.instance_replaced", pending.instanceName)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
           : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
@@ -20499,8 +20508,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!pending.instanceCurrent()) {
       this.pendingModelSelects.delete(match[1]);
       clearTimeout(pending.timer);
-      data.ack?.(t("menu.instance_replaced", pending.instanceName));
-      await pending.respond(t("menu.instance_replaced", pending.instanceName)).catch(() => {});
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
       return true;
     }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
@@ -20568,7 +20577,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = !pending.instanceCurrent() ? t("menu.instance_replaced", pending.instanceName)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
           : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
@@ -20664,7 +20673,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   async applyEffort(instanceName: string, requested: string, opts?: { current?: () => boolean }): Promise<string> {
     // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first and fenced into the restart.
-    if (opts?.current && !opts.current()) return t("menu.instance_replaced", instanceName);
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     const level = requested.trim().toLowerCase();
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" | "unsupported" = "unsupported";
@@ -20707,7 +20716,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   async applyModel(instanceName: string, model: string, opts?: { current?: () => boolean }): Promise<string> {
     // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first, after the runtime switch's
     // await, and fenced into the restart.
-    if (opts?.current && !opts.current()) return t("menu.instance_replaced", instanceName);
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     // Reject model names with newlines or control characters: they would be
     // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
     if (/[\x00-\x1f\x7f]/.test(model)) {
@@ -20734,7 +20743,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #1690: claude-code's runtime switch reports what it came to; the model is saved unless claude was told No.
     if (strategy === "runtime" && backendName === "claude-code") {
       const result = await this.runRuntimeModelSwitch(instanceName, model);
-      if (opts?.current && !opts.current()) return t("menu.instance_replaced", instanceName);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (result.outcome === "mismatch") return `${warn}${t("model.switch_mismatch", instanceName, result.shown, model)}`;
       if (result.outcome === "not_sent") return `${warn}${t("model.switch_not_sent", instanceName, model)}`;
       const persistedNow = this.persistInstanceModel(instanceName, model);

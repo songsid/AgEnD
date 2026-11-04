@@ -2100,7 +2100,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "exit.restarted": "✅ {0} 已重新啟動。",
     "exit.ignored": "🚫 已忽略 {0} 的重啟提示。",
     "exit.expired": "⌛ {0} 的重啟提示已逾時。",
-    "restart.superseded": "⌛ 沒有重啟：{0} 在這之後已被停止、重啟或替換。",
+    "restart.superseded": "⌛ 沒有重啟：按下之後，{0} 已被停止、重啟或替換。",
     "exit.restart_failed": "❌ 無法重啟 {0}：{1}",
     "hang.detected": "⚠️ {0} 可能卡住了 — 畫面已 {1} 分鐘無變化，也偵測不到就緒提示",
     "hang.restart": "🔄 強制重啟",
