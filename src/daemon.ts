@@ -2222,7 +2222,7 @@ export class Daemon extends EventEmitter {
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
   private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
-  /** Per-launch attention for a pasted delivery whose bounded Enter attempts exhausted, including non-outbox input. */
+  /** Per-launch attention for a native delivery whose bounded input attempts were refused or uncertain, including non-outbox input. */
   nativeDeliveryHold(): { key: string; since: number } | null {
     const hold = this.nativeEnterHold;
     return hold && this.nativePaneLifecycle && !this.deliveryWritesStopping && hold.spawn === this.spawnGeneration && hold.fence === this.launchFenceEpoch
@@ -9866,7 +9866,7 @@ export class Daemon extends EventEmitter {
       enterMarked = true;
       const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "delivery", screen: pane }) : tmux!.sendSpecialKey("Enter"));
       // A busy renderer can change seq after our capture. Only a positive zero-input ACK admits a NEW proof/key;
-      // never re-paste, retry an uncertain write, reuse the stale proof, or re-commit the durable Enter boundary.
+      // An Enter retry never re-pastes, retries an uncertain write, reuses stale proof or re-commits the durable boundary.
       if (!sent && native && tmux!.lastInputWasNotSent?.() === true
         && tmux!.getLastSendSpecialKeyError() === "Pane changed after observation; input was not sent"
         && current()) {
@@ -9887,6 +9887,47 @@ export class Daemon extends EventEmitter {
       if (sent && native && current()) this.nativeEnterHold = null;
       return sent;
     }
+  }
+
+  /** A pre-existing native busy-paste race: retry bytes only after an exact, owned zero-input acknowledgement. */
+  private async sendDeliveryPaste(text: string, stillCurrent?: () => boolean): Promise<boolean> {
+    const pane = this.tmux!, native = this.nativePaneLifecycle;
+    if (!native) return pane.pasteBuffer(text);
+    const backend = this.backend, generation = this.spawnGeneration, fence = this.launchFenceEpoch, windowId = pane.getWindowId();
+    const current = () => !!windowId && this.tmux === pane && this.nativePaneLifecycle === native && this.backend === backend
+      && this.spawnGeneration === generation && this.launchFenceEpoch === fence && pane.getWindowId() === windowId
+      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    const hold = (reason: string) => {
+      if (current() && !this.nativeDeliveryHold()) this.nativeEnterHold = { key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence };
+      this.logger.warn({reason}, "Native delivery paste held by its safety check");
+      return false;
+    };
+    const deadline = performance.now() + 2000;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      if (!current()) return false;
+      if (performance.now() >= deadline) return hold("output_changed");
+      let screen: string | undefined;
+      for (let read = 0; read < 5 && screen === undefined; read++) {
+        try { screen = await pane.capturePane(); } catch { /* Reads do not construct an input operation. */ }
+        if (!current()) return false;
+        if (performance.now() >= deadline) return hold("capture_failed");
+        if (screen === undefined && read < 4) await new Promise(done => setTimeout(done, 100));
+      }
+      if (screen === undefined) return hold("capture_failed");
+      try { if (backend?.getRuntimeDialogs?.().some(dialog => Daemon.dialogMatches(dialog, screen!))) return hold("dialog"); }
+      catch { return hold("check_failed"); }
+      if (!current()) return false;
+      if (performance.now() >= deadline) return hold("output_changed");
+      let sent: boolean;
+      try { sent = await pane.pasteBuffer(text, {guard: current, proof: {kind: "composer", screen}}); }
+      catch { return hold("unconfirmed"); }
+      if (sent) return true; // Exactly one successful paste ends the loop, before any Enter.
+      if (!current()) return false;
+      if (pane.lastInputWasNotSent?.() !== true || pane.getLastPasteError?.() !== "Pane changed after observation; input was not sent") return hold("unconfirmed");
+      if (attempt >= 4 || performance.now() >= deadline) return hold("output_changed");
+      await new Promise(done => setTimeout(done, 100));
+    }
+    return hold("output_changed");
   }
 
   private async writeMessageToPane(
@@ -10059,7 +10100,13 @@ export class Daemon extends EventEmitter {
       }
       const pasteGeneration = this.spawnGeneration;
       beforePaste?.();
-      const pasted = await this.tmux!.pasteBuffer(formatted);
+      const pasted = await this.sendDeliveryPaste(formatted, nativeOwner);
+      if (!pasted && this.nativePaneLifecycle) {
+        // The native write attempt is retained as uncertain, including exhausted positive refusals. Never route an
+        // unknown/partial write through legacy window recovery or abort it back to an automatically replayable row.
+        verdict.paneWriteStarted = true; verdict.phase = "paste"; verdict.proof = "native-paste-held";
+        return false;
+      }
       if (pasted) this.rememberPaste(formatted, pasteGeneration);
       if (!pasted) {
         if (rawPaste) {

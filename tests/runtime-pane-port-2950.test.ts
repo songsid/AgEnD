@@ -216,3 +216,22 @@ it('a lost paste ACK after re-observation remains uncertain and is never replaye
  expect(await f.port.pasteBuffer('uncertain once')).toBe(false);expect(inputs).toBe(1);expect(f.port.lastInputWasNotSent()).toBe(false);
  expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~uncertain once\x1b[201~');expect(readFileSync(f.file,'utf8')).toContain('pending');
 });
+
+async function pasteDeliveryDaemon(f:Awaited<ReturnType<typeof fixture>>){
+ const {Daemon}=await import('../src/daemon.js'),{ClaudeCodeBackend}=await import('../src/backend/claude-code.js'),root=join(f.file,'..'),logger={info(){},warn(){},error(){},debug(){},child(){return this;}};
+ const daemon:any=new Daemon('private-paste',{working_directory:root,backend:'claude-code',log_level:'silent'}as never,root,true,new ClaudeCodeBackend(root),undefined,logger as never);
+ daemon.tmux=f.port;daemon.nativePaneLifecycle={};daemon.backend=new CodexPaneDetectors({statusLineItems:()=>['context-remaining'],launchMayResume:()=>false});return daemon;
+}
+it('native delivery paste retries a real positive refusal and writes exactly one successful bracketed paste',async()=>{
+ const f=await fixture(),daemon=await pasteDeliveryDaemon(f),call=f.endpoint.call;let inputs=0;f.endpoint.call=async request=>{if(request.action==='input'&&++inputs===1)repaint(f,'› Ask Codex to do anything\n\nContext 99% left\n');return call(request);};
+ expect(await daemon.sendDeliveryPaste('one payload')).toBe(true);expect(inputs).toBe(2);expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~one payload\x1b[201~');expect(f.port.lastInputWasNotSent()).toBe(false);expect(readFileSync(f.file,'utf8')).not.toContain('pending');
+});
+it.each(['lost ACK','partial write'])('native delivery paste never retries a real %s',async mode=>{
+ const f=await fixture(),daemon=await pasteDeliveryDaemon(f),call=f.endpoint.call;let inputs=0;f.endpoint.call=async request=>{if(request.action==='input')inputs++;const result=await call(request);if(mode==='lost ACK'&&request.action==='input')throw Error('ACK lost after write');return result;};
+ if(mode==='partial write')f.write.mockImplementationOnce(()=>{throw Error('write outcome unknown');});
+ expect(await daemon.sendDeliveryPaste('one payload')).toBe(false);expect(inputs).toBe(1);expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~one payload\x1b[201~');expect(f.port.lastInputWasNotSent()).toBe(false);expect(readFileSync(f.file,'utf8')).toContain('pending');expect(daemon.nativeDeliveryHold()).not.toBeNull();
+});
+it('native paste dialog veto is independent of an ordinary composer that would otherwise accept input',async()=>{
+ const f=await fixture(),daemon=await pasteDeliveryDaemon(f);daemon.backend.getRuntimeDialogs=()=>[{pattern:/Ask Codex/,description:'recognised runtime test card'}];const call=vi.spyOn(f.endpoint,'call');
+ expect(await daemon.sendDeliveryPaste('must not write')).toBe(false);expect(call.mock.calls.some(([request])=>request.action==='input')).toBe(false);expect(f.write).not.toHaveBeenCalled();
+});
