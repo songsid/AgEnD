@@ -78,7 +78,7 @@ export async function nativeClaudeSessionState(cwd: string, sessionId: string, c
  * A matching archive, stale metadata, incomplete walk, WAL, unsafe file or lost lease is unknown, never absence. */
 export async function nativeCodexSessionState(cwd: string, sessionId: string, current: () => boolean = () => true,
   roots = nativePaneTranscriptRoots()): Promise<NativeClaudeSessionState> {
-  if (!validNativeSessionId("codex", sessionId)) return "unknown";
+  if (!validNativeSessionId("codex", sessionId) || sessionId !== sessionId.toLowerCase()) return "unknown";
   const deadline=performance.now()+1250,live=()=>current()&&performance.now()<deadline;
   const observed=new Map<string,Stats|null>(),matches:string[]=[];
   const same=(a:Stats,b:Stats)=>sameFile(a,b)&&a.size===b.size&&a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
@@ -94,6 +94,7 @@ export async function nativeCodexSessionState(cwd: string, sessionId: string, cu
       for await(const entry of dir){if(!live()||++entries>16384)throw Error("Proof scan bound");
         const path=join(folder,entry.name);
         if(entry.isSymbolicLink())throw Error("Unsafe proof entry");
+        if(entry.name.toLowerCase().includes(sessionId)&&!entry.name.endsWith(`-${sessionId}.jsonl`))throw Error("Unknown exact-ID filename");
         if(entry.name.endsWith(`-${sessionId}.jsonl`)){
           if(archive||!entry.isFile()||entry.isSymbolicLink())throw Error("Archived or unsafe exact match");
           const st=await inspect(path);if(!st)throw Error("Match changed");regular(st);if(!st.size)throw Error("Incomplete match");matches.push(path);
@@ -107,14 +108,14 @@ export async function nativeCodexSessionState(cwd: string, sessionId: string, cu
     if(matches.length===1){
       const reader=new NativePaneTranscriptReader("codex",canonical,sessionId,roots);
       try{let proof:PaneTranscriptBaseline;do{proof=await reader.baseline(undefined,live);}while(live()&&proof.state==="pending");
-        return proof.state==="ready"&&await unchanged()?"saved":"unknown";
+        return proof.state==="ready"&&proof.complete&&await unchanged()?"saved":"unknown";
       }finally{await reader.close();}
     }
     // No rollouts is not sufficient if Codex retains metadata for that ID. Never open its DB in normal WAL mode.
     const index=join(roots.codex,"session_index.jsonl"),indexStat=await inspect(index);
     if(indexStat){regular(indexStat);if(indexStat.size>16*1024*1024)return "unknown";const handle=await open(index,constants.O_RDONLY|(constants.O_NOFOLLOW??0));
       try{if(!same(indexStat,await handle.stat()))return "unknown";const text=decode(await bytes(handle,0,indexStat.size));
-        for(const line of text.split(/\r?\n/)){if(!live())return "unknown";if(line){const entry=record(line);if(typeof entry.id!=="string"||!validNativeSessionId("codex",entry.id)||entry.id===sessionId)return "unknown";}}
+        for(const line of text.split(/\r?\n/)){if(!live())return "unknown";if(line){const entry=record(line);if(typeof entry.id!=="string"||!validNativeSessionId("codex",entry.id)||entry.id.toLowerCase()===sessionId)return "unknown";}}
       }finally{await handle.close();}}
     const profile=await opendir(roots.codex);
     for await(const entry of profile){if(!live()||++entries>16384)return "unknown";

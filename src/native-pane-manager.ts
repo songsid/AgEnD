@@ -90,6 +90,7 @@ export class NativePaneManager {
   this.options.store.pinFreshCodexSession(launch.agentId,fresh.previous,observed);return next;
  }
  private recordExit(file:string,manifest:Manifest,snapshot:RuntimePaneSnapshot):Manifest{
+  if(manifest.launch.cli==="codex"&&manifest.fresh?.sessionId&&snapshot.sessionId!==manifest.fresh.sessionId)throw Error("Fresh Codex exit conversation differs");
   let next=manifest;
   if(manifest.launch.cli==="codex"&&manifest.fresh&&snapshot.sessionId&&snapshot.sessionId!==manifest.fresh.previous.sessionId
     &&this.options.store.get(snapshot.agentId).threadId!==snapshot.sessionId)next=this.bindFreshCodex(file,manifest,snapshot);
@@ -159,7 +160,7 @@ export class NativePaneManager {
   }
   if(manifest?.exited){
    if(!manifest.exited.noLaunch&&!manifest.exited.sessionId){
-    if(agent.cli==="codex"&&manifest.fresh){
+    if(agent.cli==="codex"&&manifest.fresh&&!manifest.fresh.sessionId){
      if(agent.activeId)this.options.store.releaseUnpinnedCodexPane(id,manifest.fresh.previous,manifest.exited);
      throw missingSession();
     }
@@ -293,8 +294,11 @@ export class NativePaneManager {
    const raw=await endpoint.call({action:"list"});assertCurrent();this.options.admit(name,config);
    if(!raw||typeof raw!=="object"||!Array.isArray((raw as any).panes)||(raw as any).capabilities?.recovery!==true)throw new NativePaneRecoveryError({kind:"host-upgrade",launchId});
    const rows=((raw as any).panes as unknown[]).map(validateRuntimePaneSnapshot),pane=rows.find(row=>row.paneId===manifest.launch.paneId);
+   // A host can die after recording Codex's UUID but before its profile commit. Bind it only AFTER the exact recovered exit.
+   const pendingFresh=manifest.launch.cli==="codex"&&manifest.fresh&&agent.threadId===manifest.fresh.previous.sessionId
+    &&(pane?.sessionId?pane.sessionId!==pin&&(!manifest.fresh.sessionId||manifest.fresh.sessionId===pane.sessionId):!manifest.fresh.sessionId);
    if(rows.filter(row=>row.paneId===manifest.launch.paneId).length!==1||!pane||pane.launchId!==launchId||pane.agentId!==id||pane.instance!==name
-    ||(pane.sessionId!==pin&&!(manifest.launch.cli==="codex"&&manifest.fresh&&!manifest.fresh.sessionId&&!pane.sessionId&&manifest.fresh.previous.sessionId===pin))||rows.some(row=>row.agentId===id&&row.paneId!==pane.paneId&&row.state!=="exited"))throw Error(t("native_pane.scope"));
+    ||pane.sessionId!==pin&&!pendingFresh||rows.some(row=>row.agentId===id&&row.paneId!==pane.paneId&&row.state!=="exited"))throw Error(t("native_pane.scope"));
    const ended=validateRuntimePaneSnapshot(await endpoint.call({action:"recover",paneId:pane.paneId,launchId,hostBootId:pane.hostBootId,confirmedStopped:true}));
    assertCurrent();this.options.admit(name,config);
    if(ended.state!=="exited"||ended.paneId!==pane.paneId||ended.launchId!==launchId||ended.agentId!==id||ended.instance!==name||ended.hostBootId!==pane.hostBootId

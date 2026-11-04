@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {randomUUID} from 'node:crypto';
-export async function prepareUnwrittenCodex({fleet,store,row,coordinator,evidence,deriveNeedsYou}){
+export async function prepareUnwrittenCodex({fleet,store,row,coordinator,evidence,deriveNeedsYou,inputCounts}){
  const ids=new Set(),remember=()=>{const id=store.get(row.agent.id).threadId;if(id)ids.add(id);return id;};
  const readIntent=async()=>JSON.parse(await readFile(join(coordinator,'native-panes',row.agent.id,'active.json'),'utf8'));
  const original=remember();assert(original);await fleet.stopInstance(row.name);
@@ -20,9 +20,11 @@ export async function prepareUnwrittenCodex({fleet,store,row,coordinator,evidenc
  store.pinFreshCodexSession=(...args)=>{if(!interrupted){interrupted=true;throw Error('Scratch profile commit interrupted');}return originalPin(...args);};
  try{await assert.rejects(fleet.startFreshNativePane(row.name,hold.launchId,first,()=>true),/Scratch profile commit interrupted/);}
  finally{store.pinFreshCodexSession=originalPin;remember();const intent=await readIntent();if(intent.fresh?.sessionId)ids.add(intent.fresh.sessionId);}
- assert(interrupted);assert.equal(store.get(row.agent.id).activeId,undefined,'Only positive cleanup can release the interrupted launch');
+ assert(interrupted);const retained=store.get(row.agent.id).activeId,intent=await readIntent(),beforeInput=inputCounts();assert.equal(retained,intent.launch.launchId);assert.equal(remember(),first,'The old pin remains until exact observed binding completes');
+ await fleet.startInstance(row.name,row.config,true);assert.equal(store.get(row.agent.id).activeId,retained);assert.equal(remember(),intent.fresh.sessionId);assert.deepEqual(inputCounts(),beforeInput,'Live interrupted reattach sends no startup input');
+ await fleet.stopInstance(row.name);assert.equal(store.get(row.agent.id).activeId,undefined,'Release only after positive owned close');
  await assert.rejects(fleet.startInstance(row.name,row.config,true),error=>error.name==='NativePaneRecoveryError');
  const interruptedHold=store.get(row.agent.id).paneRecovery,held=remember();assert.equal(interruptedHold.kind,'session-unconfirmed');
  await fleet.startFreshNativePane(row.name,interruptedHold.launchId,interruptedHold.sessionId,()=>true);const final=remember();assert(final&&final!==held);
- evidence.codex={originalPin:original,firstFreshPin:first,finalPin:final,proof,automatic,interruptedBeforeProfileCommit:true,needsYou:true,noAutomaticChain:true,staleDecisionRefused:true,sessionIds:[...ids]};
+ evidence.codex={originalPin:original,firstFreshPin:first,finalPin:final,proof,automatic,interruptedBeforeProfileCommit:true,interruptedReattachedWithoutInput:true,needsYou:true,noAutomaticChain:true,staleDecisionRefused:true,sessionIds:[...ids]};
 }

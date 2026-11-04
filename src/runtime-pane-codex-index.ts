@@ -5,15 +5,18 @@ import { pathToFileURL } from "node:url";
 const QUERY = `
 const {parentPort,workerData}=require('node:worker_threads');
 let db;try{const {DatabaseSync}=require('node:sqlite');db=new DatabaseSync(workerData.uri,{readOnly:true});
-db.exec('PRAGMA trusted_schema=OFF');const row=db.prepare('SELECT id FROM threads WHERE id=? LIMIT 1').get(workerData.id);
+db.exec('PRAGMA trusted_schema=OFF');const schema=db.prepare('PRAGMA table_info(threads)').all();
+if(schema.length>128||!schema.some(c=>c.name==='id'&&c.type.toUpperCase()==='TEXT'&&c.pk===1))throw Error('Unknown schema');
+const row=db.prepare("SELECT 1 AS present FROM threads WHERE typeof(id) <> 'text' OR id=? COLLATE NOCASE LIMIT 1").get(workerData.id);
 parentPort.postMessage(row===undefined?'clear':'unknown');}catch{parentPort.postMessage('unknown');}finally{try{db?.close();}catch{}}
 `;
 let active = false;
 export function codexIndexHasNoThread(path: string, id: string, current: () => boolean): Promise<boolean> {
+  const isCurrent=():boolean=>{try{return current()===true;}catch{return false;}};
   return new Promise(resolve => {
     let worker: Worker | undefined, timer: ReturnType<typeof setTimeout> | undefined, done = false;
-    const finish = (clear: boolean): void => { if(done)return;done=true;clearTimeout(timer);if(worker)void worker.terminate().then(()=>resolve(clear&&current()),()=>resolve(false));else resolve(false); };
-    if(!current()||active)return finish(false);
+    const finish = (clear: boolean): void => { if(done)return;done=true;clearTimeout(timer);if(worker)void worker.terminate().then(()=>resolve(clear&&isCurrent()),()=>resolve(false));else resolve(false); };
+    if(!isCurrent()||active)return finish(false);
     active=true;
     try {
       worker=new Worker(QUERY,{eval:true,workerData:{uri:pathToFileURL(path).href+"?immutable=1",id},

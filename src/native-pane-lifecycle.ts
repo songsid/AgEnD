@@ -106,7 +106,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     while (true) {
       text = await observe(until);
       if (this.ready(text)) break;
-      if ((await this.port.getPaneStatus())?.alive === false) throw Error("Native Codex exited before conversation verification");
+      if ((await this.port.getPaneStatus())?.alive === false) throw Error("Native Codex composer needs attention before conversation verification");
       if (performance.now() >= until) throw Error("Native Codex composer needs attention before conversation verification");
       await new Promise(resolve => setTimeout(resolve, 250));
     }
