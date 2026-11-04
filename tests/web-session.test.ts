@@ -208,6 +208,59 @@ describe("revocation", () => {
     expect(store.authenticate(extra.sessionId, EPOCH)).not.toBeNull();
   });
 
+  it("a pending public candidate does not evict an active session; admission then applies the cap", () => {
+    const { clock, opts } = clocked();
+    const store = new WebSessionStore({ ...opts, maxSessions: 1 });
+    const local = store.create(input);
+    clock.now += 1000;
+    const exposureId = "a".repeat(32);
+    const candidate = store.create({ ...input, surface: "gateway", exposureId, pending: true, label: "public candidate" });
+    const gateway = { surface: "gateway" as const, exposureId };
+
+    expect(store.authenticate(local.sessionId, EPOCH), "pending must not take the active slot").not.toBeNull();
+    expect(store.authenticate(candidate.sessionId, EPOCH, gateway)).toBeNull();
+
+    clock.now += 1000;
+    expect(store.activate(candidate.sessionId)).toBe(true);
+    expect(store.authenticate(local.sessionId, EPOCH), "admission evicts the LRU active").toBeNull();
+    expect(store.authenticate(candidate.sessionId, EPOCH, gateway)).not.toBeNull();
+  });
+
+  it("a further pending candidate evicts another pending, never the active session", () => {
+    const { clock, opts } = clocked();
+    const store = new WebSessionStore({ ...opts, maxSessions: 1 });
+    const local = store.create(input);
+    clock.now += 1000;
+    const exposureId = "a".repeat(32);
+    const first = store.create({ ...input, surface: "gateway", exposureId, pending: true, label: "first candidate" });
+    clock.now += 1000;
+    const second = store.create({ ...input, surface: "gateway", exposureId, pending: true, label: "second candidate" });
+    const gateway = { surface: "gateway" as const, exposureId };
+
+    expect(store.authenticate(local.sessionId, EPOCH)).not.toBeNull();
+    expect(store.activate(first.sessionId), "the older pending is the one the cap dropped").toBe(false);
+    expect(store.activate(second.sessionId)).toBe(true);
+    expect(store.authenticate(local.sessionId, EPOCH)).toBeNull();
+    expect(store.authenticate(second.sessionId, EPOCH, gateway)).not.toBeNull();
+  });
+
+  it("activate bumps lastSeen so a live local session is the LRU, not the admitted candidate", () => {
+    const { clock, opts } = clocked();
+    const store = new WebSessionStore({ ...opts, maxSessions: 1 });
+    const local = store.create(input);
+    clock.now += 1000;
+    const exposureId = "a".repeat(32);
+    const candidate = store.create({ ...input, surface: "gateway", exposureId, pending: true, label: "public candidate" });
+    const gateway = { surface: "gateway" as const, exposureId };
+
+    clock.now += 120_000;
+    expect(store.authenticate(local.sessionId, EPOCH)).not.toBeNull();
+    clock.now += 1000;
+    expect(store.activate(candidate.sessionId)).toBe(true);
+    expect(store.authenticate(candidate.sessionId, EPOCH, gateway)).not.toBeNull();
+    expect(store.authenticate(local.sessionId, EPOCH)).toBeNull();
+  });
+
   it("marks the caller's own session in the list", () => {
     const store = new WebSessionStore();
     const a = store.create({ ...input, label: "phone" });
