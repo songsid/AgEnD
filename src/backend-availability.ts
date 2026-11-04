@@ -31,6 +31,7 @@ import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { binaryProbe, spawnProbeCommand, PROBE_DEADLINE_MS, type ProbeChild } from "./binary-probe.js";
 import { BACKEND_INSTALLATION_INFO } from "./instance-lifecycle.js";
 import { KIRO_SUPPORTED_MIN } from "./backend/kiro.js";
+import { noteResolvedBinary } from "./backend/types.js";
 
 export type AvailabilityState = "usable" | "not_installed" | "not_signed_in" | "too_old" | "unknown";
 /** A login's state: `not_required` — the CLI talks to a provider of its own (codex's custom provider), no login of ours. */
@@ -201,6 +202,21 @@ async function fallbackDirs(backend: string): Promise<string[]> {
   const prefix = await npmPrefix();
   if (prefix) dirs.push(join(prefix, "bin"));
   return [...new Set(dirs)];
+}
+
+/**
+ * #1490 row 67: off-loop resolve, then pin a hint so `createBackend` / `resolveBinary`
+ * on the fleet loop does not run synchronous `which`. A miss or unknown pins the
+ * binary name (the same fallback resolveBinarySync would return) rather than
+ * forgetting the hint — a forgotten hint is what let spawn stall after the
+ * boolean PATH check.
+ */
+export async function pinResolvedBinary(backend: string): Promise<string | null | undefined> {
+  const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+  if (!binary) return null;
+  const path = await resolveBackendBinary(backend);
+  noteResolvedBinary(binary, path ?? binary);
+  return path;
 }
 
 /** Found the way the launch finds it (resolveBinary): on PATH, else in a known install directory. */

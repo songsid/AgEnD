@@ -1811,13 +1811,15 @@ export class InstanceLifecycle {
       return;
     }
 
-    // Verify backend binary is in PATH before spawning. Async: a slow or hung PATH
-    // must not block the fleet loop (#1490 row 67). Missing still only logs; start continues.
+    // Verify backend binary is in PATH before spawning. Off-loop resolve pins a
+    // hint so createBackend's resolveBinary does not run synchronous `which`
+    // (#1490 row 67). Missing still only logs; start continues.
     const installation = BACKEND_INSTALLATION_INFO[backendName];
     if (installation) {
-      const found = await checkBinaryInstalledAsync(installation.binary);
+      const { pinResolvedBinary } = await import("./backend-availability.js");
+      const path = await pinResolvedBinary(backendName);
       check();
-      if (!found) {
+      if (!path) {
         this.ctx.logger.error(
           { binary: installation.binary, backend: backendName, instance: name },
           `Backend binary "${installation.binary}" not found in PATH`,

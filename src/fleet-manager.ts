@@ -103,7 +103,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, pinResolvedBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -123,7 +123,7 @@ import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
-import { CLI_ENV_TTL_MS, isModelCompatible, noteResolvedBinary, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, ResumeBlockedError, type BackendCliVersionSnapshot } from "./backend/types.js";
+import { CLI_ENV_TTL_MS, hasResolvedBinaryHint, isModelCompatible, noteResolvedBinary, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, ResumeBlockedError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -5836,6 +5836,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // reconcile starts keep the persisted last-inbound seed (Phase 2a).
       if (resumePaused) this.lifecycle.markActivitySeedNow(name);
       const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      // #1490 row 67: pin the off-loop path before skill/instruction publication
+      // constructs a backend (resolveKnowledgeWorkDir). Lifecycle start pins again
+      // before its own createBackend; the probe cache makes the second lookup cheap.
+      await pinResolvedBinary(backend);
       if (config.general_topic) {
         this.ensureGeneralInstructions(config.working_directory, backend, name);
       } else if (kind === "fleet-topic") {
@@ -18688,7 +18692,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
     // Backend resolution may create/normalize the real cwd. Instructions and
     // skills must land where the CLI actually runs, not an assumed path.
+    // Without an off-loop hint, skip construction: createBackend would
+    // resolveBinary with synchronous `which` (#1490 row 67 / #2208-style).
     try {
+      const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+      if (binary && !hasResolvedBinaryHint(binary)) return workDir;
       const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
         .resolveWorkingDirectory?.(workDir, instanceName);
       if (resolved) workDir = resolved;
