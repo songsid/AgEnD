@@ -1,3 +1,4 @@
+import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { withoutTaskBoardGuidance, withoutTaskCommands } from "./dashboard-permissions.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -250,4 +251,10 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   }
 
   return sections.join("\n\n");
+}
+
+/** Native General adds the same role as the host, with an explicit coordinator/Windows filesystem boundary. */
+export function buildNativeFleetInstructions(params: FleetInstructionsParams, general: boolean): string {
+  return (general ? GENERAL_ROLE_INSTRUCTIONS + "\n\n"
+    + "## Windows execution boundary\nAgEnD and its chat, settings, receipts and configuration run on the coordinator host. Use your authenticated AgEnD tools; a local Windows command or file edit does not control that host. Your General skills are in this dedicated workspace. Do not copy login credentials or assume access to the host filesystem. Human confirmation stays with the person, never this model.\n\n" : "") + buildFleetInstructions(params);
 }
