@@ -558,6 +558,11 @@ export interface RestartOpts {
   sessionOomRetry?: SessionOomRetry;
   /** Internal pre-invalidation owner fence for an unclear-OOM action. */
   recoveryCurrent?: () => boolean;
+  /**
+   * #1490 row 27: the lifecycle the caller acts for (lifecyclePin), asked before anything is invalidated. A button or
+   * menu offered for one instance never restarts a later one of the same name, or one restarted since.
+   */
+  ownerCurrent?: () => boolean;
   carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null };
 }
 /** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
@@ -733,6 +738,11 @@ export interface ModelCatalog {
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
+  /**
+   * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
+   * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
+   */
+  lifecycleCurrent?: () => boolean;
   pendingChangeId?: string;
   sessionOomRetry?: SessionOomRetry;
   confirmationCurrent?: () => boolean;
@@ -1072,6 +1082,15 @@ export type GuestAuditEntry =
   | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }
   | { kind: "code"; at: number; account: string; name: string; outcome: string };
 
+/** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
+export class RestartSupersededError extends Error {
+  /** `shown`: the instance as the chat list names it (shownInstanceName). */
+  constructor(shown: string) {
+    super(t("restart.superseded", shown));
+    this.name = "RestartSupersededError";
+  }
+}
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -1344,8 +1363,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
-  private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
-  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
+  private pendingEffortSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
+  private pendingModelSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** #1806: in-flight /backend steps, keyed by nonce (see handleBackendSelection). */
   private pendingBackendSelects = new Map<string, PendingBackendSelect>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
@@ -1526,6 +1545,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly webChatRemovals = new Map<string, { below: number; daemon?: unknown }>();
   /** #1774: a removal under way — its replies' fate waits for its outcome (success: theirs no more; failure: theirs). */
   private readonly webChatRemovalsPending = new Map<string, { below: number; daemon?: unknown; done: Promise<void> }>();
+  /**
+   * #1490 row 27: "still the same lifecycle of `name`" — its lifecycle epoch, moved on synchronously by every stop,
+   * restart and removal (the map is never pruned, so a same-name replacement has a later one). Taken when a button
+   * or menu is claimed or offered, asked after every await before acting by name.
+   */
+  /** #1490 row 27: an instance as the chat list names it — its display name where it has one, else its name. */
+  private shownInstanceName(name: string): string {
+    try {
+      const classic = this.classicChannels?.getAll().find(ch => ch.instanceName === name) ?? null;
+      return resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic, profile: profileIdentities(this.dataDir).get(name) }).display_name || name;
+    } catch { return name; }
+  }
+
+  private lifecyclePin(name: string): () => boolean {
+    // Fail closed: a lifecycle that cannot say its epoch holds nothing (and never stops a prompt from being posted).
+    let epoch: number | undefined;
+    try { epoch = this.lifecycle?.epochOf(name); } catch { return () => false; }
+    return () => { try { return !this.shuttingDown && this.lifecycle?.epochOf(name) === epoch; } catch { return false; } };
+  }
+
   private webChatGeneration(name: string): number { return this.webChatGenerations.get(name) ?? 0; }
   /** #1774: who an instance's reply is from, taken when it is sent: the name's generation and its daemon then. */
   private webChatIdentity(name: string): WebChatIdentity { return { generation: this.webChatGeneration(name), daemon: this.daemons.get(name) }; }
@@ -6494,6 +6533,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
+    if (opts?.ownerCurrent && !opts.ownerCurrent()) throw new RestartSupersededError(this.shownInstanceName(name));
     const migration = this.kiroMigrationRuns?.get(name);
     if (migration && migration.token !== opts?.kiroMigration) throw new Error(t("kiro_migrate.in_progress"));
     if (opts?.recoveryCurrent && !opts.recoveryCurrent()) throw new Error(t("exit.expired", name));
@@ -12888,6 +12928,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
       else await this.lifecycle.remove(name, authorization);
+      // #1490 row 27: its hang/exit offers were for the instance now gone (stopInstance clears them; removal stops
+      // through the lifecycle directly). The offers' own lifecycle pins refuse them too.
+      this.clearNoncePromptsForInstance(name);
       // #1774: removed — its replies still copying their files are no one's to show, replaced or not (a failed removal
       // throws above: its replies stay its own).
       this.webChatRemovals.set(name, { below: removedBelow, ...(removedDaemon !== undefined ? { daemon: removedDaemon } : {}) });
@@ -14503,6 +14546,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       threadId: opts.threadId,
       expiredText: opts.expiredText,
       createdAt: Date.now(),
+      lifecycleCurrent: this.lifecyclePin(opts.instanceName),
       ...opts.extra,
     };
     entry.timer = setTimeout(() => {
@@ -16261,6 +16305,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, oom ? "session_oom_action" : "normal_exit_action", { action, userId: data.userId });
     if (action === "ignore") {
@@ -16272,13 +16318,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("exit.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
         ...(pending.confirmationCurrent ? { recoveryCurrent: pending.confirmationCurrent } : {}) } : {}) });
       await pending.adapter.editMessage(
         pending.chatId,
@@ -16292,7 +16342,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("exit.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("exit.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show normal-exit restart error"));
@@ -18602,6 +18652,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, "hang_action", { action, userId: data.userId });
     if (action === "wait") {
@@ -18613,13 +18665,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("hang.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true });
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current });
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
@@ -18632,7 +18688,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("hang.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("hang.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show hang restart error"));
@@ -20038,7 +20094,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }));
     const timer = setTimeout(() => this.pendingEffortSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName: name, userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
+    this.pendingEffortSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
     try {
       await data.respondChoices(t("effort.menu", this.effortMenuHeader(name)), choices);
     } catch (err) {
@@ -20081,7 +20137,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName, userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingEffortSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
     try {
       const menuMessageId = await adapter.promptUser(
         chatId, t("effort.menu", this.effortMenuHeader(instanceName)), choices, { threadId },
@@ -20104,6 +20160,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!match) return true;
     const pending = this.pendingEffortSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingEffortSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -20145,13 +20209,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyEffort(pending.instanceName, level)) : t("menu.click_stale");
+            }, () => this.applyEffort(pending.instanceName, level, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
         result = t("effort.switch_failed", level, err instanceof Error ? err.message : String(err));
@@ -20197,7 +20262,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const choices = this.modelMenuChoices(name, nonce, options, currentModel);
     const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
+    this.pendingModelSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
     try {
       await data.respondChoices(t("model.menu", `**${currentDisplay}**`), choices);
     } catch (err) {
@@ -20245,7 +20310,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
 
-    this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingModelSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
 
     try {
       const menuMessageId = await adapter.promptUser(
@@ -20277,7 +20342,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Replace a consumed "/model" menu with the full account catalog tier. */
   private async expandClaudeModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -20345,7 +20410,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * menu, because a picker with no rows cannot even offer another refresh.
    */
   private async refreshModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -20439,6 +20504,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!match) return true;
     const pending = this.pendingModelSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingModelSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -20504,13 +20577,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyModel(pending.instanceName, model)) : t("menu.click_stale");
+            }, () => this.applyModel(pending.instanceName, model, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
         result = t("model.switch_failed", model, err instanceof Error ? err.message : String(err));
@@ -20597,7 +20671,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * restart backends only read it at launch, so it is persisted and the
    * instance respawns.
    */
-  async applyEffort(instanceName: string, requested: string): Promise<string> {
+  async applyEffort(instanceName: string, requested: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     const level = requested.trim().toLowerCase();
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" | "unsupported" = "unsupported";
@@ -20633,11 +20709,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
       return `${warn}${t("effort.runtime_success", instanceName, applied)}`;
     }
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("effort.restart_success", instanceName, applied)}`;
   }
 
-  async applyModel(instanceName: string, model: string): Promise<string> {
+  async applyModel(instanceName: string, model: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first, after the runtime switch's
+    // await, and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     // Reject model names with newlines or control characters: they would be
     // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
     if (/[\x00-\x1f\x7f]/.test(model)) {
@@ -20664,6 +20743,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #1690: claude-code's runtime switch reports what it came to; the model is saved unless claude was told No.
     if (strategy === "runtime" && backendName === "claude-code") {
       const result = await this.runRuntimeModelSwitch(instanceName, model);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (result.outcome === "mismatch") return `${warn}${t("model.switch_mismatch", instanceName, result.shown, model)}`;
       if (result.outcome === "not_sent") return `${warn}${t("model.switch_not_sent", instanceName, model)}`;
       const persistedNow = this.persistInstanceModel(instanceName, model);
@@ -20683,7 +20763,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return `${warn}${t("model.runtime_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
     }
 
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("model.restart_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
   }
 
