@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RuntimeClient, pairRuntime, type RuntimeBridge } from "../src/runtime-client.js";
+import { RuntimeClient, describeRuntimeStop, pairRuntime, type RuntimeBridge } from "../src/runtime-client.js";
 import { runtimeClaimFingerprint } from "../src/runtime-protocol.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
@@ -264,3 +264,74 @@ describe("#3005 rig recheck: a fresh pairing gets a real CLI inventory with no R
   });
 });
 
+describe("why the Runtime stopped (connect-agend.bat must show it, not close silently)", () => {
+  it("records 'revoked' when AgEnD revokes the connected machine", async () => {
+    const f = await fixture(); f.state.hub.revoke(f.machineId); await f.client.waitUntilStopped();
+    expect(f.client.stopReason).toMatchObject({ kind: "revoked" });
+  });
+  it("records 'replaced' when the same credential connects from a second Runtime, and the newer one keeps running", async () => {
+    const f = await fixture();
+    const second = new RuntimeClient({ store: new RuntimeClientStore(home()), bridge: new FakeBridge(), reconnectMs: 25, pollMs: 10 }); clients.push(second);
+    (second as unknown as { options: { store: RuntimeClientStore } }).options.store.saveCredentials({ server: f.base, machineId: f.machineId, credential: f.credential, name: "Copy" });
+    await second.start();
+    await f.client.waitUntilStopped();
+    expect(f.client.stopReason).toMatchObject({ kind: "replaced", detail: "Connection replaced" });
+    await vi.waitFor(() => expect(second.online()).toBe(true));
+    expect(second.stopReason).toBeUndefined();
+  });
+  it("records 'refused' when AgEnD no longer knows the saved credential (HTTP 401 at connect)", async () => {
+    const f = await fixture(); await f.client.stop(); f.state.hub.revoke(f.machineId);
+    const again = new RuntimeClient({ store: f.store, bridge: new FakeBridge(), reconnectMs: 25, pollMs: 10 }); clients.push(again);
+    await again.start(); await again.waitUntilStopped();
+    expect(again.stopReason).toEqual({ kind: "refused" });
+  });
+  it("records 'rejected' for any other 1008 close, and leaves a local stop without a reason", async () => {
+    const f = await fixture(); (f.state.hub as any).connections.get(f.machineId).ws.close(1008, "Invalid runtime message");
+    await f.client.waitUntilStopped(); expect(f.client.stopReason).toMatchObject({ kind: "rejected", detail: "Invalid runtime message" });
+    const g = await fixture(); await g.client.stop(); expect(g.client.stopReason).toBeUndefined();
+  });
+  it("gives every reason a plain next step that names where to act", () => {
+    for (const kind of ["refused", "revoked", "replaced", "rejected"] as const) {
+      const text = describeRuntimeStop({ kind });
+      expect(text).toMatch(/connect-agend.bat/); expect(text).toMatch(/Settings|Close the other/);
+    }
+  });
+  it("keeps polling while the computer is still waiting for approval, then fails with a next step once the pairing expires", async () => {
+    let claims = 0;
+    const server = createServer((req, res) => {
+      req.resume(); res.setHeader("Content-Type", "application/json");
+      if (req.url?.endsWith("/pair")) { res.writeHead(201); res.end(JSON.stringify({ machineId: randomUUID(), claimSecret: "c".repeat(64), status: "pending", expiresAt: Date.now() + 400 })); }
+      else { claims++; res.writeHead(202); res.end(JSON.stringify({ status: "pending" })); }
+    });
+    servers.push(server); server.listen(0, "127.0.0.1"); await once(server, "listening"); const address = server.address(); if (!address || typeof address === "string") throw Error("No fixture port");
+    await expect(pairRuntime({ server: `http://127.0.0.1:${address.port}`, code: "interactive-code", name: "Fixture", store: new RuntimeClientStore(home()), pollMs: 20 })).rejects.toThrow(/expired before the computer was approved.*connect-agend.bat/);
+    expect(claims).toBeGreaterThan(5);
+  });
+});
+
+describe("a profile's retained jobs never reach a server that did not issue them", () => {
+  it("closes with the cause in the reason when an ownerless ledger holds a job from another server, and says what to do", async () => {
+    const f = await fixture(); await f.client.stop();
+    const stale = home(), store = new RuntimeClientStore(stale);
+    store.saveCredentials({ server: f.base, machineId: f.machineId, credential: f.credential, name: "Stale" });
+    const job = { id: randomUUID(), cli: "codex" as const, cwd: "C:\w", sandbox: "read-only" as const, status: "completed" as const, startedAt: 1, finishedAt: 2, outcomeConfirmed: true, output: "" };
+    store.accept({ ...job, status: "starting", finishedAt: undefined, outcomeConfirmed: undefined } as never, "a".repeat(64)); store.update(job);
+    const report = vi.fn(), again = new RuntimeClient({ store, bridge: new FakeBridge(), reconnectMs: 25, pollMs: 10, report }); clients.push(again);
+    await again.start(); await again.waitUntilStopped();
+    expect(again.stopReason).toMatchObject({ kind: "rejected", detail: "Invalid runtime message: Runtime task does not belong to this machine" });
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("Runtime task does not belong to this machine"));
+    expect(describeRuntimeStop(again.stopReason!)).toMatch(/different AgEnD server.*disconnect/);
+  });
+  it("stays connected when the ledger names another machine as its owner (the job is dropped, not replayed)", async () => {
+    const f = await fixture(); await f.client.stop();
+    const stale = home(), store = new RuntimeClientStore(stale);
+    store.saveCredentials({ server: f.base, machineId: f.machineId, credential: f.credential, name: "Owned" });
+    store.adoptMachine("11111111-2222-3333-4444-555555555555");
+    store.accept({ id: randomUUID(), cli: "codex", cwd: "C:\w", sandbox: "read-only", status: "starting", startedAt: 1, output: "" }, "a".repeat(64));
+    const job = store.list()[0]; store.update({ ...job.task, status: "completed", finishedAt: 2, outcomeConfirmed: true });
+    const again = new RuntimeClient({ store, bridge: new FakeBridge(), reconnectMs: 25, pollMs: 10 }); clients.push(again);
+    await again.start(); await vi.waitFor(() => expect(again.online()).toBe(true));
+    await new Promise(done => setTimeout(done, 300));
+    expect(again.online()).toBe(true); expect(again.stopReason).toBeUndefined(); expect(store.list()).toEqual([]);
+  });
+});

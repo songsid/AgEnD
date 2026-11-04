@@ -1,0 +1,5 @@
+---
+section: Fixed
+---
+- **Connecting a computer that is already paired to another AgEnD no longer fails.** Double-clicking `connect-agend.bat` from a connection-ready ZIP now keeps the existing pairing and pairs a separate profile for the new server under `profiles\<host>-<port>`; the same bat and `run`/`status`/`rotate`/`disconnect` from that folder reuse it. Credentials are never sent to a different server, and an explicit `--profile` behaves as before. `disconnect` and `rotate` are no longer blocked by a lock left from before a Windows restart; a Runtime that is really running still keeps its lock, and the message names the process to check.
+- `connect-agend.bat` no longer closes silently when AgEnD ends the connection. The window stays open and explains why (computer revoked or not recognised, another Runtime took over the same pairing, or a rejected message) and what to do next, and the Runtime exits with a non-zero code. A profile that still holds jobs from a different AgEnD server no longer replays them to the new server, which used to make it close the connection right after "Connected".

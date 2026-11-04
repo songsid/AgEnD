@@ -19,7 +19,7 @@ describe("bundled Runtime connection information",()=>{
     expect(resolveRuntimeServer(undefined,"https://fleet.example.test",undefined)).toBe("https://fleet.example.test");
     expect(resolveRuntimeServer(undefined,undefined,"https://fleet.example.test")).toBe("https://fleet.example.test");
     expect(resolveRuntimeServer("https://fleet.example.test","https://other.example.test","https://fleet.example.test")).toBe("https://fleet.example.test");
-    expect(()=>resolveRuntimeServer(undefined,"https://other.example.test","https://fleet.example.test")).toThrow("another --profile");
+    expect(()=>resolveRuntimeServer(undefined,"https://other.example.test","https://fleet.example.test")).toThrow(/paired with https:\/\/fleet\.example\.test, but this connection is for https:\/\/other\.example\.test[^]*--profile[^]*disconnect/);
     expect(()=>resolveRuntimeServer(undefined,undefined,undefined)).toThrow("No AgEnD address");
   });
 });

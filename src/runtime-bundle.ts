@@ -29,11 +29,12 @@ Requires a supported Windows Node.js version and each coding CLI installed and s
    .\\agend-runtime.cmd connect --server https://your-agend-host
 3. Enter the one-time code from AgEnD Settings, compare the pairing fingerprint on both screens, then approve the pending machine there.
 4. In Settings -> Runtime, press Refresh CLI inventory for this computer. Only this explicit detection starts the installed CLIs; connecting or opening a page does not.
-5. Keep this terminal running. Ctrl+C stops it; .\\agend-runtime.cmd run reconnects the stored profile.
+5. Keep this terminal running. Ctrl+C stops it; .\\agend-runtime.cmd run reconnects the stored profile. If AgEnD ends the connection (the computer was revoked or is not recognised, another Runtime took over the same pairing, or a message was rejected), the window stays open and explains the reason and next step. If it says this profile still holds jobs from a different AgEnD server, delete jobs.json in the profile folder (after checking no CLI it started is still running) or disconnect and pair again. If pairing itself reports an unfinished job from another pairing, delete jobs.json the same way and pair again.
 
 Stop the runtime before using rotate to replace its machine credential without pairing again, then use run to reconnect. A saved interrupted rotation is completed before run connects.
 Use --version to inspect the installed Runtime version, code Build ID and supported protocol.
 Use status to inspect local pairing and journal state. disconnect forgets a stopped local connection; revoke the machine in AgEnD Settings to invalidate its credential centrally.
+Using one computer with more than one AgEnD server: connect-agend.bat keeps the existing pairing and, when this folder's server differs from the default profile's, pairs a separate profile under %USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>. The same bat and run/status/rotate/disconnect run from this folder find it again. Use --profile DIRECTORY (or AGEND_RUNTIME_HOME) to choose a profile yourself; that always wins. After connecting with --profile, pass the same --profile to run, status, rotate and disconnect.
 The private profile defaults to %USERPROFILE%\\.agend-runtime. Its machine credential is stored as a private file, not encrypted by this preview. Use your Windows user profile and do not share it. CLI login credentials are never uploaded.
 Do not install this preview as SYSTEM: it uses the logged-in user's CLI login, PATH, workspaces and devices.
 Only loopback origins may use HTTP; remote servers require HTTPS and valid TLS.
