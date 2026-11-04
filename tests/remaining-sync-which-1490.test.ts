@@ -76,12 +76,9 @@ describe("#1490 row 67: spawn PATH probe is async", () => {
     expect(Daemon.prototype.start).toHaveBeenCalledOnce();
   });
 
-  it.each([null, undefined] as const)("a missing/unknown pin (%s) still starts without sync which", async (path) => {
+  it.each([null, undefined] as const)("a missing/unknown resolve (%s) still starts without sync which", async (path) => {
     noteResolvedBinary("codex", null);
-    vi.spyOn(availability, "pinResolvedBinary").mockImplementation(async (backend) => {
-      noteResolvedBinary(BACKEND_INSTALLATION_INFO[backend]!.binary, BACKEND_INSTALLATION_INFO[backend]!.binary);
-      return path;
-    });
+    vi.spyOn(availability, "resolveBackendBinary").mockResolvedValue(path);
     const root = scratch();
     const { lc, errors } = spawnLifecycle(root);
     await lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false);
@@ -90,11 +87,11 @@ describe("#1490 row 67: spawn PATH probe is async", () => {
     expect(errors.some(a => String(a[1] ?? a[0]).includes("not found in PATH"))).toBe(true);
   });
 
-  it("a superseded start during the off-loop pin does not construct or which", async () => {
+  it("a superseded start during the off-loop resolve does not construct or which", async () => {
     noteResolvedBinary("codex", null);
     let finish!: (value: string | null | undefined) => void;
-    const pinStarted = new Promise<void>(resolve => {
-      vi.spyOn(availability, "pinResolvedBinary").mockImplementation(() => {
+    const resolveStarted = new Promise<void>(resolve => {
+      vi.spyOn(availability, "resolveBackendBinary").mockImplementation(() => {
         resolve();
         return new Promise(r => { finish = r; });
       });
@@ -102,7 +99,7 @@ describe("#1490 row 67: spawn PATH probe is async", () => {
     const root = scratch();
     const { lc } = spawnLifecycle(root);
     const starting = lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false);
-    await pinStarted;
+    await resolveStarted;
     lc.invalidate("worker");
     finish(null);
     await expect(starting).rejects.toBeInstanceOf(SupersededStartError);

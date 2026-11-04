@@ -1092,10 +1092,6 @@ export function noteResolvedBinary(name: string, path: string | null): void {
   if (path) resolvedHints.set(name, path); else resolvedHints.delete(name);
 }
 
-export function hasResolvedBinaryHint(name: string): boolean {
-  return resolvedHints.has(name);
-}
-
 export function resolveBinary(name: string, fallbackDirs?: readonly string[]): string {
   const hint = fallbackDirs ? undefined : resolvedHints.get(name);
   if (hint) return hint;

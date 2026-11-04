@@ -13,7 +13,7 @@ import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { sanitizeInstanceName } from "./instance-names.js";
-import { isModelCompatible } from "./backend/types.js";
+import { isModelCompatible, noteResolvedBinary } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
@@ -1816,8 +1816,9 @@ export class InstanceLifecycle {
     // (#1490 row 67). Missing still only logs; start continues.
     const installation = BACKEND_INSTALLATION_INFO[backendName];
     if (installation) {
-      const { pinResolvedBinary } = await import("./backend-availability.js");
-      const path = await pinResolvedBinary(backendName);
+      const { resolveBackendBinary } = await import("./backend-availability.js");
+      const path = await resolveBackendBinary(backendName);
+      noteResolvedBinary(installation.binary, path ?? installation.binary);
       check();
       if (!path) {
         this.ctx.logger.error(
