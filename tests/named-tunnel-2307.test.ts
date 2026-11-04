@@ -36,7 +36,7 @@ function provider(over: Record<string, unknown> = {}) {
   const child = new Child();
   const spawn = vi.fn(() => child);
   const fetch = vi.fn(async () => ({ status: 200, contentType: "text/html", body: "exact2307marker" }));
-  const p = new CloudflaredProvider({ binaryName: bin, named: { hostname: "agend.example.com", token: TOKEN }, spawnProcess: spawn as never,
+  const p = new CloudflaredProvider({ access: async () => {} /* #3009: preflight answered at once (timing-tight fixture) */, binaryName: bin, named: { hostname: "agend.example.com", token: TOKEN }, spawnProcess: spawn as never,
     fetchPage: fetch, probe: () => ({ kind: "gone" }), deadlineMs: 40, graceMs: 1, ...over });
   return { p, child, spawn, fetch };
 }
@@ -121,7 +121,7 @@ describe("named connector credentials and exact host policy", () => {
     const bin = join(root(), "cloudflared-stub.cjs");
     const receipt = join(root(), "child-receipt.json");
     writeFileSync(bin, `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(receipt)},JSON.stringify({token:process.env.TUNNEL_TOKEN,args:process.argv}),{mode:0o600});process.stdout.write(process.env.TUNNEL_TOKEN||'');setInterval(()=>{},1000);`, { mode: 0o755 });
-    const p = new CloudflaredProvider({ binaryName: bin, named: { hostname: "agend.example.com", token: TOKEN },
+    const p = new CloudflaredProvider({ access: async () => {} /* #3009: preflight answered at once (timing-tight fixture) */, binaryName: bin, named: { hostname: "agend.example.com", token: TOKEN },
       fetchPage: async () => ({ status: 200, contentType: "text/html", body: "exact2307marker" }), graceMs: 100 });
     const handle = await p.start(context());
     try {

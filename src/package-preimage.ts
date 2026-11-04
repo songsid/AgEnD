@@ -50,11 +50,21 @@ export function takePackagePreimage(root: string, prefix: string, now: Date): Ta
 export function restorePackagePreimage(root: string, prefix: string, p: PackagePreimage): { ok: true } | { ok: false; reason: string } {
   const pkg = join(root, "@songsid", "agend");
   const aside = join(p.dir, "replaced");
+  let movedAside = false;
   try {
-    if (existsSync(pkg)) renameSync(pkg, aside);
+    if (existsSync(pkg)) { renameSync(pkg, aside); movedAside = true; }
     renameSync(join(p.dir, "agend"), pkg);
   } catch (err) {
-    return { ok: false, reason: `the previous package could not be put back from ${p.dir} (${(err as Error).message})` };
+    const reason = `the previous package could not be put back from ${p.dir} (${(err as Error).message})`;
+    // #1490 row 40: the tree this call moved aside goes back while the install path is still empty — never an empty
+    // install path, and never someone else's tree moved over.
+    if (movedAside && !pathPresent(pkg)) {
+      try { renameSync(aside, pkg); } catch (back) {
+        return { ok: false, reason: `${reason}; the installed package also could not be moved back from ${aside} (${(back as Error).message})` };
+      }
+      return { ok: false, reason: `${reason}; the installed package was left in place` };
+    }
+    return { ok: false, reason };
   }
   for (const bin of BINS) {
     const link = join(prefix, "bin", bin);
@@ -67,6 +77,11 @@ export function restorePackagePreimage(root: string, prefix: string, p: PackageP
   rmSync(aside, { recursive: true, force: true });
   rmSync(p.dir, { recursive: true, force: true });
   return { ok: true };
+}
+
+/** Anything at `path`, a dangling symlink included (existsSync follows links). */
+function pathPresent(path: string): boolean {
+  try { lstatSync(path); return true; } catch { return false; }
 }
 
 /** After a successful transition: keep only `keep` (the newest preimage), remove every other one. */

@@ -212,7 +212,7 @@ describe("the install /login runs for a missing CLI (#1131: one entry point)", (
     vi.spyOn(fm as any, "locateBinaryOnLoginShell").mockReturnValue(null);
     // Found nowhere: not by a login shell, and not in grok's own installer
     // directory either (#1092) — this host may have a real ~/.grok/bin/grok.
-    vi.spyOn(fm as any, "locateInInstallerBinDirs").mockReturnValue(null);
+    vi.spyOn(fm as any, "locateInstalledBackend").mockResolvedValue(null);
     const signIn = vi.spyOn(fm as any, "launchSignIn");
     await fm.startInstallSession("grok", chat);
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
