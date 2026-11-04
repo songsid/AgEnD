@@ -204,12 +204,15 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     else say("backendHint", "backendNone");
   }
 
-  // M-2069: on a chat platform, with no directory typed, the first agent is the General ("general"); web only has no
-  // General, and a typed directory makes a worker ("agent-1"). A name the user typed is kept.
+  // M-2069: with no directory typed, the first agent is the General ("general") — on a chat platform and (alpha.3, the
+  // user's hmsg-7c8fd0e5) web only alike; a typed directory makes a worker ("agent-1"). A name the user typed is kept.
   function showGeneral() {
     // #2744 review: only with no directory — the General works in its own folder, never in a project of the user's.
-    const general = state.firstGeneral && state.platform !== "web" && !$("dir").value.trim();
+    const general = state.firstGeneral && !$("dir").value.trim();
     $("generalNote").hidden = !general;
+    // alpha.3: web only's own words (no chat topic); the key stays on the node, so a language switch keeps it.
+    const noteKey = state.platform === "web" ? "generalNoteWeb" : "generalNote";
+    $("generalNote").dataset.i18n = noteKey; $("generalNote").textContent = tr(noteKey);
     if (!state.nameTyped) { $("name").value = general ? "general" : "agent-1"; showDirHint(); }
   }
 

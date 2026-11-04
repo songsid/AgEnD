@@ -204,7 +204,8 @@ export function resolveToolSet(
 ): ToolSetName {
   const explicit = config?.tool_set;
   if (isToolSetName(explicit)) return explicit;
-  if (config?.general_topic === true || name === "general") return "general";
+  // The literal-name fallback, unless unticked (general-instance.ts generalByName; inlined: this file is the MCP side's).
+  if (config?.general_topic === true || (name === "general" && config?.general_topic !== false)) return "general";
   return unsetDefault;
 }
 

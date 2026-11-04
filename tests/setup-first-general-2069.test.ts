@@ -41,7 +41,9 @@ describe("M-2069: the setup's first agent on a chat connection is the General", 
     expect(becomesGeneral(cfgOf({ a: { working_directory: "/w/a" } }), TG_IN), "a web-only fleet's agents do not stop it").toBe(true);
     expect(becomesGeneral(cfgOf(), { ...TG_IN, existing_agent: true }), "an existing agent's role is never rewritten").toBe(false);
     expect(becomesGeneral(cfgOf(), { ...TG_IN, connection_only: true })).toBe(false);
-    expect(becomesGeneral(cfgOf(), { web_only: true }), "web only has no chat General").toBe(false);
+    // alpha.3 (the user, hmsg-7c8fd0e5): web only too — its first agent, with no directory of the user's, is its General.
+    expect(becomesGeneral(cfgOf(), { web_only: true }), "web only: its first agent is its General").toBe(true);
+    expect(becomesGeneral(cfgOf(), { web_only: true, working_directory: "/home/you/projects/app" }), "…not in a folder of the user's").toBe(false);
     expect(becomesGeneral(cfgOf({}, [TG]), TG_IN), "not the first connection").toBe(false);
     expect(becomesGeneral(cfgOf({ boss: { working_directory: "/w/b", general_topic: true } }), TG_IN), "a General exists").toBe(false);
     expect(becomesGeneral(cfgOf({ general: { working_directory: "/w/g" } }), { ...TG_IN, instance_name: "boss" }),
@@ -142,8 +144,11 @@ describe("M-2069: an agent named general never leaves a chat fleet without a dis
     expect(without.instances.general).toMatchObject({ general_topic: true, topic_id: "333333333333333333" });
   });
   it("left alone: no chat, a General already there, bound to another connection, or no agent of that name", () => {
+    // alpha.3: "no chat" is no longer left alone — a web-only `general` in AgEnD's own folder is made its General (the
+    // next test); one unticked on purpose (general_topic: false) is left alone everywhere.
     const cases = [
-      cfgOf({ general: { working_directory: "/w/g" } }, []),
+      cfgOf({ general: { working_directory: "/w/g", general_topic: false } }, []),
+      cfgOf({ general: { working_directory: "/w/g", general_topic: false } }, [TG]),
       cfgOf({ general: { working_directory: "/w/g" }, boss: { working_directory: "/w/b", general_topic: true } }, [TG]),
       cfgOf({ general: { working_directory: "/w/g", channel_id: "telegram-2" } }, [TG, { ...TG, id: "telegram-2", group_id: "-100222" }]),
       cfgOf({ alpha: { working_directory: "/w/a" } }, [TG]),
@@ -153,6 +158,13 @@ describe("M-2069: an agent named general never leaves a chat fleet without a dis
       expect(adoptGeneralByName(fleet, logger, own)).toBe(false);
       expect(JSON.stringify(fleet)).toBe(before);
     }
+  });
+  it("alpha.3: a web-only fleet's `general` in AgEnD's own folder is made its ticked General (no topic); in a folder of the user's it is left alone", () => {
+    const fleet = cfgOf({ general: { working_directory: "/w/g" } }, []);
+    expect(adoptGeneralByName(fleet, logger, own)).toBe(true);
+    expect(fleet.instances.general).toEqual({ working_directory: "/w/g", general_topic: true });
+    const theirs = cfgOf({ general: { working_directory: "/home/you/projects/app" } }, []);
+    expect(adoptGeneralByName(theirs, logger, (dir: string) => dir === "/w/g")).toBe(false);
   });
   it("#2744 review: a general in a folder AgEnD does not own is left alone; the fleet makes its General under a free name", () => {
     const fleet = cfgOf({ general: { working_directory: "/home/you/projects/app" } }, [TG]);

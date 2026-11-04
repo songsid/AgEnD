@@ -281,8 +281,13 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
     auto: f.inherit.auto_pause_after ? "" : nonNegative(f.auto_pause_after),
     hang: f.inherit.hang ? "" : positive(f.hang),
   };
+  // #3008 G1: a fleet with no chat connection has one General at most — ticking a second says which one it is, right
+  // by the checkbox (kept ticked, Save waits), by the name the chat list shows (the leader's string 18).
+  const otherGeneral = !channelsOf(fleet).length && f.general_topic && !inst.general_topic
+    ? Object.entries(fleet.instances || {}).find(([other, c]) => other !== name && c && (c.general_topic === true || (other === "general" && c.general_topic !== false))) : null;
+  const generalError = otherGeneral ? tn("oneGeneral", ctx.shortName(otherGeneral[0], otherGeneral[1])) : "";
   const failoverWarn = !f.inherit.model_failover && !f.model_failover.trim() ? "failoverEmpty" : "";
-  const ready = !errors.auto && !errors.hang;
+  const ready = !errors.auto && !errors.hang && !generalError;
   const pending = () => agentPatch({ ...f, status_emojis: emojis.value }, inst, defaults, visibilityBaseline, emojis.baseline);
   const stage = () => {
     if (!ready) return;
@@ -360,8 +365,9 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
       </div>
       <div class="field">${L(tn("systemPrompt"), "instance.systemPrompt", "ag-sys")}<input id="ag-sys" type="text" placeholder="e.g. file:prompts/dev.md" value=${f.systemPrompt} onInput=${(e) => set("systemPrompt")(e.target.value)} /></div>
       <div class="field">${L(tn("tags"), "instance.tags")}<${ChipList} items=${f.tags} onChange=${set("tags")} placeholder=${tn("tagPlaceholder")} label=${tn("tags")} /></div>
-      <label class="check"><input type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${tn("generalTopicField")}</span>
+      <label class="check"><input id="ag-general" type="checkbox" checked=${f.general_topic} onChange=${(e) => set("general_topic")(e.target.checked)} /><span>${tn("generalTopicField")}</span>
         <${Impact} schema=${schema} field="instance.general_topic" /></label>
+      ${generalError ? html`<p class="feedback error" role="alert" id="ag-general-one">${generalError}</p>` : null}
     </${Drawer}>
     <${Drawer} title=${tn("statusEmojis")}>
       <p class="note">${tn("statusEmojisInstance")} <${Impact} schema=${schema} field="instance.status_emojis" /></p>

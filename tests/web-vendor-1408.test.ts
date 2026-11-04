@@ -1,5 +1,6 @@
 /**
- * #1408 §0: Preact + htm, vendored with no build step. Every vendored byte is pinned by vendor/vendor.json:
+ * #1408 §0: Preact + htm, vendored with no build step (and #3008: qrcode-generator, for an authenticator's QR code).
+ * Every vendored byte is pinned by vendor/vendor.json:
  * - a changed byte in any file fails here;
  * - the one rewrite (the hooks file's bare `from"preact"` import) is the only difference from upstream — reversing
  *   it gives the upstream file's hash back;
@@ -21,11 +22,12 @@ const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("he
 const FILES = Object.entries(MANIFEST.packages).flatMap(([pkg, p]) => Object.entries(p.files).map(([name, f]) => ({ pkg, name, ...f })));
 
 describe("the vendored files are exactly what the manifest pins", () => {
-  it("pins Preact 10.29.8 and htm 3.1.1 from the npm registry, with integrity", () => {
+  it("pins Preact 10.29.8, htm 3.1.1 and qrcode-generator 2.0.4 from the npm registry, with integrity", () => {
     expect(MANIFEST.packages.preact!.version).toBe("10.29.8");
     expect(MANIFEST.packages.htm!.version).toBe("3.1.1");
+    expect(MANIFEST.packages["qrcode-generator"]!.version).toBe("2.0.4");
     for (const p of Object.values(MANIFEST.packages)) expect(p.integrity).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
-    expect(FILES.map(f => f.name).sort()).toEqual(["htm.module.js", "preact-hooks.module.js", "preact.module.js"]);
+    expect(FILES.map(f => f.name).sort()).toEqual(["htm.module.js", "preact-hooks.module.js", "preact.module.js", "qrcode.module.js"]);
   });
 
   for (const f of FILES) {
@@ -45,7 +47,7 @@ describe("the vendored files are exactly what the manifest pins", () => {
   it("the hooks file imports Preact by a relative path (no import map, no bare specifier left)", () => {
     const hooks = readFileSync(join(SHARED, "preact-hooks.module.js"), "utf8");
     expect(hooks).toContain('from"./preact.module.js"');
-    for (const name of ["preact.module.js", "preact-hooks.module.js", "htm.module.js"]) {
+    for (const name of ["preact.module.js", "preact-hooks.module.js", "htm.module.js", "qrcode.module.js"]) {
       const src = readFileSync(join(SHARED, name), "utf8");
       const specifiers = [...src.matchAll(/from\s*"([^"]+)"/g)].map(m => m[1]);
       for (const s of specifiers) expect(s, `${name} imports ${s}`).toMatch(/^\.\//);
@@ -71,6 +73,12 @@ describe("licences and serving", () => {
     expect(MANIFEST.packages.htm!.license).toBe("Apache-2.0");
     expect(htm).toContain("Apache License");
     expect(htm).toContain("Version 2.0");
+    const qr = readFileSync(join(SHARED, MANIFEST.packages["qrcode-generator"]!.licenseFile), "utf8");
+    expect(MANIFEST.packages["qrcode-generator"]!.license).toBe("MIT");
+    expect(qr).toContain("The MIT License");
+    expect(qr).toContain("Copyright (c) 2009 Kazuhiko Arase");
+    // …the same copyright and licence its own header states.
+    expect(readFileSync(join(SHARED, "qrcode.module.js"), "utf8")).toMatch(/Copyright \(c\) 2009 Kazuhiko Arase[\s\S]*Licensed under the MIT license/);
   });
 
   it("served from /assets by exact name, and listed on the public link — the licences and manifest are not", () => {

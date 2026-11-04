@@ -631,7 +631,7 @@ describe("the general check no longer disagrees with itself", () => {
     const source = readFileSync(new URL("../src/daemon.ts", import.meta.url), "utf8");
     const block = source.slice(source.indexOf("One rule for \"is this a general\""), source.indexOf("AGEND_DISPLAY_NAME"));
 
-    expect(block).toContain('this.name === "general"');
+    expect(block).toContain("generalByName(this.name, this.config)");
     expect(block).toContain("resolveToolSet(this.config, this.name");
   });
 });

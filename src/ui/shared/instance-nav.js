@@ -294,6 +294,8 @@ function writeFacetsOpen(open) { try { localStorage.setItem(FACETS_KEY, JSON.str
 
 /** The Favorites group's key among the tag groups: no tag can be it (a group name is never a control character). */
 const FAV_GROUP = "\u0000favorites";
+/** #3008 G2: a web-only fleet's General (its status row says `general: true`), pinned first under its own head. */
+const GENERAL_GROUP = "\u0000general";
 /** #1936: the open instance, pinned on top while a filter is on. */
 const PINNED_GROUP = "\u0000pinned";
 function persistOrder(groupNames, instByGroup) {
@@ -515,7 +517,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   // their order. Changing them: a signed-in page that may write preferences (not the public link, not the anonymous
   // reader — they still see the list).
   const known = new Set(byName.keys());
-  const favs = nav.favorites.filter((n) => known.has(n));
+  // #3008 G2: the General, when the server marks one (a web-only fleet), comes first — out of every other group.
+  const general = items.find((it) => it && it.general === true);
+  const generalName = general ? nameOf(general) : null;
+  const favs = nav.favorites.filter((n) => known.has(n) && n !== generalName);
   const favSet = new Set(favs);
   const canStar = !viewOnly && prefsWritable("nav.favorites");
   // #1920: a guest's list is not reordered (the order is the host's). #2855: it stars, sorts and filters as its own
@@ -533,14 +538,15 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   let shownGroups, shownInsts;
   if (recent) {
     const sortRecent = byRecentReply(ageOf);
-    const rest = groupNames.flatMap((g) => instByGroup.get(g) || []).filter((n) => !favSet.has(n)).sort(sortRecent);
+    const rest = groupNames.flatMap((g) => instByGroup.get(g) || []).filter((n) => !favSet.has(n) && n !== generalName).sort(sortRecent);
     shownGroups = [...(favs.length ? [FAV_GROUP] : []), ...(rest.length ? [RECENT_GROUP] : [])];
     shownInsts = new Map([[FAV_GROUP, favsSorted ? [...favs].sort(sortRecent) : favs], [RECENT_GROUP, rest]]);
   } else {
     shownGroups = favs.length ? [FAV_GROUP, ...groupNames] : groupNames;
-    shownInsts = new Map([...instByGroup].map(([g, names]) => [g, names.filter((n) => !favSet.has(n))]));
+    shownInsts = new Map([...instByGroup].map(([g, names]) => [g, names.filter((n) => !favSet.has(n) && n !== generalName)]));
     if (favs.length) shownInsts.set(FAV_GROUP, favs);
   }
+  if (generalName) { shownGroups = [GENERAL_GROUP, ...shownGroups]; shownInsts.set(GENERAL_GROUP, [generalName]); }
   const f = nav.filter;
   const shown = filterSidebar(shownGroups, shownInsts, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
   // #1936: while a filter is on, the instance you have open stays on top, pinned and marked "Current", whether or not
@@ -654,6 +660,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       // #2179: in "recent" mode every other row is one list — open, not dragged, not saved as a group.
       if (g === RECENT_GROUP) return html`<div key=${g} class="v-group v-recent" role="group" aria-label=${tn("recentOthers")}>
         <div class="v-group-head recent-head"><${Icon} name="clock" size=${14} /><span class="grow">${tn("recentOthers")}</span><span class="count">${names.length}</span></div>
+        <ul class="inst-list">${names.map((name, i) => row(name, g, i, names.length))}</ul></div>`;
+      // #3008 G2: the General — always open, first, not dragged or starred into another place.
+      if (g === GENERAL_GROUP) return html`<div key=${g} class="v-group v-general" role="group" aria-label=${tn("generalGroup")}>
+        <div class="v-group-head general-head"><span class="grow">${tn("generalGroup")}</span></div>
         <ul class="inst-list">${names.map((name, i) => row(name, g, i, names.length))}</ul></div>`;
       // #1664: Favorites — always open, not dragged (↑ ↓ in Edit), named in the page's language.
       if (g === FAV_GROUP) return html`<div key=${g} class="v-group v-fav" role="group" aria-label=${tn("favorites")}>

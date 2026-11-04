@@ -25,8 +25,9 @@ export function daemonTopicMode(cfg: ChannelShape | null | undefined): boolean {
  */
 export function generalNames(cfg: { defaults?: { general_topic?: unknown } | null; instances?: Record<string, { general_topic?: unknown } | null | undefined> | null } | null | undefined): string[] {
   const fallback = cfg?.defaults?.general_topic === true;
+  // alpha.3: an agent called `general` is one too, unless unticked (general-instance.ts generalByName).
   return Object.entries(cfg?.instances ?? {})
-    .filter(([, inst]) => inst?.general_topic === true || (inst?.general_topic === undefined && fallback)).map(([name]) => name);
+    .filter(([name, inst]) => inst?.general_topic === true || (inst?.general_topic === undefined && (fallback || name === "general"))).map(([name]) => name);
 }
 
 /**

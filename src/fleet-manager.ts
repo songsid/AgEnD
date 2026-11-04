@@ -16497,6 +16497,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return authorityNow(stored, { ...state, outside: this.outsideOn(), outsideHandles: this.webRemoteAccess()?.admitted ?? new Set() });
   }
 
+  /** #3008 (the sign-in page): this exposure is the outside link, open now. */
+  isOutsideLink(exposureId: string): boolean {
+    return this.outsideLink()?.exposureId === exposureId;
+  }
+
   /** What Settings shows: set up or not, the switch, a wait in force, the link — its address only to this computer. */
   webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
     pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
@@ -24838,7 +24843,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (decision.reason === "no-credential" && req.method === "GET"
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet() });
+            const link = gatewayRequestContext(req);
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId) });
             return;
           }
           res.writeHead(decision.status);
@@ -25471,6 +25477,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         role: identity.role || undefined,
         tags: identity.tags,
         teams: instanceTeams(this.fleetConfig?.teams, name),     // #2172: the sidebar groups a team's members under it
+        // #3008 G2: a web-only fleet's General (the agent its owner ticked) — the sidebar pins it first.
+        ...(this.isWebOnlyFleet() && this.fleetConfig?.instances[name]?.general_topic === true ? { general: true } : {}),
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,

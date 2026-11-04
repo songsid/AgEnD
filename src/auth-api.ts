@@ -89,6 +89,8 @@ export interface AuthApiContext {
    * only for the link connections from outside opened (`exposureId`), with a code not used before.
    */
   outsideSignIn?(exposureId: string | undefined, code: string): { kind: "ok" } | { kind: "wrong" } | { kind: "paused"; retryAfterMs: number } | { kind: "closed" } | { kind: "unavailable" };
+  /** #3008: this exposure is the link "Allow connections from outside" opened, open now (its sign-in asks for the code). */
+  isOutsideLink?(exposureId: string): boolean;
   /** #3008: the session outsideSignIn's "ok" made is this computer's admin (and a Notice says who signed in). */
   authorizeOutsideSession?(record: SessionRecord, peer: WebPeer, label: string): boolean;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
@@ -153,6 +155,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1958: identity colours on the page and the Color dialog (static code; the colours come in the status frame).
     "identity-color.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
+    // #3008: the QR code of an authenticator's setup (qrcode-generator 2.0.4, MIT; shared/vendor/vendor.json, byte-checked).
+    // Static code, no data — the secret is drawn by Settings behind the gate; loaded only when an app is being set up.
+    "qrcode.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
 };
@@ -201,10 +206,12 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
  * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
  * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
  */
-export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean } = {}): void {
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean } = {}): void {
   try {
     const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
-    const html = opts.webOnly ? page.replace("<body>", '<body data-web-only="1">') : page;
+    // #3008: through the link "Allow connections from outside" opened, the page asks for the authenticator's code.
+    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}`;
+    const html = marks ? page.replace("<body>", `<body${marks}>`) : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
     json(res, 500, { error: "signin.html not found" });
@@ -264,7 +271,8 @@ export function handleAuthRequest(
   // ── The page and its scripts: public, inert ──
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
-    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true });
+    const link = gatewayRequestContext(req);
+    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true });
     return true;
   }
 
