@@ -18,7 +18,11 @@ import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
-import { addsSecondGeneral } from "../src/web-only-fleet.js";
+import { addsSecondGeneral, generalNames } from "../src/web-only-fleet.js";
+import { FleetWindowsRuntime } from "../src/fleet-windows-runtime.js";
+import { WindowsAgents } from "../src/windows-agents.js";
+import { WebChatHistory } from "../src/web-chat-history.js";
+import type { WindowsCliBridge } from "../src/windows-cli.js";
 import { csrfTokenFor } from "../src/web-session.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 
@@ -193,5 +197,53 @@ describe("#3021 review P2: every door that creates an agent — never a second G
       expect(Object.keys(h.fm.fleetConfig!.instances)).toEqual(["a"]);
     } finally { await h.stop(); }
   }, 20_000);
+});
+
+describe("#3021 review r2: the one-General rule is asked again at the commit, after every await", () => {
+  it("two concurrent create_instance calls on a web-only fleet whose defaults make every agent a General (none yet): one General, the other refused", async () => {
+    const h = await fleet({ defaults: { general_topic: true }, instances: {} });
+    try {
+      vi.spyOn(h.fm.lifecycle, "start").mockResolvedValue(undefined as never);
+      vi.spyOn(h.any, "connectIpcToInstance").mockResolvedValue(undefined);
+      const [ra, rb] = [vi.fn(), vi.fn()];
+      await Promise.all([h.fm.lifecycle.handleCreate({ topic_name: "one", directory: temp() } as never, ra), h.fm.lifecycle.handleCreate({ topic_name: "two", directory: temp() } as never, rb)]);
+      const errors = [ra.mock.calls[0]?.[1], rb.mock.calls[0]?.[1]].filter(Boolean);
+      expect(generalNames(h.fm.fleetConfig as never)).toHaveLength(1);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toMatch(/^Failed to create instance: one_general:/);
+    } finally { await h.stop(); }
+  }, 20_000);
+  it("control: the same two creates without that default make two ordinary agents", async () => {
+    const h = await fleet({ defaults: {}, instances: {} });
+    try {
+      vi.spyOn(h.fm.lifecycle, "start").mockResolvedValue(undefined as never);
+      vi.spyOn(h.any, "connectIpcToInstance").mockResolvedValue(undefined);
+      const [ra, rb] = [vi.fn(), vi.fn()];
+      await Promise.all([h.fm.lifecycle.handleCreate({ topic_name: "one", directory: temp() } as never, ra), h.fm.lifecycle.handleCreate({ topic_name: "two", directory: temp() } as never, rb)]);
+      expect([ra.mock.calls[0]?.[1], rb.mock.calls[0]?.[1]]).toEqual([undefined, undefined]);
+      expect([Object.keys(h.fm.fleetConfig!.instances).sort(), generalNames(h.fm.fleetConfig as never)]).toEqual([["one", "two"], []]);
+    } finally { await h.stop(); }
+  }, 20_000);
+  it("two concurrent Windows agents on such a fleet: one General, the other refused at its commit (after the profile's await)", async () => {
+    vi.stubEnv("AGEND_WINDOWS_CLI", "1");
+    const home = temp();
+    const bridge = { start: vi.fn(), get: () => null, hasActiveTask: () => false, prepareWorkspace: async (key: string) => `C:\\Users\\Test\\.agend\\workspaces\\${key}`,
+      cancel: vi.fn(), releaseUnknown: () => {} } as unknown as WindowsCliBridge;
+    const store = new WindowsAgents(home, bridge);
+    const run = (config: Record<string, unknown>) => {
+      const cfg = { teams: {}, ...config } as never;
+      const runtime = new FleetWindowsRuntime({ owner: { dataDir: home }, fleet: () => cfg, save: vi.fn(), stopping: () => false, history: new WebChatHistory(), emit: () => {} } as never, { store, bridge });
+      const create = (n: string) => runtime.create({ name: n, cli: "codex", sandbox: "read-only" }, () => true);
+      return { cfg, create };
+    };
+    const a = run({ defaults: { general_topic: true }, instances: {} });
+    const results = await Promise.allSettled([a.create("one"), a.create("two")]);
+    expect(results.map(r => r.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(String((results.find(r => r.status === "rejected") as PromiseRejectedResult).reason)).toMatch(/one_general/);
+    expect(generalNames(a.cfg)).toHaveLength(1);
+    const b = run({ defaults: {}, instances: {} });                                     // control: ordinary agents
+    expect((await Promise.allSettled([b.create("three"), b.create("four")])).map(r => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    expect(generalNames(b.cfg)).toEqual([]);
+  });
 });
 

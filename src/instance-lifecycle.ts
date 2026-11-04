@@ -2768,6 +2768,11 @@ export class InstanceLifecycle {
       createdConfig = instanceConfig;
       const beforeCreate = structuredClone(this.ctx.fleetConfig);
       const persist = (): void => {
+        // #3021 review r2: asked again at the commit, after every await — two creates that both saw no General at entry
+        // (defaults.general_topic: true) must not both become one.
+        if (addsSecondGeneral(this.ctx.fleetConfig as never, { general_topic: instanceConfig.general_topic })) {
+          throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true — set it to false in the defaults first");
+        }
         this.ctx.fleetConfig!.instances[newInstanceName!] = instanceConfig;
         if (createdTopicId != null) this.ctx.routing.register(createdTopicId, { kind: "instance", name: newInstanceName! });
         try { this.ctx.saveFleetConfig(); }

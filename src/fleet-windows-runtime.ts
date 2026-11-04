@@ -118,6 +118,8 @@ export class FleetWindowsRuntime {
       const persist=()=>{
         if (!authorized()) throw new Error("Authorization expired");
         if (Object.hasOwn(fleet.instances,name)) throw new Error("Instance name already exists");
+        // #3021 review r2: asked again at the commit, after the profile's await — a create made meanwhile counts.
+        if (addsSecondGeneral(fleet as never)) throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true");
         fleet.instances[name] = {...nativeInstanceConfig(agent),...binding,...(Array.isArray(tags) ? {tags:tags as string[]} : {})};
         this.host.save();
       };
