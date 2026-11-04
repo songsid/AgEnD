@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.318
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/han/.cache/claude-audit-318/w/p318
+
+
+❯ hello from the audit
+
+● mock reply 2
+
+✻ Brewed for 0s · done 9:06 PM
+
+❯ SLOW turn please
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Worked for 25s · done 9:07 PM
+
+❯ queued while busy MARKQ
+
+● mock reply 6
+
+✻ Baked for 0s · done 9:07 PM
+
+❯ [agend-delivery-id:11111111-2222-3333-4444-555555555555]
+  [from:audit-peer] first line of a multi-line message
+  second line with detail
+  third line closes it
+  (message_id: xmsg-1 | correlation_id: cid-1)
+
+● mock reply 8
+
+✻ Sautéed for 0s · done 9:07 PM
+
+
+
+
+
+
+
+
+                                                                                                                                         ctrl+g to edit in Vim
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ same words start this paste
+  middle line
+  end with same words start this paste
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  paste again to expand
