@@ -60,23 +60,20 @@ and owns the General topic. An instance runs under the `general` tool set when
   `src/instance-lifecycle.ts:2741` (the General instance cannot be replaced).
 - Refs: fleet decision 9e3bea6c.
 
-## coordinator (role) vs `coordinator` tool set
+## `coordinator` tool set
 
-Two different things. The role is the merge gatekeeper: only the coordinator
-merges, by running `scripts/gate-merge.sh` when the parity reviewer's APPROVE
-arrives; authors never run `gh pr merge`. The tool set is
 `TOOL_PROFILES.coordinator = WORKER + ORCHESTRATION`: every worker ability plus
-every verb that runs the fleet rather than does the work.
+every verb that runs the fleet rather than does the work — for an agent that
+runs part of the fleet.
 
-- The role can: merge reviewed PRs through the gate. It can't: approve —
-  only the parity reviewer's APPROVE counts.
-- The tool set can: create/delete/replace/start/stop/pause/wake/restart
-  instances, manage teams and templates, edit fleet defaults and instance
-  config, run kiro migration/reconciliation, change others' decisions and web
-  settings (`src/tool-permissions.ts:80-98`).
-- Code: `scripts/gate-merge.sh`, `src/tool-permissions.ts:100-107`.
-- Refs: 62a2fffb (only the coordinator merges), e723a50a, 4e928ba6,
-  `docs/design/coordinator-tool-perms.zh-TW.md` (zh-TW only).
+- Can: create/delete/replace/start/stop/pause/wake/restart instances, manage
+  teams and templates, edit fleet defaults and instance config, run kiro
+  migration/reconciliation, change others' decisions and web settings
+  (`src/tool-permissions.ts:80-98`).
+- Can't: exceed the table — anything not listed is refused, with the reason
+  naming what the instance runs under.
+- Code: `src/tool-permissions.ts:100-107`.
+- Refs: `docs/design/coordinator-tool-perms.zh-TW.md` (zh-TW only).
 
 ## worker
 
@@ -263,28 +260,27 @@ must be created by itself; acting on other instances' schedules takes the
 
 A unit of tracked work. Main tasks `M-n` are outcomes; sub tasks `S-n` are
 steps under a main task. States: open, claimed, review, done, blocked,
-cancelled. A main task that waits for the person's confirmation goes to
-review; internal fleet cards are closed by their owner instead.
+cancelled. A main task that waits for someone's confirmation goes to review;
+finishing it from review with done.
 
 - Can: carry state, acceptance, comments and results across turns and
   instances.
 - Can't: substitute for chat consensus — a blocked card still needs the person
   (or the dispatcher) to answer.
 - Code: the `task` tool (`src/channel/mcp-tools.ts:79-80`).
-- Refs: 1ea064ae (all dispatch goes on the board); the leader's team rule on
-  internal cards (no decision id — leader instruction).
+- Refs: —
 
 ## decision
 
 A recorded agreement (`post_decision`, `list_decisions`), scoped to a project
-directory or to the whole fleet. Decisions are the fleet's memory of why, and
-gates and reviewers cite them.
+directory or to the whole fleet. Decisions are the fleet's memory of why,
+readable with `list_decisions`.
 
-- Can: bind later behavior (a gate checks the cited decision's content).
+- Can: record agreements agents and people consult later.
 - Can't: enforce itself — code that never reads a decision is not bound by it
   (see Mismatches).
 - Code: `post_decision`, `list_decisions` tool definitions.
-- Refs: dbcb1de2 (prune stale decisions on release).
+- Refs: —
 
 ## credential profile
 

@@ -29,14 +29,14 @@
 - 程式碼：`src/tool-permissions.ts:107-136`、`:201-208`；`src/instance-lifecycle.ts:2741`（General instance 不能被 replace）。
 - 相關決議與議題：fleet decision 9e3bea6c。
 
-## coordinator（角色）與 `coordinator` 工具組
+## `coordinator` 工具組
 
-兩回事。角色是合併守門人：只有 coordinator 能合併，在 parity reviewer 的 APPROVE 到達時跑 `scripts/gate-merge.sh`；作者永遠不跑 `gh pr merge`。工具組是 `TOOL_PROFILES.coordinator = WORKER + ORCHESTRATION`：全部 worker 能力，加上所有「經營艦隊而非做事」的動詞。
+`TOOL_PROFILES.coordinator = WORKER + ORCHESTRATION`：全部 worker 能力，加上所有「經營艦隊而非做事」的動詞——給經營艦隊其中一部分的 agent 用的。
 
-- 角色能做什麼：透過 gate 合併已審查的 PR。不能做什麼：不能批准——只有 parity reviewer 的 APPROVE 算數。
-- 工具組能做什麼：新增／刪除／取代／啟動／停止／暫停／喚醒／重啟 instance、管理 team 與 template、改 fleet 預設值與 instance 設定、跑 kiro 遷移與對帳、改別人的決議與網頁設定（`src/tool-permissions.ts:80-98`）。
-- 程式碼：`scripts/gate-merge.sh`、`src/tool-permissions.ts:100-107`。
-- 相關決議與議題：62a2fffb（只有 coordinator 能合併）、e723a50a、4e928ba6、`docs/design/coordinator-tool-perms.zh-TW.md`（僅有正體中文版）。
+- 能做什麼：新增／刪除／取代／啟動／停止／暫停／喚醒／重啟 instance、管理 team 與 template、改 fleet 預設值與 instance 設定、跑 kiro 遷移與對帳、改別人的決議與網頁設定（`src/tool-permissions.ts:80-98`）。
+- 不能做什麼：不能超出這張表——沒列的就是拒絕，並說明這個 instance 拿的是哪個 profile。
+- 程式碼：`src/tool-permissions.ts:100-107`。
+- 相關決議與議題：`docs/design/coordinator-tool-perms.zh-TW.md`（僅有正體中文版）。
 
 ## worker
 
@@ -161,21 +161,21 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 
 ## task board card（任務卡）
 
-追蹤工作的單位。主任務 `M-n` 是成果；子任務 `S-n` 是主任務下面的步驟。狀態：open、claimed、review、done、blocked、cancelled。等人的確認的主任務會進 review；艦隊內部的卡由擁有者自己關掉。
+追蹤工作的單位。主任務 `M-n` 是成果；子任務 `S-n` 是主任務下面的步驟。狀態：open、claimed、review、done、blocked、cancelled。等某人確認的主任務會進 review；從 review 以 done 收尾。
 
 - 能做什麼：把狀態、驗收標準、留言與結果，跨 turn、跨 instance 帶著走。
 - 不能做什麼：不能代替人的共識——blocked 的卡還是要等人（或 dispatcher）回答。
 - 程式碼：`task` 工具（`src/channel/mcp-tools.ts:79-80`）。
-- 相關決議與議題：1ea064ae（分派一律上板）；內部卡自己關的 team 規則（沒有決議 id——leader 指示）。
+- 相關決議與議題：—
 
 ## decision（決議）
 
-記錄下來的共識（`post_decision`、`list_decisions`），範圍是某個專案目錄或整個艦隊。決議是艦隊記住「為什麼」的地方，gate 與 reviewer 都會引用它。
+記錄下來的共識（`post_decision`、`list_decisions`），範圍是某個專案目錄或整個艦隊。決議是艦隊記住「為什麼」的地方，用 `list_decisions` 讀。
 
-- 能做什麼：約束之後的行為（gate 會核對引用的決議內容）。
+- 能做什麼：把 agent 與人之後會參考的共識記下來。
 - 不能做什麼：不能自己執行——從來不讀它的程式碼，不受它約束（見「不一致之處」）。
 - 程式碼：`post_decision`、`list_decisions` 工具定義。
-- 相關決議與議題：dbcb1de2（發版時清理過期決議）。
+- 相關決議與議題：—
 
 ## credential profile（憑證設定檔）
 
