@@ -492,16 +492,30 @@ function takePreimage(root, prefix, deps) {
   });
   return { preimage: { dir: dir, version: version, links: links } };
 }
+/** Anything at `p`, a dangling symlink included (existsSync follows links). */
+function pathPresent(p) {
+  try { fs.lstatSync(p); return true; } catch (e) { return false; }
+}
 /** The preimage back in place of what npm installed, and its bin links (a bin only the new release has goes). */
 function restorePreimage(root, prefix, p) {
   var pkg = path.join(root, "@songsid", "agend");
   var aside = path.join(p.dir, "replaced");
   var names = binNames(pkg);
+  var movedAside = false;
   try {
-    if (fs.existsSync(pkg)) fs.renameSync(pkg, aside);
+    if (fs.existsSync(pkg)) { fs.renameSync(pkg, aside); movedAside = true; }
     fs.renameSync(path.join(p.dir, "agend"), pkg);
   } catch (e) {
-    return "the previous package could not be put back from " + p.dir + " (" + (e && e.message ? e.message : String(e)) + ")";
+    var reason = "the previous package could not be put back from " + p.dir + " (" + (e && e.message ? e.message : String(e)) + ")";
+    // #1490 row 40: the tree this call moved aside goes back while the install path is still empty — never an empty
+    // install path, and never someone else's tree moved over.
+    if (movedAside && !pathPresent(pkg)) {
+      try { fs.renameSync(aside, pkg); } catch (back) {
+        return reason + "; the installed package also could not be moved back from " + aside + " (" + (back && back.message ? back.message : String(back)) + ")";
+      }
+      return reason + "; the installed package was left in place";
+    }
+    return reason;
   }
   Object.keys(p.links).forEach(function (n) { if (names.indexOf(n) < 0) names.push(n); });
   for (var k = 0; k < names.length; k++) {
