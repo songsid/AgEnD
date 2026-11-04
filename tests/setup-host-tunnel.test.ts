@@ -319,7 +319,7 @@ describe("an unconfirmed tunnel death", () => {
     expect(spawnFleet).toHaveBeenCalledTimes(1);
     // 4. the lease is kept, so nothing opens another tunnel before the fleet is up.
     expect(existsSync(leasePath(dir))).toBe(true);
-    expect(readLease(dir)).toMatchObject({ providerPid: 4242 });
+    expect(await readLease(dir)).toMatchObject({ providerPid: 4242 });
     // 5. the message is honest.
     const said = logs.join(" ");
     expect(said).toContain("could not be confirmed closed");
@@ -581,7 +581,7 @@ describe("the fleet resolves a leftover tunnel when it starts", () => {
     const { FleetManager } = await import("../src/fleet-manager.js");
     const dir = tempDir();
     writeFileSync(join(dir, "fleet.yaml"), "instances: {}\n");
-    writeLease(dir, {
+    await writeLease(dir, {
       sid: "old", provider: "cloudflared", originPort: 45678,
       // A pid that cannot be alive: the reaper should see it gone and clear up.
       providerPid: 2_147_483_600, strongIdentity: "linux:1",

@@ -77,6 +77,7 @@ import {
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
+import { startStallReporter, type StallReporter } from "./stall-reporter.js";
 import { sdNotify, sdNotifyBlocking, setSdNotifyWarn, startSdWatchdog } from "./sd-notify.js";
 import { StartupMemoryDeadline, fleetStopConcurrency } from "./startup-memory-deadline.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
@@ -1479,6 +1480,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startupMemoryDeadline: StartupMemoryDeadline | null = null;
   private eventLoopWatch: EventLoopWatch | null = null;
+  private stallReporter: StallReporter | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private memoryLogAt: number | null = null;
@@ -8099,6 +8101,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.watchdogTimer = startSdWatchdog();
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
+    // #3009: the event-loop watch runs on the main thread; this one does not, so a stall that never ends is still named.
+    this.stallReporter?.stop();
+    this.stallReporter = startStallReporter({ logFile: join(this.dataDir, "daemon.log") });
     try {
       await this.startAllWithinDeadline(configPath, deadline);
     } finally {
@@ -8110,6 +8115,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.watchdogTimer = null;
           this.eventLoopWatch?.stop();
           this.eventLoopWatch = null;
+          this.stallReporter?.stop();
+          this.stallReporter = null;
         }
       }
     }
@@ -21541,6 +21548,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = null;
+    this.stallReporter?.stop();
+    this.stallReporter = null;
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).

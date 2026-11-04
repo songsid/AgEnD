@@ -15,7 +15,8 @@
 import { publicTunnelHostname, normalizePublicTunnelToken } from "../public-tunnel-config.js";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "../child-process.js";
-import { accessSync, constants as fsConstants } from "node:fs";
+import { constants as fsConstants } from "node:fs";
+import { access } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
 import { fetchViaPublicResolver, fetchViaSystemResolver, type ProbeResponse } from "./public-fetch.js";
@@ -165,13 +166,18 @@ function jsonLineUrl(line: string): string | null {
 /** Bounded: a child that never prints a URL must not grow our memory. */
 const MAX_BUFFERED_OUTPUT = 64 * 1024;
 
-export function resolveBinary(name: string, env: NodeJS.ProcessEnv): string | null {
+/**
+ * #3009: asynchronous, never on the fleet's main thread. A PATH entry on a stalled network or automount filesystem
+ * (NFS, sshfs, autofs; /mnt/c on WSL) blocks `access` in the kernel, uninterruptibly — on the main thread that was the
+ * whole fleet, with systemd's watchdog firing; on libuv's threadpool it is one pool thread, and the login fails instead.
+ */
+export async function resolveBinary(name: string, env: NodeJS.ProcessEnv): Promise<string | null> {
   if (name.includes("/")) return isAbsolute(name) ? name : null;
   for (const dir of (env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
     const candidate = join(dir, name);
     try {
-      accessSync(candidate, fsConstants.X_OK);
+      await access(candidate, fsConstants.X_OK);
       return candidate;
     } catch { /* keep looking */ }
   }
@@ -219,6 +225,8 @@ export interface CloudflaredOptions {
   env?: NodeJS.ProcessEnv;
   /** Test seam: proving a death must be testable without a real process. */
   probe?: typeof probeProcess;
+  /** Test seam: preflight's executability check (#3009: asynchronous; fake-timer tests answer it at once). */
+  access?: (path: string, mode: number) => Promise<void>;
 }
 
 export class CloudflaredProvider implements TunnelProvider {
@@ -231,7 +239,7 @@ export class CloudflaredProvider implements TunnelProvider {
 
   async preflight(signal: AbortSignal): Promise<PreflightResult> {
     if (signal.aborted) return { ok: false, errorKind: "cancelled", detail: "cancelled before preflight" };
-    const path = resolveBinary(this.binaryName, this.env);
+    const path = await resolveBinary(this.binaryName, this.env);
     if (!path) {
       return {
         ok: false,
@@ -240,7 +248,7 @@ export class CloudflaredProvider implements TunnelProvider {
       };
     }
     try {
-      accessSync(path, fsConstants.X_OK);
+      await (this.opts.access ?? access)(path, fsConstants.X_OK);
     } catch {
       return { ok: false, errorKind: "binary-not-executable", detail: `${path} is not executable` };
     }
@@ -258,7 +266,15 @@ export class CloudflaredProvider implements TunnelProvider {
       throw new TunnelStartError("bad-url", `refusing to expose ${ctx.origin.origin}: only http://127.0.0.1:<port> may be tunnelled`);
     }
 
-    const pre = await this.preflight(ctx.signal);
+    // #3009: preflight is asynchronous, and a filesystem that never answers must not hold the login past its budget.
+    let preTimer: ReturnType<typeof setTimeout> | undefined;
+    const pre = await Promise.race([
+      this.preflight(ctx.signal),
+      new Promise<PreflightResult>(resolve => {
+        preTimer = setTimeout(() => resolve({ ok: false, errorKind: "timeout", detail: "the cloudflared binary could not be checked in time (its filesystem did not answer)" }),
+          Math.max(0, deadline - now()));
+      }),
+    ]).finally(() => clearTimeout(preTimer));
     if (!pre.ok) throw new TunnelStartError(pre.errorKind, pre.detail);
 
     const named = this.opts.named;
