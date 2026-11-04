@@ -34,6 +34,7 @@ describe("unset: the profile in effect, as the fleet resolves it", () => {
     ["dev", { tool_set: "standard" }, {}],
     ["lead", {}, { general_topic: true }],
     ["general", {}, {}],
+    ["general", {}, { general_topic: false }],                               // #3035 review: named general, unticked — a worker
     ["lead", { tool_set: "coordinator" }, { general_topic: true }],         // an explicit default wins for a General too
     ["dev", { tool_set: "bogus" }, {}],                                      // not a profile: as if unset
   ];

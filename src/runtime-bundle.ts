@@ -4,6 +4,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { GENERAL_KNOWLEDGE_FILES } from "./general-role.js";
 import { RUNTIME_PANE_MODULES, RUNTIME_PANE_ASSETS, PANE_NATIVE_SHA256 } from "./runtime-pane-assets.js";
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
@@ -108,6 +109,7 @@ export function createRuntimeBundle(options: RuntimeBundleOptions = {}): Runtime
     entries.push([name, bytes]);
   };
   for (const file of RUNTIME_BUNDLE_MODULES) add(`dist/${file}`, readCodeFile(join(moduleDirectory, file)));
+  for (const file of GENERAL_KNOWLEDGE_FILES) add(`dist/general-knowledge/${file}`, readCodeFile(join(moduleDirectory, "general-knowledge", file)));
   for (const file of WS_FILES) add(`node_modules/ws/${file}`, file === "package.json" ? wsPackage : readCodeFile(join(wsDirectory, file)));
   const assets = options.paneAssetDirectory ?? join(moduleDirectory, "runtime-assets");
   for (const pkg of RUNTIME_PANE_ASSETS) {

@@ -84,6 +84,15 @@ export interface AuthApiContext {
   authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
   /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
   isWebOnlyFleet?(): boolean;
+  /**
+   * #3008: a code from the authenticator app, typed at the outside link's sign-in (FleetManager.outsideSignIn): "ok"
+   * only for the link connections from outside opened (`exposureId`), with a code not used before.
+   */
+  outsideSignIn?(exposureId: string | undefined, code: string): { kind: "ok" } | { kind: "wrong" } | { kind: "paused"; retryAfterMs: number } | { kind: "closed" } | { kind: "unavailable" };
+  /** #3008: this exposure is the link "Allow connections from outside" opened, open now (its sign-in asks for the code). */
+  isOutsideLink?(exposureId: string): boolean;
+  /** #3008: the session outsideSignIn's "ok" made is this computer's admin (and a Notice says who signed in). */
+  authorizeOutsideSession?(record: SessionRecord, peer: WebPeer, label: string): boolean;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1920 step 4b: a guest's sign-in makes this browser a guest's returning device (its own caps). The cookie, or null. */
@@ -146,6 +155,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #1958: identity colours on the page and the Color dialog (static code; the colours come in the status frame).
     "identity-color.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
+    // #3008: the QR code of an authenticator's setup (qrcode-generator 2.0.4, MIT; shared/vendor/vendor.json, byte-checked).
+    // Static code, no data — the secret is drawn by Settings behind the gate; loaded only when an app is being set up.
+    "qrcode.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
 };
@@ -194,10 +206,12 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
  * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
  * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
  */
-export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean } = {}): void {
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean } = {}): void {
   try {
     const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
-    const html = opts.webOnly ? page.replace("<body>", '<body data-web-only="1">') : page;
+    // #3008: through the link "Allow connections from outside" opened, the page asks for the authenticator's code.
+    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}`;
+    const html = marks ? page.replace("<body>", `<body${marks}>`) : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
     json(res, 500, { error: "signin.html not found" });
@@ -257,7 +271,8 @@ export function handleAuthRequest(
   // ── The page and its scripts: public, inert ──
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
-    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true });
+    const link = gatewayRequestContext(req);
+    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true });
     return true;
   }
 
@@ -271,6 +286,45 @@ export function handleAuthRequest(
     } catch {
       json(res, 404, { error: "not found" });
     }
+    return true;
+  }
+
+  // ── #3008: POST /auth/totp — signing in from outside, with the authenticator app's code ──
+  // Only through the link "Allow connections from outside" opened (the gateway's own provenance names it, never a
+  // header); anything else is refused as a wrong code would be, without counting. An admin session with no account,
+  // marked `remote`, ended by the switch's Off, a new app, or the link closing.
+  if (path === "/auth/totp") {
+    if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
+    if (!req.headers.origin || !isSameOriginRequest(gateReq)) { json(res, 403, { error: "Cross-site request rejected" }); return true; }
+    if (!isJsonRequest(req)) { json(res, 415, { error: "expected application/json" }); return true; }
+    const token = ctx.webToken, gateway = gatewayRequestContext(req);
+    if (!token || !ctx.webSessions || !gateway || !ctx.outsideSignIn) { json(res, 404, { error: "not_found" }); return true; }
+    const sessions = ctx.webSessions, signIn = ctx.outsideSignIn.bind(ctx);
+    void readJsonBody(req).then(body => {
+      if (!body || typeof body.code !== "string" || body.code.length > 32) { json(res, 400, { error: "expected {\"code\": \"123456\"}" }); return; }
+      if (!isWebRequestCurrent(req) || ctx.webToken !== token) { json(res, 401, { error: "wrong_code" }); return; }
+      const result = signIn(gateway.exposureId, body.code);
+      if (result.kind === "paused") {
+        json(res, 429, { error: "paused", retryAfterMs: result.retryAfterMs }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
+        return;
+      }
+      if (result.kind === "closed") { json(res, 404, { error: "not_found" }); return; }
+      if (result.kind === "unavailable") { json(res, 503, { error: "unavailable" }); return; }
+      if (result.kind === "wrong") { ctx.logger.debug("outside sign-in refused"); json(res, 401, { error: "wrong_code" }); return; }
+      for (const previous of readSessionCookies(gateReq, token)) {
+        if (sessions.authenticate(previous, tokenEpoch(token), { touch: false, surface: gateway.surface, exposureId: gateway.exposureId })) sessions.revokeById(previous);
+      }
+      const label = labelFromUserAgent(typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined);
+      const { sessionId, record } = sessions.create({ tier: "admin", surface: gateway.surface, label, tokenEpoch: tokenEpoch(token), exposureId: gateway.exposureId, remote: "totp" });
+      if (record.remote !== "totp") { sessions.revokeById(sessionId); json(res, 404, { error: "not_found" }); return; }
+      ctx.logger.info({ handle: record.handle, label, surface: record.surface }, "Web sign-in from outside");
+      // #3015 review r3: admitted (its handle saved) and authorized, or no session at all.
+      let admitted = false;
+      try { admitted = ctx.authorizeOutsideSession?.(record, gateway.named === true ? "named_link" : "quick_link", label) === true; } catch (err) { ctx.logger.debug({ err }, "outside session not authorized"); }
+      if (!admitted) { sessions.revokeById(sessionId); json(res, 503, { error: "unavailable" }); return; }
+      const session = buildSessionCookie(sessionId, isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000, token);
+      json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, { "Set-Cookie": session });
+    }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); });
     return true;
   }
 
@@ -306,8 +360,8 @@ export function handleAuthRequest(
       const guestCodes = ctx.webGuestLoginCodes ?? null;
       const audience = gateway?.exposureId ?? "local";
       const guestPausedMs = guestCodes?.pausedForMs() ?? 0;
-      const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs()) }
-        : codes.pausedForMs() > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
+      const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs(audience)) }
+        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
         : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience);
       if (result.kind === "invalid") guestCodes?.recordWrong(body.code);
       if (result.kind === "paused") {

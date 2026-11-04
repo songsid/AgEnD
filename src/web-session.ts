@@ -139,6 +139,12 @@ export interface SessionRecord {
    * Always an admin session with no owner.
    */
   readonly host?: true;
+  /**
+   * #3008: signed in from outside — through the public link a web-only fleet's admin opened with "Allow connections
+   * from outside" — with the authenticator app's code. On that fleet, while the switch is on, it is this computer's
+   * admin too (authority/web-authority.ts). Always an admin session over the link, with no owner.
+   */
+  readonly remote?: "totp";
 }
 
 export interface SessionSummary {
@@ -257,6 +263,7 @@ function isRecord(value: unknown): value is SessionRecord {
     && (v.exposureId === undefined || (typeof v.exposureId === "string" && /^[0-9a-f]{32}$/.test(v.exposureId)))
     && (v.owner === undefined || isOwner(v.owner))
     && (v.host === undefined || (v.host === true && v.tier === "admin" && v.owner === undefined && v.surface === "local"))
+    && (v.remote === undefined || (v.remote === "totp" && v.tier === "admin" && v.owner === undefined && v.host === undefined && v.surface === "gateway" && typeof v.exposureId === "string"))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
@@ -335,7 +342,7 @@ export class WebSessionStore {
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.
    */
-  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true }): { sessionId: string; record: SessionRecord } {
+  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true; remote?: "totp" }): { sessionId: string; record: SessionRecord } {
     // #1920: a guest is always someone's own account; never a guest of nobody.
     if (input.tier === "guest" && !input.owner) throw new Error("a guest session needs its owner");
     const now = this.now();
@@ -358,6 +365,7 @@ export class WebSessionStore {
       tokenEpoch: input.tokenEpoch,
       ...(input.owner ? { owner: { adapterId: input.owner.adapterId, userId: input.owner.userId } } : {}),
       ...(input.host === true && input.tier === "admin" && !input.owner && input.surface === "local" ? { host: true as const } : {}),
+      ...(input.remote === "totp" && input.tier === "admin" && !input.owner && input.host !== true && input.surface === "gateway" && input.exposureId ? { remote: "totp" as const } : {}),
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);
@@ -409,9 +417,12 @@ export class WebSessionStore {
   /** A candidate has no usable credential until the public notice and final fence passed. */
   activate(sessionId: string): boolean {
     const hash = sessionIdHash(sessionId);
-    if (!this.byHash.has(hash) || !this.pending.delete(hash)) return false;
+    const record = this.byHash.get(hash);
+    if (!record || !this.pending.delete(hash)) return false;
+    record.lastSeen = this.now();
+    this.enforceCaps();
     this.persistNow();
-    return true;
+    return this.byHash.has(hash);
   }
 
   revokeExposure(exposureId: string): { count: number; durable: boolean } {
@@ -541,18 +552,29 @@ export class WebSessionStore {
   /**
    * The caps: admins' and read sessions together; guests apart (#1920) — per account, then all guests — so a guest
    * signing in never drops an admin's session, and one account cannot fill the guests' room.
+   *
+   * Pending public candidates (#1490 row 20) sit in their own pool at the same cap: they must not evict an
+   * active session, and admission (`activate`) then applies the active cap. Guests keep their separate caps.
    */
   private enforceCaps(): void {
     const notGuest = (r: SessionRecord) => r.tier !== "guest";
-    while (this.count(notGuest) > this.maxSessions) this.evictLeastRecentlyUsed(notGuest);
+    this.enforcePool(notGuest, this.maxSessions);
     const accounts = new Set<string>();
     for (const r of this.byHash.values()) if (r.tier === "guest") accounts.add(accountKey(r.owner!));
     for (const key of accounts) {
       const mine = (r: SessionRecord) => r.tier === "guest" && accountKey(r.owner!) === key;
-      while (this.count(mine) > MAX_GUEST_SESSIONS_PER_ACCOUNT) this.evictLeastRecentlyUsed(mine);
+      this.enforcePool(mine, MAX_GUEST_SESSIONS_PER_ACCOUNT);
     }
     const guest = (r: SessionRecord) => r.tier === "guest";
-    while (this.count(guest) > MAX_GUEST_SESSIONS) this.evictLeastRecentlyUsed(guest);
+    this.enforcePool(guest, MAX_GUEST_SESSIONS);
+  }
+
+  /** Cap active and pending members of `which` separately, each at `cap`, so a candidate cannot bump a live session. */
+  private enforcePool(which: (r: SessionRecord) => boolean, cap: number): void {
+    const active = (r: SessionRecord) => which(r) && !this.pending.has(r.idHash);
+    const pending = (r: SessionRecord) => which(r) && this.pending.has(r.idHash);
+    while (this.count(active) > cap) this.evictLeastRecentlyUsed(active);
+    while (this.count(pending) > cap) this.evictLeastRecentlyUsed(pending);
   }
 
   private count(which: (r: SessionRecord) => boolean): number {

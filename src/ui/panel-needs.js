@@ -25,6 +25,7 @@ import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
+import { GeneralLocation } from "./general-location.js";
 
 register("needs", {
   en: {
@@ -45,6 +46,12 @@ register("needs", {
     f_runtime: "Runs on", f_machine: "Machine", f_thisPc: "This PC (Windows)", f_topic_name: "Name", f_backend: "CLI", f_model: "Model", f_directory: "Folder",
     f_sandbox: "Access", f_description: "Description", f_display_name: "Display name", f_tags: "Tags", sb_read_only: "read-only", sb_workspace_write: "can write in its folder",
     createWindows: "Create a Windows agent", changeAgent: "Change {0}",
+    r_applied: "Approved: the change is applied.", r_rejected: "Rejected: nothing was changed.", r_withdrawn: "Withdrawn by the agent: nothing was changed.",
+    r_expired: "This request ran out before it was decided: nothing was changed.", r_fleet_stopped: "The fleet stopped before it was applied: nothing was changed.",
+    r_request_no_longer_current: "The request is no longer current (the fleet or the Windows switch changed): nothing was changed.",
+    r_settings_changed: "The settings changed since the request: nothing was changed.", r_apply_failed: "It could not be applied.",
+    e_owner_required: "Only this fleet's owner, signed in on the AgEnD computer itself, can decide an agent's request.",
+    e_confirmation_not_pending: "This request was already decided or ran out.", e_not_found: "This request is no longer here.",
   },
   "zh-TW": {
     title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
@@ -64,6 +71,12 @@ register("needs", {
     f_runtime: "執行於", f_machine: "電腦", f_thisPc: "這台電腦（Windows）", f_topic_name: "名稱", f_backend: "CLI", f_model: "模型", f_directory: "資料夾",
     f_sandbox: "存取權限", f_description: "說明", f_display_name: "顯示名稱", f_tags: "標籤", sb_read_only: "唯讀", sb_workspace_write: "可寫入它的資料夾",
     createWindows: "建立 Windows agent", changeAgent: "修改 {0}",
+    r_applied: "已核准：變更已套用。", r_rejected: "已拒絕：沒有任何變更。", r_withdrawn: "agent 已撤回：沒有任何變更。",
+    r_expired: "這個請求在決定前就過期了：沒有任何變更。", r_fleet_stopped: "套用前 fleet 已停止：沒有任何變更。",
+    r_request_no_longer_current: "這個請求已不再有效（fleet 或 Windows 開關已改變）：沒有任何變更。",
+    r_settings_changed: "提出請求後設定已變更：沒有任何變更。", r_apply_failed: "無法套用。",
+    e_owner_required: "只有在 AgEnD 這台電腦上登入的 fleet 擁有者，才能決定 agent 的請求。",
+    e_confirmation_not_pending: "這個請求已經被決定或已過期。", e_not_found: "這個請求已不在這裡。",
   },
 });
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
@@ -230,6 +243,7 @@ function NeedsItem({ item, nowMs, owner }) {
     <div class="n-body">
       <div class="n-title"><strong>${reasonText(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
       ${detailOf(item) ? html`<p class="n-detail">${detailOf(item)}</p>` : null}
+      ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
@@ -271,6 +285,26 @@ export function proposalLines(summary) {
 }
 
 /**
+ * alpha.2 polish: a decided request's outcome in the PAGE's language (the server says it in the fleet's — an English page
+ * read 「變更已套用。」): by its reason code, else its state; the server's words only for a code this page does not know.
+ */
+export function outcomeText(outcome) {
+  if (!outcome) return t("app.failed");
+  for (const code of [outcome.reason_code, outcome.state]) {
+    if (typeof code !== "string") continue;
+    const key = `r_${code}`, s = tn(key);
+    if (s !== `needs.${key}`) return s;
+  }
+  return outcome.message || t("app.failed");
+}
+/** Why a click decided nothing, in the page's language (by the server's error code; its words only as a fallback). */
+export function decideErrorText(r) {
+  const key = r && r.error ? `e_${r.error}` : "";
+  const s = key ? tn(key) : "";
+  return key && s !== `needs.${key}` ? s : (r && r.message) || t("app.failed");
+}
+
+/**
  * alpha.2 (M-2300): one agent's request waiting for this web-only fleet's owner — what it would do (the server's own
  * summary: the machine, the CLI, the model, the folder, the access), when it runs out, and Approve / Reject. One click
  * per request on this page (claimed before the POST); the answer is the server's: applied, rejected, run out, already
@@ -290,11 +324,11 @@ function ProposalItem({ proposal: p, nowMs }) {
     const decided = r.view && r.view.state !== "pending";
     if (!decided) {
       decisions.set((s) => { const next = { ...s }; delete next[p.id]; return next; });
-      setFailed(r.message || t("app.failed"));
+      setFailed(decideErrorText(r));
       return;
     }
     decisions.set((s) => ({ ...s, [p.id]: { ...r, decision } }));
-    toast(r.view.outcome ? r.view.outcome.message : (r.message || t("app.failed")), r.view.state === "applied");
+    toast(r.view.outcome ? outcomeText(r.view.outcome) : decideErrorText(r), r.view.state === "applied");
   };
   const minutes = Math.floor((p.remaining_ms || 0) / 60_000);
   return html`<article data-trust="permission" class="n-item">
@@ -319,7 +353,7 @@ function ProposalResult({ result: r }) {
   return html`<article data-trust="permission" class=${`n-item${ok || (v && v.state === "rejected") ? "" : " bad"}`}>
     <span class="n-icon"><${Icon} name=${ok ? "check" : "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${outcome ? outcome.message : (r.message || t("app.failed"))}</strong><span class="n-age">${tn("decided")}</span></div>
+      <div class="n-title"><strong>${outcome ? outcomeText(outcome) : decideErrorText(r)}</strong><span class="n-age">${tn("decided")}</span></div>
       ${v ? html`<ul class="n-detail">${proposalLines(v.summary).map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
       ${outcome && outcome.detail ? html`<p class="note">${tn("failedReason", outcome.detail)}</p>` : null}
       ${ok && r.agent ? html`<div class="n-actions"><a class="btn btn-sm btn-primary" href=${chatPath(r.agent)} title=${r.agent}>${tn("openAgent")}</a></div>` : null}

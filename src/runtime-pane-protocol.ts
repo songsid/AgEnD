@@ -3,6 +3,7 @@ import { validNativeSessionId, validateNativeModel } from "./windows-cli-provide
 import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker.js";
 import type { PaneKey, PaneSize } from "./pane-port.js";
 import { validatePaneTranscriptCursor, type PaneTranscriptCursor } from "./runtime-pane-transcript-protocol.js";
+import { validateGeneralWorkspaceRequest, type GeneralWorkspaceRequest } from "./runtime-general-protocol.js";
 
 export const RUNTIME_PANE_PROTOCOL = 1;
 export const PANE_EDIT_KEYS = { "C-a": "\x01", "C-e": "\x05", "C-u": "\x15", "C-k": "\x0b", BSpace: "\x7f", DC: "\x1b[3~", Home: "\x1b[H", End: "\x1b[F", Left: "\x1b[D", Right: "\x1b[C" } as const;
@@ -20,6 +21,8 @@ export interface RuntimePaneLaunch extends PaneSize {
   sessionId?: string;
   launchId?: string;
   instructions?: string;
+  /** A coordinator-selected, runner-owned General workspace; never an arbitrary directory publication. */
+  generalWorkspace?: Omit<GeneralWorkspaceRequest, "action" | "instance" | "cli">;
   mcpTools?: string[];
 }
 export interface RuntimePaneSnapshot extends PaneSize {
@@ -46,6 +49,7 @@ export interface RuntimePaneShutdown { hostBootId: string; shutdown: true }
 export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: string }
 export interface RuntimePaneSessionProof { snapshot: RuntimePaneSnapshot; state: "absent" | "saved" | "unknown" }
 export type RuntimePaneRequest =
+  | GeneralWorkspaceRequest
   | { action: "list" }
   | { action: "shutdown"; hostBootId: string }
   | { action: "recover"; paneId: string; launchId: string; hostBootId: string; confirmedStopped: true }
@@ -73,7 +77,7 @@ function dimension(value: unknown, min: number, max: number): asserts value is n
   if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) throw Error("Invalid pane dimensions");
 }
 export function validateRuntimePaneLaunch(value: unknown): RuntimePaneLaunch {
-  closed(value, ["paneId", "agentId", "instance", "cli", "cwd", "sandbox", "model", "sessionId", "launchId", "instructions", "mcpTools", "columns", "rows"]);
+  closed(value, ["paneId", "agentId", "instance", "cli", "cwd", "sandbox", "model", "sessionId", "launchId", "instructions", "generalWorkspace", "mcpTools", "columns", "rows"]);
   id(value.paneId); id(value.agentId);
   if (value.launchId !== undefined) id(value.launchId);
   if (value.instructions !== undefined && (typeof value.instructions !== "string" || Buffer.byteLength(value.instructions) > 64 * 1024 || value.instructions.includes("\0"))) throw Error("Invalid pane instructions");
@@ -81,6 +85,10 @@ export function validateRuntimePaneLaunch(value: unknown): RuntimePaneLaunch {
     || new Set(value.mcpTools).size !== value.mcpTools.length || value.mcpTools.some(tool => typeof tool !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(tool)))) throw Error("Invalid pane MCP tools");
   if (typeof value.instance !== "string" || !/^[\p{L}\p{N}_.-]{1,160}$/u.test(value.instance)) throw Error("Invalid pane instance");
   if (value.cli !== "codex" && value.cli !== "claude-code") throw Error("This provider has no verified persistent pane adapter");
+  if (value.generalWorkspace !== undefined) {
+    closed(value.generalWorkspace, ["bindingId", "packHash"]);
+    validateGeneralWorkspaceRequest({ action: "general-workspace", ...value.generalWorkspace, instance: value.instance, cli: value.cli });
+  }
   if (!validWindowsDirectory(value.cwd)) throw Error("Invalid pane working directory");
   if (value.sandbox !== "read-only" && value.sandbox !== "workspace-write") throw Error("Invalid pane permission mode");
   dimension(value.columns, 40, 300); dimension(value.rows, 10, 120);
@@ -91,6 +99,7 @@ export function validateRuntimePaneLaunch(value: unknown): RuntimePaneLaunch {
 export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
   if (!object(value) || typeof value.action !== "string") throw Error("Invalid pane request");
   switch (value.action) {
+    case "general-workspace": return validateGeneralWorkspaceRequest(value);
     case "list": closed(value, ["action"]); break;
     case "shutdown": closed(value, ["action", "hostBootId"]); id(value.hostBootId); return value as unknown as RuntimePaneRequest;
     case "open": closed(value, ["action", "operationId", "launch"]); id(value.operationId); return { action: "open", operationId: value.operationId, launch: validateRuntimePaneLaunch(value.launch) };

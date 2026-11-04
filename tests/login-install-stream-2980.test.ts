@@ -126,13 +126,13 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
     }
   }, 15_000);
 
-  it("passes the account's login shell, so the installer's PATH line lands in the rc file the user's terminals read", () => {
+  it("passes the account's login shell, so the installer's PATH line lands in the rc file the user's terminals read", async () => {
     const r = spawnSync("sh", ["-c", unattendedInstallCommand('echo "shell=$SHELL"', "/bin/sh")], { encoding: "utf8", env: { ...process.env, SHELL: "" } });
     expect(r.stdout).toContain("shell=/bin/sh");
-    expect(loginShell(() => "/bin/sh")).toBe("/bin/sh");
-    expect(loginShell(() => "relative/zsh")).toBeUndefined();
-    expect(loginShell(() => join(dir, "no-such-shell"))).toBeUndefined();
-    expect(loginShell(() => { throw new Error("no passwd entry"); })).toBeUndefined();
+    expect(await loginShell(() => "/bin/sh")).toBe("/bin/sh");
+    expect(await loginShell(() => "relative/zsh")).toBeUndefined();
+    expect(await loginShell(() => join(dir, "no-such-shell"))).toBeUndefined();
+    expect(await loginShell(() => { throw new Error("no passwd entry"); })).toBeUndefined();
     expect(unattendedInstallCommand("x", null)).not.toContain("SHELL=");
     expect(unattendedInstallCommand("x", "/bin/zsh")).toMatch(/^SHELL='\/bin\/zsh' /);
   });

@@ -155,9 +155,9 @@ export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "ex
   const exists = !!cfg && Object.hasOwn(cfg.instances ?? {}, input.instance_name);
   if (input.existing_agent) return exists ? null : `there is no agent called "${input.instance_name}"`;
   if (exists) return `an agent called "${input.instance_name}" already exists — connect it as an existing agent, or choose another name`;
-  // M-2069: "general" means the General everywhere (daemon, tool profile, pause guard); a new chat agent that would not
-  // be the General does not get the name. A web-only agent may: the fleet adopts it as the General once a chat is added.
-  if (input.instance_name === GENERAL_NAME && !input.web_only && !becomesGeneral(cfg, input)) {
+  // M-2069: "general" means the General everywhere (daemon, tool profile, pause guard); a new agent that would not be
+  // the General does not get the name — on a chat platform or (alpha.3, hmsg-7c8fd0e5) web only alike.
+  if (input.instance_name === GENERAL_NAME && !becomesGeneral(cfg, input)) {
     // A fleet that would take a General, but not in a folder of the user's: the General keeps its own (#2744 review).
     if (becomesGeneral(cfg, { ...input, working_directory: "" })) return `the General agent works in its own folder — leave the working directory empty to make "${GENERAL_NAME}" the General, or choose another name`;
     return `the name "${GENERAL_NAME}" is kept for the fleet's General agent — choose another name`;
@@ -174,7 +174,8 @@ export function agentConflict(input: Pick<WizardPlanInput, "instance_name" | "ex
  * agent is a worker there and the fleet adds its General, in its own folder, at start — as before.
  */
 export function becomesGeneral(cfg: FleetConfig | null, input: Partial<Pick<WizardPlanInput, "existing_agent" | "connection_only" | "working_directory" | "instance_name">> & { web_only?: boolean }): boolean {
-  if (input.connection_only || input.existing_agent || input.web_only) return false;
+  // alpha.3 (the user, hmsg-7c8fd0e5): web only too — its first agent with no directory of the user's is its General.
+  if (input.connection_only || input.existing_agent) return false;
   if (input.working_directory && !(input.instance_name && input.working_directory === defaultWorkingDirectory(input.instance_name))) return false;
   if (wizardChannels(cfg).length) return false;
   // An agent already called "general" (a web-only one) is the one the fleet makes the General at start
@@ -535,8 +536,11 @@ function newAgentKiroUi(existing: unknown, backend: string | undefined, cfg: Fle
 export function draftWebOnly(cfg: FleetConfig, body: Pick<WizardPlanInput, "instance_name" | "backend" | "working_directory">): FleetConfig {
   const draft = structuredClone(cfg);
   const existing = Object.hasOwn(draft.instances, body.instance_name) ? draft.instances[body.instance_name] : undefined;
+  // alpha.3: the first agent with no directory of the user's is the fleet's ticked General (no chat: no topic); the owner
+  // may untick it or tick another in Settings.
+  const general = becomesGeneral(cfg, { web_only: true, working_directory: body.working_directory, instance_name: body.instance_name });
   draft.instances = { ...draft.instances, [body.instance_name]: { working_directory: body.working_directory, backend: body.backend,
-    ...newAgentKiroUi(existing, body.backend, cfg) } } as FleetConfig["instances"];
+    ...(general ? { general_topic: true } : {}), ...newAgentKiroUi(existing, body.backend, cfg) } } as FleetConfig["instances"];
   return draft;
 }
 

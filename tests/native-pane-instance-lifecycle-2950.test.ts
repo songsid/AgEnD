@@ -1,3 +1,4 @@
+import {setConfiguredRuntimeSwitches} from "../src/runtime-switches.js";
 import type { NativePaneLifecycle } from "../src/native-pane-lifecycle.js";
 /** Full InstanceLifecycle/Daemon flow with an inert native runner; every local process/window boundary throws. */
 import {afterEach,expect,it,vi} from "vitest";
@@ -37,4 +38,12 @@ it("native outbox reconciliation needs its own proof and never retires saved loc
 it("stopping an unpublished retained native owner uses its typed close hook and never a saved local PID/window",async()=>{
  const f=fixture(),instance=f.fleet.getInstanceDir("native");mkdirSync(instance,{recursive:true});writeFileSync(join(instance,"daemon.pid"),String(process.pid));writeFileSync(join(instance,"window-id"),"%OFF_LIMITS");f.fleet.closeRetainedNativePane=vi.fn(async()=>{});
  const signal=vi.spyOn(process,"kill").mockImplementation(()=>{throw Error("No PID signal");});await f.fleet.lifecycle.stop("native");expect(f.fleet.closeRetainedNativePane).toHaveBeenCalledExactlyOnceWith("native");expect(signal).not.toHaveBeenCalled();expect(f.forbidden).not.toHaveBeenCalled();
+});
+
+it.each(["exited","unknown"] as const)("a no-pin %s snapshot closes only positively owned work, never schedules a crash resume",async state=>{
+ setConfiguredRuntimeSwitches({windows_cli:true});clean.push(()=>setConfiguredRuntimeSwitches({}));const f=fixture();await f.fleet.lifecycle.start("native",f.config,true);const daemon=f.fleet.daemons.get("native"),snapshot={hostBootId:randomUUID(),paneId:f.pane.getWindowId(),launchId:randomUUID(),agentId:f.config.native_agent_id,instance:"native",state,seq:1,commandSequence:0,exitCode:1};
+ Object.assign(f.native,{snapshot:()=>snapshot});vi.spyOn(f.fleet,"nativePanePinnedSession").mockReturnValue(null);const hold=vi.spyOn(f.fleet,"holdNativePaneRecovery").mockReturnValue(true);const event={name:"native",snapshot,owner:daemon.getInteractionSnapshot().owner};daemon.emit("native_pane_exited",event);
+ if(state==="exited"){await vi.waitFor(()=>expect(f.native.release).toHaveBeenCalledWith("close"));await vi.waitFor(()=>expect(hold).toHaveBeenCalledWith("native",expect.objectContaining({recovery:expect.objectContaining({kind:"session-unconfirmed",provider:"codex",launchId:snapshot.launchId})})));}
+ else{await new Promise(resolve=>setTimeout(resolve,30));expect(f.native.release).not.toHaveBeenCalled();expect(hold).not.toHaveBeenCalled();}
+ expect(f.fleet.lifecycle.nativeRecoveryPending("native")).toBe(false);expect(existsSync(join(f.fleet.getInstanceDir("native"),"native-crash-state.json"))).toBe(false);expect(f.forbidden).not.toHaveBeenCalled();
 });

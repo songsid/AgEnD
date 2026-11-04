@@ -24,6 +24,10 @@ export function settingsRequestLocalAdmin(req: object): boolean {
   continuation.execution.assert();
   return continuation.localAdmin() === true;
 }
+/** Live principal only, for settling the exact committed operation; this never admits another write. */
+export function settingsRequestLocalAdminCurrent(req: object): boolean {
+  return continuations.get(req)?.localAdmin?.() === true;
+}
 export function cacheSettingsBody(req: object, body: Buffer, execution?: SettingsExecution, binding = "", localAdmin?: () => boolean): void {
   if (execution) continuations.set(req, { body: Buffer.from(body), execution, binding, localAdmin });
   else bodies.set(req, Buffer.from(body));

@@ -134,8 +134,8 @@ it("a reboot cannot silently replace a previously launched Codex conversation wh
  f.store.reservePane(f.agent.id,manifest.launch.launchId);
  await f.endpoint.call({action:"open",operationId:randomUUID(),launch:manifest.launch});await native.release("detach");
  rebootHost(f,"b".repeat(64));
- await expect(new NativePaneManager(f.options).prepare("native",f.config,()=>{})).rejects.toThrow("exit is unconfirmed");
- expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).activeId).toBe(manifest.launch.launchId);expect(f.store.get(f.agent.id).threadId).toBeUndefined();expect(f.process.write).not.toHaveBeenCalled();
+ await expect(new NativePaneManager(f.options).prepare("native",f.config,()=>{})).rejects.toMatchObject({recovery:{kind:"session-unconfirmed",provider:"codex",launchId:manifest.launch.launchId}});
+ expect(f.spawn).toHaveBeenCalledOnce();expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.store.get(f.agent.id).threadId).toBeUndefined();expect(f.process.write).not.toHaveBeenCalled();
 });
 
 it("a positively observed unknown host pane cannot keep its old daemon tool authority",async()=>{
@@ -144,4 +144,10 @@ it("a positively observed unknown host pane cannot keep its old daemon tool auth
  expect(await native.port.getPaneStatus()).toBeNull();expect(native.current()).toBe(false);
  await expect(f.manager.handle("local",{op:"pane-mcp",owner:f.owner(),helperId:randomUUID(),method:"tools/call",callId:"e".repeat(64),params:{name:"reply",arguments:{text:"never sent"}}},()=>true)).rejects.toThrow("no longer current");
  expect(f.invoke).not.toHaveBeenCalled();await native.release("detach");
+});
+it('wires a lower tool failure to its bound daemon metadata logger',async()=>{
+ const f=await fixture(),failed=vi.fn();f.options.invoke=async()=>({result:null,error:'Fleet outbound timed out',errorCode:'ETIMEDOUT'});
+ const native=await f.manager.prepare('native',f.config,()=>{});native.bindDaemon({paneToolResponseWritten:vi.fn(),logNativeToolFailure:failed}as never);await native.acquire(()=>{});f.publish();
+ const response=await f.manager.handle('local',{op:'pane-mcp',owner:f.owner(),helperId:randomUUID(),method:'tools/call',callId:'e'.repeat(64),params:{name:'reply',arguments:{text:'inert'}}},()=>true)as any;
+ expect(response.result.isError).toBe(true);expect(failed).toHaveBeenCalledExactlyOnceWith({tool:'reply',operationId:expect.any(String),reason:'Fleet outbound timed out',code:'ETIMEDOUT'});await native.release('close');
 });

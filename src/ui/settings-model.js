@@ -23,7 +23,8 @@ export const TOOL_SETS = ["worker", "coordinator", "standard", "minimal", "full"
 export function toolSetDefault(defaults, inst, name = "") {
   if (TOOL_SETS.includes(defaults && defaults.tool_set)) return defaults.tool_set;
   const general = hasOwn(inst, "general_topic") ? inst.general_topic === true : !!defaults && defaults.general_topic === true;
-  return general || name === "general" ? "general" : "worker";
+  // The literal-name fallback, unless unticked (general-instance.ts generalByName: an explicit general_topic: false).
+  return general || (name === "general" && !(hasOwn(inst, "general_topic") && inst.general_topic === false)) ? "general" : "worker";
 }
 export const TOOL_PROGRESS = ["off", "standard", "verbose"];
 export const AGENT_MODES = ["mcp", "cli"];

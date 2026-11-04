@@ -106,6 +106,8 @@ export interface OutboundContext {
   requestWindowsCreate?(requester: string, rawArgs: Record<string, unknown>): Promise<{ id: string; state: string }>;
   /** #2942: a Windows agent's settings (display_name, description, model) an agent asked to change — held the same way. */
   requestWindowsConfig?(requester: string, name: string, patch: Record<string, unknown>): Promise<{ id: string; state: string }>;
+  /** M-2297: the fleet's stop (lifecycle transition; a native pane closed, never detached). Throws when it cannot. */
+  stopInstance(name: string): Promise<{ backgroundWorkEnded: boolean }>;
   restartSingleInstance(name: string, opts?: { freshStart?: boolean; explicit?: boolean; carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null } }): Promise<void>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
@@ -1103,8 +1105,11 @@ const stopInstance: Handler = async (ctx, rawArgs, respond) => {
   try {
     const daemon = ctx.lifecycle.daemons.get(v.data.name);
     if (!daemon) { respond(null, `Instance '${v.data.name}' is not running`); return; }
-    await daemon.stop();
-    ctx.lifecycle.daemons.delete(v.data.name);
+    // M-2297: the fleet's own stop (lifecycle transition), never a bare daemon.stop(). The bare stop DETACHED a native
+    // Windows pane — its CLI kept running unsupervised and kept a machine slot — and this then answered "stopped". The
+    // lifecycle closes a native pane (kill confirmed → its positive exit → the slot released) and throws when that exit
+    // is unconfirmed, which is answered as a failure below, never "stopped".
+    await ctx.stopInstance(v.data.name);
     respond({ success: true, status: "stopped" });
   } catch (err) {
     respond(null, `Failed to stop '${v.data.name}': ${(err as Error).message}`);
@@ -1821,7 +1826,11 @@ const WINDOWS_MCP_EDITABLE = new Set(["display_name", "description", "model"]);
 function windowsRequestAnswer(view: { id: string; state: string }): Record<string, unknown> {
   return view.state === "pending"
     ? { pending_id: view.id, state: "pending", message: "pending — waiting for a fleet admin to confirm (in General; on a fleet with no chat connection, the owner in the web dashboard's Needs you). Nothing is changed until then." }
-    : { pending_id: view.id, state: view.state, message: `This request is already ${view.state}.` };
+    // alpha.2 polish: the same request again (an identical request is answered by the one already decided, for about ten
+    // minutes) — say what to do instead of repeating it.
+    : { pending_id: view.id, state: view.state, message: view.state === "applied" || view.state === "applying"
+      ? `This identical request is already ${view.state}; nothing more is needed.`
+      : `This identical request was already ${view.state}. Asking the same thing again gets the same answer: change something (the name, the folder or the model) to ask again, or try again in about ten minutes.` };
 }
 
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {

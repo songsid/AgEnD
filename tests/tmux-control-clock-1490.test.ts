@@ -8,7 +8,12 @@
  *     Callers must not deliver into a pane because the client stopped.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { TmuxControlClient } from "../src/tmux-control.js";
+import { Daemon } from "../src/daemon.js";
+import { createBackend } from "../src/backend/index.js";
 
 const SILENCE_MS = 200;
 
@@ -91,23 +96,47 @@ describe("TmuxControlClient: observation age uses monotonic clock (#1490 P3)", (
 // callers would proceed as if the pane is idle.
 
 describe("TmuxControlClient.waitUntilIdle: resolves false when stopped (#1490 P3)", () => {
-  it("resolves false when client is already stopped before calling", async () => {
-    const { client } = makeClient();
-    (client as any).stopped = true;
-    // Stub isIdle to return false so we reach the interval check
-    (client as any).isIdle = () => false;
+  it("resolves false on the initial fast path when client is already stopped (unknown or idle window)", async () => {
+    const { client, internals, advanceMono } = makeClient();
+    // Real isIdle returns true for an unmapped window outside observation grace
+    expect(client.isIdle("@3")).toBe(true);
+    client.stop();
 
-    const result = await client.waitUntilIdle("@3", 100);
-    expect(result).toBe(false);
+    expect(await client.waitUntilIdle("@3", 100)).toBe(false);
+
+    // Also when the window is mapped and its silence window has genuinely elapsed
+    const { client: mappedClient, internals: mappedInternals, advanceMono: advanceMapped } = makeClient();
+    mappedInternals.paneToWindow.set("%3", "@3");
+    mappedInternals.registeredWindows.add("@3");
+    mappedInternals.lastOutputAt.set("%3", Date.now());
+    mappedInternals.lastOutputAtMono.set("%3", mappedInternals.mono());
+    advanceMapped(SILENCE_MS + 1);
+    expect(mappedClient.isIdle("@3")).toBe(true);
+    mappedClient.stop();
+
+    expect(await mappedClient.waitUntilIdle("@3", 100)).toBe(false);
+    void internals;
+    void advanceMono;
+  });
+
+  it("resolves false on the initial fast path when abandoned() is already true", async () => {
+    const { client } = makeClient();
+    expect(client.isIdle("@3")).toBe(true);
+
+    expect(await client.waitUntilIdle("@3", 100, () => true)).toBe(false);
   });
 
   it("resolves false when client stops while waiting", async () => {
-    const { client } = makeClient();
-    (client as any).isIdle = () => false;
+    const { client, internals } = makeClient(5_000);
+    internals.paneToWindow.set("%3", "@3");
+    internals.registeredWindows.add("@3");
+    internals.lastOutputAt.set("%3", Date.now());
+    internals.lastOutputAtMono.set("%3", internals.mono());
+    expect(client.isIdle("@3")).toBe(false);
 
     const promise = client.waitUntilIdle("@3", 10_000);
     // Stop the client after a short delay
-    setTimeout(() => { (client as any).stopped = true; }, 50);
+    setTimeout(() => { client.stop(); }, 50);
     const result = await promise;
     expect(result).toBe(false);
   });
@@ -181,5 +210,62 @@ describe("unregisterWindow clears lastOutputAtMono (#1538 P2)", () => {
     expect((internals as any).lastOutputAtMono.has(paneId)).toBe(false);
     expect((internals as any).lastOutputAt.has(paneId)).toBe(false);
     expect((internals as any).mappedAt.has(paneId)).toBe(false);
+  });
+});
+
+// ── (3) Daemon native-queue fallback honours waitUntilIdle → false ───────────
+
+describe("Daemon native-queue fallback does not treat waitUntilIdle → false as idle (#1490 row 70)", () => {
+  it("does not re-paste or send recovery Enter when controlClient is stopped at the fallback waitUntilIdle", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-1490-r70-"));
+    try {
+      writeFileSync(join(dir, "window-id"), "@steer");
+      const { client } = makeClient();
+      // Window @steer is unmapped outside grace so client.isIdle("@steer") is true (the fast path).
+      // Stopping the client before the fallback waitUntilIdle must make waitUntilIdle return false,
+      // and writeMessageToPane must stop without re-pasting or sending a second Enter.
+      client.stop();
+
+      const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+      const backend = createBackend("grok", dir);
+      const daemon = new Daemon("r70-test", {
+        working_directory: "/tmp",
+        backend: "grok",
+        restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+        context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+        hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
+        log_level: "silent",
+      } as any, dir, false, backend, client, { child: () => logger } as any) as any;
+
+      const tmux = {
+        pasteBuffer: vi.fn(async () => true),
+        sendSpecialKey: vi.fn(async () => true),
+        capturePane: vi.fn(async () => "✻ thinking… nothing else"),
+        getLastPasteError: vi.fn(() => null),
+        isLastPasteFailureRecoverable: vi.fn(() => true),
+      };
+      daemon.tmux = tmux;
+      daemon.firstDeliveryDelay = { consume: () => 0 };
+      daemon.waitForInputTransientToClear = async () => true;
+
+      const verdict: any = { reached: false };
+      const ok = await daemon.writeMessageToPane(
+        "[STEERING] swallowed steer",
+        "@steer",
+        true,
+        { chatId: "c", messageId: "m" },
+        "m",
+        verdict,
+      );
+
+      expect(ok).toBe(false);
+      // Only the initial handoff paste and Enter may have occurred; no post-wait re-paste or recovery Enter.
+      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+      expect(verdict.phase).toBe("native-queue-idle-wait");
+      expect(verdict.proof).toBe("idle-wait-failed");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

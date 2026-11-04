@@ -58,7 +58,7 @@ function fixture(opts: { bind?: string; installError?: Error; readinessFails?: b
   const adapter = { type: "telegram", sendText, sendDirect: vi.fn(async () => ({ messageId: "d", chatId: "user" })) };
   const managed = new ManagedTunnel({ dataDir: home, probe: () => ({ kind: "gone" }) });
   let probeEntered = false;
-  const provider = new CloudflaredProvider({
+  const provider = new CloudflaredProvider({ access: async () => {} /* #3009: preflight answered at once (timing-tight fixture) */,
     binaryName: process.execPath, spawnProcess: (() => child) as never,
     probe: () => ({ kind: "gone" }), deadlineMs: opts.deadlineMs ?? (opts.readinessFails ? 150 : 3_000), graceMs: 1,
     fetchPage: async () => { probeEntered = true; await opts.readyGate; return { status: opts.readinessFails ? 503 : 200, contentType: "text/html", body: "ready" }; },

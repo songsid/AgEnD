@@ -10,7 +10,15 @@ export const GENERAL_PAUSE_ERROR = "General cannot be paused";
  * general_topic covers renamed and per-world General instances.
  */
 export function isGeneralInstance(config: FleetConfig | null | undefined, name: string): boolean {
-  return name === "general" || config?.instances[name]?.general_topic === true;
+  return config?.instances[name]?.general_topic === true || generalByName(name, config?.instances[name]);
+}
+
+/**
+ * The literal-name fallback: an agent called `general` is the General — unless its General box was unticked
+ * (`general_topic: false`, alpha.3: the owner of a web-only fleet may untick it and tick another — never half a General).
+ */
+export function generalByName(name: string, config: { general_topic?: unknown } | null | undefined): boolean {
+  return name === "general" && config?.general_topic !== false;
 }
 
 /** M-2069: the name a fleet's General has by default (the auto-created one, and the setup's first agent). */
@@ -41,9 +49,18 @@ export function generalTopicFor(channel: Record<string, unknown>): number | stri
  */
 export function adoptGeneralByName(fleet: FleetConfig, logger: { warn(obj: unknown, msg?: string): void }, ownFolder: (dir: string) => boolean): boolean {
   const channels = (fleet.channels ?? (fleet.channel ? [fleet.channel] : [])) as unknown as Array<Record<string, unknown>>;
-  if (!channels.length || !Object.hasOwn(fleet.instances, GENERAL_NAME)) return false;
+  if (!Object.hasOwn(fleet.instances, GENERAL_NAME)) return false;
   const inst = fleet.instances[GENERAL_NAME];
-  if (inst.general_topic === true || Object.values(fleet.instances).some(cfg => cfg.general_topic === true)) return false;
+  // Unticked on purpose (general_topic: false): a worker by that name, left alone.
+  if (inst.general_topic === true || inst.general_topic === false || Object.values(fleet.instances).some(cfg => cfg.general_topic === true)) return false;
+  if (!channels.length) {
+    // alpha.3 (the user, hmsg-7c8fd0e5): a web-only fleet's `general` — the setup's first agent — is its ticked General
+    // (no chat to bind: no topic), when it works in AgEnD's own folder (#2744: never a project of the user's).
+    if (!ownFolder(inst.working_directory)) return false;
+    inst.general_topic = true;
+    logger.warn({ name: GENERAL_NAME }, "An agent named general had no general_topic on a fleet with no chat connection — made it the General");
+    return true;
+  }
   const primary = channels[0], primaryId = String(primary.id ?? primary.type);
   if (inst.channel_id != null && inst.channel_id !== primaryId) return false;
   if (!ownFolder(inst.working_directory)) return false;

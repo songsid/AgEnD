@@ -49,11 +49,11 @@ export function refreshProposals() {
  * Once per page: read once, then again on the stream's `agent_proposals` ping (live) and whenever a status frame shows a
  * revision the list was not read at yet (#2997 review: a page that polls /ui/poll, one that reconnected, and a tab from
  * before the upgrade — whose stream knows no `agent_proposals` event — all still apply status frames; r2: until a read
- * at that revision succeeds). Never on the public link.
+ * at that revision succeeds). #3008: on the public link too — this computer's admin signed in from outside decides there;
+ * anyone else over it reads an empty list (the server answers the owner only).
  */
 export function installProposals() {
   if (installed) return;
-  if (typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1") return;
   installed = true;
   const on = appStore.get().streamOn;
   if (typeof on === "function") {
@@ -79,7 +79,8 @@ export async function decideProposal(id, decision) {
     try { body = await res.json(); } catch { body = null; }
   } catch { return { ok: false, view: null, agent: null, message: null }; }
   void refreshProposals();
-  return { ok: !!res.ok, view: (body && body.view) || null, agent: (body && body.agent) || null, message: (body && body.message) || null };
+  return { ok: !!res.ok, view: (body && body.view) || null, agent: (body && body.agent) || null, message: (body && body.message) || null,
+    error: (body && typeof body.error === "string" && body.error) || (res.ok ? null : `http_${res.status}`) };
 }
 
 /** For tests: as on a fresh page. */

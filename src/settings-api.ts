@@ -4,7 +4,7 @@ import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
-import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsWrite } from "./settings-request-capability.js";
+import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { gatewayRequestContext } from "./web-request-context.js";
@@ -90,6 +90,8 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  generalLocations?(): unknown;
+  switchGeneralLocation?(input: unknown, authorized: () => boolean, execution: SettingsExecution): Promise<{ started: boolean; message: string }>;
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
   /** #2906: the fixed address's Test connection (closed step codes only; never the token). */
   testNamedLink?(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown; current?: () => boolean }): Promise<import("./tunnel/named-link-test.js").NamedTestResult | { busy: true }>;
@@ -830,6 +832,22 @@ export function handleSettingsRequest(
       const r = ctx.revokeWebAuthority!();
       json(res, 200, { ok: true, epoch: r.epoch, durable: r.durable });
     }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  if (path === "/api/settings/general-location" && (method === "GET" || method === "POST")) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (!ctx.generalLocations || !ctx.switchGeneralLocation) { json(res, 404, { error: "not available" }); return true; }
+    if (method === "GET") { try { json(res, 200, ctx.generalLocations()); } catch (err) { json(res, 409, { error: (err as Error).message }); } return true; }
+    const execution = settingsRequestExecution(req);
+    let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+    if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+    readBody(req, 8192).then(async bytes => {
+      execution.assert();
+      const result = await ctx.switchGeneralLocation!(JSON.parse(bytes.toString("utf8")), () => settingsRequestLocalAdminCurrent(req), execution);
+      // A committed settings execution no longer authorizes writes; the scoped operation already checked its start.
+      json(res, 200, { ok: true, ...result });
+    }).catch(err => { ctx.logger.warn({ err }, "settings: General location change held"); json(res, 409, { error: (err as Error).message }); });
     return true;
   }
 

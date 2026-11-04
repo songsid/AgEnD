@@ -1,3 +1,5 @@
+import { buildNativeFleetInstructions } from "./instructions.js";
+import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-tools.js";
 import { windowsAgentsFor } from "./windows-agents.js";
@@ -18,6 +20,10 @@ import { settingsDisplay } from "./settings-change.js";
 import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
+import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
+import { GeneralManagedFileError } from "./runtime-general-protocol.js";
+import { GeneralBindings, generalBindingRevision, parseGeneralSwitchInput, switchGeneralLocation, type GeneralSwitchInput, type GeneralBindingRecord } from "./general-binding.js";
+import { confirmGeneralHostExit } from "./general-host-owner.js";
 import { settingsFingerprint, SettingsExecution, settingsRevision, noteSettingsWrite, settingsFileResource, assertSettingsLease, trySettingsLease, waitSettingsLease, settingsUndo, undoSettingsPaths, type SettingsUndo, type SettingsLease } from "./settings-transaction.js";
 import { performance } from "node:perf_hooks";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
@@ -33,7 +39,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
-import { unattendedInstallCommand } from "./unattended-install.js";
+import { unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
@@ -51,7 +57,7 @@ import type { CpuProfile } from "./cpu-profile.js";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, accessSync, realpathSync, lstatSync, constants as fsConstants, type Dirent, openSync, closeSync, fsyncSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { freemem, totalmem, homedir } from "node:os";
+import { freemem, totalmem, homedir, hostname } from "node:os";
 import { effectiveCpuCount } from "./cpu-quota.js";
 import { access } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
@@ -83,6 +89,7 @@ import {
   type UpdateReceipt,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
+import { startStallReporter, type StallReporter } from "./stall-reporter.js";
 import { sdNotify, sdNotifyBlocking, setSdNotifyWarn, startSdWatchdog } from "./sd-notify.js";
 import { StartupMemoryDeadline, fleetStopConcurrency } from "./startup-memory-deadline.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
@@ -109,7 +116,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
-import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
+import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
 import { AdapterWorld } from "./adapter-world.js";
@@ -130,6 +137,7 @@ import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
 import { codexMetadataHomes, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./backend/codex-metadata.js";
+import { readGrokModelCache } from "./backend/grok-model-cache.js";
 import { CLI_ENV_TTL_MS, isModelCompatible, noteResolvedBinary, resolveBinary, SYSINFO_BACKEND_IDS, UnsupportedCliError, ResumeBlockedError, type BackendCliVersionSnapshot } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
@@ -227,7 +235,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
   return tasks;
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
-import { windowsCliEnabled, closeWindowsBridge, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
+import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
@@ -354,6 +362,7 @@ import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninP
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
+import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
@@ -575,6 +584,11 @@ export interface RestartOpts {
   sessionOomRetry?: SessionOomRetry;
   /** Internal pre-invalidation owner fence for an unclear-OOM action. */
   recoveryCurrent?: () => boolean;
+  /**
+   * #1490 row 27: the lifecycle the caller acts for (lifecyclePin), asked before anything is invalidated. A button or
+   * menu offered for one instance never restarts a later one of the same name, or one restarted since.
+   */
+  ownerCurrent?: () => boolean;
   carry?: { backend: string; from: string | null; to: string | null; result?: CarryResult | null };
 }
 /** #1742: how long after a Telegram /web that could not reach an admin privately a bare /start counts as /start web. */
@@ -750,10 +764,16 @@ export interface ModelCatalog {
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
+  /**
+   * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
+   * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
+   */
+  lifecycleCurrent?: () => boolean;
   pendingChangeId?: string;
   sessionOomRetry?: SessionOomRetry;
   confirmationCurrent?: () => boolean;
   confirmationAdmin?: (userId: string) => boolean;
+  confirmationStop?: (name: string, begin: () => Promise<unknown>) => Promise<void>;
   requesterUserId?: string;
   publicExposureId?: string;
   dashboardOwner?: LoginCodeOwner;
@@ -1094,6 +1114,15 @@ export type GuestAuditEntry =
   | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }
   | { kind: "code"; at: number; account: string; name: string; outcome: string };
 
+/** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
+export class RestartSupersededError extends Error {
+  /** `shown`: the instance as the chat list names it (shownInstanceName). */
+  constructor(shown: string) {
+    super(t("restart.superseded", shown));
+    this.name = "RestartSupersededError";
+  }
+}
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -1206,7 +1235,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
       changed:event=>{
         if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {
-          for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId)this.nativeMcpStore?.closeInstance(name);
+          for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId) {
+            this.nativeMcpStore?.closeInstance(name);
+            if (config.general_topic) { this.cancelPendingDeliveries(name); this.holdGeneralOldDeliveries(name); }
+          }
+          this.needsYou?.poke();
         }
         if(this.runtimeStatusScheduled || this.shuttingDown)return;
         this.runtimeStatusScheduled=true;
@@ -1337,8 +1370,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
-      freshNotice: async name => {
-        const message=t("native_pane.fresh_started");
+      freshNotice: async (name,provider) => {
+        const message=t(provider === "codex" ? "native_pane.codex_fresh_started" : "native_pane.fresh_started");
         this.eventLog?.insert(name,"native_pane_fresh_started",{});this.logger.info({name},message);
         await this.notifyInstanceTopic(name,message);
       },
@@ -1346,7 +1379,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const now = this.fleetConfig?.instances[name];
         if (this.shuttingDown || !isNativePaneInstance(now) || now?.native_agent_id !== config.native_agent_id
           || now?.machine_id !== config.machine_id || now?.working_directory !== config.working_directory || now?.backend !== config.backend
-          || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow)
+          || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow
+          || now?.general_topic !== config.general_topic || now?.native_general_binding !== config.native_general_binding)
           throw Error("Native pane configuration or lifetime changed");
         if (config.machine_id ? this.remotePaneDrain || !remoteRuntimeEnabled() : this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
       },
@@ -1366,10 +1400,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }, subscribe: listener => hub.subscribe(listener),
           epoch: () => hub.paneTransportEpoch(machineId), version: provider => hub.machine(machineId)?.inventory?.clis.find(row => row.id === provider && row.runnable)?.version ?? null };
       },
-      instructions: (name, config) => buildFleetInstructions({ instanceName: name, workingDirectory: config.working_directory,
+      instructions: (name, config) => buildNativeFleetInstructions({ instanceName: name, workingDirectory: config.working_directory,
         displayName: config.display_name, description: config.description, customPrompt: config.systemPrompt,
         workflow: config.workflow, taskBoard: !dashboardRefusalIn(this.fleetConfig, name, "task"),
-        runtimeIdentity: { kind: "fleet-topic", backend: config.backend ?? "codex", model: config.model || "default" } }),
+        runtimeIdentity: { kind: "fleet-topic", backend: config.backend ?? "codex", model: config.model || "default" } }, config.general_topic === true),
       menu: name => TOOLS.filter(tool => allowed(name, tool.name)).map(tool => ({ ...tool })),
       allowed: (name, tool, args) => allowed(name, tool) && !nativePaneToolRefusal(tool, args), published: (name, daemon) => this.daemons.get(name) === daemon,
       invoke: async (daemon, input, current, name) => {
@@ -1392,8 +1426,213 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     });
   }
+  /** Prepare only bundled role files; this neither switches General nor starts a provider process. */
+  async prepareWindowsGeneralWorkspace(name: string, machineId: string, cli: "codex" | "claude-code", bindingId: string, authorized: () => boolean): Promise<import("./runtime-general-protocol.js").GeneralWorkspaceReceipt> {
+    const config = this.fleetConfig?.instances[name], hub = this.runtimeCoordinator(), epoch = hub.paneTransportEpoch(machineId);
+    if (!config?.general_topic || !epoch) throw Error("General or its paired runtime is unavailable");
+    const current = (): boolean => authorized() && !this.shuttingDown && remoteRuntimeEnabled() && this.runtimeHub === hub
+      && this.fleetConfig?.instances[name] === config && hub.paneTransportEpoch(machineId) === epoch;
+    const [{ loadGeneralKnowledge }, { validateGeneralWorkspaceRequest, validateGeneralWorkspaceReceipt, generalWorkspaceUpgrade }, { assertAuditedNativePaneVersion }] = await Promise.all([
+      import("./runtime-general-workspace.js"), import("./runtime-general-protocol.js"), import("./runtime-pane-native.js"),
+    ]);
+    if (!current()) throw Error("General workspace authority expired");
+    assertAuditedNativePaneVersion(cli, hub.machine(machineId)?.inventory?.clis.find(row => row.id === cli && row.runnable)?.version ?? null);
+    const request = validateGeneralWorkspaceRequest({ action: "general-workspace", bindingId, instance: name, cli, packHash: loadGeneralKnowledge(cli).hash });
+    const inventory: any = await hub.callPane(machineId, { action: "list" }, maxAgentsPerMachine());
+    if (!current()) throw Error("General workspace authority expired");
+    if (inventory?.capabilities?.generalWorkspace !== true) throw new NativePaneRecoveryError({ kind: "host-upgrade" });
+    const result = await hub.callPane(machineId, request, maxAgentsPerMachine());
+    if (!current()) throw Error("General workspace authority expired");
+    if (generalWorkspaceUpgrade(result, request)) throw new NativePaneRecoveryError({ kind: "host-upgrade" });
+    return validateGeneralWorkspaceReceipt(result, request);
+  }
+  private readonly generalLocationFlights = new Map<string, symbol>();
+  private readonly generalAttentionEpisodes = new Map<string, { key: string; since: number }>();
+  private generalBindings(): GeneralBindings { return new GeneralBindings(this.dataDir); }
+  generalLocations(): unknown {
+    const store = this.generalBindings();
+    return { generals: Object.entries(this.fleetConfig?.instances ?? {}).filter(([, cfg]) => cfg.general_topic).map(([name, cfg]) => {
+      const record = store.read(name), machine = cfg.machine_id ? this.runtimeHub?.machine(cfg.machine_id) : null;
+      return { name, displayName: cfg.display_name ?? name, location: isWindowsInstance(cfg) ? "windows" : "host",
+        machineId: cfg.machine_id ?? null, cli: cfg.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code", model: cfg.model ?? "",
+        revision: generalBindingRevision(record, cfg), canSwitchBack: !!record && record.active !== "host",
+        offline: isWindowsInstance(cfg) && (!remoteRuntimeEnabled() || machine?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(cfg.machine_id!)),
+        retryTarget: record?.pending?.phase === "selected" ? (record.pending.to === "host" ? { location: "host" } : (() => { const row = record.windows.find(item => item.id === record.pending!.to)!; return { location: "windows", machineId: row.machineId, cli: row.cli, model: row.config.model ?? "" }; })()) : null,
+        hold: record?.hold ?? (record?.pending ? record.pending.phase === "selected" ? "start" : "exit" : null), switching: this.generalLocationFlights.has(name) };
+    }), machines: (this.runtimeHub?.listMachines() ?? []).filter(row => row.status !== "pending" && row.status !== "revoked").map(row => ({
+      id: row.id, name: row.name, online: row.status === "online" && !!this.runtimeHub?.paneTransportEpoch(row.id),
+      clis: row.inventory?.clis.filter(cli => cli.runnable && (cli.id === "claude-code" || cli.id === "codex")).map(cli => ({ id: cli.id, version: cli.version })) ?? [],
+    })) };
+  }
+  /** Pure preflight for the confirmation diff and stale-tab refusal; never prepares files or starts a CLI. */
+  previewGeneralLocation(raw: unknown): { input: GeneralSwitchInput; summary: string[]; connections: string[] } {
+    const input = parseGeneralSwitchInput(raw), cfg = this.fleetConfig?.instances[input.name];
+    if (!cfg?.general_topic || this.shuttingDown) throw Error("General is unavailable");
+    const record = this.generalBindings().read(input.name);
+    if (input.revision !== generalBindingRevision(record, cfg)) throw Error("General location changed; read its settings again");
+    const connections = cfg.channel_id ? [cfg.channel_id] : [];
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    if (channels.length && (connections.length !== 1 || channels.filter(row => (row.id ?? row.type) === connections[0]).length !== 1)) throw Error("General's connection cannot be resolved");
+    if (input.target.location === "host") {
+      if (!record) throw Error("General's saved host location is unavailable");
+      return { input, connections, summary: [t("general_location.confirm_host"), t("general_location.history")] };
+    }
+    const active = record?.windows.find(row => row.id === record.active);
+    if (!record?.pending && record?.hold !== "start" && active?.machineId === input.target.machineId && active.cli === input.target.cli) throw Error("General already runs at this location");
+    const machine = this.runtimeHub?.machine(input.target.machineId);
+    if (!remoteRuntimeEnabled() || machine?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(machine.id)) throw Error(t("general_location.offline"));
+    const provider = input.target.cli;
+    if (!machine.inventory?.clis.some(cli => cli.id === provider && cli.runnable)) throw Error("The chosen Windows CLI is unavailable");
+    return { input, connections, summary: [t("general_location.confirm_windows", settingsDisplay(machine.name)), t("general_location.history")] };
+  }
+  /** All entry points, including automatic native recovery, must respect an interrupted binding switch. */
+  assertGeneralBindingStart(name: string, config: InstanceConfig): void {
+    if (!config.general_topic) return;
+    try { this.generalBindings().assertStart(name, config); }
+    catch (err) {
+      this.logger.warn({ name, err }, "General location start held by its saved binding"); this.needsYou?.poke();
+      throw new UnsupportedCliError(t("general_location.exit_unconfirmed"));
+    }
+  }
+  /** Only the Settings replay's confirmed admin can enter; the whole switch owns one lifecycle transition. */
+  async switchGeneralLocation(raw: unknown, authorized: () => boolean, execution: SettingsExecution): Promise<{ started: boolean; message: string }> {
+    const { input } = this.previewGeneralLocation(raw), name = input.name;
+    return this.lifecycle.runTransition(name, async transition => {
+      execution.assert(); if (!authorized() || this.generalLocationFlights.has(name)) throw Error("General location authority expired or a switch is already running");
+      const token = Symbol(name), generation = this.settingsGeneration;
+      const destinationEpoch = input.target.location === "windows" ? this.runtimeHub?.paneTransportEpoch(input.target.machineId) : null;
+      let expected = this.fleetConfig!.instances[name], stopGeneration = this.explicitStopGeneration.get(name) ?? 0, epoch = this.lifecycle.epochOf(name);
+      const hostSnapshot = !isWindowsInstance(expected) ? structuredClone(this.daemons.get(name)?.getConfigSnapshot() ?? expected) : undefined;
+      const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation && authorized()
+        && this.generalLocationFlights.get(name) === token && this.fleetConfig?.instances[name] === expected
+        && (input.target.location !== "windows" || remoteRuntimeEnabled() && !!destinationEpoch && this.runtimeHub?.paneTransportEpoch(input.target.machineId) === destinationEpoch)
+        && (this.explicitStopGeneration.get(name) ?? 0) === stopGeneration && this.lifecycle.epochOf(name) === epoch;
+      const check = (): void => { if (!current()) throw Error("General location switch was superseded"); };
+      this.generalLocationFlights.set(name, token);
+      // Old ephemeral waiters carry this epoch; they cannot wake into the selected conversation.
+      this.cancelPendingDeliveries(name);
+      let lease: SettingsLease | null = null;
+      try {
+        lease = await waitSettingsLease([settingsFileResource(this.getSettingsConfigPath()), `general:${this.dataDir}:${name}`], () => current() && execution.current(), performance.now() + execution.remainingMs, execution.owner);
+        const store = this.generalBindings();
+        const result = await switchGeneralLocation({ store, current: () => expected, assert: check,
+          prepare: async (target, retained) => {
+            if (target.location !== "windows") return null;
+            const old = retained.windows.find(row => row.machineId === target.machineId && row.cli === target.cli);
+            const id = old?.id ?? randomUUID(), agentId = old?.agentId ?? randomUUID();
+            const publication = await this.prepareWindowsGeneralWorkspace(name, target.machineId, target.cli, id, () => current() && execution.current());
+            check(); execution.assert();
+            const config: InstanceConfig = { ...structuredClone(expected), runtime: "windows", machine_id: target.machineId,
+              native_adapter: "pane", native_agent_id: agentId, native_general_binding: id, native_sandbox: "workspace-write",
+              backend: target.cli, model: target.model, working_directory: publication.cwd, systemPrompt: "", agent_mode: "cli" };
+            // Host credentials, shell hooks and provider-specific options never become Windows launch configuration.
+            for (const key of ["backend_options", "credential_profile", "pre_task_command"] as const) delete (config as unknown as Record<string, unknown>)[key];
+            windowsAgentsFor(this, this.runtimeWindowsExecutor()).ensureGeneralBinding({ id: agentId, instance: name, machineId: target.machineId,
+              cli: target.cli, cwd: publication.cwd, name: (expected.display_name ?? name).slice(0, 64), model: target.model, instructions: "", description: expected.description ?? "" }, () => current() && execution.current());
+            return { id, agentId, machineId: target.machineId, cli: target.cli, config };
+          },
+          idle: async () => {
+            check();
+            const daemon = this.daemons.get(name);
+            return !daemon || daemon.getInstanceStateSnapshot().state === "idle" && daemon.getWorkingRecoveryState().idle
+              && daemon.getInteractionSnapshot().phase === "clear" && !this.lifecycle.hasWorkLease(name)
+              && Date.now() - (this.lastDeliveryAt.get(name) ?? 0) >= 2000;
+          },
+          hostSnapshot: () => hostSnapshot!,
+          capture: async () => {
+            if (isWindowsInstance(expected)) return undefined;
+            const daemon = this.daemons.get(name);
+            if (!daemon) throw Error(t("general_location.exit_unconfirmed"));
+            const owner = await daemon.generalHostOwner(); check(); execution.assert(); return owner;
+          },
+          stop: async owner => {
+            check();
+            const stopping = this.stopInstance(name, transition); stopGeneration++; epoch++;
+            await stopping; check();
+            if (isWindowsInstance(expected)) {
+              const profile = windowsAgentsFor(this, this.runtimeWindowsExecutor()).get(expected.native_agent_id!);
+              if (profile.activeId || profile.paneLaunchId) throw Error(t("general_location.exit_unconfirmed"));
+              execution.mutate(() => this.holdGeneralOldDeliveries(name)); return undefined;
+            }
+            if (!owner || !await confirmGeneralHostExit(owner, getTmuxSession())) throw Error(t("general_location.exit_unconfirmed"));
+            check(); execution.mutate(() => this.holdGeneralOldDeliveries(name));
+            return owner.pin;
+          },
+          save: next => {
+            check(); const previous = expected;
+            try { this.fleetConfig!.instances[name] = next; this.saveFleetConfig([{ path: ["instances", name], value: next }]); expected = next; this.routing.rebuild(this.fleetConfig!); }
+            catch (err) { this.fleetConfig!.instances[name] = previous; throw err; }
+          },
+          start: async () => {
+            check(); if (!execution.completed) throw Error("General's selected binding has no committed approval");
+            // The committed receipt permits only this selected startup. Live authority still fences every awaited spawn boundary.
+            const startup = new SettingsExecution({ current: () => current() && execution.completed && execution.remainingMs > 0,
+              snapshot: () => this.fleetConfig });
+            try { await this.startInstance(name, expected, true, "fleet-topic", false, transition, startup); }
+            finally { startup.close(); }
+            check();
+            const daemon = this.daemons.get(name);
+            if (!daemon || daemon.getProcessStatus() !== "running" || isNativePaneInstance(expected) && !daemon.nativePaneCurrent()) throw Error(t("general_location.start_failed"));
+            await this.connectIpcToInstance(name); check();
+          },
+          notify: (kind, err) => {
+            const message = t(kind === "exit" ? "general_location.exit_unconfirmed" : kind === "start" ? "general_location.start_failed" : "general_location.complete",
+              isWindowsInstance(expected) ? this.runtimeHub?.machine(expected.machine_id!)?.name ?? t("general_location.windows") : t("general_location.host"));
+            this.eventLog?.insert(name, "general_location", { phase: kind, message });
+            if (err) this.logger.warn({ name, phase: kind, err }, message); else this.logger.info({ name, phase: kind }, message);
+            this.needsYou?.poke(); this.emitSseEvent("status", this.getUiStatus());
+            this.notifyInstanceTopic(name, message);
+          },
+        }, input, execution);
+        return { ...result, message: result.started ? t("general_location.complete", isWindowsInstance(expected)
+          ? this.runtimeHub?.machine(expected.machine_id!)?.name ?? t("general_location.windows") : t("general_location.host")) : t("general_location.start_failed") };
+      } finally { lease?.release(); if (this.generalLocationFlights.get(name) === token) this.generalLocationFlights.delete(name); this.needsYou?.poke(); }
+    });
+  }
+  /** An offline PC or a confirmed binding boundary holds old waiting input; it never becomes another conversation's queue. */
+  private holdGeneralOldDeliveries(name: string): void {
+    const outbox = this.deliveryOutbox; if (!outbox) return;
+    for (const row of outbox.listPending().filter(row => row.targetInstance === name)) {
+      if (row.state !== "submission_started") outbox.failBeforeBegin(row.deliveryId, t("general_location.input_not_replayed"));
+      else if (row.targetDaemonBootId) {
+        outbox.markTargetReconciliationPending(name, row.targetDaemonBootId);
+        if (!outbox.reconcileAttempt(row.deliveryId, row.targetDaemonBootId, row.attemptNo, "uncertain", t("general_location.input_not_replayed"))) throw Error("General's old delivery could not be held");
+      } else throw Error("General's old delivery has no confirmed owner");
+    }
+    this.needsYou?.poke();
+  }
+  generalLocationDeliveryHold(name: string): string | null {
+    const config = this.fleetConfig?.instances[name]; if (!config?.general_topic) return null;
+    if (this.generalLocationFlights?.has(name)) return t("general_location.exit_unconfirmed");
+    let record: GeneralBindingRecord | null;
+    try { record = this.generalBindings().read(name); } catch { return t("general_location.start_failed"); }
+    if (record?.pending || record?.hold) return t(record.pending?.phase === "selected" || record.hold === "start" ? "general_location.start_failed" : "general_location.exit_unconfirmed");
+    if (isWindowsInstance(config) && config.machine_id && (!remoteRuntimeEnabled() || this.runtimeHub?.machine(config.machine_id)?.status !== "online" || !this.runtimeHub?.paneTransportEpoch(config.machine_id))) return t("general_location.offline");
+    return null;
+  }
+  private generalLocationAttention(name: string): InstanceInput["generalLocation"] {
+    const cfg = this.fleetConfig?.instances[name]; if (!cfg?.general_topic) return null;
+    const detail = this.generalLocationDeliveryHold(name); if (!detail) { this.generalAttentionEpisodes.delete(name); return null; }
+    let record: GeneralBindingRecord | null = null;
+    try { record = this.generalBindings().read(name); } catch { /* a corrupt journal is a visible hold too */ }
+    const offline = !record?.pending && !record?.hold && isWindowsInstance(cfg) && detail === t("general_location.offline");
+    const key = record?.pending?.id ?? `${record?.revision ?? "unknown"}:${offline ? "offline" : "hold"}`;
+    let episode = this.generalAttentionEpisodes.get(name);
+    if (!episode || episode.key !== key) { episode = { key, since: record?.pending?.at ?? Date.now() }; this.generalAttentionEpisodes.set(name, episode); }
+    return { ...episode, detail, offline };
+  }
   async nativePaneFor(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle> {
-    return (await this.nativePanes()).prepare(name, config, assertCurrent);
+    try { return await (await this.nativePanes()).prepare(name, config, assertCurrent); }
+    catch (err) {
+      if (config.general_topic && err instanceof GeneralManagedFileError) {
+        assertCurrent();
+        const store = this.generalBindings(), record = store.read(name);
+        if (record && record.active === config.native_general_binding) { record.hold = "start"; store.write(record); }
+        this.logger.warn({ name, managedFile: err.file }, t("general_location.start_failed")); this.needsYou?.poke();
+        throw new UnsupportedCliError(t("general_location.start_failed"));
+      }
+      throw err;
+    }
   }
   async recoverNativePane(name:string,launchId:string,authorized:()=>boolean):Promise<void>{
     const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config))throw Error("Persistent Windows pane is not configured");
@@ -1419,13 +1658,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.needsYou?.poke();
     this.emitSseEvent("status",this.getUiStatus());return true;
   }
-  async startFreshNativePane(name:string,launchId:string,sessionId:string,authorized:()=>boolean):Promise<void>{
+  async startFreshNativePane(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>{
     const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config))throw Error("Persistent Windows pane is not configured");
     const generation=this.explicitStopGeneration.get(name)??0;
     await this.lifecycle.runTransition(name,async transition=>{
       const current=()=>{if(!authorized()||this.shuttingDown||this.fleetConfig?.instances[name]!==config||(this.explicitStopGeneration.get(name)??0)!==generation)throw Error(t("native_pane.authority_expired"));};
       current();const held=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id!).paneRecovery;
-      if(held?.kind!=="session-unconfirmed"||held.launchId!==launchId||held.sessionId!==sessionId)throw Error(t("native_pane.changed"));
+      if(held?.kind!=="session-unconfirmed"||held.launchId!==launchId||(held.sessionId??null)!==sessionId)throw Error(t("native_pane.changed"));
       if(this.daemons.get(name)?.nativePaneCurrent())throw Error(t("native_pane.still_running"));
       this.cancelStartupRetry(name);this.lifecycle.cancelNativeRecovery(name);
       await this.lifecycle.stop(name,transition);current();
@@ -1718,8 +1957,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
-  private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
-  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
+  private pendingEffortSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
+  private pendingModelSelects = new Map<string, { instanceName: string; instanceCurrent: () => boolean; model: string; userId: string; channelId: string; adapterId?: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** #1806: in-flight /backend steps, keyed by nonce (see handleBackendSelection). */
   private pendingBackendSelects = new Map<string, PendingBackendSelect>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
@@ -1854,6 +2093,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startupMemoryDeadline: StartupMemoryDeadline | null = null;
   private eventLoopWatch: EventLoopWatch | null = null;
+  private stallReporter: StallReporter | null = null;
   private startedAt = 0;
   private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
   private memoryLogAt: number | null = null;
@@ -1899,6 +2139,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private readonly webChatRemovals = new Map<string, { below: number; daemon?: unknown }>();
   /** #1774: a removal under way — its replies' fate waits for its outcome (success: theirs no more; failure: theirs). */
   private readonly webChatRemovalsPending = new Map<string, { below: number; daemon?: unknown; done: Promise<void> }>();
+  /**
+   * #1490 row 27: "still the same lifecycle of `name`" — its lifecycle epoch, moved on synchronously by every stop,
+   * restart and removal (the map is never pruned, so a same-name replacement has a later one). Taken when a button
+   * or menu is claimed or offered, asked after every await before acting by name.
+   */
+  /** #1490 row 27: an instance as the chat list names it — its display name where it has one, else its name. */
+  private shownInstanceName(name: string): string {
+    try {
+      const classic = this.classicChannels?.getAll().find(ch => ch.instanceName === name) ?? null;
+      return resolveInstanceIdentity({ cfg: this.fleetConfig?.instances[name], classic, profile: profileIdentities(this.dataDir).get(name) }).display_name || name;
+    } catch { return name; }
+  }
+
+  private lifecyclePin(name: string): () => boolean {
+    // Fail closed: a lifecycle that cannot say its epoch holds nothing (and never stops a prompt from being posted).
+    let epoch: number | undefined;
+    try { epoch = this.lifecycle?.epochOf(name); } catch { return () => false; }
+    return () => { try { return !this.shuttingDown && this.lifecycle?.epochOf(name) === epoch; } catch { return false; } };
+  }
+
   private webChatGeneration(name: string): number { return this.webChatGenerations.get(name) ?? 0; }
   /** #1774: who an instance's reply is from, taken when it is sent: the name's generation and its daemon then. */
   private webChatIdentity(name: string): WebChatIdentity { return { generation: this.webChatGeneration(name), daemon: this.daemons.get(name) }; }
@@ -2317,6 +2577,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
     const baselines = this.settingsBaselineReader = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
+      generalLocation: input => this.previewGeneralLocation(input),
       proof: (kind, target, id, binding, key) => {
         const map = kind === "provider" ? this.providerSecretChallenges : kind === "binding" ? this.connectionBindingChallenges : this.connectionSecretChallenges;
         const proof = map.get(id);
@@ -2387,8 +2648,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private settingsSelfConfirmation(store: SettingsConfirmationStore, req: IncomingMessage, id: string): SettingsSelfConfirmation | null {
     const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
     if (auth.kind !== "ok") return null;
-    // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there.
-    if (gatewayRequestContext(req)) return null;
+    // #2453 (§0.2): never over the public link — not even a named-link session that is web-verified there. #3008: except
+    // this computer's admin signed in from outside (the authenticator's code, over the link connections from outside
+    // opened): the web-only fleet's owner, judged below by the same authority as here (hostOperator).
+    if (gatewayRequestContext(req) && auth.session.remote !== "totp") return null;
     // …and never a change that turns the named-link option on: that one needs a General's card or the host.
     if (!store.selfConfirmable(id)) return null;
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
@@ -2417,12 +2680,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const own = channels.filter(ch => (ch.id ?? ch.type) === actor.adapter_id);
     if (own.length !== 1 || own[0].type !== chat.platform || !chat.admin(actor.user_id)) return null;
     const affected = [...store.affectedConnections(id)];                 // read now: a finished change no longer has them
-    if (!this.settingsNoticeGenerals(affected, chat.platform).length) return null;
+    const destinations = this.settingsNoticeGenerals(affected, chat.platform);
+    if (!destinations.length) return null;
     const name = this.webPerson({ adapterId: actor.adapter_id, userId: actor.user_id }).name;
     return {
       label: t("settings_confirm.web_verified_label", name),
       // admin() asks chat.current() too; a General a card could go to must still be there (else the host CLI's).
-      current: () => !!verified() && chat.admin(actor.user_id) && this.settingsNoticeGenerals(affected, chat.platform).length > 0,
+      current: () => !!verified() && chat.admin(actor.user_id) && destinations.some(route => route.current()),
+      followStop: async (name, begin) => { const route = destinations.find(item => item.current()); if (!route) throw Error("Settings route expired"); await route.followStop(name, begin); },
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
   }
@@ -2443,23 +2708,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private agentProposalsRev = 0;
   private agentProposalOwner(req: IncomingMessage): { label: string; current(): boolean } | null {
-    if (!this.isWebOnlyFleet() || gatewayRequestContext(req)) return null;
-    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
-    if (auth.kind !== "ok") return null;
-    // Each check twice over: here, and in the authority itself (it refuses the public link and a chat fleet's session).
-    // #2997 review (Prism P2): asked of the LIVE session each time — the request's own cookie authenticated again, the
-    // same handle — never a record captured at the click: a sign-out, an expiry or a revocation while the request is
-    // being applied fences it.
-    const handle = auth.session.handle, peer = webPeerOf(req), gateway = !!gatewayRequestContext(req);
-    const owner = (): boolean => {
-      if (!this.isWebOnlyFleet()) return false;
-      const live = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
-      if (live.kind !== "ok" || live.session.handle !== handle) return false;
-      const now = this.webAuthority({ session: live.session, gateway, peer });
-      const a = now.authority.kind === "web-verified" && now.authority.session?.handle === handle ? now.authority.actor : null;
-      return !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId;
-    };
-    return owner() ? { label: t("settings_confirm.host_operator_label"), current: owner } : null;
+    // #3008: this computer's admin here, or signed in from outside (over the link connections from outside opened) —
+    // asked of the LIVE session each time (#2997 review): a sign-out, an expiry, a revocation or the switch going off
+    // while the request is applied fences it.
+    return this.liveOwner(req, { hostOnly: false });
   }
 
   /** alpha.2: the agents' requests waiting for this web-only fleet's owner, or null when the reader is not that owner. */
@@ -2492,17 +2744,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /** #2170: the Generals a chat card could be posted in (promptSettingsChange's rule): connected, on the platform, unaffected. */
-  private settingsNoticeGenerals(affected: readonly string[], platform: "telegram" | "discord"): Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string }> {
-    const excluded = new Set(affected), found: Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string }> = [];
-    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
-      if (!config.general_topic || !this.daemons.get(name)) continue;
-      const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
-      if (!adapterId || !adapter || excluded.has(adapterId) || adapter.type !== platform || this.adapterState.get(adapterId)?.status !== "connected") continue;
-      const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
-      if (chatId && topic) found.push({ adapterId, adapter, chatId, topic });
-    }
-    return found;
+  /** A confirmation belongs to the server route/lifetime, not the availability of General's model. */
+  private settingsGeneralRoute(name: string, platform: "telegram" | "discord", excluded: ReadonlySet<string>):
+    { adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean; followStop(name: string, begin: () => Promise<unknown>): Promise<void> } | null {
+    const config = this.fleetConfig?.instances[name];
+    if (!config?.general_topic || this.shuttingDown || this.ipcStoppingInstances.has(name)) return null;
+    const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
+    if (!adapterId || !adapter || excluded.has(adapterId) || adapter.type !== platform) return null;
+    const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
+    if (!chatId || !topic) return null;
+    const route = (): boolean => !this.shuttingDown && this.fleetConfig?.instances[name]?.general_topic === true
+      && this.adapterState.get(adapterId)?.status === "connected"
+      && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
+      && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic;
+    const lifetime = new SettingsRouteLifetime(name, route, () => this.lifecycle.epochOf(name), () => this.ipcStoppingInstances.has(name));
+    return lifetime.current() ? { adapterId, adapter, chatId, topic, current: lifetime.current, followStop: lifetime.followStop.bind(lifetime) } : null;
+  }
+
+  /** Connected, same-platform, unaffected server routes can post cards even while the model is offline. */
+  private settingsNoticeGenerals(affected: readonly string[], platform: "telegram" | "discord"):
+    Array<{ adapterId: string; adapter: ChannelAdapter; chatId: string; topic: string; current(): boolean; followStop(name: string, begin: () => Promise<unknown>): Promise<void> }> {
+    const excluded = new Set(affected);
+    return Object.keys(this.fleetConfig?.instances ?? {}).flatMap(name => {
+      const route = this.settingsGeneralRoute(name, platform, excluded); return route ? [route] : [];
+    });
   }
 
   /**
@@ -2581,6 +2846,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // The store's own fence (this confirming admin, the session, the state) plus the switch and machine now.
       apply: async (actorCurrent, execution) => {
         execution.assert();
+        // alpha.2 polish: a paired machine whose CLI inventory has not arrived yet (just paired) is asked for its own
+        // report first (it runs on that PC), so the creation validates against what is installed there — never a refusal
+        // that only a manual Refresh would undo. Its answer or failure changes nothing else; the fence is asked again.
+        if (machineId && online() && !inventoryProbed(this.runtimeCoordinator().machine(machineId)?.inventory)) {
+          // `force`: the runner's cached answer on a fresh profile is the placeholder itself (#3005 rig recheck).
+          try { await this.runtimeCoordinator().call(machineId, "probe", { force: true }); } catch { /* validation says what is missing */ }
+          execution.assert();
+        }
         return input.apply(() => actorCurrent() && online(), execution);
       } });
     return view;
@@ -2651,22 +2924,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const excluded = new Set(store.affectedConnections(view.id));
-    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
-      if (!config.general_topic) continue;
-      const adapterId = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name);
-      const general = this.daemons.get(name);
-      if (!adapterId || !adapter || !general || excluded.has(adapterId) || adapter.type !== authority.platform) continue;
-      const chatId = this.getGroupIdForInstance(name), topic = String(config.topic_id ?? "");
-      if (!chatId || !topic) continue;
+    for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
+      const route = this.settingsGeneralRoute(name, authority.platform, excluded);
+      if (!route) continue;
+      const { adapterId, adapter, chatId, topic } = route;
       let retired = false, attached = false;
       const postingDeadline = performance.now() + Math.min(5000, view.remaining_ms);
-      const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && !this.shuttingDown && this.settingsGeneration === generation
-        && this.fleetConfig?.instances[name]?.general_topic === true
-        && this.daemons.get(name) === general && !this.ipcStoppingInstances.has(name)
-        && this.adapterState.get(adapterId)?.status === "connected"
-        && this.getInstanceAdapterId(name) === adapterId && this.getAdapterForInstance(name) === adapter
-        && this.getGroupIdForInstance(name) === chatId && String(this.fleetConfig?.instances[name]?.topic_id ?? "") === topic
-        && authority.current();
+      const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && this.settingsGeneration === generation
+        && route.current() && authority.current();
       if (!current()) continue;
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
@@ -2675,7 +2940,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             t("settings_confirm.requester", view.requested_by), ...view.summary].join("\n"),
           choices: [{ action: "confirm", label: t("settings_confirm.confirm_button") }, { action: "reject", label: t("settings_confirm.reject_button") }],
           expiredText: t("settings_confirm.no_longer_pending"), timeoutMs: view.remaining_ms,
-          extra: { pendingChangeId: view.id, confirmationCurrent: current, confirmationAdmin: userId => current() && authority.admin(userId) },
+          extra: { pendingChangeId: view.id, confirmationCurrent: current, confirmationAdmin: userId => current() && authority.admin(userId), confirmationStop: route.followStop },
         });
         void posted.then(nonce => {
           if (!retired) return;
@@ -2889,6 +3154,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const view = await this.settingsGate().store.decide(entry.pendingChangeId!, action as "confirm" | "reject", {
         label: t("settings_confirm.admin_label", data.userId ?? ""),
+        followStop: entry.confirmationStop,
         current: () => entry.confirmationCurrent?.() === true && this.getAdapterForInstance(entry.instanceName) === entry.adapter
           && !!data.userId && entry.confirmationAdmin?.(data.userId) === true,
       });
@@ -3246,6 +3512,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     forwards?: readonly string[];
     requestedKind?: string;
   }): { deliveryId: string; state: string; duplicate: boolean; kind: string } {
+    const bindingHold = this.generalLocationDeliveryHold(input.targetInstance);
+    if (bindingHold) throw Error(bindingHold);
     const outbox = this.deliveryOutbox;
     if (!outbox) throw new Error("Durable delivery store is unavailable");
     const currentSourceBootId = this.getDaemonBootId(input.sourceInstance);
@@ -3282,7 +3550,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const state = page.items.some(item => item.authority) ? this.webAuthorityState() : null;
     const human = (item: DeliveryStatusItem): DeliveryStatusItem => {
       if (!item.authority || !state) return item;
-      const authority = authorityNow(item.authority, state);
+      const authority = this.receiptAuthorityNow(item.authority, state);
       return { ...item, authority, ...(authority.downgraded ? { source_instance: "human:web:unknown" } : {}) };
     };
     // #1641: a sender that sees only `queued` cannot tell "next in line" from "the target is stuck": say which.
@@ -3313,6 +3581,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   getDaemonBootId(instanceName: string): string | undefined {
+    if (this.generalLocationDeliveryHold(instanceName)) return undefined;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       return !this.shuttingDown && windowsCliEnabled() && this.nativeMcpStore?.hasActive(instanceName) ? this.managerBootId : undefined;
     }
@@ -3326,7 +3595,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Called after a replacement Daemon object is installed in lifecycle.daemons. */
   onDaemonReady(name: string, daemonBootId: string): void {
     const daemon = this.daemons.get(name);
-    if (daemon?.bootId === daemonBootId) this.listenForWorkingState(name, daemon);
+    if (daemon?.bootId === daemonBootId) {
+      this.listenForWorkingState(name, daemon);
+      const cfg = this.fleetConfig?.instances[name];
+      if (cfg?.general_topic && !this.generalLocationFlights.has(name) && daemon.getProcessStatus() === "running"
+        && (!isNativePaneInstance(cfg) || daemon.nativePaneCurrent())) {
+        try { if (this.generalBindings().completeSelected(name, cfg)) { this.needsYou?.poke(); this.logger.info({ name }, "General location's selected start receipt settled after recovery"); } }
+        catch (err) { this.logger.warn({ name, err }, "General location start receipt remains held"); }
+      }
+    }
     // #2802: no post-restart notices. The outbox still delivers or fails a row accepted before the restart, and an open
     // request is reminded by the ordinary turn-ended nudge (sweepReplyObligations) once the owner is idle.
     this.scheduleDeliveryOutboxPump();
@@ -5700,6 +5977,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     options: DeliveryOptions = {},
   ): Promise<boolean | void> {
+    if (this.generalLocationDeliveryHold(instanceName)) return false;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       return this.nativeInstanceRuntime().deliver(instanceName,payload,{stillCurrent:options.stillCurrent,
         ...(options.authorityCurrent ? {authorityCurrent:options.authorityCurrent} : {})});
@@ -6481,7 +6759,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // reconcile starts keep the persisted last-inbound seed (Phase 2a).
       if (resumePaused) this.lifecycle.markActivitySeedNow(name);
       const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-      if (!isWindowsInstance(config) && config.general_topic) {
+      // #1490 row 67 (main): off-loop resolve before skill/instruction publication
+      // constructs a backend (resolveKnowledgeWorkDir). Capture stop/lifecycle
+      // ownership first: a Stop during this wait finishes and bumps the epoch,
+      // and the inner lifecycle check would otherwise capture the new epoch and
+      // accept the stale start. Lifecycle start looks up again before its own
+      // createBackend; the probe cache makes that cheap. (alpha: a native Windows
+      // agent's CLI is on that PC — nothing to resolve on this one.)
+      const epoch = this.lifecycle.epochOf(name);
+      const stopGen = this.explicitStopGeneration.get(name) ?? 0;
+      const windows = isWindowsInstance(config);
+      const resolved = windows ? null : await resolveBackendBinary(backend);
+      execution?.assert();
+      if (this.lifecycle.epochOf(name) !== epoch
+        || (this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
+        throw new SupersededStartError(name);
+      }
+      const binary = BACKEND_INSTALLATION_INFO[backend]?.binary;
+      if (binary && !windows) noteResolvedBinary(binary, resolved ?? binary);
+      if (!windows && config.general_topic) {
         this.ensureGeneralInstructions(config.working_directory, backend, name);
       } else if (!isWindowsInstance(config) && kind === "fleet-topic") {
         // Workers get only role-eligible on-demand skills. Classic instances are
@@ -7124,6 +7420,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: RestartOpts): Promise<void> {
+    if (opts?.ownerCurrent && !opts.ownerCurrent()) throw new RestartSupersededError(this.shownInstanceName(name));
     if (isNativeExecInstance(this.fleetConfig?.instances[name])) {
       const runtime=this.nativeInstanceRuntime();
       if (runtime.get(name)?.blocked) throw new Error("Verify the disconnected Windows process stopped and recover this agent before restarting");
@@ -7471,6 +7768,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       log: () => this.logger.warn("Managed tunnel cleanup requires attention") }));
   }
   private publicOwnerCurrent(owner: LoginCodeOwner): boolean {
+    // #3008: the outside link is this computer's admin's — while "Allow connections from outside" is on, web-only.
+    if (isOutsideLinkOwner(owner)) return !this.shuttingDown && this.outsideOn();
     if (this.shuttingDown || !this.hasFleetAdmins(owner.adapterId) || !this.isFleetAdmin(owner.userId, owner.adapterId)) return false;
     const configured = (this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).find(ch => (ch.id ?? ch.type) === owner.adapterId);
     if (!configured || String(configured.group_id ?? "") !== owner.chatId) return false;
@@ -7544,7 +7843,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private getPublicWebLink(): PublicWebLink {
     this.initializeWebSessions();
-    return this.publicWebLink ??= new PublicWebLink({
+    return this.publicWebLink ??= new PublicWebLink(this.publicWebLinkDeps());
+  }
+  /** The public link's wiring to this fleet (a test builds one with the tunnel itself stubbed: `ensure`, `provider`). */
+  private publicWebLinkDeps(): ConstructorParameters<typeof PublicWebLink>[0] {
+    return {
       dataDir: this.dataDir, web: () => this.fleetConfig?.web,
       permitted: owner => this.publicOwnerCurrent(owner),
       reserve: id => this.getTunnelLane().reserve("dashboard", id),
@@ -7573,7 +7876,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const world = this.worlds.get(owner.adapterId);
         if (world && world.adapter === owner.binding) void world.adapter.sendText(owner.chatId, t("dashboard.public_cleanup"), { threadId: owner.threadId }).catch(() => {});
       },
-    });
+      onClose: (owner, reason) => { if (isOutsideLinkOwner(owner)) this.outsideLinkClosed(reason); },
+    };
   }
   private publicLinkAutoOpen: PublicLinkAutoOpen | null = null;
   /**
@@ -8291,7 +8595,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // removed it, and nothing it asks for may then go out.
     if (!this.returningDevices!.current(device, tokenEpoch(token))) return { kind: "refused" };
     if (device.tier === "guest") return this.requestGuestDeviceCode(device, input, token);
-    const paused = this.webLoginCodes!.pausedForMs();
+    const paused = this.webLoginCodes!.pausedForMs(input.exposureId ?? "local");
     if (paused > 0) return { kind: "limited", retryAfterMs: paused };
     const admitted = this.codeRequestLimiter.admit(device.idHash);
     if (!admitted.ok) return { kind: "limited", retryAfterMs: admitted.retryAfterMs };
@@ -8753,6 +9057,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.watchdogTimer = startSdWatchdog();
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = startEventLoopWatch({ logger: this.logger });
+    // #3009: the event-loop watch runs on the main thread; this one does not, so a stall that never ends is still named.
+    this.stallReporter?.stop();
+    this.stallReporter = startStallReporter({ logFile: join(this.dataDir, "daemon.log") });
     try {
       await this.startAllWithinDeadline(configPath, deadline);
     } finally {
@@ -8764,6 +9071,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.watchdogTimer = null;
           this.eventLoopWatch?.stop();
           this.eventLoopWatch = null;
+          this.stallReporter?.stop();
+          this.stallReporter = null;
         }
       }
     }
@@ -9056,6 +9365,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalDir = join(getAgendHome(), name);
       mkdirSync(generalDir, { recursive: true, mode: 0o700 });
       const backendName = fleet.defaults.backend ?? "claude-code";
+      const resolved = await resolveBackendBinary(backendName);
+      const binary = BACKEND_INSTALLATION_INFO[backendName]?.binary;
+      if (binary) noteResolvedBinary(binary, resolved ?? binary);
       this.ensureGeneralInstructions(generalDir, backendName, name);
       fleet.instances[name] = autoGeneralInstanceConfig(fleet.defaults, generalDir, need.adapterId);   // #2598: its kiro_ui is the fleet's
       generalsCreated = true;
@@ -9362,6 +9674,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #named-link-ttl: a named link with auto_open comes back now — after the web listener and the chat connections.
       this.startPublicLinkAutoOpen();
     }
+    // #3008: connections from outside were on when the fleet stopped: the link opens again (its address is new for a
+    // quick link — Settings shows it on this computer).
+    if (this.outsideOn()) this.openOutsideLink([0, ...OUTSIDE_LINK_RETRY_MS]);
 
     // #1266: buttons that ended while AgEnD was down (expired, or chosen before a restart) are shown as ended now.
     // #1823: and polls: a deadline that passed meanwhile closes now (results once); an open one's countdown is redrawn.
@@ -11242,6 +11557,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (generalInstance) {
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+        const locationHold = this.generalLocationDeliveryHold(generalInstance);
+        if (locationHold) { await inboundAdapter.sendText(msg.chatId, locationHold, { threadId: msg.threadId || undefined }); this.needsYou?.poke(); return; }
 
         // React immediately — before any other API calls — through the status
         // path, which tracks Telegram slot ownership and Discord status adds.
@@ -11334,6 +11651,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (instanceConfig?.general_topic && await this.topicCommands.handleGeneralCommand(msg, instanceName)) {
       return;
     }
+
+    const locationHold = this.generalLocationDeliveryHold(instanceName);
+    if (locationHold) { const adapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+      await adapter.sendText(msg.chatId, locationHold, { threadId: msg.threadId || undefined }); this.needsYou?.poke(); return; }
 
     // Bind instance to the adapter that delivered this message
     if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId, true);
@@ -13545,6 +13866,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
       else await this.lifecycle.remove(name, authorization);
+      // #1490 row 27: its hang/exit offers were for the instance now gone (stopInstance clears them; removal stops
+      // through the lifecycle directly). The offers' own lifecycle pins refuse them too.
+      this.clearNoncePromptsForInstance(name);
       // #1774: removed — its replies still copying their files are no one's to show, replaced or not (a failed removal
       // throws above: its replies stay its own).
       this.webChatRemovals.set(name, { below: removedBelow, ...(removedDaemon !== undefined ? { daemon: removedDaemon } : {}) });
@@ -15139,7 +15463,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;
@@ -15164,6 +15488,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       threadId: opts.threadId,
       expiredText: opts.expiredText,
       createdAt: Date.now(),
+      lifecycleCurrent: this.lifecyclePin(opts.instanceName),
       ...opts.extra,
     };
     entry.timer = setTimeout(() => {
@@ -15679,6 +16004,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         usageHold: this.daemons.get(name)?.usageHold?.() ?? null,
         nativeDeliveryHold: this.daemons.get(name)?.nativeDeliveryHold?.() ?? null,
+        generalLocation: this.generalLocationAttention(name),
         paneRecovery: (()=>{const config=this.fleetConfig?.instances[name];if(!isNativePaneInstance(config)||!config.native_agent_id)return null;
           try{const profile=windowsAgentsFor(this,this.runtimeWindowsExecutor()).get(config.native_agent_id);return profile.paneRecovery?{key:`${profile.paneRecovery.kind}:${profile.paneRecovery.launchId??"-"}`,detail:new NativePaneRecoveryError(profile.paneRecovery).message,since:profile.paneRecoveryAt??profile.createdAt}:null;}catch{return null;}})(),
       });
@@ -16342,7 +16668,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       isAdmin: (userId, adapterId) => this.adminGate(userId, adapterId) === "ok",
       authorization: input.session ? this.sessionAuthorizationStore()?.get(input.session.handle) ?? null : null,
       policy: { ...webAuthorityPolicy(this.fleetConfig?.web), enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now: Date.now(),
-      hostOperator: this.isWebOnlyFleet(),
+      hostOperator: this.isWebOnlyFleet(), outside: this.outsideLink(),
     });
   }
 
@@ -16399,6 +16725,230 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ handle: session.handle, durable }, "Host web session authorized (this computer's admin)");
   }
 
+  // ── #3008: connections from outside (a web-only fleet; decision 28c2d3a3 rule 3, the user's simplified form) ──
+  private webRemoteAccessState: WebRemoteAccess | null = null;
+  /** The authenticator, the outside switch and the wrong-code limiter (web-remote-access.json), read on first use. */
+  webRemoteAccess(): WebRemoteAccess | null {
+    if (!this.dataDir) return null;
+    this.webRemoteAccessState ??= new WebRemoteAccess(join(this.dataDir, WEB_REMOTE_ACCESS_FILE), this.logger);
+    return this.webRemoteAccessState;
+  }
+  /** "Allow connections from outside" is on (an app set up) and this is a web-only fleet. */
+  private outsideOn(): boolean {
+    return this.isWebOnlyFleet() && (this.webRemoteAccess()?.outside ?? false);
+  }
+  /** The link connections from outside opened, while it is open and still theirs: its exposure. Else null. */
+  private outsideLink(): { exposureId: string } | null {
+    if (!this.outsideOn()) return null;
+    const open = this.publicWebLink?.openSignin();
+    return open && isOutsideLinkOwner(open.owner) ? { exposureId: open.exposureId } : null;
+  }
+
+  /**
+   * The request's live session, asked again each time `current()` is called (its own cookie authenticated anew, the same
+   * handle): this web-only fleet's owner — this computer's admin, on this computer (`hostOnly`), or also signed in from
+   * outside — and web-verified now. Null when it is not (a guest, a LAN session, a chat fleet's admin, nobody).
+   */
+  private liveOwner(req: IncomingMessage, opts: { hostOnly: boolean }): { label: string; handle: string; current(): boolean } | null {
+    if (!this.isWebOnlyFleet()) return null;
+    if (opts.hostOnly && gatewayRequestContext(req)) return null;
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok") return null;
+    const handle = auth.session.handle, peer = webPeerOf(req), gateway = !!gatewayRequestContext(req);
+    const owner = (): boolean => {
+      if (!this.isWebOnlyFleet()) return false;
+      const live = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (live.kind !== "ok" || live.session.handle !== handle) return false;
+      if (opts.hostOnly && (live.session.host !== true || peer !== "loopback")) return false;
+      const now = this.webAuthority({ session: live.session, gateway, peer });
+      const a = now.authority.kind === "web-verified" && now.authority.session?.handle === handle ? now.authority.actor : null;
+      return !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId;
+    };
+    return owner() ? { label: t("settings_confirm.host_operator_label"), handle, current: owner } : null;
+  }
+
+  /** Every session signed in from outside ends (and the authorizations kept for them). */
+  private endOutsideSessions(): void {
+    const ended = new Set(this.webSessions?.list(undefined, r => r.remote === "totp").map(r => r.handle) ?? []);
+    if (!ended.size) return;
+    this.sessionAuthorizationStore()?.prune(a => !ended.has(a.handle));
+    const result = this.webSessions?.revokeAll(r => r.remote === "totp");
+    if (result && !result.durable) this.logger.warn("Outside sessions ended, but that could not be saved");
+    this.logger.info({ count: ended.size }, "Sessions signed in from outside ended");
+  }
+
+  /**
+   * #1939 §10 / #3008: a stored receipt's authority as it reads now — the web authority state, and for this computer's
+   * admin from outside the switch and the last revocation of remote authority (Prism P2 2).
+   */
+  receiptAuthorityNow(stored: HumanAuthority, state: AuthorityState = this.webAuthorityState()): HumanAuthority {
+    return authorityNow(stored, { ...state, outside: this.outsideOn(), outsideHandles: this.webRemoteAccess()?.admitted ?? new Set() });
+  }
+
+  /** #3008 (the sign-in page): this exposure is the outside link, open now. */
+  isOutsideLink(exposureId: string): boolean {
+    return this.outsideLink()?.exposureId === exposureId;
+  }
+
+  /** What Settings shows: set up or not, the switch, a wait in force, the link — its address only to this computer. */
+  webOutsideStatus(req: IncomingMessage): { webOnly: boolean; here: boolean; enrolled: boolean; enrolledAt: number | null; outside: boolean;
+    pausedForMs: number; link: { state: string; url?: string; expiresAt?: number; noExpiry?: true; quick: boolean } | null } {
+    const store = this.webRemoteAccess(), status = store?.status();
+    const here = !!this.liveOwner(req, { hostOnly: true });
+    const open = this.outsideOn() ? this.publicWebLink?.openSignin() : null;
+    const mine = !!open && isOutsideLinkOwner(open.owner);
+    const linkStatus = this.outsideOn() ? this.getPublicWebStatus() : null;
+    return { webOnly: this.isWebOnlyFleet(), here, enrolled: !!status?.enrolled, enrolledAt: status?.enrolledAt ?? null,
+      outside: this.outsideOn(), pausedForMs: status?.pausedForMs ?? 0,
+      link: linkStatus && linkStatus.state !== "closed" ? { ...linkStatus, ...(here && mine ? { url: open!.url } : {}), quick: !publicLinkNamedHostname(this.fleetConfig?.web) } : null };
+  }
+
+  /** Set up (or set up again): a new secret, shown once to this computer's admin. Null: not them. */
+  webOutsideBeginEnrollment(req: IncomingMessage): { secret: string; uri: string; expiresInMs: number } | null {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store) return null;
+    return store.beginEnrollment(owner.handle, hostname() || "fleet");
+  }
+
+  /** The new app's first code: on "ok" it replaces the old one, whose sessions from outside end. */
+  webOutsideConfirmEnrollment(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here" {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store || !owner.current()) return "not_here";
+    const had = store.enrolled;
+    const r = store.confirmEnrollment(owner.handle, code);
+    if (r === "ok") {
+      this.logger.info({ again: had }, "Authenticator app set up for connections from outside");
+      if (had) this.endOutsideSessions();
+    }
+    return r;
+  }
+
+  /** Forget the app: the switch goes off, the link closes, every session from outside ends. */
+  webOutsideRemove(req: IncomingMessage): "ok" | "unsaved" | "not_here" {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store || !owner.current()) return "not_here";
+    // #3008 review (Prism P2 1): shut at once whatever the disk says; say so when it could not be saved (retried).
+    const saved = store.remove();
+    this.closeOutsideLink("outside removed");
+    this.logger.info({ saved }, "Authenticator app removed; connections from outside off");
+    return saved ? "ok" : "unsaved";
+  }
+
+  /** The switch. On: needs an app set up; the link opens. Off: it closes and every session from outside ends. */
+  webOutsideSwitch(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved" {
+    const owner = this.liveOwner(req, { hostOnly: true }), store = this.webRemoteAccess();
+    if (!owner || !store || !owner.current()) return "not_here";
+    if (on && !publicLinkSettings(this.fleetConfig?.web).allowed) return "not_allowed";
+    const r = store.setOutside(on);
+    if (r === "not_enrolled") return r;
+    this.logger.info({ on, saved: r === "ok" }, "Connections from outside switched");
+    // #3008 review (Prism P2 1): Off shuts at once even when it could not be saved (the store retries); On opens only
+    // once saved — a switch the disk does not hold would not survive a restart.
+    if (!on) this.closeOutsideLink("outside off");
+    else if (r === "ok") this.openOutsideLink([0, ...OUTSIDE_LINK_RETRY_MS]);
+    return r;
+  }
+
+  private outsideAttempt: { cancel(): void } | null = null;
+  private outsideOpening = false;
+  /**
+   * Open the outside link: an attempt after each delay in turn until one opens (#3008 B: twice more at most — the quick
+   * link's address service limits how often it may be asked). Every attempt asks again: the switch still on, the fleet
+   * running. A final failure: one Notice; the switch stays on, so the next start tries again.
+   */
+  private openOutsideLink(delays: readonly number[]): void {
+    this.outsideAttempt?.cancel(); this.outsideAttempt = null;
+    const attempt = (n: number): void => {
+      this.outsideAttempt = null;
+      if (this.shuttingDown || !this.outsideOn() || this.outsideOpening) return;
+      this.outsideOpening = true;
+      void this.getPublicWebLink().openUnattended(OUTSIDE_LINK_OWNER).catch(() => "failed" as const).then(outcome => {
+        this.outsideOpening = false;
+        if (outcome === "opened") { this.logger.info({ attempt: n + 1 }, "Outside link opened"); return; }
+        if (outcome === "busy" && this.outsideLink()) return;                      // already open (ours)
+        if (this.shuttingDown || !this.outsideOn()) return;
+        if (n + 1 < delays.length) { this.outsideAttempt = outsideTimer(() => attempt(n + 1), delays[n + 1]!); return; }
+        this.logger.warn({ attempts: n + 1 }, "Outside link could not be opened; giving up until the next start or switch");
+        this.recordWebNotice("fleet", t("outside.notice_ended", t("outside.reason_failed")));
+      });
+    };
+    this.outsideAttempt = outsideTimer(() => attempt(0), delays[0] ?? 0);
+  }
+  private closeOutsideLink(reason: string): void {
+    this.outsideAttempt?.cancel(); this.outsideAttempt = null;
+    const open = this.publicWebLink?.openSignin();
+    if (this.publicWebLink && (!open || isOutsideLinkOwner(open.owner))) void this.publicWebLink.close(reason);
+    this.endOutsideSessions();
+  }
+  /** PublicWebLink.onClose for the outside link: what closed it decides what happens next (#3008 B). */
+  private outsideLinkClosed(reason: string): void {
+    if (this.shuttingDown || OUTSIDE_OWN_CLOSES.has(reason) || !this.outsideOn()) return;
+    // #3008 review (Prism P2 3): expiry first — its lifetime counts from the opening request, so it can run out while the
+    // opening is still under way: the switch goes off then too, and that attempt's end (outsideOn false) retries nothing.
+    if (reason === "expired") {
+      // Its lifetime ran out: the switch goes off (only this computer turns it on again — a session from outside can't).
+      this.outsideAttempt?.cancel(); this.outsideAttempt = null;
+      if (this.webRemoteAccess()?.setOutside(false) === "unsaved") this.logger.warn("Outside link expired; the switch's Off could not be saved yet (retried)");
+      this.endOutsideSessions();
+      this.logger.info("Outside link expired; connections from outside off");
+      this.recordWebNotice("fleet", t("outside.notice_ended", t("outside.reason_expired")));
+      return;
+    }
+    if (this.outsideOpening) return;                                           // that attempt's own failure: its retry
+    // Dropped (the tunnel exited, the gateway failed, the configuration changed): reopened up to twice.
+    this.logger.info({ reason }, "Outside link closed; reopening");
+    this.openOutsideLink(OUTSIDE_LINK_RETRY_MS);
+  }
+
+  /**
+   * #3008 (auth-api POST /auth/totp): a sign-in through the outside link with the authenticator's code. "ok": the caller
+   * makes the session (SessionRecord.remote) and then calls authorizeOutsideSession. Each wrong code counts; a wait that
+   * starts is a Notice; a code that matches a step just outside the window logs how far this clock seems to be off.
+   */
+  outsideSignIn(exposureId: string | undefined, code: string): { kind: "ok" } | { kind: "wrong" } | { kind: "paused"; retryAfterMs: number } | { kind: "closed" } | { kind: "unavailable" } {
+    const link = this.outsideLink(), store = this.webRemoteAccess();
+    if (!link || !store || !exposureId || link.exposureId !== exposureId) return { kind: "closed" };
+    const v = store.verify(code);
+    if (v.kind === "ok") return { kind: "ok" };
+    if (v.kind === "paused") return v;
+    if (v.kind === "not_enrolled") return { kind: "closed" };
+    if (v.kind === "unavailable") return v;
+    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+    if (v.paused) {
+      this.logger.warn({ waitMs: v.retryAfterMs }, "Sign-in from outside paused after wrong codes");
+      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
+      return { kind: "paused", retryAfterMs: v.retryAfterMs };
+    }
+    return { kind: "wrong" };
+  }
+
+  /**
+   * #3008: a session just made by outsideSignIn's "ok" is this computer's admin for its authorization's life. False: it
+   * could not be admitted (its handle not saved, #3015 review r3) — the caller ends it.
+   */
+  authorizeOutsideSession(session: SessionRecord, peer: WebPeer, label: string): boolean {
+    const store = this.sessionAuthorizationStore(), link = this.outsideLink();
+    if (!store || session.remote !== "totp" || session.owner || !link || session.exposureId !== link.exposureId) return false;
+    if (!this.webRemoteAccess()?.admit(session.handle)) { this.logger.warn({ handle: session.handle }, "Session from outside not admitted: it could not be saved"); return false; }
+    const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    const check = evaluateWebAuthority({
+      session, gateway: true, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
+      isAdmin: () => false,
+      authorization: { handle: session.handle, owner: HOST_OPERATOR, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
+      hostOperator: true, outside: link,
+    });
+    if (check.refusal) { this.logger.info({ handle: session.handle, refusal: check.refusal }, "Session from outside not authorized"); return false; }
+    {
+      const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+      store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
+      const { durable } = store.authorize(session.handle, HOST_OPERATOR, now, state.epoch, now + policy.maxSessionMs, peer);
+      this.logger.info({ handle: session.handle, durable }, "Session from outside authorized (this computer's admin)");
+    }
+    this.recordWebNotice("fleet", t("outside.notice_signed_in", label));
+    return true;
+  }
+
   private authorityStateStore: AuthorityStateStore | null = null;
   /**
    * #1939 §10: the switch, "Only this computer can authorize" and the revocation epoch in force for the configuration as
@@ -16417,6 +16967,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const session = this.webSessions?.findByHandle(a.handle);
         if (!session) return true;
         if (session.surface === "local") return false;
+        // #3008 review (Prism P2 4): signed in from outside with the authenticator's code — its opt-in is the outside
+        // switch, not these options (the authority judges it so): it keeps its authorization.
+        if (session.remote === "totp") return false;
         const peer = a.peer ?? "named_link";
         return (!!state.namedLinkClosed && peer === "named_link") || (!!state.quickLinkClosed && peer === "quick_link");
       };
@@ -16552,7 +17105,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       authorization: s?.owner ? { handle: s.handle, owner: s.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch } : null,
       policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
       // #2910 D1: a host operator's session is never asked about (no account to ask): only a sign-in authorizes it.
-      hostOperator: this.isWebOnlyFleet(),
+      hostOperator: this.isWebOnlyFleet(), outside: this.outsideLink(),
     });
     return r.refusal;
   }
@@ -16928,6 +17481,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, oom ? "session_oom_action" : "normal_exit_action", { action, userId: data.userId });
     if (action === "ignore") {
@@ -16939,13 +17494,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("exit.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current, ...(oom ? { freshStart: action === "fresh", sessionOomRetry: pending.sessionOomRetry,
         ...(pending.confirmationCurrent ? { recoveryCurrent: pending.confirmationCurrent } : {}) } : {}) });
       await pending.adapter.editMessage(
         pending.chatId,
@@ -16959,7 +17518,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("exit.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("exit.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show normal-exit restart error"));
@@ -18151,7 +18710,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.browserBackendSignInsInstance ??= new BrowserBackendSignIns({
       dataDir: this.dataDir, lock: this.loginWindow,
       current: owner => this.browserSignInOwnerCurrent(owner),
-      installed: async () => ONBOARDING_BACKENDS.filter(backend => this.isCliInstalled(backend)),
+      installed: async () => {
+        const found = await Promise.all(ONBOARDING_BACKENDS.map(async backend =>
+          (await this.isCliInstalledOffLoop(backend)) ? backend : null));
+        return found.filter((backend): backend is typeof ONBOARDING_BACKENDS[number] => backend !== null);
+      },
       checkAuth: backend => checkAuthStatus(LOGIN_FLOWS[backend]!.authCheck!),
       checkConsoleAuth: () => checkAuthStatus(LOGIN_FLOWS.antigravity!.authCheck!),
       transport: () => createStructuredSignInTransport(),
@@ -18249,12 +18812,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2233: `/login` for a dashboard requester. The same controller and checks; a CLI that is not installed is refused
    * with its install command (chat's install-first runs a terminal of its own, which the dashboard does not offer).
    */
-  private startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
+  private async startWebDashboardLogin(backendArg: string, chat: LoginChat, opts: LoginStartOptions): Promise<string | null> {
     const wanted = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
-    if (isRemovedBackend(wanted)) return Promise.resolve(removedBackendMessage(wanted));
+    if (isRemovedBackend(wanted)) return removedBackendMessage(wanted);
     const info = BACKEND_INSTALLATION_INFO[wanted];
-    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !this.isCliInstalled(wanted)) {
-      return Promise.resolve(t("login.web_dashboard_not_installed", wanted, info.install));
+    if (info && LOGIN_FLOWS[wanted]?.remoteLogin !== "unsupported" && !(await this.isCliInstalledOffLoop(wanted))) {
+      return t("login.web_dashboard_not_installed", wanted, info.install);
     }
     if (!opts.skipAuthCheck) this.recordLoginFlow(wanted, "login", chat.userId);
     return this.webLogin.start(backendArg, chat, opts);
@@ -18303,8 +18866,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? removedBackendMessage(backend)
         : !installed.has(backend)
         ? (BACKEND_INSTALLATION_INFO[backend] ? t("login.install_by_name", backend) : t("login.install_on_host", backend))
+        // #2981: one short line in the bare /login list — the full refusal (why, and what to run) is `/login <it>`'s;
+        // a bare /login used to post Antigravity's whole paragraph to someone who never asked about it.
         : flow?.remoteLogin === "unsupported"
-        ? t("login.remote_unsupported_agent_cli", backend, flow.command)
+        ? t("login.host_only", flow.command)
         : backend === "opencode" ? t("login.unsupported", backend) : t("login.no_remote_flow", backend)}`).join("\n");
       await chat.adapter.sendText(chat.chatId, guidance, { threadId: chat.threadId })
         .catch(err => this.logger.warn({ err }, "Failed to post unsupported login guidance"));
@@ -18793,9 +19358,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // session only judges that verdict; it does not read the output for URLs or prompts.
     // M-2281 (#2980): no terminal to ask on, low priority, stoppable as a whole, the user's own $SHELL — see
     // unattended-install.ts. A prompt nobody can answer fails at once instead of waiting out the timeout.
+    const shell = (await loginShell()) ?? null;
+    if (!this.loginWindow.isCurrent(claim)) {
+      this.loginWindow.release(claim);
+      return t("login.web_shutting_down");
+    }
     const flow: LoginFlow = {
       backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install),
+      command: unattendedInstallCommand(info.unattended ?? info.install, shell),
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };
@@ -18838,7 +19408,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!handoff || handoff.cancelled || this.installHandoff !== handoff) return;
         // The installer may only have added the binary to a profile PATH; a
         // fresh login shell sees that, the fleet process's PATH may not.
-        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? this.locateInInstallerBinDirs(info);
+        // #3009 (leader, cid-3017-3029-overlap): both lookups off the fleet's main thread — the login shell's own check,
+        // then the installer's own directories through backend-availability's check (a killable child tests each one).
+        const installedAt = (await this.locateBinaryOnLoginShell(info.binary)) ?? (await this.locateInstalledBackend(backend));
         if (handoff.cancelled || this.installHandoff !== handoff) return;
         if (!installedAt) {
           this.installHandoff = null;
@@ -18936,33 +19508,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async locateBinaryOnLoginShell(binary: string): Promise<string | null> {
     try {
-      const result = await runOnLoginShell(`command -v ${binary}`);
+      // #3009: the executable-file check runs inside the same login shell (a killable child), never as accessSync/statSync
+      // on the fleet's thread — a path on a filesystem that stopped answering held the whole fleet there.
+      const result = await runOnLoginShell(`p=$(command -v ${binary}) && [ -f "$p" ] && [ -x "$p" ] && printf '%s\n' "$p"`);
       if (result.status !== 0) return null;
       const path = result.stdout.trim().split("\n").pop()?.trim() ?? "";
-      if (!isAbsolute(path)) return null;
-      accessSync(path, fsConstants.X_OK);
-      return statSync(path).isFile() ? path : null;
+      return isAbsolute(path) ? path : null;
     } catch {
       return null;
     }
   }
 
   /**
-   * #1092: the binary in one of the directories its own installer installs to,
-   * when no login shell can see it (the installer recorded its PATH in an
-   * interactive-only rc file). The same executable-file check as the login
-   * shell lookup; a symlink to an executable counts, as codex's launcher is one.
+   * #1092: the binary in one of the directories its own installer installs to, when no login shell can see it (the
+   * installer recorded its PATH in an interactive-only rc file) — only those directories (#1092). #3009: through
+   * backend-availability's install-directory check (the one resolveBackendBinary uses): one killable child, never
+   * accessSync/statSync on the fleet's thread. An executable file counts, a symlink to one too (codex's launcher is one).
    */
-  private locateInInstallerBinDirs(info: BackendInstallationInfo): string | null {
-    for (const dir of info.binDirs?.(process.env, homedir()) ?? []) {
-      if (!isAbsolute(dir)) continue;
-      const path = join(dir, info.binary);
-      try {
-        accessSync(path, fsConstants.X_OK);
-        if (statSync(path).isFile()) return path;
-      } catch { /* not there */ }
-    }
-    return null;
+  private async locateInstalledBackend(backend: string): Promise<string | null> {
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    return info ? (await findExecutableIn(info.binary, info.binDirs?.(process.env, homedir()) ?? [])) ?? null : null;
   }
 
   /** Put an installed binary's directory on the fleet's PATH (#1059), once. */
@@ -19271,6 +19836,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending, action } = claimed;
+    // #1490 row 27: the lifecycle the button was offered for — a replacement since (removal does not clear prompts) is stale.
+    const current = pending.lifecycleCurrent ?? this.lifecyclePin(pending.instanceName);
 
     this.eventLog?.insert(pending.instanceName, "hang_action", { action, userId: data.userId });
     if (action === "wait") {
@@ -19282,13 +19849,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    if (!current()) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("restart.superseded", this.shownInstanceName(pending.instanceName)));
+      return true;
+    }
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("hang.restarting", pending.instanceName),
     );
     try {
-      await this.restartSingleInstance(pending.instanceName, { explicit: true });
+      await this.restartSingleInstance(pending.instanceName, { explicit: true, ownerCurrent: current });
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
@@ -19301,7 +19872,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await pending.adapter.editMessage(
         pending.chatId,
         pending.messageId ?? data.messageId,
-        t("hang.restart_failed", pending.instanceName, message),
+        err instanceof RestartSupersededError ? message : t("hang.restart_failed", pending.instanceName, message),
         pending.threadId,
       ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
         "Failed to show hang restart error"));
@@ -19325,36 +19896,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     "mock": "CLAUDE.md",
   };
 
-  private static GENERAL_INSTRUCTIONS = `# Fleet Coordinator
-
-You are the fleet coordinator — the central entry point for this AgEnD fleet.
-You route tasks, manage instances, enforce policies, and synthesize results.
-Do NOT modify project files directly — delegate file changes to the project's instance.
-You CAN write code snippets, explain code, and answer technical questions directly.
-
-## Task Routing
-
-- **Handle directly**: no file/exec access needed, answerable from knowledge, ≤2 reasoning steps (Q&A, translation, status queries, code snippets).
-- **Delegate to 1 instance**: scoped to one project/repo, needs file access or execution.
-- **Coordinate multiple**: spans repos, outputs feed each other, or parallel helps (max 3 per task).
-
-Instance discovery: start with list_instances(); follow the guidance in its response. Prefer reuse; never duplicate a running instance.
-
-## Reply Contract
-
-Every final response to the user contains: the result (the actual answer or deliverable) and gaps (anything incomplete — omit if none). Summarize instance reports; omit internal coordination noise.
-
-## After Restart
-
-BEFORE processing any new messages: 1. list_instances() 2. list_teams() 3. list_decisions(). Only then handle requests.
-
-## Playbooks (on-demand skills)
-
-Detailed procedures live in your skills — consult them when the situation comes up rather than from memory:
-- **delegation-playbook** — delegation protocol, loop prevention, parallel vs sequential, result/failure handling, team management, instance configuration tips.
-- **development-workflow** — the fleet-wide code-change policy you enforce when delegating code tasks.
-Plus the operational skills (fleet-health, instance-lifecycle, scheduling, session-management, …).
-`;
+  private static GENERAL_INSTRUCTIONS = GENERAL_ROLE_INSTRUCTIONS;
 
   /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
@@ -19383,6 +19925,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
     // Backend resolution may create/normalize the real cwd. Instructions and
     // skills must land where the CLI actually runs, not an assumed path.
+    // Caller pins resolveBackendBinary first so createBackend does not `which`.
     try {
       const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
         .resolveWorkingDirectory?.(workDir, instanceName);
@@ -20722,7 +21265,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }));
     const timer = setTimeout(() => this.pendingEffortSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName: name, userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
+    this.pendingEffortSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond });
     try {
       await data.respondChoices(t("effort.menu", this.effortMenuHeader(name)), choices);
     } catch (err) {
@@ -20765,7 +21308,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingEffortSelects.set(nonce, { instanceName, userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingEffortSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
     try {
       const menuMessageId = await adapter.promptUser(
         chatId, t("effort.menu", this.effortMenuHeader(instanceName)), choices, { threadId },
@@ -20788,6 +21331,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!match) return true;
     const pending = this.pendingEffortSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingEffortSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -20829,13 +21380,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyEffort(pending.instanceName, level)) : t("menu.click_stale");
+            }, () => this.applyEffort(pending.instanceName, level, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
         result = t("effort.switch_failed", level, err instanceof Error ? err.message : String(err));
@@ -20881,7 +21433,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const choices = this.modelMenuChoices(name, nonce, options, currentModel);
     const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
+    this.pendingModelSelects.set(nonce, { instanceName: name, instanceCurrent: this.lifecyclePin(name), model: "", userId: data.userId, channelId: data.channelId, adapterId, timer, respond: data.respond, respondChoices: data.respondChoices });
     try {
       await data.respondChoices(t("model.menu", `**${currentDisplay}**`), choices);
     } catch (err) {
@@ -20929,7 +21481,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
 
-    this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    this.pendingModelSelects.set(nonce, { instanceName, instanceCurrent: this.lifecyclePin(instanceName), model: "", userId, channelId, adapterId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
 
     try {
       const menuMessageId = await adapter.promptUser(
@@ -20961,7 +21513,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Replace a consumed "/model" menu with the full account catalog tier. */
   private async expandClaudeModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -21029,7 +21581,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * menu, because a picker with no rows cannot even offer another refresh.
    */
   private async refreshModelMenu(pending: {
-    instanceName: string; userId: string; channelId: string;
+    instanceName: string; instanceCurrent: () => boolean; userId: string; channelId: string;
     respond: (t: string) => Promise<string | undefined>;
     adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
     respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
@@ -21123,6 +21675,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!match) return true;
     const pending = this.pendingModelSelects.get(match[1]);
     if (!pending) return true;
+    // #1490 row 27: the menu was for one lifecycle of the instance; stopped, restarted or replaced since, it is stale.
+    if (!pending.instanceCurrent()) {
+      this.pendingModelSelects.delete(match[1]);
+      clearTimeout(pending.timer);
+      data.ack?.(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName)));
+      await pending.respond(t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))).catch(() => {});
+      return true;
+    }
     // The admin who opened the menu, through the adapter that posted it, in the same channel — and still an admin
     // when they click (#754 audit): the menu lives for a minute, and a click carries its own callback data.
     const cbChannel = data.threadId ?? data.chatId;
@@ -21188,13 +21748,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       let result: string;
       try {
         // Asked again after the progress edit awaited above: the instance may have moved, or the admin lost admin.
-        result = this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
+        result = !pending.instanceCurrent() ? t("menu.instance_replaced", this.shownInstanceName(pending.instanceName))
+          : this.menuClickStillCurrent(pending.instanceName, data.userId!, pending.channelId, adapterId, pending.adapterChatId)
           ? await withSpawnHoldReply(async text => {
               if (pending.adapter && pending.adapterChatId) {
                 if (progressMsgId) await pending.adapter.editMessage(pending.adapterChatId, progressMsgId, text, pending.adapterThreadId);
                 else await pending.adapter.sendText(pending.adapterChatId, text, { threadId: pending.adapterThreadId });
               } else await pending.respond(text);
-            }, () => this.applyModel(pending.instanceName, model)) : t("menu.click_stale");
+            }, () => this.applyModel(pending.instanceName, model, { current: pending.instanceCurrent })) : t("menu.click_stale");
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
         result = t("model.switch_failed", model, err instanceof Error ? err.message : String(err));
@@ -21283,7 +21844,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * restart backends only read it at launch, so it is persisted and the
    * instance respawns.
    */
-  async applyEffort(instanceName: string, requested: string): Promise<string> {
+  async applyEffort(instanceName: string, requested: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27 (main): a menu's choice is for the lifecycle it was offered to — asked first and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return t("effort.unsupported", this.backendNameForInstance(instanceName));
     const level = requested.trim().toLowerCase();
     const backendName = this.backendNameForInstance(instanceName);
@@ -21320,11 +21883,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
       return `${warn}${t("effort.runtime_success", instanceName, applied)}`;
     }
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("effort.restart_success", instanceName, applied)}`;
   }
 
-  async applyModel(instanceName: string, model: string): Promise<string> {
+  async applyModel(instanceName: string, model: string, opts?: { current?: () => boolean }): Promise<string> {
+    // #1490 row 27: a menu's choice is for the lifecycle it was offered to — asked first, after the runtime switch's
+    // await, and fenced into the restart.
+    if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
     // Reject model names with newlines or control characters: they would be
     // persisted to fleet.yaml and pasted raw into the CLI (P3 from #1490 audit).
     if (/[\x00-\x1f\x7f]/.test(model)) {
@@ -21362,6 +21928,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // #1690: claude-code's runtime switch reports what it came to; the model is saved unless claude was told No.
     if (strategy === "runtime" && backendName === "claude-code") {
       const result = await this.runRuntimeModelSwitch(instanceName, model);
+      if (opts?.current && !opts.current()) return t("menu.instance_replaced", this.shownInstanceName(instanceName));
       if (result.outcome === "mismatch") return `${warn}${t("model.switch_mismatch", instanceName, result.shown, model)}`;
       if (result.outcome === "not_sent") return `${warn}${t("model.switch_not_sent", instanceName, model)}`;
       const persistedNow = this.persistInstanceModel(instanceName, model);
@@ -21381,7 +21948,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return `${warn}${t("model.runtime_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
     }
 
-    await this.restartSingleInstance(instanceName);
+    await this.restartSingleInstance(instanceName, { ownerCurrent: opts?.current });
     return `${warn}${t("model.restart_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
   }
 
@@ -21535,6 +22102,35 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const seen = new Set<string>(), out: import("./backend/types.js").ModelOption[] = [];
     for (const m of [...(env?.models ?? []), ...(env?.apiModels ?? [])]) if (!seen.has(m.id)) { seen.add(m.id); out.push(m); }
     return out;
+  }
+
+  /** Host-default fallback only: Grok has no modeled profile home. Never construct a backend or start a probe. */
+  async cliModelCatalogFor(backend: string, instance: string | null): Promise<import("./backend/types.js").ModelOption[]> {
+    if (backend !== "grok") return [];
+    const fleet = this.fleetConfig;
+    const configured = instance && Object.prototype.hasOwnProperty.call(fleet?.instances ?? {}, instance) ? fleet!.instances[instance] : undefined;
+    const classic = this.classicChannels;
+    const room = instance && !configured ? classic?.getAll().find(channel => channel.instanceName === instance) : undefined;
+    if (instance && !configured && !room) return [];
+    const daemon = room ? this.daemons.get(instance!) : undefined;
+    const grokHome = process.env.GROK_HOME?.trim() || join(homedir(), ".grok");
+    const stillHostDefault = (): boolean => {
+      if (this.fleetConfig !== fleet || (process.env.GROK_HOME?.trim() || join(homedir(), ".grok")) !== grokHome) return false;
+      if (configured && (isWindowsInstance(configured) || !Object.prototype.hasOwnProperty.call(fleet?.instances ?? {}, instance!) || fleet!.instances[instance!] !== configured)) return false;
+      if (room && (this.classicChannels !== classic || classic?.getAll().find(channel => channel.instanceName === instance) !== room || this.daemons.get(instance!) !== daemon)) return false;
+      // The ordinary profile helpers deliberately ignore Grok: it has no credential-home mapping yet.
+      // Check raw declarations, including invalid ones, rather than mistaking them for the host login.
+      const defaults = fleet?.defaults?.backend_options;
+      const profiles = configured
+        ? [configured.backend_options?.grok?.credential_profile, defaults?.grok?.credential_profile]
+        : room
+          ? [mergeBackendOptions(defaults, room.backendOptions)?.grok?.credential_profile, daemon?.getConfigSnapshot?.().backend_options?.grok?.credential_profile]
+          : [defaults?.grok?.credential_profile];
+      return profiles.every(profile => profile === undefined || profile === null || profile === "");
+    };
+    if (!stillHostDefault()) return [];
+    const models = await readGrokModelCache(grokHome);
+    return stillHostDefault() ? models : [];
   }
 
   /**
@@ -22246,6 +22842,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const settingsControlStopped = settingsControl?.close();
     this.publicLinkAutoOpen?.stop();
     const publicStopped = this.publicWebLink?.close("fleet shutdown");
+    this.webRemoteAccessState?.close();                                // #3008: an unsaved switch gets its last write
     const sharesStopped = this.officeSharesInstance?.close();   // #2636: every Office share ends, and its tunnel
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
@@ -22278,6 +22875,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     this.eventLoopWatch?.stop();
     this.eventLoopWatch = null;
+    this.stallReporter?.stop();
+    this.stallReporter = null;
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
@@ -24577,7 +25176,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           if (decision.reason === "no-credential" && req.method === "GET"
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet() });
+            const link = gatewayRequestContext(req);
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId) });
             return;
           }
           res.writeHead(decision.status);
@@ -25184,6 +25784,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       catch (err) { this.logger.debug({ err, name }, "avatar unreadable (getUiStatus)"); image = { avatar: avatarFor({ name, displayName: identity.display_name }) }; }
       return {
         name,
+        general_topic: nativeConfig?.general_topic === true,
         ...(isNativePaneInstance(nativeConfig) ? { runtime: "windows", native_adapter: "pane", native_agent_id: nativeConfig.native_agent_id,
           ...(() => {try {
             const profile=this.nativeInstanceRuntime().get(name),bound=this.daemons.get(name);
@@ -25210,6 +25811,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         role: identity.role || undefined,
         tags: identity.tags,
         teams: instanceTeams(this.fleetConfig?.teams, name),     // #2172: the sidebar groups a team's members under it
+        // #3008 G2: a web-only fleet's General (the agent its owner ticked) — the sidebar pins it first.
+        ...(this.isWebOnlyFleet() && this.fleetConfig?.instances[name]?.general_topic === true ? { general: true } : {}),
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,

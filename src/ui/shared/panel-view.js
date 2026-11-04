@@ -26,7 +26,7 @@ import { viewStore } from "./view-roster-store.js";
 /** #1580: the app's stream says the fleet is not answering (a restart): the View's polls skip their turn until it is. */
 const fleetUnreachable = () => appStore.get().connection === "reconnecting";
 import { navigate } from "./app-nav.js";
-import { viewPath } from "./app-route.js";
+import { logPath, sectionPath, viewPath } from "./app-route.js";
 import { Dialog } from "./ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "./ui-states.js";
 import { Icon } from "./ui-icons.js";
@@ -41,6 +41,44 @@ function tn(key, values = {}) {
   for (const [k, v] of Object.entries(values)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }
+/**
+ * v2.3.4-beta.4 P1 (hmsg-985db235, hmsg-5ab1997d): this module is loaded on first use, so a tab opened before an upgrade
+ * runs the new View with the stylesheet and the View's words it loaded at its start. Without the View's layout rules
+ * (.v-term-box) the terminal box grew with its text: the text shrank every second (fit() measured the box its own text
+ * sized), a normal-buffer CLI's View showed its whole history from the top, and new words showed as raw keys. Each is
+ * found by a mark the current files carry — VIEW_REV in app.css (the --v-term-rev property) and view-strings.js (the
+ * view.rev word) — and a stale one is read again, once per page: the stylesheet re-linked after the one in force, the
+ * words imported again (register() replaces them). The query only makes it a new request: /assets/ serves the file.
+ */
+export const VIEW_REV = "2";
+const healed = { css: false, words: false };
+export function healStalePage(doc = typeof document !== "undefined" ? document : null, load = (u) => import(u), onWords = () => {}) {
+  if (!doc) return { css: false, words: false };
+  const out = { css: false, words: false };
+  try {
+    const box = doc.querySelector && doc.querySelector(".v-term-box");
+    // Only a page that has the stylesheet linked (the app; never a test's page without one) and an older one in force.
+    const linked = [...(doc.querySelectorAll ? doc.querySelectorAll('link[rel="stylesheet"]') : [])]
+      .some((l) => String(l.getAttribute("href") || "").split("?")[0] === "/assets/app.css");
+    if (box && linked && !healed.css) {
+      const cs = typeof getComputedStyle === "function" ? getComputedStyle(box) : null;
+      const rev = cs && typeof cs.getPropertyValue === "function" ? String(cs.getPropertyValue("--v-term-rev")).trim().replace(/^"|"$/g, "") : VIEW_REV;
+      if (rev !== VIEW_REV) {
+        healed.css = true; out.css = true;
+        const link = doc.createElement("link");
+        link.setAttribute("rel", "stylesheet"); link.setAttribute("href", `/assets/app.css?rev=${VIEW_REV}-${Date.now().toString(36)}`);
+        doc.head.appendChild(link);
+      }
+    }
+  } catch { /* never in the View's way */ }
+  if (t("view.rev") !== VIEW_REV && !healed.words) {
+    healed.words = true; out.words = true;
+    Promise.resolve(load(`./view-strings.js?rev=${VIEW_REV}-${Date.now().toString(36)}`)).then(() => onWords(), () => {});
+  }
+  return out;
+}
+/** For tests: as on a fresh page. */
+export function resetHealed() { healed.css = false; healed.words = false; }
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* this page only */ } };
 
@@ -198,8 +236,8 @@ export function ViewPanel({ route, navKey }) {
   else if (!it) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="alert" title=${tn("notFound", { name })} hint=${tn("notFoundHint")} /></div>`;
   else if (guest && !trusted) body = html`<div data-trust="panel-content" class="panel-body center"><${Empty} icon="view" title=${tn("guestNeedsTrusted")} hint=${tn("guestNeedsTrustedHint")} /></div>`;
   else if (guest) body = html`<p data-trust="panel-content" class="v-watching" role="note">${tn("guestWatching")}</p>
-    <${Terminal} key=${name} name=${name} lease=${lease} density=${density} every=${GUEST_PANE_MS} />`;
-  else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} />
+    <${Terminal} key=${name} name=${name} lease=${lease} density=${density} every=${GUEST_PANE_MS} backend=${it.backend || ""} signedIn=${false} />`;
+  else body = html`<${Terminal} key=${name} name=${name} lease=${lease} density=${density} backend=${it.backend || ""} signedIn=${!viewOnly} />
     <${ViewIdentity} it=${it} viewOnly=${viewOnly} onEdit=${() => setDialog("edit")} />`;
 
   return html`<div data-effect-panel="view" class="panel p-view">
@@ -214,11 +252,74 @@ export function ViewPanel({ route, navKey }) {
 
 /** #2855: how often a guest's View reads the pane (the server allows it two reads a second). */
 const GUEST_PANE_MS = 1000;
-/** The live terminal: the pane every 800 ms (passive), drawn as escaped markup, its font fitted to the pane's grid. */
-function Terminal({ name, lease, density, every = 800 }) {
+/**
+ * The live terminal: the pane every 800 ms (passive), drawn as escaped markup, its font fitted to the pane's grid.
+ *
+ * M-2262 (the user, hmsg-435f6df6): scrolling back. Following (the default), it shows the pane's screen as it is now.
+ * Scrolling up — the wheel, a touch drag, PageUp/↑/Home, or "Earlier output" — reads the pane's scrollback once
+ * (`?history=1`: tmux's history above the screen, bounded) and shows it: reading. While reading, nothing moves the
+ * person: the refresh keeps reading the screen only to say "New output below", and never redraws. "Jump to latest"
+ * (or End), or scrolling to the bottom, follows again. Everything happens in this page, over text tmux was asked to
+ * capture: never copy-mode and never a key to the pane (hmsg-b8a170c0 — scrolling must never affect delivery).
+ */
+/** How long a scrollback note stays (it covers the terminal's bottom rows). */
+const NOTE_MS = 6000;
+/** A scroll this soon after the person's own wheel, touch, key or pointer is theirs (not one this page made). */
+const GESTURE_MS = 1000;
+/**
+ * #2969 review (Prism P3): is `live` (a screen read) still what `shown` ends with — the screen as it was when reading
+ * began (the scrollback's last lines, or the screen itself)? Trailing blank rows are not content.
+ */
+export function sameScreen(shown, live) {
+  if (shown == null || live == null) return shown === live;
+  const trim = (t) => String(t).replace(/\n+$/, "");
+  const s = trim(shown).split("\n"), l = trim(live).split("\n");
+  return s.length >= l.length && s.slice(s.length - l.length).join("\n") === l.join("\n");
+}
+/** M-2262 survey: CLIs that redraw their whole window (no tmux scrollback even outside the alternate screen). */
+const REDRAWS_IN_PLACE = new Set(["grok"]);
+/** M-2262 survey: the full-screen CLIs (the alternate screen, or redrawn in place) — tmux keeps nothing above their screen. */
+const FULL_SCREEN = new Set(["claude-code", "opencode", "grok"]);   // agy: its chat UI unverified — found by the read
+/** The full-screen CLIs whose earlier output the Log tab shows (it reads their transcript: log-service.ts). */
+const LOG_HAS_HISTORY = new Set(["claude-code"]);
+/**
+ * M-2267 option (2), the leader's safe default: where a full-screen CLI's earlier output is — its Log tab (or that the
+ * Log tab is off, and where to turn it on). Only for whom the Log tab is (a signed-in session on the full app; never a
+ * guest or a View-only reader: they get the plain words), and only for a CLI the Log tab reads.
+ */
+function logLinkFor(name, backend, signedIn) {
+  if (!signedIn || !LOG_HAS_HISTORY.has(backend)) return null;
+  const on = typeof document !== "undefined" && document.body?.dataset?.logTab === "1";
+  return on ? { href: logPath(name), text: tn("earlierInLog") } : { href: sectionPath("web-dashboard"), text: tn("logTabOff") };
+}
+function Terminal({ name, lease, density, every = 800, backend = "", signedIn = false }) {
   const term = useRef(null), pre = useRef(null);
-  const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "" });
+  const grid = useRef({ cols: 0, rows: 0, applied: 0, key: "", follows: false });
   const [problem, setProblem] = useState(null);
+  const [, setWordsRev] = useState(0);
+  // "follow" | "loading" | "reading"; the screen's text when reading began, the newest read since; a note about history.
+  const [mode, setModeState] = useState("follow");
+  const modeRef = useRef("follow");
+  const setMode = (m) => { modeRef.current = m; setModeState(m); };
+  const [newBelow, setNewBelow] = useState(false);
+  const [historyNote, setHistoryNoteState] = useState(null);
+  // A CLI found to keep no scrollback (full screen): nothing is offered or read again for it; the note says why, briefly.
+  const [noScrollback, setNoScrollback] = useState(FULL_SCREEN.has(backend));
+  const noScrollbackRef = useRef(FULL_SCREEN.has(backend));
+  const logLink = logLinkFor(name, backend, signedIn);
+  const noteTimer = useRef(null);
+  const setHistoryNote = (note, brief = false) => {
+    lease.clear(noteTimer.current); noteTimer.current = null;
+    setHistoryNoteState(note);
+    if (note && brief) noteTimer.current = lease.timeout(() => setHistoryNoteState(null), NOTE_MS);
+  };
+  // `reading`: the text shown while reading (the scrollback, or the screen as it was when the person left the bottom);
+  // `latest`: the newest screen read; `history`: whether what is shown has the scrollback in it.
+  // `drawn` (#2969 review P3): the text actually on the page now — what reading starts from, never a newer read not drawn.
+  const screenAt = useRef({ reading: null, latest: null, history: false, drawn: null });
+  // #2969 review (Prism P2): when the person last moved the terminal themselves (wheel, touch, key, pointer).
+  const gestureAt = useRef(-Infinity);
+  const recentGesture = () => performance.now() - gestureAt.current < GESTURE_MS;
   // #1674: the text size as of this render. The pane refresh and the resize handlers below are set up once per mount
   // and keep the fit() of that render; reading the size here, not from that render's props, keeps them on the current
   // choice (they used to put the mount-time size back within one 800 ms refresh).
@@ -236,16 +337,71 @@ function Terminal({ name, lease, density, every = 800 }) {
     const pcs = getComputedStyle(p);
     const lh = parseFloat(pcs.lineHeight) / parseFloat(pcs.fontSize);
     const lineH = Number.isFinite(lh) && lh > 0 ? lh : 1.2;
-    let size = Math.min(innerW / (g.cols * glyphRatio(p)), innerH / (g.rows * lineH)) * 0.995;
-    if (density === "fit") size = Math.max(FIT_FLOOR_PX, Math.min(size, MAX_PX));
-    else size = Math.max(8, Math.min(Math.max(MIN_PX, Math.min(size, MAX_PX)) * (VIEW_SCALE[density] || 1), 32));
+    const byW = innerW / (g.cols * glyphRatio(p)), byH = innerH / (g.rows * lineH);
+    const sizeFor = (limit) => (density === "fit" ? Math.max(FIT_FLOOR_PX, Math.min(limit * 0.995, MAX_PX))
+      : Math.max(8, Math.min(Math.max(MIN_PX, Math.min(limit * 0.995, MAX_PX)) * (VIEW_SCALE[density] || 1), 32)));
+    const size = sizeFor(g.follows ? byW : Math.min(byW, byH));
     g.key = key;
     // A small change is skipped only when growing (the size applied still fits); a smaller box always shrinks it.
     if (size >= g.applied && size - g.applied < 0.75) return;
-    g.applied = size;
-    p.style.fontSize = `${size.toFixed(2)}px`;          // CSSOM, never a style attribute (#1300)
+    const padH = (parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)) || 0;
+    const was = g.applied || parseFloat(pcs.fontSize) || 0, before = box.clientHeight - padH;
+    const apply = (px) => { g.applied = px; p.style.fontSize = `${px.toFixed(2)}px`; };   // CSSOM, never a style attribute (#1300)
+    apply(size);
+    // v2.3.4-beta.4 P1: the box's height is a limit only while it is the box's own. Read again right after the text took
+    // its new size (the read lays the page out), a box whose height moved with it, by the same factor, is following its
+    // text — a stale stylesheet, or any container that grows with its content: measured next time it would shrink the
+    // text 0.5% each refresh, for ever. Then the width alone decides, at once and from then on (until the choice or the
+    // stylesheet changes). Cause and effect within this one call: a resize between calls (#2991 review: the box made
+    // shorter step by step, where a height-limited size moves in proportion too) never counts. The move must match the
+    // expected one closely for its size (#2991 review r2: not ±5% of the whole), and a second probe in the same call —
+    // 10% smaller, then back, before any frame is painted — must move it in proportion again: a one-off fixed drop (a
+    // scrollbar coming) never does.
+    if (!g.follows && was > 0 && before > 0) {
+      const height = () => box.clientHeight - padH;
+      const moves = (from, to, ratio) => {
+        const expect = from * (ratio - 1), got = to - from;
+        return got !== 0 && Math.sign(got) === Math.sign(expect) && Math.abs(got - expect) <= Math.max(1.5, 0.25 * Math.abs(expect));
+      };
+      const after = height();
+      if (moves(before, after, size / was)) {
+        p.style.fontSize = `${(size * 0.9).toFixed(2)}px`;
+        const probed = height();
+        p.style.fontSize = `${size.toFixed(2)}px`;
+        if (moves(after, probed, 0.9)) {
+          g.follows = true;
+          const byWidth = sizeFor(byW);
+          if (byWidth !== size) apply(byWidth);
+        }
+      }
+    }
   };
-  useEffect(() => { grid.current.key = ""; fit(); }, [density]);
+  /** Keep a following view on the newest line (a grid taller than the box at the larger sizes scrolls). */
+  const toBottom = () => { const box = term.current; if (box) box.scrollTop = box.scrollHeight; };
+  const draw = (text) => {
+    pre.current.innerHTML = ansiToHtml(text);           // escaped by construction: markup only from ansiToHtml's own spans
+    paintAnsi(pre.current);
+    screenAt.current.drawn = text;
+  };
+  useEffect(() => { grid.current.key = ""; grid.current.follows = false; fit(); }, [density]);
+  // A tab opened before an upgrade: its stylesheet and the View's words read again (healStalePage), then fitted anew.
+  useEffect(() => {
+    const h = healStalePage(document, (u) => import(u), () => { setWordsRev((n) => n + 1); });
+    if (h.css) lease.timeout(() => { grid.current.key = ""; grid.current.follows = false; fit(); }, 300);
+  }, []);
+  const atBottom = () => { const box = term.current; return !box || box.scrollHeight - box.scrollTop - box.clientHeight <= 2; };
+  /** Reading what is shown now (`text`, with or without the scrollback): the refresh only says whether there is more. */
+  const startReading = (text, history) => {
+    screenAt.current.reading = text; screenAt.current.history = history;
+    setNewBelow(false); setMode("reading");
+  };
+  const grid1 = (r) => {
+    const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
+    if (c >= 1 && rw >= 1 && (c !== grid.current.cols || rw !== grid.current.rows)) { grid.current.cols = c; grid.current.rows = rw; grid.current.key = ""; }
+  };
+  // The person asked for what scrolled off: one bounded read, then reading (or why there is nothing to read).
+  const loadEarlier = useRef(null);
+  const follow = useRef(null);
   useEffect(() => {
     const reads = readStream(lease);
     const refresh = async () => {
@@ -263,14 +419,71 @@ function Terminal({ name, lease, density, every = 800 }) {
         if (!r.ok) { setProblem(r.status === 404 ? tn("paneUnavailable") : r.status === 403 && guestPage() ? tn("guestNeedsTrusted") : tn("paneFailed", { name, status: r.status })); return; }
         const text = await r.text();
         if (!reads.live(token) || !pre.current) return;
-        const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
-        if (c >= 1 && rw >= 1 && (c !== grid.current.cols || rw !== grid.current.rows)) { grid.current.cols = c; grid.current.rows = rw; grid.current.key = ""; }
         setProblem(null);
-        pre.current.innerHTML = ansiToHtml(text);         // escaped by construction: markup only from ansiToHtml's own spans
-        paintAnsi(pre.current);
+        screenAt.current.latest = text;
+        // Reading earlier output: nothing is redrawn under the person — the read only says whether there is more.
+        if (modeRef.current !== "follow") { if (modeRef.current === "reading") setNewBelow(!sameScreen(screenAt.current.reading, text)); return; }
+        // #2969 review (Prism P2): the person is moving a screen taller than its box away from the bottom right now —
+        // this is them leaving it, not the latest to follow: read on, nothing redrawn.
+        // Reading starts from what is drawn; this newer read (not drawn) is then the new output below.
+        if (recentGesture() && !atBottom()) { startReading(screenAt.current.drawn, false); setNewBelow(!sameScreen(screenAt.current.drawn, text)); return; }
+        grid1(r);
+        draw(text);
         fit();
+        toBottom();
       } catch { /* a transient error keeps the last frame */ }
       finally { reads.end(token); }
+    };
+    loadEarlier.current = async () => {
+      // From following, or from reading what was on the screen (the person reached its top): never twice, never over it.
+      const from = modeRef.current;
+      if (from !== "follow" && !(from === "reading" && !screenAt.current.history)) return;
+      if (noScrollbackRef.current) { setHistoryNote(tn("noEarlier"), true); return; }   // known: nothing to read
+      const box0 = term.current;
+      // Where the person is, measured from the end: the screen's lines stay where they are under the scrollback added.
+      const fromEnd = box0 ? box0.scrollHeight - box0.scrollTop : 0;
+      const back = () => { setMode(from); if (from === "follow") toBottom(); };
+      setMode("loading"); setHistoryNote(tn("loadingEarlier"));
+      try {
+        const r = await lease.fetch(`/api/pane/${encodeURIComponent(name)}?history=1`);
+        if (!lease.current() || modeRef.current !== "loading") return;
+        // #2969 review (Prism P2): a scrollback read that failed — or answered without its facts — changes nothing shown.
+        if (!r.ok || r.headers.get("X-Pane-History-Lines") == null) { back(); setHistoryNote(r.status === 429 ? null : tn("earlierFailed"), true); return; }
+        const text = await r.text();
+        if (!lease.current() || modeRef.current !== "loading" || !pre.current) return;
+        // A full-screen CLI (the alternate screen, or one that redraws its whole window) leaves nothing above its screen;
+        // any other with no history yet has simply not scrolled: say which, keep following.
+        if (r.headers.get("X-Pane-Alternate") === "1" || REDRAWS_IN_PLACE.has(backend)) {
+          noScrollbackRef.current = true; setNoScrollback(true);
+          back(); setHistoryNote(tn("noEarlier"), true); return;
+        }
+        if (r.headers.get("X-Pane-History-Lines") === "0") { back(); setHistoryNote(tn("nothingEarlier"), true); return; }
+        grid1(r);
+        const lines = text.split("\n").length, rows = grid.current.rows || 0;
+        // #2969 review (Prism P3): new output is judged against what is shown — the scrollback's own last screen — and
+        // a screen read while this one was out already counts.
+        screenAt.current.reading = text; screenAt.current.history = true;
+        setNewBelow(screenAt.current.latest != null && !sameScreen(text, screenAt.current.latest));
+        setMode("reading"); setHistoryNote(null);
+        draw(text);
+        fit();
+        const box = term.current;
+        if (box) {
+          const lineH = lines > 0 ? pre.current.scrollHeight / lines : 16;
+          // From following (at the bottom): a few lines up — the earlier output right above. From reading: the same lines.
+          box.scrollTop = from === "follow"
+            ? Math.max(0, box.scrollHeight - box.clientHeight - lineH * Math.min(3, Math.max(1, lines - rows)))
+            : Math.max(0, box.scrollHeight - fromEnd);
+        }
+      } catch { if (lease.current()) { back(); setHistoryNote(tn("earlierFailed"), true); } }
+    };
+    follow.current = () => {
+      if (modeRef.current === "follow") return;
+      setMode("follow"); setNewBelow(false); setHistoryNote(null); screenAt.current.history = false;
+      const latest = screenAt.current.latest;
+      if (latest != null && pre.current) { draw(latest); fit(); }
+      toBottom();
+      refresh();
     };
     refresh();
     lease.interval(refresh, every);
@@ -282,8 +495,44 @@ function Terminal({ name, lease, density, every = 800 }) {
       ro.observe(term.current);
       lease.hold(() => ro.disconnect());
     }
+    // Scrolling up asks for the earlier output; reaching the bottom while reading follows again.
+    const box = term.current;
+    if (box) {
+      // Asking for the earlier output: from following, or from reading the screen as it was — at the top.
+      const mayLoad = () => (modeRef.current === "follow" || (modeRef.current === "reading" && !screenAt.current.history)) && box.scrollTop <= 0;
+      const gesture = () => { gestureAt.current = performance.now(); };
+      lease.on(box, "wheel", (e) => { gesture(); if (e.deltaY < 0 && mayLoad()) loadEarlier.current(); }, { passive: true });
+      let touchY = null;
+      lease.on(box, "touchstart", (e) => { gesture(); touchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; }, { passive: true });
+      lease.on(box, "touchmove", (e) => {
+        gesture();
+        const y = e.touches && e.touches[0] ? e.touches[0].clientY : null;
+        if (touchY == null || y == null) return;
+        if (y - touchY > 24 && mayLoad()) { touchY = null; loadEarlier.current(); }
+      }, { passive: true });
+      lease.on(box, "pointerdown", gesture, { passive: true });             // the scrollbar, dragged
+      lease.on(box, "keydown", (e) => {
+        gesture();
+        if ((e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") && mayLoad()) { e.preventDefault(); loadEarlier.current(); }
+        else if (modeRef.current === "reading" && e.key === "End") { e.preventDefault(); follow.current(); }
+      });
+      lease.on(box, "scroll", () => {
+        if (modeRef.current === "reading") { if (atBottom()) follow.current(); return; }
+        // #2969 review (Prism P2): a screen taller than its box (a larger Aa), moved up from the bottom by the person:
+        // reading what is on it — the refresh no longer pulls them back down.
+        if (modeRef.current === "follow" && recentGesture() && !atBottom()) startReading(screenAt.current.drawn, false);
+      }, { passive: true });
+    }
   }, [lease, name]);
-  return html`<div data-trust="panel-content" class="v-term" ref=${term}>${problem ? html`<p class="v-term-note" role="status">${problem}</p>` : null}<pre ref=${pre} class="v-pre"></pre></div>`;
+  const reading = mode === "reading";
+  // A full-screen CLI's Log link is a bar above the terminal, not over it: its first row is never covered.
+  return html`<div class="v-term-box">
+    ${noScrollback && logLink ? html`<p class="v-term-logbar"><a class="v-term-log" href=${logLink.href}>${logLink.text}<${Icon} name="forward" size=${14} /></a></p>` : null}
+    <div data-trust="panel-content" class=${`v-term${reading ? " is-reading" : ""}`} ref=${term} tabindex="0" aria-label=${tn(reading ? "readingEarlier" : "earlierHint")}>${problem ? html`<p class="v-term-note" role="status">${problem}</p>` : null}<pre ref=${pre} class="v-pre"></pre></div>
+    ${historyNote ? html`<p class="v-term-history-note" role="status">${historyNote}</p>` : null}
+    ${mode === "follow" && !noScrollback ? html`<button type="button" class="v-term-earlier btn btn-sm" title=${tn("earlierHint")} onClick=${() => loadEarlier.current && loadEarlier.current()}><${Icon} name="up" size=${14} />${tn("earlier")}</button>` : null}
+    ${reading ? html`<button type="button" class=${`v-term-latest btn btn-sm${newBelow ? " has-new" : ""}`} onClick=${() => follow.current && follow.current()}>${newBelow ? html`<span class="v-term-new">${tn("newBelow")} · </span>` : null}${tn("jumpLatest")}<${Icon} name="down" size=${14} /></button>` : null}
+  </div>`;
 }
 
 // The advance of one monospace cell as a fraction of font-size, measured once on this page.

@@ -1,7 +1,7 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { createServer } from "node:http";
 import { once } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
@@ -20,6 +20,8 @@ describe("standalone runtime foreground lifetime", () => {
       execFileSync(process.execPath, [resolve("node_modules/@typescript/native/bin/tsc"), "--ignoreConfig", "--target", "ES2022", "--module", "Node16",
         "--moduleResolution", "Node16", "--strict", "--esModuleInterop", "--skipLibCheck", "--outDir", compiled,
         "src/runtime-cli.ts", "src/windows-native-mcp.ts"], { cwd: process.cwd(), stdio: "pipe", timeout: 30_000 });
+      // Match postbuild: the portable builder consumes the built program assets too.
+      cpSync(resolve("src/general-knowledge"), join(compiled, "general-knowledge"), { recursive: true });
       execFileSync(process.execPath, [resolve("scripts/build-runtime.mjs"), bundle, compiled], { cwd: process.cwd(), stdio: "pipe", timeout: 10_000 });
       const machineId = randomUUID(); let connections = 0, helloCount = 0;
       sockets.on("connection", socket => {

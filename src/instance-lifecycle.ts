@@ -1,3 +1,5 @@
+import { NativePaneRecoveryError } from "./native-pane-recovery.js";
+import { addsSecondGeneral } from "./web-only-fleet.js";
 import { NativePaneCrashBudget } from "./native-pane-crash-budget.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
@@ -17,7 +19,7 @@ import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { sanitizeInstanceName } from "./instance-names.js";
-import { isModelCompatible } from "./backend/types.js";
+import { isModelCompatible, noteResolvedBinary } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
@@ -194,6 +196,7 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * FleetManager implements this.
  */
 export interface LifecycleContext {
+  assertGeneralBindingStart?(name: string, config: InstanceConfig): void;
   /** Prepared native ownership replaces local launch files/configuration, never a failed-local fallback. */
   nativePaneFor?(name: string, config: InstanceConfig, assertCurrent: () => void): Promise<import("./native-pane-lifecycle.js").NativePaneLifecycle>;
   reconcileNativePaneBeforeStart?(name: string, daemon: Daemon): Promise<boolean>;
@@ -969,16 +972,16 @@ export class InstanceLifecycle {
     this.cancelNativeRecovery(name);const pin=this.ctx.nativePanePinnedSession?.(name);if(pin){ensureInstanceDir(this.ctx.getInstanceDir(name));new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).reset(pin);}
   }
   private async nativePaneExited(name:string,daemon:Daemon,data:{name:string;snapshot:RuntimePaneSnapshot;owner:InteractionOwner}):Promise<void>{
-    const config=this.ctx.fleetConfig?.instances[name],epoch=this.epochOf(name),pin=data.snapshot.sessionId;
+    const config=this.ctx.fleetConfig?.instances[name],epoch=this.epochOf(name),pin=data.snapshot.sessionId,profilePin=this.ctx.nativePanePinnedSession?.(name)??undefined;
     if(!isNativePaneInstance(config)||data.name!==name||this.daemons.get(name)!==daemon||!daemon.nativePaneExitCurrent(data.snapshot,data.owner)
-      ||!pin||this.ctx.nativePanePinnedSession?.(name)!==pin||this.nativeExitOwners.has(name)||this.ctx.isPlannedRestart())return;
+      ||pin!==undefined&&profilePin!==undefined&&profilePin!==pin||this.nativeExitOwners.has(name)||this.ctx.isPlannedRestart())return;
     const token=Symbol(name),run={token,daemon,timer:undefined as ReturnType<typeof setTimeout>|undefined};this.nativeExitOwners.set(name,run);
     const current=()=>this.nativeExitOwners.get(name)===run&&this.daemons.get(name)===daemon&&this.epochOf(name)===epoch
-      &&this.ctx.fleetConfig?.instances[name]===config&&this.ctx.nativePanePinnedSession?.(name)===pin&&!this.isPaused(name)&&!this.ctx.isPlannedRestart()
+      &&this.ctx.fleetConfig?.instances[name]===config&&((this.ctx.nativePanePinnedSession?.(name)??undefined)===profilePin||profilePin===undefined&&pin!==undefined&&this.ctx.nativePanePinnedSession?.(name)===pin)&&!this.isPaused(name)&&!this.ctx.isPlannedRestart()
       &&(config.machine_id?remoteRuntimeEnabled():localWindowsCliEnabled());
     daemon.fenceDeliveryWritesForStop();
     try{
-      const decision=new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).observe(pin,data.snapshot.exitCode,config.restart_policy);
+      const decision=pin&&profilePin?new NativePaneCrashBudget(join(this.ctx.getInstanceDir(name),"native-crash-state.json")).observe(pin,data.snapshot.exitCode,config.restart_policy):null;
       await this.runTransition(name,async()=>{
         if(!current())return;
         if(!await daemon.waitForDeliveryWritesToDrain(RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS)||!current())throw Error("Native input writes have not drained");
@@ -989,7 +992,11 @@ export class InstanceLifecycle {
         // Close finalizes the exact positive exit; no PID lookup or signal exists on this path.
         await daemon.stop({nativePane:"close"});
         if(!current())return;
-        this.ctx.eventLog?.insert(name,"native_pane_exited",{exitCode:data.snapshot.exitCode??null,sessionId:pin,decision:decision.kind,count:decision.count});
+        this.ctx.eventLog?.insert(name,"native_pane_exited",{exitCode:data.snapshot.exitCode??null,sessionId:pin,decision:decision?.kind??"no-conversation",count:decision?.count??0});
+        if(!decision){
+          this.ctx.holdNativePaneRecovery?.(name,new NativePaneRecoveryError({kind:"session-unconfirmed",launchId:data.snapshot.launchId,sessionId:this.ctx.nativePanePinnedSession?.(name)??undefined,...(config.backend==="codex"?{provider:"codex" as const}:{})}));
+          this.ctx.setTopicIcon(name,"red");return;
+        }
         if(decision.kind!=="retry"){
           if(decision.kind==="normal")await this.ctx.notifyNormalExit(name);
           else this.notifyIncident(name,decision.kind==="loop"?"crash_loop":"supervision_ended",t("inst.respawn_paused",name));
@@ -1867,6 +1874,7 @@ export class InstanceLifecycle {
     const epoch = this.epochOf(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
     check();
+    this.ctx.assertGeneralBindingStart?.(name, config);
     assertNoSessionOomStop(this.ctx.getInstanceDir(name));
     const seedNow = this.activitySeedNow.delete(name);
     if (this.daemons.has(name)) {
@@ -1907,13 +1915,22 @@ export class InstanceLifecycle {
       return;
     }
 
-    // Verify backend binary is in PATH before spawning
+    // Verify backend binary is in PATH before spawning. Off-loop resolve pins a
+    // hint so createBackend's resolveBinary does not run synchronous `which`
+    // (#1490 row 67). Missing still only logs; start continues.
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (!native && installation && !checkBinaryInstalled(installation.binary)) {
-      this.ctx.logger.error(
-        { binary: installation.binary, backend: backendName, instance: name },
-        `Backend binary "${installation.binary}" not found in PATH`,
-      );
+    // alpha: a native Windows pane's CLI is on that PC — nothing to look for on this one.
+    if (!native && installation) {
+      const { resolveBackendBinary } = await import("./backend-availability.js");
+      const path = await resolveBackendBinary(backendName);
+      noteResolvedBinary(installation.binary, path ?? installation.binary);
+      check();
+      if (!path) {
+        this.ctx.logger.error(
+          { binary: installation.binary, backend: backendName, instance: name },
+          `Backend binary "${installation.binary}" not found in PATH`,
+        );
+      }
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
@@ -2481,6 +2498,12 @@ export class InstanceLifecycle {
     // create_instance, deploy_template or any other path that reaches here — an agent holding create_instance could
     // otherwise start one on the Windows host, in any drive path, with write access.
     if (args.runtime === "windows") { respond(null, WINDOWS_CREATE_REFUSED); return; }
+    // #3021 review: on a fleet with no chat connection a new agent never becomes a second General (it would inherit
+    // defaults.general_topic: true while the fleet has one).
+    if (this.ctx.fleetConfig && addsSecondGeneral(this.ctx.fleetConfig as never)) {
+      respond(null, "one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true — set it to false in the defaults first");
+      return;
+    }
     if (args.sandbox !== undefined) { respond(null,"sandbox is supported only by the Windows runtime"); return; }
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
@@ -2756,6 +2779,11 @@ export class InstanceLifecycle {
       createdConfig = instanceConfig;
       const beforeCreate = structuredClone(this.ctx.fleetConfig);
       const persist = (): void => {
+        // #3021 review r2: asked again at the commit, after every await — two creates that both saw no General at entry
+        // (defaults.general_topic: true) must not both become one.
+        if (addsSecondGeneral(this.ctx.fleetConfig as never, { general_topic: instanceConfig.general_topic })) {
+          throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true — set it to false in the defaults first");
+        }
         this.ctx.fleetConfig!.instances[newInstanceName!] = instanceConfig;
         if (createdTopicId != null) this.ctx.routing.register(createdTopicId, { kind: "instance", name: newInstanceName! });
         try { this.ctx.saveFleetConfig(); }

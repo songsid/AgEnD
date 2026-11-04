@@ -1,4 +1,5 @@
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
+import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
@@ -351,7 +352,7 @@ export const SSE_HEARTBEAT_MS = 10_000;
 /** Minimal interface — only what web-api needs from FleetManager. */
 export interface WebApiContext {
   recoverNativePane?(name:string,launchId:string,authorized:()=>boolean):Promise<void>;
-  startFreshNativePane?(name:string,launchId:string,sessionId:string,authorized:()=>boolean):Promise<void>;
+  startFreshNativePane?(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>;
   nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
   createNativePaneInstance?(profile:Record<string,unknown>,channelId:string|undefined,authorized:()=>boolean,execution:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
   updateNativePaneConfig?(name:string,patch:Partial<import("./fleet-windows-runtime.js").NativeRuntimePatch>,authorized:()=>boolean,execution?:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
@@ -361,6 +362,8 @@ export interface WebApiContext {
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
   /** #2072: a backend's cached model catalog, for an instance's own account when one is named; never a probe. */
   modelCatalogFor?(backend: string, instance: string | null): Array<{ id: string; label: string; description?: string }>;
+  /** Async, account-safe fallback from existing CLI metadata; never launch a CLI or refresh a vendor catalog. */
+  cliModelCatalogFor?(backend: string, instance: string | null): Promise<Array<{ id: string; label: string; description?: string }>>;
   /** Absent in a hand-built context: cookies are then simply not a credential, the header token still is. */
   readonly webSessions?: WebSessionStore | null;
   /** #2233: dashboard-started backend sign-ins (FleetManager); absent in a hand-built context. */
@@ -405,6 +408,7 @@ export interface WebApiContext {
   /** #2305: `copies`, the copies' own message ids, so a reaction to the web message is put on them too. */
   webMessageInChannel?(instance: string, messageId: string, copies?: readonly import("./web-reactions.js").WebEchoCopy[]): void;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
+  generalLocationDeliveryHold?(instanceName: string): string | null;
   deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
   deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
   getUiStatus(): unknown;
@@ -522,6 +526,13 @@ export interface WebApiContext {
   /** alpha.2 (M-2300): agents' requests waiting for a web-only fleet's verified owner; null: not that owner. */
   webAgentProposals?(req: IncomingMessage): import("./settings-confirmation.js").SettingsPendingView[] | null;
   webDecideAgentProposal?(req: IncomingMessage, id: string, decision: "confirm" | "reject"): Promise<{ status: number; body: Record<string, unknown> }>;
+  /** #3008: connections from outside — what Settings shows (the link's address only to this computer's admin here). */
+  webOutsideStatus?(req: IncomingMessage): Record<string, unknown>;
+  /** #3008: set up the authenticator (this computer's admin, here only): a new secret, shown once. Null: not them. */
+  webOutsideBeginEnrollment?(req: IncomingMessage): { secret: string; uri: string; expiresInMs: number } | null;
+  webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here";
+  webOutsideRemove?(req: IncomingMessage): "ok" | "unsaved" | "not_here";
+  webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
   /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -1706,10 +1717,23 @@ export function handleWebRequest(
     if ((runtime !== null && runtime !== "wsl" && runtime !== "windows") || (refresh !== null && refresh !== "1")) { json(res, 400, { error: "Invalid model catalog options" }); return true; }
     if (handleNativeModelCatalog(req, res, url, ctx)) return true;
     const models = ctx.modelCatalogFor?.(backend, instance) ?? [];
-    if (backend === "claude-code" && !models.length) {
-      const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
-      json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
-    } else json(res, 200, { backend, models });
+    const answerCatalog = (): void => {
+      if (backend === "claude-code" && !models.length) {
+        const version = ctx.backendAvailabilityRows?.().find(row => row.backend === backend)?.version;
+        json(res, 200, { backend, models: claudeDocumentedModels(version), source: "official-catalog" });
+      } else json(res, 200, { backend, models });
+    };
+    // The existing catalog belongs to this instance/account and always wins.
+    if (models.length || !ctx.cliModelCatalogFor) { answerCatalog(); return true; }
+    const canAnswer = (): boolean => !res.headersSent && !res.destroyed && !res.writableEnded && stillAuthorized(req, res, url, ctx);
+    void (async () => {
+      const cliModels = await ctx.cliModelCatalogFor?.(backend, instance) ?? [];
+      if (!canAnswer()) return;
+      if (cliModels.length) json(res, 200, { backend, models: cliModels, source: "cli-cache" });
+      else answerCatalog();
+    })().catch(() => {
+      if (canAnswer()) json(res, 503, { error: "CLI model cache unavailable" });
+    });
     return true;
   }
 
@@ -2403,6 +2427,52 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Notices mark-read failed");
       try { json(res, 500, { error: "Mark read failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // ── #3008: connections from outside (a web-only fleet) ──
+  // GET /ui/outside: the state (any admin; over the outside link too, read-only). Everything that changes it is this
+  // computer's admin's, on this computer (the fleet asks the live session each time; the public link refuses these
+  // routes outright): POST /ui/outside/enroll (a new secret, shown once), POST /ui/outside/enroll/confirm {code},
+  // POST /ui/outside/remove, POST /ui/outside/switch {on}. Never a guest (not in GUEST_ROUTES).
+  if (method === "GET" && path === "/ui/outside") {
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, ctx.webOutsideStatus?.(req) ?? { webOnly: false, here: false, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null });
+    return true;
+  }
+  if (method === "POST" && (path === "/ui/outside/enroll" || path === "/ui/outside/enroll/confirm" || path === "/ui/outside/remove" || path === "/ui/outside/switch")) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "outside_not_here" }); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      res.setHeader("Cache-Control", "no-store");
+      if (path === "/ui/outside/enroll") {
+        const r = ctx.webOutsideBeginEnrollment?.(req) ?? null;
+        if (!r) { json(res, 403, { error: "outside_not_here" }); return; }
+        json(res, 200, r);
+        return;
+      }
+      if (path === "/ui/outside/enroll/confirm") {
+        const code = body && typeof body === "object" ? body.code : undefined;
+        if (typeof code !== "string" || code.length > 32) { json(res, 400, { error: "code required" }); return; }
+        const r = ctx.webOutsideConfirmEnrollment?.(req, code) ?? "not_here";
+        json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : 400, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
+        return;
+      }
+      if (path === "/ui/outside/remove") {
+        const r = ctx.webOutsideRemove?.(req) ?? "not_here";
+        json(res, r === "ok" ? 200 : r === "unsaved" ? 503 : 403, r === "ok" ? { ok: true } : { error: r === "unsaved" ? "unsaved" : "outside_not_here" });
+        return;
+      }
+      const on = body && typeof body === "object" ? body.on : undefined;
+      if (typeof on !== "boolean") { json(res, 400, { error: "on must be true or false" }); return; }
+      const r = ctx.webOutsideSwitch?.(req, on) ?? "not_here";
+      json(res, r === "ok" ? 200 : r === "not_here" ? 403 : r === "unsaved" ? 503 : 409, r === "ok" ? { ok: true } : { error: r === "not_here" ? "outside_not_here" : r });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Outside connections change failed");
+      try { json(res, 500, { error: "outside_failed" }); } catch { /* already answered */ }
     });
     return true;
   }
@@ -3344,8 +3414,10 @@ function uploadRecipient(ctx: WebApiContext, name: string): boolean {
     && (ctx.instanceIpcClients.has(name) || ctx.getInstanceStatus?.(name) === "paused");
 }
 /** Closed, path-free explanations; arbitrary launch errors stay in the host log. */
-function webDeliveryFailure(err: unknown): { reason: string; error: string } {
+function webDeliveryFailure(err: unknown): { reason: string; error: string; limit?: number; holders?: Array<{ name: string; unknown: boolean }> } {
   const message = err instanceof Error ? err.message : "";
+  // M-2297: the per-PC agent limit — say so, with the agents holding its slots (names only: no path, no id).
+  if (err instanceof MachineSlotLimitError) return { reason: "machine_limit", error: message, limit: err.limit, holders: err.holders.map(h => ({ name: h.name, unknown: h.unknown })) };
   if (/No warm slot is free/.test(message)) return { reason: "wake_capacity", error: "No slot is free to wake this instance. Retry when another instance is idle." };
   if (/login|log in|sign in|\bauth(?:entication|orization)?\b|credential|api.?key/i.test(message)) return { reason: "wake_credentials", error: "The instance could not sign in. Check its account on the host, then retry." };
   if (/timed? out|timeout/i.test(message)) return { reason: "wake_timeout", error: "The instance did not become ready in time. Retry, or check its status on the host." };
@@ -3429,6 +3501,15 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
           claim = seen;
           break;
         }
+      }
+      const locationHold = ctx.generalLocationDeliveryHold?.(instance);
+      if (locationHold) {
+        const messageId = newWebMessageId(), ts = new Date().toISOString();
+        // Settle this client ID as answered. A Retry after reconnect must never queue its old input.
+        acceptedId = messageId;
+        ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: typed, ts, messageId, ...(person.bound ? { from: person.voterKey } : {}), ...(clientId ? { clientId } : {}) });
+        ctx.emitSseEvent("message", { instance, role: "status", sender: "AgEnD", text: locationHold, ts, messageId: newWebMessageId() });
+        json(res, 200, { sent: true, messageId, serviceResponse: true }); return;
       }
       let files: UploadEntry[] = [];
       if (attachments.length > 0) {

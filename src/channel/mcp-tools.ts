@@ -81,7 +81,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["post_decision", schemas.PostDecisionArgs,
     "Record a decision. scope='project' (default) is visible to instances sharing this working directory. scope='fleet' is visible to ALL instances regardless of directory — use for workflow rules, review policies, and team conventions."],
   ["close_poll", schemas.ClosePollArgs,
-    "Close one of your open polls now, before its deadline (for example when everyone has answered). Its `[poll results]` come to you as when it times out, once."],
+    "Close one of your open polls now, before its deadline (for example when everyone has answered). It returns how many people voted; the per-option results arrive later as one `[poll results]` message, as when it times out."],
   ["list_decisions", schemas.ListDecisionsArgs,
     "List active decisions: this working directory's (scope='project') plus every fleet-scoped one, fleet first. Titles by default (id, title, scope, date, tags); pass id for one decision's full text, or full: true for all of it. Archived ones only with include_archived."],
   ["update_decision", schemas.UpdateDecisionArgs,

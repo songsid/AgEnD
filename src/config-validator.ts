@@ -1,4 +1,5 @@
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
+import { generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
@@ -639,6 +640,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       if (inst.runtime !== undefined && inst.runtime !== "wsl" && inst.runtime !== "windows") err(`instances.${name}.runtime`, "must be wsl or windows");
       if (inst.runtime === "windows") {
         if (inst.native_adapter !== undefined && inst.native_adapter !== "exec" && inst.native_adapter !== "pane") err(`instances.${name}.native_adapter`, "must be exec or pane");
+        if (inst.native_general_binding !== undefined && (!validWindowsAgentId(inst.native_general_binding) || inst.general_topic !== true || inst.native_adapter !== "pane" || !validWindowsAgentId(inst.machine_id))) err(`instances.${name}.native_general_binding`, "requires a paired persistent General pane and a binding UUID");
         if (inst.native_adapter === "pane" && inst.backend !== "codex" && inst.backend !== "claude-code") err(`instances.${name}.native_adapter`, "persistent panes require codex or claude-code");
         if (inst.machine_id !== undefined && !validWindowsAgentId(inst.machine_id)) err(`instances.${name}.machine_id`, "must name a paired runtime machine UUID");
         if (!validWindowsAgentId(inst.native_agent_id)) err(`instances.${name}.native_agent_id`, "must name an existing Windows agent UUID");
@@ -655,6 +657,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
         }
       } else {
         if (inst.native_adapter !== undefined) err(`instances.${name}.native_adapter`, "is only valid for a Windows runtime");
+        if (inst.native_general_binding !== undefined) err(`instances.${name}.native_general_binding`, "is only valid for a paired Windows General");
         if (inst.machine_id !== undefined) err(`instances.${name}.machine_id`, "is only supported for a Windows runtime");
         if (inst.native_agent_id !== undefined) err(`instances.${name}.native_agent_id`, "is only valid for a Windows runtime");
         if (inst.native_sandbox !== undefined) err(`instances.${name}.native_sandbox`, "is only valid for a Windows runtime");
@@ -672,7 +675,11 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       }
     }
   }
-  if (generalCount === 0) {
+  // #3008 G1: a web-only fleet (no chat connection) needs no General — its Notices and Needs you need no model — and may
+  // have one, opted into by ticking an agent; never two (Settings refuses a second; a hand-edited fleet.yaml is warned).
+  if (isWebOnlyFleetConfig(config as Parameters<typeof isWebOnlyFleetConfig>[0])) {
+    if (generalNames(config as Parameters<typeof generalNames>[0]).length > 1) warn("instances", "more than one general_topic instance on a fleet with no chat connection — keep one General (untick the others)");
+  } else if (generalCount === 0) {
     warn("instances", "no general_topic instance — there is no general dispatcher to receive un-topic'd messages");
   }
 

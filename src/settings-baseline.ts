@@ -52,6 +52,7 @@ export class SettingsBaselines {
   constructor(private readonly options: {
     dataDir: string; configPath(): string | null; config(): FleetConfig | null;
     current(): unknown; proof?: SettingsEffectContext["proof"];
+    generalLocation?: SettingsEffectContext["generalLocation"];
   }) {}
   snapshot(): unknown {
     const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env")];
@@ -75,7 +76,7 @@ export class SettingsBaselines {
       if (parsed && (typeof parsed !== "object" || Array.isArray(parsed))) throw new SettingsConfirmationError(409, "invalid_classic_baseline");
       classic = (parsed ?? {}) as Record<string, any>;
     }
-    return { config: structuredClone(this.options.config()), classic, proof: this.options.proof,
+    return { config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation,
       fingerprint: settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]) };
   }
 }

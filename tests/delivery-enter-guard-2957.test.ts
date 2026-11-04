@@ -311,3 +311,10 @@ it('a lost ACK after one positive refusal ends the retry chain',async()=>{
  expect(await f.daemon.sendDeliveryEnter('initial-submit',undefined,f.attempt)).toBe(false);
  expect(f.tmux.sendSpecialKey).toHaveBeenCalledTimes(2);expect(f.mark).toHaveBeenCalledOnce();
 });
+it('Enter exhaustion logs its last refused operation and retry count in one warning',async()=>{
+ const f=fixture(pasted),warn=vi.spyOn(f.daemon.logger,'warn'),details={expectedSeq:600,observedSeq:601,operationId:'private-operation',commandSequence:13,action:'key',retryCount:4};
+ positiveRefusal(f);Object.assign(f.tmux,{getLastInputDiagnostic:()=>details});f.tmux.sendSpecialKey.mockResolvedValue(false);
+ expect(await f.daemon.sendDeliveryEnter('initial-submit')).toBe(false);
+ expect(warn).toHaveBeenCalledExactlyOnceWith({...details,phase:'initial-submit',reason:'output_changed'},'Native delivery Enter withheld by its safety check');
+ expect(f.tmux.sendSpecialKey.mock.calls.map(call=>(call as any)[2].retryCount)).toEqual([0,1,2,3,4]);
+});

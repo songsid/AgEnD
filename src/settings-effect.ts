@@ -1,4 +1,17 @@
 import { officeInputPatch } from "./dashboard-permissions.js";
+import { addsSecondGeneral, generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
+
+/**
+ * #3008 G1 / #3021 review: a change that leaves a fleet with no chat connection with more Generals than one (or than it
+ * had) is refused before it is proposed — and so is "every agent is a General" in its defaults, which the next new agent
+ * would turn into a second one.
+ */
+function assertOneGeneral(before: unknown, after: unknown): void {
+  const a = after as Parameters<typeof generalNames>[0] & Parameters<typeof isWebOnlyFleetConfig>[0], b = before as typeof a;
+  if (!a || !isWebOnlyFleetConfig(a)) return;
+  if (generalNames(a).length > Math.max(1, generalNames(b).length)) throw new SettingsConfirmationError(409, "one_general");
+  if (a.defaults?.general_topic === true && b?.defaults?.general_topic !== true) throw new SettingsConfirmationError(409, "one_general");
+}
 import { setNoticeMode } from "./notice-delivery.js";
 import { PUBLIC_TUNNEL_SECRET_ID } from "./public-tunnel-config.js";
 import { normalizeSettingsInstancePatch } from "./settings-instance-patch.js";
@@ -14,6 +27,8 @@ import { settingsEffectAuthority, settingsSecretAuthority, type SettingsChangeAu
 import { quickLinkEffective } from "./authority/web-authority.js";
 import { parseNativeInstanceCreate, nativePaneTopicTarget } from "./native-instance-input.js";
 import { parseRuntimesSettingsBody } from "./runtime-switches.js";
+import { parseGeneralSwitchInput } from "./general-binding.js";
+import { settingsFingerprint } from "./settings-transaction.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -23,8 +38,10 @@ export interface SettingsSecretProof {
 export interface SettingsEffectContext {
   config: FleetConfig | null; classic: Record<string, any>;
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
+  generalLocation?(input: unknown): { summary: string[]; connections: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && path === "/api/settings/general-location") return true;
   if (method === "POST" && path === "/api/settings/public-tunnel-token/apply") return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
   return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
@@ -49,6 +66,13 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
+  if (path === "/api/settings/general-location") {
+    if (method !== "POST" || !cfg || !context.generalLocation) throw new SettingsConfirmationError(400, "general_location_unavailable");
+    const input = parseGeneralSwitchInput(body), preview = context.generalLocation(input);
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, input]), summary: preview.summary,
+      affectedConnections: [], authority: { connections: preview.connections, primaryGeneral: true, unknown: false } } };
+  }
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);
     const proof = context.proof?.(kind, target, String(payload.verification_id ?? ""), binding, key);
@@ -157,6 +181,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (webOnlyConflict(cfg)) throw new SettingsConfirmationError(409, "connection_exists");
     if (agentConflict(patch as WizardPlanInput, cfg)) throw new SettingsConfirmationError(409, "agent_conflict");
     const draft = draftWebOnly(cfg, withWorkingDirectory(patch) as WizardPlanInput);
+    assertOneGeneral(cfg, draft);                                          // #3021 review: this door too
     before.fleet = structuredClone(cfg); after.fleet = draft;
     return { diff: scoped(settingsChangeDiff(before.fleet, draft, { operation: `${operation} instance ${patch.instance_name} (web only)`, force: true })) };
   } else if (path === "/api/settings/quickstart/commit") {
@@ -175,6 +200,8 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     return { diff: scoped(settingsChangeDiff(normalizedBefore, draft, { operation: `${operation} ${what}`, force: true, secret: { key: patch.token_env, after: patch.token } })) };
   } else if (path === "/ui/instances") {
     const payload = record(body), channels = cfg?.channels ?? (cfg?.channel ? [cfg.channel] : []);
+    // #3021 review: New agent (either runtime) inherits the defaults — never a second General on a web-only fleet.
+    if (cfg && addsSecondGeneral(cfg, { general_topic: payload.general_topic })) throw new SettingsConfirmationError(409, "one_general");
     if (payload.runtime === "windows") {
       let draft,target;
       try { draft = parseNativeInstanceCreate(payload).input;target=draft.native_adapter==="pane"?nativePaneTopicTarget(cfg,draft.channel_id):null; }
@@ -208,6 +235,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       force = !exists;
     }
   }
+  // #3008 G1: a fleet with no chat connection has at most one General — a change that would make a second is refused
+  // before it is proposed (untick the one there is first).
+  if (after.fleet) assertOneGeneral(before.fleet, after.fleet);
   if (after.fleet && !validateFleetConfig(after.fleet).valid && validateFleetConfig(before.fleet).valid) throw new SettingsConfirmationError(400, "invalid_settings_effect");
   if (!validateClassicBotConfig(after.classic).valid && validateClassicBotConfig(before.classic).valid) throw new SettingsConfirmationError(400, "invalid_classic_effect");
   return { diff: scoped(settingsChangeDiff(before, after, { operation, force })) };

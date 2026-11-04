@@ -31,6 +31,8 @@ import {
   resolveCredentialProfile,
 } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
+import { selectedGeneralHostSession } from "../general-binding.js";
+import { ResumeBlockedError } from "./types.js";
 import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./codex-metadata.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
@@ -1855,7 +1857,13 @@ export class CodexBackend extends CodexPaneDetectors implements CliBackend {
     this.lastLaunchResumes = false;
     // #2357: read-only (codex is never run here); a launch is not held for it — the operator is told once per launch.
     this.packageWarning = codexPackageWarning(this.binaryPath);
-    if (config.skipResume) {
+    const retainedGeneral = selectedGeneralHostSession(this.instanceDir, config.instanceName, "codex", config.workingDirectory);
+    if (retainedGeneral) {
+      const check = checkResumeId(join(this.isolatedCodexHome, "sessions"), config.workingDirectory, retainedGeneral);
+      if (!check.ok) throw new ResumeBlockedError(t("general_location.start_failed"), t("general_location.start_failed"));
+      this.lastLaunchResumes = true;
+      cmd = `${this.binaryPath} resume ${shellQuote(retainedGeneral)} ${approvalFlag}`;
+    } else if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
       const resumeBy = (id: string, why: string, bytes: number | null): string => {

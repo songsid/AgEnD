@@ -27,6 +27,12 @@
       hint_web: "On the AgEnD computer, run agend web --code to get a sign-in code.",
       refused_web: "The code is invalid or no longer works. Run agend web --code on the AgEnD computer for a new one.",
       resend_refused_web: "A new code could not be sent. Run agend web --code on the AgEnD computer for one.",
+      // #3008: through the link "Allow connections from outside" opened — the authenticator app's code (the leader's wording).
+      label_outside: "Authenticator code", lead_outside: "Open your authenticator app and enter the 6-digit code for AgEnD.",
+      hint_outside: "Lost your phone? On the AgEnD computer, choose \u201cSet up again\u201d.",
+      refused_outside: "That code didn't work. Check that your phone's clock is right and try the newest code.",
+      paused_outside: "Too many wrong codes. Try again in {duration}.",
+      minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
     },
     "zh-TW": {
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
@@ -44,15 +50,35 @@
       hint_web: "在 AgEnD 電腦上執行 agend web --code 取得登入碼。",
       refused_web: "登入碼無效或已失效。請在 AgEnD 電腦上執行 agend web --code 取得新碼。",
       resend_refused_web: "無法傳送新的登入碼。請在 AgEnD 電腦上執行 agend web --code 取得。",
+      label_outside: "驗證器代碼", lead_outside: "打開驗證器 App，輸入 AgEnD 的 6 位數代碼。",
+      hint_outside: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
+      refused_outside: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
+      paused_outside: "錯誤次數太多，請 {duration} 後再試。",
+      minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
   // #2910 D5: the server marks a web-only fleet's page (<body data-web-only="1">): its own words where it has them.
   const webOnly = !!document.body && document.body.getAttribute("data-web-only") === "1";
-  const t = (k) => (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
+  // #3008: …and one served through the link "Allow connections from outside" opened (<body data-outside="1">): signing in
+  // is the authenticator app's code, posted to /auth/totp.
+  const outside = webOnly && document.body.getAttribute("data-outside") === "1";
+  const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
+  /** A wait as words: "15 minutes" / 「15 分鐘」, "2 hours" / 「2 小時」 (rounded up). */
+  const duration = (ms) => {
+    const minutes = Math.max(1, Math.ceil(ms / 60000));
+    if (minutes < 60) return minutes === 1 ? t("minute") : t("minutes").replace("{0}", String(minutes));
+    const hours = Math.ceil(minutes / 60);
+    return hours === 1 ? t("hour") : t("hours").replace("{0}", String(hours));
+  };
   // …and no "No chat bot?" help: the hint above already is it.
   if (webOnly) document.querySelectorAll("details.help").forEach((d) => { if (d.querySelector && d.querySelector('[data-i18n="nobot"]')) d.hidden = true; });
   document.documentElement.lang = lang === "zh-TW" ? "zh-Hant" : "en";
+  if (outside) {
+    const input = $("code");
+    input.setAttribute("inputmode", "numeric"); input.setAttribute("maxlength", "7"); input.setAttribute("placeholder", "123456");
+    input.setAttribute("pattern", "[0-9 ]*");
+  }
 
   // An old dashboard link carries `?token=`. It is not a credential any more (the server ignored it and
   // answered with this page), but it is still the fleet's token: take it out of the address bar and
@@ -125,8 +151,10 @@
     offerResend();
   }
 
-  // Only a returning device gets the button; the answer is a boolean and asking has no side effect.
+  // Only a returning device gets the button; the answer is a boolean and asking has no side effect. Never from outside
+  // (#3008): the code there is the app's, nothing is sent.
   async function offerResend() {
+    if (outside) return;
     try {
       const r = await fetch("/auth/device", { credentials: "same-origin", cache: "no-store" });
       if (r.ok && (await r.json()).returning === true) $("resend").hidden = false;
@@ -173,18 +201,24 @@
     button.disabled = true;
     button.textContent = t("working");
     try {
-      const r = await fetch("/auth/login", {
+      const r = await fetch(outside ? "/auth/totp" : "/auth/login", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: $("code").value }),
       });
       if (r.ok) { clearBounce(); location.replace(nextTarget()); return; }
+      if (outside && r.status === 429) {
+        let wait = Number(r.headers.get("Retry-After")) * 1000;
+        try { const body = await r.json(); if (Number.isFinite(body && body.retryAfterMs)) wait = body.retryAfterMs; } catch { /* the header's */ }
+        msg.textContent = t("paused").replace("{duration}", duration(Number.isFinite(wait) && wait > 0 ? wait : 60000));
+        throw "shown";
+      }
       // #1854: a 5xx is the server failing to confirm the sign-in (503: a public link's notice did not go out), not a
       // wrong code — say so. The code is spent either way: the way on is a new one.
       msg.textContent = r.status === 429 ? t("paused") : r.status >= 500 ? t("unconfirmed") : t("refused");
-    } catch {
-      msg.textContent = t("network");
+    } catch (err) {
+      if (err !== "shown") msg.textContent = t("network");
     }
     button.disabled = false;
     button.textContent = t("submit");

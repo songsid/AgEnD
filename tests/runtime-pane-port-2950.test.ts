@@ -216,3 +216,54 @@ it('a lost paste ACK after re-observation remains uncertain and is never replaye
  expect(await f.port.pasteBuffer('uncertain once')).toBe(false);expect(inputs).toBe(1);expect(f.port.lastInputWasNotSent()).toBe(false);
  expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~uncertain once\x1b[201~');expect(readFileSync(f.file,'utf8')).toContain('pending');
 });
+
+async function pasteDeliveryDaemon(f:Awaited<ReturnType<typeof fixture>>){
+ const {Daemon}=await import('../src/daemon.js'),{ClaudeCodeBackend}=await import('../src/backend/claude-code.js'),root=join(f.file,'..'),logger={info(){},warn(){},error(){},debug(){},child(){return this;}};
+ const daemon:any=new Daemon('private-paste',{working_directory:root,backend:'claude-code',log_level:'silent'}as never,root,true,new ClaudeCodeBackend(root),undefined,logger as never);
+ daemon.tmux=f.port;daemon.nativePaneLifecycle={};daemon.backend=new CodexPaneDetectors({statusLineItems:()=>['context-remaining'],launchMayResume:()=>false});return daemon;
+}
+it('native delivery paste retries a real positive refusal and writes exactly one successful bracketed paste',async()=>{
+ const f=await fixture(),daemon=await pasteDeliveryDaemon(f),call=f.endpoint.call;let inputs=0;f.endpoint.call=async request=>{if(request.action==='input'&&++inputs===1)repaint(f,'› Ask Codex to do anything\n\nContext 99% left\n');return call(request);};
+ expect(await daemon.sendDeliveryPaste('one payload')).toBe(true);expect(inputs).toBe(2);expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~one payload\x1b[201~');expect(f.port.lastInputWasNotSent()).toBe(false);expect(readFileSync(f.file,'utf8')).not.toContain('pending');
+});
+it.each(['lost ACK','partial write'])('native delivery paste never retries a real %s',async mode=>{
+ const f=await fixture(),daemon=await pasteDeliveryDaemon(f),call=f.endpoint.call;let inputs=0;f.endpoint.call=async request=>{if(request.action==='input')inputs++;const result=await call(request);if(mode==='lost ACK'&&request.action==='input')throw Error('ACK lost after write');return result;};
+ if(mode==='partial write')f.write.mockImplementationOnce(()=>{throw Error('write outcome unknown');});
+ expect(await daemon.sendDeliveryPaste('one payload')).toBe(false);expect(inputs).toBe(1);expect(f.write).toHaveBeenCalledExactlyOnceWith('\x1b[200~one payload\x1b[201~');expect(f.port.lastInputWasNotSent()).toBe(false);expect(readFileSync(f.file,'utf8')).toContain('pending');expect(daemon.nativeDeliveryHold()).not.toBeNull();
+});
+it('native paste dialog veto is independent of an ordinary composer that would otherwise accept input',async()=>{
+ const f=await fixture(),daemon=await pasteDeliveryDaemon(f);daemon.backend.getRuntimeDialogs=()=>[{pattern:/Ask Codex/,description:'recognised runtime test card'}];const call=vi.spyOn(f.endpoint,'call');
+ expect(await daemon.sendDeliveryPaste('must not write')).toBe(false);expect(call.mock.calls.some(([request])=>request.action==='input')).toBe(false);expect(f.write).not.toHaveBeenCalled();
+});
+
+it('logs every runner refusal with exact sequence/operation metadata and consecutive retry counts, without input text',async()=>{
+ const f=await fixture(),call=f.endpoint.call,log=vi.fn();f.port.setInputRefusalLogger(log);
+ f.endpoint.call=async request=>{if(request.action==='input')f.output('\x1b[?25l');return call(request);};
+ for(let retry=0;retry<2;retry++){
+  expect(await f.port.pasteBuffer('PRIVATE_PASTE_DIAGNOSTIC_CANARY')).toBe(false);
+  expect(f.port.lastInputWasNotSent()).toBe(true);
+  expect(f.port.getLastInputDiagnostic()).toMatchObject({retryCount:retry,action:'input',expectedSeq:expect.any(Number),observedSeq:expect.any(Number),operationId:expect.any(String),commandSequence:retry+1});
+  const d=f.port.getLastInputDiagnostic()!;expect(d.observedSeq).toBe(d.expectedSeq+1);
+ }
+ expect(log).toHaveBeenCalledTimes(2);expect(log.mock.calls[0][0].operationId).not.toBe(log.mock.calls[1][0].operationId);
+ expect(JSON.stringify(log.mock.calls)).not.toContain('PRIVATE_PASTE_DIAGNOSTIC_CANARY');
+ f.endpoint.call=call;expect(await f.port.pasteBuffer('successful')).toBe(true);
+ f.endpoint.call=async request=>{if(request.action==='input')f.output('\x1b[?25l');return call(request);};
+ expect(await f.port.pasteBuffer('new delivery')).toBe(false);expect(log.mock.lastCall?.[0].retryCount).toBe(0);
+});
+it('keeps an exact zero-input ACK even if its diagnostic logger throws, and respects the delivery retry count',async()=>{
+ const f=await fixture(),call=f.endpoint.call,log=vi.fn(()=>{throw Error('logger unavailable');});f.port.setInputRefusalLogger(log);
+ const screen=await f.port.capturePane();f.endpoint.call=async request=>{if(request.action==='key')f.output('\x1b[?25l');return call(request);};
+ expect(await f.port.sendSpecialKey('Enter',undefined,{kind:'delivery',screen,retryCount:3})).toBe(false);
+ expect(log).toHaveBeenCalledWith(expect.objectContaining({retryCount:3}));expect(f.port.lastInputWasNotSent()).toBe(true);
+ expect(f.port.getLastSendSpecialKeyError()).toBe('Pane changed after observation; input was not sent');expect(f.write).not.toHaveBeenCalled();
+});
+it('a lost ACK records the new operation with an unknown observed sequence, never a stale positive refusal',async()=>{
+ const f=await fixture(),call=f.endpoint.call,log=vi.fn();f.port.setInputRefusalLogger(log);
+ f.endpoint.call=async request=>{if(request.action==='input')f.output('\x1b[?25l');return call(request);};
+ expect(await f.port.pasteBuffer('first')).toBe(false);const first=f.port.getLastInputDiagnostic()!;
+ f.endpoint.call=async request=>{const result=await call(request);if(request.action==='input')throw Error('lost response');return result;};
+ expect(await f.port.pasteBuffer('second')).toBe(false);expect(f.port.lastInputWasNotSent()).toBe(false);expect(log).toHaveBeenCalledOnce();
+ expect(f.port.getLastInputDiagnostic()).toMatchObject({observedSeq:null,commandSequence:first.commandSequence+1});
+ expect(f.port.getLastInputDiagnostic()?.operationId).not.toBe(first.operationId);
+});

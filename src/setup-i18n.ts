@@ -56,6 +56,8 @@ export const SETUP_FORM_STRINGS: Record<SetupLang, Table> = {
     dirDefaultName: "Leave it empty and the agent gets its own folder in AgEnD's workspaces, which AgEnD creates. A path you enter must be absolute.",
     name: "First agent name",
     generalNote: "This agent is the General: it answers in the chat's own General topic and hands work to the agents you add later.",
+    // alpha.3 (the leader's wording, cid-alpha3-design): web only's General has no chat topic.
+    generalNoteWeb: "This agent is the General: you talk to it in the web chat, and it hands work to the agents you add later.",
     stepPlatform: "2 · Platform",
     webOnly: "Web only (no bot)",
     hintTelegram: "Create a bot with @BotFather, then add it to a group.",
@@ -130,6 +132,7 @@ export const SETUP_FORM_STRINGS: Record<SetupLang, Table> = {
     dirDefaultName: "留空的話，agent 會在 AgEnD 的 workspaces 裡有自己的資料夾，由 AgEnD 建立。若要填寫，必須是絕對路徑。",
     name: "第一個 agent 名稱",
     generalNote: "這個 agent 就是 General：它在聊天本身的 General 主題回覆，並把工作分給你之後加入的 agent。",
+    generalNoteWeb: "這個 Agent 就是 General：你在網頁聊天裡跟它對話，之後新增的 Agent 由它分派工作。",
     stepPlatform: "2 · 平台",
     webOnly: "只用網頁（不接 bot）",
     hintTelegram: "用 @BotFather 建立 bot，然後把它加進一個群組。",

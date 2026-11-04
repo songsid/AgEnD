@@ -18,3 +18,25 @@ export function isWebOnlyFleetConfig(cfg: ChannelShape | null | undefined): bool
 export function daemonTopicMode(cfg: ChannelShape | null | undefined): boolean {
   return cfg?.channel?.mode === "topic" || !!cfg?.channels?.some(channel => channel.mode === "topic") || isWebOnlyFleetConfig(cfg);
 }
+
+/**
+ * #3008 G1: the agents that are the General — `general_topic` on the agent, or (not set there) in the defaults. On a
+ * fleet with no chat connection there may be one (the agent its owner ticked), never two.
+ */
+export function generalNames(cfg: { defaults?: { general_topic?: unknown } | null; instances?: Record<string, { general_topic?: unknown } | null | undefined> | null } | null | undefined): string[] {
+  const fallback = cfg?.defaults?.general_topic === true;
+  // alpha.3: an agent called `general` is one too, unless unticked (general-instance.ts generalByName).
+  return Object.entries(cfg?.instances ?? {})
+    .filter(([name, inst]) => inst?.general_topic === true || (inst?.general_topic === undefined && (fallback || name === "general"))).map(([name]) => name);
+}
+
+/**
+ * #3021 review (Prism P2): a new agent on a fleet with no chat connection would be a second General — it is ticked
+ * (`entry.general_topic`), or inherits `defaults.general_topic: true` — while the fleet has one. Every door that creates
+ * an agent asks this (Settings, New agent, the web-only setup, an agent's create_instance, a Windows agent).
+ */
+export function addsSecondGeneral(cfg: Parameters<typeof generalNames>[0] & Parameters<typeof isWebOnlyFleetConfig>[0], entry: { general_topic?: unknown } = {}): boolean {
+  if (!isWebOnlyFleetConfig(cfg)) return false;
+  const becomes = entry.general_topic === true || (entry.general_topic === undefined && cfg?.defaults?.general_topic === true);
+  return becomes && generalNames(cfg).length >= 1;
+}

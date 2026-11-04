@@ -298,10 +298,10 @@ describe("the fleet: who may confirm by applying", () => {
     f.fm.fleetConfig!.channels!.push({ ...f.fm.fleetConfig!.channels![1]! } as any);
     expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
   });
-  it("General's agent not running (no chat card could be posted): none", () => {
+  it("General's model offline still allows a server-owned chat card and verified self-confirmation", () => {
     const f = fleet(), p = f.propose(), s = f.session({ adapterId: "a", userId: "a-F" });
     f.any.daemons.delete("general_b");
-    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).toBeNull();
+    expect(f.any.settingsSelfConfirmation(f.store, s.req, p.view.id)).not.toBeNull();
   });
   it("the only connected General is on another platform: none", () => {
     const f = fleet("telegram", ["a", "b", "c"], { c: "discord" }), p = f.propose(), s = f.session({ adapterId: "a", userId: "a-F" });
@@ -357,7 +357,8 @@ describe("the fleet: who may confirm by applying", () => {
   // #2205 review P2: the General a card could go to is asked again too — gone between Apply and execution, the change
   // is the host CLI's, as it would have been at Apply; another one left, it applies.
   it.each([
-    ["General's agent stops", ["a", "b"], (f: any) => f.any.daemons.delete("general_b"), "stale", 0],
+    ["General's model disappears", ["a", "b"], (f: any) => f.any.daemons.delete("general_b"), "applied", 1],
+    ["General's route lifetime ends", ["a", "b"], (f: any) => f.any.lifecycle.invalidate("general_b"), "stale", 0],
     ["General's connection drops (retrying)", ["a", "b"], (f: any) => f.any.adapterState.set("b", { status: "retrying", retryCount: 1 }), "stale", 0],
     ["one General's agent stops, another is still there", ["a", "b", "c"], (f: any) => f.any.daemons.delete("general_b"), "applied", 1],
   ] as const)("between Apply and execution, %s", async (_n, ids, change, state, applied) => {

@@ -46,3 +46,14 @@ it('native replies cannot send coordinator-local files but text-only replies rem
  const f=fixture();const answer=await f.daemon.handlePaneToolCall({tool:'reply',args:{text:'file',files:['/coordinator/secret']}},{current:()=>true,allowed:()=>true});expect(answer.error).toContain('file transfer');expect(f.broadcast).not.toHaveBeenCalled();
  const pending=f.daemon.handlePaneToolCall({tool:'reply',args:{text:'text only',files:[]}},{current:()=>true,allowed:()=>true});const out=f.broadcast.mock.calls.at(-1)![0];f.answer(out.fleetRequestId,'posted');expect((await pending).error).toBeUndefined();
 });
+it('preserves an outbound error code and reason through the native peer response',async()=>{
+ const f=fixture();const pending=f.daemon.handlePaneToolCall({tool:'reply',args:{text:'answer'},operationId:'owned-operation'},{current:()=>true,allowed:()=>true});
+ const out=f.broadcast.mock.calls.at(-1)![0],respond=f.daemon['pendingIpcRequests'].get(out.fleetRequestId)!;
+ respond({result:null,error:'Fleet outbound refused the reply',errorCode:'EPIPE'});
+ expect(await pending).toEqual({result:null,error:'Fleet outbound refused the reply',errorCode:'EPIPE'});
+});
+it('failure logging names the current inbound association without copying its body',()=>{
+ const f=fixture(),warn=vi.spyOn((f.daemon as any).logger,'warn');f.daemon['markTurnStarted']({chat_id:'owned-chat',message_id:'busy-message'},'PRIVATE_USER_BODY');
+ f.daemon.logNativeToolFailure({tool:'reply',operationId:'operation',reason:'Fleet outbound refused',code:null});
+ expect(warn).toHaveBeenCalledWith({tool:'reply',operationId:'operation',reason:'Fleet outbound refused',code:null,currentMessageId:'busy-message',guardGeneration:1,guardPhase:'awaiting'},'Native pane tool operation failed');expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE_USER_BODY');
+});

@@ -132,6 +132,19 @@ describe("Daemon auto-pause lifecycle", () => {
       .toBe(false);
   });
 
+  it("#3035 review: an agent named general but unticked (general_topic: false) is a worker — it auto-pauses; named general alone still does not", () => {
+    const make = (extra: Record<string, unknown>) => {
+      const instanceDir = join(tmpdir(), `agend-general-unticked-${process.pid}-${Date.now()}-${Math.random()}`);
+      dirs.push(instanceDir);
+      mkdirSync(instanceDir, { recursive: true });
+      return new Daemon("general", { working_directory: "/tmp", auto_pause_after: 1, ...extra,
+        restart_policy: { max_retries: 1, backoff: "linear", reset_after: 0 }, context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, log_level: "error",
+      } as never, instanceDir, true, undefined, undefined, rootLogger);
+    };
+    expect((make({ general_topic: false }) as any).autoPauseController.observe("idle", Date.now() + 2 * 60_000)).toBe(true);
+    expect((make({}) as any).autoPauseController.observe("idle", Date.now() + 24 * 60 * 60_000)).toBe(false);
+  });
+
   it("stops the pane process, preserves the window, and wakes before reuse", async () => {
     const session = `agend-auto-pause-${process.pid}-${Date.now()}`;
     const instanceDir = join(tmpdir(), session);

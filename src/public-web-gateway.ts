@@ -21,6 +21,12 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // #1408: the app shell's pages, exactly as the classifier names them (a malformed one is answered 400 behind it).
   if (reads && shellRoute(method, path) !== null) return true;
   if (method === "POST" && ["/auth/login", "/auth/logout", "/auth/request-code"].includes(path)) return true;
+  // #3008: a web-only fleet's connections from outside — signing in with the authenticator's code; then, for this
+  // computer's admin signed in so (the handlers ask the authority each time), an agent's request in Needs you, the
+  // Notices, and the outside status (read-only: enrolling, the switch and removal are refused off this computer).
+  if (method === "POST" && path === "/auth/totp") return true;
+  if (method === "GET" && (path === "/ui/agent-proposals" || path === "/ui/notices/list" || path === "/ui/outside")) return true;
+  if (method === "POST" && (/^\/ui\/agent-proposals\/[0-9a-f]{32}$/.test(path) || path === "/ui/notices/seen")) return true;
   // #1939 §0.2 / §0.3: "Authorize this browser" over the link — this browser's state (GET) and the ask for its Confirm
   // card (POST, a session write: CSRF and §3 in the handler). The server answers why not while the link's option is off.
   if ((method === "GET" || method === "POST") && path === "/ui/authorization") return true;

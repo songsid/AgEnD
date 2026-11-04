@@ -27,6 +27,16 @@ export interface WindowsAgent {
   fleet_instance?: string;
   machineId?: string;
 }
+/**
+ * M-2297: the per-PC agent limit is reached. The message keeps its original first sentence (callers match on it) and
+ * names the limit and what holds the slots; `limit` and `holders` carry the same for a localised view.
+ */
+export class MachineSlotLimitError extends Error {
+  constructor(readonly limit: number, readonly holders: Array<{ name: string; unknown: boolean }>) {
+    super(`This Windows computer has reached its concurrent agent limit (${limit}): ${holders.map(h => h.unknown ? `${h.name} (outcome unknown — check and unlock it)` : h.name).join(", ")}`);
+    this.name = "MachineSlotLimitError";
+  }
+}
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
 export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string }
 interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string }> }
@@ -93,8 +103,15 @@ export class WindowsAgents {
   /** Synchronous profile reservation is shared by exec and pane starts. Unknown owners still occupy a slot. */
   private admitMachineSlot(agent: WindowsAgent): void {
     const machine = agent.machineId?.toLowerCase();
-    const occupied = this.data.agents.filter(other => other.id !== agent.id && other.machineId?.toLowerCase() === machine && !!other.activeId).length;
-    if (occupied >= maxAgentsPerMachine()) throw Error("This Windows computer has reached its concurrent agent limit");
+    const holders = this.data.agents.filter(other => other.id !== agent.id && other.machineId?.toLowerCase() === machine && !!other.activeId);
+    const limit = maxAgentsPerMachine();
+    if (holders.length >= limit) {
+      // M-2297: say which agents hold the slots, by the name a person gave them (the instance name is windows-<uuid>).
+      // "Unknown outcome" is the exec turn's lost-task state (`blocked`); a pane holder has no exec task, so that flag
+      // says nothing about it and it is never marked from it (#3003 acceptance: every healthy pane showed as unknown).
+      throw new MachineSlotLimitError(limit, holders.map(other => ({ name: other.name || other.fleet_instance || other.id,
+        unknown: !other.paneLaunchId && this.get(other.id).blocked })));
+    }
   }
   /** Metadata reservation before a pane can spawn. Exec and persistent adapters can never own one profile together. */
   reservePane(id: string, launchId: string): WindowsAgent {
@@ -125,11 +142,31 @@ export class WindowsAgents {
       || agent.threadId !== previous.sessionId && agent.threadId !== nextSessionId) throw Error("Fresh pane conversation scope differs");
     if (agent.threadId !== nextSessionId) this.change(() => { agent.threadId = nextSessionId; delete agent.paneRecovery;delete agent.paneRecoveryAt; });
   }
+  /** The durable Codex fresh intent is committed first; only its exact observed launch may replace the old pin. */
+  pinFreshCodexSession(id: string, rawPrevious: RuntimePaneSnapshot, rawObserved: RuntimePaneSnapshot): void {
+    const previous=validateRuntimePaneSnapshot(rawPrevious),observed=validateRuntimePaneSnapshot(rawObserved),agent=this.find(id);
+    if(agent.cli!=="codex"||previous.state!=="exited"||previous.noLaunch
+      ||previous.agentId!==id||previous.instance!==agent.fleet_instance||observed.agentId!==id||observed.instance!==previous.instance
+      ||!["running","exited"].includes(observed.state)||observed.noLaunch||!observed.sessionId||!validNativeSessionId("codex",observed.sessionId)
+      ||observed.launchId===previous.launchId||observed.sessionId===previous.sessionId
+      ||agent.activeId!==observed.launchId||agent.paneLaunchId!==observed.launchId
+      ||agent.threadId!==previous.sessionId&&agent.threadId!==observed.sessionId)throw Error("Fresh Codex conversation scope differs");
+    if(agent.threadId!==observed.sessionId)this.change(()=>{agent.threadId=observed.sessionId;delete agent.paneRecovery;delete agent.paneRecoveryAt;});
+  }
+  /** A fresh Codex launch can exit before reporting any UUID. Release only that positive exit; retain the old pin. */
+  releaseUnpinnedCodexPane(id: string, rawPrevious: RuntimePaneSnapshot, rawExit: RuntimePaneSnapshot): void {
+    const previous=validateRuntimePaneSnapshot(rawPrevious),exit=validateRuntimePaneSnapshot(rawExit),agent=this.find(id);
+    if(agent.cli!=="codex"||previous.state!=="exited"||previous.noLaunch||!previous.sessionId||agent.threadId!==previous.sessionId
+      ||previous.agentId!==id||previous.instance!==agent.fleet_instance||exit.agentId!==id||exit.instance!==previous.instance
+      ||exit.state!=="exited"||exit.noLaunch||exit.sessionId!==undefined||exit.launchId===previous.launchId
+      ||agent.activeId!==exit.launchId||agent.paneLaunchId!==exit.launchId)throw Error("Unpinned Codex exit scope differs");
+    this.change(()=>{delete agent.activeId;delete agent.paneLaunchId;});
+  }
   /** Only an exact positive owned-exit snapshot releases the old exec-compatible reservation. */
   releasePane(id: string, raw: RuntimePaneSnapshot): void {
     const snapshot = validateRuntimePaneSnapshot(raw), agent = this.find(id);
     if (snapshot.agentId !== id || snapshot.state !== "exited" || agent.activeId !== snapshot.launchId || agent.paneLaunchId !== snapshot.launchId
-      || agent.fleet_instance && agent.fleet_instance !== snapshot.instance || agent.threadId && snapshot.sessionId !== agent.threadId) throw Error("Windows pane exit identity is unconfirmed");
+      || agent.fleet_instance && agent.fleet_instance !== snapshot.instance || agent.threadId && snapshot.sessionId !== undefined && snapshot.sessionId !== agent.threadId) throw Error("Windows pane exit identity is unconfirmed");
     this.change(() => { delete agent.activeId; delete agent.paneLaunchId; });
   }
   bindInstance(id: string, name: string): void {
@@ -137,6 +174,26 @@ export class WindowsAgents {
     const agent=this.find(id);
     if(agent.fleet_instance===name)return;
     this.change(()=>{agent.fleet_instance=name;});
+  }
+  /** A confirmed General binding is born already linked, so legacy import can never turn it into a worker. */
+  ensureGeneralBinding(input: { id: string; instance: string; machineId: string; cli: "claude-code" | "codex";
+    cwd: string; name: string; model: string; instructions: string; description: string }, authorized: () => boolean): WindowsAgent {
+    if (!validWindowsAgentId(input.id) || !validWindowsAgentId(input.machineId) || !validWindowsDirectory(input.cwd)
+      || !input.instance || input.instance.length > 128 || /[\\/\x00-\x1f\x7f]/.test(input.instance) || input.instance.includes("..")
+      || !shortText(input.name, 64) || !input.name || !shortText(input.instructions, 8000) || !shortText(input.description, 512)
+      || input.cli !== "claude-code" && input.cli !== "codex") throw Error("Invalid General Windows binding");
+    const model = validateNativeModel(input.model);
+    const found = this.data.agents.find(row => row.id === input.id);
+    if (found) {
+      if (found.fleet_instance !== input.instance || found.machineId !== input.machineId || found.cli !== input.cli || found.cwd !== input.cwd) throw Error("Retained General Windows profile differs");
+      return this.update(found.id, { name: input.name, model: model ?? "", instructions: input.instructions, description: input.description }, authorized);
+    }
+    if (!authorized()) throw Error("General binding authority expired");
+    if (this.data.agents.length >= 16) throw Error("This preview supports at most 16 Windows agents");
+    const agent: WindowsAgent = { id: input.id, name: input.name, cwd: input.cwd, machineId: input.machineId, cli: input.cli,
+      ...(model ? { model } : {}), sandbox: "workspace-write", instructions: input.instructions, description: input.description,
+      createdAt: Date.now(), turns: [], fleet_instance: input.instance };
+    return this.change(() => { if (!authorized()) throw Error("General binding authority expired"); this.data.agents.push(agent); return structuredClone(agent); });
   }
   /** Validate without changing the retained launch or profile (used before an explicit cold-settings stop). */
   previewUpdate(id: string, patch: WindowsAgentPatch): WindowsAgent {

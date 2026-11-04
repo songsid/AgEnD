@@ -100,6 +100,15 @@ async function createConfirmed(r: ReturnType<typeof rig>): Promise<string> {
 }
 
 describe("#2942: an agent's Windows create is only ever a pending request", () => {
+  it("alpha.2 polish: the identical request again after it was rejected tells the agent how to ask again; after it applied, that nothing more is needed", async () => {
+    const r = rig();
+    const first = await mcp("create_instance", r, CREATE);
+    const entry = await card(r); await click(r, entry, "reject", "a-F");
+    expect(r.store.get(pendingIdOf(first.result), SESSION)!.state).toBe("rejected");
+    const again = await mcp("create_instance", r, CREATE);
+    expect([again.result.state, again.result.pending_id]).toEqual(["rejected", pendingIdOf(first.result)]);
+    expect(again.result.message).toContain("change something (the name, the folder or the model) to ask again");
+  });
   it("(a) create_instance windows answers pending: nothing created, no fleet write, no lifecycle", async () => {
     const r = rig(), before = structuredClone(r.fm.fleetConfig);
     const out = await mcp("create_instance", r, CREATE);

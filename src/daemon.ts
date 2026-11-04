@@ -1,4 +1,5 @@
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
+import { generalByName } from "./general-instance.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
@@ -684,6 +685,12 @@ const BOTTOM_READY_POLL_MS = 250;
 /** M-2267: how often a pane left in a tmux mode is looked at again, and how long the delivery Enter waits for it to end. */
 const PANE_MODE_POLL_MS = 500;
 const PANE_MODE_ENTER_WAIT_MS = 10 * 60_000;
+/** Why a delivery's Enter was withheld with the paste possibly in the CLI: a tmux mode past the bound, or a dialog (M-2290). */
+/**
+ * Why a delivery's Enter was withheld (the paste may be in the box: kept uncertain, never pasted twice). Main's M-2290
+ * reasons (a tmux mode; a recognised dialog on the pane) and the alpha's native-Windows safety checks (S-35).
+ */
+type EnterHeldReason = "pane-in-mode" | "dialog" | "capture_failed" | "check_failed" | "output_changed";
 /** Consecutive unreadable pane probes tolerated by the delivery gate before the delivery is failed (≈10s at the poll cadence). */
 const DIALOG_PROBE_UNKNOWN_MAX = 40;
 /** Startup dialog scan: poll cadence and wall-clock budget (keys and waits included). */
@@ -2220,9 +2227,17 @@ export class Daemon extends EventEmitter {
   private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+  logNativeInputRefusal(details: import("./pane-port.js").PaneInputDiagnostic): void {
+    this.logger.warn({ component: "runtime-pane-host", reason: "expected_seq_changed", ...details }, "Native pane input refused before write");
+  }
+  logNativeToolFailure(details: import("./runtime-pane-mcp.js").PaneToolFailure): void {
+    const turn = this.turnReplyGuard.snapshot();
+    this.logger.warn({ ...details, currentMessageId: turn?.target.messageId ?? null,
+      guardGeneration: turn?.generation ?? null, guardPhase: turn?.phase ?? null }, "Native pane tool operation failed");
+  }
   nativePaneCurrent(): boolean { return this.nativePaneLifecycle?.current() ?? false; }
   private nativeEnterHold: { key: string; since: number; spawn: number; fence: number } | null = null;
-  /** Per-launch attention for a pasted delivery whose bounded Enter attempts exhausted, including non-outbox input. */
+  /** Per-launch attention for a native delivery whose bounded input attempts were refused or uncertain, including non-outbox input. */
   nativeDeliveryHold(): { key: string; since: number } | null {
     const hold = this.nativeEnterHold;
     return hold && this.nativePaneLifecycle && !this.deliveryWritesStopping && hold.spawn === this.spawnGeneration && hold.fence === this.launchFenceEpoch
@@ -2235,7 +2250,7 @@ export class Daemon extends EventEmitter {
   /** Positive native exit evidence only, fenced to this exact launch and Daemon owner. */
   nativePaneExitCurrent(snapshot: import("./runtime-pane-protocol.js").RuntimePaneSnapshot, owner: InteractionOwner): boolean {
     const actual=this.nativePaneLifecycle?.snapshot?.();
-    return !!actual && actual.state==="exited" && snapshot.state==="exited" && !!snapshot.sessionId
+    return !!actual && actual.state==="exited" && snapshot.state==="exited"
       && sameInteractionOwner(owner,this.interactionOwner()) && !this.runtimeMonitorsFrozen && !this.startupAborted
       && ["hostBootId","paneId","launchId","agentId","instance","sessionId","commandSequence","exitCode"].every(key=>actual[key as keyof typeof actual]===snapshot[key as keyof typeof snapshot])
       && this.tmux?.getWindowId()===snapshot.paneId;
@@ -2316,7 +2331,8 @@ export class Daemon extends EventEmitter {
     this.messageBus.setLogger(this.logger);
     // General is the dispatcher — it must stay warm to route messages, so it is
     // never auto-paused regardless of auto_pause_after.
-    const isGeneral = config.general_topic === true || name === "general";
+    // #3035 review: the one rule (an agent named general unticked — general_topic: false — is a worker).
+    const isGeneral = config.general_topic === true || generalByName(name, config);
     const autoPauseMinutes = isGeneral ? 0 : (typeof config.auto_pause_after === "number" ? config.auto_pause_after : 0); // default: disabled
     this.autoPauseController = new AutoPauseController(
       Math.max(0, autoPauseMinutes) * 60_000,
@@ -5260,6 +5276,21 @@ export class Daemon extends EventEmitter {
       cancelled: this.recoveryCancelled, background: this.workingBackgroundObservation };
   }
 
+  /** Observe this host General before its approved switch. No keys, process signals or provider writes. */
+  async generalHostOwner(): Promise<import("./general-binding.js").GeneralHostOwner> {
+    const pane = this.tmux, owner = JSON.stringify(this.interactionOwner());
+    if (!this.config.general_topic || this.nativePaneLifecycle || !pane || !/^@\d+$/.test(pane.getWindowId())) throw Error("General host owner is unavailable");
+    const status = await pane.getPaneStatus();
+    if (!status?.alive || !status.pid || status.pid <= 1) throw Error("General host process cannot be proven");
+    const checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint();
+    if (this.tmux !== pane || owner !== JSON.stringify(this.interactionOwner())) throw Error("General host owner changed during observation");
+    const backend = this.config.backend ?? "claude-code";
+    let sessionId = this.backend?.getSessionId() ?? undefined;
+    if (backend === "codex" && checkpoint) sessionId = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i.exec(checkpoint.path)?.[1];
+    return { kind: "tmux", windowId: pane.getWindowId(), pid: status.pid,
+      ...(typeof sessionId === "string" && sessionId.length > 0 && sessionId.length <= 256 && !/[\p{Cc}\p{Cf}]/u.test(sessionId) ? { pin: { backend, sessionId } } : {}) };
+  }
+
   /** Local system work: no user turn, channel reply target, wake or replay of an original request. */
   async deliverWorkingRecovery(content: string, delivery: { deliveryId: string; attemptNo: number }, admitted: () => boolean): Promise<void> {
     const tmux = this.tmux, owner = JSON.stringify(this.interactionOwner()), epoch = this.deliveryEpoch;
@@ -7292,7 +7323,7 @@ export class Daemon extends EventEmitter {
       if (update.auto_pause_after === null) delete this.config.auto_pause_after;
       else this.config.auto_pause_after = nextAutoPause;
       if (nextAutoPause !== previousAutoPause) {
-        const isGeneral = this.config.general_topic === true || this.name === "general";
+        const isGeneral = this.config.general_topic === true || generalByName(this.name, this.config);
         this.autoPauseController.reconfigure((isGeneral ? 0 : nextAutoPause) * 60_000);
       }
     }
@@ -9748,7 +9779,7 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: (reason: string) => void,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
     return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt, onInputHeld);
@@ -9785,30 +9816,36 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
-    onInputHeld?: (reason: string) => void,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
     // A recovery Enter may have waited for a transient while cancel or spawn replaced the delivery: check here, and
     // again after every wait below, at the last point before the tmux write.
+    // M-2290 (#2985 review, Fable): the mode wait can last up to 10 minutes, and a respawn or relaunch reuses the same
+    // tmux object and window — so the spawn generation and launch fence are part of the fence too: an Enter meant for
+    // the CLI this paste went to is never sent to its successor.
     const tmux = this.tmux;
     const backend = this.backend;
     const native = !!this.nativePaneLifecycle;
     const generation = this.spawnGeneration;
     const fence = this.launchFenceEpoch;
     const windowId = native ? tmux?.getWindowId() : undefined;
-    // A native Windows pane keeps #2958's full fence (its launch can be replaced under the same handle).
-    const current = () => this.tmux === tmux && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent())
-      && (!native || (!!windowId && !!backend && this.backend === backend && this.spawnGeneration === generation
-        && this.launchFenceEpoch === fence && tmux!.getWindowId() === windowId));
+    // M-2290 (#2985 review, Fable): the mode wait can last up to 10 minutes, and a respawn or relaunch reuses the same
+    // tmux object and window — so the spawn generation and launch fence are part of every pane's fence: an Enter meant
+    // for the CLI this paste went to is never sent to its successor. A native Windows pane keeps #2958's full fence too
+    // (its launch can be replaced under the same handle).
+    const current = () => this.tmux === tmux && this.spawnGeneration === generation && this.launchFenceEpoch === fence
+      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent())
+      && (!native || (!!windowId && !!backend && this.backend === backend && tmux!.getWindowId() === windowId));
     if (!current()) return false;
     // The pasted text may still be in the box: the caller keeps it uncertain (no false failure, no second paste).
     // S-35: say which check withheld Enter.
-    const hold = (reason: "capture_failed" | "dialog" | "check_failed" | "pane_mode" | "output_changed") => {
+    const hold = (reason: EnterHeldReason) => {
       onInputHeld?.(reason);
       if (reason === "output_changed" && current() && !this.nativeDeliveryHold()) this.nativeEnterHold = {
         key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence,
       };
-      if (reason === "pane_mode") this.logger.warn({ phase, reason }, "The pane stayed in a tmux mode; Enter withheld");
-      else this.logger.warn({ phase, reason }, "Native delivery Enter withheld by its safety check");
+      if (reason === "pane-in-mode") this.logger.warn({ phase, reason }, "The pane stayed in a tmux mode; Enter withheld");
+      else this.logger.warn({ ...tmux?.getLastInputDiagnostic?.(), phase, reason, retryCount: positiveRefusals }, "Native delivery Enter withheld by its safety check");
       return false;
     };
     // M-2267 (#2971): a pane in a tmux mode (a person left it in copy-mode) would take this Enter. Wait for the mode to
@@ -9818,11 +9855,11 @@ export class Daemon extends EventEmitter {
     // The fresh capture still binds the native host output sequence; ownership and positive-ACK-only retries remain.
     const modeDeadline = performance.now() + PANE_MODE_ENTER_WAIT_MS;
     let pane: string | undefined;
-    let positiveRefusals = 0, enterMarked = false, positiveRetryDeadline = Infinity;
+    let positiveRefusals = 0, enterMarked = false, positiveRetryDeadline = Infinity, linuxDialogRead = false;
     for (;;) {
       const mode = await this.waitWhilePaneInMode(phase, current, Math.min(modeDeadline, positiveRetryDeadline));
       if (mode === "stale") return false;
-      if (mode === "held") return hold("pane_mode");
+      if (mode === "held") return hold("pane-in-mode");
       if (native) {
         // S-35: a native pane's capture refuses while output is still arriving ("Pane changed during capture; observe it
         // again"). Right after a turn the CLI repaints for a moment; one refused read left the message unsent for ever.
@@ -9847,12 +9884,31 @@ export class Daemon extends EventEmitter {
       }
       if (await this.paneInTmuxMode(phase)) {
         if (!current()) return false;
-        if (performance.now() >= modeDeadline) return hold("pane_mode");
+        if (performance.now() >= modeDeadline) return hold("pane-in-mode");
         await new Promise(r => setTimeout(r, PANE_MODE_POLL_MS));
         if (!current()) return false;
         continue;
       }
       if (!current()) return false;
+      // M-2290 (the simple half of the #2957 redesign, leader xmsg-1793712561468; main): on a Linux pane, a dialog the
+      // backend RECOGNISES (runtimeDialogs: a permission card, the dangerous-command card, …) that painted between the
+      // paste and this Enter would take the key as its answer. Read the pane once more: such a dialog withholds the
+      // Enter (the caller keeps the delivery uncertain → Needs-you; the dialog scanner parks it for a person). Nothing
+      // else is judged — an unknown or unreadable screen sends: #2958's composer proof (decision f57474aa) is NOT back.
+      // Only a caller that can hold asks (onInputHeld); a native pane read its own screen above, every round.
+      if (!native && onInputHeld && !linuxDialogRead) {
+        linuxDialogRead = true;
+        let finalPane: string | null = null;
+        try { finalPane = await tmux!.capturePane(); } catch { finalPane = null; }
+        if (!current()) return false;
+        let dialog: string | undefined;
+        try { dialog = finalPane === null ? undefined : (this.backend?.getRuntimeDialogs?.() ?? []).find(d => Daemon.dialogMatches(d, finalPane!))?.description; } catch { dialog = undefined; }
+        if (dialog !== undefined) {
+          onInputHeld("dialog");
+          this.logger.warn({ phase, dialog }, "A dialog is on the pane; the delivery's Enter is withheld (it would answer it)");
+          return false;
+        }
+      }
       if (positiveRefusals && performance.now() >= positiveRetryDeadline) return hold("output_changed");
       // W1: persist the "Enter may have happened" boundary before tmux receives
       // the key. A crash after this commit is never auto-replayed without a
@@ -9864,9 +9920,9 @@ export class Daemon extends EventEmitter {
         return false;
       }
       enterMarked = true;
-      const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "delivery", screen: pane }) : tmux!.sendSpecialKey("Enter"));
+      const sent = await (native && pane !== undefined ? tmux!.sendSpecialKey("Enter", undefined, { kind: "delivery", screen: pane, retryCount: positiveRefusals }) : tmux!.sendSpecialKey("Enter"));
       // A busy renderer can change seq after our capture. Only a positive zero-input ACK admits a NEW proof/key;
-      // never re-paste, retry an uncertain write, reuse the stale proof, or re-commit the durable Enter boundary.
+      // An Enter retry never re-pastes, retries an uncertain write, reuses stale proof or re-commits the durable boundary.
       if (!sent && native && tmux!.lastInputWasNotSent?.() === true
         && tmux!.getLastSendSpecialKeyError() === "Pane changed after observation; input was not sent"
         && current()) {
@@ -9879,14 +9935,56 @@ export class Daemon extends EventEmitter {
         continue;
       }
       if (!sent) {
-        this.logger.error({
-          phase,
-          tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure",
-        }, "tmux send-keys Enter failed during message delivery");
+        const details = { phase, tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure" };
+        if (native) this.logger.warn({ ...tmux?.getLastInputDiagnostic?.(), ...details, retryCount: positiveRefusals }, "Native delivery Enter gave up");
+        else this.logger.error(details, "tmux send-keys Enter failed during message delivery");
       }
       if (sent && native && current()) this.nativeEnterHold = null;
       return sent;
     }
+  }
+
+  /** A pre-existing native busy-paste race: retry bytes only after an exact, owned zero-input acknowledgement. */
+  private async sendDeliveryPaste(text: string, stillCurrent?: () => boolean): Promise<boolean> {
+    const pane = this.tmux!, native = this.nativePaneLifecycle;
+    if (!native) return pane.pasteBuffer(text);
+    const backend = this.backend, generation = this.spawnGeneration, fence = this.launchFenceEpoch, windowId = pane.getWindowId();
+    const current = () => !!windowId && this.tmux === pane && this.nativePaneLifecycle === native && this.backend === backend
+      && this.spawnGeneration === generation && this.launchFenceEpoch === fence && pane.getWindowId() === windowId
+      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    let retryCount = 0;
+    const hold = (reason: string) => {
+      if (current() && !this.nativeDeliveryHold()) this.nativeEnterHold = { key: `${this.bootId}:${generation}:${fence}`, since: Date.now(), spawn: generation, fence };
+      this.logger.warn({ ...pane.getLastInputDiagnostic?.(), reason, retryCount }, "Native delivery paste held by its safety check");
+      return false;
+    };
+    const deadline = performance.now() + 2000;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      retryCount = attempt;
+      if (!current()) return false;
+      if (performance.now() >= deadline) return hold("output_changed");
+      let screen: string | undefined;
+      for (let read = 0; read < 5 && screen === undefined; read++) {
+        try { screen = await pane.capturePane(); } catch { /* Reads do not construct an input operation. */ }
+        if (!current()) return false;
+        if (performance.now() >= deadline) return hold("capture_failed");
+        if (screen === undefined && read < 4) await new Promise(done => setTimeout(done, 100));
+      }
+      if (screen === undefined) return hold("capture_failed");
+      try { if (backend?.getRuntimeDialogs?.().some(dialog => Daemon.dialogMatches(dialog, screen!))) return hold("dialog"); }
+      catch { return hold("check_failed"); }
+      if (!current()) return false;
+      if (performance.now() >= deadline) return hold("output_changed");
+      let sent: boolean;
+      try { sent = await pane.pasteBuffer(text, {guard: current, proof: {kind: "composer", screen, retryCount: attempt}}); }
+      catch { return hold("unconfirmed"); }
+      if (sent) return true; // Exactly one successful paste ends the loop, before any Enter.
+      if (!current()) return false;
+      if (pane.lastInputWasNotSent?.() !== true || pane.getLastPasteError?.() !== "Pane changed after observation; input was not sent") return hold("unconfirmed");
+      if (attempt >= 4 || performance.now() >= deadline) return hold("output_changed");
+      await new Promise(done => setTimeout(done, 100));
+    }
+    return hold("output_changed");
   }
 
   private async writeMessageToPane(
@@ -10059,7 +10157,13 @@ export class Daemon extends EventEmitter {
       }
       const pasteGeneration = this.spawnGeneration;
       beforePaste?.();
-      const pasted = await this.tmux!.pasteBuffer(formatted);
+      const pasted = await this.sendDeliveryPaste(formatted, nativeOwner);
+      if (!pasted && this.nativePaneLifecycle) {
+        // The native write attempt is retained as uncertain, including exhausted positive refusals. Never route an
+        // unknown/partial write through legacy window recovery or abort it back to an automatically replayable row.
+        verdict.paneWriteStarted = true; verdict.phase = "paste"; verdict.proof = "native-paste-held";
+        return false;
+      }
       if (pasted) this.rememberPaste(formatted, pasteGeneration);
       if (!pasted) {
         if (rawPaste) {
@@ -10142,12 +10246,16 @@ export class Daemon extends EventEmitter {
       let enterAt = Date.now();
       const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
-      let inputHeld = "";
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof || nativeOwner ? steerEnterCurrent : undefined, durableAttempt, reason => { inputHeld = reason; }))) {
+      let inputHeld: EnterHeldReason | null = null;
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof || nativeOwner ? steerEnterCurrent : undefined, durableAttempt, (why) => { inputHeld = why; }))) {
         if (inputHeld) {
-          // #2971: held in a tmux mode past the bound. The paste may still be in the CLI: keep it uncertain, never re-paste.
+          // #2971: held in a tmux mode past the bound; M-2290: a recognised dialog on the pane. The paste may still be in
+          // the CLI: keep it uncertain (Needs-you), never re-paste, never answer the dialog.
           verdict.phase = "submit-enter";
-          verdict.proof = inputHeld === "pane_mode" ? "pane-in-mode-held" : `native-input-${inputHeld}`;
+          // The merge of #2957/M-2290 (main) and the alpha's native holds: a tmux mode, a recognised dialog on a Linux pane,
+          // and each native safety check say which.
+          verdict.proof = inputHeld === "pane-in-mode" ? "pane-in-mode-held" : nativeOwner ? `native-input-${inputHeld}`
+            : inputHeld === "dialog" ? "dialog-on-pane" : `input-held-${inputHeld}`;
           return false;
         }
         if ((steerComposerProof || nativeOwner) && !steerCurrent()) {
@@ -10286,8 +10394,10 @@ export class Daemon extends EventEmitter {
         // confirmation ladder. "stranded" is the case that used to be a silent
         // ✅ — the text was visible, so the old check called it delivered.
         this.logger.warn({ proof }, "Native-queue paste not confirmed as submitted — retrying via idle-gated delivery");
-        if (windowId && this.controlClient) {
-          await this.controlClient.waitUntilIdle(windowId);
+        if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
+          verdict.phase = "native-queue-idle-wait";
+          verdict.proof = "idle-wait-failed";
+          return false;
         }
 
         // Re-read before doing anything: the CLI had a whole turn to flush its
@@ -11177,7 +11287,7 @@ export class Daemon extends EventEmitter {
    * Routes to the channel adapter via MessageBus.
    */
   /** Internal native-MCP admission. The pane/machine/launch owner supplies a current, dynamically checked tool lease. */
-  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string }> {
+  handlePaneToolCall(input: { tool: string; args: Record<string, unknown>; operationId?: string }, lease: { current(): boolean; allowed(tool: string, args: Record<string, unknown>): boolean; dispatch?(tool: string, args: Record<string, unknown>): Promise<unknown> | undefined }): Promise<{ result: unknown; error?: string; errorCode?: string | number }> {
     const refusal = nativePaneToolRefusal(input.tool, input.args);
     if (refusal) return Promise.resolve({ result: null, error: refusal });
     if (!lease.current() || !lease.allowed(input.tool, input.args) || this.deliveryWritesStopping) return Promise.resolve({ result: null, error: "Pane tool permission is no longer current" });
@@ -11185,7 +11295,7 @@ export class Daemon extends EventEmitter {
     const current = (): boolean => lease.current() && lease.allowed(input.tool, input.args) && !this.deliveryWritesStopping && fence === this.launchFenceEpoch;
     return new Promise(resolve => {
       let settled = false;
-      const finish = (value: { result: unknown; error?: string }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
+      const finish = (value: { result: unknown; error?: string; errorCode?: string | number }): void => { if (settled) return; settled = true; clearTimeout(timer); resolve(value); };
       const timer = setTimeout(() => finish({ result: null, error: "Pane tool result is unconfirmed; inspect its operation before retrying" }), daemonBudgetMs(input.tool) + 1000);
       timer.unref?.();
       try {
@@ -11199,7 +11309,8 @@ export class Daemon extends EventEmitter {
             return true;
           },
           // Resolving the relay is not proof that its HTTP response reached the provider. No response-written receipt yet.
-          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}) }); return false; },
+          send: value => { finish({ result: value.result, ...(typeof value.error === "string" ? { error: value.error } : {}),
+            ...(typeof value.errorCode === "string" || typeof value.errorCode === "number" ? { errorCode: value.errorCode } : {}) }); return false; },
         });
       } catch { finish({ result: null, error: "Pane tool operation failed" }); }
     });
@@ -11235,7 +11346,7 @@ export class Daemon extends EventEmitter {
       : null;
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
-    const respond = (result: unknown, error?: string) => {
+    const respond = (result: unknown, error?: string, errorCode?: string | number) => {
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
@@ -11275,7 +11386,7 @@ export class Daemon extends EventEmitter {
         // failed" and report unknown immediately rather than starting recovery.
         this.turnReplyGuard.settleToolAttempt(replyAttempt, false);
       }
-      const packet = { requestId, result, error, operationId };
+      const packet = { requestId, result, error, operationId, ...(errorCode !== undefined ? { errorCode } : {}) };
       const sent = peer ? peer.current() && peer.send(packet) : socket ? this.ipcServer?.send(socket, packet) ?? false : false;
       if (!sent) {
         if (peer) this.logger.debug({ tool, requestId }, "Native MCP result awaits transport-written confirmation");
@@ -11537,7 +11648,7 @@ export class Daemon extends EventEmitter {
       }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(outboundKey, (respMsg) => {
         clearTimeout(timeout);
-        respond(respMsg.result, respMsg.error as string | undefined);
+        respond(respMsg.result, respMsg.error as string | undefined, respMsg.errorCode as string | number | undefined);
       });
       // Register the waiter before broadcasting. A fast/mock adapter can settle
       // immediately; broadcasting first left a response-before-registration
@@ -11671,7 +11782,7 @@ export class Daemon extends EventEmitter {
     // The daemon used to read `general_topic` alone while `isGeneralInstance`
     // also accepted the name, so an instance called `general` without the flag
     // was a worker here and a general everywhere else.
-    const isGeneral = this.config.general_topic === true || this.name === "general";
+    const isGeneral = this.config.general_topic === true || generalByName(this.name, this.config);
     // No third argument for an ordinary instance: the default is `worker` now,
     // and naming it here would be a second place to change it.
     const toolSet = isGeneral
@@ -12748,7 +12859,7 @@ export class Daemon extends EventEmitter {
    */
   private whatsNewRoles(): WhatsNewAudience[] {
     if (this.runtimeIdentity?.kind === "classic") return ["classic"];
-    if (this.config.general_topic === true || this.name === "general") return ["general"];
+    if (this.config.general_topic === true || generalByName(this.name, this.config)) return ["general"];
     const set = resolveToolSet(this.config, this.name);
     return set === "coordinator" || set === "full" ? ["worker", "coordinator"] : ["worker"];
   }

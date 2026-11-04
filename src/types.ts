@@ -106,6 +106,8 @@ export interface InstanceConfig {
   native_agent_id?: string;
   /** Persistent terminal opt-in. Unset/exec preserves the per-turn adapter and rollback. */
   native_adapter?: "exec" | "pane";
+  /** Internal administrator-created General binding; runner computes its dedicated workspace. */
+  native_general_binding?: string;
   /** Native CLI permission selection; independent of Linux terminal permissions. */
   native_sandbox?: "read-only" | "workspace-write";
   /** Proactive interrupted-work continuation; defaults true, inherited from fleet defaults. */

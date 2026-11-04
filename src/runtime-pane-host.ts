@@ -1,4 +1,6 @@
 import { RuntimePaneOutputBuffer } from "./runtime-pane-output.js";
+import { RuntimeGeneralWorkspace, loadGeneralKnowledge } from "./runtime-general-workspace.js";
+import { GeneralManagedFileError } from "./runtime-general-protocol.js";
 /** Runner-owned, persistent CLI panes. A coordinator reconnect neither launches nor replays anything. */
 import { randomUUID } from "node:crypto";
 import type { IPty } from "node-pty";
@@ -9,7 +11,7 @@ import { spawnNativePane } from "./runtime-pane-process.js";
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
-import { NativePaneTranscriptReader, nativeClaudeSessionState, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
+import { NativePaneTranscriptReader, nativeClaudeSessionState, nativeCodexSessionState, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
 import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
@@ -46,7 +48,8 @@ export class RuntimePaneHost {
   private readonly live = new Map<string, LivePane>();
   private readonly queues = new Map<string, { tail: Promise<unknown>; count: number }>();
   private closing = false;
-  constructor(private readonly options: RuntimePaneHostOptions) {}
+  private readonly general: RuntimeGeneralWorkspace;
+  constructor(private readonly options: RuntimePaneHostOptions) { this.general = new RuntimeGeneralWorkspace(options.store.directory); }
   list(): RuntimePaneSnapshot[] {
     for (const row of this.options.store.list()) if (!this.live.has(row.launch.paneId)) this.options.store.reconcileExit(row.launch.paneId);
     return this.options.store.list().map(row => structuredClone(this.live.get(row.launch.paneId)?.record.snapshot ?? row.snapshot));
@@ -62,8 +65,20 @@ export class RuntimePaneHost {
   }
   async request(raw: unknown, current: () => boolean = () => true): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
-    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true, claudeSessionProof: true }, panes: this.list() };
+    if (request.action === "list") return { hostBootId: this.options.bootId, capabilities: { openDisposition: true, recovery: true, claudeSessionProof: true, codexSessionProof: true, generalWorkspace: true }, panes: this.list() };
     if (this.closing || !this.options.online() || !current()) throw Error("Pane runtime is disconnected");
+    if (request.action === "general-workspace") {
+      const installed = loadGeneralKnowledge(request.cli).hash;
+      if (installed !== request.packHash) return { version: 1, bindingId: request.bindingId, instance: request.instance, cli: request.cli, packHash: installed, upgradeRequired: true };
+      try {
+        return this.general.prepare(request, current, cwd => !this.list().some(row => row.state !== "exited"
+          && this.options.store.get(row.paneId)?.launch.cwd.toLowerCase() === cwd.toLowerCase()));
+      } catch (err) {
+        // Closed, fixed-asset diagnostics cross the transport; raw errors, paths and file contents never do.
+        if (!(err instanceof GeneralManagedFileError)) throw err;
+        return { version: 1, bindingId: request.bindingId, instance: request.instance, cli: request.cli, packHash: request.packHash, managedFile: err.file };
+      }
+    }
     if (request.action === "shutdown") {
       // No await between the inventory, admission fence and reply. An accepted/queued launch or an unknown
       // reservation prevents shutdown; disconnect/lease loss alone never tears down a persistent host.
@@ -114,6 +129,7 @@ export class RuntimePaneHost {
       this.options.store.put(record);
       return { ...structuredClone(record.snapshot), reattached: false };
     }
+    if (launch.generalWorkspace) this.general.verify({ action: "general-workspace", ...launch.generalWorkspace, instance: launch.instance, cli: launch.cli }, launch.cwd);
     // Synchronous reservation before the first await: parallel opens cannot oversubscribe the machine.
     this.options.store.put(record);
     let process: RuntimePaneProcess | undefined;
@@ -182,19 +198,19 @@ export class RuntimePaneHost {
     delete record.snapshot.exitCode; this.options.store.put(record);
     return structuredClone(record.snapshot);
   }
-  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" | "shutdown" | "recover" }>, current: () => boolean): Promise<unknown> {
+  private async operate(request: Exclude<RuntimePaneRequest, { action: "list" | "open" | "shutdown" | "recover" | "general-workspace" }>, current: () => boolean): Promise<unknown> {
     const live = this.live.get(request.paneId);
     const stored = this.options.store.get(request.paneId);
     if (!stored || stored.snapshot.launchId !== request.launchId) throw Error("Pane launch identity is stale");
     if (request.action === "snapshot") return structuredClone(live?.record.snapshot ?? stored.snapshot);
     if (request.action === "session-proof") {
       const { launch, snapshot } = live?.record ?? stored;
-      if (launch.cli !== "claude-code" || snapshot.state !== "exited" || snapshot.noLaunch || !snapshot.sessionId) throw Error("Session proof requires an exited Claude pane");
+      if (!["claude-code", "codex"].includes(launch.cli) || snapshot.state !== "exited" || snapshot.noLaunch || !snapshot.sessionId) throw Error("Session proof requires an exited supported pane");
       let settled = false, timer: ReturnType<typeof setTimeout> | undefined;
       const lease = () => !settled && !this.closing && this.options.online() && current();
       const read = this.options.sessionProof
         ? this.options.sessionProof(launch, snapshot.sessionId, lease)
-        : nativeClaudeSessionState(launch.cwd, snapshot.sessionId, lease);
+        : (launch.cli === "codex" ? nativeCodexSessionState : nativeClaudeSessionState)(launch.cwd, snapshot.sessionId, lease);
       try {
         const state = await Promise.race([read, new Promise<"unknown">(done => { timer = setTimeout(() => done("unknown"), 1500); })]);
         return { snapshot: structuredClone(snapshot), state: lease() && ["absent", "saved", "unknown"].includes(state) ? state : "unknown" };
