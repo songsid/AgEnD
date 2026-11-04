@@ -21,6 +21,7 @@ import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
+import { initSettingsContentWidth } from "./settings-width.js";
 
 /** Shell state shared with panels: the phone drawer, the collapsed sidebar, extensions a panel module adds. */
 export const shellStore = createStore({ drawer: false, collapsed: readCollapsed(), keyboard: false, dialog: null, side: null, banner: null });
@@ -128,30 +129,11 @@ export function clampSidebarWidth(w, vw) {
 }
 function storedSidebarWidth() { try { const v = Number(localStorage.getItem(SIDEBAR_W_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; } }
 
-/** Settings' reading space is this device's layout choice, never a host-kept or staged preference. */
-export const SETTINGS_CONTENT_WIDTH_KEY = "agend_settings_content_width";
-export const SETTINGS_CONTENT_WIDTHS = Object.freeze([1000, 1200, 1440]);
-export const DEFAULT_SETTINGS_CONTENT_WIDTH = 1200;
-export const settingsContentWidthStore = createStore({ width: DEFAULT_SETTINGS_CONTENT_WIDTH });
-function storedSettingsContentWidth() {
-  try {
-    const value = globalThis.localStorage.getItem(SETTINGS_CONTENT_WIDTH_KEY);
-    return SETTINGS_CONTENT_WIDTHS.find((width) => String(width) === value) ?? DEFAULT_SETTINGS_CONTENT_WIDTH;
-  } catch { return DEFAULT_SETTINGS_CONTENT_WIDTH; }
-}
-function showSettingsContentWidth(width) {
-  // The property is consumed only by Settings' content maximum; CSS still fits a narrower window or form.
-  if (typeof document !== "undefined") document.documentElement.style.setProperty("--settings-width", `${width}px`);
-  settingsContentWidthStore.set({ width });
-}
-/** A page load restores this device's choice. Unreadable or invalid storage keeps the normal 1200 px maximum. */
-export function initSettingsContentWidth() { showSettingsContentWidth(storedSettingsContentWidth()); }
-/** Apply immediately even when storage is unavailable; then the choice lasts for this page only. */
-export function setSettingsContentWidth(width) {
-  if (!SETTINGS_CONTENT_WIDTHS.includes(width)) return;
-  try { globalThis.localStorage.setItem(SETTINGS_CONTENT_WIDTH_KEY, String(width)); } catch { /* this page only */ }
-  showSettingsContentWidth(width);
-}
+// #2978 merge (stale tabs, quality rule 3): Settings' content width lives in its own module — a tab opened before an
+// upgrade keeps this shell module, and a lazily loaded Settings panel that imported these names from here would fail to
+// load at all. Re-exported, so the shell and its callers are unchanged.
+export { SETTINGS_CONTENT_WIDTH_KEY, SETTINGS_CONTENT_WIDTHS, DEFAULT_SETTINGS_CONTENT_WIDTH, settingsContentWidthStore,
+  initSettingsContentWidth, setSettingsContentWidth } from "./settings-width.js";
 
 /** { width: px | null } — null: the default width (tokens.css). */
 export const sidebarWidthStore = createStore({ width: null });

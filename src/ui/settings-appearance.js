@@ -5,7 +5,8 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
-import { DEFAULT_SETTINGS_CONTENT_WIDTH, SETTINGS_CONTENT_WIDTHS, settingsContentWidthStore, setSettingsContentWidth } from "/assets/app-shell.js";
+// #2978 merge: from their own module, never from the long-lived shell (a stale tab's shell lacks them).
+import { DEFAULT_SETTINGS_CONTENT_WIDTH, SETTINGS_CONTENT_WIDTHS, settingsContentWidthStore, setSettingsContentWidth } from "/assets/settings-width.js";
 import { ModsCard } from "./settings-mods.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
