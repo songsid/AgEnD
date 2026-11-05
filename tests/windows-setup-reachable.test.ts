@@ -1,65 +1,30 @@
-/**
- * Stage 5 opened the setup page the instant WSL printed it; the browser on Windows showed ERR_CONNECTION_RESET (live,
- * 2026-10-26) — WSL's localhost relay had not picked up the new listener yet. The installer now waits, briefly, for any
- * HTTP answer from Windows' side before opening it. Run here against a real local server and a closed port.
- */
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type RequestListener, type Server } from "node:http";
-import { tmpdir } from "node:os";
+/** Real reachability loop with queued HTTP results and an injected elapsed clock; no listener race or real sleep. */
+import { afterAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { execFileSync, spawn } from "node:child_process";
-
-const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
-let hasPwsh = false;
-beforeAll(() => { try { execFileSync("pwsh", ["-NoProfile", "-Command", "1"], { stdio: "ignore" }); hasPwsh = true; } catch { hasPwsh = false; } });
-const dirs: string[] = [], servers: Server[] = [];
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); for (const s of servers.splice(0)) s.close(); });
-
-function reach(url: string, seconds: number): Promise<{ out: string; ms: number }> {
-  const dir = mkdtempSync(join(tmpdir(), "agend-reach-")); dirs.push(dir);
-  const script = join(dir, "t.ps1");
-  writeFileSync(script, `$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Wait-SetupPageReachable' }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-Write-Output ('REACHABLE=' + (Wait-SetupPageReachable '${url}' ${seconds}))`);
-  const started = Date.now();
-  return new Promise(resolve => {
-    const p = spawn("pwsh", ["-NoProfile", "-NonInteractive", "-Command", `& '${script}'`]);
-    let out = ""; p.stdout.on("data", d => { out += d; }); p.stderr.on("data", d => { out += d; });
-    p.on("close", () => resolve({ out, ms: Date.now() - started }));
-  });
+import { extractPsFunction } from "./support/installer-ps-extract.js";
+import { installerPwshBatch, withInstallerClock } from "./support/installer-pwsh-fixture.js";
+const source = readFileSync(join(import.meta.dirname, "..", "website/public/install-agend.ps1"), "utf8");
+const prelude = withInstallerClock(extractPsFunction(source, "Wait-SetupPageReachable"));
+const scenario = (kind: "http" | "delayed" | "closed", seconds: number) => `
+$script:calls = 0
+function Invoke-WebRequest { param($Uri, [switch]$UseBasicParsing, $TimeoutSec, $MaximumRedirection, $ErrorAction)
+  $script:calls++
+  if ($Uri -ne 'http://127.0.0.1:19280/s/scratch/' -or $TimeoutSec -ne 3 -or $MaximumRedirection -ne 0 -or -not $UseBasicParsing) { throw 'Wrong HTTP boundary' }
+  ${kind === "http" ? "$failure = [Net.WebException]::new('404'); $failure | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = 404 }) -Force; throw $failure" : kind === "delayed" ? "if ($script:FixtureMilliseconds -ge 2500) { return [pscustomobject]@{ StatusCode = 200 } }; throw 'No listener yet'" : "throw 'No listener'"}
 }
-const listen = (handler: RequestListener) => new Promise<number>(resolve => {
-  const s = createServer(handler); servers.push(s); s.listen(0, "127.0.0.1", () => resolve((s.address() as { port: number }).port));
+Write-Output ('REACHABLE=' + (Wait-SetupPageReachable 'http://127.0.0.1:19280/s/scratch/' ${seconds}))
+Write-Output ('ELAPSED=' + $script:FixtureMilliseconds + ' CALLS=' + $script:calls)
+`;
+const batch = installerPwshBatch({ installer: prelude }, {
+  http: { prelude: "installer", body: scenario("http", 10) },
+  delayed: { prelude: "installer", body: scenario("delayed", 15) },
+  closed: { prelude: "installer", body: scenario("closed", 3) },
 });
-
-describe("stage 5 opens the setup page only once Windows can reach it", () => {
-  it("any HTTP answer counts, a 404 included (a page under a sid answers its own way)", async () => {
-    if (!hasPwsh) return;
-    const port = await listen((_req, res) => { res.writeHead(404); res.end(); });
-    const r = await reach(`http://127.0.0.1:${port}/s/abc/`, 10);
-    expect(r.out).toContain("REACHABLE=True");
-  });
-
-  it("a listener that appears a moment later is waited for", async () => {
-    if (!hasPwsh) return;
-    const probe = createServer(); await new Promise<void>(r => probe.listen(0, "127.0.0.1", () => r()));
-    const port = (probe.address() as { port: number }).port; probe.close();
-    const pending = reach(`http://127.0.0.1:${port}/s/abc/`, 15);
-    await new Promise(r => setTimeout(r, 2500));
-    const s = createServer((_req, res) => { res.writeHead(200); res.end("ok"); }); servers.push(s);
-    await new Promise<void>(r => s.listen(port, "127.0.0.1", () => r()));
-    const r = await pending;
-    expect(r.out).toContain("REACHABLE=True");
-  }, 30_000);
-
-  it("never reachable: false after its bound, not before", async () => {
-    if (!hasPwsh) return;
-    const probe = createServer(); await new Promise<void>(r => probe.listen(0, "127.0.0.1", () => r()));
-    const port = (probe.address() as { port: number }).port; probe.close();
-    const r = await reach(`http://127.0.0.1:${port}/`, 3);
-    expect(r.out).toContain("REACHABLE=False");
-    expect(r.ms).toBeGreaterThanOrEqual(3000);
-  }, 30_000);
+afterAll(batch.cleanup);
+const output = (name: string) => { expect(batch.results[name]?.error).toBeNull(); return batch.results[name]!.out; };
+describe.skipIf(!batch.available)("stage 5 opens the page only after Windows can reach it", () => {
+  it("any HTTP answer counts, including 404, with no wait", () => { expect(output("http")).toContain("REACHABLE=True"); expect(output("http")).toContain("ELAPSED=0 CALLS=1"); });
+  it("a listener appearing later is retried until its first answer", () => { expect(output("delayed")).toContain("REACHABLE=True"); expect(output("delayed")).toContain("ELAPSED=2500 CALLS=6"); });
+  it("never reachable: false at its configured bound, not before", () => { expect(output("closed")).toContain("REACHABLE=False"); expect(output("closed")).toContain("ELAPSED=3000 CALLS=6"); });
 });
