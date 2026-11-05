@@ -14,9 +14,9 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { InstallerPsBatch, hasPwsh } from "./support/installer-ps-batch.js";
-import { extractInstallerPrelude, extractPsAssignments } from "./support/installer-ps-extract.js";
+import { extractPsFunction, extractPsAssignments } from "./support/installer-ps-extract.js";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
@@ -51,7 +51,22 @@ describe("the existing-Ubuntu choice (static)", () => {
 });
 
 const pwsh = hasPwsh;
-const batch = new InstallerPsBatch({ installer: extractInstallerPrelude(text) + "\n" + extractPsAssignments(text, ["AGEND_DISTRO_BASE", "WSL_NAME_MIN", "DISTRO_LIST_URL", "DASHBOARD_OPENER_FN"]) });
+// Only this suite's call closure. Retain the real native-process/watched runner,
+// file hashing and script builders; unrelated login/network/bootstrap code is never compiled.
+const helperNames = [
+  "Write-Ok", "Write-Warn", "Write-Err", "Write-Info", "Write-InstallLog", "Protect-LogText",
+  "Get-WslDistroNames", "Get-WslRegisteredNames", "Get-DistroSituation", "Get-FreeAgendDistroName",
+  "Get-ExistingAgendDistro", "Read-DistroChoice", "Get-UbuntuWslImage", "Install-AgendDistro",
+  "Get-InstalledWslVersion", "Read-InstallRecord", "Get-AgendShortcutDir", "Get-InstallRecordConflict",
+  "Get-RestartScript", "Get-DashboardOpenerScript", "Get-ShortcutTargetLine", "ConvertTo-PsLiteral", "Invoke-BoundedWsl",
+  "Invoke-Watched", "Join-ProcessArguments", "Test-LiveConsole", "Enter-StepConsole", "Restore-StepConsole",
+  "New-OutputTail", "Read-OutputTail", "Split-ToolOutput", "Get-LastSegment", "Format-Elapsed",
+  "Get-StatusWidth", "New-StatusConsole", "Write-StatusLine", "Format-StatusLine", "Limit-Width", "Get-SafeWidth", "Get-DisplayWidth",
+  "Confirm-StopInstall", "Read-StepKey", "Test-CtrlC", "Stop-InstallChild",
+];
+const prelude = helperNames.map(name => extractPsFunction(text, name)).join("\n") + "\n" +
+  extractPsAssignments(text, ["AGEND_DISTRO_BASE", "WSL_NAME_MIN", "DISTRO_LIST_URL", "WSL_COMMAND_FN", "RESTART_FN", "DASHBOARD_OPENER_FN"]);
+const batch = new InstallerPsBatch({ installer: prelude });
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 const scratch = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
@@ -90,6 +105,9 @@ function Invoke-InstallDownload { param($Uri, $OutFile, [switch]$UseBasicParsing
 `;
 
 describe.skipIf(!pwsh)("with pwsh: choosing and installing AgEnD's own Ubuntu", () => {
+  beforeAll(async () => {
+    expect(await batch.run("installer", "Write-Output 'DISTRO_WORKER_READY'")).toContain("DISTRO_WORKER_READY");
+  });
   it.each([["1", "separate"], [" 1 ", "separate"], ["2", "existing"], ["", "quit"], ["y", "quit"], ["12", "quit"], ["no input", "quit"]])("the choice: %j → %s (only 1 or 2 count)", async (answer, want) => {
     const { out } = (await withHelpers(`Write-Output ("CHOICE=" + (Read-DistroChoice 'Ubuntu-24.04'))`, fakeWsl([]), answer === "no input" ? "" : `${answer}\n`));
     expect(out).toContain(`CHOICE=${want}\n`);
