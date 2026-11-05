@@ -98,8 +98,9 @@ it("carries one global receipt cursor across history and known-ID pages, and nev
   expect(cursors).toEqual([0, 100, 130]); expect(f.journal.unackedReceipts({}).receipts).toEqual([]);
 });
 it.each(["epoch", "request", "receipt", "cursor", "no-progress"])("refuses a %s mismatch and leaves unconfirmed receipts outstanding", async failure => {
-  const f = fixture(); f.queued();
+  const f = fixture(); f.queued(); let exchanges = 0;
   const link = fakeLink(async frame => {
+    exchanges++;
     if (frame.type === "receipt") return { ...frame, payload: { ...frame.payload, at: frame.payload.at + 1 } };
     if (frame.type !== "reconcile") throw Error();
     return { ...frame, ...(failure === "epoch" ? { linkEpoch: 2 } : {}), ...(failure === "request" ? { requestId: randomUUID() } : {}),
@@ -107,6 +108,7 @@ it.each(["epoch", "request", "receipt", "cursor", "no-progress"])("refuses a %s 
   });
   await expect(createHubMemberHandshake({ journal: f.journal, publishSnapshot: async () => {} })(link)).rejects.toThrow();
   expect(f.journal.unackedReceipts({}).receipts).toHaveLength(1);
+  if (failure === "no-progress") expect(exchanges).toBe(1);
 });
 it.each(["current", "version"])("rechecks %s after a response before acknowledging", async field => {
   const f = fixture(), row = f.queued(); let current = true, version = 0;
@@ -149,4 +151,31 @@ it("flushes a newly advanced receipt after an older in-flight ACK without acknow
   });
   await createHubMemberHandshake({ journal: f.journal, publishSnapshot: async () => {} })(link);
   expect(stages).toEqual(["queued", "delivered"]); expect(f.journal.unackedReceipts({}).receipts).toEqual([]);
+});
+
+it.each(["equal", "decreasing"])("refuses a %s receipt sequence inside a page before acknowledging any row", async order => {
+  const f = fixture(), a = f.queued(), b = f.queued(); let exchanges = 0;
+  const link = fakeLink(async frame => {
+    exchanges++;
+    return { v: 1, type: "reconcile", requestId: frame.requestId, linkEpoch: 1,
+      payload: { receipts: order === "equal" ? [a.receipt, { ...b.receipt, sequence: a.receipt.sequence }] : [b.receipt, a.receipt],
+        nextReceiptSequence: a.receipt.sequence, more: false } };
+  });
+  await expect(createHubMemberHandshake({ journal: f.journal, publishSnapshot: async () => {} })(link)).rejects.toThrow("conflict");
+  expect(exchanges).toBe(1); expect(f.journal.unackedReceipts({}).receipts).toEqual([a.receipt, b.receipt]);
+});
+it("the final barrier refuses a journal revocation floor changed independently of the captured link", async () => {
+  const f = fixture();
+  await expect(createHubMemberHandshake({ journal: f.journal, publishSnapshot: async () => { f.journal.observeRevocationVersion(1); } })(fakeLink())).rejects.toThrow("stale");
+  expect(f.journal.revocationVersion()).toBe(1);
+});
+it("the final barrier refuses evidence that appears after the last empty outstanding-receipt read", async () => {
+  const f = fixture(), read = f.journal.unackedReceipts.bind(f.journal); let first = true;
+  vi.spyOn(f.journal, "unackedReceipts").mockImplementation(input => {
+    const page = read(input);
+    if (first) { first = false; f.queued(); } // another durable writer just advanced after this page's snapshot
+    return page;
+  });
+  await expect(createHubMemberHandshake({ journal: f.journal, publishSnapshot: async () => {} })(fakeLink())).rejects.toThrow("stale");
+  expect(read({}).receipts).toHaveLength(1);
 });
