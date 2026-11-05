@@ -8658,10 +8658,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.startInstancesWithConcurrency(others, topicMode, () => startupProgress.markReady(), classicAtBoot);
     }
 
+    // #3066 §1d (Fable r1): on every fleet — a web-only one (#2910) has no chat connection at all, and is the clearest
+    // case with no Discord bot reading. Each tick decides for itself whether to read (backgroundQuotaRead).
+    this.startQuotaBackgroundReads();
+
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
       await adapterStartup;
       this.startDiscordUsagePresence();
-      this.startQuotaBackgroundReads();
 
       // Bind every fleet instance deterministically. Explicit channel_id wins;
       // otherwise channels[0] is authoritative. Do not infer identity from
@@ -15026,6 +15029,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claudeConfigDir: this.claudeConfigDirOf(ch.instanceName),
       profile: this.usageProfileOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
       kiroDbPath: this.kiroDbPathOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
+      // #3066 §1d (Fable r1 #2): a ClassicBot Codex room records its launches too (onDaemonReady) — read them the same way.
+      ...((this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend) === "codex"
+        ? { profileTimelinePath: join(this.getInstanceDir(ch.instanceName), PROFILE_TIMELINE_FILE) } : {}),
     }));
     return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
   }
