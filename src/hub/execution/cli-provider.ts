@@ -101,18 +101,26 @@ export async function createHubCliProvider(options: HubCliProviderOptions): Prom
       const close = (): Promise<void> => {
         if (closed) return closed;
         let resolve!: () => void, reject!: (error: unknown) => void;
-        closed = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+        const attempt = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+        closed = attempt;
         fail();
         void (async () => {
           let failed = false;
           try {
             if (creation) {
               try { container ??= await creation; } catch { /* Inspect the owned name after an ambiguous create. */ }
-              // The random name is ours even when create returned an ambiguous outcome. Inspect ownership first.
-              const rows = z.array(z.unknown()).length(1).parse(parseStrictJson(await command(["container", "inspect", container ?? name])));
-              const c = object(rows[0]);
-              if (object(object(c.Config).Labels)["org.agend.hub.question"] !== token || typeof c.Id !== "string" || !/^[a-f0-9]{64}$/.test(c.Id)) throw new HubProtocolError("uncertain");
-              await command(["rm", "--force", c.Id]);
+              const knownId = container && /^[a-f0-9]{64}$/.test(container) ? container : undefined;
+              // A lost rm response can mean removal succeeded. Confirm absence by exact immutable ID, never by label alone.
+              const listed = knownId ? await command(["container", "ls", "--all", "--no-trunc", "--filter", `id=${knownId}`, "--format", "{{.ID}}"]) : undefined;
+              if (listed && listed !== knownId) throw new HubProtocolError("uncertain");
+              if (listed !== "") {
+                // The random name is ours even when create returned an ambiguous outcome. Inspect ownership before removal.
+                const rows = z.array(z.unknown()).length(1).parse(parseStrictJson(await command(["container", "inspect", knownId ?? name])));
+                const c = object(rows[0]);
+                if (object(object(c.Config).Labels)["org.agend.hub.question"] !== token || typeof c.Id !== "string" || !/^[a-f0-9]{64}$/.test(c.Id)) throw new HubProtocolError("uncertain");
+                container = c.Id;
+                await command(["rm", "--force", container]);
+              }
             }
           } catch { failed = true; poisoned = true; }
           finally {
@@ -126,11 +134,14 @@ export async function createHubCliProvider(options: HubCliProviderOptions): Prom
                 finally { clearTimeout(timer); }
               }
             } catch { failed = true; poisoned = true; }
-            finally { clearTimeout(deadline); input.signal.removeEventListener("abort", onAbort); active--; sessions.delete(close); }
+            finally {
+              clearTimeout(deadline); input.signal.removeEventListener("abort", onAbort);
+              if (!failed) { active--; sessions.delete(close); }
+            }
           }
           if (failed) throw new HubProtocolError("uncertain");
-        })().then(resolve, reject);
-        return closed;
+        })().then(resolve, error => { closed = undefined; reject(error); });
+        return attempt;
       };
       const onAbort = () => { void close().catch(() => {}); };
       const deadline = setTimeout(onAbort, 120_000); deadline.unref();
@@ -216,8 +227,10 @@ export async function createHubCliProvider(options: HubCliProviderOptions): Prom
           async answer(scopedGateway) {
             if (answering || abort.signal.aborted) throw new HubProtocolError("stale");
             answering = true; gateway = scopedGateway; releaseGateway();
-            try { const text = await result; if (await exit !== 0) throw new HubProtocolError("uncertain"); await close(); return text; }
+            let text: string;
+            try { text = await result; if (await exit !== 0) throw new HubProtocolError("uncertain"); }
             catch { await close(); throw new HubProtocolError("uncertain"); }
+            await close(); return text;
           }, close,
         };
       } catch { await close(); throw new HubProtocolError("uncertain"); }

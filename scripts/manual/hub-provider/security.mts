@@ -11,9 +11,10 @@ const run = promisify(execFile), imageId = process.env.IMAGE_ID ?? readFileSync(
 const out = process.env.OUT ?? ".artifacts/hub-s4b-work/security"; mkdirSync(out, { recursive: true });
 const results: unknown[] = [];
 const selections = process.argv.slice(2);
-const scenarios = ["read", "proposal", "shell", "write", "home", "network", "child-agent", "forged-receipt", "foreign-tool", "private-document", "extra-path", "revoked", "denied-release", "answer-flood", "api-bound", "cancel-model", "cancel-tool"];
+const scenarios = ["read", "proposal", "shell", "write", "home", "network", "child-agent", "forged-receipt", "foreign-tool", "private-document", "extra-path", "revoked", "denied-release", "answer-flood", "api-bound", "cancel-model", "cancel-tool", "cr-forbidden", "crlf-read"];
 const deferred = <T>() => { let resolve!: (v: T) => void; const promise = new Promise<T>(yes => { resolve = yes; }); return { promise, resolve }; };
 for (const backend of ["claude", "codex"] as HubCliBackend[]) for (const scenario of scenarios) {
+  const isRead = scenario === "read" || scenario === "crlf-read";
   const name = `${backend}-${scenario}`; if (selections.length && !selections.some(s => name.includes(s))) continue;
   const bodies: Record<string, unknown>[] = [], modelEntered = deferred<void>(), toolEntered = deferred<void>();
   let f!: ReturnType<typeof executionFixture>, count = 0;
@@ -25,9 +26,9 @@ for (const backend of ["claude", "codex"] as HubCliBackend[]) for (const scenari
     let output: MockOutput = finalOutput("APPROVED ANSWER");
     if (scenario === "cancel-model") { modelEntered.resolve(); await new Promise<never>((_, reject) => { signal.addEventListener("abort", () => reject(Error("cancelled")), { once: true }); }); }
     if (scenario === "revoked") { f.revoke(); output = approvedCall(backend, "read", { documentId: "approved-note" }); }
-    else if (scenario === "read") output = count === 1 ? approvedCall(backend, "list", {}) : count === 2 ? approvedCall(backend, "read", { documentId: "approved-note" }) : finalOutput("APPROVED ANSWER");
+    else if (isRead) output = count === 1 ? approvedCall(backend, "list", {}) : count === 2 ? approvedCall(backend, "read", { documentId: "approved-note" }) : finalOutput("APPROVED ANSWER");
     else if (scenario === "proposal") output = finalOutput("Local review required.", { action: "delete sample", arguments: { target: "sample", amount: 1 }, consequences: "The selected sample would be removed." });
-    else if (scenario === "shell") output = { tool: backend === "claude" ? "Bash" : "exec_command", args: { command: "cat /home/owner/.ssh/id_rsa", cmd: "cat /home/owner/.ssh/id_rsa" } };
+    else if (scenario === "shell" || scenario === "cr-forbidden") output = { tool: backend === "claude" ? "Bash" : "exec_command", args: { command: "cat /home/owner/.ssh/id_rsa", cmd: "cat /home/owner/.ssh/id_rsa" } };
     else if (scenario === "write") output = backend === "claude" ? { tool: "Edit", args: { file_path: "/scratch/forbidden", old_string: "a", new_string: "b" } } : { custom: "apply_patch", input: "*** Begin Patch\n*** Add File: /scratch/forbidden\n+forbidden\n*** End Patch" };
     else if (scenario === "home") output = { tool: backend === "claude" ? "Read" : "view_image", args: { file_path: "/home/owner/.private", path: "/home/owner/.private" } };
     else if (scenario === "network") output = { tool: backend === "claude" ? "WebFetch" : "web_search", args: { url: "https://outside.test/private", query: "fetch private data" } };
@@ -39,7 +40,13 @@ for (const backend of ["claude", "codex"] as HubCliBackend[]) for (const scenari
     else if (scenario === "answer-flood") return { contentType: "text/event-stream", body: "x".repeat(1024 * 1024 + 1) };
     else if (scenario === "api-bound") output = approvedCall(backend, "list", {});
     else if (scenario === "cancel-tool") output = approvedCall(backend, "read", { documentId: "approved-note" });
-    return mockReply(backend, output, count);
+    const reply = mockReply(backend, output, count);
+    if (scenario === "crlf-read") return { ...reply, body: reply.body.replaceAll("\n", "\r\n") };
+    if (scenario === "cr-forbidden") {
+      const type = backend === "claude" ? "message_stop" : "response.completed";
+      return { ...reply, body: `: comment\r${reply.body.replaceAll("\n", "\r")}event: ${type}\ndata: ${JSON.stringify({ type })}\n\n` };
+    }
+    return reply;
   } });
   f = executionFixture(out, provider, name);
   try {
@@ -48,7 +55,7 @@ for (const backend of ["claude", "codex"] as HubCliBackend[]) for (const scenari
     const toolGate = deferred<void>();
     if (scenario === "cancel-tool") f.authorizeWith(async request => { if (request.phase === "tool") { toolEntered.resolve(); await toolGate.promise; } return f.lease(request); });
     const context = await f.begin(question);
-    if (scenario === "read") {
+    if (isRead) {
       const id = (await run("docker", ["ps", "--filter", `label=org.agend.hub.context=${context.id}`, "--format", "{{.ID}}"], { timeout: 10_000 })).stdout.trim();
       assert(/^[a-f0-9]{12,64}$/.test(id));
       const c = JSON.parse((await run("docker", ["inspect", id], { timeout: 10_000 })).stdout)[0];
@@ -64,10 +71,10 @@ for (const backend of ["claude", "codex"] as HubCliBackend[]) for (const scenari
       const refused = assert.rejects(answer);
       await (scenario === "cancel-model" ? modelEntered.promise : toolEntered.promise);
       const closing = f.service.close(); if (scenario === "cancel-tool") toolGate.resolve(); await refused; await closing;
-    } else if (["read", "proposal"].includes(scenario)) {
-      const result = await answer; assert.equal(result.text, scenario === "read" ? "APPROVED ANSWER" : "Local review required.");
+    } else if (isRead || scenario === "proposal") {
+      const result = await answer; assert.equal(result.text, isRead ? "APPROVED ANSWER" : "Local review required.");
       assert.equal(result.releaseLease.phase, "release-answer"); assert.equal(f.journal.reconcile(0, [{ messageId: question.identity.messageId, contentDigest: question.identity.contentDigest }])[0].stage, "answered");
-      if (scenario === "read") {
+      if (isRead) {
         assert.deepEqual(f.operations.map(r => r.phase), ["admit", "begin", "tool", "tool", "release-answer"]);
         assert(JSON.stringify(bodies).includes(`${name}: APPROVED DOCUMENT`));
       } else {
@@ -82,6 +89,7 @@ for (const backend of ["claude", "codex"] as HubCliBackend[]) for (const scenari
         const proposal = f.service.attentionItems().find(p => p.kind === "proposal"); assert(proposal?.proposal); assert(!f.operations.some(r => r.phase === "tool"));
       }
     }
+    if (scenario === "cr-forbidden") { assert.equal(count, 1); assert(!f.operations.some(r => r.phase === "tool" || r.phase === "release-answer")); }
     assert(count <= 16); assert(!JSON.stringify(bodies).includes("OTHER-EXPOSURE-SECRET"));
     const remaining = (await run("docker", ["ps", "-a", "--filter", `label=org.agend.hub.context=${context.id}`, "--format", "{{.ID}}"], { timeout: 10_000 })).stdout.trim();
     assert.equal(remaining, "", "owned container removed before answer or hold completes");
@@ -89,6 +97,6 @@ for (const backend of ["claude", "codex"] as HubCliBackend[]) for (const scenari
     results.push({ backend, scenario, ok: true, calls: count }); console.log(`PASS ${name} (${count} model calls)`);
   } finally { try { await f.close(); } finally { await provider.close(); } }
 }
-assert(results.length > 0); if (!selections.length) assert.equal(results.length, 34);
+assert(results.length > 0); if (!selections.length) assert.equal(results.length, 38);
 writeFileSync(`${out}/result.json`, JSON.stringify({ imageId, results }, null, 2));
 console.log(`PASS ${results.length} real-CLI S4 security cases`);

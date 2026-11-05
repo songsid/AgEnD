@@ -245,6 +245,9 @@ const cases = [
   }
 ];
 cases.push({name:"drain_failed_cleanup",path:"src/hub/execution/cli-provider.ts",replacements:[["await Promise.allSettled([...work]);","void work;"]],test:"tests/hub-cli-provider.test.ts",pattern:"physical broker work through a failed"});
+cases.push({name:"lone_cr_sse_bypass",path:"src/hub/execution/model-broker.ts",replacements:[["if (/\\r(?!\\n)/.test(reply.body)) throw new HubProtocolError(\"invalid\");","void reply;"]],test:"tests/hub-cli-broker.test.ts",pattern:"lone CR and mixed CR"});
+cases.push({name:"drop_failed_cleanup_owner",path:"src/hub/execution/cli-provider.ts",replacements:[["if (!failed) { active--; sessions.delete(close); }","active--; sessions.delete(close);"]],test:"tests/hub-cli-provider.test.ts",pattern:"retains failed cleanup ownership"});
+cases.push({name:"cache_failed_cleanup_forever",path:"src/hub/execution/cli-provider.ts",replacements:[["error => { closed = undefined; reject(error); }","error => { reject(error); }"]],test:"tests/hub-cli-provider.test.ts",pattern:"retains failed cleanup ownership"});
 const filters = process.argv.slice(2);
 if (filters.some(name => !cases.some(c => c.name === name))) throw Error("Unknown mutation name");
 const selected = filters.length ? cases.filter(c => filters.includes(c.name)) : cases;

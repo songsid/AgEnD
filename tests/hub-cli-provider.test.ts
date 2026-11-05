@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import type { HubExecutionGateway } from "../src/hub/execution/service.js";
 const state = vi.hoisted(() => ({ commands: [] as any[], processes: [] as any[], containers: new Map<string, any>(),
   socket: true, imageArchitecture: "amd64", holdCreate: null as Promise<void> | null, skipInput: false, wrongInput: false, tool: false, toolName: "mcp__hub_documents__documents_read", toolArgs: { documentId: "approved" } as unknown,
-  proposal: false, badExit: false, cleanupFails: false, weaken: false, outputFlood: false }));
+  proposal: false, badExit: false, cleanupFails: false, cleanupRemovedThenFails: false, listFails: false, weaken: false, outputFlood: false }));
 vi.mock("node:fs", async original => ({ ...await original<typeof import("node:fs")>(), lstatSync: () => ({ isSocket: () => state.socket }) }));
 vi.mock("../src/child-process.js", async () => {
   const { EventEmitter } = await import("node:events"), { PassThrough } = await import("node:stream");
@@ -19,10 +19,13 @@ vi.mock("../src/child-process.js", async () => {
       const id = (state.containers.size + 1).toString(16).padStart(64, "0"), token = args[args.indexOf("--label") + 1].split("=")[1];
       state.containers.set(id, { Id: id, Image: "sha256:" + "a".repeat(64), Config: { User: "65532:65532", WorkingDir: "/scratch", Entrypoint: ["/usr/local/bin/node"], Cmd: ["/opt/agend/sandbox-runner.js"], Labels: { "org.agend.hub.question": token, "org.agend.hub.context": args[args.indexOf(`org.agend.hub.question=${token}`) + 2].split("=")[1] } }, Mounts: [],
         HostConfig: { NetworkMode: state.weaken ? "host" : "none", ReadonlyRootfs: true, Privileged: false, Init: true, LogConfig: { Type: "none" }, Memory: 1073741824, MemorySwap: 1073741824, NanoCpus: 1_000_000_000, PidsLimit: 64, CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges:true"], Tmpfs: { "/scratch": "rw,nosuid,nodev,noexec,size=67108864,mode=1777" } } }); stdout = id;
+    } else if (args[0] === "container" && args[1] === "ls") {
+      if (state.listFails) throw Error("cannot confirm absence");
+      const id = args[args.indexOf("--filter") + 1].slice(3); stdout = state.containers.has(id) ? id : "";
     } else if (args[0] === "container") stdout = JSON.stringify([state.containers.get(args.at(-1)!)]);
     else if (args[0] === "rm") {
       if (state.cleanupFails) throw Error("unavailable");
-      const id = args.at(-1)!; state.containers.delete(id); state.processes.find(p => p.id === id)?.kill(); stdout = id;
+      const id = args.at(-1)!; state.containers.delete(id); state.processes.find(p => p.id === id)?.kill(); if (state.cleanupRemovedThenFails) throw Error("lost removal response"); stdout = id;
     } else throw Error("unexpected command");
     return { stdout, stderr: "" };
   } });
@@ -55,7 +58,7 @@ const broker = vi.fn<HubModelBroker>(async () => ({ contentType: "application/js
 const gateway = (): HubExecutionGateway => ({ invoke: vi.fn(async () => ({ text: "approved" })), propose: vi.fn(async () => {}) });
 const factory = () => createHubCliProvider({ backend: "claude", imageId: "sha256:" + "a".repeat(64), model: "local-model", modelBroker: broker });
 const tick = async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); };
-beforeEach(() => { state.commands = []; state.processes = []; state.containers.clear(); Object.assign(state, { socket: true, imageArchitecture: "amd64", holdCreate: null, skipInput: false, wrongInput: false, tool: false, toolName: "mcp__hub_documents__documents_read", toolArgs: { documentId: "approved" }, proposal: false, badExit: false, cleanupFails: false, weaken: false, outputFlood: false }); broker.mockClear(); });
+beforeEach(() => { state.commands = []; state.processes = []; state.containers.clear(); Object.assign(state, { socket: true, imageArchitecture: "amd64", holdCreate: null, skipInput: false, wrongInput: false, tool: false, toolName: "mcp__hub_documents__documents_read", toolArgs: { documentId: "approved" }, proposal: false, badExit: false, cleanupFails: false, cleanupRemovedThenFails: false, listFails: false, weaken: false, outputFlood: false }); broker.mockClear(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("Hub disposable provider lifecycle", () => {
@@ -112,6 +115,27 @@ describe("Hub disposable provider lifecycle", () => {
     await tick(); expect(settled).toBe(false);
     held.resolve({ contentType: "application/json", body: '{"type":"message","content":[{"type":"text","text":"WITHHELD"}]}' });
     await refused; expect(await stopped).toBeInstanceOf(Error); expect(settled).toBe(true); expect(() => provider.isolation).toThrow();
+  });
+  it.each(["session", "provider"])("retains failed cleanup ownership until a positive %s retry without reopening or answering", async retry => {
+    const provider = await factory(), session = await provider.open(input()); state.cleanupFails = true;
+    await expect(session.answer(gateway())).rejects.toThrow(); expect(state.containers.size).toBe(1);
+    await expect(provider.close()).rejects.toThrow(); await expect(session.close()).rejects.toThrow(); expect(state.containers.size).toBe(1);
+    state.cleanupFails = false;
+    const attempts = state.commands.filter(c => c.args[0] === "rm").length;
+    const first = retry === "session" ? session.close() : provider.close();
+    await expect(Promise.all([first, session.close(), provider.close()])).resolves.toEqual([undefined, undefined, undefined]); expect(state.containers.size).toBe(0);
+    expect(state.commands.filter(c => c.args[0] === "rm").length).toBe(attempts + 1);
+    await provider.close(); await session.close(); expect(state.commands.filter(c => c.args[0] === "rm").length).toBe(attempts + 1);
+    expect(() => provider.isolation).toThrow(); await expect(provider.open(input())).rejects.toThrow(); await expect(session.answer(gateway())).rejects.toThrow();
+  });
+  it("confirms absence after a lost successful removal response before retiring cleanup", async () => {
+    const provider = await factory(), session = await provider.open(input()); state.cleanupRemovedThenFails = true;
+    await expect(session.answer(gateway())).rejects.toThrow(); expect(state.containers.size).toBe(0);
+    state.listFails = true; await expect(provider.close()).rejects.toThrow(); state.listFails = false;
+    const attempts = state.commands.filter(c => c.args[0] === "rm").length;
+    await expect(provider.close()).resolves.toBeUndefined(); await expect(session.close()).resolves.toBeUndefined(); expect(() => provider.isolation).toThrow();
+    expect(state.commands.some(c => c.args[0] === "container" && c.args[1] === "ls")).toBe(true);
+    expect(state.commands.filter(c => c.args[0] === "rm")).toHaveLength(attempts);
   });
   it("waits for pending creation on abort, then removes exactly that owned container", async () => {
     const gate = deferred<void>(); state.holdCreate = gate.promise; const provider = await factory(), signal = new AbortController();

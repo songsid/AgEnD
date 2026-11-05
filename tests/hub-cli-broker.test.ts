@@ -73,6 +73,21 @@ describe("Hub CLI model and tool broker", () => {
     expect(() => validateModelReply("claude", { body: 'event: content_block_start\ndata: {"type":"message_stop","content_block":{"name":"Bash"}}\n\n', contentType: "text/event-stream" })).toThrow();
     expect(() => validateModelReply("claude", { body: 'event: message_stop\ndata: {"type":"message_stop","type":"content_block_start"}\n\n', contentType: "text/event-stream" })).toThrow();
   });
+  it.each(["claude", "codex"] as const)("refuses lone CR and mixed CR framing for %s before forwarding native tool events", backend => {
+    const bad = backend === "claude"
+      ? event("content_block_start", { index: 0, content_block: { type: "tool_use", name: "Bash", input: { command: "probe" } } })
+      : event("response.output_item.done", { item: { type: "function_call", name: "exec_command", arguments: '{"cmd":"probe"}' } });
+    const done = event(backend === "claude" ? "message_stop" : "response.completed");
+    const crBad = bad.replaceAll("\n", "\r");
+    for (const body of [bad + done, (bad + done).replaceAll("\n", "\r\n"), (bad + done).replaceAll("\n", "\r"),
+      `: comment\r${crBad}${done}`, `: comment\r\n${crBad}${done}`, `${done}${crBad}${done}`]) {
+      expect(() => validateModelReply(backend, { body, contentType: "text/event-stream" })).toThrow();
+    }
+    for (const body of [done, done.replaceAll("\n", "\r\n")]) {
+      const reply = { body, contentType: "text/event-stream" as const }; expect(validateModelReply(backend, reply)).toBe(reply);
+    }
+    expect(() => validateModelReply(backend, { body: done.replaceAll("\n", "\r"), contentType: "text/event-stream" })).toThrow();
+  });
   it("keeps credentials outside the container and restricts network to fixed HTTPS API endpoints without redirects", async () => {
     const fetcher = vi.fn<typeof fetch>(async () => new Response(event("message_stop"), { status: 200, headers: { "content-type": "text/event-stream" } })); vi.stubGlobal("fetch", fetcher);
     const broker = createHubModelBroker({ claude: "FAKE-CLAUDE-CREDENTIAL", codex: "FAKE-CODEX-CREDENTIAL" });

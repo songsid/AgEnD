@@ -88,6 +88,8 @@ export function validateModelReply(backend: HubCliBackend, reply: HubModelReply)
     if (backend !== "claude") throw new HubProtocolError("incompatible");
     check(parseStrictJson(reply.body, MODEL_WIRE_LIMIT));
   } else {
+    // Downstream SSE parsers treat lone CR as a line ending too. Refuse it before forwarding original bytes.
+    if (/\r(?!\n)/.test(reply.body)) throw new HubProtocolError("invalid");
     const events: Record<string, unknown>[] = [];
     for (const block of reply.body.replace(/\r\n/g, "\n").split("\n\n")) {
       const data = block.split("\n").filter(l => l.startsWith("data:")).map(l => l.slice(5).trimStart()).join("\n");
