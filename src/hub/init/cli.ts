@@ -10,17 +10,13 @@ import { canonicalCliEntry } from "../../cli-entry.js";
 import { getAgendHome } from "../../paths.js";
 import { createHubDirectory } from "../directory/index.js";
 import { realFleetProbe } from "./existing-fleet.js";
-import { createHubInitializer, UNAVAILABLE_IDENTITY } from "./initializer.js";
+import { hubIdentityProvider } from "./identity.js";
+import { createHubInitializer } from "./initializer.js";
 import { terminalIO } from "./prompt.js";
 import type { HubIdentityProvider } from "./types.js";
 import { runHubInitWizard, type HubServiceControl, type HubWizardOutcome } from "./wizard.js";
 
 const SERVICE_LABEL = "com.agend.fleet";
-
-/** S1 wires its provisioning here when the Hub transport lands (provisionHubIdentity / read helper / sealHubInitialization). */
-export function hubIdentityProvider(): HubIdentityProvider {
-  return UNAVAILABLE_IDENTITY;
-}
 
 async function realService(home: string): Promise<HubServiceControl> {
   const installer = await import("../../service-installer.js");

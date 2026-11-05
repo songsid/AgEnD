@@ -863,18 +863,21 @@ export async function runQuickstart(): Promise<void> {
       }
     }
 
-    // #3095: the first question of a fresh setup (an existing fleet keeps its menu above; `agend hub init` is always
-    // there). A team Hub is set up by its own wizard and needs no tmux or AI CLI, so it is asked before those checks.
-    console.log(bold(t("qs.machine_title")));
-    console.log(`    1. ${t("qs.machine_fleet")}`);
-    console.log(`    2. ${t("qs.machine_hub")}`);
-    if (quickstartMachine(await rl.question("  Choose [1]: ")) === "hub") {
-      rl.close();
-      const { runHubInitCommand } = await import("./hub/init/cli.js");
-      await runHubInitCommand();
-      return;
+    // #3095: the first question of a fresh setup (an existing fleet keeps its menu above), asked only once this build
+    // can actually set up a Hub (its key generation ships with the Hub transport); until then quickstart is unchanged.
+    // A team Hub is set up by its own wizard and needs no tmux or AI CLI, so it is asked before those checks.
+    if ((await import("./hub/init/identity.js")).hubIdentityProvider().available) {
+      console.log(bold(t("qs.machine_title")));
+      console.log(`    1. ${t("qs.machine_fleet")}`);
+      console.log(`    2. ${t("qs.machine_hub")}`);
+      if (quickstartMachine(await rl.question("  Choose [1]: ")) === "hub") {
+        rl.close();
+        const { runHubInitCommand } = await import("./hub/init/cli.js");
+        await runHubInitCommand();
+        return;
+      }
+      console.log();
     }
-    console.log();
 
     // Check tmux
     try {

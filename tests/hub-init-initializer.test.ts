@@ -4,7 +4,7 @@
  * and never replacing an identity it did not create.
  */
 import { beforeAll, describe, expect, it } from "vitest";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { createHubInitializer, STAGES, UNAVAILABLE_IDENTITY, type HubInitStage } from "../src/hub/init/initializer.js";
@@ -37,10 +37,13 @@ function plan(over: Partial<HubInitPlan> = {}): HubInitPlan {
   };
 }
 
-function make(opts: { home?: string; afterStage?: (s: HubInitStage) => void; identity?: FakeIdentity; now?: () => number } = {}) {
+function make(opts: { home?: string; afterStage?: (s: HubInitStage) => void; identity?: FakeIdentity; now?: () => number; uid?: number } = {}) {
   const home = opts.home ?? tempDir("agend-hubinit-unit-");
   const identity = opts.identity ?? new FakeIdentity();
-  const init = createHubInitializer({ home, identity, probe: { pidAlive: () => false }, ...(opts.afterStage ? { afterStage: opts.afterStage } : {}), ...(opts.now ? { now: opts.now } : {}) });
+  const init = createHubInitializer({
+    home, identity, probe: { pidAlive: () => false },
+    ...(opts.afterStage ? { afterStage: opts.afterStage } : {}), ...(opts.now ? { now: opts.now } : {}), ...(opts.uid !== undefined ? { uid: opts.uid } : {}),
+  });
   return { home, identity, init };
 }
 
@@ -188,6 +191,57 @@ describe("staged commit", () => {
     });
   }
 
+  it("refuses a hub directory that is a symlink, not a directory, readable by others, or owned by another user — before writing", async () => {
+    const elsewhere = tempDir("agend-hubinit-elsewhere-");
+    const cases: [string, (home: string) => void, RegExp, number?][] = [
+      ["symlink", (home) => symlinkSync(elsewhere, join(home, "hub")), /symlink or not a directory/],
+      ["file", (home) => writeFileSync(join(home, "hub"), "x"), /symlink or not a directory/],
+      ["group-readable", (home) => { mkdirSync(join(home, "hub")); chmodSync(join(home, "hub"), 0o750); }, /readable by other users/],
+      ["other owner", () => {}, /owned by another user/, (process.getuid?.() ?? 0) + 1],
+    ];
+    for (const [label, arrange, error, uid] of cases) {
+      const t = make(uid !== undefined ? { uid } : {});
+      arrange(t.home);
+      const c = await t.init.prepareConfirmation(plan(), { bindPassword: BIND_PW });
+      await expect(t.init.commit(plan(), c.reference), label).rejects.toThrow(error);
+      expect(existsSync(join(t.home, "fleet.yaml")), label).toBe(false);
+      expect(t.identity.provisions, label).toBe(0);
+    }
+    expect(readdirSync(elsewhere)).toEqual([]);
+  });
+
+  it("a resumed setup refuses an identity on disk that is not the one it created", async () => {
+    let armed = true;
+    const t = make({ afterStage: (s) => { if (armed && s === "identity") throw new Error("power cut"); } });
+    const c = await t.init.prepareConfirmation(plan(), { bindPassword: BIND_PW });
+    await expect(t.init.commit(plan(), c.reference)).rejects.toThrow(/power cut/);
+    // Someone replaces the keys while the setup is stopped.
+    const file = join(t.home, "hub/keys/identity.json");
+    const swapped = { ...JSON.parse(readFileSync(file, "utf8")), hubId: "00000000-0000-4000-8000-000000000000" };
+    writeFileSync(file, JSON.stringify(swapped));
+    armed = false;
+    const again = await t.init.prepareConfirmation(plan(), { bindPassword: BIND_PW });
+    await expect(t.init.commit(plan(), again.reference)).rejects.toThrow(/not the one this initialization created/);
+    expect(existsSync(join(t.home, "fleet.yaml"))).toBe(false);
+    // The same check holds for a swapped certificate key with the original hub id.
+    writeFileSync(file, JSON.stringify({ ...swapped, hubId: JSON.parse(readFileSync(join(t.home, "hub/init/operation.json"), "utf8")).identity.hubId, spkiSha256: "f".repeat(64) }));
+    const third = await t.init.prepareConfirmation(plan(), { bindPassword: BIND_PW });
+    await expect(t.init.commit(plan(), third.reference)).rejects.toThrow(/not the one this initialization created/);
+  });
+
+  it("on resume, the service password typed now replaces the one an interrupted run saved", async () => {
+    let armed = true;
+    const t = make({ afterStage: (s) => { if (armed && s === "secret") throw new Error("power cut"); } });
+    const c = await t.init.prepareConfirmation(plan(), { bindPassword: BIND_PW });
+    await expect(t.init.commit(plan(), c.reference)).rejects.toThrow(/power cut/);
+    expect(readFileSync(join(t.home, "hub/secrets/directory-bind"), "utf8")).toBe(BIND_PW);
+    armed = false;
+    const changed = "Bind-" + "c".repeat(20);
+    const again = await t.init.prepareConfirmation(plan(), { bindPassword: changed });
+    await t.init.commit(plan(), again.reference);
+    expect(readFileSync(join(t.home, "hub/secrets/directory-bind"), "utf8")).toBe(changed);
+  });
+
   it("never replaces an identity it did not create", async () => {
     const identity = new FakeIdentity();
     const home = tempDir("agend-hubinit-foreign-");
@@ -238,7 +292,7 @@ describe("hidden password input", () => {
   it("never echoes, handles backspace and swallows escape sequences, restores the terminal", async () => {
     const t = fakeTty();
     const p = readHidden(t.input, t.output, "Password: ");
-    t.type("se\u001b[Dcr\u007fret");
+    t.type("se\u001b[Dcr\u007fret\u001bOA\u001b[1;5C");
     t.type("!\r");
     expect(await p).toBe("secret!");
     expect(t.written.join("")).toBe("Password: \n");

@@ -41,6 +41,8 @@ export interface HubInitializerDeps {
   identity: HubIdentityProvider;
   probe: FleetProbe;
   now?: () => number;
+  /** The owner private directories must have (default: this process's uid). A seam for the other-owner refusal. */
+  uid?: number;
   /** Test seam: called after each stage is durably recorded; a throw simulates an interruption there. */
   afterStage?: (stage: HubInitStage) => void;
 }
@@ -131,17 +133,22 @@ export function listenProblems(label: string, listen: { host: string; port: numb
   return problems;
 }
 
-/** Private directory: created 0700, never a symlink, owned by this user. */
-function ensurePrivateDir(path: string): void {
-  mkdirSync(path, { recursive: true, mode: 0o700 });
-  const st = lstatSync(path);
-  if (!st.isDirectory() || st.isSymbolicLink()) throw new HubInitError(`${path} is not a private directory`);
-  if (typeof process.getuid === "function" && st.uid !== process.getuid()) throw new HubInitError(`${path} is owned by another user`);
+/** Private directory: created 0700, never a symlink, owned by `uid`. */
+function ensurePrivateDir(path: string, uid: number | undefined): void {
+  let st;
+  try {
+    st = lstatSync(path);
+  } catch {
+    mkdirSync(path, { recursive: true, mode: 0o700 });
+    st = lstatSync(path);
+  }
+  if (st.isSymbolicLink() || !st.isDirectory()) throw new HubInitError(`${path} is not a private directory (a symlink or not a directory)`);
+  if (uid !== undefined && st.uid !== uid) throw new HubInitError(`${path} is owned by another user`);
   if ((st.mode & 0o077) !== 0) throw new HubInitError(`${path} is readable by other users (mode ${(st.mode & 0o777).toString(8)})`);
 }
 
-function writePrivate(path: string, content: string): void {
-  ensurePrivateDir(dirname(path));
+function writePrivate(path: string, content: string, uid: number | undefined): void {
+  ensurePrivateDir(dirname(path), uid);
   atomicWriteFileSync(path, content, { mode: 0o600 });
   const mode = statSync(path).mode & 0o777;
   if ((mode & 0o077) !== 0) throw new HubInitError(`${path} could not be made private (mode ${mode.toString(8)})`);
@@ -150,6 +157,7 @@ function writePrivate(path: string, content: string): void {
 export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
   const paths = hubPaths(deps.home);
   const now = deps.now ?? Date.now;
+  const uid = deps.uid ?? (typeof process.getuid === "function" ? process.getuid() : undefined);
   const pending = new Map<string, { planDigest: string; secrets: HubInitSecrets; expiresAt: number }>();
 
   const readReceipt = (): OperationReceipt | undefined => {
@@ -162,7 +170,7 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       throw new HubInitError(`the initialization receipt ${paths.operation} is unreadable; inspect ${paths.hub} before trying again`);
     }
   };
-  const writeReceipt = (receipt: OperationReceipt) => writePrivate(paths.operation, `${JSON.stringify(receipt, null, 2)}\n`);
+  const writeReceipt = (receipt: OperationReceipt) => writePrivate(paths.operation, `${JSON.stringify(receipt, null, 2)}\n`, uid);
 
   const hubConfigured = (): boolean => {
     if (!existsSync(paths.fleetYaml)) return false;
@@ -190,7 +198,10 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
   };
 
   /** All problems with the plan; reads the certificate files. */
-  const problemsOf = async (plan: HubInitPlan, inspection: HubInitInspection): Promise<{ problems: string[]; digestExtra?: Record<string, string> }> => {
+  const problemsOf = async (
+    plan: HubInitPlan,
+    inspection: HubInitInspection,
+  ): Promise<{ problems: string[]; digestExtra?: Record<string, string>; pems?: { cert: string; key: string } }> => {
     const problems: string[] = [];
     if (!deps.identity.available) {
       problems.push("Hub key generation is not available in this build yet: it ships with the Hub transport. Nothing was changed.");
@@ -226,6 +237,7 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
     }
 
     let digestExtra: Record<string, string> | undefined;
+    let pems: { cert: string; key: string } | undefined;
     const certPem = readPem(plan.webTls?.certFile ?? "", "browser certificate", problems);
     const keyPem = readPem(plan.webTls?.keyFile ?? "", "browser private key", problems);
     if (certPem !== undefined && keyPem !== undefined && originProblems("web address", plan.webOrigin).length === 0) {
@@ -234,9 +246,10 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       if (check.ok) {
         const spki = createPublicKey(createPrivateKey(keyPem)).export({ type: "spki", format: "der" });
         digestExtra = { webCertSha256: sha256(certPem), webKeySpkiSha256: sha256(spki) };
+        pems = { cert: certPem, key: keyPem };
       }
     }
-    return { problems, ...(digestExtra ? { digestExtra } : {}) };
+    return { problems, ...(digestExtra ? { digestExtra } : {}), ...(pems ? { pems } : {}) };
   };
 
   const digestOf = (plan: HubInitPlan, extra: Record<string, string>) => sha256(canonical({ plan, ...extra }));
@@ -292,12 +305,12 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       if (held.expiresAt <= now()) throw new HubInitError("this confirmation expired; confirm the plan again");
 
       const inspection = await inspectionFor(plan);
-      const { problems, digestExtra } = await problemsOf(plan, inspection);
-      if (problems.length > 0 || !digestExtra) throw new HubInitError(problems[0] ?? "the plan is not valid", problems);
+      const { problems, digestExtra, pems } = await problemsOf(plan, inspection);
+      if (problems.length > 0 || !digestExtra || !pems) throw new HubInitError(problems[0] ?? "the plan is not valid", problems);
       const planDigest = digestOf(plan, digestExtra);
       if (planDigest !== held.planDigest) throw new HubInitError("the plan or its certificate files changed after confirmation; confirm again");
 
-      ensurePrivateDir(paths.hub);
+      ensurePrivateDir(paths.hub, uid);
       let receipt = readReceipt();
       if (receipt && receipt.planDigest !== planDigest) throw new HubInitError("another initialization is in progress with different answers");
       if (!receipt) {
@@ -328,16 +341,16 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       }
 
       if (!r.done.includes("web-tls")) {
-        const certPem = readFileSync(plan.webTls.certFile, "utf8");
-        const keyPem = readFileSync(plan.webTls.keyFile, "utf8");
-        if (sha256(certPem) !== digestExtra.webCertSha256) throw new HubInitError("the browser certificate changed during initialization");
-        writePrivate(paths.webCert, certPem);
-        writePrivate(paths.webKey, keyPem);
+        // The exact PEM text that was checked and bound to the confirmation (certificate hash and key SPKI): no re-read.
+        writePrivate(paths.webCert, pems.cert, uid);
+        writePrivate(paths.webKey, pems.key, uid);
         mark("web-tls");
       }
 
-      if (!r.done.includes("secret")) {
-        writePrivate(paths.bindSecret, held.secrets.bindPassword);
+      // On resume the password typed now wins: an earlier run's file is rewritten when it differs.
+      const storedSecret = r.done.includes("secret") && existsSync(paths.bindSecret) ? readFileSync(paths.bindSecret, "utf8") : undefined;
+      if (storedSecret !== held.secrets.bindPassword) {
+        writePrivate(paths.bindSecret, held.secrets.bindPassword, uid);
         mark("secret");
       }
 
@@ -357,7 +370,7 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
         const confirmationId = sha256(localOwnerConfirmation).slice(0, 32);
         const signature = await deps.identity.seal({ home: deps.home, planDigest: sealedDigest, confirmationId, committedAt });
         const manifest = { v: 1, hubId: identity.hubId, planDigest: sealedDigest, committedAt, confirmationId, signature };
-        writePrivate(paths.manifest, `${JSON.stringify(manifest, null, 2)}\n`);
+        writePrivate(paths.manifest, `${JSON.stringify(manifest, null, 2)}\n`, uid);
         mark("manifest");
       }
 
@@ -388,14 +401,4 @@ export function hubSettingsFor(plan: HubInitPlan, identity: HubIdentitySummary):
   };
 }
 
-/** Until S1's provisioning lands: initialization refuses before writing anything. */
-export const UNAVAILABLE_IDENTITY: HubIdentityProvider = {
-  available: false,
-  provision: async () => {
-    throw new HubInitError("Hub key generation is not available in this build yet");
-  },
-  read: async () => undefined,
-  seal: async () => {
-    throw new HubInitError("Hub key generation is not available in this build yet");
-  },
-};
+export { UNAVAILABLE_IDENTITY } from "./identity.js";

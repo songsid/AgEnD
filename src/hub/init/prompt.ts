@@ -46,7 +46,8 @@ export function readHidden(input: HiddenInput, output: PromptOutput, question: s
   return new Promise<string>((resolve, reject) => {
     const wasRaw = input.isRaw === true;
     let chars: string[] = [];
-    let escape = false;
+    // Escape sequences: CSI (ESC [ … final byte @–~), SS3 (ESC O + one char) and ESC + one char are all swallowed.
+    let escape: "none" | "esc" | "csi" | "ss3" = "none";
     const cleanup = () => {
       input.removeListener("data", onData);
       input.setRawMode!(wasRaw);
@@ -55,9 +56,16 @@ export function readHidden(input: HiddenInput, output: PromptOutput, question: s
     };
     const onData = (chunk: string | Buffer) => {
       for (const ch of String(chunk)) {
-        if (escape) {
-          // Swallow an escape sequence (arrow keys, bracketed-paste markers): it ends at a letter or "~".
-          if (/[A-Za-z~]/.test(ch)) escape = false;
+        if (escape === "esc") {
+          escape = ch === "[" ? "csi" : ch === "O" ? "ss3" : "none";
+          continue;
+        }
+        if (escape === "csi") {
+          if (ch >= "@" && ch <= "~") escape = "none";
+          continue;
+        }
+        if (escape === "ss3") {
+          escape = "none";
           continue;
         }
         if (ch === "\r" || ch === "\n") {
@@ -78,7 +86,7 @@ export function readHidden(input: HiddenInput, output: PromptOutput, question: s
           continue;
         }
         if (ch === "\u001b") {
-          escape = true;
+          escape = "esc";
           continue;
         }
         if (ch < " ") continue;

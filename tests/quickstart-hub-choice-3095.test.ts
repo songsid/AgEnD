@@ -15,14 +15,15 @@ vi.mock("node:readline/promises", () => ({
     close: () => {},
   }),
 }));
-const hubInit = vi.hoisted(() => ({ runs: 0 }));
+const hubInit = vi.hoisted(() => ({ runs: 0, available: true }));
 vi.mock("../src/hub/init/cli.js", () => ({ runHubInitCommand: async () => { hubInit.runs += 1; return "cancelled"; } }));
+vi.mock("../src/hub/init/identity.js", () => ({ hubIdentityProvider: () => ({ available: hubInit.available }) }));
 
 const dirs: string[] = [];
 const tempDir = () => { const d = mkdtempSync(join(tmpdir(), "agend-test-qshub-")); dirs.push(d); return d; };
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.resetModules(); rl.answers = []; rl.asked = []; hubInit.runs = 0; for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.resetModules(); rl.answers = []; rl.asked = []; hubInit.runs = 0; hubInit.available = true; for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
-async function quickstart(home: string, answers: string[]): Promise<string> {
+async function quickstart(home: string, answers: string[], opts: { tolerateEnd?: boolean } = {}): Promise<string> {
   vi.stubEnv("AGEND_HOME", home);
   const tty = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
   Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
@@ -30,8 +31,14 @@ async function quickstart(home: string, answers: string[]): Promise<string> {
   vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => { out.push(a.join(" ").replace(/\x1b\[[0-9;]*m/g, "")); });
   try {
     rl.answers = answers;
+    // Past the scripted answers (or at the tmux check) quickstart goes on with the fleet setup: stop the run there.
+    vi.spyOn(process, "exit").mockImplementation(((code?: number) => { throw new Error(`exit ${code}`); }) as never);
     const { runQuickstart } = await import("../src/quickstart.js");
-    await runQuickstart();
+    try {
+      await runQuickstart();
+    } catch (err) {
+      if (!opts.tolerateEnd || !/unscripted question|exit 1/.test(String(err))) throw err;
+    }
   } finally {
     if (tty) Object.defineProperty(process.stdin, "isTTY", tty); else delete (process.stdin as { isTTY?: boolean }).isTTY;
   }
@@ -47,6 +54,15 @@ describe("quickstart: this machine is a fleet or a team Hub (#3095)", () => {
     expect(rl.asked).toHaveLength(1);
     expect(hubInit.runs).toBe(1);
     expect(existsSync(join(home, "fleet.yaml"))).toBe(false);
+  });
+
+  it("while this build cannot set up a Hub (S1's key generation not shipped), a fresh quickstart is unchanged: no question", async () => {
+    hubInit.available = false;
+    const home = tempDir();
+    const text = await quickstart(home, [], { tolerateEnd: true });
+    expect(text).not.toContain("This machine is:");
+    expect(text).not.toContain("A team Hub");
+    expect(hubInit.runs).toBe(0);
   });
 
   it("an existing fleet keeps its own menu and is not asked", async () => {
