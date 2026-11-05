@@ -36,7 +36,10 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-exposure-name { min-width: 0; overflow-wrap: anywhere; }
 .hub-exposure-why { color: var(--text-3); padding-left: calc(var(--s-2) + 18px); }
 /* S3b: the Hub workspace's pages */
-.hub-body { display: grid; gap: var(--s-3); align-content: start; max-width: 860px; }
+.hub-body { display: grid; gap: var(--s-3); align-content: start; padding: var(--s-4) var(--s-5) var(--s-6); }
+.hub-body > * { width: 100%; max-width: 860px; min-width: 0; }
+.hub-body .card { margin-bottom: 0; }
+@media (max-width: 899px) { .hub-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
 .hub-signin { max-width: 420px; }
 .hub-signin h2 { margin: 0 0 var(--s-1); }
 .hub-list { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: grid; gap: var(--s-2); }
@@ -58,8 +61,9 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-badge { font-size: var(--fs-xs); font-weight: var(--fw-medium); padding: 1px var(--s-2); border-radius: var(--r-full); background: var(--surface-2); color: var(--text-2); }
 .hub-badge.state-published { background: var(--ok-bg); color: var(--ok); }
 .hub-badge.state-frozen { background: var(--warn-bg); color: var(--warn); }
-.hub-grant { display: flex; flex-wrap: wrap; align-items: end; gap: var(--s-2); margin-top: var(--s-2); }
-.hub-grant .field { flex: 1 1 200px; }
+.hub-grant { display: flex; flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: var(--s-2); margin-top: var(--s-2); }
+.hub-grant .field { flex: 1 1 200px; min-width: 0; }
+.hub-grant .field-row { flex: 1 1 100%; flex-wrap: wrap; }
 .hub-offer { display: grid; gap: var(--s-1); margin-top: var(--s-2); }
 .hub-code { font-family: var(--font-mono); font-size: var(--fs-lg); letter-spacing: .12em; user-select: all; }
 .hub-session { display: flex; align-items: center; gap: var(--s-2); }
