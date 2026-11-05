@@ -14,8 +14,10 @@ Composition is the glue that turns the slices into a running Hub (or Hub member)
 | S4 restricted execution (member side) | the restricted outbox and execution adapters, migrations | the member DB, version floor, local Needs-you adapter, online-authorization adapter |
 | S5a init (#3104, merged) | `hub.*` config, sealed `hub/init-manifest.json`, `hubPlanDigest` | — (the mount verifies the seal before composition runs) |
 
-S5b owns `src/hub/store.ts`, `src/hub/audit/`, `src/hub/compose/` and `src/hub/runtime.ts`, plus the few FleetManager lines
-that call `runtime.ts`. It does not own transport internals, HTTP routes or sessions, restricted execution, notifications,
+S5b owns `src/hub/db.ts` (opening, migrations, unit of work), `src/hub/audit/`, `src/hub/compose/` and
+`src/hub/runtime.ts`, plus the few FleetManager lines that call `runtime.ts`. (hub.md §1 lists a `store.ts` for S5, but
+S1's branch already uses `src/hub/store.ts` for `HubTransportStore`, so S5's database module is `db.ts`.)
+It does not own transport internals, HTTP routes or sessions, restricted execution, notifications,
 the administration page or backups (S5c, later).
 
 ## 1. Off means off
@@ -69,12 +71,21 @@ Rules:
   created 0600 before SQLite opens them, and the `-wal`/`-shm` files are checked after opening. Windows is refused
   (S1's `privatePath` does the same), so native Windows Hubs are out of scope; WSL works. Pragmas: `journal_mode=WAL`,
   `foreign_keys=ON`, `busy_timeout=5000`, `secure_delete=ON`.
-- **First creation versus reopening.**
-  - A DB, its floors and its keys are created together only when none exist, and the DB records which Hub it belongs
-    to (`hub_instance(singleton, hub_id, created_at)`).
-  - If one piece is missing while the others exist, that is `hub-state-mismatch`: the factory refuses and never
-    recreates the missing piece, so restored or rolled-back state cannot revive old credentials.
-  - The DB's `hub_id` must equal the sealed manifest's `hubId`.
+- **First creation versus reopening.** Composition creates exactly one set per side, together, and only when no part of
+  it exists:
+  - **Server set:** `hub/hub.sqlite`, the S5-initialized floors under `hub/floors/` and `hub/keys/content.key`.
+  - **Member set:** `hub-member/<hubId>/member.sqlite`, its floors under `hub-member/<hubId>/floors/` and
+    `hub-member/<hubId>/keys/journal.key`.
+
+  Files written before composition runs are **prerequisites, not part of the set**: S1's identity keys under
+  `hub/keys/` (`tls-key.pem`, `tls-cert.pem`, `issuer-key.pem`, `issuer-public.pem`, `identity.json`), the sealed
+  `hub/init-manifest.json`, and the member's pairing files (`hub-member/<hubId>/{pairing,pending}.json`). Their presence
+  never counts as "part of the set exists". So the first mount after `agend hub init` (or after pairing) creates the set.
+  If some members of the set exist and others don't, that is `hub-state-mismatch`: the factory refuses and never
+  recreates the missing piece, so restored or rolled-back state cannot revive old credentials. The DB records which Hub
+  it belongs to (`hub_instance(singleton, hub_id, created_at)`), and that `hub_id` must equal the sealed manifest's
+  `hubId`. S1's `HubFileVersionFloor.initialize()` (exclusive create, never reset) is called only during this first
+  creation.
 - **Migrations.** Each slice exports `HubMigration { component, version, up(db) }`, for example S1's
   `migrateHubTransportStore`. S5 keeps `hub_schema(component TEXT PRIMARY KEY, version INTEGER NOT NULL)` and applies the
   missing steps in one immediate transaction at open. A stored version above the version this build knows is
@@ -141,6 +152,7 @@ itself.
 ## 6. Interfaces to settle with the slices
 
 - **S1 (Sol):**
+  - S5's database module is `src/hub/db.ts` (`HubMigration`, opening, unit of work); `src/hub/store.ts` stays S1's.
   - Export migrations as `HubMigration`.
   - Floor paths (§3).
   - Keep the audit bridge as is, with S5 owning the global sequence.
@@ -176,7 +188,7 @@ itself.
 ## 8. Delivery
 
 1. **This note** (docs only).
-2. **Code PR 1:** `store.ts`, `audit/`, `runtime.ts`, the FleetManager hooks and the Needs-you hold input. The server
+2. **Code PR 1:** `db.ts`, `audit/`, `runtime.ts`, the FleetManager hooks and the Needs-you hold input. The server
    and member factories hold with `hub-incomplete` until S3 and S4 register. Opened once S1 is merged, because it
    imports S1's types and mount.
 3. **Code PR 2:** register the S3 and S4 entries when they land, plus whole-flow acceptance against the fake directory.
