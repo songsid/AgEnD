@@ -159,5 +159,13 @@ describe("#3130 review: disconnect withdraws every published exposure", () => {
     await expect(fm.hubMemberWithdrawAll()).resolves.toBeUndefined();
     fm.hubMemberPairingApi = null;
     await expect(fm.hubMemberWithdrawAll()).resolves.toBeUndefined();
+    // The fallback really reaches the member's store: a partial member state fails the disconnect ("unsaved").
+    const hubId = "22222222-3333-4444-8555-666666666666";
+    const { mkdirSync, writeFileSync, chmodSync } = await import("node:fs");
+    chmodSync(fm.dataDir, 0o700);
+    mkdirSync(join(fm.dataDir, "hub-member", hubId, "floors"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(fm.dataDir, "hub-member", hubId, "floors", "journal"), "0", { mode: 0o600 });
+    fm.hubMemberPairingApi = { boundHub: () => ({ hubId, binding: null }) };
+    await expect(fm.hubMemberWithdrawAll()).rejects.toThrow(/partial/);
   });
 });
