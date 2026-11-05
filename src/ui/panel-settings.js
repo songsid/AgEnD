@@ -56,6 +56,14 @@ import { PageSharesCard } from "./page-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
+/** AgEnD Hub P1: this page is a member fleet's (data-hub carries "member": set by this fleet's listener from hub_member). */
+const hubMemberPage = () => String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/).includes("member");
+/** Connect to a Hub, loaded only on a member page. */
+function HubCardSlot() {
+  const [Card, setCard] = useState(null);
+  useEffect(() => { let live = true; import("./settings-hub.js").then((m) => { if (live) setCard(() => m.HubConnectCard); }, () => {}); return () => { live = false; }; }, []);
+  return Card ? html`<${Card} />` : null;
+}
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
 import { ProviderMark } from "./provider-marks.js";
@@ -1374,6 +1382,8 @@ function WebSection({ ctx, staged, part = "all" }) {
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
           ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
           <${OutsideCard} />
+          ${/* AgEnD Hub P1: Connect to a Hub, on a member fleet only (the page's mark): nothing loads while hub_member is off. */ ""}
+          ${hubMemberPage() ? html`<${HubCardSlot} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
