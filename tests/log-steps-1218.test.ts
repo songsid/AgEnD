@@ -158,6 +158,21 @@ describe("masking: only actual secret values, everything else stays readable", (
     const keep = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b 123e4567-e89b-12d3-a456-426614174000 agend-web-claude-t1554485732591276113 /home/han/Projects/AgEnD-agend-web-claude/src/log-steps.ts";
     expect(maskSecrets(keep)).toBe(keep);
   });
+  it("Cookie and Set-Cookie headers are masked whole, including folded continuation lines and structured Cookie fields", () => {
+    const sha = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b";
+    for (const text of [
+      "Cookie: sid=abc123",
+      "Set-Cookie: sid=abc123; Path=/; HttpOnly",
+      "Cookie: sid=abc123;\n theme=dark",
+      '{"Cookie":"sid=abc123"}',
+    ]) {
+      const out = maskSecrets(text);
+      expect(out, text).not.toContain("sid=abc123");
+      expect(out, text).toContain("[REDACTED]");
+    }
+    expect(maskSecrets("Cookie: sid=abc123;\n theme=dark")).not.toContain("theme=dark");
+    expect(maskSecrets(sha)).toBe(sha);
+  });
   it("bounded: only the part that can be shown (and a margin) is masked — what is cut far past it is counted as written", () => {
     const text = "x".repeat(10) + " ".repeat(2000) + J("password=", "hunter2hunter2");
     expect(bounded(text, 10)).toEqual({ text: "x".repeat(10), cut: text.length - 10 });

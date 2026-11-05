@@ -98,15 +98,25 @@ const ASSIGN_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})(\\s*[=:]\\s*)${VA
 const POSITIONAL_SECRET = new RegExp(`(^|[^A-Za-z0-9_.-])(${NAME})([ \\t]+)([A-Za-z0-9/+=_.-]{16,})(?![A-Za-z0-9/+=_.-])`, "gim");
 /** A value that is not a secret whatever its name says: a number (max_tokens: 100), a boolean, null. */
 const PLAIN = /^(?:-?\d+(?:\.\d+)?|true|false|null|none|\[REDACTED\])$/i;
+/**
+ * Cookie / Set-Cookie whole headers, including RFC 7230 folded continuation lines and structured Cookie fields
+ * (name=value pairs on the same header). Applied before bounds. Same shape as diagnostic-redaction.ts.
+ */
+const COOKIE_HEADER = /\b(?:cookie|set-cookie)\s*:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/gi;
+/** Quoted JSON/YAML Cookie fields (`"Cookie": "sid=abc123"`) — the header regex stops at a quote before the colon. */
+const COOKIE_FIELD = /(["'](?:set-)?cookies?["']\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&}\]\r\n]+)/gi;
 
 /**
  * Mask secret values in `text` (#1788 review P1: every common way a secret is written, since arguments and results are
- * shown): a private key block; a secret-named JSON field, flag or assignment (any identifier containing password,
- * secret, token, api/access/private key, credential — DB_PASSWORD, "api_key", --password); then the bubble's redactor
- * (known key shapes, Bearer, URL userinfo); then long mixed-case opaque tokens. Numbers, booleans and null are kept.
+ * shown): Cookie / Set-Cookie headers (whole, including folded lines); a private key block; a secret-named JSON field,
+ * flag or assignment (any identifier containing password, secret, token, api/access/private key, credential —
+ * DB_PASSWORD, "api_key", --password); then the bubble's redactor (known key shapes, Bearer, URL userinfo); then long
+ * mixed-case opaque tokens. Numbers, booleans and null are kept. Harmless SHA-like hex is kept.
  */
 export function maskSecrets(text: string): string {
   return redactSecrets(text
+    .replace(COOKIE_HEADER, "[REDACTED]")
+    .replace(COOKIE_FIELD, "$1[REDACTED]")
     .replace(PEM, (_m, kind: string) => `-----BEGIN ${kind}PRIVATE KEY----- [REDACTED] -----END ${kind}PRIVATE KEY-----`)
     .replace(JSON_SECRET, (m, a: string, v: string, b: string) => (PLAIN.test(v) ? m : `${a}[REDACTED]${b}`))
     .replace(FLAG_SECRET, (m, k: string, sep: string, d?: string, sq?: string, esc?: string, bare?: string) => masked(m, `${k}${sep}`, d, sq, esc, bare))
