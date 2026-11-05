@@ -244,7 +244,7 @@ fleet 管理者可以讓 fleet 以外的人在一段時間內觀看即時辦公�
 
 ## 辦公室裡的 agent
 
-有人替某個 agent 打開 **辦公室** dashboard 功能（`office_access: true`）後，它可以看到自己所在的辦公室，並短暫指揮自己的角色。這個功能沒設定就是關閉，在 **設定 → Agent 預設值** 或該 agent 的 **進階 → Dashboard 權限** 設定；打開要先確認，關掉會立刻移除工具。
+有人替某個 agent 打開 **辦公室** dashboard 功能（`office_access: true`）後，它可以看到自己所在的辦公室，並短暫指揮自己的角色。這個功能沒設定就是關閉，在 **設定 → Agent 共用設定** 或該 agent 的 **進階 → Dashboard 權限** 設定；打開要先確認，關掉會立刻移除工具。
 
 - `office_view { office? }`：它所在的已存辦公室，含成員與狀態。用上傳的區域外觀包的辦公室，還會列出座位（`"區域:序號"`）、路徑點、家具（NPC）與門，並已套用該辦公室的配置 overrides。其他辦公室（辦公桌、工作室、溫馨，或沒有區域的外觀包）會回傳 `walks: false`，沒有這些點。
 - `office_set { office?, go?, say?, pose?, seconds?, clear? }`：走到某個座位、路徑點或另一位成員身邊（`go`）；說一句 1–40 字的話（`say`）；擺一個姿勢：idle、working、needs 或 paused（`pose`）；持續 5–120 秒（預設 30）。`clear: true` 結束。`walks` 為 false 的地方，那句話與姿勢會顯示，`go` 會被拒絕。
@@ -254,7 +254,7 @@ fleet 管理者可以讓 fleet 以外的人在一段時間內觀看即時辦公�
 
 ## 讓 agent 管理外觀包
 
-agent 可以自己檢查、上傳、取代、刪除與還原外觀包，例如發布畫師的修正，不必每次都由人手動上傳。外觀包全 fleet 都看得到，所以這是另一個開關：在 **設定 → Agent 預設值** 或該 agent 的 **進階 → Dashboard 權限** 打開 **辦公室外觀包**（`office_pack_access: true`）。沒設定就是關閉，打開要先確認。
+agent 可以自己檢查、上傳、取代、刪除與還原外觀包，例如發布畫師的修正，不必每次都由人手動上傳。外觀包全 fleet 都看得到，所以這是另一個開關：在 **設定 → Agent 共用設定** 或該 agent 的 **進階 → Dashboard 權限** 打開 **辦公室外觀包**（`office_pack_access: true`）。沒設定就是關閉，打開要先確認。
 
 **工具。**
 

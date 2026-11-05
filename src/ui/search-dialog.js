@@ -14,6 +14,7 @@ import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Icon } from "/assets/ui-icons.js";
 import { goToSetting, searchSettings, settingLabel } from "./settings-registry.js";
 import "./settings-strings.js";
+import "./settings-shared-strings.js";   // the "where" of a result is settings.sec_<section>; sec_agent-defaults is one of these words
 
 register("search", {
   en: {

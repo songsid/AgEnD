@@ -244,7 +244,7 @@ More on the dashboard's ways in: [web-dashboard.md](web-dashboard.md#office-shar
 
 ## Agents in the office
 
-An agent can see the offices it's in and direct its own character for a moment, once a person turns on its **Office** dashboard feature (`office_access: true`). The feature is off unless set, in **Settings → Agent defaults** or an agent's **Advanced → Dashboard access**; turning it on is confirmed, and turning it off removes the tools at once.
+An agent can see the offices it's in and direct its own character for a moment, once a person turns on its **Office** dashboard feature (`office_access: true`). The feature is off unless set, in **Settings → Shared agent settings** or an agent's **Advanced → Dashboard access**; turning it on is confirmed, and turning it off removes the tools at once.
 
 - `office_view { office? }`: the stored offices it's in, with their members and states. For an office in an uploaded zones pack it also lists the seats (`"area:index"`), waypoints, furniture (NPCs) and the door, with the office's layout overrides applied. Any other office (Desks, Studio, Cozy, or a pack without zones) returns `walks: false` and no spots.
 - `office_set { office?, go?, say?, pose?, seconds?, clear? }`: walk to a seat, a waypoint or another member (`go`); say a line of 1–40 characters (`say`); hold a pose: idle, working, needs or paused (`pose`); for 5–120 seconds (default 30). `clear: true` ends it. Where `walks` is false, the line and the pose show, and `go` is refused.
@@ -254,7 +254,7 @@ An agent can see the offices it's in and direct its own character for a moment, 
 
 ## Let an agent manage skin packs
 
-An agent can check, upload, replace, delete and restore skin packs itself, for example to publish an artist's fixes without a person uploading each one. Everyone on the fleet sees the packs, so this is a separate switch: **Office skin packs** (`office_pack_access: true`) in **Settings → Agent defaults** or an agent's **Advanced → Dashboard access**. It's off unless set, and turning it on is confirmed.
+An agent can check, upload, replace, delete and restore skin packs itself, for example to publish an artist's fixes without a person uploading each one. Everyone on the fleet sees the packs, so this is a separate switch: **Office skin packs** (`office_pack_access: true`) in **Settings → Shared agent settings** or an agent's **Advanced → Dashboard access**. It's off unless set, and turning it on is confirmed.
 
 **The tools.**
 

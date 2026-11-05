@@ -1275,6 +1275,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   nativeMcpSessions(): NativeMcpSessions {
     return this.nativeMcpStore ??= new NativeMcpSessions(this as unknown as AgentEndpointContext);
   }
+  /** Retire only existing native capabilities; ordinary lifecycle changes do not instantiate the Windows path. */
+  invalidateNativeMcp(name: string): void { this.nativeMcpStore?.closeInstance(name); }
   /** The same instance registry and delivery entry point, with a native Windows execution adapter. */
   nativeInstanceRuntime(): FleetWindowsRuntime {
     return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
@@ -4639,6 +4641,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * guild channel.
    */
   private reregisterClassicChannels(): void {
+    this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
@@ -13505,7 +13508,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const destinationOf = (n: string): string | null => {
       const cfg = this.fleetConfig?.instances?.[n];
       if (!cfg || cfg.topic_id == null || cfg.topic_id === "") return null;
-      return this.destinationFor(this.getInstanceAdapterId(n), cfg.topic_id);
+      return this.destinationFor(this.topicAdapterIdOf(n), cfg.topic_id);
     };
     const generalDestinations = (): Set<string> => {
       const out = new Set<string>();
@@ -13523,9 +13526,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { instances: this.fleetConfig?.instances, destinationOf, generalDestinations };
   }
 
+  /**
+   * The bot an agent's configured topic is on (#3105 review, Prism P1): a fleet.yaml agent's `channel_id` (else the
+   * primary connection) whatever its runtime — a per-turn Windows agent has no execution adapter
+   * (getInstanceAdapterId), yet its topic is still on that bot, and must be counted as an owner and deleted through it.
+   * Topic planning and ownership only; execution routing is getInstanceAdapterId's and unchanged.
+   */
+  private topicAdapterIdOf(name: string): string | undefined {
+    const cfg = this.fleetConfig?.instances?.[name];
+    if (cfg) return cfg.channel_id ?? this.getPrimaryAdapterId();
+    return this.getInstanceAdapterId(name);
+  }
+
   /** What deleting `name`'s topic would act on: its own bot only — a bot that is not there is never substituted. */
   private planInstanceTopicDelete(name: string): InstanceTopicPlan {
-    const adapterId = this.getInstanceAdapterId(name);
+    const adapterId = this.topicAdapterIdOf(name);
     return planInstanceTopicDelete({ name, adapterId, adapter: this.instanceTopicAdapter(adapterId), ...this.topicOwnership() });
   }
 
@@ -13954,6 +13969,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Object.assign(current, resolved);
     }
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
@@ -23610,6 +23626,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();

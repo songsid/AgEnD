@@ -85,6 +85,13 @@ if (mode === "full") {
   let chatLoads = 0;
   panels.set("chat", { load: () => (chatLoads++ === 0 ? chatBoot : loadChat()).then((m) => m.ChatPanel) });
   if (!guest) {
+    // AgEnD Hub P1: a Hub workspace (the page's mark, set by a Hub's own listener) has its own pages; nothing loads
+    // otherwise. The Hub runs no agents: its workspace opens on Ask.
+    if (String(document.body?.dataset?.hub || "").split(/\s+/).includes("hub")) {
+      const loadHub = retryable((a) => import(retryUrl("/ui/js/panel-hub.js", a)));
+      panels.set("hub", { load: () => loadHub().then((m) => m.HubPanel) });
+      if (location.pathname === "/ui") history.replaceState(history.state, "", "/ui/hub");
+    }
     const loadWindowsAgent = retryable((a) => import(retryUrl("/ui/js/panel-windows-agent.js", a)));
     panels.set("windows-agent", { load: () => loadWindowsAgent().then((m) => m.WindowsAgentPanel) });
     panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });

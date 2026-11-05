@@ -19,6 +19,7 @@ import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import {AgentRuntimeSettings} from "./agent-runtime-settings.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
+import "./settings-shared-strings.js";   // the words Shared agent settings added and this file draws (backendNotInstalledHost, changeInDefaults, …)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalogState } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
@@ -45,11 +46,11 @@ export function Select({ value, options, onChange, disabled, id, label }) {
  * #2072: a backend field shows every backend with what this host says about it — one it cannot run is disabled with
  * why (not installed, not signed in, too old); one not checked yet stays selectable; the current value always can be.
  */
-export function BackendSelect({ value, onChange, disabled, id }) {
+export function BackendSelect({ value, onChange, disabled, id, hostOnly }) {
   const rows = useBackendRows();
   const known = backendOptions(value).filter((o) => !o.unavailable).map((o) => o.value);
   const opts = backendChoices(known, rows || [], value, {
-    notInstalled: tn("backendNotInstalled"), notSignedIn: tn("backendNotSignedIn"), tooOld: (v) => tn("backendTooOld", v),
+    notInstalled: tn(hostOnly ? "backendNotInstalledHost" : "backendNotInstalled"), notSignedIn: tn("backendNotSignedIn"), tooOld: (v) => tn("backendTooOld", v),
     unchecked: tn("backendUnchecked"), removed: (v) => tn("backendUnavailable", v),
   });
   return html`<select id=${id} value=${value} disabled=${disabled} onChange=${(e) => onChange(e.target.value)}>
@@ -86,12 +87,12 @@ export function Label({ text, schema, field, htmlFor, mark }) {
   return html`<label for=${htmlFor}>${text}${mark ? html` ${mark}` : null}${field ? html` <${Impact} schema=${schema} field=${field} />` : null}</label>`;
 }
 /** #2347 §10: the mark of a value nobody set — what is in effect is the built-in default. */
-export function DefaultMark() {
-  return html`<span class="tag s-default">${tn("defaultMark")}</span>`;
+export function DefaultMark({ tip }) {
+  return html`<span class="tag s-default" title=${tip || undefined}>${tn("defaultMark")}</span>`;
 }
 /** #2347 §10: what an empty field means — the value in effect, in plain text, and where it comes from (the mark, or why). */
-export function InEffect({ text, why }) {
-  return html`<p class="s-effect">${tn("inEffect", text)} ${why ? html`<span class="tag">${why}</span>` : html`<${DefaultMark} />`}</p>`;
+export function InEffect({ text, why, tip }) {
+  return html`<p class="s-effect">${tn("inEffect", text)} ${why ? html`<span class="tag">${why}</span>` : html`<${DefaultMark} tip=${tip} />`}</p>`;
 }
 /**
  * #2347 §10: what an inherited field inherits — its value, marked "default" when nobody set it there either — and a

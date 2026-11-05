@@ -227,6 +227,7 @@ export class NativePaneManager {
   };
   const owned=()=>!!daemon&&current()&&this.options.published(name,daemon);
   const lease=new PaneMcpAuthorityLease(join(directory,`${launch.launchId}.mcp.json`),{
+   toolCeiling:launch.mcpTools??[],
    machineId:endpoint.machineId,owner:{hostBootId,paneId:launch.paneId,launchId:launch.launchId!,agentId:id,instance:name},current,transportEpoch:()=>endpoint.epoch(),
    menu:()=>this.options.menu(name),allowed:(tool,args)=>current()&&this.options.allowed(name,tool,args),
    invoke:(input,proof)=>{if(!owned()||!proof())throw Error("Native daemon is not published");return this.options.invoke(daemon!,input,()=>owned()&&proof(),name);},

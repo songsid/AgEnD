@@ -1,0 +1,688 @@
+/**
+ * Settings → Shared agent settings (the page that was "Agent defaults"; its address and every `#g-…` anchor are unchanged):
+ * - Two groups — what an individual agent may override, what the whole fleet shares — each with its rarer settings under
+ *   Advanced; every field the old page had is still drawn, and writes the same key.
+ * - A field says how many agents use its value and lists the ones that set their own, from fleet.yaml's instances.
+ * - What an edit costs is shown only once a field is edited (from the schema, naming the agents it reaches and the ones it
+ *   does not), disappears when the field is put back, and is added up on the Save bar. No badge is always there.
+ * - The pure parts (usage, notes) and the words in both languages.
+ */
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+import { pickSeg, segOptions, segValue } from "./helpers/settings-controls.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
+
+const schema = buildSettingsImpactSchema();
+let p: AppPage;
+let raw: any;
+/** What /api/fleet says about each agent (default: running). */
+let status: Record<string, string> = {};
+/** What /api/fleet does: answers (up), does not (down), or answers with no agents (empty). */
+let fleetMode: "up" | "down" | "empty" = "up";
+/** What classicBot.yaml says (none by default) — the rooms are listed by /api/fleet too, with their status from `status`. */
+let classic: { defaults: Record<string, unknown>; channels: Record<string, any> } = { defaults: {}, channels: {} };
+const sent: Array<{ method: string; path: string; body: any }> = [];
+const realFetch = (globalThis as any).fetch;
+/** Seven agents: artist sets its own model, tester its own tool set, ops its own dashboard permissions; General is one too. */
+const fleet = () => ({
+  defaults: { backend: "codex", model: "gpt-5.5", auto_pause_after: 30, tool_progress: "standard" },
+  instances: {
+    "dev-t1": { working_directory: "/w/dev" }, "reviewer-t2": { working_directory: "/w/rev" },
+    "artist-t3": { working_directory: "/w/art", model: "gpt-5.5-mini" }, "tester-t4": { working_directory: "/w/test", tool_set: "minimal" },
+    "ops-t5": { working_directory: "/w/ops", office_access: true }, general: { working_directory: "/w/g", general_topic: true },
+  },
+  channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: {},
+});
+const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
+  const method = init.method ?? "GET";
+  if (path === "/api/fleet" && fleetMode === "down") return { ok: false, status: 503, json: async () => ({}) };
+  if (method !== "GET") sent.push({ method, path, body: init.body ? JSON.parse(init.body) : null });
+  const body = (() => {
+    if (method !== "GET") return { ok: true };
+    if (path === "/api/settings/schema") return schema;
+    if (path === "/api/settings/fleet/raw") return raw;
+    if (path === "/api/settings/classic") return classic;
+    if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
+    if (path === "/api/settings/status-emojis") return { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] };
+    if (path === "/api/settings/pending") return [];
+    if (path === "/api/fleet" && fleetMode === "empty") return { version: "2.4.0", instances: [] };
+    if (path === "/api/fleet") {
+      const rooms = Object.values(classic.channels).filter((r: any) => r.instanceName).map((r: any) => ({ name: r.instanceName, classic: true, status: status[r.instanceName] ?? "running" }));
+      return { version: "2.4.0", instances: [...Object.keys(raw.instances).map((name) => ({ name, status: status[name] ?? "running" })), ...rooms] };
+    }
+    if (path.startsWith("/ui/")) return {};
+    return [];
+  })();
+  return { ok: true, status: 200, json: async () => body };
+};
+beforeAll(async () => {
+  p = page({ url: "http://127.0.0.1:19284/settings", storage: { agend_tour_done: "1" } });
+  (globalThis as any).fetch = fakeFetch;
+  const nav = await import("/assets/app-nav.js");
+  nav.startRouter(p.window);
+});
+afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
+beforeEach(async () => {
+  raw = fleet(); status = {}; fleetMode = "up"; classic = { defaults: {}, channels: {} }; sent.length = 0; (globalThis as any).confirm = () => true;
+  (await import("/assets/app-i18n.js")).setLang("en");
+});
+afterEach(async () => { await p.unmount(); });
+
+let opened = 0;
+const open = async (section = "agent-defaults") => {
+  const { SettingsPanel } = await import("/ui/js/panel-settings.js");
+  await p.mount(h(SettingsPanel, { route: { panel: "settings", section }, navKey: `settings:${section}|${++opened}` }));
+  await settle(14);
+};
+const text = (el: any) => (el ? el.textContent.replace(/\s+/g, " ").trim() : null);
+const $ = (sel: string): any => p.root.querySelector(sel);
+const field = (id: string): any => $(`#${id}`)?.closest(".field");
+const type = async (id: string, value: string) => { const el = $(`#${id}`); el.value = value; fire(el, "input"); await settle(4); };
+const check = async (el: any, on: boolean) => { el.checked = on; fire(el, "change"); await settle(4); };
+const choose = async (id: string, value: string) => { const el = $(`#${id}`); el.value = value; fire(el, "change"); await settle(4); };
+/** The pill at a field's right: "6/7 in use · artist custom". */
+const pill = (id: string) => text(field(id)?.querySelector(".s-use .s-tipbtn"));
+/** What hovering the pill says: the list of agents that set the field themselves. */
+const pillTip = (id: string) => text(field(id)?.querySelector(".s-use .s-tipbody"));
+const notes = (id: string) => (field(id)?.querySelectorAll(".s-note p") ?? []).map(text);
+const bar = () => text($(".s-pending .note"));
+const save = async () => {
+  $(".s-pending").querySelectorAll("button").find((b: any) => b.textContent === "Save").click(); await settle(12);
+};
+const written = () => sent.filter((s) => s.path === "/api/settings/fleet/defaults").map((s) => s.body);
+
+const IDS = ["g-locale", "g-be", "g-model", "g-auto", "g-tp", "g-vis", "g-tips", "g-reply-triggers", "g-reply", "g-dash", "g-ts", "g-ll", "g-am",
+  "g-hang-on", "g-hang", "g-conc", "g-stag", "g-roots"];
+
+describe("the page", () => {
+  it("is Shared agent settings: a lead, then two groups, each again in Advanced", async () => {
+    await open();
+    // The lead is the page head's (settings-layout.js), not the form's own: one sentence, once.
+    expect([text($(".s-page-lead")), p.root.querySelectorAll(".s-page-lead").length]).toEqual(["Changes here apply to every agent that has no setting of its own — including agents you create later.", 1]);
+    const cards = p.root.querySelectorAll(".s-group");
+    expect(cards.map((c: any) => text(c.querySelector("h3")))).toEqual(["Shared agent settings", "System & channels", "Shared agent settings", "System & channels"]);
+    // The hang detector is the one setting of the fleet's group that an agent may also set itself: the Advanced card (where it is) says so.
+    expect(cards.map((c: any) => text(c.querySelector("p.note")))).toEqual(["An individual agent can override these", "One value for the whole fleet — an agent can't change it",
+      "An individual agent can override these", "One value for the whole fleet — an agent can't change it, except the hang detector, which an agent can also set for itself"]);
+    const drawer = $("details.drawer");
+    expect(text(drawer.querySelector("summary"))).toBe("Advanced (10)");
+    // The first two cards are the main view, the last two are in the drawer.
+    expect(cards.map((c: any) => !!c.closest("details"))).toEqual([false, false, true, true]);
+    expect(cards.map((c: any) => c.querySelectorAll(".field").length)).toEqual([4, 3, 7, 3]);
+    expect(drawer.querySelectorAll(".field").length).toBe(10);
+    expect(text($(".s-back-here") ?? $(".s-nav .active"))).toContain("Shared agent settings");
+  });
+
+  it("keeps every element id the old page had (the search and the jump links need them) and the YamlLock wrapper", async () => {
+    await open();
+    expect(IDS.filter((id) => !$(`#${id}`))).toEqual([]);
+    expect($("#project-roots")).toBeTruthy();                       // /ui/fleet/config leads to /settings/agent-defaults#project-roots
+    expect($(".s-general.s-part-fleet")).toBeTruthy();
+    expect($(".s-general").closest("fieldset.s-yaml-lock")).toBeTruthy();   // the YamlLock wrapper: the fields wait while a fleet.yaml edit is unsaved
+  });
+
+  it("draws the choices as the issue says: segmented, switches, and a sentence per option for tool set and log level", async () => {
+    await open();
+    expect([segOptions($("#g-tp")), segOptions($("#g-vis")), segOptions($("#g-am"))]).toEqual([["off", "standard", "verbose"], ["full", "summary", "hidden"], ["mcp", "cli"]]);
+    const names = (id: string) => $(`#${id}`).querySelectorAll(".s-seg-opt").map(text);
+    expect([names("g-tp"), names("g-vis"), names("g-am")]).toEqual([["Off", "Standard", "Verbose"], ["Full", "Summary", "Hidden"], ["MCP (recommended)", "CLI"]]);
+    for (const id of ["g-tips", "g-reply", "g-reply-triggers", "g-hang-on"]) expect([id, $(`#${id}`).type, $(`#${id}`).getAttribute("role")]).toEqual([id, "checkbox", "switch"]);
+    const labels = (id: string) => $(`#${id}`).querySelectorAll("option").map((o: any) => text(o));
+    expect(labels("g-ts")).toEqual(["Not set (worker; a General: general)", "Worker — talk, read, do the work", "Coordinator — worker plus fleet management",
+      "Standard — a mid-sized set", "Minimal — only the basics", "Full — every tool"]);
+    // The numbers of tools change with the tool profiles: no option says one.
+    expect($("#g-ts").querySelectorAll("option").map(text).join(" ")).not.toMatch(/\d/);
+    expect(labels("g-ll")).toEqual(["Trace — everything", "Debug — for troubleshooting", "Info — normal", "Warn — problems only", "Error — failures only"]);
+    expect($("#g-ts").querySelectorAll("option").map((o: any) => o.value)).toEqual(["", "worker", "coordinator", "standard", "minimal", "full"]);
+  });
+
+  it("explains each field in an ⓘ (its words are in the page for a screen reader), and shows no permanent impact badge", async () => {
+    await open();
+    for (const id of IDS.filter((i) => i !== "g-hang")) {
+      const head = $(`#${id}`).closest(".field")?.querySelector(".s-lab");
+      expect(text(head?.querySelector(".s-i .s-tipbody")), id).toBeTruthy();
+    }
+    expect(text(field("g-reply-triggers").querySelector(".s-i .s-tipbody"))).toContain("Off by default");
+    expect(p.root.querySelectorAll(".impact")).toHaveLength(0);
+    expect($(".s-i .s-tipbtn").getAttribute("aria-label")).toMatch(/^About /);
+  });
+
+  it("opens a tip on hover or focus, closes it on leaving, and keeps it open once tapped until Escape", async () => {
+    await open();
+    const head = field("g-model").querySelector(".s-i");
+    const [btn, body] = [head.querySelector(".s-tipbtn"), head.querySelector(".s-tipbody")];
+    const shown = () => !body.hidden;
+    // The mini DOM names a listener by the prop's own case (onMouseLeave → "mouseLeave"); a browser by the lower-case event.
+    const leave = async () => { fire(btn, "mouseleave"); fire(btn, "mouseLeave"); await settle(2); };
+    expect(shown()).toBe(false);
+    fire(btn, "focus"); await settle(2);
+    expect(shown()).toBe(true);
+    fire(btn, "blur"); await settle(2);
+    expect(shown()).toBe(false);
+    fire(btn, "click"); await settle(2);                           // a tap pins it: leaving does not close it
+    await leave();
+    expect(shown()).toBe(true);
+    fire(p.window.document, "keydown", { key: "Escape" }); await settle(2);
+    expect(shown()).toBe(false);
+    expect(btn.getAttribute("aria-describedby")).toBe(body.getAttribute("id"));
+  });
+
+  it("the “default” tip is on this page's marks only — the Agent dialog's marks are as they were", async () => {
+    await open();
+    const marks = p.root.querySelectorAll(".s-default");
+    expect(marks.length).toBeGreaterThan(10);
+    expect(marks.filter((m: any) => !m.getAttribute("title"))).toEqual([]);          // the field marks and the "in effect" ones too
+    expect(marks[0].getAttribute("title")).toBe("Nobody set this in fleet.yaml, so the built-in value shown is in use. Editing it saves your own value.");
+    await p.unmount();
+    await open("agents");
+    p.root.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Settings").click(); await settle(8);
+    const dialog = p.root.querySelector("dialog");
+    const inDialog = dialog.querySelectorAll(".s-default");
+    expect(inDialog.length).toBeGreaterThan(0);
+    expect(inDialog.filter((m: any) => m.getAttribute("title"))).toEqual([]);
+  });
+
+  it("marks the backend as this host's and says why in a grey line — not a warning", async () => {
+    await open();
+    const be = field("g-be");
+    expect(text(be.querySelector(".s-host"))).toBe("this host");
+    expect(text(be.querySelector(".s-info"))).toContain("Only this host is checked. For a CLI on a Windows PC, open that agent's settings and choose Change runtime / CLI.");
+    expect(be.querySelector(".feedback.warning, .tag.warn")).toBeNull();
+  });
+
+  it("says whether the reply guard works with the backend chosen, and follows it", async () => {
+    await open();
+    const line = () => text(field("g-reply").querySelector(".s-info"));
+    expect(line()).toContain("Available for Claude Code, Codex, Muse and Kiro legacy/TUI in MCP mode.");
+    await choose("g-be", "opencode");
+    expect(line()).toBe("ⓘ Stored but inactive: opencode in mcp mode does not support reply-drop recovery.");
+  });
+
+  it("keeps the “default” mark: shown for what fleet.yaml leaves out, gone once the field is edited, back when it is put back", async () => {
+    await open();
+    const marked = (id: string) => !!field(id).querySelector(".s-default");
+    expect([marked("g-be"), marked("g-locale"), marked("g-ll")]).toEqual([false, true, true]);
+    await choose("g-ll", "warn");
+    expect(marked("g-ll")).toBe(false);
+    await choose("g-ll", "info");
+    expect(marked("g-ll")).toBe(true);
+  });
+});
+
+describe("who uses a field", () => {
+  it("counts the agents that use this page's value, and names the ones that set their own", async () => {
+    await open();
+    expect([pill("g-be"), pill("g-model"), pill("g-ts"), pill("g-dash"), pill("g-auto")]).toEqual(["6/6 in use", "5/6 in use · artist custom", "5/6 in use · tester custom", "6/6 in use · ops partly custom", "6/6 in use"]);
+    expect(pillTip("g-model")).toBe("Set on their own under Agents, so a change here does not reach them: artist.");
+    expect(pillTip("g-be")).toBe("Every agent uses the value on this page.");
+  });
+
+  it("only the shared agent settings have a pill — the system and channel fields are the fleet's, not an agent's", async () => {
+    await open();
+    for (const id of ["g-locale", "g-tips", "g-roots", "g-hang-on", "g-conc", "g-stag"]) expect([id, pill(id)]).toEqual([id, null]);
+  });
+
+  it("a dashboard feature set to null (or a dashboard with no feature) is not the agent's own", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].dashboard = { task_board: null, appearance: undefined };
+    raw.instances["reviewer-t2"].dashboard = {};
+    raw.instances["writer-t6"] = { working_directory: "/w/w", dashboard: { task_board: false } };
+    raw.instances["office-t7"] = { working_directory: "/w/o", office_pack_access: null };
+    await open();
+    // ops sets only the office switch and writer only the task board: each still follows the other four items, so both are "partly" custom.
+    expect(pill("g-dash")).toBe("8/8 in use · 2 agents partly custom");
+    expect(pillTip("g-dash")).toContain("Task board: writer; Office: ops");
+  });
+
+  it("an agent that sets only one dashboard item is partly custom — the page does not say a change here misses it altogether", async () => {
+    await open();                                                                    // ops sets office_access only
+    expect(pill("g-dash")).toBe("6/6 in use · ops partly custom");
+    const tip = pillTip("g-dash");
+    expect(tip).toBe("An agent that sets an item on its own (under Agents) is not reached by a change to that item here; it still follows this page for its other items. Set on their own: Office: ops.");
+    expect(tip).not.toContain("does not reach them");
+    // The pure part: a change to the appearance reaches ops; a change to the office switch does not.
+    const { usageOf, FIELDS } = await import("/ui/js/settings-shared.js");
+    const part = (k: string) => FIELDS.dash.parts.find((x: any) => x.keys[0] === `dash_${k}`);
+    expect(usageOf(raw, "dash", [part("appearance")]).owners.map((o: any) => o.name)).toEqual([]);
+    expect(usageOf(raw, "dash", [part("office")]).owners.map((o: any) => o.name)).toEqual(["ops-t5"]);
+  });
+
+  it("an agent that sets every dashboard item is custom, and the hover lists who sets which", async () => {
+    raw = fleet();
+    raw.instances["ops-t5"] = { working_directory: "/w/ops", office_access: true, office_pack_access: false, dashboard: { appearance: false, task_board: true, web_settings: true } };
+    raw.instances["dev-t1"].dashboard = { task_board: false };
+    await open();
+    expect(pill("g-dash")).toBe("5/6 in use · ops custom · dev partly custom");
+    expect(pillTip("g-dash")).toContain("Appearance: ops");
+    expect(pillTip("g-dash")).toContain("Task board: dev, ops");
+  });
+
+  it("a key set to null is not the agent's own either (the daemon takes the default for it)", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].model = null;
+    raw.instances["reviewer-t2"].hang_detector = { enabled: null, timeout_minutes: null };
+    await open();
+    expect(pill("g-model")).toBe("5/6 in use · artist custom");     // dev's null model does not count
+    await check($("#g-hang-on"), false);
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 6 agent(s) restart"]);   // reviewer's nulls leave it reached
+  });
+
+  it("with several overrides it says how many, and the hover lists them", async () => {
+    raw = fleet(); raw.instances["dev-t1"].model = "x"; raw.instances["ops-t5"].model = "y";
+    await open();
+    expect(pill("g-model")).toBe("3/6 in use · 3 agents custom");
+    expect(pillTip("g-model")).toContain("dev, artist, ops");
+  });
+});
+
+describe("what an edit costs", () => {
+  it("shows nothing until a field is edited — and nothing for a field that applies at once", async () => {
+    await open();
+    expect(p.root.querySelectorAll(".s-note")).toHaveLength(0);
+    await pickSeg($("#g-tp"), "verbose");                          // tool progress is hot
+    expect(p.root.querySelectorAll(".s-note")).toHaveLength(0);
+    expect(bar()).toBe("Immediately");                              // …and the bar says so for a change with no words of its own
+  });
+
+  it("an agent restart names how many agents it reaches and which it does not — from the schema, not a fixed word", async () => {
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"]);
+    expect(bar()).toBe("↻ 5 agent(s) restart after saving");
+    expect(field("g-model").className).toContain("s-dirty");
+  });
+
+  it("puts the note away when the field is put back — and the Save bar with it", async () => {
+    await open();
+    const was = $("#g-model").value;
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toHaveLength(1);
+    await choose("g-model", was);
+    expect(notes("g-model")).toEqual([]);
+    expect($(".s-pending")).toBeNull();
+    expect(field("g-model").className).not.toContain("s-dirty");
+  });
+
+  it("adds the costs of several edits on the bar, an agent reached twice counted once", async () => {
+    await open();
+    await choose("g-model", "gpt-5.5-mini");                       // reaches 5 (not artist)
+    await choose("g-ts", "full");                                  // reaches 5 (not tester): together all 6
+    expect(notes("g-ts")).toEqual(["↻ After saving, 5 agent(s) restart (tester set their own — not affected)"]);
+    expect(bar()).toBe("↻ 6 agent(s) restart after saving");
+  });
+
+  it("a fleet restart (the language) says AgEnD restarts, not an agent", async () => {
+    await open();
+    await choose("g-locale", "zh-TW");
+    expect(notes("g-locale")).toEqual(["↻ AgEnD has to restart for this to take effect"]);
+    expect(bar()).toBe("↻ AgEnD restarts");
+  });
+
+  it("when every agent sets the field itself, nobody is affected — and it says so", async () => {
+    raw = fleet(); for (const i of Object.values<any>(raw.instances)) i.model = "own";
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["Every agent sets this on its own, so none is affected."]);
+    expect(bar() ?? "").not.toContain("restart after saving");
+  });
+
+  it("with no agents yet, a new one starts from the value", async () => {
+    raw = fleet(); raw.instances = {};
+    await open();
+    expect(pill("g-model")).toBeNull();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["No agents yet — agents you create later start with this value."]);
+  });
+
+  it("every agent without its own value takes it, but only a running one restarts — the note says which", async () => {
+    status = { "dev-t1": "stopped", "reviewer-t2": "paused" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) use the new value; the 3 running restart (artist set their own — not affected)"]);
+    expect(bar()).toBe("↻ 5 agent(s) use the new value; the 3 running restart");
+  });
+
+  it("a crashed agent is restarted too (the fleet restarts a crash-looping daemon); a paused or stopped one is not", async () => {
+    status = { "dev-t1": "crashed", "reviewer-t2": "paused", "tester-t4": "stopped" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");                       // reaches 5: dev (crashed), reviewer (paused), tester (stopped), ops, general
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) use the new value; the 3 running restart (artist set their own — not affected)"]);
+    expect(bar()).toBe("↻ 5 agent(s) use the new value; the 3 running restart");
+  });
+
+  it("when the agents' state cannot be read it does not claim that none is running", async () => {
+    for (const mode of ["down", "empty"] as const) {
+      fleetMode = mode;
+      await open();
+      await choose("g-model", "gpt-5.5-mini");
+      expect([mode, notes("g-model"), bar()]).toEqual([mode, ["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"], "↻ 5 agent(s) restart after saving"]);
+      await p.unmount();
+    }
+  });
+
+  it("with no agent running, nothing restarts — and it does not say so", async () => {
+    status = Object.fromEntries(Object.keys(fleet().instances).map((n) => [n, "stopped"]));
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["After saving, 5 agent(s) use the new value; none is running, so none restarts (artist set their own — not affected)"]);
+    expect(bar()).toBe("5 agent(s) use the new value; none is running");
+    expect(`${notes("g-model")}${bar()}`).not.toMatch(/↻/);
+  });
+
+  it("the hang detector's switch and its minutes are counted apart: an agent that sets one still follows the other", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].hang_detector = { timeout_minutes: 5 };                // sets the minutes, inherits the switch
+    raw.instances["reviewer-t2"].hang_detector = { enabled: false };                // sets the switch, inherits the minutes
+    await open();
+    expect(pill("g-hang-on")).toBeNull();                                           // no pill: it is the fleet's setting
+    await check($("#g-hang-on"), false);                                            // the switch only: nobody who inherits it is left out
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (reviewer set their own — not affected)"]);
+    await check($("#g-hang-on"), true);
+    await type("g-hang", "20");                                                     // the minutes only
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (dev set their own — not affected)"]);
+    await check($("#g-hang-on"), false);                                            // both: each agent is reached by one of them
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 6 agent(s) restart"]);
+    expect(bar()).toBe("↻ 6 agent(s) restart after saving");
+  });
+
+  it("the hang detector's tip names only what an agent can set under Agents: its minutes (the dialog has no switch)", async () => {
+    await open();
+    expect(text(field("g-hang-on").querySelector(".s-i .s-tipbody"))).toBe("Raise an alert when an agent produces no output at all for this long. An individual agent can set its own minutes under Agents.");
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang("zh-TW");
+    await p.unmount(); await open();
+    expect(text(field("g-hang-on").querySelector(".s-i .s-tipbody"))).toBe("Agent 超過這段時間完全沒有輸出，就發出提醒。個別 Agent 可以在 Agents 頁自己設定分鐘數。");
+    setLang("en");
+  });
+
+  it("an agent that sets both hang detector settings is left out of an edit to either", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].hang_detector = { enabled: true, timeout_minutes: 5 };
+    await open();
+    await check($("#g-hang-on"), false);
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (dev set their own — not affected)"]);
+    await type("g-hang", "20");
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (dev set their own — not affected)"]);
+  });
+
+  it("project folders and a newly ticked dashboard feature say that someone must confirm; unticking says nothing", async () => {
+    await open();
+    $("#g-roots input[type=text]").value = "/srv"; fire($("#g-roots input[type=text]"), "input"); await settle(2);
+    $("#g-roots").querySelectorAll("button").find((b: any) => b.textContent.includes("Add")).click(); await settle(4);
+    expect(notes("g-roots")).toEqual(["A fleet admin has to confirm when you save"]);
+    expect(bar()).toBe("A fleet admin has to confirm when you save");
+    const boxes = $("#g-dash").querySelectorAll("input[type=checkbox]");
+    await check(boxes[0], false);                                  // appearance was on: unticking applies at once
+    expect(notes("g-dash")).toEqual([]);
+    await check(boxes[3], true);                                   // office was off: ticking it is confirmed first
+    expect(notes("g-dash")).toEqual(["Newly ticked items are confirmed first"]);
+  });
+
+  it("an invalid field shows its error, not a cost, and keeps Save away", async () => {
+    await open();
+    await type("g-conc", "25");
+    expect(text(field("g-conc").querySelector(".feedback.error"))).toBeTruthy();
+    expect(notes("g-conc")).toEqual([]);
+    expect($(".s-pending .btn-primary").disabled).toBe(true);
+    await type("g-conc", "6");
+    expect(text(field("g-conc").querySelector(".feedback.warning"))).toBeTruthy();   // above 4 warns, and still saves
+    expect($(".s-pending .btn-primary").disabled).toBe(false);
+    await type("g-stag", "50");
+    expect(text(field("g-stag").querySelector(".feedback.warning"))).toBeTruthy();
+    await type("g-hang", "0");
+    expect(text(field("g-hang-on").querySelector(".feedback.error"))).toBeTruthy();
+    await type("g-auto", "-1");
+    expect(text(field("g-auto").querySelector(".feedback.error"))).toBeTruthy();
+  });
+});
+
+// The fleet's reconciliation (fleet-manager.ts, "Classic cold config changed") also restarts a running ClassicBot room whose
+// backend, model or auto-pause comes from the shared defaults — the room's own value, then ClassicBot's defaults, come first.
+describe("ClassicBot rooms that follow a shared value", () => {
+  const room = (instanceName: string, extra: Record<string, unknown> = {}) => ({ instanceName, name: instanceName, ...extra });
+  const rooms = (...list: Array<ReturnType<typeof room>>) => Object.fromEntries(list.map((r, i) => [`discord:${i}`, r]));
+  const ROOM_RESTARTS = "↻ After saving, 1 ClassicBot room(s) that follow this value restart";
+
+  it("counts a room that follows the shared model beside the agents — and leaves out a room with its own model", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b", { model: "gpt-5.5-nano" })) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)", ROOM_RESTARTS]);
+    expect(bar()).toContain("↻ 5 agent(s) restart after saving");
+    expect(bar()).toContain("↻ 1 ClassicBot room(s) restart after saving");
+  });
+
+  it("with only a room, it names the room's restart and does not say there are no agents", async () => {
+    raw = fleet(); raw.instances = {};
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual([ROOM_RESTARTS]);
+    expect(bar()).toBe("↻ 1 ClassicBot room(s) restart after saving");
+    expect(`${notes("g-model")}${bar()}`).not.toContain("No agents yet");
+  });
+
+  it("a room follows the shared value only when neither it nor ClassicBot's defaults set it (backend and model read empty as unset; auto-pause 0 is a value)", async () => {
+    classic = { defaults: { model: "gpt-5.5-nano" }, channels: rooms(room("classic-a")) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");                        // ClassicBot's defaults set the model: the room follows those
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"]);
+    await p.unmount();
+    classic = { defaults: {}, channels: rooms(room("classic-a", { model: "" }), room("classic-b", { auto_pause_after: 0 }), room("classic-c", { backend: "claude-code" })) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");                        // an empty model follows
+    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS.replace("1 ClassicBot", "3 ClassicBot")]);
+    await choose("g-model", "gpt-5.5");                              // put back: gone
+    await type("g-auto", "10");                                      // auto-pause: classic-b's 0 is its own value
+    // Auto-pause applies to an agent at once but restarts a room (ClassicBot takes only tool progress and the reply guard hot): rooms alone are named.
+    expect(notes("g-auto")).toEqual([ROOM_RESTARTS.replace("1 ClassicBot", "2 ClassicBot")]);
+    expect(bar()).toBe("↻ 2 ClassicBot room(s) restart after saving");
+  });
+
+  it("a stopped room takes the value at its next start; with the state unreadable the page does not claim none is running", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    status = { "classic-a": "stopped" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual(["After saving, 1 ClassicBot room(s) use the new value; none is running, so none restarts"]);
+    expect(bar()).toContain("1 ClassicBot room(s) use the new value; none is running");
+    await p.unmount();
+    fleetMode = "down";
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS]);
+  });
+
+  it("a mix of running and idle rooms says how many restart", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b")) };
+    status = { "classic-b": "paused" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual(["↻ After saving, 2 ClassicBot room(s) use the new value; the 1 running restart"]);
+    expect(bar()).toContain("↻ 2 ClassicBot room(s) use the new value; the 1 running restart");
+  });
+
+  it("a room of the older classicBot.yaml format has no instanceName in the file, so its state cannot be looked up — it counts as restarting", async () => {
+    // Old format: the key is the channel id, with no instanceName/adapterId (the manager makes the name up when it loads).
+    classic = { defaults: {}, channels: { "-1005823000001": { name: "Old room" } } };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS]);                       // not "none is running": nothing says it is stopped
+    expect(bar()).toContain("↻ 1 ClassicBot room(s) restart after saving");
+    await p.unmount();
+    // Beside a room the page can see is stopped: the old-format one still restarts, the stopped one does not.
+    classic = { defaults: {}, channels: { "-1005823000001": { name: "Old room" }, "discord:1": room("classic-b") } };
+    status = { "classic-b": "stopped" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual(["↻ After saving, 2 ClassicBot room(s) use the new value; the 1 running restart"]);
+  });
+
+  it("only what the reconciliation restarts a room for is counted: a hot value, or a field a room does not take from here, says nothing about rooms", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    await open();
+    await pickSeg($("#g-tp"), "verbose");                            // hot: applies at once, nothing restarts
+    expect(p.root.querySelectorAll(".s-note")).toHaveLength(0);
+    await choose("g-ts", "full");                                    // an agent restart, but a room is not restarted for it
+    expect(notes("g-ts")).toEqual(["↻ After saving, 5 agent(s) restart (tester set their own — not affected)"]);
+    expect(bar() ?? "").not.toContain("ClassicBot");
+  });
+
+  it("the pill counts agents only and its hover names the rooms that follow the value too", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b", { model: "gpt-5.5-nano" })) };
+    await open();
+    expect(pill("g-model")).toBe("5/6 in use · artist custom");      // the rooms are not in the count
+    expect(pillTip("g-model")).toBe("Set on their own under Agents, so a change here does not reach them: artist. 1 ClassicBot room(s) follow this value too (they are not in this count).");
+    expect(pillTip("g-ts")).not.toContain("ClassicBot");               // a room does not take the tool set from here
+  });
+
+  it("says it in zh-TW", async () => {
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang("zh-TW");
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ 儲存後，5 個 Agent 會重新啟動（artist 自訂，不受影響）", "↻ 儲存後，沿用這個值的 1 個 ClassicBot 房間會重新啟動"]);
+    expect(bar()).toContain("↻ 儲存後 1 個 ClassicBot 房間會重新啟動");
+    expect(pillTip("g-model")).toContain("另有 1 個 ClassicBot 房間也沿用這個值（不在上面的數字裡）。");
+    setLang("en");
+  });
+});
+
+describe("what is written", () => {
+  it("every field still writes its own key, and only the ones that changed", async () => {
+    await open();
+    await pickSeg($("#g-tp"), "verbose");
+    await pickSeg($("#g-vis"), "hidden");
+    await pickSeg($("#g-am"), "cli");
+    await check($("#g-tips"), false);
+    await check($("#g-reply"), false);
+    await check($("#g-reply-triggers"), true);
+    await choose("g-ts", "coordinator");
+    await choose("g-ll", "debug");
+    await choose("g-locale", "zh-TW");
+    await choose("g-be", "claude-code");
+    await type("g-auto", "10");
+    await check($("#g-hang-on"), false);
+    await type("g-hang", "20");
+    await type("g-conc", "3");
+    await type("g-stag", "700");
+    await save();
+    expect(written()).toEqual([{
+      backend: "claude-code", locale: "zh-TW", auto_pause_after: 10, agent_mode: "cli", tool_set: "coordinator", tool_progress: "verbose",
+      cross_instance_visibility: "hidden", tips: false, reply_triggers: true, reply_completion_guard: false, log_level: "debug",
+      hang_detector: { enabled: false, timeout_minutes: 20 }, startup: { concurrency: 3, stagger_delay_ms: 700 },
+    }]);
+  });
+
+  it("the dashboard permissions go whole; the two kept beside it only when they are edited, under their own keys", async () => {
+    await open();
+    const boxes = $("#g-dash").querySelectorAll("input[type=checkbox]");
+    await check(boxes[0], false);
+    await save();
+    expect(written()).toEqual([{ dashboard: { appearance: false, task_board: true, web_settings: true } }]);   // office_access / office_pack_access: only when edited
+  });
+
+  it("project folders go through POST /ui/config", async () => {
+    await open();
+    $("#g-roots input[type=text]").value = "/srv"; fire($("#g-roots input[type=text]"), "input"); await settle(2);
+    $("#g-roots").querySelectorAll("button").find((b: any) => b.textContent.includes("Add")).click(); await settle(4);
+    await save();
+    expect(sent.filter((s) => s.path === "/ui/config").map((s) => [s.method, s.body])).toEqual([["POST", { project_roots: ["/srv"] }]]);
+  });
+
+  it("ticking office on writes office_access under its own key", async () => {
+    await open();
+    await check($("#g-dash").querySelectorAll("input[type=checkbox]")[3], true);
+    await save();
+    expect(written()).toEqual([{ office_access: true }]);
+  });
+
+  it("a switch and a segmented choice shown on in an unset fleet read the built-in values", async () => {
+    await open();
+    expect([segValue($("#g-tp")), segValue($("#g-vis")), segValue($("#g-am")), $("#g-tips").checked, $("#g-reply").checked, $("#g-reply-triggers").checked, $("#g-hang-on").checked])
+      .toEqual(["standard", "full", "mcp", true, true, false, true]);
+  });
+});
+
+describe("the words", () => {
+  it("are in zh-TW too: the name, the groups, the pills, a note and the bar", async () => {
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang("zh-TW");
+    await open();
+    expect(text($(".s-page-lead"))).toBe("改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。");
+    expect(p.root.querySelectorAll(".s-group").map((c: any) => text(c.querySelector("h3")))).toEqual(["Agent 共用設定", "系統與頻道", "Agent 共用設定", "系統與頻道"]);
+    expect(text($("details.drawer summary"))).toBe("進階設定（10 項）");
+    expect(p.root.querySelectorAll(".s-group").map((c: any) => text(c.querySelector("p.note")))).toEqual(["個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改",
+      "個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改；只有卡住偵測可以另外在個別 Agent 設定"]);
+    expect(pill("g-dash")).toBe("6/6 套用中 · ops 部分自訂");
+    expect(pillTip("g-dash")).toContain("自己設定的：辦公室: ops。");
+    expect(pill("g-model")).toBe("5/6 套用中 · artist 自訂");
+    expect($("#g-tp").querySelectorAll(".s-seg-opt").map(text)).toEqual(["關", "標準", "詳細"]);
+    expect(text(field("g-be").querySelector(".s-info"))).toContain("只檢查這台主機。Windows 電腦上的 CLI，請在個別 Agent 的設定裡按「切換 Runtime／CLI」。");
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ 儲存後，5 個 Agent 會重新啟動（artist 自訂，不受影響）"]);
+    expect(text($(".s-pending .note"))).toBe("↻ 儲存後 5 個 Agent 會重新啟動");
+    setLang("en");
+  });
+});
+
+// The alpha line (release/2.3.5-alpha) has a Runtime page, Windows agents and an agent's own "Runtime and CLI" section:
+// what this page says about them has to hold there.
+describe("on the alpha line: Windows agents and the Runtime page", () => {
+  /** Two host agents, a Windows agent that runs one command at a time (its own CLI, model and mode), and a persistent Windows pane. */
+  const withWindows = () => {
+    const f = fleet();
+    f.instances = {
+      "dev-t1": { working_directory: "/w/dev" }, "reviewer-t2": { working_directory: "/w/rev" },
+      "win-exec": { runtime: "windows", native_adapter: "exec", native_agent_id: "11111111-1111-4111-8111-111111111111", native_sandbox: "read-only", working_directory: "C:\\w\\exec",
+        backend: "codex", model: "", agent_mode: "cli" },
+      "win-pane": { runtime: "windows", native_adapter: "pane", native_agent_id: "22222222-2222-4222-8222-222222222222", native_sandbox: "read-only", working_directory: "C:\\w\\pane",
+        backend: "claude-code", model: "", agent_mode: "cli" },
+    } as any;
+    return f;
+  };
+
+  it("keeps the General location card above the settings, and the Runtime page in the Fleet list", async () => {
+    await open();
+    // In document order: the card first, then the form.
+    expect(p.root.querySelectorAll("#general-location, .s-shared").map((el: any) => (el.id === "general-location" ? "general-location" : "shared"))).toEqual(["general-location", "shared"]);
+    expect(p.root.querySelectorAll(".s-nav .seg-item").map((a: any) => a.textContent.trim())).toContain("Runtime");
+  });
+
+  it("the backend line says where a Windows PC's CLI is chosen and links to the Runtime page", async () => {
+    await open();
+    const link = field("g-be").querySelector(".s-info a");
+    expect([text(link), link.getAttribute("href")]).toEqual(["Windows PCs and their CLIs: Runtime →", "/settings/runtimes"]);
+  });
+
+  it("a Windows agent with its own CLI, model and mode is counted as custom for them — an edit to the default backend does not reach it", async () => {
+    raw = withWindows();
+    await open();
+    expect([pill("g-be"), pill("g-model"), pill("g-am")]).toEqual(["2/4 in use · 2 agents custom", "2/4 in use · 2 agents custom", "2/4 in use · 2 agents custom"]);
+    await choose("g-be", "kiro-cli");
+    expect(notes("g-be")).toEqual(["↻ After saving, 2 agent(s) restart (win-exec, win-pane set their own — not affected)"]);
+  });
+
+  it("a Windows agent that runs one command at a time has no process to restart; a persistent Windows pane does", async () => {
+    raw = withWindows();
+    // Every agent reads as running (the fleet reports the one-command agent as running while it is switched on).
+    await open();
+    await choose("g-ts", "minimal");                                // nobody sets a tool set: all four take it
+    expect(notes("g-ts")).toEqual(["↻ After saving, 4 agent(s) use the new value; the 3 running restart"]);
+    expect(bar()).toBe("↻ 4 agent(s) use the new value; the 3 running restart");
+  });
+
+  it("with only one-command Windows agents reached, nothing restarts, even when the page cannot read the agents' state", async () => {
+    raw = withWindows();
+    delete raw.instances["dev-t1"]; delete raw.instances["reviewer-t2"]; delete raw.instances["win-pane"];
+    for (const mode of ["up", "down"] as const) {
+      fleetMode = mode;
+      await open();
+      await choose("g-ts", "minimal");
+      expect([mode, notes("g-ts").join("").includes("↻"), bar().includes("↻")]).toEqual([mode, false, false]);
+      await p.unmount();
+    }
+  });
+});

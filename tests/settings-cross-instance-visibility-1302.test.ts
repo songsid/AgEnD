@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
+import { pickSeg, segValue } from "./helpers/settings-controls.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { handleSettingsRequest } from "../src/settings-api.js";
@@ -103,7 +104,7 @@ async function openGeneral(defaults: Record<string, unknown>) {
   // The language picker is set, so a save writes only this one key's neighbours (the locale picker is #1310's).
   fleet = { defaults: { locale: "en", ...defaults }, instances: {}, channels: [] };
   await mountSection("general");
-  const picker = visibilityPicker(p.root.querySelector(".s-general")!)[0]!;
+  const picker = p.root.querySelector(".s-general #g-vis")!;       // a segmented choice (full / summary / hidden)
   /** Review, then Apply: the defaults PUT it sends (null when nothing differs). */
   const review = async () => {
     sent = [];
@@ -153,8 +154,8 @@ describe("the agent editor", () => {
 describe("the fleet defaults", () => {
   it("unset: shows full, and saving other defaults sends nothing for it", async () => {
     const g = await openGeneral({ tool_progress: "off" });
-    expect(g.picker.value).toBe("full");
-    await choose(p.root.querySelector("#g-tp")!, "verbose");
+    expect(segValue(g.picker)).toBe("full");
+    await pickSeg(p.root.querySelector("#g-tp")!, "verbose");
     expect((await g.review())!.body).toEqual({ tool_progress: "verbose" });
   });
 
@@ -166,8 +167,8 @@ describe("the fleet defaults", () => {
 
   it("changed: one PUT with the new mode", async () => {
     const g = await openGeneral({ cross_instance_visibility: "hidden" });
-    expect(g.picker.value).toBe("hidden");
-    await choose(g.picker, "summary");
+    expect(segValue(g.picker)).toBe("hidden");
+    await pickSeg(g.picker, "summary");
     expect(await g.review()).toEqual({ method: "PUT", path: "/api/settings/fleet/defaults", body: { cross_instance_visibility: "summary" } });
   });
 });

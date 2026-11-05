@@ -6,7 +6,7 @@ import { Icon } from "./ui-icons.js";
 import { Toasts } from "./ui-toast.js";
 import { ConfirmHost, confirmDialog } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
-import { t, lang, setLang, onLang } from "./app-i18n.js";
+import { t, lang, setLang, onLang, register } from "./app-i18n.js";
 import { appStore, createStore, guestBadge, guestPage, guestTrusted, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { toast } from "./ui-toast.js";
@@ -330,6 +330,40 @@ export function signInHref() {
   return `/signin?next=${encodeURIComponent(here)}`;
 }
 
+// ── AgEnD Hub P1 (docs/design/hub-ui-client.md): the page's mark, set by the listener that served it ──
+register("hubShell", {
+  en: { brand: "AgEnD Hub", ask: "Ask", exposures: "My exposures", admin: "Administration" },
+  "zh-TW": { brand: "AgEnD Hub", ask: "提問", exposures: "我的公開 Agent", admin: "管理" },
+});
+function hubMarks() {
+  const tokens = String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/);
+  return { hub: tokens.includes("hub"), member: tokens.includes("member") };
+}
+/** The Hub workspace's sidebar: its brand and name, Ask / My exposures / Administration, the session. */
+function HubSidebar({ route }) {
+  const name = String(document.body?.dataset?.hubName || "").trim();
+  const tab = route && route.panel === "hub" ? route.tab : "ask";
+  const row = (key, href, icon) => html`<a class=${`side-row${tab === key ? " active" : ""}`} href=${href}
+    aria-current=${tab === key ? "page" : undefined} onClick=${closeDrawer}><${Icon} name=${icon} /><span class="grow">${t(`hubShell.${key}`)}</span></a>`;
+  return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
+    <div class="side-head" data-trust="navigation">
+      <a class="brand hub-brand" href="/ui/hub" onClick=${closeDrawer}>${t("hubShell.brand")}${name ? html`<span class="hub-brand-name"> · ${name}</span>` : null}</a>
+      <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
+    </div>
+    <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
+      ${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}
+    </nav>
+    <div class="side-foot" data-trust="navigation"><${SessionMenu} /></div>
+    <${SidebarResize} />
+  </aside>`;
+}
+/** A member fleet's "My fleet ↔ Hub" switcher: its module loads only on a member page, and shows only once paired. */
+function HubSwitcherSlot() {
+  const [mod, setMod] = useState(null);
+  useEffect(() => { let live = true; import("/ui/js/hub-switcher.js").then((m) => { if (live) setMod(() => m.HubSwitcher); }, () => {}); return () => { live = false; }; }, []);
+  return mod ? html`<${mod} />` : null;
+}
+
 function Sidebar({ route, onNewInstance, viewOnly }) {
   const app = useStore(appStore);
   const shell = useStore(shellStore);
@@ -374,6 +408,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <${SidebarResize} />
     </aside>`;
   }
+  // AgEnD Hub P1: a Hub workspace (a Hub's own listener marked the page) has the Hub's sidebar, never the fleet's.
+  if (hubMarks().hub) return html`<${HubSidebar} route=${route} />`;
   // #1675: the whole fleet, from anywhere — top left, so at the top of a phone's drawer too. #2183 (the user's call): the
   // one Fleet entry ("Fleet" / "Fleet 概覽"), on the tab this device used last (the Org chart the first time); an agent's
   // View, Log and Details are its header's tabs, so the sidebar has no "Fleet" (Details) or "View" row of its own.
@@ -385,6 +421,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
       <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
     </div>
+    ${/* AgEnD Hub P1: a member fleet's "My fleet ↔ Hub" (shown once paired; nothing loads when the switch is off) */ hubMarks().member ? html`<${HubSwitcherSlot} />` : null}
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}

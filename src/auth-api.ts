@@ -164,6 +164,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "qrcode.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
+  // AgEnD Hub P1: the Hub pages' own stylesheet (linked by their lazy modules only; static, no data).
+  "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
 };
 
 /** True for a name `/assets/` serves. The public link's manifest asks this too: one list, not two. */

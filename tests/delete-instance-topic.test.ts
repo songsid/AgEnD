@@ -57,6 +57,36 @@ function rig() {
 }
 
 describe("delete_instance's topic (beta.9)", () => {
+  // #3105 review (Prism P1): a per-turn Windows agent has no execution adapter, yet its configured topic is on its bot —
+  // counted as an owner, and deleted through it.
+  describe("Windows agents' topics (runtime: windows)", () => {
+    const winRig = (instances: Record<string, unknown>) => { const r = rig(); Object.assign(r.fm.fleetConfig!.instances, instances); return r; };
+    it("a pane whose Discord topic a per-turn Windows sibling also uses: the topic is kept", async () => {
+      const { dc, del } = winRig({ pane1: { runtime: "windows", native_adapter: "pane", native_agent_id: "a1", topic_id: "555", channel_id: "dc-main", working_directory: "C:\\w" },
+        exec1: { runtime: "windows", native_agent_id: "a2", topic_id: "555", channel_id: "dc-main", working_directory: "C:\\w" } });
+      const { result } = await del({ name: "pane1" });
+      expect(result.topic_deleted).toBe(false);
+      expect(dc.deleteTopic).not.toHaveBeenCalled();
+    });
+    it("…and when that sibling is the General (general_topic: true): kept", async () => {
+      const { dc, del } = winRig({ pane1: { runtime: "windows", native_adapter: "pane", native_agent_id: "a1", topic_id: "556", channel_id: "dc-main", working_directory: "C:\\w" },
+        execGeneral: { runtime: "windows", native_agent_id: "a3", general_topic: true, topic_id: "556", channel_id: "dc-main", working_directory: "C:\\w" } });
+      expect((await del({ name: "pane1" })).result.topic_deleted).toBe(false);
+      expect(dc.deleteTopic).not.toHaveBeenCalled();
+    });
+    it("a per-turn Windows agent's own topic: deleted through its own bot (the control: not 'bot disconnected')", async () => {
+      const { dc, tg, del } = winRig({ exec2: { runtime: "windows", native_agent_id: "a4", topic_id: "557", channel_id: "dc-main", working_directory: "C:\\w" } });
+      expect((await del({ name: "exec2" })).result).toEqual({ success: true, name: "exec2", topic_deleted: true });
+      expect(dc.deleteTopic).toHaveBeenCalledExactlyOnceWith("557");
+      expect(tg.deleteTopic).not.toHaveBeenCalled();
+    });
+    it("the control: a pane alone on its topic — deleted", async () => {
+      const { dc, del } = winRig({ pane2: { runtime: "windows", native_adapter: "pane", native_agent_id: "a5", topic_id: "558", channel_id: "dc-main", working_directory: "C:\\w" } });
+      expect((await del({ name: "pane2" })).result.topic_deleted).toBe(true);
+      expect(dc.deleteTopic).toHaveBeenCalledExactlyOnceWith("558");
+    });
+  });
+
   it("by default the topic is deleted — through the agent's own bot (Discord here), never the primary (Telegram)", async () => {
     const { tg, dc, order, del } = rig();
     const { result } = await del({ name: "worker" });
