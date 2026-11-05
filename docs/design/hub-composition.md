@@ -49,9 +49,10 @@ Rules:
   continuation from an older generation a no-op.
 - **No partial server.** A factory either returns a complete service or throws. On throw, every listener, DB handle and
   timer it opened is closed before the hold is raised.
-- **Holds are visible, never retried in a loop.** `hold(reason)` writes one fleet-log line and one **Needs-you** item
-  for the local owner: "Hub unavailable: <reason>", with a short explanation per reason code. This is a new input to the
-  existing derivation. The Hub stays down until the next reload or restart.
+- **Holds are visible, never retried in a loop.** `hold(reason)` writes one fleet-log line and records the hold
+  (`FleetManager.getHubHolds()`). In code PR 2 it also becomes one **Needs-you** item for the local owner, "Hub
+  unavailable: <reason>", built on the `hub` item type that S4 (#3107) adds, so the two slices don't edit the same lines
+  twice. The Hub stays down until the next reload or restart.
 - **Reason codes** (closed set): `hub-incomplete` (a slice's component is missing in this build), `hub-unsealed`
   (manifest missing, signature invalid or plan digest mismatch), `hub-state-newer` (the DB was written by a newer
   version), `hub-state-mismatch` (DB, manifest and floor disagree), `hub-storage` (private-file or DB failure),
@@ -176,10 +177,10 @@ Rules:
 If either is missing in a build, its factory throws `hub-incomplete` before opening anything. Until S3's server side
 and S4's code land, an enabled Hub therefore holds visibly instead of mounting part of itself.
 
-**Hub web listener routing.** S5 routes the Hub web listener's `/web`, `/assets/*` and `/ui/js/*` to the same serving
-code as the fleet listener, using the request's own Host, and sends everything under `/hub/v1/*` to S3's handler.
-S3 makes `serveAppShell(..., { hubWorkspace })` and the shell boot Hub-only: no fleet stream, poll, prefs or chat, and
-no fleet cookie is ever read. S3's `/hub/v1/session` owns the Hub session check.
+**Hub web listener routing.** Every request on the Hub web listener goes to S3's `handle(req, res)`; when it returns
+false the answer is 404. S3's handler serves `/hub/v1/*`, the Hub-only shell (`/`, `/web`, `/ui`, `/ui/hub*`), its
+three scripts under `/ui/js/` and `/assets/*`, all without reading a fleet cookie or session. S3's `/hub/v1/session`
+owns the Hub session check. The personal fleet listener is untouched.
 
 ## 6. Interfaces to settle with the slices
 
@@ -196,7 +197,17 @@ no fleet cookie is ever read. S3's `/hub/v1/session` owns the Hub session check.
   - web-claude owns both S3a (the UI, #3098) and S3b (the server side: sessions, catalog, policy and grants, rooms,
     `/hub/v1/*`).
   - S3b implements `createHubHttp(deps) → { handle(req, res): boolean; receive(frame, link); close() }` in
-    `src/hub/http/compose.ts` and exports its tables as `HubMigration[]`.
+    `src/hub/http/compose.ts` and exports its tables as `migrations: HubMigration[]`. The module itself is the entry:
+    composition lazily imports it, and it has no default export.
+  - The full deps (cid-hub-s3b-deps; types in `src/hub/compose/server.ts`) are `{ uow, audit, content, directory,
+    pairing, store, current(), now?, config, issuer, transport }`:
+    - `config` is the frozen `{ hubId, name, webOrigin, administrator }` from the sealed settings, never from a request;
+    - `issuer.sign` wraps S1's `signAsker`, so S3 never opens key files;
+    - `transport()` returns null before the member listener runs and after a fence or close: S3 answers
+      "unavailable" and never queues;
+    - `content.put(tx, payload)` returns an S5-generated ref, and `content.get(ref)` serves only S3's own room
+      projection after its audience check;
+    - `db.ts` also exports `hubTxDatabase(tx)`, valid only while that transaction's callback runs.
   - Whether an exposure is enforceable reaches the Hub from the member, through S1's exposure snapshot or the owner's
     own publish step. It never comes from an S4 object on the Hub: there is none on a dedicated Hub, and no
     in-process bypass is allowed.
@@ -228,7 +239,8 @@ no fleet cookie is ever read. S3's `/hub/v1/session` owns the Hub session check.
 ## 8. Delivery
 
 1. **This note** (docs only).
-2. **Code PR 1:** `db.ts`, `audit/`, `runtime.ts`, the FleetManager hooks and the Needs-you hold input. The server
-   and member factories hold with `hub-incomplete` until S3 and S4 register. Opened once S1 is merged, because it
+2. **Code PR 1:** `db.ts`, `audit/`, `compose/server.ts`, `runtime.ts` and the FleetManager hooks. The server
+   factory holds with `hub-incomplete` until S3b registers its entry; the member side holds until S4. Opened once S1 is merged, because it
    imports S1's types and mount.
-3. **Code PR 2:** register the S3 and S4 entries when they land, plus whole-flow acceptance against the fake directory.
+3. **Code PR 2:** register the S3 and S4 entries when they land, the member factory (with the S4b provider seam), the
+   Needs-you hold item, and whole-flow acceptance against the fake directory.
