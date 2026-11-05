@@ -47,8 +47,9 @@ describe("Hub restricted member journal", () => {
   });
   it("never sends a second input after a crash at the durable intent boundary", async () => {
     const f = fixture(); await f.admission.admit(f.q); const request = f.begin(); f.journal.markInputIntent(f.q.identity.messageId, request, f.lease(request), f.fence);
-    const reopened = new HubMemberJournal(f.db, f.options), recovered = reopened.recoverInterruptedInputs(); expect(recovered[0].stage).toBe("uncertain");
-    expect(() => reopened.markInputIntent(f.q.identity.messageId, f.begin(), f.lease(f.begin()), f.fence)).toThrow();
+    const second = f.begin(); expect(() => f.journal.markInputIntent(f.q.identity.messageId, second, f.lease(second), f.fence)).toThrow();
+    const reopened = new HubMemberJournal(f.db, f.options), recovered = reopened.recoverInterruptedInputs(); expect(recovered).toMatchObject([{ stage: "uncertain" }]);
+    expect(() => reopened.markInputIntent(f.q.identity.messageId, second, f.lease(second), f.fence)).toThrow();
     expect((await f.admission.admit(f.q)).stage).toBe("uncertain"); expect(f.insert).toHaveBeenCalledTimes(1);
   });
   it("does not downgrade positively delivered or consumed evidence on restart", async () => {
@@ -106,4 +107,17 @@ it("never releases an answer with a pre-revocation proof and never increments a 
   expect(f.journal.saveAnswer(answer, request, f.fence)).toEqual(first);
   await f.admission.fence({ revocationVersion: 2, scope: { kind: "grant", grantId: f.q.identity.grantId }, reasonCode: "revoked" });
   expect(() => f.journal.saveAnswer(answer, request, f.fence)).toThrow();
+});
+
+it("retains a question and escaped answer that each fit a real protocol frame, including after reopening", async () => {
+  const f = fixture(), text = "q".repeat(64 * 1024), q = { text, identity: signAsker({ ...f.q.identity, contentDigest: sha256(text) }, f.keys.privateKey) };
+  await f.admission.admit(q); const begin = f.begin(); f.journal.markInputIntent(q.identity.messageId, begin, f.lease(begin), f.fence);
+  f.journal.recordEvidence(q.identity.messageId, "delivered"); f.journal.recordEvidence(q.identity.messageId, "consumed");
+  const answerText = '"'.repeat(126 * 1024), request: HubAuthorizationRequest = { ...begin, operationId: randomUUID(), phase: "release-answer", answer: { answerId: randomUUID(), contentDigest: sha256(answerText) } };
+  const answer = { messageId: q.identity.messageId, answerId: request.answer.answerId, text: answerText, contentDigest: request.answer.contentDigest, releaseLease: f.lease(request) };
+  expect(Buffer.byteLength(JSON.stringify({ v: 1, type: "question", requestId: randomUUID(), linkEpoch: 1, payload: q }))).toBeLessThan(256 * 1024);
+  expect(Buffer.byteLength(JSON.stringify({ v: 1, type: "answer", requestId: randomUUID(), linkEpoch: 1, payload: answer }))).toBeLessThan(256 * 1024);
+  const receipt = f.journal.saveAnswer(answer, request, f.fence);
+  const reopened = new HubMemberJournal(f.db, f.options);
+  expect(reopened.reconcile(0, [{ messageId: q.identity.messageId, contentDigest: q.identity.contentDigest }])).toEqual([receipt]);
 });

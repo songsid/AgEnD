@@ -12,7 +12,7 @@ function home() {
 }
 async function initialized() {
   const root = home(), memberOrigin = "https://127.0.0.1:39443", identity = await provisionHubIdentity({ home: root, memberOrigin }), digest = sha256("plan");
-  const manifest = { v: 1, hubId: identity.hubId, planDigest: digest, committedAt: Date.now(), confirmationId: "a".repeat(32) };
+  const manifest = { v: 1, hubId: identity.hubId, planDigest: digest, committedAt: new Date().toISOString(), confirmationId: "a".repeat(32) };
   const signature = sealHubInitialization({ home: root, ...manifest });
   writeFileSync(join(root, "hub/init-manifest.json"), JSON.stringify({ ...manifest, signature }), { mode: 0o600 });
   return { root, identity, digest, memberOrigin, manifest, signature };
@@ -32,7 +32,7 @@ describe("Hub identity provisioning and off-default composition", () => {
   it.each(["http://hub.test", "https://user:password@hub.test", "https://hub.test/path", "https://hub.test/?token=x", "https://hub.test/#fragment"])("refuses an unsafe machine origin %s", input => expect(() => hubOrigin(input)).toThrow());
   it("seals only the exact initialized plan, without writing a manifest or storing the bearer reference", async () => {
     const root = home(), memberOrigin = "https://127.0.0.1:39443", identity = await provisionHubIdentity({ home: root, memberOrigin });
-    const data = { v: 1, hubId: identity.hubId, planDigest: sha256("plan"), committedAt: Date.now(), confirmationId: "a".repeat(32) };
+    const data = { v: 1, hubId: identity.hubId, planDigest: sha256("plan"), committedAt: new Date().toISOString(), confirmationId: "a".repeat(32) };
     const signature = sealHubInitialization({ home: root, ...data }); expect(existsSync(join(root, "hub/init-manifest.json"))).toBe(false);
     writeFileSync(join(root, "hub/init-manifest.json"), JSON.stringify({ ...data, signature }), { mode: 0o600 });
     expect(verifyHubInitialization({ home: root, hubId: identity.hubId, memberOrigin, planDigest: data.planDigest }).signature).toBe(signature);
@@ -63,4 +63,17 @@ describe("Hub identity provisioning and off-default composition", () => {
     expect(mount.epoch()).toBeGreaterThan(old); expect(mount.serverEnabled()).toBe(false);
     release(service); await Promise.all([starting, stopping]); expect(service.start).not.toHaveBeenCalled(); expect(service.fence).toHaveBeenCalled(); expect(service.close).toHaveBeenCalled();
   });
+});
+
+it("reports a valid manifest plus failed service startup as unavailable, without claiming its seal is invalid", async () => {
+  const f = await initialized(), hold = vi.fn(), close = vi.fn(async () => {});
+  const mount = new HubMount({ home: f.root, planDigest: () => f.digest, createServer: async () => ({ start: async () => { throw Error("inert listener failure"); }, fence: vi.fn(), close }), createMember: vi.fn(), hold });
+  await mount.apply({ hub: { enabled: true, hubId: f.identity.hubId, memberOrigin: f.memberOrigin } });
+  expect(hold).toHaveBeenCalledExactlyOnceWith("service-unavailable"); expect(mount.serverEnabled()).toBe(false); expect(close).toHaveBeenCalled();
+});
+it("accepts only the initializer's canonical ISO timestamp in the signed manifest", async () => {
+  const f = await initialized();
+  for (const committedAt of [Date.now(), [f.manifest.committedAt], "2026-13-01T00:00:00.000Z", "2026-01-01T00:00:00Z"]) {
+    expect(() => sealHubInitialization({ home: f.root, planDigest: f.digest, confirmationId: "a".repeat(32), committedAt: committedAt as never })).toThrow();
+  }
 });

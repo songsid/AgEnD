@@ -1,13 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPrivateKey, randomUUID } from "node:crypto";
+import { createPrivateKey, generateKeyPairSync, randomUUID } from "node:crypto";
 import { createServer } from "node:https";
 import { readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { hubRig } from "./helpers/hub-rig.js";
-import { HubMemberProfileStore } from "../src/hub/profile.js";
-import { HubMemberClient } from "../src/hub/client.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
-import { signAsker, sha256 } from "../src/hub/identity.js";
+import { signAsker, sha256, issuerKeyId } from "../src/hub/identity.js";
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [];
 afterEach(async () => { for (const r of rigs.splice(0)) await r.close(); });
 async function rig() { const r = await hubRig(); rigs.push(r); return r; }
@@ -96,4 +94,24 @@ it("bounds queued external work and discards retired-link work without replaying
     await vi.waitFor(() => expect(c.state.holds).toContain("backpressure")); expect(started).toBe(1);
     release(); await vi.waitFor(() => expect(c.state.syncs).toBe(2)); expect(started).toBe(1);
   } finally { release(); }
+});
+
+it("an observed issuer change holds for re-pair without dispatch or automatic reconnect", async () => {
+  const r = await rig(), profile = await r.pair(), receive = vi.fn(async () => {}), c = r.client(receive); await c.value.start();
+  const now = Date.now(), text = "inert changed issuer", issuer = generateKeyPairSync("ed25519");
+  const identity = signAsker({ v: 1, issuer: r.identity.hubId, issuerKeyId: issuerKeyId(issuer.publicKey), messageId: randomUUID(), asker: r.owner, owner: r.owner,
+    destinationFleetId: profile.fleetId, exposureId: randomUUID(), roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1,
+    exposureRevision: 1, revocationVersion: 0, contentDigest: sha256(text), issuedAt: now, expiresAt: now + 60_000, nonce: "c".repeat(64) }, issuer.privateKey);
+  await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: c.state.link!.linkEpoch, payload: { text, identity } });
+  await vi.waitFor(() => expect(c.state.holds).toEqual(["key-changed"])); expect(receive).not.toHaveBeenCalled();
+  await new Promise(resolve => setTimeout(resolve, 350)); expect(c.state.syncs).toBe(1);
+});
+it("an explicit member close does not create a spurious transport-outage hold", async () => {
+  const r = await rig(); await r.pair(); const c = r.client(); await c.value.start(); const link = c.state.link!;
+  await c.value.close(); expect(link.current()).toBe(false); expect(c.state.holds).toEqual([]);
+});
+it("a changed Hub identity in a pinned welcome stops reconnect and never dispatches work", async () => {
+  const r = await rig(); await r.pair(); (r.server as any).options.hubId = randomUUID(); const c = r.client();
+  await expect(c.value.start()).rejects.toThrow(); expect(c.state.holds).toEqual(["key-changed"]);
+  await new Promise(resolve => setTimeout(resolve, 350)); expect(c.state.syncs).toBe(0); expect(r.received).toEqual([]);
 });

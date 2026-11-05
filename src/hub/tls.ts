@@ -53,9 +53,10 @@ export async function provisionHubIdentity(input: { home: string; memberOrigin: 
   privateWrite(join(keys, "identity.json"), JSON.stringify(metadata));
   return readHubIdentity({ home: input.home, memberOrigin: origin });
 }
-export function readHubIdentity(input: { home: string; memberOrigin: string }): HubProvisionedIdentity {
-  const origin = hubOrigin(input.memberOrigin);
+/** Inspection may use the stored origin; all admission/mount callers pass their expected origin explicitly. */
+export function readHubIdentity(input: { home: string; memberOrigin?: string }): HubProvisionedIdentity {
   const metadata = validated(identitySchema, parseStrictJson(readPrivateFile(input.home, "hub/keys/identity.json")));
+  const origin = hubOrigin(input.memberOrigin ?? metadata.memberOrigin);
   const cert = verifyHubCertificate(readPrivateFile(input.home, "hub/keys/tls-cert.pem"), origin, metadata.spkiSha256);
   const issuer = createPublicKey(readPrivateFile(input.home, "hub/keys/issuer-public.pem"));
   const privateIssuer = createPrivateKey(readPrivateFile(input.home, "hub/keys/issuer-key.pem"));
@@ -64,6 +65,13 @@ export function readHubIdentity(input: { home: string; memberOrigin: string }): 
     || issuer.export({ type: "spki", format: "pem" }).toString() !== metadata.issuerPublicKey || issuerKeyId(issuer) !== metadata.issuerKeyId
     || issuerKeyId(privateIssuer) !== metadata.issuerKeyId || sha256(createPublicKey(privateTls).export({ type: "spki", format: "der" })) !== sha256(cert.publicKey.export({ type: "spki", format: "der" }))) throw Error("Hub identity files differ");
   return { hubId: metadata.hubId, spkiSha256: metadata.spkiSha256, issuerKeyId: metadata.issuerKeyId, issuerPublicKey: metadata.issuerPublicKey };
+}
+
+/** Missing means wholly unprovisioned; a partial, untrusted or changed identity is an error, never a fresh start. */
+export function readHubIdentityIfPresent(home: string): HubProvisionedIdentity | undefined {
+  try { privatePath(home, "hub/keys", true); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+  return readHubIdentity({ home });
 }
 
 /** SPKI is the trust anchor. Per-socket verification happens before HTTP can write any credential bytes. */

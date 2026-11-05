@@ -42,33 +42,35 @@ export class HubMount implements HubMode {
     const member = record(input.hub_member) && input.hub_member.enabled === true ? structuredClone(input.hub_member) : null;
     if (!server && !member) return;
     if (server) {
+      let reason: "initialization" | "service-unavailable" = "initialization";
       try {
         if (typeof server.hubId !== "string" || typeof server.memberOrigin !== "string") throw Error("Invalid Hub configuration");
         const digest = this.options.planDigest(server);
         const { verifyHubInitialization } = await import("./initialization.js");
         if (generation !== this.generation) return;
         verifyHubInitialization({ home: this.options.home, hubId: server.hubId, memberOrigin: server.memberOrigin, planDigest: digest });
-        this.serverOn = true;
+        reason = "service-unavailable"; this.serverOn = true;
         const current = () => this.serverOn && generation === this.generation;
         const service = await this.options.createServer(server, current);
         if (!current()) { service.fence(); await service.close(); return; }
         this.server = service; await service.start();
         if (!current()) { service.fence(); await service.close(); return; }
       } catch {
-        if (generation === this.generation) { this.serverOn = false; this.server?.fence(); await this.server?.close().catch(() => {}); this.server = null; this.options.hold("initialization"); }
+        if (generation === this.generation) { this.serverOn = false; this.server?.fence(); await this.server?.close().catch(() => {}); this.server = null; this.options.hold(reason); }
       }
     }
     if (member && generation === this.generation) {
+      let reason: "member-pairing" | "service-unavailable" = "member-pairing";
       try {
         // The member factory owns validation of its atomic pairing receipt and consent generation.
         this.memberOn = true;
         const current = () => this.memberOn && generation === this.generation;
         const service = await this.options.createMember(member, current);
         if (!current()) { service.fence(); await service.close(); return; }
-        this.member = service; await service.start();
+        reason = "service-unavailable"; this.member = service; await service.start();
         if (!current()) { service.fence(); await service.close(); return; }
       } catch {
-        if (generation === this.generation) { this.memberOn = false; this.member?.fence(); await this.member?.close().catch(() => {}); this.member = null; this.options.hold("member-pairing"); }
+        if (generation === this.generation) { this.memberOn = false; this.member?.fence(); await this.member?.close().catch(() => {}); this.member = null; this.options.hold(reason); }
       }
     }
   }

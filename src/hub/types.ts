@@ -8,7 +8,7 @@ export type MessageId = string;
 export type Epoch = number;       // nonnegative safe integer; never rolls back
 export type Millis = number;      // integer UTC epoch milliseconds
 export type Sha256 = string;      // 64 lowercase hex characters
-import type { PersonKey, HubDirectoryConfig } from "./directory/index.js";
+import type { PersonKey } from "./directory/index.js";
 export type { PersonKey, DirectoryPerson, SignInResult, Eligibility, HubDirectory, HubDirectoryConfig } from "./directory/index.js";
 export type PersonId = string;    // personKeyString(key), not a login/name
 export interface HubFrame<T extends string, P> {
@@ -227,14 +227,5 @@ export interface HubAuditSink {
 export interface HubNotifications {
   owner(event: { messageId: MessageId; exposureId: ExposureId; code: "asked" | "answered" | "held" | "revoked" }): Promise<void>;
 }
-export interface HubInitPlan {
-  name: string; webOrigin: string; memberOrigin: string;
-  directory: HubDirectoryConfig; bindPasswordRef: string; administrator: PersonKey;
-  retention: { contentDays: number; eventDays: number };
-  coexistence: "dedicated" | "same-user-pilot";
-}
-export interface HubInitializer {
-  inspect(): Promise<{ existingFleet: boolean; existingHub: boolean }>;
-  validate(plan: HubInitPlan): Promise<void>;
-  commit(plan: HubInitPlan, localOwnerConfirmation: string): Promise<void>;
-}
+export type { HubInitPlan, HubInitializer, HubInitInspection, HubInitSecrets, HubInitConfirmation, HubInitResult,
+  HubListen, HubIdentityProvider, HubIdentitySummary, HubCoexistence } from "./init/types.js";
