@@ -7,6 +7,10 @@ import { readFileSync } from "node:fs";
 import { deriveNeedsYou, renderSignature } from "../src/needs-you.js";
 import { HUB_HOLD_CODES } from "../src/hub/db.js";
 import { setLocale, t } from "../src/locale.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { FleetManager } from "../src/fleet-manager.js";
 
 const base = { prompts: [], instances: [], deliveries: [], ownerOf: () => undefined };
 
@@ -43,5 +47,28 @@ describe("Hub holds in Needs you (S-51)", () => {
 
   it("the public link never carries a hub item", () => {
     expect(readFileSync("src/web-api.ts", "utf8")).toMatch(/item\.type === "config" \|\| item\.type === "hub"\) return false/);
+  });
+});
+
+describe("through the real FleetManager (S-51)", () => {
+  it("the runtime's holds reach Needs you with their localized reason; clearing them removes the item", async () => {
+    setLocale("en");
+    const dir = mkdtempSync(join(tmpdir(), "agend-hubhold-fm-"));
+    const fm = new FleetManager(dir) as any;
+    fm.fleetConfig = { defaults: {}, instances: {} };
+    try {
+      fm.hubHolds = [{ side: "server", code: "hub-unsealed", detail: "raw", since: 5 }];
+      fm.startNeedsYou();
+      expect(fm.needsYouItems().filter((i: { type: string }) => i.type === "hub")).toMatchObject([
+        { type: "hub", reason: "hub_unavailable", detail: t("hub.hold.hub-unsealed"), since: 5 },
+      ]);
+      fm.hubHolds = [];
+      fm.needsYou.poke();
+      await new Promise((r) => setTimeout(r, 50));
+      expect(fm.needsYouItems().filter((i: { type: string }) => i.type === "hub")).toEqual([]);
+    } finally {
+      await fm.stopNeedsYou();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
