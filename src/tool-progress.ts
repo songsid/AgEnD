@@ -110,7 +110,23 @@ function shellProgramName(cmd: string): string {
   return tokens[i] ?? "";
 }
 
+/** Search programs: their arguments are what is being searched for, which can be a literal secret. */
+const SEARCH_PROGRAMS = new Set(["grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "fd", "fdfind", "locate", "git-grep"]);
+/** A search program, given by name or path (`/usr/bin/grep`). */
+export function isSearchProgram(program: string): boolean { return SEARCH_PROGRAMS.has(program.replace(/^.*\//, "")); }
+/** A search anywhere in the command (any pipeline or chain segment, `git grep` included). */
+function isSearchCommand(cmd: string): boolean {
+  return cmd.split(/\s*(?:&&|\|\||\||;|\n)\s*/).some(segment => {
+    const prog = shellProgramName(segment).replace(/^.*\//, "");
+    // git grep, git -C dir grep, git log --grep=…
+    return isSearchProgram(prog) || (prog === "git" && /\bgrep\b/.test(segment));
+  });
+}
+
 function labelShell(cmd: string, level: "standard" | "verbose"): string {
+  // A search, at every level: never its arguments, which no redactor can tell from an arbitrary secret. Hidden at
+  // standard (low signal, as before); the plain search line at verbose.
+  if (isSearchCommand(cmd)) return level === "verbose" ? "🔍 搜尋程式碼" : "";
   const intent = classifyShellCommand(cmd);
   if (intent) {
     if (level === "verbose" && intent.preview) {

@@ -51,6 +51,24 @@ describe("search patterns never reach the channel progress line", () => {
     }
   });
 
+  it("a search run through the shell (how current Claude Code searches) never shows its arguments in the bubble, at any level", () => {
+    const searches = [`grep -rn ${OPAQUE} /home/rh/w`, `cat notes.txt | rg -i ${OPAQUE}`, `find . -name "*${OPAQUE}*"`, `git grep -n ${PAT}`,
+      `cd src && grep ${OPAQUE} -r .`, `/usr/bin/grep ${OPAQUE} f`, `timeout 5 rg ${OPAQUE}`, `FOO=1 fd ${OPAQUE}`, `git -C repo grep ${OPAQUE}`];
+    for (const command of searches) {
+      expect(summarizeProgress("Bash", { command }, "verbose"), command).toBe("🔍 搜尋程式碼");
+      expect(summarizeProgress("Bash", { command }, "standard"), command).toBe("");
+      expect(summarize("Bash", { command }), command).not.toContain(OPAQUE.slice(0, 12));
+      expect(summarize("Bash", { command }), command).not.toContain(PAT.slice(4, 16));
+    }
+    // The progress line's label: a search program alone, even when its pattern is a bare word.
+    expect(summarize("Bash", { command: `grep ${OPAQUE} f` })).toBe("$ grep");
+    expect(summarize("Bash", { command: `/usr/bin/rg ${OPAQUE}` })).toBe("$ /usr/bin/rg");
+    expect(summarize("Bash", { command: "git push origin main" })).toBe("$ git push");                    // subcommands stay
+    // Other commands keep their verbose preview.
+    expect(summarizeProgress("Bash", { command: "ls -la src" }, "verbose")).toBe("⚙️ $ ls -la src");
+    expect(summarizeProgress("Bash", { command: "git log --oneline -3" }, "verbose")).toBe("🔎 檢視 git 狀態：git log --oneline -3");
+  });
+
   it("the sink masks a token in any other label before the cap, so no part of it reaches the line", () => {
     // The last one: the cap would leave only the token's first 13 characters — too short for any shape rule to see.
     for (const activity of [`Read /tmp/${PAT}`, `Read ${OPAQUE}`, `$ curl ${PAT}`, `Edit a/${OPAQUE}/b.ts`, `Read ${"d/".repeat(15)}${OPAQUE}`]) {

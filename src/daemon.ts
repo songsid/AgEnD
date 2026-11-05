@@ -38,7 +38,7 @@ import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
-import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
+import { ProgressAccumulator, isSearchProgram, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
 import { isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { ContextGuardian } from "./context-guardian.js";
@@ -391,7 +391,8 @@ export function shellCommandLabel(command: string): string {
   if (!program) return "";
 
   const isBareWord = (t: string | undefined): boolean => !!t && /^[A-Za-z][A-Za-z0-9_-]*$/.test(t);
-  const label = isBareWord(tokens[1]) ? `${program} ${tokens[1]}` : program;
+  // A search program's next word is what it searches for, not a subcommand: `grep <token>` keeps only `grep`.
+  const label = isBareWord(tokens[1]) && !isSearchProgram(program) ? `${program} ${tokens[1]}` : program;
   return label.length > 40 ? `${label.slice(0, 39)}…` : label;
 }
 
