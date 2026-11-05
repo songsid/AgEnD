@@ -16013,8 +16013,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
       signOut: (handle) => {
-        this.webSessions?.revokeByHandle(handle);
-        this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+        const session = this.webSessions?.revokeByHandle(handle) ?? { found: false, durable: true };
+        const authorization = this.sessionAuthorizationStore()?.prune(a => a.handle !== handle) ?? { dropped: 0, durable: true };
+        return { durable: session.durable, authorizationDurable: authorization.durable };
       },
       event: (type, payload) => { try { this.eventLog?.insert("web", type, payload); } catch { /* the event log is best effort */ } },
       text: {
@@ -16024,6 +16025,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
         revoked: (c) => t("web_auth.card_revoked", c.label),
+        notSaved: (c) => t("web_auth.card_not_saved", c.label),
         ended: (c) => t("web_auth.card_ended", c.label),
         generalHint: () => t("web_auth.general_hint"),
         confirmLabel: () => t("web_auth.confirm"),
