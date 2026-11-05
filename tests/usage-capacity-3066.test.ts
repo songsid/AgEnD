@@ -41,8 +41,8 @@ describe("the estimate (#3066 §1)", () => {
     const ws = quotaWindows([rd(T0, 50), rd(T0 + H, 80), rd(T0 + 2 * H, 2, "2026-11-16T00:00:00.000Z"), rd(T0 + 3 * H, 30, "2026-11-16T00:00:00.000Z"), rd(T0 + 4 * H, 1, "2026-11-16T00:00:00.000Z")]);
     expect(ws.map((w) => [w.p1, w.p2])).toEqual([[50, 80], [2, 30], [1, 1]]);
   });
-  it("a model without a list price: no API-equivalent basis (tokens only)", () => {
-    const est = estimateCapacity([rd(T0, 0), rd(T0 + 20 * H, 40)], hours(T0, 20, { api: null }));
+  it("a model without a list price in the window: no API-equivalent basis (tokens only) — never priced as $0", () => {
+    const est = estimateCapacity([rd(T0, 0), rd(T0 + 20 * H, 40)], [...hours(T0, 19), ...hours(T0 + 19 * H, 1, { api: null })]);
     expect(est.status === "ok" && est.bases.api).toBeUndefined();
     expect(est.status === "ok" && est.bases.all!.median).toBeGreaterThan(0);
   });
