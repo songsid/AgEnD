@@ -115,7 +115,7 @@ const parse = (r: Res) => { try { return JSON.parse(r.body); } catch { return nu
 const cookieOf = (r: Res) => { const set = r.headers["set-cookie"]; return (Array.isArray(set) ? set[0] : set)!.split(";")[0]!; };
 const HOST = "outside-test.trycloudflare.com";
 
-async function startFleet(dir?: string, opts: { ensure?: () => Promise<{ path: string; source: string }>; now?: () => number; web?: Record<string, unknown> } = {}) {
+async function startFleet(dir?: string, opts: { ensure?: () => Promise<{ path: string; source: string }>; now?: () => number; web?: Record<string, unknown>; stopMs?: number } = {}) {
   dir ??= (() => { const d = mkdtempSync(join(tmpdir(), "agend-3008-")); dirs.push(d); return d; })();
   const fm = new FleetManager(dir), any = fm as any;
   const sink = () => {};
@@ -139,7 +139,8 @@ async function startFleet(dir?: string, opts: { ensure?: () => Promise<{ path: s
       ctx.onCandidateHost(HOST);
       return { ok: true as const, handle: { pageUrl: `https://${HOST}/signin`, onUnexpectedExit: (cb: () => void) => { tunnel.exits.push(cb); return () => {}; } } };
     }),
-    stop: vi.fn(async () => ({ confirmed: true as const })),
+    // A tunnel's stop takes a moment (cloudflared exiting, its lease proven gone): `stopMs` makes it as slow as asked.
+    stop: vi.fn(async () => { if (opts.stopMs) await new Promise(r => setTimeout(r, opts.stopMs)); return { confirmed: true as const }; }),
   };
   any.tunnelPurposeLane = new TunnelPurposeLane(manager as never);
   any.publicWebLink = new PublicWebLink({ ...any.publicWebLinkDeps(), ensure: opts.ensure ?? (async () => ({ path: "/stub/cloudflared", source: "agend" })), provider: () => ({}) as never,
@@ -462,6 +463,20 @@ describe("#3008 a real fleet: connections from outside", () => {
     expect([r.status, parse(r.res).error]).toEqual([503, "unavailable"]);
     expect(h.any.webSessions.list(undefined, (x: SessionRecord) => x.remote === "totp")).toEqual([]);
     expect(h.notices().some(n => n.startsWith("Signed in from outside"))).toBe(false);
+  }, 20_000);
+
+  it("alpha CI 4abe58cd: Off then On at once — the link opens again as soon as the old one has closed, not after the 30 s retry", async () => {
+    const h = await startFleet(undefined, { stopMs: 300 });                               // the old tunnel takes 300 ms to stop
+    const s = await h.hostSignIn();
+    await h.enroll(s);
+    await h.local(s, "POST", "/ui/outside/switch", { on: true });
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
+    expect(h.tunnel.starts).toBe(1);
+    expect((await h.local(s, "POST", "/ui/outside/switch", { on: false })).status).toBe(200);
+    expect((await h.local(s, "POST", "/ui/outside/switch", { on: true })).status).toBe(200);   // while the old link is still closing
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"), { timeout: 3000 });
+    expect(h.tunnel.starts).toBe(2);
+    expect(h.any.outsideAttempt).toBeNull();                                             // no 30 s retry left behind
   }, 20_000);
 });
 
