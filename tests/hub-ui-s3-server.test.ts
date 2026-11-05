@@ -23,6 +23,7 @@ const { FleetManager } = await import("../src/fleet-manager.js");
 const { WEB_SESSION_COOKIE } = await import("../src/web-auth.js");
 const { tokenEpoch } = await import("../src/web-session.js");
 const { serveAppShell } = await import("../src/web-api.js");
+const { bindGatewayRequest } = await import("../src/web-request-context.js");
 const { shellRoute } = await import("../src/web-shell-routes.js");
 const { hubModeOf, hubNameOf, HUB_NAME_MAX } = await import("../src/hub-mode.js");
 
@@ -86,6 +87,18 @@ describe("the switches and the page's mark (this fleet's listener)", () => {
       expect([guest.status, bodyTag(guest.body).includes("data-hub")]).toEqual([200, false]);
     } finally { delete fm.fleetConfig.web; }
   });
+  it("hub_member.enabled: never marked over the public link (member handlers are local-owner-only — hub.md §1)", () => {
+    setSwitches(undefined, { enabled: true });
+    try {
+      let body = "";
+      const req = { url: "/ui", headers: { host: "x.trycloudflare.com" }, socket: { remoteAddress: "127.0.0.1" } };
+      bindGatewayRequest(req, { surface: "gateway", exposureId: "e1", expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+      const res = { setHeader() {}, writeHead() {}, end(b?: string) { body = String(b ?? ""); }, headersSent: false };
+      serveAppShell(req as never, res as never, fm, "full");
+      expect(bodyTag(body)).toContain('data-public-link="1"');
+      expect(bodyTag(body).includes("data-hub")).toBe(false);
+    } finally { setSwitches(); }
+  });
   it("hub.enabled makes no mark and mounts no Hub page here: a Hub's shell is its own listener's (slice 1)", async () => {
     setSwitches({ enabled: true, name: "Team Hub" });
     const sid = session("admin");
@@ -107,8 +120,15 @@ describe("a Hub's own workspace (serveAppShell's hubWorkspace, for slice 1's lis
     serveAppShell(req as never, res as never, fm, "full", opts);
     return bodyTag(body);
   }
-  it("marks the page the Hub's, with its name — escaped and one line", () => {
+  it("marks the page the Hub's, with its name — escaped and one line — and reads nothing of the fleet's", () => {
     expect(shellWith({ hubWorkspace: { name: "Team Hub" } })).toContain(' data-hub="hub" data-hub-name="Team Hub"');
+    // S3b: Hub-only — no fleet cookie, session, preference or preview is read (a throwing context proves it).
+    let body = "";
+    const trap = new Proxy({}, { get: (_t, k) => { throw new Error(`fleet context read: ${String(k)}`); } });
+    const req = new Proxy({ url: "/ui/hub" }, { get: (t, k) => { if (k === "url") return (t as { url: string }).url; throw new Error(`request read: ${String(k)}`); } });
+    serveAppShell(req as never, { setHeader() {}, writeHead() {}, end(b?: string) { body = String(b ?? ""); }, headersSent: false } as never, trap as never, "full", { hubWorkspace: { name: "Team Hub" } });
+    expect(bodyTag(body)).toContain('data-hub="hub"');
+    expect(body).not.toContain("data-prefs");
     const hostile = shellWith({ hubWorkspace: { name: '"><script>x</script>\n  second line' } });
     expect(hostile).not.toContain("<script>");
     expect(hostile).toContain("data-hub-name=\"&#34;&#62;&#60;script&#62;x&#60;/script&#62; second line\"");

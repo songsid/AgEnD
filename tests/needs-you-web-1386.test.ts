@@ -117,6 +117,20 @@ describe("POST /ui/needs/ack", () => {
 });
 
 describe("the public link (#1367): exactly this route, under its own session and exposure", () => {
+  it("withholds member-local Hub proposals from the public link while preserving the local owner view", () => {
+    const store = new WebSessionStore(), proposal = { id: "hub:proposal", type: "hub", instance: "alpha", reason: "hub_proposal", detail: "", since: 1,
+      hubProposal: { action: "delete", arguments: "PRIVATE-ARGUMENTS", argumentsDigest: "digest", consequences: "PRIVATE-CONSEQUENCES" } };
+    const owner = store.create({ tier: "admin", surface: "local", label: "owner", tokenEpoch: tokenEpoch(token) });
+    const localRequest = request("/ui/poll", "GET", { cookie: `agend_session=${owner.sessionId}` });
+    const context = ctx(store, { needsYouItems: () => [...ITEMS, proposal] });
+    handleWebRequest(localRequest.req as never, localRequest.res as never, new URL(localRequest.req.url, local), context);
+    expect(localRequest.json().needs).toEqual([...ITEMS, proposal]);
+    const remote = store.create({ tier: "admin", surface: "gateway", exposureId, label: "remote", tokenEpoch: tokenEpoch(token) });
+    const h = request("/ui/poll", "GET", { cookie: `__Host-agend_session=${remote.sessionId}` }, "sample.trycloudflare.com");
+    bindGatewayRequest(h.req, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
+    handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, pub), context);
+    expect(h.json().needs).toEqual(ITEMS); expect(h.body()).not.toContain("PRIVATE-ARGUMENTS"); expect(h.body()).not.toContain("PRIVATE-CONSEQUENCES");
+  });
   it("the manifest has POST /ui/needs/ack and nothing more", () => {
     expect(isPublicWebRoute("POST", "/ui/needs/ack")).toBe(true);
     for (const [m, p] of [["GET", "/ui/needs/ack"], ["DELETE", "/ui/needs/ack"], ["POST", "/ui/needs/ack/x"], ["POST", "/ui/needs"], ["GET", "/ui/needs/list"]] as const) {
