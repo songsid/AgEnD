@@ -56,6 +56,7 @@ try {
       assert.equal(await p.page.locator('.hub-exposure input[role="switch"]:enabled').count(), 0);
       assert(!(await p.page.locator(".hub-exposures").textContent()).includes("PRIVATE-KEY"));
       assert(await p.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      await p.page.locator(".hub-exposure").first().scrollIntoViewIfNeeded();
       await p.page.screenshot({ path: shotPath("hub-provider-setup", `${device}-${lang}-${skew}`, "exposures") });
       for (reason of reasons) {
         fx.fm.emitSseEvent("needs", { items: fx.fm.needsYouItems() });
