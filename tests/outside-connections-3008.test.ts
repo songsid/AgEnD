@@ -478,5 +478,16 @@ describe("#3008 a real fleet: connections from outside", () => {
     expect(h.tunnel.starts).toBe(2);
     expect(h.any.outsideAttempt).toBeNull();                                             // no 30 s retry left behind
   }, 20_000);
+
+  it("#3062 review: an Off pressed while the reopen waits for the old link to close wins — nothing opens with the switch off", async () => {
+    const h = await startFleet(undefined, { stopMs: 300 });                               // the old tunnel takes 300 ms to stop
+    const s = await h.hostSignIn();
+    await h.enroll(s);
+    await h.local(s, "POST", "/ui/outside/switch", { on: true });
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("open"));
+    for (const on of [false, true, false]) expect((await h.local(s, "POST", "/ui/outside/switch", { on })).status).toBe(200);   // all within the 300 ms close
+    await new Promise(r => setTimeout(r, 900));                                           // past the old link's close, and the reopen's wait
+    expect([h.fm.getPublicWebStatus().state, h.tunnel.starts, h.any.outsideAttempt, h.any.outsideOn()]).toEqual(["closed", 1, null, false]);
+  }, 20_000);
 });
 

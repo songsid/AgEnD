@@ -16947,9 +16947,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.shuttingDown || !this.outsideOn() || this.outsideOpening) return;
       this.outsideOpening = true;
       // alpha CI 4abe58cd: an On right after an Off finds the old link still closing (its tunnel stopping): wait for that
-      // close, then open — never "busy" and a 30 s retry. The switch is asked again after the wait.
+      // close, then open — never "busy" and a 30 s retry. The switch is asked again after the wait by openUnattended
+      // itself (permitted → publicOwnerCurrent: the fleet running, the switch on): an Off meanwhile opens nothing.
       const link = this.getPublicWebLink();
-      void link.whenClosed().then(() => (this.shuttingDown || !this.outsideOn() ? "failed" as const : link.openUnattended(OUTSIDE_LINK_OWNER)))
+      void link.whenClosed().then(() => link.openUnattended(OUTSIDE_LINK_OWNER))
         .catch(() => "failed" as const).then(outcome => {
         this.outsideOpening = false;
         if (outcome === "opened") { this.logger.info({ attempt: n + 1 }, "Outside link opened"); return; }
