@@ -20,6 +20,7 @@ export const HUB_HOLD_CODES = [
   "hub-storage",
   "hub-directory-secret",
   "hub-member-pairing",
+  "hub-provider-unavailable",
   "service-unavailable",
 ] as const;
 export type HubHoldCode = (typeof HUB_HOLD_CODES)[number];
