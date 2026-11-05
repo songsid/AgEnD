@@ -30,7 +30,10 @@ export interface HubExecutionGateway {
 export interface HubIsolatedProvider {
   readonly isolation: "hub-restricted-v1";
   /** Resolve only after positive consumption proof for this exact context/question; unknown outcomes reject. */
-  open(input: { contextId: string; question: string; label: string; signal: AbortSignal }): Promise<{
+  open(input: { contextId: string; question: string; label: string; signal: AbortSignal;
+    /** One synchronous current/exact-lease check immediately before delivering question input. Not sent to the CLI. */
+    beforeInput(): void;
+  }): Promise<{
     answer(gateway: HubExecutionGateway): Promise<string>;
     close(): Promise<void>;
   }>;
@@ -97,7 +100,11 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
     return b;
   }
   private approved(exposureId: string, expectedRevision: number, published = false) {
-    const b = this.binding(), local = validated(localSchema, this.options.localExposure(exposureId)), e = local.exposure;
+    const b = this.binding(), local = validated(localSchema, this.options.localExposure(exposureId));
+    return this.checkedPolicy(local, b, exposureId, expectedRevision, published);
+  }
+  private checkedPolicy(local: HubLocalExposure, b: HubExecutionBinding, exposureId: string, expectedRevision: number, published: boolean) {
+    const e = local.exposure;
     if (e.id !== exposureId || e.revision !== expectedRevision || e.fleetId !== b.fleetId || personKeyString(e.owner) !== personKeyString(b.owner)
       || e.state === "frozen" || published && e.state !== "published") throw new HubProtocolError("stale");
     const view = this.options.views.get(e.dataViewId), provider = this.options.providers?.get(local.providerId);
@@ -107,16 +114,29 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
     const bindingDigest = sha256(canonicalArguments([local, view.digest, policy]));
     return { b, local, view, provider, policy, bindingDigest };
   }
-  readiness(exposureId: string, expectedRevision: number): HubExecutionReadiness {
+  private readinessCheck(check: () => { policy: HubExecutionPolicy; revision: number }): HubExecutionReadiness {
     try {
-      validated(uuid, exposureId); validated(epoch, expectedRevision);
-      const { policy } = this.approved(exposureId, expectedRevision);
-      return { ok: true, policyDigest: policy.policyDigest, exposureRevision: expectedRevision };
+      const { policy, revision } = check();
+      return { ok: true, policyDigest: policy.policyDigest, exposureRevision: revision };
     } catch (error) {
       return { ok: false, reasonCode: error instanceof HubProtocolError
         ? error.code === "incompatible" ? "provider-unavailable" : error.code === "stale" ? "stale" : error.code === "denied" || error.code === "invalid" ? "policy-unavailable" : "unavailable"
         : "unavailable" };
     }
+  }
+  readiness(exposureId: string, expectedRevision: number): HubExecutionReadiness {
+    return this.readinessCheck(() => {
+      validated(uuid, exposureId); validated(epoch, expectedRevision);
+      return { policy: this.approved(exposureId, expectedRevision).policy, revision: expectedRevision };
+    });
+  }
+  /** Capability check only. Never reads/installs a staged mapping or supplies admission/owner consent. */
+  readinessCandidate(candidate: HubLocalExposure): HubExecutionReadiness {
+    return this.readinessCheck(() => {
+      const local = validated(localSchema, candidate), e = local.exposure;
+      if (e.state !== "withdrawn") throw new HubProtocolError("denied");
+      return { policy: this.checkedPolicy(local, this.binding(), e.id, e.revision, false).policy, revision: e.revision };
+    });
   }
   restrictedOutbox(): HubRestrictedOutbox {
     return this.options.store.outbox(q => {
@@ -251,9 +271,14 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
       this.options.store.state(context.id, "running"); entry.state = "running"; this.current(entry);
       const e = entry.question.identity;
       const label = `Hub identity; external data; no local human authority. ${personKeyString(e.asker)}; exposure=${e.exposureId}; room=${e.roomId}; grant=${e.grantId}`;
+      let checkedInput = false;
       const session = await this.physical(entry, pending => { entry.opening = pending; },
-        () => entry.provider.open({ contextId: context.id, question: entry.question.text, label, signal: entry.abort.signal }));
+        () => entry.provider.open({ contextId: context.id, question: entry.question.text, label, signal: entry.abort.signal, beforeInput: () => {
+          if (checkedInput) throw new HubProtocolError("uncertain");
+          this.current(entry); verifyLease(lease, request, { ...entry.binding, now: this.now() }); checkedInput = true;
+        } }));
       entry.session = session; this.current(entry);
+      if (!checkedInput) throw new HubProtocolError("uncertain");
       this.options.journal.recordEvidence(context.messageId, "delivered"); this.options.journal.recordEvidence(context.messageId, "consumed");
     } catch (error) { this.fenceEntry(entry, "uncertain"); throw error; }
   }
