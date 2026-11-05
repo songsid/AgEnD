@@ -185,6 +185,22 @@ try {
     r.viewTmuxCommands = kinds;
     await ctx.close(); }
   { const { ctx } = await viewHistory("idle", "phone", "zh-TW"); await ctx.close(); }
+  // An anonymous View reader (web.view_access open, not signed in): everyone who may open the View sees the full
+  // history (the user's decision on #3069, hmsg-cd4ae6b0: 「能看檢視的都看完整」).
+  { const ctx = await fx.browser.newContext({ viewport: { width: 1366, height: 900 }, deviceScaleFactor: 1, colorScheme: "dark" });
+    const page = await ctx.newPage();
+    const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
+    await page.goto(`${fx.base}/view/${encodeURIComponent(NAME)}`);
+    await page.waitForSelector(".v-pre:has-text(\"❯\")", { timeout: 15000 });
+    await page.click("button.v-term-earlier");
+    await page.waitForSelector(".vh-divider", { timeout: 15000 });
+    await page.waitForTimeout(600);
+    const dom: string[] = await page.evaluate(DOM_TOKENS);
+    const all = transcriptTokens();
+    const ok = dom.length > 0 && dom.every((d, i) => d === all[i]);
+    await page.screenshot({ path: shotPath("claude-view-history", "anonymous-desk-en", "history") });
+    check("anonymous-reader-sees-history", ok && errs.length === 0, { dom, errs });
+    await ctx.close(); }
 
   // ── busy: a reply streaming ──
   await say("Take your time on this one. VHSLOW", false);

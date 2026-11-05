@@ -79,7 +79,7 @@ lists every page (**Pages (N)**), shows a page at phone or tablet width, and goe
 - `/web revoke` (in chat) signs every browser out, withdraws an unused code and closes the public link.
 
 **`/view` without signing in.** `web.view_access`: `open` (default) or `session`. With `open`, anyone who can reach
-the local address sees every instance's live terminal and the roster (status, context %, model, effort, backend,
+the local address sees every instance's live terminal (for Claude Code with its earlier conversation, as below) and the roster (status, context %, model, effort, backend,
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
@@ -101,7 +101,7 @@ They can chat there unless `web.guests.chat` is false, run only the commands the
 agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the
 agent sees them as `via web (guest)`. A guest's app has no Fleet, Settings or Needs you. Each person is **Chat** (the
 default) or **Trusted** (#2855, `level: trusted` on the grant; Chat → Trusted waits for a fleet admin): a Trusted guest
-also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once) and **search** of the chat
+also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once; for Claude Code with its earlier conversation) and **search** of the chat
 messages it can already see (6 a minute, 20 results; no messages between agents, tasks or settings). To invite someone: turn it
 on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
 send `/web`). The Guests section is not in Settings over the public link.
@@ -385,8 +385,9 @@ to that instance's Log).
 - **View** — the live terminal (read only), the identity card, and **Edit profile** (or **Sign in to edit** when signed out).
   Scrolling up (or **Earlier output**) shows what scrolled off: tmux's scrollback; for Claude Code, its earlier
   conversation from its transcript, drawn in Claude's own terminal style above the live screen under **History above**
-  (long output folded, click to expand; older pages near the top; the latest ~1000 steps). Same access as View; the Log
-  tab's switch plays no part.
+  (long output folded, click to expand; older pages near the top; the latest ~1000 steps), tool results included.
+  Everyone who may open the View sees it — a signed-in admin, an anonymous reader under `view_access: open`, a Trusted
+  guest for its agents (the user's decision on #3069); the Log tab's switch plays no part.
 - **Log** — [the Log tab](#the-log-tab).
 - **Details** — Configuration (display name, description, directory, bound to, tags; "Read only — change it in
   Settings." with **Edit in Settings**), Runtime (backend, model, effort, cost, context, 5 h and 7 d rate), Recent
