@@ -1,7 +1,7 @@
 import { ensureAgendHome } from "./agend-home.js";
 import pino from "pino";
 import { join } from "node:path";
-import { statSync, fstatSync, existsSync, unlinkSync, renameSync, copyFileSync, truncateSync, promises as fsp } from "node:fs";
+import { statSync, fstatSync, existsSync, unlinkSync, renameSync, copyFileSync, truncateSync, openSync, closeSync, fchmodSync, constants, promises as fsp } from "node:fs";
 import { getAgendHome } from "./paths.js";
 
 const DATA_DIR = getAgendHome();
@@ -24,6 +24,36 @@ export function getStdoutPrettyOptions(destinationIsFile = stdoutIsRegularFile()
     translateTime: destinationIsFile ? "SYS:yyyy-mm-dd HH:MM:ss" : "SYS:HH:MM:ss",
     ignore: "pid,hostname",
   };
+}
+
+/** A log holds what the fleet saw: only its owner reads it. */
+const PRIVATE_LOG_MODE = 0o600;
+
+/**
+ * Make `path` a private (0600) log through its own descriptor. pino-pretty does not pass a `mode` to the file it opens
+ * (SonicBoom creates it 0666 & ~umask), so the file is created — or an existing one repaired — here, before any writer
+ * opens it, and the writer then appends to it with its mode unchanged.
+ *   - never follows a symlink (O_NOFOLLOW), never blocks on a FIFO (O_NONBLOCK), and changes only a regular file this
+ *     process's user owns; anything else is left alone
+ *   - `create: false` only repairs a file that exists (a rotated copy), never makes one
+ * Best effort: a log that cannot be checked is not a reason to stop the fleet. No-op on Windows (no Unix modes).
+ */
+export function ensurePrivateLogFile(path: string, create = true): void {
+  if (process.platform === "win32" || typeof process.getuid !== "function") return;
+  let fd: number;
+  try {
+    fd = openSync(path, constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK | (create ? constants.O_CREAT : 0), PRIVATE_LOG_MODE);
+  } catch { return; }
+  try {
+    const info = fstatSync(fd);
+    if (info.isFile() && info.uid === process.getuid() && (info.mode & 0o777) !== PRIVATE_LOG_MODE) fchmodSync(fd, PRIVATE_LOG_MODE);
+  } catch { /* best effort */ } finally { closeSync(fd); }
+}
+
+/** The live log and every rotated copy, private (see ensurePrivateLogFile). */
+export function ensurePrivateLogFiles(logPath: string, maxFiles = ROTATE_MAX_FILES): void {
+  ensurePrivateLogFile(logPath);
+  for (let i = 1; i <= maxFiles; i++) ensurePrivateLogFile(`${logPath}.${i}`, false);
 }
 
 /**
@@ -65,6 +95,7 @@ export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFi
     // Copy current content to .1, then truncate the live file in place so the
     // writer's open fd keeps appending to the same (now-empty) inode.
     copyFileSync(logPath, `${logPath}.1`);
+    ensurePrivateLogFile(`${logPath}.1`, false);         // a copy is as private as the log, whatever the source's mode
     truncateSync(logPath, 0);
   } catch { /* best effort */ }
 }
@@ -122,6 +153,7 @@ async function rotateAsync(logPath: string, size: number, maxSize: number, maxFi
   }
   const rotated = `${logPath}.1`;
   await fsp.copyFile(logPath, rotated);
+  ensurePrivateLogFile(rotated, false);                // a copy is as private as the log, whatever the source's mode
   // The writer kept appending while we copied: carry what it added, then truncate.
   // In fixed-size chunks (the delta is whatever the writer managed during the copy, not
   // something to allocate in one piece), and a short read is not "done": keep reading
@@ -201,6 +233,8 @@ function transportStream() {
 export function createLogger(level: string = "info") {
   ensureAgendHome(DATA_DIR);
   rotateLogIfNeeded(LOG_FILE);
+  // Before the transport's writer opens it: it would create the log 0644 under a usual umask, and never repairs one.
+  ensurePrivateLogFiles(LOG_FILE);
   return pino({ level }, transportStream());
 }
 
