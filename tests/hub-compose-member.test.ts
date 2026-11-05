@@ -145,6 +145,8 @@ describe.skipIf(process.platform === "win32")("provider setup is non-fatal (agre
       const service = await f.create({ enabled: true, execution: { provider } }, () => true);
       await service.start();
       expect(f.attached.notices, label).toEqual([{ code: "hub-provider-unavailable", reason }]);
+      // S4 sees the same bounded reason (presentation only).
+      expect((service as unknown as { providerReason(id: string): unknown }).providerReason("claude"), label).toBe(reason);
       expect(f.reports, label).toEqual([]); // not fatal
       const api = f.attached.exposures as { list(): Array<{ enforceable: boolean }> };
       expect(api.list().every((v) => !v.enforceable), label).toBe(true);

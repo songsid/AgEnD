@@ -33,6 +33,7 @@ import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
+import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
 
 export function memberSet(hubId: string): HubStateSet {
   const base = `hub-member/${hubId}`;
@@ -116,9 +117,9 @@ function readKey(home: string, rel: string): Buffer {
   return key;
 }
 
-/** Bounded provider-setup reasons (agreed with S4b, cid-hub-provider-setup-guidance); S4b owns their guidance text. */
-export const PROVIDER_SETUP_REASONS = ["engine-unavailable", "engine-unsupported", "image-unconfigured", "image-mismatch", "credential-unconfigured", "unavailable"] as const;
-export type ProviderSetupReason = (typeof PROVIDER_SETUP_REASONS)[number];
+/** Bounded provider-setup reasons: S4's own list (src/hub/execution/provider-setup.ts); S4 owns the guidance text. */
+export const PROVIDER_SETUP_REASONS = HUB_PROVIDER_SETUP_REASONS;
+export type ProviderSetupReason = HubProviderSetupReason;
 export class HubProviderSetupError extends HubStateError {
   constructor(readonly reason: ProviderSetupReason, message: string) {
     super("hub-provider-unavailable", message);
@@ -127,8 +128,8 @@ export class HubProviderSetupError extends HubStateError {
 }
 /** The bounded reason of any provider-setup failure: S4b's typed `.reason` when it is one of ours, else "unavailable". */
 export function providerSetupReason(err: unknown): ProviderSetupReason {
-  const reason = (err as { reason?: unknown })?.reason;
-  return typeof reason === "string" && (PROVIDER_SETUP_REASONS as readonly string[]).includes(reason) ? (reason as ProviderSetupReason) : "unavailable";
+  if (err instanceof HubProviderSetupError) return err.reason;
+  return hubProviderSetupReason(err) ?? "unavailable";
 }
 
 const PROVIDER_KEYS = new Set(["backend", "imageId", "model", "credentialRef", "dockerSocket"]);
@@ -298,6 +299,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         });
       };
       const providers = new Map<string, import("../execution/index.js").HubIsolatedProvider>();
+      /** The bounded reason the configured provider could not be set up (null: none configured, or installed). */
+      let providerFailure: ProviderSetupReason | null = null;
       // The owner-configured isolated provider (S4b). Any setup failure is non-fatal: the member runs with NO provider
       // (every exposure unavailable) and one member hold carries the bounded reason for localized guidance.
       try {
@@ -330,6 +333,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         }
       } catch (err) {
         const reason = providerSetupReason(err);
+        providerFailure = reason;
         options.notice?.("hub-provider-unavailable", reason, err instanceof HubProviderSetupError ? err.message : `the isolated provider could not be set up (${reason})`);
       }
       let client: HubMemberClient | null = null;
@@ -343,6 +347,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         providers,
         now,
         attentionChanged: () => options.pokeAttention(),
+        // Presentation metadata for the owner (S4's providerReason): never readiness, never admission.
+        providerSetupReason: () => providerFailure,
       });
       teardown.add("the restricted execution", () => service.close());
       service.recover();
@@ -427,7 +433,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           fenced = true;
           await teardown.run();
         },
-      };
+        /** Diagnostics seam (not part of HubMountedService): S4's owner-facing provider reason. */
+        providerReason: (providerId?: string | null) => service.providerReason(providerId),
+      } as HubMountedService & Record<string, unknown>;
     } catch (err) {
       return fail(err);
     }
