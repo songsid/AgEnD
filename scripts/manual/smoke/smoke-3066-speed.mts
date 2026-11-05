@@ -41,18 +41,21 @@ const iso = (t: number) => new Date(t).toISOString();
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "s.jsonl"), lines.join("\n") + "\n");
 }
-// Codex 0.165: five responses, each Reasoning (1 s) then AgentMessage (3 s), closed by its token_usage_record.
+// Codex 0.165: five turns (task_started … task_complete), each one response — Reasoning (1 s) then AgentMessage (3 s),
+// closed by its token_usage_record and counted by the token_count after it.
 {
   const day = iso(base).slice(0, 10), lines: string[] = [];
   lines.push(JSON.stringify({ timestamp: iso(base), type: "session_meta", payload: { id: "s", cwd: wdOf(X!), originator: "codex_cli_rs", cli_version: "0.165.0" } }));
   lines.push(JSON.stringify({ timestamp: iso(base), type: "turn_context", payload: { model: "gpt-5.5", cwd: wdOf(X!) } }));
   for (let i = 0; i < 5; i++) {
     const t = base + i * 120_000;
+    lines.push(JSON.stringify({ timestamp: iso(t - 10), type: "event_msg", payload: { type: "task_started", turn_attribution: { turn_id: `u${i}` }, turn_id: `u${i}` } }));
     lines.push(JSON.stringify({ timestamp: iso(t + 1_000), type: "event_msg", payload: { type: "item_completed", thread_id: "s", turn_id: `u${i}`, started_at_ms: t, completed_at_ms: t + 1_000, item: { type: "Reasoning", id: `r${i}` } } }));
     lines.push(JSON.stringify({ timestamp: iso(t + 4_000), type: "event_msg", payload: { type: "item_completed", thread_id: "s", turn_id: `u${i}`, started_at_ms: t + 1_000, completed_at_ms: t + 4_000, item: { type: "AgentMessage", id: `m${i}` } } }));
     lines.push(JSON.stringify({ timestamp: iso(t + 4_010), type: "token_usage_record", payload: { thread_id: "s", turn_id: `u${i}`, response_id: `resp${i}`, usage: { input_tokens: 2000, cached_input_tokens: 1500, output_tokens: 400 } } }));
     lines.push(JSON.stringify({ timestamp: iso(t + 4_020), type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 2000 * (i + 1), cached_input_tokens: 1500 * (i + 1), output_tokens: 400 * (i + 1), total_tokens: 2400 * (i + 1) },
       last_token_usage: { input_tokens: 2000, cached_input_tokens: 1500, cache_write_input_tokens: 0, output_tokens: 400, reasoning_output_tokens: 0, total_tokens: 2400 } } } }));
+    lines.push(JSON.stringify({ timestamp: iso(t + 4_030), type: "event_msg", payload: { type: "task_complete", turn_id: `u${i}` } }));
   }
   const dir = join(process.env.CODEX_HOME!, "sessions", day.replace(/-/g, "/"));
   mkdirSync(dir, { recursive: true });
