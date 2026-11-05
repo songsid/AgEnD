@@ -57,6 +57,13 @@ async function startListening(): Promise<{ messages: InboundMessage[]; missed: M
   return { messages, missed, callbacks };
 }
 
+/** First empty getUpdates has returned; later injects are live, not a start backlog page. */
+async function startDrained(): Promise<{ messages: InboundMessage[]; missed: MissedOfflineInbound[]; callbacks: unknown[] }> {
+  const result = await startListening();
+  await waitFor(() => mock.getCallsFor("getUpdates").length >= 2, { timeout: 8000, interval: 50, label: "queue drained" });
+  return result;
+}
+
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "tg2395-"));
   inbox = join(dir, "inbox");
@@ -176,8 +183,7 @@ describe("TelegramAdapter pending updates after a restart (M-2395)", () => {
   });
 
   it("a live click on an old button after the backlog drained is delivered", async () => {
-    const { callbacks } = await startListening();
-    await waitFor(() => mock.getCallsFor("getUpdates").length >= 2, { timeout: 8000, interval: 50, label: "queue drained" });
+    const { callbacks } = await startDrained();
     mock.injectCallbackQuery({
       data: "needs-ack:live", chatId: GROUP, messageId: 9,
       date: Math.floor(Date.now() / 1000) - Math.ceil(TELEGRAM_PENDING_LIVE_MAX_MS / 1000) - 60,
@@ -190,8 +196,8 @@ describe("TelegramAdapter pending updates after a restart (M-2395)", () => {
       update_id: 999_999, bot_id: 123456789,
       recorded_at: Date.now() - TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS - 60_000,
     })}\n`);
+    const { messages } = await startDrained();
     mock.injectMessage({ text: "after a week", chatId: GROUP, userId: USER, updateId: 3 });
-    const { messages } = await startListening();
     await waitFor(() => messages.length === 1, { timeout: 5000, interval: 20, label: "week-old floor" });
     expect(messages.map(m => m.text)).toEqual(["after a week"]);
   });
@@ -200,10 +206,21 @@ describe("TelegramAdapter pending updates after a restart (M-2395)", () => {
     writeFileSync(telegramLastUpdateIdPath(inbox, "t"), `${JSON.stringify({
       update_id: 999_999, bot_id: 1, recorded_at: Date.now(),
     })}\n`);
+    const { messages } = await startDrained();
     mock.injectMessage({ text: "new bot", chatId: GROUP, userId: USER, updateId: 3 });
-    const { messages } = await startListening();
     await waitFor(() => messages.length === 1, { timeout: 5000, interval: 20, label: "bot-id mismatch" });
     expect(messages.map(m => m.text)).toEqual(["new bot"]);
+  });
+
+  it("a getUpdates page fully below a fresh same-bot floor re-bases", async () => {
+    writeFileSync(telegramLastUpdateIdPath(inbox, "t"), `${JSON.stringify({
+      update_id: 999_999, bot_id: 123456789, recorded_at: Date.now(),
+    })}\n`);
+    mock.injectMessage({ text: "re-base a", chatId: GROUP, userId: USER, updateId: 3 });
+    mock.injectMessage({ text: "re-base b", chatId: GROUP, userId: USER, updateId: 4 });
+    const { messages } = await startListening();
+    await waitFor(() => messages.length === 2, { timeout: 5000, interval: 20, label: "re-base page" });
+    expect(messages.map(m => m.text)).toEqual(["re-base a", "re-base b"]);
   });
 
   it("old messages past the first getUpdates page stay missed_offline", async () => {
