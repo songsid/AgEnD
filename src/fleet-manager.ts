@@ -1854,6 +1854,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const runtime = this.hubRuntime ?? (await this.hubRuntimeCreated());
       if (this.shuttingDown || !this.hubEffectsReady) return; // Stop owns it now (fenced in stopAll, closed in doStopAll)
+      await this.observeHubMemberPairing(raw?.hub_member?.enabled === true);
       const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
       await runtime.apply({ hub: current?.hub, hub_member: current?.hub_member });
     } catch (err) {
@@ -1869,6 +1870,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         home: this.dataDir,
         log: (level, message, meta) => this.logger[level](meta ?? {}, message),
         onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
+        // S-51 PR 2b: the fleet's side of a Hub membership (pairing binding, local agents, attachment points).
+        member: {
+          boundHub: () => this.hubMemberPairingApi?.boundHub() ?? null,
+          agents: () => this.hubMemberAgents(),
+          attachExposures: api => this.attachHubMemberExposures(api),
+          attachAttention: read => this.attachHubExecutionAttention(read),
+          pokeAttention: () => this.needsYou?.poke(),
+        },
       });
       // Stop began during the import: it holds this promise and closes the runtime; do not hand it out again.
       if (this.shuttingDown || !this.hubEffectsReady) runtime.fence();
@@ -1876,6 +1885,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return runtime;
     })();
     return this.hubRuntimeInit;
+  }
+
+  /**
+   * S-51 PR 2b: while the member switch is on, the local owner's "Connect to a Hub" backend (S3c's pairing API) is
+   * attached, paired or not; switched off, it is detached. A binding change re-composes the member side.
+   */
+  private async observeHubMemberPairing(on: boolean): Promise<void> {
+    if (!on) { this.attachHubMemberPairing(null); return; }
+    if (this.hubMemberPairingApi) return;
+    const { createHubMemberPairingApi } = await import("./hub/member/pairing-api.js");
+    if (this.shuttingDown || !this.hubEffectsReady || this.hubMemberPairingApi) return;
+    this.attachHubMemberPairing(createHubMemberPairingApi({
+      home: this.dataDir,
+      enabled: () => (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
+      fence: () => { void this.hubRuntime?.refresh(); },
+      // Disconnect withdraws every published exposure locally (each saved before this returns).
+      withdrawAll: async () => {
+        const api = this.hubMemberExposureApi;
+        if (!api) return;
+        for (const view of api.list()) {
+          if (view.exposureId && view.state === "published") await api.withdraw(view.exposureId, view.revision);
+        }
+      },
+    }));
+  }
+
+  /** The local owner's agents a Hub exposure could map to; providerId is the configured isolated provider, if any. */
+  private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
+    const member = (this.rawFleetConfig as { hub_member?: { execution?: { provider?: { backend?: unknown } } } })?.hub_member;
+    const backend = member?.execution?.provider?.backend;
+    const providerId = backend === "claude" || backend === "codex" ? backend : null;
+    return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: name, providerId }));
   }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */

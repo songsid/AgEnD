@@ -12,6 +12,26 @@ import { createHubDirectory, type HubDirectory, type HubDirectoryConfig } from "
 import { hubPlanDigest } from "./init/plan-digest.js";
 import { HubMount, type HubMountedService } from "./mount.js";
 import { createHubServerFactory, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
+import { createHubMemberFactory, type HubMemberComponents, type HubMemberFactoryOptions } from "./compose/member.js";
+import type { HubViewSource } from "./compose/views.js";
+
+/** The member side's slices (S4, S3c, S4b), imported lazily only inside the member factory. */
+export const MEMBER_COMPONENTS: HubMemberComponents = {
+  execution: () => import("./execution/index.js"),
+  exposures: async () => {
+    const [store, api] = await Promise.all([import("./member/exposures.js"), import("./member/exposure-api.js")]);
+    return { store, api };
+  },
+  provider: async () => {
+    const [cli, broker] = await Promise.all([import("./execution/cli-provider.js"), import("./execution/model-broker.js")]);
+    return { createHubCliProvider: cli.createHubCliProvider, createHubModelBroker: broker.createHubModelBroker };
+  },
+};
+
+/** What the fleet gives the member side (FleetManager): its binding, agents and attachment points. */
+export type HubMemberHost = Pick<HubMemberFactoryOptions, "boundHub" | "agents" | "attachExposures" | "attachAttention" | "pokeAttention"> & {
+  views?: HubViewSource;
+};
 
 /**
  * The Hub web service (S3b, src/hub/http/compose.ts), imported lazily only inside the server factory. S3b takes
@@ -39,6 +59,9 @@ export interface HubRuntimeOptions {
   /** Test seams. */
   components?: HubServerComponents;
   createDirectory?: (config: HubDirectoryConfig, secrets: { bindPassword: string }) => HubDirectory;
+  /** The fleet's side of a Hub membership; absent: the member side holds hub-incomplete. */
+  member?: HubMemberHost;
+  memberComponents?: HubMemberComponents;
   createServer?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
   createMember?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
 }
@@ -75,13 +98,14 @@ export class HubRuntime {
   private admitted: string | null = null;
   private running: Promise<void> | null = null;
   private pending: HubConfigView | null = null;
+  private lastConfig: HubConfigView | null = null;
   private stopped = false;
   private holds: HubHold[] = [];
   /** The most specific reason a factory reported for the side currently being mounted. */
   private reported: { side: "server" | "member"; code: HubHoldCode; detail: string } | null = null;
   private mounting: "server" | "member" | null = null;
   /** Retries cleanup a failed server creation could not confirm (never handed to HubMount). */
-  private readonly drainServer: () => Promise<void>;
+  private drainServer: () => Promise<void>;
   /** A leftover whose cleanup is still unconfirmed: every later Off (even an unchanged one) and Stop retries it. */
   private leftover = false;
 
@@ -101,13 +125,31 @@ export class HubRuntime {
         });
     this.drainServer = composed ? () => composed.drain() : async () => {};
     const serverFactory = options.createServer ?? composed!;
+    const memberComposed = options.createMember || !options.member
+      ? null
+      : createHubMemberFactory({
+          home: options.home,
+          components: options.memberComponents ?? MEMBER_COMPONENTS,
+          ...options.member,
+          ...(options.member.views ? { views: options.member.views } : {}),
+          report: (code, detail) => {
+            this.reported = { side: "member", code, detail };
+          },
+          log: options.log,
+          now,
+        });
     const memberFactory =
       options.createMember ??
+      memberComposed ??
       (async () => {
-        // The member side composes S4's restricted execution (hub-composition.md §5 "Member"), wired with S4.
-        this.reported = { side: "member", code: "hub-incomplete", detail: "the Hub member side (S4) is not in this build" };
+        this.reported = { side: "member", code: "hub-incomplete", detail: "the Hub member side is not wired in this fleet" };
         throw new Error("hub-incomplete");
       });
+    const drainServer = this.drainServer;
+    this.drainServer = async () => {
+      await drainServer();
+      await memberComposed?.drain();
+    };
     this.mount = new HubMount({
       home: options.home,
       planDigest: hubPlanDigest,
@@ -158,6 +200,7 @@ export class HubRuntime {
       }
     }
     this.pending = { hub: config.hub, hub_member: config.hub_member };
+    this.lastConfig = this.pending;
     if (!this.running) {
       this.running = (async () => {
         try {
@@ -177,7 +220,7 @@ export class HubRuntime {
   private async applyOnce(config: HubConfigView): Promise<void> {
     const view = effectiveHubView(config);
     if (view === this.view) {
-      if (this.leftover && obj(config.hub)?.enabled !== true) await this.drainLeftovers();
+      if (this.leftover && (obj(config.hub)?.enabled !== true || obj(config.hub_member)?.enabled !== true)) await this.drainLeftovers();
       return;
     }
     this.view = view;
@@ -185,7 +228,7 @@ export class HubRuntime {
     this.reported = null;
     try {
       await this.mount.apply(config); // fences, closes the previous services, then mounts what is on
-      if (obj(config.hub)?.enabled !== true) await this.drainLeftovers();
+      if (obj(config.hub)?.enabled !== true || obj(config.hub_member)?.enabled !== true) await this.drainLeftovers();
     } catch (err) {
       // HubMount already raised its hold (service-unavailable on an unconfirmed cleanup).
       this.options.log("warn", "Hub apply did not finish cleanly", { err: (err as Error).message });
@@ -193,6 +236,18 @@ export class HubRuntime {
     } finally {
       this.mounting = null;
     }
+  }
+
+  /**
+   * The member's binding changed outside the configuration (a pairing was claimed, disconnected or cancelled): rebuild
+   * from the last configuration, fencing first, even though its text is unchanged.
+   */
+  refresh(): Promise<void> {
+    if (this.stopped || !this.lastConfig) return Promise.resolve();
+    this.admitted = null;
+    this.view = null;
+    if (this.running) this.mount.fence();
+    return this.apply(this.lastConfig);
   }
 
   /** Synchronous: no new admission, dispatch or listener work from here on. */
