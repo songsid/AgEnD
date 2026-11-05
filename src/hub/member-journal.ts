@@ -19,6 +19,16 @@ export interface HubRestrictedOutbox {
   /** Re-reads the unique source row. It must match the same question and restricted context or throw. */
   lookup(db: Database.Database, question: HubQuestion, sourceKey: string): string | null;
 }
+export interface HubKnownMessagesPage {
+  messages: readonly { messageId: string; contentDigest: string }[];
+  nextAfterMessageId: string | null;
+}
+export interface HubUnackedReceiptsPage {
+  receipts: readonly HubReceipt[]; nextAfterSequence: number; more: boolean;
+}
+const pageLimit = z.number().int().min(1).max(128).default(128);
+const knownPage = z.strictObject({ afterMessageId: uuid.optional(), limit: pageLimit });
+const receiptsPage = z.strictObject({ afterSequence: epoch.default(0), limit: pageLimit });
 export interface HubJournalOptions {
   hubId: string; encryptionKey: Buffer; floor: HubVersionFloor; outbox: HubRestrictedOutbox; now?: () => number;
 }
@@ -168,9 +178,42 @@ export class HubMemberJournal {
       const receipt = this.receipt(row); if (receipt && receipt.sequence > after) out.push(receipt);
     } return out.sort((a, b) => a.sequence - b.sequence);
   }
+  /** Bounded metadata only; never expose stored question/answer bytes to composition. */
+  knownMessages(input: { afterMessageId?: string; limit?: number } = {}): HubKnownMessagesPage {
+    const page = validated(knownPage, input); this.meta();
+    const rows = this.db.prepare("SELECT message_id FROM hub_member_messages WHERE message_id>? ORDER BY message_id LIMIT ?").all(page.afterMessageId ?? "", page.limit + 1) as { message_id: string }[];
+    const messages = rows.slice(0, page.limit).map(id => {
+      const row = this.row(id.message_id); if (!row) throw new HubProtocolError("uncertain"); this.decrypt(row);
+      return { messageId: row.messageId, contentDigest: row.contentDigest };
+    });
+    return { messages, nextAfterMessageId: rows.length > page.limit ? messages.at(-1)!.messageId : null };
+  }
+  unackedReceipts(input: { afterSequence?: number; limit?: number } = {}): HubUnackedReceiptsPage {
+    const page = validated(receiptsPage, input); this.meta();
+    const rows = this.db.prepare(`SELECT message_id FROM hub_member_messages
+      WHERE json_extract(value,'$.stage')!='preparing' AND json_extract(value,'$.sequence')>json_extract(value,'$.ackedSequence')
+      AND json_extract(value,'$.sequence')>? ORDER BY json_extract(value,'$.sequence') LIMIT ?`).all(page.afterSequence, page.limit + 1) as { message_id: string }[];
+    const receipts = rows.slice(0, page.limit).map(id => {
+      const row = this.row(id.message_id); if (!row) throw new HubProtocolError("uncertain"); this.decrypt(row);
+      const receipt = this.receipt(row); if (!receipt || row.ackedSequence >= row.sequence || receipt.sequence <= page.afterSequence) throw new HubProtocolError("uncertain"); return receipt;
+    });
+    return { receipts, nextAfterSequence: receipts.at(-1)?.sequence ?? page.afterSequence, more: rows.length > page.limit };
+  }
+  revocationVersion(): number { return this.meta().revocation_version; }
+  /** A welcome version is a durable lower bound, never a lease or a fabricated scoped revocation. */
+  observeRevocationVersion(version: number): void {
+    validated(epoch, version); const current = this.revocationVersion();
+    if (version < current) throw new HubProtocolError("stale"); if (version === current) return;
+    this.change(() => { this.db.prepare("UPDATE hub_member_meta SET revocation_version=? WHERE singleton=1").run(version); });
+  }
   acknowledge(receipt: HubReceipt): void {
-    const r = validated(receiptSchema, receipt);
-    this.change(() => { const row = this.row(r.messageId); if (!row || row.sequence !== r.sequence || row.stage !== r.stage || row.contentDigest !== r.contentDigest) throw new HubProtocolError("conflict"); row.ackedSequence = r.sequence; this.write(row); });
+    const r = validated(receiptSchema, receipt), row = this.row(r.messageId);
+    if (!row || row.contentDigest !== r.contentDigest || r.sequence > row.sequence) throw new HubProtocolError("conflict");
+    // Older committed evidence may arrive after local evidence advanced. Ignore it, never ACK/downgrade the newer row.
+    if (r.sequence < row.sequence) return;
+    if (row.stage !== r.stage) throw new HubProtocolError("conflict");
+    if (row.ackedSequence === r.sequence) return;
+    this.change(() => { row.ackedSequence = r.sequence; this.write(row); });
   }
   fence(revocation: HubRevocation, fenceLocal: (messageId: string) => void): readonly HubReceipt[] {
     return this.change(() => {
