@@ -33,6 +33,10 @@ appStore.set({ viewOnly: mode === "view-only" });
 // #1920 phase 3: a guest's page has its chats and nothing else — no panel, notifier, theme list or owner CSS a guest
 // would be refused.
 const guest = guestPage();
+// AgEnD Hub P1 (S3b): a Hub's own workspace (the mark its listener sets). It boots Hub-only: no fleet stream, chat,
+// Needs you, notices, preferences, themes or owner CSS — none of the fleet's endpoints exist at the Hub's origin, and
+// who is signed in is the Hub's own session (/hub/v1/session), read by its pages.
+const hubPage = mode === "full" && !guest && String(boot.hub || "").split(/\s+/).includes("hub");
 
 // A failed load can be retried (the panel's Retry): each retry asks for a fresh URL, since a browser may keep a failed
 // module import cached under the first one. boot() runs once, whichever attempt succeeds.
@@ -42,7 +46,12 @@ const loadView = retryable((a) => import(retryUrl("/assets/panel-view.js", a)));
 const panels = new Map([["view", { load: () => loadView().then((m) => m.ViewPanel) }]]);
 let onNewInstance = null;
 
-if (mode === "full") {
+if (hubPage) {
+  const loadHub = retryable((a) => import(retryUrl("/ui/js/panel-hub.js", a)));
+  panels.set("hub", { load: () => loadHub().then((m) => m.HubPanel) });
+  appStore.set({ connection: "none" });
+  if (!location.pathname.startsWith("/ui/hub")) history.replaceState(history.state, "", "/ui/hub");
+} else if (mode === "full") {
   const stream = createStream({ mode, transport: boot.webTransport });
   stream.on("status", applyStatus);
   stream.on("activity", applyActivity);
@@ -85,13 +94,6 @@ if (mode === "full") {
   let chatLoads = 0;
   panels.set("chat", { load: () => (chatLoads++ === 0 ? chatBoot : loadChat()).then((m) => m.ChatPanel) });
   if (!guest) {
-    // AgEnD Hub P1: a Hub workspace (the page's mark, set by a Hub's own listener) has its own pages; nothing loads
-    // otherwise. The Hub runs no agents: its workspace opens on Ask.
-    if (String(document.body?.dataset?.hub || "").split(/\s+/).includes("hub")) {
-      const loadHub = retryable((a) => import(retryUrl("/ui/js/panel-hub.js", a)));
-      panels.set("hub", { load: () => loadHub().then((m) => m.HubPanel) });
-      if (location.pathname === "/ui") history.replaceState(history.state, "", "/ui/hub");
-    }
     const loadWindowsAgent = retryable((a) => import(retryUrl("/ui/js/panel-windows-agent.js", a)));
     panels.set("windows-agent", { load: () => loadWindowsAgent().then((m) => m.WindowsAgentPanel) });
     panels.set("fleet", { load: () => loadFleet().then((m) => m.FleetPanel) });
@@ -150,7 +152,7 @@ if (mode === "full") {
 startRouter(window);
 // #1629 r4 §3: the person's owner CSS (full app only; never on Settings, in safe mode or where this device turned it off;
 // never a guest's — owner CSS is an admin's).
-if (!guest) installOwnerCss();
+if (!guest && !hubPage) installOwnerCss();
 // /ui on its own opens the chat this browser had open last (an unknown name shows the panel's "not found").
 {
   const r = navStore.get().route;
@@ -161,7 +163,7 @@ if (!guest) installOwnerCss();
 
 document.addEventListener("keydown", handleKey);
 // #2293: Ctrl+K / ⌘K (and Ctrl+F in a chat) — an admin's full app, and a trusted guest's (#2855: what it can see).
-if (mode === "full" && (!guest || guestTrusted())) document.addEventListener("keydown", handleSearchKey);
+if (mode === "full" && !hubPage && (!guest || guestTrusted())) document.addEventListener("keydown", handleSearchKey);
 // #2342: Ctrl/⌘+Z and Ctrl+Shift+Z / Ctrl+Y / ⌘⇧Z in every text field, one history per field (the browser's is one
 // for the whole page, and any script write wipes it).
 installTextUndo({ mac: isMacLike() });

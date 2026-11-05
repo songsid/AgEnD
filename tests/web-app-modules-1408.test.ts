@@ -100,11 +100,18 @@ describe("module admission (#1408 §4)", () => {
       // #2347: the restart banner's Restart now runs Settings' runner (behind the session gate), in any panel.
       'retryUrl("/ui/js/settings-apply.js", a']);
     // The private ones only in "full" mode: nothing under /ui/ is reached from the View-only branch.
-    const fullBranch = app.slice(app.indexOf('if (mode === "full") {'), app.indexOf("} else appStore.set"));
-    for (const p of ["/ui/js/agent-proposals.js", "/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-hub.js", "/ui/js/panel-settings.js", "/ui/js/panel-windows-agent.js", "/ui/js/panel-needs.js", "/ui/js/panel-notices.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js", "/ui/js/settings-apply.js"]) {
-      expect(app.indexOf(p), p).toBeGreaterThan(app.indexOf('if (mode === "full") {'));
+    const fullBranch = app.slice(app.indexOf('} else if (mode === "full") {'), app.indexOf("} else appStore.set"));
+    for (const p of ["/ui/js/agent-proposals.js", "/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-windows-agent.js", "/ui/js/panel-needs.js", "/ui/js/panel-notices.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js", "/ui/js/settings-apply.js"]) {
+      expect(app.indexOf(p), p).toBeGreaterThan(app.indexOf('} else if (mode === "full") {'));
       expect(fullBranch, p).toContain(p);
     }
+    // AgEnD Hub P1 (S3b): a Hub's own workspace boots Hub-only — its branch loads the Hub panel and nothing of the fleet's
+    // (no stream, chat, Needs you, notices or preferences); it is "full" mode only, never a guest's page.
+    expect(app).toContain('const hubPage = mode === "full" && !guest &&');
+    const hubBranch = app.slice(app.indexOf("if (hubPage) {"), app.indexOf('} else if (mode === "full") {'));
+    expect(hubBranch).toContain("/ui/js/panel-hub.js");
+    expect(hubBranch).not.toMatch(/createStream|panel-chat|panel-needs|bootPrefs|startNeedsNotifier|notices|backend-signin|agent-proposals/);
+    expect(fullBranch).not.toContain("/ui/js/panel-hub.js");
   });
 });
 

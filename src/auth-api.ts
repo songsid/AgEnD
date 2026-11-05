@@ -203,6 +203,21 @@ export function bypassesWebGate(
   return (method === "GET" || method === "HEAD") && config?.web?.view_access !== "session" && isViewRead(path);
 }
 
+/**
+ * AgEnD Hub P1: one public, inert asset by its /assets/ name — what a Hub's own listener serves of the app's static
+ * closure. It reads no cookie, session or request header. Returns false when there is no such asset.
+ */
+export function servePublicAsset(res: ServerResponse, name: string): boolean {
+  const asset = Object.prototype.hasOwnProperty.call(ASSETS, name) ? ASSETS[name] : undefined;
+  if (!asset) return false;
+  try {
+    const body = readFileSync(join(__dirname, "ui", asset.file));
+    res.writeHead(200, { "Content-Type": asset.type, "X-Content-Type-Options": "nosniff" });
+    res.end(body);
+    return true;
+  } catch { return false; }
+}
+
 function json(res: ServerResponse, code: number, body: unknown, headers: Record<string, string | string[]> = {}): void {
   res.writeHead(code, { "Content-Type": "application/json", ...headers });
   res.end(JSON.stringify(body));
