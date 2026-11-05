@@ -186,7 +186,9 @@ describe("the member client's pacing and steps", () => {
     expect(await c.connect({ address: "http://x", code: "ABCD-EFGH" })).toEqual({ ok: false, error: "address" });
     expect(await c.connect({ address: "https://hub.test", code: "ABCD-EF01-2345" })).toEqual({ ok: true, pendingConfirmation: true, pairing: { state: "unpaired" } });
     expect(JSON.parse(calls[0][1])).toEqual({ address: "https://hub.test", code: "ABCD-EF01-2345" });
-    expect(await c.disconnect()).toEqual({ ok: true, remote: "pending", pendingConfirmation: true });
+    expect(await c.disconnect()).toEqual({ ok: false, error: "conflict" });                       // nothing shown: never sent
+    expect(await c.disconnect({ state: "paired", hub: { hubId: "h1" }, binding: "b".repeat(64) })).toEqual({ ok: true, remote: "pending", pendingConfirmation: true });
+    expect(JSON.parse(calls.at(-2)[1])).toEqual({ hubId: "h1", binding: "b".repeat(64) });
     expect(confirm.track).toHaveBeenCalledTimes(2);
   });
 });

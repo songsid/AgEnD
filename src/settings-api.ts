@@ -906,7 +906,7 @@ export function handleSettingsRequest(
         if ((ctx.hubMemberPairing?.() ?? null) !== api) { json(res, 409, { ok: false, error: "unavailable" }); return; }
         const body = JSON.parse(bytes.toString("utf8") || "{}") as Record<string, unknown>;
         const r = step === "connect" ? await api.connect({ address: body.address, code: body.code }, current)
-          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId });
+          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId, binding: body.binding });
         json(res, r.ok ? 200 : 409, r);
       }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
       return true;

@@ -47,6 +47,8 @@ function rig(over: Record<string, unknown> = {}) {
   return { home, hubId, digest, api, begin, claim, answers, fence, withdrawAll, sleeps, flush, setLink: (l: typeof link) => { link = l; }, expire: () => { expires = now - 1; } };
 }
 const yes = () => true;
+/** The pairing the page shows (what a disconnect is confirmed for). */
+const shownOf = (api: { boundHub(): { hubId: string; binding: string | null } | null }) => { const b = api.boundHub()!; return { hubId: b.hubId, binding: b.binding }; };
 
 describe("the member's pairing backend", () => {
   it("connect: the address and code are checked here; then pending — the Hub's confirmations unknown (null), the local receipt false", async () => {
@@ -80,7 +82,8 @@ describe("the member's pairing backend", () => {
     expect(r.claim).toHaveBeenCalledTimes(3);
     expect(r.sleeps).toEqual([5000, 5000]);
     expect((r.claim.mock.calls as any)[0][0]).toMatchObject({ hubId: r.hubId, approvedFingerprint: r.digest, expectedProfileDigest: null });
-    expect(r.api.view()).toEqual({ state: "paired", hub: { hubId: r.hubId, name: null, memberOrigin: "https://hub.test", webOrigin: "https://web.hub.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "offline" });
+    expect(r.api.view()).toEqual({ state: "paired", hub: { hubId: r.hubId, name: null, memberOrigin: "https://hub.test", webOrigin: "https://web.hub.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "offline",
+      binding: expect.stringMatching(/^[0-9a-f]{64}$/) });
     r.setLink("online");
     expect(r.api.view()).toMatchObject({ state: "paired", link: "online" });
   });
@@ -117,12 +120,13 @@ describe("the member's pairing backend", () => {
     await r.api.confirmFingerprint(r.digest, yes); await r.flush();
     expect(r.api.view().state).toBe("paired");
     expect(await r.api.disconnect({ hubId: randomUUID() })).toEqual({ ok: false, error: "conflict" });   // another Hub: never
-    expect(await r.api.disconnect({ hubId: r.hubId })).toEqual({ ok: true, remote: "pending" });
+    expect(await r.api.disconnect({ hubId: r.hubId })).toEqual({ ok: false, error: "conflict" });                // the pairing unnamed
+    expect(await r.api.disconnect(shownOf(r.api))).toEqual({ ok: true, remote: "pending" });
     expect([r.fence, r.withdrawAll].map((f) => f.mock.calls.length)).toEqual([1, 1]);
     expect(existsSync(join(r.home, "hub-member", r.hubId, "pairing.json"))).toBe(true);
-    expect(r.api.view()).toEqual({ state: "held", hold: "disconnected", memberOrigin: "https://hub.test", hubId: r.hubId });
+    expect(r.api.view()).toEqual({ state: "held", hold: "disconnected", memberOrigin: "https://hub.test", hubId: r.hubId, binding: expect.any(String) });
     expect(r.api.disconnected(r.hubId)).toBe(true);
-    expect(await r.api.disconnect({ hubId: r.hubId })).toEqual({ ok: false, error: "conflict" });
+    expect(await r.api.disconnect(shownOf(r.api))).toEqual({ ok: false, error: "conflict" });
     expect(r.api.cancel()).toEqual({ state: "unpaired" });                       // Start over
     expect(r.api.disconnected(r.hubId)).toBe(true);                             // the old profile never reconnects
     await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
@@ -140,7 +144,7 @@ describe("the member's pairing backend", () => {
     await w.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
     w.answers.push("paired");
     await w.api.confirmFingerprint(w.digest, yes); await w.flush();
-    expect(await w.api.disconnect({ hubId: w.hubId })).toEqual({ ok: false, error: "unsaved" });
+    expect(await w.api.disconnect(shownOf(w.api))).toEqual({ ok: false, error: "unsaved" });
     expect(w.api.disconnected(w.hubId)).toBe(true);                                    // fenced and tombstoned all the same
   });
 });
@@ -276,7 +280,7 @@ describe("Prism #3115 r1 (pairing)", () => {
     await r.api.confirmFingerprint(r.digest, yes); await r.flush();
     expect(r.api.disconnected(r.hubId)).toBe(false);                  // the one consistent case
     expect(r.api.disconnected(randomUUID())).toBe(true);
-    await r.api.disconnect({ hubId: r.hubId });
+    await r.api.disconnect(shownOf(r.api));
     unlinkSync(join(r.home, "hub-member", "state.json"));
     expect(r.api.view()).toEqual({ state: "held", hold: "unsaved" });
     expect(r.api.disconnected(r.hubId)).toBe(true);
@@ -284,9 +288,11 @@ describe("Prism #3115 r1 (pairing)", () => {
   it("P2: the disconnect confirmation names the exact Hub; another hub id is refused before anything is proposed", async () => {
     const { pairingSummary } = await import("../src/hub-pairing-summary.js");
     const paired = { state: "paired", hub: { hubId: "h1", name: null, memberOrigin: "https://a.test", webOrigin: "https://w.a.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "offline" } as const;
-    expect(pairingSummary("disconnect", { hubId: "h1" }, paired, "h1").summary[0]).toBe("Disconnect this fleet from the Hub at https://a.test (h1)");
-    expect(() => pairingSummary("disconnect", { hubId: "h2" }, paired, "h1")).toThrow(expect.objectContaining({ code: "conflict" }));
-    expect(() => pairingSummary("disconnect", {}, paired, "h1")).toThrow(expect.objectContaining({ code: "conflict" }));
+    const bound = { hubId: "h1", binding: "b".repeat(64) };
+    expect(pairingSummary("disconnect", { hubId: "h1", binding: "b".repeat(64) }, paired, bound).summary[0]).toBe("Disconnect this fleet from the Hub at https://a.test (h1, pairing bbbbbbbbbbbb)");
+    expect(() => pairingSummary("disconnect", { hubId: "h2", binding: "b".repeat(64) }, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));
+    expect(() => pairingSummary("disconnect", { hubId: "h1", binding: "c".repeat(64) }, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));   // a re-pair
+    expect(() => pairingSummary("disconnect", {}, paired, bound)).toThrow(expect.objectContaining({ code: "conflict" }));
   });
 });
 
@@ -303,7 +309,7 @@ describe("S5's seams (dev-claude): bindingChanged and currentBinding", () => {
     await r.api.confirmFingerprint(r.digest, yes); await r.flush();
     expect(changed).toHaveBeenCalledTimes(1);
     expect(currentBinding(r.home, prof)).toEqual({ hubId: r.hubId });
-    await r.api.disconnect({ hubId: r.hubId });
+    await r.api.disconnect(shownOf(r.api));
     expect(changed).toHaveBeenCalledTimes(2);
     expect(currentBinding(r.home, prof)).toBeNull();
     r.api.cancel();                                                                   // Start over
@@ -324,5 +330,53 @@ describe("S5's seams (dev-claude): bindingChanged and currentBinding", () => {
     const t = rig({ bindingChanged: () => { throw Error("s5"); } });
     await t.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
     expect(t.api.cancel()).toEqual({ state: "unpaired" });
+  });
+});
+
+describe("Prism #3115 r2", () => {
+  it("a disconnect confirmed for one pairing never applies to a re-pair of the same Hub (the saved profile changed)", async () => {
+    const r = rig();
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    r.answers.push("paired");
+    await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    const shown = shownOf(r.api);
+    writeFileSync(join(r.home, "hub-member", r.hubId, "pairing.json"), '{"rev":"re-paired"}', { mode: 0o600 });   // a new profile, same Hub
+    const r2 = createHubMemberPairingApi({ home: r.home, profiles: (home: string, hubId: string) => ({ readProfile: () => ({ hub: { hubId, memberOrigin: "https://hub.test", webOrigin: "https://web.hub.test", spkiSha256: "a".repeat(64) } }) as any,
+      readPending: () => { throw Error("none"); }, profileDigest: () => "p-new", clearPending: () => {} }) as any });
+    expect(await r2.disconnect(shown)).toEqual({ ok: false, error: "conflict" });
+    expect(await r2.disconnect(shownOf(r2))).toEqual({ ok: true, remote: "pending" });
+  });
+  it("a saved profile whose claim never finished settling holds for every reader — a fresh API, currentBinding, the reconnect predicate; a normal restart is paired", async () => {
+    const { currentBinding } = await import("../src/hub/member/pairing-api.js");
+    const { chmodSync } = await import("node:fs");
+    let settle: (() => void) | null = null;
+    const r = rig({ claim: vi.fn(() => new Promise((ok) => { settle = () => { writeFileSync(join(r.home, "hub-member", r.hubId, "pairing.json"), "{}", { mode: 0o600 }); ok({ status: "paired" }); }; })) });
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    await r.api.confirmFingerprint(r.digest, yes);
+    const dir = join(r.home, "hub-member");
+    chmodSync(dir, 0o500);                                            // the settlement (and the hold) cannot be saved
+    const unhandled = vi.fn(); process.on("unhandledRejection", unhandled);
+    try { settle!(); await r.flush(); } finally { chmodSync(dir, 0o700); }
+    await new Promise((x) => setTimeout(x, 10));
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();                         // the final write's failure is caught
+    const prof = (home: string, hubId: string) => ({ readProfile: () => ({ hub: { hubId, memberOrigin: "https://hub.test", webOrigin: "https://web.hub.test", spkiSha256: "a".repeat(64) } }) as any,
+      readPending: () => ({ hub: { hubId, memberOrigin: "https://hub.test" }, fingerprint: r.digest, expiresAt: Date.now() + 60_000 }) as any,
+      profileDigest: () => "p1", clearPending: () => unlinkSync(join(home, "hub-member", hubId, "pending.json")) });
+    const fresh = createHubMemberPairingApi({ home: r.home, profiles: prof as any });  // a restart: no memory
+    expect(r.api.view()).toMatchObject({ state: "held", hold: "unknown_outcome" });
+    expect(fresh.view()).toMatchObject({ state: "held", hold: "unknown_outcome" });
+    expect(currentBinding(r.home, prof as any)).toBeNull();
+    expect(fresh.disconnected(r.hubId)).toBe(true);
+    // Recovery: abandon (Start over) retires it; a normal pairing afterwards settles and a restart sees it paired.
+    expect(fresh.cancel()).toEqual({ state: "unpaired" });
+    const ok = rig();
+    await ok.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    ok.answers.push("paired");
+    await ok.api.confirmFingerprint(ok.digest, yes); await ok.flush();
+    const prof2 = (home: string, hubId: string) => ({ ...prof(home, hubId), profileDigest: () => "p1" });
+    const restarted = createHubMemberPairingApi({ home: ok.home, profiles: prof2 as any });
+    expect(restarted.view().state).toBe("paired");
+    expect(currentBinding(ok.home, prof2 as any)).toEqual({ hubId: ok.hubId });
   });
 });

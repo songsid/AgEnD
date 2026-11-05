@@ -15,6 +15,7 @@
  *   administrator revokes the fleet there.
  * State: hub-member/state.json (0600, atomic): { hubId, localConfirmed?, held?, disconnected? }.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "../../atomic-write.js";
@@ -77,6 +78,14 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
     if (existsSync(join(deps.home, STATE))) privatePath(deps.home, STATE);          // an existing one: owned, private, no symlink
     atomicWriteFileSync(join(dir, "state.json"), `${JSON.stringify(s)}\n`, { mode: 0o600 });
   };
+  /** #3115 r2: the exact pairing a disconnect is confirmed for — its hub and saved profile (a re-pair is another). */
+  const bindingIdOf = (hubId: string, store: { profileDigest(): string | null }) => {
+    const d = store.profileDigest();
+    return d ? createHash("sha256").update(JSON.stringify(["agend-hub-binding-v1", hubId, d])).digest("hex") : null;
+  };
+  const boundHub = (): { hubId: string; binding: string | null } | null => {
+    try { const h = read().hubId; return h ? { hubId: h, binding: bindingIdOf(h, profiles(deps.home, h)) } : null; } catch { return null; }
+  };
   const changed = () => { try { deps.bindingChanged?.(); } catch { /* S5's own failure */ } };
   const files = (hubId: string) => ({ pairing: existsSync(join(deps.home, "hub-member", hubId, "pairing.json")), pending: existsSync(join(deps.home, "hub-member", hubId, "pending.json")) });
 
@@ -100,10 +109,14 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       if (f.pairing) {
         const p = store.readProfile();
         origin = p.hub.memberOrigin;
-        if (s.disconnected) return { state: "held", hold: "disconnected", memberOrigin: origin, hubId: s.hubId };
-        const held = memHold ?? s.held ?? deps.hold?.() ?? null;
-        if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId };
-        return { state: "paired", hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: p.hub.webOrigin, fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
+        const binding = bindingIdOf(s.hubId, store) ?? undefined;
+        if (s.disconnected) return { state: "held", hold: "disconnected", memberOrigin: origin, hubId: s.hubId, binding };
+        // #3115 r2: a saved profile whose claim never finished settling (the local receipt or the pending claim still
+        // there) is not a pairing yet — for every reader, after a restart too: held, never paired.
+        const unfinished = !!s.localConfirmed || f.pending ? "unknown_outcome" as const : null;
+        const held = memHold ?? s.held ?? unfinished ?? deps.hold?.() ?? null;
+        if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId, binding };
+        return { state: "paired", binding, hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: p.hub.webOrigin, fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
           link: deps.link?.() === "online" ? "online" : "offline" };
       }
       if (f.pending) {
@@ -135,7 +148,16 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         if (gen === generation) { unknown = { hubId }; try { write({ ...read(), held: "unknown_outcome" }); } catch { /* the memory hold stands */ } }
         return;
       }
-      if (r.status === "paired") { if (gen === generation) { const s = read(); delete s.localConfirmed; write(s); } changed(); return; }
+      if (r.status === "paired") {
+        // #3115 r2: settling the claim is part of the claim — a failure here leaves the receipt (unfinished: held) and
+        // holds in memory too; never an unhandled rejection.
+        if (gen === generation) {
+          try { const s = read(); delete s.localConfirmed; write(s); }
+          catch { unknown = { hubId }; try { write({ ...read(), held: "unknown_outcome" }); } catch { /* the receipt and the memory hold stand */ } }
+        }
+        changed();
+        return;
+      }
       if (r.status !== "pending") return;
       let pending; try { pending = store.readPending(); } catch { return; }
       if (pending.fingerprint !== digest || pending.expiresAt <= now() || store.profileDigest() !== expected) return;
@@ -191,7 +213,8 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       }
       // #3115 r1 P4: after an unknown claim outcome, abandon the binding without retrying it: the pending claim goes, and
       // the hub is retired with whatever profile it has now (a credential saved meanwhile never connects automatically).
-      if (s.hubId && (s.held === "unknown_outcome" || (unknown && unknown.hubId === s.hubId))) {
+      const unfinished = !!s.hubId && files(s.hubId).pairing && (!!s.localConfirmed || files(s.hubId).pending);
+      if (s.hubId && (s.held === "unknown_outcome" || (unknown && unknown.hubId === s.hubId) || unfinished)) {
         const hubId = s.hubId;
         try {
           const store = profiles(deps.home, hubId);
@@ -211,11 +234,11 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       return view();
     },
     /** Leave the Hub (a confirmed Settings replay): fence, tombstone, withdraw every exposure; the Hub revokes later. */
-    async disconnect(expected: { hubId?: unknown } = {}): Promise<{ ok: true; remote: "pending" } | { ok: false; error: "unsaved" | "conflict" }> {
-      // #3115 r1 P2: only the Hub the owner confirmed (its id, in the confirmed body) — never a replacement.
-      let bound: string | undefined;
-      try { bound = read().hubId; } catch { return { ok: false, error: "conflict" }; }
-      if (!bound || expected.hubId !== bound) return { ok: false, error: "conflict" };
+    async disconnect(expected: { hubId?: unknown; binding?: unknown } = {}): Promise<{ ok: true; remote: "pending" } | { ok: false; error: "unsaved" | "conflict" }> {
+      // #3115 r1 P2 / r2: only the exact pairing the owner confirmed — its hub AND its saved profile (bindingId); a
+      // replacement Hub, or a re-pair of the same Hub since, is another pairing.
+      const b = boundHub();
+      if (!b || expected.hubId !== b.hubId || !b.binding || expected.binding !== b.binding) return { ok: false, error: "conflict" };
       const v = view();
       if (v.state !== "paired" && !(v.state === "held" && v.hold !== "disconnected" && v.memberOrigin)) return { ok: false, error: "conflict" };
       generation++;
@@ -233,13 +256,13 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
     disconnected(hubId: string): boolean {
       try {
         const s = read();
-        if (s.hubId !== hubId || s.disconnected || s.held || (unknown && unknown.hubId === hubId)) return true;
+        if (s.hubId !== hubId || s.disconnected || s.held || s.localConfirmed || files(hubId).pending || (unknown && unknown.hubId === hubId)) return true;
         const r = (s.retired ?? []).find((x) => x.hubId === hubId);
         return !!r && profiles(deps.home, hubId).profileDigest() === r.profile;
       } catch { return true; }
     },
-    /** The hub the current binding names (for a disconnect's confirmation), or null. */
-    boundHub(): string | null { try { return read().hubId ?? null; } catch { return null; } },
+    /** The current binding (for a disconnect's confirmation): its hub and bindingId (null: no profile), or null. */
+    boundHub,
   };
 }
 
@@ -253,7 +276,8 @@ export function currentBinding(home: string, profiles: (home: string, hubId: str
   try {
     if (!existsSync(join(home, STATE))) return null;
     const st = JSON.parse(readPrivateFile(home, STATE)) as MemberState;
-    if (!st || typeof st !== "object" || typeof st.hubId !== "string" || !HUB_ID.test(st.hubId) || st.disconnected || st.held) return null;
+    if (!st || typeof st !== "object" || typeof st.hubId !== "string" || !HUB_ID.test(st.hubId) || st.disconnected || st.held || st.localConfirmed) return null;
+    if (existsSync(join(home, "hub-member", st.hubId, "pending.json"))) return null;      // a claim not settled yet
     if (!existsSync(join(home, "hub-member", st.hubId, "pairing.json"))) return null;
     const store = profiles(home, st.hubId);
     store.readProfile();

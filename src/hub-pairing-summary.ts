@@ -6,15 +6,15 @@ export type HubPairingHold = "unknown_outcome" | "expired" | "unsaved" | "refuse
 export type HubPairingView =
   | { state: "unpaired" }
   | { state: "pending"; memberOrigin: string; fingerprint: { kind: "pairing"; digest: string }; expiresAt: number; ownerConfirmed: null; adminApproved: null; localConfirmed: boolean }
-  | { state: "paired"; hub: { hubId: string; name: null; memberOrigin: string; webOrigin: string; fingerprint: { kind: "hub-key"; digest: string } }; link: "online" | "offline" }
-  | { state: "held"; hold: HubPairingHold; memberOrigin?: string; hubId?: string };
+  | { state: "paired"; hub: { hubId: string; name: null; memberOrigin: string; webOrigin: string; fingerprint: { kind: "hub-key"; digest: string } }; link: "online" | "offline"; binding?: string }
+  | { state: "held"; hold: HubPairingHold; memberOrigin?: string; hubId?: string; binding?: string };
 export type HubConnectError = "address" | "code" | "busy" | "unreachable" | "refused";
 export function httpsOrigin(address: string): string | null {
   try { const u = new URL(address.trim()); return u.protocol === "https:" && !u.username && !u.password && (u.pathname === "/" || u.pathname === "") && !u.search && !u.hash ? u.origin : null; } catch { return null; }
 }
 
 /** What the owner is asked to confirm for a pairing step (Settings confirmation's summary); a refused input throws. */
-export function pairingSummary(action: "connect" | "confirm" | "disconnect", input: unknown, view: HubPairingView, bound: string | null = null): { summary: string[] } {
+export function pairingSummary(action: "connect" | "confirm" | "disconnect", input: unknown, view: HubPairingView, bound: { hubId: string; binding: string | null } | null = null): { summary: string[] } {
   const body = (input && typeof input === "object" && !Array.isArray(input) ? input : {}) as Record<string, unknown>;
   const refuse = (code: string) => { throw Object.assign(new Error(code), { code }); };
   const groups = (d: string) => d.toLowerCase().slice(0, 32).replace(/(.{4})(?=.)/g, "$1 ");
@@ -30,7 +30,7 @@ export function pairingSummary(action: "connect" | "confirm" | "disconnect", inp
   }
   if (view.state !== "paired" && !(view.state === "held" && view.hold !== "disconnected" && view.memberOrigin)) refuse("conflict");
   // #3115 r1 P2: the confirmation names the exact Hub (its id, in the body the owner confirms); apply rechecks it.
-  if (!bound || body.hubId !== bound) refuse("conflict");
+  if (!bound || body.hubId !== bound.hubId || !bound.binding || body.binding !== bound.binding) refuse("conflict");
   const origin = view.state === "paired" ? view.hub.memberOrigin : (view as { memberOrigin: string }).memberOrigin;
-  return { summary: [`Disconnect this fleet from the Hub at ${origin} (${bound})`, "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there"] };
+  return { summary: [`Disconnect this fleet from the Hub at ${origin} (${bound!.hubId}, pairing ${bound!.binding!.slice(0, 12)})`, "Every agent shared there is withdrawn; the Hub's administrator revokes the fleet there"] };
 }

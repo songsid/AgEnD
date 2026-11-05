@@ -54,8 +54,9 @@ export function HubConnectCard() {
     else setMsg({ error: true, text: hw(CONNECT_ERRORS[r.error] || "errFailed") });
   });
   const disconnect = (name) => act(async () => {
+    const shown = pairing;                                  // #3115 r2: the pairing on screen now, before the dialog
     if (!(await confirmDialog({ message: hw("disconnectAsk", name), confirmLabel: hw("disconnect"), danger: true }))) return;
-    const r = await client.disconnect();
+    const r = await client.disconnect(shown);
     if (!live.current) return;
     if (!r.ok) { setMsg({ error: true, text: hw("errUnsaved") }); return; }
     setPairing(await client.pairing());
@@ -117,7 +118,7 @@ export function HubConnectCard() {
       <${Fingerprint} label=${hw("keyApproved")} fp=${p.hub.fingerprint} />
       <${Fingerprint} label=${hw("keyOffered")} fp=${p.offered} />
       <div class="field-row">
-        <button type="button" class="btn" disabled=${busy} onClick=${() => act(async () => { await client.disconnect(); if (live.current) setPairing(await client.pairing()); })}>${hw("repair")}</button>
+        <button type="button" class="btn" disabled=${busy} onClick=${() => act(async () => { const shown = pairing; await client.disconnect(shown); if (live.current) setPairing(await client.pairing()); })}>${hw("repair")}</button>
         <button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => disconnect(name)}>${hw("disconnect")}</button>
       </div>
     </div>`;
