@@ -59,6 +59,7 @@ import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/as
 import { appStore } from "/assets/app-store.js";
 import { t, lang, register } from "/assets/app-i18n.js";
 import { identityOf } from "/assets/identity-color.js";
+import { avatarOf, firstCharacter } from "/assets/instance-nav.js";
 import { Icon } from "/assets/ui-icons.js";
 import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
@@ -73,6 +74,7 @@ import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
+import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
 import { applyOverrides, fitNight, fitSeatFor, stripBox } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
@@ -99,6 +101,9 @@ register("orgo", {
     key: "Key", keyTitle: "What the items carried between desks are", keyLabel: "Carried between desks",
     keyTask: "Folder: a task", keySend: "Envelope: a message", keyReport: "Paper: a report", keyBroadcast: "Horn: a broadcast",
     tileLabel: "{0} ({1})", openOffice: "Open the office {0}", lobbyTile: "Lobby tile (in no office)", lobbyEveryone: "Everyone is in an office", overviewNoEdit: "Pick one office to edit offices or a layout",
+    dialogue: "Dialogue", dialogueTitle: "When a person messages someone here, show their words and the reply in a box at the bottom (this browser only)",
+    dlgWorking: "Working…", dlgSomeone: "Someone", dlgHeardShare: "Sent {0} a message.", dlgAnsweredShare: "Replied.", dlgFile: "(sent a file)", dlgSays: "{0}: {1}",
+    dlgBox: "Dialogue: {0}. Click for their card, double-click for their chat.",
   },
   "zh-TW": {
     label: "辦公室：每個 team 是一間房間，每個 instance 一張桌子；General 和未加入 team 的 instance 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
@@ -119,6 +124,9 @@ register("orgo", {
     key: "圖例", keyTitle: "桌子之間傳遞的物品代表什麼", keyLabel: "桌子之間傳遞的物品",
     keyTask: "資料夾：任務", keySend: "信封：訊息", keyReport: "紙張：回報", keyBroadcast: "喇叭：廣播",
     tileLabel: "{0}（{1}）", openOffice: "開啟辦公室「{0}」", lobbyTile: "大廳格（不在任何辦公室）", lobbyEveryone: "每個成員都已在某間辦公室", overviewNoEdit: "請先選一間辦公室，再編輯辦公室或配置",
+    dialogue: "對話框", dialogueTitle: "有人傳訊息給這裡的成員時，在下方的對話框顯示訊息與回覆（只限這個瀏覽器）",
+    dlgWorking: "處理中…", dlgSomeone: "有人", dlgHeardShare: "傳了一則訊息給 {0}。", dlgAnsweredShare: "已回覆。", dlgFile: "（傳了一個檔案）", dlgSays: "{0}：{1}",
+    dlgBox: "對話框：{0}。點一下看資料卡，點兩下開啟聊天。",
   },
 });
 const to = (k, ...v) => t(`orgo.${k}`, ...v);
@@ -615,9 +623,10 @@ export function OfficeKey({ pal }) {
  * `lease` the tab's (its reads); `onOpen(name)` what a desk opens (the canvas's: the chat; none: a desk opens nothing,
  * as on a share link's page, #2636); `assetUrl(path)` where a skin pack's picture is read (the share's address), and
  * `assetImage(url)` how (the share's, which waits out a 429, #2662; none: the loader's own);
- * `opening` the office it opens on (the share's), instead of the one this browser chose last.
+ * `opening` the office it opens on (the share's), instead of the one this browser chose last; #2861: `talk` the share's
+ * conversations (its /state's: who heard or answered a person, when — never what was said), instead of the stream's.
  */
-export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening }) {
+export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk }) {
   const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
   const [stored, setStored] = useState([]);
   const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
@@ -636,6 +645,15 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // Bedtime (#2568), when it is on here: the idle sleep from NIGHT.FROM to NIGHT.TO on this device's clock (read every NIGHT.TICK).
   const [nightOn, setNightOn] = useState(() => store.nightOn());
   const [keyOpen, setKeyOpen] = useState(() => store.keyOpen());
+  // #2861: the dialogue box, when it is on here (off by default: until then nothing below listens or draws). The
+  // conversations; the avatars read for it; what it last said for a screen reader. `dlgRef`: what draw() reads (it runs
+  // from the loop, outside a render); `dlgShown`: the box as last drawn (its clicks).
+  const [dialogueOn, setDialogueOn] = useState(() => store.dialogueOn());
+  const dlg = useMemo(createDialogue, []);
+  const faces = useMemo(() => createFaces(), []);
+  const [dlgSay, setDlgSay] = useState("");
+  const [dlgHot, setDlgHot] = useState(false);
+  const dlgRef = useRef(null), dlgShown = useRef(null), dlgLines = useRef(new Map()), talkSeen = useRef(new Set());
   const [nightNow, setNightNow] = useState(() => isNight());
   useEffect(() => { if (!nightOn) return undefined; setNightNow(isNight()); const h = setInterval(() => setNightNow(isNight()), NIGHT.TICK); return () => clearInterval(h); }, [nightOn]);
   const night = nightOn && nightNow;
@@ -752,6 +770,68 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const h = lease.interval(() => { if (polled() && !globalThis.document?.hidden) void read(); }, POLL_MS);
     return () => { for (const off of offs) off(); lease.clear(h); };
   }, [lease, store]);
+  // #2861: the dialogue box's news. On the dashboard: the stream's `message` events (SSE, or the public link's poll) —
+  // the same ones the chat gets, so only words this viewer can already read; a person's (role "user") opens a
+  // conversation, the agent's reply (role "agent") answers it; a replay or a catch-up is not news (messageOf: FRESH_MS
+  // on the server's clock, which the stream's `clock` events give). On a share: its `talk` (no words, no one named).
+  const dlgWake = () => {
+    const sc = scene.current;
+    if (sc) sc.dirty = true;
+    if (still) { if (sc && !globalThis.document?.hidden) draw(0); } else loop.current?.wake();
+  };
+  const sayFor = (instance, words) => {
+    const who = dlgRef.current && dlgRef.current.who.get(instance);
+    if (who) setDlgSay(to("dlgSays", ...words(who)));
+  };
+  useEffect(() => {
+    if (!dialogueOn || talk !== undefined) return undefined;
+    const sub = appStore.get().streamOn;
+    if (!sub) return undefined;
+    let skew = 0;
+    const seen = new Set();
+    const take = (m) => {
+      const x = messageOf(m, Date.now() + skew);
+      if (!x) return;
+      const k = `${x.instance}|${x.kind}|${m.ts}|${String(m.text ?? "").slice(0, 80)}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      if (seen.size > 400) seen.delete(seen.values().next().value);
+      const words = x.files ? to("dlgFile") : x.text;
+      if (x.kind === "heard") { const c = dlg.heard(x.instance, x.person, words, now()); if (c) sayFor(x.instance, () => [x.person.name || to("dlgSomeone"), c.text]); }
+      else { const c = dlg.answered(x.instance, words, now()); if (c) sayFor(x.instance, (who) => [nodeText(who.node).primary, c.reply]); }
+      dlgWake();
+    };
+    const hold = (off) => (lease ? lease.hold(off) : off);
+    const offs = [hold(sub("clock", (d) => { if (d && typeof d.now === "number") skew = d.now - Date.now(); })), hold(sub("message", take))];
+    return () => { for (const off of offs) if (typeof off === "function") off(); };
+  }, [dialogueOn, lease, talk === undefined]);
+  useEffect(() => {
+    if (!dialogueOn || !talk) return;
+    let changed = false;
+    for (const x of talkOf(talk)) {
+      const k = `${x.instance}|${x.kind}|${x.at}`;
+      if (talkSeen.current.has(k)) continue;
+      talkSeen.current.add(k);
+      if (talkSeen.current.size > 400) talkSeen.current.delete(talkSeen.current.values().next().value);
+      const c = x.kind === "heard" ? dlg.heard(x.instance, null, null, now()) : dlg.answered(x.instance, null, now());
+      if (!c) continue;
+      changed = true;
+      sayFor(x.instance, (who) => (x.kind === "heard" ? [to("dlgSomeone"), to("dlgHeardShare", nodeText(who.node).primary)] : [nodeText(who.node).primary, to("dlgAnsweredShare")]));
+    }
+    if (changed) dlgWake();
+  }, [dialogueOn, talk]);
+  // What is over goes (an answer after its fade, a conversation never answered); the box is drawn again meanwhile.
+  useEffect(() => {
+    if (!dialogueOn) return undefined;
+    const h = setInterval(() => { if (dlg.sweep(now(), still) || dlg.size()) dlgWake(); }, 1000);
+    return () => clearInterval(h);
+  }, [dialogueOn]);
+  const toggleDialogue = () => {
+    const v = !dialogueOn;
+    store.saveDialogueOn(v); setDialogueOn(v);
+    if (!v) { dlg.clear(); setDlgSay(""); setDlgHot(false); }
+    dlgWake();
+  };
   // The skin packs: on opening, and again whenever the stream says one was uploaded or deleted.
   useEffect(() => {
     if (!lease) return undefined;
@@ -1200,7 +1280,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.clearRect(0, 0, BW, BH);
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
-    if (!s.overview) return drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, env);
+    if (!s.overview) { const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, env); return drawDialogue(ctx, s, ms) || moved; }
     // All offices: each tile on screen drawn as its own view, scaled into it and clipped to it; one off screen is not
     // drawn (its flights still land). Then a frame round each tile, and the items flying between tiles.
     const hot = tipNow.current, on = new Set(visibleTiles(s.lay, v, sizeRef.current).map((tt) => tt.key)), said = [];
@@ -1227,7 +1307,64 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       if (from) { ctx.setTransform(a * from.tile.s, 0, 0, a * from.tile.s, ox, oy); from.skin.drawProp(ctx, { ...it, x: it.x / from.tile.s, y: it.y / from.tile.s }, ms, env); }
       else { ctx.setTransform(a, 0, 0, a, ox, oy); skinFor("pixel").drawProp(ctx, it, ms, env); }
     }
-    return moving || up.length > 0 || cross.size() > 0;
+    return drawDialogue(ctx, s, ms) || moving || up.length > 0 || cross.size() > 0;
+  }
+  /**
+   * #2861: the dialogue box over the scene, in the stage's CSS px — its newest conversation whose agent is drawn here and
+   * awake (pickFront), with their faces (the pack's portraits; else the agent's avatar, else initials), the speaker's
+   * words typed out, the agent's line while it works and "+N". Nothing at all while it is off. Whether it moves.
+   */
+  function drawDialogue(ctx, s, ms) {
+    const d = dlgRef.current;
+    if (!d) { dlgShown.current = null; return false; }
+    const t = ms > 0 ? ms : now();
+    const { front, more } = pickFront(dlg.list(), (n) => d.who.has(n), (n) => d.who.get(n).look?.pose === "paused");
+    if (!front) { dlgShown.current = null; return false; }
+    const who = d.who.get(front.instance), node = who.node, sz = sizeRef.current, L0 = boxLayout(sz.w, sz.h);
+    const stage = stageOf(front, t, node.state === "working", still);
+    if (stage.done) { dlgShown.current = null; return false; }
+    const skinOf = who.skin, pack = skinOf && skinOf.pack;
+    const pic = (src) => (src && skinOf && typeof skinOf.picture === "function" ? skinOf.picture(src, dlgWake) : null);
+    const agentName = nodeText(node).primary;
+    const idColour = (it) => { try { const id = identityOf(it); return id.off ? null : s.env.mode === "light" ? id.light : id.dark; } catch { return null; } };
+    const agentFace = () => {
+      const im = pic(portraitSrc(pack, { agent: front.instance, state: node.state }));
+      if (im) return { kind: "portrait", im };
+      if (!d.share && node.i) {
+        const av = avatarOf(node.i);
+        if (av.src) { const fim = faces(av.src, dlgWake); if (fim) return { kind: "image", im: fim }; }
+        if (av.kind === "emoji" && av.text) return { kind: "emoji", text: av.text };
+        if (av.kind === "initial" && av.text) return { kind: "initial", text: av.text, color: idColour(node.i) };
+      }
+      return { kind: "initial", text: firstCharacter(agentName), color: node.i ? idColour(node.i) : null };
+    };
+    const personFace = () => {
+      if (!front.person) return { kind: "initial", text: "?" };
+      const im = pic(portraitSrc(pack, { account: front.person.account }));
+      return im ? { kind: "portrait", im } : { kind: "initial", text: firstCharacter(front.person.name || to("dlgSomeone")) };
+    };
+    const answered = stage.phase === "answered";
+    const words = answered ? front.reply ?? to("dlgAnsweredShare") : front.person ? front.text ?? "" : to("dlgHeardShare", agentName);
+    ctx.setTransform(s.ratio, 0, 0, s.ratio, 0, 0);
+    ctx.font = `400 ${L0.font}px system-ui, sans-serif`;
+    const lk = `${front.id}|${answered ? 1 : 0}|${L0.text.w}|${L0.font}`;
+    let lines = dlgLines.current.get(lk);
+    if (!lines) {
+      lines = wrap((x) => ctx.measureText(x).width, words, L0.text.w, L0.text.lines);
+      if (dlgLines.current.size > 32) dlgLines.current.clear();
+      dlgLines.current.set(lk, lines);
+    }
+    const act = d.acts && d.acts.get(front.instance);
+    const status = stage.phase === "working" ? (actLive(act, node.state, Date.now(), null) && act.say ? act.say : to("dlgWorking")) : null;
+    const L = fitBox(L0, lines.length, !!status);
+    dlgShown.current = { L, stage, key: who.key, name: front.instance };
+    const frameSrc = pack && pack.dialogBox && pack.dialogBox.frame, frameIm = frameSrc ? pic(frameSrc) : null;
+    return drawBox(ctx, {
+      L, stage, left: personFace(), right: stage.phase === "heard" ? null : agentFace(),
+      name: answered ? agentName : front.person ? front.person.name || to("dlgSomeone") : to("dlgSomeone"),
+      lines, status: status ? `${agentName} · ${status}` : null, more,
+      colours: boxColours(pack && pack.dialogBox, s.env.pal), frame: frameIm ? { im: frameIm, slice: pack.dialogBox.slice || 8, k: pack.scale || 2 } : null,
+    }, t, { ...s.env, still });
   }
   // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
   // gone with the view. Office review: while something walks or flies, one requestAnimationFrame per display frame (the
@@ -1281,6 +1418,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         area: tl.zones ? areaName(d.area) : roomOf(tl.L, d), skin: tl.skin, look: lk && lk.get(d.key) })) : []; })
     : desksOf(L).map((d) => ({ key: d.key, node: d.node, box: d, office: null, dot: zones ? d.seat : { x: d.x + d.w / 2, y: d.y + d.h / 2 },
       area: zones ? areaName(d.area) : roomOf(L, d), skin, look: looks.get(d.key) }));
+  // #2861: who the dialogue box may speak for — everyone drawn here (All offices: the first tile they are in), with what
+  // draws them; null while it is off (draw() then draws nothing of it).
+  dlgRef.current = dialogueOn ? {
+    who: new Map(people.filter((d) => d.node && d.node.name).reverse().map((d) => [d.node.name, { key: d.key, node: d.node, look: d.look, skin: d.skin || skin }])),
+    acts: actsHere, share: talk !== undefined,
+  } : null;
   // Preact owns the markup, not the view: put it back on the overview, the overlay and the tooltip after every render.
   const tipDesk = tip ? people.find((d) => d.key === tip) || null : null;
   tipDeskRef.current = tipDesk ? tipDesk.box : null;
@@ -1342,10 +1485,30 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const d = key ? people.find((x) => x.key === key) : null;
     if (d) show(d.box);
   };
-  const onMove = (e) => { if (e.pointerType === "touch" || g.busy()) return; const d = deskOf(e); const key = d ? d.key : null; if (key !== tip) setTip(key); };
+  /** #2861: the dialogue box under a pointer event ({ key, name }: its agent), or null. */
+  const dlgAt = (e) => {
+    const b = dlgShown.current, r = canvasRef.current ? canvasRef.current.getBoundingClientRect() : null;
+    return b && r && onBox(b.L, b.stage, e.clientX - r.left, e.clientY - r.top) ? b : null;
+  };
+  const onMove = (e) => {
+    if (e.pointerType === "touch" || g.busy()) return;
+    const onDlg = !!dlgAt(e);
+    if (onDlg !== dlgHot) setDlgHot(onDlg);
+    const d = onDlg ? null : deskOf(e); const key = d ? d.key : null; if (key !== tip) setTip(key);
+  };
+  /** #2861: the box clicked is its agent clicked — their card, and the view brought to them. */
+  const focusPerson = (key) => {
+    const d = people.find((x) => x.key === key);
+    if (!d) return;
+    cardFrom.current = null; setTip(null); setCard(key);
+    const w = zones && !overview ? walkers.at(d.node.name, now()) : null;
+    show(w ? { x: w.x - 24, y: w.y - 64, w: 48, h: 64 } : d.box);
+  };
   // #2661: a click (or a tap) on a person opens their card; on the same person again, or off everyone, closes it; on
   // someone else, switches to theirs. A double-click skips the card and opens the chat.
   const onClick = (e) => {
+    const box = dlgAt(e);
+    if (box) { focusPerson(box.key); return; }
     const d = deskOf(e);
     if (!d || !d.node.i) { setTip(null); setCard(null); return; }
     if (lastType.current === "touch") setTip(null);
@@ -1354,6 +1517,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   // All offices: a double-click on a tile (off its people) opens that office; the lobby is no office.
   const onDblClick = (e) => {
+    const box = dlgAt(e);
+    if (box) { setCard(null); open(box.name); return; }
     const s = scene.current, w = pointOf(e), hit = deskOf(e);
     if (hit && hit.node.i) { setCard(null); open(hit.node.name); return; }   // #2661: a person's chat, past the card
     if (!overview || !s || !s.overview || !w || hit) return;
@@ -1479,6 +1644,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
       <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
       ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
+      <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
       ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
         disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
         ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
@@ -1500,7 +1666,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ${overview || people.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class=${`oo-stage${layout ? " editing" : ""}`} ref=${stageRef} onPointerDown=${onDown} onPointerMove=${g.move} onPointerUp=${g.up} onPointerCancel=${g.up}
       onWheel=${onWheel} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${g.clickCapture}>
-      <canvas ref=${canvasRef} class=${`oo-canvas${tipDesk && tipDesk.node.i ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(overview ? "labelAll" : "label")}
+      ${dialogueOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
+      <canvas ref=${canvasRef} class=${`oo-canvas${(tipDesk && tipDesk.node.i) || dlgHot ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(overview ? "labelAll" : "label")}
         onPointerMove=${onMove} onPointerLeave=${() => setTip(null)} onClick=${onClick} ondblclick=${onDblClick}></canvas>
       ${overview ? tiles.map((tl) => {
         const text = to("tileLabel", tl.name, tl.count), at = (el) => { if (el) labelEls.current.set(tl.key, el); else labelEls.current.delete(tl.key); };

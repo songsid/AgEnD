@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { imageSize, sniffMedia, stripMetadata } from "./web-image-meta.js";
-import { checkSkinPack, own, packImages, packStrips, type CheckedPack } from "./ui/fleet-office-pack.js";
+import { checkSkinPack, own, packImages, packPortraitImages, packStrips, type CheckedPack } from "./ui/fleet-office-pack.js";
 
 const MiB = 1024 * 1024;
 /** #2632: 160 files and 20 MiB a pack (was 64, 6 MiB) — room for a whole fleet's character sets. */
@@ -104,8 +104,21 @@ function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; heigh
   if (bg && bg.width * 9 !== bg.height * 16) return refuse(400, "skin_background_aspect", `background: ${pack.background} is ${bg.width}×${bg.height} px; it must be 16:9`);
   const fg = pack.foreground ? sizes.get(pack.foreground) : undefined;
   if (fg && fg.width * 9 !== fg.height * 16) return refuse(400, "skin_foreground_aspect", `foreground: ${pack.foreground} is ${fg.width}×${fg.height} px; it must be 16:9`);
+  // #2861: a portrait is a half-body picture (at most PORTRAIT_MAX); the dialogue box's frame a small 9-slice (FRAME_MAX).
+  const frame = pack.dialogBox?.frame;
+  for (const src of packPortraitImages(pack)) {
+    const s = sizes.get(src), max = src === frame ? FRAME_MAX : PORTRAIT_MAX;
+    if (s && (s.width > max.w || s.height > max.h)) return refuse(400, "skin_portrait_dimensions", `${src === frame ? "dialogBox.frame" : "portraits"}: ${src} is ${s.width}×${s.height} px; at most ${max.w}×${max.h}`);
+  }
+  if (frame && pack.dialogBox?.slice) {
+    const s = sizes.get(frame);
+    if (s && (pack.dialogBox.slice * 2 >= s.width || pack.dialogBox.slice * 2 >= s.height)) return refuse(400, "skin_portrait_dimensions", `dialogBox.slice: ${pack.dialogBox.slice} px a side leaves nothing of ${frame} (${s.width}×${s.height})`);
+  }
   return null;
 }
+/** #2861: the largest portrait, and the largest dialogue-box frame (image px). */
+export const PORTRAIT_MAX = { w: 1024, h: 1536 };
+export const FRAME_MAX = { w: 512, h: 512 };
 
 /**
  * An upload, as the page sends it: { manifest, files: { <src>: <base64> }, name? }. Every rule, or a refusal naming
