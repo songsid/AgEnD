@@ -33,7 +33,8 @@ const RUNTIME_EXCLUDES = [
  * refused, never replaced or followed.
  */
 export function openPrivateArchive(path: string): number {
-  const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | (fsConstants.O_NOFOLLOW ?? 0);
+  // O_CREAT | O_EXCL fails on any existing path — a symlink included, which it never follows (POSIX open(2)).
+  const flags = fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL;
   try {
     return openSync(path, flags, 0o600);
   } catch (err) {
