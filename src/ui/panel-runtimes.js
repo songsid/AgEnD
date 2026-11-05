@@ -2,13 +2,15 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Icon } from "/assets/ui-icons.js";
+import { Dialog } from "/assets/ui-dialog.js";
+import { Menu } from "/assets/ui-menu.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { confirmedWrite } from "./settings-confirm.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { WindowsCliPanel } from "./panel-windows-cli.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
-import { useWindowsCliCatalog } from "./windows-cli-catalog.js";
+import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
 
 register("machines", {
   en: {
@@ -19,9 +21,9 @@ register("machines", {
     lastSeen:"Last seen: {0}", inventoryAt:"CLI inventory: {0}", noInventory:"CLI inventory has not been reported yet.", noClis:"No installed CLIs reported.",
     approve:"Approve computer", revoke:"Revoke connection", rename:"Rename", save:"Save name", cancel:"Cancel", name:"Computer name", probe:"Refresh CLI inventory",
     fingerprint:"Pairing fingerprint", fingerprintLabel:"Pairing fingerprint: ", approvalHint:"Compare this fingerprint with the one shown in the requesting Runtime before approving.", identity:"Computer identity", signedIn:"Signed in", signedOut:"Not signed in", authUnknown:"Sign-in unknown", detectionOnly:"Detection only", ready:"Tasks supported",
-    pairing:"Connect a computer", pairingHint:"On the other computer, extract this version's portable Runtime bundle and run the command below from its folder. Paste the one-time code when asked, then approve the computer here. Keep that runtime window open.",
-    pairingCode:"One-time pairing code", expires:"Expires: {0}", command:"Run on the other computer", pairingWait:"Waiting for the computer to request approval. This page updates automatically.",
-    server:"AgEnD address", serverHint:"Use an address reachable from the other computer. A localhost address works only with a connection forwarded on that computer.", serverInvalid:"Enter an HTTPS origin, or a localhost HTTP origin with a forwarded connection. Leave out paths, credentials and query strings.", closeCode:"Hide pairing code", revokeAsk:"Revoke this computer's connection? New work will be refused. A task already running may need to be stopped on that computer.",
+    pairing:"Connect a computer",
+    pairingCode:"One-time pairing code", expires:"Expires: {0}", command:"Run on the other computer", pairingWait:"Waiting for the computer to connect",
+    server:"AgEnD address", serverHint:"Must be reachable from the other computer. localhost works only over a forwarded connection.", serverInvalid:"Enter an HTTPS origin, or a localhost HTTP origin with a forwarded connection. Leave out paths, credentials and query strings.", closeCode:"Hide pairing code", revokeAsk:"Revoke this computer's connection? New work will be refused. A task already running may need to be stopped on that computer.",
     failed:"Could not update Runtime", cliFailed:"CLI refresh failed; the last reported inventory is still shown.", retry:"Retry", seenCached:"Showing the last successfully loaded machine list.",
     machines:"Connected computers", cli:"CLI", version:"Runtime version", platform:"Platform",
     switches:"What this fleet may use", switchesNote:"Turning one on asks a fleet admin to confirm, like other access settings. Turning one off needs no fleet admin; it applies as soon as you confirm here.",
@@ -46,9 +48,9 @@ register("machines", {
     lastSeen:"最近連線：{0}", inventoryAt:"CLI 清單更新：{0}", noInventory:"尚未回報 CLI 清單。", noClis:"尚未回報已安裝的 CLI。",
     approve:"核准電腦", revoke:"撤銷連線", rename:"重新命名", save:"儲存名稱", cancel:"取消", name:"電腦名稱", probe:"更新 CLI 清單",
     fingerprint:"配對指紋", fingerprintLabel:"配對指紋：", approvalHint:"核准前，請比對提出要求的 Runtime 視窗所顯示的配對指紋。", identity:"電腦識別碼", signedIn:"已登入", signedOut:"尚未登入", authUnknown:"登入狀態未知", detectionOnly:"僅偵測", ready:"支援派工",
-    pairing:"連接電腦", pairingHint:"在另一台電腦解壓縮此版本的可攜式 Runtime 套件，從其資料夾執行下方指令，在提示時貼上一次性配對碼，再回到這裡核准電腦。請保持 Runtime 視窗開啟。",
-    pairingCode:"一次性配對碼", expires:"到期時間：{0}", command:"在另一台電腦執行", pairingWait:"正在等待電腦提出核准要求。此頁會自動更新。",
-    server:"AgEnD 位址", serverHint:"請使用另一台電腦連得到的位址。localhost 只有在另一台電腦已建立連線轉發時才適用。", serverInvalid:"請填入 HTTPS 來源位址，或已轉發連線的 localhost HTTP 位址，不包含路徑、帳密或查詢參數。", closeCode:"隱藏配對碼", revokeAsk:"要撤銷這台電腦的連線嗎？新的派工會被拒絕；已在執行的任務可能需要在該電腦上停止。",
+    pairing:"連接電腦",
+    pairingCode:"一次性配對碼", expires:"到期時間：{0}", command:"在另一台電腦執行", pairingWait:"等待電腦連線",
+    server:"AgEnD 位址", serverHint:"須為另一台電腦連得到的位址。localhost 僅適用於已轉發的連線。", serverInvalid:"請填入 HTTPS 來源位址，或已轉發連線的 localhost HTTP 位址，不包含路徑、帳密或查詢參數。", closeCode:"隱藏配對碼", revokeAsk:"要撤銷這台電腦的連線嗎？新的派工會被拒絕；已在執行的任務可能需要在該電腦上停止。",
     failed:"無法更新 Runtime", cliFailed:"CLI 更新失敗，目前仍顯示上次回報的清單。", retry:"重試", seenCached:"目前顯示上次成功載入的機器清單。",
     machines:"已連接的電腦", cli:"CLI", version:"Runtime 版本", platform:"平台",
     switches:"這個 Fleet 可以使用", switchesNote:"開啟時，和其他存取設定一樣需要 Fleet 管理員確認；關閉不需 Fleet 管理員確認，你在這裡確認後就會立即生效。",
@@ -75,6 +77,26 @@ register("machines", {
   en: { policies:"Runtime policies", policySummary:"Windows CLIs, remote pairing and per-computer limits", diagnostics:"CLI diagnostics and test tasks", diagnosticsHint:"Use this PC's Windows CLI sign-ins and inspect one-off task results.", openDiagnostics:"View local Windows CLIs", hostRuntime:"WSL / Linux", operationsNote:"Connections, approvals and test tasks are confirmed in their own flows." },
   "zh-TW": { policies:"Runtime 政策", policySummary:"本機 Windows CLI、遠端配對與每台電腦的並行數", diagnostics:"CLI 診斷與測試", diagnosticsHint:"使用這台電腦的 Windows CLI 登入，查看診斷或一次性測試任務。", openDiagnostics:"查看本機 Windows CLI", hostRuntime:"WSL / Linux", operationsNote:"連接、核准與測試任務會在各自流程中確認。" },
 });
+register("machines", {
+  en: { diagnosticComputer:"Diagnostic computer", inspect:"Open CLI diagnostics", selectComputer:"Select a computer", targetUnavailable:"Selected Runtime is unavailable" },
+  "zh-TW": { diagnosticComputer:"診斷電腦", inspect:"查看 CLI 診斷", selectComputer:"選擇電腦", targetUnavailable:"所選 Runtime 無法使用" },
+});
+register("machines", {
+  en: { versionColumn:"Version", signInColumn:"Sign-in", authShort:"Unknown", noLocalClis:"No detected CLIs yet. Open diagnostics to detect installed CLIs.", lastSeenLabel:"Last connected", hostLocationNote:"WSL / Linux agents run on the AgEnD host. Windows agents use their selected computer.", connectionHelp:"Connection guide", localBadge:"This PC", pairedBadge:"Paired", available:"Available", cliCount:"{0} CLIs", machineCount:"{0} computers", diagnosticTitle:"CLI diagnostics", machineInfo:"Computer information", machineActions:"Actions for {0}", diagnosticClose:"Close", hostName:"Host name", machineName:"Name", home:"Home directory", neverDetected:"Not detected yet", probeAgain:"Detect again", probeBusy:"Detecting…", diagnosticHint:"Version, sign-in and executable paths on this computer. Expand Test CLI only when you need to check execution." },
+  "zh-TW": { versionColumn:"版本", signInColumn:"登入", authShort:"未確認", noLocalClis:"尚未偵測到 CLI，可開啟診斷進行偵測。", lastSeenLabel:"最近連線", hostLocationNote:"WSL / Linux Agent 在 AgEnD 主機上執行；Windows Agent 使用選定的電腦。", connectionHelp:"連線說明", localBadge:"本機", pairedBadge:"已配對", available:"可用", cliCount:"{0} 個 CLI", machineCount:"{0} 台電腦", diagnosticTitle:"CLI 診斷", machineInfo:"電腦資訊", machineActions:"{0} 的操作", diagnosticClose:"關閉", hostName:"主機名稱", machineName:"名稱", home:"使用者目錄", neverDetected:"尚未偵測", probeAgain:"重新偵測", probeBusy:"正在偵測…", diagnosticHint:"查看這台電腦的版本、登入與執行檔路徑；需要確認執行能力時，再展開「測試 CLI」。" },
+});
+register("machines", {
+  en: { revokedNote:"Revoked. It leaves this list when you refresh the page." },
+  "zh-TW": { revokedNote:"已撤銷，重新整理頁面後會從清單移除。" },
+});
+register("machines", {
+  en: { versionNotReported:"This Runtime does not provide version information", versionUnreadable:"Runtime version information is unavailable", buildId:"Code Build ID", buildUnavailable:"Build ID is unavailable", protocols:"Supported protocols", compatibility:"Protocol compatibility", compatible:"Compatible", legacy:"Connected using protocol v1; version metadata unavailable", incompatible:"No common reported protocol", protocolUnknown:"Not reported yet", capabilities:"Reported capabilities", capability_exec:"One-off execution", capability_mcp:"AgEnD tools (MCP)", capability_panes:"Persistent terminals" },
+  "zh-TW": { versionNotReported:"此 Runtime 未提供版本資訊", versionUnreadable:"無法讀取 Runtime 版本資訊", buildId:"程式碼 Build ID", buildUnavailable:"無法取得 Build ID", protocols:"支援的協定", compatibility:"協定相容狀態", compatible:"相容", legacy:"已使用協定 v1 連線，未提供版本資訊", incompatible:"回報的協定與主機不相容", protocolUnknown:"尚未回報協定資訊", capabilities:"回報功能", capability_exec:"單次任務", capability_mcp:"AgEnD 工具（MCP）", capability_panes:"持續終端" },
+});
+register("machines", {
+  en: { downloadBuilding:"Preparing ZIP…", stepZipHint:"Includes the address above. Extract it on the other computer.", stepLaunch:"Double-click connect-agend.bat there", stepLaunchHint:"Enter the pairing code when asked. A saved profile reconnects without it. If that computer is already paired to another AgEnD, this one gets its own profile and the existing pairing is kept. The window stays open and explains what to do if AgEnD disconnects it, including when jobs.json from another pairing must be deleted.",manualMultiHint:"Without agend-server.json, a profile paired to another AgEnD is never reused. Add --profile \"%USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>\" (any folder) to keep both, and pass the same --profile to run, status, rotate and disconnect.", stepApproveHint:"Keep the Runtime window open.", pairingApprove:"A computer is waiting for your approval", copyCode:"Copy", codeCopied:"Copied", newCode:"New code", manualCommand:"Manual connection command", downloadedFor:"Downloaded for: {0}", downloadFailed:"Could not download the Runtime", pairingHint:"Follow the four steps. This page updates automatically." },
+  "zh-TW": { downloadBuilding:"正在準備 ZIP…", stepZipHint:"已內含上方位址，請在另一台電腦解壓縮。", stepLaunch:"在那台電腦雙擊 connect-agend.bat", stepLaunchHint:"提示時輸入配對碼；已有配對資料時會直接重連。若那台電腦已配對到另一個 AgEnD，這次會自動使用獨立的資料夾，原本的配對不受影響。若 AgEnD 中斷連線，視窗會保持開啟並說明下一步，包括何時需要刪除另一個配對留下的 jobs.json。",manualMultiHint:"沒有 agend-server.json 時，已配對到其他 AgEnD 的資料夾不會被重複使用。請加上 --profile \"%USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>\"（任何資料夾皆可）讓兩個都保留，之後 run、status、rotate、disconnect 也要帶相同的 --profile。", stepApproveHint:"請保持 Runtime 視窗開啟。", pairingApprove:"有電腦正在等待你核准", copyCode:"複製", codeCopied:"已複製", newCode:"重新產生", manualCommand:"手動連線指令", downloadedFor:"已下載，連線位址：{0}", downloadFailed:"無法下載 Runtime", pairingHint:"依下列四步操作，此頁會自動更新。" },
+});
 /** Only an origin composed of inert hostname/port characters is placed in a copyable shell command. */
 export function runtimeConnectCommand(server) {
   try {
@@ -86,19 +108,35 @@ export function runtimeConnectCommand(server) {
   } catch { return ""; }
 }
 export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? date.toLocaleString() : machineText("unknown"); }
-function MachineCard({ machine, busy, action }) {
-  const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name);
+function MachineCard({ machine, busy, action, openDiagnostics, probe }) {
+  const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name), [info,setInfo] = useState(false);
+  const detection = useWindowsCliCatalogSnapshot(machine.isLocal ? "" : machine.id);
+  const probing = machine.probing || detection.loading;
   const clis = (machine.inventory?.clis || []).filter(cli => cli.path);
-  return html`<article class="runtime-machine" data-machine-id=${machine.id}>
-    <header><span class="runtime-machine-icon"><${Icon} name="view" size=${22} /></span><div><h3>${machine.name}</h3><p>${[machine.platform || machineText("unknown"), machine.hostname, machine.version].filter(Boolean).join(" · ")}</p></div><span class=${`runtime-status is-${machine.status}`}>${machineText(["online","offline","pending","revoked"].includes(machine.status) ? machine.status : "unknown")}</span></header>
-    <p class="note">${machineText("lastSeen",machineTime(machine.lastSeenAt))}</p><p class="note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("noInventory")}</p>
-    <details><summary>${machineText("identity")}</summary><code class="runtime-machine-id">${machine.id}</code></details>
-    ${machine.status === "pending" ? html`<div><p>${machineText("fingerprintLabel")}<code class="runtime-pairing-fingerprint">${machine.pairingFingerprint || machineText("unknown")}</code></p><p class="note">${machineText("approvalHint")}</p></div>` : null}
-    <ul class="runtime-cli-list" aria-label=${machineText("cli")}>${clis.map(cli => html`<li key=${cli.id}><${CliProductMark} id=${cli.id} size=${22} /><span><strong>${cliLabel(cli.id)}</strong><small>${cli.version || "—"}</small></span><span class="note">${machineText(cli.authenticated === true ? "signedIn" : cli.authenticated === false ? "signedOut" : "authUnknown")} · ${machineText(cli.supports?.execution === false ? "detectionOnly" : "ready")}</span></li>`)}</ul>
-    ${!clis.length ? html`<p class="note">${machineText("noClis")}</p>` : null}
-    ${editing ? html`<form class="runtime-rename" onSubmit=${event => {event.preventDefault();if(name.trim())void action(machine,"rename",{name:name.trim()}).then(ok => {if(ok)setEditing(false);});}}><label><span>${machineText("name")}</span><input value=${name} maxLength=${100} onInput=${event => setName(event.target.value)} /></label><button class="btn btn-sm" type="submit" disabled=${busy || !name.trim()}>${machineText("save")}</button><button class="btn btn-ghost btn-sm" type="button" onClick=${() => setEditing(false)}>${machineText("cancel")}</button></form>` : null}
-    <div class="runtime-machine-actions">${machine.status === "pending" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy || !machine.pairingFingerprint} onClick=${() => action(machine,"approve",{fingerprint:machine.pairingFingerprint})}>${machineText("approve")}</button>` : null}${machine.status === "online" ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => action(machine,"refresh")}><${Icon} name="restart" size=${14} />${machineText("probe")}</button>` : null}${machine.status !== "revoked" ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${() => setEditing(true)}>${machineText("rename")}</button><button type="button" class="btn btn-ghost btn-sm danger" disabled=${busy} onClick=${() => action(machine,"revoke")}>${machineText("revoke")}</button>` : null}</div>
+  const local = machine.isLocal === true, status = local ? machine.inventory ? "available" : "unknown" : machine.status;
+  const ready = local || ["online","offline"].includes(status), revoked = !local && status === "revoked";
+  const menuItems = [{key:"info",label:machineText("machineInfo"),icon:"info",onSelect:()=>setInfo(true)},
+    !local && status !== "revoked" && {key:"rename",label:machineText("rename"),icon:"edit",onSelect:()=>setEditing(true)},
+    !local && status !== "revoked" && {key:"revoke",label:machineText("revoke"),icon:"close",danger:true,onSelect:()=>action(machine,"revoke")}];
+  return html`<article class=${`runtime-machine${local ? " runtime-native-local" : ""}${revoked ? " is-revoked" : ""}`} data-machine-id=${local ? "local" : machine.id}>
+    <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}${revoked ? null : html`<span class="runtime-kind">${machineText(local ? "localBadge" : "pairedBadge")}</span>`}</h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText("cliCount",clis.length)}</p></div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
+    ${revoked ? null : html`<p class="runtime-inventory-time note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("neverDetected")}</p>`}
+    ${status === "pending" ? html`<div class="runtime-approval"><p>${machineText("fingerprintLabel")}<code class="runtime-pairing-fingerprint">${machine.pairingFingerprint || machineText("unknown")}</code></p><p class="note">${machineText("approvalHint")}</p></div>` : null}
+    ${revoked ? html`<p class="note runtime-revoked-note" role="status">${machineText("revokedNote")}</p>` : clis.length ? html`<table class="runtime-cli-table" aria-label=${machineText("cli")}><thead><tr><th>${machineText("cli")}</th><th>${machineText("versionColumn")}</th><th>${machineText("signInColumn")}</th></tr></thead><tbody>${clis.map(cli=>html`<tr key=${cli.id}><td><span class="runtime-cli-product"><${CliProductMark} id=${cli.id} size=${21} /><strong>${cliLabel(cli.id)}</strong></span>${cli.supports?.execution === false ? html`<small>${machineText("detectionOnly")}</small>` : null}</td><td><span class="runtime-cli-version" title=${cli.version || ""}>${cli.version || "—"}</span></td><td><span class=${`runtime-cli-auth ${cli.authenticated === true ? "is-signed-in" : ""}`}><span class="windows-cli-dot"></span>${machineText(cli.authenticated === true ? "signedIn" : cli.authenticated === false ? "signedOut" : "authShort")}</span></td></tr>`)}</tbody></table>` : html`<p class="note runtime-no-clis">${machineText(local ? "noLocalClis" : "noClis")}</p>`}
+    <div class="runtime-machine-actions">${ready ? html`<button type="button" class="btn btn-sm runtime-inspect" onClick=${() => openDiagnostics(local ? "" : machine.id)}>${machineText("diagnosticTitle")}</button><button type="button" class="btn btn-sm runtime-probe" disabled=${busy || probing || !local && status !== "online"} onClick=${() => probe(local ? "" : machine.id)}><${Icon} name="restart" size=${14} cls=${probing ? "out-spin" : ""} />${machineText(probing ? "probeBusy" : "probeAgain")}</button>` : null}
+      ${status === "pending" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy || !machine.pairingFingerprint} onClick=${() => action(machine,"approve",{fingerprint:machine.pairingFingerprint})}>${machineText("approve")}</button>` : null}
+      <${Menu} cls="runtime-machine-menu" label=${machineText("machineActions",machine.name)} disabled=${busy} items=${menuItems} />
+    </div>
+    ${info ? html`<${Dialog} title=${`${machineText("machineInfo")} · ${machine.name}`} onClose=${()=>setInfo(false)}><dl class="runtime-machine-facts"><dt>${machineText("machineName")}</dt><dd>${machine.name}</dd><dt>${machineText("hostName")}</dt><dd>${machine.hostname || machine.inventory?.hostname || machineText("unknown")}</dd><dt>${machineText("platform")}</dt><dd>${machine.platform === "win32" ? "Windows" : machine.platform}</dd>${local ? html`<dt>${machineText("home")}</dt><dd>${machine.inventory?.home || machineText("unknown")}</dd>` : html`<dt>${machineText("version")}</dt><dd class="runtime-reported-version">${machine.runtimeInfo?.version || machineText(machine.runtimeInfo ? "versionUnreadable" : "versionNotReported")}</dd>${machine.runtimeInfo ? html`<dt>${machineText("buildId")}</dt><dd class="runtime-reported-build"><code>${machine.runtimeInfo?.buildId || machineText("buildUnavailable")}</code></dd><dt>${machineText("protocols")}</dt><dd>${machine.runtimeInfo?.protocolVersions?.map(v=>`v${v}`).join(", ") || machineText("protocolUnknown")}</dd>` : null}<dt>${machineText("compatibility")}</dt><dd class="runtime-compatibility">${machineText(["compatible","legacy","incompatible"].includes(machine.runtimeCompatibility) ? machine.runtimeCompatibility : "protocolUnknown")}</dd>${machine.runtimeInfo ? html`<dt>${machineText("capabilities")}</dt><dd>${machine.runtimeInfo?.capabilities?.map(capability=>["exec","mcp","panes"].includes(capability) ? machineText(`capability_${capability}`) : capability).join(" · ") || machineText("unknown")}</dd>` : null}<dt>${machineText("lastSeenLabel")}</dt><dd>${machineTime(machine.lastSeenAt)}</dd><dt>${machineText("identity")}</dt><dd><code>${machine.id}</code></dd>`}</dl></${Dialog}>` : null}
+    ${editing ? html`<${Dialog} title=${machineText("rename")} onClose=${()=>setEditing(false)} busy=${busy}><form class="runtime-rename" onSubmit=${event=>{event.preventDefault();if(name.trim())void action(machine,"rename",{name:name.trim()}).then(ok=>{if(ok)setEditing(false);});}}><label><span>${machineText("name")}</span><input value=${name} maxLength=${100} onInput=${event=>setName(event.target.value)} /></label><button class="btn btn-primary btn-sm" type="submit" disabled=${busy || !name.trim()}>${machineText("save")}</button></form></${Dialog}>` : null}
   </article>`;
+}
+function RuntimeDiagnosticsDialog({ navKey, machineId, machine, enabled, drafts, session, taskLease, onChanged, onClose }) {
+  const name = machine?.name || machineText("targetUnavailable");
+  return html`<${Dialog} title=${`${machineText("diagnosticTitle")} · ${name}`} cls="runtime-diagnostics-dialog" wide=${true} onClose=${onClose}
+    tools=${html`<span class=${`runtime-status is-${machine?.status || "offline"}`}>${machineText(machine?.isLocal ? "localBadge" : machine?.status || "offline")}</span>`}>
+    <div class="runtime-diagnostics"><p class="runtime-diagnostics-hint">${machineText("diagnosticHint")}</p><${WindowsCliPanel} navKey=${`${navKey}:diagnostics:${machineId || "local"}`} embedded=${true} diagnostic=${true} enabled=${enabled} machineId=${machineId} machine=${machine} drafts=${drafts} session=${session} taskLease=${taskLease} onInventoryChanged=${onChanged} /></div>
+  </${Dialog}>`;
 }
 /** M-2255: the switches (fleet.yaml `runtimes`); `env` names the variable that overrides each. */
 const SWITCHES = [
@@ -106,20 +144,12 @@ const SWITCHES = [
   { name: "remote_runtime", id: "runtimeRemoteRuntime", env: "AGEND_REMOTE_RUNTIME", label: "remoteRuntime" },
 ];
 export const RUNTIME_DOCS = "https://github.com/songsid/AgEnD/blob/main/docs/remote-runtime.md#connecting-over-a-private-network";
-function LocalWindowsRuntime({ openDiagnostics }) {
-  // Reuse the same cached inventory as the diagnostics below; this summary never forces a CLI probe.
-  const inventory = useWindowsCliCatalog();
-  const installed = (inventory.data?.clis || []).filter(cli => cli.path);
-  return html`<article class="runtime-local runtime-native-local"><div><h3><${Icon} name="fleet" size=${20} />${machineText("nativeWindows")}</h3><p class="note">${machineText("nativeHint")}</p>
-    ${installed.length ? html`<ul class="runtime-local-cli-tags" aria-label=${machineText("cli")}>${installed.map(cli => html`<li key=${cli.id}><${CliProductMark} id=${cli.id} size=${19} /><span>${cliLabel(cli.id)}</span></li>`)}</ul>` : html`<p class="note">${machineText("inventoryHint")}</p>`}
-  </div><button type="button" class="btn btn-sm" onClick=${openDiagnostics}>${machineText("openDiagnostics")}<span aria-hidden="true">→</span></button></article>`;
-}
 /**
  * M-2255 (the user, hmsg-71c25c9b): "Use this PC's Windows CLIs" and "Allow other Windows computers to pair", saved in
  * fleet.yaml like any setting: on is confirmed by a fleet admin, off applies at once (after asking here). A switch the
  * environment sets is shown as such and cannot be changed here.
  */
-function RuntimeSwitches({ lease, onChanged, computers, diagnosticsPanel }) {
+function RuntimeSwitches({ lease, onChanged, computers }) {
   const [view,setView]=useState(null), [busy,setBusy]=useState(""), [pending,setPending]=useState(""), [error,setError]=useState(""), [unavailable,setUnavailable]=useState(false);
   const [limit,setLimit]=useState(""), [limitNote,setLimitNote]=useState("");
   // A number being typed is the person's: a reload (a switch's answer) never replaces it; a save of it does.
@@ -167,15 +197,15 @@ function RuntimeSwitches({ lease, onChanged, computers, diagnosticsPanel }) {
   const origin=view?.local_origin || "http://127.0.0.1:19280", port=(() => { try { return new URL(origin).port || "80"; } catch { return "19280"; } })();
   // Commands, not words: the same in every language (built here, never translated).
   const serveCommand=`tailscale serve --https=443 ${origin}`, sshCommand=`ssh -N -L 127.0.0.1:${port}:127.0.0.1:${port} user@this-computer`;
-  const guide=html`<aside class="runtime-connect-guide"><h3>${machineText("firstConnection")}</h3><ol><li>${machineText("stepDownload")}</li><li>${machineText("stepRun")}</li><li>${machineText("stepApprove")}</li></ol><details class="runtime-guide">
+  const guide=html`<details class="runtime-connect-guide"><summary>${machineText("connectionHelp")}</summary><h3>${machineText("firstConnection")}</h3><ol><li>${machineText("stepDownload")}</li><li>${machineText("stepRun")}</li><li>${machineText("stepApprove")}</li></ol><details class="runtime-guide">
     <summary>${machineText("guide")}</summary>
     <p>${machineText("guideAddress")}</p><pre><code>${serveCommand}</code></pre>
     <p>${machineText("guideSsh",port)}</p><pre><code>${sshCommand}</code></pre>
     <p class="runtime-guide-warn">${machineText("guideFunnel")}</p><p class="runtime-guide-warn">${machineText("guideLan")}</p>
     <p>${machineText("guidePair")}</p><p>${machineText("guideApprove")}</p>
     <a class="runtime-guide-link" href=${RUNTIME_DOCS} target="_blank" rel="noopener noreferrer">${machineText("remoteRuntimeDocs")}<${Icon} name="external" size=${14} /></a>
-  </details><p class="note">${machineText("connectionNote")}</p></aside>`;
-  if (unavailable) return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}><div class="runtime-switches-main"><h3>${machineText("switches")}</h3><p class="note">${machineText("switchesUnavailable")}</p></div></section>${diagnosticsPanel}</div></div>`;
+  </details><p class="note">${machineText("connectionNote")}</p></details>`;
+  if (unavailable) return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}><div class="runtime-switches-main"><h3>${machineText("switches")}</h3><p class="note">${machineText("switchesUnavailable")}</p></div></section></div></div>`;
   return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}>
     <details class="runtime-policy s-ui-disclosure"><summary><${Icon} name="settings" size=${22} /><span><strong>${machineText("policies")}</strong><small>${machineText("policySummary")}</small></span></summary>
     <div class="runtime-switches-main">
@@ -201,15 +231,21 @@ function RuntimeSwitches({ lease, onChanged, computers, diagnosticsPanel }) {
     </form>
     <p class="note">${machineText("switchesNote")}</p>
     ${error ? html`<p class="runtime-error" role="alert">${error}</p>` : null}
-    </div></details></section>${diagnosticsPanel}</div>
+    </div></details></section></div>
     ${guide}
   </div>`;
 }
 export function RuntimesPanel({navKey}) {
   const lease=useLease(`runtimes:${navKey}`), state=useRuntimeCatalog(), {windowsCli}=useStore(appStore);
+  const localInventory=useWindowsCliCatalog(windowsCli);
   const [pairing,setPairing]=useState(null), [busy,setBusy]=useState(""), [error,setError]=useState("");
   const [server,setServer]=useState(() => typeof location === "undefined" ? "" : location.origin);
-  const diagnostics=useRef(null);
+  const drafts=useRef(new Map()), taskSessions=useRef(new Map()), downloadClaim=useRef(false);
+  const [downloadedFor,setDownloadedFor]=useState(""), [copied,setCopied]=useState(false);
+  const [diagnosticMachineId,setDiagnosticMachineId]=useState(null);
+  // Computers revoked on this page stay on screen as revoked until the page is left or reloaded; the server keeps the record.
+  const [revokedHere,setRevokedHere]=useState(() => new Map());
+  const openDiagnostics=id=>setDiagnosticMachineId(id);
   useEffect(() => {
     if (!pairing) return;
     const remaining = new Date(pairing.expiresAt).getTime()-Date.now();
@@ -231,24 +267,68 @@ export function RuntimesPanel({navKey}) {
     if(operation === "revoke" && !await confirmDialog({message:machineText("revokeAsk"),confirmLabel:machineText("revoke"),danger:true}))return false;
     if(!lease.current())return false;
     setBusy(machine.id);setError("");
-    try {await post(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/${operation}`,body);if(!lease.current())return false;await state.refresh();return lease.current();}
+    try {
+      await post(`/ui/runtimes/machines/${encodeURIComponent(machine.id)}/${operation}`,body);if(!lease.current())return false;
+      // Kept before the refresh, so the card is never dropped between the answer and the new list.
+      if(operation === "revoke")setRevokedHere(seen=>new Map(seen).set(machine.id,{...machine,status:"revoked"}));
+      await state.refresh();return lease.current();
+    }
     catch(e){if(lease.current())setError(operation === "refresh" ? `${machineText("cliFailed")} ${e.message}` : e.message);return false;}
     finally{if(lease.current())setBusy("");}
   };
   const machines=state.data?.machines || [];
+  const localMachine={id:"",isLocal:true,name:localInventory.data?.hostname || machineText("nativeWindows"),platform:"win32",status:windowsCli ? "online" : "offline",inventory:localInventory.data,inventoryUpdatedAt:localInventory.data?.probedAt,probing:localInventory.loading};
+  const listed=machines.filter(machine=>machine.status !== "revoked" || revokedHere.has(machine.id));
+  const gone=[...revokedHere.values()].filter(machine=>!machines.some(row=>row.id === machine.id));
+  const allMachines=[...(windowsCli ? [localMachine] : []),...[...listed,...gone].map(machine=>({...machine,...(revokedHere.has(machine.id) ? {status:"revoked"} : {}),probing:busy===machine.id}))];
+  const target=diagnosticMachineId === "" ? localMachine : machines.find(machine=>machine.id===diagnosticMachineId);
+  if(diagnosticMachineId !== null && !taskSessions.current.has(diagnosticMachineId)) taskSessions.current.set(diagnosticMachineId,{requestId:null,pending:false,error:""});
+  const probeTarget=async(id="")=>{
+    setBusy(id || "local");setError("");
+    try{const result=await refreshWindowsCliCatalog(id);if(!lease.current())return;if(!result)throw Error(machineText("cliFailed"));if(id)await state.refresh();}
+    catch(error){if(lease.current())setError(error.message);}
+    finally{if(lease.current())setBusy("");}
+  };
+  const copyCode=async() => {
+    try {await navigator.clipboard.writeText(pairing.code);if(!lease.current())return;setCopied(true);lease.timeout(() => setCopied(false),2000);}catch { /* the code is on screen to copy by hand */ }
+  };
   const command=runtimeConnectCommand(server);
-  const download=()=>html`<a class="btn btn-sm runtime-bundle-download" href="/ui/runtimes/download/windows" download><${Icon} name="download" size=${15} />${machineText("download")}</a>`;
-  const computers = html`<section class="runtime-computers"><h3>${machineText("computersTitle")}</h3>${windowsCli ? html`<${LocalWindowsRuntime} openDiagnostics=${() => {if (diagnostics.current) {diagnostics.current.open=true;diagnostics.current.scrollIntoView?.({block:"start"});}}} />` : null}
-    <section class="runtime-machines" aria-label=${machineText("machines")}>${machines.map(machine => html`<${MachineCard} key=${machine.id} machine=${machine} busy=${!!busy} action=${action} />`)}${state.data && !machines.length ? html`<p class="note">${machineText("empty")}</p>` : null}</section>
-    <article class="runtime-host-note"><${Icon} name="info" size=${18} /><span>${machineText("localHint")}</span></article></section>`;
-  const diagnosticsPanel = windowsCli ? html`<details ref=${diagnostics} class="runtime-local-diagnostics s-ui-disclosure"><summary><${Icon} name="view" size=${22} /><span><strong>${machineText("diagnostics")}</strong><small>${machineText("localWindows")}</small></span></summary><div class="s-disclosure-body"><${WindowsCliPanel} navKey=${`${navKey}:local`} embedded=${true} /></div></details>` : null;
+  const awaitingApproval=machines.some(machine => machine.status === "pending"), currentStep=awaitingApproval ? 4 : downloadedFor ? 3 : 2;
+  const step=(n,title,body) => html`<li class=${`runtime-step${n < currentStep ? " is-done" : ""}`} aria-current=${n === currentStep ? "step" : undefined}><span class="runtime-step-n" aria-hidden="true">${n}</span><div><h4>${title}</h4>${body}</div></li>`;
+  const downloadRuntime=async()=>{
+    if(downloadClaim.current || !command)return;
+    const target=new URL(server).origin;downloadClaim.current=true;setBusy("download");setError("");setDownloadedFor("");
+    try{
+      const response=await lease.fetch("/ui/runtimes/download/windows",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({server:target})});
+      if(!lease.current())return;
+      if(!response.ok){const body=await response.json();throw Error(body.error || machineText("downloadFailed"));}
+      const blob=await response.blob();if(!lease.current())return;
+      const url=URL.createObjectURL(blob),release=lease.hold(()=>URL.revokeObjectURL(url));
+      const link=document.createElement("a");link.href=url;link.download=/filename="([a-zA-Z0-9._-]+\.zip)"/.exec(response.headers.get("content-disposition") || "")?.[1] || "agend-runtime-windows.zip";
+      document.body.appendChild(link);link.click();link.remove();lease.timeout(release,1000);setDownloadedFor(target);
+    }catch(error){if(lease.current())setError(error.message || machineText("downloadFailed"));}
+    finally{downloadClaim.current=false;if(lease.current())setBusy("");}
+  };
+  const download=(setup=false)=>html`<button type="button" class="btn btn-sm runtime-bundle-download" disabled=${!!busy || !setup && !command} onClick=${setup ? connect : downloadRuntime}><${Icon} name="download" size=${15} />${machineText(busy === "download" ? "downloadBuilding" : "download")}</button>`;
+
+  const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><span class="note">${machineText("machineCount",allMachines.length)}</span></div>
+    <section class="runtime-machines" aria-label=${machineText("machines")}>${allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} />`)}</section>
+    ${state.data && !allMachines.some(machine=>!machine.isLocal) ? html`<p class="note runtime-empty-remotes">${machineText("empty")}</p>` : null}
+    <article class="runtime-host-note"><${Icon} name="info" size=${18} /><span>${machineText("hostLocationNote")}</span></article></section>`;
+
   return html`<section class="runtime-settings">
-    <header class="runtime-heading s-page-head"><div><h2>${machineText("title")}<span class="s-scope">${machineText("fleetScope")}</span></h2><p class="s-page-lead">${machineText("lead")}</p></div><div><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button>${state.data?.enabled === true && !pairing ? download() : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button></div></header>
+    <header class="runtime-heading s-page-head"><div><h2>${machineText("title")}<span class="s-scope">${machineText("fleetScope")}</span></h2><p class="s-page-lead">${machineText("lead")}</p></div><div><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button>${state.data?.enabled === true && !pairing ? download(true) : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button></div></header>
     ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
     ${state.loading && !state.data ? html`<p role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${machineText("loading")}</p>` : null}
     ${error || state.error ? html`<div class="runtime-error" role="alert"><p>${error || state.error}</p>${state.data && state.error ? html`<p>${machineText("seenCached")}</p>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${machineText("retry")}</button></div>` : null}
-    ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><h3>${machineText("pairing")}</h3><p>${machineText("pairingHint")}</p><div class="runtime-bundle-step">${download()}<p class="note">${machineText("downloadHint")}</p></div><label><span>${machineText("server")}</span><input type="url" value=${server} spellcheck=${false} onInput=${event => setServer(event.target.value)} /></label><p class="note">${machineText("serverHint")}</p>${command ? html`<label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label>` : html`<p role="alert">${machineText("serverInvalid")}</p>`}<label><span>${machineText("pairingCode")}</span><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p role="status">${machineText("pairingWait")}</p><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></section>` : null}
-    <${RuntimeSwitches} lease=${lease} onChanged=${state.refresh} computers=${computers} diagnosticsPanel=${diagnosticsPanel} />
+    ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><header><h3>${machineText("pairing")}</h3><p class="note">${machineText("pairingHint")}</p></header><div class="runtime-pairing-body"><ol class="runtime-steps">
+      ${step(1,machineText("server"),html`<input type="url" aria-label=${machineText("server")} value=${server} disabled=${busy === "download"} spellcheck=${false} onInput=${event => setServer(event.target.value)} /><p class="note">${machineText("serverHint")}</p>${command ? null : html`<p role="alert">${machineText("serverInvalid")}</p>`}`)}
+      ${step(2,machineText("stepDownload"),html`<p class="note">${machineText("stepZipHint")}</p>${download()}${downloadedFor ? html`<p class="note" role="status">${machineText("downloadedFor",downloadedFor)}</p>` : null}`)}
+      ${step(3,machineText("stepLaunch"),html`<p class="note">${machineText("stepLaunchHint")}</p>${command ? html`<details class="runtime-manual-command"><summary>${machineText("manualCommand")}</summary><label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label><p class="note">${machineText("manualMultiHint")}</p></details>` : null}`)}
+      ${step(4,machineText("stepApprove"),html`<p class="note">${machineText("stepApproveHint")}</p>`)}
+    </ol><aside class=${`runtime-pair-card${awaitingApproval ? " is-pending" : ""}`}><label><span>${machineText("pairingCode")}</span><div class="runtime-pair-code-row"><input class="runtime-pair-code" value=${pairing.code} readOnly=${true} spellcheck=${false} autocomplete="off" /><button type="button" class="btn btn-sm" onClick=${copyCode}><${Icon} name="copy" size=${15} />${machineText(copied ? "codeCopied" : "copyCode")}</button></div></label><p class="note">${machineText("expires",machineTime(pairing.expiresAt))}</p><p class="runtime-pair-status" role="status"><span class="windows-cli-dot"></span>${machineText(awaitingApproval ? "pairingApprove" : "pairingWait")}</p><div class="runtime-pair-actions"><button type="button" class="btn btn-sm" disabled=${!!busy} onClick=${connect}>${machineText("newCode")}</button><button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPairing(null)}>${machineText("closeCode")}</button></div></aside></div></section>` : null}
+    <${RuntimeSwitches} lease=${lease} onChanged=${state.refresh} computers=${computers} />
+    ${diagnosticMachineId !== null ? html`<${RuntimeDiagnosticsDialog} key=${diagnosticMachineId || "local"} navKey=${navKey} machineId=${diagnosticMachineId} machine=${target} enabled=${diagnosticMachineId !== "" || windowsCli} drafts=${drafts.current} session=${taskSessions.current.get(diagnosticMachineId)} taskLease=${lease} onChanged=${state.refresh} onClose=${()=>setDiagnosticMachineId(null)} />` : null}
     <p class="note runtime-operations-note">${machineText("operationsNote")}</p>
   </section>`;
 }

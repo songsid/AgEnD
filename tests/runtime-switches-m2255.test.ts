@@ -106,7 +106,9 @@ describe("the switches: fleet.yaml, the environment's override, the limit", () =
   });
   it("the Windows Runtime ZIP carries the module windows-cli.js now reads", () => {
     expect(RUNTIME_BUNDLE_MODULES).toContain("runtime-switches.js");
-    expect(readFileSync("scripts/build-runtime.mjs", "utf8")).toContain("'runtime-switches.js'");
+    // scripts/build-runtime.mjs takes the same list from runtime-build-info.js (the one place that names the modules), so the portable folder cannot drift from the ZIP.
+    expect(readFileSync("scripts/build-runtime.mjs", "utf8")).toContain("RUNTIME_BUNDLE_MODULES");
+    expect(readFileSync("src/runtime-build-info.ts", "utf8")).toContain('"runtime-switches.js"');
   });
 });
 

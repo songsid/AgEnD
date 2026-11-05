@@ -3,6 +3,7 @@ import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-tools.js";
 import { windowsAgentsFor } from "./windows-agents.js";
+import { AgentRuntimeChanges } from "./agent-runtime-change.js";
 import { buildFleetInstructions } from "./instructions.js";
 import { supportsVerifiedKiroMigration, getCachedKiroCliCompatibility, kiroV1DbPath, kiroV2SessionsDir } from "./backend/kiro.js";
 import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identity.js";
@@ -1233,6 +1234,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.runtimeHub ??= new RuntimeCoordinator(this.dataDir,{
       handleMcp:(machineId,runId,body)=>this.runtimeWindowsExecutor().mcp(machineId,runId,body),
       handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
+      warn:(fields,message)=>this.logger.warn(fields,message),
       changed:event=>{
         if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {
           for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId) {
@@ -1272,6 +1274,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       removed:name=>this.nativeInstanceRemoved(name),
       paneCurrent:name=>this.daemons.get(name)?.nativePaneCurrent?.() === true,
       machineAvailable:id=>remoteRuntimeEnabled() && this.runtimeCoordinator().machine(id)?.status==="online",
+      machineGeneration:id=>this.runtimeCoordinator().machine(id)?.bootId??null,
+      paneAvailable:id=>this.runtimeCoordinator().machine(id)?.paneProtocol===1,
       validateMachine:(id,cli,sandbox)=>{
         const machine=this.runtimeCoordinator().machine(id);
         const provider=machine?.inventory?.clis.find(row=>row.id===cli && row.runnable && row.supports.resume);
@@ -1283,6 +1287,85 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (event === "activity") this.scheduleDeliveryOutboxPump();
       },
     },{bridge:this.runtimeWindowsExecutor()});
+  }
+  private agentRuntimeChangeService?:AgentRuntimeChanges;
+  agentRuntimeChanges():AgentRuntimeChanges {
+    if(this.agentRuntimeChangeService)return this.agentRuntimeChangeService;
+    const windowPins=new Map<string,string|undefined>();
+    return this.agentRuntimeChangeService??=new AgentRuntimeChanges({
+      config:name=>Object.hasOwn(this.fleetConfig?.instances??{},name)?this.fleetConfig!.instances[name]:undefined,
+      defaults:()=>this.fleetConfig?.defaults,
+      generation:()=>[this.managerBootId,this.settingsGeneration],
+      epoch:name=>this.lifecycle.epochOf(name),
+      backendState:(name,backend)=>!isWindowsInstance(this.fleetConfig?.instances[name])?this.backendAvailabilityFor(name).find(row=>row.backend===backend)?.state:undefined,
+      transition:(name,run)=>this.lifecycle.runTransition(name,async transition=>{
+        const config=this.fleetConfig?.instances[name];
+        if(!isWindowsInstance(config)){
+          const path=join(this.getInstanceDir(name),"window-id");let pin:string|undefined;
+          if(existsSync(path)){if(statSync(path).size>128)throw Error("Invalid saved CLI window identity");pin=readFileSync(path,"utf8").trim();if(!/^@\d+$/.test(pin))throw Error("Invalid saved CLI window identity");}
+          else if(this.daemons.has(name))throw Error("The current CLI window identity is unavailable");
+          windowPins.set(name,pin);
+        }
+        try{return await run(async()=>{
+        if(isNativeExecInstance(this.fleetConfig?.instances[name])){
+          this.lifecycle.invalidate(name);this.nativeInstanceRuntime().setPaused(name,true);
+        }else await this.stopInstance(name,transition);
+        });}finally{windowPins.delete(name);}
+      }),
+      idle:name=>{
+        if(this.shuttingDown||this.lifecycle.hasWorkLease(name)||this.deliveryOutbox?.countForTarget(name,["queued","retry_wait","delivering","submission_started","reconciliation_pending","uncertain"]))return false;
+        const config=this.fleetConfig?.instances[name];if(!config)return false;
+        if(isWindowsInstance(config)){
+          try{const agent=this.nativeInstanceRuntime().get(name);if(!agent||agent.blocked||agent.activeId&&!isNativePaneInstance(config))return false;}catch{return false;}
+        }
+        if(!this.daemons.has(name)&&!isWindowsInstance(config)&&existsSync(join(this.getInstanceDir(name),"window-id")))return false;
+        return !this.daemons.has(name)||this.getInstanceExecutionState(name)==="idle";
+      },
+      prepare:async(name,before,target,current)=>{
+        if(!current())throw Error("Runtime change authority expired");
+        if(isWindowsInstance(before))this.nativeInstanceRuntime().importHistory(name);
+        if(target.runtime==="windows")return this.nativeInstanceRuntime().prepareRuntimeChange(name,before,target,current);
+        const sameAccount=!isWindowsInstance(before)&&target.backend===(before.backend||this.fleetConfig?.defaults?.backend||"claude-code");
+        const availability=(sameAccount?this.backendAvailabilityFor(name):this.backendAvailabilityRows()).find(row=>row.backend===target.backend);
+        if(availability&&["not_installed","not_signed_in","too_old"].includes(availability.state))throw Error("Choose an available CLI on the Fleet host");
+        const supplied=target.directory.trim(),cwd=supplied||join(this.dataDir,"workspaces",name);
+        if(!isAbsolute(cwd)||/^[A-Za-z]:[\\/]/.test(cwd)||/[\x00-\x1f]/.test(cwd))throw Error("Enter an absolute Linux working directory or leave it empty");
+        if(!current())throw Error("Runtime change authority expired");
+        if(supplied){if(!statSync(cwd).isDirectory())throw Error("The Linux working directory is not a directory");}
+        else mkdirSync(cwd,{recursive:true,mode:0o700});
+        const config={...before,runtime:"wsl" as const,working_directory:cwd,backend:target.backend,model:target.model};
+        if(before.backend!==target.backend)config.model_failover=[];
+        for(const key of ["machine_id","native_agent_id","native_adapter","native_sandbox"] as const)delete config[key];
+        if(!sameAccount)delete config.backend_options;
+        return {config,discard:()=>{}};
+      },
+      closed:async(name,before)=>{
+        if(this.daemons.has(name))return false;
+        if(isWindowsInstance(before))return !this.nativeInstanceRuntime().get(name)?.activeId;
+        // An unreadable tmux state is not evidence that the old process exited.
+        const session=getTmuxSession();if(!await TmuxManager.sessionExistsStrict(session))return true;
+        const pin=windowPins.get(name);
+        return !(await TmuxManager.listWindowsStrict(session)).some(window=>window.name===name||pin&&window.id===pin);
+      },
+      fresh:(name,requestId)=>{
+        const dir=this.getInstanceDir(name),moved:Array<[string,string]>=[];
+        const restore=()=>{for(const [source,saved] of moved.reverse())if(!existsSync(source)&&existsSync(saved))renameSync(saved,source);};
+        try{
+          for(const file of ["session-id","session-id.backend"]){const source=join(dir,file),saved=join(dir,`${file}.runtime-${requestId}`);if(existsSync(source)){if(existsSync(saved))throw Error("Session backup already exists");renameSync(source,saved);moved.push([source,saved]);}}
+          return restore;
+        }catch(error){restore();throw error;}
+      },
+      save:(name,before,next)=>{
+        if(this.fleetConfig?.instances[name]!==before)throw Error("Agent settings changed before saving Runtime");
+        // Mark the replacement stopped before committing its config. A marker failure must not leave a saved
+        // Windows config referring to a profile the preparation rollback would then remove.
+        writePausedMarker(this.getInstanceDir(name),Date.now(),"operator");
+        const fleet=this.fleetConfig;fleet.instances[name]=next;
+        try{this.saveFleetConfig();}catch(error){fleet.instances[name]=before;throw error;}
+        // A move deliberately leaves the replacement stopped; its next explicit Start opens the fresh CLI.
+      },
+      changed:name=>{this.instanceStateCache.delete(name);this.instanceProcessStatus.delete(name);this.emitSseEvent("status",this.getUiStatus());},
+    });
   }
   /** Explicit dashboard opt-in, with the same General confirmation and ordinary topic/Daemon routing. */
   async createNativePaneInstance(profile:Record<string,unknown>,channelId:string|undefined,authorized:()=>boolean,execution:SettingsExecution){
@@ -2616,6 +2699,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
+      directAgentCreation: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
         if (!settlement) return false;

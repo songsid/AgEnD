@@ -5,12 +5,11 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GENERAL_KNOWLEDGE_FILES } from "./general-role.js";
-import { RUNTIME_PANE_MODULES, RUNTIME_PANE_ASSETS, PANE_NATIVE_SHA256 } from "./runtime-pane-assets.js";
+import { RUNTIME_PANE_ASSETS, PANE_NATIVE_SHA256 } from "./runtime-pane-assets.js";
+import { RUNTIME_BUNDLE_MODULES, runtimeCodeBuildId } from "./runtime-build-info.js";
+import { RUNTIME_CONNECT_BAT, RUNTIME_SERVER_FILE, runtimeServerOrigin } from "./runtime-connection.js";
+export { RUNTIME_BUNDLE_MODULES } from "./runtime-build-info.js";
 
-export const RUNTIME_BUNDLE_MODULES = Object.freeze([
-  "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "runtime-protocol.js", "windows-cli.js", "windows-cli-worker.js",
-  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", "runtime-switches.js", ...RUNTIME_PANE_MODULES,
-]);
 const WS_FILES = Object.freeze([
   "package.json", "index.js", "wrapper.mjs", "browser.js", "LICENSE",
   "lib/buffer-util.js", "lib/constants.js", "lib/event-target.js", "lib/extension.js", "lib/limiter.js",
@@ -25,15 +24,17 @@ const README = `AgEnD native Windows runtime preview
 
 Requires a supported Windows Node.js version and each coding CLI installed and signed in under this Windows user.
 
-1. Extract this folder on the Windows computer. No npm install or Linux native packages are needed.
+1. Extract this folder on the Windows computer. No npm install or Linux native packages are needed. If agend-server.json is included, double-click connect-agend.bat; it uses that AgEnD address and asks for a pairing code only for a new profile.
 2. In a Windows terminal run:
    .\\agend-runtime.cmd connect --server https://your-agend-host
 3. Enter the one-time code from AgEnD Settings, compare the pairing fingerprint on both screens, then approve the pending machine there.
 4. In Settings -> Runtime, press Refresh CLI inventory for this computer. Only this explicit detection starts the installed CLIs; connecting or opening a page does not.
-5. Keep this terminal running. Ctrl+C stops it; .\\agend-runtime.cmd run reconnects the stored profile.
+5. Keep this terminal running. Ctrl+C stops it; .\\agend-runtime.cmd run reconnects the stored profile. If AgEnD ends the connection (the computer was revoked or is not recognised, another Runtime took over the same pairing, or a message was rejected), the window stays open and explains the reason and next step. If it says this profile still holds jobs from a different AgEnD server, delete jobs.json in the profile folder (after checking no CLI it started is still running) or disconnect and pair again. If pairing itself reports an unfinished job from another pairing, delete jobs.json the same way and pair again.
 
 Stop the runtime before using rotate to replace its machine credential without pairing again, then use run to reconnect. A saved interrupted rotation is completed before run connects.
+Use --version to inspect the installed Runtime version, code Build ID and supported protocol.
 Use status to inspect local pairing and journal state. disconnect forgets a stopped local connection; revoke the machine in AgEnD Settings to invalidate its credential centrally.
+Using one computer with more than one AgEnD server: connect-agend.bat keeps the existing pairing and, when this folder's server differs from the default profile's, pairs a separate profile under %USERPROFILE%\\.agend-runtime\\profiles\\<host>-<port>. The same bat and run/status/rotate/disconnect run from this folder find it again. Use --profile DIRECTORY (or AGEND_RUNTIME_HOME) to choose a profile yourself; that always wins. After connecting with --profile, pass the same --profile to run, status, rotate and disconnect.
 The private profile defaults to %USERPROFILE%\\.agend-runtime. Its machine credential is stored as a private file, not encrypted by this preview. Use your Windows user profile and do not share it. CLI login credentials are never uploaded.
 Do not install this preview as SYSTEM: it uses the logged-in user's CLI login, PATH, workspaces and devices.
 Only loopback origins may use HTTP; remote servers require HTTPS and valid TLS.
@@ -47,6 +48,8 @@ export interface RuntimeBundleOptions {
   licensePath?: string;
   /** Fixed code assets prepared during the package build, not CLI installations or user profiles. */
   paneAssetDirectory?: string;
+  /** Explicit administrator-selected origin. Never inferred from a request Host header. */
+  serverOrigin?: string;
 }
 export interface RuntimeBundle { bytes: Buffer; filename: string; sha256: string }
 
@@ -93,6 +96,7 @@ function zip(files: ReadonlyArray<readonly [string, Buffer]>): Buffer {
 
 /** Reads only installed program assets. Runtime profiles, CLI logins and user workspaces are never enumerated. */
 export function createRuntimeBundle(options: RuntimeBundleOptions = {}): RuntimeBundle {
+  const serverOrigin = options.serverOrigin === undefined ? undefined : runtimeServerOrigin(options.serverOrigin);
   const moduleDirectory = options.moduleDirectory ?? dirname(fileURLToPath(import.meta.url));
   const packageDirectory = dirname(moduleDirectory);
   const version = options.packageVersion ?? JSON.parse(readCodeFile(join(packageDirectory, "package.json")).toString("utf8")).version;
@@ -126,7 +130,10 @@ export function createRuntimeBundle(options: RuntimeBundleOptions = {}): Runtime
   add("package.json", Buffer.from(JSON.stringify({ name: "@songsid/agend-runtime", version, private: true, type: "module",
     bin: { "agend-runtime": "./dist/runtime-cli.js" }, engines: { node: "^22.14.0 || ^23.6.0 || >=24" }, dependencies: { ws: ws.version, ...Object.fromEntries(RUNTIME_PANE_ASSETS.map(pkg => [pkg.name, pkg.version])) } }, null, 2) + "\n"));
   add("agend-runtime.cmd", Buffer.from(CMD)); add("README.txt", Buffer.from(README));
-  add("bundle-manifest.json", Buffer.from(JSON.stringify({ version, modules: RUNTIME_BUNDLE_MODULES, ws: ws.version,
+  add("connect-agend.bat", Buffer.from(RUNTIME_CONNECT_BAT));
+  if (serverOrigin) add(RUNTIME_SERVER_FILE, Buffer.from(JSON.stringify({ server: serverOrigin }, null, 2) + "\n"));
+  const buildId = runtimeCodeBuildId(version, RUNTIME_BUNDLE_MODULES.map(name => [name, entries.find(([path]) => path === `dist/${name}`)![1]] as const));
+  add("bundle-manifest.json", Buffer.from(JSON.stringify({ version, buildId, modules: RUNTIME_BUNDLE_MODULES, ws: ws.version,
     nativeDependencies: [{ name: "node-pty", version: "1.1.0", platforms: ["win32-x64", "win32-arm64"], backend: "ConPTY" }],
     sha256: Object.fromEntries(entries.map(([name, bytes]) => [name, createHash("sha256").update(bytes).digest("hex")])) }, null, 2) + "\n"));
   const bytes = zip(entries);

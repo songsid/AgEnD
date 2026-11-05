@@ -72,6 +72,14 @@ describe("Windows runtime download archive",()=>{
     expect(bundle.bytes.includes(Buffer.from(canary))).toBe(false);
     expect([...files.keys()]).not.toContain("agend-runtime/node_modules/ws/lib/private-extra.js");
   });
+  it("embeds only an explicit public server address, using a data file instead of shell interpolation",()=>{
+    const f=fixture(),first=unzip(createRuntimeBundle({...f,serverOrigin:"https://fleet.example.test:10443"}).bytes),other=createRuntimeBundle({...f,serverOrigin:"https://other.example.test"});
+    expect(first.has("agend-runtime/agend-server.json")).toBe(true);expect(JSON.parse(first.get("agend-runtime/agend-server.json")!.toString())).toEqual({server:"https://fleet.example.test:10443"});
+    const launcher=first.get("agend-runtime/connect-agend.bat")!.toString();expect(launcher).toContain('node.exe "%~dp0dist\\runtime-cli.js" connect');expect(launcher).not.toContain("fleet.example");
+    expect(JSON.parse(first.get("agend-runtime/bundle-manifest.json")!.toString()).buildId).toBe(JSON.parse(unzip(other.bytes).get("agend-runtime/bundle-manifest.json")!.toString()).buildId);
+    expect(unzip(createRuntimeBundle(f).bytes).has("agend-runtime/agend-server.json")).toBe(false);
+    for(const bad of ["http://192.0.2.5","https://user:password@fleet.example","https://fleet.example/path","https://fleet.example/?code=secret"])expect(()=>createRuntimeBundle({...f,serverOrigin:bad})).toThrow();
+  });
   it("refuses a modified native prebuild before offering the runtime download",()=>{
     const f=fixture(),file=Object.keys(PANE_NATIVE_SHA256)[0];
     writeFileSync(join(f.moduleDirectory,"runtime-assets/node-pty",file),"changed native program");

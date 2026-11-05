@@ -15,7 +15,8 @@ import { nativeInstanceConfig } from "../src/native-instance-registry.js";
 import { nativeCliAuthorization } from "../src/windows-cli-api.js";
 import { createSettingsReplay } from "../src/settings-request-capability.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
-import { WEB_SESSION_COOKIE, evaluateWebRequest, type WebGateRequest } from "../src/web-auth.js";
+import { WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE, evaluateWebRequest, type WebGateRequest } from "../src/web-auth.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
 import { WindowsAgents, type WindowsAgent } from "../src/windows-agents.js";
 import { FleetWindowsRuntime } from "../src/fleet-windows-runtime.js";
 import type { WindowsCliExecutor } from "../src/windows-cli.js";
@@ -32,10 +33,13 @@ afterEach(() => {
   for (const dir of roots.splice(0)) { if (!resolve(dir).startsWith(resolve(tmpdir()) + sep)) throw Error("Unsafe confirmation test cleanup"); rmSync(dir, { recursive: true, force: true }); }
 });
 
-function harness(tier: "admin" | "read" | "guest" = "admin") {
+/** How the principal reaches the gate when it is NOT the local dashboard administrator (directAgentCreation's reverse cases). */
+interface Variant { source?: "web_session" | "public_link"; localAdmin?: boolean; gateway?: boolean }
+function harness(tier: "admin" | "read" | "guest" = "admin", directAgentCreation = false, variant: Variant = {}) {
   const cfg: any = { defaults: { backend: "claude-code" }, instances: {} };
   const sessions = new WebSessionStore();
-  const session = sessions.create({ tier, surface: "local", label: "Native create test", tokenEpoch: tokenEpoch(TOKEN),
+  const session = sessions.create({ tier, surface: variant.gateway ? "gateway" : "local", label: "Native create test", tokenEpoch: tokenEpoch(TOKEN),
+    ...(variant.gateway ? { exposureId: "a".repeat(32), remote: "totp" as const } : {}),
     ...(tier === "guest" ? { owner: { adapterId: "test", userId: "reader" } } : {}) });
   const save = vi.fn();
   const create = vi.fn(async (profile: Record<string, unknown>, allowed: () => boolean, execution?: SettingsExecution) => {
@@ -53,19 +57,21 @@ function harness(tier: "admin" | "read" | "guest" = "admin") {
     emitSseEvent: vi.fn(), getUiStatus: () => ({ instances: [] }), logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } } as unknown as WebApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const gate = new SettingsHttpConfirmation(store, {
+    directAgentCreation,
     principal(req) {
       const allowed = evaluateWebRequest(req as unknown as WebGateRequest, new URL("http://localhost/ui/instances"), TOKEN, sessions, { touch: false });
       if (allowed.kind !== "allow" || allowed.via !== "session" || allowed.session.tier !== "admin") return null;
-      return { id: session.sessionId, label: "Native administrator", source: "web_session", current: () => context.webToken === TOKEN,
-        localAdmin: () => context.webToken === TOKEN && tier === "admin" };
+      return { id: session.sessionId, label: "Native administrator", source: variant.source ?? "web_session", current: () => context.webToken === TOKEN,
+        localAdmin: () => variant.localAdmin ?? (context.webToken === TOKEN && tier === "admin") };
     },
     baseline: async () => ({ config: cfg, classic: {}, fingerprint: settingsFingerprint(cfg) }),
     snapshot: () => cfg,
   });
   const request = (body: unknown = BODY, authenticated = true) => new Promise<{ status: number; body: any }>((resolve, reject) => {
     const req = new EventEmitter() as unknown as IncomingMessage;
-    Object.assign(req, { method: "POST", url: "/ui/instances", headers: { host: "localhost", origin: "http://localhost",
-      "idempotency-key": JSON.stringify(body), ...(authenticated ? { cookie: `${WEB_SESSION_COOKIE}=${session.sessionId}`, "x-agend-csrf": csrfTokenFor(session.sessionId) } : {}) }, destroy: vi.fn() });
+    Object.assign(req, { method: "POST", url: "/ui/instances", headers: { host: "localhost", origin: variant.gateway ? "https://public.example.test" : "http://localhost",
+      "idempotency-key": JSON.stringify(body), ...(authenticated ? { cookie: `${variant.gateway ? WEB_SESSION_COOKIE_SECURE : WEB_SESSION_COOKIE}=${session.sessionId}`, "x-agend-csrf": csrfTokenFor(session.sessionId) } : {}) }, destroy: vi.fn() });
+    if (variant.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example.test", isCurrent: () => true });
     let status = 0;
     const rawResponse = { destroyed: false, headersSent: false, once: vi.fn(),
       writeHead(code: number) { status = code; this.headersSent = true; }, end(value: unknown) { resolve({ status, body: JSON.parse(String(value)) }); } };
@@ -79,6 +85,51 @@ function harness(tier: "admin" | "read" | "guest" = "admin") {
 }
 
 describe("native Agent creation through settings confirmation", () => {
+  it("admits the same ordinary Linux create flow without a General, while role-bearing additions keep confirmation",async()=>{
+    const h=harness("admin",true),create=vi.fn(async(input:any,respond:any,_source:any,execution:SettingsExecution)=>{
+      execution.commit(()=>{h.cfg.instances.linux={working_directory:"/inert",backend:input.backend};h.save();});respond({name:"linux"});
+    });Object.assign(h.context,{lifecycle:{handleCreate:create}});
+    const response=await h.request({topic_name:"Linux helper",backend:"grok"});expect(response.body.pending_change.confirmation.kind).toBe("web");
+    await vi.waitFor(()=>expect(h.store.get(response.body.pending_change.id,h.sessionId)?.state).toBe("applied"));expect(create).toHaveBeenCalledOnce();
+    const role=await h.request({topic_name:"GENERAL",backend:"grok"});expect(role.body.pending_change.state).toBe("pending");expect(create).toHaveBeenCalledOnce();
+  });
+  it.each([false,true])("a dashboard administrator creates an ordinary %s remote Agent without a General and retains the exact request claim", async remote => {
+    const h=harness("admin",true),body={...BODY,...(remote?{machineId:MACHINE_ID}: {})};
+    const response=await h.request(body);
+    expect(response.status).toBe(202);
+    expect(response.body.pending_change.confirmation.kind).toBe("web");
+    await vi.waitFor(()=>expect(h.store.get(response.body.pending_change.id,h.sessionId)?.state).toBe("applied"));
+    expect(h.create).toHaveBeenCalledOnce();expect(h.save).toHaveBeenCalledOnce();
+    const repeated=await h.request(body);
+    expect(repeated.body.pending_change.id).toBe(response.body.pending_change.id);
+    expect(h.create).toHaveBeenCalledOnce();
+    expect(h.create.mock.calls[0][0]).toMatchObject({cli:"codex",name:"CodexTest",...(remote?{machineId:MACHINE_ID}:{})});
+  });
+  // directAgentCreation (src/settings-http-confirmation.ts) applies only when the request is a web session AND not a gateway
+  // request AND localAdmin() is true. Each condition on its own must send the create back to the confirmation card.
+  it.each([
+    ["localAdmin() is false (a verified or remote administrator)", { localAdmin: false }],
+    ["the principal is a public link", { source: "public_link" as const }],
+    ["an admin web session arrives through the gateway (e.g. a remote TOTP administrator)", { gateway: true }],
+  ] satisfies Array<[string, Variant]>)("does not create directly when %s: the card stays pending", async (_why, variant) => {
+    const h = harness("admin", true, variant), response = await h.request();
+    expect(response.status).toBe(202);
+    expect(response.body.pending_change.state).toBe("pending");
+    expect(response.body.pending_change.confirmation?.kind).not.toBe("web");
+    await new Promise(resolve => setTimeout(resolve, 20));   // an unwanted direct apply is asynchronous
+    expect(h.store.get(response.body.pending_change.id, h.sessionId)?.state).toBe("pending");
+    expect(h.create).not.toHaveBeenCalled(); expect(h.save).not.toHaveBeenCalled(); expect(h.cfg.instances).toEqual({});
+  });
+  it("does not create when dashboard authority expires during the claimed operation",async()=>{
+    const h=harness("admin",true),original=h.create.getMockImplementation()!;
+    let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;});
+    h.create.mockImplementationOnce(async(...args)=>{await held;return original(...args);});
+    const response=await h.request();
+    await vi.waitFor(()=>expect(h.create).toHaveBeenCalledOnce());
+    Object.assign(h.context,{webToken:null});release();
+    await vi.waitFor(()=>expect(h.store.get(response.body.pending_change.id,h.sessionId)?.state).toBe("failed"));
+    expect(h.save).not.toHaveBeenCalled();expect(h.cfg.instances).toEqual({});
+  });
   it.each([false, true])("holds %s remote creation without allocating a profile, then replays the approved request exactly once", async remote => {
     const h = harness(), body = { ...BODY, ...(remote ? { machineId: MACHINE_ID, directory: "D:\\Projects\\Runtime" } : {}) };
     const pending = await h.request(body);
@@ -166,7 +217,7 @@ describe("native creation fields remain scoped to their schema-owned effect", ()
   it("projects native identity without Linux channel effects and confirms schema-owned tag labels", () => {
     const cfg: any = { defaults: {}, instances: {}, channels: [{ id: "main", type: "telegram", group_id: "-1001" }] };
     const effect = prepareSettingsEffect("POST", "/ui/instances", { ...BODY, tags: ["review", "windows"] }, { config: cfg, classic: {} });
-    expect(effect.diff?.authority).toEqual({ connections: [], primaryGeneral: false, unknown: false });
+    expect(effect.diff?.authority).toEqual({ connections: [], primaryGeneral: true, unknown: false });
     expect(effect.diff?.summary.join("\n")).toContain("review"); expect(effect.diff?.summary.join("\n")).not.toMatch(/channels|group_id/);
   });
   it.each(["runtime", "machineId", "sandbox"])("still refuses an unknown free-text %s outside native creation", key => {

@@ -53,7 +53,10 @@ export function handleWindowsCliRequest(req: IncomingMessage, res: ServerRespons
         if(!row)throw new Error("Windows instance is not registered in the Fleet");return row[0];
       };
       const agent = /^\/ui\/windows-cli\/agents\/([a-f0-9-]{36})(?:\/(messages|recover))?$/i.exec(path);
-      if (method === "GET" && path === "/ui/windows-cli/agents") { json(res, 200, { agents: store.list() }); return; }
+      if (method === "GET" && path === "/ui/windows-cli/agents") {
+        const registered=new Set(Object.values(ctx.fleetConfig?.instances??{}).map(config=>nativeAgentId(config as Parameters<typeof nativeAgentId>[0])));
+        json(res,200,{agents:store.list().filter(profile=>!runtime||!ctx.fleetConfig||registered.has(profile.id))});return;
+      }
       if (method === "GET" && agent && !agent[2]) { json(res, 200, { agent: runtime ? runtime.get(canonical(agent[1])) : store.get(agent[1]) }); return; }
       if (method !== "POST") { json(res, 404, { error: "Unknown Windows agent operation" }); return; }
       const raw = await readBoundedWebBody(req, 40_000);

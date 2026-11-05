@@ -14,6 +14,7 @@ import { appStore, createStore, guestPage, guestTrusted, useStore } from "/asset
 import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
 import { modelText, namesOf, namesStore, navStore as instanceNavStore, supportsInstanceFeature } from "/assets/instance-nav.js";
+import { machineName } from "/assets/machine-name.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance } from "/assets/app-shell.js";
 import { detailsPath, textLinkSegments, sectionPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
@@ -354,7 +355,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
     ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
-    ${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",inst.machine_name || inst.machine_id)}>${inst.machine_name || inst.machine_id}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
+    ${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",machineName(inst.machine_id,inst.machine_name))}>${machineName(inst.machine_id,inst.machine_name)}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => supportsInstanceFeature(inst,"commands") ? pick("model") : navigate(sectionPath("agents"))}>${modelText(inst)}</button>` : null}
     ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
@@ -753,7 +754,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
   };
   const optId = (c) => `cmd-${c.name}`;
   return html`<div class="composer-box">
-    ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",inst.machine_name || inst.machine_id)}</p>` : null}
+    ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",machineName(inst.machine_id,inst.machine_name))}</p>` : null}
     ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id="cmdPalette" role="listbox" aria-label=${t("chat.cmdCommands")}>
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}

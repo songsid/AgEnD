@@ -2,6 +2,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Icon } from "/assets/ui-icons.js";
+import { runtimeCliChoices } from "./runtime-catalog.js";
 
 register("runtime", {
   "zh-TW": { title:"新增 Agent", choose:"1. 選擇 Runtime", wsl:"WSL / Linux", windows:"Windows 本機", wslHint:"使用 Linux CLI 與工作目錄", windowsHint:"使用 Windows 工具與本機登入", disabled:"需要先啟用 Windows CLI", configure:"2. 設定 Agent", backend:"CLI", directory:"工作目錄（選填）", nativeHint:"建立 Windows Codex Agent，保留獨立對話。Claude Code 目前僅支援偵測。", model:"使用 Windows Codex 的預設模型", access:"檔案存取", read:"唯讀", write:"工作目錄可寫入", required:"請填入 Agent 名稱，工作目錄可以留空。", created:"Windows Agent 已建立", assist:"讓 AI 幫我填寫", assistHint:"由已登入的 Windows Codex 產生草稿，填回下方後可編輯，再按「建立」。", noAi:"需要先有可用的 AI：請在設定 → Windows CLI 確認 Codex 已登入。", goal:"描述想建立的 Agent", placeholder:"例如：建立一個協助整理資料、回答問題的助手", generate:"產生設定草稿", generating:"AI 正在產生草稿…", cancel:"取消產生", draftError:"AI 沒有回傳有效的設定草稿，請調整描述後再試。", nativeBackend:"Codex — Windows", nativeClaude:"Claude Code — Windows（僅偵測）" },
@@ -26,6 +27,10 @@ register("runtime", {
   "zh-TW": { computers:"已連接的電腦", online:"在線", offline:"離線", pending:"等待核准", revoked:"已撤銷", machineLoading:"正在載入已連接的電腦…", machineFailed:"無法更新已連接的電腦，仍可使用本機選項。", machineRetry:"更新機器清單", noRemoteCli:"這台電腦尚未回報可派工的 CLI。", remoteDirectory:"{0} 上的工作目錄（選填）", remoteDraft:"AI 協助設定目前適用於本機 Runtime，你可以直接填寫下方遠端 Agent 設定。", machine:"電腦", inventoryAt:"CLI 清單更新：{0}", remotePolicy:"檔案與 CLI 權限屬於所選電腦，登入也保留在該電腦上。", manage:"前往設定 → Runtime 連接或管理電腦", noAvailableMachine:"在設定 → Runtime 連接並核准電腦後，即可使用它的 CLI。" },
 });
 register("runtime", {
+  en: { machineOffline:"Offline: run connect-agend.bat on that computer.", machinePending:"Awaiting approval: choose Approve computer in Settings → Runtime.", machineNoInventory:"CLIs not detected yet: choose Refresh CLI inventory for it in Settings → Runtime.", machineNoCli:"No task-capable CLI reported: install one, then choose Refresh CLI inventory in Settings → Runtime.", machineNotReady:"No CLI is signed in and ready: sign in on that computer, then choose Refresh CLI inventory in Settings → Runtime." },
+  "zh-TW": { machineOffline:"離線：請在那台電腦執行 connect-agend.bat。", machinePending:"等待核准：請到設定 → Runtime 按「核准電腦」。", machineNoInventory:"尚未偵測 CLI：到設定 → Runtime 按該電腦的「更新 CLI 清單」。", machineNoCli:"沒有可派工的 CLI：請先安裝，再到設定 → Runtime 按「更新 CLI 清單」。", machineNotReady:"CLI 尚未登入或只能偵測：請在那台電腦登入，再到設定 → Runtime 按「更新 CLI 清單」。" },
+});
+register("runtime", {
   "zh-TW": {
     agendQueries:"AgEnD 工具：唯讀模式可查詢 Agent、任務與派送狀態。",
     agendActions:"AgEnD 工具：可用的查詢、訊息、派工與任務操作，依 Agent 的工具權限決定。",
@@ -44,9 +49,22 @@ export function NativeAgendToolsHint({ cli, sandbox }) {
   return html`<p class="note native-agend-tools">${tr(!supported ? "agendUnavailable" : sandbox === "read-only" ? "agendQueries" : "agendActions")}</p>`;
 }
 /** #2953 story 3 (S-35): with this PC's Windows CLIs switched off, "Native Windows" is not offered at all (paired PCs still are). */
-export function RuntimePicker({ value, onChange, windowsEnabled, disabled, machineId = "", machines = [], onMachineChange, legend = tr("choose") }) {
+/** Why a connected computer cannot take a new agent yet ("" when it can). Offline, awaiting approval and no usable CLI are deliberate blocks; the picker says which. */
+export function machineBlockReason(machine) {
+  if (machine.status === "pending") return "machinePending";
+  if (machine.status !== "online") return "machineOffline";
+  if (!machine.inventory) return "machineNoInventory";
+  const choices = runtimeCliChoices(machine);
+  // Same bar as the dialogs' "Next": a computer is usable once one of its task-capable CLIs is runnable.
+  return !choices.length ? "machineNoCli" : choices.some(cli => cli.runnable === true) ? "" : "machineNotReady";
+}
+export function RuntimePicker({ value, onChange, windowsEnabled, disabled, machineId = "", machines = [], onMachineChange, onRefresh, loaded = false, legend = tr("choose") }) {
+  const [refreshing, setRefreshing] = useState(false);
+  // Only a click on the button disables it, never the 5 s background poll (that would drop keyboard focus).
+  const refresh = async () => { setRefreshing(true); try { await onRefresh(); } finally { setRefreshing(false); } };
+  const listed = machines.filter(machine => machine.status !== "revoked");
   return html`<fieldset class="agent-runtime-picker" disabled=${disabled}><legend>${legend}</legend><div>${(windowsEnabled ? ["wsl","windows"] : ["wsl"]).map(runtime => html`<label key=${runtime} class=${`agent-runtime-choice${!machineId && value === runtime ? " selected" : ""}`}><input type="radio" name="agent-runtime" value=${runtime} checked=${!machineId && value === runtime} disabled=${runtime === "windows" && !windowsEnabled} onChange=${() => onChange(runtime)} /><${Icon} name=${runtime === "windows" ? "view" : "code"} size=${22} /><span><strong>${tr(runtime)}</strong><small>${tr(runtime === "windows" && !windowsEnabled ? "disabled" : `${runtime}Hint`)}</small></span></label>`)}</div>
-    ${machines.length ? html`<section class="runtime-remote-targets" aria-label=${tr("computers")}><h4>${tr("computers")}</h4>${machines.filter(machine => machine.status !== "revoked").map(machine => html`<label key=${machine.id} class=${`agent-runtime-choice${machineId === machine.id ? " selected" : ""}`}><input type="radio" name="agent-runtime" value=${`machine:${machine.id}`} checked=${machineId === machine.id} disabled=${machine.status !== "online"} onChange=${() => onMachineChange?.(machine.id)} /><${Icon} name="view" size=${22} /><span><strong>${machine.name}</strong><small>${machine.platform || "Windows"} · ${tr(["online","offline","pending"].includes(machine.status) ? machine.status : "offline")}</small></span></label>`)}</section>` : null}
+    ${listed.length || onRefresh ? html`<section class="runtime-remote-targets" aria-label=${tr("computers")}><div class="runtime-remote-heading"><h4>${tr("computers")}</h4>${onRefresh ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${refreshing} onClick=${refresh}>${tr("machineRetry")}</button>` : null}</div>${listed.map(machine => { const reason = machineBlockReason(machine), status = ["online","offline","pending"].includes(machine.status) ? machine.status : "offline"; return html`<label key=${machine.id} class=${`agent-runtime-choice${machineId === machine.id ? " selected" : ""}${reason ? " blocked" : ""}`}><input type="radio" name="agent-runtime" value=${`machine:${machine.id}`} checked=${machineId === machine.id} disabled=${!!reason} aria-describedby=${reason ? `machine-reason-${machine.id}` : undefined} onChange=${() => onMachineChange?.(machine.id)} /><${Icon} name="view" size=${22} /><span><strong>${machine.name}</strong><small><span class="runtime-machine-platform">${machine.platform || "Windows"} · </span><span class=${`runtime-machine-status is-${status}`}>${tr(status)}</span></small>${reason ? html`<small class="runtime-machine-reason" id=${`machine-reason-${machine.id}`}>${tr(reason)}</small>` : null}</span></label>`; })}${loaded && !listed.length ? html`<p class="note">${tr("noAvailableMachine")}</p>` : null}</section>` : null}
   </fieldset>`;
 }
 export function parseAgentDraft(text, runtime) {

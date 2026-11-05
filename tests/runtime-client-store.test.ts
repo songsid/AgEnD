@@ -93,3 +93,43 @@ it("malformed boot proof cannot clear a held runtime lock",()=>{
  expect(()=>store.lock("new",["a".repeat(64)] as never)).toThrow("Invalid Windows boot proof");
  expect(JSON.parse(readFileSync(file,"utf8")).bootId).toBe("old");
 });
+
+describe("jobs belong to the machine they ran for", () => {
+  const A = "11111111-2222-3333-4444-555555555555", B = "99999999-2222-3333-4444-555555555555";
+  const settled = (store: RuntimeClientStore, value: WindowsCliTask) => { store.accept(value, digest); store.update({ ...value, status: "completed", finishedAt: 200, outcomeConfirmed: true }); };
+  it("drops settled jobs of another pairing so they are never replayed to a server that did not issue them, and records the new owner", () => {
+    const directory = home(), store = new RuntimeClientStore(directory), value = task();
+    store.adoptMachine(A); settled(store, value);
+    store.adoptMachine(A); expect(store.list()).toHaveLength(1);
+    store.adoptMachine(B);
+    expect(new RuntimeClientStore(directory).list()).toEqual([]);
+    expect(JSON.parse(readFileSync(join(directory, "jobs.json"), "utf8")).machineId).toBe(B);
+  });
+  it("leaves an ownerless ledger unstamped when connecting, so another server's jobs are never claimed as this one's", () => {
+    const directory = home(), store = new RuntimeClientStore(directory); settled(store, task());
+    store.adoptMachine(A);
+    expect(JSON.parse(readFileSync(join(directory, "jobs.json"), "utf8")).machineId).toBeUndefined();
+    store.adoptMachine(B);
+    expect(new RuntimeClientStore(directory).list()).toHaveLength(1);
+    const empty = home(), fresh = new RuntimeClientStore(empty); fresh.adoptMachine(A);
+    expect(JSON.parse(readFileSync(join(empty, "jobs.json"), "utf8")).machineId).toBe(A);
+  });
+  it("assertCanPair refuses only while an unsettled job is recorded", () => {
+    const store = new RuntimeClientStore(home()), value = task();
+    expect(() => store.assertCanPair()).not.toThrow();
+    store.accept(value, digest); expect(() => store.assertCanPair()).toThrow(/pairing code is still unused/);
+    store.update({ ...value, status: "completed", finishedAt: 200, outcomeConfirmed: true }); expect(() => store.assertCanPair()).not.toThrow();
+  });
+  it("keeps an older ledger without an owner when connecting, but clears it for a brand-new pairing", () => {
+    const directory = home(), store = new RuntimeClientStore(directory); settled(store, task());
+    store.adoptMachine(A); expect(store.list()).toHaveLength(1);
+    const other = home(), fresh = new RuntimeClientStore(other); settled(fresh, task());
+    fresh.adoptMachine(B, true); expect(fresh.list()).toEqual([]);
+  });
+  it("refuses, without discarding it, an unsettled job recorded for another pairing", () => {
+    const directory = home(), store = new RuntimeClientStore(directory), value = task();
+    store.adoptMachine(A); store.accept(value, digest);
+    expect(() => store.adoptMachine(B)).toThrow(/different AgEnD pairing.*jobs.json/);
+    expect(store.get(value.id)).not.toBeNull();
+  });
+});

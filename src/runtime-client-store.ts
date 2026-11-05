@@ -20,7 +20,7 @@ const ID = /^[A-Za-z0-9-]{16,80}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 export interface RuntimeCredentials { server: string; machineId: string; credential: string; name: string; pendingCredential?: string }
 export interface RuntimeStoredJob { digest: string; seq: number; task: WindowsCliTask; uncertain: boolean }
-interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string>; usedAt?: Record<string, number> }
+interface Ledger { version: 1; jobs: Record<string, RuntimeStoredJob>; used: Record<string, string>; usedAt?: Record<string, number>; /** Machine these jobs were run for; a job of another pairing is unknown to this server and would be rejected. */ machineId?: string }
 
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function canonical(value: unknown): string {
@@ -63,6 +63,30 @@ export class RuntimeClientStore {
     privateDirectory(directory); this.file = join(directory, "jobs.json");
     this.data = existsSync(this.file) ? this.validate(readPrivate(this.file)) : { version: 1, jobs: {}, used: {} };
   }
+  private unsettled(): boolean { return this.blocked() || Object.values(this.data.jobs).some(job => job.task.outcomeConfirmed === false); }
+  private ledgerConflict(tail: string): Error {
+    return new Error(`This profile (${this.directory}) still has an active or unconfirmed execution recorded for a different AgEnD pairing, and AgEnD would reject it. Check that no CLI process from it is left running, then delete jobs.json in that folder. ${tail}`);
+  }
+  /** Run before a pairing code is spent: a one-time credential must never be issued into a profile that cannot take it. */
+  assertCanPair(): void { if (this.unsettled()) throw this.ledgerConflict("Nothing was paired and your pairing code is still unused; run connect-agend.bat again before the code expires."); }
+  /**
+   * The ledger is replayed to AgEnD on every connect, and AgEnD closes the connection for a job it did not issue to this machine, so jobs are
+   * tied to the machine they ran for. Called after acquiring the profile lock, before recoverInterrupted. When the profile now belongs to a
+   * different machine than the ledger's owner, settled jobs of the old pairing are dropped; an unsettled one is never discarded silently.
+   * A ledger with no recorded owner (older profile) cannot be attributed to anyone: when connecting it is left exactly as it is (and unstamped,
+   * unless it is empty), because stamping it would claim another server's jobs as this one's. Only a brand-new pairing (`pairing: true`) proves
+   * every earlier job belongs to some other machine, so that clears an ownerless ledger too.
+   */
+  adoptMachine(machineId: string, pairing = false): void {
+    const owner = this.data.machineId;
+    if (owner === machineId) return;
+    if (owner === undefined && !pairing && (Object.keys(this.data.jobs).length || Object.keys(this.data.used).length)) return;
+    if (owner !== undefined || pairing) {
+      if (this.unsettled()) throw this.ledgerConflict("No new pairing code is needed; connect again afterwards.");
+      this.data.jobs = {}; this.data.used = {}; delete this.data.usedAt;
+    }
+    this.data.machineId = machineId; this.save();
+  }
   /** Called only after acquiring the profile lock: reading status must not interrupt a live runtime. */
   recoverInterrupted(): void {
     let changed = false;
@@ -80,6 +104,7 @@ export class RuntimeClientStore {
     if (!object(raw) || raw.version !== 1 || !object(raw.jobs) || !object(raw.used)
       || Object.keys(raw.jobs).length > MAX_JOBS || Object.keys(raw.used).length > MAX_IDS) throw new Error("Invalid runtime job ledger");
     for (const [id, digest] of Object.entries(raw.used)) if (!ID.test(id) || typeof digest !== "string" || !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid runtime job identity");
+    if (raw.machineId !== undefined && (typeof raw.machineId !== "string" || !UUID.test(raw.machineId))) throw new Error("Invalid runtime job ledger owner");
     if (raw.usedAt !== undefined && (!object(raw.usedAt) || Object.entries(raw.usedAt).some(([id, at]) => !Object.hasOwn(raw.used as object, id) || typeof at !== "number" || !Number.isFinite(at)))) throw new Error("Invalid runtime job identity times");
     for (const [id, value] of Object.entries(raw.jobs)) {
       if (!ID.test(id) || !object(value) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1
@@ -190,16 +215,27 @@ export class RuntimeClientStore {
     atomic(join(this.directory, "connection.json"), value);
   }
   forgetCredentials(): void { const file = join(this.directory, "connection.json"); if (existsSync(file)) unlinkSync(file); }
-  lock(bootId: string, systemBootId?: string): () => void {
+  /** PID recorded in the profile lock, if any; the lock is neither created nor removed. */
+  lockHolder(): number | undefined {
+    try { const lock = readPrivate(join(this.directory, "runtime.lock")); return object(lock) && Number.isSafeInteger(lock.pid) && (lock.pid as number) > 0 ? lock.pid as number : undefined; }
+    catch { return undefined; }
+  }
+  /**
+   * `notRuntimePid` is a PID the caller has positively verified is not an AgEnD Runtime process (its PID was reused by another program).
+   * A lock held by any other PID that cannot be proven gone still refuses, so a running Runtime is never unlocked from here.
+   */
+  lock(bootId: string, systemBootId?: string, notRuntimePid?: number): () => void {
     if (systemBootId !== undefined && (typeof systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(systemBootId))) throw Error("Invalid Windows boot proof");
     const path = join(this.directory, "runtime.lock");
     if (existsSync(path)) {
       const old = readPrivate(path);
       if (!object(old) || !Number.isSafeInteger(old.pid) || (old.pid as number) <= 0) throw new Error("Invalid runtime lock; inspect it before restarting");
       if (old.systemBootId !== undefined && (typeof old.systemBootId !== "string" || !/^[a-f0-9]{64}$/.test(old.systemBootId))) throw Error("Invalid runtime boot proof");
-      let alive = !(systemBootId && old.systemBootId && systemBootId !== old.systemBootId);
-      try { if (alive) process.kill(old.pid as number, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") alive = false; }
-      if (alive) throw new Error("Another runtime already uses this profile");
+      let alive = !(systemBootId && old.systemBootId && systemBootId !== old.systemBootId) && old.pid !== notRuntimePid, denied = false;
+      try { if (alive) process.kill(old.pid as number, 0); } catch (error) { const code = (error as NodeJS.ErrnoException).code; if (code === "ESRCH") alive = false; else denied = code === "EPERM"; }
+      if (alive) throw new Error(`Another runtime already uses this profile (process ${old.pid}${denied ? ", which this Windows user is not allowed to inspect" : ""}). `
+        + `Close its window, or end that process in Task Manager if it is a node.exe running runtime-cli.js, then try again. `
+        + `Only if you have confirmed no AgEnD Runtime is running (the number may have been reused after a restart), delete ${path} and try again.`);
       unlinkSync(path);
     }
     writeFileSync(path, JSON.stringify({ pid: process.pid, bootId, ...(systemBootId ? {systemBootId} : {}) }), { flag: "wx", mode: 0o600 });

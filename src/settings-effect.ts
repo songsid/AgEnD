@@ -207,7 +207,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
       try { draft = parseNativeInstanceCreate(payload).input;target=draft.native_adapter==="pane"?nativePaneTopicTarget(cfg,draft.channel_id):null; }
       catch { throw new SettingsConfirmationError(400, "invalid_native_instance"); }
       return { diff: scoped(settingsChangeDiff({}, { new_instance: {...draft,...(target?{topic_destination:target}:{})} }, { operation, force: true }),
-        { connections: target?[target.id]:[], primaryGeneral: false, unknown: false }) };
+        { connections: target?[target.id]:[], primaryGeneral: !target, unknown: false }) };
     }
     const name = payload.topic_name ?? (typeof payload.directory === "string" ? basename(payload.directory) : null);
     if (typeof name !== "string" || !name) throw new SettingsConfirmationError(400, "invalid_instance_name");

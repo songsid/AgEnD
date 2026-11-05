@@ -12,7 +12,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
-import { backendOptions, BACKENDS } from "/ui/js/settings-model.js";
+import { backendOptions, BACKENDS, REMOVED_BACKEND_REPLACEMENTS, removedBackendReplacement } from "/ui/js/settings-model.js";
+import { REMOVED_BACKENDS } from "../src/backend/removed.js";
 
 interface Sent { method: string; path: string; body: any; headers: Record<string, string> }
 interface World { fleet: any; classic: any; instances: Record<string, any>; connections: any[]; providerSecrets: any[] }
@@ -87,24 +88,33 @@ describe("the backend picker keeps a value it does not offer", () => {
     expect(backendOptions("codex").some((o: any) => o.unavailable)).toBe(false);
   });
 
-  it("rendered: a removed backend is the first option and labelled as removed; an offered one is selected from the list", async () => {
+  it("rendered: the agent editor has no backend picker; the CLI is changed from the runtime section", async () => {
     w.instances = { worker: { status: "running" } };
     w.fleet = { defaults: {}, instances: { worker: { working_directory: "/w", channel_id: "dc", backend: "gemini-cli" } }, channels: [{ id: "dc", type: "discord", access: { mode: "locked", allowed_users: [] } }] };
     await mountSettings("agents");
     await click(button("Settings"));
-    const picker = p.root.querySelector("#ag-be")!;
-    expect(picker.value).toBe("gemini-cli");
-    expect(optionValues(picker)).toEqual(["gemini-cli", ...BACKENDS]);
-    expect(picker.querySelectorAll("option")[0]!.textContent).toBe("gemini-cli (removed — choose another backend)");
-    expect(picker.querySelectorAll("option").slice(1).some((o: any) => o.textContent.includes("removed"))).toBe(false);
-    // Offered ones: the list is exactly the backends, with no extra entry.
-    await click(button("Done"));
-    sent = [];
-    w.fleet.instances.worker.backend = "codex";
-    await mountSettings("agents");
-    await click(button("Settings"));
-    expect(p.root.querySelector("#ag-be")!.value).toBe("codex");
-    expect(optionValues(p.root.querySelector("#ag-be"))).toEqual(BACKENDS);
+    // The editor no longer carries a backend picker: the CLI is changed from "Change runtime / CLI", which offers only backends that are installed.
+    expect(p.root.querySelector("#ag-be")).toBeNull();
+    // …but the removed backend is still said to be removed — in the Runtime section, not as a bare name …
+    const section = p.root.querySelector(".agent-runtime-settings")!;
+    expect(section.textContent).toContain("gemini-cli (removed — choose another backend)");
+    expect(section.querySelector(".agent-runtime-removed")).not.toBeNull();
+    // … and in the change dialog, which explains why "Next" is off and points to the replacement CLI.
+    answer = (method, path) => method === "GET" && path === "/ui/instances/worker/runtime"
+      ? { body: { runtime: "wsl", backend: "gemini-cli", revision: 1, directory: "/w", model: "", sandbox: "read-only", adapter: "exec" } } : succeed(method, path);
+    await click(button("Change runtime / CLI"));
+    await settle(8);
+    const dialog = p.root.querySelectorAll("dialog").find((d: any) => d.textContent.includes("Change runtime and CLI"))!;
+    expect(dialog.textContent).toContain("gemini-cli was removed from AgEnD");
+    expect(dialog.textContent).toContain("antigravity is its replacement");
+    expect(buttons("Next", dialog)[0].disabled).toBe(true);
+  });
+
+  it("the Runtime section's list of removed backends is the server's (src/backend/removed.ts)", () => {
+    expect(REMOVED_BACKEND_REPLACEMENTS).toEqual(Object.fromEntries(Object.entries(REMOVED_BACKENDS).map(([name, { replacement }]) => [name, replacement])));
+    expect(removedBackendReplacement("gemini-cli")).toBe("antigravity");
+    expect(removedBackendReplacement("codex")).toBeNull();
+    expect(removedBackendReplacement(undefined)).toBeNull();
   });
 
   it("fleet defaults: an unrelated edit leaves `backend` out of the defaults PATCH", async () => {
@@ -127,7 +137,7 @@ describe("the agent editor (#1280 review): editing only the description of a gem
     w.fleet = { defaults: {}, instances: { worker: { working_directory: "/w", channel_id: "dc", backend: "gemini-cli", description: "old desc" } }, channels: [{ id: "dc", type: "discord", access: { mode: "locked", allowed_users: [] } }] };
     await mountSettings("agents");
     await click(button("Settings"));
-    expect(p.root.querySelector("#ag-be")!.value).toBe("gemini-cli");
+    expect(p.root.querySelector("#ag-be")).toBeNull();
     const desc = p.root.querySelector("#ag-desc")!;
     expect(desc.value).toBe("old desc");
     await type(desc, "new desc");

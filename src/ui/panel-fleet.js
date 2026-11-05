@@ -429,6 +429,8 @@ export function CreateInstanceDialog({ onClose }) {
   const [machineId,setMachineId] = useState("");
   const [nativeAdapter,setNativeAdapter]=useState("exec");
   const machineCatalog = useRuntimeCatalog();
+  // A computer paired a moment ago must show up: ask for a fresh list whenever the dialog opens (the hook then keeps polling).
+  useEffect(() => { void machineCatalog.refresh(); },[]);
   const machines = machineCatalog.data?.machines || [];
   const machine = machines.find(item => item.id === machineId);
   const [step,setStep] = useState(1), [created,setCreated] = useState(null);
@@ -524,9 +526,9 @@ export function CreateInstanceDialog({ onClose }) {
     <div class="agent-create-wizard" data-step=${step}>
     <ol class="agent-create-steps" aria-label=${tr("progress")}>${["runtimeStep","configureStep","doneStep"].map((label,index) => html`<li key=${label} class=${index+1 === step ? "current" : index+1 < step ? "complete" : ""} aria-current=${index+1 === step ? "step" : undefined}><span class="agent-create-step-number">${index+1 < step ? html`<${Icon} name="check" size=${13} />` : index+1}</span><span>${tr(label)}</span></li>`)}</ol>
     ${step === 1 ? html`<section class="agent-create-stage"><h3 ref=${heading} tabindex="-1">${tr("where")}</h3><p class="note">${tr("runtimeLead")}</p>
-      <${RuntimePicker} value=${runtime} onChange=${chooseRuntime} windowsEnabled=${windowsCli} legend=${tr("environment")} machineId=${machineId} machines=${machines} onMachineChange=${id => chooseRuntime("windows",id)} />
+      <${RuntimePicker} value=${runtime} onChange=${chooseRuntime} windowsEnabled=${windowsCli} legend=${tr("environment")} machineId=${machineId} machines=${machines} onMachineChange=${id => chooseRuntime("windows",id)} onRefresh=${machineCatalog.refresh} loaded=${!!machineCatalog.data && !machineCatalog.error} />
       ${machineCatalog.loading && !machineCatalog.data ? html`<p class="note" role="status">${tr("machineLoading")}</p>` : null}
-      ${machineCatalog.error ? html`<p class="note" role="alert">${tr("machineFailed")} <button type="button" class="btn btn-ghost btn-sm" onClick=${machineCatalog.refresh}>${tr("machineRetry")}</button></p>` : null}
+      ${machineCatalog.error ? html`<p class="note" role="alert">${tr("machineFailed")}</p>` : null}
       <a class="note runtime-manage-link" href="/settings/runtimes">${tr("manage")}</a>
       ${runtime ? html`<div class="agent-create-cli">${backendField}</div>` : null}
     </section>` : step === 2 ? html`<section class="agent-create-stage"><h3 ref=${heading} tabindex="-1">${tr("configureStep")}</h3><p class="note">${tr("configureLead")}</p>

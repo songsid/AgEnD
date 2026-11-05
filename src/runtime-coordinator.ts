@@ -7,12 +7,12 @@ import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer, type RawData } from "ws";
 import { readBoundedWebBody } from "./web-body.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { validateNativeTask } from "./windows-cli-worker.js";
+import { validateNativeTask, type NativeTaskInput } from "./windows-cli-worker.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
-import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash,
+import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
 
@@ -23,6 +23,8 @@ const secret = () => randomBytes(32).toString("hex");
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const equal = (value: string, digest: string) => /^[a-f0-9]{64}$/i.test(digest) && timingSafeEqual(Buffer.from(hash(value), "hex"), Buffer.from(digest, "hex"));
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+/** A deliberate validation failure whose static message is safe to show the runtime; every other error (I/O, internal) is not. */
+class RuntimeProtocolError extends Error {}
 const text = (v: unknown, max: number): v is string => typeof v === "string" && v.length > 0 && v.length <= max && !/[\0\r\n]/.test(v);
 const terminal = (task: WindowsCliTask) => !!task.finishedAt && ["completed", "failed", "cancelled"].includes(task.status);
 const loopback = (address: string | undefined) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
@@ -37,7 +39,7 @@ function stable(value: unknown, depth = 0): string {
   return JSON.stringify(value) ?? "null";
 }
 function inventory(value: unknown): WindowsCliProbe {
-  if (!record(value) || typeof value.home !== "string" || value.home.length > 1024 || !Array.isArray(value.clis) || value.clis.length > 16) throw Error("Invalid runtime inventory");
+  if (!record(value) || typeof value.home !== "string" || value.home.length > 1024 || !Array.isArray(value.clis) || value.clis.length > 16) throw new RuntimeProtocolError("Invalid runtime inventory");
   const seen = new Set<string>();
   for (const row of value.clis) {
     if (!record(row) || !isNativeProviderId(row.id) || seen.has(row.id) || !record(row.supports)
@@ -45,14 +47,19 @@ function inventory(value: unknown): WindowsCliProbe {
       || ![true, false, null].includes(row.authenticated as boolean | null)
       || !(row.path === null || text(row.path, 2048)) || !(row.version === null || text(row.version, 256))
       || typeof row.permissionNote !== "string" || row.permissionNote.length > 2048
-      || !Array.isArray(row.models) || row.models.length > 256) throw Error("Invalid runtime CLI inventory");
+      || !Array.isArray(row.models) || row.models.length > 256) throw new RuntimeProtocolError("Invalid runtime CLI inventory");
     for (const model of row.models) if (!record(model) || !text(model.id, 256) || model.name !== undefined && !text(model.name, 256)
-      || model.description !== undefined && (typeof model.description !== "string" || model.description.length > 2048)) throw Error("Invalid runtime model inventory");
-    if (Object.values(row.supports).some(v => typeof v !== "boolean")) throw Error("Invalid runtime capabilities");
+      || model.description !== undefined && (typeof model.description !== "string" || model.description.length > 2048)) throw new RuntimeProtocolError("Invalid runtime model inventory");
+    if (Object.values(row.supports).some(v => typeof v !== "boolean")) throw new RuntimeProtocolError("Invalid runtime capabilities");
     seen.add(row.id);
   }
-  if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw Error("Runtime inventory is too large");
+  if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw new RuntimeProtocolError("Runtime inventory is too large");
   return structuredClone(value) as unknown as WindowsCliProbe;
+}
+function machineView(machine: RuntimeMachine): RuntimeMachine {
+  return { ...structuredClone(machine), runtimeCompatibility: machine.runtimeInfo
+    ? machine.runtimeInfo.protocolVersions.includes(RUNTIME_PROTOCOL_VERSION) ? "compatible" : "incompatible"
+    : machine.bootId ? "legacy" : "unknown" };
 }
 interface MachineRecord { machine: RuntimeMachine; credentialHash?: string; claimHash?: string; claimExpiresAt?: number }
 interface PairRecord { id: string; codeHash: string; expiresAt: number }
@@ -88,6 +95,8 @@ export interface RuntimeCoordinatorOptions {
   /** Injectable clock for pairing expiry and offline tests. */
   now?(): number;
   requestTimeoutMs?: number;
+  /** Called when AgEnD itself closes a runtime connection with a policy code, so the cause reaches the daemon log. */
+  warn?(fields: { machineId: string; code: number; reason: string; detail?: string }, message: string): void;
 }
 export type { RuntimeMachine } from "./runtime-protocol.js";
 
@@ -134,6 +143,7 @@ export class RuntimeCoordinator {
       if (row.claimHash) row.machine.pairingFingerprint = runtimeFingerprintFromHash(row.claimHash);
     }
     for (const command of this.state.commands) if (command.state === "pending") command.state = interrupted(command);
+    for (const row of this.state.machines) if (row.machine.runtimeInfo !== undefined) row.machine.runtimeInfo = parseRuntimeInfo(row.machine.runtimeInfo);
     this.save();
     this.heartbeat = setInterval(() => {
       for (const connection of this.connections.values()) {
@@ -161,8 +171,8 @@ export class RuntimeCoordinator {
     for (const listener of this.listeners) { try { listener(structuredClone(event)); } catch { /* Observer isolation. */ } }
   }
   private entry(id: string): MachineRecord { const row = this.state.machines.find(v => v.machine.id === id); if (!row) throw Error("Runtime machine not found"); return row; }
-  listMachines(): RuntimeMachine[] { return this.state.machines.map(row => structuredClone(row.machine)); }
-  machine(id: string): RuntimeMachine | null { const row = this.state.machines.find(v => v.machine.id === id); return row ? structuredClone(row.machine) : null; }
+  listMachines(): RuntimeMachine[] { return this.state.machines.map(row => machineView(row.machine)); }
+  machine(id: string): RuntimeMachine | null { const row = this.state.machines.find(v => v.machine.id === id); return row ? machineView(row.machine) : null; }
   subscribe(listener: (event: RuntimeCoordinatorEvent) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
   createPairing(): RuntimePairing {
     this.state.pairings = this.state.pairings.filter(row => row.expiresAt > this.now());
@@ -205,7 +215,7 @@ export class RuntimeCoordinator {
   }
   revoke(id: string): RuntimeMachine {
     const row = this.entry(id); row.machine.status = "revoked"; delete row.credentialHash; delete row.claimHash; delete row.claimExpiresAt;
-    this.save(); const connection = this.connections.get(id); if (connection) { this.connections.delete(id); this.rejectPending(connection, "Runtime machine was revoked"); connection.ws.close(1008, "Machine revoked"); }
+    this.save(); const connection = this.connections.get(id); if (connection) { this.connections.delete(id); this.rejectPending(connection, "Runtime machine was revoked"); this.options.warn?.({ machineId: id, code: 1008, reason: "Machine revoked" }, "Runtime connection closed because the machine was revoked"); connection.ws.close(1008, "Machine revoked"); }
     this.emit({ type: "machine", machineId: id }); return structuredClone(row.machine);
   }
   private credentialOwner(auth: unknown): MachineRecord | undefined {
@@ -292,12 +302,16 @@ export class RuntimeCoordinator {
   private current(connection: Connection): boolean { return !this.closed && this.connections.get(connection.machineId) === connection && this.entry(connection.machineId).machine.status !== "revoked"; }
   private attach(ws: WebSocket, row: MachineRecord): void {
     const old = this.connections.get(row.machine.id);
-    if (old) { this.rejectPending(old, "Runtime connection was replaced; execution must be reconciled"); old.ws.close(1008, "Connection replaced"); }
+    if (old) { this.rejectPending(old, "Runtime connection was replaced; execution must be reconciled"); this.options.warn?.({ machineId: row.machine.id, code: 1008, reason: "Connection replaced" }, "Runtime connection closed because the same machine credential connected again"); old.ws.close(1008, "Connection replaced"); }
     row.machine.generation++; row.machine.status = "offline"; this.save();
     const connection: Connection = { ws, machineId: row.machine.id, generation: row.machine.generation, ready: false, alive: true, helloTimer: setTimeout(() => ws.close(1008, "Runtime hello required"), 10_000) };
     connection.helloTimer.unref(); this.connections.set(row.machine.id, connection);
     ws.on("pong", () => { connection.alive = true; if (this.current(connection)) row.machine.lastSeenAt = this.now(); });
-    ws.on("message", (data, binary) => { if (binary) { ws.close(1008, "Runtime requires JSON text frames"); return; } void this.message(connection, data).catch(() => ws.close(1008, "Invalid runtime message")); });
+    ws.on("message", (data, binary) => { if (binary) { ws.close(1008, "Runtime requires JSON text frames"); return; } void this.message(connection, data).catch(error => {
+      // The cause (a static validation message) goes to the log and, trimmed, to the runtime so its terminal can show it.
+      const reason = error instanceof RuntimeProtocolError ? `Invalid runtime message: ${error.message}`.replace(/[^ -~]/g, "?").slice(0, 120) : "Invalid runtime message";
+      this.options.warn?.({ machineId: connection.machineId, code: 1008, reason, detail: error instanceof Error ? error.message : String(error) }, "Runtime connection closed because of an invalid runtime message"); ws.close(1008, reason);
+    }); });
     ws.on("error", () => { /* close owns disconnect handling */ });
     ws.on("close", () => {
       clearTimeout(connection.helloTimer);
@@ -327,7 +341,7 @@ export class RuntimeCoordinator {
     if (changed) this.save();
   }
   private validateTask(command: CommandRecord, value: unknown): WindowsCliTask {
-    if (command.operation !== "run" || !record(command.payload) || !record(command.payload.task) || !record(value)) throw Error("Unexpected runtime task");
+    if (command.operation !== "run" || !record(command.payload) || !record(command.payload.task) || !record(value)) throw new RuntimeProtocolError("Unexpected runtime task");
     const input = command.payload.task;
     if (value.id !== input.requestId || value.cli !== input.cli || value.cwd !== input.cwd || value.sandbox !== input.sandbox || (value.model ?? "") !== (input.model ?? "")
       || !["starting", "running", "cancelling", "completed", "failed", "cancelled"].includes(String(value.status))
@@ -337,7 +351,7 @@ export class RuntimeCoordinator {
       || value.error !== undefined && (typeof value.error !== "string" || value.error.length > 8192)
       || value.threadId !== undefined && !text(value.threadId, 256)
       || value.threadId !== undefined && command.payload.resumeSessionId !== undefined && value.threadId !== command.payload.resumeSessionId
-      || value.outcomeConfirmed !== undefined && typeof value.outcomeConfirmed !== "boolean") throw Error("Invalid runtime task snapshot");
+      || value.outcomeConfirmed !== undefined && typeof value.outcomeConfirmed !== "boolean") throw new RuntimeProtocolError("Invalid runtime task snapshot");
     return { id: value.id as string, cli: value.cli as WindowsCliTask["cli"], cwd: value.cwd as string, sandbox: value.sandbox as WindowsCliTask["sandbox"], ...(value.model ? { model: value.model as string } : {}),
       status: value.status as WindowsCliTask["status"], startedAt: value.startedAt, output: value.output,
       ...(value.finishedAt !== undefined ? { finishedAt: value.finishedAt as number } : {}), ...(value.error ? { error: value.error as string } : {}), ...(value.threadId ? { threadId: value.threadId as string } : {}), ...(value.outcomeConfirmed !== undefined ? { outcomeConfirmed: value.outcomeConfirmed as boolean } : {}) };
@@ -345,12 +359,14 @@ export class RuntimeCoordinator {
   private async message(connection: Connection, raw: RawData): Promise<void> {
     if (!this.current(connection)) return;
     const value: unknown = JSON.parse(raw.toString());
-    if (!record(value) || value.v !== 1 || !text(value.type, 32)) throw Error("Invalid runtime frame");
+    if (!record(value) || value.v !== 1 || !text(value.type, 32)) throw new RuntimeProtocolError("Invalid runtime frame");
     const row = this.entry(connection.machineId); connection.alive = true;
     if (!connection.ready) {
-      if (value.type !== "hello" || !text(value.bootId, 128)) throw Error("Runtime hello required");
+      if (value.type !== "hello" || !text(value.bootId, 128)) throw new RuntimeProtocolError("Runtime hello required");
+      const runtimeInfo = parseRuntimeInfo(value.runtimeInfo);
       connection.ready = true; connection.bootId = value.bootId; clearTimeout(connection.helloTimer);
       row.machine.bootId = value.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
+      if (runtimeInfo) row.machine.runtimeInfo = runtimeInfo; else delete row.machine.runtimeInfo;
       if (value.paneProtocol === 1) row.machine.paneProtocol = 1; else delete row.machine.paneProtocol;
       if (value.inventory !== undefined) { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); }
       this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId });
@@ -365,16 +381,16 @@ export class RuntimeCoordinator {
     }
     row.machine.lastSeenAt = this.now();
     if (value.type === "pane.tool.request") {
-      if (row.machine.paneProtocol !== 1 || Object.keys(value).some(key => !["v", "type", "id", "body"].includes(key)) || !UUID.test(String(value.id))) throw Error("Invalid pane MCP transport request");
+      if (row.machine.paneProtocol !== 1 || Object.keys(value).some(key => !["v", "type", "id", "body"].includes(key)) || !UUID.test(String(value.id))) throw new RuntimeProtocolError("Invalid pane MCP transport request");
       const body = validatePaneMcpBody(value.body), id = value.id as string;
       const key = `${connection.machineId}:${connection.generation}:${id}`;
-      if (this.paneToolPending.size >= 128 || this.paneToolPending.has(key)) throw Error("Pane MCP transport backlog or duplicate request");
+      if (this.paneToolPending.size >= 128 || this.paneToolPending.has(key)) throw new RuntimeProtocolError("Pane MCP transport backlog or duplicate request");
       let active = true;
       const current = (): boolean => active && !this.closed && this.current(connection) && connection.ready && connection.ws.readyState === WebSocket.OPEN;
       this.paneToolPending.add(key);
       let timer: NodeJS.Timeout | undefined;
       try {
-        if (!current() || !this.options.handlePaneMcp) throw Error("Pane MCP scope unavailable");
+        if (!current() || !this.options.handlePaneMcp) throw new RuntimeProtocolError("Pane MCP scope unavailable");
         const result = await Promise.race([this.options.handlePaneMcp(connection.machineId, body, current), new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => { active = false; reject(Error("Pane MCP deadline")); }, 80_000); timer.unref();
         })]);
@@ -384,16 +400,16 @@ export class RuntimeCoordinator {
       return;
     }
     if (value.type === "pane.output") {
-      if (row.machine.paneProtocol !== 1) throw Error("Pane protocol was not negotiated");
+      if (row.machine.paneProtocol !== 1) throw new RuntimeProtocolError("Pane protocol was not negotiated");
       const snapshot = validateRuntimePaneSnapshot(value.snapshot);
       this.emit({ type: "pane", machineId: connection.machineId, pane: snapshot });
       return;
     }
     if (value.type === "pane.response") {
-      if (row.machine.paneProtocol !== 1 || !UUID.test(String(value.id)) || typeof value.ok !== "boolean") throw Error("Invalid pane transport response");
+      if (row.machine.paneProtocol !== 1 || !UUID.test(String(value.id)) || typeof value.ok !== "boolean") throw new RuntimeProtocolError("Invalid pane transport response");
       const pending = this.panePending.get(value.id as string);
       if (!pending) return; // A late reply proves nothing and never replays a command.
-      if (pending.machineId !== connection.machineId || pending.generation !== connection.generation) throw Error("Pane response belongs to another connection");
+      if (pending.machineId !== connection.machineId || pending.generation !== connection.generation) throw new RuntimeProtocolError("Pane response belongs to another connection");
       this.panePending.delete(value.id as string); clearTimeout(pending.timer);
       if (value.ok) pending.resolve(value.result);
       else pending.reject(Error(typeof value.error === "string" ? value.error.slice(0, 1000) : "Pane operation failed"));
@@ -401,26 +417,26 @@ export class RuntimeCoordinator {
     }
     if (value.type === "inventory") { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); this.save(); this.emit({ type: "machine", machineId: connection.machineId }); return; }
     if (value.type === "task") {
-      if (!record(value.task) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1) throw Error("Invalid runtime task event");
+      if (!record(value.task) || !Number.isSafeInteger(value.seq) || (value.seq as number) < 1) throw new RuntimeProtocolError("Invalid runtime task event");
       const taskValue = value.task;
       const command = this.state.commands.find(command => command.id === taskValue.id && command.machineId === connection.machineId && command.operation === "run");
       if (!command) {
         // #2945 review: a reconnecting runtime republishes what it retained; a run already settled and compacted here
         // is acknowledged by its tombstone and changes nothing. An unknown id, or another machine's, still closes.
         if (this.tombstoned(connection.machineId, taskValue.id)) return;
-        throw Error("Runtime task does not belong to this machine");
+        throw new RuntimeProtocolError("Runtime task does not belong to this machine");
       }
       const task = this.validateTask(command, value.task);
       if ((value.seq as number) <= command.seq) return;
-      if (command.task && terminal(command.task) && !terminal(task)) throw Error("Runtime task cannot restart");
+      if (command.task && terminal(command.task) && !terminal(task)) throw new RuntimeProtocolError("Runtime task cannot restart");
       command.seq = value.seq as number; command.task = task; command.state = "accepted"; this.save(); this.emit({ type: "task", machineId: connection.machineId, task }); return;
     }
     if (value.type === "response") {
-      if (!text(value.id, 128) || typeof value.ok !== "boolean") throw Error("Invalid runtime response");
+      if (!text(value.id, 128) || typeof value.ok !== "boolean") throw new RuntimeProtocolError("Invalid runtime response");
       const pending = this.pending.get(value.id), command = this.state.commands.find(command => command.id === value.id);
       if (!command || command.machineId !== connection.machineId) {
         if (!command && this.tombstoned(connection.machineId, value.id)) return;
-        throw Error("Runtime response does not belong to this machine");
+        throw new RuntimeProtocolError("Runtime response does not belong to this machine");
       }
       if (!pending || pending.generation !== connection.generation) return;
       this.pending.delete(value.id); clearTimeout(pending.timer);
@@ -437,29 +453,29 @@ export class RuntimeCoordinator {
       return;
     }
     if (value.type === "tool.call") {
-      if (!text(value.id, 128) || !text(value.runId, 128)) throw Error("Invalid runtime tool call");
+      if (!text(value.id, 128) || !text(value.runId, 128)) throw new RuntimeProtocolError("Invalid runtime tool call");
       const command = this.state.commands.find(command => command.id === value.runId && command.machineId === connection.machineId && command.operation === "run");
       try {
-        if (!command || !record(command.payload) || !record(command.payload.mcp) || command.task && terminal(command.task) || !this.options.handleMcp) throw Error("Runtime tool call has no active turn");
+        if (!command || !record(command.payload) || !record(command.payload.mcp) || command.task && terminal(command.task) || !this.options.handleMcp) throw new RuntimeProtocolError("Runtime tool call has no active turn");
         const body = value.body;
         if (!record(body) || Object.keys(body).some(key => !["op", "method", "params", "callId"].includes(key))
-          || body.op !== "native-mcp" || !record(body.params) || Buffer.byteLength(JSON.stringify(body)) > 64 * 1024) throw Error("Invalid runtime MCP request");
+          || body.op !== "native-mcp" || !record(body.params) || Buffer.byteLength(JSON.stringify(body)) > 64 * 1024) throw new RuntimeProtocolError("Invalid runtime MCP request");
         if (body.method === "tools/list") {
-          if (Object.keys(body.params).length || body.callId !== undefined) throw Error("Invalid runtime MCP listing");
+          if (Object.keys(body.params).length || body.callId !== undefined) throw new RuntimeProtocolError("Invalid runtime MCP listing");
         } else if (body.method === "tools/call") {
           if (!text(body.callId, 128) || !/^[A-Za-z0-9._:-]+$/.test(body.callId)
             || Object.keys(body.params).some(key => !["name", "arguments"].includes(key)) || typeof body.params.name !== "string"
             || !Array.isArray(command.payload.mcp.tools) || !command.payload.mcp.tools.includes(body.params.name)
-            || body.params.arguments !== undefined && !record(body.params.arguments)) throw Error("Runtime MCP tool is outside this turn");
+            || body.params.arguments !== undefined && !record(body.params.arguments)) throw new RuntimeProtocolError("Runtime MCP tool is outside this turn");
           stable(body.params);
-        } else throw Error("Invalid runtime MCP operation");
+        } else throw new RuntimeProtocolError("Invalid runtime MCP operation");
         const result = await this.options.handleMcp(connection.machineId, value.runId, body);
         if (!this.current(connection)) return;
         this.send(connection, { v: 1, type: "tool.result", id: value.id, ok: true, result });
       } catch { if (this.current(connection)) this.send(connection, { v: 1, type: "tool.result", id: value.id, ok: false, error: "Runtime tool call was refused or its turn expired" }); }
       return;
     }
-    throw Error("Unknown runtime message");
+    throw new RuntimeProtocolError("Unknown runtime message");
   }
   private tombstoned(machineId: string, id: unknown): boolean {
     return typeof id === "string" && this.state.tombstones!.some(row => row.id === id && row.machineId === machineId);
@@ -490,6 +506,20 @@ export class RuntimeCoordinator {
   }
   task(id: string): WindowsCliTask | null { const task = this.state.commands.find(command => command.id === id && command.operation === "run")?.task; return task ? structuredClone(task) : null; }
   tasks(): Array<{ machineId: string; task: WindowsCliTask }> { return this.state.commands.flatMap(command => command.operation === "run" && command.task ? [{ machineId: command.machineId, task: structuredClone(command.task) }] : []); }
+  /** Include journaled sends whose acknowledgement is still missing, so reopening diagnostics cannot hide an uncertain run. */
+  diagnosticTasks(machineId: string): WindowsCliTask[] {
+    return this.state.commands.flatMap(command => {
+      if (command.operation !== "run" || command.machineId !== machineId) return [];
+      if (command.task) return [structuredClone(command.task)];
+      let input: NativeTaskInput;
+      try { input = validateNativeTask((command.payload as RuntimeRunPayload).task); } catch { return []; }
+      const uncertain = command.state === "uncertain", rejected = command.state === "failed";
+      return [{ id: command.id, cli: input.cli, cwd: input.cwd, sandbox: input.sandbox, ...(input.model ? { model: input.model } : {}),
+        startedAt: command.createdAt, status: uncertain || rejected ? "failed" as const : "starting" as const, output: "",
+        ...(rejected ? { outcomeConfirmed: true, error: command.error || "Runtime request failed" } : {}),
+        ...(uncertain ? { outcomeConfirmed: false, error: "Remote execution outcome is unconfirmed. Reconnect this runtime to reconcile before sending another task." } : {}) }];
+    }).sort((a, b) => b.startedAt - a.startedAt).slice(0, 20);
+  }
   hasActiveTask(machineId: string): boolean { return this.state.commands.some(command => command.machineId === machineId && command.operation === "run" && command.state !== "failed" && (!command.task || !terminal(command.task) || command.task.outcomeConfirmed === false)); }
   paneTransportEpoch(machineId: string): string | null {
     const connection = this.connections.get(machineId);

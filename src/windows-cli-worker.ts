@@ -5,7 +5,7 @@
 import { execFile, spawn } from "./child-process.js";
 import type { ChildProcess } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { homedir, hostname, tmpdir } from "node:os";
 import { dirname, join, resolve, win32 } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -291,9 +291,9 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
   };
   return { row, executable };
 }
-export async function probeNativeClis(options: NativeProbeOptions = {}): Promise<{ clis: NativeCliRow[]; home: string }> {
+export async function probeNativeClis(options: NativeProbeOptions = {}): Promise<{ clis: NativeCliRow[]; home: string; hostname: string }> {
   const results = await Promise.all(NATIVE_CLI_IDS.map(id => probeNativeCli(id, options, true)));
-  return { clis: results.map(result => result.row), home: homedir() };
+  return { clis: results.map(result => result.row), home: homedir(), hostname: hostname() };
 }
 
 async function workerMain(): Promise<void> {

@@ -65,6 +65,19 @@ async function prompt(r: ReturnType<typeof rig>) {
   return { entry, data };
 }
 
+it.each([false,true])("routes an ordinary %s remote Windows proposal to the primary General without giving a fallback admin authority",async remote=>{
+  const r=rig("discord"),effect=prepareSettingsEffect("POST","/ui/instances",{runtime:"windows",topic_name:"Remote helper",backend:"grok",sandbox:"workspace-write",...(remote?{machineId:"12345678-1234-4321-abcd-123456789013"}:{})},{config:r.fm.fleetConfig,classic:{}});
+  const apply=vi.fn(async(_current:()=>boolean,execution:any)=>execution.commit(()=>"created"));
+  const view=r.store.propose({session:"browser",key:"native-create",bytes:1,source:"web_session",section:effect.diff!.section,
+    requestedBy:"browser",fingerprint:effect.diff!.fingerprint,summary:effect.diff!.summary,affectedConnections:effect.diff!.affectedConnections,
+    authority:effect.diff!.authority,current:()=>true,unchanged:async()=>true,snapshot:()=>null,apply}).view;
+  const {entry,data}=await prompt(r);expect(entry.adapterId).toBe("a");
+  await r.any.dispatchAdapterCallback({...data,userId:"b-F"},"a",r.adapters[0]);
+  expect(apply).not.toHaveBeenCalled();expect(r.store.get(view.id,"browser")!.state).toBe("pending");
+  await r.any.dispatchAdapterCallback({...data,userId:"a-F"},"a",r.adapters[0]);
+  expect(apply).toHaveBeenCalledOnce();expect(r.store.get(view.id,"browser")!.state).toBe("applied");
+});
+
 describe.each(["telegram", "discord"] as const)("#1490 row11 %s: fallback never changes authority", platform => {
   it("a fallback bot's sole admin cannot confirm another existing connection", async () => {
     const r = rig(platform), p = propose(r, true), { entry, data } = await prompt(r);

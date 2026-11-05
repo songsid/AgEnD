@@ -18,6 +18,7 @@ import { viewStore } from "./view-roster-store.js";
 import { onPrefsChanged, prefInForce, prefsWritable, savePref } from "./app-prefs.js";
 import "./view-strings.js";
 import { themesShown, themesStore } from "./app-themes.js";
+import { machineName } from "./machine-name.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "./identity-color.js";
 
 /** view.* text with named values. */
@@ -145,7 +146,7 @@ export function instanceTooltip(it) {
   else lines.push(name);
   lines.push(line("tooltipBackend", backendLabel(it.backend)));
   if (it.runtime) lines.push(`Runtime: ${runtimeLabel(it.runtime)}`);
-  if (it.machine_id) lines.push(line("tooltipMachine",it.machine_name || it.machine_id));
+  if (it.machine_id) lines.push(line("tooltipMachine",machineName(it.machine_id,it.machine_name)));
   if (it.machine_id && it.machine_status !== "online") lines.push(tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline"));
   const src = (s) => (s === "instance" || s === "classic" ? tn("srcConfigured") : s === "fleet-default" ? tn("srcFleetDefault") : "");
   lines.push(line("tooltipModel", (modelText(it) || tn("tooltipUnavailable")) + src(it.model_source)));
@@ -630,7 +631,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           <span class="v-meta">${it.runtime === "windows" ? "Windows" : it.context_pct != null ? `${Math.round(it.context_pct)}%` : ""}</span></span>
         ${two ? html`<span class="inst-line inst-line2"><span class="inst-alt" title=${secondary || undefined}>${secondary || ""}</span>
           ${mins != null ? html`<span class=${`inst-when${fade > 0 ? " fresh" : ""}`} title=${tn("replyTitle", { time: new Date(Date.parse(it.last_reply)).toLocaleString() })}>${replyText(mins)}</span>` : null}</span>` : null}
-        ${it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:it.machine_name || it.machine_id})}><span class="inst-machine-name">${it.machine_name || it.machine_id}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
+        ${it.machine_id ? html`<span class=${`inst-machine${it.machine_status !== "online" ? " offline" : ""}`} title=${tn("tooltipMachine",{value:machineName(it.machine_id,it.machine_name)})}><span class="inst-machine-name">${machineName(it.machine_id,it.machine_name)}</span>${it.machine_status !== "online" ? html`<span class="inst-machine-status">${tn(it.machine_status === "revoked" ? "machineRevoked" : "machineOffline")}</span>` : null}</span>` : null}
         ${facet === "needs" ? html`<span class="inst-sub"><span class="badge-await" title=${waiting || t("app.approxNote")}>${t("app.needsYou")}</span></span>` : null}
         <span class="sr-only">${tn("tooltipBackend", { value: backendLabel(it.backend) })}</span></span>
     </a>${fav && editing && canStar ? html`<button type="button" class="icon-btn inst-move" aria-label=${tn("favUp", { name: label })}

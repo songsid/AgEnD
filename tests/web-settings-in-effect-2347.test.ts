@@ -104,9 +104,11 @@ describe("#2347 §10: an agent's inherited fields say what they inherit, and fro
     req.requestAgentSettings("web-dev");
     await open("agents", "web-dev");
     const dlg = p.root.querySelector("dialog");
-    expect([inheritedOf("ag-be"), inheritedOf("ag-auto"), inheritedOf("ag-hang"), inheritedOf("ag-tool_progress"), inheritedOf("ag-log_level")])
-      .toEqual(["Inherited: Codex · change in Agent defaults", "Inherited: 30 min · change in Agent defaults", "Inherited: 10 min default · change in Agent defaults",
+    expect([inheritedOf("ag-auto"), inheritedOf("ag-hang"), inheritedOf("ag-tool_progress"), inheritedOf("ag-log_level")])
+      .toEqual(["Inherited: 30 min · change in Agent defaults", "Inherited: 10 min default · change in Agent defaults",
         "Inherited: standard · change in Agent defaults", "Inherited: info default · change in Agent defaults"]);
+    // The CLI is chosen in the Runtime section now, which says where an inherited CLI comes from.
+    expect(text(p.root.querySelector(".agent-runtime-settings .s-inherited"))).toBe("Inherited: Codex · change in Agent defaults");
     const links = ["ag-auto", "ag-hang", "ag-log_level"].map((id) => p.root.querySelector(`#${id}`).closest(".field").querySelector(".s-inherited a").getAttribute("href"));
     expect(links).toEqual(["/settings/agent-defaults#g-auto", "/settings/agent-defaults#g-hang", "/settings/agent-defaults#g-ll"]);
     // The model's empty choice names the model it inherits.

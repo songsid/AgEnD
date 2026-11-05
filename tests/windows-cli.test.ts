@@ -151,6 +151,25 @@ describe("Windows CLI detection (M-2239 P1-2: only on an explicit refresh)", () 
     expect(await new WindowsCliBridge(launcher, file).probe()).toEqual(value);
     expect(spawn).not.toHaveBeenCalled();
   });
+  it("keeps the Windows worker's computer name across cached reads and a bridge restart", async () => {
+    const file = join(mkdtempSync(join(tmpdir(), "agend-windows-host-")), "inventory.json");
+    const service = new WindowsCliBridge(launcher, file), pending = service.probe({ force: true });
+    await Promise.resolve();
+    child.send({ type: "probe", ...result(), hostname: "  WINDOWS-DESK  " }); child.close();
+    expect(await pending).toMatchObject({ hostname: "WINDOWS-DESK" });
+    expect(await service.probe()).toMatchObject({ hostname: "WINDOWS-DESK" });
+    vi.mocked(spawn).mockClear();
+    expect(await new WindowsCliBridge(launcher, file).probe()).toMatchObject({ hostname: "WINDOWS-DESK" });
+    expect(spawn).not.toHaveBeenCalled();
+  });
+  it.each(["", " ", "DESK\nOTHER", "x".repeat(256), 7])("does not invent a computer name from invalid worker metadata %j", async hostname => {
+    const service = new WindowsCliBridge(launcher), pending = service.probe({ force: true });
+    await Promise.resolve(); child.send({ type: "probe", ...result(), hostname }); child.close();
+    const value = await pending;
+    expect(value).not.toHaveProperty("hostname");
+    expect(value.home).toBe("C:\\User");
+    expect(value.clis).toHaveLength(1);
+  });
   it("does not keep a failed detection; the previous one stays, and a retry can succeed", async () => {
     const service = new WindowsCliBridge(launcher), initial = service.probe({ force: true });
     await complete(child); const before = await initial;
