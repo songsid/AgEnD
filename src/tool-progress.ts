@@ -124,17 +124,17 @@ function isSearchCommand(cmd: string): boolean {
 }
 
 function labelShell(cmd: string, level: "standard" | "verbose"): string {
-  // A search, at every level: never its arguments, which no redactor can tell from an arbitrary secret. Hidden at
-  // standard (low signal, as before); the plain search line at verbose.
-  if (isSearchCommand(cmd)) return level === "verbose" ? "🔍 搜尋程式碼" : "";
+  // A search anywhere in the command: at verbose, never its arguments (no redactor can tell a searched-for secret from
+  // any other word) — the intent label alone, or the plain search line. Standard never carries arguments: unchanged.
+  const search = isSearchCommand(cmd);
   const intent = classifyShellCommand(cmd);
   if (intent) {
-    if (level === "verbose" && intent.preview) {
+    if (level === "verbose" && intent.preview && !search) {
       return `${intent.label}：${redactSecrets(cmd).slice(0, VERBOSE_PREVIEW_CHARS)}`;
     }
     return intent.label;
   }
-  if (level === "verbose") return `⚙️ $ ${redactSecrets(cmd).slice(0, VERBOSE_PREVIEW_CHARS)}`;
+  if (level === "verbose") return search ? "🔍 搜尋程式碼" : `⚙️ $ ${redactSecrets(cmd).slice(0, VERBOSE_PREVIEW_CHARS)}`;
   if (isLowSignalCommand(cmd)) return "";
   // standard: program name only, never arguments
   const prog = shellProgramName(cmd);

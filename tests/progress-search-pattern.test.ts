@@ -56,7 +56,8 @@ describe("search patterns never reach the channel progress line", () => {
       `cd src && grep ${OPAQUE} -r .`, `/usr/bin/grep ${OPAQUE} f`, `timeout 5 rg ${OPAQUE}`, `FOO=1 fd ${OPAQUE}`, `git -C repo grep ${OPAQUE}`];
     for (const command of searches) {
       expect(summarizeProgress("Bash", { command }, "verbose"), command).toBe("🔍 搜尋程式碼");
-      expect(summarizeProgress("Bash", { command }, "standard"), command).toBe("");
+      expect(summarizeProgress("Bash", { command }, "standard"), command).not.toContain(OPAQUE.slice(0, 12));
+      expect(summarizeProgress("Bash", { command }, "standard"), command).not.toContain(PAT.slice(4, 16));
       expect(summarize("Bash", { command }), command).not.toContain(OPAQUE.slice(0, 12));
       expect(summarize("Bash", { command }), command).not.toContain(PAT.slice(4, 16));
     }
@@ -64,6 +65,15 @@ describe("search patterns never reach the channel progress line", () => {
     expect(summarize("Bash", { command: `grep ${OPAQUE} f` })).toBe("$ grep");
     expect(summarize("Bash", { command: `/usr/bin/rg ${OPAQUE}` })).toBe("$ /usr/bin/rg");
     expect(summarize("Bash", { command: "git push origin main" })).toBe("$ git push");                    // subcommands stay
+    // A search inside a command with an intent: standard keeps its label as before; verbose keeps the label, no preview.
+    for (const [command, label] of [[`npx vitest run x | grep ${OPAQUE}`, "🧪 執行測試"], [`npm run build && find dist -name ${OPAQUE}`, "🔨 建置／型別檢查"],
+      [`git log | grep ${OPAQUE}`, "🔎 檢視 git 狀態"]] as const) {
+      expect(summarizeProgress("Bash", { command }, "standard"), command).toBe(label);
+      expect(summarizeProgress("Bash", { command }, "verbose"), command).toBe(label);
+    }
+    // Standard is unchanged for a plain search (hidden, low signal) and for a chain led by another program.
+    expect(summarizeProgress("Bash", { command: `grep -rn ${OPAQUE} .` }, "standard")).toBe("");
+    expect(summarizeProgress("Bash", { command: `cd src && grep ${OPAQUE} -r .` }, "standard")).toBe("⚙️ 執行指令：cd");
     // Other commands keep their verbose preview.
     expect(summarizeProgress("Bash", { command: "ls -la src" }, "verbose")).toBe("⚙️ $ ls -la src");
     expect(summarizeProgress("Bash", { command: "git log --oneline -3" }, "verbose")).toBe("🔎 檢視 git 狀態：git log --oneline -3");
