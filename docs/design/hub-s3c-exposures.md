@@ -32,7 +32,7 @@ S3a's "Connect to a Hub" and My exposures run on a page-memory stub (`src/ui/hub
 
 **Snapshot.**
 
-- **`snapshot()`** returns `{ revision, exposures }`: every committed row (published, frozen and withdrawn, at most 64 active). Never a partial list, and never staged rows.
+- **`snapshot()`** returns `{ revision, exposures }`: every committed published (and frozen) row. Withdrawn rows are omitted: absence from a newer complete snapshot withdraws them on the Hub. Never a partial list, and never staged rows.
 - **Limits.** Publishing a 65th active exposure is refused locally.
 
 ### 2. The owner's flow (owner-local only)
@@ -51,7 +51,7 @@ S3a's "Connect to a Hub" and My exposures run on a page-memory stub (`src/ui/hub
 **Withdraw**, `POST /api/hub/member/exposures/<id>/withdraw`, with `{ expectedRevision }`:
 
 - Narrowing needs no confirmation (hub.md: "withdrawal can always narrow immediately").
-- The local fence is saved first. The answer is `ok` only once the restrictive state is durable, and it says `remote: "confirmed"|"pending"`.
+- The local fence is saved first. The answer is `ok` only once the restrictive state is durable, and it says `remote: "pending"` (no ack frame).
 
 **Read**, `GET /api/hub/member/exposures`: the S3a `HubExposureView[]` (agent, display, exposureId, revision, state, policy, enforceable, reason). `enforceable` comes from S4 readiness.
 
@@ -60,25 +60,36 @@ S3a's "Connect to a Hub" and My exposures run on a page-memory stub (`src/ui/hub
 - **On every (re)connect,** inside `HubClientOptions.reconcile`: `link.send(exposure.snapshot(store.snapshot()))`, before new work, as hub.md l.201 requires.
 - **After each publish or withdraw commit,** if the link is ready, it sends the complete newer snapshot. If not, the next reconcile carries it.
 - **The member never sends a revision older than one it already sent.** A per-hub "sent" floor in meta enforces this.
-- **The Hub mirror (S3b) accepts a snapshot only if `revision >` the last revision it accepted from that member,** and rejects it otherwise as stale (Q3). S3c ships the pure check `acceptExposureSnapshot(last, next)` with its tests, so S3b and the member share one rule.
+- **The Hub mirror's `receiveSnapshot` (S3b, #3112) owns the stale rule.** The member's part: the revision moves on every change and never repeats with other content.
 
 ### 4. The UI
 
 - `hub-client.js` gets a real client on these endpoints. The stub stays only for tests and dev mode.
 - **SKEW:** an old tab with the stub, against the new host, must not break; a new tab against an old host gets 404 and is told "not available". Smoke both.
 
-## Questions (to settle before code)
+## Agreed interfaces (answers of 2026-11-06)
 
-- **Q1 (Cairn, S4 views and policy digest):**
-  - **Readiness:** should `readiness(id, rev)` see the candidate through a separate `stagedLocal`, or should readiness accept a candidate `HubLocalExposure` argument? Either way it must not become admissible.
-  - **Views:** which `views` map does the member pass to S4, and who owns installing a view, given that `views.ts` only accepts registered `HubDocumentView`s?
-- **Q2 (Sol, snapshot frame):**
-  - Is a complete snapshot with withdrawn rows included right, or should withdrawn rows be omitted?
-  - Is there no ACK frame by design? Then `remote: "confirmed"` means "sent on a ready link" only.
-- **Q3 (web-claude, S3b and UI):** S3b's `receive` stale-revision rule (above), the endpoint shapes, and whether S3b already sends something the UI shows.
-- **Q4 (dev-claude, S5b composition):**
-  - The member factory in #3113's Code PR 2 injects `HubExposureStore` (exposure, localExposure, snapshot) and calls the snapshot sender from `reconcile`.
-  - Should S3c stack on #3113, or wait for it to land?
+- **Cairn (S4):**
+  - `HubRestrictedExecutionService.readinessCandidate(candidate: HubLocalExposure): HubExecutionReadiness`, at f64ed997 on S-54. It reads no mapping, requires the candidate's `state: "withdrawn"`, and is capability evidence, not consent. S3c asks it again inside the atomic publish.
+  - Views: the exact `ReadonlyMap<string, HubDocumentView>` that S5 builds goes to both S3c and S4. The store uses `executionPolicyDigest(view, tools)`. The owner form lists only that registry's ids.
+- **Sentinel (S1):**
+  - The wire is unchanged: `{v:1, type:"exposure.snapshot", requestId: fresh, linkEpoch: captured, payload:{revision, exposures}}`. At most 64 in total.
+  - Withdrawn entries are **omitted**: absence from a newer complete snapshot withdraws them. The same revision must mean the same content.
+  - There is no ack frame, so the owner is told `remote: "pending"`, never "confirmed" from a send.
+  - Before ready, `link.send` (S-56's `publishSnapshot(link)`). When ready, the same link while it's current; otherwise the next handshake. The same revision may be resent on a new link; never an older one. The link is rechecked after each await.
+- **web-claude (S3a/S3b):**
+  - The Hub's `receiveSnapshot` (#3112) owns the stale rule: older is `stale`; the same revision is a no-op only when identical, else `conflict`; newer is a complete replace. **S3c ships no second rule.**
+  - The UI contract widens:
+    - `HubExposureView` gains `choices {dataViews, tools}` and `pending {expiresAt}|null`;
+    - `setExposed(agent, true, rev, {dataViewId, tools})`;
+    - `createMemberClient()` in hub-client.js for `member` marks, with "Not available on this AgEnD version" on a 404.
+  - This builds on alpha after #3112.
+- **dev-claude (S5b):**
+  - The exports are as named.
+  - The floor `hub-member/<hubId>/floors/s3c-exposures` joins the member set.
+  - Audit uses `appendInTransaction(record, db)`, with `actor: {kind:"local-host"}` and `policyVersion` = the store revision.
+  - S5 wires `publishSnapshot` into S-56's handshake, and `afterCommit` after each commit.
+  - #3115 stays a draft until #3113 lands.
 
 ## Tests
 
