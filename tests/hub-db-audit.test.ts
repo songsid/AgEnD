@@ -147,6 +147,10 @@ describe("private Hub database", () => {
     });
     expect((db.prepare("SELECT COUNT(*) AS n FROM t").get() as { n: number }).n).toBe(1);
     expect(() => hubTxDatabase(leaked!)).toThrow(/not active/);
+    // A leaked token stays dead even while another transaction is open on the same database.
+    uow.atomic(() => {
+      expect(() => hubTxDatabase(leaked!)).toThrow(/not active/);
+    });
     expect(() => uow.atomic(() => Promise.resolve(1) as unknown as number)).toThrow(/synchronous/);
     expect((db.prepare("SELECT COUNT(*) AS n FROM t").get() as { n: number }).n).toBe(1);
   });
