@@ -2548,6 +2548,17 @@ program
     await runQuickstart();
   });
 
+// #3095 Hub (experimental, off by default): `agend hub init` sets up a team Hub on this machine. Nothing Hub-related
+// loads unless this command runs.
+const hub = program.command("hub").description("AgEnD Hub (experimental): a team Hub where colleagues sign in with the directory");
+hub
+  .command("init")
+  .description("Set up this machine as a team Hub: addresses, browser certificate, directory (LDAPS), administrator, service")
+  .action(async () => {
+    const { runHubInitCommand } = await import("./hub/init/cli.js");
+    await runHubInitCommand();
+  });
+
 program
   .command("init")
   .description("Interactive advanced wizard (setup-wizard); for first-run use `agend quickstart` or `agend setup`")

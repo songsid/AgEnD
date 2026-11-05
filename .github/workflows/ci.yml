@@ -196,10 +196,10 @@ jobs:
           export OUT="$RUNNER_TEMP/hub-directory-rig"
           scripts/manual/hub-directory/run.sh up
           trap 'scripts/manual/hub-directory/run.sh down' EXIT
-          AGEND_HUB_RIG_ENV="$OUT/rig.env" npx vitest run tests/hub-directory-rig.test.ts tests/hub-directory-unit.test.ts
-          # The rig file must not have been skipped: a skipped file would pass with zero checks.
-          AGEND_HUB_RIG_ENV="$OUT/rig.env" npx vitest run tests/hub-directory-rig.test.ts --reporter=json --outputFile="$RUNNER_TEMP/hub-rig.json" >/dev/null
-          node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const n = r.numPassedTests; console.log("rig tests passed:", n); if (!(n > 10) || r.numPendingTests > 0) process.exit(1)' "$RUNNER_TEMP/hub-rig.json"
+          AGEND_HUB_RIG_ENV="$OUT/rig.env" npx vitest run tests/hub-directory-rig.test.ts tests/hub-init-rig.test.ts tests/hub-directory-unit.test.ts
+          # The rig files must not have been skipped: a skipped file would pass with zero checks.
+          AGEND_HUB_RIG_ENV="$OUT/rig.env" npx vitest run tests/hub-directory-rig.test.ts tests/hub-init-rig.test.ts --reporter=json --outputFile="$RUNNER_TEMP/hub-rig.json" >/dev/null
+          node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const n = r.numPassedTests; console.log("rig tests passed:", n); if (!(n > 18) || r.numPendingTests > 0) process.exit(1)' "$RUNNER_TEMP/hub-rig.json"
 
   # ── tests that read docs ─────────────────────────────────────────────────────
   # Always runs. Heavy work only on text-only PRs, where the four shards skip.
