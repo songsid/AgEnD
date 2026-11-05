@@ -23,6 +23,7 @@ import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
 import { usageExpiryText, usageResetSinceText, usageResetText, usageRowName, usageStaleText, usageText } from "./i18n.js";
 import { guestRequestOf } from "../web-guest-access.js";
+import { quotaHistoryOffForTests, recordQuotaReadings } from "./quota-history.js";
 
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
@@ -159,6 +160,7 @@ export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null
   lastGood.clear();
   lastGoodFile = null;
   lastGoodLoaded = true;
+  quotaHistoryOffForTests();
   retryAfterUntil.clear();
 }
 
@@ -309,6 +311,7 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
   const providers = payload.providers.map(p => {
     if (p.status === "ok" && p.metrics.length > 0) {
       lastGood.set(p.id, { at: now, provider: p });
+      recordQuotaReadings(p, now);                         // #3066 §1d: the weekly percent over time (only when it moved)
       changed = true;
       return p;
     }

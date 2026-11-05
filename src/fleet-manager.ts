@@ -443,6 +443,7 @@ import {
 
 import { getTmuxSession } from "./config.js";
 import { OwnStatusMessages, discordMessageKey } from "./chat-log-ids.js";
+import { PROFILE_TIMELINE_FILE, recordProfileLaunch } from "./usage/profile-timeline.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
@@ -1496,6 +1497,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private discordPresenceEagerPending = false;
   private discordPresenceInFlight: Promise<void> | null = null;
   private static readonly DISCORD_PRESENCE_REFRESH_MS = 15 * 60_000;
+  /** #3066 §1d: how often a fleet with no Discord bot reads the quota for its history (the user's choice: 30 min). */
+  static readonly QUOTA_BACKGROUND_READ_MS = 30 * 60_000;
+  private quotaReadTimer: ReturnType<typeof setInterval> | null = null;
   /** Days of event/activity history to keep. */
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
@@ -2828,6 +2832,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   onDaemonReady(name: string, daemonBootId: string): void {
     const daemon = this.daemons.get(name);
     if (daemon?.bootId === daemonBootId) this.listenForWorkingState(name, daemon);
+    // #3066 §1d: a Codex launch records the credential profile it runs under, so its usage is told by account.
+    if (daemon?.bootId === daemonBootId && this.backendNameOf(name) === "codex") {
+      void recordProfileLaunch(join(this.getInstanceDir(name), PROFILE_TIMELINE_FILE), this.credentialProfileOf(name, "codex") ?? "default");
+    }
     // #2802: no post-restart notices. The outbox still delivers or fails a row accepted before the restart, and an open
     // request is reminded by the ordinary turn-ended nudge (sweepReplyObligations) once the owner is idle.
     this.scheduleDeliveryOutboxPump();
@@ -8650,6 +8658,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.startInstancesWithConcurrency(others, topicMode, () => startupProgress.markReady(), classicAtBoot);
     }
 
+    // #3066 §1d (Fable r1): on every fleet — a web-only one (#2910) has no chat connection at all, and is the clearest
+    // case with no Discord bot reading. Each tick decides for itself whether to read (backgroundQuotaRead).
+    this.startQuotaBackgroundReads();
+
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
       await adapterStartup;
       this.startDiscordUsagePresence();
@@ -8826,6 +8838,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (health.status !== "ok") {
       this.logger.warn({ health }, "Fleet started with problems — see /health");
     }
+  }
+
+  /**
+   * #3066 §1d (the user: yes, every 30 min): the quota history (usage/quota-history.ts) records only the readings AgEnD
+   * makes. A Discord bot's presence refresh reads every 15 min; without one, nothing reads while nobody looks. So, with no
+   * Discord bot and while some account has a running agent, read every 30 min — the same cached read (its 5-minute TTL
+   * still bounds the vendor calls), recorded like any other.
+   */
+  private startQuotaBackgroundReads(): void {
+    if (this.quotaReadTimer) clearInterval(this.quotaReadTimer);
+    this.quotaReadTimer = setInterval(() => { void this.backgroundQuotaRead(); }, FleetManager.QUOTA_BACKGROUND_READ_MS);
+    this.quotaReadTimer.unref?.();
+  }
+
+  /** One background quota read, when nothing else reads (no Discord bot) and an account has a running agent. */
+  async backgroundQuotaRead(): Promise<boolean> {
+    if (this.shuttingDown) return false;
+    if ([...this.adapters.values()].some(a => a.type === "discord" && typeof a.setActivity === "function")) return false;
+    const active = this.getActiveUsageProviderIds();
+    if (active.size === 0) return false;
+    try { await getUsageSnapshot(false, active); return true; } catch { return false; }
   }
 
   /** Keep Discord profile activity aligned with the same cached usage source as /usage. */
@@ -14984,6 +15017,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleet = Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({
       name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
       claudeConfigDir: this.claudeConfigDirOf(name), profile: this.usageProfileOf(name, this.backendNameOf(name)),
+      ...(this.backendNameOf(name) === "codex" ? { profileTimelinePath: join(this.getInstanceDir(name), PROFILE_TIMELINE_FILE) } : {}),
       kiroDbPath: this.kiroDbPathOf(name, this.backendNameOf(name)),
     }));
     const taken = new Set(fleet.map(i => i.name));
@@ -14995,6 +15029,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claudeConfigDir: this.claudeConfigDirOf(ch.instanceName),
       profile: this.usageProfileOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
       kiroDbPath: this.kiroDbPathOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
+      // #3066 §1d (Fable r1 #2): a ClassicBot Codex room records its launches too (onDaemonReady) — read them the same way.
+      ...((this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend) === "codex"
+        ? { profileTimelinePath: join(this.getInstanceDir(ch.instanceName), PROFILE_TIMELINE_FILE) } : {}),
     }));
     return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
   }
@@ -21774,6 +21811,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.wakeCoordinator?.stop();
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
+    if (this.quotaReadTimer) { clearInterval(this.quotaReadTimer); this.quotaReadTimer = null; }
     if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }
     this.discordPresenceEagerPending = false;
     // Cancel-button timers were never cleared here. The idle-check interval is not

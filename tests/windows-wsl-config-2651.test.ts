@@ -57,7 +57,7 @@ if($once -cne $twice){throw 'Merge not idempotent'}
     // Only the generated script runs; every /etc path is mapped into this scratch directory.
     expect(script).not.toContain('file=/etc/');
     const result=spawnSync('/bin/bash',['-c',script],{encoding:'utf8',timeout:5000,env:{PATH:'/usr/bin:/bin',HOME:dir}});
-    expect(result.status,result.stderr).toBe(0);expect(result.stdout).toContain('WSL_CONF_OK');
+    expect(result.status,result.stderr).toBe(0);expect(result.stdout).not.toContain('WSL_CONF_OK'); // #3068: the exit code is the verdict; no sentinel on screen
     const after=readFileSync(file,'utf8');
     for(const text of ['systemd=true','appendWindowsPath=false','default=root'])expect(after).toContain(text);
     if(existing){expect(after).toContain('command=echo retained');expect(after).toContain('root=/windows/');}
@@ -78,7 +78,7 @@ if($once -cne $twice){throw 'Merge not idempotent'}
     mkdirSync(join(dir,'etc'));const file=join(dir,'etc/wsl.conf');writeFileSync(file,'[boot]\ncommand=new edit\n');
     const script=run(`Get-MergedLinuxWslConfigScript '[boot]'`).replaceAll('/etc/',`${dir}/etc/`);
     const result=spawnSync('/bin/bash',['-c',script],{encoding:'utf8',timeout:5000,env:{PATH:'/usr/bin:/bin',HOME:dir}});
-    expect(result.status).not.toBe(0);expect(result.stdout).not.toContain('WSL_CONF_OK');
+    expect(result.status).not.toBe(0);
     expect(readFileSync(file,'utf8')).toBe('[boot]\ncommand=new edit\n');expect(readdirSync(join(dir,'etc'))).toEqual(['wsl.conf']);
   }));
 });

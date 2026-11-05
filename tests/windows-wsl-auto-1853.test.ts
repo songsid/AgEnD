@@ -50,7 +50,7 @@ describe("the WSL stage decides for itself (static)", () => {
     expect(code.match(/Invoke-BoundedWsl -Arguments @\('--shutdown'\)/g)).toHaveLength(1);
     const fn = code.slice(code.indexOf("function Wait-WslRoot"), code.indexOf("function Write-WslDeclined"));
     expect(fn).toMatch(/if \(\(\[string\]\$answer\) -notmatch '\^\\s\*\[yY\]\\s\*\$'\) \{ return 'declined' \}\n[^\n]*\n\s*\$null = Invoke-BoundedWsl -Arguments @\('--shutdown'\)/);
-    expect(body).toMatch(/Write-Ok "Linux 版本：\$UBUNTU_DISTRO"/);
+    expect(body).toMatch(/Write-Ok "要安裝的 Linux：\$UBUNTU_DISTRO"/);
     expect(body).toMatch(/安裝位置：\{0\}（可用 \{1\} GB）/);
   });
   it("an Ubuntu already there: a separate AgEnD Ubuntu is offered first (recommended); using it says what changes; Enter quits", () => {
