@@ -74,3 +74,36 @@ describe("Hub restricted member journal", () => {
     expect(() => g.journal.commitAdmission(g.q, r, g.lease(r), g.fence)).toThrow();
   });
 });
+
+it.each(["admit", "begin", "release-answer"] as const)("binds the %s lease to this exact journal message and exposure revision", async phase => {
+  for (const changed of ["messageId", "exposureRevision"] as const) {
+    const f = fixture(), prepared = f.journal.prepare(f.q);
+    let request: HubAuthorizationRequest = { messageId: f.q.identity.messageId, operationId: prepared.operationId, exposureRevision: 1, phase: "admit" };
+    if (phase !== "admit") {
+      f.journal.commitAdmission(f.q, request, f.lease(request), f.fence); request = f.begin();
+      if (phase === "release-answer") {
+        f.journal.markInputIntent(f.q.identity.messageId, request, f.lease(request), f.fence);
+        f.journal.recordEvidence(f.q.identity.messageId, "delivered"); f.journal.recordEvidence(f.q.identity.messageId, "consumed");
+        request = { ...f.begin(), phase, answer: { answerId: randomUUID(), contentDigest: sha256("inert answer") } };
+      }
+    }
+    request = { ...request, [changed]: changed === "messageId" ? randomUUID() : 2 };
+    const proof = f.lease(request);
+    expect(() => {
+      if (phase === "admit") f.journal.commitAdmission(f.q, request, proof, f.fence);
+      else if (phase === "begin") f.journal.markInputIntent(f.q.identity.messageId, request, proof, f.fence);
+      else if (request.phase === "release-answer") f.journal.saveAnswer({ messageId: f.q.identity.messageId, answerId: request.answer.answerId, text: "inert answer", contentDigest: request.answer.contentDigest, releaseLease: proof }, request, f.fence);
+    }).toThrow();
+  }
+});
+it("never releases an answer with a pre-revocation proof and never increments a duplicate answer receipt", async () => {
+  const f = fixture(); await f.admission.admit(f.q); const begin = f.begin();
+  f.journal.markInputIntent(f.q.identity.messageId, begin, f.lease(begin), f.fence);
+  f.journal.recordEvidence(f.q.identity.messageId, "delivered"); f.journal.recordEvidence(f.q.identity.messageId, "consumed");
+  const request: HubAuthorizationRequest = { ...begin, operationId: randomUUID(), phase: "release-answer", answer: { answerId: randomUUID(), contentDigest: sha256("inert answer") } };
+  const answer = { messageId: f.q.identity.messageId, answerId: request.answer.answerId, text: "inert answer", contentDigest: request.answer.contentDigest, releaseLease: f.lease(request) };
+  const first = f.journal.saveAnswer(answer, request, f.fence);
+  expect(f.journal.saveAnswer(answer, request, f.fence)).toEqual(first);
+  await f.admission.fence({ revocationVersion: 2, scope: { kind: "grant", grantId: f.q.identity.grantId }, reasonCode: "revoked" });
+  expect(() => f.journal.saveAnswer(answer, request, f.fence)).toThrow();
+});

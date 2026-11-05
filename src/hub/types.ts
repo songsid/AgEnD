@@ -8,7 +8,8 @@ export type MessageId = string;
 export type Epoch = number;       // nonnegative safe integer; never rolls back
 export type Millis = number;      // integer UTC epoch milliseconds
 export type Sha256 = string;      // 64 lowercase hex characters
-export type PersonKey = { readonly realm: string; readonly objectId: string };
+import type { PersonKey, HubDirectoryConfig } from "./directory/index.js";
+export type { PersonKey, DirectoryPerson, SignInResult, Eligibility, HubDirectory, HubDirectoryConfig } from "./directory/index.js";
 export type PersonId = string;    // personKeyString(key), not a login/name
 export interface HubFrame<T extends string, P> {
   v: 1; type: T; requestId: string; linkEpoch: Epoch; payload: P;
@@ -152,27 +153,6 @@ export interface HubAuditRecord {
   ownerAtEvent?: PersonKey; grantId?: GrantId; grantRevision?: Epoch;
   policyVersion: Epoch; contentRef?: string; reasonCode?: string;
 }
-
-export interface HubDirectoryConfig {
-  realm: string; url: string; // ldaps: ONLY in P1; reject ldap:/StartTLS/plaintext
-  caFile?: string; baseDn: string; bindDn: string;
-  profile: "ad" | "openldap"; userFilter?: string; timeoutMs?: number;
-}
-export interface DirectoryPerson {
-  key: PersonKey; login: string; dn: string; displayName?: string;
-  email?: string; department?: string; groups: readonly string[];
-}
-export type SignInResult = { ok: true; person: DirectoryPerson }
-  | { ok: false; reason: "invalid-credentials" | "not-eligible" | "unavailable" | "bad-input" };
-export type Eligibility = { eligible: true; person: DirectoryPerson }
-  | { eligible: false; reason: "gone" | "disabled" | "unavailable" };
-export interface HubDirectory {
-  signIn(login: string, password: string): Promise<SignInResult>;
-  checkEligibility(key: PersonKey): Promise<Eligibility>;
-  close(): Promise<void>;
-}
-
-
 
 export interface HubMode {
   serverEnabled(): boolean; memberEnabled(): boolean; epoch(): Epoch;
