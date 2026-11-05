@@ -2265,6 +2265,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async deleteTopic(topicId: number | string): Promise<void> {
+    // #3055 review (Prism P1): this connection's own General channel is never deleted, whether or not an agent is
+    // configured as its General (a secondary connection has none).
+    if (this.generalChannelId && String(topicId) === String(this.generalChannelId)) throw new Error("the General topic is never deleted");
     const channel = await (await this.readyClient()).channels.fetch(String(topicId));
     // Only delete GuildText channels created by createTopic — never categories or forums. Anything else is refused
     // out loud (delete_instance reports topic_deleted from this), never skipped as if it were done.

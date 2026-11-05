@@ -12,6 +12,8 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { describeTopicDeleteError, planInstanceTopicDelete, topicFields } from "../src/instance-topic-delete.js";
+import { TopicCommands } from "../src/topic-commands.js";
+import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { t } from "../src/locale.js";
 
 const dirs: string[] = [];
@@ -149,7 +151,8 @@ describe("the reasons (describeTopicDeleteError)", () => {
 describe("the plan and the dashboard's answer", () => {
   const instances = { a: { topic_id: 5, working_directory: "/tmp" } } as any;
   it("an agent without a fleet.yaml entry (a ClassicBot room) has no topic of its own here", () => {
-    expect(planInstanceTopicDelete({ name: "room", instances, adapterId: "x", adapter: adapter("x", "telegram") as any, adapterIdOf: () => "x" }))
+    expect(planInstanceTopicDelete({ name: "room", instances, adapterId: "x", adapter: adapter("x", "telegram") as any,
+      destinationOf: () => null, generalDestinations: () => new Set() }))
       .toEqual({ kind: "keep", reason: "the agent has no topic of its own (not a fleet.yaml agent)" });
   });
   it("topicFields: the line the dashboard shows", () => {
@@ -157,5 +160,79 @@ describe("the plan and the dashboard's answer", () => {
     expect(topicFields("w", { deleted: true })).toEqual({ topic_deleted: true, topic_note: t("instance.topic_deleted", "w") });
     expect(topicFields("w", { deleted: false, reason: "topic not found" }))
       .toEqual({ topic_deleted: false, topic_reason: "topic not found", topic_note: t("instance.topic_kept", "w", "topic not found") });
+  });
+});
+
+describe("#3055 review (Prism): ownership by physical destination, every General, and the fleet as it is at the platform call", () => {
+  /** A second Telegram bot, in the SAME group as the first. */
+  function addSecondTelegramBot(r: ReturnType<typeof rig>, groupId = "-100123") {
+    const tg2 = adapter("tg-two", "telegram");
+    r.fm.fleetConfig!.channels!.push({ id: "tg-two", type: "telegram", mode: "topic", group_id: groupId, bot_token_env: "TG2" } as any);
+    r.fm.worlds.set("tg-two", { id: "tg-two", adapter: tg2, groupId, channelConfig: r.fm.fleetConfig!.channels![2] } as any);
+    return tg2;
+  }
+
+  it("P1-1: two bots in one Telegram group share topic 77 — deleting one agent keeps the other's topic", async () => {
+    const r = rig(); const tg2 = addSecondTelegramBot(r);
+    r.fm.fleetConfig!.instances.twin = { topic_id: 77, working_directory: "/tmp", channel_id: "tg-two" } as any;
+    expect((await r.del({ name: "helper" })).result).toMatchObject({ topic_deleted: false, topic_reason: "the topic is also used by twin" });
+    expect(r.tg.deleteTopic).not.toHaveBeenCalled();
+    expect(tg2.deleteTopic).not.toHaveBeenCalled();
+  });
+
+  it("P1-1 control: the same topic number in ANOTHER group is another topic — deleted", async () => {
+    const r = rig(); addSecondTelegramBot(r, "-100999");
+    r.fm.fleetConfig!.instances.twin = { topic_id: 77, working_directory: "/tmp", channel_id: "tg-two" } as any;
+    expect((await r.del({ name: "helper" })).result).toEqual({ success: true, name: "helper", topic_deleted: true });
+    expect(r.tg.deleteTopic).toHaveBeenCalledExactlyOnceWith(77);
+  });
+
+  it("P1-2: a secondary Discord connection's configured General channel is refused, with no General agent on it", async () => {
+    const r = rig();
+    (r.fm.fleetConfig!.channels![1] as any).options = { general_channel_id: "998877" };   // worker's channel IS that General
+    expect((await r.del({ name: "worker" })).result).toMatchObject({ topic_deleted: false, topic_reason: "the General topic is never deleted" });
+    expect(r.dc.deleteTopic).not.toHaveBeenCalled();
+  });
+
+  it("P1-2: the Discord adapter itself refuses its General channel — before fetching anything", async () => {
+    const fetch = vi.fn();
+    const self = { generalChannelId: "555555555555555555", readyClient: async () => ({ channels: { fetch } }) };
+    await expect(DiscordAdapter.prototype.deleteTopic.call(self as never, "555555555555555555")).rejects.toThrow("the General topic is never deleted");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("P1-3: an agent bound to the topic while the removal was awaited keeps it (the plan is re-checked at the platform call)", async () => {
+    const r = rig();
+    r.removed.mockImplementationOnce(async (name: string) => {
+      delete r.fm.fleetConfig!.instances[name];
+      r.fm.fleetConfig!.instances.newcomer = { topic_id: "998877", working_directory: "/tmp", channel_id: "dc-main" } as any;
+    });
+    expect((await r.del({ name: "worker" })).result).toMatchObject({ topic_deleted: false, topic_reason: "the topic is also used by newcomer" });
+    expect(r.dc.deleteTopic).not.toHaveBeenCalled();
+  });
+
+  it("P1-3: the bot rebuilt while the removal was awaited — the old adapter is not used", async () => {
+    const r = rig(); const rebuilt = adapter("dc-main", "discord");
+    r.removed.mockImplementationOnce(async (name: string) => {
+      delete r.fm.fleetConfig!.instances[name];
+      r.fm.worlds.set("dc-main", { id: "dc-main", adapter: rebuilt, groupId: "g1", channelConfig: r.fm.fleetConfig!.channels![1] } as any);
+    });
+    expect((await r.del({ name: "worker" })).result).toMatchObject({ topic_deleted: false, topic_reason: expect.stringContaining("bot changed") });
+    expect(r.dc.deleteTopic).not.toHaveBeenCalled();
+    expect(rebuilt.deleteTopic).not.toHaveBeenCalled();
+  });
+
+  it("P1-3: while the platform call runs, binding that topic is refused; afterwards it is free again", async () => {
+    const r = rig();
+    let release!: () => void, during = false;
+    r.dc.deleteTopic.mockImplementationOnce(() => new Promise<void>(res => { during = r.fm.isTopicDeletionInFlight("998877"); release = res; }));
+    const pending = r.del({ name: "worker" });
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    expect(during).toBe(true);
+    const bind = new TopicCommands({ fleetConfig: r.fm.fleetConfig, isTopicDeletionInFlight: (id: string) => r.fm.isTopicDeletionInFlight(id) } as any);
+    await expect(bind.bindAndStart("/tmp/x", "998877")).rejects.toThrow("being deleted");
+    release();
+    expect((await pending).result.topic_deleted).toBe(true);
+    expect(r.fm.isTopicDeletionInFlight("998877")).toBe(false);
   });
 });
