@@ -75,7 +75,7 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
     }
     // github.io stays first.
     expect(code(BOOTSTRAP)).toContain(`$bases = @('${PAGES}', '${RAW}')`);
-    expect(code(INSTALLER)).toContain(`$INSTALL_SOURCES = @('${PAGES}', '${RAW}')`);
+    expect(code(INSTALLER)).toContain(`function Get-InstallSources { return @('${PAGES}', '${RAW}') }`);
   });
 
   it("the install pages offer the raw one-liners, EN and zh-TW", () => {
@@ -96,7 +96,7 @@ function ps(body: string, env: Record<string, string> = {}): string {
 $t = $null; $e = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
 foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and $_.Left.Extent.Text -match '^\\$(NET_|INSTALL_SOURCES|RESUME_)' }) { . ([scriptblock]::Create($a.Extent.Text)) }
+foreach ($a in $ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and $_.Left.Extent.Text -match '^\\$(NET_|RESUME_)' }) { . ([scriptblock]::Create($a.Extent.Text)) }
 function Write-InstallLog { param($m) }
 ${body}`);
   const r = spawnSync("pwsh", ["-NoProfile", "-File", script], { encoding: "utf8", timeout: 90_000, env: { ...process.env, TMPDIR: dir, ...env } });

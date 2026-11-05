@@ -189,10 +189,10 @@ function Save-InstallVersion([string]$version) {
 }
 # 安裝檔從哪裡下載，依序：GitHub Pages，再來是 GitHub raw 上「已部署的那一份」（tag installer-live 只在 Pages 部署成功後
 # 才移到那個 commit，見 deploy-website.yml）。有些公司網路擋掉所有 *.github.io，但 raw.githubusercontent.com 可以連。
-$INSTALL_SOURCES = @('https://songsid.github.io/AgEnD', 'https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public')
+function Get-InstallSources { return @('https://songsid.github.io/AgEnD', 'https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public') }
 # 在 WSL 裡下載 install.sh 再執行：依序試每個來源，下載完整、而且真的是 AgEnD 的安裝腳本才執行（不會把半份或擋下來的
 # 網頁交給 bash）。在子 shell 裡：它的 exit 和清理只屬於這一段，外面的 set -e 照樣看結束碼。腳本裡沒有雙引號。
-function Get-AgendInstallShScript([string]$pin, [string[]]$sources = $INSTALL_SOURCES) {
+function Get-AgendInstallShScript([string]$pin, [string[]]$sources = (Get-InstallSources)) {
     $urls = ($sources | ForEach-Object { $_.TrimEnd('/') + '/install.sh' }) -join ' '
     return ('( f=$(mktemp) || exit 1; trap ''rm -f -- $f'' EXIT; ok=; for u in ' + $urls + '; do ' +
         'if curl --connect-timeout 20 --max-time 120 -fsSL -o $f $u && head -n 5 $f | grep -q AgEnD; then ok=1; break; fi; ' +
@@ -208,7 +208,7 @@ function Get-AgendInstallCommand([string]$version) {
 # 重新開機後的接續：Windows 的 RunOnce 只執行一行短指令（官方建議 260 字以內），放不下兩個來源，所以把「依序試兩個
 # 來源、下載 install.ps1 再執行」寫成這個帳號底下的一個小腳本，RunOnce 只執行它。內容只有 ASCII（5.1 讀沒有 BOM 的
 # 檔案用系統字碼頁）。$version 已經驗證過（Resolve-AgendInstallVersion）。
-function Get-InstallResumeScript([string]$version, [string[]]$sources = $INSTALL_SOURCES) {
+function Get-InstallResumeScript([string]$version, [string[]]$sources = (Get-InstallSources)) {
     $version = Resolve-AgendInstallVersion $version
     $urls = ($sources | ForEach-Object { "'" + $_.TrimEnd('/') + "/install.ps1'" }) -join ', '
     $lines = @(
