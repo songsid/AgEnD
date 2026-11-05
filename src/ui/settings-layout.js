@@ -1,6 +1,8 @@
 // Shared presentation for Settings. Tab panels stay mounted so switching views never drops a form's draft.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
+import "./settings-strings.js";
+import "./settings-shared-strings.js";   // SettingsPageHead prints settings.sec_<section>; sec_agent-defaults is one of these words (#3087)
 
 register("settingsLayout", {
   en: {
@@ -8,7 +10,7 @@ register("settingsLayout", {
     lead_preferences: "Your identity, language and content preferences.",
     lead_look: "Choose how AgEnD looks and keep your workspace comfortable.",
     lead_agents: "Manage agents across runtimes, with their CLI, model and status in one place.",
-    "lead_agent-defaults": "Defaults for new agents. Each agent can override the settings it supports.",
+    "lead_agent-defaults": "Changes here apply to every agent that has no setting of its own — including agents you create later.",
     lead_chat: "Connect chat services and choose how messages are received and delivered.",
     "lead_web-dashboard": "Manage fleet-wide dashboard features, branding and resource limits.",
     lead_access: "Manage sign-in, web authority, guests and sharing.",
@@ -22,7 +24,7 @@ register("settingsLayout", {
     lead_preferences: "你的身分、語言與內容偏好。",
     lead_look: "調整顯示方式，保留你的工作習慣。",
     lead_agents: "集中管理各個 Runtime 的 Agent、CLI、模型與狀態。",
-    "lead_agent-defaults": "新 Agent 的預設行為；個別 Agent 可覆寫支援的設定。",
+    "lead_agent-defaults": "改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。",
     lead_chat: "連接聊天服務，設定訊息如何進入與送出。",
     "lead_web-dashboard": "管理整個 Fleet 的網頁功能、品牌與資源限制。",
     lead_access: "管理登入、網頁授權、訪客與對外分享。",
@@ -146,20 +148,14 @@ register("settingsLayout", {
     "previewsPersonalHint": "Only affects your preview preference.",
     "chatConnections": "Chat connections",
     "messageBehavior": "Message behavior",
-    "pageContents": "On this page",
-    "defaultsAccessWorkspace": "Permissions and workspace",
-    "replyRulesHelp": "Reply rules",
-    "replySupportHelp": "CLI support"
+    "pageContents": "On this page"
   },
   "zh-TW": {
     "profileIdentityDetails": "Agent 如何辨識你的身分",
     "previewsPersonalHint": "只影響你的預覽偏好。",
     "chatConnections": "聊天連線",
     "messageBehavior": "訊息行為",
-    "pageContents": "本頁內容",
-    "defaultsAccessWorkspace": "權限與工作區",
-    "replyRulesHelp": "回覆規則說明",
-    "replySupportHelp": "CLI 支援情況"
+    "pageContents": "本頁內容"
   }
 });
 

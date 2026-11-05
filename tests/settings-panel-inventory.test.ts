@@ -7,7 +7,7 @@ import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 // The Settings UI is the app shell's panel and its modules (#1408 step 3): settings.html is gone. Its source is read
 // as text, as the old page was, from the files that now hold each part of it.
 const UI = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "ui");
-const FILES = ["panel-settings.js", "settings-dialogs.js", "settings-model.js", "settings-wizard.js"];
+const FILES = ["panel-settings.js", "settings-dialogs.js", "settings-model.js", "settings-wizard.js", "settings-shared.js"];
 const sources = Object.fromEntries(FILES.map(f => [f, readFileSync(join(UI, f), "utf8")]));
 const ui = Object.values(sources).join("\n");
 

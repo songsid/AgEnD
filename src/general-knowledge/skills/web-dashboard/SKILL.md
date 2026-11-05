@@ -233,7 +233,7 @@ values reloaded after Save. Password fields keep the browser's behaviour.
 ## Fleet
 
 `/ui/fleet/<tab>`: **Tasks**, **Schedules**, **Teams**, **Org chart**, **Cache**, plus a **Docs** link
-(`/ui/fleet/config` leads to Settings → Agent defaults: each of its settings lives in Settings, #2347).
+(`/ui/fleet/config` leads to Settings → Shared agent settings: each of its settings lives in Settings, #2347).
 The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet tab open the Fleet tab this device used last
 (`agend_last_fleet_tab`; the Org chart the first time). The sidebar has no separate Fleet (Details) or View row.
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
@@ -473,13 +473,13 @@ running; kiro shows fleet events only; other backends say they have no readable 
 **Chat & connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
 
 Sections (`/settings/<section>`, #2347), in two groups. **You**: **Preferences**, **Look**. **Fleet**: **Agents**,
-**Agent defaults**, **Chat & connections**, **Web dashboard**, **Access & security**, **Advanced**. Old addresses (`device`,
+**Shared agent settings**, **Chat & connections**, **Web dashboard**, **Access & security**, **Advanced**. Old addresses (`device`,
 `appearance`, `general`, `bots`, `classic`, `web`) lead to the new sections. **Search settings** (top of the sections, **/**;
 also Ctrl K → Settings) finds a setting by name, `fleet.yaml` key or synonym in either language and goes to the field.
 Header: version, **Setup wizard**, **Help**.
 
 **How changes apply (#2347).** Every Fleet section's edits are unsaved until
-**Save**: a field edit (Agent defaults, Chat & connections, Web dashboard, Access & security) is unsaved at once (a straight bar on its left); a dialog's **Done**
+**Save**: a field edit (Shared agent settings, Chat & connections, Web dashboard, Access & security) is unsaved at once (a straight bar on its left); a dialog's **Done**
 adds its changes. The bar **N unsaved change(s)** shows the cost — **Immediately**, **Restart this Agent** or **Restart
 AgEnD** — then **Save** or **Discard**; an invalid field keeps Save waiting (**Fix 1 field(s) to save**). Over a public
 link an admin can change the fleet's settings too (not the dashboard's own web settings, Guests or Web authority).
@@ -497,7 +497,7 @@ link, an unverified browser or a change that needs the host CLI. After a failure
 |---|---|---|
 | Your name (**Save**, **Use web-user** / **Use <account>**) | the name agents see on your web messages | your profile |
 | Theme: System / Light / Dark | page theme | host prefs `theme` |
-| Language: English / 中文 | page language (not the bots' replies — that is Agent defaults → Language) | host prefs `lang` |
+| Language: English / 中文 | page language (not the bots' replies — that is Shared agent settings → Language) | host prefs `lang` |
 | Names: Nickname first / Real name first | sidebar names | host prefs `names.primary` |
 | Allow HTML previews | the preview opt-in | host prefs `preview.optIn` |
 | Chat tour (this device) | replays the chat tour | browser |
@@ -520,7 +520,7 @@ backend skipped at first setup shows in Needs you even before an agent uses it.
 **Agents** — **New agent**; per agent **Settings**, **Pause / Wake**, **Start / Stop** (direct), ⋯ **Delete agent**
 (staged; on Apply it waits for a fleet admin's confirmation in General, then the agent is stopped and removed, as
 `delete_instance` does — no restart). The agent dialog writes `instances.<name>.*` (an "Inherit" box removes the key, and the field then says what it inherits:
-"Inherited: 30 min · change in Agent defaults"; a value nobody set anywhere is marked "default"):
+"Inherited: 30 min · change in Shared agent settings"; a value nobody set anywhere is marked "default"):
 | Label | Key | Applies |
 |---|---|---|
 | Display name, Description | `display_name`, `description` | now |
@@ -531,7 +531,7 @@ backend skipped at first setup shows in Needs you even before an agent uses it.
 | Agent mode, Tool set | `agent_mode`, `tool_set` | agent |
 | Tool progress; Bot-to-bot messages in topics (full / summary / hidden); Log level | `tool_progress`, `cross_instance_visibility`, `log_level` | now |
 | Require a delivered reply | `reply_completion_guard` | now |
-| Daily tips (Topic / Off; always posted in General, never by DM) | `tips` | now |
+| Daily tips (an on / off switch; always posted in General, never by DM) | `tips` | now |
 | Lightweight mode, Fallback model | `lightweight`, `model_failover` | agent |
 | System prompt | `systemPrompt` | agent |
 | Tags | `tags` | now |
@@ -550,11 +550,11 @@ ClassicBot (in **Chat & connections**, `/settings/chat#classicbot`) — per room
 `channels.<key>.*`: Backend, Model, Auto-pause after, **Collaboration mode** (`collab`), **Web echo** (`web_echo`),
 Advanced **Context lines** (these restart the room's agent); Tool progress and Require a delivered reply (now).
 
-**Agent defaults** — **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
+**Shared agent settings** (two cards: *Shared agent settings*, which an individual agent can override, each with "N/M in use" and the agents that set their own; and *System & channels*, one value for the whole fleet; a note about what saving costs appears under a field only once it is edited) — **Project folders** (`project_roots`: where New agent may put an agent; empty = anywhere;
 changing it waits for a fleet admin's OK) and the fleet defaults (`defaults.*`): **Language (bot replies)** (`locale`: Auto / en / zh-TW), default
 backend and model, auto-pause, tool progress, bot-to-bot visibility, reply guard, **Native replies trigger ClassicBot**
 (`reply_triggers`: a native reply triggers a ClassicBot bot; off by default, #2576); Advanced: tool set, agent mode, log
-level, **Hang detector enabled** / **Stuck timeout** (`hang_detector.*`), **Startup concurrency** (1–20) and
+level, **Hang detector** (on/off and its minutes) (`hang_detector.*`), **Startup concurrency** (1–20) and
 **Stagger delay** (`startup.*`, restart AgEnD). ClassicBot defaults (in Chat & connections; `classicBot.yaml defaults.*`): default backend, tool
 progress, reply guard, **Native replies trigger ClassicBot** (`reply_triggers`, also per room), **ClassicBot admins**,
 **Allowed guilds**.
@@ -579,7 +579,7 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `prev
 `upload_max_total_mb`, `web_terminal.bind`, `web_terminal.tunnel`.
 
 **Advanced** — fleet.yaml as **YAML / JSON**, **Edit / View**, **Copy**, **Download fleet.yaml**; **Apply**
-(edit mode) adds the edit to the bar, and Save writes it. While it waits, Agents, Agent defaults and the
+(edit mode) adds the edit to the bar, and Save writes it. While it waits, Agents, Shared agent settings and the
 connections are off (and the setup wizard); while those have unsaved changes, the editor only reads.
 
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
