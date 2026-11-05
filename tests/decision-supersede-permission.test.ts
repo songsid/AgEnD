@@ -30,6 +30,7 @@ function fleet(db: SchedulerDb) {
   const instances = {
     general: { working_directory: WD },                                   // the `general` tool set by name
     lead: { working_directory: WD, tool_set: "coordinator" },
+    away: { working_directory: "/work/other", tool_set: "coordinator" },     // a coordinator in another working directory
     dev: { working_directory: WD, tool_set: "worker" },
     plain: { working_directory: WD },                                     // unset: a worker
   };
@@ -39,7 +40,7 @@ function fleet(db: SchedulerDb) {
   fake.decisionSupersedes = (FleetManager.prototype as any).decisionSupersedes.bind(fake);
   return {
     async ipc(who: string, payload: Record<string, unknown>) {
-      await (FleetManager.prototype as any).handleDecisionCrud.call(fake, who, { type: "fleet_decision_create", fleetRequestId: "r1", payload, meta: { working_directory: WD } });
+      await (FleetManager.prototype as any).handleDecisionCrud.call(fake, who, { type: "fleet_decision_create", fleetRequestId: "r1", payload, meta: { working_directory: (instances as Record<string, { working_directory: string }>)[who]!.working_directory } });
       return sent.at(-1);
     },
     http: (who: string, args: Record<string, unknown>) => (FleetManager.prototype as any).handleDecisionCrudHttp.call(fake, who, "post", args),
@@ -87,6 +88,15 @@ describe("superseding needs update_decision", () => {
       expect(count(db)).toBe(1);
     });
   }
+  it("a fleet decision is visible everywhere: a coordinator in another working directory supersedes it (both paths)", async () => {
+    for (const path of ["ipc", "http"] as const) {
+      const { db, rule } = store();                                       // rule: scope fleet, recorded under WD
+      const f = fleet(db);
+      const r = path === "ipc" ? (await f.ipc("away", { title: "V2", content: "y", supersedes: rule.id })).result : await f.http("away", { title: "V2", content: "y", supersedes: rule.id });
+      expect(r.title).toBe("V2");
+      expect(db.getDecision(rule.id)).toMatchObject({ status: "superseded", superseded_by: r.id });
+    }
+  });
   it("a project decision of another working directory is not one this instance can supersede", () => {
     const { db } = store();
     const other = db.createDecision({ project_root: "/elsewhere", title: "Theirs", content: "t", created_by: "x" });
