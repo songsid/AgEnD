@@ -14,7 +14,7 @@ export const AgentRuntimeChangeInput = z.object({
   if(value.runtime==="wsl"&&(value.machineId||value.adapter!=="exec"))ctx.addIssue({code:"custom",message:"Choose the Fleet host for a WSL/Linux agent"});
   if(value.runtime==="windows"&&value.adapter==="pane"&&!['codex','claude-code'].includes(value.backend))ctx.addIssue({code:"custom",message:"Persistent Windows terminals support Codex and Claude Code"});
 });
-export const GENERAL_USES_LOCATION_SWITCH="General is moved from Settings → Agent defaults → General location, not from Runtime settings";
+export const GENERAL_USES_LOCATION_SWITCH="General is moved from Settings → Shared agent settings → General location, not from Runtime settings";
 export type AgentRuntimeTarget = z.infer<typeof AgentRuntimeChangeInput>;
 export interface PreparedAgentRuntime { config:InstanceConfig; discard():void; current?():boolean }
 export interface AgentRuntimeChangeHost {
@@ -47,7 +47,7 @@ export class AgentRuntimeChanges {
   change(name:string,raw:unknown,authorized:()=>boolean):Promise<unknown>{
     const target=AgentRuntimeChangeInput.parse(raw),digest=settingsFingerprint(target),old=this.attempts.get(name);
     if(!authorized())throw Error("Runtime change requires a current dashboard administrator");
-    // General's location has its own journalled switch (Agent defaults → General location, #3036): it holds deliveries,
+    // General's location has its own journalled switch (Shared agent settings → General location, #3036): it holds deliveries,
     // confirms the old host exited and clears the Linux-only fields. This path does none of that, so it is not offered.
     if(this.isGeneral(name,this.host.config(name)))throw Error(GENERAL_USES_LOCATION_SWITCH);
     if(old?.id===target.requestId){if(old.digest!==digest)throw Error("Runtime request ID belongs to another change");return old.result;}

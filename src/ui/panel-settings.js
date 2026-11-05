@@ -25,18 +25,20 @@ import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
+import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
-  ACCESS_MODES, AGENT_MODES, DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, DEFAULT_SCHEMA, ownChoiceImpact, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
+  ACCESS_MODES, DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, DEFAULT_SCHEMA, ownChoiceImpact, HANG_TIMEOUT_DEFAULT_MINUTES, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES, batchImpact,
   changedFields, channelId, channelsOf, chLabel, connectionState, dashboardDefault, effectiveSummary, fleetModel, fromYaml, fullModelRequests, groupAgents,
-  hasOwn, impactOf, localeOptions, defaultsImpact, requestImpact, nonNegative, positive, replyGuardSupported, sameValue, shortName, STATUS_ORDER, toYaml,
-  toolSetDefault, visibilityDefault, worstImpact,
+  hasOwn, impactOf, defaultsImpact, requestImpact, nonNegative, positive, replyGuardSupported, sameValue, shortName, STATUS_ORDER, toYaml,
+  visibilityDefault, worstImpact,
 } from "./settings-model.js";
 import {
-  AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, DefaultMark, Drawer, Feedback, Impact, InEffect, Inherited, Label, ModelSelect,
+  AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, DefaultMark, Feedback, Impact, InEffect, Inherited, Label,
   NewBotDialog, Override, Select, ask, impactText, inAgentDefaults, valueText,
 } from "./settings-dialogs.js";
+import { SharedAgentSettings, sharedNotes } from "./settings-shared.js";
 import { SetupWizard } from "./settings-wizard.js";
 import { CreateInstanceDialog } from "./panel-fleet.js";
 import { RuntimesPanel } from "./panel-runtimes.js";
@@ -1058,7 +1060,6 @@ function General({ ctx, part = "all" }) {
   const { schema } = ctx;
   const d = ctx.fleet.defaults || {}, c = (ctx.classic && ctx.classic.defaults) || {};
   const hang = d.hang_detector || {}, startup = d.startup || {};
-  const primary = channelsOf(ctx.fleet)[0];
   const original = useMemo(() => ({ c: structuredClone(c) }), []);
   const base = useMemo(() => generalForm(d, c, ctx.fleet, schema), []);
   const [f, setF] = useDraft(ctx, "general", () => base);
@@ -1074,6 +1075,9 @@ function General({ ctx, part = "all" }) {
   const warnings = { concurrency: f.concurrency.trim() !== "" && num(f.concurrency) > 4 ? "concurrencyWarning" : "", stagger: num(f.stagger) < 100 ? "staggerWarning" : "" };
   const ready = !Object.values(errors).some(Boolean);
   const firstError = Object.values(errors).find(Boolean);
+  // What saving the edited fields costs (the schema's impact, the agents that set the field themselves): shown under each
+  // edited field, and added up on the Save bar.
+  const notes = sharedNotes({ schema, fleet: ctx.fleet, classic: ctx.classic, classicStatus: (name) => ctx.classicRuntime(name).status, live: ctx.live, fleetUp: ctx.fleetUp, f, base, errors });
   // #2347: every edit, staged as it is made (the first render included: a draft kept from before is staged again).
   useEffect(() => {
     if (!ready) {
@@ -1120,10 +1124,12 @@ function General({ ctx, part = "all" }) {
     // that sets it (POST /ui/config; a change to it waits for a fleet admin's OK, as it did there).
     const roots = f.roots.map((r) => String(r).trim()).filter(Boolean);   // ChipList keeps "2024" as a number; paths are text
     syncStage(ctx, "fleet:project_roots", sameValue(roots, base.roots) ? null : { label: tn("projectRootsTitle"), count: 1,
-      impact: impactOf(schema, "fleet.project_roots"), request: { method: "POST", url: "/ui/config", body: { project_roots: roots } } });
+      impact: impactOf(schema, "fleet.project_roots"), notes: notes.bar.roots,
+      request: { method: "POST", url: "/ui/config", body: { project_roots: roots } } });
     const dKeys = Object.keys(defaultsPatch), cKeys = Object.keys(classicPatch);
+    // The bar says what this Save costs in the page's own words (how many agents restart), not a bare impact label.
     syncStage(ctx, "defaults:fleet", dKeys.length ? { label: tn("updateDefaults"), count: dKeys.length,
-      impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)),
+      impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)), notes: notes.bar.defaults,
       request: { method: "PUT", url: "/api/settings/fleet/defaults", body: defaultsPatch } } : null);
     syncStage(ctx, "defaults:classic", cKeys.length ? { label: tn("updateClassicDefaults"), count: cKeys.length,
       impact: cKeys.every((k) => impactOf(schema, `classic_defaults.${k}`) === "now") ? "now" : "fleet",
@@ -1137,52 +1143,17 @@ function General({ ctx, part = "all" }) {
     log_level: !d.log_level, agent_mode: !d.agent_mode, hangOn: !hasOwn(hang, "enabled"), hang: !hasOwn(hang, "timeout_minutes"),
     concurrency: !hasOwn(startup, "concurrency"), stagger: !hasOwn(startup, "stagger_delay_ms"),
   };
-  const dm = (k) => (unset[k] && sameValue(f[k], base[k]) ? html`<${DefaultMark} />` : null);
   const fromDefaults = (k, value, target) => ({ text: valueText(value), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
-  const L = (text, field, id, k) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} mark=${k ? dm(k) : null} />`;
+  const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
   const fleetReply = replyGuardSupported(f.backend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.backend, f.agent_mode);
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
   // #2347: Agent defaults show the fleet's part; Chat & connections ClassicBot's. One form, one draft either way.
   const fleetPart = part !== "classic", classicPart = part !== "fleet";
   return html`<div class=${fleetPart ? "s-defaults-layout" : "s-classic-layout"}><div class=${`form s-general s-part-${part}`}>
-    ${fleetPart ? html`<section class="card s-defaults-model"><h3>${tn("uiDefaultsModelsTitle")}</h3>
-      <div class="grid2">
-        <div class=${fc("field", "backend")}>${L(tn("defaultBackend"), "defaults.backend", "g-be", "backend")}<${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} /></div>
-        <div class=${fc("field", "model")}>${L(tn("defaultModel"), "defaults.model", "g-model", "model")}<${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
-          backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} /></div>
-        <div class=${fc("field", "locale")}>${L(tn("language"), "defaults.locale", "g-locale", "locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
-          options=${localeOptions(f.locale).map((o) => (o.auto ? { value: "", label: tn("localeAuto") } : o))} /></div>
-      </div>
-    </section>
-    <section class="card s-defaults-work"><h3>${tn("uiDefaultsWorkTitle")}</h3>
-      <div class="grid2">
-        <div class=${fc("field", "auto")}>${L(`${tn("autoPause")} (${tn("minutes")})`, "defaults.auto_pause_after", "g-auto", "auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
-        <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${TOOL_PROGRESS} /></div>
-        <div class=${fc("field", "tips")}>${L(tn("dailyTips"), "defaults.tips", "g-tips", "tips")}<${Select} id="g-tips" value=${f.tips} onChange=${set("tips")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.tips))} /><p class="note">${tn("dailyTipsHint")}</p></div>
-      </div>
-    </section>
-    <section class="card s-defaults-collaboration"><h3>${tn("uiDefaultsCollaborationTitle")}</h3>
-      <div class="grid2">
-        <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${VISIBILITY_MODES} />
-          <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
-        <div class=${fc("field", "replyTriggers")}><label for="g-reply-triggers" class="s-defaults-toggle-label"><span>${tn("replyTriggers")}</span>${dm("replyTriggers")}</label>
-          <input id="g-reply-triggers" class="s-ui-toggle" type="checkbox" checked=${f.replyTriggers} onChange=${(e) => set("replyTriggers")(e.target.checked)} />
-          <div class="s-defaults-toggle-help"><details class="s-defaults-explanation"><summary>${layoutText("replyRulesHelp")}</summary><p class="note">${tn("replyTriggersHint")}</p></details><${Impact} schema=${schema} field="defaults.reply_triggers" /></div></div>
-        <div class=${fc("field", "reply")}><label for="g-reply" class="s-defaults-toggle-label"><span>${tn("replyCompletionGuard")}</span>${dm("reply")}</label>
-          <input id="g-reply" class="s-ui-toggle" type="checkbox" checked=${f.reply} onChange=${(e) => set("reply")(e.target.checked)} />
-          <div class="s-defaults-toggle-help"><details class="s-defaults-explanation"><summary>${layoutText("replySupportHelp")}</summary><p class="note">${fleetReply}</p></details><${Impact} schema=${schema} field="defaults.reply_completion_guard" /></div></div>
-      </div>
-    </section>
-    <details class="s-ui-disclosure s-defaults-permissions"><summary>${tn("uiDefaultsCapabilitiesTitle")}</summary><div class="s-ui-disclosure-body">
-      <fieldset id="g-dash" class=${fc("field dash-perms", ...DASHBOARD_FEATURES.map((k) => `dash_${k}`))}><legend>${L(tn("dashboardAccess"), "defaults.dashboard")}</legend>
-        <p class="note">${tn("dashboardDefaultsHint")}</p>
-        ${DASHBOARD_FEATURES.map((k) => html`<label key=${k} class="check"><input type="checkbox" checked=${f[`dash_${k}`]}
-          onChange=${(e) => set(`dash_${k}`)(e.target.checked)} /><span>${tn(`dashboard_${k}`)}</span></label>`)}
-      </fieldset>
-    </div></details>` : null}
+    ${fleetPart ? html`<${SharedAgentSettings} ctx=${ctx} form=${{ f, set, base, errors, warnings, unset, fc, notes, replyNote: fleetReply }} />` : null}
     ${classicPart ? html`<section class="card s-classic-defaults-card"><h3>${tn("classicDefaultsTitle")}</h3>
       <div class="grid2">
-        <div class=${fc("field", "classicBackend")}>${L(tn("classicBackend"), "classic_defaults.backend", "g-cbe")}<${BackendSelect} id="g-cbe" value=${f.classicBackend} onChange=${set("classicBackend")} />
+        <div class=${fc("field", "classicBackend")}>${L(tn("classicBackend"), "classic_defaults.backend", "g-cbe")}<${BackendSelect} id="g-cbe" value=${f.classicBackend} onChange=${set("classicBackend")} hostOnly />
           ${!c.backend && f.classicBackend === base.classicBackend ? html`<${Inherited} text=${valueText(f.classicBackend, "backend")} builtin=${!d.backend} from=${inAgentDefaults("#g-be")} />` : null}</div>
         <div class=${fc("field", "classicToolProgress", "classicToolProgressInherit")}>${L(tn("toolProgress"), "classic_defaults.tool_progress", "g-ctp")}
           <${Override} inherit=${f.classicToolProgressInherit} onInherit=${set("classicToolProgressInherit")} inherited=${fromDefaults("tool_progress", d.tool_progress ?? "off", "#g-tp")}>
@@ -1201,30 +1172,6 @@ function General({ ctx, part = "all" }) {
         <div id="g-guilds" class=${fc("field", "guilds")}>${L(tn("allowedGuilds"), "classic.allowed_guilds")}<${ChipList} items=${f.guilds} onChange=${set("guilds")} placeholder=${tn("guildIdPlaceholder")} label=${tn("allowedGuilds")} /></div>
       </div>
     </section>` : null}
-    ${fleetPart ? html`<details class="s-ui-disclosure s-defaults-workspace" id="project-roots"><summary>${tn("uiDefaultsWorkspaceTitle")}</summary><div class="s-ui-disclosure-body"><section class="card"><h3>${tn("projectRootsTitle")}</h3>
-      <p class="note">${tn("projectRootsHint")}</p>
-      <div id="g-roots" class=${fc("field", "roots")}>${L(tn("projectRootsTitle"), "fleet.project_roots")}<${ChipList} items=${f.roots} onChange=${set("roots")} placeholder="/path/to/projects" label=${tn("projectRootsTitle")} />
-        ${f.roots.length ? null : html`<${InEffect} text=${tn("projectRootsAnywhere")} />`}</div>
-    </section></div></details>` : null}
-    ${fleetPart ? html`<${Drawer} title=${tn("uiDefaultsAdvancedTitle")}>
-      <section class="card"><h3>${tn("runtimeResources")}</h3><div class="grid2">
-        <div class=${fc("field", "tool_set")}>${L(tn("toolSet"), "defaults.tool_set", "g-ts", "tool_set")}<${Select} id="g-ts" value=${f.tool_set} onChange=${set("tool_set")}
-          options=${[{ value: "", label: tn("toolSetUnset", toolSetDefault({}, {}), toolSetDefault({}, { general_topic: true })) }, ...TOOL_SETS]} /></div>
-        <div class=${fc("field", "log_level")}>${L(tn("logLevel"), "defaults.log_level", "g-ll", "log_level")}<${Select} id="g-ll" value=${f.log_level} onChange=${set("log_level")} options=${LOG_LEVELS} /></div>
-        <div class=${fc("field", "agent_mode")}>${L(tn("agentMode"), "defaults.agent_mode", "g-am", "agent_mode")}<${Select} id="g-am" value=${f.agent_mode} onChange=${set("agent_mode")} options=${AGENT_MODES} /></div>
-      </div></section>
-      <section class="card"><h3>${tn("detection")}</h3><div class="grid2">
-        <label class=${fc("check", "hangOn")}><input id="g-hang-on" type="checkbox" checked=${f.hangOn} onChange=${(e) => set("hangOn")(e.target.checked)} /><span>${tn("hangEnabled")}</span>${dm("hangOn")}<${Impact} schema=${schema} field="defaults.hang_detector" /></label>
-        <div class=${fc("field", "hang")}>${L(`${tn("hangTimeout")} (${tn("minutes")})`, "defaults.hang_detector", "g-hang", "hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
-      </div></section>
-      <section class="card"><h3>${tn("startup")}</h3><div class="grid2">
-        <div class=${fc("field", "concurrency")}>${L(tn("concurrency"), "fleet.spawn_concurrency", "g-conc")}<input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} /><${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />
-          ${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} />` : null}</div>
-        <div class=${fc("field", "stagger")}>${L(`${tn("staggerDelay")} (ms)`, "fleet.spawn_stagger_ms", "g-stag", "stagger")}<input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} /><${Feedback} error=${errors.stagger} warning=${warnings.stagger} /></div>
-      </div></section>
-      <section class="card"><h3>${tn("accessTitle")}</h3>
-        <p class="note">${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</p></section>
-    </${Drawer}>` : null}
   </div></div>`;
 }
 
@@ -1571,7 +1518,13 @@ function Developer({ ctx }) {
  */
 function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const changes = [...staged.values()];
-  const kinds = [...new Set(changes.filter((c) => !c.invalid).map((c) => c.impact))];
+  // What Save will cost, one line each: a change that knows its own words (the shared agent settings: how many agents
+  // restart) says them; any other says its impact label.
+  const costs = [];
+  for (const c of changes) {
+    if (c.invalid) continue;
+    for (const line of Array.isArray(c.notes) && c.notes.length ? c.notes : [impactText(c.impact)]) if (!costs.includes(line)) costs.push(line);
+  }
   const invalid = changes.filter((c) => c.invalid).length;
   // #2382 review: a field to fix in another section is named, and the message goes there (its field focused).
   const elsewhere = changes.find((c) => c.invalid && c.section && c.section !== section);
@@ -1579,7 +1532,7 @@ function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const count = changes.reduce((n, c) => n + (Number.isInteger(c.count) && c.count > 0 ? c.count : 1), 0);
   return html`<div data-trust="panel-controls" class="s-pending" role="region" aria-label=${tn("pendingRegion")}>
     <strong>${tn("changesPending", count)}</strong>
-    <span class="note">${kinds.map(impactText).join(" · ")}</span>
+    <span class="note">${costs.join(" · ")}</span>
     <span class="s-pending-actions">
       ${!invalid ? null : problem ? html`<button type="button" class="link-btn feedback error s-fix" role="status" onClick=${() => goToTarget(problem.section || section, problem.target)}>${elsewhere ? tn("fixToSaveIn", invalid, tn(`sec_${elsewhere.section}`)) : tn("fixToSave", invalid)}</button>`
         : html`<span class="feedback error s-fix" role="status">${tn("fixToSave", invalid)}</span>`}
