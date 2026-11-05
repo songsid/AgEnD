@@ -11,16 +11,18 @@ import { dirname, join } from "node:path";
 import { ensurePrivateDirectory, privatePath } from "./private-files.js";
 import type { HubTx, HubUnitOfWork } from "./types.js";
 
-/** Composition's closed set of hold reasons (hub-composition.md §2). */
-export type HubHoldCode =
-  | "hub-incomplete"
-  | "hub-unsealed"
-  | "hub-state-newer"
-  | "hub-state-mismatch"
-  | "hub-storage"
-  | "hub-directory-secret"
-  | "hub-member-pairing"
-  | "service-unavailable";
+/** Composition's closed set of hold reasons (hub-composition.md §2). Each has fleet text (locale "hub.hold.<code>"). */
+export const HUB_HOLD_CODES = [
+  "hub-incomplete",
+  "hub-unsealed",
+  "hub-state-newer",
+  "hub-state-mismatch",
+  "hub-storage",
+  "hub-directory-secret",
+  "hub-member-pairing",
+  "service-unavailable",
+] as const;
+export type HubHoldCode = (typeof HUB_HOLD_CODES)[number];
 
 export class HubStateError extends Error {
   constructor(
