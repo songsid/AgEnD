@@ -70,6 +70,8 @@ export interface HourAgg {
   rs?: Record<string, Record<string, number>>;
   /** #2122 §10.2: the cost a CLI reported (USD), by source and model key — beside the totals, as `rs`. */
   cs?: Record<string, Record<string, number>>;
+  /** #3066 §2: output speed after the first token, by source and model key (SpeedAgg) — beside the totals, as `rs`. */
+  sp?: Record<string, Record<string, SpeedAgg>>;
 }
 /** A source of an hour's totals: the reader that read them and the profile it read them under. */
 export const sourceKey = (reader: TranscriptKind, profile: string): string => `${reader}:${profile}`;
@@ -99,6 +101,12 @@ export interface FileCursor {
   total?: number;
   /** Claude: ids of the last messages counted (one message spans several lines). */
   ids?: string[];
+  /** #3066 §2, Claude: the response being read, for its speed (its window ends at its last block). */
+  resp?: ClaudeResponse;
+  /** #3066 §2, Codex: the model items' clocks since the last token_usage_record. */
+  cx?: CodexResponse;
+  /** #3066 §2: timed responses read from the last lines, for the reader to count (addSpeed); never kept. */
+  speeds?: SpeedSample[];
   /** Kiro (kiro-usage-scan.ts): what the source looked like when read, and the time of the last turn counted. */
   sig?: string;
   after?: number;
@@ -146,7 +154,15 @@ export function reviveLedger(raw: unknown): Ledger {
       return out;
     };
     const rs = beside(v.rs), cs = beside(v.cs);
-    l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}), ...(Object.keys(rs).length ? { rs } : {}), ...(Object.keys(cs).length ? { cs } : {}) };
+    // #3066 §2: speed beside the totals too — a whole SpeedAgg of finite, non-negative numbers, for a known source.
+    const sp = dict<Record<string, SpeedAgg>>();
+    for (const [sk, sm] of Object.entries((v.sp && typeof v.sp === "object" ? v.sp : {}) as Record<string, unknown>)) {
+      if (!src[sk] || !sm || typeof sm !== "object") continue;
+      const into = dict<SpeedAgg>();
+      for (const [mk, a] of Object.entries(sm)) if (Array.isArray(a) && a.length === 3 + SPEED_BUCKETS && a.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) into[mk] = a as SpeedAgg;
+      if (Object.keys(into).length) sp[sk] = into;
+    }
+    l.hours[k] = { m, g: v.g, ...(Object.keys(src).length ? { src } : {}), ...(Object.keys(rs).length ? { rs } : {}), ...(Object.keys(cs).length ? { cs } : {}), ...(Object.keys(sp).length ? { sp } : {}) };
   }
   if (Array.isArray(r.gaps)) l.gaps = r.gaps.filter((g) => Array.isArray(g) && g.length === 9);
   if (r.writesSeen) l.writesSeen = true;
@@ -205,6 +221,103 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   ledger.gaps.push([turn.t, gap, prev.ctx, prev.model, ttlBefore, turn.model, turn.prompt, measured, estimated]);
 }
 
+// ── #3066 §2: output speed, measured after the first token ──
+/**
+ * Output tokens per second of a response's own generation — after its first token (the user's choice), the method of
+ * tokdash (MIT, © 2026 Jingbiao Mei; github.com/JingbiaoMei/tokdash, its `post_first_token`): Claude Code stamps each
+ * content block when it finishes, and a leading thinking block carries `thinkingDurationMs`, so its stamp minus that is
+ * the first token; the window runs to the last block. A response without that (no thinking block, an API error or a
+ * fallback, no stop_reason) is not timed. Rate = Σ tokens ÷ Σ duration, never a mean of rates.
+ *
+ * Kept per hour, source and model key as one array: [tokens, ms, responses, …SPEED_BUCKETS] — the histogram is the
+ * duration in each rate bucket (√2 steps from 1 tok/s), for a duration-weighted p10–p90.
+ */
+export const SPEED_BUCKETS = 24;
+export type SpeedAgg = number[];
+export const speedBucket = (tokPerSec: number): number => Math.max(0, Math.min(SPEED_BUCKETS - 1, Math.floor(2 * Math.log2(Math.max(1, tokPerSec)))));
+/** The lower edge of a histogram bucket, tok/s. */
+export const speedBucketFloor = (i: number): number => 2 ** (i / 2);
+export interface SpeedSample { t: number; model: string; prompt: number; tokens: number; ms: number }
+export const emptySpeed = (): SpeedAgg => new Array<number>(3 + SPEED_BUCKETS).fill(0);
+export function addSpeedInto(into: SpeedAgg, from: SpeedAgg): void { for (let i = 0; i < 3 + SPEED_BUCKETS; i++) into[i] = (into[i] ?? 0) + (from[i] ?? 0); }
+
+/** Count one timed response into its hour, under its source and model key (as addTurn counts its tokens). */
+export function addSpeed(ledger: Ledger, file: FileCursor, s: SpeedSample, cutoff: number, profile?: string): void {
+  if (s.t < cutoff || !(s.ms > 0) || !(s.tokens > 0)) return;
+  const hour = ledger.hours[String(hourOf(s.t))] ??= { m: dict<HourTotals>(), g: new Array(GAP_BUCKETS).fill(0) };
+  const sk = sourceKey(file.kind, profile ?? "unknown");
+  const agg = ((hour.sp ??= dict<Record<string, SpeedAgg>>())[sk] ??= dict<SpeedAgg>())[modelKey(s.model, s.prompt)] ??= emptySpeed();
+  agg[0] += s.tokens; agg[1] += s.ms; agg[2] += 1;
+  agg[3 + speedBucket(s.tokens * 1000 / s.ms)]! += s.ms;
+}
+
+/** A Claude response being read (one message id, one line per content block): what its timing needs. */
+export interface ClaudeResponse { id: string; first: number; think: number | null; last: number; out: number; model: string; prompt: number; stopped: boolean; failed: boolean; done?: true }
+
+/**
+ * Observe one assistant line for the speed of its response; a finished response (its stop_reason seen) becomes a sample
+ * in `file.speeds`, which the reader drains. Every line of a message is observed — not only the first, which counts its
+ * tokens — because the window ends at the last block.
+ */
+function observeClaudeSpeed(file: FileCursor, id: string | undefined, d: { timestamp?: unknown; isApiErrorMessage?: unknown; thinkingDurationMs?: unknown;
+  message?: { model?: unknown; stop_reason?: unknown; content?: unknown; usage?: Record<string, unknown> } }): void {
+  const stamp = typeof d.timestamp === "string" ? Date.parse(d.timestamp) : NaN;
+  if (!id || !Number.isFinite(stamp) || !d.message) return;
+  const u = d.message.usage, model = typeof d.message.model === "string" ? d.message.model : "";
+  const content = d.message.content;
+  const thinking = Array.isArray(content) && content.length === 1 && (content[0] as { type?: unknown } | null)?.type === "thinking";
+  let r = file.resp;
+  if (!r || r.id !== id) {
+    r = file.resp = { id, first: stamp, think: thinking && typeof d.thinkingDurationMs === "number" && d.thinkingDurationMs > 0 ? d.thinkingDurationMs : null,
+      last: stamp, out: 0, model, prompt: num(u?.input_tokens) + num(u?.cache_read_input_tokens) + num(u?.cache_creation_input_tokens), stopped: false, failed: false };
+  }
+  if (r.done) return;
+  r.last = Math.max(r.last, stamp);
+  r.out = Math.max(r.out, num(u?.output_tokens));
+  r.failed ||= d.isApiErrorMessage === true || model === "<synthetic>";
+  r.stopped ||= !!d.message.stop_reason;
+  if (!r.stopped) return;
+  r.done = true;
+  if (r.failed || r.think === null) return;                           // timed only after its first token (tokdash's rule)
+  const ms = r.last - (r.first - r.think);
+  if (ms > 0 && r.out > 0) (file.speeds ??= []).push({ t: r.first, model: r.model, prompt: r.prompt, tokens: r.out, ms });
+}
+
+/**
+ * Codex (0.147+ rollouts): a response's model items (AgentMessage, Reasoning) carry `started_at_ms` / `completed_at_ms`
+ * on their `item_completed` event, and a `token_usage_record` closes the response with its own usage — tokdash's
+ * `response_window`: first model item's start → last model item's end, minus the hosted tool time (WebSearch) inside
+ * it; client tools (commands, edits, MCP) are not the model's time and bound nothing. Faster than 3000 tok/s is a clock
+ * artefact (tokdash's ceiling) and is not counted. Older rollouts have no item clocks: not timed.
+ */
+export const CODEX_MAX_TOK_PER_S = 3000;
+const CODEX_MODEL_ITEMS = new Set(["AgentMessage", "Reasoning"]);
+const CODEX_HOSTED_ITEMS = new Set(["WebSearch"]);
+const CX_ITEM_TYPE = /"item":\{"type":"([A-Za-z]+)"/, CX_STARTED = /"started_at_ms":(\d{10,16})/, CX_DONE = /"completed_at_ms":(\d{10,16})/;
+export interface CodexResponse { start: number | null; end: number | null; hosted: number }
+function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
+  const text = ("whole" in line ? line.whole : line.head).toString("utf8", 0, Math.min(("whole" in line ? line.whole : line.head).length, 4096));
+  if (text.includes("\"type\":\"item_completed\"")) {
+    const kind = CX_ITEM_TYPE.exec(text)?.[1], s = Number(CX_STARTED.exec(text)?.[1]), e = Number(CX_DONE.exec(text)?.[1]);
+    if (!kind || !Number.isFinite(s) || !Number.isFinite(e) || e < s) return;
+    const r = file.cx ??= { start: null, end: null, hosted: 0 };
+    if (CODEX_MODEL_ITEMS.has(kind)) { r.start = r.start === null ? s : Math.min(r.start, s); r.end = r.end === null ? e : Math.max(r.end, e); }
+    else if (CODEX_HOSTED_ITEMS.has(kind)) r.hosted += e - s;
+    return;
+  }
+  if (!("whole" in line) || line.whole.indexOf("\"token_usage_record\"") === -1) return;
+  let d: { type?: unknown; payload?: { usage?: Record<string, unknown> } };
+  try { d = JSON.parse(line.whole.toString("utf8")); } catch { return; }
+  if (d.type !== "token_usage_record") return;
+  const r = file.cx;
+  delete file.cx;                                           // a record closes its response, timed or not
+  const out = num(d.payload?.usage?.output_tokens);
+  if (!r || r.start === null || r.end === null || !(out > 0)) return;
+  const ms = r.end - r.start - r.hosted;
+  if (!(ms > 0) || (out * 1000) / ms > CODEX_MAX_TOK_PER_S) return;
+  (file.speeds ??= []).push({ t: r.start, model: file.model ?? "unknown", prompt: num(d.payload?.usage?.input_tokens), tokens: out, ms });
+}
+
 /**
  * Drop what is older than `cutoff` (hours and gap events). `foldedThrough` (#2122): an hour is dropped only once the
  * usage rollup holds it (usage-rollup.ts: fold, then prune) — never one after the rollup's durable checkpoint.
@@ -247,10 +360,12 @@ export function claudeLine(line: ScanLine, file: FileCursor): Turn | null {
   let id: string | undefined, turn: Turn | null = null;
   if ("whole" in line) {
     if (line.whole.indexOf("\"usage\"") === -1 || line.whole.indexOf("\"assistant\"") === -1) return null;
-    let d: { type?: unknown; isSidechain?: unknown; timestamp?: unknown; message?: { id?: unknown; model?: unknown; usage?: Record<string, unknown> } };
+    let d: { type?: unknown; isSidechain?: unknown; timestamp?: unknown; isApiErrorMessage?: unknown; thinkingDurationMs?: unknown;
+      message?: { id?: unknown; model?: unknown; stop_reason?: unknown; content?: unknown; usage?: Record<string, unknown> } };
     try { d = JSON.parse(line.whole.toString("utf8")); } catch { return null; }
     if (d.type !== "assistant" || d.isSidechain === true || !d.message) return null;
     id = typeof d.message.id === "string" ? d.message.id : undefined;
+    observeClaudeSpeed(file, id, d);                                  // #3066 §2: every block line, before the dedupe
     if (id && file.ids?.includes(id)) return null;
     turn = claudeTurn(d.message.usage, d.message.model, d.timestamp);
   } else {
@@ -271,6 +386,7 @@ export function claudeLine(line: ScanLine, file: FileCursor): Turn | null {
 
 /** The turn a Codex rollout line records, or null. A `turn_context` line updates the file's model. */
 export function codexLine(line: ScanLine, file: FileCursor): Turn | null {
+  observeCodexSpeed(line, file);                            // #3066 §2: item clocks and the response's closing record
   if (!("whole" in line)) return null;                     // token_count and turn_context lines are small
   const w = line.whole;
   const isCount = w.indexOf("\"token_count\"") !== -1;

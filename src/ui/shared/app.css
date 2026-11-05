@@ -2117,6 +2117,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .us-mark.us-approx { margin-left: 0; margin-right: 1px; }
 .us-none { cursor: help; }
 .us-key { margin-top: 6px; }
+/* #3066 §2: each model's speed after the first token. */
+.us-speed { margin-top: 12px; }
+.us-speed .row-item { gap: 8px; flex-wrap: wrap; }
+.us-speed .num { font-variant-numeric: tabular-nums; }
 .us-trend, .us-heat { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
 .us-trend h3, .us-heat h3, .us-rest h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .us-scroll { overflow-x: auto; max-width: 100%; }

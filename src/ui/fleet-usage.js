@@ -22,6 +22,10 @@ register("fusage", {
     t_cost_reported: "Amount as the CLI reported it", t_estimated: "Estimated from text size (Kiro records no token counts)", t_reasoning_none: "Not reported by this CLI",
     sourceNote: "Some hours were read before AgEnD recorded their backend and profile.", profileUnrecorded: "profile not recorded",
     l_partial: "◐ partly priced", l_cost_reported: "† amount from the CLI", l_estimated: "≈ estimated",
+    // #3066 §2: output speed after the first token.
+    speed: "Speed", speedUnit: "{0} tok/s", speedCoverage: "{0} of {1} requests timed", speedSpread: "p10–p90: {0}–{1} tok/s",
+    speedNone: "no timing in its transcripts", speedByModel: "Speed by model",
+    speedBasis: "Output tokens ÷ the model's own response time (tool time excluded); method after tokdash.",
    
     f_includes_estimates: "includes estimates (Kiro)", estimatedPart: "of which estimated: {0}",
     scanning: "Scanning — totals may still grow.", updated: "Updated {0} · read every 10 min", since: "Collected since {0}", notYet: "Not collected yet",
@@ -54,6 +58,9 @@ register("fusage", {
     t_cost_reported: "金額為 CLI 自行回報", t_estimated: "依文字長度估算（Kiro 不記錄 token 數）", t_reasoning_none: "這個 CLI 不回報",
     sourceNote: "部分時段在 AgEnD 記錄 backend 與 profile 之前就已讀取。", profileUnrecorded: "未記錄 profile",
     l_partial: "◐ 部分定價", l_cost_reported: "† 金額由 CLI 回報", l_estimated: "≈ 估算值",
+    speed: "速度", speedUnit: "{0} token/秒", speedCoverage: "{1} 個請求中有 {0} 個可計時", speedSpread: "p10–p90：{0}–{1} token/秒",
+    speedNone: "transcript 沒有計時資訊", speedByModel: "各模型速度",
+    speedBasis: "輸出 token ÷ 模型本身的回應時間（不含工具執行時間）；方法參考 tokdash。",
    
     f_includes_estimates: "含估算值（Kiro）", estimatedPart: "其中估算：{0}",
     scanning: "掃描中——總數可能還會增加。", updated: "更新於 {0} · 每 10 分鐘讀取一次", since: "自 {0} 起收集", notYet: "尚未收集",
@@ -323,10 +330,13 @@ function Heatmap({ report, dates }) {
   </section>`;
 }
 
-/** A mark with what it means: shown as its sign, said (title, and aria-label for readers) as words. */
-const mark = (sign, words, cls = "us-mark") => html`<span class=${cls} title=${words} aria-label=${words}>${sign}</span>`;
-/** "—" that says why there is no number. */
-const dash = (words) => html`<span class="us-none" title=${words} aria-label=${words}>—</span>`;
+/**
+ * A mark with what it means: shown as its sign, said (title, and aria-label for readers) as words. role="img" makes it
+ * nameable (#3067 review, Prism P3: aria-label is not allowed on a generic span).
+ */
+const mark = (sign, words, cls = "us-mark") => html`<span class=${cls} role="img" title=${words} aria-label=${words}>${sign}</span>`;
+/** "—" that says why there is no number (nameable the same way). */
+const dash = (words) => html`<span class="us-none" role="img" title=${words} aria-label=${words}>—</span>`;
 /** The marks a row's numbers carry (#3066 §3): ◐ partly priced, † the CLI's own amount, ≈ estimated. */
 export function rowMarks(r) {
   const flags = r.flags || [];
@@ -356,11 +366,28 @@ function Row({ r, group, max, measure, cols }) {
     <td data-label=${tu("total")} class="num">${num(tokens(r.total))}</td>
     <td data-label=${tu("requests")} class="num">${n(r.requests)}</td>
     ${cols.messages ? html`<td data-label=${tu("messages")} class="num">${r.messages === null ? "—" : n(r.messages)}</td>` : null}
+    ${cols.speed ? html`<td data-label=${tu("speed")} class="num">${r.speed ? speedText(r.speed) : dash(tu("speedNone"))}</td>` : null}
   </tr>`;
 }
-/** Columns worth a place (#3066 §3): Reasoning only when some row reports it; Messages only when some row has them. */
+/** #3066 §2: a rate as shown — whole tok/s, one decimal below 10. */
+export const speedText = (s) => tu("speedUnit", s.tokPerSec >= 10 ? Math.round(s.tokPerSec).toLocaleString("en-US") : s.tokPerSec.toFixed(1));
+/** Columns worth a place (#3066 §3): Reasoning only when some row reports it; Messages only when some row has them; Speed (§2) only when some response was timed. */
 export function usageColumns(rows) {
-  return { reasoning: rows.some((r) => r.reasoningReported !== false), messages: rows.some((r) => r.messages !== null && r.messages !== undefined) };
+  return { reasoning: rows.some((r) => r.reasoningReported !== false), messages: rows.some((r) => r.messages !== null && r.messages !== undefined),
+    speed: rows.some((r) => !!r.speed) };
+}
+/** #3066 §2: each model's speed after the first token — rate · requests timed (coverage) · p10–p90 from 30 timed. */
+function SpeedCard({ report }) {
+  const list = report.speedByModel || [];
+  if (!list.length) return null;
+  return html`<section class="us-speed card" aria-labelledby="us-speed-h">
+    <h3 id="us-speed-h">${tu("speedByModel")}</h3>
+    <ul class="rows">${list.map((m) => html`<li key=${m.model} class="row-item"><span class="grow strong mono">${m.model}</span>
+      <span class="num">${speedText(m.speed)}</span>
+      <span class="muted">${[m.requests > 0 ? tu("speedCoverage", n(m.speed.timedRequests), n(m.requests)) : null,
+        m.speed.p10 !== null && m.speed.p90 !== null ? tu("speedSpread", Math.round(m.speed.p10), Math.round(m.speed.p90)) : null].filter(Boolean).join(" · ")}</span></li>`)}</ul>
+    <p class="note">${tu("speedBasis")}</p>
+  </section>`;
 }
 /** The legend under the table: only the marks that appear, and the one footnote when an hour's source was not recorded. */
 function Legend({ rows }) {
@@ -424,10 +451,11 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
       </dl>
       ${rows.length ? html`<table class="us-table"><thead><tr><th scope="col">${tu(`g_${group}`)}</th><th scope="col" class="num">${tu("amount")}</th>
         <th scope="col" class="num">${tu("input")}</th><th scope="col" class="num">${tu("output")}</th>${cols.reasoning ? html`<th scope="col" class="num">${tu("reasoning")}</th>` : null}<th scope="col" class="num">${tu("read")}</th><th scope="col" class="num">${tu("write")}</th>
-        <th scope="col" class="num">${tu("total")}</th><th scope="col" class="num">${tu("requests")}</th>${cols.messages ? html`<th scope="col" class="num">${tu("messages")}</th>` : null}</tr></thead>
+        <th scope="col" class="num">${tu("total")}</th><th scope="col" class="num">${tu("requests")}</th>${cols.messages ? html`<th scope="col" class="num">${tu("messages")}</th>` : null}${cols.speed ? html`<th scope="col" class="num">${tu("speed")}</th>` : null}</tr></thead>
         <tbody>${rows.map((r) => html`<${Row} key=${r.key} r=${r} group=${group} max=${max} measure=${measure} cols=${cols} />`)}</tbody></table>
         <${Legend} rows=${rows} />`
         : html`<p class="note">${tu("noRows")}</p>`}
+      <${SpeedCard} report=${report} />
       <${Trend} report=${report} dates=${dates} />
       <${Heatmap} report=${report} dates=${dates} />`}
     ${report.notMeasured.length || report.shared.length ? html`<section class="us-rest" aria-labelledby="us-rest-h"><h3 id="us-rest-h">${tu("notMeasured")}</h3>
