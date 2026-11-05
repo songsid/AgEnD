@@ -20,12 +20,16 @@ setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), prov
       { type: "percent", label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, used: 62, resetsAt: at(60), windowMs: WEEK }] },
   { id: "codex:yanxianchen", name: "Codex", status: "ok", plan: "Pro", profile: "yanxianchen",
     metrics: [{ type: "percent", label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, used: 8, resetsAt: at(100), windowMs: WEEK }] },
+  // Prism #3073 P1: an estimate with no basis (the lookup below) — the read must not fail; the bar stays, no capacity.
+  { id: "claude", name: "Claude", status: "ok", plan: "Pro",
+    metrics: [{ type: "percent", label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, used: 33, resetsAt: at(80), windowMs: WEEK }] },
 ] }));
 setCapacityLookup((provider: string, metric: string) => {
   if (metric !== "Weekly") return null;
   if (provider === "claude:hsinlin") return { status: "ok", windows: 3, deltaPct: 40, bestFit: "api", mixed: false,
-    bases: { api: { median: 412, low: 378, high: 455, cv: 0.07 }, all: { median: 31e6, low: 29e6, high: 34e6, cv: 0.21 }, output: { median: 2e6, low: 1.7e6, high: 2.4e6, cv: 0.3 } } };
+    bases: { api: { median: 412, low: 378, high: 455, cv: 0.07, windows: 3 }, all: { median: 31e6, low: 29e6, high: 34e6, cv: 0.21, windows: 3 }, output: { median: 2e6, low: 1.7e6, high: 2.4e6, cv: 0.3, windows: 3 } } };
   if (provider === "codex:yanxianchen") return { status: "not_enough", deltaPct: 6 };
+  if (provider === "claude") return { status: "ok", windows: 1, deltaPct: 30, bestFit: null, mixed: false, bases: {} };
   return null;
 });
 fx.fm.getActiveUsageProviderIds = () => null;
@@ -61,6 +65,8 @@ for (const c of matrix()) {
   check(caps?.[0]?.notes[1] === (zh ? "「API 等值」最吻合：3 週內 ±7%" : "API-equivalent fits best: ±7% across 3 weeks"), `${tag}: the best fit "${caps?.[0]?.notes[1]}"`);
   check(caps?.[1]?.line === (zh ? "用量還不夠估算 100%（已用 Δ 6%，需 10%）" : "Not enough usage yet to measure 100% (Δ 6% of 10%)"), `${tag}: not enough yet "${caps?.[1]?.line}"`);
   check(!!caps && caps.every((x) => !x.clipped), `${tag}: nothing clipped`);
+  const bars = await o.page.evaluate(`document.querySelectorAll(${JSON.stringify(o.scope)} + " .u-meter").length`) as number;
+  check(bars >= 4, `${tag}: every bar served, the no-basis account's too (${bars} bars; Prism #3073 P1)`);
   check(o.errs.length === 0 && (r[tag] as any).csp.length === 0, `${tag}: no page error, no CSP violation (${o.errs.join(" | ")})`);
   const box = await o.page.locator(o.scope).first().boundingBox().catch(() => null);
   if (box) await o.page.screenshot({ path: shotPath("3066-cap", c, o.kind), clip: { x: box.x, y: box.y, width: box.width, height: Math.min(box.height, 720) } });
