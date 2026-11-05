@@ -209,6 +209,12 @@ describe("S3c: the snapshot to the Hub", () => {
     expect(await s.afterCommit()).toBe("pending");
     expect(a.sent).toHaveLength(1);
     await expect(s.publishSnapshot(a.link as any)).rejects.toThrow(/stale/);
+    // The link dies while the frame is in flight: nothing is promoted, and the handshake fails.
+    const d = link(3);
+    d.link.send = vi.fn(async (fr: any) => { d.sent.push(fr); d.kill(); });
+    const s2 = exposureSnapshotSender(f.store);
+    await expect(s2.publishSnapshot(d.link as any)).rejects.toThrow(/stale/);
+    expect([d.sent.length, s2.sentRevision()]).toEqual([1, 0]);
     // A store whose snapshot went back: refused.
     const back = exposureSnapshotSender({ snapshot: () => ({ revision: 1, exposures: [] }) }), c = link(2);
     const fwd = exposureSnapshotSender({ snapshot: (() => { let r = 5; return () => ({ revision: r--, exposures: [] }); })() });
