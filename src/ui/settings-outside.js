@@ -5,10 +5,14 @@
 // Every change applies at once (an action, not a staged setting) and is this computer's only: elsewhere the card shows
 // the state, read-only. The server decides who may (GET /ui/outside's `here`) and refuses everything else regardless.
 // The words are the leader's (cid-alpha3-design, strings 1–13 and 17).
+// Refs #3061: "Set up authenticator app" / "Set up again" open the reference page's dialog (the app's own Dialog: the
+// browser traps focus and closes it on Esc; focus goes back to the button that opened it) — the QR code and the key (step 1),
+// the code field (step 2), Cancel and "Verify and turn on". A wrong code is answered inside the dialog.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { Dialog } from "/assets/ui-dialog.js";
 import { api } from "./settings-confirm.js";
 
 register("outside", {
@@ -101,10 +105,12 @@ function Qr({ uri }) {
 export const outsidePoll = { quickMs: 2000, slowMs: 15000 };
 
 export function OutsideCard() {
-  const [s, setS] = useState(null), [enroll, setEnroll] = useState(null), [code, setCode] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
+  // `dlg`: the set-up dialog while it is open — { kind: "setup" | "again", enroll: null (asking the server) | { secret, uri } }.
+  const [s, setS] = useState(null), [dlg, setDlg] = useState(null), [code, setCode] = useState(""), [msg, setMsg] = useState(""), [busy, setBusy] = useState(false);
   // Fences: an answer that arrives after the card is gone, or after a newer read began, is dropped; nor does a read
-  // land while an action is under way (the box shows the click until the action's own read).
-  const live = useRef({ mounted: true, seq: 0, busy: false });
+  // land while an action is under way (the box shows the click until the action's own read). `dlg`: the same for the
+  // dialog's enrolment (closed meanwhile: its answer is dropped); `refocus`: the dialog just closed, focus goes back.
+  const live = useRef({ mounted: true, seq: 0, busy: false, dlg: 0, dlgOpen: false, refocus: false }), card = useRef(null);
   // Every read that ends (answered or not) moves `rev`: the next one is scheduled from there, so a failed read (the
   // network, a 5xx, an unreadable answer) never stops the card reading again (#3035 review r2) — and keeps what it
   // showed meanwhile.
@@ -128,27 +134,49 @@ export function OutsideCard() {
     const timer = setTimeout(() => { if (!live.current.busy) load(); else setRev((n) => n + 1); }, delay);
     return () => clearTimeout(timer);
   }, [rev]);
+  // The dialog closed (Cancel, Esc, ×, or done): focus goes back to the button that opened it — or to the one that took its
+  // place when the set-up finished ("Set up authenticator app" turned into "Set up again"). The Dialog itself returns focus to
+  // whatever was focused when it opened; a browser that does not focus a button on click leaves that as the page, so the card says it.
+  useEffect(() => {
+    if (dlg || busy || !live.current.refocus) return;
+    live.current.refocus = false;
+    const el = card.current && card.current.querySelector(s && s.enrolled ? "#outAgain" : "#outSetUp");
+    if (el && !el.disabled && typeof el.focus === "function") el.focus();
+  }, [dlg, busy]);
   if (!s || !s.webOnly) return null;
   const here = s.here === true;
   const act = async (fn) => {
     setBusy(true); setMsg(""); live.current.busy = true; live.current.seq++;      // a read under way is outdated now
     try { await fn(); } finally { live.current.busy = false; if (live.current.mounted) { setBusy(false); load(); } }
   };
-  const begin = () => act(async () => {
-    const r = await api("/ui/outside/enroll", { method: "POST", body: "{}" });
-    if (r.ok && r.body && r.body.secret) { setEnroll(r.body); setCode(""); } else toast(t("app.failed"), false);
-  });
+  // Open the dialog at once (the button that opened it still has focus) and ask the server for the secret meanwhile; if it
+  // will not give one, the dialog closes with the page's usual "failed". Nothing is changed until the right code is confirmed.
+  const begin = async (kind) => {
+    if (!here || live.current.dlgOpen) return;                                    // not here, or one is open already
+    const id = ++live.current.dlg;
+    live.current.dlgOpen = true;
+    setDlg({ kind, enroll: null }); setCode(""); setMsg("");
+    let r = null;
+    try { r = await api("/ui/outside/enroll", { method: "POST", body: "{}" }); } catch { r = null; }
+    if (!live.current.mounted || id !== live.current.dlg) return;                 // closed (or gone) while it was asked
+    if (r && r.ok && r.body && r.body.secret) setDlg({ kind, enroll: r.body });
+    else { closeDlg(); toast(t("app.failed"), false); }
+  };
+  function closeDlg() {
+    live.current.dlg++;                                                           // a late answer to the enrolment is dropped
+    live.current.dlgOpen = false;
+    live.current.refocus = true;
+    setDlg(null); setCode(""); setMsg("");
+  }
   const confirm = () => act(async () => {
-    const r = await api("/ui/outside/enroll/confirm", { method: "POST", body: JSON.stringify({ code }) });
-    if (r.ok) { setEnroll(null); setCode(""); return; }
-    const why = r.body && r.body.error;
-    if (why === "expired") { setEnroll(null); return; }
+    let r;
+    try { r = await api("/ui/outside/enroll/confirm", { method: "POST", body: JSON.stringify({ code }) }); } catch { r = null; }
+    if (r && r.ok) { await load(); closeDlg(); return; }                          // read first: the card behind is the new state when it closes
+    const why = r && r.body && r.body.error;
+    if (why === "expired") { closeDlg(); return; }
     setMsg(why === "wrong" ? to("wrong") : t("app.failed"));
   });
-  const again = async () => {
-    if (!(await confirmDialog({ title: to("again"), message: to("againConfirm"), confirmLabel: to("again"), danger: true }))) return;
-    begin();
-  };
+  const canConfirm = !!(dlg && dlg.enroll) && /^\s*\d{3}\s?\d{3}\s*$/.test(code);
   const remove = async () => {
     if (!(await confirmDialog({ title: to("removeTitle"), message: to("removeConfirm"), confirmLabel: to("remove"), danger: true }))) return;
     act(async () => { const r = await api("/ui/outside/remove", { method: "POST", body: "{}" }); if (!r.ok) toast(t("app.failed"), false); });
@@ -160,7 +188,7 @@ export function OutsideCard() {
     if (!r.ok) toast(t("app.failed"), false);
   }); };
   const link = s.link, open = link && link.state === "open";
-  return html`<section class="card s-outside" id="outsideCard"><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
+  return html`<section class="card s-outside" id="outsideCard" ref=${card}><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
     <div class="chips s-out-apps" id="outApps" role="list" aria-label=${to("appsLabel")}><span class="tag" role="listitem">Google Authenticator</span><span class="tag" role="listitem">Microsoft Authenticator</span><span class="tag" role="listitem">${to("appOther")}</span></div>
     ${!here ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
     <label class="check"><input id="outSwitch" type="checkbox" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
@@ -169,24 +197,28 @@ export function OutsideCard() {
     ${s.outside && open && link.url ? html`<p class="note" id="outOpenAt">${to("openAt", link.url)}${link.quick ? ` ${to("quick")}` : ""}</p>` : null}
     ${s.outside && link && !open ? html`<p class="note" id="outStarting">${t("app.loading")}</p>` : null}
     ${s.pausedForMs > 0 ? html`<p class="note s-va-warn" role="status" id="outPaused">${to("paused", waitWords(s.pausedForMs))}</p>` : null}
-    ${enroll ? html`<div class="s-out-enroll" id="outEnroll">
+    ${s.enrolled ? html`<p class="note" id="outSetUpOn">${to("setUpOn", new Date(s.enrolledAt).toLocaleDateString())}</p>
+        <p class="note">${to("lostPhone")}</p>
+        ${here ? html`<div class="save-row"><button type="button" class="btn" id="outAgain" disabled=${busy} onClick=${() => begin("again")}>${to("again")}</button>
+          <button type="button" class="btn btn-danger" id="outRemove" disabled=${busy} onClick=${remove}>${to("remove")}</button></div>` : null}`
+      : html`<p class="note" id="outNoRecovery">${to("noRecovery")}</p>${here ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${() => begin("setup")}>${to("setUp")}</button></div>` : null}`}
+    ${dlg ? html`<${Dialog} title=${to(dlg.kind === "again" ? "again" : "setUp")} onClose=${closeDlg} busy=${busy} actions=${html`
+        <button type="button" class="btn" id="outCancel" disabled=${busy} onClick=${closeDlg}>${t("app.cancel")}</button>
+        <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !canConfirm} onClick=${confirm}>${to("activate")}</button>`}>
+      <div class="s-out-enroll" id="outEnroll">${dlg.enroll ? html`
         <p class="s-out-step" id="outStep1"><strong>${to("step1")}</strong></p>
         <p class="note">${to("scan")}</p>
-        <${Qr} uri=${enroll.uri} />
-        <p class="note">${to("key")}: <code id="outKey">${keyGroups(enroll.secret)}</code></p>
+        <${Qr} uri=${dlg.enroll.uri} />
+        <p class="note">${to("key")}: <code id="outKey">${keyGroups(dlg.enroll.secret)}</code></p>
         <p class="s-out-step" id="outStep2"><strong>${to("step2")}</strong></p>
         <div class="field"><label for="outCode">${to("code")}</label>
           <input id="outCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" value=${code}
-            onInput=${(e) => setCode(e.target.value)} /></div>
+            onInput=${(e) => setCode(e.target.value)}
+            onKeyDown=${(e) => { if (e.key === "Enter" && canConfirm && !busy) { e.preventDefault(); confirm(); } }} /></div>
+        ${dlg.kind === "again" ? html`<p class="note" id="outAgainNote">${to("againConfirm")}</p>` : null}
         <p class="note" id="outEnrollNoRecovery">${to("noRecovery")}</p>
-        ${msg ? html`<p class="feedback error" role="alert" id="outMsg">${msg}</p>` : null}
-        <div class="save-row"><button type="button" class="btn" id="outCancel" disabled=${busy} onClick=${() => { setEnroll(null); setMsg(""); }}>${t("app.cancel")}</button>
-          <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !/^\s*\d{3}\s?\d{3}\s*$/.test(code)} onClick=${confirm}>${to("activate")}</button></div>
-      </div>`
-      : s.enrolled ? html`<p class="note" id="outSetUpOn">${to("setUpOn", new Date(s.enrolledAt).toLocaleDateString())}</p>
-        <p class="note">${to("lostPhone")}</p>
-        ${here ? html`<div class="save-row"><button type="button" class="btn" id="outAgain" disabled=${busy} onClick=${again}>${to("again")}</button>
-          <button type="button" class="btn btn-danger" id="outRemove" disabled=${busy} onClick=${remove}>${to("remove")}</button></div>` : null}`
-      : html`<p class="note" id="outNoRecovery">${to("noRecovery")}</p>${here ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${begin}>${to("setUp")}</button></div>` : null}`}
+        ${msg ? html`<p class="feedback error" role="alert" id="outMsg">${msg}</p>` : null}`
+        : html`<p class="note" id="outEnrollLoading">${t("app.loading")}</p>`}</div>
+    </${Dialog}>` : null}
   </section>`;
 }

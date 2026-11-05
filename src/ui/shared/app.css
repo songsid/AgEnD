@@ -3530,6 +3530,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .dlg .s-dev-facts dt { margin: 0; color: var(--text-3); font-size: 13px; }
 .dlg .s-dev-facts dd { margin: 0; color: var(--text); font-size: 14px; overflow-wrap: anywhere; }
 .dlg .s-dev-facts code { font-family: var(--font-mono); letter-spacing: .08em; }
+/* Refs #3061: the authenticator set-up dialog — the QR code sits in the middle, as on the reference page. */
+.dlg .s-out-qr { align-self: center; }
 /* Refs #3061 (P2b): the signed-in devices of Devices & sign-in. */
 .p-settings .s-devices .s-dev-listhead { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin: 14px 0 6px; }
 .p-settings .s-devices .s-dev-listhead h4 { margin: 0; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-semibold); }
