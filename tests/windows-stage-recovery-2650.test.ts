@@ -93,9 +93,11 @@ $null=Get-VerifiedAgendVersion`);
  }));
  it('a failed curl cannot be hidden by a successful empty installer shell',()=>scratch(f=>{
   const command=f.run(`Get-AgendInstallCommand 'beta'`).trim();
-  for(const [name,code]of [['curl',22],['bash',0]] as const){writeFileSync(join(f.bin,name),`#!/bin/sh\nexit ${code}\n`);chmodSync(join(f.bin,name),0o755)}
+  for(const [name,body]of [['curl','exit 22'],['bash',`touch ${f.dir}/ran; exit 0`]] as const){writeFileSync(join(f.bin,name),`#!/bin/sh\n${body}\n`);chmodSync(join(f.bin,name),0o755)}
   const result=spawnSync('/bin/bash',['-c',command],{env:{PATH:`${f.bin}:/usr/bin:/bin`,HOME:f.dir},timeout:3000});
-  expect(result.status).toBe(22);
+  // Every source failed: the step fails and the (empty) installer shell never runs.
+  expect(result.status).not.toBe(0);
+  expect(existsSync(join(f.dir,'ran'))).toBe(false);
  }));
  it('clear one stale stage without dropping other stages, backend selection or requested version',()=>scratch(f=>{
   const out=f.run(`@('STAGE_1_DONE','STAGE_2_DONE','STAGE_4_DONE','BACKENDS=1,4','AGEND_VERSION=beta') | Set-Content -LiteralPath $ProgressFile
