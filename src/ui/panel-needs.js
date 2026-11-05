@@ -27,6 +27,12 @@ import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 
+// A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
+register("app", {
+  en: { needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally" },
+  "zh-TW": { needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視" },
+});
+
 register("needs", {
   en: {
     title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
