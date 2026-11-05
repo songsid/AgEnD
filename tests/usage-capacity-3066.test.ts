@@ -196,7 +196,8 @@ describe("the fleet's refresh (#3066 §1)", () => {
   it("Prism #3073 P2: a profile literally named \"default\" (or unknown/unrecorded) is ambiguous — neither account is estimated", async () => {
     const lines = [host(rd(T0, 0)), host(rd(T0 + 20 * H, 20)), { ...rd(T0, 0), provider: "claude:default", profile: "default" }, { ...rd(T0 + 20 * H, 20), provider: "claude:default", profile: "default" }];
     const cfg = (name: string) => ({ instances: { x: { backend: "claude-code", backend_options: { "claude-code": { credential_profile: name } } } } });
-    const named = await fleetWith(lines, [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }], cfg("default"));
+    // Configured now (and no other trace: no "claude:default" in the history, no directory) — config alone decides.
+    const named = await fleetWith(lines.slice(0, 2), [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }], cfg("default"));
     expect([...named.keys()]).toEqual([]);                        // never credited to the host account
     // Control: an ordinary named profile beside the host — the host is estimated from its own hours. (Its history
     // holds no "claude:default": that alone would make it ambiguous, r2.)
