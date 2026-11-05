@@ -254,16 +254,16 @@ describe("Prism #3115 r1 (pairing)", () => {
     expect(r.api.disconnected(r.hubId)).toBe(true);
     expect((await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes)).ok).toBe(true);
     // The hold cannot be saved (the directory is read-only): the memory hold stands — no retry, no pending view.
-    const w = rig();
+    let fail: (() => void) | null = null;
+    const w = rig({ claim: vi.fn(() => new Promise((_ok, no) => { fail = () => no(Object.assign(Error("uncertain"), { code: "unavailable" })); })) });
     await w.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
-    w.answers.push("fail");
     const { chmodSync } = await import("node:fs");
     const dir = join(w.home, "hub-member");
     const confirmed = await w.api.confirmFingerprint(w.digest, yes);
     expect(confirmed.ok).toBe(true);
-    chmodSync(dir, 0o500);
+    chmodSync(dir, 0o500);                                            // the hold's save will fail
     try {
-      await w.flush();
+      fail!(); await w.flush();
       expect(w.api.view()).toMatchObject({ state: "held", hold: "unknown_outcome" });
       expect(await w.api.confirmFingerprint(w.digest, yes)).toEqual({ ok: false, error: "conflict" });
     } finally { chmodSync(dir, 0o700); }
