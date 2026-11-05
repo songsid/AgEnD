@@ -384,9 +384,13 @@ export interface HubTx { readonly id: string } // opaque, issued only by the sto
 export interface HubUnitOfWork {
   atomic<T>(work: (tx: HubTx) => T): T; // synchronous DB changes only; no network awaits
 }
+export interface HubAuditContent {
+  recordId: string; question?: string; answer?: string; audience: readonly PersonKey[];
+}
 export interface HubAuditSink {
   append(tx: HubTx, record: HubAuditRecord): void;
   read(ctx: HubRequestContext, scope: { exposureId?: ExposureId; after?: Epoch }): Promise<readonly HubAuditRecord[]>;
+  readContent(ctx: HubRequestContext, recordId: string): Promise<HubAuditContent>;
 }
 export interface HubNotifications {
   owner(event: { messageId: MessageId; exposureId: ExposureId; code: "asked" | "answered" | "held" | "revoked" }): Promise<void>;
@@ -408,7 +412,7 @@ export interface HubInitializer {
 
 Initialization stages private files and config under an operation receipt, validates before enabling, and commits `hub.enabled` last. Failure leaves off or a visible repair state; repeat/restart cannot overwrite another Hub identity, repoint credentials or silently reinstall a service. `localOwnerConfirmation` is an opaque server-created confirmation reference bound to the exact plan, not a caller-chosen string that grants authority.
 
-Audit includes actual question/answer references, immutable asker and owner-at-event, destination, time, audiences, exact grant/revisions, decision and outcome, including rejected attempts. Read access is asked-owner scope or separately assigned security-auditor scope, checked afresh; Hub infrastructure admin is not automatically a content auditor. Audit access/export and manual hand-over/recovery are audited. Notifications carry IDs/minimal context and cannot change authorization; notification failure is retried by event ID without replaying the question. Retention deletes encrypted payloads and relevant backups under chosen policy, while preserving required unresolved dedup/revocation evidence. No unconditional “keep forever” or unapproved numeric retention default.
+Audit includes actual question/answer references, immutable asker and owner-at-event, destination, time, audiences, exact grant/revisions, decision and outcome, including rejected attempts. Read access is asked-owner scope or separately assigned security-auditor scope, checked afresh; Hub infrastructure admin is not automatically a content auditor. Both metadata and `readContent` enforce asked-owner/auditor scope; `contentRef` is an internal lookup key, never a bearer read capability. Audit access/export and manual hand-over/recovery are audited. Notifications carry IDs/minimal context and cannot change authorization; notification failure is retried by event ID without replaying the question. Retention deletes encrypted payloads and relevant backups under chosen policy, while preserving required unresolved dedup/revocation evidence. No unconditional “keep forever” or unapproved numeric retention default.
 
 ## 6. Threats, required acceptance and slice order
 
