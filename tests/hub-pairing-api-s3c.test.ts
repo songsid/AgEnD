@@ -58,7 +58,7 @@ describe("the member's pairing backend", () => {
     const ok = await r.api.connect({ address: "https://hub.test", code: "ABCD-EF01-2345" }, yes);
     expect(ok).toEqual({ ok: true, pairing: { state: "pending", memberOrigin: "https://hub.test", fingerprint: { kind: "pairing", digest: r.digest }, expiresAt: expect.any(Number),
       ownerConfirmed: null, adminApproved: null, localConfirmed: false } });
-    expect(r.begin.mock.calls[0]![0]).toMatchObject({ memberOrigin: "https://hub.test", code: "abcdef012345" });
+    expect((r.begin.mock.calls as any)[0][0]).toMatchObject({ memberOrigin: "https://hub.test", code: "abcdef012345" });
     expect(await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes)).toEqual({ ok: false, error: "busy" });
     expect([httpsOrigin("https://a.test/"), httpsOrigin("https://u:p@a.test"), httpsOrigin("https://a.test?x=1")]).toEqual(["https://a.test", null, null]);
   });
@@ -79,7 +79,7 @@ describe("the member's pairing backend", () => {
     await r.flush();
     expect(r.claim).toHaveBeenCalledTimes(3);
     expect(r.sleeps).toEqual([5000, 5000]);
-    expect(r.claim.mock.calls[0]![0]).toMatchObject({ hubId: r.hubId, approvedFingerprint: r.digest, expectedProfileDigest: null });
+    expect((r.claim.mock.calls as any)[0][0]).toMatchObject({ hubId: r.hubId, approvedFingerprint: r.digest, expectedProfileDigest: null });
     expect(r.api.view()).toEqual({ state: "paired", hub: { hubId: r.hubId, name: null, memberOrigin: "https://hub.test", webOrigin: "https://web.hub.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "offline" });
     r.setLink("online");
     expect(r.api.view()).toMatchObject({ state: "paired", link: "online" });
@@ -151,7 +151,7 @@ describe("the pairing routes", async () => {
   const { SettingsExecution } = await import("../src/settings-transaction.js");
   const { bindGatewayRequest } = await import("../src/web-request-context.js");
   const { isSettingsMutation, prepareSettingsEffect } = await import("../src/settings-effect.js");
-  const { pairingSummary } = await import("../src/hub/member/pairing-summary.js");
+  const { pairingSummary } = await import("../src/hub-pairing-summary.js");
   async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api: unknown }) {
     const raw = Buffer.from(JSON.stringify(o.json ?? {}));
     const cap = new SettingsExecution({ current: () => true, snapshot: () => null });
@@ -190,7 +190,7 @@ describe("the pairing routes", async () => {
     expect((await call({ method: "POST", path: "/api/hub/member/pairing/connect", json: { address: "https://hub.test", code: "abcdef012345" }, api })).status).toBe(403);
     expect((await call({ method: "POST", path: "/api/hub/member/pairing/connect", json: {}, replay: true, gateway: true, api })).status).toBe(403);
     expect(await call({ method: "POST", path: "/api/hub/member/pairing/connect", json: { address: "https://hub.test", code: "abcdef012345" }, replay: true, api })).toMatchObject({ status: 200, body: { ok: true } });
-    expect(api.connect.mock.calls[0]![0]).toEqual({ address: "https://hub.test", code: "abcdef012345" });
+    expect((api.connect.mock.calls as any)[0][0]).toEqual({ address: "https://hub.test", code: "abcdef012345" });
     expect(await call({ method: "POST", path: "/api/hub/member/pairing/confirm", json: { digest: "x" }, replay: true, api })).toMatchObject({ status: 409, body: { ok: false, error: "conflict" } });
     expect(await call({ method: "POST", path: "/api/hub/member/pairing/disconnect", replay: true, api })).toMatchObject({ status: 200, body: { ok: true, remote: "pending" } });
     expect(await call({ method: "GET", path: "/api/hub/member/pairing", api: null })).toMatchObject({ status: 404, body: { error: "unavailable" } });

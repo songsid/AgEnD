@@ -21,10 +21,10 @@ import { atomicWriteFileSync } from "../../atomic-write.js";
 import { ensurePrivateDirectory, privatePath, readPrivateFile } from "../private-files.js";
 import { beginHubPairing as realBegin, claimHubPairing as realClaim } from "../pairing-client.js";
 import { HubMemberProfileStore } from "../profile.js";
-import { httpsOrigin, type HubConnectError, type HubPairingHold, type HubPairingView } from "./pairing-summary.js";
-export { httpsOrigin, pairingSummary } from "./pairing-summary.js";
+import { httpsOrigin, type HubConnectError, type HubPairingHold, type HubPairingView } from "../../hub-pairing-summary.js";
+export { httpsOrigin, pairingSummary } from "../../hub-pairing-summary.js";
 
-export type { HubConnectError, HubPairingHold, HubPairingView } from "./pairing-summary.js";
+export type { HubConnectError, HubPairingHold, HubPairingView } from "../../hub-pairing-summary.js";
 interface MemberState { hubId?: string; localConfirmed?: { digest: string; at: number }; held?: HubPairingHold; disconnected?: { at: number };
   /** Bindings disconnected and started over: never reconnected automatically (their profiles are kept: S1 has no revoke). */
   retired?: Array<{ hubId: string; profile: string | null }> }

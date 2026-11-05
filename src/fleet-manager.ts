@@ -47,7 +47,7 @@ import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { OfficeTalk } from "./office-talk.js";
-import { pairingSummary } from "./hub/member/pairing-summary.js";
+import { pairingSummary } from "./hub-pairing-summary.js";
 import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
 import type { PageShare } from "./page-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
