@@ -641,6 +641,8 @@ const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
  * while anything real shows signs of life well before the old two minutes.
  */
 const PROGRESS_MIN_ELAPSED_MS = 30_000;
+/** M-2391: the threshold tick fires this long after it, never a millisecond before (timers can fire early). */
+const PROGRESS_THRESHOLD_MARGIN_MS = 50;
 /** How much of a tool summary the progress line will show before eliding. */
 const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
@@ -17237,7 +17239,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const publication = this.beginCancelButtonPublication(instanceName, correlationId);
-    const initialProgressText = FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName, 0, 1));
+    // M-2391: a re-post below a reply (preserveProgress) continues the same turn — its elapsed time continues from
+    // the live bubble's start, as its tool list does. Restarting it at 0 meant an agent replying more often than the
+    // threshold never showed elapsed time at all. A fresh turn (no preserve) starts at 0 as before.
+    const carriedStart = preserveProgress ? this.liveButtonStart(instanceName) : undefined;
+    const carriedMs = carriedStart !== undefined ? Math.max(0, Date.now() - carriedStart) : 0;
+    const initialProgressText = carriedStart !== undefined && carriedMs >= this.progressMinElapsedMs()
+      ? FleetManager.progressText(carriedMs, null, this.progressMinElapsedMs(), this.progressPrefixFor(instanceName, carriedMs))
+      : FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName, 0, 1));
 
     try {
       const sent = await adapter.notifyAlert(chatId, {
@@ -17263,7 +17272,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Elapsed time is measured from when this button was posted — i.e. from
         // when the work was handed over — not from the pane's working transition,
         // which resets if the CLI blips idle mid-turn.
-        startedAt: Date.now(),
+        startedAt: carriedStart ?? Date.now(),
         // Matches the text notifyAlert just posted, so the first 60s tick does
         // not re-edit identical text — which put a "(edited)" mark on Discord
         // with nothing visibly changed.
@@ -17535,6 +17544,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return PROGRESS_MIN_ELAPSED_MS;
   }
 
+  /** M-2391: when the instance's live (not retiring) bubble started — the current turn's start — or undefined. */
+  private liveButtonStart(instanceName: string): number | undefined {
+    const starts = [...this.cancelButtons.values()].filter((e) => e.instanceName === instanceName && !e.retiring && typeof e.startedAt === "number")
+      .map((e) => e.startedAt as number);
+    return starts.length ? Math.min(...starts) : undefined;
+  }
+
   private startProgressTicker(entry: CancelButtonEntry): void {
     const tick = () => this.refreshBubble(entry);
     entry.progressTimer = setInterval(tick, PROGRESS_UPDATE_INTERVAL_MS);
@@ -17544,7 +17560,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // one additional edit per turn that lives past the threshold.
     const firstAt = this.progressMinElapsedMs() - (Date.now() - (entry.startedAt ?? Date.now()));
     if (firstAt > 0 && firstAt < PROGRESS_UPDATE_INTERVAL_MS) {
-      const firstTick = setTimeout(tick, firstAt);
+      // M-2391: a little past the threshold — a timer can fire a millisecond before Date.now() reaches it, which
+      // rendered the unchanged "處理中…" text and skipped the edit until the next 60 s interval.
+      const firstTick = setTimeout(tick, firstAt + PROGRESS_THRESHOLD_MARGIN_MS);
       firstTick.unref?.();
     }
   }
