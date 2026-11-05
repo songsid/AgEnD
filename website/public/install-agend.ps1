@@ -64,9 +64,7 @@ function Write-Err($msg) {
     # 第一次出錯時說一次安裝紀錄在哪裡：視窗關掉以後，回報問題就附上這個檔案。
     if ($script:InstallLog -and -not $script:InstallLogShown) {
         $script:InstallLogShown = $true
-        # 路徑自己一行：接在說明後面時，窄的視窗會從路徑中間折行（#3068）。
-        Write-Host "  安裝紀錄（回報問題時請附上這個檔案）：" -ForegroundColor Yellow
-        Write-Host "    $($script:InstallLog)" -ForegroundColor Yellow
+        Write-Host "  安裝紀錄（回報問題時請附上這個檔案）：$($script:InstallLog)" -ForegroundColor Yellow
     }
 }
 function Write-Info($msg) { Write-Host "  $msg" -ForegroundColor White; Write-InstallLog "  $msg" }
@@ -365,13 +363,9 @@ function Write-NetAdvice([string[]]$kinds, [string]$where, $proxy) {
         Write-Info "  songsid.github.io 被擋時，安裝程式會改用 raw.githubusercontent.com 上同一份已部署的安裝程式。"
     }
     if ($kinds -contains 'tls') {
-        Write-Info "  HTTPS 憑證的問題：公司網路常用自己的憑證檢查加密連線。"
-        Write-Info "  請向 IT 人員要公司的根憑證（.crt），"
+        Write-Info "  HTTPS 憑證的問題：公司網路常用自己的憑證檢查加密連線。請向 IT 人員要公司的根憑證（.crt），"
         if ($where -eq 'wsl') {
-            # 一行一句，不讓窄的視窗把句尾折到最左邊（#3068）。
-            Write-Info "  放到 Ubuntu 的 /usr/local/share/ca-certificates/，"
-            Write-Info "  再執行 update-ca-certificates；"
-            Write-Info "  Node.js 另外要設定 NODE_EXTRA_CA_CERTS，指向這個檔案。"
+            Write-Info "  放到 Ubuntu 的 /usr/local/share/ca-certificates/ 再執行 update-ca-certificates；Node.js 另外設定 NODE_EXTRA_CA_CERTS 指向這個檔案。"
         } else {
             Write-Info "  或確認 Windows 已安裝它（IT 通常會統一安裝）。請不要關掉憑證檢查。"
         }
@@ -464,317 +458,20 @@ function ConvertFrom-WslNetOutput([string]$text, $endpoints) {
         @{ Host = $_.Host; Why = $_.Why; Required = $_.Required; Kind = $k; Code = $c; Via = $via }
     })
 }
-# 在 WSL 裡跑一段 bash 腳本（短的檢查，有時間上限），回傳 @{ Code; Text }；出錯時 Code 是 -1。
-function Invoke-WslScriptText([string]$distro, [string]$user, [string]$script, [int]$timeoutSeconds = 60) {
-    $file = $null
+function Test-WslNetwork([string]$distro) {
+    Write-Info "檢查 WSL 裡的網路連線（安裝需要的網站）..."
+    $text = ''
+    $file, $wslFile = New-WslScriptFile (Get-WslNetScript $NET_WSL)
     $prevEAP = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $file, $wslFile = New-WslScriptFile $script $distro
-        return (Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', $user, '--exec', 'bash', $wslFile) -TimeoutSeconds $timeoutSeconds)
-    } catch { return @{ Code = -1; Text = [string]$_ } } finally {
+        $probe = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--exec', 'bash', $wslFile) -TimeoutSeconds 60
+        if ($probe.Code -eq 0) { $text = $probe.Text }
+    } catch { $text = '' } finally {
         $ErrorActionPreference = $prevEAP
-        if ($file) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
     }
-}
-function Get-WslNetResults([string]$distro) {
-    $probe = Invoke-WslScriptText $distro 'root' (Get-WslNetScript $NET_WSL) 60
-    $text = if ($probe.Code -eq 0) { [string]$probe.Text } else { '' }
-    return (ConvertFrom-WslNetOutput $text $NET_WSL)
-}
-function Test-WslNetwork([string]$distro) {
-    Write-Info "檢查 WSL 裡的網路連線（安裝需要的網站）..."
-    $results = Get-WslNetResults $distro
-    # 公司網路檢查加密連線（#3068）：攔截用的根憑證如果 Windows 已經信任，經過同意後只匯入那一張，再檢查一次。
-    $tls = @($results | Where-Object { $_.Required -and $_.Kind -eq 'tls' }) | Select-Object -First 1
-    if ($tls) {
-        Write-Warn ("WSL 裡連 {0} 時，HTTPS 憑證不被信任（常見於公司會檢查加密連線的網路）" -f $tls.Host)
-        if (Invoke-OrgRootOffer $distro $tls.Host) {
-            Write-Info "重新檢查 WSL 裡的網路連線..."
-            $results = Get-WslNetResults $distro
-        }
-    }
-    return (Resolve-NetResults $results 'wsl')
-}
-
-# ── 公司網路的 HTTPS 檢查：從 Windows 匯入那一張根憑證（#3068）────────────
-# 公司網路常在中間解開再重新加密 HTTPS（TLS inspection），用公司自己的根憑證簽。IT 通常只把它裝進 Windows，WSL 裡的
-# curl、apt、Node.js、npm 不認得，安裝就停在網路檢查。這裡：
-# 1. 在 WSL 裡讀出連線實際出示的憑證鏈（openssl s_client），取最上面那張的簽發者；
-# 2. 在 Windows 的受信任根憑證（LocalMachine\Root、CurrentUser\Root）裡找「同一張」：名稱相同，而且金鑰識別碼相同
-#    （Authority Key Identifier = Subject Key Identifier），絕不只比名稱；再用 openssl 確認它真的簽了出示的憑證；
-# 3. 把名稱、SHA-256 指紋和位置給使用者看，問 y/N（預設不匯入）；同意了才只匯入這一張到 AgEnD 的 Linux
-#    （/usr/local/share/ca-certificates/agend-org-root-<指紋前 8 碼>.crt + update-ca-certificates），讓 Node.js 和 npm 也
-#    信任它：NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env、/etc/profile.d/agend-org-ca.sh（登入的 shell），也帶給這次安裝接下來的
-#    WSL 步驟（WSLENV）。.env 裡已經有指向別的檔案的 NODE_EXTRA_CA_CERTS 時，三處都不改：它仍然有效（#3071 審查）。
-# 絕不：關掉憑證檢查（NODE_TLS_REJECT_UNAUTHORIZED=0、strict-ssl=false）、匯入 Windows 全部的根憑證、沒有同意就匯入。
-# 找不到、驗證不過、使用者不同意或匯入失敗：照舊顯示手動設定的說明。
-$ORG_CA_DIR = '/usr/local/share/ca-certificates'
-$ORG_CA_PROFILE = '/etc/profile.d/agend-org-ca.sh'
-# 讀 AgEnD 的 .env 裡現在的 NODE_EXTRA_CA_CERTS 到 $old（和 env-file.ts 一樣：export 、一對引號都去掉）。
-$ORG_CA_ENV_READ = @(
-    'd=${AGEND_HOME:-$HOME/.agend}; e=$d/.env'
-    'old=; if [ -f "$e" ]; then old=$(sed -n -E ''s/^[[:space:]]*(export[[:space:]]+)?NODE_EXTRA_CA_CERTS[[:space:]]*=[[:space:]]*//p'' "$e" | tail -n 1 | sed -E ''s/[[:space:]]+$//''); fi'
-    'old=${old#\"}; old=${old%\"}; old=${old#\''}; old=${old%\''}'
-)
-
-# 讀 WSL 裡連 $hostName 時出示的憑證鏈（PEM）。有 https_proxy 時經過它（不帶帳密）。沒有 openssl 時印 CHAIN_NO_OPENSSL。
-function Get-WslChainScript([string]$hostName, [int]$port = 443) {
-    if ($hostName -notmatch '^[A-Za-z0-9.-]+$') { throw 'Invalid host name.' }
-    return (@(
-        'command -v openssl >/dev/null 2>&1 || { echo CHAIN_NO_OPENSSL; exit 0; }'
-        'p=${https_proxy:-${HTTPS_PROXY:-}}; set --'
-        'if [ -n "$p" ]; then p=${p#*://}; p=${p##*@}; p=${p%%/*}; set -- -proxy "$p"; fi'
-        ('echo | timeout 20 openssl s_client -showcerts -servername ' + $hostName + ' -connect ' + $hostName + ':' + $port + ' "$@" 2>/dev/null | sed -n ''/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p''')
-        'exit 0'
-    ) -join "`n")
-}
-function ConvertFrom-PemChain([string]$text) {
-    $certs = New-Object Collections.ArrayList
-    foreach ($m in [regex]::Matches([string]$text, '-----BEGIN CERTIFICATE-----([A-Za-z0-9+/=\s]+?)-----END CERTIFICATE-----')) {
-        try { $null = $certs.Add((New-Object Security.Cryptography.X509Certificates.X509Certificate2 (, [Convert]::FromBase64String(($m.Groups[1].Value -replace '\s', ''))))) } catch { }
-    }
-    return $certs.ToArray()                                           # 呼叫的人用 @(...) 接：空的就是 0 張
-}
-function ConvertTo-Pem($cert) {
-    $b64 = [Convert]::ToBase64String($cert.RawData)
-    $lines = for ($i = 0; $i -lt $b64.Length; $i += 64) { $b64.Substring($i, [Math]::Min(64, $b64.Length - $i)) }
-    return ("-----BEGIN CERTIFICATE-----`n" + ($lines -join "`n") + "`n-----END CERTIFICATE-----`n")
-}
-function Test-SameBytes($a, $b) {
-    if ($null -eq $a -or $null -eq $b) { return $false }
-    return ([Convert]::ToBase64String([byte[]]$a) -ceq [Convert]::ToBase64String([byte[]]$b))
-}
-# DER 的一個元素：@{ Tag; Start（內容開始）; End }，超出範圍就丟出例外。
-function Get-DerElement([byte[]]$b, [int]$i) {
-    if ($i + 2 -gt $b.Length) { throw 'DER out of range' }
-    $tag = $b[$i]; $len = [int]$b[$i + 1]; $p = $i + 2
-    if ($len -band 0x80) {
-        $n = $len -band 0x7f
-        if ($n -lt 1 -or $n -gt 3 -or $p + $n -gt $b.Length) { throw 'DER length' }
-        $len = 0; for ($k = 0; $k -lt $n; $k++) { $len = $len * 256 + $b[$p + $k] }; $p += $n
-    }
-    if ($p + $len -gt $b.Length) { throw 'DER out of range' }
-    return @{ Tag = $tag; Start = $p; End = $p + $len }
-}
-# 憑證的金鑰識別碼（大寫十六進位）：'ski' 是它自己的（Subject Key Identifier），'aki' 是簽發者的（Authority Key
-# Identifier 的 keyIdentifier）。沒有就 $null。
-function Get-CertKeyId($cert, [string]$which) {
-    $oid = if ($which -eq 'ski') { '2.5.29.14' } else { '2.5.29.35' }
-    $ext = @($cert.Extensions | Where-Object { $_.Oid.Value -eq $oid }) | Select-Object -First 1
-    if (-not $ext) { return $null }
-    try {
-        $b = [byte[]]$ext.RawData
-        $hex = { param($e) if ($e.End -le $e.Start) { return $null }; return ([BitConverter]::ToString($b, $e.Start, $e.End - $e.Start) -replace '-', '') }
-        if ($which -eq 'ski') { $o = Get-DerElement $b 0; if ($o.Tag -ne 0x04) { return $null }; return (& $hex $o) }
-        $s = Get-DerElement $b 0; if ($s.Tag -ne 0x30) { return $null }
-        $i = $s.Start
-        while ($i -lt $s.End) { $c = Get-DerElement $b $i; if ($c.Tag -eq 0x80) { return (& $hex $c) }; $i = $c.End }
-    } catch { }
-    return $null
-}
-function Get-CertSha256($cert) {
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { return ([BitConverter]::ToString($sha.ComputeHash($cert.RawData)) -replace '-', '') } finally { $sha.Dispose() }
-}
-# Windows 信任的根憑證：@{ Cert; Store }。
-function Get-WindowsRootCerts {
-    $out = New-Object Collections.ArrayList
-    foreach ($loc in 'LocalMachine', 'CurrentUser') {
-        try { foreach ($c in @(Get-ChildItem -Path "Cert:\$loc\Root" -ErrorAction Stop)) { $null = $out.Add(@{ Cert = $c; Store = "$loc\Root" }) } } catch { }
-    }
-    return $out.ToArray()
-}
-# 出示的憑證鏈最上面那張的簽發者，在 $roots 裡的「同一張」根憑證：名稱（DER 原樣）相同、自己簽自己、現在有效，而且
-# 簽發者的金鑰識別碼相同（出示的憑證有 AKI 時）。出示的最上面那張就是根憑證時，比它自己的名稱和 SKI。
-# 回傳 @{ Cert; Store; Sha256 }，或 $null。名稱相同、金鑰不同的不算。
-function Find-OrgRoot($presented, $roots, $now = $null) {
-    if (-not $now) { $now = Get-Date }
-    $presented = @($presented)
-    if ($presented.Count -eq 0) { return $null }
-    $top = $presented[$presented.Count - 1]
-    if (Test-SameBytes $top.SubjectName.RawData $top.IssuerName.RawData) {
-        $wantName = $top.SubjectName.RawData; $wantKey = Get-CertKeyId $top 'ski'
-    } else {
-        $wantName = $top.IssuerName.RawData; $wantKey = Get-CertKeyId $top 'aki'
-    }
-    $hits = @(@($roots) | Where-Object {
-        $c = $_.Cert
-        (Test-SameBytes $c.SubjectName.RawData $wantName) -and (Test-SameBytes $c.SubjectName.RawData $c.IssuerName.RawData) -and
-            $c.NotBefore -le $now -and $c.NotAfter -gt $now -and ((-not $wantKey) -or ((Get-CertKeyId $c 'ski') -eq $wantKey))
-    } | Sort-Object -Property @{ Expression = { $_.Cert.NotAfter }; Descending = $true })
-    if ($hits.Count -eq 0) { return $null }
-    $best = $hits[0]
-    $stores = @($hits | Where-Object { $_.Cert.Thumbprint -eq $best.Cert.Thumbprint } | ForEach-Object { $_.Store } | Select-Object -Unique)
-    return @{ Cert = $best.Cert; Store = ($stores -join '、'); Sha256 = (Get-CertSha256 $best.Cert) }
-}
-# 用 openssl 確認 $root 真的簽了出示的憑證鏈。成功印 VERIFY_OK。-trusted：只信任它，系統的 CAfile、CApath、CAstore
-# 和預設的都不用（只關掉 CAfile、CApath 時，OpenSSL 3 仍會讀預設的 CAstore：#3071 審查）。暫存目錄建不起來就停，
-# 什麼都不寫。
-function Get-WslVerifyScript($root, $presented) {
-    $presented = @($presented)
-    $leaf = ConvertTo-Pem $presented[0]
-    $rest = (@($presented | Select-Object -Skip 1) | ForEach-Object { ConvertTo-Pem $_ }) -join ''
-    $b = { param($s) [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes([string]$s)) }
-    return (@(
-        'set -u'
-        'd=$(mktemp -d) || exit 1'
-        '[ -n "$d" ] && [ -d "$d" ] || exit 1'
-        'trap ''rm -rf -- "$d"'' EXIT'
-        ("printf '%s' '" + (& $b (ConvertTo-Pem $root)) + "' | base64 -d > " + '"$d/root.pem"')
-        ("printf '%s' '" + (& $b $leaf) + "' | base64 -d > " + '"$d/leaf.pem"')
-        ("printf '%s' '" + (& $b $rest) + "' | base64 -d > " + '"$d/rest.pem"')
-        'set -- -trusted "$d/root.pem"'
-        'if [ -s "$d/rest.pem" ]; then set -- "$@" -untrusted "$d/rest.pem"; fi'
-        'if openssl verify "$@" "$d/leaf.pem" >/dev/null 2>&1; then echo VERIFY_OK; fi'
-        'exit 0'
-    ) -join "`n")
-}
-function Get-OrgCaPath([string]$sha256) { return ($ORG_CA_DIR + '/agend-org-root-' + $sha256.Substring(0, 8).ToLowerInvariant() + '.crt') }
-# 以 root 匯入這一張：先確認寫進去的就是使用者看過指紋的那張，再 update-ca-certificates。
-function Get-WslOrgCaImportScript($cert, [string]$sha256) {
-    if ($sha256 -notmatch '^[0-9A-F]{64}$') { throw 'Invalid fingerprint.' }
-    $pem64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes((ConvertTo-Pem $cert)))
-    return (@(
-        'set -eu'
-        ('f=' + (Get-OrgCaPath $sha256))
-        't=$(mktemp) || exit 1'
-        '[ -n "$t" ] && [ -f "$t" ] || exit 1'
-        'trap ''rm -f -- "$t"'' EXIT'
-        ("printf '%s' '" + $pem64 + "' | base64 -d > " + '"$t"')
-        'got=$(openssl x509 -in "$t" -outform DER | sha256sum | cut -c1-64)'
-        ('[ "$got" = ' + $sha256.ToLowerInvariant() + ' ] || { echo ''certificate fingerprint mismatch'' >&2; exit 3; }')
-        'mkdir -p -- "$(dirname -- "$f")"'
-        '[ ! -L "$f" ] || { echo "refusing symlinked $f" >&2; exit 1; }'
-        'install -m 644 -- "$t" "$f"'
-        'update-ca-certificates'
-        'echo "CA_IMPORTED=$f"'
-    ) -join "`n")
-}
-# 以 root 寫 /etc/profile.d：登入的 shell（例如在 WSL 裡打 npm view）也信任它。只在 .env 用的就是這一張時才寫。
-function Get-WslOrgCaProfileScript([string]$caPath) {
-    if ($caPath -notmatch '^/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt$') { throw 'Invalid certificate path.' }
-    return (@(
-        'set -eu'
-        ('f=' + $caPath)
-        ('profile=' + $ORG_CA_PROFILE)
-        '[ ! -L "$profile" ] || { echo "refusing symlinked $profile" >&2; exit 1; }'
-        'printf ''export NODE_EXTRA_CA_CERTS=%s\n'' "$f" > "$profile.agend-tmp"; chmod 644 "$profile.agend-tmp"; mv -f -- "$profile.agend-tmp" "$profile"'
-        'echo PROFILE_OK'
-    ) -join "`n")
-}
-# 以 AgEnD 的使用者把 NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env（其他行原樣保留）。已經指向別的檔案：不改，印 ENV_KEPT=<原本的>。
-function Get-WslOrgCaEnvScript([string]$caPath) {
-    if ($caPath -notmatch '^/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt$') { throw 'Invalid certificate path.' }
-    return (@(
-        'set -eu'
-        ('f=' + $caPath)
-        'd=${AGEND_HOME:-$HOME/.agend}; e=$d/.env'
-        'umask 077; mkdir -p -- "$d"'
-        '[ ! -L "$e" ] || { echo "refusing symlinked $e" >&2; exit 1; }'
-    ) + $ORG_CA_ENV_READ + @(
-        'if [ "$old" = "$f" ]; then echo ENV_OK; exit 0; fi'
-        'if [ -n "$old" ]; then echo "ENV_KEPT=$old"; exit 0; fi'
-        't=$e.agend-ca-$$; trap ''rm -f -- "$t"'' EXIT'
-        '{ if [ -f "$e" ]; then cat -- "$e"; if [ -s "$e" ] && [ -n "$(tail -c 1 -- "$e")" ]; then echo; fi; fi; printf ''NODE_EXTRA_CA_CERTS=%s\n'' "$f"; } > "$t"'
-        'chmod 600 "$t"; mv -f -- "$t" "$e"'
-        'echo "ENV_OK=$e"'
-    ) -join "`n")
-}
-# 這次安裝接下來的 WSL 步驟（npm、node）也要信任它：用 WSLENV 帶進每個 wsl.exe。
-function Set-OrgCaSessionEnv([string]$caPath) {
-    $env:NODE_EXTRA_CA_CERTS = $caPath
-    $keep = @(([string]$env:WSLENV) -split ':' | Where-Object { $_ -and (($_ -split '/')[0] -ne 'NODE_EXTRA_CA_CERTS') })
-    $env:WSLENV = (@($keep) + 'NODE_EXTRA_CA_CERTS') -join ':'
-}
-# 重新執行（例如重新開機後接續）時：之前匯入過（profile.d 有），而且 AgEnD 的 .env 用的就是同一張（或沒有設定），才再帶給
-# 這次的 WSL 步驟；.env 指向別的檔案時不蓋過它。
-function Get-WslOrgCaRestoreScript {
-    return ((@(
-        ('if [ -f ' + $ORG_CA_PROFILE + ' ]; then cat -- ' + $ORG_CA_PROFILE + '; fi')
-    ) + $ORG_CA_ENV_READ + @(
-        'echo "ENV=$old"'
-    )) -join "`n")
-}
-function Restore-OrgCaSessionEnv([string]$distro) {
-    try {
-        $r = Invoke-WslScriptText $distro $AGEND_USER (Get-WslOrgCaRestoreScript) 30
-        $m = [regex]::Match([string]$r.Text, '(?m)^export NODE_EXTRA_CA_CERTS=(/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt)\r?$')
-        $envNow = [regex]::Match([string]$r.Text, '(?m)^ENV=(.*?)\r?$')
-        if ($r.Code -ne 0 -or -not $m.Success -or -not $envNow.Success) { return }
-        if ($envNow.Groups[1].Value -and $envNow.Groups[1].Value -cne $m.Groups[1].Value) { return }
-        Set-OrgCaSessionEnv $m.Groups[1].Value
-        Write-InstallLog ("  NODE_EXTRA_CA_CERTS=" + $m.Groups[1].Value + "（之前匯入的公司根憑證）")
-    } catch { }
-}
-function Write-Fingerprint([string]$sha256) {
-    $pairs = @(for ($i = 0; $i -lt $sha256.Length; $i += 2) { $sha256.Substring($i, 2) })
-    Write-Info ("    SHA-256 指紋：" + (($pairs[0..15]) -join ':'))
-    Write-Info ("                  " + (($pairs[16..31]) -join ':'))
-}
-# 回傳 $true：已匯入（呼叫的人要再檢查一次網路）。其他情況都不改任何東西，回傳 $false。
-function Invoke-OrgRootOffer([string]$distro, [string]$hostName) {
-    Write-Info "正在讀出這個連線出示的憑證，看看 Windows 是否已經信任它的根憑證..."
-    $chainText = Invoke-WslScriptText $distro 'root' (Get-WslChainScript $hostName) 40
-    if ([string]$chainText.Text -match 'CHAIN_NO_OPENSSL') { Write-Info "WSL 裡沒有 openssl，讀不出憑證，不會自動匯入。"; return $false }
-    $chain = @(ConvertFrom-PemChain ([string]$chainText.Text))
-    if ($chain.Count -eq 0) { Write-Info "讀不出這個連線出示的憑證，不會自動匯入。"; return $false }
-    $top = $chain[$chain.Count - 1]
-    $issuer = $top.IssuerName.Name
-    Write-InstallLog ("  出示的憑證鏈：" + (($chain | ForEach-Object { $_.Subject }) -join ' <- ') + "；簽發者：$issuer")
-    $found = Find-OrgRoot $chain (Get-WindowsRootCerts)
-    if (-not $found) {
-        Write-Info "連線出示的憑證由下面這個單位簽發，但 Windows 信任的根憑證裡沒有同一張，所以不會自動匯入："
-        Write-Info ("    " + $issuer)
-        return $false
-    }
-    $verify = Invoke-WslScriptText $distro 'root' (Get-WslVerifyScript $found.Cert $chain) 30
-    if ([string]$verify.Text -notmatch '(?m)^VERIFY_OK\r?$') {
-        Write-Info "Windows 裡找到同名的根憑證，但它驗證不了這個連線出示的憑證，所以不會匯入。"
-        Write-InstallLog ("  驗證失敗：" + $found.Cert.Subject + " " + $found.Sha256)
-        return $false
-    }
-    $caPath = Get-OrgCaPath $found.Sha256
-    Write-Host ""
-    Write-Info "這個網路用公司的根憑證檢查加密連線，而 Windows 已經信任這一張（公司電腦通常由 IT 統一安裝）："
-    Write-Info ("    名稱：" + $found.Cert.Subject)
-    Write-Fingerprint $found.Sha256
-    Write-Info ("    位置：Windows 憑證存放區 " + $found.Store)
-    Write-Info ("  可以只把這一張匯入 {0}，讓 WSL 裡的 curl、apt、Node.js 和 npm 也信任它：" -f $distro)
-    Write-Info ("    " + $caPath)
-    Write-Info "  不會關掉憑證檢查，也不會匯入其他憑證。不確定的話，請先問公司的 IT 人員。"
-    $answer = Read-Host "  要匯入這一張憑證嗎？(y/N)"
-    if (([string]$answer) -notmatch '^\s*[yY]\s*$') { Write-Info "沒有匯入。"; Write-InstallLog "  使用者沒有同意匯入公司根憑證"; return $false }
-    $imported = Invoke-WslScriptText $distro 'root' (Get-WslOrgCaImportScript $found.Cert $found.Sha256) 120
-    if ($imported.Code -ne 0 -or [string]$imported.Text -notmatch ('(?m)^CA_IMPORTED=' + [regex]::Escape($caPath) + '\r?$')) {
-        Write-Warn ("匯入沒有成功（結束碼 {0}）。" -f $imported.Code)
-        Write-InstallLog ("  " + (Protect-LogText ([string]$imported.Text)))
-        return $false
-    }
-    Write-Ok ("已匯入公司根憑證：{0}（SHA-256 {1}）" -f $found.Cert.Subject, $found.Sha256)
-    Write-Info ("    " + $caPath)
-    $envResult = Invoke-WslScriptText $distro $AGEND_USER (Get-WslOrgCaEnvScript $caPath) 30
-    $kept = [regex]::Match([string]$envResult.Text, '(?m)^ENV_KEPT=(.*?)\r?$')
-    # .env 已經指向別的檔案：它仍然有效，.env、profile.d 和這次的 WSL 步驟都不改成新的這一張（#3071 審查）。
-    if ($kept.Success) {
-        Write-Warn "AgEnD 的 .env 已經有 NODE_EXTRA_CA_CERTS，指向另一個檔案；沒有改它，也不會用新的憑證蓋過它："
-        Write-Info ("    " + $kept.Groups[1].Value)
-        Write-Info "  curl 和 apt 已經信任新的憑證；Node.js 和 npm 只讀上面那個檔案。要讓它們也信任，請把這個檔案的內容加到它的最後："
-        Write-Info ("    " + $caPath)
-        return $true
-    }
-    if ($envResult.Code -ne 0 -or [string]$envResult.Text -notmatch '(?m)^ENV_OK') {
-        Write-Warn "沒能把 NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env；之後可以手動加上這一行："
-        Write-Info ("    NODE_EXTRA_CA_CERTS=" + $caPath)
-        return $true
-    }
-    Write-Ok "AgEnD 的 .env 已設定 NODE_EXTRA_CA_CERTS（Node.js 和 npm 會信任它）"
-    $profileResult = Invoke-WslScriptText $distro 'root' (Get-WslOrgCaProfileScript $caPath) 30
-    if ($profileResult.Code -ne 0 -or [string]$profileResult.Text -notmatch '(?m)^PROFILE_OK\r?$') {
-        Write-Warn ("沒能寫入 {0}；在 WSL 裡自己開的 shell 不會自動設定 NODE_EXTRA_CA_CERTS。" -f $ORG_CA_PROFILE)
-    }
-    Set-OrgCaSessionEnv $caPath
-    return $true
+    return (Resolve-NetResults (ConvertFrom-WslNetOutput $text $NET_WSL) 'wsl')
 }
 
 # ── 安裝給哪個 Windows 帳號（#2650 第 5 項）──────────────────
@@ -2656,6 +2353,7 @@ function Get-MergedLinuxWslConfigScript([string]$Text, [string]$ExpectedBase64 =
         ("printf '%s' '" + $encoded + "' | base64 -d > " + '"$temp"')
         'if [ -e "$file" ]; then chmod --reference="$file" "$temp"; else chmod 644 "$temp"; fi'
         'mv -f -- "$temp" "$file"'
+        'echo WSL_CONF_OK'
     ) -join "`n")
 }
 
@@ -2865,7 +2563,7 @@ if ($wslStageVerified) {
         $leaf = if ($choice -eq 'separate') { $UBUNTU_DISTRO } else { 'Ubuntu' }
         $location = Get-WslInstallLocation (Get-LocalDisks) ($env:SystemDrive + '\') $UBUNTU_DISTRO $leaf $AgendWslDrive
         $disk = $location.Disk; $wslPath = $location.Path
-        Write-Ok "要安裝的 Linux：$UBUNTU_DISTRO"
+        Write-Ok "Linux 版本：$UBUNTU_DISTRO"
         Write-Ok ("安裝位置：{0}（可用 {1} GB）" -f $wslPath, [math]::Round($disk.Free / 1GB, 1))
         Write-Host ""
 
@@ -2959,8 +2657,6 @@ ws.Run "wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'sleep infinity'", 0, False
 [IO.File]::WriteAllText($vbsPath, $vbsContent, (New-Object System.Text.UTF8Encoding $false))
 Write-Ok "開機啟動已設定（Windows 登入後自動啟動 WSL）"
 
-# 之前匯入過公司根憑證（#3068）：這次的 WSL 步驟也帶上 NODE_EXTRA_CA_CERTS。
-Restore-OrgCaSessionEnv $UBUNTU_DISTRO
 # WSL 裡的網路：還有後端或 AgEnD 要下載時才檢查（Windows 連得上不代表 WSL 也連得上，例如公司 proxy、VPN）。
 if (-not ((Stage-Done 2) -and (Stage-Done 4))) {
     if (-not (Test-WslNetwork $UBUNTU_DISTRO)) {
