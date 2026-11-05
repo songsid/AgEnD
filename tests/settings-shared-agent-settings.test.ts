@@ -93,7 +93,8 @@ const IDS = ["g-locale", "g-be", "g-model", "g-auto", "g-tp", "g-vis", "g-tips",
 describe("the page", () => {
   it("is Shared agent settings: a lead, then two groups, each again in Advanced", async () => {
     await open();
-    expect(text($(".s-lead"))).toBe("Changes here apply to every agent that has no setting of its own — including agents you create later.");
+    // The lead is the page head's (settings-layout.js), not the form's own: one sentence, once.
+    expect([text($(".s-page-lead")), p.root.querySelectorAll(".s-page-lead").length]).toEqual(["Changes here apply to every agent that has no setting of its own — including agents you create later.", 1]);
     const cards = p.root.querySelectorAll(".s-group");
     expect(cards.map((c: any) => text(c.querySelector("h3")))).toEqual(["Shared agent settings", "System & channels", "Shared agent settings", "System & channels"]);
     expect(cards.map((c: any) => text(c.querySelector("p.note")))).toEqual(["An individual agent can override these", "One value for the whole fleet — an agent can't change it",
@@ -180,7 +181,7 @@ describe("the page", () => {
     await open();
     const be = field("g-be");
     expect(text(be.querySelector(".s-host"))).toBe("this host");
-    expect(text(be.querySelector(".s-info"))).toContain("Only this host is checked. For a CLI on a Windows PC, choose it in that agent's own settings.");
+    expect(text(be.querySelector(".s-info"))).toContain("Only this host is checked. For a CLI on a Windows PC, open that agent's settings and choose Change runtime / CLI.");
     expect(be.querySelector(".feedback.warning, .tag.warn")).toBeNull();
   });
 
@@ -457,15 +458,74 @@ describe("the words", () => {
     const { setLang } = await import("/assets/app-i18n.js");
     setLang("zh-TW");
     await open();
-    expect(text($(".s-lead"))).toBe("改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。");
+    expect(text($(".s-page-lead"))).toBe("改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。");
     expect(p.root.querySelectorAll(".s-group").map((c: any) => text(c.querySelector("h3")))).toEqual(["Agent 共用設定", "系統與頻道", "Agent 共用設定", "系統與頻道"]);
     expect(text($("details.drawer summary"))).toBe("進階設定（10 項）");
     expect(pill("g-model")).toBe("5/6 套用中 · artist 自訂");
     expect($("#g-tp").querySelectorAll(".s-seg-opt").map(text)).toEqual(["關", "標準", "詳細"]);
-    expect(text(field("g-be").querySelector(".s-info"))).toContain("只檢查這台主機。Windows 電腦上的 CLI，在個別 Agent 的設定裡選。");
+    expect(text(field("g-be").querySelector(".s-info"))).toContain("只檢查這台主機。Windows 電腦上的 CLI，請在個別 Agent 的設定裡按「切換 Runtime／CLI」。");
     await choose("g-model", "gpt-5.5-mini");
     expect(notes("g-model")).toEqual(["↻ 儲存後，5 個 Agent 會重新啟動（artist 自訂，不受影響）"]);
     expect(text($(".s-pending .note"))).toBe("↻ 儲存後 5 個 Agent 會重新啟動");
     setLang("en");
+  });
+});
+
+// The alpha line (release/2.3.5-alpha) has a Runtime page, Windows agents and an agent's own "Runtime and CLI" section:
+// what this page says about them has to hold there.
+describe("on the alpha line: Windows agents and the Runtime page", () => {
+  /** Two host agents, a Windows agent that runs one command at a time (its own CLI, model and mode), and a persistent Windows pane. */
+  const withWindows = () => {
+    const f = fleet();
+    f.instances = {
+      "dev-t1": { working_directory: "/w/dev" }, "reviewer-t2": { working_directory: "/w/rev" },
+      "win-exec": { runtime: "windows", native_adapter: "exec", native_agent_id: "11111111-1111-4111-8111-111111111111", native_sandbox: "read-only", working_directory: "C:\\w\\exec",
+        backend: "codex", model: "", agent_mode: "cli" },
+      "win-pane": { runtime: "windows", native_adapter: "pane", native_agent_id: "22222222-2222-4222-8222-222222222222", native_sandbox: "read-only", working_directory: "C:\\w\\pane",
+        backend: "claude-code", model: "", agent_mode: "cli" },
+    } as any;
+    return f;
+  };
+
+  it("keeps the General location card above the settings, and the Runtime page in the Fleet list", async () => {
+    await open();
+    // In document order: the card first, then the form.
+    expect(p.root.querySelectorAll("#general-location, .s-shared").map((el: any) => (el.id === "general-location" ? "general-location" : "shared"))).toEqual(["general-location", "shared"]);
+    expect(p.root.querySelectorAll(".s-nav .seg-item").map((a: any) => a.textContent.trim())).toContain("Runtime");
+  });
+
+  it("the backend line says where a Windows PC's CLI is chosen and links to the Runtime page", async () => {
+    await open();
+    const link = field("g-be").querySelector(".s-info a");
+    expect([text(link), link.getAttribute("href")]).toEqual(["Windows PCs and their CLIs: Runtime →", "/settings/runtimes"]);
+  });
+
+  it("a Windows agent with its own CLI, model and mode is counted as custom for them — an edit to the default backend does not reach it", async () => {
+    raw = withWindows();
+    await open();
+    expect([pill("g-be"), pill("g-model"), pill("g-am")]).toEqual(["2/4 in use · 2 agents custom", "2/4 in use · 2 agents custom", "2/4 in use · 2 agents custom"]);
+    await choose("g-be", "kiro-cli");
+    expect(notes("g-be")).toEqual(["↻ After saving, 2 agent(s) restart (win-exec, win-pane set their own — not affected)"]);
+  });
+
+  it("a Windows agent that runs one command at a time has no process to restart; a persistent Windows pane does", async () => {
+    raw = withWindows();
+    // Every agent reads as running (the fleet reports the one-command agent as running while it is switched on).
+    await open();
+    await choose("g-ts", "minimal");                                // nobody sets a tool set: all four take it
+    expect(notes("g-ts")).toEqual(["↻ After saving, 4 agent(s) use the new value; the 3 running restart"]);
+    expect(bar()).toBe("↻ 4 agent(s) use the new value; the 3 running restart");
+  });
+
+  it("with only one-command Windows agents reached, nothing restarts, even when the page cannot read the agents' state", async () => {
+    raw = withWindows();
+    delete raw.instances["dev-t1"]; delete raw.instances["reviewer-t2"]; delete raw.instances["win-pane"];
+    for (const mode of ["up", "down"] as const) {
+      fleetMode = mode;
+      await open();
+      await choose("g-ts", "minimal");
+      expect([mode, notes("g-ts").join("").includes("↻"), bar().includes("↻")]).toEqual([mode, false, false]);
+      await p.unmount();
+    }
   });
 });

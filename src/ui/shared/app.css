@@ -1581,7 +1581,6 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 /* Settings → Shared agent settings (settings-shared.js): two cards, a field's header (name, marks, ⓘ, usage pill), segmented
    choices, switches, the grey line of explanation and the amber note that shows only once a field is edited. */
 .s-shared { display: flex; flex-direction: column; gap: var(--s-3); }
-.s-lead { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
 .s-group h3 { font-size: var(--fs-md); letter-spacing: 0; text-transform: none; color: var(--text); }
 .s-group > div:first-child { display: flex; flex-direction: column; gap: 2px; }
 .s-wide { grid-column: 1 / -1; min-width: 0; }
@@ -3362,16 +3361,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings [data-section="agent-defaults"] .s-general { width: 100%; margin: 0 auto; }
 .p-settings [data-section="agent-defaults"] .s-general > .card { margin: 0; }
 .p-settings :is([data-section="agent-defaults"], [data-section="chat"]) .s-general .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.p-settings .s-defaults-collaboration .grid2 > .field:first-child { grid-column: 1 / -1; }
-.p-settings .s-defaults-permissions .dash-perms { margin: 0; padding: 0; }
-.p-settings .s-defaults-permissions .dash-perms > .check { padding: 10px 0; border-bottom: 1px solid var(--border); }
-.p-settings .s-defaults-permissions .dash-perms > .check:last-child { border-bottom: 0; }
-.p-settings .s-defaults-workspace .card { padding: 0; border: 0; margin: 0; background: transparent; }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer { padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > summary { padding: 16px 20px; font-weight: var(--fw-semibold); }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body { display: flex; flex-direction: column; padding: 0 20px 20px; gap: 20px; }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body > .card { padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body > .card + .card { padding-top: 20px; border-top: 1px solid var(--border); }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer { padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > summary { padding: 16px 20px; font-weight: var(--fw-semibold); }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > .drawer-body { display: flex; flex-direction: column; padding: 0 20px 20px; gap: 20px; }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > .drawer-body > .card { padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > .drawer-body > .card + .card { padding-top: 20px; border-top: 1px solid var(--border); }
 .p-settings .s-classic-defaults-card { margin: 0; }
 @container settings-page (min-width: 620px) {
   .p-settings .s-agent-runtime { grid-column: 1; }
@@ -3670,21 +3664,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Defaults share the content width, with collaboration controls in a single column. */
 .p-settings .s-defaults-layout { width: 100%; margin: 0 auto; min-width: 0; }
 .p-settings .s-defaults-layout > .s-general { gap: 16px; }
-.p-settings .s-defaults-layout > .s-general > .card { gap: 12px; padding: 20px; }
+.p-settings .s-defaults-layout > .s-general > .s-shared { gap: 16px; }
+.p-settings .s-defaults-layout > .s-general > .s-shared > .card { gap: 12px; padding: 20px; }
 .p-settings .s-defaults-layout .grid2 { gap: 12px 16px; align-items: start; }
-.p-settings .s-defaults-model .grid2 > .field:first-child { grid-column: 1; grid-row: 1; }
-.p-settings .s-defaults-model .grid2 > .field:nth-child(2) { grid-column: 2; grid-row: 1 / span 2; }
-.p-settings .s-defaults-model .grid2 > .field:nth-child(3) { grid-column: 1; grid-row: 2; }
-.p-settings .s-defaults-layout .s-defaults-collaboration > .grid2 { grid-template-columns: minmax(0, 1fr); }
-.p-settings .s-defaults-collaboration .grid2 > .field { grid-column: 1; }
-.p-settings .s-defaults-collaboration .grid2 > .field:first-child { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 6px 16px; align-items: center; }
-.p-settings .s-defaults-collaboration .grid2 > .field:first-child > .note { grid-column: 2; }
-.p-settings .s-defaults-collaboration .grid2 > .field:not(:first-child) { display: grid; grid-template-columns: 210px 38px minmax(0, 1fr); gap: 6px 16px; align-items: center; }
-.p-settings .s-defaults-toggle-label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
-.p-settings .s-defaults-toggle-help { display: grid; gap: 4px; min-width: 0; }
-.p-settings .s-defaults-explanation { font-size: var(--fs-xs); color: var(--text-3); }
-.p-settings .s-defaults-explanation > summary { cursor: pointer; }
-.p-settings .s-defaults-explanation[open] > summary { margin-bottom: 6px; }
 
 /* Connection cards use compact real empty states instead of a pair of oversized generic placeholders. */
 .p-settings .s-chat-connections, .p-settings .s-chat-classic { margin: 0; padding: 24px; gap: 18px; border: 1px solid var(--border); }
@@ -3722,11 +3704,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-settings .s-color-settings { padding-left: 0; }
   .p-settings .s-look-toggle-line { grid-template-columns: minmax(0, 1fr) 38px; }
   .p-settings .s-look-toggle-line > .sub { grid-column: 1 / -1; }
-  .p-settings .s-defaults-model .grid2 > .field, .p-settings .s-defaults-model .grid2 > .field:nth-child(2), .p-settings .s-defaults-model .grid2 > .field:nth-child(3) { grid-column: 1; grid-row: auto; }
-  .p-settings .s-defaults-collaboration .grid2 > .field:first-child, .p-settings .s-defaults-collaboration .grid2 > .field:not(:first-child) { grid-template-columns: minmax(0, 1fr); }
-  .p-settings .s-defaults-collaboration .grid2 > .field:first-child > .note { grid-column: 1; }
-  .p-settings .s-defaults-collaboration .grid2 > .field:not(:first-child) { grid-template-columns: minmax(0, 1fr) 38px; }
-  .p-settings .s-defaults-toggle-help { grid-column: 1 / -1; }
   .p-settings .s-chat-connections, .p-settings .s-chat-classic, .p-settings [data-section="chat"] .s-web-chat { padding: 18px; }
 }
 

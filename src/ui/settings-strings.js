@@ -135,7 +135,6 @@ register("settings", {
     defaultBackend: "Default backend",
     defaultModel: "Default model",
     // Shared agent settings (formerly "Agent defaults"): what the page is, what each field does (the ⓘ), what an edit costs.
-    sharedLead: "Changes here apply to every agent that has no setting of its own — including agents you create later.",
     sharedGroupAgents: "Shared agent settings", sharedGroupAgentsSub: "An individual agent can override these",
     sharedGroupSystem: "System & channels", sharedGroupSystemSub: "One value for the whole fleet — an agent can't change it",
     advancedCount: "Advanced ({0})",
@@ -143,7 +142,7 @@ register("settings", {
     usageCount: "{0}/{1} in use", usageOwn: "{0} custom", usageMany: "{0} agents",
     usageTipAll: "Every agent uses the value on this page.",
     usageTipOwners: "Set on their own under Agents, so a change here does not reach them: {0}.",
-    backendInfo: "Only this host is checked. For a CLI on a Windows PC, choose it in that agent's own settings.",
+    backendInfo: "Only this host is checked. For a CLI on a Windows PC, open that agent's settings and choose Change runtime / CLI.", backendInfoLink: "Windows PCs and their CLIs: Runtime",
     tipBackend: "The coding CLI an agent runs on (claude-code, codex, kiro-cli …). The installed / signed-in status beside each name is read on the machine AgEnD runs on, not on other computers.",
     tipModel: "The model an agent asks its CLI for. “CLI default” lets the CLI choose. The list follows the default backend and is read on this host.",
     tipAutoPause: "An agent idle this long is paused to free memory; a new message wakes it. 0 = never pause.",
@@ -832,7 +831,6 @@ register("settings", {
     defaultBackend: "預設後端",
     defaultModel: "預設模型",
     // Agent 共用設定（原「Agent 預設值」）：這一頁是什麼、每個欄位做什麼（ⓘ）、改了會怎樣。
-    sharedLead: "改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。",
     sharedGroupAgents: "Agent 共用設定", sharedGroupAgentsSub: "個別 Agent 可以自己改掉",
     sharedGroupSystem: "系統與頻道", sharedGroupSystemSub: "整個 Fleet 一起，不能個別改",
     advancedCount: "進階設定（{0} 項）",
@@ -840,7 +838,7 @@ register("settings", {
     usageCount: "{0}/{1} 套用中", usageOwn: "{0} 自訂", usageMany: "{0} 個 Agent",
     usageTipAll: "所有 Agent 都用這裡的值。",
     usageTipOwners: "在 Agents 頁自己設定了這一項，這裡改了不影響它們：{0}。",
-    backendInfo: "只檢查這台主機。Windows 電腦上的 CLI，在個別 Agent 的設定裡選。",
+    backendInfo: "只檢查這台主機。Windows 電腦上的 CLI，請在個別 Agent 的設定裡按「切換 Runtime／CLI」。", backendInfoLink: "查看 Windows 電腦與 CLI：Runtime",
     tipBackend: "Agent 用哪一種 coding CLI 執行（claude-code、codex、kiro-cli…）。每個名稱旁的「已安裝／已登入」狀態，是在 AgEnD 所在的這台主機上檢查的，不包含其他電腦。",
     tipModel: "Agent 向 CLI 要求使用的模型。「CLI 自己的預設」就是讓 CLI 自己決定。清單跟著預設後端換，內容是這台主機上讀到的。",
     tipAutoPause: "Agent 閒置這麼久就暫停、釋放記憶體，有新訊息會自動喚醒。0＝不自動暫停。",

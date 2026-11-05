@@ -7,6 +7,7 @@
 // - the same costs added up for the Save bar.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
+import { settingsPath } from "/assets/app-route.js";
 import "./settings-strings.js";
 import {
   AGENT_MODES, DASHBOARD_FEATURES, LOG_LEVELS, SEPARATE_FEATURE_KEYS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES,
@@ -100,7 +101,9 @@ export function sharedNotes({ schema, fleet, live = {}, fleetUp = true, f, base,
   // restarts a crash-looping daemon too); a paused or stopped one just takes the value at its next start. When the page
   // could not read the agents' state (the fleet did not answer, or listed none) it cannot tell: every agent counts as restarting.
   const known = fleetUp !== false && !!live && Object.keys(live).length > 0;
-  const restarts = (name) => !known || (!!live[name] && (live[name].status === "running" || live[name].status === "crashed"));
+  // A Windows agent that runs one command at a time (not a persistent terminal) has no process of its own: it takes a changed default at its next run.
+  const oneShot = (name) => { const inst = fleet && fleet.instances && fleet.instances[name]; return !!inst && inst.runtime === "windows" && inst.native_adapter !== "pane"; };
+  const restarts = (name) => !oneShot(name) && (!known || (!!live[name] && (live[name].status === "running" || live[name].status === "crashed")));
   let fleetRestart = false;
   const add = (list, text) => { if (!list.includes(text)) list.push(text); };
   for (const [field, spec] of Object.entries(FIELDS)) {
@@ -225,7 +228,7 @@ export function SharedAgentSettings({ ctx, form }) {
 
   const agentMain = html`
     <div class=${fc("field", "backend")}>${head("backend", "g-be", tn("defaultBackend"), tn("tipBackend"), { mark: mark("backend"), host: true })}
-      <${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} hostOnly /><${Info}>${tn("backendInfo")}</${Info}>${note("backend")}</div>
+      <${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} hostOnly /><${Info}>${tn("backendInfo")} <a href=${settingsPath("runtimes")}>${tn("backendInfoLink")}<span aria-hidden="true"> →</span></a></${Info}>${note("backend")}</div>
     <div class=${fc("field", "model")}>${head("model", "g-model", tn("defaultModel"), tn("tipModel"), { mark: mark("model") })}
       <${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")} backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} />${note("model")}</div>
     <div class=${fc("field", "auto")}>${head("auto", "g-auto", `${tn("autoPause")} (${tn("minutes")})`, tn("tipAutoPause"), { mark: mark("auto") })}
@@ -273,7 +276,6 @@ export function SharedAgentSettings({ ctx, form }) {
 
   const card = (title, sub, body, extra) => html`<section class="card s-group"><div><h3>${title}</h3><p class="note">${sub}</p></div><div class="grid2">${body}</div>${extra || null}</section>`;
   return html`<div class="s-shared">
-    <p class="s-lead">${tn("sharedLead")}</p>
     ${card(tn("sharedGroupAgents"), tn("sharedGroupAgentsSub"), agentMain)}
     ${card(tn("sharedGroupSystem"), tn("sharedGroupSystemSub"), systemMain)}
     <${Drawer} title=${tn("advancedCount", ADVANCED_COUNT)}>
