@@ -1909,14 +1909,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // A claim saved, a disconnect tombstone or a cancel: re-compose the member side for the new binding.
       bindingChanged: () => { void this.hubRuntime?.refresh(); },
       // Disconnect withdraws every published exposure locally (each saved before this returns).
-      withdrawAll: async () => {
-        const api = this.hubMemberExposureApi;
-        if (!api) return;
-        for (const view of api.list()) {
-          if (view.exposureId && view.state === "published") await api.withdraw(view.exposureId, view.revision);
-        }
-      },
+      withdrawAll: () => this.hubMemberWithdrawAll(),
     }));
+  }
+
+  /**
+   * Disconnect: every published exposure is withdrawn and saved before the disconnect reports success. Through the
+   * running member's API, or — held or not composed — directly in the member's own store; a failure here makes the
+   * disconnect report "unsaved" (S3c), so consent never outlives the disconnect.
+   */
+  private async hubMemberWithdrawAll(): Promise<void> {
+    const api = this.hubMemberExposureApi;
+    if (api) {
+      for (const view of api.list()) {
+        if (view.exposureId && view.state === "published") await api.withdraw(view.exposureId, view.revision);
+      }
+      return;
+    }
+    const hubId = this.hubMemberPairingApi?.boundHub()?.hubId ?? null;
+    if (!hubId) return;
+    const { withdrawMemberExposuresOffline } = await import("./hub/compose/member.js");
+    await withdrawMemberExposuresOffline(this.dataDir, hubId);
   }
 
   /** The local owner's agents a Hub exposure could map to; providerId is the configured isolated provider, if any. */

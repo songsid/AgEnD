@@ -165,6 +165,100 @@ export function providerConfig(cfg: Record<string, unknown>, hubId: string): Pro
 
 const execAction = (kind: string) => `execution.${kind.toLowerCase().replace(/[^a-z0-9.-]/g, "-")}`.slice(0, 128);
 
+/**
+ * The member's captured binding for S4 (and S1 admission): the pairing's identity plus the link it was captured on.
+ * relink() starts a new generation for every (re)connect; a binding captured earlier then reads current() === false,
+ * as it does after fence(). S4 keeps binding objects across awaits, so this is what fences its in-flight work.
+ */
+export function createMemberBinding(deps: {
+  hubId: string;
+  profile: Pick<HubMemberProfile, "issuerKeyId" | "fleetId" | "owner" | "hub">;
+  live(): boolean;
+  revocationFloor(): number;
+}) {
+  let generation = 0;
+  let link: HubMemberLink | null = null;
+  const issuerPublicKey = createPublicKey(deps.profile.hub.issuerPublicKey);
+  return {
+    relink(l: HubMemberLink): void {
+      link = l;
+      generation += 1;
+    },
+    fence(): void {
+      generation += 1;
+    },
+    link: () => link,
+    binding() {
+      const gen = generation;
+      const captured = link;
+      return Object.freeze({
+        hubId: deps.hubId,
+        issuerKeyId: deps.profile.issuerKeyId,
+        issuerPublicKey,
+        fleetId: deps.profile.fleetId,
+        owner: deps.profile.owner,
+        revocationVersion: captured?.revocationVersion ?? deps.revocationFloor(),
+        generation: gen,
+        linkEpoch: captured?.linkEpoch ?? 0,
+        current: () => deps.live() && generation === gen && (captured === null || (link === captured && captured.current())),
+      });
+    },
+  };
+}
+
+/**
+ * S5's receive routing for the member link (agreed with S1, hub-s51-compose): question → admit → the receipt on the
+ * same link, answering the question's own requestId; revoke → fence; receipt (the Hub's ACK) → journal.acknowledge;
+ * anything else is refused. Never ordinary fleet delivery.
+ */
+export function createMemberReceive(deps: {
+  admission: Pick<HubMemberAdmissionAdapter, "admit" | "fence">;
+  journal: Pick<HubMemberJournal, "acknowledge">;
+  live(): boolean;
+  log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
+}) {
+  return async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
+    if (!deps.live() || !l.current()) return;
+    if (frame.type === "question") {
+      const receipt = await deps.admission.admit(frame.payload);
+      if (!l.current()) return;
+      await l.send({ v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: l.linkEpoch, payload: receipt });
+      return;
+    }
+    if (frame.type === "revoke") return deps.admission.fence(frame.payload);
+    if (frame.type === "receipt") return deps.journal.acknowledge(frame.payload);
+    deps.log("warn", "Hub frame not expected on the member", { type: frame.type });
+    throw new HubStateError("service-unavailable", `unexpected ${frame.type} frame`);
+  };
+}
+
+/**
+ * Disconnect while the member side is not running (held, or never composed): withdraw every published exposure in the
+ * member's own store, so consent never outlives the disconnect (a later re-pair to the same Hub republishes nothing).
+ * Never composed (no member state): nothing was published. A partial set throws (the disconnect reports "unsaved").
+ */
+export async function withdrawMemberExposuresOffline(home: string, hubId: string, now: () => number = Date.now): Promise<number> {
+  const set = memberSet(hubId);
+  if (inspectStateSet(home, set) === "new") return 0;
+  const mod = await import("../member/exposures.js");
+  const db = openHubDatabase(home, set.database, { create: false });
+  try {
+    const audit = createHubAudit({ db, contentKey: readKey(home, set.keys[1]!), now });
+    const store = new mod.HubExposureStore(db, { floor: new HubFileVersionFloor(home, set.floors[2]!), audit, binding: () => null, views: new Map(), now });
+    let withdrawn = 0;
+    for (const row of store.list()) {
+      const committed = row.committed;
+      if (committed && committed.exposure.state === "published") {
+        store.withdraw(committed.exposure.id, committed.exposure.revision);
+        withdrawn += 1;
+      }
+    }
+    return withdrawn;
+  } finally {
+    db.close();
+  }
+}
+
 export function createHubMemberFactory(options: HubMemberFactoryOptions) {
   const now = options.now ?? Date.now;
   const views = options.views ?? EMPTY_VIEW_SOURCE;
@@ -278,26 +372,15 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         executionStore.initialize();
         exposures.initialize();
       }
-      let generation = 0;
       let fenced = false;
-      let link: HubMemberLink | null = null;
       const live = () => !fenced && current();
-      const issuerPublicKey = createPublicKey(profile.hub.issuerPublicKey);
-      const binding = () => {
-        const gen = generation;
-        const captured = link;
-        return Object.freeze({
-          hubId,
-          issuerKeyId: profile.issuerKeyId,
-          issuerPublicKey,
-          fleetId: profile.fleetId,
-          owner: profile.owner,
-          revocationVersion: captured?.revocationVersion ?? journal.revocationVersion(),
-          generation: gen,
-          linkEpoch: captured?.linkEpoch ?? 0,
-          current: () => live() && generation === gen && (captured === null || (link === captured && captured.current())),
-        });
-      };
+      const links = createMemberBinding({
+        hubId,
+        profile,
+        live,
+        revocationFloor: () => journal.revocationVersion(),
+      });
+      const binding = links.binding;
       const providers = new Map<string, import("../execution/index.js").HubIsolatedProvider>();
       /** The bounded reason the configured provider could not be set up (null: none configured, or installed). */
       let providerFailure: ProviderSetupReason | null = null;
@@ -361,35 +444,22 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         journal,
         transport: { start: async () => {}, send: (f) => client!.send(f), authorize: (r) => client!.authorize(r), close: async () => {} },
         binding: () => {
-          const captured = link;
-          return { profile, linkEpoch: captured?.linkEpoch ?? 0, revocationVersion: captured?.revocationVersion ?? journal.revocationVersion(), current: () => live() && !!captured && link === captured && captured.current() };
+          const captured = links.link();
+          return { profile, linkEpoch: captured?.linkEpoch ?? 0, revocationVersion: captured?.revocationVersion ?? journal.revocationVersion(), current: () => live() && !!captured && links.link() === captured && captured.current() };
         },
         exposure: (id) => exposures.exposure(id),
         fenceLocal: (messageId) => service.fence(messageId),
         hold: (messageId, reason) => options.log("warn", "Hub question held", { messageId, reason }),
         now,
       });
-      const receive = async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
-        if (!live() || !l.current()) return;
-        if (frame.type === "question") {
-          const receipt = await admission.admit(frame.payload);
-          if (!l.current()) return;
-          await l.send({ v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: l.linkEpoch, payload: receipt });
-          return;
-        }
-        if (frame.type === "revoke") return admission.fence(frame.payload);
-        if (frame.type === "receipt") return journal.acknowledge(frame.payload);
-        options.log("warn", "Hub frame not expected on the member", { type: frame.type });
-        throw new HubStateError("service-unavailable", `unexpected ${frame.type} frame`);
-      };
+      const receive = createMemberReceive({ admission, journal, live, log: options.log });
       client = new HubMemberClient({
         home: options.home,
         hubId,
         memberOrigin: profile.hub.memberOrigin,
         current: live,
         reconcile: async (l) => {
-          link = l;
-          generation += 1;
+          links.relink(l);
           await handshake(l);
           if (l.current() && live()) options.linkState?.("online");
         },
@@ -426,7 +496,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         fence() {
           fenced = true;
-          generation += 1;
+          links.fence();
           client?.fence();
           options.attachExposures(null);
           options.linkState?.("offline");
@@ -435,7 +505,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           fenced = true;
           await teardown.run();
         },
-        /** Diagnostics seam (not part of HubMountedService): S4's owner-facing provider reason. */
+        /** Diagnostics seams (not part of HubMountedService). */
+        binding,
         providerReason: (providerId?: string | null) => service.providerReason(providerId),
       } as HubMountedService & Record<string, unknown>;
     } catch (err) {

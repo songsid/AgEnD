@@ -135,3 +135,29 @@ describe("S5b PR 2b: the member side's fleet hooks", () => {
     await fm.stopAll();
   }, 30_000);
 });
+
+describe("#3130 review: disconnect withdraws every published exposure", () => {
+  it("through the running member's API: each published one, at the revision the owner saw; nothing else", async () => {
+    const { fm } = harness({});
+    const withdrawn: [string, number][] = [];
+    fm.attachHubMemberExposures({
+      list: () => [
+        { exposureId: "e1", state: "published", revision: 3 },
+        { exposureId: "e2", state: "withdrawn", revision: 1 },
+        { exposureId: null, state: "withdrawn", revision: 0 },
+        { exposureId: "e3", state: "published", revision: 1 },
+      ],
+      withdraw: async (id: string, rev: number) => { withdrawn.push([id, rev]); return { remote: "pending" }; },
+    });
+    await fm.hubMemberWithdrawAll();
+    expect(withdrawn).toEqual([["e1", 3], ["e3", 1]]);
+  });
+
+  it("held or not composed: falls back to the member's own store (never composed: nothing to do)", async () => {
+    const { fm } = harness({});
+    fm.hubMemberPairingApi = { boundHub: () => ({ hubId: "11111111-2222-4333-8444-555555555555", binding: null }) };
+    await expect(fm.hubMemberWithdrawAll()).resolves.toBeUndefined();
+    fm.hubMemberPairingApi = null;
+    await expect(fm.hubMemberWithdrawAll()).resolves.toBeUndefined();
+  });
+});

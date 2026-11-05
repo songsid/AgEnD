@@ -7,7 +7,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { statSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { createHubMemberFactory, memberSet, providerConfig, type HubMemberComponents } from "../src/hub/compose/member.js";
+import { createHubMemberFactory, createMemberBinding, createMemberReceive, memberSet, providerConfig, withdrawMemberExposuresOffline, type HubMemberComponents } from "../src/hub/compose/member.js";
+import { readFileSync } from "node:fs";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { createHubAudit } from "../src/hub/audit/index.js";
+import { HubFileVersionFloor } from "../src/hub/version-floor.js";
+import { HubMemberProfileStore } from "../src/hub/profile.js";
+import { HubDocumentView } from "../src/hub/execution/index.js";
+import { HubExposureStore, publishExposure } from "../src/hub/member/exposures.js";
 import { MEMBER_COMPONENTS } from "../src/hub/runtime.js";
 import { hubRig } from "./helpers/hub-rig.js";
 
@@ -66,6 +73,7 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     expect(f.attached.link).toContain("online"); // after the completed #3116 handshake
     service.fence();
     expect(f.attached.link.at(-1)).toBe("offline");
+    expect(f.attached.exposures).toBeNull(); // fence detaches the owner API at once, before any close
     await service.close();
     expect(f.attached.exposures).toBeNull();
     expect(f.attached.attention).toBeNull();
@@ -153,5 +161,85 @@ describe.skipIf(process.platform === "win32")("provider setup is non-fatal (agre
       expect(api.list(), label).toMatchObject([{ enforceable: false, reason }]);
       await service.close();
     }
+  });
+});
+
+describe.skipIf(process.platform === "win32")("#3130 review: disconnect, routing and binding", () => {
+  it("held at disconnect: published exposures are withdrawn in the member's own store; the same Hub republishes nothing", async () => {
+    const rig = await paired();
+    const hubId = rig.identity.hubId;
+    const set = memberSet(hubId);
+    const first = await factory(rig.memberHome, hubId).create({ enabled: true }, () => true); // creates the member state
+    await first.close();
+    // The owner had published one exposure before the member was held.
+    const profile = new HubMemberProfileStore(rig.memberHome, hubId).readProfile();
+    const view = new HubDocumentView("handbook", [{ id: "d1", title: "Handbook", text: "text" }]);
+    const db = new Database(join(rig.memberHome, set.database));
+    const audit = createHubAudit({ db, contentKey: Buffer.from(readFileSync(join(rig.memberHome, set.keys[1]!), "utf8").trim(), "base64") });
+    const store = new HubExposureStore(db, { floor: new HubFileVersionFloor(rig.memberHome, set.floors[2]!), audit, binding: () => ({ owner: profile.owner, fleetId: profile.fleetId }), views: new Map([["handbook", view]]) });
+    publishExposure(store, { agent: "general", providerId: "claude", displayName: "General", dataViewId: "handbook", allowedTools: ["documents.read"], expectedRevision: 0 },
+      (c) => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision }));
+    expect(store.snapshot().exposures).toHaveLength(1);
+    db.close();
+
+    expect(await withdrawMemberExposuresOffline(rig.memberHome, hubId)).toBe(1);
+    expect(await withdrawMemberExposuresOffline(rig.memberHome, hubId)).toBe(0); // idempotent
+
+    // Re-composed for the same Hub: nothing is published, so the snapshot it sends carries nothing.
+    const again = factory(rig.memberHome, hubId);
+    const service = await again.create({ enabled: true }, () => true);
+    const db2 = new Database(join(rig.memberHome, set.database), { readonly: true });
+    const rows = db2.prepare("SELECT committed FROM hub_exposures").all() as { committed: string }[];
+    db2.close();
+    expect(rows.map((r) => JSON.parse(r.committed).exposure.state)).toEqual(["withdrawn"]);
+    await service.close();
+    // Never composed: nothing to withdraw. Partial state: refused, so the disconnect reports "unsaved".
+    expect(await withdrawMemberExposuresOffline(rig.memberHome, "11111111-2222-4333-8444-555555555555")).toBe(0);
+    unlinkSync(join(rig.memberHome, set.floors[0]!));
+    await expect(withdrawMemberExposuresOffline(rig.memberHome, hubId)).rejects.toThrow(/partial/);
+  });
+
+  it("receive: a question's receipt answers that question's requestId; revoke fences; the Hub's receipt is acknowledged", async () => {
+    const sent: any[] = [];
+    const receipt = { messageId: randomUUID(), contentDigest: "c".repeat(64), stage: "queued", sequence: 1 } as never;
+    const calls: string[] = [];
+    const receive = createMemberReceive({
+      admission: { admit: async () => receipt, fence: async () => { calls.push("fence"); } },
+      journal: { acknowledge: () => { calls.push("ack"); } },
+      live: () => true,
+      log: () => {},
+    });
+    const link = { linkEpoch: 7, revocationVersion: 0, current: () => true, send: async (f: unknown) => { sent.push(f); }, exchange: async () => ({}) } as any;
+    await receive({ v: 1, type: "question", requestId: "q-req-123", linkEpoch: 7, payload: {} } as any, link);
+    expect(sent).toEqual([{ v: 1, type: "receipt", requestId: "q-req-123", linkEpoch: 7, payload: receipt }]);
+    await receive({ v: 1, type: "revoke", requestId: "r", linkEpoch: 7, payload: {} } as any, link);
+    await receive({ v: 1, type: "receipt", requestId: "a", linkEpoch: 7, payload: receipt } as any, link);
+    expect(calls).toEqual(["fence", "ack"]);
+    await expect(receive({ v: 1, type: "authorize.result", requestId: "x", linkEpoch: 7, payload: {} } as any, link)).rejects.toThrow(/unexpected/);
+    const stale = { ...link, current: () => false };
+    await receive({ v: 1, type: "question", requestId: "q2", linkEpoch: 7, payload: {} } as any, stale);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("binding: every (re)link starts a new generation; a binding captured earlier reads current() === false, as after fence", () => {
+    const { publicKey } = generateKeyPairSync("ed25519");
+    const profile = { issuerKeyId: "k".repeat(64), fleetId: randomUUID(), owner: { realm: "corp", objectId: randomUUID() }, hub: { issuerPublicKey: publicKey.export({ type: "spki", format: "pem" }).toString() } } as any;
+    const b = createMemberBinding({ hubId: randomUUID(), profile, live: () => true, revocationFloor: () => 0 });
+    const linkA = { linkEpoch: 1, revocationVersion: 0, current: () => true } as any;
+    const linkB = { linkEpoch: 2, revocationVersion: 0, current: () => true } as any;
+    const before = b.binding();
+    expect(before.current()).toBe(true);
+    b.relink(linkA);
+    expect(before.current()).toBe(false);
+    const onA = b.binding();
+    expect(onA.generation).toBeGreaterThan(before.generation);
+    expect(onA.linkEpoch).toBe(1);
+    expect(onA.current()).toBe(true);
+    b.relink(linkB);
+    expect(onA.current()).toBe(false); // re-link: old work is fenced
+    const onB = b.binding();
+    expect(onB.generation).toBeGreaterThan(onA.generation);
+    b.fence();
+    expect(onB.current()).toBe(false);
   });
 });
