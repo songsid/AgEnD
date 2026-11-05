@@ -56,6 +56,25 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
+  # The installer's second source: when a network blocks *.github.io, install.ps1, install-agend.ps1 and the resume after
+  # a restart fetch the same files from raw.githubusercontent.com at the tag `installer-live`. It moves only here: after
+  # Pages deployed this commit from main, and only forward. So it always names what Pages serves, never main's tip
+  # (main can hold reviewed but undeployed installer changes while this workflow is held).
+  mark-live:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Point installer-live at the deployed commit
+        env:
+          DEPLOYED: ${{ github.sha }}
+        run: bash scripts/ci/mark-installer-live.sh "$DEPLOYED"
+
   notify:
     needs: [build, deploy]
     if: always()

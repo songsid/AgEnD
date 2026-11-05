@@ -189,33 +189,77 @@ function Save-InstallVersion([string]$version) {
     $version = Resolve-AgendInstallVersion $version
     if ($version) { Add-Content -Path $ProgressFile -Value ("AGEND_VERSION=" + $version) }
 }
+# 安裝檔從哪裡下載，依序：GitHub Pages，再來是 GitHub raw 上「已部署的那一份」（tag installer-live 只在 Pages 部署成功後
+# 才移到那個 commit，見 deploy-website.yml）。有些公司網路擋掉所有 *.github.io，但 raw.githubusercontent.com 可以連。
+$INSTALL_SOURCES = @('https://songsid.github.io/AgEnD', 'https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public')
+# 在 WSL 裡下載 install.sh 再執行：依序試每個來源，下載完整、而且真的是 AgEnD 的安裝腳本才執行（不會把半份或擋下來的
+# 網頁交給 bash）。在子 shell 裡：它的 exit 和清理只屬於這一段，外面的 set -e 照樣看結束碼。腳本裡沒有雙引號。
+function Get-AgendInstallShScript([string]$pin, [string[]]$sources = $INSTALL_SOURCES) {
+    $urls = ($sources | ForEach-Object { $_.TrimEnd('/') + '/install.sh' }) -join ' '
+    return ('( f=$(mktemp) || exit 1; trap ''rm -f -- $f'' EXIT; ok=; for u in ' + $urls + '; do ' +
+        'if curl --connect-timeout 20 --max-time 120 -fsSL -o $f $u && head -n 5 $f | grep -q AgEnD; then ok=1; break; fi; ' +
+        'echo AgEnD: could not fetch $u, trying the next source >&2; done; ' +
+        '[ x$ok = x1 ] || { echo AgEnD: install.sh could not be fetched from songsid.github.io or raw.githubusercontent.com >&2; exit 1; }; ' +
+        $pin + 'bash < $f )')
+}
 function Get-AgendInstallCommand([string]$version) {
     $version = Resolve-AgendInstallVersion $version
     $pin = ''; if ($version) { $pin = "AGEND_VERSION=$version " }
-    return ('set -o pipefail; curl --connect-timeout 20 --max-time 120 -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash')
+    return (Get-AgendInstallShScript $pin)
 }
-function Get-InstallResumeCommand([string]$version) {
+# 重新開機後的接續：Windows 的 RunOnce 只執行一行短指令（官方建議 260 字以內），放不下兩個來源，所以把「依序試兩個
+# 來源、下載 install.ps1 再執行」寫成這個帳號底下的一個小腳本，RunOnce 只執行它。內容只有 ASCII（5.1 讀沒有 BOM 的
+# 檔案用系統字碼頁）。$version 已經驗證過（Resolve-AgendInstallVersion）。
+function Get-InstallResumeScript([string]$version, [string[]]$sources = $INSTALL_SOURCES) {
     $version = Resolve-AgendInstallVersion $version
-    if (-not $version) { return $RESUME_COMMAND }
-    return ('powershell -ExecutionPolicy ByPass -c "$env:AGEND_VERSION=' + "'$version'; " + 'irm https://songsid.github.io/AgEnD/install.ps1 | iex"')
+    $urls = ($sources | ForEach-Object { "'" + $_.TrimEnd('/') + "/install.ps1'" }) -join ', '
+    $lines = @(
+        '# AgEnD: carry on the Windows install after a restart. Written by install-agend.ps1, run once by RunOnce.'
+        "if (`$PSVersionTable.PSEdition -eq 'Desktop') { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 }"
+    )
+    if ($version) { $lines += ("`$env:AGEND_VERSION = '" + $version + "'") }
+    $lines += @(
+        '$installer = $null'
+        ('foreach ($u in @(' + $urls + ')) {')
+        '    try {'
+        '        $t = [string](Invoke-RestMethod -Uri $u -UseBasicParsing -TimeoutSec 120)'
+        '        if ($t -match ''install-agend\.ps1'' -and $t -match ''Invoke-InstallDownload'') { $installer = $t; break }'
+        '        Write-Host "AgEnD: $u did not return the installer; trying the next source."'
+        '    } catch { Write-Host "AgEnD: $u could not be reached ($($_.Exception.Message)); trying the next source." }'
+        '}'
+        'if ($installer) { Invoke-Expression $installer } else {'
+        '    Write-Host ''AgEnD: the installer could not be downloaded from songsid.github.io or raw.githubusercontent.com.'' -ForegroundColor Red'
+        '    Write-Host ''Check the network, then run the install command from the install page again: it carries on where it stopped.'''
+        '    Read-Host ''Press Enter to close'' | Out-Null'
+        '}'
+    )
+    return (($lines -join "`r`n") + "`r`n")
+}
+function Get-InstallResumeScriptPath { return (Join-Path $env:LOCALAPPDATA 'AgEnD\install-resume.ps1') }
+function Get-InstallResumeCommand([string]$path) {
+    return ('powershell -NoProfile -ExecutionPolicy ByPass -File "' + $path + '"')
 }
 
 # ── 重新開機後自動接續、自動選擇（#1853：使用者核准的第 ② 步）──────────────
 # 需要重新開機時，登記一個「登入後執行一次」（HKCU RunOnce）：登入後自動再跑同一行安裝指令，從中斷處繼續。
 # 每次安裝程式一開始就先清掉它，只在要重新開機前才登記，所以完成或失敗都不會留下舊的登記。Windows 執行它之前也會先刪掉它。
-# 接續一律用一行指令（它會請你同意一次系統管理員權限），不帶 -Force：接續只是繼續，不是重來。
+# 接續一律跑 install.ps1（它會請你同意一次系統管理員權限），不帶 -Force：接續只是繼續，不是重來。它先試 GitHub Pages，
+# 連不上再用 raw 上已部署的那一份（Get-InstallResumeScript），所以擋掉 *.github.io 的網路也能接續。
 $RESUME_KEY = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
 $RESUME_NAME = 'AgEnDInstallResume'
-$RESUME_COMMAND = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"'
 function Register-ResumeAtLogon {
     try {
+        $path = Get-InstallResumeScriptPath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+        [IO.File]::WriteAllText($path, (Get-InstallResumeScript $AgendInstallVersion), (New-Object Text.UTF8Encoding $false))
         if (-not (Test-Path $RESUME_KEY)) { New-Item -Path $RESUME_KEY -Force | Out-Null }
-        Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value (Get-InstallResumeCommand $AgendInstallVersion)
+        Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value (Get-InstallResumeCommand $path)
         return $true
     } catch { return $false }
 }
 function Clear-ResumeAtLogon {
     try { Remove-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -ErrorAction Stop } catch { }
+    try { Remove-Item -LiteralPath (Get-InstallResumeScriptPath) -Force -ErrorAction Stop } catch { }
 }
 # 要重新開機時：登記接續，說明會發生什麼，問一次要不要現在重開。接續的登記和進度都在這個 Windows 帳號底下，
 # 所以要說清楚重新開機後要用哪個帳號登入（#2650 第 5 項）。
@@ -238,7 +282,8 @@ function Request-Reboot([string]$why) {
 # ── 網路檢查：安裝真正要連的地方，Windows 和 WSL 分開檢查（#2650 第 8 項）──────────
 # 以前只連一次 Google，連不上就整個停下來：Google 被擋、但需要的網站都能連的公司網路會被誤擋；反過來，Windows 的瀏覽器
 # 走公司 proxy 能連，WSL 裡的 curl/apt/npm 卻不行時，檢查通過了，後面的下載才失敗或一直等。現在：
-# - Windows 這邊：連 songsid.github.io（安裝指令與重新開機後的接續都從這裡下載，必須能連）和 GitHub（WSL 更新的備案，
+# - Windows 這邊：連 songsid.github.io（安裝指令與重新開機後的接續都從這裡下載；被擋時改用 raw.githubusercontent.com 上
+#   同一份已部署的，兩個有一個能連就好）和 GitHub（WSL 更新的備案，
 #   連不上只警告）。
 # - WSL 這邊（Ubuntu 好了之後、安裝 AgEnD 之前）：AgEnD 的安裝程式、npm、Node.js、nvm 必須能連；Ubuntu 套件庫和各家
 #   AI 後端的網站連不上只警告。
@@ -307,6 +352,7 @@ function Format-NetFailure([string]$kind) {
         'timeout' { return '逾時' }
         'refused' { return '連線被拒或被防火牆擋住' }
         'tls' { return 'HTTPS 憑證不被信任（常見於公司會檢查加密連線的網路）' }
+        'handshake' { return 'HTTPS 連線在握手時被切斷（常見於防火牆擋掉這個網站，不是憑證的問題）' }
         'proxy' { return 'proxy 擋住或需要登入' }
         'curl' { return 'WSL 裡沒有 curl，無法檢查' }
     }
@@ -314,6 +360,10 @@ function Format-NetFailure([string]$kind) {
 }
 # 依原因說明怎麼做。$where：'windows' 或 'wsl'；$proxy：Windows 用的 proxy（或 $null）。
 function Write-NetAdvice([string[]]$kinds, [string]$where, $proxy) {
+    if ($kinds -contains 'handshake') {
+        Write-Info "  連線在 HTTPS 握手時就被切斷：多半是防火牆擋掉了那個網站，不是憑證的問題。"
+        Write-Info "  songsid.github.io 被擋時，安裝程式會改用 raw.githubusercontent.com 上同一份已部署的安裝程式。"
+    }
     if ($kinds -contains 'tls') {
         Write-Info "  HTTPS 憑證的問題：公司網路常用自己的憑證檢查加密連線。"
         Write-Info "  請向 IT 人員要公司的根憑證（.crt），"
@@ -343,17 +393,32 @@ function Write-NetAdvice([string[]]$kinds, [string]$where, $proxy) {
         }
     }
 }
-# 印出檢查結果並決定要不要繼續：必須的都連得上（或使用者明確回答 y）回傳 $true。$results：@{ Host; Why; Required; Kind }。
+# 必須的網站有備用來源時（*.github.io 被擋的公司網路：GitHub raw 上同一份已部署的安裝程式），備用的連得上就算通過，
+# 兩個都說出來；兩個都連不上才算失敗。
+$NET_ALTERNATES = @{ 'songsid.github.io' = 'raw.githubusercontent.com' }
+# 印出檢查結果並決定要不要繼續：必須的都連得上（或它的備用來源連得上，或使用者明確回答 y）回傳 $true。$results：@{ Host; Why; Required; Kind }。
 function Resolve-NetResults($results, [string]$where) {
     $failed = @($results | Where-Object { $_.Kind })
-    $required = @($failed | Where-Object { $_.Required })
     $label = if ($where -eq 'wsl') { 'WSL 裡' } else { 'Windows' }
     if ($failed.Count -eq 0) { Write-Ok "$label 的網路連線正常（需要的網站都連得上）"; return $true }
+    $byHost = @{}; foreach ($r in $results) { $byHost[$r.Host] = $r }
+    # 連線方式和 curl 的結束碼：回報問題時，從安裝紀錄就分得出是防火牆擋網站，還是 proxy 在檢查加密連線。
+    $via = @($results | Where-Object { $_.Via } | ForEach-Object { $_.Via }) | Select-Object -First 1
+    if ($via) { Write-Info $(if ($via -eq 'direct') { "$label 直接連線（沒有設定 https_proxy）" } else { "$label 經過 proxy $via 連線" }) }
+    foreach ($r in $failed) { if ($null -ne $r.Code) { Write-InstallLog ("  {0} {1}：curl 結束碼 {2}（{3}）" -f $label, $r.Host, $r.Code, $r.Kind) } }
+    $required = @()
     foreach ($r in $failed) {
         $line = "{0} 連不上 {1}（{2}）：{3}" -f $label, $r.Host, $r.Why, (Format-NetFailure $r.Kind)
-        if ($r.Required) { Write-Err $line } else { Write-Warn ($line + "；只有用到時才需要") }
+        $alt = if ($NET_ALTERNATES.ContainsKey($r.Host)) { $NET_ALTERNATES[$r.Host] } else { $null }
+        $altOk = $alt -and $byHost.ContainsKey($alt) -and -not $byHost[$alt].Kind
+        if (-not $r.Required) { Write-Warn ($line + "；只有用到時才需要") }
+        elseif ($altOk) { Write-Warn ($line + "；改用 $alt（同一份已部署的安裝程式），可以繼續") }
+        else {
+            if ($alt) { $line += "；備用來源 $alt 也連不上" }
+            Write-Err $line; $required += $r
+        }
     }
-    Write-NetAdvice @($failed | ForEach-Object { $_.Kind }) $where (Get-WindowsProxy)
+    Write-NetAdvice @($failed | ForEach-Object { $_.Kind }) $where (Get-WindowsProxy $failed[0].Host)
     if ($required.Count -eq 0) { return $true }
     $answer = Read-Host "  安裝需要上面這些網站，現在多半會失敗。還是要繼續嗎？(y/N)"
     return (([string]$answer) -match '^\s*[yY]\s*$')
@@ -369,9 +434,12 @@ function Get-WslNetScript($endpoints) {
     return @(
         'command -v curl >/dev/null 2>&1 || { echo NET_NO_CURL; exit 0; }'
         ('for h in ' + $hosts + '; do ( c=1; for i in 1 2; do curl -sS -o /dev/null -m 10 https://$h/ 2>/dev/null; c=$?; [ $c -eq 0 ] || [ $c -eq 22 ] && break; done; echo NET\|$h\|$c ) & done; wait')
+        # 這些連線怎麼出去：直接，或經過 https_proxy（只印主機和連接埠，帳密不印）。分辨「防火牆擋網站」和「proxy 檢查加密連線」。
+        'p=${https_proxy:-${HTTPS_PROXY:-}}; p=${p#*://}; p=${p##*@}; p=${p%%/*}; echo NET_PATH\|${p:-direct}'
     ) -join "`n"
 }
-# curl 的結束碼 → 原因（0、22 是有 HTTP 回應）。
+# curl 的結束碼 → 原因（0、22 是有 HTTP 回應）。35 是握手失敗（連線在 TLS 握手時被切斷：防火牆擋網站），和 60 這類
+# 「憑證不被信任」（公司檢查加密連線）分開：兩種的處理方式不同。
 function Get-CurlFailureKind([int]$code) {
     switch ($code) {
         { $_ -in 0, 22 } { return $null }
@@ -379,7 +447,8 @@ function Get-CurlFailureKind([int]$code) {
         6 { return 'dns' }
         7 { return 'refused' }
         28 { return 'timeout' }
-        { $_ -in 35, 51, 53, 54, 58, 59, 60, 66, 77, 80, 83, 90, 91 } { return 'tls' }
+        35 { return 'handshake' }
+        { $_ -in 51, 53, 54, 58, 59, 60, 66, 77, 80, 83, 90, 91 } { return 'tls' }
     }
     return 'other'
 }
@@ -387,9 +456,12 @@ function ConvertFrom-WslNetOutput([string]$text, $endpoints) {
     if ($text -match 'NET_NO_CURL') { return @($endpoints | ForEach-Object { @{ Host = $_.Host; Why = $_.Why; Required = $false; Kind = 'curl' } }) }
     $codes = @{}
     foreach ($m in [regex]::Matches($text, '(?m)^NET\|([A-Za-z0-9.-]+)\|(\d+)\s*$')) { $codes[$m.Groups[1].Value] = [int]$m.Groups[2].Value }
+    $path = [regex]::Match($text, '(?m)^NET_PATH\|([A-Za-z0-9._:\[\]-]{1,200})\s*$')
+    $via = if ($path.Success) { $path.Groups[1].Value } else { $null }
     return @($endpoints | ForEach-Object {
-        $k = if ($codes.ContainsKey($_.Host)) { Get-CurlFailureKind $codes[$_.Host] } else { 'other' }
-        @{ Host = $_.Host; Why = $_.Why; Required = $_.Required; Kind = $k }
+        $c = if ($codes.ContainsKey($_.Host)) { $codes[$_.Host] } else { $null }
+        $k = if ($null -ne $c) { Get-CurlFailureKind $c } else { 'other' }
+        @{ Host = $_.Host; Why = $_.Why; Required = $_.Required; Kind = $k; Code = $c; Via = $via }
     })
 }
 # 在 WSL 裡跑一段 bash 腳本（短的檢查，有時間上限），回傳 @{ Code; Text }；出錯時 Code 是 -1。
@@ -1403,7 +1475,7 @@ function Find-ExistingAgend {
 # 選通道：beta 的就裝目前的 beta，否則裝正式版（#2286 審查：舊版可能還沒有會修復的安裝程式）。修好才回傳 $true。
 function Invoke-AgendRepair([string]$distro, [string]$user, [string]$version) {
     $pin = if ($version -match '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$') { 'AGEND_VERSION=beta ' } else { '' }
-    $cmd = Get-WslAgendCommand ('set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash')
+    $cmd = Get-WslAgendCommand (Get-AgendInstallShScript $pin)
     $code = Invoke-WslStep -Label "修復 AgEnD" -Usually "通常需要 1–3 分鐘" -UpperMinutes 15 -Distro $distro -User $user -Script $cmd
     if ($code -ne 0) { return $false }
     $after = Invoke-AgendInWsl $distro $user 'agend --version'
