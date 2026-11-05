@@ -10,6 +10,7 @@
 // Off is the default: the server marks the page (data-hub) only when a switch is on, and nothing here is ever loaded
 // otherwise (app-shell.js and panel-settings.js import the Hub modules only when the mark is present).
 import { appStore } from "/assets/app-store.js";
+import * as settingsConfirm from "./settings-confirm.js";
 
 /** The page's Hub marks (presentation only — a mark confers no authority): { hub, member }. */
 export function hubMarks(doc = typeof document !== "undefined" ? document : null) {
@@ -70,7 +71,9 @@ export function hubName(doc = typeof document !== "undefined" ? document : null)
  */
 let client = null;
 export function hubClient() {
-  return client ??= hubMarks().hub ? createHubWebClient() : createStubClient({ agents: () => (appStore.get().instances || []).filter((i) => i && i.name) });
+  // S3c: a member fleet's card uses this fleet's own endpoints (createMemberClient); the Hub workspace its own; tests the stub.
+  return client ??= hubMarks().hub ? createHubWebClient() : hubMarks().member ? createMemberClient({ confirm: settingsConfirm })
+    : createStubClient({ agents: () => (appStore.get().instances || []).filter((i) => i && i.name) });
 }
 /** For tests and the switch-over to slice 1: put another client in place (null: the stub again, fresh). */
 export function setHubClient(next) { client = next; }
@@ -105,7 +108,10 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
     const c = consent.get(a.name) || { state: "withdrawn", revision: 0 };
     const ok = enforceable.has(a.name);
     return { agent: a.name, display: a.display_name || a.name, exposureId: c.revision ? `stub-${a.name}` : null, revision: c.revision,
-      state: c.state, policy: ok ? { dataView: "read-only summary", tools: ["read"] } : null, enforceable: ok, ...(ok ? {} : { reason: "restricted_execution_pending" }) };
+      state: c.state, policy: ok && c.state === "published" ? { dataView: c.dataView || "summary", tools: c.tools || ["documents.read"] } : null, enforceable: ok, ...(ok ? {} : { reason: "restricted_execution_pending" }),
+      // S3c: the owner's choices (the stub's one view and the read tools) and no pending confirmation.
+      choices: ok ? { dataViews: [{ id: "summary", label: "summary" }], tools: [{ name: "documents.list", label: "List documents" }, { name: "documents.read", label: "Read documents" }] } : { dataViews: [], tools: [] },
+      pending: null };
   };
   const api = {
     stub: true,
@@ -138,7 +144,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
      * Publish (on) or withdraw (off) one agent, against the revision the page showed.
      * @returns {Promise<HubPublishResult | HubWithdrawResult>}
      */
-    async setExposed(agent, on, expectedRevision) {
+    async setExposed(agent, on, expectedRevision, choice = null) {
       const a = agents().find((x) => x.name === agent);
       if (!a) return { ok: false, error: "unknown_agent" };
       const c = consent.get(agent) || { state: "withdrawn", revision: 0 };
@@ -149,7 +155,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
       }
       if (pairing.state !== "paired") return { ok: false, error: "not_paired" };
       if (!enforceable.has(agent)) return { ok: false, error: "not_enforceable" };
-      consent.set(agent, { state: "published", revision: c.revision + 1 });
+      consent.set(agent, { state: "published", revision: c.revision + 1, dataView: choice && choice.dataViewId, tools: choice && choice.tools });
       return { ok: true, view: view(a) };
     },
     /** Hear pairing changes (slice 1: the member's local status projections). @returns {() => void} */
@@ -215,5 +221,85 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     createPairing(login) { return call("POST", "/hub/v1/admin/pairings", { login }); },
     approvePairing(pairingId, fingerprint) { return call("POST", `/hub/v1/admin/pairings/${id(pairingId)}/approve`, { fingerprint }); },
     revokeFleet(fleetId) { return call("POST", `/hub/v1/admin/fleets/${id(fleetId)}/revoke`); },
+  };
+}
+
+/**
+ * S3c (S-55): the member fleet's client — this fleet's own endpoints (/api/hub/member/*, local admin only, never the
+ * public link). Exposures: the list; publish/revise through the Settings confirmation (a 202 is "waiting for your
+ * confirmation": `pending` and `settled`, a promise of the decision); withdraw at once (ok once saved; remote
+ * "pending": the Hub learns it with the next snapshot). An older host (404): { ok: false, error: "unavailable" }.
+ * `confirm` is settings-confirm.js (loaded with the card): { api, isPendingResponse, track, newKey }.
+ */
+export function createMemberClient({ confirm, pollMs = 5000, doc = typeof document !== "undefined" ? document : null, timers = globalThis }) {
+  const listed = async () => {
+    const r = await confirm.api("/api/hub/member/exposures");
+    return r.ok && r.body && Array.isArray(r.body.exposures) ? r.body.exposures : r.status === 404 ? null : [];
+  };
+  const fail = (r) => ({ ok: false, error: r.status === 404 ? "unavailable" : (r.body && typeof r.body.error === "string" ? r.body.error : "unsaved") });
+  // Pairing (S3c PR B): GET the projection; connect / confirm / disconnect go through the Settings confirmation (a 202:
+  // "sent for confirmation", followed in the background; the poll shows the result); cancel at once.
+  const pairingNow = async () => {
+    const r = await confirm.api("/api/hub/member/pairing");
+    if (r.ok && r.body && r.body.pairing) return r.body.pairing;
+    return { state: "held", hold: r.status === 404 ? "unavailable" : "unsaved" };
+  };
+  const step = async (name, body) => {
+    const r = await confirm.api(`/api/hub/member/pairing/${name}`, { method: "POST", headers: { "Idempotency-Key": confirm.newKey("hub") }, body: JSON.stringify(body || {}) });
+    if (confirm.isPendingResponse(r)) { void Promise.resolve(confirm.track(r.body.pending_change, "hub")).catch(() => {}); return { ok: true, pendingConfirmation: true, pairing: await pairingNow() }; }
+    if (r.status === 404) return { ok: false, error: "unavailable" };
+    return r.body && typeof r.body === "object" ? r.body : { ok: false, error: "unsaved" };
+  };
+  const listeners = new Set();
+  let timer = null, inFlight = false;
+  const tick = async () => {
+    timer = null;
+    if (!listeners.size) return;
+    if (!(doc && doc.hidden) && !inFlight) {
+      inFlight = true;
+      try { const p = await pairingNow(); for (const fn of listeners) { try { fn(p); } catch { /* a listener's own failure */ } } } catch { /* the next tick */ }
+      finally { inFlight = false; }
+    }
+    if (listeners.size) timer = timers.setTimeout(tick, pollMs);
+  };
+  return {
+    stub: false, member: true,
+    pairing: pairingNow,
+    async connect({ address, code }) {
+      const a = String(address || "").trim(), c = String(code || "").trim();
+      if (!ADDRESS_HINT.test(a)) return { ok: false, error: "address" };
+      if (!CODE_HINT.test(c)) return { ok: false, error: "code" };
+      return step("connect", { address: a, code: c });
+    },
+    confirmFingerprint(digest) { return step("confirm", { digest }); },
+    /** `shown`: the pairing the page showed when the person chose Disconnect (never re-read after their dialog). */
+    async disconnect(shown) {
+      // #3115 r2: exactly the pairing shown — its hub and bindingId; the server refuses any other (a replacement, a re-pair).
+      const hubId = shown && (shown.hub ? shown.hub.hubId : shown.hubId), binding = shown && shown.binding;
+      if (!hubId || !binding) return { ok: false, error: "conflict" };
+      const r = await step("disconnect", { hubId, binding }); return r.ok ? { ok: true, remote: "pending", ...(r.pendingConfirmation ? { pendingConfirmation: true } : {}) } : { ok: false, error: r.error === "unsaved" ? "unsaved" : "conflict" }; },
+    async cancel() { const r = await confirm.api("/api/hub/member/pairing/cancel", { method: "POST", body: "{}" }); return r.ok && r.body && r.body.pairing ? r.body.pairing : pairingNow(); },
+    /** The local status, every pollMs while visible (one request at a time; none while hidden); stops with the last listener. */
+    subscribe(fn) { listeners.add(fn); if (!timer) timer = timers.setTimeout(tick, pollMs); return () => { listeners.delete(fn); if (!listeners.size && timer) { timers.clearTimeout(timer); timer = null; } }; },
+    async exposures() { const rows = await listed(); return rows || []; },
+    async setExposed(agent, on, expectedRevision, choice = null) {
+      const rows = await listed();
+      if (rows === null) return { ok: false, error: "unavailable" };
+      const row = rows.find((x) => x.agent === agent);
+      if (!row) return { ok: false, error: "unknown_agent" };
+      if (!on) {
+        if (!row.exposureId) return { ok: false, error: "conflict" };
+        const r = await confirm.api(`/api/hub/member/exposures/${encodeURIComponent(row.exposureId)}/withdraw`, { method: "POST", body: JSON.stringify({ expectedRevision }) });
+        return r.ok && r.body && r.body.ok ? { ok: true, remote: r.body.remote === "confirmed" ? "confirmed" : "pending" } : fail(r);
+      }
+      if (!choice || typeof choice.dataViewId !== "string" || !Array.isArray(choice.tools)) return { ok: false, error: "not_enforceable" };
+      const r = await confirm.api("/api/hub/member/exposures", { method: "POST", headers: { "Idempotency-Key": confirm.newKey("hub") },
+        body: JSON.stringify({ agent, dataViewId: choice.dataViewId, tools: choice.tools, expectedRevision }) });
+      if (confirm.isPendingResponse(r)) {
+        const p = r.body.pending_change;
+        return { ok: true, pending: { expiresAt: p.expires_at }, view: { ...row, pending: { expiresAt: p.expires_at } }, settled: confirm.track(p, "hub") };
+      }
+      return r.ok && r.body && r.body.ok ? { ok: true, view: r.body.view } : fail(r);
+    },
   };
 }
