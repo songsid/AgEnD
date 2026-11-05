@@ -20,7 +20,7 @@ const JS = "text/javascript; charset=utf-8";
 export const SHARE_ASSETS: Readonly<Record<string, string>> = {
   ...Object.fromEntries([
     "app-ctx.js", "app-html.js", "app-i18n.js", "app-nav.js", "app-prefs.js", "app-route.js", "app-store.js", "app-themes.js", "header-tools.js",
-    "htm.module.js", "identity-color.js", "instance-nav.js", "owner-css.js", "preact-hooks.module.js", "preact.module.js", "read-stream.js",
+    "htm.module.js", "identity-color.js", "instance-nav.js", "machine-name.js", "owner-css.js", "preact-hooks.module.js", "preact.module.js", "read-stream.js",
     "side-panel.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-icons.js", "ui-states.js", "ui-toast.js", "usage-dialog.js",
     "view-roster-store.js", "view-strings.js",
   ].map(name => [name, JS])),

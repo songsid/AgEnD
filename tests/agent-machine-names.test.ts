@@ -140,7 +140,7 @@ describe("a remote computer in the Agent list", () => {
 
 describe("a remote computer elsewhere in the app", () => {
   it("is named by its name in the sidebar and chat header, and by the start of its id when it has none", async () => {
-    const { machineName } = await import("/assets/instance-nav.js");
+    const { machineName } = await import("/assets/machine-name.js");
     expect(machineName(idLive, "junsionloh3")).toBe("junsionloh3");
     expect(machineName(idLive, undefined)).toBe("Computer a5166881");
     expect(machineName(idLive, "")).not.toContain(idLive);

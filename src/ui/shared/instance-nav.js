@@ -18,6 +18,7 @@ import { viewStore } from "./view-roster-store.js";
 import { onPrefsChanged, prefInForce, prefsWritable, savePref } from "./app-prefs.js";
 import "./view-strings.js";
 import { themesShown, themesStore } from "./app-themes.js";
+import { machineName } from "./machine-name.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "./identity-color.js";
 
 /** view.* text with named values. */
@@ -26,8 +27,6 @@ function tn(key, values = {}) {
   for (const [k, v] of Object.entries(values)) s = s.split(`{${k}}`).join(String(v));
   return s;
 }
-/** A remote computer by its name; with no name yet, by the start of its id, never the whole id. The 8-character cut matches `shortId` in src/ui/settings-agent-filters.js; keep the two in step. */
-export const machineName = (id, name) => name || tn("machineShort", { value: String(id).slice(0, 8) });
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 /** A row's instance name: `name` (status frames) or `instance_name` (View's roster). */
 const nameOf = (it) => (it && (it.name != null ? it.name : it.instance_name)) || "";
