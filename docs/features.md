@@ -250,7 +250,7 @@ Instances collaborate through the tools their profiles allow. Ordinary workers c
 - `send_to_instance` — send a message to another fleet instance; supports structured metadata (`request_kind`, `requires_reply`, `correlation_id`, `task_summary`)
 - `start_instance` — wake a stopped instance so you can message it
 - `create_instance` — create a new instance with a topic (directory optional; auto-created at `~/.agend/workspaces/<name>` if omitted); supports `branch` for git worktree isolation
-- `delete_instance` — remove an instance and its topic
+- `delete_instance` — remove an instance and, by default, its own topic (`delete_topic: false` keeps it; on Discord the topic is a channel, so its history goes too; the General topic is never deleted; the result says whether the platform deleted the topic, and if not, why)
 - `replace_instance` — replace an instance with a fresh one (handover + delete + create)
 - `describe_instance` — get detailed info about a specific instance (description, model, last activity)
 - `set_display_name` — set the name shown in messages, activity logs and other agents' views
@@ -912,6 +912,8 @@ When a user replies to a previous message in Telegram, Discord or the web chat (
 ## delete_instance team cleanup
 
 When an instance is deleted via `delete_instance`, it is automatically removed from all teams it belongs to. No manual team membership cleanup is needed.
+
+Its own chat topic is deleted too, through the instance's own bot, unless `delete_topic: false` is passed. The dashboard's Delete does the same. `topic_deleted` is true only when Telegram or Discord confirmed it; otherwise `topic_reason` says why the topic stayed (for example, the Telegram bot lacks the Manage Topics admin right, or the topic was already gone). The instance is deleted either way.
 
 ## HTML Chat Export
 

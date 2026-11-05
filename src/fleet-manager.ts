@@ -104,6 +104,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
+import { deletePlannedTopic, planInstanceTopicDelete, type InstanceTopicPlan, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
@@ -12235,14 +12236,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return adapter.createTopic(topicName);
   }
 
-  async deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void> {
-    try {
-      const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
-      if (!adapter?.deleteTopic) return;
-      await adapter.deleteTopic(topicId);
-    } catch (err) {
-      this.logger.warn({ err, topicId }, "Failed to delete forum topic during rollback");
-    }
+  /**
+   * Delete an agent and, unless asked not to, its own chat topic (user decision: by default). The topic is planned
+   * before the removal (its id and bot go with the fleet.yaml entry) and deleted through the agent's OWN bot after it;
+   * the outcome is the platform's answer (instance-topic-delete.ts). A topic that cannot go never fails the removal.
+   */
+  async removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval,
+    opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome> {
+    const plan = opts.deleteTopic ? this.planInstanceTopicDelete(name) : null;
+    if (opts.execution) await this.removeInstance(name, authorization, opts.execution);
+    else await this.removeInstance(name, authorization);
+    return deletePlannedTopic(plan, this.logger);
+  }
+
+  /** What deleting `name`'s topic would act on: its own bot only — a bot that is not there is never substituted. */
+  private planInstanceTopicDelete(name: string): InstanceTopicPlan {
+    const adapterId = this.getInstanceAdapterId(name);
+    const adapter = adapterId ? this.worlds.get(adapterId)?.adapter : this.worlds.size === 0 ? this.adapter ?? undefined : undefined;
+    return planInstanceTopicDelete({ name, instances: this.fleetConfig?.instances, adapterId, adapter: adapter ?? undefined,
+      adapterIdOf: (n) => this.getInstanceAdapterId(n) });
   }
 
   getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null {

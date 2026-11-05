@@ -2266,10 +2266,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   async deleteTopic(topicId: number | string): Promise<void> {
     const channel = await (await this.readyClient()).channels.fetch(String(topicId));
-    // Only delete GuildText channels created by createTopic — never categories or forums
-    if (channel && "type" in channel && (channel as { type: ChannelType }).type === ChannelType.GuildText && "delete" in channel) {
-      await (channel as { delete(): Promise<unknown> }).delete();
+    // Only delete GuildText channels created by createTopic — never categories or forums. Anything else is refused
+    // out loud (delete_instance reports topic_deleted from this), never skipped as if it were done.
+    if (!channel) throw new Error("Unknown Channel");
+    if (!("type" in channel) || (channel as { type: ChannelType }).type !== ChannelType.GuildText || !("delete" in channel)) {
+      throw new Error("not a topic channel AgEnD creates (a text channel), so it was left alone");
     }
+    await (channel as { delete(): Promise<unknown> }).delete();
   }
 
   async probeTopicPresence(topicId: number | string): Promise<TopicPresence> {

@@ -10,6 +10,7 @@ import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
+import type { TopicDeleteOutcome } from "./instance-topic-delete.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { sanitizeInstanceName } from "./instance-names.js";
@@ -224,8 +225,8 @@ export interface LifecycleContext {
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   /** #2910: no Discord or Telegram connection at all — a new agent gets no topic (it is reached from the dashboard). */
   isWebOnlyFleet?(): boolean;
-  /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
-  deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
+  /** delete_instance: the removal, then (unless `deleteTopic` is false) the agent's own topic, through its own bot. */
+  removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean }): Promise<TopicDeleteOutcome>;
   /**
    * A bound delete for the world `adapterId` selects, captured by the caller
    * BEFORE awaiting createForumTopic. Rollback must use exactly this — never
@@ -2710,7 +2711,8 @@ export class InstanceLifecycle {
     respond: (result: unknown, error?: string) => void,
   ): Promise<void> {
     const instanceName = args.name;
-    const deleteTopic = args.delete_topic ?? false;
+    // The user's decision (beta.9): deleting an agent deletes its topic, unless `delete_topic: false` keeps it.
+    const deleteTopic = args.delete_topic ?? true;
 
     const instanceConfig = this.ctx.fleetConfig?.instances[instanceName];
     if (!instanceConfig) {
@@ -2723,12 +2725,9 @@ export class InstanceLifecycle {
       return;
     }
 
-    if (deleteTopic && instanceConfig.topic_id) {
-      await this.ctx.deleteForumTopic(instanceConfig.topic_id);
-    }
-
-    await this.ctx.removeInstance(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"));
-    respond({ success: true, name: instanceName, topic_deleted: deleteTopic });
+    // topic_deleted is the platform's answer, never the request; when the topic stays, topic_reason says why.
+    const topic = await this.ctx.removeInstanceAndTopic(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"), { deleteTopic });
+    respond({ success: true, name: instanceName, topic_deleted: topic.deleted, ...(topic.deleted ? {} : { topic_reason: topic.reason }) });
   }
 
   has(name: string): boolean {

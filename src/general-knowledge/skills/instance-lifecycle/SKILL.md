@@ -11,7 +11,7 @@ roles: [general]
   Use when the session is the problem: hallucinating / referencing stale info, stuck in a
   tool-call loop, or context is degrading (only backends that report context % surface that).
 - `stop_instance("<name>")` / `start_instance("<name>")` — stop or start an instance without removing its configuration or topic.
-- `delete_instance("<name>")` — stop and remove the instance (plus its schedules and team memberships; pass `delete_topic: true` to delete its topic as well).
+- `delete_instance("<name>")` — stop and remove the instance, its schedules and team memberships, and its own chat topic (by default; pass `delete_topic: false` to keep the topic). On Discord the topic is a channel, so its history goes too. The General topic and a topic another agent uses are never deleted. The result's `topic_deleted` is the platform's answer; when it is false, `topic_reason` says why (for example, the Telegram bot lacks the Manage Topics admin right) — the agent is deleted either way.
 
 ## Pause / Wake (resource management)
 
