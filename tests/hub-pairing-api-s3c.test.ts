@@ -289,3 +289,40 @@ describe("Prism #3115 r1 (pairing)", () => {
     expect(() => pairingSummary("disconnect", {}, paired, "h1")).toThrow(expect.objectContaining({ code: "conflict" }));
   });
 });
+
+describe("S5's seams (dev-claude): bindingChanged and currentBinding", () => {
+  it("bindingChanged after a saved claim, a disconnect, a Start over, an abandonment and a cancel; currentBinding only for a current, connectable binding", async () => {
+    const { currentBinding } = await import("../src/hub/member/pairing-api.js");
+    const changed = vi.fn();
+    const r = rig({ bindingChanged: changed });
+    const prof = (home: string, hubId: string) => ({ readProfile: () => ({}) as any, profileDigest: () => (existsSync(join(home, "hub-member", hubId, "pairing.json")) ? "p1" : null) });
+    expect(currentBinding(r.home, prof)).toBeNull();                                  // nothing yet
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    expect([changed.mock.calls.length, currentBinding(r.home, prof)]).toEqual([0, null]);   // pending is no binding
+    r.answers.push("paired");
+    await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(currentBinding(r.home, prof)).toEqual({ hubId: r.hubId });
+    await r.api.disconnect({ hubId: r.hubId });
+    expect(changed).toHaveBeenCalledTimes(2);
+    expect(currentBinding(r.home, prof)).toBeNull();
+    r.api.cancel();                                                                   // Start over
+    expect(changed).toHaveBeenCalledTimes(3);
+    expect(currentBinding(r.home, prof)).toBeNull();
+    const c = rig({ bindingChanged: changed });
+    await c.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    c.api.cancel();
+    expect(changed).toHaveBeenCalledTimes(4);
+    const u = rig({ bindingChanged: changed });
+    await u.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    u.answers.push("fail");
+    await u.api.confirmFingerprint(u.digest, yes); await u.flush();
+    expect(currentBinding(u.home, prof)).toBeNull();                                  // held
+    u.api.cancel();                                                                   // abandonment
+    expect(changed).toHaveBeenCalledTimes(5);
+    // S5's own throw never undoes the change.
+    const t = rig({ bindingChanged: () => { throw Error("s5"); } });
+    await t.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    expect(t.api.cancel()).toEqual({ state: "unpaired" });
+  });
+});

@@ -46,6 +46,12 @@ export interface HubMemberPairingDeps {
   withdrawAll?(): Promise<void> | void;
   /** Whether hub_member is still on (S5; absent: on). The claim loop stops the moment it is off. */
   enabled?(): boolean;
+  /**
+   * S5 (dev-claude): told synchronously after the binding changed and was saved — a claim's profile saved (paired), a
+   * disconnect's tombstone, a cancel / Start over / abandonment. S5 then fences, closes and rebuilds the member service
+   * only for currentBinding(home). A throw here is S5's own; the change stands.
+   */
+  bindingChanged?(): void;
   now?(): number;
   pollMs?: number; maxPolls?: number;
   sleep?(ms: number): Promise<void>;
@@ -71,6 +77,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
     if (existsSync(join(deps.home, STATE))) privatePath(deps.home, STATE);          // an existing one: owned, private, no symlink
     atomicWriteFileSync(join(dir, "state.json"), `${JSON.stringify(s)}\n`, { mode: 0o600 });
   };
+  const changed = () => { try { deps.bindingChanged?.(); } catch { /* S5's own failure */ } };
   const files = (hubId: string) => ({ pairing: existsSync(join(deps.home, "hub-member", hubId, "pairing.json")), pending: existsSync(join(deps.home, "hub-member", hubId, "pending.json")) });
 
   function view(): HubPairingView {
@@ -128,7 +135,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         if (gen === generation) { unknown = { hubId }; try { write({ ...read(), held: "unknown_outcome" }); } catch { /* the memory hold stands */ } }
         return;
       }
-      if (r.status === "paired") { if (gen === generation) { const s = read(); delete s.localConfirmed; write(s); } return; }
+      if (r.status === "paired") { if (gen === generation) { const s = read(); delete s.localConfirmed; write(s); } changed(); return; }
       if (r.status !== "pending") return;
       let pending; try { pending = store.readPending(); } catch { return; }
       if (pending.fingerprint !== digest || pending.expiresAt <= now() || store.profileDigest() !== expected) return;
@@ -179,6 +186,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         let digest: string | null = null;
         try { digest = profiles(deps.home, s.hubId).profileDigest(); } catch { return view(); }
         write({ retired: [...(s.retired ?? []).filter((r) => r.hubId !== s.hubId), { hubId: s.hubId, profile: digest }] });
+        changed();
         return view();
       }
       // #3115 r1 P4: after an unknown claim outcome, abandon the binding without retrying it: the pending claim goes, and
@@ -191,13 +199,15 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
           write({ retired: [...(s.retired ?? []).filter((r) => r.hubId !== hubId), { hubId, profile: store.profileDigest() }] });
         } catch { return view(); }
         unknown = null;
+        changed();
         return view();
       }
       if (s.hubId && files(s.hubId).pending) { try { profiles(deps.home, s.hubId).clearPending(); } catch { return view(); } }
       delete s.localConfirmed;
       if (s.held === "expired" || s.held === "refused") delete s.held;
-      if (s.hubId && !files(s.hubId).pairing && !s.held) { write(s.retired ? { retired: s.retired } : {}); return view(); }
+      if (s.hubId && !files(s.hubId).pairing && !s.held) { write(s.retired ? { retired: s.retired } : {}); changed(); return view(); }
       write(s);
+      changed();
       return view();
     },
     /** Leave the Hub (a confirmed Settings replay): fence, tombstone, withdraw every exposure; the Hub revokes later. */
@@ -211,6 +221,7 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       generation++;
       try { deps.fence?.(); } catch { /* fenced on the tombstone below either way */ }
       try { write({ ...read(), disconnected: { at: now() } }); } catch { return { ok: false, error: "unsaved" }; }
+      changed();
       try { await deps.withdrawAll?.(); } catch { return { ok: false, error: "unsaved" }; }
       return { ok: true, remote: "pending" };
     },
@@ -232,3 +243,22 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
   };
 }
 
+
+/**
+ * S5's member factory reads this (dev-claude): the hub a member service may be built for — the state names it, its
+ * profile exists and reads, and it is neither disconnected, held, nor a retired profile; else null. The same checks as
+ * the pairing API's view() and disconnected(); a fresh read of the files (no memory of this process).
+ */
+export function currentBinding(home: string, profiles: (home: string, hubId: string) => Pick<HubMemberProfileStore, "readProfile" | "profileDigest"> = (h, id) => new HubMemberProfileStore(h, id)): { hubId: string } | null {
+  try {
+    if (!existsSync(join(home, STATE))) return null;
+    const st = JSON.parse(readPrivateFile(home, STATE)) as MemberState;
+    if (!st || typeof st !== "object" || typeof st.hubId !== "string" || !HUB_ID.test(st.hubId) || st.disconnected || st.held) return null;
+    if (!existsSync(join(home, "hub-member", st.hubId, "pairing.json"))) return null;
+    const store = profiles(home, st.hubId);
+    store.readProfile();
+    const r = (st.retired ?? []).find((x) => x.hubId === st.hubId);
+    if (r && store.profileDigest() === r.profile) return null;
+    return { hubId: st.hubId };
+  } catch { return null; }
+}
