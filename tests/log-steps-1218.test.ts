@@ -205,6 +205,24 @@ describe("masking: only actual secret values, everything else stays readable", (
     p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: whole }] } }));
     expect(p.steps[0]!.body).not.toContain("fixture-shortsid");
   });
+  it("a quoted Cookie cut after an escaped quote fails closed, including a trailing cut escape", () => {
+    const sid = J("sid=", "fixture-shortsid");
+    const whole = JSON.stringify({ Cookie: 'theme="light"; ' + sid + "; padding=" + "q".repeat(5000) });
+    expect(whole.length).toBeGreaterThan(TEXT_MAX + 512);
+    expect(whole).toContain('\\"');
+    expect(maskSecrets(whole)).not.toContain("fixture-shortsid");
+    const b = bounded(whole, TEXT_MAX);
+    expect(b.text).not.toContain("fixture-shortsid");
+    expect(b.text).toContain("[REDACTED]");
+    const p = new ClaudeStepParser();
+    p.push(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: whole }] } }));
+    expect(p.steps[0]!.body).not.toContain("fixture-shortsid");
+    const single = `'Cookie': 'theme=\\'light\\'; ${sid}; padding=${"q".repeat(5000)}`;
+    expect(single.length).toBeGreaterThan(TEXT_MAX + 512);
+    expect(bounded(single, TEXT_MAX).text).not.toContain("fixture-shortsid");
+    expect(maskSecrets('{"Cookie":"theme=\\')).toContain("[REDACTED]");
+    expect(maskSecrets('{"Cookie":"theme=\\')).not.toContain("theme=");
+  });
   it("bounded: only the part that can be shown (and a margin) is masked — what is cut far past it is counted as written", () => {
     const text = "x".repeat(10) + " ".repeat(2000) + J("password=", "hunter2hunter2");
     expect(bounded(text, 10)).toEqual({ text: "x".repeat(10), cut: text.length - 10 });

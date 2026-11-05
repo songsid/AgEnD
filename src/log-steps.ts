@@ -105,10 +105,10 @@ const PLAIN = /^(?:-?\d+(?:\.\d+)?|true|false|null|none|\[REDACTED\])$/i;
 const COOKIE_HEADER = /\b(?:cookie|set-cookie)\s*:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/gi;
 /**
  * Quoted JSON/YAML Cookie fields (`"Cookie": "sid=abc123"`) — the header regex stops at a quote before the colon.
- * Closed quotes first; an opening quote with no close in this string (a bounded prefix) takes the rest of the line,
- * so later `sid=` pairs are not left visible.
+ * Closed quotes first (escapes consumed). An opening quote with no unescaped close in this string (a bounded prefix)
+ * uses the same escape grammar, including a trailing cut `\`, so later `sid=` pairs are not left visible.
  */
-const COOKIE_FIELD = /(["'](?:set-)?cookies?["']\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|"[^"\r\n]*|'[^'\r\n]*|[^\s,;&}\]\r\n]+)/gi;
+const COOKIE_FIELD = /(["'](?:set-)?cookies?["']\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*(?:\\)?|'(?:\\.|[^'\\])*(?:\\)?|[^\s,;&}\]\r\n]+)/gi;
 
 /**
  * Mask secret values in `text` (#1788 review P1: every common way a secret is written, since arguments and results are
