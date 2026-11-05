@@ -30,7 +30,7 @@ describe("terminal PowerShell worker failures", () => {
     const batch = batches[cases.indexOf(kind)]!;
     const first = batch.run("helpers", "F").catch(error => error as Error);
     const child = vi.mocked(spawn).mock.results.at(-1)!.value as ReturnType<typeof spawn>;
-    if (kind === "close") { child.exitCode = 23; child.emit("close", 23); }
+    if (kind === "close") { Object.assign(child, { exitCode: 23 }); child.emit("close", 23); }
     else if (kind === "deadline") { await vi.advanceTimersByTimeAsync(10_000); }
     else { child.stdin!.emit("error", new Error("fixture stdin closed")); }
     const failure = await first;
