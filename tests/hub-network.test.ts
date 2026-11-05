@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { hubRig } from "./helpers/hub-rig.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { signAsker, sha256, issuerKeyId } from "../src/hub/identity.js";
+import { HubMemberProfileStore } from "../src/hub/profile.js";
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [];
 afterEach(async () => { for (const r of rigs.splice(0)) await r.close(); });
 async function rig() { const r = await hubRig(); rigs.push(r); return r; }
@@ -114,4 +115,17 @@ it("a changed Hub identity in a pinned welcome stops reconnect and never dispatc
   const r = await rig(); await r.pair(); (r.server as any).options.hubId = randomUUID(); const c = r.client();
   await expect(c.value.start()).rejects.toThrow(); expect(c.state.holds).toEqual(["key-changed"]);
   await new Promise(resolve => setTimeout(resolve, 350)); expect(c.state.syncs).toBe(0); expect(r.received).toEqual([]);
+});
+
+it("fences a member profile at the atomic rename against an expired owner continuation or another committed profile", async () => {
+  const r = await rig(), original = await r.pair(), store = new HubMemberProfileStore(r.memberHome, r.identity.hubId), digest = store.profileDigest();
+  let checks = 0;
+  expect(() => store.saveProfile({ ...original, credential: "b".repeat(64) }, digest, () => ++checks === 1)).toThrow("stale");
+  expect(store.profileDigest()).toBe(digest); expect(store.readProfile()).toEqual(original);
+  checks = 0;
+  expect(() => store.saveProfile({ ...original, credential: "b".repeat(64) }, digest, () => {
+    if (++checks === 2) store.saveProfile({ ...original, credential: "c".repeat(64) }, digest, () => true);
+    return true;
+  })).toThrow("stale");
+  expect(store.readProfile().credential).toBe("c".repeat(64));
 });

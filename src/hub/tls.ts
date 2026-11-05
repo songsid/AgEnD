@@ -1,7 +1,7 @@
 import { Agent as HttpsAgent } from "node:https";
 import { connect as tlsConnect } from "node:tls";
 import { generateKeyPairSync, randomUUID, X509Certificate, createPublicKey, createPrivateKey } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { isIP } from "node:net";
 import { existsSync, mkdirSync, openSync, writeFileSync, closeSync, fsyncSync } from "node:fs";

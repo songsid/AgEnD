@@ -1,13 +1,18 @@
 /** Real private files + SQLite only; no service or external host. */
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { HubFileVersionFloor } from "../src/hub/version-floor.js";
 import { HubTransportStore, migrateHubTransportStore } from "../src/hub/store.js";
+const syncFault = vi.hoisted(() => ({ directories: false }));
+vi.mock("node:fs", async original => {
+  const fs = await original<typeof import("node:fs")>();
+  return { ...fs, fsyncSync(fd: number) { if (syncFault.directories && fs.fstatSync(fd).isDirectory()) throw Error("Directory flush rejected"); fs.fsyncSync(fd); } };
+});
 const roots: string[] = [], dbs: Database.Database[] = [];
-afterEach(() => { dbs.splice(0).forEach(db => db.close()); roots.splice(0).forEach(path => rmSync(path, { recursive: true, force: true })); });
+afterEach(() => { syncFault.directories = false; dbs.splice(0).forEach(db => db.close()); roots.splice(0).forEach(path => rmSync(path, { recursive: true, force: true })); });
 function home() { mkdirSync(".artifacts", { recursive: true }); const p = mkdtempSync(join(process.cwd(), ".artifacts/hub-floor-")); chmodSync(p, 0o700); roots.push(p); return p; }
 it("initializes explicitly, survives reopening and refuses missing, backward or reset revisions", () => {
   const root = home(), floor = new HubFileVersionFloor(root, "hub/floors/transport");
@@ -38,4 +43,10 @@ it("requires an audit write to finish synchronously in the same transaction", ()
   const store = new HubTransportStore(db, { floor, appendAudit: async () => {} }); store.initialize();
   expect(() => store.mutate({ at: Date.now(), requestId: randomUUID(), actor: { kind: "local-host" }, action: "fixture", result: "allowed" }, () => {})).toThrow();
   expect(floor.read()).toBe(1); expect(() => new HubTransportStore(db, { floor, appendAudit: () => {} }).read()).toThrow();
+});
+
+it("requires the renamed floor's directory entry to be flushed before publication can continue", () => {
+  const root = home(), floor = new HubFileVersionFloor(root, "hub/floors/transport"); floor.initialize();
+  syncFault.directories = true;
+  expect(() => floor.raise(1)).toThrow("Directory flush rejected");
 });
