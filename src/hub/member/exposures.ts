@@ -52,7 +52,7 @@ export interface HubExposureInput {
   /** The committed revision the owner saw (0: none yet). */
   expectedRevision: number;
 }
-export type HubExposureError = "not_paired" | "unknown_view" | "not_enforceable" | "conflict" | "limit";
+export type HubExposureError = "not_paired" | "unknown_agent" | "unknown_view" | "not_enforceable" | "conflict" | "limit";
 export class HubExposureRefusal extends Error { constructor(readonly code: HubExposureError) { super(code); } }
 /** One row for the owner's list (the UI's view is made from it). */
 export interface HubExposureRow { agent: string; committed: HubLocalExposure | null; staged: HubLocalExposure | null }

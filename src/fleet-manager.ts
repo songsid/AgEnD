@@ -1542,6 +1542,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (generalWorkspaceUpgrade(result, request)) throw new NativePaneRecoveryError({ kind: "host-upgrade" });
     return validateGeneralWorkspaceReceipt(result, request);
   }
+  /** S3c (S-55): the member's exposure API, attached by S5's member composition (null: no Hub member here). */
+  private hubMemberExposureApi: import("./hub/member/exposure-api.js").HubMemberExposureApi | null = null;
+  hubMemberExposures(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null { return this.hubMemberExposureApi; }
+  attachHubMemberExposures(api: import("./hub/member/exposure-api.js").HubMemberExposureApi | null): void { this.hubMemberExposureApi = api; }
   private readonly generalLocationFlights = new Map<string, symbol>();
   private readonly generalAttentionEpisodes = new Map<string, { key: string; since: number }>();
   private generalBindings(): GeneralBindings { return new GeneralBindings(this.dataDir); }
@@ -2737,6 +2741,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const baselines = this.settingsBaselineReader = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       generalLocation: input => this.previewGeneralLocation(input),
+      // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
+      hubExposure: (input: unknown) => {
+        const api = this.hubMemberExposureApi;
+        if (!api) throw Object.assign(new Error("hub_member_unavailable"), { code: "hub_member_unavailable" });
+        return api.preview(input);
+      },
       proof: (kind, target, id, binding, key) => {
         const map = kind === "provider" ? this.providerSecretChallenges : kind === "binding" ? this.connectionBindingChallenges : this.connectionSecretChallenges;
         const proof = map.get(id);

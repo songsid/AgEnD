@@ -91,6 +91,8 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  /** S3c (S-55): the member's exposures (null: no Hub member composed here — the routes answer 404 "unavailable"). */
+  hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
   generalLocations?(): unknown;
   switchGeneralLocation?(input: unknown, authorized: () => boolean, execution: SettingsExecution): Promise<{ started: boolean; message: string }>;
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
@@ -250,7 +252,7 @@ function normalizeChannelIdValue(value: unknown, path: string):
 }
 
 export function isSettingsPath(path: string): boolean {
-  return isSettingsPage(path) || path.startsWith("/api/settings/");
+  return isSettingsPage(path) || path.startsWith("/api/settings/") || path.startsWith("/api/hub/member/");   // S3c: the member's Hub card
 }
 
 const classicPath = (ctx: SettingsApiContext) => join(ctx.dataDir, "classicBot.yaml");
@@ -840,6 +842,39 @@ export function handleSettingsRequest(
       json(res, 200, { ok: true, epoch: r.epoch, durable: r.durable });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
+  }
+
+  // S3c (S-55): the member's exposures — local owner only, never over the public link. GET the list; POST publish or
+  // revise (only as a confirmed Settings replay: the confirmation layer intercepts the first request); POST
+  // .../<id>/withdraw at once (narrowing needs no confirmation), ok once the restrictive state is saved.
+  const hubExposures = path === "/api/hub/member/exposures" ? "list" : /^\/api\/hub\/member\/exposures\/[0-9a-f-]{36}\/withdraw$/.test(path) ? "withdraw" : null;
+  if (hubExposures) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
+    const api = ctx.hubMemberExposures?.() ?? null;
+    if (!api) { json(res, 404, { error: "unavailable" }); return true; }
+    const refused = (err: unknown) => { const code = (err as { code?: string }).code; json(res, 409, { ok: false, error: typeof code === "string" ? code : "unsaved" }); };
+    if (hubExposures === "list" && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } try { json(res, 200, { ok: true, exposures: api.list() }); } catch (err) { refused(err); } return true; }
+    if (hubExposures === "list" && method === "POST") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      readBody(req, 8192).then((bytes) => {
+        execution.assert();
+        try { json(res, 200, { ok: true, view: api.publish(JSON.parse(bytes.toString("utf8"))) }); } catch (err) { refused(err); }
+      }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
+      return true;
+    }
+    if (hubExposures === "withdraw" && method === "POST") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      const id = path.split("/")[5]!;
+      readBody(req, 4096).then(async (bytes) => {
+        const body = JSON.parse(bytes.toString("utf8") || "{}") as { expectedRevision?: unknown };
+        if (!Number.isSafeInteger(body.expectedRevision)) { json(res, 400, { ok: false, error: "conflict" }); return; }
+        try { json(res, 200, { ok: true, ...(await api.withdraw(id, body.expectedRevision as number)) }); } catch (err) { refused(err); }
+      }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
   }
 
   if (path === "/api/settings/general-location" && (method === "GET" || method === "POST")) {
