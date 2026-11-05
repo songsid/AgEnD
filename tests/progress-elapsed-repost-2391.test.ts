@@ -75,6 +75,17 @@ describe("M-2391: elapsed time across a re-post", () => {
     const fresh = f.live().at(-1)!;
     expect(Date.now() - fresh.startedAt!).toBe(0);
   });
+  it("a retiring bubble from an earlier turn never pulls the start earlier: the re-post keeps the live bubble's (Fable #3126)", async () => {
+    const f = fleet();
+    await f.i.sendCancelButton("alpha");
+    const live = f.live()[0]!.startedAt!;
+    // An older turn's bubble still being retired (its delete not answered yet), with a much earlier start.
+    f.i.cancelButtons.set("old", { instanceName: "alpha", messageId: "old", startedAt: live - 600_000, retiring: true });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await f.i.sendCancelButton("alpha", undefined, true);
+    expect(f.live().map((e) => e.startedAt)).toEqual([live]);
+    expect(f.posted.at(-1)).toBe("👀 處理中…");                              // 5 s into the turn, not 10 min
+  });
   it("an early timer (it fired a millisecond before Date.now() reached the threshold) still edits: the tick has a margin", async () => {
     const f = fleet();
     // Model a real timer that fires 1 ms early against Date.now() (seen ~1% of the time on Node).
