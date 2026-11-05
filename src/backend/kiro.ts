@@ -2173,7 +2173,15 @@ export class KiroBackend implements CliBackend {
         //
         // `No token` / `dispatch failure` are what an expired-or-missing login
         // actually prints at runtime; the other three come from the kiro-cli
-        // binary. The No-token alternative is anchored to kiro's numbered error
+        // binary. Classic 2.x (`kiro-cli-chat`) also prints two mid-session
+        // expiry lines that were missing here, so the pane looked like an
+        // ordinary error instead of login-required (#3093):
+        // `Authentication expired - please log in again` and
+        // `Your login session has expired. Please log in again using:`
+        // (NUL-terminated runs in the 2.x chat binary at offsets 92920605 /
+        // 92921521). A prefix, or another sentence that only contains
+        // "expired", is not either line.
+        // The No-token alternative is anchored to kiro's numbered error
         // list (`   2: dispatch failure (other): No token`) rather than matched as
         // a bare keyword, because this fleet maintains AgEnD and an agent quoting
         // this very error must not pause itself.
@@ -2199,6 +2207,8 @@ export class KiroBackend implements CliBackend {
         pattern: new RegExp(
           "You are not logged in|ExpiredTokenException|no device registration found for token"
           + "|Access denied:.*bearer token.*invalid"
+          + "|Authentication expired - please log in again"
+          + "|Your login session has expired\\. Please log in again using:"
           + "|^\\s*\\d+:\\s*(?:dispatch failure[^\\n]*?)?No token\\s*$"
           + `|${KIRO_EXPIRED_LOGIN_SCREEN.source}`,
           "im",
