@@ -73,8 +73,10 @@ export async function exportConfig(
     process.exit(1);
   }
 
-  const date = new Date().toISOString().slice(0, 10);
-  const outFile = resolve(outputPath ?? `agend-export-${date}.tar.gz`);
+  // The default name carries the time to the second (UTC), so a second export on the same day gets its own file
+  // instead of meeting an existing one (which openPrivateArchive refuses). An explicit path is used as given.
+  const stamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "-");
+  const outFile = resolve(outputPath ?? `agend-export-${stamp}.tar.gz`);
 
   if (full) {
     const excludeArgs = RUNTIME_EXCLUDES.flatMap((p) => ["--exclude", p]);
