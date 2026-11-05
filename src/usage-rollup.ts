@@ -20,7 +20,7 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { HourAgg, HourTotals, Ledger } from "./cache-ledger.js";
+import { addSpeedInto, emptySpeed, type HourAgg, type HourTotals, type Ledger, type SpeedAgg } from "./cache-ledger.js";
 
 export const ROLLUP_KEEP_DAYS = 400;
 const HOUR = 3_600_000;
@@ -32,11 +32,12 @@ export const COVERAGE_MAX = 64;
  * One day row: its local date, the zone it was folded in, its source (backend, profile) → model|tier → totals, and
  * (#2122 §10.3) the reasoning part of those totals' output by model|tier, kept beside them (cache-ledger.ts `rs`).
  */
-export interface DayRow { date: string; zone: string; be: string; pf: string; m: Record<string, HourTotals>; r?: Record<string, number>; c?: Record<string, number> }
+export interface DayRow { date: string; zone: string; be: string; pf: string; m: Record<string, HourTotals>; r?: Record<string, number>; c?: Record<string, number>; s?: Record<string, SpeedAgg> }
 
 /** Where an hour's totals were read: the backend whose reader read them ("unknown" before #2122), and the profile. */
 /** `r`: the reasoning part of each model key's output; `c`: the cost the CLI reported for it (USD), where it did. */
-export interface HourSource { backend: string; profile: string; m: Record<string, HourTotals>; r: Record<string, number>; c: Record<string, number> }
+/** `s` (#3066 §2): the output speed measured after the first token, per model key (cache-ledger.ts SpeedAgg). */
+export interface HourSource { backend: string; profile: string; m: Record<string, HourTotals>; r: Record<string, number>; c: Record<string, number>; s: Record<string, SpeedAgg> }
 const READER_BACKEND: Record<string, string> = { claude: "claude-code", codex: "codex", kiro: "kiro-cli", grok: "grok", muse: "muse", opencode: "opencode", antigravity: "antigravity" };
 /**
  * An hour's totals by source (cache-ledger.ts `src`), each exact. What `m` holds beyond them was counted before #2122:
@@ -47,7 +48,7 @@ export function hourSources(hour: HourAgg): HourSource[] {
   const known = dict<HourTotals>();
   for (const [sk, m] of Object.entries(hour.src ?? {})) {
     const colon = sk.indexOf(":");
-    out.push({ backend: READER_BACKEND[sk.slice(0, colon)] ?? "unknown", profile: sk.slice(colon + 1), m, r: hour.rs?.[sk] ?? dict<number>(), c: hour.cs?.[sk] ?? dict<number>() });
+    out.push({ backend: READER_BACKEND[sk.slice(0, colon)] ?? "unknown", profile: sk.slice(colon + 1), m, r: hour.rs?.[sk] ?? dict<number>(), c: hour.cs?.[sk] ?? dict<number>(), s: hour.sp?.[sk] ?? dict<SpeedAgg>() });
     for (const [mk, t] of Object.entries(m)) add(known[mk] ??= [0, 0, 0, 0, 0, 0, 0], t);
   }
   const legacy = dict<HourTotals>();
@@ -55,7 +56,7 @@ export function hourSources(hour: HourAgg): HourSource[] {
     const k = known[mk], rest = t.map((n, i) => n - (k?.[i] ?? 0)) as HourTotals;
     if (rest.some(n => n > 0)) legacy[mk] = rest.map(n => Math.max(0, n)) as HourTotals;
   }
-  if (Object.keys(legacy).length) out.push({ backend: "unknown", profile: "unknown", m: legacy, r: dict<number>(), c: dict<number>() });
+  if (Object.keys(legacy).length) out.push({ backend: "unknown", profile: "unknown", m: legacy, r: dict<number>(), c: dict<number>(), s: dict<SpeedAgg>() });
   return out;
 }
 export interface UsageDays {
@@ -87,7 +88,12 @@ export function reviveDays(raw: unknown): UsageDays {
       return out;
     };
     const r = beside(row.r), c = beside(row.c);
-    d.rows.push({ date: row.date, zone: row.zone, be: row.be, pf: row.pf, m, ...(Object.keys(r).length ? { r } : {}), ...(Object.keys(c).length ? { c } : {}) });
+    // #3066 §2: a model key's speed, whole and finite, beside a total that exists.
+    const s = dict<SpeedAgg>();
+    for (const [k, a] of Object.entries((row.s && typeof row.s === "object" ? row.s : {}) as Record<string, unknown>)) {
+      if (m[k] && Array.isArray(a) && a.length === emptySpeed().length && a.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) s[k] = a as SpeedAgg;
+    }
+    d.rows.push({ date: row.date, zone: row.zone, be: row.be, pf: row.pf, m, ...(Object.keys(r).length ? { r } : {}), ...(Object.keys(c).length ? { c } : {}), ...(Object.keys(s).length ? { s } : {}) });
   }
   if (Array.isArray(r.coverage)) for (const c of r.coverage) if (Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]) && c[0] <= c[1]) d.coverage.push([c[0], c[1]]);
   return d;
@@ -122,6 +128,7 @@ export function foldHours(days: UsageDays, ledger: Ledger, cutoff: number, zone:
       for (const [mk, tot] of Object.entries(src.m)) add(row.m[mk] ??= [0, 0, 0, 0, 0, 0, 0], tot);
       for (const [mk, n] of Object.entries(src.r)) { const r = row.r ??= dict<number>(); r[mk] = (r[mk] ?? 0) + n; }
       for (const [mk, n] of Object.entries(src.c)) { const c = row.c ??= dict<number>(); c[mk] = (c[mk] ?? 0) + n; }
+      for (const [mk, a] of Object.entries(src.s)) addSpeedInto((row.s ??= dict<SpeedAgg>())[mk] ??= emptySpeed(), a);
     }
   }
   days.checkpoint = hours[hours.length - 1]!;
