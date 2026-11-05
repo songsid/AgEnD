@@ -103,8 +103,12 @@ const PLAIN = /^(?:-?\d+(?:\.\d+)?|true|false|null|none|\[REDACTED\])$/i;
  * (name=value pairs on the same header). Applied before bounds. Same shape as diagnostic-redaction.ts.
  */
 const COOKIE_HEADER = /\b(?:cookie|set-cookie)\s*:[^\r\n]*(?:\r?\n[ \t]+[^\r\n]*)*/gi;
-/** Quoted JSON/YAML Cookie fields (`"Cookie": "sid=abc123"`) — the header regex stops at a quote before the colon. */
-const COOKIE_FIELD = /(["'](?:set-)?cookies?["']\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;&}\]\r\n]+)/gi;
+/**
+ * Quoted JSON/YAML Cookie fields (`"Cookie": "sid=abc123"`) — the header regex stops at a quote before the colon.
+ * Closed quotes first; an opening quote with no close in this string (a bounded prefix) takes the rest of the line,
+ * so later `sid=` pairs are not left visible.
+ */
+const COOKIE_FIELD = /(["'](?:set-)?cookies?["']\s*[:=]\s*)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|"[^"\r\n]*|'[^'\r\n]*|[^\s,;&}\]\r\n]+)/gi;
 
 /**
  * Mask secret values in `text` (#1788 review P1: every common way a secret is written, since arguments and results are
@@ -160,11 +164,16 @@ function cutTo(text: string, max: number, more = 0): { text: string; cut: number
 }
 
 const SECRET_KEY = new RegExp(SECRET_WORD, "i");
+/** Structured Cookie / Set-Cookie keys (`headers.Cookie`, array-valued `Set-Cookie`). */
+const COOKIE_NAME = /^(?:set-)?cookies?$/i;
+function redactNamed(x: string): boolean {
+  return !!x.trim() && !PLAIN.test(x.trim());
+}
 /**
  * A tool's arguments masked BEFORE they become JSON text (#1788 review r3): each string is masked as written — in JSON
  * a command's quotes would be escaped (\"…\"), which no text rule should have to undo — and a string under a
- * secret-named key ("password", "api_key") is masked whole unless it is plain. A string longer than can be shown is
- * cut first (`dropped` counts what was cut), so a megabyte file body is not masked in full.
+ * secret-named key ("password", "api_key") or a Cookie / Set-Cookie key is masked whole unless it is plain. A string
+ * longer than can be shown is cut first (`dropped` counts what was cut), so a megabyte file body is not masked in full.
  */
 function maskArgs(v: unknown, max: number, dropped: { n: number }, depth = 0): unknown {
   if (typeof v === "string") {
@@ -177,8 +186,11 @@ function maskArgs(v: unknown, max: number, dropped: { n: number }, depth = 0): u
   if (Array.isArray(v)) return v.map(x => maskArgs(x, max, dropped, depth + 1));
   const out: Record<string, unknown> = {};
   for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
-    out[k] = typeof x === "string" && k.length <= 200 && SECRET_KEY.test(k) && x.trim() && !PLAIN.test(x.trim())
-      ? "[REDACTED]" : maskArgs(x, max, dropped, depth + 1);
+    const named = k.length <= 200 && (SECRET_KEY.test(k) || COOKIE_NAME.test(k));
+    if (named && typeof x === "string" && redactNamed(x)) out[k] = "[REDACTED]";
+    else if (named && COOKIE_NAME.test(k) && Array.isArray(x)) {
+      out[k] = x.map(item => typeof item === "string" && redactNamed(item) ? "[REDACTED]" : maskArgs(item, max, dropped, depth + 1));
+    } else out[k] = maskArgs(x, max, dropped, depth + 1);
   }
   return out;
 }
