@@ -46,6 +46,7 @@ import { InstallStream } from "./install-stream.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
+import { OfficeTalk } from "./office-talk.js";
 import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
 import type { PageShare } from "./page-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
@@ -2108,6 +2109,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   private configHistory: ConfigHistory | null = null;
   private configHistoryTimer: ReturnType<typeof setInterval> | null = null;
   private loadedFleetSource: ConfigSource | null = null;
@@ -2400,6 +2402,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #2855: a trusted guest's searches, per account. */
   readonly guestSearches = new OfficeWriteLimiter(undefined, { perWindow: GUEST_SEARCHES.perWindow, windowMs: GUEST_SEARCHES.windowMs });
   private officeSharesInstance?: OfficeShareService;
+  /** #2861: when each instance was last talked to and answered (no words), for share links' dialogue box. */
+  readonly officeTalk = new OfficeTalk();
   /**
    * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of
    * their own (a manager and lease of its own: never the fleet's one tunnel lane nor the public link's preview tunnel).
@@ -2416,6 +2420,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         hidden: name => crossInstanceVisibility(this.fleetConfig, name) === "hidden",
         skins: this.officeSkins,
         levels: () => this.officeLevelsSnapshot(),
+        talk: scope => this.officeTalk.recent(scope),
       },
       manager: new ManagedTunnel({ dataDir: join(this.dataDir, OFFICE_SHARE_TUNNEL_DIR), log: () => this.logger.warn("Office share tunnel cleanup requires attention") }),
       ensure: signal => ensureCloudflared({ dataDir: this.dataDir, pinnedOnly: true, signal }),
@@ -16217,6 +16222,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.needsYou?.webItems() ?? [];
   }
 
+  /** Enabled member composition supplies only a local attention reader, never an approval/execution callback. */
+  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null): void {
+    this.hubExecutionAttention = read; this.needsYou?.poke();
+  }
+
   /**
    * #1389: the org chart's structure for the web — the instances the dashboard lists (getUiStatus's names), General,
    * fleet.yaml's teams, each instance's description and thread link. Read on demand; the live state rides the stream.
@@ -16523,6 +16533,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
+      hubExecution: () => this.hubExecutionAttention?.() ?? [],
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
         ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,
       })),
@@ -20112,6 +20123,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (event === "prompt" || event === "prompt_resolved" || event === "activity") this.needsYou?.poke();
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
+      // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
+      this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
       const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
       const recorded = this.webChatHistory.record({

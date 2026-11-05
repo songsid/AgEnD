@@ -45,7 +45,7 @@
 // among them by base y), then the foreground, then the crowd counts, tags and bubbles.
 import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
-import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packImages, poseStrip, stripBox, walkStrip } from "./fleet-office-pack.js";
+import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, walkStrip } from "./fleet-office-pack.js";
 import { tierColours } from "./fleet-office-levels.js";
 
 export { nameHash };
@@ -792,13 +792,31 @@ export function loadPackSkin(id, sha, { fetch: get = globalThis.fetch, image = d
       if (!c.ok || c.pack.id !== id) return null;
       const files = d.files && typeof d.files === "object" ? d.files : {};
       const images = new Map();
-      await Promise.all(packImages(c.pack).map(async (src) => {
-        const fid = own(files, src);
-        if (typeof fid !== "string" || !/^[0-9a-f]{32}$/.test(fid)) return;
+      const fidOf = (src) => { const fid = own(files, src); return typeof fid === "string" && /^[0-9a-f]{32}$/.test(fid) ? fid : null; };
+      await Promise.all(packSceneImages(c.pack).map(async (src) => {
+        const fid = fidOf(src);
+        if (!fid) return;
         const im = await image(url(`${base}/img/${fid}.png`));
         if (im) images.set(src, im);
       }));
-      return spriteSkin(c.pack, images);
+      // #2861: the dialogue box's pictures (portraits, its frame) are read the first time it asks for one — never by an
+      // Office that does not show the box. `picture(src, done)`: the picture, or null (not read yet: `done` is called
+      // once it is in; never there: null for good).
+      const portraits = new Set(packPortraitImages(c.pack)), late = new Map();
+      const picture = (src, done) => {
+        if (!src || !portraits.has(src)) return null;
+        const had = late.get(src);
+        if (had) { if (had.im === undefined && done) had.waiting.add(done); return had.im || null; }
+        const fid = fidOf(src), entry = { im: fid ? undefined : null, waiting: new Set(done ? [done] : []) };
+        late.set(src, entry);
+        if (fid) Promise.resolve(image(url(`${base}/img/${fid}.png`))).catch(() => null).then((im) => {
+          entry.im = im || null;
+          for (const fn of entry.waiting) { try { fn(); } catch { /* the page's own */ } }
+          entry.waiting.clear();
+        });
+        return null;
+      };
+      return { ...spriteSkin(c.pack, images), picture };
     } catch { return null; }
   })();
   loaded.set(key, job);

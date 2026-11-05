@@ -34,6 +34,7 @@ const ITEMS = [
 
 let p: AppPage;
 let N: any, app: any, chat: any, shell: any, nav: any, ctx: any, notifier: any;
+let staleReasons: string[] = [];
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19280/ui/needs", storage: { agend_tour_done: "1" } });
   (globalThis as any).fetch = fetchFake;
@@ -47,6 +48,12 @@ beforeAll(async () => {
   chat = await import("/ui/js/panel-chat.js");
   // As the entry does: the booted chat store is published as the page's prompt owner.
   app.appStore.set({ chatOwner: chat.boot({ stream: { on() { return () => {}; } }, boot: null, deps: { fetch: fetchFake } }) });
+  const i18n = await import("/assets/app-i18n.js");
+  // The pre-S4 module falls back to these raw keys. The newly loaded panel must supply its own words.
+  i18n.register("app", Object.fromEntries(["en", "zh-TW"].map(lang => [lang, {
+    needs_reason_hub_proposal: "app.needs_reason_hub_proposal", needs_reason_hub_execution_hold: "app.needs_reason_hub_execution_hold",
+  }])));
+  staleReasons = [i18n.t("app.needs_reason_hub_proposal"), i18n.t("app.needs_reason_hub_execution_hold")];
   N = await import("/ui/js/panel-needs.js");
   nav.startRouter(p.window);
 });
@@ -59,6 +66,27 @@ beforeEach(async () => {
 });
 const mount = (key = "needs:|1|en") => p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: key }));
 const btn = (scope: any, text: string) => scope.querySelectorAll("button, a").find((b: any) => b.textContent.includes(text));
+
+describe("Hub proposal rendering on a pre-upgrade shell", () => {
+  it.each(["en", "zh-TW"])("renders local Hub proposal details and bounded hold words in %s without decision controls", async lang => {
+    expect(staleReasons).toEqual(["app.needs_reason_hub_proposal", "app.needs_reason_hub_execution_hold"]);
+    const i18n = await import("/assets/app-i18n.js"); i18n.setLang(lang);
+    try {
+      app.appStore.set({ needs: [{ id: "hub:proposal", type: "hub", instance: "api-server", reason: "hub_proposal", detail: "", since: 1,
+        hubProposal: { action: "delete sample <script>", arguments: '{"target":"exact-sample"}', consequences: "The selected sample would be removed." } },
+      { id: "hub:hold", type: "hub", instance: "api-server", reason: "hub_execution_hold", detail: "", since: 1 }] });
+      await mount(); await settle(4);
+      expect(p.root.textContent).not.toContain("app.needs_reason_hub_");
+      expect(p.root.textContent).toContain(lang === "en" ? "Hub action proposed: review locally" : "Hub 提議操作：請在本機檢視");
+      expect(p.root.textContent).toContain(lang === "en" ? "Hub work held: review locally" : "Hub 工作已暫停：請在本機檢視");
+      expect(p.root.textContent).toContain("delete sample <script>");
+      expect(p.root.querySelector("pre").textContent).toBe('{"target":"exact-sample"}');
+      expect(p.root.textContent).toContain("The selected sample would be removed.");
+      for (const card of p.root.querySelectorAll(".n-item")) expect(card.querySelectorAll("button, input, textarea, select, form, script")).toHaveLength(0);
+      expect(reqs).toEqual([]);
+    } finally { i18n.setLang("en"); }
+  });
+});
 
 describe("#2246 step 3: task board cards in Needs you", () => {
   it("a card to confirm and a blocked one, in the server's words, each opening its card; a card nobody has is under the board", async () => {
