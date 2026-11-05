@@ -48,7 +48,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
     if (path === "/api/settings/pending") return [];
     if (path === "/api/fleet" && fleetMode === "empty") return { version: "2.4.0", instances: [] };
     if (path === "/api/fleet") {
-      const rooms = Object.values(classic.channels).map((r: any) => ({ name: r.instanceName, classic: true, status: status[r.instanceName] ?? "running" }));
+      const rooms = Object.values(classic.channels).filter((r: any) => r.instanceName).map((r: any) => ({ name: r.instanceName, classic: true, status: status[r.instanceName] ?? "running" }));
       return { version: "2.4.0", instances: [...Object.keys(raw.instances).map((name) => ({ name, status: status[name] ?? "running" })), ...rooms] };
     }
     if (path.startsWith("/ui/")) return {};
@@ -386,6 +386,16 @@ describe("what an edit costs", () => {
     expect(bar()).toBe("↻ 6 agent(s) restart after saving");
   });
 
+  it("the hang detector's tip names only what an agent can set under Agents: its minutes (the dialog has no switch)", async () => {
+    await open();
+    expect(text(field("g-hang-on").querySelector(".s-i .s-tipbody"))).toBe("Raise an alert when an agent produces no output at all for this long. An individual agent can set its own minutes under Agents.");
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang("zh-TW");
+    await p.unmount(); await open();
+    expect(text(field("g-hang-on").querySelector(".s-i .s-tipbody"))).toBe("Agent 超過這段時間完全沒有輸出，就發出提醒。個別 Agent 可以在 Agents 頁自己設定分鐘數。");
+    setLang("en");
+  });
+
   it("an agent that sets both hang detector settings is left out of an edit to either", async () => {
     raw = fleet();
     raw.instances["dev-t1"].hang_detector = { enabled: true, timeout_minutes: 5 };
@@ -491,6 +501,22 @@ describe("ClassicBot rooms that follow a shared value", () => {
     await choose("g-model", "gpt-5.5-mini");
     expect(notes("g-model").slice(1)).toEqual(["↻ After saving, 2 ClassicBot room(s) use the new value; the 1 running restart"]);
     expect(bar()).toContain("↻ 2 ClassicBot room(s) use the new value; the 1 running restart");
+  });
+
+  it("a room of the older classicBot.yaml format has no instanceName in the file, so its state cannot be looked up — it counts as restarting", async () => {
+    // Old format: the key is the channel id, with no instanceName/adapterId (the manager makes the name up when it loads).
+    classic = { defaults: {}, channels: { "-1005823000001": { name: "Old room" } } };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS]);                       // not "none is running": nothing says it is stopped
+    expect(bar()).toContain("↻ 1 ClassicBot room(s) restart after saving");
+    await p.unmount();
+    // Beside a room the page can see is stopped: the old-format one still restarts, the stopped one does not.
+    classic = { defaults: {}, channels: { "-1005823000001": { name: "Old room" }, "discord:1": room("classic-b") } };
+    status = { "classic-b": "stopped" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual(["↻ After saving, 2 ClassicBot room(s) use the new value; the 1 running restart"]);
   });
 
   it("only what the reconciliation restarts a room for is counted: a hot value, or a field a room does not take from here, says nothing about rooms", async () => {

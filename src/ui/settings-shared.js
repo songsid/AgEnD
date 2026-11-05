@@ -138,8 +138,10 @@ export function sharedNotes({ schema, fleet, classic, classicStatus = () => "sto
   // A Windows agent that runs one command at a time (not a persistent terminal) has no process of its own: it takes a changed default at its next run.
   const oneShot = (name) => { const inst = fleet && fleet.instances && fleet.instances[name]; return !!inst && inst.runtime === "windows" && inst.native_adapter !== "pane"; };
   const restarts = (name) => !oneShot(name) && (!known || (!!live[name] && (live[name].status === "running" || live[name].status === "crashed")));
-  // A ClassicBot room restarts on the same terms (the reconciliation restarts the ones that have a daemon).
-  const roomRestarts = (room) => !known || ["running", "crashed"].includes(classicStatus(room.instanceName));
+  // A ClassicBot room restarts on the same terms (the reconciliation restarts the ones that have a daemon). A room of the older
+  // classicBot.yaml format (its key is the channel id) has no `instanceName` in the file — the manager makes one up when it loads —
+  // so its state cannot be looked up here: like an unreadable state, it counts as restarting.
+  const roomRestarts = (room) => !known || !room.instanceName || ["running", "crashed"].includes(classicStatus(room.instanceName));
   const roomsText = (rooms, kind) => { const n = rooms.filter(roomRestarts).length; return n === rooms.length ? tn(`${kind}RestartRooms`, rooms.length) : n ? tn(`${kind}ApplyRooms`, rooms.length, n) : tn(`${kind}IdleRooms`, rooms.length); };
   let fleetRestart = false;
   const add = (list, text) => { if (!list.includes(text)) list.push(text); };
