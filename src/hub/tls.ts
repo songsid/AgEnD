@@ -23,9 +23,14 @@ function privateWrite(path: string, value: string): void {
   try { writeFileSync(fd, value, "utf8"); fsyncSync(fd); } finally { closeSync(fd); }
 }
 export function verifyHubCertificate(pem: string | Buffer, origin: string, pin: string | undefined, now = Date.now()): X509Certificate {
+  const cert = new X509Certificate(pem);
+  if (now < Date.parse(cert.validFrom) || now >= Date.parse(cert.validTo)) throw Error("Hub TLS identity differs");
+  return verifyHubCertificateBinding(pem, origin, pin);
+}
+/** Persisted certificate evidence may expire; only its key/address binding is retained as the trust anchor. */
+export function verifyHubCertificateBinding(pem: string | Buffer, origin: string, pin: string | undefined): X509Certificate {
   const cert = new X509Certificate(pem), name = host(origin), digest = sha256(cert.publicKey.export({ type: "spki", format: "der" }));
-  if (now < Date.parse(cert.validFrom) || now >= Date.parse(cert.validTo)
-    || !(isIP(name) ? cert.checkIP(name) : cert.checkHost(name, { subject: "never", wildcards: false }))
+  if (!(isIP(name) ? cert.checkIP(name) : cert.checkHost(name, { subject: "never", wildcards: false }))
     || pin !== undefined && digest !== validated(hash, pin)) throw Error("Hub TLS identity differs");
   return cert;
 }

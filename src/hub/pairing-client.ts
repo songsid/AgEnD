@@ -60,6 +60,6 @@ export async function claimHubPairing(input: { home: string; hubId: string; appr
   if (result.status === "pending") return { status: "pending" };
   if (result.fleetId !== pending.fleetId || store.readPending().fingerprint !== pending.fingerprint) throw new HubProtocolError("stale");
   store.saveProfile({ v: 1, hub: pending.hub, owner: pending.owner, fleetId: pending.fleetId, credential: result.credential,
-    certificatePem: pending.certificatePem, issuerKeyId: issuerKeyId(createPublicKey(pending.hub.issuerPublicKey)) }, input.expectedProfileDigest, input.current);
+    certificatePem: response.certificatePem, issuerKeyId: issuerKeyId(createPublicKey(pending.hub.issuerPublicKey)) }, input.expectedProfileDigest, input.current);
   store.clearPending(); return { status: "paired" }; // a save failure leaves an explicit unresolved claim; never retry credential issuance
 }
