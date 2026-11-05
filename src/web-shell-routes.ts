@@ -35,10 +35,11 @@ export type ShellRoute =
   | { panel: "details"; instance: string }
   // #1218: the instance's Log (/ui/log/<name>).
   | { panel: "log"; instance: string }
-  // AgEnD Hub P1 (docs/design/hub.md): the Hub's own pages — mounted only on a Hub (web-api.ts: not found otherwise).
+  // AgEnD Hub P1 (docs/design/hub.md): the Hub's own pages — each mounted only on a Hub (web-api.ts: not found otherwise).
   | { panel: "hub"; tab: HubTab };
 
-/** The Hub's pages: Ask (/hub), My exposures (/hub/exposures), Administration (/hub/admin). */
+/** The Hub's pages: Ask (/ui/hub), My exposures (/ui/hub/exposures), Administration (/ui/hub/admin). Browser pages —
+ *  slice 1's /hub/v1/* is the API. */
 export type HubTab = "ask" | "exposures" | "admin";
 
 /** What a path is: the app shell (with its route), a malformed shell path (400), or not the shell at all (null). */
@@ -76,9 +77,9 @@ export function shellRoute(method: string, path: string): ShellMatch {
   // #2910 D2: the Notices page (its list: GET /ui/notices/list, then SSE `notice`).
   if (path === "/ui/notices") return { kind: "shell", route: { panel: "notices" } };
   // AgEnD Hub P1: the Hub's pages (whether they are mounted at all is web-api.ts's: only on a Hub).
-  if (path === "/hub") return { kind: "shell", route: { panel: "hub", tab: "ask" } };
-  if (path === "/hub/exposures") return { kind: "shell", route: { panel: "hub", tab: "exposures" } };
-  if (path === "/hub/admin") return { kind: "shell", route: { panel: "hub", tab: "admin" } };
+  if (path === "/ui/hub") return { kind: "shell", route: { panel: "hub", tab: "ask" } };
+  if (path === "/ui/hub/exposures") return { kind: "shell", route: { panel: "hub", tab: "exposures" } };
+  if (path === "/ui/hub/admin") return { kind: "shell", route: { panel: "hub", tab: "admin" } };
   // #1523 N2: one instance's Details. `agent` is not a Fleet tab, and a tab is one segment: no path means both.
   const details = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(path);
   if (details) {

@@ -1,3 +1,4 @@
+import { hubModeOf, type HubSwitches } from "./hub-mode.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
@@ -1672,7 +1673,7 @@ export function handleWebRequest(
   // panel says "not found"), so the response never tells which names exist.
   const shell = shellRoute(method, path);
   if (shell?.kind === "malformed") { json(res, 400, { error: "invalid instance name" }); return true; }
-  // AgEnD Hub P1: the Hub's pages exist only on a Hub (hub.enabled); otherwise the ordinary not-found, never the shell.
+  // AgEnD Hub P1: each of the Hub's pages exists only on a Hub (hub.enabled); otherwise the ordinary not-found.
   if (shell?.kind === "shell" && shell.route.panel === "hub" && !hubModeOf(ctx.fleetConfig).server) { json(res, 404, { error: "not found" }); return true; }
   if (shell?.kind === "shell") { serveAppShell(req, res, ctx, "full"); return true; }
 
@@ -3961,6 +3962,17 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
   return mode === "full" && !viewer?.guest && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
 }
 
+/**
+ * AgEnD Hub P1 (docs/design/hub-ui-client.md): the page's Hub mark — presentation only, never authority. `hub` when this
+ * instance is a Hub, `member` when it may connect to one, both in a same-account pilot; nothing when both switches are
+ * off, and then no Hub UI is drawn and no Hub module loads.
+ */
+function hubBodyAttrs(config: HubSwitches, attr: (v: string | null | undefined) => string): string {
+  const m = hubModeOf(config);
+  const tokens = [m.server ? "hub" : "", m.member ? "member" : ""].filter(Boolean).join(" ");
+  if (!tokens) return "";
+  return ` data-hub="${tokens}"${m.server && m.name ? ` data-hub-name="${attr(m.name)}"` : ""}`;
+}
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
   const trusted = ctx.guestTrusted?.(owner) ? ' data-guest-level="trusted"' : "";

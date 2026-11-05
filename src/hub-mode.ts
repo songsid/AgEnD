@@ -7,15 +7,17 @@
  * Until slice 1's HubMode exists this reads the two switches; slice 1 replaces the body with HubMode.serverEnabled() /
  * memberEnabled() (which also require a valid, locally confirmed initialization manifest).
  */
-import type { FleetConfig } from "./types.js";
+/** Any fleet config shape (or none): the switches are read defensively, true only when exactly `true`. */
+export type HubSwitches = unknown;
 
 /** Longest Hub name shown in the brand. */
 export const HUB_NAME_MAX = 60;
 
-export function hubModeOf(config: FleetConfig | null | undefined): { server: boolean; member: boolean; name: string } {
-  const server = config?.hub?.enabled === true;
-  const member = config?.hub_member?.enabled === true;
-  const name = server && typeof config?.hub?.name === "string" ? hubNameOf(config.hub.name) : "";
+export function hubModeOf(config: HubSwitches): { server: boolean; member: boolean; name: string } {
+  const c = (config && typeof config === "object" ? config : {}) as { hub?: { enabled?: unknown; name?: unknown }; hub_member?: { enabled?: unknown } };
+  const server = c.hub?.enabled === true;
+  const member = c.hub_member?.enabled === true;
+  const name = server && typeof c.hub?.name === "string" ? hubNameOf(c.hub.name) : "";
   return { server, member, name };
 }
 
