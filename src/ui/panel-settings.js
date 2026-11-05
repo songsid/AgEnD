@@ -25,6 +25,7 @@ import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
+import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {

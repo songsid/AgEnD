@@ -19,6 +19,7 @@ import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import {AgentRuntimeSettings} from "./agent-runtime-settings.js";
 import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
+import "./settings-shared-strings.js";   // the words Shared agent settings added and this file draws (backendNotInstalledHost, changeInDefaults, …)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows, useModelCatalogState } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,

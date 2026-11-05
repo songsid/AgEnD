@@ -1,6 +1,8 @@
 // Shared presentation for Settings. Tab panels stay mounted so switching views never drops a form's draft.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
+import "./settings-strings.js";
+import "./settings-shared-strings.js";   // SettingsPageHead prints settings.sec_<section>; sec_agent-defaults is one of these words (#3087)
 
 register("settingsLayout", {
   en: {

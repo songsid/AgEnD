@@ -11,6 +11,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { settingsPath } from "/assets/app-route.js";
 import "./settings-strings.js";
+import "./settings-shared-strings.js";   // the words this page added: a tab that already ran an older settings-strings.js has none of them (#3087)
 import {
   AGENT_MODES, DASHBOARD_FEATURES, LOG_LEVELS, SEPARATE_FEATURE_KEYS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES,
   channelsOf, chLabel, hasOwn, impactOf, localeOptions, sameValue, shortName, toolSetDefault,
