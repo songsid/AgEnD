@@ -5,7 +5,7 @@ section: Added
 - 實驗性功能（Hub，預設關閉）：新增 `agend hub init`，全新執行 `agend quickstart` 時也會先問「這台機器是：我自己的機群／團隊 Hub」，用來設定團隊 Hub。精靈會詢問：
   - Hub 的位址；
   - 瀏覽器用的 HTTPS 憑證（不提供一般 HTTP 登入）；
-  - 透過 LDAPS 連線的公司目錄，並做一次測試登入；
+  - 透過 LDAPS 連線的組織目錄，並做一次測試登入；
   - 由誰擔任管理員；
   - 紀錄保留多久。
 

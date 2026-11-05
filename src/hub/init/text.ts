@@ -4,7 +4,7 @@ import { getLocale } from "../../locale.js";
 const en = {
   title: "═══ AgEnD Hub setup (experimental) ═══",
   intro:
-    "A Hub lets colleagues sign in with the company directory and ask agents that fleet owners choose to publish.\nThe Hub runs no agents and needs no AI CLI sign-in. Best placement: a dedicated, always-on machine or OS account with a stable intranet address.",
+    "A Hub lets colleagues sign in with your organisation's directory and ask agents that fleet owners choose to publish.\nThe Hub runs no agents and needs no AI CLI sign-in. Best placement: a dedicated, always-on machine or OS account with a stable intranet address.",
   hub_exists: "A Hub is already set up under {0}. Initialization never replaces a Hub identity; nothing was changed.",
   incomplete: "An earlier Hub setup (started {0}) stopped after step “{1}”. The Hub is off.",
   resume_q: "Resume it with the answers saved then? You will be asked for the directory service password again. [y/N] ",
@@ -82,7 +82,7 @@ type Key = keyof typeof en;
 const zhTW: Record<Key, string> = {
   title: "═══ AgEnD Hub 設定（實驗性）═══",
   intro:
-    "Hub 讓同事用公司目錄登入，向各機群主人選擇公開的 agent 提問。\nHub 本身不跑 agent，也不需要登入任何 AI CLI。建議放在一台專用、常開、有固定內網位址的機器或 OS 帳號上。",
+    "Hub 讓同事用組織的目錄登入，向各機群主人選擇公開的 agent 提問。\nHub 本身不跑 agent，也不需要登入任何 AI CLI。建議放在一台專用、常開、有固定內網位址的機器或 OS 帳號上。",
   hub_exists: "{0} 下已經設定過 Hub。初始化不會取代既有的 Hub 身分；沒有做任何變更。",
   incomplete: "先前的 Hub 設定（開始於 {0}）停在「{1}」之後。Hub 目前是關閉的。",
   resume_q: "要用當時存下的答案繼續嗎？會再請你輸入一次目錄服務帳號的密碼。[y/N] ",
