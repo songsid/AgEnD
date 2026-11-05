@@ -1,5 +1,6 @@
 /** Shutdown is receive-only first: leave Telegram's offset queue intact for the next fleet. */
 import { createServer, type ServerResponse } from "node:http";
+import { HttpError } from "grammy";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -68,7 +69,9 @@ it("late updates after the receive fence advance neither local floor nor remote 
   await a.stop(); await new Promise(resolve => setTimeout(resolve, 30));
   expect(seen).toEqual(["accepted-before-stop"]);
   expect(JSON.parse(readFileSync(telegramLastUpdateIdPath(r.inbox, "fixture"), "utf8")).update_id).toBe(1);
-  expect(r.calls.filter(c => c.method === "getUpdates")).toHaveLength(before);
+  // A request issued before the fence can reach the fixture after cancellation; its old offset cannot ACK update2.
+  expect(r.calls.filter(c => c.method === "getUpdates").slice(before).every(c => Number(c.body.offset ?? 0) <= 2)).toBe(true);
+  expect(r.pending.map(u => u.update_id)).toContain(2);
   const b = r.make(), next: string[] = []; b.on("message", (m: InboundMessage) => next.push(m.text)); await b.start();
   await vi.waitFor(() => expect(next).toEqual(["during-stop"])); await new Promise(resolve => setTimeout(resolve, 50)); expect(next).toEqual(["during-stop"]);
 });
@@ -105,4 +108,28 @@ it("a stopped receiver suppresses an SDK offset acknowledgement without deleting
   const r = await rig(), a = r.make(); await a.stopReceiving(); r.pending.push(update(17, "not-accepted"));
   await expect(a.getBot().api.getUpdates({ offset: 18, timeout: 0 })).resolves.toEqual([]);
   expect(r.pending.map(u => u.update_id)).toEqual([17]); expect(r.calls.filter(c => c.method === "getUpdates")).toEqual([]);
+});
+
+it("shutdown during the pre-delivery retry sleep returns empty without another transport call", async () => {
+  const r = await rig(), a = r.make(); vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  const error = new HttpError("inert getUpdates connect failure", Object.assign(Error("connect refused"), { code: "ECONNREFUSED", syscall: "connect" }));
+  const prev = vi.fn().mockRejectedValueOnce(error).mockResolvedValue({ ok: true, result: [update(8, "unaccepted")] });
+  const transform = a.getBot().api.config.installedTransformers()[0]!;
+  const result = transform(prev as never, "getUpdates", { offset: 9 }, undefined);
+  await vi.advanceTimersByTimeAsync(0); expect(prev).toHaveBeenCalledTimes(1);
+  await a.stopReceiving(); await vi.advanceTimersByTimeAsync(250);
+  await expect(result).resolves.toEqual({ ok: true, result: [] }); expect(prev).toHaveBeenCalledTimes(1);
+  await a.stop();
+});
+
+it("a late onStart callback cannot restore readiness or emit started after the receive fence", async () => {
+  const r = await rig(), a = r.make(), started = vi.fn(); a.on("started", started);
+  let options: Parameters<ReturnType<typeof a.getBot>["start"]>[0], release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  vi.spyOn(a.getBot(), "start").mockImplementation(async value => { options = value; await gate; });
+  await a.start(); await a.stopReceiving();
+  options!.onStart!({ id: BOT, is_bot: true, first_name: "fixture", username: "fixture_bot" } as never);
+  expect(a.connectionEvidence()).toMatchObject({ ready: false, stopped: true }); expect(started).not.toHaveBeenCalled();
+  release(); await a.stop();
 });
