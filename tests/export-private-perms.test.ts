@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { chmodSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, fstatSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { exportConfig, openPrivateArchive } from "../src/export-import.js";
@@ -81,6 +81,23 @@ describe("an existing destination is refused, never replaced or followed", () =>
     exits();
     await expect(exportConfig(dataDir, out, false)).rejects.toThrow("exit 1");
     expect(statSync(out).isDirectory()).toBe(true);
+  });
+});
+
+describe("the default name carries the time", () => {
+  it("agend-export-YYYYMMDD-HHMMSS.tar.gz (UTC): a second export the same day gets its own file, both private", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {}); vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cwd = process.cwd(), work = join(root, "cwd");
+    mkdirSync(work); process.chdir(work);
+    vi.useFakeTimers({ now: Date.parse("2026-11-05T07:15:30.000Z"), toFake: ["Date"] });
+    try {
+      await exportConfig(dataDir, undefined, false);
+      vi.setSystemTime(Date.parse("2026-11-05T09:02:07.000Z"));
+      await exportConfig(dataDir, undefined, true);
+    } finally { vi.useRealTimers(); process.chdir(cwd); }
+    const made = readdirSync(work).sort();
+    expect(made).toEqual(["agend-export-20261105-071530.tar.gz", "agend-export-20261105-090207.tar.gz"]);
+    expect(made.map((f) => mode(join(work, f)))).toEqual([0o600, 0o600]);
   });
 });
 
