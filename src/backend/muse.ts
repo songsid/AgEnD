@@ -124,9 +124,9 @@ function stripSgr(s: string): string {
 }
 
 /**
- * Muse 1.4.12 empty-composer rotating hints, copied from the 1.4.12-R6909.1
- * binary catalog (offset 8596268). A prefix, a suffix, or extra characters is
- * typed input (#2520).
+ * Muse empty-composer rotating hints. 1.4.12-R6909.1 catalog (offset 8596268)
+ * plus two added in 1.4.14-R7309.1 (offsets 11216301 / 11216047). A prefix,
+ * a suffix, or extra characters is typed input (#2520).
  */
 const MUSE_EMPTY_COMPOSER_HINTS: ReadonlySet<string> = new Set([
   "Type @ to search and insert workspace file paths",
@@ -136,6 +136,8 @@ const MUSE_EMPTY_COMPOSER_HINTS: ReadonlySet<string> = new Set([
   "Tab queues or steers while a run is active",
   "Press ? on an empty composer to see keyboard shortcuts",
   "Press Ctrl+O to expand collapsed tool output",
+  "Ask to monitor a running build or log and get pinged on changes",
+  "Ask to 'use a workflow' to fan out parallel agents on big tasks",
 ]);
 
 export type MusePlaceholderDebugRec = { text: string; sgr: string };
