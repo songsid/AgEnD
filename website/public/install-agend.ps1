@@ -190,12 +190,12 @@ function Save-InstallVersion([string]$version) {
 # 安裝檔從哪裡下載，依序：GitHub Pages，再來是 GitHub raw 上「已部署的那一份」（tag installer-live 只在 Pages 部署成功後
 # 才移到那個 commit，見 deploy-website.yml）。有些公司網路擋掉所有 *.github.io，但 raw.githubusercontent.com 可以連。
 function Get-InstallSources { return @('https://songsid.github.io/AgEnD', 'https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public') }
-# 在 WSL 裡下載 install.sh 再執行：依序試每個來源，下載完整、而且真的是 AgEnD 的安裝腳本才執行（不會把半份或擋下來的
-# 網頁交給 bash）。在子 shell 裡：它的 exit 和清理只屬於這一段，外面的 set -e 照樣看結束碼。腳本裡沒有雙引號。
+# 在 WSL 裡下載 install.sh 再執行：依序試每個來源，下載完整、而且開頭兩行正好是 install.sh 的開頭才執行（不會把半份、
+# 或擋下來、內容帶著網址的網頁交給 bash）。在子 shell 裡：它的 exit 和清理只屬於這一段，外面的 set -e 照樣看結束碼。腳本裡沒有雙引號。
 function Get-AgendInstallShScript([string]$pin, [string[]]$sources = (Get-InstallSources)) {
     $urls = ($sources | ForEach-Object { $_.TrimEnd('/') + '/install.sh' }) -join ' '
     return ('( f=$(mktemp) || exit 1; trap ''rm -f -- $f'' EXIT; ok=; for u in ' + $urls + '; do ' +
-        'if curl --connect-timeout 20 --max-time 120 -fsSL -o $f $u && head -n 5 $f | grep -q AgEnD; then ok=1; break; fi; ' +
+        'if curl --connect-timeout 20 --max-time 120 -fsSL -o $f $u && head -n 1 $f | grep -qx ''#!/usr/bin/env bash'' && sed -n 2p $f | grep -qx ''# AgEnD Bootstrap Installer''; then ok=1; break; fi; ' +
         'echo AgEnD: could not fetch $u, trying the next source >&2; done; ' +
         '[ x$ok = x1 ] || { echo AgEnD: install.sh could not be fetched from songsid.github.io or raw.githubusercontent.com >&2; exit 1; }; ' +
         $pin + 'bash < $f )')
@@ -221,7 +221,7 @@ function Get-InstallResumeScript([string]$version, [string[]]$sources = (Get-Ins
         ('foreach ($u in @(' + $urls + ')) {')
         '    try {'
         '        $t = [string](Invoke-RestMethod -Uri $u -UseBasicParsing -TimeoutSec 120)'
-        '        if ($t -match ''install-agend\.ps1'' -and $t -match ''Invoke-InstallDownload'') { $installer = $t; break }'
+        '        if ($t -match ''function Invoke-InstallDownload\('') { $installer = $t; break }'
         '        Write-Host "AgEnD: $u did not return the installer; trying the next source."'
         '    } catch { Write-Host "AgEnD: $u could not be reached ($($_.Exception.Message)); trying the next source." }'
         '}'

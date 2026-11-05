@@ -31,11 +31,17 @@ function scratch(): string { const d = mkdtempSync(join(tmpdir(), "agend-ghio-")
 const DEAD = "http://127.0.0.1:1";                                     // refused: github.io blocked
 
 describe("installer-live: the raw ref only ever names what Pages deployed", () => {
-  it("the deploy workflow moves it after a successful deploy from main, to that commit, with the only write grant", () => {
+  it("the deploy workflow admits only main, forward, BEFORE Pages changes; then moves the tag to that commit, with the only write grant", () => {
     const wf = readFileSync(WORKFLOW, "utf8");
+    const admit = wf.slice(wf.indexOf("\n  admit:"), wf.indexOf("\n  build:"));
+    expect(admit).toContain('[ "$REF" = refs/heads/main ] ||');
+    expect(admit).toContain('run: bash scripts/ci/mark-installer-live.sh --check "$DEPLOYED"');
+    expect(admit).toMatch(/permissions:\n\s+contents: read/);
+    expect(wf).toMatch(/\n  build:\n    needs: admit\n/);
+    expect(wf).toMatch(/\n  deploy:\n    needs: build\n/);
+    expect(wf).toContain("needs: [admit, build, deploy, mark-live]");             // a failed tag move is reported
     const job = wf.slice(wf.indexOf("\n  mark-live:"), wf.indexOf("\n  notify:"));
     expect(job).toMatch(/needs: deploy\n/);
-    expect(job).toContain("if: github.ref == 'refs/heads/main'");
     expect(job).toMatch(/permissions:\n\s+contents: write/);
     expect(job).toContain("DEPLOYED: ${{ github.sha }}");
     expect(job).toContain('run: bash scripts/ci/mark-installer-live.sh "$DEPLOYED"');
@@ -47,24 +53,71 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
     }
   });
 
-  it("the tag script: created on the first deploy, moved forward, never back, idempotent; refuses a non-SHA", () => {
+  /** A local origin with main c1→c2→c3, and a working clone of it. */
+  function repo() {
     const dir = scratch(), origin = join(dir, "origin.git"), work = join(dir, "work");
-    const git = (cwd: string, ...a: string[]) => spawnSync("git", a, { cwd, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" } });
+    const env = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" };
+    const git = (cwd: string, ...a: string[]) => spawnSync("git", a, { cwd, encoding: "utf8", env });
     git(dir, "init", "-q", "--bare", origin); git(dir, "init", "-q", "-b", "main", work); git(work, "remote", "add", "origin", origin);
     const shas: string[] = [];
     for (const n of [1, 2, 3]) { writeFileSync(join(work, "f"), String(n)); git(work, "add", "f"); git(work, "commit", "-qm", `c${n}`); shas.push(git(work, "rev-parse", "HEAD").stdout.trim()); }
     git(work, "push", "-q", "origin", "main");
-    const mark = (sha: string) => spawnSync("bash", [MARK, sha], { cwd: work, encoding: "utf8" });
-    const live = () => git(origin, "rev-parse", "refs/tags/installer-live^{commit}").stdout.trim();
-    let r = mark(shas[1]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[1]);
-    r = mark(shas[2]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[2]);
-    r = mark(shas[0]); expect(r.status).toBe(1); expect(r.stderr).toContain("refusing to move installer-live"); expect(live()).toBe(shas[2]);
-    r = mark(shas[2]); expect(r.status).toBe(0); expect(r.stdout).toContain("already at");
-    // A side branch that does not contain the current tag (a dispatch from elsewhere) is refused too.
+    const mark = (args: string[], extra: Record<string, string> = {}) => spawnSync("bash", [MARK, ...args], { cwd: work, encoding: "utf8", env: { ...env, ...extra } });
+    const live = () => git(origin, "rev-parse", "--verify", "-q", "refs/tags/installer-live^{commit}").stdout.trim();
+    return { work, origin, git, shas, mark, live };
+  }
+
+  it("the tag script: created on the first deploy, moved forward, never back, idempotent; refuses a non-SHA", () => {
+    const { work, git, shas, mark, live } = repo();
+    let r = mark([shas[1]]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[1]);
+    r = mark([shas[2]]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[2]);
+    r = mark([shas[0]]); expect(r.status).toBe(1); expect(r.stderr).toContain("refusing to move installer-live"); expect(live()).toBe(shas[2]);
+    r = mark([shas[2]]); expect(r.status).toBe(0); expect(r.stdout).toContain("already at");
+    // A side branch that does not contain the current tag is refused too.
     git(work, "checkout", "-q", "-b", "side", shas[0]); writeFileSync(join(work, "g"), "x"); git(work, "add", "g"); git(work, "commit", "-qm", "side");
-    r = mark(git(work, "rev-parse", "HEAD").stdout.trim()); expect(r.status).toBe(1); expect(live()).toBe(shas[2]);
-    for (const bad of ["main", shas[2].slice(0, 12), `${shas[2]};x`, ""]) { r = mark(bad); expect(r.status, bad).toBe(2); }
+    r = mark([git(work, "rev-parse", "HEAD").stdout.trim()]); expect(r.status).toBe(1); expect(live()).toBe(shas[2]);
+    for (const bad of ["main", shas[2].slice(0, 12), `${shas[2]};x`, ""]) { r = mark([bad]); expect(r.status, bad).toBe(2); }
     expect(live()).toBe(shas[2]);
+  });
+
+  it("admission (--check, before Pages): forward or first passes and writes nothing; an older commit is refused", () => {
+    const { shas, mark, live } = repo();
+    let r = mark(["--check", shas[0]]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe("");     // no tag yet
+    expect(mark([shas[1]]).status).toBe(0);
+    r = mark(["--check", shas[2]]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[1]);    // nothing written
+    r = mark(["--check", shas[0]]); expect(r.status).toBe(1); expect(live()).toBe(shas[1]);
+  });
+
+  it("atomic: a writer that moves the tag between the read and the push wins; this push fails instead of overwriting it", () => {
+    for (const start of [null, 0] as const) {                                                            // absent, then present
+      const { origin, shas, mark, live } = repo();
+      if (start !== null) expect(mark([shas[start]]).status).toBe(0);
+      // B read the tag, then C deployed and moved it (to c3), then B pushes c2.
+      const racer = `git --git-dir='${origin}' update-ref refs/tags/installer-live ${shas[2]}`;
+      const r = mark([shas[1]], { MARK_INSTALLER_LIVE_BEFORE_PUSH: racer });
+      expect(r.status, String(start)).not.toBe(0);
+      expect(live(), String(start)).toBe(shas[2]);
+    }
+  });
+
+  it("fails closed when origin's tag cannot be read (never treated as absent)", () => {
+    const { shas, mark, live } = repo();
+    expect(mark([shas[2]]).status).toBe(0);
+    // Reads fail (upload-pack), pushes would still work: nothing may be pushed.
+    const unreadable = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "remote.origin.uploadpack", GIT_CONFIG_VALUE_0: "/bin/false" };
+    for (const args of [[shas[1]], ["--check", shas[1]]]) {
+      const r = mark(args, unreadable);
+      expect(r.status, args.join(" ")).toBe(3);
+      expect(r.stderr).toContain("could not read origin's installer-live");
+    }
+    expect(live()).toBe(shas[2]);
+  });
+
+  it("the install.sh check names install.sh's real first two lines (the copies stay in sync)", () => {
+    for (const f of ["install.sh", "website/public/install.sh"]) {
+      expect(readFileSync(join(ROOT, f), "utf8").split("\n").slice(0, 2), f).toEqual(["#!/usr/bin/env bash", "# AgEnD Bootstrap Installer"]);
+    }
+    expect(code(INSTALLER)).toContain("head -n 1 $f | grep -qx ''#!/usr/bin/env bash'' && sed -n 2p $f | grep -qx ''# AgEnD Bootstrap Installer''");
   });
 
   it("every fallback URL in the scripts is that tag, never a branch", () => {
@@ -106,7 +159,7 @@ ${body}`);
 
 describe("install.sh inside WSL: github.io first, then the deployed raw copy (its bash, run for real)", () => {
   // A fake curl: github.io → "blocked" (35, the TLS handshake), an html.* host → a 200 block page, a raw host → the script.
-  function fakeCurl(dir: string, pagesBehaviour: "blocked" | "ok" | "page", rawBehaviour: "ok" | "blocked" = "ok") {
+  function fakeCurl(dir: string, pagesBehaviour: "blocked" | "ok" | "page" | "urlpage", rawBehaviour: "ok" | "blocked" = "ok") {
     const bin = join(dir, "bin"); mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, "curl"), `#!/bin/bash
 out=; url=; while [ $# -gt 0 ]; do case $1 in -o) out=$2; shift;; http*) url=$1;; esac; shift; done
@@ -115,7 +168,7 @@ script='#!/usr/bin/env bash
 # AgEnD Bootstrap Installer
 echo "RAN from=$SRC version=\${AGEND_VERSION:-none}"'
 case $url in
-  ${PAGES}/*) case ${pagesBehaviour} in blocked) exit 35;; page) printf '<html>Blocked by policy</html>\\n' > "$out"; exit 0;; ok) printf '%s\\n' "\${script/\\$SRC/pages}" > "$out"; exit 0;; esac;;
+  ${PAGES}/*) case ${pagesBehaviour} in blocked) exit 35;; page) printf '<html>Blocked by policy</html>\\n' > "$out"; exit 0;; urlpage) printf '<html><body>Blocked by policy. AgEnD URL: %s</body></html>\\n' "$url" > "$out"; exit 0;; ok) printf '%s\\n' "\${script/\\$SRC/pages}" > "$out"; exit 0;; esac;;
   ${RAW}/*) case ${rawBehaviour} in blocked) exit 35;; ok) printf '%s\\n' "\${script/\\$SRC/raw}" > "$out"; exit 0;; esac;;
 esac
 exit 6
@@ -133,7 +186,8 @@ exit 6
     expect(readFileSync(join(dir, "calls"), "utf8").trim().split("\n")).toEqual([`${PAGES}/install.sh`]);
   });
   it.skipIf(!pwsh)("github.io blocked, or answering a block page: the raw copy is run, and only that", () => {
-    for (const pages of ["blocked", "page"] as const) {
+    // urlpage: a block page that echoes the requested URL — it contains "AgEnD", and still is not the script (Prism).
+    for (const pages of ["blocked", "page", "urlpage"] as const) {
       const dir = scratch(), r = runIt(scriptFor(""), fakeCurl(dir, pages));
       expect(r.stdout, pages).toContain("RAN from=raw version=none");
       expect(r.stdout, pages).not.toContain("Blocked by policy");
@@ -160,7 +214,7 @@ describe.skipIf(!pwsh)("with pwsh: the one-liner and the resume over a blocked g
     "@{ version = $InstallVersion } | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath $env:STUB_OUT", "exit 0", "#" + "x".repeat(1200), "",
   ].join("\n"), "utf8")]);
   // What the resume fetches: a stand-in install.ps1 that records the version it was given.
-  const bootStub = "# fetches install-agend.ps1 with Invoke-InstallDownload\nSet-Content -LiteralPath $env:RESUME_OUT -Value (\"RESUMED version=\" + $env:AGEND_VERSION)\n";
+  const bootStub = "function Invoke-InstallDownload([string]$Uri) { }\nSet-Content -LiteralPath $env:RESUME_OUT -Value (\"RESUMED version=\" + $env:AGEND_VERSION)\n";
   let server: Server, port = 0;
   const hits: string[] = [];
   beforeAll(async () => {
