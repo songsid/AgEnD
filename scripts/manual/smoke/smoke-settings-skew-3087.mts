@@ -5,37 +5,49 @@
 //                  Settings panel. Same method as smoke-settings-stale-2978.mts.
 //   old-page     — the other way: the NEW shell with the OLD lazy Settings modules (every /ui/js file this branch changed that
 //                  exists at BASE, from BASE), as when the browser kept an earlier copy of the lazy chunk.
-// Matrix: en and zh-TW × desk and phone × the three modes (12 cases). Per case (new page: fresh, stale-shell):
+//   stale-deps   — the new shell and the NEW Settings page, but the Settings dependencies a tab that had used Fleet or search
+//                  before the upgrade already holds are the OLD ones (from BASE): the files this branch changed that BASE's
+//                  static import graph reaches from panel-fleet.js and from search-dialog.js (computed, not listed by hand).
+//                  An ES module is kept by URL, so the new page gets the old settings-strings.js back: this is the case where a
+//                  key only the new file had read as the raw `settings.…` key. The old settings-strings.js served is asserted to
+//                  have none of the keys this branch added (stale-strings-served).
+// Matrix: en and zh-TW × desk and phone × the four modes (16 cases). Per case (new page: fresh, stale-shell, stale-deps):
 //   the page and its groups render in the right language; "partly custom" on the dashboard pill and the hover that lists who
 //   sets which item; the ⓘ tooltip opens inside the window and closes on Escape; the pill hover names the ClassicBot rooms
 //   that follow the model; an edit to auto-pause names the rooms it restarts (and the note goes away when the field is put
 //   back); no raw translation key or unfilled {0} anywhere on the page; saving tool progress sends exactly its own body and
 //   asks nobody; saving a project folder goes through the confirmation path (202 pending_confirmation, a request to follow) and sends exactly its own body;
-//   no page error. old-page: the old page really is the one served, and the same two saves keep their bodies and confirmation.
+//   no page error; search (Ctrl+K, "hang") lists the setting by its words, none a raw key; the page's group heading and the tool-set
+//   option the review's probe printed as raw keys read as their words. old-page: the old page really is the one served, and the same
+//   two saves keep their bodies and confirmation. What a stale copy cannot do (an old settings-dialogs.js ignores the new `tip` and
+//   `hostOnly` props, an old settings-layout.js has the page lead's old wording) is recorded as observed, not as a failure.
 // The stale and old copies are proven, not assumed: stale-shell asserts the loaded stylesheet lacks a rule the branch added;
 // every swapped URL must be requested at least once in its case (swapped-urls-requested), so a file list that goes stale — a file
 // renamed, a swap the page never loads — fails the case instead of passing without testing anything; the counts are in the receipt.
 // A receipt (receipt.md + result.json) names the commit, whether the tree was clean, the command, the swapped files and each case.
-// The old copies are read straight from git (`git show BASE:src/ui/…`), so BASE must be fetched; BASE defaults to the branch's base,
-// upstream/release/2.3.5-alpha (v2.3.5-alpha.4). Run it on a clean checkout of the commit to be judged. CASES=<names> runs a subset.
+// The old copies are read straight from git (`git show BASE:src/ui/…`), so BASE must be fetched; BASE defaults to the branch's merge-base
+// with upstream/release/2.3.5-alpha (v2.3.5-alpha.4). Run it on a clean checkout of the commit to be judged. CASES=<names> runs a subset.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [BASE=<ref>] [CASES=desk-en-fresh,…] FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //     npx --prefix <checkout> tsx scripts/manual/smoke/smoke-settings-skew-3087.mts
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-settings-skew-3087";
 const REPO = process.env.REPO ?? process.cwd();
-const BASE = process.env.BASE ?? "upstream/release/2.3.5-alpha";
 const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
 mkdirSync(OUT, { recursive: true });
 const git = (...a: string[]) => execFileSync("git", ["-C", REPO, ...a], { encoding: "utf8", maxBuffer: 64 << 20 });
+// The old assets are the ones the tab held before the upgrade: the branch's merge-base with the release line (what the line shipped when
+// the branch was cut), not the line's tip, which moves on with other work. BASE=<ref> overrides.
+const BASE = process.env.BASE ?? git("merge-base", "HEAD", "upstream/release/2.3.5-alpha").trim();
 const head = git("rev-parse", "HEAD").trim(), baseSha = git("rev-parse", BASE).trim();
 const dirty = git("status", "--porcelain").trim();
 const atBase = (p: string) => spawnSync("git", ["-C", REPO, "cat-file", "-e", `${BASE}:${p}`]).status === 0;
 const oldBody = (p: string) => git("show", `${BASE}:${p}`);
 const newBody = (p: string) => readFileSync(join(REPO, p), "utf8");
+const atHead = (p: string) => existsSync(join(REPO, p));
 
 // ── Which files are old in which direction ──
 const SHELL_ALWAYS = ["app.js", "app-shell.js", "app-stream.js", "app.css", "instance-nav.js"].map(f => `src/ui/shared/${f}`);
@@ -44,7 +56,27 @@ const shared = (p: string) => p.startsWith("src/ui/shared/");
 const urlOf = (p: string) => (shared(p) ? `/assets/${p.slice("src/ui/shared/".length)}` : `/ui/js/${p.slice("src/ui/".length)}`);
 const staleShell = [...new Set([...SHELL_ALWAYS, ...changed.filter(shared)])].filter(atBase);
 const oldPage = changed.filter(p => !shared(p) && atBase(p));
-const MODES = { fresh: [] as string[], "stale-shell": staleShell, "old-page": oldPage } as const;
+// stale-deps: what BASE's static import graph reaches from the two ways a tab gets Settings' dependencies before it ever opens
+// Settings: Fleet (panel-fleet.js → settings-dialogs.js → settings-strings.js …) and search (search-dialog.js → settings-registry.js
+// → settings-strings.js …). Only the files this branch changed matter (the others are the same at BASE).
+const importsAtBase = (p: string): string[] => {
+  const code = oldBody(p), out: string[] = [];
+  for (const m of code.matchAll(/(?:^|\n)\s*(?:import|export)\b[^;"']*?["']([^"']+)["']/g)) {
+    const spec = m[1]!, from = p.slice(0, p.lastIndexOf("/"));
+    const target = spec.startsWith("./") ? `${from}/${spec.slice(2)}` : spec.startsWith("/assets/") ? `src/ui/shared/${spec.slice(8)}` : spec.startsWith("/ui/js/") ? `src/ui/${spec.slice(7)}` : null;
+    if (target && /\.js$/.test(target) && atBase(target)) out.push(target);
+  }
+  return out;
+};
+const reachFrom = (entry: string): string[] => {
+  const seen = new Set<string>([entry]), todo = [entry];
+  while (todo.length) for (const q of importsAtBase(todo.pop()!)) if (!seen.has(q)) { seen.add(q); todo.push(q); }
+  return [...seen];
+};
+const fleetPath = reachFrom("src/ui/panel-fleet.js").filter(p => changed.includes(p) && !shared(p));
+const searchPath = reachFrom("src/ui/search-dialog.js").filter(p => changed.includes(p) && !shared(p));
+const staleDeps = [...new Set([...fleetPath, ...searchPath])];
+const MODES = { fresh: [] as string[], "stale-shell": staleShell, "old-page": oldPage, "stale-deps": staleDeps } as const;
 type Mode = keyof typeof MODES;
 // A rule the branch added to app.css: the stale shell's stylesheet must not have it (that is what makes it stale).
 const addedClass = [...new Set(newBody("src/ui/shared/app.css").match(/\.s-[a-z0-9-]+/g) ?? [])].find(c => !oldBody("src/ui/shared/app.css").includes(c));
@@ -52,10 +84,22 @@ const addedClass = [...new Set(newBody("src/ui/shared/app.css").match(/\.s-[a-z0
 // ── What the page says ──
 const X = {
   en: { title: "Shared agent settings", hangSub: "except the hang detector, which an agent can also set for itself", partly: /partly custom/, office: /Office/, rooms: /ClassicBot room\(s\) follow this value too/,
-    roomNote: /4 ClassicBot room\(s\)/, confirmTick: /confirmed first/ },
+    roomNote: /4 ClassicBot room\(s\)/, confirmTick: /confirmed first/, searchHang: /Hang detector/ },
   "zh-TW": { title: "Agent 共用設定", hangSub: "只有卡住偵測可以另外在個別 Agent 設定", partly: /部分自訂/, office: /辦公室/, rooms: /ClassicBot 房間也沿用這個值/,
-    roomNote: /4 個 ClassicBot 房間/, confirmTick: /先確認/ },
+    roomNote: /4 個 ClassicBot 房間/, confirmTick: /先確認/, searchHang: /卡住偵測/ },
 } as const;
+// The words of every register("settings", …) call of a file, merged as register() merges them. The words this branch added are the keys
+// of the checkout's settings-strings.js and settings-shared-strings.js (where the review moved them) that BASE's settings-strings.js lacks.
+const settingsWords = (code: string) => {
+  const out: Record<string, Record<string, string>> = { en: {}, "zh-TW": {} };
+  new Function("register", code.replace(/^import .*$/gm, ""))((ns: string, tables: Record<string, Record<string, string>>) => { if (ns === "settings") for (const l of Object.keys(out)) Object.assign(out[l]!, tables[l] ?? {}); });
+  return out;
+};
+const wordsAtBase = settingsWords(oldBody("src/ui/settings-strings.js"));
+const wordsNow = settingsWords(newBody("src/ui/settings-strings.js"));
+if (atHead("src/ui/settings-shared-strings.js")) { const w = settingsWords(newBody("src/ui/settings-shared-strings.js")); for (const l of Object.keys(wordsNow)) Object.assign(wordsNow[l]!, w[l]); }
+const addedKeys = Object.keys(wordsNow.en!).filter(k => !(k in wordsAtBase.en!));
+const hasKey = (code: string, k: string) => new RegExp(`[\\s,{]"?${k.replace(/[-]/g, "\\-")}"?\\s*:`).test(code);
 const RAW_KEY = /\bsettings\.[A-Za-z][A-Za-z0-9_]*|\{\d+\}|\bundefined\b|\[object Object\]/;
 
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48957), classic: true, instances: 3 });
@@ -72,14 +116,14 @@ const hostCode = async () => (await (await fetch(`${fx.base}/auth/issue-code`, {
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 type Check = { ok: boolean; detail?: string };
-interface CaseResult { name: string; lang: string; device: string; mode: Mode; ok: boolean; checks: Record<string, Check>; swappedHits: Record<string, number>; writes: Array<{ method: string; path: string; status: number | null; body: unknown; response: string }> }
+interface CaseResult { name: string; lang: string; device: string; mode: Mode; ok: boolean; checks: Record<string, Check>; observed: Record<string, string>; swappedHits: Record<string, number>; writes: Array<{ method: string; path: string; status: number | null; body: unknown; response: string }> }
 const results: CaseResult[] = [];
 let rootSeq = 0;
 
 for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk", width: 1366, height: 900 }, { device: "phone", width: 390, height: 844 }] as const) for (const mode of Object.keys(MODES) as Mode[]) {
   const name = `${dev.device}-${lang}-${mode}`, x = X[lang];
   if (process.env.CASES && !process.env.CASES.split(",").includes(name)) continue;   // CASES=desk-en-fresh,phone-zh-TW-old-page: a subset while iterating
-  const checks: Record<string, Check> = {};
+  const checks: Record<string, Check> = {}, observed: Record<string, string> = {};
   const check = (k: string, ok: boolean, detail?: string) => { checks[k] = { ok, ...(detail === undefined ? {} : { detail }) }; };
   // Language and theme are host preferences: set them on the host, as the fixture's own page() does.
   fm.webPrefs.write("operator", new Map<string, unknown>([...Object.keys(fm.webPrefs.read("operator").values ?? {}).map(k => [k, null] as [string, null]), ["theme", "light"], ["lang", lang]]));
@@ -87,10 +131,12 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
   await ctx.addInitScript({ content: `try { localStorage.setItem("agend_tour_done","1"); localStorage.setItem("agend_firstrun_dismissed","1"); localStorage.setItem("agend_lang","${lang}"); } catch {}` });
   const page = await ctx.newPage(), errors: string[] = [], hits: Record<string, number> = {};
   const writes: CaseResult["writes"] = [];
+  let deliveredStrings: string | null = null;   // the settings-strings.js body the browser actually got (when this mode swaps it)
   page.on("pageerror", (e: any) => errors.push(String(e)));
   page.on("console", (m: any) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(`console: ${m.text()}`); });
   page.on("response", async (r: any) => {
     const q = r.request(), u = new URL(r.url());
+    if (u.pathname === "/ui/js/settings-strings.js" && MODES[mode].includes("src/ui/settings-strings.js") && deliveredStrings === null) deliveredStrings = await r.text().catch(() => null);
     if (q.method() !== "GET" && /^\/(api\/settings|ui\/config)/.test(u.pathname)) writes.push({ method: q.method(), path: u.pathname, status: r.status(), body: (() => { try { return JSON.parse(q.postData() ?? "null"); } catch { return q.postData(); } })(), response: (await r.text().catch(() => "")).slice(0, 300) });
   });
   for (const p of MODES[mode]) {
@@ -109,6 +155,16 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
       const has = await page.evaluate((c: string) => [...document.styleSheets].some(s => { try { return [...s.cssRules].some((r: any) => (r.selectorText ?? "").includes(c)); } catch { return false; } }), addedClass);
       check("shell-is-new", has, `loaded app.css ${has ? "has" : "LACKS"} ${addedClass}`);
     }
+    // Search first, as a tab that used it before the upgrade would have: the dialog loads lazily with settings-registry.js and
+    // settings-strings.js, and the result lists the setting (and where it lives) by its words — not by raw keys.
+    await page.keyboard.press("Control+k");
+    await page.waitForSelector(".search-dlg .search-input", { timeout: 15000 });
+    await page.fill(".search-dlg .search-input", "hang");
+    await page.waitForSelector(".search-settings .search-row", { timeout: 10000 }).catch(() => null);
+    const searchText = ((await t(".search-settings").innerText().catch(() => "")) ?? "").replace(/\s+/g, " ").trim();
+    check("search-words", x.searchHang.test(searchText) && !RAW_KEY.test(searchText), searchText.slice(0, 160) || "no settings results");
+    await page.keyboard.press("Escape");
+    await t(".search-dlg").waitFor({ state: "detached", timeout: 3000 }).catch(() => page.keyboard.press("Escape"));
     // In-page navigation: a tab keeps the shell it loaded and fetches the Settings panel lazily.
     await page.evaluate((path: string) => { history.pushState(null, "", path); dispatchEvent(new PopStateEvent("popstate")); }, "/settings/agent-defaults");
     await page.waitForSelector(".p-settings #g-model", { timeout: 20000 });
@@ -119,6 +175,16 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
     await page.screenshot({ path: shotPath(SMOKE, name, "page"), fullPage: true });
 
     if (newPage) {
+      // The two words the review's probe printed as raw keys: the group heading and a tool-set option read as their words.
+      const heading = ((await t(".p-settings .s-group h3").first().textContent()) ?? "").trim();
+      const toolOpt = ((await t("#g-ts option[value='worker']").first().textContent().catch(() => "")) ?? "").trim();
+      check("probe-words", heading === wordsNow[lang]!.sharedGroupAgents && toolOpt === wordsNow[lang]!.opt_tool_set_worker, `heading «${heading}»; tool-set option «${toolOpt}»`);
+      // What a stale dependency cannot do is recorded, not failed: the old settings-dialogs.js ignores the `tip` and `hostOnly` props
+      // (no tooltip on the "default" mark; the backend says "not installed"), and an old settings-layout.js has the page lead's old wording.
+      observed["default-mark tooltip"] = (await t(".p-settings .s-default").first().getAttribute("title").catch(() => null)) ?? "(none)";
+      const notInstalled = (await t("#g-be option").allTextContents()).map(o => o.replace(/\s+/g, " ").trim()).find(o => /not installed|未安裝/.test(o));
+      observed["backend not installed"] = notInstalled ?? "(no such option in this fixture)";
+      observed["page lead"] = ((await t(".s-page-lead").first().textContent().catch(() => "")) ?? "").replace(/\s+/g, " ").trim() || "(none)";
       check("language", ((await t(".p-settings .s-group h3").first().textContent()) ?? "").trim() === x.title, x.title);
       await t("details.drawer > summary").click();
       check("advanced-subtitle", ((await t(".s-group p.note").last().textContent()) ?? "").includes(x.hangSub), x.hangSub);
@@ -197,13 +263,19 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
     await page.screenshot({ path: shotPath(SMOKE, name, "saved"), fullPage: false });
     check("no-page-errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   } catch (e) { check("case-ran", false, String(e).slice(0, 400)); check("no-page-errors", errors.length === 0, errors.slice(0, 3).join(" | ")); }
+  // The old settings-strings.js that was served must really be the old one: none of the keys this branch added, and it is BASE's file.
+  if (MODES[mode].includes("src/ui/settings-strings.js")) {
+    const got = deliveredStrings as string | null, leaked = got === null ? addedKeys : addedKeys.filter(k => hasKey(got, k));
+    check("stale-strings-served", got !== null && got === oldBody("src/ui/settings-strings.js") && leaked.length === 0,
+      got === null ? "never delivered" : `${got.length} bytes, identical to BASE's file; ${addedKeys.length} keys this branch added (e.g. sharedGroupAgents, opt_tool_set_worker) — ${leaked.length ? `PRESENT: ${leaked.slice(0, 5).join(", ")}` : "none present"}`);
+  }
   // A swap that nobody requests tests nothing: every URL replaced in this mode must have been asked for at least once.
   if (MODES[mode].length) {
     const asked = MODES[mode].map(urlOf), missing = asked.filter(u => !(hits[u] > 0));
     check("swapped-urls-requested", missing.length === 0, missing.length ? `never requested: ${missing.join(", ")}` : asked.map(u => `${u} ×${hits[u]}`).join(", "));
   }
   const ok = Object.values(checks).every(c => c.ok);
-  results.push({ name, lang, device: dev.device, mode, ok, checks, swappedHits: hits, writes });
+  results.push({ name, lang, device: dev.device, mode, ok, checks, observed, swappedHits: hits, writes });
   const bad = Object.entries(checks).filter(([, c]) => !c.ok).map(([k, c]) => `${k}${c.detail ? ` (${c.detail.slice(0, 120)})` : ""}`);
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${bad.length ? " — " + bad.join("; ") : ""}`);
   await ctx.close();
@@ -226,6 +298,7 @@ const receipt = [
   `## Which files are old, per direction`,
   `- **stale-shell** (old shell + new Settings page) serves from BASE: ${staleShell.map(p => `\`${urlOf(p)}\``).join(", ")}. Requests served: ${hitsOf("stale-shell")}. Proof it is stale: ${addedClass ? `the loaded stylesheet lacks \`${addedClass}\`, a rule this branch added` : "(no class added)"}.`,
   `- **old-page** (new shell + old Settings page) serves from BASE: ${oldPage.map(p => `\`${urlOf(p)}\``).join(", ")}. Requests served: ${hitsOf("old-page")}. Proof it is old: no \`.s-shared\` on the page.`,
+  `- **stale-deps** (new shell + new Settings page + the dependencies a tab that used Fleet or search before the upgrade already holds) serves from BASE: ${staleDeps.map(p => `\`${urlOf(p)}\``).join(", ")}. Why these: BASE's static import graph from \`panel-fleet.js\` reaches ${fleetPath.map(p => `\`${p.slice("src/ui/".length)}\``).join(", ") || "none"} of the files this branch changed, and from \`search-dialog.js\` ${searchPath.map(p => `\`${p.slice("src/ui/".length)}\``).join(", ") || "none"}; the Settings page itself imports panel-fleet.js and settings-registry.js, so every one of them is requested (and counted below). Requests served: ${hitsOf("stale-deps")}. Proof the old strings are old: the served settings-strings.js is BASE's file and has none of the ${addedKeys.length} keys this branch added (stale-strings-served).`,
   `- Changed under src/ui on this branch: ${changed.map(p => `\`${p}\`${atBase(p) ? "" : " (new)"}`).join(", ")}. New files have no old copy; nothing requests them in old-page.`,
   ``,
   `## Cases`,
@@ -235,12 +308,20 @@ const receipt = [
   ``,
   `(– = not applicable in that mode: the old page has none of the new controls.)`,
   ``,
+  `## Evidence for the stale-deps cases`,
+  ...results.filter(r => r.mode === "stale-deps").flatMap(r => [`- ${r.name}: stale-strings-served — ${r.checks["stale-strings-served"]?.detail ?? "n/a"}`, `  - probe-words — ${r.checks["probe-words"]?.detail ?? "n/a"}`, `  - search-words — ${r.checks["search-words"]?.detail ?? "n/a"}`]),
+  ``,
+  `## Observed, not pass/fail (what a stale dependency cannot do)`,
+  `| case | default-mark tooltip | backend "not installed" text | page lead |`,
+  `|---|---|---|---|`,
+  ...results.filter(r => Object.keys(r.observed).length).map(r => `| ${r.name} | ${(r.observed["default-mark tooltip"] ?? "").replace(/\|/g, "\\|")} | ${(r.observed["backend not installed"] ?? "").replace(/\|/g, "\\|")} | ${(r.observed["page lead"] ?? "").replace(/\|/g, "\\|")} |`),
+  ``,
   `## Failures`,
   ...(results.some(r => !r.ok) ? results.filter(r => !r.ok).flatMap(r => Object.entries(r.checks).filter(([, c]) => !c.ok).map(([k, c]) => `- ${r.name} / ${k}: ${c.detail ?? ""}`)) : ["none"]),
   ``,
 ].join("\n");
 writeFileSync(join(OUT, "receipt.md"), receipt);
-writeFileSync(join(OUT, "result.json"), JSON.stringify({ commit: head, clean: !dirty, base: BASE, baseSha, command: cmd, staleShell, oldPage, changed, addedClass, results }, null, 2));
+writeFileSync(join(OUT, "result.json"), JSON.stringify({ commit: head, clean: !dirty, base: BASE, baseSha, command: cmd, staleShell, oldPage, staleDeps, fleetPath, searchPath, addedKeys, changed, addedClass, results }, null, 2));
 console.log(receipt.split("\n").slice(0, 12).join("\n"));
 await fx.close();
 process.exit(results.every(r => r.ok) ? 0 : 1);
