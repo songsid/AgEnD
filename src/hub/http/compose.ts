@@ -14,7 +14,8 @@
  * - `close()` forgets the links. S5 closes the DB.
  */
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { HubProtocolError, parseStrictJson } from "../validation.js";
 import { personKeyString } from "../identity.js";
@@ -81,7 +82,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const core = new HubCore(deps, sql);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const rooms = new HubRoomsService(core, policy);
-  const uiDir = join(__dirname, "..", "..", "ui");
+  const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   let closed = false;
   const live = () => !closed && core.live();
 

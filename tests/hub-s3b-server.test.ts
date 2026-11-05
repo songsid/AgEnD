@@ -8,6 +8,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { s3bRig, WEB_ORIGIN } from "./helpers/hub-s3b-rig.js";
 import { readHubCookie, hubCookieName } from "../src/hub/sessions.js";
+import { HUB_SHELL_DROPS } from "../src/web-api.js";
 import { verifyAsker, operationDigest } from "../src/hub/identity.js";
 import type { HubExposure, HubServerFrame, PersonKey } from "../src/hub/types.js";
 
@@ -107,6 +108,9 @@ describe("Hub workspace page (S3b)", () => {
     expect(r.text).toContain('data-hub-name="Team Hub"');
     expect(r.text).not.toContain("data-prefs");
     expect(r.text).not.toContain("data-owner-css");
+    // No fleet fetch wrapper: it would read the fleet's /auth/session and show the fleet's "session ended" banner.
+    expect(r.text).not.toContain("agend-auth.js");
+    expect(readFileSync("src/ui/app.html", "utf8")).toContain(HUB_SHELL_DROPS);       // the drop still names a real tag
     expect((await rig.call(null, "GET", "/ui/js/panel-hub.js")).status).toBe(200);
     expect((await rig.call(null, "GET", "/ui/js/panel-fleet.js")).text).toBe("fleet-404");
     expect((await rig.call(null, "GET", "/assets/app.js")).status).toBe(200);

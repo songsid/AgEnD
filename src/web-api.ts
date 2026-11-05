@@ -4024,9 +4024,12 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
  * It boots Hub-only (app.js: no fleet stream, chat, Needs you, preferences or themes). Nothing of the request is read
  * — no cookie (the fleet's or the Hub's), no session, no Host: who is signed in is the page's own /hub/v1/session.
  */
+export const HUB_SHELL_DROPS = '<script src="/assets/agend-auth.js"></script>';
 export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string }): void {
   try {
-    const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
+    // Without the fleet's fetch wrapper (agend-auth.js): it reads the fleet's /auth/session for a CSRF value and answers
+    // a 401 with the fleet's "session ended" banner. The Hub's pages carry the Hub's own CSRF (hub-client.js).
+    const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8").replace(HUB_SHELL_DROPS, "");
     const attr = (v: string) => v.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
     const name = hubNameOf(hub.name);
     const body = `<body data-mode="full" data-web-transport="none" data-usage-panel="0" data-log-tab="0" data-hub="hub"${name ? ` data-hub-name="${attr(name)}"` : ""}>`;

@@ -19,7 +19,8 @@ import type { HubLinkContext } from "../../src/hub/server.js";
 export const WEB_ORIGIN = "https://hub.example.test";
 export const person = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
 
-export async function s3bRig(opts: { now?: () => number } = {}) {
+export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = {}) {
+  const webOrigin = opts.webOrigin ?? WEB_ORIGIN;
   const db = new Database(":memory:");
   migrateHubTransportStore(db);
   for (const m of HUB_HTTP_MIGRATIONS) m.up(db);
@@ -86,9 +87,9 @@ export async function s3bRig(opts: { now?: () => number } = {}) {
   const transport = { start: async () => {}, close: async () => {},
     send: async (fleetId: string, frame: HubServerFrame) => { if (sendFails) throw new Error("not ready"); sent.push({ fleetId, frame }); } };
   const pairing = new HubPairingService({ store, directory, enabled: () => enabled,
-    identity: { hubId, memberOrigin: "https://127.0.0.1:9", webOrigin: WEB_ORIGIN, spkiSha256: "a".repeat(64), issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() },
+    identity: { hubId, memberOrigin: "https://127.0.0.1:9", webOrigin, spkiSha256: "a".repeat(64), issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() },
     fenceFleet: () => {}, now: opts.now });
-  const config = Object.freeze({ hubId, name: "Team Hub", webOrigin: WEB_ORIGIN, administrator: admin });
+  const config = Object.freeze({ hubId, name: "Team Hub", webOrigin, administrator: admin });
   const http = createHubHttp({ uow, audit, directory, pairing, store, config, issuer, content,
     transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now }, sql);
 
@@ -98,14 +99,14 @@ export async function s3bRig(opts: { now?: () => number } = {}) {
 
   /** A signed-in browser: its Hub cookie and CSRF token. */
   const signIn = async (login: string) => {
-    const r = await fetch(`${base}/hub/v1/session`, { method: "POST", headers: { "Content-Type": "application/json", Origin: WEB_ORIGIN }, body: JSON.stringify({ login, password: `pw-${login}` }) });
+    const r = await fetch(`${base}/hub/v1/session`, { method: "POST", headers: { "Content-Type": "application/json", Origin: webOrigin }, body: JSON.stringify({ login, password: `pw-${login}` }) });
     const body = await r.json() as { csrf: string };
     const cookie = (r.headers.get("set-cookie") ?? "").split(";")[0]!;
     return { status: r.status, cookie, csrf: body.csrf, body };
   };
   type Browser = { cookie: string; csrf: string };
   const call = async (b: Browser | null, method: string, path: string, body?: unknown, extra: Record<string, string> = {}) => {
-    const headers: Record<string, string> = { Origin: WEB_ORIGIN, ...(b ? { Cookie: b.cookie, "X-AgEnD-Hub-CSRF": b.csrf } : {}), ...extra };
+    const headers: Record<string, string> = { Origin: webOrigin, ...(b ? { Cookie: b.cookie, "X-AgEnD-Hub-CSRF": b.csrf } : {}), ...extra };
     if (body !== undefined) headers["Content-Type"] = "application/json";
     const r = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     const text = await r.text();
