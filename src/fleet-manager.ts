@@ -288,6 +288,8 @@ import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteC
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
+import { AgentCredentials, agentCredentialPolicy } from "./agent-credentials.js";
+import { writeSecretFile } from "./secret-file.js";
 import { ConfigHistory, ConfigSyntaxError, configIssueText } from "./config-history.js";
 import type { ConfigSource } from "./config-history.js";
 import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt, readClassicRoomNames } from "./classic-channel-manager.js";
@@ -2462,6 +2464,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fleetSignatureMismatch: string[] | null = null;
   private healthServerListening = false;
 
+  private agentCredentialsCache?: AgentCredentials;
+  get agentCredentials(): AgentCredentials {
+    return this.agentCredentialsCache ??= new AgentCredentials(
+      name => agentCredentialPolicy(this.fleetConfig, name, this.isClassicInstance(name)),
+      name => {
+        try {
+          const token = randomBytes(32).toString("hex");
+          const result = writeSecretFile(join(this.getInstanceDir(name), "agent.token"), token);
+          if (!result.ok) this.logger.error({ name, mode: result.mode, reason: result.reason }, "Agent token file is not owner-only");
+          return token;
+        } catch {
+          this.logger.error({ name }, "Agent credential renewal failed; prior generation remains retired");
+          return null;
+        }
+      },
+    );
+  }
+
   constructor(public dataDir: string) {
     FleetManager.signalTarget = this;
     if (!FleetManager.sighupHandlerInstalled) {
@@ -3673,6 +3693,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * guild channel.
    */
   private reregisterClassicChannels(): void {
+    this.agentCredentialsCache?.observePolicies();
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
     // Classic's persisted adapter is authoritative. Legacy adapter-less rows
@@ -12780,6 +12801,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Object.assign(current, resolved);
     }
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
       { path: this.configPath, strippedDefaults: redundantPaths.length },
@@ -22115,6 +22137,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();

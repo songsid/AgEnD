@@ -190,6 +190,7 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * FleetManager implements this.
  */
 export interface LifecycleContext {
+  readonly agentCredentials?: Pick<import("./agent-credentials.js").AgentCredentials, "issue" | "invalidate">;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
@@ -1714,6 +1715,7 @@ export class InstanceLifecycle {
 
   /** Invalidate every start/wake already running for `name` (they will not publish). */
   invalidate(name: string): void {
+    this.ctx.agentCredentials?.invalidate(name);
     this.lifecycleEpochs.set(name, this.epochOf(name) + 1);
   }
 
@@ -1878,6 +1880,10 @@ export class InstanceLifecycle {
       const owner = this.daemons.get(name);
       if (owner ? owner !== daemon : this.epochOf(name) !== epoch) return;
       this.ctx.setKiroCompatibilityHold?.(name, message);
+    });
+    daemon.setAgentCredentialIssuer?.(token => {
+      if (this.epochOf(name) !== epoch) throw new SupersededStartError(name);
+      this.ctx.agentCredentials?.issue(name, token);
     });
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
