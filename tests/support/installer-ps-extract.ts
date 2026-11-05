@@ -99,7 +99,10 @@ function sliceAssignment(src: string, start: number): string {
   while (src[i] === " " || src[i] === "\t") i += 1;
   if (src.startsWith("@'", i) || src.startsWith('@"', i)) return src.slice(start, skipHereString(src, i));
   if (src[i] === "'" || src[i] === '"') return src.slice(start, skipQuoted(src, i));
+  if (src.startsWith("@{", i)) return sliceBalanced(src, start, "{", "}");
   if (src.startsWith("@(", i)) return sliceBalanced(src, start, "(", ")");
+  const literal = src.slice(i).match(/^(?:\[[A-Za-z0-9_.]+\])?(?:'[^'\n]*'|[0-9]+(?:MB|GB)?|\$true|\$false)(?=\s*(?:\n|$))/);
+  if (literal) return src.slice(start, i + literal[0].length);
   throw new Error(`unsupported assignment at ${src.slice(start, start + 40)}`);
 }
 
@@ -177,6 +180,33 @@ export function extractLeadingStatement(src: string, marker: string): string {
   const elseStart = end + elseMatch[0].length;
   const elseBlock = sliceBalanced(text, elseStart, "{", "}");
   return text.slice(start, elseStart + elseBlock.length);
+}
+
+/** Explicit top-level constants only; no installer body or syntax-tree traversal. */
+export function extractPsAssignments(src: string, names: readonly string[]): string {
+  return names.map(name => {
+    const match = new RegExp("^\\$" + name + " =", "m").exec(src);
+    if (!match) throw new Error(`missing $${name}`);
+    return sliceAssignment(src, match.index);
+  }).join("\n");
+}
+
+/** Functions only, for the bootstrap (which has no installer-specific tables). */
+export function extractPsFunctions(src: string): string {
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < src.length) {
+    const fn = isLineStart(src, i) ? /^[ \t]*function /.exec(src.slice(i)) : null;
+    if (fn) {
+      const start = i + fn[0].indexOf("function");
+      const sliced = sliceBalanced(src, start, "{", "}");
+      chunks.push(sliced); i = start + sliced.length; continue;
+    }
+    if (src.startsWith("@'", i) || src.startsWith('@"', i)) { i = skipHereString(src, i); continue; }
+    i += 1;
+  }
+  if (!chunks.length) throw new Error("no functions");
+  return chunks.join("\n");
 }
 
 export { DOWNLOAD_CLOCK_INIT, PRELUDE_ASSIGNMENTS };
