@@ -102,6 +102,9 @@ describe.skipIf(!pwsh || !openssl)("with pwsh and openssl: the consented single-
     writeFileSync(join(c, "noaki.ext"), "subjectAltName=DNS:localhost\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=none\n");
     sh("openssl x509 -req -in leaf.csr -CA root.pem -CAkey root.key -CAcreateserial -out leaf.pem -days 5 -extfile aki.ext", c);
     sh("openssl x509 -req -in leaf.csr -CA root.pem -CAkey root.key -CAcreateserial -out leafnoaki.pem -days 5 -extfile noaki.ext", c);
+    // A leaf signed by the unrelated root, and that root in a hashed store only this process's environment points at.
+    sh("openssl x509 -req -in leaf.csr -CA other.pem -CAkey other.key -CAcreateserial -out leafother.pem -days 5 -extfile aki.ext", c);
+    sh("mkdir -p ambient && cp other.pem ambient/ && openssl rehash ambient", c);
   });
 
   it("Find-OrgRoot picks the exact root by name AND key identifier; a same-name root with another key, or an expired one, is not it", () => {
@@ -141,6 +144,45 @@ Write-Output ('NAMEONLY=' + (Find-OrgRoot ${chainOf("leafnoaki")} ${store("imp")
     expect(out).toContain("NAMEONLY=CN=AgEnD Test Inspection Root, O=AgEnD Test");
   });
 
+  it("the selected root is the ONLY anchor: a chain that verifies only through an ambient store (CAfile, CApath, CAstore) fails (Prism #3071)", () => {
+    // The presented leaf is signed by the unrelated root; the selected root rides along as an untrusted extra.
+    const out = ps(`
+$rootCert = (ConvertFrom-PemChain ([IO.File]::ReadAllText('${join(c, "root.pem")}')))[0]
+$chain = ${chainOf("leafother", "root")}
+[IO.File]::WriteAllText((Join-Path $env:TMPDIR 'amb.sh'), (Get-WslVerifyScript $rootCert $chain))
+Write-Output ('DIR=' + $env:TMPDIR)`);
+    const script = `bash ${/DIR=(\S+)/.exec(out)![1]}/amb.sh`;
+    const ambient = join(c, "ambient");
+    const PATH = process.env.PATH ?? "/usr/bin:/bin";
+    // Control: that store really makes the chain verify for openssl's defaults.
+    expect(spawnSync("openssl", ["verify", join(c, "leafother.pem")], { encoding: "utf8", env: { PATH, SSL_CERT_DIR: ambient } }).status).toBe(0);
+    for (const env of [{ SSL_CERT_DIR: ambient }, { SSL_CERT_FILE: join(c, "other.pem") }, { SSL_CERT_URI: `file:${ambient}` }]) {
+      expect(bash(script, { PATH, ...env }).stdout, JSON.stringify(env)).toBe("");
+    }
+  });
+
+  it("no scratch directory: the verify and import scripts stop before writing anything", () => {
+    const out = ps(`
+$rootCert = (ConvertFrom-PemChain ([IO.File]::ReadAllText('${join(c, "root.pem")}')))[0]
+[IO.File]::WriteAllText((Join-Path $env:TMPDIR 'v.sh'), (Get-WslVerifyScript $rootCert ${chainOf("leaf")}))
+[IO.File]::WriteAllText((Join-Path $env:TMPDIR 'i.sh'), (Get-WslOrgCaImportScript $rootCert '${"A".repeat(64)}'))
+Write-Output ('DIR=' + $env:TMPDIR)`);
+    const dir = /DIR=(\S+)/.exec(out)![1];
+    const fake = scratch();
+    mkdirSync(join(fake, "bin"));
+    for (const [name, body] of [["mktemp", "exit 1"], ["base64", `echo "$@" >> ${fake}/writes; exit 0`], ["openssl", `echo "$@" >> ${fake}/writes; exit 0`]]) {
+      writeFileSync(join(fake, "bin", name), `#!/bin/sh\n${body}\n`);
+      chmodSync(join(fake, "bin", name), 0o755);
+    }
+    for (const f of ["v.sh", "i.sh"]) {
+      const r = bash(`bash ${dir}/${f}`, { PATH: `${join(fake, "bin")}:/usr/bin:/bin` });
+      expect(r.status, f).toBe(1);
+      expect(r.stdout, f).not.toContain("VERIFY_OK");
+      expect(r.stdout, f).not.toContain("CA_IMPORTED");
+    }
+    expect(existsSync(join(fake, "writes"))).toBe(false);
+  });
+
   it("the chain script reads what a TLS server really presents (openssl s_client)", async () => {
     const port = await freePort();
     const server = spawn("openssl", ["s_server", "-accept", String(port), "-cert", join(c, "leaf.pem"), "-key", join(c, "leaf.key"), "-quiet"], { stdio: "ignore" });
@@ -161,12 +203,13 @@ Write-Output ('NAMEONLY=' + (Find-OrgRoot ${chainOf("leafnoaki")} ${store("imp")
     expect(() => ps("Get-WslChainScript 'a b;rm -rf /'")).toThrow(/Invalid host name/);
   });
 
-  it("the import script: writes only the fingerprinted cert, runs update-ca-certificates, writes profile.d; a wrong fingerprint writes nothing", () => {
+  it("the import script: writes only the fingerprinted cert and runs update-ca-certificates; a wrong fingerprint writes nothing; profile.d is its own script", () => {
     const fp = sha256("root");
     const out = ps(`
 $cert = (ConvertFrom-PemChain ([IO.File]::ReadAllText('${join(c, "root.pem")}')))[0]
 [IO.File]::WriteAllText((Join-Path $env:TMPDIR 'ok.sh'), (Get-WslOrgCaImportScript $cert '${fp.toUpperCase()}'))
 [IO.File]::WriteAllText((Join-Path $env:TMPDIR 'bad.sh'), (Get-WslOrgCaImportScript $cert '${"0".repeat(64)}'))
+[IO.File]::WriteAllText((Join-Path $env:TMPDIR 'profile.sh'), (Get-WslOrgCaProfileScript (Get-OrgCaPath '${fp.toUpperCase()}')))
 Write-Output ('PATH=' + (Get-OrgCaPath '${fp.toUpperCase()}'))
 Write-Output ('DIR=' + $env:TMPDIR)`);
     const dir = /DIR=(\S+)/.exec(out)![1];
@@ -189,7 +232,11 @@ Write-Output ('DIR=' + $env:TMPDIR)`);
     expect(readFileSync(caFile, "utf8")).toBe(pem("root").replace(/\r\n/g, "\n"));
     expect(statSync(caFile).mode & 0o777).toBe(0o644);
     expect(readFileSync(join(fake, "updated"), "utf8")).toBe("ran\n");
-    expect(readFileSync(join(fake, "etc", "profile.d", "agend-org-ca.sh"), "utf8")).toBe(`export NODE_EXTRA_CA_CERTS=${caFile}\n`);
+    expect(existsSync(join(fake, "etc", "profile.d", "agend-org-ca.sh"))).toBe(false);          // only after .env agrees
+    const prof = bash(map("profile.sh"), env);
+    expect(prof.stdout).toBe("PROFILE_OK\n");
+    expect(readFileSync(join(fake, "etc", "profile.d", "agend-org-ca.sh"), "utf8")).toBe(`export NODE_EXTRA_CA_CERTS=${join(fake, "ca", `agend-org-root-${fp.slice(0, 8)}.crt`)}\n`);
+    expect(() => ps("Get-WslOrgCaProfileScript '/tmp/x.crt'")).toThrow(/Invalid certificate path/);
   });
 
   it("the .env script: adds the line keeping every other line, never replaces another value, refuses a symlinked .env", () => {
@@ -232,7 +279,7 @@ Write-Output ('DIR=' + $env:TMPDIR)`);
   });
 
   /** Invoke-OrgRootOffer with WSL stubbed: the chain is the given PEMs, the verify script runs for real. */
-  function offer(chain: string[], roots: string[], answer: string, extra = ""): string {
+  function offer(chain: string[], roots: string[], answer: string, envText = "ENV_OK=/root/.agend/.env", envCode = 0): string {
     const chainFile = join(scratch(), "chain.pem");
     writeFileSync(chainFile, chain.map(pem).join(""));
     return ps(`
@@ -245,10 +292,10 @@ function Invoke-WslScriptText { param($distro, $user, $script, $timeoutSeconds)
   if ($script -match 'openssl s_client') { $script:calls += "chain:$user"; return @{ Code = 0; Text = [IO.File]::ReadAllText('${chainFile}') } }
   if ($script -match 'openssl verify') { $script:calls += "verify:$user"; $f = Join-Path $env:TMPDIR 'v.sh'; [IO.File]::WriteAllText($f, $script); return @{ Code = 0; Text = (& bash $f) -join "\`n" } }
   if ($script -match 'update-ca-certificates') { $script:calls += "import:$user"; $script:importScript = $script; return @{ Code = 0; Text = "1 added\`nCA_IMPORTED=" + ([regex]::Match($script, '(?m)^f=(\\S+)$').Groups[1].Value) } }
-  if ($script -match 'NODE_EXTRA_CA_CERTS=%s') { $script:calls += "env:$user"; return @{ Code = 0; Text = 'ENV_OK=/root/.agend/.env' } }
+  if ($script -match 'PROFILE_OK') { $script:calls += "profile:$user"; return @{ Code = 0; Text = 'PROFILE_OK' } }
+  if ($script -match 'NODE_EXTRA_CA_CERTS=%s') { $script:calls += "env:$user"; return @{ Code = ${envCode}; Text = '${envText}' } }
   throw "unexpected script"
 }
-${extra}
 $r = Invoke-OrgRootOffer 'AgEnD' 'songsid.github.io'
 Write-Output ('RESULT=' + $r)
 Write-Output ('CALLS=' + ($script:calls -join ','))
@@ -266,13 +313,27 @@ Write-Output ('WSLENV=' + $env:WSLENV)`, { NODE_EXTRA_CA_CERTS: "" });
     expect(out).toContain("位置：Windows 憑證存放區 LocalMachine\\Root");
     expect(out).toContain("不會關掉憑證檢查，也不會匯入其他憑證。");
     expect(out).toContain("ASKED:   要匯入這一張憑證嗎？(y/N)");
-    expect(out).toContain("CALLS=chain:root,verify:root,import:root,env:agenduser");
+    expect(out).toContain("CALLS=chain:root,verify:root,import:root,env:agenduser,profile:root\n");
     const path = `/usr/local/share/ca-certificates/agend-org-root-${fp.slice(0, 8).toLowerCase()}.crt`;
     expect(out).toContain(`已匯入公司根憑證：CN=AgEnD Test Inspection Root, O=AgEnD Test（SHA-256 ${fp}）`);
     expect(out).toContain("AgEnD 的 .env 已設定 NODE_EXTRA_CA_CERTS");
     expect(out).toContain(`NODE_EXTRA_CA_CERTS=${path}`);
     expect(out).toContain("WSLENV=USERPROFILE/p:NODE_EXTRA_CA_CERTS");                // replaced, not doubled; passed as is
     expect(out).toContain("RESULT=True");
+  });
+
+  it("an existing NODE_EXTRA_CA_CERTS elsewhere stays the effective one: no profile.d, no session override; a failed .env write sets neither (Prism #3071)", () => {
+    let out = offer(["leaf"], ["root"], "y", "ENV_KEPT=/etc/ssl/corp-bundle.pem");
+    expect(out).toContain("CALLS=chain:root,verify:root,import:root,env:agenduser\n");
+    expect(out).toContain("沒有改它，也不會用新的憑證蓋過它");
+    expect(out).toContain("    /etc/ssl/corp-bundle.pem");
+    expect(out).toContain("NODE_EXTRA_CA_CERTS=\n");
+    expect(out).toContain("WSLENV=USERPROFILE/p:NODE_EXTRA_CA_CERTS/u\n");                  // untouched
+    expect(out).toContain("RESULT=True");                                                     // curl/apt now trust it: check again
+    out = offer(["leaf"], ["root"], "y", "refusing symlinked /root/.agend/.env", 1);
+    expect(out).toContain("CALLS=chain:root,verify:root,import:root,env:agenduser\n");
+    expect(out).toContain("沒能把 NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env");
+    expect(out).toContain("NODE_EXTRA_CA_CERTS=\n");
   });
 
   it("consent defaults to no: nothing imported, nothing set", () => {
@@ -327,16 +388,29 @@ Write-Output ('PROBES=' + $script:probes)`);
     expect(out).toContain("OK=False");
   });
 
-  it("Restore-OrgCaSessionEnv: a previous import is carried into this run; anything else in that file is ignored", () => {
+  it("Restore-OrgCaSessionEnv: a previous import is carried into this run only while AgEnD's .env uses it or sets nothing (Prism #3071)", () => {
+    const ca = "/usr/local/share/ca-certificates/agend-org-root-0123abcd.crt";
+    const out0 = ps(`[IO.File]::WriteAllText((Join-Path $env:TMPDIR 'r.sh'), (Get-WslOrgCaRestoreScript)); Write-Output ('DIR=' + $env:TMPDIR)`);
+    const script = readFileSync(join(/DIR=(\S+)/.exec(out0)![1], "r.sh"), "utf8");
+    // The reader, for real: the profile line and the .env's current value.
+    const home = scratch(); mkdirSync(join(home, "etc", "profile.d"), { recursive: true }); mkdirSync(join(home, ".agend"));
+    writeFileSync(join(home, "etc", "profile.d", "agend-org-ca.sh"), `export NODE_EXTRA_CA_CERTS=${ca}\n`);
+    writeFileSync(join(home, ".agend", ".env"), "A=1\nexport NODE_EXTRA_CA_CERTS='/etc/ssl/corp-bundle.pem'\n");
+    const read = bash(script.replaceAll("/etc/profile.d", join(home, "etc", "profile.d")), { HOME: home });
+    expect(read.stdout).toBe(`export NODE_EXTRA_CA_CERTS=${ca}\nENV=/etc/ssl/corp-bundle.pem\n`);
     const run = (text: string) => ps(`
-function Invoke-BoundedWsl { param($Arguments, $TimeoutSeconds) Write-Host ('ARGS=' + ($Arguments -join ' ')); return @{ Code = 0; Text = "${text}" } }
+$AGEND_USER = 'agenduser'
+function Invoke-WslScriptText { param($distro, $user, $script, $t) Write-Host ('RUN=' + $distro + ' ' + $user); return @{ Code = 0; Text = "${text}" } }
 $env:WSLENV = ''
 Restore-OrgCaSessionEnv 'AgEnD'
 Write-Output ('NODE_EXTRA_CA_CERTS=' + $env:NODE_EXTRA_CA_CERTS + ' WSLENV=' + $env:WSLENV)`, { NODE_EXTRA_CA_CERTS: "" });
-    let out = run("export NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/agend-org-root-0123abcd.crt`n");
-    expect(out).toContain("ARGS=-d AgEnD -u root --exec cat /etc/profile.d/agend-org-ca.sh");
-    expect(out).toContain("NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/agend-org-root-0123abcd.crt WSLENV=NODE_EXTRA_CA_CERTS");
-    out = run("export NODE_EXTRA_CA_CERTS=/tmp/evil.crt`n");
-    expect(out).toContain("NODE_EXTRA_CA_CERTS= WSLENV=\n");
+    let out = run(`export NODE_EXTRA_CA_CERTS=${ca}\`nENV=`);
+    expect(out).toContain("RUN=AgEnD agenduser");
+    expect(out).toContain(`NODE_EXTRA_CA_CERTS=${ca} WSLENV=NODE_EXTRA_CA_CERTS`);
+    out = run(`export NODE_EXTRA_CA_CERTS=${ca}\`nENV=${ca}`);
+    expect(out).toContain(`NODE_EXTRA_CA_CERTS=${ca} WSLENV=NODE_EXTRA_CA_CERTS`);
+    for (const text of [`export NODE_EXTRA_CA_CERTS=${ca}\`nENV=/etc/ssl/corp-bundle.pem`, "ENV=", "export NODE_EXTRA_CA_CERTS=/tmp/evil.crt`nENV="]) {
+      expect(run(text)).toContain("NODE_EXTRA_CA_CERTS= WSLENV=\n");
+    }
   });
 });

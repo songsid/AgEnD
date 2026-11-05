@@ -434,11 +434,17 @@ function Test-WslNetwork([string]$distro) {
 # 3. 把名稱、SHA-256 指紋和位置給使用者看，問 y/N（預設不匯入）；同意了才只匯入這一張到 AgEnD 的 Linux
 #    （/usr/local/share/ca-certificates/agend-org-root-<指紋前 8 碼>.crt + update-ca-certificates），讓 Node.js 和 npm 也
 #    信任它：NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env、/etc/profile.d/agend-org-ca.sh（登入的 shell），也帶給這次安裝接下來的
-#    WSL 步驟（WSLENV）。
+#    WSL 步驟（WSLENV）。.env 裡已經有指向別的檔案的 NODE_EXTRA_CA_CERTS 時，三處都不改：它仍然有效（#3071 審查）。
 # 絕不：關掉憑證檢查（NODE_TLS_REJECT_UNAUTHORIZED=0、strict-ssl=false）、匯入 Windows 全部的根憑證、沒有同意就匯入。
 # 找不到、驗證不過、使用者不同意或匯入失敗：照舊顯示手動設定的說明。
 $ORG_CA_DIR = '/usr/local/share/ca-certificates'
 $ORG_CA_PROFILE = '/etc/profile.d/agend-org-ca.sh'
+# 讀 AgEnD 的 .env 裡現在的 NODE_EXTRA_CA_CERTS 到 $old（和 env-file.ts 一樣：export 、一對引號都去掉）。
+$ORG_CA_ENV_READ = @(
+    'd=${AGEND_HOME:-$HOME/.agend}; e=$d/.env'
+    'old=; if [ -f "$e" ]; then old=$(sed -n -E ''s/^[[:space:]]*(export[[:space:]]+)?NODE_EXTRA_CA_CERTS[[:space:]]*=[[:space:]]*//p'' "$e" | tail -n 1 | sed -E ''s/[[:space:]]+$//''); fi'
+    'old=${old#\"}; old=${old%\"}; old=${old#\''}; old=${old%\''}'
+)
 
 # 讀 WSL 裡連 $hostName 時出示的憑證鏈（PEM）。有 https_proxy 時經過它（不帶帳密）。沒有 openssl 時印 CHAIN_NO_OPENSSL。
 function Get-WslChainScript([string]$hostName, [int]$port = 443) {
@@ -530,7 +536,9 @@ function Find-OrgRoot($presented, $roots, $now = $null) {
     $stores = @($hits | Where-Object { $_.Cert.Thumbprint -eq $best.Cert.Thumbprint } | ForEach-Object { $_.Store } | Select-Object -Unique)
     return @{ Cert = $best.Cert; Store = ($stores -join '、'); Sha256 = (Get-CertSha256 $best.Cert) }
 }
-# 用 openssl 確認 $root（只信任它，不用系統的）真的簽了出示的憑證鏈。成功印 VERIFY_OK。
+# 用 openssl 確認 $root 真的簽了出示的憑證鏈。成功印 VERIFY_OK。-trusted：只信任它，系統的 CAfile、CApath、CAstore
+# 和預設的都不用（只關掉 CAfile、CApath 時，OpenSSL 3 仍會讀預設的 CAstore：#3071 審查）。暫存目錄建不起來就停，
+# 什麼都不寫。
 function Get-WslVerifyScript($root, $presented) {
     $presented = @($presented)
     $leaf = ConvertTo-Pem $presented[0]
@@ -538,35 +546,49 @@ function Get-WslVerifyScript($root, $presented) {
     $b = { param($s) [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes([string]$s)) }
     return (@(
         'set -u'
-        'd=$(mktemp -d); trap ''rm -rf -- "$d"'' EXIT'
+        'd=$(mktemp -d) || exit 1'
+        '[ -n "$d" ] && [ -d "$d" ] || exit 1'
+        'trap ''rm -rf -- "$d"'' EXIT'
         ("printf '%s' '" + (& $b (ConvertTo-Pem $root)) + "' | base64 -d > " + '"$d/root.pem"')
         ("printf '%s' '" + (& $b $leaf) + "' | base64 -d > " + '"$d/leaf.pem"')
         ("printf '%s' '" + (& $b $rest) + "' | base64 -d > " + '"$d/rest.pem"')
-        'set -- -no-CAfile -no-CApath -CAfile "$d/root.pem"'
+        'set -- -trusted "$d/root.pem"'
         'if [ -s "$d/rest.pem" ]; then set -- "$@" -untrusted "$d/rest.pem"; fi'
         'if openssl verify "$@" "$d/leaf.pem" >/dev/null 2>&1; then echo VERIFY_OK; fi'
         'exit 0'
     ) -join "`n")
 }
 function Get-OrgCaPath([string]$sha256) { return ($ORG_CA_DIR + '/agend-org-root-' + $sha256.Substring(0, 8).ToLowerInvariant() + '.crt') }
-# 以 root 匯入這一張：先確認寫進去的就是使用者看過指紋的那張，再 update-ca-certificates，並寫 /etc/profile.d。
+# 以 root 匯入這一張：先確認寫進去的就是使用者看過指紋的那張，再 update-ca-certificates。
 function Get-WslOrgCaImportScript($cert, [string]$sha256) {
     if ($sha256 -notmatch '^[0-9A-F]{64}$') { throw 'Invalid fingerprint.' }
     $pem64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes((ConvertTo-Pem $cert)))
     return (@(
         'set -eu'
         ('f=' + (Get-OrgCaPath $sha256))
-        ('profile=' + $ORG_CA_PROFILE)
-        't=$(mktemp); trap ''rm -f -- "$t"'' EXIT'
+        't=$(mktemp) || exit 1'
+        '[ -n "$t" ] && [ -f "$t" ] || exit 1'
+        'trap ''rm -f -- "$t"'' EXIT'
         ("printf '%s' '" + $pem64 + "' | base64 -d > " + '"$t"')
         'got=$(openssl x509 -in "$t" -outform DER | sha256sum | cut -c1-64)'
         ('[ "$got" = ' + $sha256.ToLowerInvariant() + ' ] || { echo ''certificate fingerprint mismatch'' >&2; exit 3; }')
         'mkdir -p -- "$(dirname -- "$f")"'
-        'for x in "$f" "$profile"; do [ ! -L "$x" ] || { echo "refusing symlinked $x" >&2; exit 1; }; done'
+        '[ ! -L "$f" ] || { echo "refusing symlinked $f" >&2; exit 1; }'
         'install -m 644 -- "$t" "$f"'
         'update-ca-certificates'
-        'printf ''export NODE_EXTRA_CA_CERTS=%s\n'' "$f" > "$profile.agend-tmp"; chmod 644 "$profile.agend-tmp"; mv -f -- "$profile.agend-tmp" "$profile"'
         'echo "CA_IMPORTED=$f"'
+    ) -join "`n")
+}
+# 以 root 寫 /etc/profile.d：登入的 shell（例如在 WSL 裡打 npm view）也信任它。只在 .env 用的就是這一張時才寫。
+function Get-WslOrgCaProfileScript([string]$caPath) {
+    if ($caPath -notmatch '^/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt$') { throw 'Invalid certificate path.' }
+    return (@(
+        'set -eu'
+        ('f=' + $caPath)
+        ('profile=' + $ORG_CA_PROFILE)
+        '[ ! -L "$profile" ] || { echo "refusing symlinked $profile" >&2; exit 1; }'
+        'printf ''export NODE_EXTRA_CA_CERTS=%s\n'' "$f" > "$profile.agend-tmp"; chmod 644 "$profile.agend-tmp"; mv -f -- "$profile.agend-tmp" "$profile"'
+        'echo PROFILE_OK'
     ) -join "`n")
 }
 # 以 AgEnD 的使用者把 NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env（其他行原樣保留）。已經指向別的檔案：不改，印 ENV_KEPT=<原本的>。
@@ -578,8 +600,7 @@ function Get-WslOrgCaEnvScript([string]$caPath) {
         'd=${AGEND_HOME:-$HOME/.agend}; e=$d/.env'
         'umask 077; mkdir -p -- "$d"'
         '[ ! -L "$e" ] || { echo "refusing symlinked $e" >&2; exit 1; }'
-        'old=; if [ -f "$e" ]; then old=$(sed -n -E ''s/^[[:space:]]*(export[[:space:]]+)?NODE_EXTRA_CA_CERTS[[:space:]]*=[[:space:]]*//p'' "$e" | tail -n 1 | sed -E ''s/[[:space:]]+$//''); fi'
-        'old=${old#\"}; old=${old%\"}; old=${old#\''}; old=${old%\''}'
+    ) + $ORG_CA_ENV_READ + @(
         'if [ "$old" = "$f" ]; then echo ENV_OK; exit 0; fi'
         'if [ -n "$old" ]; then echo "ENV_KEPT=$old"; exit 0; fi'
         't=$e.agend-ca-$$; trap ''rm -f -- "$t"'' EXIT'
@@ -594,12 +615,24 @@ function Set-OrgCaSessionEnv([string]$caPath) {
     $keep = @(([string]$env:WSLENV) -split ':' | Where-Object { $_ -and (($_ -split '/')[0] -ne 'NODE_EXTRA_CA_CERTS') })
     $env:WSLENV = (@($keep) + 'NODE_EXTRA_CA_CERTS') -join ':'
 }
-# 重新執行（例如重新開機後接續）時：之前匯入過，就再帶給這次的 WSL 步驟。
+# 重新執行（例如重新開機後接續）時：之前匯入過（profile.d 有），而且 AgEnD 的 .env 用的就是同一張（或沒有設定），才再帶給
+# 這次的 WSL 步驟；.env 指向別的檔案時不蓋過它。
+function Get-WslOrgCaRestoreScript {
+    return ((@(
+        ('if [ -f ' + $ORG_CA_PROFILE + ' ]; then cat -- ' + $ORG_CA_PROFILE + '; fi')
+    ) + $ORG_CA_ENV_READ + @(
+        'echo "ENV=$old"'
+    )) -join "`n")
+}
 function Restore-OrgCaSessionEnv([string]$distro) {
     try {
-        $r = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--exec', 'cat', $ORG_CA_PROFILE) -TimeoutSeconds 30
+        $r = Invoke-WslScriptText $distro $AGEND_USER (Get-WslOrgCaRestoreScript) 30
         $m = [regex]::Match([string]$r.Text, '(?m)^export NODE_EXTRA_CA_CERTS=(/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt)\r?$')
-        if ($r.Code -eq 0 -and $m.Success) { Set-OrgCaSessionEnv $m.Groups[1].Value; Write-InstallLog ("  NODE_EXTRA_CA_CERTS=" + $m.Groups[1].Value + "（之前匯入的公司根憑證）") }
+        $envNow = [regex]::Match([string]$r.Text, '(?m)^ENV=(.*?)\r?$')
+        if ($r.Code -ne 0 -or -not $m.Success -or -not $envNow.Success) { return }
+        if ($envNow.Groups[1].Value -and $envNow.Groups[1].Value -cne $m.Groups[1].Value) { return }
+        Set-OrgCaSessionEnv $m.Groups[1].Value
+        Write-InstallLog ("  NODE_EXTRA_CA_CERTS=" + $m.Groups[1].Value + "（之前匯入的公司根憑證）")
     } catch { }
 }
 function Write-Fingerprint([string]$sha256) {
@@ -650,14 +683,23 @@ function Invoke-OrgRootOffer([string]$distro, [string]$hostName) {
     Write-Info ("    " + $caPath)
     $envResult = Invoke-WslScriptText $distro $AGEND_USER (Get-WslOrgCaEnvScript $caPath) 30
     $kept = [regex]::Match([string]$envResult.Text, '(?m)^ENV_KEPT=(.*?)\r?$')
+    # .env 已經指向別的檔案：它仍然有效，.env、profile.d 和這次的 WSL 步驟都不改成新的這一張（#3071 審查）。
     if ($kept.Success) {
-        Write-Warn "AgEnD 的 .env 已經有 NODE_EXTRA_CA_CERTS（指向另一個檔案），沒有改它："
+        Write-Warn "AgEnD 的 .env 已經有 NODE_EXTRA_CA_CERTS，指向另一個檔案；沒有改它，也不會用新的憑證蓋過它："
         Write-Info ("    " + $kept.Groups[1].Value)
-    } elseif ($envResult.Code -eq 0 -and [string]$envResult.Text -match '(?m)^ENV_OK') {
-        Write-Ok "AgEnD 的 .env 已設定 NODE_EXTRA_CA_CERTS（Node.js 和 npm 會信任它）"
-    } else {
+        Write-Info "  curl 和 apt 已經信任新的憑證；Node.js 和 npm 只讀上面那個檔案。要讓它們也信任，請把這個檔案的內容加到它的最後："
+        Write-Info ("    " + $caPath)
+        return $true
+    }
+    if ($envResult.Code -ne 0 -or [string]$envResult.Text -notmatch '(?m)^ENV_OK') {
         Write-Warn "沒能把 NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env；之後可以手動加上這一行："
         Write-Info ("    NODE_EXTRA_CA_CERTS=" + $caPath)
+        return $true
+    }
+    Write-Ok "AgEnD 的 .env 已設定 NODE_EXTRA_CA_CERTS（Node.js 和 npm 會信任它）"
+    $profileResult = Invoke-WslScriptText $distro 'root' (Get-WslOrgCaProfileScript $caPath) 30
+    if ($profileResult.Code -ne 0 -or [string]$profileResult.Text -notmatch '(?m)^PROFILE_OK\r?$') {
+        Write-Warn ("沒能寫入 {0}；在 WSL 裡自己開的 shell 不會自動設定 NODE_EXTRA_CA_CERTS。" -f $ORG_CA_PROFILE)
     }
     Set-OrgCaSessionEnv $caPath
     return $true
