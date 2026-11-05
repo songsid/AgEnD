@@ -378,7 +378,8 @@ const transcriptReads = new Map<string, Promise<ViewHistoryAnswer | null>>();
 /** For tests: no read in flight. */
 export function resetTranscriptReads(): void { transcriptReads.clear(); }
 /** Claude history in the View: one page of the transcript's steps (or one step whole), as JSON never cached. */
-function transcriptHistory(ctx: ViewApiContext, name: string, params: URLSearchParams, res: ServerResponse): void {
+function transcriptHistory(ctx: ViewApiContext, name: string, params: URLSearchParams, res: ServerResponse,
+  recheck: () => { status: number; error: string } | null = () => null): void {
   const headers = { "Cache-Control": "private, no-store" };
   const send = (code: number, body: unknown, extra: Record<string, string> = {}) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", ...headers, ...extra }); res.end(JSON.stringify(body)); };
   const read = ctx.viewHistory;
@@ -395,7 +396,11 @@ function transcriptHistory(ctx: ViewApiContext, name: string, params: URLSearchP
     reading.then(done, done);
   }
   answer.then(
-    (a) => { if (!a) send(404, { error: "unknown instance" }); else send(200, a); },
+    (a) => {
+      const refused = recheck();                          // asked at the hand-off, for this request alone
+      if (refused) { send(refused.status, { error: refused.error }); return; }
+      if (!a) send(404, { error: "unknown instance" }); else send(200, a);
+    },
     (err) => { ctx.logger.debug({ err, name }, "view history read failed"); send(503, { error: "history_unavailable" }); },
   );
 }
@@ -523,7 +528,23 @@ export function handleViewRequest(
     // within its scope, Trusted and its read limit, as for the screen.
     if (url.searchParams.get("transcript") === "1") {
       if (guest && !guestAdmitted(name, guest, res)) return true;
-      transcriptHistory(ctx, name, url.searchParams, res);
+      // #3069 review (Prism P2-1): a read may wait on a shared one; this request's own right to the View is asked again
+      // when its answer is ready — the same live session, the agent still in its scope, still Trusted; for anyone else
+      // the gate again wherever reads need a session (the public link, web.view_access: session). Never a stale "yes".
+      const recheck = (): { status: number; error: string } | null => {
+        if (guest) {
+          if (!guest.current()) return { status: 401, error: "session_ended" };
+          if (!guest.scope().has(name)) return { status: 404, error: "unknown instance" };
+          if (!guest.trusted?.()) return { status: 403, error: "guest_not_trusted" };
+          return null;
+        }
+        if (gatewayRequestContext(req) || ctx.fleetConfig?.web?.view_access === "session") {
+          const d = verdict();
+          if (d.kind === "reject") return { status: d.status, error: d.message };
+        }
+        return null;
+      };
+      transcriptHistory(ctx, name, url.searchParams, res, recheck);
       return true;
     }
     if (guest) { guestPane(ctx, name, guest, res, history); return true; }

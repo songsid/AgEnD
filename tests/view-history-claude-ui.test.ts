@@ -124,6 +124,21 @@ describe("only steps before the live screen", () => {
     const same = [{ id: "a", kind: "assistant", body: "continue please" }, { id: "b", kind: "assistant", body: "something else" }];
     expect(vh.beforeScreen(same, "● continue please").map((s: any) => s.id)).toEqual(["a", "b"]);
   });
+  it("#3069 review (Prism P2-2): ordered and conservative — one occurrence never proves two messages, a shared opening is not the same message", () => {
+    const A = { id: "alpha", kind: "assistant", body: "I will inspect the configuration and fix the ALPHA failure." };
+    const B = { id: "beta", kind: "assistant", body: "I will inspect the configuration and fix the BETA failure." };
+    // Only the newer one is on the screen: the older one, whatever it shares with it, stays in the history.
+    expect(vh.beforeScreen([A, B], "● I will inspect the configuration and fix the BETA failure.").map((s: any) => s.id)).toEqual(["alpha"]);
+    // The same words twice, shown once: the older copy is history (the one occurrence is the newer one's).
+    const same1 = { id: "s1", kind: "user", body: "continue with the next step please" }, same2 = { id: "s2", kind: "user", body: "continue with the next step please" };
+    expect(vh.beforeScreen([same1, same2], "❯ continue with the next step please").map((s: any) => s.id)).toEqual(["s1"]);
+    // Both shown, in order: both on the screen. Shown in the wrong order: the walk stops (the older one is history).
+    expect(vh.beforeScreen([A, B], "● I will inspect the configuration and fix the ALPHA failure.\n● I will inspect the configuration and fix the BETA failure.")).toEqual([]);
+    expect(vh.beforeScreen([A, B], "● I will inspect the configuration and fix the BETA failure.\n● I will inspect the configuration and fix the ALPHA failure.").map((s: any) => s.id)).toEqual(["alpha"]);
+    // A different opening (the control): the older one not on screen is history, the newer one is not.
+    const C = { id: "gamma", kind: "assistant", body: "Something else entirely happened here." };
+    expect(vh.beforeScreen([C, B], "● I will inspect the configuration and fix the BETA failure.").map((s: any) => s.id)).toEqual(["gamma"]);
+  });
 });
 
 describe("in the View", () => {

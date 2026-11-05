@@ -178,6 +178,51 @@ describe("the View's own access rules", () => {
   });
 });
 
+describe("#3069 review (Prism P2-1): a read held on a shared one is answered only if this request may still read", () => {
+  /** A held read: every viewHistory call waits on `release`. */
+  function hold() {
+    const own = fm.viewHistory;
+    let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+    fm.viewHistory = async function (this: unknown, ...args: unknown[]) { await gate; return own.apply(this, args); };
+    return { release, restore: () => { fm.viewHistory = own; release(); } };
+  }
+  const grants = (level: "chat" | "trusted", instances = ["a"]) => { fm.fleetConfig.web = { guests: { enabled: true, grants: { [`${ALICE.adapterId}:${ALICE.userId}`]: { instances, level } } } }; };
+  for (const [what, change, want] of [
+    ["Trusted → Chat", () => grants("chat"), [403, "guest_not_trusted"]],
+    ["its scope moved to another agent", () => grants("trusted", ["b"]), [404, "unknown instance"]],
+    ["its session revoked", (sid: string) => fm.webSessions.revokeById(sid), [401, "session_ended"]],
+    ["nothing changed (the control)", () => {}, [200, undefined]],
+  ] as const) {
+    it(`a Trusted guest, while held: ${what}`, async () => {
+      grants("trusted");
+      const sid = session("guest", ALICE);
+      const h = hold();
+      try {
+        const pending = get(sid, "/api/pane/a?transcript=1");
+        await new Promise((r) => setTimeout(r, 30));
+        (change as (sid: string) => void)(sid);
+        h.release();
+        const r = await pending;
+        expect([r.status, json(r).error]).toEqual(want);
+        if (r.status === 200) expect(json(r).steps.length).toBeGreaterThan(0);
+      } finally { h.restore(); }
+    });
+  }
+  it("web.view_access: session — an admin's session revoked while held: 401; one kept: 200", async () => {
+    fm.fleetConfig.web = { view_access: "session" };
+    const [gone, kept] = [session("admin"), session("admin")];
+    const h = hold();
+    try {
+      const pending = [get(gone, "/api/pane/a?transcript=1"), get(kept, "/api/pane/a?transcript=1")];
+      await new Promise((r) => setTimeout(r, 30));
+      fm.webSessions.revokeById(gone);
+      h.release();
+      const [a, b] = await Promise.all(pending);
+      expect([a.status, b.status]).toEqual([401, 200]);
+    } finally { h.restore(); }
+  });
+});
+
 describe("bounded work", () => {
   it(`at most ${VIEW_HISTORY_READS.reads} reads at once (then 429 with Retry-After); the same read asked again shares the one running`, async () => {
     const own = fm.viewHistory;

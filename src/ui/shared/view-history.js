@@ -195,24 +195,30 @@ export function drawable(ch, font, doc) {
 // ── Which steps the live screen already shows ──
 // Text a needle is compared by: no whitespace (a wrap moves it) and no markdown marks (Claude draws them away).
 const squash = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, "").replace(/[\s*_`#>│]/g, "");
+/** How much of a prompt or a reply is looked for on the screen (its whole text up to this, normalised). */
+export const NEEDLE_CHARS = 64;
 /** The part of a prompt or a reply looked for on the screen (none for a tool: Claude may draw it summarised). */
 function needle(step) {
   if (step.kind !== "user" && step.kind !== "assistant") return null;
-  const s = squash(step.body || "").slice(0, 24);
+  const s = squash(step.body || "").slice(0, NEEDLE_CHARS);
   return s.length >= 4 ? s : null;
 }
 /**
- * The steps before the live screen: walking back from the newest, every prompt and reply found on the screen is on it;
- * the first one not found, and everything older, is history. Tool calls go with their neighbours (a step the screen
- * shows may come twice — never one it does not show not at all).
+ * The steps before the live screen, matched conservatively (#3069 review, Prism P2-2): walking back from the newest,
+ * each prompt and reply must be found on the screen BEFORE the place the newer one was found — one occurrence never
+ * proves two messages, and a shared opening (up to NEEDLE_CHARS) is not taken for the same message. The first one not
+ * found that way, and everything older, is history. Tool calls go with their neighbours. Unsure means shown again: a
+ * step the screen shows may come twice — never one it does not show not at all.
  */
 export function beforeScreen(steps, screen) {
   const text = squash(screen || "");
-  let cut = steps.length;
+  let cut = steps.length, limit = text.length;
   for (let i = steps.length - 1; i >= 0; i--) {
     const n = needle(steps[i]);
     if (n === null) continue;
-    if (!text.includes(n)) break;
+    const at = limit - n.length >= 0 ? text.lastIndexOf(n, limit - n.length) : -1;
+    if (at < 0) break;
+    limit = at;
     cut = i;
   }
   return steps.slice(0, cut);
