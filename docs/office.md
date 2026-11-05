@@ -55,6 +55,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 | **Hide paused and stopped** | leaves the sleepers out | per browser |
 | **Bedtime 0–6: the idle sleep** | see [Bedtime](#bedtime-strolls-and-mail) (zones styles and All offices) | per device, off by default |
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
+| **Dialogue** | the [dialogue box](#the-dialogue-box): what people say to agents here, and the replies | per browser, off by default |
 
 **The styles.**
 
@@ -152,6 +153,23 @@ A minimal zones pack:
 
 **Sizes and anchors.** A strip's displayed size is `w·scale × h·scale`, unless it gives `dw` and/or `dh` in logical units; with only one of them, the other keeps the aspect. `(ax, ay)` is the image point placed on the position (default: bottom centre, so a person stands on their seat). Suggested sizes at scale 2: a character 32×48, a prop 12×12.
 
+**Portraits and the dialogue box.** For [the dialogue box](#the-dialogue-box) a pack can give faces and a look:
+
+```json
+"portraits": {
+  "default": "portraits/agent.png",
+  "byInstance": { "atlas": { "idle": "portraits/atlas.png", "working": "portraits/atlas-busy.png" } },
+  "byUser": { "discord:123456789": "portraits/owner.png" },
+  "npc": { "npc-elder": "portraits/elder.png" }
+},
+"dialogBox": { "frame": "ui/box.png", "slice": 12, "background": "#2b1d14", "border": "#c8a165", "text": "#f6ead7", "name": "#ffd27a" }
+```
+
+- A portrait is a file, or expressions by state (`idle`, `working`, `needs`; at least one). A missing state shows `idle`, then any it has. Transparent PNGs up to 1024×1536 px, drawn standing (bottom-anchored) behind the box.
+- `default` is for agents. `byInstance` (up to 500) names instances; `byUser` (up to 200) a person's account as the chat records it, `adapter:id`; `npc` (up to 128) a furniture item the pack defines.
+- `dialogBox.frame` is a 9-slice picture up to 512×512 px with `slice` image px a side (1–128, default 8); the colours are `#rrggbb`, each defaulting to the dashboard's.
+- They're loaded only the first time the box needs them.
+
 **Checking a pack.** The check is strict: an unknown key, a value out of range, or a name that refers to nothing refuses the whole pack, with where it broke. An agent with pack access can run `office_pack_check` on a folder without storing anything (see [below](#let-an-agent-manage-skin-packs)). The page and the host use the same rules.
 
 ## Arrange the layout
@@ -187,6 +205,27 @@ These need a zones style.
 - **Strolls:** now and then an idle person walks to a nearby waypoint that no seat is on, stays a few seconds and walks back. A furniture item with `walk` strolls the same way. Strolls happen in a single office (not All offices), not with reduced motion, and not while Edit layout is open.
 - **Mail:** a message to someone in this office from someone outside it flies in at the door as a letter and lands at the pack's `mailDrop` (or the office's own from Edit layout). Without one it lands at the waypoint nearest the middle of the room, off every seat. More letters wait 16 px apart to the right, never on a seat. With reduced motion no letters are shown. Its person walks over and picks it up, unless they're asleep. A letter waits up to a minute.
 - **Traffic** between people in the same office flies from sender to receiver. A delegation stays in progress until the worker's report comes back.
+
+## The dialogue box
+
+**Dialogue** in the Office bar turns on a visual-novel style box at the bottom of the stage (#2861, designed by hxhsandy). It's per browser and off unless you tick it; until then the Office is exactly as before.
+
+- **Someone talks to an agent shown here** (from the web, Discord or Telegram, or a button they clicked): the box slides up with their portrait on the left, their name and the first ~120 characters of what they said, typed out.
+- **While the agent works**, its portrait appears on the right with a short line: its own `office_set` line when it has one, else "Working…".
+- **Its reply** takes the agent's side of the box (the first ~120 characters), and the box fades a few seconds later.
+- **Several conversations at once** queue, newest first; the box shows "+N" for the rest and the next one once this one ends.
+- **Click the box** for the agent's profile card (the view comes to them); **double-click** it for their chat.
+- Agent-to-agent traffic stays as it is: folders, envelopes and letters in the air.
+
+What it shows:
+
+- **On the dashboard**, only words you can already read in the chat: the box listens to the same live messages the chat gets. A message replayed when the page reconnects isn't news and never opens the box. Status lines never show.
+- **On a share link, never any words.** The box says "Sent Atlas a message." and "Replied." with a faceless "Someone"; the share's state carries only when, never what or who.
+- **Hide paused and stopped** applies: only people drawn in the office you're looking at speak. Someone drawn asleep (paused, stopped, or in bed at bedtime) keeps their conversation waiting until they wake to work, or it goes after 3 minutes.
+- **Reduced motion:** no slide, typing or fade; the box shows whole and goes at once.
+- A screen reader hears each line once (a polite live region).
+
+**Faces.** A pack's `portraits` (below) are used first. Otherwise an agent is drawn as its avatar (its identity-card picture, bot avatar or persona emoji) in a frame, else its initial; a person as their initial. A share link has no avatars: portraits, else initials.
 
 ## Share a view
 
@@ -346,6 +385,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { state: [line, …] } }`, up to 12 lines of 1–40 characters |
 | `room`, `desk` | ❌ | Desks layout pictures: `room.floor`, `room.wall`, `desk.back`, `desk.front`, `desk.lit` |
 | `levels` | ❌ | `{ titles, fixed }`: the levels' titles and pinned titles (see [Titles from a skin pack](#titles-from-a-skin-pack)) |
+| `portraits`, `dialogBox` | ❌ | the dialogue box's faces and look (see [Make a skin pack](#make-a-skin-pack)) |
 
 A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
 
@@ -427,6 +467,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 ## Upgrading and rolling back
 
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
+- **A pack with `portraits` or `dialogBox` and rolling back** (#2861). As with `levels`, an older version refuses such a pack and draws it as Desks, with a note. Remove the keys, or re-upload without them, before rolling back. Nothing else about the dialogue box is stored on the host.
 - **A pack with `levels` and rolling back.** A version before levels refuses a pack that has a `levels` key, so such a pack is drawn as Desks there, with a note. Remove the key, or re-upload the pack without it, if you need to roll back.
 - **Levels and rolling back.** Versions before levels never open `usage-lifetime.json`, so a rollback keeps it. While an older version runs, though, it prunes days older than 400 without carrying them, and those days are missing from the level after you upgrade again. Nothing else is lost.
 - **Rolling back within 2.3.2.** A pack deleted by an agent with `keep_previous` keeps its previous version in its own `.kept-<id>` folder, so a host rolled back to 2.3.2-beta.10 can still upload and delete that id. Since the fix for #2706 (2.3.2-beta.12), offices' layouts are kept beside the office list. A 2.3.2 beta from before that fix still shows every office after a rollback, but without its layout, and a save there drops the layouts.

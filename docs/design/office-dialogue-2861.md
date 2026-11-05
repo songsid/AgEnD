@@ -18,7 +18,7 @@ When a person messages an agent shown in the Office, a visual-novel style box sl
 The box is behind one Office bar checkbox, **Dialogue**. It is per browser (`localStorage`, like *Hide paused and stopped*) and off unless ticked. While it is off:
 
 - no stream listener is added and no picture is loaded;
-- the canvas draws exactly what it drew before (a test compares the draw calls with the toggle off against a page without the feature);
+- the canvas draws nothing of it (`draw()` returns before touching the context; a test publishes a message with the toggle off and finds none of its words drawn);
 - the only visible change is the unticked checkbox.
 
 The share page has the same checkbox in the viewer's own browser, also off by default.
@@ -36,7 +36,7 @@ The share page has the same checkbox in the viewer's own browser, also off by de
 
 - The share's `/o/<t>/state` gains `talk`: `{ now, items: [{ instance, kind: "heard" | "answered", at }] }`. It covers only the people the share shows, and only events from the last 2 minutes.
 - `talk` carries no sender, no text and no ids. The host keeps the last heard/answered time per instance, in memory only.
-- The share page draws the box with the agent's portrait and a faceless visitor, "Someone". The lines are "Received a message", "Working…" and "Replied".
+- The share page draws the box with the agent's portrait and a faceless visitor, "Someone". The lines are "Sent Atlas a message.", "Working…" and "Replied.".
 - A page that doesn't know `talk` ignores it.
 
 ## Pack format (optional)
@@ -104,10 +104,11 @@ The words are registered by the module itself, as the Office's strings already a
   - the pack check (shape, limits, refusals);
   - fallback order and the store (fresh/stale messages, the queue and +N, expiry, asleep hold);
   - the share `talk` scope (no text, no sender, scope cut, age cut);
-  - the toggle off: no listener, and the same draw calls.
+  - the toggle off: no listener, and none of a message's words drawn;
+  - the share mode: the Office given a share's `talk` draws "Someone" and "Sent Atlas a message.", never words (a share link needs a quick tunnel, which the smoke doesn't open).
 - **Smoke (Playwright, `smoke-2861-office-dialogue.mts`):**
   - the dashboard with a person's message and a reply (desk and phone, light and dark, a pack with portraits and Cozy without);
-  - the share page ("Received a message", no text in the DOM or in `/state`);
+  - "+N" with two conversations at once;
   - reduced motion;
   - SKEW both ways:
     - old shell assets (`app.js`, `app-shell.js`, `app-stream.js`, `app.css`, `instance-nav.js` from the branch tip) with the new Office;

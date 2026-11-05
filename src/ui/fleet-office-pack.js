@@ -91,6 +91,11 @@
 //                                                     ≤ 40 characters each), in place of the page's own
 //     "room": { "floor": "floor.png", "wall": "wall.png" }, "desk": { "back": …, "front": …, "lit": … }
 //                                                     optional: for the desks layout (a pack without stateZones)
+//     "portraits": { "default": FACE, "byInstance": { "atlas": FACE }, "byUser": { "discord:1": FACE }, "npc": { "<item id>": FACE } }
+//                                                     optional (#2861): the dialogue box's faces — FACE is a file, or
+//                                                     { "idle", "working", "needs" } files; PNGs up to 1024×1536 (host)
+//     "dialogBox": { "frame": "box.png", "slice": 8, "background": "#rrggbb", "border", "text", "name" }
+//                                                     optional (#2861): the box's 9-slice frame (≤ 512×512) and colours
 //     "levels": {                                     optional (#2661): the Office levels' words
 //       "titles": [{ "from": 1, "name": "Intern" }, …],   the title from each level up (≤ 32, `from` 0–100000
 //                                                     rising, a name 1–24 characters), in place of the page's own
@@ -162,7 +167,12 @@ const RESERVED = new Set(["cozy", "guild", "school"]);
 const ID = /^[A-Za-z0-9_-]{1,40}$/;
 const SRC = /^[A-Za-z0-9._/-]{1,200}$/;
 const HEX = /^#[0-9a-f]{6}$/i;
-const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40, seatFor: 16, titles: 32, title: 24, fixed: 500 };
+const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 2048, sets: 64, byInstance: 500, lines: 12, line: 40, seatFor: 16, titles: 32, title: 24, fixed: 500,
+  portraitInstances: 500, portraitUsers: 200, portraitNpcs: 128, slice: 128 };
+/** #2861: a portrait's expressions, by the state it is shown in (a missing one: idle, then any given). */
+export const PORTRAIT_STATES = ["idle", "working", "needs"];
+/** #2861: a person's account as the chat records it (`adapter:id`, web-chat-history.ts FROM). */
+const ACCOUNT = /^[^\s:]{1,64}:[^\s:]{1,128}$/;
 
 class Refused extends Error { constructor(at, why) { super(`${at}: ${why}`); } }
 /** `o[k]` when it is o's own property, else undefined: a name from a pack or a page never reaches Object.prototype. */
@@ -288,6 +298,59 @@ function levelsOf(v) {
   return out;
 }
 
+/** #2861: one portrait — a file, or { idle, working, needs } files (at least one): always the expressions' object. */
+function portraitOf(v, at) {
+  if (typeof v === "string") return { idle: src(v, at) };
+  obj(v, at); keys(v, PORTRAIT_STATES, at);
+  const out = {};
+  for (const k of PORTRAIT_STATES) if (v[k] !== undefined) out[k] = src(v[k], `${at}.${k}`);
+  if (!Object.keys(out).length) throw new Refused(at, `a file, or at least one of ${PORTRAIT_STATES.join(", ")}`);
+  return out;
+}
+/** #2861: a table of portraits by key (`keyOk` says which keys it takes), at most `max`. */
+function portraitTable(v, at, max, keyOk, what) {
+  if (v === undefined) return {};
+  obj(v, at);
+  if (Object.keys(v).length > max) throw new Refused(at, `at most ${max}`);
+  const out = {};
+  for (const [k, p] of Object.entries(v)) {
+    if (inherited(k) || !keyOk(k)) throw new Refused(`${at}.${k}`, what);
+    out[k] = portraitOf(p, `${at}.${k}`);
+  }
+  return out;
+}
+/**
+ * #2861: a pack's `portraits` — `default` (agents), `byInstance`, `byUser` (a person's `adapter:id`) and `npc` (a
+ * furniture item the pack defines: `fids`); null when it has none.
+ */
+function portraitsOf(v, fids) {
+  if (v === undefined) return null;
+  obj(v, "portraits");
+  keys(v, ["default", "byInstance", "byUser", "npc"], "portraits");
+  const instanceOk = (k) => !!k && k.length <= 200 && !/[\u0000-\u001f\u007f]/.test(k);
+  return {
+    ...(v.default !== undefined ? { default: portraitOf(v.default, "portraits.default") } : {}),
+    byInstance: portraitTable(v.byInstance, "portraits.byInstance", LIMIT.portraitInstances, instanceOk, "an instance's name"),
+    byUser: portraitTable(v.byUser, "portraits.byUser", LIMIT.portraitUsers, (k) => ACCOUNT.test(k), 'an account as "adapter:id"'),
+    npc: portraitTable(v.npc, "portraits.npc", LIMIT.portraitNpcs, (k) => fids.has(k), "a furniture item the pack defines"),
+  };
+}
+/** #2861: a pack's `dialogBox` — a 9-slice `frame` (`slice` image px a side) and colours; null when it has none. */
+function dialogBoxOf(v) {
+  if (v === undefined) return null;
+  obj(v, "dialogBox");
+  keys(v, ["frame", "slice", "background", "border", "text", "name"], "dialogBox");
+  if (v.slice !== undefined && v.frame === undefined) throw new Refused("dialogBox.slice", "only with frame");
+  const out = {};
+  if (v.frame !== undefined) { out.frame = src(v.frame, "dialogBox.frame"); out.slice = v.slice === undefined ? 8 : int(v.slice, 1, LIMIT.slice, "dialogBox.slice"); }
+  for (const k of ["background", "border", "text", "name"]) {
+    if (v[k] === undefined) continue;
+    if (!matteOk(v[k])) throw new Refused(`dialogBox.${k}`, "a colour as #rrggbb");
+    out[k] = v[k].toLowerCase();
+  }
+  return out;
+}
+
 /**
  * A pack's manifest, strictly: { ok: true, pack } or { ok: false, error: "<where>: <why>" }. `kept`: a pack the host
  * keeps already (read back, not uploaded), which may hold a RESERVED id.
@@ -295,7 +358,7 @@ function levelsOf(v) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk", "levels"], "pack");
+    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "room", "desk", "levels", "portraits", "dialogBox"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -394,6 +457,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       }
     }
     const levels = levelsOf(x.levels);
+    const portraits = portraitsOf(x.portraits, fids), dialogBox = dialogBoxOf(x.dialogBox);
     const room = x.room === undefined ? {} : obj(x.room, "room"), desk = x.desk === undefined ? {} : obj(x.desk, "desk");
     keys(room, ["floor", "wall"], "room"); keys(desk, ["back", "front", "lit"], "desk");
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
@@ -404,6 +468,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       props: x.props === undefined ? {} : strips(x.props, PROPS, "props", scale), bubbles,
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
       ...(levels ? { levels } : {}),
+      ...(portraits ? { portraits } : {}), ...(dialogBox ? { dialogBox } : {}),
     } };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
@@ -412,10 +477,17 @@ export function checkSkinPack(x, { kept = false } = {}) {
 }
 /** The checked pack, or null. */
 export const skinPackOk = (x) => { const r = checkSkinPack(x); return r.ok ? r.pack : null; };
-/** Every image a pack names (what a loader fetches before spriteSkin draws). */
-export const packImages = (pack) => [...new Set([pack.background, pack.foreground, pack.room.floor, pack.room.wall, pack.desk.back, pack.desk.front, pack.desk.lit,
+/** #2861: the pictures only the dialogue box uses — every portrait and the box's frame (loaded when it first needs one). */
+export const packPortraitImages = (pack) => {
+  const p = pack.portraits, all = p ? [p.default, ...Object.values(p.byInstance), ...Object.values(p.byUser), ...Object.values(p.npc)] : [];
+  return [...new Set([...all.flatMap((e) => (e ? Object.values(e) : [])), pack.dialogBox && pack.dialogBox.frame].filter(Boolean))];
+};
+/** The pictures the scene draws (what a loader fetches before spriteSkin draws). */
+export const packSceneImages = (pack) => [...new Set([pack.background, pack.foreground, pack.room.floor, pack.room.wall, pack.desk.back, pack.desk.front, pack.desk.lit,
   ...pack.furniture.flatMap((f) => [f.sprite.src, f.activeSprite && f.activeSprite.src, f.night && f.night.sprite.src, ...Object.values(f.walk || {}).map((st) => st.src)]),
   ...Object.values(pack.characters).flatMap((s) => Object.values(s).map((st) => st.src)), ...Object.values(pack.props).map((st) => st.src)].filter(Boolean))];
+/** Every image a pack names: the scene's and (#2861) the dialogue box's — what an upload must send, and nothing else. */
+export const packImages = (pack) => [...new Set([...packSceneImages(pack), ...packPortraitImages(pack)])];
 
 /** Every frame strip a checked pack names, with where (the host checks each image is frames·w × h). */
 export function packStrips(pack) {
