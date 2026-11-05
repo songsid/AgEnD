@@ -105,7 +105,9 @@ export class HubRuntime {
   private reported: { side: "server" | "member"; code: HubHoldCode; detail: string } | null = null;
   private mounting: "server" | "member" | null = null;
   /** Retries cleanup a failed server creation could not confirm (never handed to HubMount). */
-  private drainServer: () => Promise<void>;
+  private readonly drainServer: () => Promise<void>;
+  /** The member factory's leftover (same rules), drained when the member switch is off and on Stop. */
+  private readonly drainMember: () => Promise<void>;
   /** A leftover whose cleanup is still unconfirmed: every later Off (even an unchanged one) and Stop retries it. */
   private leftover = false;
 
@@ -145,11 +147,7 @@ export class HubRuntime {
         this.reported = { side: "member", code: "hub-incomplete", detail: "the Hub member side is not wired in this fleet" };
         throw new Error("hub-incomplete");
       });
-    const drainServer = this.drainServer;
-    this.drainServer = async () => {
-      await drainServer();
-      await memberComposed?.drain();
-    };
+    this.drainMember = memberComposed ? () => memberComposed.drain() : async () => {};
     this.mount = new HubMount({
       home: options.home,
       planDigest: hubPlanDigest,
@@ -220,7 +218,7 @@ export class HubRuntime {
   private async applyOnce(config: HubConfigView): Promise<void> {
     const view = effectiveHubView(config);
     if (view === this.view) {
-      if (this.leftover && (obj(config.hub)?.enabled !== true || obj(config.hub_member)?.enabled !== true)) await this.drainLeftovers();
+      if (this.leftover) await this.drainLeftovers({ server: obj(config.hub)?.enabled !== true, member: obj(config.hub_member)?.enabled !== true });
       return;
     }
     this.view = view;
@@ -228,7 +226,7 @@ export class HubRuntime {
     this.reported = null;
     try {
       await this.mount.apply(config); // fences, closes the previous services, then mounts what is on
-      if (obj(config.hub)?.enabled !== true || obj(config.hub_member)?.enabled !== true) await this.drainLeftovers();
+      await this.drainLeftovers({ server: obj(config.hub)?.enabled !== true, member: obj(config.hub_member)?.enabled !== true });
     } catch (err) {
       // HubMount already raised its hold (service-unavailable on an unconfirmed cleanup).
       this.options.log("warn", "Hub apply did not finish cleanly", { err: (err as Error).message });
@@ -265,16 +263,18 @@ export class HubRuntime {
       /* already reported */
     }
     await this.mount.close();
-    await this.drainLeftovers(true);
+    await this.drainLeftovers({ server: true, member: true }, true);
   }
 
   /** Off/Stop: confirm a failed creation's cleanup; while it still fails it stays owned and held (and Stop rejects). */
-  private async drainLeftovers(rethrow = false): Promise<void> {
+  private async drainLeftovers(sides: { server: boolean; member: boolean }, rethrow = false): Promise<void> {
+    if (!sides.server && !sides.member) return;
     try {
-      await this.drainServer();
+      if (sides.server) await this.drainServer();
+      if (sides.member) await this.drainMember();
       if (this.leftover) {
         this.leftover = false;
-        const rest = this.holds.filter((h) => h.side !== "server");
+        const rest = this.holds.filter((h) => !(h.code === "service-unavailable" && ((h.side === "server" && sides.server) || (h.side === "member" && sides.member))));
         if (rest.length !== this.holds.length) {
           this.holds = rest;
           this.options.onHoldsChanged?.(this.holds);
@@ -282,8 +282,9 @@ export class HubRuntime {
       }
     } catch (err) {
       this.leftover = true;
-      this.addHold({ side: "server", code: "service-unavailable", detail: (err as Error).message, since: (this.options.now ?? Date.now)() });
+      this.addHold({ side: sides.server ? "server" : "member", code: "service-unavailable", detail: (err as Error).message, since: (this.options.now ?? Date.now)() });
       if (rethrow) throw err;
     }
   }
+
 }

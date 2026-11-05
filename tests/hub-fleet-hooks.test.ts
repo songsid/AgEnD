@@ -42,7 +42,8 @@ function harness(initial: Record<string, unknown>) {
   const write = (cfg: Record<string, unknown>) => { writeFileSync(path, yaml.dump({ instances: {}, ...cfg })); fm.loadConfig(path); };
   return { fm, write };
 }
-const settle = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); };
+// Real dynamic imports (the pairing API) run before the apply: wait until the work has settled, bounded.
+const settle = async () => { for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 10)); };
 
 describe("FleetManager Hub hooks (S-51)", () => {
   it("off: nothing is imported, before or after the fleet starts, and through reloads", async () => {
