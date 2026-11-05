@@ -62,6 +62,14 @@ describe("through the real FleetManager (S-51)", () => {
       expect(fm.needsYouItems().filter((i: { type: string }) => i.type === "hub")).toMatchObject([
         { type: "hub", reason: "hub_unavailable", detail: t("hub.hold.hub-unsealed"), since: 5 },
       ]);
+      // A provider hold with a bounded reason: S4b's guidance when its copy exists, never a raw key.
+      fm.hubHolds = [{ side: "member", code: "hub-provider-unavailable", reason: "engine-unavailable", detail: "raw", since: 6 }];
+      fm.needsYou.poke();
+      await new Promise((r) => setTimeout(r, 50));
+      const provider = fm.needsYouItems().find((i: { type: string; detail: string }) => i.type === "hub");
+      const guidance = t("hub.provider.engine-unavailable");
+      expect(provider.detail).toBe(guidance !== "hub.provider.engine-unavailable" ? guidance : t("hub.hold.hub-provider-unavailable"));
+      expect(provider.detail).not.toMatch(/^hub\./);
       fm.hubHolds = [];
       fm.needsYou.poke();
       await new Promise((r) => setTimeout(r, 50));
