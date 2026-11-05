@@ -90,7 +90,7 @@ describe("the member's pairing backend", () => {
     r.answers.push("pending", "fail", "paired");
     await r.api.confirmFingerprint(r.digest, yes); await r.flush();
     expect(r.claim).toHaveBeenCalledTimes(2);
-    expect(r.api.view()).toMatchObject({ state: "held", hold: "unknown_outcome", memberOrigin: "https://hub.test" });
+    expect(r.api.view()).toMatchObject({ state: "held", hold: "unknown_outcome", memberOrigin: "https://hub.test", hubId: r.hubId });
     const b = rig({ maxPolls: 3 });
     await b.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
     await b.api.confirmFingerprint(b.digest, yes); await b.flush();
@@ -116,12 +116,13 @@ describe("the member's pairing backend", () => {
     r.answers.push("paired");
     await r.api.confirmFingerprint(r.digest, yes); await r.flush();
     expect(r.api.view().state).toBe("paired");
-    expect(await r.api.disconnect()).toEqual({ ok: true, remote: "pending" });
+    expect(await r.api.disconnect({ hubId: randomUUID() })).toEqual({ ok: false, error: "conflict" });   // another Hub: never
+    expect(await r.api.disconnect({ hubId: r.hubId })).toEqual({ ok: true, remote: "pending" });
     expect([r.fence, r.withdrawAll].map((f) => f.mock.calls.length)).toEqual([1, 1]);
     expect(existsSync(join(r.home, "hub-member", r.hubId, "pairing.json"))).toBe(true);
-    expect(r.api.view()).toEqual({ state: "held", hold: "disconnected", memberOrigin: "https://hub.test" });
-    expect(r.api.disconnected()).toBe(true);
-    expect(await r.api.disconnect()).toEqual({ ok: false, error: "conflict" });
+    expect(r.api.view()).toEqual({ state: "held", hold: "disconnected", memberOrigin: "https://hub.test", hubId: r.hubId });
+    expect(r.api.disconnected(r.hubId)).toBe(true);
+    expect(await r.api.disconnect({ hubId: r.hubId })).toEqual({ ok: false, error: "conflict" });
     expect(r.api.cancel()).toEqual({ state: "unpaired" });                       // Start over
     expect(r.api.disconnected(r.hubId)).toBe(true);                             // the old profile never reconnects
     await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
@@ -139,8 +140,8 @@ describe("the member's pairing backend", () => {
     await w.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
     w.answers.push("paired");
     await w.api.confirmFingerprint(w.digest, yes); await w.flush();
-    expect(await w.api.disconnect()).toEqual({ ok: false, error: "unsaved" });
-    expect(w.api.disconnected()).toBe(true);                                    // fenced and tombstoned all the same
+    expect(await w.api.disconnect({ hubId: w.hubId })).toEqual({ ok: false, error: "unsaved" });
+    expect(w.api.disconnected(w.hubId)).toBe(true);                                    // fenced and tombstoned all the same
   });
 });
 
@@ -216,5 +217,75 @@ describe("the claim loop's edges (mutation review)", () => {
     await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
     await r.api.confirmFingerprint(r.digest, yes); await r.flush();
     expect(claim).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Prism #3115 r1 (pairing)", () => {
+  it("P1: the claim loop outlives the confirming request (its authority is the saved receipt), and ends when the receipt goes or hub_member is off", async () => {
+    const r = rig();
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    r.answers.push("pending", "pending", "paired");
+    let open = true;
+    await r.api.confirmFingerprint(r.digest, () => open);
+    open = false;                                                     // the Settings change applied: its execution closed
+    await r.flush();
+    expect(r.claim).toHaveBeenCalledTimes(3);
+    expect(r.api.view().state).toBe("paired");
+    let on = true;
+    const o = rig({ enabled: () => on });
+    await o.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    let wake: (() => void) | null = null;
+    const p = rig({ enabled: () => on, sleep: () => new Promise<void>((ok) => { wake = ok; }) });
+    await p.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    p.answers.push("pending", "paired");
+    await p.api.confirmFingerprint(p.digest, yes); await p.flush();
+    on = false; wake!(); await p.flush();
+    expect(p.claim).toHaveBeenCalledTimes(1);                         // hub_member off: no further claim
+  });
+  it("P4: cancel after an unknown outcome abandons the binding (retired, no retry) and a new pairing can start; a failed hold save still holds", async () => {
+    const r = rig();
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    r.answers.push("fail");
+    await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    expect(r.api.view()).toMatchObject({ state: "held", hold: "unknown_outcome" });
+    expect(await r.api.confirmFingerprint(r.digest, yes)).toEqual({ ok: false, error: "conflict" });
+    expect(r.api.cancel()).toEqual({ state: "unpaired" });
+    expect(r.claim).toHaveBeenCalledTimes(1);
+    expect(r.api.disconnected(r.hubId)).toBe(true);
+    expect((await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes)).ok).toBe(true);
+    // The hold cannot be saved (the directory is read-only): the memory hold stands — no retry, no pending view.
+    const w = rig();
+    await w.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    w.answers.push("fail");
+    const { chmodSync } = await import("node:fs");
+    const dir = join(w.home, "hub-member");
+    const confirmed = await w.api.confirmFingerprint(w.digest, yes);
+    expect(confirmed.ok).toBe(true);
+    chmodSync(dir, 0o500);
+    try {
+      await w.flush();
+      expect(w.api.view()).toMatchObject({ state: "held", hold: "unknown_outcome" });
+      expect(await w.api.confirmFingerprint(w.digest, yes)).toEqual({ ok: false, error: "conflict" });
+    } finally { chmodSync(dir, 0o700); }
+    expect(w.api.cancel()).toEqual({ state: "unpaired" });
+  });
+  it("P5: the reconnect predicate fails closed — no state, another hub, a held or disconnected binding all refuse", async () => {
+    const r = rig();
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    r.answers.push("paired");
+    await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    expect(r.api.disconnected(r.hubId)).toBe(false);                  // the one consistent case
+    expect(r.api.disconnected(randomUUID())).toBe(true);
+    await r.api.disconnect({ hubId: r.hubId });
+    unlinkSync(join(r.home, "hub-member", "state.json"));
+    expect(r.api.view()).toEqual({ state: "held", hold: "unsaved" });
+    expect(r.api.disconnected(r.hubId)).toBe(true);
+  });
+  it("P2: the disconnect confirmation names the exact Hub; another hub id is refused before anything is proposed", async () => {
+    const { pairingSummary } = await import("../src/hub-pairing-summary.js");
+    const paired = { state: "paired", hub: { hubId: "h1", name: null, memberOrigin: "https://a.test", webOrigin: "https://w.a.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "offline" } as const;
+    expect(pairingSummary("disconnect", { hubId: "h1" }, paired, "h1").summary[0]).toBe("Disconnect this fleet from the Hub at https://a.test (h1)");
+    expect(() => pairingSummary("disconnect", { hubId: "h2" }, paired, "h1")).toThrow(expect.objectContaining({ code: "conflict" }));
+    expect(() => pairingSummary("disconnect", {}, paired, "h1")).toThrow(expect.objectContaining({ code: "conflict" }));
   });
 });

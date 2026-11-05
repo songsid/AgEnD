@@ -84,8 +84,14 @@ export class HubExposureStore {
     try {
       return this.database.transaction(() => {
         const revision = this.check(), value = work(revision); writing = true;
-        this.options.audit.appendInTransaction({ id: randomUUID(), sequence: revision + 1, at: (this.options.now ?? Date.now)(), requestId: randomUUID(),
+        // #3115 r1 P6: required audit finishes in THIS transaction. A thenable (an async sink) is refused: the store
+        // goes uncertain, the transaction rolls back, and a late rejection is observed (never unhandled).
+        const result: unknown = this.options.audit.appendInTransaction({ id: randomUUID(), sequence: revision + 1, at: (this.options.now ?? Date.now)(), requestId: randomUUID(),
           actor: { kind: "local-host" }, action, result: "completed", exposureId, policyVersion: revision + 1 }, this.database);
+        if (result && typeof (result as { then?: unknown }).then === "function") {
+          void Promise.resolve(result).catch(() => {});
+          throw new HubProtocolError("uncertain");
+        }
         this.options.floor.raise(revision + 1);
         this.database.prepare("UPDATE hub_exposure_meta SET revision=? WHERE singleton=1").run(revision + 1);
         return value;

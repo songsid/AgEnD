@@ -44,6 +44,8 @@ export interface HubMemberPairingDeps {
   fence?(): void;
   /** S3c: withdraw every exposure locally (saved before it returns). */
   withdrawAll?(): Promise<void> | void;
+  /** Whether hub_member is still on (S5; absent: on). The claim loop stops the moment it is off. */
+  enabled?(): boolean;
   now?(): number;
   pollMs?: number; maxPolls?: number;
   sleep?(ms: number): Promise<void>;
@@ -56,6 +58,8 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
   const begin = deps.begin ?? realBegin, claim = deps.claim ?? realClaim;
   const profiles = deps.profiles ?? ((home: string, hubId: string) => new HubMemberProfileStore(home, hubId));
   let generation = 0;
+  // #3115 r1 P4: an unknown claim outcome is held in memory too — a failed save of the hold must not reopen a retry.
+  let unknown: { hubId: string } | null = null;
   const read = (): MemberState => {
     if (!existsSync(join(deps.home, STATE))) return {};
     const s = JSON.parse(readPrivateFile(deps.home, STATE)) as MemberState;      // malformed: throws (held "unsaved")
@@ -84,38 +88,46 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
     try { const r = (s.retired ?? []).find((x) => x.hubId === s.hubId); retiredProfile = !!r && f0.pairing && store.profileDigest() === r.profile; } catch { return { state: "held", hold: "unsaved" }; }
     const f = { pairing: f0.pairing && !retiredProfile, pending: f0.pending };
     let origin: string | undefined;
+    const memHold = unknown && unknown.hubId === s.hubId ? "unknown_outcome" as const : null;
     try {
       if (f.pairing) {
         const p = store.readProfile();
         origin = p.hub.memberOrigin;
-        if (s.disconnected) return { state: "held", hold: "disconnected", memberOrigin: origin };
-        const held = s.held ?? deps.hold?.() ?? null;
-        if (held) return { state: "held", hold: held, memberOrigin: origin };
+        if (s.disconnected) return { state: "held", hold: "disconnected", memberOrigin: origin, hubId: s.hubId };
+        const held = memHold ?? s.held ?? deps.hold?.() ?? null;
+        if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId };
         return { state: "paired", hub: { hubId: p.hub.hubId, name: null, memberOrigin: p.hub.memberOrigin, webOrigin: p.hub.webOrigin, fingerprint: { kind: "hub-key", digest: p.hub.spkiSha256 } },
           link: deps.link?.() === "online" ? "online" : "offline" };
       }
       if (f.pending) {
         const p = store.readPending();
         origin = p.hub.memberOrigin;
-        const held = s.held ?? deps.hold?.() ?? (p.expiresAt <= now() ? "expired" : null);
-        if (held) return { state: "held", hold: held, memberOrigin: origin };
+        const held = memHold ?? s.held ?? deps.hold?.() ?? (p.expiresAt <= now() ? "expired" : null);
+        if (held) return { state: "held", hold: held, memberOrigin: origin, hubId: s.hubId };
         return { state: "pending", memberOrigin: origin, fingerprint: { kind: "pairing", digest: p.fingerprint }, expiresAt: p.expiresAt, ownerConfirmed: null, adminApproved: null,
           localConfirmed: s.localConfirmed?.digest === p.fingerprint };
       }
     } catch { return { state: "held", hold: "unsaved", ...(origin ? { memberOrigin: origin } : {}) }; }
-    if (s.held) return { state: "held", hold: s.held };
+    if (memHold ?? s.held) return { state: "held", hold: (memHold ?? s.held)! };
     return { state: "unpaired" };
   }
 
   /** The local owner's claim loop: one generation, exact "pending" only, bounded and sequential; anything else holds. */
-  async function poll(gen: number, hubId: string, digest: string, current: () => boolean): Promise<void> {
+  async function poll(gen: number, hubId: string, digest: string): Promise<void> {
     const store = profiles(deps.home, hubId), expected = store.profileDigest();
-    const live = () => gen === generation && current();
+    // #3115 r1 P1: the loop outlives the Settings request that started it. Its authority is the owner's saved local
+    // receipt for exactly this fingerprint (revocable: cancel, disconnect, a hold or hub_member off end it), never
+    // that request's execution, which closes when the change is applied.
+    const consent = () => { try { const st = read(); return st.hubId === hubId && st.localConfirmed?.digest === digest && !st.disconnected && !st.held; } catch { return false; } };
+    const live = () => gen === generation && !unknown && (deps.enabled?.() ?? true) && consent();
     for (let i = 0; i < (deps.maxPolls ?? 120); i++) {
       if (!live()) return;
       let r: { status: "pending" | "paired" };
       try { r = await claim({ home: deps.home, hubId, approvedFingerprint: digest, expectedProfileDigest: expected, current: live }); }
-      catch { if (gen === generation) { try { write({ ...read(), held: "unknown_outcome" }); } catch { /* view() holds on its own */ } } return; }
+      catch {
+        if (gen === generation) { unknown = { hubId }; try { write({ ...read(), held: "unknown_outcome" }); } catch { /* the memory hold stands */ } }
+        return;
+      }
       if (r.status === "paired") { if (gen === generation) { const s = read(); delete s.localConfirmed; write(s); } return; }
       if (r.status !== "pending") return;
       let pending; try { pending = store.readPending(); } catch { return; }
@@ -150,10 +162,11 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       const v = view();
       if (v.state === "held" && v.hold === "expired") return { ok: false, error: "expired" };
       if (v.state !== "pending" || typeof digest !== "string" || digest !== v.fingerprint.digest) return { ok: false, error: "conflict" };
+      if (!current()) return { ok: false, error: "conflict" };
       const s = read();
       try { write({ ...s, localConfirmed: { digest, at: now() } }); } catch { return { ok: false, error: "unsaved" }; }
       const gen = ++generation;
-      void poll(gen, s.hubId!, digest, current);
+      void poll(gen, s.hubId!, digest);
       return { ok: true, pairing: view() };
     },
     /** Withdraw the local pending request (or clear an expired/refused hold): the in-flight generation first. */
@@ -168,6 +181,18 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
         write({ retired: [...(s.retired ?? []).filter((r) => r.hubId !== s.hubId), { hubId: s.hubId, profile: digest }] });
         return view();
       }
+      // #3115 r1 P4: after an unknown claim outcome, abandon the binding without retrying it: the pending claim goes, and
+      // the hub is retired with whatever profile it has now (a credential saved meanwhile never connects automatically).
+      if (s.hubId && (s.held === "unknown_outcome" || (unknown && unknown.hubId === s.hubId))) {
+        const hubId = s.hubId;
+        try {
+          const store = profiles(deps.home, hubId);
+          if (files(hubId).pending) store.clearPending();
+          write({ retired: [...(s.retired ?? []).filter((r) => r.hubId !== hubId), { hubId, profile: store.profileDigest() }] });
+        } catch { return view(); }
+        unknown = null;
+        return view();
+      }
       if (s.hubId && files(s.hubId).pending) { try { profiles(deps.home, s.hubId).clearPending(); } catch { return view(); } }
       delete s.localConfirmed;
       if (s.held === "expired" || s.held === "refused") delete s.held;
@@ -176,7 +201,11 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       return view();
     },
     /** Leave the Hub (a confirmed Settings replay): fence, tombstone, withdraw every exposure; the Hub revokes later. */
-    async disconnect(): Promise<{ ok: true; remote: "pending" } | { ok: false; error: "unsaved" | "conflict" }> {
+    async disconnect(expected: { hubId?: unknown } = {}): Promise<{ ok: true; remote: "pending" } | { ok: false; error: "unsaved" | "conflict" }> {
+      // #3115 r1 P2: only the Hub the owner confirmed (its id, in the confirmed body) — never a replacement.
+      let bound: string | undefined;
+      try { bound = read().hubId; } catch { return { ok: false, error: "conflict" }; }
+      if (!bound || expected.hubId !== bound) return { ok: false, error: "conflict" };
       const v = view();
       if (v.state !== "paired" && !(v.state === "held" && v.hold !== "disconnected" && v.memberOrigin)) return { ok: false, error: "conflict" };
       generation++;
@@ -185,15 +214,21 @@ export function createHubMemberPairingApi(deps: HubMemberPairingDeps) {
       try { await deps.withdrawAll?.(); } catch { return { ok: false, error: "unsaved" }; }
       return { ok: true, remote: "pending" };
     },
-    /** Whether a binding is disconnected (S5 refuses to reconnect from it, even after a restart). */
-    disconnected(hubId?: string): boolean {
+    /**
+     * Whether S5 must refuse to connect with `hubId`'s profile (#3115 r1 P5: fails closed). It may connect only while
+     * the state names exactly this hub, unheld and not disconnected, and its profile is not a retired one; anything
+     * else — no state, another hub, unreadable state — refuses.
+     */
+    disconnected(hubId: string): boolean {
       try {
         const s = read();
-        if (s.disconnected) return true;
-        const r = hubId ? (s.retired ?? []).find((x) => x.hubId === hubId) : undefined;
-        return !!r && profiles(deps.home, hubId!).profileDigest() === r.profile;
+        if (s.hubId !== hubId || s.disconnected || s.held || (unknown && unknown.hubId === hubId)) return true;
+        const r = (s.retired ?? []).find((x) => x.hubId === hubId);
+        return !!r && profiles(deps.home, hubId).profileDigest() === r.profile;
       } catch { return true; }
     },
+    /** The hub the current binding names (for a disconnect's confirmation), or null. */
+    boundHub(): string | null { try { return read().hubId ?? null; } catch { return null; } },
   };
 }
 

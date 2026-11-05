@@ -272,7 +272,10 @@ export function createMemberClient({ confirm, pollMs = 5000, doc = typeof docume
       return step("connect", { address: a, code: c });
     },
     confirmFingerprint(digest) { return step("confirm", { digest }); },
-    async disconnect() { const r = await step("disconnect"); return r.ok ? { ok: true, remote: "pending", ...(r.pendingConfirmation ? { pendingConfirmation: true } : {}) } : { ok: false, error: r.error === "unsaved" ? "unsaved" : "conflict" }; },
+    async disconnect() {
+      // #3115 r1 P2: the Hub this page shows is the one the owner confirms leaving (the server refuses any other).
+      const now = await pairingNow(), hubId = now && (now.hub ? now.hub.hubId : now.hubId);
+      const r = await step("disconnect", { hubId }); return r.ok ? { ok: true, remote: "pending", ...(r.pendingConfirmation ? { pendingConfirmation: true } : {}) } : { ok: false, error: r.error === "unsaved" ? "unsaved" : "conflict" }; },
     async cancel() { const r = await confirm.api("/api/hub/member/pairing/cancel", { method: "POST", body: "{}" }); return r.ok && r.body && r.body.pairing ? r.body.pairing : pairingNow(); },
     /** The local status, every pollMs while visible (one request at a time; none while hidden); stops with the last listener. */
     subscribe(fn) { listeners.add(fn); if (!timer) timer = timers.setTimeout(tick, pollMs); return () => { listeners.delete(fn); if (!listeners.size && timer) { timers.clearTimeout(timer); timer = null; } }; },

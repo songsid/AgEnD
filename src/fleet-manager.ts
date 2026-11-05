@@ -2755,7 +2755,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       hubPairing: (action: "connect" | "confirm" | "disconnect", input: unknown) => {
         const api = this.hubMemberPairingApi;
         if (!api) throw Object.assign(new Error("hub_member_unavailable"), { code: "hub_member_unavailable" });
-        return pairingSummary(action, input, api.view());
+        return pairingSummary(action, input, api.view(), api.boundHub());
       },
       proof: (kind, target, id, binding, key) => {
         const map = kind === "provider" ? this.providerSecretChallenges : kind === "binding" ? this.connectionBindingChallenges : this.connectionSecretChallenges;

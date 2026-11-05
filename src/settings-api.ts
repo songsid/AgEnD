@@ -862,14 +862,20 @@ export function handleSettingsRequest(
       if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
       readBody(req, 8192).then((bytes) => {
         execution.assert();
+        if ((ctx.hubMemberExposures?.() ?? null) !== api) { json(res, 409, { ok: false, error: "unavailable" }); return; }
         try { json(res, 200, { ok: true, view: api.publish(JSON.parse(bytes.toString("utf8"))) }); } catch (err) { refused(err); }
       }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
       return true;
     }
     if (hubExposures === "withdraw" && method === "POST") {
-      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      const caller = guestSettingsCaller(req, url, ctx);
+      if (!caller) { json(res, 403, { error: "admin_required" }); return true; }
       const id = path.split("/")[5]!;
       readBody(req, 4096).then(async (bytes) => {
+        // #3115 r1 P3: the same live caller (a rotated token or revoked session is no one) and the same composed member
+        // at the effect, after the body's wait.
+        if (guestSettingsCaller(req, url, ctx) !== caller) { json(res, 401, { error: "no longer authorized" }); return; }
+        if ((ctx.hubMemberExposures?.() ?? null) !== api) { json(res, 409, { ok: false, error: "unavailable" }); return; }
         const body = JSON.parse(bytes.toString("utf8") || "{}") as { expectedRevision?: unknown };
         if (!Number.isSafeInteger(body.expectedRevision)) { json(res, 400, { ok: false, error: "conflict" }); return; }
         try { json(res, 200, { ok: true, ...(await api.withdraw(id, body.expectedRevision as number)) }); } catch (err) { refused(err); }
@@ -897,9 +903,10 @@ export function handleSettingsRequest(
       const current = () => { try { execution.assert(); return settingsRequestLocalAdminCurrent(req); } catch { return false; } };
       readBody(req, 4096).then(async (bytes) => {
         execution.assert();
+        if ((ctx.hubMemberPairing?.() ?? null) !== api) { json(res, 409, { ok: false, error: "unavailable" }); return; }
         const body = JSON.parse(bytes.toString("utf8") || "{}") as Record<string, unknown>;
         const r = step === "connect" ? await api.connect({ address: body.address, code: body.code }, current)
-          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect();
+          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect({ hubId: body.hubId });
         json(res, r.ok ? 200 : 409, r);
       }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
       return true;

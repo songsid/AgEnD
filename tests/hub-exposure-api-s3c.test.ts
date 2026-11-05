@@ -74,17 +74,19 @@ describe("the member's exposure API", () => {
 
 describe("the routes", () => {
   const body = { agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 };
-  async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api?: HubMemberExposureApi | null }) {
+  async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api?: HubMemberExposureApi | null; meanwhile?: (ctx: any) => void }) {
     const raw = Buffer.from(JSON.stringify(o.json ?? {}));
     const cap = new SettingsExecution({ current: () => true, snapshot: () => null }); caps.push(cap);
     const req = o.replay ? createSettingsReplay({ method: o.method, url: o.path, body: raw, binding: "owned", localAdmin: () => o.admin !== false }, cap)
       : Object.assign(new EventEmitter(), { method: o.method, url: o.path, headers: o.admin === false ? {} : { "x-agend-token": "tok" } }) as unknown as IncomingMessage;
     if (o.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "scratch", expectedOrigin: "https://scratch.invalid", isCurrent: () => true });
-    const ctx = { webToken: "tok", webSessions: null, fleetConfig: { instances: {} }, logger: { warn: vi.fn() }, hubMemberExposures: () => (o.api === undefined ? member().api : o.api) };
+    const api = o.api === undefined ? member().api : o.api;
+    const ctx = { webToken: "tok", webSessions: null, fleetConfig: { instances: {} }, logger: { warn: vi.fn() }, hubMemberExposures: () => api };
     return new Promise<{ status: number; body: any }>((resolve) => {
       let status = 0;
       const res = { writeHead(v: number) { status = v; }, setHeader() {}, end(v: string) { resolve({ status, body: JSON.parse(v) }); } };
       expect(handleSettingsRequest(req, res as never, new URL(o.path, "http://localhost"), ctx as never)).toBe(true);
+      o.meanwhile?.(ctx);                                               // between the request's start and its body
       if (!o.replay) { req.emit("data", raw); req.emit("end"); }
     });
   }
@@ -120,5 +122,46 @@ describe("the routes", () => {
     expect(await call({ method: "POST", path, json: { expectedRevision: 1 }, api: m.api })).toMatchObject({ status: 200, body: { ok: true, remote: "pending" } });
     expect(await call({ method: "POST", path, json: { expectedRevision: 1 }, api: m.api })).toMatchObject({ status: 409, body: { ok: false, error: "conflict" } });
     expect(m.store.localExposure(v.exposureId!)).toBeNull();
+  });
+});
+
+describe("Prism #3115 r1 (exposures)", () => {
+  it("P3: withdraw rechecks the same live caller and the same composed member at the effect", async () => {
+    const m = member(), v = m.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 });
+    const path = `/api/hub/member/exposures/${v.exposureId}/withdraw`;
+    const routes = (await import("../src/settings-api.js")).handleSettingsRequest;
+    const run = async (meanwhile: (ctx: any) => void) => {
+      const req: any = Object.assign(new (await import("node:events")).EventEmitter(), { method: "POST", url: path, headers: { "x-agend-token": "tok" } });
+      const ctx: any = { webToken: "tok", webSessions: null, fleetConfig: { instances: {} }, logger: { warn: vi.fn() }, hubMemberExposures: () => m.api };
+      return new Promise<{ status: number; body: any }>((resolve) => {
+        let status = 0;
+        const res = { writeHead(x: number) { status = x; }, setHeader() {}, end(x: string) { resolve({ status, body: JSON.parse(x) }); } };
+        routes(req, res as never, new URL(path, "http://localhost"), ctx);
+        meanwhile(ctx);
+        req.emit("data", Buffer.from(JSON.stringify({ expectedRevision: 1 }))); req.emit("end");
+      });
+    };
+    expect((await run((ctx) => { ctx.webToken = "rotated"; })).status).toBe(401);
+    expect(await run((ctx) => { const other = member().api; ctx.hubMemberExposures = () => other; })).toMatchObject({ status: 409, body: { error: "unavailable" } });
+    expect(m.store.localExposure(v.exposureId!)).not.toBeNull();       // neither committed
+    expect((await run(() => {})).status).toBe(200);
+  });
+  it("P6: an audit sink that returns a promise is refused — nothing committed, the store uncertain, a late rejection observed", async () => {
+    const db = new Database(":memory:"); dbs.push(db);
+    applyHubMigrations(db, [HUB_AUDIT_MIGRATION, HUB_EXPOSURE_MIGRATION]);
+    let floor = 0;
+    const view = new HubDocumentView("notes", [{ id: "n", title: "Notes", text: "x" }]);
+    const owner = { realm: "directory", objectId: randomUUID() }, fleetId = randomUUID();
+    const unhandled = vi.fn(); process.on("unhandledRejection", unhandled);
+    const store = new HubExposureStore(db, { floor: { read: () => floor, raise: (n) => { floor = n; } }, views: new Map([[view.id, view]]), binding: () => ({ owner, fleetId }),
+      audit: { appendInTransaction: (() => Promise.reject(new Error("late"))) as never } });
+    store.initialize();
+    expect(() => store.stage({ agent: "atlas", providerId: "inert", displayName: "Atlas", dataViewId: "notes", allowedTools: ["documents.read"], expectedRevision: 0 })).toThrow(/uncertain/);
+    expect(floor).toBe(0);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hub_exposures").get()).toEqual({ n: 0 });
+    expect(() => store.snapshot()).toThrow(/uncertain/);
+    await new Promise((r) => setTimeout(r, 10));
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
   });
 });
