@@ -51,6 +51,14 @@ register("needs", {
   },
 });
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
+/** Stale shells keep the old app-i18n.js; a missing key would otherwise show as app.needs_reason_*. */
+function itemReason(item) {
+  const text = reasonText(item);
+  if (typeof text === "string" && text.startsWith("app.needs_reason_") && (item.type === "missed" || item.reason === "missed_offline")) {
+    return tn("typeMissed");
+  }
+  return text;
+}
 
 /**
  * The page's claims on what Needs you writes, kept for the life of the page — not of a panel or a render (#1463
@@ -195,7 +203,7 @@ function NeedsItem({ item, nowMs, owner }) {
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${reasonText(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      <div class="n-title"><strong>${itemReason(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
       ${detailOf(item) ? html`<p class="n-detail">${detailOf(item)}</p>` : null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"

@@ -12,7 +12,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTelegramMock, type TelegramMock } from "../e2e/mock-servers/telegram-mock.js";
 import { getFreePort, waitFor } from "../e2e/mock-servers/shared.js";
 import {
+  TELEGRAM_GETUPDATES_LIMIT,
   TELEGRAM_PENDING_LIVE_MAX_MS,
+  TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS,
   TelegramAdapter,
   telegramLastUpdateIdPath,
   type MissedOfflineInbound,
@@ -94,6 +96,8 @@ describe("TelegramAdapter pending updates after a restart (M-2395)", () => {
     expect(src).toMatch(/drop_pending_updates:\s*false/);
     expect(src).not.toMatch(/drop_pending_updates:\s*attempt\s*===\s*1/);
     expect(TELEGRAM_PENDING_LIVE_MAX_MS).toBe(2 * 60 * 60 * 1000);
+    expect(TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(TELEGRAM_GETUPDATES_LIMIT).toBe(100);
   });
 
   it("a message queued while stopped is delivered once through the existing handlers", async () => {
@@ -163,12 +167,52 @@ describe("TelegramAdapter pending updates after a restart (M-2395)", () => {
     expect(missed).toEqual([]);
   });
 
-  it("a stale queued callback_query is ignored", async () => {
-    const date = Math.floor(Date.now() / 1000) - Math.ceil(TELEGRAM_PENDING_LIVE_MAX_MS / 1000) - 60;
-    mock.injectCallbackQuery({ data: "needs-ack:dead", chatId: GROUP, messageId: 9, date });
+  it("a queued callback_query is ignored even when the card is recent", async () => {
+    mock.injectCallbackQuery({ data: "needs-ack:dead", chatId: GROUP, messageId: 9, date: Math.floor(Date.now() / 1000) });
     const { callbacks, messages } = await startListening();
     await new Promise(r => setTimeout(r, 400));
     expect(callbacks).toEqual([]);
+    expect(messages).toEqual([]);
+  });
+
+  it("a live click on an old button after the backlog drained is delivered", async () => {
+    const { callbacks } = await startListening();
+    await waitFor(() => mock.getCallsFor("getUpdates").length >= 2, { timeout: 8000, interval: 50, label: "queue drained" });
+    mock.injectCallbackQuery({
+      data: "needs-ack:live", chatId: GROUP, messageId: 9,
+      date: Math.floor(Date.now() / 1000) - Math.ceil(TELEGRAM_PENDING_LIVE_MAX_MS / 1000) - 60,
+    });
+    await waitFor(() => callbacks.length === 1, { timeout: 5000, interval: 20, label: "live old-card click" });
+  });
+
+  it("a week-old floor is ignored so a random lower update_id is delivered", async () => {
+    writeFileSync(telegramLastUpdateIdPath(inbox, "t"), `${JSON.stringify({
+      update_id: 999_999, bot_id: 123456789,
+      recorded_at: Date.now() - TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS - 60_000,
+    })}\n`);
+    mock.injectMessage({ text: "after a week", chatId: GROUP, userId: USER, updateId: 3 });
+    const { messages } = await startListening();
+    await waitFor(() => messages.length === 1, { timeout: 5000, interval: 20, label: "week-old floor" });
+    expect(messages.map(m => m.text)).toEqual(["after a week"]);
+  });
+
+  it("a floor from a different bot id is ignored", async () => {
+    writeFileSync(telegramLastUpdateIdPath(inbox, "t"), `${JSON.stringify({
+      update_id: 999_999, bot_id: 1, recorded_at: Date.now(),
+    })}\n`);
+    mock.injectMessage({ text: "new bot", chatId: GROUP, userId: USER, updateId: 3 });
+    const { messages } = await startListening();
+    await waitFor(() => messages.length === 1, { timeout: 5000, interval: 20, label: "bot-id mismatch" });
+    expect(messages.map(m => m.text)).toEqual(["new bot"]);
+  });
+
+  it("old messages past the first getUpdates page stay missed_offline", async () => {
+    const date = Math.floor(Date.now() / 1000) - Math.ceil(TELEGRAM_PENDING_LIVE_MAX_MS / 1000) - 60;
+    for (let i = 0; i < TELEGRAM_GETUPDATES_LIMIT + 1; i++) {
+      mock.injectMessage({ text: `old-${i}`, chatId: GROUP, userId: USER, date });
+    }
+    const { messages, missed } = await startListening();
+    await waitFor(() => missed.length === TELEGRAM_GETUPDATES_LIMIT + 1, { timeout: 8000, interval: 20, label: "paged backlog" });
     expect(messages).toEqual([]);
   });
 });

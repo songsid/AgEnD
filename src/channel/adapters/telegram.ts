@@ -65,6 +65,16 @@ export const TELEGRAM_ALLOWED_UPDATES = [
  */
 export const TELEGRAM_PENDING_LIVE_MAX_MS = 2 * 60 * 60 * 1000;
 
+/**
+ * Telegram may pick a new random `update_id` after about a week with no
+ * updates (Bot API). A floor older than this is ignored so inbound is not
+ * dropped forever.
+ */
+export const TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Telegram's default getUpdates page size; a shorter page means the queue drained. */
+export const TELEGRAM_GETUPDATES_LIMIT = 100;
+
 /** Crash-safe last processed `update_id` for this adapter (inside inboxDir; prune skips it). */
 export function telegramLastUpdateIdPath(inboxDir: string, adapterId: string): string {
   const safe = adapterId.replace(/[^A-Za-z0-9._-]+/g, "_") || "adapter";
@@ -320,11 +330,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   /** Topics the probe itself is addressing right now — their failures are results, not hints. */
   private readonly probingThreads = new Set<string>();
   private readonly topicGoneHintAt = new Map<string, number>();
-  /** Last `update_id` persisted for this adapter; Telegram ids are monotonic. */
+  /** Last processed `update_id`; 0 means no floor. Telegram ids are usually monotonic. */
   private lastUpdateId = 0;
-  /** First getUpdates after start() carries the downtime backlog. */
-  private firstGetUpdatesNoted = false;
+  private floorBotId: number | undefined;
+  private floorRecordedAt = 0;
+  /** False until a getUpdates page shorter than TELEGRAM_GETUPDATES_LIMIT (the queue drained). */
+  private backlogDrained = false;
   private readonly backlogUpdateIds = new Set<number>();
+  private persistFloorTimer: ReturnType<typeof setImmediate> | undefined;
 
   constructor(opts: TelegramAdapterOptions) {
     super();
@@ -337,7 +350,6 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     this.apiRoot = (opts.apiRoot ?? "https://api.telegram.org").replace(/\/+$/, "");
 
     mkdirSync(this.inboxDir, { recursive: true, mode: 0o700 });
-    this.lastUpdateId = this.readLastUpdateId();
 
     this.bot = new Bot(opts.botToken, {
       client: {
@@ -387,6 +399,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       },
     });
 
+    this.loadFloor();
     this._registerHandlers();
   }
 
@@ -407,7 +420,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const requestGeneration = this.httpAgentGeneration;
       try {
         const result = await prev(method, payload, signal);
-        this.noteFirstGetUpdates(method, result);
+        this.noteGetUpdatesBacklog(method, result);
         return result;
       } catch (err) {
         if (!(err instanceof HttpError)) throw err;
@@ -478,28 +491,31 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         callback_query?: { message?: { date?: number } };
       };
       const updateId = update.update_id;
+      this.discardFloorIfStale(Date.now());
       if (typeof updateId === "number") {
-        if (updateId <= this.lastUpdateId) return;
+        if (this.lastUpdateId > 0 && updateId <= this.lastUpdateId) return;
         this.lastUpdateId = updateId;
-        this.persistLastUpdateId();
+        this.floorRecordedAt = Date.now();
+        if (this.bot.botInfo?.id != null) this.floorBotId = this.bot.botInfo.id;
+        this.schedulePersistFloor();
       }
       const message = update.message;
       const sender = message?.from?.id;
       if (sender != null && sender === this.bot.botInfo?.id) return;
 
-      // Age cap applies to the first getUpdates after start() (downtime queue), not live traffic.
+      // Age cap / stale callbacks apply to the downtime queue (pages until a short getUpdates).
       const isBacklog = typeof updateId === "number" && this.backlogUpdateIds.has(updateId);
       if (isBacklog) {
+        if (update.callback_query) {
+          // The card's date is not the click's; queued callbacks are stale by being in the backlog.
+          ctx.answerCallbackQuery().catch(() => {});
+          return;
+        }
         const ageMs = telegramUpdateAgeMs(update, Date.now());
-        if (ageMs != null && ageMs > TELEGRAM_PENDING_LIVE_MAX_MS) {
-          if (update.callback_query) {
-            ctx.answerCallbackQuery().catch(() => {});
-            return;
-          }
-          if (message && !this._isServiceMessage(message as unknown as NonNullable<Context["message"]>)) {
-            this.emitMissedOffline(updateId ?? 0, message);
-            return;
-          }
+        if (ageMs != null && ageMs > TELEGRAM_PENDING_LIVE_MAX_MS
+          && message && !this._isServiceMessage(message as unknown as NonNullable<Context["message"]>)) {
+          this.emitMissedOffline(updateId ?? 0, message);
+          return;
         }
       }
       return next();
@@ -785,7 +801,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async start(): Promise<void> {
     // #1537 review: a new start borrows nothing from the last one — not ready until its own onStart, and not stopped.
     this.pollingReady = false; this.stopped = false;
-    this.firstGetUpdatesNoted = false;
+    this.backlogDrained = false;
     this.backlogUpdateIds.clear();
     this.queue.start();
     this._pruneInbox();
@@ -828,6 +844,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
               onStart: (info) => {
                 reconnects = 0; // reset on successful start
                 this.pollingReady = true; this.authRejected = false;
+                this.discardFloorIfStale(Date.now(), info.id);
                 this.emit("started", info.username, String(info.id));
               },
             });
@@ -867,6 +884,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async stop(): Promise<void> {
     // #1537 review: the connection is not polling from the moment it is told to stop (before any await).
     this.pollingReady = false; this.stopped = true;
+    this.flushPersistFloor();
     // Invalidate queued status work before any await. Re-created adapters must
     // not inherit proof from this object's pending requests.
     this.reactionGeneration = (this.reactionGeneration ?? 0) + 1;
@@ -884,38 +902,85 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return telegramLastUpdateIdPath(this.inboxDir, this.id);
   }
 
-  private readLastUpdateId(): number {
+  private loadFloor(): void {
     try {
       const parsed: unknown = JSON.parse(readFileSync(this.lastUpdateIdFile(), "utf8"));
-      const id = parsed && typeof parsed === "object" ? (parsed as { update_id?: unknown }).update_id : undefined;
-      return typeof id === "number" && Number.isSafeInteger(id) && id >= 0 ? id : 0;
-    } catch {
-      return 0;
-    }
+      if (!parsed || typeof parsed !== "object") return;
+      const rec = parsed as { update_id?: unknown; bot_id?: unknown; recorded_at?: unknown };
+      const id = rec.update_id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return;
+      this.lastUpdateId = id;
+      this.floorBotId = typeof rec.bot_id === "number" && Number.isSafeInteger(rec.bot_id) ? rec.bot_id : undefined;
+      this.floorRecordedAt = typeof rec.recorded_at === "number" && Number.isFinite(rec.recorded_at) ? rec.recorded_at : 0;
+      this.discardFloorIfStale(Date.now());
+    } catch { /* no floor yet */ }
   }
 
-  private persistLastUpdateId(): void {
+  private clearFloor(): void {
+    this.lastUpdateId = 0;
+    this.floorBotId = undefined;
+    this.floorRecordedAt = 0;
+  }
+
+  /** Drop a floor that belongs to another bot, or that is older than a week of silence. */
+  private discardFloorIfStale(now: number, botId?: number): void {
+    if (this.lastUpdateId <= 0) return;
+    if (this.floorRecordedAt > 0 && now - this.floorRecordedAt > TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS) {
+      this.clearFloor();
+      return;
+    }
+    const id = botId ?? (this.bot.isInited() ? this.bot.botInfo.id : undefined);
+    if (this.floorBotId != null && id != null && this.floorBotId !== id) this.clearFloor();
+  }
+
+  private schedulePersistFloor(): void {
+    if (this.persistFloorTimer) return;
+    this.persistFloorTimer = setImmediate(() => {
+      this.persistFloorTimer = undefined;
+      this.writeFloor();
+    });
+  }
+
+  private flushPersistFloor(): void {
+    if (this.persistFloorTimer) {
+      clearImmediate(this.persistFloorTimer);
+      this.persistFloorTimer = undefined;
+    }
+    this.writeFloor();
+  }
+
+  private writeFloor(): void {
     try {
-      atomicWriteFileSync(this.lastUpdateIdFile(), `${JSON.stringify({ update_id: this.lastUpdateId })}\n`, { mode: 0o600 });
+      const rec: { update_id: number; bot_id?: number; recorded_at?: number } = { update_id: this.lastUpdateId };
+      if (this.floorBotId != null) rec.bot_id = this.floorBotId;
+      if (this.floorRecordedAt > 0) rec.recorded_at = this.floorRecordedAt;
+      atomicWriteFileSync(this.lastUpdateIdFile(), `${JSON.stringify(rec)}\n`, { mode: 0o600 });
     } catch (err) {
       console.warn(`[telegram:${this.id}] could not persist last update_id (${errorMessage(err)})`);
     }
   }
 
-  private noteFirstGetUpdates(method: string, result: unknown): void {
-    if (method !== "getUpdates" || this.firstGetUpdatesNoted) return;
+  private noteGetUpdatesBacklog(method: string, result: unknown): void {
+    if (method !== "getUpdates" || this.backlogDrained) return;
     if (result && typeof result === "object" && "ok" in result && (result as { ok: unknown }).ok !== true) return;
-    this.firstGetUpdatesNoted = true;
     // Transformers see the raw Bot API envelope `{ ok, result }`; callApi unwraps after.
     const updates = result && typeof result === "object" && "result" in result
       ? (result as { result: unknown }).result
       : result;
     if (!Array.isArray(updates)) return;
+    const ids: number[] = [];
     for (const item of updates) {
       if (item && typeof item === "object" && typeof (item as { update_id?: unknown }).update_id === "number") {
-        this.backlogUpdateIds.add((item as { update_id: number }).update_id);
+        ids.push((item as { update_id: number }).update_id);
       }
     }
+    // A new random sequence after a week of silence can land entirely below the stored floor.
+    if (ids.length > 0 && this.lastUpdateId > 0 && Math.max(...ids) < this.lastUpdateId) {
+      this.clearFloor();
+      this.schedulePersistFloor();
+    }
+    for (const id of ids) this.backlogUpdateIds.add(id);
+    if (updates.length < TELEGRAM_GETUPDATES_LIMIT) this.backlogDrained = true;
   }
 
   private emitMissedOffline(updateId: number, msg: {

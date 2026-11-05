@@ -170,11 +170,14 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
         break;
 
       case "getUpdates": {
+        // Telegram's default limit is 100; honour it so a busy backlog pages like production.
+        const rawLimit = Number(params.limit ?? 100);
+        const cap = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, Math.floor(rawLimit)) : 100;
         // Long polling: if we have pending updates, return immediately.
         // Otherwise, wait up to timeout seconds.
         if (pendingUpdates.length > 0) {
-          const updates = [...pendingUpdates];
-          pendingUpdates = [];
+          const updates = pendingUpdates.slice(0, cap);
+          pendingUpdates = pendingUpdates.slice(cap);
           jsonResponse(res, updates);
         } else {
           const timeoutSec = Number(params.timeout ?? 30);
