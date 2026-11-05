@@ -109,6 +109,26 @@ describe("shared canonical Windows instance routes",()=>{
   });
 });
 
+describe("main → alpha sync F1 (the user, hmsg-94628faa): a Windows agent's Delete removes its own topic too, as delete_instance does",()=>{
+  for (const [kind,extra] of [["a per-turn Windows agent",{}],["a persistent Windows pane",{native_adapter:"pane"}]] as const) {
+    it(`${kind}: the agent, then its topic, through the fleet's one removal; the dashboard is told what happened to the topic`,async()=>{
+      const f=fixture();Object.assign(f.ctx.fleetConfig.instances[name],extra);
+      const removeInstanceAndTopic=vi.fn(async()=>({deleted:false as const,reason:"the bot cannot reach the topic"}));Object.assign(f.ctx,{removeInstanceAndTopic,removeInstance:vi.fn()});
+      const del=request("DELETE",{},url()),res=new Response(del);handleNativeInstanceRequest(del,res,url(),f.context);
+      const body=await finish(res,200);
+      expect(removeInstanceAndTopic).toHaveBeenCalledExactlyOnceWith(name,expect.objectContaining({source:"dashboard-confirmed"}),{deleteTopic:true});
+      expect(body).toMatchObject({deleted:name,topic_deleted:false,topic_reason:"the bot cannot reach the topic"});
+      expect(typeof body.topic_note).toBe("string");
+      expect([f.service.remove.mock.calls.length,(f.ctx as any).removeInstance.mock.calls.length]).toEqual([0,0]);
+    });
+  }
+  it("authorization gone before the removal: nothing is removed",async()=>{
+    const f=fixture();const removeInstanceAndTopic=vi.fn(async()=>({deleted:true as const}));Object.assign(f.ctx,{removeInstanceAndTopic});
+    const del=request("DELETE",{},url()),res=new Response(del);f.ctx.webToken=null;handleNativeInstanceRequest(del,res,url(),f.context);
+    await vi.waitFor(()=>expect(res.status).toBeGreaterThanOrEqual(400));expect(removeInstanceAndTopic).not.toHaveBeenCalled();
+  });
+});
+
 describe("shared native instance authorization boundary",()=>{
   it("is opt-in and does not use the native service while disabled",async()=>{
     const f=fixture();vi.stubEnv("AGEND_WINDOWS_CLI","");const req=request("POST",{runtime:"windows",topic_name:"X"}),res=new Response(req);
