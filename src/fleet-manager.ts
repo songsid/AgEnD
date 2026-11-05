@@ -257,7 +257,7 @@ import { envFileKeys } from "./token-env-name.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
-import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
@@ -408,7 +408,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -443,7 +443,12 @@ import {
 
 import { getTmuxSession } from "./config.js";
 import { OwnStatusMessages, discordMessageKey } from "./chat-log-ids.js";
-import { PROFILE_TIMELINE_FILE, recordProfileLaunch } from "./usage/profile-timeline.js";
+import { PROFILE_TIMELINE_FILE, PROFILE_UNRECORDED, recordProfileLaunch } from "./usage/profile-timeline.js";
+import { readQuotaHistory, type QuotaReading } from "./usage/quota-history.js";
+import { estimateCapacity, type CapacityEstimate, type CapacityHour } from "./usage/capacity.js";
+import { covered, hourSources } from "./usage-rollup.js";
+import { KEEP_DAYS, type HourTotals } from "./cache-ledger.js";
+import { ratesFor } from "./cache-prices.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
@@ -8850,6 +8855,127 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.quotaReadTimer) clearInterval(this.quotaReadTimer);
     this.quotaReadTimer = setInterval(() => { void this.backgroundQuotaRead(); }, FleetManager.QUOTA_BACKGROUND_READ_MS);
     this.quotaReadTimer.unref?.();
+    // #3066 §1: the measured capacity, published for the usage reads (get_usage, the page) — refreshed every 10 min.
+    setCapacityLookup((provider, metric) => this.capacityEstimates.get(`${provider}\u0000${metric}`) ?? null);
+    if (this.capacityTimer) clearInterval(this.capacityTimer);
+    void this.refreshCapacity();
+    this.capacityTimer = setInterval(() => { void this.refreshCapacity(); }, FleetManager.CAPACITY_REFRESH_MS);
+    this.capacityTimer.unref?.();
+  }
+
+  /** #3066 §1: the latest estimates, by `provider\0metric` (what usage-api's lookup reads, synchronously). */
+  private capacityEstimates = new Map<string, CapacityEstimate>();
+  private capacityTimer: ReturnType<typeof setInterval> | null = null;
+  static readonly CAPACITY_REFRESH_MS = 10 * 60_000;
+
+  /**
+   * #3066 §1: estimate each account's weekly 100% from the quota history (§1d) and the usage ledger's hours — both read
+   * asynchronously, the arithmetic small (usage/capacity.ts). An account is its usage provider id ("claude",
+   * "claude:hsinlin", "codex:yanxianchen"): its hours are the ledger sources of that backend under that credential profile
+   * (Codex's "unrecorded" hours are no account's). A per-model weekly ("Sonnet (weekly)") counts only that model's tokens.
+   *
+   * Prism #3073: no estimate rather than a wrong one —
+   * - a window is measured only where the ledger has its hours: kept (31 days) and scanned (`days.coverage`) for every
+   *   instance of the account's backend, and every instance whose hours count for it; the quota history goes back 12 weeks;
+   * - a profile literally named "default", "unknown" or "unrecorded" (configured, on disk, or in the quota history) makes
+   *   those hours ambiguous: neither the host
+   *   account nor the named one is estimated (each would be credited the other's use, or lose its own);
+   * - only a metric the vendor marks per-model (`scope: "model"`) is filtered by model; another named weekly pool
+   *   ("Luna Reserve (weekly)", Antigravity pools) is no model name and is not estimated.
+   */
+  async refreshCapacity(): Promise<number> {
+    try {
+      const readings = await readQuotaHistory();
+      const groups = new Map<string, QuotaReading[]>();
+      for (const r of readings) { const k = `${r.provider}\u0000${r.metric}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
+      if (!groups.size) { this.capacityEstimates = new Map(); return 0; }
+      const data = await this.cacheServiceFor().usageData();
+      const now = Date.now(), DAY = 24 * 3_600_000, HOUR = 3_600_000;
+      const keptFrom = now - KEEP_DAYS * DAY + HOUR;           // the oldest hour still in every ledger (an hour of margin)
+      // Profiles whose names are also the ledger's own tags: their hours cannot be told from the host's / unattributed.
+      // Any trace of such a profile counts (Prism #3073 r2), not only today's config — a binding removed or switched
+      // leaves its hours in the ledger: configured now, its directory on this host, or its account in the quota history.
+      const RESERVED = new Set(["default", "unknown", PROFILE_UNRECORDED]);
+      const historyProviders = new Set(readings.map((r) => r.provider));
+      const reservedNamed = new Map<string, Set<string>>();
+      const reservedFor = (backend: string): Set<string> => {
+        const known = reservedNamed.get(backend);
+        if (known) return known;
+        const found = new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)));
+        const base = usageProviderIdForBackend(backend);
+        for (const n of RESERVED) {
+          if (base && historyProviders.has(`${base}:${n}`)) found.add(n);
+          if (credentialHomeSpec(backend) && existsSync(credentialProfileHome(this.dataDir, backend, n))) found.add(n);
+        }
+        return reservedNamed.set(backend, found).get(backend)!;
+      };
+      // Every instance of a backend may have used any of its accounts (bindings change): an account is measured only
+      // where all of them were scanned (Prism #3073 r2) — one still waiting for its first scan has no hours yet, not none.
+      const daysOfBase = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        const base = usageProviderIdForBackend(inst.inst.backend);
+        if (base) (daysOfBase.get(base) ?? daysOfBase.set(base, []).get(base)!).push(inst.days);
+      }
+      // provider id → hour → model key → totals; and the instances whose hours count for it (their scan coverage).
+      const byProvider = new Map<string, Map<number, Record<string, HourTotals>>>();
+      const daysOf = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        for (const [hk, hour] of Object.entries(inst.ledger.hours)) {
+          for (const src of hourSources(hour)) {
+            const base = usageProviderIdForBackend(src.backend);
+            if (!base) continue;
+            // Ambiguous (a named profile with the tag's name), or no account's: counted for no one, so an account whose
+            // hours these may be has none — and gets no estimate, never a low one.
+            if (reservedFor(src.backend).has(src.profile) || src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
+            const provider = src.profile === "default" ? base : `${base}:${src.profile}`;
+            const list = daysOf.get(provider) ?? daysOf.set(provider, []).get(provider)!;
+            if (!list.includes(inst.days)) list.push(inst.days);
+            const hours = byProvider.get(provider) ?? byProvider.set(provider, new Map()).get(provider)!;
+            const into = hours.get(Number(hk)) ?? hours.set(Number(hk), Object.create(null) as Record<string, HourTotals>).get(Number(hk))!;
+            for (const [mk, tot] of Object.entries(src.m)) {
+              const cur = into[mk] ??= [0, 0, 0, 0, 0, 0, 0];
+              for (let i = 0; i < 7; i++) cur[i] = (cur[i] ?? 0) + (tot[i] ?? 0);
+            }
+          }
+        }
+      }
+      const next = new Map<string, CapacityEstimate>();
+      for (const [key, list] of groups) {
+        const [provider, metric] = key.split("\u0000") as [string, string];
+        // A per-model weekly ("Sonnet (weekly)", the vendor's scope "model"): that model's tokens only. Another named
+        // pool is not a model: no estimate. "Weekly", "Weekly limit": everything.
+        const named = /^(.+) \((?:weekly|monthly|\d+d)\)$/i.exec(metric)?.[1]?.toLowerCase() ?? null;
+        const perModel = list.some((r) => r.scope === "model");
+        if (named && !perModel) continue;
+        const hours: CapacityHour[] = [];
+        for (const [hour, models] of byProvider.get(provider) ?? []) {
+          let api: number | null = 0, output = 0, all = 0;
+          for (const [mk, tot] of Object.entries(models)) {
+            const bar = mk.lastIndexOf("|"), model = mk.slice(0, bar), long = mk.slice(bar + 1) === "1";
+            if (named && !model.toLowerCase().includes(named)) continue;
+            const [, uncached, read, w5, w1h, w, out] = tot;
+            const r = ratesFor(model, long ? Number.MAX_SAFE_INTEGER : 0);
+            api = api === null || !r ? null : api + (uncached * r.input + read * r.read + w5 * r.write5m + w1h * r.write1h + w * r.write + out * r.output) / 1_000_000;
+            output += out; all += uncached + read + w5 + w1h + w + out;
+          }
+          if (all > 0) hours.push({ hour, api, output, all });
+        }
+        const base = provider.split(":")[0]!;
+        const scanned = [...new Set([...(daysOf.get(provider) ?? []), ...(daysOfBase.get(base) ?? [])])];
+        const available = (from: number, to: number): boolean => {
+          if (from < keptFrom || !scanned.length) return false;
+          for (let h = from; h <= to; h += HOUR) if (!scanned.every((d) => covered(d, h))) return false;
+          return true;
+        };
+        const est = estimateCapacity(list, hours, available);
+        if (est) next.set(key, est);
+      }
+      this.capacityEstimates = next;
+      return next.size;
+    } catch (err) {
+      this.logger.debug({ err }, "capacity estimate refresh failed");
+      return -1;
+    }
   }
 
   /** One background quota read, when nothing else reads (no Discord bot) and an account has a running agent. */
@@ -21812,6 +21938,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
     if (this.quotaReadTimer) { clearInterval(this.quotaReadTimer); this.quotaReadTimer = null; }
+    if (this.capacityTimer) { clearInterval(this.capacityTimer); this.capacityTimer = null; }
+    setCapacityLookup(null);
     if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }
     this.discordPresenceEagerPending = false;
     // Cancel-button timers were never cleared here. The idle-check interval is not

@@ -24,6 +24,8 @@ export interface QuotaReading {
   profile?: string;
   /** The metric's label: "Weekly", "Sonnet (weekly)", … */
   metric: string;
+  /** "model": the vendor's per-model quota (UsageMetric.scope) — its label names the model. Absent: not one. */
+  scope?: "model";
   /** Percent used (0–100, as the vendor reports it). */
   used: number;
   /** When this window resets (ISO), or null when the vendor did not say. */
@@ -64,8 +66,8 @@ export function parseQuotaReading(line: string): QuotaReading | null {
   if (typeof r.t !== "number" || !Number.isFinite(r.t) || typeof r.provider !== "string" || typeof r.metric !== "string"
     || typeof r.used !== "number" || !Number.isFinite(r.used) || !(r.resetsAt === null || typeof r.resetsAt === "string")
     || !(r.windowMs === null || (typeof r.windowMs === "number" && Number.isFinite(r.windowMs)))
-    || !(r.profile === undefined || typeof r.profile === "string")) return null;
-  return { t: r.t, provider: r.provider, ...(r.profile !== undefined ? { profile: r.profile } : {}), metric: r.metric, used: r.used,
+    || !(r.profile === undefined || typeof r.profile === "string") || !(r.scope === undefined || r.scope === "model")) return null;
+  return { t: r.t, provider: r.provider, ...(r.profile !== undefined ? { profile: r.profile } : {}), metric: r.metric, ...(r.scope === "model" ? { scope: "model" as const } : {}), used: r.used,
     resetsAt: r.resetsAt as string | null, windowMs: r.windowMs as number | null };
 }
 
@@ -76,7 +78,7 @@ export function quotaReadingsOf(p: ProviderUsage, now: number): QuotaReading[] {
   for (const m of p.metrics) {
     if (m.type !== "percent" || typeof m.used !== "number" || !Number.isFinite(m.used)) continue;
     if (typeof m.windowMs !== "number" || m.windowMs < MIN_WINDOW_MS) continue;
-    out.push({ t: now, provider: p.id, ...(p.profile ? { profile: p.profile } : {}), metric: m.label, used: m.used,
+    out.push({ t: now, provider: p.id, ...(p.profile ? { profile: p.profile } : {}), metric: m.label, ...(m.scope === "model" ? { scope: "model" as const } : {}), used: m.used,
       resetsAt: typeof m.resetsAt === "string" ? m.resetsAt : null, windowMs: m.windowMs });
   }
   return out;
@@ -93,11 +95,11 @@ async function load(path: string): Promise<void> {
   }
 }
 
-/** Keep the last 12 weeks, and the file under its cap (oldest first out). Rewritten atomically. */
 /** When lines older than 12 weeks were last dropped: once a day (Fable r1 #3), and whenever the file is over its cap. */
 let lastAgePrune = Number.NEGATIVE_INFINITY;
 const AGE_PRUNE_EVERY_MS = 24 * 3_600_000;
 
+/** Keep the last 12 weeks, and the file under its cap (oldest first out). Rewritten atomically. */
 async function prune(path: string, now: number): Promise<void> {
   let size = 0;
   try { size = (await stat(path)).size; } catch { return; }
