@@ -377,8 +377,9 @@ function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
   // from before never had its count, and is dropped, so a later count can only ever be this record's.
   r.pend = r.pend.filter((x) => typeof x.counted === "number");
   if (timed && out > 0) {
-    // At the cap, the oldest counted response is made a sample now (with the hosted time seen so far), not lost.
-    while (r.pend.length >= CX_PENDING_MAX) emitCodexSample(file, r, r.pend.shift()!);
+    // Over the cap, the oldest is withheld — untimed (the coverage says so): timing it now could miss a search logged
+    // later in the turn (Prism #3075 r4), and a wrong rate is worse than none.
+    while (r.pend.length >= CX_PENDING_MAX) r.pend.shift();
     r.pend.push({ start: r.start!, end: r.end!, out, prompt: num(d.payload?.usage?.input_tokens), model: file.model ?? "unknown" });
   }
   r.start = null; r.end = null; delete r.bad;               // a record closes its response, timed or not

@@ -56,7 +56,7 @@ describe("Codex (0.147+): model items' clocks, closed by token_usage_record, cou
   /** A response: its record, then the token_count that counts it (as codex writes them). */
   const resp = (out: number, turn = "u", at = 0) => [record(out, turn, at), count(out, at)];
   const run = (lines: any[]) => { const file: FileCursor = { kind: "codex", ino: 1, offset: 0, model: "gpt-5.5" }; const out: Array<{ tokens: number; ms: number; t?: number }> = [];
-    for (const l of lines.flat()) { codexLine(l, file); for (const s of file.speeds ?? []) out.push({ tokens: s.tokens, ms: s.ms }); delete file.speeds; } return out; };
+    for (const l of lines.flat(3)) { codexLine(l, file); for (const s of file.speeds ?? []) out.push({ tokens: s.tokens, ms: s.ms }); delete file.speeds; } return out; };
   /** One turn: started, these lines, completed. */
   const turn = (...lines: any[]) => run([start(), ...lines, done()]);
   it("first model item's start → last model item's end; a client tool bounds nothing", () => {
@@ -117,15 +117,23 @@ describe("Codex (0.147+): model items' clocks, closed by token_usage_record, cou
     expect(turn(item("AgentMessage", 0, 4_000), record(400), resp(400))).toEqual([]);
     // Many orphans never crowd out a later counted response.
     expect(turn(...Array.from({ length: 70 }, (_, i) => [item("AgentMessage", i * 10, i * 10 + 5), record(400)]), item("AgentMessage", 10_000, 12_000), resp(1_000))).toEqual([{ tokens: 1_000, ms: 2_000 }]);
-    // Prism r3: the cap holds with every response counted too — 70 counted responses in one turn are 70 samples, and
-    // the turn never holds more than 64 waiting.
+    // Prism r3/r4: the cap holds with every response counted too — the turn never holds more than 64 waiting; the 6
+    // oldest of 70 are withheld (untimed), never timed early.
     {
       const file: FileCursor = { kind: "codex", ino: 1, offset: 0, model: "gpt-5.5" };
       let most = 0, samples = 0;
       for (const l of [start(), ...Array.from({ length: 70 }, (_, i) => [item("AgentMessage", i * 10_000, i * 10_000 + 4_000), resp(400)]).flat(2), done()]) {
         codexLine(l, file); most = Math.max(most, file.cx?.pend.length ?? 0); samples += file.speeds?.length ?? 0; delete file.speeds;
       }
-      expect([most, samples]).toEqual([64, 70]);
+      expect([most, samples]).toEqual([64, 64]);
+    }
+    // Prism r4: A (0…5 s) whose search (1…4 s) is logged later in the turn — timed with it (2 s), or withheld; never 5 s.
+    for (const later of [63, 64]) {
+      const lines = [item("AgentMessage", 0, 5_000), resp(400),
+        ...Array.from({ length: later }, (_, i) => [item("AgentMessage", 100_000 + i * 10_000, 100_000 + i * 10_000 + 4_000), resp(400)]),
+        item("WebSearch", 1_000, 4_000)];
+      const a = turn(...lines).filter((x) => x.ms !== 4_000);
+      expect(a).toEqual(later === 63 ? [{ tokens: 400, ms: 2_000 }] : []);
     }
     // Control: two responses, each counted — both are samples, each with its own.
     expect(turn(item("AgentMessage", 0, 4_000), resp(400), item("AgentMessage", 10_000, 12_000), resp(1_000))).toEqual([{ tokens: 400, ms: 4_000 }, { tokens: 1_000, ms: 2_000 }]);
