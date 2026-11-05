@@ -1,6 +1,6 @@
 # AgEnD Hub P1: module and interface contract
 
-Status: **interface design for the experimental alpha implementation**, subject to this document's review. Implements the approved P1 direction in [#3095](https://github.com/songsid/AgEnD/issues/3095), including its web-entry, installation and same-machine addenda. The issue's earlier “not authorized” discussion labels are superseded by the subsequent P1 approval. This PR adds documentation only.
+Status: **interface design for the experimental alpha implementation**, subject to this document's review. Implements the approved P1 direction in [#3095](https://github.com/songsid/AgEnD/issues/3095), including its web-entry, installation and same-machine addenda. Fleet decision **7e5b8a8f** approves the new Hub-only roles/mode and alpha P1; it does not change ordinary fleet-role capabilities. The issue's earlier “not authorized” discussion labels are superseded by the subsequent P1 approval. This PR adds documentation only.
 
 The directory identifies people; a fleet belongs to a person; its owner chooses which agents, data views and tools other people may use. An asker needs a browser and a grant, not their own fleet. P1 supports explicit personal grants and one-asker/one-exposure rooms. Organizational roles, shared rooms and deputies are P2; organization-wide operational visualization is P3. Basic management, audit and owner notification are P1 requirements.
 
@@ -42,11 +42,11 @@ When `hub_member.enabled` is false, do not connect, publish, reconcile, admit or
 
 ### Web entry and same-machine trust
 
-On an enabled Hub, `/web` opens the Hub shell: operator-chosen “AgEnD Hub” name; **Ask**, **My exposures**, **Administration**. Directory users get only their current views. The local host owner retains a separate local sign-in for Hub administration/repair. Hub cookies/session records are a separate namespace from fleet cookies and machine credentials; a member's host code is not a Hub directory sign-in.
+At the enabled Hub's distinct `webOrigin`, `/web` opens the Hub shell: operator-chosen “AgEnD Hub” name; **Ask**, **My exposures**, **Administration**. Directory users get only their current views. The local host owner retains a separate local sign-in for Hub administration/repair. Hub sessions use a distinct `__Host-agend_hub_<hubId>` cookie name with Secure, HttpOnly, Path=/, no Domain and same-origin/CSRF checks; session records and token epochs are separate from fleet sessions and machine credentials. Each side ignores and never authenticates the other's cookie names, including any legacy cookie fallback. **Cookies are not isolated by port**: a distinct `hub.webOrigin` is required, even on one host, and different ports do not replace these name/acceptance rules. A member's host code is not a Hub directory sign-in.
 
 The member keeps its own brand/pages. “My fleet ↔ Hub” opens the paired, validated `webOrigin`, with no token or identity in the URL and no sign-in proxy. Use safe link handling; do not turn agent-supplied text into a workspace destination. Askers without fleets open the Hub directly.
 
-Default placement is a dedicated machine or OS service account. `coexistence: same-user-pilot` is allowed only after explicit local-owner confirmation when an existing personal fleet is detected. Even in the one-process pilot, the personal fleet pairs over the same authenticated loopback member protocol; there is no privileged in-process bypass. The Hub component starts no agents. Same UID means the person's ordinary full-tool agents can read Hub keys/DB: exposed-agent restrictions do **not** isolate that account. Separate accounts need private OS permissions/ACLs; separate machines give the cleanest boundary. Initialization must never silently convert or mix an existing personal fleet.
+Default placement is a dedicated machine or OS service account. `coexistence: same-user-pilot` is allowed only after explicit local-owner confirmation when an existing personal fleet is detected. In the one-process pilot, keep the original personal fleet listener and `/web` unchanged; mount the Hub web listener/router at its own distinct `webOrigin`, where `/web` opens the Hub shell. Do not replace the personal dashboard, select an authority mode from an untrusted query parameter, or share authentication middleware state between the listeners. Even in the one-process pilot, the personal fleet pairs over the same authenticated loopback member protocol; there is no privileged in-process bypass. The Hub component starts no agents. Same UID means the person's ordinary full-tool agents can read Hub keys/DB: exposed-agent restrictions do **not** isolate that account. Separate accounts need private OS permissions/ACLs; separate machines give the cleanest boundary. Initialization must never silently convert or mix an existing personal fleet.
 
 ## 2. Pairing, TLS and member protocol (S1)
 
@@ -111,19 +111,23 @@ export interface HubReceipt {
 }
 export interface HubAnswer {
   messageId: MessageId; answerId: string; text: string; contentDigest: Sha256;
+  releaseLease: HubAuthorizationLease; // binds this exact answer, not another answer in the room
 }
 export interface HubReconcile {
   afterReceiptSequence: Epoch;
   messages: readonly { messageId: MessageId; contentDigest: Sha256 }[];
 }
-export interface HubAuthorizationRequest {
-  messageId: MessageId;
-  phase: "admit" | "begin" | "tool" | "release-answer";
-  exposureRevision: Epoch;
-  tool?: { name: string; argumentsDigest: Sha256 };
+export interface HubAuthorizationScope {
+  messageId: MessageId; operationId: string; exposureRevision: Epoch;
 }
+export type HubAuthorizationRequest = HubAuthorizationScope & (
+  | { phase: "admit" | "begin" }
+  | { phase: "tool"; tool: { name: string; argumentsDigest: Sha256 } }
+  | { phase: "release-answer"; answer: { answerId: string; contentDigest: Sha256 } }
+);
 export interface HubAuthorizationLease {
-  decisionId: string; messageId: MessageId; phase: HubAuthorizationRequest["phase"];
+  decisionId: string; messageId: MessageId; operationId: string;
+  phase: HubAuthorizationRequest["phase"]; operationDigest: Sha256;
   revocationVersion: Epoch; exposureRevision: Epoch; linkEpoch: Epoch;
   expiresAt: Millis; // at most five seconds; one exact operation, not a session grant
 }
@@ -134,9 +138,14 @@ export type HubAuthorizationResult =
   | { ok: true; lease: HubAuthorizationLease }
   | { ok: false; reasonCode: string };
 export interface HubProtocolError { code: string; retryable: boolean }
+export type HubRevocationScope =
+  | { kind: "person"; personId: PersonId }
+  | { kind: "fleet"; fleetId: FleetId }
+  | { kind: "exposure"; exposureId: ExposureId }
+  | { kind: "grant"; grantId: GrantId };
 export interface HubRevocation {
   revocationVersion: Epoch;
-  scope: { personId?: PersonId; fleetId?: FleetId; exposureId?: ExposureId; grantId?: GrantId };
+  scope: HubRevocationScope;
   reasonCode: string;
 }
 ```
@@ -165,6 +174,10 @@ export interface HubServerTransport {
   send(fleetId: FleetId, frame: HubServerFrame): Promise<void>;
   close(): Promise<void>;
 }
+export declare class HubAuthorizationError extends Error {
+  readonly code: "denied" | "unavailable" | "stale";
+  readonly reasonCode: string;
+}
 export interface HubMemberTransport {
   start(): Promise<void>;
   send(frame: HubMemberFrame): Promise<void>;
@@ -173,7 +186,7 @@ export interface HubMemberTransport {
 }
 ```
 
-Transport construction takes injected validated pairing/store/service dependencies; `start` is never called with its mode off. Successful `send` means socket acceptance only, not durable remote receipt or consumption.
+Transport construction takes injected validated pairing/store/service dependencies; `start` is never called with its mode off. Successful `send` means socket acceptance only, not durable remote receipt or consumption. `authorize` maps wire refusal to a rejected `HubAuthorizationError` with a bounded reason code; timeout/lost link is `unavailable`, not a lease or implicit allow. Callers hold/refuse without input or tool dispatch.
 
 Allowed frame types are exactly `hello`, `welcome`, `exposure.snapshot`, `question`, `receipt`, `answer`, `reconcile`, `authorize.request`, `authorize.result`, `revoke`, `error`; request/reply payload schemas and directions are fixed in `protocol.ts`. A successful `authorize.result` carries the lease above, a refusal a bounded reason code. Leases are server-owned records, returned only on the authenticated current link, and checked online at the use boundary; the DTO alone is not authority. Other payloads are the named types above; `error` contains only an enum code and retryability. `reconcile` is paged, at most 128 IDs/receipts per page. `exposure.snapshot` is bounded to 64 active exposures/member in P1 and is accepted only from that member, after local-owner consent; no instance inventory or credentials are published.
 
@@ -185,7 +198,7 @@ Before admission, begin, each data/tool access and answer disclosure, authorize 
 
 Persist input-intent boundaries before any input mutation. An unknown/lost ACK after input begins is `uncertain`, surfaced to the owner; never retry input because the socket reconnected. Receipt sequences advance monotonically and cannot downgrade known evidence. Persist member receipt/answer records until the Hub acknowledges them, then retain dedup tombstones for at least the maximum question lifetime. A Hub acceptance ACK means the answer/audit committed, not that a browser read it.
 
-After reconnect, negotiate, fetch the current revocation version, publish the current approved export snapshot and reconcile known message IDs/receipt cursors **before** new work. A known never-admitted question may be resubmitted to admission with the same ID only after fresh authorization; a delivered/consumed/uncertain question must not be re-executed. Answers may be retransmitted by answer ID, after renewed disclosure authorization, not regenerated. Missing/corrupt journals, unknown operation outcomes or unavailable authority hold visibly in Needs-you. Receipt sequence is monotonic within a member journal, scoped by its authenticated Fleet ID; the Hub echoes a retained sequence to ACK it. Sequence zero is reserved for the Hub UI's provisional queued state before member admission and never presented as member evidence. P1 question lifetime is at most 24 hours; dedup tombstones survive beyond that deadline and are not deleted while unresolved. No offline execution from an old envelope or lease.
+After reconnect, negotiate, fetch the current revocation version, publish the current approved exposure snapshot and reconcile known message IDs/receipt cursors **before** new work. A known never-admitted question may be resubmitted to admission with the same ID only after fresh authorization; a delivered/consumed/uncertain question must not be re-executed. Answers may be retransmitted by answer ID, after renewed disclosure authorization, not regenerated. Missing/corrupt journals, unknown operation outcomes or unavailable authority hold visibly in Needs-you. Receipt sequence is monotonic within a member journal, scoped by its authenticated Fleet ID; the Hub echoes a retained sequence to ACK it. Sequence zero is reserved for the Hub UI's provisional queued state before member admission and never presented as member evidence. P1 question lifetime is at most 24 hours; dedup tombstones survive beyond that deadline and are not deleted while unresolved. No offline execution from an old envelope or lease.
 
 ## 3. Signed asker identity and the member admission fence
 
@@ -211,6 +224,17 @@ Signature bytes are UTF-8 `JSON.stringify` of this fixed-order tuple, with no wh
 ```
 
 All strings/numbers are strictly validated before signing/verifying; no unpaired surrogates, unsafe integers or alternate ID casing. Digest is SHA-256 of the exact UTF-8 question text, not of display text. Envelope admission TTL is at most 120 seconds. Reject future issue times beyond five seconds, expired envelopes and clocks that cannot establish a valid window; do not expand the window on reconnect. Signing keys are not directory passwords or TLS/session secrets.
+
+Operation leases use a second fixed-order tuple, SHA-256 of its UTF-8 JSON representation:
+
+```text
+["agend-hub-operation-v1", messageId, operationId, phase, exposureRevision,
+ toolNameOrNull, argumentsDigestOrNull, answerIdOrNull, answerContentDigestOrNull]
+```
+
+Tool fields are required only for `tool`, answer fields only for `release-answer`, and absent fields become literal `null` in this tuple. Runtime validators reject extraneous or missing phase fields. The member records the exact operation ID/intent before requesting a lease. Compute the digest from the actual validated tool name and canonical arguments that will be dispatched, or the actual answer ID and exact text digest that will be disclosed. Canonical tool arguments are validated JSON with object keys sorted recursively, no undefined/non-finite values, preserved array order and no post-digest mutation. `admit`/`begin` bind their own persistent one-use operation IDs.
+
+`begin` and `invokeTool` compare the expected operation ID/digest, phase, context, exposure revision, current link/version and deadline immediately at dispatch. Consume the operation intent durably before an effect; a lease cannot be reused for another tool/argument set, a second invocation or a different context, even during its five seconds. A fresh lease does not erase an applied/uncertain intent. `finish` obtains a `release-answer` lease after fixing the final answer bytes; the Hub compares that lease to the received `answerId`/digest before committing or exposing it. Any redaction changes the bytes and requires a newly matching release decision. Duplicate already-committed answers return their prior ACK; a conflicting answer body is refused. These bindings authenticate one operation and never grant member-local human authority.
 
 Member verification order: current enabled membership/link and pairing → pinned issuer key/signature → exact issuer/destination/body digest/time → exact local owner/exposure revision and approved restricted context → online current authorization/revocation lease → atomic dedup/outbox admission. A matching old signature alone is insufficient. Apply the same local policy again at execution/tool/answer boundaries. A lower revocation version is held; a higher one is reconciled before work. Member authentication identifies a fleet, not an arbitrary user; clients cannot choose an asker or submit a different person's proof.
 
@@ -345,7 +369,7 @@ export interface HubMemberAdmission {
 
 S3 owns browser session creation and middleware, using S2 without adding routes to the directory driver. All mutations require current same-origin/CSRF/session checks and a second check after body/await; do not accept ordinary fleet guest/public-link sessions, fleet bearer tokens or member machine credentials as Hub people/admins. Local-host repair is a server-owned, verified local session path, not an IP/header assertion or a way to ask without directory eligibility. The wizard binds the administrator to a tested directory identity; local repair may restore connectivity/revoke access without impersonating that identity or reading protected questions while directory eligibility is unavailable.
 
-`HubPolicy.authorize` resolves all actor/destination/grant facts from the persisted message, current authenticated link and server context, not caller-supplied person fields. Catalog methods verify ownership and member-local consent; a structurally valid object cannot grant itself permissions. Revision preconditions make stale tabs return conflict. A room is keyed by immutable asker/exposure/grant context; no shared audiences or history inheritance in P1. Retention expiry, disabled owner/asker and revoked grant also fence reads, polls and subscriptions.
+`HubPolicy.authorize` resolves all actor/destination/grant facts from the persisted message, current authenticated link and server context, not caller-supplied person fields. Catalog methods verify ownership and member-local consent; a structurally valid object cannot grant itself permissions. Revision preconditions make stale tabs return conflict. A room is keyed by immutable asker/exposure/grant context; no shared audiences or history inheritance in P1. Retention expiry, disabled owner/asker and revoked grant also fence reads, polls and subscriptions. P1 room polling is at most once per ten seconds with one request in flight, paused for hidden/inactive rooms; it does not manufacture a fresh eligibility result from a prior poll. P1 has no persistent room-answer stream; `subscribe` for local member pairing is a different surface. Bound authenticated per-person/session request and directory-work concurrency before expensive LDAP calls; excess reads get 429/Retry-After rather than a cached allow. A policy mutation/stop can still invalidate a pending poll. Each accepted room poll freshly checks both asker and exposure owner, so pilot sizing must count at least two directory lookups per active room per poll.
 
 P1 browser API is mounted only with the server: `/hub/v1/session`, `/hub/v1/exposures`, `/hub/v1/grants`, `/hub/v1/rooms`, `/hub/v1/rooms/:id/messages`, `/hub/v1/audit`, `/hub/v1/admin/*`; methods are explicitly enumerated by S3/S5, never prefix-authorized. Pair/claim/connect live only on the member listener; browser sessions cannot authenticate them. Hub routes are not added to the ordinary public tunnel allowlist in P1. No route is usable before its service and audit dependency are installed: early slices return unavailable while the experimental switch remains off for normal installs.
 
@@ -363,7 +387,7 @@ export interface HubRestrictedContext {
 export interface HubRestrictedExecution {
   prepare(question: HubQuestion, policy: HubExecutionPolicy): Promise<HubRestrictedContext>;
   begin(context: HubRestrictedContext, lease: HubAuthorizationLease): Promise<void>;
-  invokeTool(context: HubRestrictedContext, name: string, args: unknown): Promise<unknown>;
+  invokeTool(context: HubRestrictedContext, name: string, args: unknown, lease: HubAuthorizationLease): Promise<unknown>;
   finish(context: HubRestrictedContext): Promise<HubAnswer>;
   hold(context: HubRestrictedContext, reasonCode: string): Promise<void>;
   proposeLocalAction(context: HubRestrictedContext, proposal: HubLocalProposal): Promise<void>;
@@ -375,7 +399,7 @@ export interface HubLocalProposal {
 
 The transport submits only to the restricted outbox adapter. S4 prepares a separate process/context/workspace/credential scope, never the owner's normal conversation or its implicit tools. Local policy resolves the data view; no remote paths, arbitrary shell/SQL/network or whole-home reads. “Read-only” cannot mean all private data is readable. Approved read connectors enforce data scope outside the model; if the provider cannot enforce the restriction, that exposure stays unavailable. Tool allowlist checks happen on actual dispatch with current authorization, not on model-declared tool names alone. Child/native CLI tools and ambient credentials must not bypass the allowlist.
 
-Each `begin` and actual tool call checks lease/link/context ownership, intent dedup and local policy; `finish` does not bypass Hub disclosure authorization. A high-risk request is a proposal to the **member owner's local Needs-you**, with exact action/arguments/consequences; it cannot execute in the Hub context. Any separately approved local execution uses ordinary local receipt/current-permission/replay checks and creates a new operation, not an upgraded Hub envelope. No imported receipt or Hub admin click satisfies it. Replies expose only the permitted result.
+Each `begin` and actual tool call checks the actual operation ID/digest as well as lease/link/context ownership, intent dedup and local policy; `finish` does not bypass Hub disclosure authorization. A high-risk request is a proposal to the **member owner's local Needs-you**, with exact action/arguments/consequences; it cannot execute in the Hub context. Any separately approved local execution uses ordinary local receipt/current-permission/replay checks and creates a new operation, not an upgraded Hub envelope. No imported receipt or Hub admin click satisfies it. Replies expose only the permitted result.
 
 ### S5: audit, notifications, administration and init
 
@@ -420,8 +444,8 @@ Audit includes actual question/answer references, immutable asker and owner-at-e
 | --- | --- |
 | S1 transport | Both switches off: no routes/imports/listeners/timers/state creation; personal fleet unaffected. Pair code/claim expiry and reuse; wrong fingerprint/owner, key/origin swap, missing approval, pin mismatch and redirects refused. Revoke and interrupted-save/restart cannot restore credentials. Frame/schema/size/version/connection-epoch tests; duplicate IDs/conflicting digests, lost receipts, reconnect before/after input, corrupt journal, backpressure and uncertain holds. A fake member must never reach ordinary fleet tools or `/agent`. |
 | S2 directory | Fake directory in an unprivileged container only. LDAPS CA/hostname failure and plaintext refused; invalid credentials, disabled/deleted/recreated account and rename; fresh check on every call, network timeout/referral/filter injection and fail-closed outage; logs/results contain no passwords or raw diagnostic secrets. No real organization service without separate approval. |
-| S3 policy/web | Owner opt-in, immutable-ID/name collision, private-agent non-enumeration, wrong asker/exposure/room/grant, stale tab/body/session/mode changes, CSRF and cookie separation. Withdraw/revoke/disabled account between queue/dispatch/read/reply; one-asker history isolation and no role/deputy grant accepted in P1. Workspace link cannot forward credentials; ordinary guest/public/member credential cannot reach owner/admin/content endpoints. Web acceptance includes a pre-upgrade stale tab. |
-| S4 execution | Adversarial questions cannot access private files/data/credentials, non-allowlisted tools, shell, network or another exposure's context. Actual provider isolation (or exposure refused), no ordinary full-tool session reuse, exact local policy revisions, revoked lease at each boundary, no duplicated input/action on restart. High-risk proposal makes local Needs-you, no remote approval; signed/forged/imported human receipts never create local authority. Any delivery-path implementation also owes real Claude and Codex idle/busy/just-resumed evidence in isolated rigs. |
+| S3 policy/web | Owner opt-in, immutable-ID/name collision, private-agent non-enumeration, wrong asker/exposure/room/grant, stale tab/body/session/mode changes, CSRF and cookie separation, including a Hub and fleet on the same hostname with different ports (both cookies presented), and the one-process pilot preserving the personal `/web`. Withdraw/revoke/disabled account between queue/dispatch/read/reply; one-asker history isolation and no role/deputy grant accepted in P1. Workspace link cannot forward credentials; ordinary guest/public/member credential cannot reach owner/admin/content endpoints. Web acceptance includes a pre-upgrade stale tab. |
+| S4 execution | Adversarial questions cannot access private files/data/credentials, non-allowlisted tools, shell, network or another exposure's context. Actual provider isolation (or exposure refused), no ordinary full-tool session reuse, exact local policy revisions, revoked lease at each boundary, no duplicated input/action on restart. High-risk proposal makes local Needs-you, no remote approval; signed/forged/imported human receipts never create local authority. Swap tool/arguments/answer ID or content under a lease, reuse a consumed intent, or change context: all refuse before effect/disclosure. Any delivery-path implementation also owes real Claude and Codex idle/busy/just-resumed evidence in isolated rigs. |
 | S5 audit/init | Full accepted/denied question/answer provenance, owner/auditor separation and audit of reads/exports. Disk-full/audit failure rejects acceptance/disclosure; notification retry doesn't rerun work. Private DB/keys/backups/ACLs; configured retention; init interrupted at every durable step, same-account warning/confirmation and no silent fleet conversion; service installation requires exact confirmation. Missing/rolled-back state holds visibly. |
 
 Use scratch homes, private tmux sockets only where a later real-CLI test requires them, and fake-directory containers with **no privileged mode, no binfmt changes and no host-network changes**. This documentation PR needs interface/type, link, privacy and documentation checks, not a real fleet or account run. Implementation PRs post exact-head acceptance before their parity review; a safety hold appears in Needs-you instead of silently stalling. The feature must not block an unrelated release: unfinished slices stay off.
