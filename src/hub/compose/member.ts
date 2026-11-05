@@ -409,6 +409,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         agents: options.agents,
         views: registry,
         afterCommit: () => sender.afterCommit(),
+        // The owner page's provider guidance (S4's presentation metadata; readiness stays authoritative).
+        providerReason: (agent) => service.providerReason(agent.providerId),
       });
 
       return {

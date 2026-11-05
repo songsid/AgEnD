@@ -23,14 +23,14 @@ async function paired() {
   return rig;
 }
 
-function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS) {
+function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS, providerId: string | null = null) {
   const reports: { code: string; detail: string }[] = [];
   const attached: { exposures: unknown; attention: unknown; link: string[]; notices: { code: string; reason: string }[] } = { exposures: null, attention: null, link: [], notices: [] };
   const create = createHubMemberFactory({
     home,
     components,
     boundHub: () => hubId,
-    agents: () => [{ name: "general", display: "General", providerId: null }],
+    agents: () => [{ name: "general", display: "General", providerId }],
     attachExposures: (api) => { attached.exposures = api; },
     attachAttention: (read) => { attached.attention = read; },
     pokeAttention: () => {},
@@ -141,15 +141,16 @@ describe.skipIf(process.platform === "win32")("provider setup is non-fatal (agre
       ["no S4b in the build", good(hubId), { execution: MEMBER_COMPONENTS.execution!, exposures: MEMBER_COMPONENTS.exposures! }, "unavailable"],
     ];
     for (const [label, provider, components, reason] of cases) {
-      const f = factory(rig.memberHome, hubId, components);
+      const f = factory(rig.memberHome, hubId, components, "claude");
       const service = await f.create({ enabled: true, execution: { provider } }, () => true);
       await service.start();
       expect(f.attached.notices, label).toEqual([{ code: "hub-provider-unavailable", reason }]);
       // S4 sees the same bounded reason (presentation only).
       expect((service as unknown as { providerReason(id: string): unknown }).providerReason("claude"), label).toBe(reason);
       expect(f.reports, label).toEqual([]); // not fatal
-      const api = f.attached.exposures as { list(): Array<{ enforceable: boolean }> };
-      expect(api.list().every((v) => !v.enforceable), label).toBe(true);
+      const api = f.attached.exposures as { list(): Array<{ enforceable: boolean; reason?: string }> };
+      // The owner page shows S4's bounded reason for the agent's provider, and the agent cannot be shared.
+      expect(api.list(), label).toMatchObject([{ enforceable: false, reason }]);
       await service.close();
     }
   });
