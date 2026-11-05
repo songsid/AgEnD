@@ -9,3 +9,5 @@ export { createHubCliProvider } from "./cli-provider.js";
 export type { HubCliProvider, HubCliProviderOptions } from "./cli-provider.js";
 export { createHubModelBroker } from "./model-broker.js";
 export type { HubModelBroker, HubCliBackend } from "./model-broker.js";
+export { HubProviderSetupError, HUB_PROVIDER_SETUP_REASONS, isHubProviderSetupReason, hubProviderSetupReason } from "./provider-setup.js";
+export type { HubProviderSetupReason } from "./provider-setup.js";

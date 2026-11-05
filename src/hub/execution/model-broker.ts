@@ -1,6 +1,7 @@
 /** The member owns credentials and destinations. No URL/header supplied by a CLI is forwarded. */
 import { z } from "zod";
 import { parseStrictJson, HubProtocolError } from "../validation.js";
+import { HubProviderSetupError } from "./provider-setup.js";
 
 export type HubCliBackend = "claude" | "codex";
 export interface HubModelReply { body: string; contentType: "text/event-stream" | "application/json" }
@@ -126,9 +127,11 @@ export function validateModelReply(backend: HubCliBackend, reply: HubModelReply)
 /** Explicit construction only; production endpoints are fixed, TLS checked, redirects forbidden. */
 export function createHubModelBroker(credentials: { claude?: string; codex?: string }): HubModelBroker {
   const keys = Object.freeze({ ...credentials });
+  const usable = (key: unknown): key is string => typeof key === "string" && key.trim().length > 0 && !/[\r\n]/.test(key);
+  if (!Object.values(keys).some(usable)) throw new HubProviderSetupError("credential-unconfigured");
   return async (backend, body, signal) => {
     const key = keys[backend];
-    if (!key || /[\r\n]/.test(key)) throw new HubProtocolError("unavailable");
+    if (!usable(key)) throw new HubProviderSetupError("credential-unconfigured");
     const response = await fetch(backend === "claude" ? "https://api.anthropic.com/v1/messages" : "https://api.openai.com/v1/responses", {
       method: "POST", redirect: "error", signal,
       headers: backend === "claude" ? { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" }

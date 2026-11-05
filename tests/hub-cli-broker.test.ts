@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHubModelBroker, documentArguments, documentTool, HUB_CLI_TOOLS, HubForbiddenModelTool,
   MODEL_WIRE_LIMIT, restrictedModelRequest, validateModelReply, type HubCliBackend } from "../src/hub/execution/model-broker.js";
 import { hubContainerArguments, verifyHubContainer } from "../src/hub/execution/cli-provider.js";
+import { hubProviderSetupReason } from "../src/hub/execution/provider-setup.js";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 const tools = [...HUB_CLI_TOOLS.map(name => ({ type: "function", name, input_schema: {} })), { name: "Bash" }, { type: "web_search" }, { type: "mcp", server_url: "https://outside.test" }];
@@ -13,6 +14,29 @@ function container() {
       CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges:true"], CapAdd: [], PidMode: "", IpcMode: "private", UTSMode: "", Binds: [], Devices: [], DeviceRequests: [], PortBindings: {}, Tmpfs: { "/scratch": "rw,nosuid,nodev,noexec,size=67108864,mode=1777" } } };
 }
 describe("Hub CLI model and tool broker", () => {
+  it.each(["claude", "codex"] as const)("keeps an unconfigured unused backend from disabling %s and refuses that backend before network", async backend => {
+    const unused = backend === "claude" ? "codex" : "claude";
+    const fetcher = vi.fn<typeof fetch>(async () => new Response("{}", { headers: { "content-type": "application/json" } })); vi.stubGlobal("fetch", fetcher);
+    for (const absent of [undefined, "", "   ", "PRIVATE-UNUSED\n"]) {
+      let broker!: ReturnType<typeof createHubModelBroker>;
+      expect(() => { broker = createHubModelBroker({ [backend]: "FAKE-SELECTED", [unused]: absent }); }).not.toThrow();
+      const calls = fetcher.mock.calls.length;
+      await expect(broker(backend, {}, new AbortController().signal)).resolves.toMatchObject({ body: "{}" });
+      expect(fetcher).toHaveBeenCalledTimes(calls + 1);
+      await expect(broker(unused, {}, new AbortController().signal)).rejects.toMatchObject({ reason: "credential-unconfigured" });
+      expect(fetcher).toHaveBeenCalledTimes(calls + 1);
+    }
+  });
+  it.each([{}, { claude: "" }, { codex: "   " }, { claude: "PRIVATE-KEY\n" }])("explains missing/unusable configured credentials before a network request: %j", credentials => {
+    const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
+    let failure: unknown; try { createHubModelBroker(credentials); } catch (error) { failure = error; }
+    expect(hubProviderSetupReason(failure)).toBe("credential-unconfigured");
+    expect(JSON.stringify(failure)).not.toContain("PRIVATE-KEY"); expect(fetcher).not.toHaveBeenCalled();
+  });
+  it("never infers a setup reason from an arbitrary exception or its message", () => {
+    expect(hubProviderSetupReason({ reason: "engine-unavailable", message: "PRIVATE-PATH" })).toBeUndefined();
+    expect(hubProviderSetupReason(new Error("credential-unconfigured PRIVATE-KEY"))).toBeUndefined();
+  });
   it.each(["claude", "codex"] as const)("rebuilds %s model requests with only approved tool schemas and local model", backend => {
     const body = restrictedModelRequest(backend, "local-model", request());
     expect(body.model).toBe("local-model"); expect(body.stream).toBe(true);

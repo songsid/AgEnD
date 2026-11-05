@@ -3,17 +3,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import type { HubExecutionGateway } from "../src/hub/execution/service.js";
 const state = vi.hoisted(() => ({ commands: [] as any[], processes: [] as any[], containers: new Map<string, any>(),
-  socket: true, imageArchitecture: "amd64", holdCreate: null as Promise<void> | null, skipInput: false, wrongInput: false, tool: false, toolName: "mcp__hub_documents__documents_read", toolArgs: { documentId: "approved" } as unknown,
+  socket: true, socketThrows: false, engine: "linux/x86_64", engineFails: false, imageFails: false, imageId: "sha256:" + "a".repeat(64), imageArchitecture: "amd64", imageVersion: "2.1.316", holdCreate: null as Promise<void> | null, skipInput: false, wrongInput: false, tool: false, toolName: "mcp__hub_documents__documents_read", toolArgs: { documentId: "approved" } as unknown,
   proposal: false, badExit: false, cleanupFails: false, cleanupRemovedThenFails: false, listFails: false, weaken: false, outputFlood: false }));
-vi.mock("node:fs", async original => ({ ...await original<typeof import("node:fs")>(), lstatSync: () => ({ isSocket: () => state.socket }) }));
+vi.mock("node:fs", async original => ({ ...await original<typeof import("node:fs")>(), lstatSync: () => { if (state.socketThrows) throw Error("PRIVATE-SOCKET-PATH"); return { isSocket: () => state.socket }; } }));
 vi.mock("../src/child-process.js", async () => {
   const { EventEmitter } = await import("node:events"), { PassThrough } = await import("node:stream");
   const execFile = () => {};
   Object.defineProperty(execFile, Symbol.for("nodejs.util.promisify.custom"), { value: async (cmd: string, all: string[], options: any) => {
     const args = all.slice(2); state.commands.push({ cmd, all, args, options });
     let stdout = "";
-    if (args[0] === "info") stdout = "linux";
-    else if (args[0] === "image") stdout = JSON.stringify([{ Id: "sha256:" + "a".repeat(64), Architecture: state.imageArchitecture, Config: { Labels: { "org.agend.hub.protocol": "1", "org.agend.hub.claude": "2.1.316", "org.agend.hub.codex": "0.166.0" } } }]);
+    if (args[0] === "info") { if (state.engineFails) throw Error("PRIVATE-DOCKER-ERROR"); stdout = state.engine; }
+    else if (args[0] === "image") { if (state.imageFails) throw Error("PRIVATE-IMAGE-PATH"); stdout = JSON.stringify([{ Id: state.imageId, Architecture: state.imageArchitecture, Config: { Labels: { "org.agend.hub.protocol": "1", "org.agend.hub.claude": state.imageVersion, "org.agend.hub.codex": "0.166.0" } } }]); }
     else if (args[0] === "create") {
       await state.holdCreate;
       const id = (state.containers.size + 1).toString(16).padStart(64, "0"), token = args[args.indexOf("--label") + 1].split("=")[1];
@@ -49,6 +49,7 @@ vi.mock("../src/child-process.js", async () => {
   };
   return { execFile, spawn };
 });
+import { hubProviderSetupReason } from "../src/hub/execution/provider-setup.js";
 import { createHubCliProvider } from "../src/hub/execution/cli-provider.js";
 import type { HubModelBroker } from "../src/hub/execution/model-broker.js";
 
@@ -58,10 +59,33 @@ const broker = vi.fn<HubModelBroker>(async () => ({ contentType: "application/js
 const gateway = (): HubExecutionGateway => ({ invoke: vi.fn(async () => ({ text: "approved" })), propose: vi.fn(async () => {}) });
 const factory = () => createHubCliProvider({ backend: "claude", imageId: "sha256:" + "a".repeat(64), model: "local-model", modelBroker: broker });
 const tick = async () => { for (let n = 0; n < 30; n++) await Promise.resolve(); };
-beforeEach(() => { state.commands = []; state.processes = []; state.containers.clear(); Object.assign(state, { socket: true, imageArchitecture: "amd64", holdCreate: null, skipInput: false, wrongInput: false, tool: false, toolName: "mcp__hub_documents__documents_read", toolArgs: { documentId: "approved" }, proposal: false, badExit: false, cleanupFails: false, cleanupRemovedThenFails: false, listFails: false, weaken: false, outputFlood: false }); broker.mockClear(); });
+beforeEach(() => { state.commands = []; state.processes = []; state.containers.clear(); Object.assign(state, { socket: true, socketThrows: false, engine: "linux/x86_64", engineFails: false, imageFails: false, imageId: "sha256:" + "a".repeat(64), imageArchitecture: "amd64", imageVersion: "2.1.316", holdCreate: null, skipInput: false, wrongInput: false, tool: false, toolName: "mcp__hub_documents__documents_read", toolArgs: { documentId: "approved" }, proposal: false, badExit: false, cleanupFails: false, cleanupRemovedThenFails: false, listFails: false, weaken: false, outputFlood: false }); broker.mockClear(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("Hub disposable provider lifecycle", () => {
+  it.each([
+    ["missing socket", "engine-unavailable", { socketThrows: true }],
+    ["non-socket", "engine-unavailable", { socket: false }],
+    ["daemon unavailable", "engine-unavailable", { engineFails: true }],
+    ["Windows engine", "engine-unsupported", { engine: "windows/x86_64" }],
+    ["ARM engine", "engine-unsupported", { engine: "linux/aarch64" }],
+    ["missing image", "image-mismatch", { imageFails: true }],
+    ["wrong image ID", "image-mismatch", { imageId: "sha256:" + "b".repeat(64) }],
+    ["wrong image architecture", "image-mismatch", { imageArchitecture: "arm64" }],
+    ["wrong CLI version", "image-mismatch", { imageVersion: "unreviewed" }],
+  ] as const)("explains %s safely without starting a session", async (_scenario, reason, changes) => {
+    Object.assign(state, changes);
+    const error = await factory().then(async provider => { await provider.close(); return null; }, error => error);
+    expect(hubProviderSetupReason(error)).toBe(reason); expect(error.reason).toBe(reason);
+    expect(error.message).not.toContain("PRIVATE-"); expect(JSON.stringify(error)).not.toContain("PRIVATE-");
+    expect(state.processes).toHaveLength(0); expect(state.containers.size).toBe(0); expect(broker).not.toHaveBeenCalled();
+  });
+  it("explains an unselected image before contacting Docker and accepts the amd64 engine spelling", async () => {
+    await expect(createHubCliProvider({ backend: "claude", imageId: "", model: "local-model", modelBroker: broker })).rejects.toMatchObject({ reason: "image-unconfigured" });
+    expect(state.commands).toHaveLength(0); state.engine = "linux/amd64";
+    const provider = await factory(); expect(provider.isolation).toBe("hub-restricted-v1"); await provider.close();
+  });
+
   it("refuses unsupported architecture and missing local socket before any container exists", async () => {
     state.imageArchitecture = "arm64"; await expect(factory()).rejects.toThrow(); expect(state.containers.size).toBe(0);
     state.imageArchitecture = "amd64"; state.socket = false; await expect(factory()).rejects.toThrow(); expect(state.containers.size).toBe(0);
