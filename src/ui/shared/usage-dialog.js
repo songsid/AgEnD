@@ -64,6 +64,22 @@ function expiryText(iso) {
   if (!(ms > 0)) return "";
   return usageText("", { key: "usage.ticket_expiry", args: [`${at.getMonth() + 1}/${at.getDate()}`, usageDuration(ms)] });
 }
+/**
+ * #3066 §1: a server line ({ text, i18n }) in this page's language — or, when this tab's strings predate the key (a
+ * stale tab), the server's own English text, never the bare key.
+ */
+export function capacityLine(x) {
+  if (!x || typeof x.text !== "string") return "";
+  const key = x.i18n && typeof x.i18n.key === "string" ? `view.${x.i18n.key}` : null;
+  return key && t(key) !== key ? usageText(x.text, x.i18n) : x.text;
+}
+/** #3066 §1: a weekly quota's measured 100% (or why not yet), and the limit it always carries: only this fleet counts. */
+function UsageCapacity({ c }) {
+  const notes = Array.isArray(c.notes) ? c.notes : [];
+  return html`<div class=${`u-cap${c.status === "ok" ? "" : " u-cap-wait"}`}>
+    <div class="u-cap-line">${capacityLine(c.line)}</div>
+    ${notes.map((n, i) => html`<div key=${i} class="u-cap-note">${capacityLine(n)}</div>`)}</div>`;
+}
 export function UsageMetric({ m }) {
   const bar = useRef(null);
   const label = usageText(m.label, m.labelI18n);
@@ -78,7 +94,8 @@ export function UsageMetric({ m }) {
     const sub = [note, resetText(m.resetsAt)].filter(Boolean).join(" · ");
     return html`<div class="u-metric"><div class="u-row"><span class="u-label">${label}</span>${word ? html`<span class=${`u-status ${cls}`}>${word}</span>` : null}
       <span class=${`u-pct ${cls}`}>${pct.toFixed(0)}<span class="u-unit">%</span></span></div>
-      <div class="u-meter"><div ref=${bar} class=${`u-fill ${cls}`}></div></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}</div>`;
+      <div class="u-meter"><div ref=${bar} class=${`u-fill ${cls}`}></div></div>${sub ? html`<div class="u-sub">${sub}</div>` : null}
+      ${m.capacity ? html`<${UsageCapacity} c=${m.capacity} />` : null}</div>`;
   }
   if (m.type === "dollars") {
     const val = m.limit ? `$${(m.used ?? 0).toFixed(2)} / $${m.limit.toFixed(2)}` : `$${(m.used ?? 0).toFixed(2)}`;

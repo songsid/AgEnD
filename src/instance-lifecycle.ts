@@ -16,6 +16,7 @@ import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
+import type { TopicDeleteOutcome } from "./instance-topic-delete.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
 import { sanitizeInstanceName } from "./instance-names.js";
@@ -205,6 +206,7 @@ export interface LifecycleContext {
   onNativePaneRecoverySettled?(name:string):void;
   holdNativePaneRecovery?(name:string,error:unknown):boolean;
   setNativePanePaused?(name: string, paused: boolean): void;
+  readonly agentCredentials?: Pick<import("./agent-credentials.js").AgentCredentials, "issue" | "invalidate">;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
@@ -240,8 +242,8 @@ export interface LifecycleContext {
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   /** #2910: no Discord or Telegram connection at all — a new agent gets no topic (it is reached from the dashboard). */
   isWebOnlyFleet?(): boolean;
-  /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
-  deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
+  /** delete_instance: the removal, then (unless `deleteTopic` is false) the agent's own topic, through its own bot. */
+  removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean }): Promise<TopicDeleteOutcome>;
   /**
    * A bound delete for the world `adapterId` selects, captured by the caller
    * BEFORE awaiting createForumTopic. Rollback must use exactly this — never
@@ -282,6 +284,8 @@ export interface LifecycleContext {
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
   notifySessionOomStop?(name: string, unclear?: boolean): Promise<void>;
+  /** A pre-launch refusal is still a visible wait when no daemon was published. */
+  setKiroCompatibilityHold?(name: string, message: string | null): void;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -962,6 +966,21 @@ export class InstanceLifecycle {
       }
       this.ctx.notifyInstanceTopic(name, t("delivery.cancelled_unsent", messages.length, name));
     }, this.ctx.logger, `daemon.human_messages_cancelled[${name}]`));
+    // #3030: messages handed to the busy CLI's own queue that it never took (it went idle without them), or that a
+    // restart left unverifiable (its transcript could not be read, so they were not sent again). Each is marked ❌ and
+    // the person is told once — never a silent ✅.
+    daemon.on("human_handoffs_unsettled", safeHandler((data: { reason: "not-taken" | "unverifiable"; messages: Array<{ chatId: string; messageId: string; threadId?: string }> }) => {
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      if (!messages.length) return;
+      const reason = data.reason === "unverifiable" ? "unverifiable" : "not-taken";
+      this.ctx.eventLog?.insert(name, "handoffs_unsettled", { reason, count: messages.length });
+      this.ctx.logger.warn({ name, reason, count: messages.length }, "Queued messages not taken by the CLI — telling the person");
+      for (const m of messages) {
+        if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+        else this.ctx.reactMessageStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+      }
+      this.ctx.notifyInstanceTopic(name, t(reason === "unverifiable" ? "delivery.handoff_unverified_after_restart" : "delivery.handoff_not_taken", messages.length, name));
+    }, this.ctx.logger, `daemon.human_handoffs_unsettled[${name}]`));
   }
 
   nativeRecoveryPending(name:string):boolean{return this.nativeExitOwners.has(name);}
@@ -1791,6 +1810,7 @@ export class InstanceLifecycle {
 
   /** Invalidate every start/wake already running for `name` (they will not publish). */
   invalidate(name: string, nativeOwner?:symbol): void {
+    this.ctx.agentCredentials?.invalidate(name);
     const native=this.nativeExitOwners.get(name);if(native&&native.token!==nativeOwner)this.cancelNativeRecovery(name);
     this.lifecycleEpochs.set(name, this.epochOf(name) + 1);
   }
@@ -1961,6 +1981,16 @@ export class InstanceLifecycle {
       this.ctx.backendOutage,
     );
     if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
+    // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
+    daemon.on("kiro_compatibility_hold", (message: string | null) => {
+      const owner = this.daemons.get(name);
+      if (owner ? owner !== daemon : this.epochOf(name) !== epoch) return;
+      this.ctx.setKiroCompatibilityHold?.(name, message);
+    });
+    daemon.setAgentCredentialIssuer?.(token => {
+      if (this.epochOf(name) !== epoch) throw new SupersededStartError(name);
+      this.ctx.agentCredentials?.issue(name, token);
+    });
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
@@ -2076,6 +2106,7 @@ export class InstanceLifecycle {
       this.ctx.touchActivity(name);
     });
 
+    this.ctx.setKiroCompatibilityHold?.(name, null);
     this.attachIncidentHandlers(name, daemon);
     // #2897: a new daemon starts with no dialog held; a notice the last one left (a crash, a respawn) is out of date.
     this.ctx.resolveParkedNotice?.(name);
@@ -2842,7 +2873,8 @@ export class InstanceLifecycle {
     respond: (result: unknown, error?: string) => void,
   ): Promise<void> {
     const instanceName = args.name;
-    const deleteTopic = args.delete_topic ?? false;
+    // The user's decision (beta.9): deleting an agent deletes its topic, unless `delete_topic: false` keeps it.
+    const deleteTopic = args.delete_topic ?? true;
 
     const instanceConfig = this.ctx.fleetConfig?.instances[instanceName];
     if (!instanceConfig) {
@@ -2855,12 +2887,9 @@ export class InstanceLifecycle {
       return;
     }
 
-    if (deleteTopic && instanceConfig.topic_id) {
-      await this.ctx.deleteForumTopic(instanceConfig.topic_id);
-    }
-
-    await this.ctx.removeInstance(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"));
-    respond({ success: true, name: instanceName, topic_deleted: deleteTopic });
+    // topic_deleted is the platform's answer, never the request; when the topic stays, topic_reason says why.
+    const topic = await this.ctx.removeInstanceAndTopic(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"), { deleteTopic });
+    respond({ success: true, name: instanceName, topic_deleted: topic.deleted, ...(topic.deleted ? {} : { topic_reason: topic.reason }) });
   }
 
   has(name: string): boolean {

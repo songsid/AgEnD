@@ -5,6 +5,7 @@ export const GENERAL_ROLE_INSTRUCTIONS = "# Fleet Coordinator\n\nYou are the fle
 export const GENERAL_SKILL_NAMES = [
   "backend-providers",
   "bug-report",
+  "concepts",
   "credential-profiles",
   "cross-instance-messaging",
   "delegation-playbook",

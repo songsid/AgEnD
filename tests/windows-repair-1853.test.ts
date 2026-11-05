@@ -142,7 +142,10 @@ describe.skipIf(!pwsh)("with pwsh: finding and repairing a broken AgEnD", { time
     expect(out).toContain("OK=True");
     const log = calls(bin).trim().split("\n");
     // #2286 review: never the old version itself — it may predate the installer that repairs (#2264).
-    expect(log[0]).toBe(`-d AgEnD -u root --exec bash -lc ${PRELUDE}set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | AGEND_VERSION=beta bash`);
+    // github.io first, then the deployed raw copy (a network may block *.github.io); fetched whole and checked, then run.
+    expect(log[0].startsWith(`-d AgEnD -u root --exec bash -lc ${PRELUDE}( f=$(mktemp)`)).toBe(true);
+    expect(log[0]).toContain(`for u in https://songsid.github.io/AgEnD/install.sh https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public/install.sh; do`);
+    expect(log[0].endsWith("AGEND_VERSION=beta bash < $f )")).toBe(true);
     expect(log[1]).toBe(`-d AgEnD -u root --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend --version`);
     expect(log[0]).not.toContain('"');
   });
@@ -150,7 +153,7 @@ describe.skipIf(!pwsh)("with pwsh: finding and repairing a broken AgEnD", { time
     for (const v of ["2.2.7", "", "1.0; rm -rf ~", "$(id)", "2.3.0-beta.16; id"]) {
       const bin = fakeWsl();
       withHelpers(`$null = Invoke-AgendRepair 'AgEnD' 'root' '${v.replace(/'/g, "''")}'`, bin);
-      expect(calls(bin).split("\n")[0], v).toMatch(/\| bash$/);
+      expect(calls(bin).split("\n")[0], v).toMatch(/; bash < \$f \)$/);
       expect(calls(bin).split("\n")[0], v).not.toMatch(/AGEND_VERSION/);
     }
   });
