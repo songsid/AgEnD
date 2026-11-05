@@ -23,18 +23,27 @@ export const plainOptions = (kind, values) => values.map((v) => ({ value: v, lab
 // ── Which agents set a field themselves ──
 /** The agents of a fleet's configuration: [name, its own settings]. General and every other instance count — each one inherits like any other. */
 export const agentsOf = (fleet) => Object.entries((fleet && fleet.instances) || {});
-/** An agent has set the dashboard features itself: any of the three kept under `dashboard`, or either of the two kept beside it. */
+/** A key with a value: `null` / `undefined` is the same as no key (the agent follows the default). */
+const given = (obj, key) => hasOwn(obj, key) && obj[key] != null;
+/** An agent has set the dashboard features itself: any of the three kept under `dashboard`, or either of the two kept beside it, with a value. */
 export function ownsDashboard(inst) {
   const dash = inst && inst.dashboard;
-  return Object.values(SEPARATE_FEATURE_KEYS).some((k) => hasOwn(inst, k))
-    || (!!dash && typeof dash === "object" && !Array.isArray(dash) && DASHBOARD_FEATURES.some((f) => hasOwn(dash, f)));
+  return Object.values(SEPARATE_FEATURE_KEYS).some((k) => given(inst, k))
+    || (!!dash && typeof dash === "object" && !Array.isArray(dash) && DASHBOARD_FEATURES.some((f) => given(dash, f)));
 }
+/** An agent's own `a` or `a.b` (the hang detector's two settings are merged one by one: setting the timeout leaves `enabled` inherited). */
+const ownsPath = (inst, path) => {
+  const [a, b] = path.split(".");
+  return b ? hasOwn((inst && inst[a]) || {}, b) : hasOwn(inst, a);
+};
 
 /**
  * One entry per field the page draws, by the form key it is called in General's form:
  * `keys` — the form keys it edits (it is "edited" while one differs from what is saved);
  * `path` — its entry in the impact schema (what saving it costs);
  * `own` — the agent setting that overrides it (an agent that has it is not affected by an edit here); none: agents cannot;
+ * `parts` — a field of several settings that agents override one by one: each part's keys and own settings (an edit to one part
+ *   reaches the agents that do not set that part, however the other parts stand);
  * `agentGroup` — it is one of the "Shared agent settings" (individual agents may override it), else of "System & channels";
  * `confirm` — saving it asks for someone's OK first.
  */
@@ -53,18 +62,24 @@ export const FIELDS = Object.freeze({
   locale: { keys: ["locale"], path: "defaults.locale" },
   tips: { keys: ["tips"], path: "defaults.tips" },
   roots: { keys: ["roots"], path: "fleet.project_roots", confirm: "noteConfirmAdmin" },
-  hang: { keys: ["hangOn", "hang"], path: "defaults.hang_detector", own: ["hang_detector"] },
+  hang: { keys: ["hangOn", "hang"], path: "defaults.hang_detector",
+    parts: [{ keys: ["hangOn"], own: ["hang_detector.enabled"] }, { keys: ["hang"], own: ["hang_detector.timeout_minutes"] }] },
   concurrency: { keys: ["concurrency"], path: "fleet.spawn_concurrency" },
   stagger: { keys: ["stagger"], path: "fleet.spawn_stagger_ms" },
 });
 /** How many fields the Advanced drawer holds (the title says so). */
 export const ADVANCED_COUNT = 10;
 
-/** The agents that set a field themselves, and how many there are. Fields agents cannot override have none. */
-export function usageOf(fleet, field) {
-  const spec = FIELDS[field], agents = agentsOf(fleet);
-  const sets = (inst) => (spec.owns ? spec.owns(inst) : (spec.own || []).some((k) => hasOwn(inst, k)));
-  const owners = agents.filter(([, inst]) => sets(inst)).map(([name, inst]) => ({ name, label: shortName(name, inst) }));
+/** The parts of a field that agents override one by one (one part: the field itself). */
+const partsOf = (spec) => spec.parts || [{ keys: spec.keys, own: spec.own, owns: spec.owns }];
+const ownsPart = (part, inst) => (part.owns ? part.owns(inst) : (part.own || []).some((path) => ownsPath(inst, path)));
+/**
+ * The agents that set a field themselves, and how many there are. Fields agents cannot override have none. `parts`: only
+ * these parts count — an agent is left out of an edit only when it sets every one of them (default: all of the field's).
+ */
+export function usageOf(fleet, field, parts = partsOf(FIELDS[field])) {
+  const agents = agentsOf(fleet);
+  const owners = agents.filter(([, inst]) => parts.every((part) => ownsPart(part, inst))).map(([name, inst]) => ({ name, label: shortName(name, inst) }));
   return { total: agents.length, owners, names: agents.map(([name]) => name) };
 }
 const NAMES_SHOWN = 5;
@@ -79,8 +94,9 @@ const edited = (f, base, field) => FIELDS[field].keys.some((k) => !sameValue(f[k
  * defaults (`bar.defaults`) and for the project folders' own (`bar.roots`). A field that applies at once has no note;
  * an invalid one has none yet.
  */
-export function sharedNotes({ schema, fleet, f, base, errors = {} }) {
+export function sharedNotes({ schema, fleet, live = {}, f, base, errors = {} }) {
   const fields = {}, hit = new Set(), bar = { defaults: [], roots: [] };
+  const running = (name) => !!live && !!live[name] && live[name].status === "running";
   let fleetRestart = false;
   const add = (list, text) => { if (!list.includes(text)) list.push(text); };
   for (const [field, spec] of Object.entries(FIELDS)) {
@@ -88,11 +104,16 @@ export function sharedNotes({ schema, fleet, f, base, errors = {} }) {
     const notes = [], kind = impactOf(schema, spec.path);
     if (kind === "fleet") { notes.push({ text: tn("noteRestartFleet") }); fleetRestart = true; }
     else if (kind === "instance") {
-      const u = usageOf(fleet, field), skipped = u.owners.map((o) => o.label), skippedNames = new Set(u.owners.map((o) => o.name));
+      // Only the parts that were edited count: an agent is left alone when it sets all of them itself.
+      const u = usageOf(fleet, field, partsOf(spec).filter((part) => part.keys.some((k) => !sameValue(f[k], base[k]))));
+      const skipped = u.owners.map((o) => o.label), skippedNames = new Set(u.owners.map((o) => o.name));
       const reached = u.names.filter((n) => !skippedNames.has(n));
       for (const n of reached) hit.add(n);
-      notes.push({ text: u.total === 0 ? tn("noteNoAgents") : !reached.length ? tn("noteAllOverride")
-        : skipped.length ? tn("noteRestartAgentsSkip", reached.length, nameList(skipped)) : tn("noteRestartAgents", reached.length) });
+      // Every agent without its own value takes the new one (a stopped agent at its next start), but only a running one restarts.
+      const live_ = reached.filter(running).length;
+      const main = live_ === reached.length ? tn("noteRestartAgents", reached.length)
+        : live_ ? tn("noteApplyAgents", reached.length, live_) : tn("noteApplyIdle", reached.length);
+      notes.push({ text: u.total === 0 ? tn("noteNoAgents") : !reached.length ? tn("noteAllOverride") : `${main}${skipped.length ? tn("noteSkip", nameList(skipped)) : ""}` });
     }
     if (spec.confirm) { notes.push({ text: tn(spec.confirm) }); add(field === "roots" ? bar.roots : bar.defaults, tn(spec.confirm)); }
     // Ticking a dashboard feature on is confirmed first (unticking applies at once): only a feature newly ticked asks.
@@ -101,7 +122,10 @@ export function sharedNotes({ schema, fleet, f, base, errors = {} }) {
     }
     if (notes.length) fields[field] = notes;
   }
-  if (hit.size) bar.defaults.unshift(tn("barRestartAgents", hit.size));
+  if (hit.size) {
+    const live_ = [...hit].filter(running).length;
+    bar.defaults.unshift(live_ === hit.size ? tn("barRestartAgents", hit.size) : live_ ? tn("barApplyAgents", hit.size, live_) : tn("barApplyIdle", hit.size));
+  }
   if (fleetRestart) add(bar.defaults, tn("barRestartFleet"));
   return { fields, bar };
 }
@@ -187,7 +211,8 @@ export function SharedAgentSettings({ ctx, form }) {
   const { f, set, base, errors, warnings, unset, fc, notes, replyNote } = form;
   const fleet = ctx.fleet;
   const primary = channelsOf(fleet)[0];
-  const mark = (...ks) => (ks.every((k) => unset[k] && sameValue(f[k], base[k])) ? html`<${DefaultMark} />` : null);
+  const defaultTip = tn("defaultMarkTip");
+  const mark = (...ks) => (ks.every((k) => unset[k] && sameValue(f[k], base[k])) ? html`<${DefaultMark} tip=${defaultTip} />` : null);
   const u = (field) => usageOf(fleet, field);
   const note = (field) => html`<${Notes} notes=${notes.fields[field]} />`;
   const head = (field, id, text, tip, extra = {}) => html`<${FieldHead} id=${id} text=${text} tip=${tip} usage=${FIELDS[field].agentGroup ? u(field) : null} ...${extra} />`;
@@ -211,7 +236,7 @@ export function SharedAgentSettings({ ctx, form }) {
       <${Switch} id="g-tips" name=${tn("dailyTips")} checked=${f.tips === "true"} onChange=${(on) => set("tips")(String(on))} />${note("tips")}</div>
     <div id="project-roots" class="s-wide"><div id="g-roots" class=${fc("field", "roots")}>${head("roots", "g-roots-c", tn("projectRootsTitle"), tn("projectRootsHint"), { bare: true })}
       <${ChipList} items=${f.roots} onChange=${set("roots")} placeholder="/path/to/projects" label=${tn("projectRootsTitle")} />
-      ${f.roots.length ? null : html`<${InEffect} text=${tn("projectRootsAnywhere")} />`}${note("roots")}</div></div>`;
+      ${f.roots.length ? null : html`<${InEffect} text=${tn("projectRootsAnywhere")} tip=${defaultTip} />`}${note("roots")}</div></div>`;
 
   const agentAdvanced = html`
     <div class=${fc("field", "visibility")}>${head("visibility", "g-vis", tn("crossInstanceVisibility"), tn("crossInstanceVisibilityHint"), { mark: mark("visibility"), bare: true })}
@@ -237,7 +262,7 @@ export function SharedAgentSettings({ ctx, form }) {
         <span class="s-unit">${tn("hangUnit")}</span></div><${Feedback} error=${errors.hang} />${note("hang")}</div>
     <div class=${fc("field", "concurrency")}>${head("concurrency", "g-conc", tn("concurrency"), tn("tipConcurrency"), { mark: mark("concurrency") })}
       <input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} />
-      <${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} />` : null}${note("concurrency")}</div>
+      <${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} tip=${defaultTip} />` : null}${note("concurrency")}</div>
     <div class=${fc("field", "stagger")}>${head("stagger", "g-stag", `${tn("staggerDelay")} (ms)`, tn("tipStagger"), { mark: mark("stagger") })}
       <input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} />
       <${Feedback} error=${errors.stagger} warning=${warnings.stagger} />${note("stagger")}</div>`;

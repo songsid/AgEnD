@@ -712,7 +712,7 @@ AgEnD 會以 `0700` 建立主目錄（預設 `~/.agend`，也可由 `AGEND_HOME`
 
 登入通知（`web.notify_login`）與每日提示（`defaults.tips`）一律發在頻道，與 2.3.2 之前相同，不會私訊（Telegram bot 無法私訊還沒啟動過它的使用者）。兩者都是 `true`（預設）或 `false`。`web.notify_login: false` 只關閉管理者的本機登入通知；訪客與公開連結安全通知仍會發出。登入碼、重新發送的登入碼、訪客登入碼與公開連結仍以私下方式送出。
 
-在**設定 → 存取與安全 → 網頁登入通知**與 **Agent 共用設定 → 每日提示**選擇「頻道／關閉」，變更立即生效。
+在**設定 → 存取與安全 → 網頁登入通知**（頻道／關閉）與 **Agent 共用設定 → 每日提示**（開關）調整，變更立即生效。
 
 2.3.2 beta 曾提供的私訊選項已撤回。舊的 `notify_login: dm`、`tips: dm` 以及任何 `web.notice_delivery` 路由仍可讀取，視為 `true`。啟動或接受重新載入時，AgEnD 會改寫成 boolean 並移除 `web.notice_delivery`，保留註解與 `.bak`；在那之前 `agend validate` 會發出警告。
 
