@@ -1,16 +1,16 @@
 /** Read-only seal helper; only S5's confirmed initialization transaction writes the manifest. */
 import { createPrivateKey, createPublicKey, sign, verify } from "node:crypto";
 import { z } from "zod";
-import { epoch, hash, uuid, validated, parseStrictJson } from "./validation.js";
+import { hash, uuid, validated, parseStrictJson } from "./validation.js";
 import { readPrivateFile } from "./private-files.js";
 import { readHubIdentity } from "./tls.js";
-const schema = z.strictObject({ v: z.literal(1), hubId: uuid, planDigest: hash, committedAt: epoch,
+const schema = z.strictObject({ v: z.literal(1), hubId: uuid, planDigest: hash, committedAt: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/).refine(v => Number.isFinite(Date.parse(v)) && new Date(v).toISOString() === v),
   confirmationId: z.string().regex(/^[a-f0-9]{32}$/), signature: z.string().regex(/^[A-Za-z0-9_-]{86}$/) });
 export type HubInitializationManifest = z.infer<typeof schema>;
 function bytes(m: Omit<HubInitializationManifest, "signature">): Buffer {
   return Buffer.from(JSON.stringify(["agend-hub-init-v1", 1, m.hubId, m.planDigest, m.committedAt, m.confirmationId]));
 }
-export function sealHubInitialization(input: { home: string; planDigest: string; confirmationId: string; committedAt: number }): string {
+export function sealHubInitialization(input: { home: string; planDigest: string; confirmationId: string; committedAt: string }): string {
   const metadata = parseStrictJson(readPrivateFile(input.home, "hub/keys/identity.json")) as { memberOrigin?: unknown };
   if (typeof metadata.memberOrigin !== "string") throw Error("Hub identity is invalid");
   const identity = readHubIdentity({ home: input.home, memberOrigin: metadata.memberOrigin });

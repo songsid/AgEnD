@@ -1,12 +1,7 @@
-/**
- * Which Hub identity provider this build has. S1 (the Hub transport) owns key material: its provisionHubIdentity,
- * read helper and sealHubInitialization are wired here when it lands (hub-s48-init). Until then every entry point
- * (`agend hub init`, quickstart's team-Hub choice) sees `available: false` and asks nothing. Kept free of heavy imports:
- * quickstart loads it to decide whether to offer the Hub at all.
- */
+/** The quickstart can inspect availability without loading key, filesystem or network modules. */
 import { HubInitError, type HubIdentityProvider } from "./types.js";
 
-/** Until S1's provisioning lands: initialization refuses before writing anything. */
+/** Explicit unsupported-build/platform provider; initialization refuses before writing anything. */
 export const UNAVAILABLE_IDENTITY: HubIdentityProvider = {
   available: false,
   provision: async () => {
@@ -18,6 +13,13 @@ export const UNAVAILABLE_IDENTITY: HubIdentityProvider = {
   },
 };
 
+const S1_IDENTITY: HubIdentityProvider = {
+  available: true,
+  provision: async input => (await import("../tls.js")).provisionHubIdentity(input),
+  read: async home => (await import("../tls.js")).readHubIdentityIfPresent(home),
+  seal: async input => (await import("../initialization.js")).sealHubInitialization(input),
+};
 export function hubIdentityProvider(): HubIdentityProvider {
-  return UNAVAILABLE_IDENTITY;
+  // Native Windows needs a verified private-file ACL adapter. WSL uses its POSIX owner/mode boundary.
+  return process.platform === "win32" ? UNAVAILABLE_IDENTITY : S1_IDENTITY;
 }

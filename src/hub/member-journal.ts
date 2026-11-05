@@ -2,13 +2,15 @@
 import type Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { sha256, verifyLease, operationDigest } from "./identity.js";
-import { questionSchema, answerSchema, receiptSchema } from "./protocol.js";
+import { sha256, verifyLease } from "./identity.js";
+import { questionSchema, answerSchema, receiptSchema, HUB_LIMITS } from "./protocol.js";
 import { parseStrictJson, validated, HubProtocolError, uuid, hash, epoch } from "./validation.js";
-import type { HubQuestion, HubReceipt, HubReceiptStage, HubAnswer, HubAuthorizationLease, HubAuthorizationRequest, HubRevocation } from "./types.js";
+import type { HubQuestion, HubReceipt, HubAnswer, HubAuthorizationLease, HubAuthorizationRequest, HubRevocation } from "./types.js";
 import type { HubVersionFloor } from "./store.js";
+// Retain two independently bounded frames: JSON escaping can make their combined payload larger than one frame.
+const PAYLOAD_LIMIT = 2 * HUB_LIMITS.frame + 4096;
 const rowSchema = z.strictObject({ messageId: uuid, contentDigest: hash, contextDigest: hash, operationId: uuid,
-  payload: z.string().max(400 * 1024), stage: z.enum(["preparing", "queued", "delivered", "consumed", "answered", "rejected", "cancelled", "failed", "uncertain"]),
+  payload: z.string().max(Math.ceil(PAYLOAD_LIMIT * 4 / 3) + 128), stage: z.enum(["preparing", "queued", "delivered", "consumed", "answered", "rejected", "cancelled", "failed", "uncertain"]),
   sequence: epoch, at: epoch, deliveryId: uuid.nullable(), inputIntent: uuid.nullable(), ackedSequence: epoch });
 type Row = z.infer<typeof rowSchema>;
 export interface HubRestrictedOutbox {
@@ -24,6 +26,7 @@ export function migrateHubMemberJournal(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS hub_member_meta(singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL, receipt_sequence INTEGER NOT NULL, revocation_version INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS hub_member_messages(message_id TEXT PRIMARY KEY, value TEXT NOT NULL);`);
 }
+export const HUB_MEMBER_JOURNAL_MIGRATION = Object.freeze({ component: "s1-member-journal", version: 1, up: migrateHubMemberJournal });
 /** Signature refresh may change time/nonce/revocation but cannot redirect a previously admitted question. */
 export function questionContextDigest(q: HubQuestion): string {
   const e = q.identity;
@@ -55,7 +58,7 @@ export class HubMemberJournal {
   private row(messageId: string): Row | null {
     this.meta(); validated(uuid, messageId); const r = this.db.prepare("SELECT value FROM hub_member_messages WHERE message_id=?").get(messageId) as { value: string } | undefined;
     if (!r) return null;
-    const row = validated(rowSchema, parseStrictJson(r.value, 512 * 1024)); if (row.messageId !== messageId || row.ackedSequence > row.sequence || row.sequence > this.meta().receipt_sequence
+    const row = validated(rowSchema, parseStrictJson(r.value, 1024 * 1024)); if (row.messageId !== messageId || row.ackedSequence > row.sequence || row.sequence > this.meta().receipt_sequence
       || row.stage === "preparing" && (row.sequence !== 0 || row.deliveryId !== null || row.inputIntent !== null)
       || ["delivered", "consumed", "answered"].includes(row.stage) && !row.inputIntent
       || row.stage !== "preparing" && row.sequence === 0) throw new HubProtocolError("uncertain"); return row;
@@ -73,7 +76,7 @@ export class HubMemberJournal {
       const parts = row.payload.split("."); if (parts.length !== 3 || parts.some(p => !/^[A-Za-z0-9_-]+$/.test(p))) throw Error();
       const [iv, tag, bytes] = parts.map(p => Buffer.from(p, "base64url")); if (iv.length !== 12 || tag.length !== 16) throw Error();
       const cipher = createDecipheriv("aes-256-gcm", this.options.encryptionKey, iv); cipher.setAAD(this.aad(row)); cipher.setAuthTag(tag);
-      const payload = validated(z.strictObject({ question: questionSchema, answer: answerSchema.optional() }), parseStrictJson(Buffer.concat([cipher.update(bytes), cipher.final()]), 256 * 1024));
+      const payload = validated(z.strictObject({ question: questionSchema, answer: answerSchema.optional() }), parseStrictJson(Buffer.concat([cipher.update(bytes), cipher.final()]), PAYLOAD_LIMIT));
       if (payload.question.identity.messageId !== row.messageId || payload.question.identity.contentDigest !== row.contentDigest || questionContextDigest(payload.question) !== row.contextDigest) throw Error();
       return payload;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }

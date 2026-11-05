@@ -46,3 +46,12 @@ describe("Hub signed identity and exact operation", () => {
     for (const v of [{ x: undefined }, { x: Infinity }, new Date(), cycle, { x: "\ud800" }]) expect(() => canonicalArguments(v)).toThrow();
   });
 });
+
+it("a lease cannot cross link/revocation generations or survive its bounded time window", () => {
+  const request: HubAuthorizationRequest = { messageId: randomUUID(), operationId: randomUUID(), exposureRevision: 1, phase: "begin" };
+  const lease = { decisionId: randomUUID(), ...request, operationDigest: operationDigest(request), revocationVersion: 2, linkEpoch: 3, expiresAt: 4_000 };
+  for (const expected of [{ linkEpoch: 4, revocationVersion: 2, now: 1_000 }, { linkEpoch: 3, revocationVersion: 3, now: 1_000 },
+    { linkEpoch: 3, revocationVersion: 2, now: 4_000 }, { linkEpoch: 3, revocationVersion: 2, now: -1_001 }]) {
+    expect(() => verifyLease(lease, request, expected)).toThrow();
+  }
+});

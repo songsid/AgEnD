@@ -1,4 +1,5 @@
 /** Per-turn, instance-bound MCP capabilities for native Windows CLI children. */
+import { agentCredentialPolicy } from "./agent-credentials.js";
 import { nativeAgentAdmissionContext } from "./native-agent-admission.js";
 import { windowsCliEnabled } from "./windows-cli.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -26,7 +27,7 @@ type ToolResult = { content:Array<{type:"text";text:string}>;isError?:boolean };
 interface Call { digest:string; result:Promise<ToolResult> }
 interface Session {
   token:string; instance:string; requestId:string; agentId:string; backend:string;
-  sandbox:NativeSandbox; expires:number; stillCurrent:()=>boolean; closed:boolean;
+  sandbox:NativeSandbox; policy:string; expires:number; stillCurrent:()=>boolean; closed:boolean;
   timer:ReturnType<typeof setTimeout>; calls:Map<string,Call>; reported:Map<string,Set<string>>;
 }
 export interface NativeMcpGrant {
@@ -89,8 +90,10 @@ export class NativeMcpSessions {
       || !["codex","claude-code"].includes(config.backend ?? "") || !UUID.test(input.requestId)
       || !["read-only","workspace-write"].includes(input.sandbox) || typeof input.stillCurrent!=="function") throw Error("Native MCP requires an active supported Windows instance");
     if(this.sessions.size>=16 || [...this.sessions.values()].some(session=>session.instance===input.instance)) throw Error("A native MCP session is already active or the session limit was reached");
+    const policy=this.policy(input.instance);
+    if(policy===null)throw Error("Native MCP issuing policy is unavailable");
     const address=endpoint(input.endpoint), token=randomBytes(32).toString("hex");
-    const session:Session={token,instance:input.instance,requestId:input.requestId,agentId:config.native_agent_id!,backend:config.backend!,sandbox:input.sandbox,
+    const session:Session={token,instance:input.instance,requestId:input.requestId,agentId:config.native_agent_id!,backend:config.backend!,sandbox:input.sandbox,policy,
       expires:Date.now()+TTL_MS,stillCurrent:input.stillCurrent,closed:false,calls:new Map(),reported:new Map(),
       timer:setTimeout(()=>this.closeToken(token),TTL_MS)};
     session.timer.unref?.();this.sessions.set(token,session);
@@ -106,11 +109,19 @@ export class NativeMcpSessions {
     const session=this.sessions.get(token);if(!session)return;
     session.closed=true;clearTimeout(session.timer);session.calls.clear();this.sessions.delete(token);
   }
+  /** Publication retires a generation before later lifecycle/configuration work can run. */
+  observePolicies():void { this.prune(); }
+  private policy(instance:string):string|null {
+    const fleet=this.ctx.fleetConfig,config=fleet?.instances[instance],base=agentCredentialPolicy(fleet,instance);
+    if(base===null || config?.runtime!=="windows")return null;
+    return JSON.stringify([base,config.native_agent_id,config.backend,config.native_sandbox,
+      config.native_adapter??"exec",config.machine_id??null,config.native_general_binding??null]);
+  }
   private current(session:Session):boolean {
     const config=this.ctx.fleetConfig?.instances[session.instance];
     let current=false;try{current=session.stillCurrent();}catch{/* a revoked owner is unavailable */}
     return !session.closed && Date.now()<session.expires && windowsCliEnabled() && current
-      && config?.runtime==="windows" && config.native_agent_id===session.agentId && config.backend===session.backend;
+      && this.policy(session.instance)===session.policy && config?.runtime==="windows" && config.native_agent_id===session.agentId && config.backend===session.backend;
   }
   private prune():void { for(const session of this.sessions.values())if(!this.current(session))this.closeToken(session.token); }
   private readOnly(session:Session):boolean {

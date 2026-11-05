@@ -28,7 +28,7 @@ const ALLOWED = new Map<string, string>([
   ["panel-settings.js\ttext\tClassicBot", "a product name"],
   ["panel-settings.js\ttext\tfleet.yaml", "the configuration file's literal filename"],
   ["panel-settings.js\tplaceholder\tagend.example.com", "an example hostname"],
-  ["panel-settings.js\tplaceholder\t/path/to/projects", "an example path (Agent defaults → Project folders, moved from Fleet → Config by #2347 §10)"],
+  ["settings-shared.js\tplaceholder\t/path/to/projects", "an example path (Shared agent settings → Project folders, moved from Fleet → Config by #2347 §10)"],
   ["backend-signin.js\tlabel\tURL", "an acronym, the same in both languages"],
   ["panel-chat.js\ttext\tWindows", "the runtime product name"],
   ["panel-fleet.js\ttext\tRuntime", "the execution runtime's technical label"],

@@ -1,6 +1,6 @@
 # General on a paired Windows PC (alpha)
 
-AgEnD keeps running on its coordinator host. In Settings → Agent defaults → **Run General on**, choose an approved, online Windows PC, its detected Claude Code or Codex, and model. Save creates the existing administrator confirmation card. General must be idle. The switch stops its previous process and requires positive exit evidence before starting the selected location. The chat and administrator authority stay on the coordinator.
+AgEnD keeps running on its coordinator host. In Settings → Shared agent settings → **Run General on**, choose an approved, online Windows PC, its detected Claude Code or Codex, and model. Save creates the existing administrator confirmation card. General must be idle. The switch stops its previous process and requires positive exit evidence before starting the selected location. The chat and administrator authority stay on the coordinator.
 
 Host and Windows conversations stay separate. Switching does not copy or merge their history. Each Windows binding keeps its own managed workspace and saved session. **This AgEnD host** switches back through the same confirmation, resuming the saved host conversation when available. The old Windows conversation stays saved.
 

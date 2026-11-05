@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPrivateKey, randomUUID } from "node:crypto";
+import { createPrivateKey, generateKeyPairSync, randomUUID, X509Certificate } from "node:crypto";
 import { createServer } from "node:https";
 import { readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { HubServer } from "../src/hub/server.js";
+import { beginHubPairing, claimHubPairing } from "../src/hub/pairing-client.js";
 import { hubRig } from "./helpers/hub-rig.js";
-import { HubMemberProfileStore } from "../src/hub/profile.js";
-import { HubMemberClient } from "../src/hub/client.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
-import { signAsker, sha256 } from "../src/hub/identity.js";
+import { signAsker, sha256, issuerKeyId } from "../src/hub/identity.js";
+import { HubMemberProfileStore } from "../src/hub/profile.js";
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [];
 afterEach(async () => { for (const r of rigs.splice(0)) await r.close(); });
 async function rig() { const r = await hubRig(); rigs.push(r); return r; }
@@ -96,4 +98,60 @@ it("bounds queued external work and discards retired-link work without replaying
     await vi.waitFor(() => expect(c.state.holds).toContain("backpressure")); expect(started).toBe(1);
     release(); await vi.waitFor(() => expect(c.state.syncs).toBe(2)); expect(started).toBe(1);
   } finally { release(); }
+});
+
+it("an observed issuer change holds for re-pair without dispatch or automatic reconnect", async () => {
+  const r = await rig(), profile = await r.pair(), receive = vi.fn(async () => {}), c = r.client(receive); await c.value.start();
+  const now = Date.now(), text = "inert changed issuer", issuer = generateKeyPairSync("ed25519");
+  const identity = signAsker({ v: 1, issuer: r.identity.hubId, issuerKeyId: issuerKeyId(issuer.publicKey), messageId: randomUUID(), asker: r.owner, owner: r.owner,
+    destinationFleetId: profile.fleetId, exposureId: randomUUID(), roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1,
+    exposureRevision: 1, revocationVersion: 0, contentDigest: sha256(text), issuedAt: now, expiresAt: now + 60_000, nonce: "c".repeat(64) }, issuer.privateKey);
+  await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: c.state.link!.linkEpoch, payload: { text, identity } });
+  await vi.waitFor(() => expect(c.state.holds).toEqual(["key-changed"])); expect(receive).not.toHaveBeenCalled();
+  await new Promise(resolve => setTimeout(resolve, 350)); expect(c.state.syncs).toBe(1);
+});
+it("an explicit member close does not create a spurious transport-outage hold", async () => {
+  const r = await rig(); await r.pair(); const c = r.client(); await c.value.start(); const link = c.state.link!;
+  await c.value.close(); expect(link.current()).toBe(false); expect(c.state.holds).toEqual([]);
+});
+it("a changed Hub identity in a pinned welcome stops reconnect and never dispatches work", async () => {
+  const r = await rig(); await r.pair(); (r.server as any).options.hubId = randomUUID(); const c = r.client();
+  await expect(c.value.start()).rejects.toThrow(); expect(c.state.holds).toEqual(["key-changed"]);
+  await new Promise(resolve => setTimeout(resolve, 350)); expect(c.state.syncs).toBe(0); expect(r.received).toEqual([]);
+});
+
+it("fences a member profile at the atomic rename against an expired owner continuation or another committed profile", async () => {
+  const r = await rig(), original = await r.pair(), store = new HubMemberProfileStore(r.memberHome, r.identity.hubId), digest = store.profileDigest();
+  let checks = 0;
+  expect(() => store.saveProfile({ ...original, credential: "b".repeat(64) }, digest, () => ++checks === 1)).toThrow("stale");
+  expect(store.profileDigest()).toBe(digest); expect(store.readProfile()).toEqual(original);
+  checks = 0;
+  expect(() => store.saveProfile({ ...original, credential: "b".repeat(64) }, digest, () => {
+    if (++checks === 2) store.saveProfile({ ...original, credential: "c".repeat(64) }, digest, () => true);
+    return true;
+  })).toThrow("stale");
+  expect(store.readProfile().credential).toBe("c".repeat(64));
+});
+
+it.each([-10_000, 30_000])("publishes the verified live certificate when an approved claim crosses same-key renewal (expiry offset %i ms)", async offset => {
+  const r = await rig(), oldCertificate = readFileSync(join(r.root, "hub/keys/tls-cert.pem"), "utf8");
+  const expiry = Date.parse(new X509Certificate(oldCertificate).validTo), clock = vi.spyOn(Date, "now").mockReturnValue(expiry - 30_000);
+  let renewedServer: HubServer | undefined;
+  try {
+    const offer = await r.pairing.create(r.ctx, r.owner);
+    const pending = await beginHubPairing({ home: r.memberHome, memberOrigin: r.memberOrigin, code: offer.code, current: () => true });
+    await r.pairing.confirmOwner(r.ctx, pending.pairingId, pending.fingerprint); await r.pairing.approve(r.ctx, pending.pairingId, pending.fingerprint);
+    await r.server.close();
+    execFileSync("/usr/bin/openssl", ["req", "-new", "-x509", "-sha256", "-days", "730", "-key", join(r.root, "hub/keys/tls-key.pem"), "-out", join(r.root, "hub/keys/tls-cert.pem"), "-subj", "/CN=AgEnD Hub", "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore", timeout: 10_000 });
+    const renewed = readFileSync(join(r.root, "hub/keys/tls-cert.pem"), "utf8"); expect(renewed).not.toBe(oldCertificate);
+    clock.mockReturnValue(expiry + offset); expect(pending.expiresAt).toBeGreaterThan(Date.now());
+    renewedServer = new HubServer({ home: r.root, hubId: r.identity.hubId, memberOrigin: r.memberOrigin,
+      listen: { host: "127.0.0.1", port: Number(new URL(r.memberOrigin).port) }, pairing: r.pairing, current: () => true,
+      receive: async () => {}, hold: () => {} }); await renewedServer.start();
+    await expect(claimHubPairing({ home: r.memberHome, hubId: r.identity.hubId, approvedFingerprint: pending.fingerprint, expectedProfileDigest: null, current: () => true })).resolves.toEqual({ status: "paired" });
+    const profile = new HubMemberProfileStore(r.memberHome, r.identity.hubId).readProfile();
+    expect(profile.certificatePem).toBe(renewed); expect(profile.hub.spkiSha256).toBe(pending.hub.spkiSha256);
+    expect(profile.fleetId).toBe(pending.fleetId); expect(r.store.read().pairings.filter(p => p.state === "claimed")).toHaveLength(1);
+    await expect(r.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret })).rejects.toThrow();
+  } finally { await renewedServer?.close(); clock.mockRestore(); }
 });

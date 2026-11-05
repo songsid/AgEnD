@@ -27,6 +27,7 @@ export interface HubTransportStoreOptions {
 export function migrateHubTransportStore(db: Database.Database): void {
   db.exec("CREATE TABLE IF NOT EXISTS hub_transport_state (singleton INTEGER PRIMARY KEY CHECK(singleton=1), state TEXT NOT NULL)");
 }
+export const HUB_TRANSPORT_MIGRATION = Object.freeze({ component: "s1-transport", version: 1, up: migrateHubTransportStore });
 /** No file opening or migration on import/construction; initialization is explicit and belongs to S5. */
 export class HubTransportStore {
   private failed = false;
@@ -58,8 +59,13 @@ export class HubTransportStore {
         state.revision++;
         validated(stateSchema, state);
         writing = true;
-        this.options.appendAudit({ ...event, id: randomUUID(), sequence: state.revision, policyVersion: state.revocationVersion }, this.db);
+        // The independent floor advances before either transactional write. An audit/DB failure must
+        // remain unconfirmed after restart, rather than silently restoring the prior authorization.
         this.options.floor.raise(state.revision);
+        const audited: unknown = this.options.appendAudit({ ...event, id: randomUUID(), sequence: state.revision, policyVersion: state.revocationVersion }, this.db);
+        if (audited && typeof (audited as { then?: unknown }).then === "function") {
+          void Promise.resolve(audited).catch(() => {}); throw new HubProtocolError("uncertain");
+        }
         this.db.prepare("UPDATE hub_transport_state SET state=? WHERE singleton=1").run(JSON.stringify(state));
         return result;
       }).immediate();

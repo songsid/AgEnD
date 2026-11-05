@@ -82,3 +82,24 @@ describe("Hub pairing authorization and durable state", () => {
     expect(() => broken.store.read()).toThrow(); expect(() => broken.store.initialize()).toThrow();
   });
 });
+
+it("persists an invalid-claim budget, audits denials, and stops durable writes across service recreation until the window resets", async () => {
+  const f = fixture(), input = { pairingId: randomUUID(), fleetId: randomUUID(), claimSecret: "f".repeat(64) };
+  const auditCount = () => (f.db.prepare("SELECT count(*) n FROM audit").get() as { n: number }).n;
+  for (let i = 0; i < 100; i++) await expect(f.service.claim(input)).rejects.toThrow();
+  expect(f.store.read().revision).toBe(10); expect(auditCount()).toBe(10); expect(f.store.read().buckets).toHaveLength(1);
+  const rows = f.db.prepare("SELECT record FROM audit").all() as { record: string }[];
+  expect(rows.every(x => JSON.parse(x.record).result === "denied")).toBe(true);
+  const again = new HubPairingService({ store: f.store, directory: f.directory, identity: f.identity, enabled: () => true, now: () => 1_800_000_000_000, fenceFleet: vi.fn() });
+  await expect(again.claim(input)).rejects.toThrow(); expect(auditCount()).toBe(10);
+  const valid = await f.approve(), claim = { pairingId: valid.pending.pairingId, fleetId: valid.pending.fleetId, claimSecret: valid.pending.claimSecret };
+  expect((await f.service.claim(claim)).status).toBe("approved");
+  f.setNow(1_800_000_060_000); const before = auditCount(); await expect(f.service.claim(input)).rejects.toThrow(); expect(auditCount()).toBe(before + 1);
+});
+it("bounds valid pending-claim polling independently without publishing a new revision after throttle", async () => {
+  const f = fixture(), x = await f.pair(), input = { pairingId: x.pending.pairingId, fleetId: x.pending.fleetId, claimSecret: x.pending.claimSecret };
+  for (let i = 0; i < 60; i++) expect(await f.service.claim(input)).toEqual({ status: "pending" });
+  const revision = f.store.read().revision;
+  for (let i = 0; i < 20; i++) await expect(f.service.claim(input)).rejects.toThrow();
+  expect(f.store.read().revision).toBe(revision);
+});

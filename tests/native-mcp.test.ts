@@ -17,9 +17,9 @@ afterEach(()=>{
   for(const home of homes.splice(0)){if(!resolve(home).startsWith(resolve(tmpdir())+sep))throw Error("Unsafe temporary path");rmSync(home,{recursive:true,force:true});}
   vi.useRealTimers();vi.restoreAllMocks();vi.unstubAllEnvs();
 });
-function fixture(sandbox:"read-only"|"workspace-write"="workspace-write") {
+function fixture(sandbox:"read-only"|"workspace-write"="workspace-write",configuredSandbox=sandbox) {
   const state={current:true};
-  const config={runtime:"windows",native_agent_id:agentId,backend:"codex",native_sandbox:sandbox,tool_set:"worker",working_directory:"C:\\Work"};
+  const config={runtime:"windows",native_agent_id:agentId,backend:"codex",native_sandbox:configuredSandbox,tool_set:"worker",working_directory:"C:\\Work"};
   const ctx:any={fleetConfig:{instances:{[name]:config}},dataDir:"unused",logger:{info:vi.fn(),warn:vi.fn(),debug:vi.fn(),error:vi.fn()},
     handleTaskCrudHttp:vi.fn(async(_instance:string,args:Record<string,unknown>)=>({action:args.action,items:[]}))};
   const manager=new NativeMcpSessions(ctx);managers.push(manager);ctx.nativeMcpSessions=()=>manager;
@@ -57,13 +57,18 @@ describe("native MCP capabilities and live menus",()=>{
     expect((await invoke(f,call("send","send_to_instance",{instance_name:"other",message:"Must not send"})).done()).status).toBe(403);
     expect(f.ctx.handleTaskCrudHttp).not.toHaveBeenCalled();
   });
-  it("reads current profile/dashboard policy and never broadens the original read-only lease",async()=>{
-    const f=fixture("read-only");f.config.native_sandbox="workspace-write";
+  it("requires a new lease after policy publication while retaining the original read-only ceiling",async()=>{
+    const f=fixture("read-only","workspace-write");
     expect((await invoke(f,call("upgrade","task",{action:"create",title:"No"})).done()).status).toBe(403);
+    const grant=()=>f.manager.grant({instance:name,requestId,sandbox:"read-only",endpoint:f.lease.connection.endpoint,stillCurrent:()=>f.state.current});
     f.config.tool_set="minimal";
-    const minimal=await invoke(f,listing).done();expect(minimal.value.tools.map((tool:any)=>tool.name)).toEqual(["delivery_status"]);
+    expect((await invoke(f,listing).done()).status).toBe(401);
+    f.lease=grant();
+    expect((await invoke(f,listing).done()).value.tools.map((tool:any)=>tool.name)).toEqual(["delivery_status"]);
     expect((await invoke(f,call("guessed")).done()).status).toBe(403);
     f.config.tool_set="worker";f.ctx.fleetConfig.instances[name].dashboard={task_board:false};
+    expect((await invoke(f,listing).done()).status).toBe(401);
+    f.lease=grant();
     expect((await invoke(f,listing).done()).value.tools.some((tool:any)=>tool.name==="task")).toBe(false);
     expect((await invoke(f,call("disabled")).done()).status).toBe(403);
   });
@@ -123,7 +128,7 @@ describe("native MCP dispatch, stable calls and result tracking",()=>{
     const f=fixture();let release!:(value:unknown)=>void;
     f.ctx.handleTaskCrudHttp.mockImplementationOnce(()=>new Promise(done=>{release=done;}));
     const pending=invoke(f,call("revoked"));await vi.waitFor(()=>expect(release).toBeTypeOf("function"));f.config.tool_set="minimal";release({items:["private"]});
-    expect((await pending.done()).status).toBe(403);expect(pending.value().error).not.toContain("private");
+    expect((await pending.done()).status).toBe(401);expect(pending.value().error).not.toContain("private");
   });
   it("fences delayed outbound admission to its original lease even after a new turn starts for the same instance",async()=>{
     const f=fixture(),get=outboundHandlers.get.bind(outboundHandlers),admitted=vi.fn(()=>({deliveryId:"must-not-admit",state:"queued",duplicate:false}));

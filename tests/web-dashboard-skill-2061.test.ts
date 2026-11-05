@@ -52,7 +52,7 @@ describe("the web-dashboard skill", () => {
     const slugs = [...SKILL.matchAll(/\n## (.+)\n/g)].map(m => m[1]!.toLowerCase().replace(/[^a-z0-9 -]/g, "").replace(/ /g, "-"));
     expect(anchors.length).toBeGreaterThan(8);
     expect(anchors.filter(a => !slugs.includes(a))).toEqual([]);
-    for (const tab of ["Preferences", "Look", "Agents", "Agent defaults", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]) expect(SKILL, tab).toContain(`**${tab}**`);
+    for (const tab of ["Preferences", "Look", "Agents", "Shared agent settings", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]) expect(SKILL, tab).toContain(`**${tab}**`);
     for (const t of ["Tasks", "Schedules", "Teams", "Org chart", "Cache"]) expect(SKILL, t).toContain(`**${t}**`);
   });
 
