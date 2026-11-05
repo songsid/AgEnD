@@ -48,6 +48,8 @@ export interface HubHold {
   code: HubHoldCode;
   detail: string;
   since: number;
+  /** A bounded setup reason (provider holds) for localized guidance; never raw error text. */
+  reason?: string;
 }
 
 export interface HubRuntimeOptions {
@@ -137,6 +139,8 @@ export class HubRuntime {
           report: (code, detail) => {
             this.reported = { side: "member", code, detail };
           },
+          // Non-fatal: the member keeps running (no provider); the hold stays until the member is rebuilt.
+          notice: (code, reason, detail) => this.addHold({ side: "member", code, detail, reason, since: now() }),
           log: options.log,
           now,
         });

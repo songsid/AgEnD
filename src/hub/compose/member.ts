@@ -72,6 +72,11 @@ export interface HubMemberFactoryOptions {
   /** The member link as S3c's pairing view shows it: online after a completed handshake, revoked when the Hub said so. */
   linkState?(state: "online" | "offline" | "revoked"): void;
   report(code: HubHoldCode, detail: string): void;
+  /**
+   * A non-fatal hold while the member keeps running (the provider could not be set up: every exposure stays
+   * unavailable). `reason` is a bounded setup reason (PROVIDER_SETUP_REASONS) for localized guidance.
+   */
+  notice?(code: HubHoldCode, reason: ProviderSetupReason, detail: string): void;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   now?: () => number;
 }
@@ -111,6 +116,21 @@ function readKey(home: string, rel: string): Buffer {
   return key;
 }
 
+/** Bounded provider-setup reasons (agreed with S4b, cid-hub-provider-setup-guidance); S4b owns their guidance text. */
+export const PROVIDER_SETUP_REASONS = ["engine-unavailable", "engine-unsupported", "image-unconfigured", "image-mismatch", "credential-unconfigured", "unavailable"] as const;
+export type ProviderSetupReason = (typeof PROVIDER_SETUP_REASONS)[number];
+export class HubProviderSetupError extends HubStateError {
+  constructor(readonly reason: ProviderSetupReason, message: string) {
+    super("hub-provider-unavailable", message);
+    this.name = "HubProviderSetupError";
+  }
+}
+/** The bounded reason of any provider-setup failure: S4b's typed `.reason` when it is one of ours, else "unavailable". */
+export function providerSetupReason(err: unknown): ProviderSetupReason {
+  const reason = (err as { reason?: unknown })?.reason;
+  return typeof reason === "string" && (PROVIDER_SETUP_REASONS as readonly string[]).includes(reason) ? (reason as ProviderSetupReason) : "unavailable";
+}
+
 const PROVIDER_KEYS = new Set(["backend", "imageId", "model", "credentialRef", "dockerSocket"]);
 interface ProviderConfig {
   backend: "claude" | "codex";
@@ -127,15 +147,15 @@ export function providerConfig(cfg: Record<string, unknown>, hubId: string): Pro
   const provider = execution && typeof execution === "object" ? (execution as Record<string, unknown>).provider : undefined;
   if (provider === undefined) return null;
   const p = provider as Record<string, unknown>;
-  const bad = (why: string): never => {
-    throw new HubStateError("hub-provider-unavailable", `hub_member.execution.provider: ${why}`);
+  const bad = (why: string, reason: ProviderSetupReason = "unavailable"): never => {
+    throw new HubProviderSetupError(reason, `hub_member.execution.provider: ${why}`);
   };
   if (!p || typeof p !== "object" || Array.isArray(p)) bad("must be an object");
   for (const k of Object.keys(p)) if (!PROVIDER_KEYS.has(k)) bad(`unknown setting "${k}"`);
   if (p.backend !== "claude" && p.backend !== "codex") bad('backend must be "claude" or "codex"');
-  if (typeof p.imageId !== "string" || !/^sha256:[0-9a-f]{64}$/.test(p.imageId)) bad("imageId must be sha256:<64 hex>");
+  if (typeof p.imageId !== "string" || !/^sha256:[0-9a-f]{64}$/.test(p.imageId)) bad("imageId must be sha256:<64 hex>", "image-unconfigured");
   if (typeof p.model !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/.test(p.model)) bad("model is not a model id");
-  if (p.credentialRef !== `file:hub-member/${hubId}/secrets/model-api`) bad(`credentialRef must be file:hub-member/${hubId}/secrets/model-api`);
+  if (p.credentialRef !== `file:hub-member/${hubId}/secrets/model-api`) bad(`credentialRef must be file:hub-member/${hubId}/secrets/model-api`, "credential-unconfigured");
   if (p.dockerSocket !== undefined && (typeof p.dockerSocket !== "string" || !/^\/(var\/)?run\/[A-Za-z0-9._/-]+\.sock$/.test(p.dockerSocket))) {
     bad("dockerSocket must be a local unix socket under /var/run or /run");
   }
@@ -184,7 +204,6 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       } catch (err) {
         throw new HubStateError("hub-member-pairing", `the Hub pairing is missing or invalid: ${(err as Error).message}`);
       }
-      const provider = providerConfig(cfg, hubId);
       const [execution, exposureMods] = await Promise.all([options.components.execution(), options.components.exposures()]);
 
       // 1. The member state set: new (create all) or complete (open); partial is refused.
@@ -279,22 +298,39 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         });
       };
       const providers = new Map<string, import("../execution/index.js").HubIsolatedProvider>();
-      if (provider) {
-        if (!options.components.provider) throw new HubStateError("hub-provider-unavailable", "the isolated provider (S4b) is not in this build");
-        const s4b = await options.components.provider();
-        let credential: string;
-        try {
-          credential = readPrivateFile(options.home, `hub-member/${hubId}/secrets/model-api`, 4096);
-        } catch (err) {
-          throw new HubStateError("hub-provider-unavailable", `the model credential is missing or not private: ${(err as Error).message}`);
+      // The owner-configured isolated provider (S4b). Any setup failure is non-fatal: the member runs with NO provider
+      // (every exposure unavailable) and one member hold carries the bounded reason for localized guidance.
+      try {
+        const provider = providerConfig(cfg, hubId);
+        if (provider) {
+          if (!options.components.provider) throw new HubProviderSetupError("unavailable", "the isolated provider (S4b) is not in this build");
+          const s4b = await options.components.provider();
+          let credential: string;
+          try {
+            credential = readPrivateFile(options.home, `hub-member/${hubId}/secrets/model-api`, 4096);
+          } catch {
+            throw new HubProviderSetupError("credential-unconfigured", "the model credential file is missing or not private");
+          }
+          const broker = s4b.createHubModelBroker({ [provider.backend]: credential });
+          const pending = s4b.createHubCliProvider({ backend: provider.backend, imageId: provider.imageId, model: provider.model, modelBroker: broker, ...(provider.dockerSocket ? { dockerSocket: provider.dockerSocket } : {}) });
+          let timer: NodeJS.Timeout | undefined;
+          const made = await Promise.race([
+            pending,
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(() => reject(new HubProviderSetupError("unavailable", "the isolated provider did not become ready in 30 s")), 30_000);
+              timer.unref();
+            }),
+          ]).catch((err) => {
+            // A provider that resolves after the deadline is closed, never used.
+            void pending.then((late) => late.close()).catch(() => undefined);
+            throw err;
+          }).finally(() => clearTimeout(timer));
+          teardown.add("the isolated provider", () => made.close());
+          providers.set(provider.backend, made);
         }
-        const broker = s4b.createHubModelBroker({ [provider.backend]: credential });
-        const made = await Promise.race([
-          s4b.createHubCliProvider({ backend: provider.backend, imageId: provider.imageId, model: provider.model, modelBroker: broker, ...(provider.dockerSocket ? { dockerSocket: provider.dockerSocket } : {}) }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new HubStateError("hub-provider-unavailable", "the isolated provider did not become ready in 30 s")), 30_000).unref()),
-        ]);
-        teardown.add("the isolated provider", () => made.close());
-        providers.set(provider.backend, made);
+      } catch (err) {
+        const reason = providerSetupReason(err);
+        options.notice?.("hub-provider-unavailable", reason, err instanceof HubProviderSetupError ? err.message : `the isolated provider could not be set up (${reason})`);
       }
       let client: HubMemberClient | null = null;
       const service = new execution.HubRestrictedExecutionService({

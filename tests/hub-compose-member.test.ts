@@ -25,7 +25,7 @@ async function paired() {
 
 function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS) {
   const reports: { code: string; detail: string }[] = [];
-  const attached: { exposures: unknown; attention: unknown; link: string[] } = { exposures: null, attention: null, link: [] };
+  const attached: { exposures: unknown; attention: unknown; link: string[]; notices: { code: string; reason: string }[] } = { exposures: null, attention: null, link: [], notices: [] };
   const create = createHubMemberFactory({
     home,
     components,
@@ -35,6 +35,7 @@ function factory(home: string, hubId: string | null, components: HubMemberCompon
     attachAttention: (read) => { attached.attention = read; },
     pokeAttention: () => {},
     linkState: (state) => { attached.link.push(state); },
+    notice: (code, reason) => { attached.notices.push({ code, reason }); },
     report: (code, detail) => reports.push({ code, detail }),
     log: () => {},
   });
@@ -73,7 +74,7 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     await again.close();
   });
 
-  it("refuses before any I/O: unpaired (pairing hold), a missing slice (incomplete), a bad provider block", async () => {
+  it("refuses before any I/O: unpaired (pairing hold), a missing slice (incomplete)", async () => {
     const rig = await paired();
     const hubId = rig.identity.hubId;
     const unpaired = factory(rig.memberHome, null);
@@ -82,9 +83,6 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     const missing = factory(rig.memberHome, hubId, { execution: MEMBER_COMPONENTS.execution! });
     await expect(missing.create({ enabled: true }, () => true)).rejects.toThrow(/not in this build/);
     expect(missing.reports[0]!.code).toBe("hub-incomplete");
-    const badProvider = factory(rig.memberHome, hubId);
-    await expect(badProvider.create({ enabled: true, execution: { provider: { backend: "claude", imageId: "latest", model: "m", credentialRef: "x" } } }, () => true)).rejects.toThrow(/imageId/);
-    expect(badProvider.reports[0]!.code).toBe("hub-provider-unavailable");
     // None of these created the member state.
     expect(() => statSync(join(rig.memberHome, memberSet(hubId).database))).toThrow();
   });
@@ -128,5 +126,29 @@ describe.skipIf(process.platform === "win32")("member link state", () => {
     expect(f.attached.link).toContain("online");
     await starting;
     await service.close();
+  });
+});
+
+describe.skipIf(process.platform === "win32")("provider setup is non-fatal (agreed with S4b)", () => {
+  const good = (hubId: string) => ({ backend: "claude", imageId: `sha256:${"b".repeat(64)}`, model: "m-1", credentialRef: `file:hub-member/${hubId}/secrets/model-api` });
+  it("a bad block, a missing credential or a missing S4b: the member runs with no provider and one hold with the bounded reason", async () => {
+    const rig = await paired();
+    const hubId = rig.identity.hubId;
+    const cases: [string, Record<string, unknown>, HubMemberComponents, string][] = [
+      ["bad image", { ...good(hubId), imageId: "latest" }, MEMBER_COMPONENTS, "image-unconfigured"],
+      ["bad credentialRef", { ...good(hubId), credentialRef: "env:KEY" }, MEMBER_COMPONENTS, "credential-unconfigured"],
+      ["missing credential file", good(hubId), MEMBER_COMPONENTS, "credential-unconfigured"],
+      ["no S4b in the build", good(hubId), { execution: MEMBER_COMPONENTS.execution!, exposures: MEMBER_COMPONENTS.exposures! }, "unavailable"],
+    ];
+    for (const [label, provider, components, reason] of cases) {
+      const f = factory(rig.memberHome, hubId, components);
+      const service = await f.create({ enabled: true, execution: { provider } }, () => true);
+      await service.start();
+      expect(f.attached.notices, label).toEqual([{ code: "hub-provider-unavailable", reason }]);
+      expect(f.reports, label).toEqual([]); // not fatal
+      const api = f.attached.exposures as { list(): Array<{ enforceable: boolean }> };
+      expect(api.list().every((v) => !v.enforceable), label).toBe(true);
+      await service.close();
+    }
   });
 });
