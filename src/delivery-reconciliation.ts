@@ -10,7 +10,7 @@ import {
 import { transcriptAbsenceCanProveNotSubmitted } from "./delivery-queue-evidence.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { transcriptDeltaHasDeliveryMarker, transcriptDeltaNeedle, type TranscriptMarkerKind, type TranscriptNeedle } from "./transcript-needles.js";
-export { markerConsumed, transcriptDeltaDeliveryMarker, transcriptDeltaNeedle, transcriptDeltaHasDeliveryMarker, transcriptDeltaHasRawText, type TranscriptMarkerKind, type TranscriptNeedle } from "./transcript-needles.js";
+export { markerConsumed, transcriptDeltaDeliveryMarker, transcriptDeltaMarkerKind, transcriptDeltaNeedle, transcriptDeltaHasDeliveryMarker, transcriptDeltaHasRawText, type TranscriptMarkerKind, type TranscriptNeedle } from "./transcript-needles.js";
 
 export const RECONCILIATION_PANE_CAPTURE_TIMEOUT_MS = 2_000;
 export const RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS = 15_000;

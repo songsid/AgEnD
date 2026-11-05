@@ -171,6 +171,36 @@ jobs:
           # host scheduler contention from turning diagnostic timing into flakes.
           npm run test:integration
 
+  # ── Hub fake directory (S-43, #3095) ─────────────────────────────────────────
+  # Always runs; skips heavy work for text-only PRs. Starts the fake LDAP directory (an unprivileged container, ports on
+  # 127.0.0.1 only; see scripts/manual/hub-directory/README.md) and runs the sign-in tests against it. In the shards
+  # those tests skip, because no rig is running there.
+  hub-directory:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, setup]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip the directory rig on a text-only PR
+        if: needs.detect-changes.outputs.text-only == 'true'
+        run: echo "Text-only PR — hub directory rig skipped."
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.text-only != 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Run the sign-in tests against the fake directory
+        if: needs.detect-changes.outputs.text-only != 'true'
+        run: |
+          set -euo pipefail
+          npm ci
+          export OUT="$RUNNER_TEMP/hub-directory-rig"
+          scripts/manual/hub-directory/run.sh up
+          trap 'scripts/manual/hub-directory/run.sh down' EXIT
+          AGEND_HUB_RIG_ENV="$OUT/rig.env" npx vitest run tests/hub-directory-rig.test.ts tests/hub-directory-unit.test.ts
+          # The rig file must not have been skipped: a skipped file would pass with zero checks.
+          AGEND_HUB_RIG_ENV="$OUT/rig.env" npx vitest run tests/hub-directory-rig.test.ts --reporter=json --outputFile="$RUNNER_TEMP/hub-rig.json" >/dev/null
+          node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const n = r.numPassedTests; console.log("rig tests passed:", n); if (!(n > 10) || r.numPendingTests > 0) process.exit(1)' "$RUNNER_TEMP/hub-rig.json"
+
   # ── tests that read docs ─────────────────────────────────────────────────────
   # Always runs. Heavy work only on text-only PRs, where the four shards skip.
   docs-tests:
@@ -204,7 +234,7 @@ jobs:
   # never `skipped`.
   build:
     runs-on: ubuntu-latest
-    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, docs-tests, install-smoke, node20-rollback-smoke]
+    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, hub-directory, docs-tests, install-smoke, node20-rollback-smoke]
     if: always()
     steps:
       - name: Check all jobs succeeded
@@ -214,6 +244,7 @@ jobs:
           SETUP: ${{ needs.setup.result }}
           SHARD: ${{ needs.test-shard.result }}
           INTEGRATION: ${{ needs.test-integration.result }}
+          HUB_DIRECTORY: ${{ needs.hub-directory.result }}
           DOCS_TESTS: ${{ needs.docs-tests.result }}
           SMOKE: ${{ needs.install-smoke.result }}
           ROLLBACK: ${{ needs.node20-rollback-smoke.result }}
@@ -229,7 +260,7 @@ jobs:
             exit 1
           fi
           failed=()
-          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "docs-tests:$DOCS_TESTS" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "hub-directory:$HUB_DIRECTORY" "docs-tests:$DOCS_TESTS" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
             name="${name_result%%:*}"
             result="${name_result##*:}"
             if [ "$result" != "success" ]; then

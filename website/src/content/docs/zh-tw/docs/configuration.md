@@ -169,7 +169,7 @@ instances:
 | `systemPrompt` | string | — | 額外指示，直接寫內容或 `file:路徑`（相對於 `working_directory`） |
 | `workflow` | string \| false | `builtin` | `builtin`、`file:路徑`、直接寫內容、或 `false` |
 | `pre_task_command` | string | — | 每則使用者訊息前先貼上的指令 |
-| `skipPermissions` | boolean | 除非設 `false`，否則為 `true` | 用各後端的旗標跳過 CLI 自己的權限確認。Antigravity 一律帶 `--dangerously-skip-permissions` 啟動，設 `false` 也一樣 |
+| `skipPermissions` | boolean | 除非設 `false`，否則為 `true` | 用各後端的旗標跳過 CLI 自己的權限確認 |
 | `startup_timeout_ms` | number | `25000` | 給 CLI 啟動的時間 |
 | `log_level` | string | `info` | `trace`、`debug`、`info`、`warn`、`error` |
 | `lightweight` | boolean | `false` | 跳過非必要子系統 |

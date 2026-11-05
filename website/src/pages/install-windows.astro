@@ -10,6 +10,10 @@ const oneLiner = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.git
 const betaLine = "$env:AGEND_VERSION = 'beta'";
 const forceLine = "$env:AGEND_INSTALL_FORCE = '1'";
 const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
+// Where a network blocks *.github.io: the same deployed scripts from GitHub's raw host (tag installer-live, which the
+// website deploy moves to the commit it published).
+const oneLinerRaw = 'powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public/install.ps1 | iex"';
+const unixLineRaw = 'curl -fsSL https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public/install.sh | bash';
 ---
 
 <Base locale={locale}>
@@ -37,6 +41,8 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
         Open PowerShell (press <kbd class="font-mono">Win+X</kbd> → <i>Terminal</i>), paste this line and press Enter:
       </p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLiner}</pre>
+      <p class="text-sm text-text-secondary mt-3" id="github-io-blocked">If your network blocks <code>*.github.io</code> (some company firewalls do, while github.com still works), use this line instead. It fetches the same published installer from GitHub's raw host, and so do the restart and the rest of the install:</p>
+      <pre class="mt-3 bg-raised border border-border rounded-lg p-4 whitespace-pre-wrap break-words text-sm font-mono text-text-primary">{oneLinerRaw}</pre>
       <p class="text-sm text-text-secondary mt-3">To try the beta on a fresh install, run this in the same PowerShell window before the installation line above:</p>
       <pre class="mt-3 bg-raised border border-border rounded-lg p-4"><code>{betaLine}</code></pre>
       <p class="text-sm text-text-secondary mt-2"><code>AGEND_VERSION</code> accepts only <code>beta</code>, <code>latest</code>, or an exact version such as <code>2.3.2</code>. Unset installs latest; elevation and reboot resume keep your choice. This does not switch an existing installation; use <code>agend update --beta</code> for that. Run <code>Remove-Item Env:AGEND_VERSION</code> to clear the choice for later fresh installs.</p>
@@ -51,6 +57,7 @@ const unixLine = 'curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash';
       <p class="mt-4 text-sm text-text-secondary">
         Prefer to download the script and run it yourself? See <a href="#manual" class="text-accent hover:underline">Manual install</a>.
         On macOS or Linux, the one line is <code class="font-mono text-accent break-words">{unixLine}</code>.
+        Where <code>*.github.io</code> is blocked: <code class="font-mono text-accent break-words">{unixLineRaw}</code>.
       </p>
     </div>
 

@@ -452,7 +452,110 @@ Use scratch homes, private tmux sockets only where a later real-CLI test require
 
 Order: this contract → S1 transport/composition (owner then takes S4) while S2 can build its isolated driver → S3 integration using these interfaces → S4 restricted execution → S5 audit/init composition and whole-flow acceptance. Audit-dependent actions remain unavailable until their sink is present. Slices may prepare in parallel but merge individually behind the switches. Do not broaden P1 through a placeholder role, runtime-tool passthrough, shared room or auto-rotation.
 
-## 7. Decisions deliberately left outside the interface freeze
+## 7. Reserved P2 organization and messaging extension points
+
+This section names future contracts only: **no P2 routes, tables, permissions or handlers are enabled by P1**. Its closed v1 validators continue to reject role grants, additional audience fields and new purpose types. P2 requires an explicitly negotiated protocol/envelope version and separate implementation approval. The existing P1 signature tuple, one-person rooms and authorization interfaces remain unchanged.
+
+### Organization, appointments and resource consent
+
+Use separate administrative and project relations. Units may nest (for example, department → team); membership and reporting relations allow multiple managers, acting roles and cross-unit appointments. Do not encode the organization as one `boss` field or impose a fixed three-level limit. Function groups and convenors can be displayed without granting any capability. Project lead/deputy appointments are independent of the administrative tree, and one person can belong to several projects.
+
+```ts
+export type HubP2Scope = { kind: "unit"; unitId: string } | { kind: "project"; projectId: string };
+export type HubLevel = "head" | "deputy-head" | "lead" | "member";
+export interface HubUnit {
+  id: string; parentId?: string; displayName: string; revision: Epoch;
+}
+export interface HubMembership {
+  id: string; person: PersonKey; unitId: string; level: HubLevel;
+  roleId: string; managerMembershipIds: readonly string[];
+  acting: boolean; startsAt: Millis; expiresAt?: Millis; sourceRevision: string;
+}
+export interface HubProject {
+  id: string; displayName: string; revision: Epoch;
+  members: readonly PersonKey[]; roles: readonly HubProjectRole[];
+}
+export interface HubProjectRole {
+  id: string; projectId: string; person: PersonKey; role: "lead" | "deputy";
+  startsAt: Millis; expiresAt?: Millis; appointedBy: PersonKey;
+  deputy?: HubDeputy; // required for deputy: bounded dates, exact role/scope and appointing principal
+}
+export interface HubRoleCapability {
+  id: string; revision: Epoch; roleId: string; scope: HubP2Scope;
+  actions: readonly ("chat" | "ask" | "broadcast" | "announce" | "read-room")[];
+  audience: "unit-members" | "unit-subtree" | "project-members" | "project-representatives";
+  approvedBy: PersonKey;
+}
+export interface HubP2ResourceGrant {
+  id: GrantId; revision: Epoch; owner: PersonKey;
+  resource: { kind: "exposure"; exposureId: ExposureId } | { kind: "room"; roomId: RoomId };
+  subject: { kind: "person"; person: PersonKey } | { kind: "role"; roleId: string; scope: HubP2Scope };
+  actions: readonly ("chat" | "ask" | "broadcast" | "announce" | "read-room")[];
+  startsAt: Millis; expiresAt: Millis; approvedBy: PersonKey;
+}
+export interface HubProjectRepresentative {
+  id: string; revision: Epoch; projectId: string; member: PersonKey;
+  exposureId: ExposureId; exposureRevision: Epoch; dataViewId: string;
+  ownerConsentId: string; state: "active" | "withdrawn";
+}
+```
+
+The Hub stores these records and provenance from an **authoritative organization feed**, joined through immutable directory/person/unit/project IDs. It does not create a second manually maintained personnel directory. Local resource consent and role-to-capability policy remain separately owned and audited. The member remains authoritative for its exposure and data view. Exactly one active representative is allowed per project/member; that member's fleet owner designates an exposed agent and opts in to its project-specific view. A project admin cannot appoint another person's agent, widen its view or infer exposure from a title.
+
+`HubRoleCapability` is an explicit, inspectable mapping, not an automatic privilege of `HubLevel`. A configured mapping might let a head broadcast to their unit, a team lead ask their team, or a project lead/deputy ask project representatives. Defaults grant nothing. An agent-directed request needs **all** of current directory eligibility, current scoped role capability, an applicable owner-managed resource grant and current exposure/representative consent. Capabilities never replace the owner's grant. Each decision needs one matching chain: the same role and scope (or an explicit personal grant), resource and action must connect the capability, grant and consent; a capability from role A cannot combine with a role-B-only grant. `read-room` names the same action on both mapping and grant; room admission also checks this permission. The owner-facing resource settings are the entry point for granting a person or scoped role access. Person-to-person messaging separately requires an explicit room/recipient policy; it does not manufacture an exposure.
+
+Administrative and project grants are separately identified and audited. Multiple active roles contribute a union of their valid grants, while every view/decision shows which exact role, appointment and grant permits it. Transfers, expiry, withdrawals and leavers invalidate affected queued dispatches and future reads immediately; unavailable or stale authoritative role data holds rather than preserving an old allow. A deputy/acting appointment requires start/end, appointing principal and exact scope; it cannot outlive its source appointment. Ownership transfer and similar principal-reserved acts are excluded from delegated capability mappings and keep their separate local-owner confirmation boundary.
+
+### Messaging purposes, audiences and collected answers
+
+The four patterns are: **1:1 chat** (person ↔ representative agent or person ↔ person); **1→N broadcast/ask** by a project admin; **1→N free-form announcement** initiated by a member or representative to an authorized project or selected people; and **N:N project rooms**. An announcement is sender-initiated text, without a schedule or fixed content fields. None of these patterns grants access to another representative's data or the owner's private conversation.
+
+```ts
+export type HubP2Purpose =
+  | { kind: "chat"; conversationId: string }
+  | { kind: "ask"; questionId: string; broadcastId?: string; representativeId?: string }
+  | { kind: "broadcast"; broadcastId: string; projectId: string }
+  | { kind: "announce"; announcementId: string; projectId?: string };
+export type HubP2Sender =
+  | { kind: "person"; person: PersonKey }
+  | { kind: "representative"; representativeId: string; owner: PersonKey; consentId: string };
+export type HubP2Recipient =
+  | { kind: "person"; person: PersonKey }
+  | { kind: "representative"; representativeId: string; exposureId: ExposureId };
+export interface HubP2MessageIntent {
+  messageId: MessageId; sender: HubP2Sender; purpose: HubP2Purpose;
+  audience: readonly HubP2Recipient[]; audienceDigest: Sha256; contentDigest: Sha256;
+  projectRevision?: Epoch; authorizationRefs: readonly { id: string; revision: Epoch }[];
+}
+export interface HubBroadcast {
+  id: string; projectId: string; initiatedBy: PersonKey; questionDigest: Sha256;
+  children: readonly { messageId: MessageId; representativeId: string; state: "pending" | "answered" | "held" }[];
+}
+export interface HubCollectedAnswerView {
+  broadcastId: string;
+  answers: readonly { representativeId: string; state: "pending" | "answered" | "held";
+    answerId?: string; highlights?: string; blockers?: string }[];
+}
+export interface HubP2Messaging { // reserved composition boundary, not a P1 service
+  submit(ctx: HubRequestContext, intent: HubP2MessageIntent): Promise<{ messageId: MessageId }>;
+  collected(ctx: HubRequestContext, broadcastId: string): Promise<HubCollectedAnswerView>;
+}
+export type HubP2AuditKind =
+  | "unit.changed" | "membership.changed" | "project.changed" | "appointment.changed"
+  | "capability.changed" | "resource-grant.changed" | "representative.consented" | "representative.withdrawn"
+  | "chat.sent" | "broadcast.created" | "broadcast.child-admitted" | "broadcast.child-answered"
+  | "broadcast.collected-read" | "announcement.sent" | "room.membership-changed" | "message.held";
+```
+
+These are server-validated intent/view sketches, **not signed wire envelopes**. A future versioned envelope must sign the complete purpose, sender type, project/appointment/grant revisions, exact audience digest, destination and parent/child correlation as well as the existing content/time/revocation fields. Resolve groups into immutable recipient IDs before committing a fan-out; persist one child message ID and digest per recipient. Reconnect reconciles those IDs, never repeats an uncertain send. Re-check current eligibility, audience and exact operation leases at admission, execution and disclosure. A representative sender is an explicitly consented machine actor, never an invented human asker or imported local receipt.
+
+The project admin's collected view contains answered/pending/held states, answers, highlights and blockers synthesized from that reader's authorized free-form answers. Representatives are not required to submit structured fields. Each representative sees **only its own question/answer**, not other representatives' answers or the collected view. Current project-admin capability is required to read the collection; each child's exposure owner can inspect who asked and its own audit. Any synthesis uses only that reader's authorized answers in a separately restricted context. A private ask/reply is not automatically posted into an N:N room. An announcement's audience is fixed and authorized at send time, with current access checked again on delivery/read; membership changes do not silently widen past content visibility. Project-room history/audience policy must be explicit before shared rooms are enabled.
+
+Extend the audit sink with these named kinds and immutable actor, appointment, capability, grant, project, representative and audience revisions. Record fan-out and per-recipient outcomes, consent/revocation and collection reads; keep content access scoped to participants, the relevant asked owner and separately authorized security auditors. Title holders or infrastructure administrators do not gain all-message visibility. P2 tests must prove transfer/deputy expiry at dispatch and read, multi-role provenance, cross-unit scope isolation, owner opt-out, fan-out dedup, representative-only child visibility, collected-view access and stale room membership.
+
+Explicit non-goals: name/substring identity joins; IP-as-person sign-in; magic ranks, bit strings or hard-coded people as permissions; one-manager-only modeling; unbounded deputies; display-group authority; title-implies-access; manually duplicated personnel truth; and default everyone-sees-everything. P3 operational dashboards consume the same authorization/audit boundaries rather than introducing a privileged shortcut.
+
+## 8. Decisions deliberately left outside the interface freeze
 
 - Pilot people and the first approved read-only data view must be selected before S3 is enabled for actual users.
 - Operator/organization choices still include permitted directory schema, browser HTTPS trust, retention, security-auditor assignments and explicit hand-over procedure; the wizard/service interfaces carry these without inventing organizational policy.

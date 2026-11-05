@@ -110,15 +110,31 @@ function shellProgramName(cmd: string): string {
   return tokens[i] ?? "";
 }
 
+/** Search programs: their arguments are what is being searched for, which can be a literal secret. */
+const SEARCH_PROGRAMS = new Set(["grep", "egrep", "fgrep", "rg", "ag", "ack", "find", "fd", "fdfind", "locate", "git-grep"]);
+/** A search program, given by name or path (`/usr/bin/grep`). */
+export function isSearchProgram(program: string): boolean { return SEARCH_PROGRAMS.has(program.replace(/^.*\//, "")); }
+/** A search anywhere in the command (any pipeline or chain segment, `git grep` included). */
+function isSearchCommand(cmd: string): boolean {
+  return cmd.split(/\s*(?:&&|\|\||\||;|\n)\s*/).some(segment => {
+    const prog = shellProgramName(segment).replace(/^.*\//, "");
+    // git grep, git -C dir grep, git log --grep=…
+    return isSearchProgram(prog) || (prog === "git" && /\bgrep\b/.test(segment));
+  });
+}
+
 function labelShell(cmd: string, level: "standard" | "verbose"): string {
+  // A search anywhere in the command: at verbose, never its arguments (no redactor can tell a searched-for secret from
+  // any other word) — the intent label alone, or the plain search line. Standard never carries arguments: unchanged.
+  const search = isSearchCommand(cmd);
   const intent = classifyShellCommand(cmd);
   if (intent) {
-    if (level === "verbose" && intent.preview) {
+    if (level === "verbose" && intent.preview && !search) {
       return `${intent.label}：${redactSecrets(cmd).slice(0, VERBOSE_PREVIEW_CHARS)}`;
     }
     return intent.label;
   }
-  if (level === "verbose") return `⚙️ $ ${redactSecrets(cmd).slice(0, VERBOSE_PREVIEW_CHARS)}`;
+  if (level === "verbose") return search ? "🔍 搜尋程式碼" : `⚙️ $ ${redactSecrets(cmd).slice(0, VERBOSE_PREVIEW_CHARS)}`;
   if (isLowSignalCommand(cmd)) return "";
   // standard: program name only, never arguments
   const prog = shellProgramName(cmd);
@@ -194,7 +210,8 @@ export function summarizeProgress(name: string, input: unknown, level: "standard
     }
     case "Glob":
     case "Grep":
-      return level === "verbose" ? capLine(`🔍 搜尋：${redactSecrets(String(inp.pattern ?? ""))}`) : "🔍 搜尋程式碼";
+      // Never the pattern, at any level: a search can be for a literal secret, and no redactor knows every shape.
+      return "🔍 搜尋程式碼";
     case "Agent":
     case "Task":
       return "🤝 派工作給子 Agent";

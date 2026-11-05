@@ -46,6 +46,8 @@ export interface AuthorizationCardText {
   expired(c: { label: string }): string;
   refused(c: { label: string; refusal: string }): string;
   revoked(c: { label: string }): string;
+  /** Not me signed it out in memory only: the session store could not record it (a restart may bring it back). */
+  notSaved(c: { label: string }): string;
   ended(c: { label: string }): string;
   generalHint(): string;
   confirmLabel(): string;
@@ -68,8 +70,12 @@ export interface SessionAuthorizationDeps {
   editCard(owner: AuthorizationOwner, where: { chatId: string; messageId: string }, text: string, choices: Array<{ id: string; label: string }>): Promise<void>;
   /** §3 at the tap, then record it (FleetManager.authorizeWebSession); the session read again by its handle. */
   authorize(handle: string, peer: WebPeer): { ok: true; until: number } | { ok: false; refusal: WebAuthorityRefusal | "session_gone" };
-  /** Not me: sign this session out and end its authorization. */
-  signOut(handle: string): void;
+  /**
+   * Not me: sign this session out and end its authorization. `durable`: the sign-out is recorded (WebSessionStore:
+   * false only when the file could neither be rewritten nor removed — a restart may bring the session back);
+   * `authorizationDurable`: the authorization's end is too (alone it cannot bring a session back).
+   */
+  signOut(handle: string): { durable: boolean; authorizationDurable: boolean };
   event(type: string, payload: Record<string, unknown>): void;
   text: AuthorizationCardText;
   log: { warn(obj: object, msg?: string): void };
@@ -193,10 +199,16 @@ export class SessionAuthorizationRequests {
       c.state = was === "confirmed" ? "revoked" : "denied";
       this.forget(c);
       this.byNonce.delete(c.nonce);
-      this.deps.signOut(c.handle);
-      this.deps.event("session_authorization_failed", { challenge: c.nonce, session: c.handle, actor: key, peer: c.peer, reason: was === "confirmed" ? "not_me_after_confirm" : "not_me" });
+      const out = this.deps.signOut(c.handle);
+      this.deps.event("session_authorization_failed", { challenge: c.nonce, session: c.handle, actor: key, peer: c.peer, reason: was === "confirmed" ? "not_me_after_confirm" : "not_me",
+        ...(out.durable ? {} : { durable: false }), ...(out.authorizationDurable ? {} : { authorization_durable: false }) });
+      if (!out.durable || !out.authorizationDurable) this.deps.log.warn({ session: c.handle, durable: out.durable, authorizationDurable: out.authorizationDurable }, "Not me: the sign-out could not be saved");
       data.ack?.();
-      await this.edit(c, was === "confirmed" ? this.deps.text.revoked({ label: c.label }) : this.deps.text.denied({ label: c.label }), null);
+      // Said to the person only when it matters: the session itself was signed out in memory only (as POST /auth/logout
+      // answers then). An authorization whose end was not saved cannot outlive a session that is gone for good.
+      const text = !out.durable ? this.deps.text.notSaved({ label: c.label })
+        : was === "confirmed" ? this.deps.text.revoked({ label: c.label }) : this.deps.text.denied({ label: c.label });
+      await this.edit(c, text, null);
       return true;
     }
     // Confirm: only a pending card, before it expires, judged now.

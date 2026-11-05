@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 export type InstanceState = "idle" | "working" | "stuck";
 
 /** Interaction metadata is presentation only; execution/lifecycle gates remain three-valued. */
-export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "suspected_terminal_input";
+export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input";
 export interface InteractionOwner {
   bootId: string;
   spawnGeneration: number;
@@ -63,6 +63,9 @@ export class UnsupportedCliError extends Error {
     this.name = "UnsupportedCliError";
   }
 }
+
+/** Kiro's retired Classic launch must remain visible even though no pane was started. */
+export class KiroCompatibilityError extends UnsupportedCliError {}
 
 /** A retained conversation cannot be selected safely. Stop without retry; this is not a CLI/engine incompatibility. */
 export class ResumeBlockedError extends UnsupportedCliError {
@@ -902,6 +905,8 @@ export interface CliBackend {
    * `buildCommand` never forks. Must not throw; a failed probe means "unknown", not a failed launch.
    */
   prepareLaunch?(config?: CliBackendConfig): Promise<void>;
+  /** Read-only admission, before any launch preparation or configuration writes. Throws to refuse. */
+  assertLaunchSupported?(config: CliBackendConfig): void;
 
   /**
    * Optional (#906): after a launch that resumed a conversation, the agent it must run as and how to tell from the

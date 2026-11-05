@@ -80,6 +80,7 @@ import { handleNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
+import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -546,6 +547,8 @@ export interface WebApiContext {
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
   removeInstance(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
+  /** delete_instance's removal: the agent, then its own topic (by default), with the platform's answer. */
+  removeInstanceAndTopic?(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome>;
   lastInboundUser: Map<string, string>;
   saveFleetConfig(): void;
   readonly lifecycle: { handleCreate(args: LifecycleCreateArgs, respond: (result: unknown, error?: string) => void, adapterId?: string, execution?: SettingsExecution): Promise<void> };
@@ -2694,10 +2697,14 @@ export function handleWebRequest(
           return;
         }
         const execution = settingsRequestExecution(req);
-        if (execution) await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), execution);
+        // The same removal as delete_instance: the agent, then its own topic (the user's default), said truthfully.
+        let topic: TopicDeleteOutcome | null = null;
+        if (ctx.removeInstanceAndTopic) {
+          topic = await ctx.removeInstanceAndTopic(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), { deleteTopic: true, ...(execution ? { execution } : {}) });
+        } else if (execution) await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), execution);
         else await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"));
         ctx.emitSseEvent("status", ctx.getUiStatus());
-        json(res, 200, { deleted: name });
+        json(res, 200, { deleted: name, ...topicFields(name, topic) });
       } catch (err) {
         json(res, 500, { error: (err as Error).message });
       }

@@ -475,3 +475,21 @@ describe("#1463 review: before Chat has booted, the page's own claim — handed 
     } finally { P.render(null, p.root); await settle(); vi.resetModules(); }
   });
 });
+
+
+describe("#3047 Kiro compatibility attention", () => {
+  it("an already mounted tab receives the post-upgrade hold and keeps its actions read-only", async () => {
+    app.appStore.set({needs:[]});await mount();await settle(3);
+    expect(p.root.textContent).toContain("Nothing needs you");
+    // The open tab stays mounted while the server starts refusing the upgraded CLI.
+    app.appStore.set({needs:[{id:"kiro-choice:general:1",type:"instance",instance:"general",reason:"dialog",kiroChoice:true,since:1,
+      detail:"Kiro CLI 3.0.0 no longer supports Classic, so this agent was not started. Its saved conversation is unchanged."}]});
+    await settle(4);
+    expect(p.root.textContent).toContain("Kiro needs your decision");
+    expect(p.root.textContent).toContain("Its saved conversation is unchanged.");
+    const open=btn(p.root,"Open agent"),instructions=btn(p.root,"Migration instructions");
+    expect(open.getAttribute("href")).toBe("/ui/chat/general");
+    expect(instructions.getAttribute("href")).toBe("https://github.com/songsid/AgEnD/blob/main/src/general-knowledge/skills/kiro-engine-migration/SKILL.md");
+    expect(reqs).toEqual([]);expect(p.root.querySelectorAll(".n-item button")).toEqual([]);
+  });
+});

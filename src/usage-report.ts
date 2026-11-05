@@ -11,7 +11,7 @@
  * row (`estimated`), on any total that includes one (`includes_estimates`, with the estimated part of the amount), in
  * the API, on the page and in the CSV. An estimate never mixes silently into a measured number.
  */
-import type { HourTotals, Ledger } from "./cache-ledger.js";
+import { addSpeedInto, emptySpeed, speedBucketFloor, type HourTotals, type Ledger, type SpeedAgg } from "./cache-ledger.js";
 import { PRICES_CHECKED, ratesFor } from "./cache-prices.js";
 import { hourSources, localDate, type UsageDays } from "./usage-rollup.js";
 
@@ -99,6 +99,27 @@ export interface UsageRow extends UsageTotals {
   backends: string[];
   models: string[];
   profiles: string[];
+  /** #3066 §2: output speed — Claude after its first token, Codex over its response window (null: none timed in it). */
+  speed: UsageSpeed | null;
+}
+/**
+ * #3066 §2: output tokens per second of the model's own generation (Claude: post_first_token; Codex: response_window) — Σ tokens ÷ Σ duration of the timed responses (the method
+ * of tokdash, MIT, Jingbiao Mei). `coverage`: the timed share of the row's requests. `p10`/`p90`: duration-weighted, from
+ * 30 timed responses (null below), to a √2 step.
+ */
+export interface UsageSpeed { tokPerSec: number; timedRequests: number; coverage: number | null; p10: number | null; p90: number | null }
+export const SPEED_SPREAD_MIN = 30;
+/** A speed aggregate as served. */
+export function speedOf(a: SpeedAgg | undefined, requests: number): UsageSpeed | null {
+  if (!a || !(a[1]! > 0) || !(a[2]! > 0)) return null;
+  const hist = a.slice(3), total = hist.reduce((s, n) => s + n, 0);
+  const at = (q: number): number | null => {
+    if (a[2]! < SPEED_SPREAD_MIN || !(total > 0)) return null;
+    let run = 0;
+    for (let i = 0; i < hist.length; i++) { run += hist[i]!; if (run >= q * total) return speedBucketFloor(i); }
+    return speedBucketFloor(hist.length - 1);
+  };
+  return { tokPerSec: (a[0]! * 1000) / a[1]!, timedRequests: a[2]!, coverage: requests > 0 ? Math.min(1, a[2]! / requests) : null, p10: at(0.1), p90: at(0.9) };
 }
 export interface UsageDaily extends UsageTotals {
   date: string;
@@ -114,6 +135,8 @@ export interface UsageDaily extends UsageTotals {
   flags: string[];
 }
 export interface UsageReport {
+  /** #3066 §2: each model's output speed (as `speed`), whatever the grouping; only models with one timed. */
+  speedByModel: Array<{ model: string; backends: string[]; requests: number; speed: UsageSpeed }>;
   range: { kind: UsageRange["kind"]; from: string; to: string };
   zone: string;
   /** Days are made of whole UTC hours (§5.3): in a half-hour zone a day's edge falls on the hour that holds midnight. */
@@ -181,7 +204,7 @@ function amountOf(model: string, long: boolean, [, uncached, read, w5, w1h, w, o
   return (uncached * r.input + read * r.read + w5 * r.write5m + w1h * r.write1h + w * r.write + out * r.output) / M;
 }
 
-interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; reasoning: number; cost: number; writesReported: boolean }
+interface Slice { date: string; zone: string; instance: string; backend: string; team: string | null; profile: string; model: string; long: boolean; tot: HourTotals; reasoning: number; cost: number; writesReported: boolean; speed?: SpeedAgg }
 const estimatedSlice = (s: Slice): boolean => ESTIMATED_BACKENDS.has(s.backend);
 const unknownSource = (s: Slice): boolean => s.backend === "unknown" || s.profile === "unknown";
 
@@ -204,7 +227,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     const base = { instance: i.name, team: i.team };
     for (const row of i.days.rows) {
       if (!inRange(row.date)) continue;
-      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: !WRITES_UNREPORTED.has(row.be) || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot, reasoning: row.r?.[mk] ?? 0, cost: row.c?.[mk] ?? 0 });
+      for (const [mk, tot] of Object.entries(row.m)) slices.push({ ...base, backend: row.be, writesReported: !WRITES_UNREPORTED.has(row.be) || writesSeen, date: row.date, zone: row.zone, profile: row.pf, ...splitKey(mk), tot, reasoning: row.r?.[mk] ?? 0, cost: row.c?.[mk] ?? 0, speed: row.s?.[mk] });
     }
     for (const [hk, hour] of Object.entries(i.ledger.hours)) {
       const h = Number(hk);
@@ -212,7 +235,7 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       const date = localDate(h, input.zone);
       if (!inRange(date)) continue;
       for (const src of hourSources(hour)) {
-        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: !WRITES_UNREPORTED.has(src.backend) || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot, reasoning: src.r[mk] ?? 0, cost: src.c[mk] ?? 0 });
+        for (const [mk, tot] of Object.entries(src.m)) slices.push({ ...base, backend: src.backend, writesReported: !WRITES_UNREPORTED.has(src.backend) || writesSeen, date, zone: input.zone, profile: src.profile, ...splitKey(mk), tot, reasoning: src.r[mk] ?? 0, cost: src.c[mk] ?? 0, speed: src.s[mk] });
       }
     }
   }
@@ -226,16 +249,22 @@ export function buildUsageReport(input: UsageInput): UsageReport {
       case "team": return s.team ?? "";
     }
   };
-  type Acc = UsageRow & { _amount: number; _pricedAny: boolean; _unpricedAny: boolean; _estAmount: number; _estPriced: boolean };
+  type Acc = UsageRow & { _amount: number; _pricedAny: boolean; _unpricedAny: boolean; _estAmount: number; _estPriced: boolean; _speed: SpeedAgg };
   const rows = new Map<string, Acc>();
-  const newRow = (key: string): Acc => ({ key, ...zero(), reasoningReported: false, estimated: false, amountEstimated: null, _estAmount: 0, _estPriced: false, total: 0, messages: null, amount: null, priced: "none", flags: [], unpriced: [], instances: [], backends: [], models: [], profiles: [], _amount: 0, _pricedAny: false, _unpricedAny: false });
+  const newRow = (key: string): Acc => ({ key, ...zero(), reasoningReported: false, estimated: false, amountEstimated: null, _estAmount: 0, _estPriced: false, total: 0, messages: null, amount: null, priced: "none", flags: [], unpriced: [], instances: [], backends: [], models: [], profiles: [], _amount: 0, _pricedAny: false, _unpricedAny: false, speed: null, _speed: emptySpeed() });
   const uniq = (list: string[], v: string) => { if (!list.includes(v)) list.push(v); };
   // Daily rows: one per day, zone, agent, backend, model, tier and profile (an hour's slices summed into their day).
   const dailyBy = new Map<string, UsageDaily>();
+  // #3066 §2: each model's speed and requests, whatever the grouping ("Speed by model").
+  const byModel = new Map<string, { backends: string[]; requests: number; speed: SpeedAgg }>();
   for (const s of slices) {
     const key = keyOf(s);
     const row = rows.get(key) ?? (rows.set(key, newRow(key)), rows.get(key)!);
     addTotals(row, s.tot, s.reasoning);
+    if (s.speed) addSpeedInto(row._speed, s.speed);                     // #3066 §2
+    const bm = byModel.get(s.model) ?? (byModel.set(s.model, { backends: [], requests: 0, speed: emptySpeed() }), byModel.get(s.model)!);
+    bm.requests += s.tot[0]; if (!bm.backends.includes(s.backend)) bm.backends.push(s.backend);
+    if (s.speed) addSpeedInto(bm.speed, s.speed);
     if (REPORTS_REASONING.has(s.backend)) row.reasoningReported = true;
     uniq(row.instances, s.instance); uniq(row.backends, s.backend); uniq(row.models, s.model); uniq(row.profiles, s.profile);
     // List price first; a model the table lacks takes the cost its CLI reported (Grok), said so (design §10.2).
@@ -302,7 +331,8 @@ export function buildUsageReport(input: UsageInput): UsageReport {
   }
 
   const finish = (row: Acc): UsageRow => {
-    const { _amount, _pricedAny, _unpricedAny, _estAmount, _estPriced, ...rest } = row;
+    const { _amount, _pricedAny, _unpricedAny, _estAmount, _estPriced, _speed, ...rest } = row;
+    rest.speed = speedOf(_speed, rest.requests);
     rest.amountEstimated = _estPriced ? _estAmount : null;
     rest.total = rest.input + rest.output + rest.reasoning + rest.cacheRead + rest.cacheWrite5m + rest.cacheWrite1h + rest.cacheWrite;
     rest.amount = _pricedAny ? _amount : null;
@@ -310,6 +340,8 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     if (_unpricedAny) uniq(rest.flags, "not_priced");
     return rest;
   };
+  const allSpeed = emptySpeed();
+  for (const row of rows.values()) addSpeedInto(allSpeed, row._speed);
   const out = [...rows.values()].map(finish)
     .sort((a, b) => (b.amount ?? -1) - (a.amount ?? -1) || b.total - a.total || a.key.localeCompare(b.key));
   const totals = finish(newRow("all"));
@@ -325,10 +357,14 @@ export function buildUsageReport(input: UsageInput): UsageReport {
     for (const m of r.unpriced) uniq(totals.unpriced, m);
   }
   totals.priced = out.some(r => r.priced !== "none") ? (out.some(r => r.priced !== "all" && r.total > 0) ? "partial" : "all") : "none";
+  totals.speed = speedOf(allSpeed, totals.requests);
 
   return {
     range: { kind: input.range.kind, from, to }, zone: input.zone, granularity: "hour", basis: usageBasis(), pricesChecked: PRICES_CHECKED,
     group: input.group, rows: out, totals,
+    // #3066 §2: the models with a timed response, fastest first.
+    speedByModel: [...byModel].flatMap(([model, m]) => { const speed = speedOf(m.speed, m.requests); return speed ? [{ model, backends: m.backends, requests: m.requests, speed }] : []; })
+      .sort((a, b) => b.speed.tokPerSec - a.speed.tokPerSec),
     daily, dailyTruncated: truncated, dailyFrom,
     // Messages by day: the same window as the daily rows (none when there are none); their total stays in `totals`.
     messagesDaily: [...messagesDaily.values()].filter(m => !truncated || (dailyFrom !== null && m.date >= dailyFrom))
