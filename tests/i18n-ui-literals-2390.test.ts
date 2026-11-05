@@ -30,6 +30,8 @@ const ALLOWED = new Map<string, string>([
   ["panel-settings.js\tplaceholder\tagend.example.com", "an example hostname"],
   ["settings-shared.js\tplaceholder\t/path/to/projects", "an example path (Shared agent settings → Project folders, moved from Fleet → Config by #2347 §10)"],
   ["backend-signin.js\tlabel\tURL", "an acronym, the same in both languages"],
+  ["settings-outside.js\ttext\tGoogle Authenticator", "an authenticator app's product name"],
+  ["settings-outside.js\ttext\tMicrosoft Authenticator", "an authenticator app's product name"],
   ["panel-chat.js\ttext\tWindows", "the runtime product name"],
   ["panel-fleet.js\ttext\tRuntime", "the execution runtime's technical label"],
   ["panel-windows-agent.js\ttext\tWindows ·", "the runtime product name and separator"],

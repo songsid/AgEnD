@@ -236,6 +236,16 @@ describe("the overview (a real FleetManager)", () => {
     expect(h.s.webAuthorityOverview().authorized).toEqual([]);
     h.close();
   });
+  it("webOnly: false while a chat connection is configured, true once the fleet has none (the page words the card from it)", () => {
+    const h = fm({});
+    expect(h.s.webAuthorityOverview().webOnly).toBe(false);                             // the harness fleet has a Telegram connection
+    const { channel: _channel, channels: _channels, ...noChat } = h.s.fleetConfig;
+    h.s.fleetConfig = noChat;
+    expect(h.s.webAuthorityOverview().webOnly).toBe(true);
+    h.s.fleetConfig = { ...noChat, channels: [] };                                      // an empty list is still no connection
+    expect(h.s.webAuthorityOverview().webOnly).toBe(true);
+    h.close();
+  });
 });
 
 describe("POST …/revoke through the real local server, its body held (the caller asked again after it)", () => {

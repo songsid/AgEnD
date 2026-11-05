@@ -185,9 +185,10 @@ describe("Owner verification and Web authorization: the reference page's words",
     const state = w.$("#outState");
     expect([text(state), state.className.includes("is-usable")]).toEqual(["Not set up", false]);
     expect(text(w.$("#outLead"))).toBe("Use your authenticator app's 6-digit code to prove, from outside, that you own this fleet.");
-    expect(text(w.$("#outApps"))).toBe("Works with Google Authenticator, Microsoft Authenticator or another TOTP authenticator.");
+    expect([...w.$("#outApps").querySelectorAll(".tag")].map((e: any) => text(e))).toEqual(["Google Authenticator", "Microsoft Authenticator", "Other TOTP authenticators"]);
     expect(text(w.$("#outNoRecovery"))).toBe("If you lose the authenticator, set it up again on the AgEnD computer. There is no email or backup-code recovery.");
     await w.click(w.$("#outSetUp"));
+    expect([text(w.$("#outStep1")), text(w.$("#outStep2")), text(w.$("#outConfirm"))]).toEqual(["1. Add AgEnD to your authenticator", "2. Enter the authenticator code to finish", "Verify and turn on"]);
     expect(text(w.$("#outEnrollNoRecovery"))).toBe("If you lose the authenticator, set it up again on the AgEnD computer. There is no email or backup-code recovery.");
   });
   it("set up: the status reads \"Authenticator set up\" and is marked usable", async () => {
@@ -202,16 +203,35 @@ describe("Owner verification and Web authorization: the reference page's words",
       const w = await open();
       expect([text(w.$("#outsideCard h3")), text(w.$("#outState")), w.$("#outSetUp").textContent]).toEqual(["擁有者驗證", "尚未設定", "設定驗證器"]);
       expect(text(w.$("#outLead"))).toBe("使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。");
-      expect(text(w.$("#outApps"))).toBe("可使用 Google Authenticator、Microsoft Authenticator 或其他 TOTP 驗證器。");
+      expect([...w.$("#outApps").querySelectorAll(".tag")].map((e: any) => text(e))).toEqual(["Google Authenticator", "Microsoft Authenticator", "其他 TOTP 驗證器"]);
       expect(text(w.$("#outNoRecovery"))).toBe("遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。");
       const on = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
       expect([text(on.$("#outState")), on.$("#outState").className.includes("is-usable"), on.$("#outAgain").textContent, on.$("#outRemove").textContent])
-        .toEqual(["驗證器已設定", true, "重新綁定驗證器", "停用驗證器"]);
+        .toEqual(["驗證器已設定", true, "重新綁定驗證器", "停用"]);
       expect(p.root.textContent).toContain("手機遺失？請在 AgEnD 電腦上選「重新綁定驗證器」。沒有電子郵件或備援碼復原。");
       expect(p.root.textContent).not.toContain("備用碼");
+      const setup = await open();
+      await setup.click(setup.$("#outSetUp"));
+      expect([text(setup.$("#outStep1")), text(setup.$("#outStep2")), text(setup.$("#outConfirm"))]).toEqual(["1. 在驗證器中新增 AgEnD", "2. 輸入驗證器代碼以完成綁定", "驗證並啟用"]);
       const away = await open({ here: false });
       expect(text(away.$("#outHereOnly"))).toBe("只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。");
     } finally { i18n.setLang("en"); }
+  });
+  it("the Remove question has its own title and button, in both languages", async () => {
+    const { confirmStore, answerConfirm } = await import("/assets/ui-confirm.js");
+    const i18n = await import("/assets/app-i18n.js");
+    (globalThis as any).confirm = undefined;                                           // the test drives the dialog itself
+    const ask = async () => {
+      const w = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
+      fire(w.$("#outRemove"), "click"); await settle(6);
+      const q = confirmStore.get().queue[0];
+      const seen = [q.title, q.confirmLabel];
+      answerConfirm(q.id, false); await settle(4);
+      return seen;
+    };
+    expect(await ask()).toEqual(["Remove the authenticator app?", "Remove"]);
+    i18n.setLang("zh-TW");
+    try { expect(await ask()).toEqual(["停用驗證器？", "停用"]); } finally { i18n.setLang("en"); }
   });
   it("Web authority on a web-only fleet: the authenticator wording; with a chat connection: the Discord / Telegram wording stays", async () => {
     authWebOnly = true;

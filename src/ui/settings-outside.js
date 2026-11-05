@@ -25,7 +25,9 @@ register("outside", {
     hereOnly: "Only on the AgEnD computer. Go back to that computer to set up, set up again or remove the app.",
     lostPhone: "Lost your phone? On the AgEnD computer, choose “Set up again”. There is no email or backup-code recovery.",
     noRecovery: "If you lose the authenticator, set it up again on the AgEnD computer. There is no email or backup-code recovery.",
-    apps: "Works with Google Authenticator, Microsoft Authenticator or another TOTP authenticator.",
+    appsLabel: "Works with these authenticator apps", appOther: "Other TOTP authenticators",
+    step1: "1. Add AgEnD to your authenticator", step2: "2. Enter the authenticator code to finish",
+    activate: "Verify and turn on", removeTitle: "Remove the authenticator app?",
     wrong: "That code didn't work. Check that your phone's clock is right and try the newest code.",
     paused: "Too many wrong codes. Try again in {0}.", code: "Authenticator code", key: "Key",
     minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
@@ -38,12 +40,14 @@ register("outside", {
     scan: "用 Authy、Google Authenticator 或 Microsoft Authenticator 掃描，或手動輸入金鑰，再輸入 App 顯示的 6 位數代碼。",
     setUpOn: "驗證器 App 已於 {0} 設定。", again: "重新綁定驗證器",
     againConfirm: "舊 App 的代碼會失效，所有從外面登入的人都會被登出。",
-    remove: "停用驗證器", removeConfirm: "從外面連線會關閉，所有從外面登入的人都會被登出。",
+    remove: "停用", removeConfirm: "從外面連線會關閉，所有從外面登入的人都會被登出。",
     openAt: "已開啟：{0}。", quick: "快速連結每次開啟網址都不同。",
     hereOnly: "只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。",
     lostPhone: "手機遺失？請在 AgEnD 電腦上選「重新綁定驗證器」。沒有電子郵件或備援碼復原。",
     noRecovery: "遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。",
-    apps: "可使用 Google Authenticator、Microsoft Authenticator 或其他 TOTP 驗證器。",
+    appsLabel: "可使用的驗證器 App", appOther: "其他 TOTP 驗證器",
+    step1: "1. 在驗證器中新增 AgEnD", step2: "2. 輸入驗證器代碼以完成綁定",
+    activate: "驗證並啟用", removeTitle: "停用驗證器？",
     wrong: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
     paused: "錯誤次數太多，請 {0} 後再試。", code: "驗證器代碼", key: "金鑰",
     minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
@@ -146,7 +150,7 @@ export function OutsideCard() {
     begin();
   };
   const remove = async () => {
-    if (!(await confirmDialog({ title: to("remove"), message: to("removeConfirm"), confirmLabel: to("remove"), danger: true }))) return;
+    if (!(await confirmDialog({ title: to("removeTitle"), message: to("removeConfirm"), confirmLabel: to("remove"), danger: true }))) return;
     act(async () => { const r = await api("/ui/outside/remove", { method: "POST", body: "{}" }); if (!r.ok) toast(t("app.failed"), false); });
   };
   // The box follows the click at once (smoke-web-outside-3008: a controlled box that waits for the server reads as a
@@ -157,7 +161,7 @@ export function OutsideCard() {
   }); };
   const link = s.link, open = link && link.state === "open";
   return html`<section class="card s-outside" id="outsideCard"><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
-    <p class="note" id="outApps">${to("apps")}</p>
+    <div class="chips s-out-apps" id="outApps" role="list" aria-label=${to("appsLabel")}><span class="tag" role="listitem">Google Authenticator</span><span class="tag" role="listitem">Microsoft Authenticator</span><span class="tag" role="listitem">${to("appOther")}</span></div>
     ${!here ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
     <label class="check"><input id="outSwitch" type="checkbox" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
       onChange=${(e) => flip(e.target.checked)} /><span>${to("switch")}</span></label>
@@ -166,16 +170,18 @@ export function OutsideCard() {
     ${s.outside && link && !open ? html`<p class="note" id="outStarting">${t("app.loading")}</p>` : null}
     ${s.pausedForMs > 0 ? html`<p class="note s-va-warn" role="status" id="outPaused">${to("paused", waitWords(s.pausedForMs))}</p>` : null}
     ${enroll ? html`<div class="s-out-enroll" id="outEnroll">
+        <p class="s-out-step" id="outStep1"><strong>${to("step1")}</strong></p>
         <p class="note">${to("scan")}</p>
         <${Qr} uri=${enroll.uri} />
         <p class="note">${to("key")}: <code id="outKey">${keyGroups(enroll.secret)}</code></p>
+        <p class="s-out-step" id="outStep2"><strong>${to("step2")}</strong></p>
         <div class="field"><label for="outCode">${to("code")}</label>
           <input id="outCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" value=${code}
             onInput=${(e) => setCode(e.target.value)} /></div>
         <p class="note" id="outEnrollNoRecovery">${to("noRecovery")}</p>
         ${msg ? html`<p class="feedback error" role="alert" id="outMsg">${msg}</p>` : null}
         <div class="save-row"><button type="button" class="btn" id="outCancel" disabled=${busy} onClick=${() => { setEnroll(null); setMsg(""); }}>${t("app.cancel")}</button>
-          <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !/^\s*\d{3}\s?\d{3}\s*$/.test(code)} onClick=${confirm}>${t("app.confirmOk")}</button></div>
+          <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !/^\s*\d{3}\s?\d{3}\s*$/.test(code)} onClick=${confirm}>${to("activate")}</button></div>
       </div>`
       : s.enrolled ? html`<p class="note" id="outSetUpOn">${to("setUpOn", new Date(s.enrolledAt).toLocaleDateString())}</p>
         <p class="note">${to("lostPhone")}</p>
