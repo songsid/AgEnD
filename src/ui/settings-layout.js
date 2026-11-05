@@ -146,20 +146,14 @@ register("settingsLayout", {
     "previewsPersonalHint": "Only affects your preview preference.",
     "chatConnections": "Chat connections",
     "messageBehavior": "Message behavior",
-    "pageContents": "On this page",
-    "defaultsAccessWorkspace": "Permissions and workspace",
-    "replyRulesHelp": "Reply rules",
-    "replySupportHelp": "CLI support"
+    "pageContents": "On this page"
   },
   "zh-TW": {
     "profileIdentityDetails": "Agent 如何辨識你的身分",
     "previewsPersonalHint": "只影響你的預覽偏好。",
     "chatConnections": "聊天連線",
     "messageBehavior": "訊息行為",
-    "pageContents": "本頁內容",
-    "defaultsAccessWorkspace": "權限與工作區",
-    "replyRulesHelp": "回覆規則說明",
-    "replySupportHelp": "CLI 支援情況"
+    "pageContents": "本頁內容"
   }
 });
 

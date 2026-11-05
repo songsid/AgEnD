@@ -1447,13 +1447,7 @@ register("settings", {
     "uiConnectionColumnService": "Service & connection",
     "uiConnectionColumnInfo": "Connection details",
     "uiClassicColumnRoom": "Room",
-    "uiProviderKeyActionHint": "Verify and apply each key separately. These actions do not wait for the page Save button.",
-    "uiDefaultsModelsTitle": "Models & language",
-    "uiDefaultsWorkTitle": "Work behavior",
-    "uiDefaultsCollaborationTitle": "Collaboration & replies",
-    "uiDefaultsCapabilitiesTitle": "Agent capabilities & permissions",
-    "uiDefaultsWorkspaceTitle": "Workspace rules",
-    "uiDefaultsAdvancedTitle": "Advanced execution policies"
+    "uiProviderKeyActionHint": "Verify and apply each key separately. These actions do not wait for the page Save button."
   },
   "zh-TW": {
     "uiAgentColumnName": "名稱",
@@ -1465,13 +1459,7 @@ register("settings", {
     "uiConnectionColumnService": "服務與連線",
     "uiConnectionColumnInfo": "連線資訊",
     "uiClassicColumnRoom": "房間",
-    "uiProviderKeyActionHint": "每組金鑰會分別驗證並套用，不需等待頁面底部的儲存。",
-    "uiDefaultsModelsTitle": "模型與語言",
-    "uiDefaultsWorkTitle": "工作行為",
-    "uiDefaultsCollaborationTitle": "協作與回覆",
-    "uiDefaultsCapabilitiesTitle": "Agent 能力與權限",
-    "uiDefaultsWorkspaceTitle": "工作區規則",
-    "uiDefaultsAdvancedTitle": "進階執行策略"
+    "uiProviderKeyActionHint": "每組金鑰會分別驗證並套用，不需等待頁面底部的儲存。"
   }
 }
 );
