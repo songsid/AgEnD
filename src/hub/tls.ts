@@ -1,3 +1,5 @@
+import { Agent as HttpsAgent } from "node:https";
+import { connect as tlsConnect } from "node:tls";
 import { generateKeyPairSync, randomUUID, X509Certificate, createPublicKey, createPrivateKey } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -63,3 +65,26 @@ export function readHubIdentity(input: { home: string; memberOrigin: string }): 
     || issuerKeyId(privateIssuer) !== metadata.issuerKeyId || sha256(createPublicKey(privateTls).export({ type: "spki", format: "der" })) !== sha256(cert.publicKey.export({ type: "spki", format: "der" }))) throw Error("Hub identity files differ");
   return { hubId: metadata.hubId, spkiSha256: metadata.spkiSha256, issuerKeyId: metadata.issuerKeyId, issuerPublicKey: metadata.issuerPublicKey };
 }
+
+/** SPKI is the trust anchor. Per-socket verification happens before HTTP can write any credential bytes. */
+export function pinnedHubAgent(binding: { memberOrigin: string; spkiSha256: string }, current: () => boolean = () => true): import("node:https").Agent {
+  const origin = hubOrigin(binding.memberOrigin), hostname = host(origin), pin = validated(hash, binding.spkiSha256);
+  const agent = new HttpsAgent({ keepAlive: false });
+  agent.createConnection = (options, callback) => {
+    let finished = false;
+    const finish = (error: Error | null, socket: import("node:tls").TLSSocket) => {
+      if (finished) return; finished = true; if (error) socket?.destroy(); else socket?.setTimeout(0); callback?.(error, socket);
+    };
+    // Deliberately no process/global TLS change: only this owned socket uses manual pinned-key authentication.
+    const socket = tlsConnect({ host: hostname, port: Number(new URL(origin).port || 443),
+      servername: isIP(hostname) ? undefined : hostname, rejectUnauthorized: false, minVersion: "TLSv1.2" }, () => {
+      try { if (!current()) throw Error(); verifyHubCertificate(socket.getPeerCertificate().raw, origin, pin); finish(null, socket); }
+      catch { finish(new HubTlsIdentityError(), socket); }
+    });
+    socket.setTimeout(5_000, () => { finish(Error("Hub TLS connection unavailable"), socket); });
+    socket.once("error", () => finish(Error("Hub TLS connection unavailable"), socket));
+    return undefined as unknown as import("node:stream").Duplex; // Agent receives the socket only through the verified callback.
+  };
+  return agent;
+}
+export class HubTlsIdentityError extends Error { constructor() { super("Hub TLS identity differs"); } }

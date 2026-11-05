@@ -66,7 +66,7 @@ describe("Hub pairing authorization and durable state", () => {
     const claim = await f.service.claim({ pairingId: x.pending.pairingId, fleetId: x.pending.fleetId, claimSecret: x.pending.claimSecret });
     if (claim.status !== "approved") throw Error();
     const a = await f.service.connect(claim.credential), b = await f.service.connect(claim.credential);
-    expect(b.linkEpoch).toBeGreaterThan(a.linkEpoch); expect(f.fence).toHaveBeenCalledWith(claim.fleetId);
+    expect(b.linkEpoch).toBeGreaterThan(a.linkEpoch); expect(f.fence).toHaveBeenCalledWith(claim.fleetId, "replaced");
     await f.service.revoke(f.ctx, claim.fleetId);
     expect(() => f.service.authenticate(claim.credential)).toThrow(); await expect(f.service.connect(claim.credential)).rejects.toThrow();
   });

@@ -21,7 +21,7 @@ const pairBody = z.strictObject({ code: z.string().regex(/^[a-f0-9]{12}$/) });
 const claimBody = z.strictObject({ pairingId: uuid, fleetId: uuid, claimSecret: token });
 export class HubPairingService {
   constructor(private readonly options: { store: HubTransportStore; identity: HubPairingIdentity; directory: HubDirectory;
-    enabled(): boolean; now?: () => number; fenceFleet(fleetId: string): void }) {}
+    enabled(): boolean; now?: () => number; fenceFleet(fleetId: string, reason: "replaced" | "revoked"): void }) {}
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private check(): void { if (!this.options.enabled()) throw new HubProtocolError("unavailable"); }
   private audit(actor: HubActor | { kind: "member"; fleetId: string }, action: string, requestId: string) {
@@ -48,7 +48,7 @@ export class HubPairingService {
     return { pairingId: id, code, expiresAt };
   }
   /** Unauthenticated bootstrap accepts a code only: no cookies, passwords, exports or directory attributes. */
-  pair(input: unknown): { pairingId: string; fleetId: string; claimSecret: string; fingerprint: string; expiresAt: number } {
+  pair(input: unknown): { pairingId: string; fleetId: string; claimSecret: string; fingerprint: string; expiresAt: number; hub: HubPairingIdentity; owner: PersonKey } {
     const { code } = validated(pairBody, input); this.check();
     const invalid = this.options.store.read().buckets.find(b => b.key === sha256("pair:invalid"));
     if (invalid && this.now() - invalid.since < 60_000 && invalid.attempts > 10
@@ -60,7 +60,7 @@ export class HubPairingService {
       if (!this.budget(state, `pair:${p.id}`)) return null;
       p.codeHash = null; p.claimHash = claimHash; p.fleetId = fleetId; p.state = "pending";
       p.fingerprint = hubPairingFingerprint(this.options.identity, p.id, p.owner, claimHash);
-      return { pairingId: p.id, fleetId, claimSecret, fingerprint: p.fingerprint, expiresAt: p.expiresAt };
+      return { pairingId: p.id, fleetId, claimSecret, fingerprint: p.fingerprint, expiresAt: p.expiresAt, hub: { hubId: this.options.identity.hubId, memberOrigin: this.options.identity.memberOrigin, webOrigin: this.options.identity.webOrigin, spkiSha256: this.options.identity.spkiSha256, issuerPublicKey: this.options.identity.issuerPublicKey }, owner: { ...p.owner } };
     });
     if (!result) throw new HubProtocolError("denied"); return result;
   }
@@ -104,11 +104,14 @@ export class HubPairingService {
     const fleet = this.options.store.read().fleets.find(f => f.status === "active" && f.credentialHash && timingSafeEqual(digest, Buffer.from(f.credentialHash, "hex")));
     if (!fleet) throw new HubProtocolError("denied"); return { fleetId: fleet.id, owner: fleet.owner, generation: fleet.generation };
   }
+  bindingCurrent(fleetId: string, generation: number): boolean {
+    try { this.check(); const f = this.options.store.read().fleets.find(f => f.id === fleetId); return f?.status === "active" && f.generation === generation; } catch { return false; }
+  }
   async connect(credential: string): Promise<{ fleetId: string; owner: PersonKey; generation: number; linkEpoch: number; revocationVersion: number }> {
     let f = this.authenticate(credential);
     const eligible = await this.options.directory.checkEligibility(f.owner);
     if (!eligible.eligible || personKeyString(eligible.person.key) !== personKeyString(f.owner)) throw new HubProtocolError("denied");
-    f = this.authenticate(credential); this.options.fenceFleet(f.fleetId);
+    f = this.authenticate(credential); this.options.fenceFleet(f.fleetId, "replaced");
     return this.options.store.mutate(this.audit({ kind: "member", fleetId: f.fleetId }, "member.connected", randomUUID()), state => {
       const current = state.fleets.find(x => x.id === f.fleetId);
       if (!current || current.generation !== f.generation || current.status !== "active") throw new HubProtocolError("stale");
@@ -116,7 +119,7 @@ export class HubPairingService {
     });
   }
   async revoke(ctx: HubRequestContext, fleetId: string): Promise<void> {
-    validated(uuid, fleetId); const admin = await ctx.requireAdmin(); this.check(); this.options.fenceFleet(fleetId);
+    validated(uuid, fleetId); const admin = await ctx.requireAdmin(); this.check(); this.options.fenceFleet(fleetId, "revoked");
     this.options.store.mutate(this.audit(admin, "member.revoked", ctx.requestId), state => {
       const f = state.fleets.find(f => f.id === fleetId); if (!f) throw new HubProtocolError("not-found");
       f.status = "revoked"; f.credentialHash = null; f.generation++; state.revocationVersion++;
