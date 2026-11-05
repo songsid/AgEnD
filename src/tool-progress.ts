@@ -194,7 +194,8 @@ export function summarizeProgress(name: string, input: unknown, level: "standard
     }
     case "Glob":
     case "Grep":
-      return level === "verbose" ? capLine(`🔍 搜尋：${redactSecrets(String(inp.pattern ?? ""))}`) : "🔍 搜尋程式碼";
+      // Never the pattern, at any level: a search can be for a literal secret, and no redactor knows every shape.
+      return "🔍 搜尋程式碼";
     case "Agent":
     case "Task":
       return "🤝 派工作給子 Agent";

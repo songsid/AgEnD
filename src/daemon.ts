@@ -7451,8 +7451,10 @@ export class Daemon extends EventEmitter {
     if (name === "Write") return `Write ${inp.file_path ?? ""}`;
     // Command name only — never the arguments. See shellCommandLabel.
     if (name === "Bash") return `$ ${shellCommandLabel(String(inp.command ?? ""))}`;
-    if (name === "Glob") return `Glob ${inp.pattern ?? ""}`;
-    if (name === "Grep") return `Grep ${inp.pattern ?? ""}`;
+    // The tool name only — never the search pattern: it can be a literal secret someone is looking for, and this label
+    // reaches the channel's progress line.
+    if (name === "Glob") return "Glob";
+    if (name === "Grep") return "Grep";
     if (name === "Agent") return "Agent (subagent)";
     if (name.startsWith("mcp__agend__")) return ""; // skip channel tools
     return name;
