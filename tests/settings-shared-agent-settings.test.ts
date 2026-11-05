@@ -20,6 +20,8 @@ let raw: any;
 let status: Record<string, string> = {};
 /** What /api/fleet does: answers (up), does not (down), or answers with no agents (empty). */
 let fleetMode: "up" | "down" | "empty" = "up";
+/** What classicBot.yaml says (none by default) — the rooms are listed by /api/fleet too, with their status from `status`. */
+let classic: { defaults: Record<string, unknown>; channels: Record<string, any> } = { defaults: {}, channels: {} };
 const sent: Array<{ method: string; path: string; body: any }> = [];
 const realFetch = (globalThis as any).fetch;
 /** Seven agents: artist sets its own model, tester its own tool set, ops its own dashboard permissions; General is one too. */
@@ -40,12 +42,15 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
     if (method !== "GET") return { ok: true };
     if (path === "/api/settings/schema") return schema;
     if (path === "/api/settings/fleet/raw") return raw;
-    if (path === "/api/settings/classic") return { defaults: {}, channels: {} };
+    if (path === "/api/settings/classic") return classic;
     if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
     if (path === "/api/settings/status-emojis") return { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] };
     if (path === "/api/settings/pending") return [];
     if (path === "/api/fleet" && fleetMode === "empty") return { version: "2.4.0", instances: [] };
-    if (path === "/api/fleet") return { version: "2.4.0", instances: Object.keys(raw.instances).map((name) => ({ name, status: status[name] ?? "running" })) };
+    if (path === "/api/fleet") {
+      const rooms = Object.values(classic.channels).map((r: any) => ({ name: r.instanceName, classic: true, status: status[r.instanceName] ?? "running" }));
+      return { version: "2.4.0", instances: [...Object.keys(raw.instances).map((name) => ({ name, status: status[name] ?? "running" })), ...rooms] };
+    }
     if (path.startsWith("/ui/")) return {};
     return [];
   })();
@@ -59,7 +64,7 @@ beforeAll(async () => {
 });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
 beforeEach(async () => {
-  raw = fleet(); status = {}; fleetMode = "up"; sent.length = 0; (globalThis as any).confirm = () => true;
+  raw = fleet(); status = {}; fleetMode = "up"; classic = { defaults: {}, channels: {} }; sent.length = 0; (globalThis as any).confirm = () => true;
   (await import("/assets/app-i18n.js")).setLang("en");
 });
 afterEach(async () => { await p.unmount(); });
@@ -97,8 +102,9 @@ describe("the page", () => {
     expect([text($(".s-page-lead")), p.root.querySelectorAll(".s-page-lead").length]).toEqual(["Changes here apply to every agent that has no setting of its own — including agents you create later.", 1]);
     const cards = p.root.querySelectorAll(".s-group");
     expect(cards.map((c: any) => text(c.querySelector("h3")))).toEqual(["Shared agent settings", "System & channels", "Shared agent settings", "System & channels"]);
+    // The hang detector is the one setting of the fleet's group that an agent may also set itself: the Advanced card (where it is) says so.
     expect(cards.map((c: any) => text(c.querySelector("p.note")))).toEqual(["An individual agent can override these", "One value for the whole fleet — an agent can't change it",
-      "An individual agent can override these", "One value for the whole fleet — an agent can't change it"]);
+      "An individual agent can override these", "One value for the whole fleet — an agent can't change it, except the hang detector, which an agent can also set for itself"]);
     const drawer = $("details.drawer");
     expect(text(drawer.querySelector("summary"))).toBe("Advanced (10)");
     // The first two cards are the main view, the last two are in the drawer.
@@ -207,7 +213,7 @@ describe("the page", () => {
 describe("who uses a field", () => {
   it("counts the agents that use this page's value, and names the ones that set their own", async () => {
     await open();
-    expect([pill("g-be"), pill("g-model"), pill("g-ts"), pill("g-dash"), pill("g-auto")]).toEqual(["6/6 in use", "5/6 in use · artist custom", "5/6 in use · tester custom", "5/6 in use · ops custom", "6/6 in use"]);
+    expect([pill("g-be"), pill("g-model"), pill("g-ts"), pill("g-dash"), pill("g-auto")]).toEqual(["6/6 in use", "5/6 in use · artist custom", "5/6 in use · tester custom", "6/6 in use · ops partly custom", "6/6 in use"]);
     expect(pillTip("g-model")).toBe("Set on their own under Agents, so a change here does not reach them: artist.");
     expect(pillTip("g-be")).toBe("Every agent uses the value on this page.");
   });
@@ -224,8 +230,32 @@ describe("who uses a field", () => {
     raw.instances["writer-t6"] = { working_directory: "/w/w", dashboard: { task_board: false } };
     raw.instances["office-t7"] = { working_directory: "/w/o", office_pack_access: null };
     await open();
-    expect(pill("g-dash")).toBe("6/8 in use · 2 agents custom");
-    expect(pillTip("g-dash")).toContain("ops, writer");
+    // ops sets only the office switch and writer only the task board: each still follows the other four items, so both are "partly" custom.
+    expect(pill("g-dash")).toBe("8/8 in use · 2 agents partly custom");
+    expect(pillTip("g-dash")).toContain("Task board: writer; Office: ops");
+  });
+
+  it("an agent that sets only one dashboard item is partly custom — the page does not say a change here misses it altogether", async () => {
+    await open();                                                                    // ops sets office_access only
+    expect(pill("g-dash")).toBe("6/6 in use · ops partly custom");
+    const tip = pillTip("g-dash");
+    expect(tip).toBe("An agent that sets an item on its own (under Agents) is not reached by a change to that item here; it still follows this page for its other items. Set on their own: Office: ops.");
+    expect(tip).not.toContain("does not reach them");
+    // The pure part: a change to the appearance reaches ops; a change to the office switch does not.
+    const { usageOf, FIELDS } = await import("/ui/js/settings-shared.js");
+    const part = (k: string) => FIELDS.dash.parts.find((x: any) => x.keys[0] === `dash_${k}`);
+    expect(usageOf(raw, "dash", [part("appearance")]).owners.map((o: any) => o.name)).toEqual([]);
+    expect(usageOf(raw, "dash", [part("office")]).owners.map((o: any) => o.name)).toEqual(["ops-t5"]);
+  });
+
+  it("an agent that sets every dashboard item is custom, and the hover lists who sets which", async () => {
+    raw = fleet();
+    raw.instances["ops-t5"] = { working_directory: "/w/ops", office_access: true, office_pack_access: false, dashboard: { appearance: false, task_board: true, web_settings: true } };
+    raw.instances["dev-t1"].dashboard = { task_board: false };
+    await open();
+    expect(pill("g-dash")).toBe("5/6 in use · ops custom · dev partly custom");
+    expect(pillTip("g-dash")).toContain("Appearance: ops");
+    expect(pillTip("g-dash")).toContain("Task board: dev, ops");
   });
 
   it("a key set to null is not the agent's own either (the daemon takes the default for it)", async () => {
@@ -397,6 +427,103 @@ describe("what an edit costs", () => {
   });
 });
 
+// The fleet's reconciliation (fleet-manager.ts, "Classic cold config changed") also restarts a running ClassicBot room whose
+// backend, model or auto-pause comes from the shared defaults — the room's own value, then ClassicBot's defaults, come first.
+describe("ClassicBot rooms that follow a shared value", () => {
+  const room = (instanceName: string, extra: Record<string, unknown> = {}) => ({ instanceName, name: instanceName, ...extra });
+  const rooms = (...list: Array<ReturnType<typeof room>>) => Object.fromEntries(list.map((r, i) => [`discord:${i}`, r]));
+  const ROOM_RESTARTS = "↻ After saving, 1 ClassicBot room(s) that follow this value restart";
+
+  it("counts a room that follows the shared model beside the agents — and leaves out a room with its own model", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b", { model: "gpt-5.5-nano" })) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)", ROOM_RESTARTS]);
+    expect(bar()).toContain("↻ 5 agent(s) restart after saving");
+    expect(bar()).toContain("↻ 1 ClassicBot room(s) restart after saving");
+  });
+
+  it("with only a room, it names the room's restart and does not say there are no agents", async () => {
+    raw = fleet(); raw.instances = {};
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual([ROOM_RESTARTS]);
+    expect(bar()).toBe("↻ 1 ClassicBot room(s) restart after saving");
+    expect(`${notes("g-model")}${bar()}`).not.toContain("No agents yet");
+  });
+
+  it("a room follows the shared value only when neither it nor ClassicBot's defaults set it (backend and model read empty as unset; auto-pause 0 is a value)", async () => {
+    classic = { defaults: { model: "gpt-5.5-nano" }, channels: rooms(room("classic-a")) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");                        // ClassicBot's defaults set the model: the room follows those
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"]);
+    await p.unmount();
+    classic = { defaults: {}, channels: rooms(room("classic-a", { model: "" }), room("classic-b", { auto_pause_after: 0 }), room("classic-c", { backend: "claude-code" })) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");                        // an empty model follows
+    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS.replace("1 ClassicBot", "3 ClassicBot")]);
+    await choose("g-model", "gpt-5.5");                              // put back: gone
+    await type("g-auto", "10");                                      // auto-pause: classic-b's 0 is its own value
+    // Auto-pause applies to an agent at once but restarts a room (ClassicBot takes only tool progress and the reply guard hot): rooms alone are named.
+    expect(notes("g-auto")).toEqual([ROOM_RESTARTS.replace("1 ClassicBot", "2 ClassicBot")]);
+    expect(bar()).toBe("↻ 2 ClassicBot room(s) restart after saving");
+  });
+
+  it("a stopped room takes the value at its next start; with the state unreadable the page does not claim none is running", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    status = { "classic-a": "stopped" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual(["After saving, 1 ClassicBot room(s) use the new value; none is running, so none restarts"]);
+    expect(bar()).toContain("1 ClassicBot room(s) use the new value; none is running");
+    await p.unmount();
+    fleetMode = "down";
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS]);
+  });
+
+  it("a mix of running and idle rooms says how many restart", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b")) };
+    status = { "classic-b": "paused" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model").slice(1)).toEqual(["↻ After saving, 2 ClassicBot room(s) use the new value; the 1 running restart"]);
+    expect(bar()).toContain("↻ 2 ClassicBot room(s) use the new value; the 1 running restart");
+  });
+
+  it("only what the reconciliation restarts a room for is counted: a hot value, or a field a room does not take from here, says nothing about rooms", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    await open();
+    await pickSeg($("#g-tp"), "verbose");                            // hot: applies at once, nothing restarts
+    expect(p.root.querySelectorAll(".s-note")).toHaveLength(0);
+    await choose("g-ts", "full");                                    // an agent restart, but a room is not restarted for it
+    expect(notes("g-ts")).toEqual(["↻ After saving, 5 agent(s) restart (tester set their own — not affected)"]);
+    expect(bar() ?? "").not.toContain("ClassicBot");
+  });
+
+  it("the pill counts agents only and its hover names the rooms that follow the value too", async () => {
+    classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b", { model: "gpt-5.5-nano" })) };
+    await open();
+    expect(pill("g-model")).toBe("5/6 in use · artist custom");      // the rooms are not in the count
+    expect(pillTip("g-model")).toBe("Set on their own under Agents, so a change here does not reach them: artist. 1 ClassicBot room(s) follow this value too (they are not in this count).");
+    expect(pillTip("g-ts")).not.toContain("ClassicBot");               // a room does not take the tool set from here
+  });
+
+  it("says it in zh-TW", async () => {
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang("zh-TW");
+    classic = { defaults: {}, channels: rooms(room("classic-a")) };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ 儲存後，5 個 Agent 會重新啟動（artist 自訂，不受影響）", "↻ 儲存後，沿用這個值的 1 個 ClassicBot 房間會重新啟動"]);
+    expect(bar()).toContain("↻ 儲存後 1 個 ClassicBot 房間會重新啟動");
+    expect(pillTip("g-model")).toContain("另有 1 個 ClassicBot 房間也沿用這個值（不在上面的數字裡）。");
+    setLang("en");
+  });
+});
+
 describe("what is written", () => {
   it("every field still writes its own key, and only the ones that changed", async () => {
     await open();
@@ -461,6 +588,10 @@ describe("the words", () => {
     expect(text($(".s-page-lead"))).toBe("改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。");
     expect(p.root.querySelectorAll(".s-group").map((c: any) => text(c.querySelector("h3")))).toEqual(["Agent 共用設定", "系統與頻道", "Agent 共用設定", "系統與頻道"]);
     expect(text($("details.drawer summary"))).toBe("進階設定（10 項）");
+    expect(p.root.querySelectorAll(".s-group").map((c: any) => text(c.querySelector("p.note")))).toEqual(["個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改",
+      "個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改；只有卡住偵測可以另外在個別 Agent 設定"]);
+    expect(pill("g-dash")).toBe("6/6 套用中 · ops 部分自訂");
+    expect(pillTip("g-dash")).toContain("自己設定的：辦公室: ops。");
     expect(pill("g-model")).toBe("5/6 套用中 · artist 自訂");
     expect($("#g-tp").querySelectorAll(".s-seg-opt").map(text)).toEqual(["關", "標準", "詳細"]);
     expect(text(field("g-be").querySelector(".s-info"))).toContain("只檢查這台主機。Windows 電腦上的 CLI，請在個別 Agent 的設定裡按「切換 Runtime／CLI」。");

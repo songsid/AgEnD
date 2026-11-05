@@ -1,9 +1,11 @@
 // Settings → Shared agent settings (the section id stays `agent-defaults`; its address and every `#g-…` anchor are unchanged):
 // the page's parts. The form, its draft and its staging stay in General (panel-settings.js) — ClassicBot's defaults share
 // them — and this file draws the fleet's half and does the arithmetic behind it:
-// - which agents set a field themselves (the "N/M in use" pill and its list), from fleet.yaml's instances;
+// - which agents set a field themselves (the "N/M in use" pill and its list), from fleet.yaml's instances — item by item for
+//   a field of several items (the dashboard's features), so an agent that sets only some of them is "partly custom";
 // - what saving an edited field costs, in words, from the schema (`impactOf`), shown under the field only once it is
-//   edited and gone again when it is put back — never as a badge that is always there;
+//   edited and gone again when it is put back — never as a badge that is always there. The agents are fleet.yaml's
+//   instances; the ClassicBot rooms that follow the value are counted beside them (the fleet restarts those too);
 // - the same costs added up for the Save bar.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
@@ -26,11 +28,15 @@ export const plainOptions = (kind, values) => values.map((v) => ({ value: v, lab
 export const agentsOf = (fleet) => Object.entries((fleet && fleet.instances) || {});
 /** A key with a value: `null` / `undefined` is the same as no key (the agent follows the default). */
 const given = (obj, key) => hasOwn(obj, key) && obj[key] != null;
-/** An agent has set the dashboard features itself: any of the three kept under `dashboard`, or either of the two kept beside it, with a value. */
-export function ownsDashboard(inst) {
+/**
+ * An agent has set one dashboard feature itself: its own key beside `dashboard` (office, office packs), or the feature under
+ * `dashboard` (where the older files kept all five), with a value. The fleet merges the features one by one
+ * (dashboard-permissions.ts dashboardFeaturesOffIn), so setting one leaves the others following the defaults.
+ */
+export function ownsDashboardFeature(inst, feature) {
+  const key = hasOwn(SEPARATE_FEATURE_KEYS, feature) ? SEPARATE_FEATURE_KEYS[feature] : null;
   const dash = inst && inst.dashboard;
-  return Object.values(SEPARATE_FEATURE_KEYS).some((k) => given(inst, k))
-    || (!!dash && typeof dash === "object" && !Array.isArray(dash) && DASHBOARD_FEATURES.some((f) => given(dash, f)));
+  return (!!key && given(inst, key)) || (!!dash && typeof dash === "object" && !Array.isArray(dash) && given(dash, feature));
 }
 /** An agent's own `a` or `a.b`, with a value (the hang detector's two settings are merged one by one: setting the timeout leaves `enabled` inherited). */
 const ownsPath = (inst, path) => {
@@ -44,14 +50,17 @@ const ownsPath = (inst, path) => {
  * `path` — its entry in the impact schema (what saving it costs);
  * `own` — the agent setting that overrides it (an agent that has it is not affected by an edit here); none: agents cannot;
  * `parts` — a field of several settings that agents override one by one: each part's keys and own settings (an edit to one part
- *   reaches the agents that do not set that part, however the other parts stand);
+ *   reaches the agents that do not set that part, however the other parts stand); `label` names a part where it is listed;
+ * `room` — the ClassicBot setting that follows this one: a room restarts for an edit here when neither the room nor
+ *   ClassicBot's defaults set it (ClassicChannelManager's own → defaults → fleet chain), only for the settings the fleet's
+ *   reconciliation compares (backend, model, auto-pause: `Classic cold config changed`; the rest is hot or read at the next start);
  * `agentGroup` — it is one of the "Shared agent settings" (individual agents may override it), else of "System & channels";
  * `confirm` — saving it asks for someone's OK first.
  */
 export const FIELDS = Object.freeze({
-  backend: { keys: ["backend"], path: "defaults.backend", own: ["backend"], agentGroup: true },
-  model: { keys: ["model"], path: "defaults.model", own: ["model"], agentGroup: true },
-  auto: { keys: ["auto"], path: "defaults.auto_pause_after", own: ["auto_pause_after"], agentGroup: true },
+  backend: { keys: ["backend"], path: "defaults.backend", own: ["backend"], room: "backend", agentGroup: true },
+  model: { keys: ["model"], path: "defaults.model", own: ["model"], room: "model", agentGroup: true },
+  auto: { keys: ["auto"], path: "defaults.auto_pause_after", own: ["auto_pause_after"], room: "auto_pause_after", agentGroup: true },
   tool_progress: { keys: ["tool_progress"], path: "defaults.tool_progress", own: ["tool_progress"], agentGroup: true },
   visibility: { keys: ["visibility"], path: "defaults.cross_instance_visibility", own: ["cross_instance_visibility"], agentGroup: true },
   reply: { keys: ["reply"], path: "defaults.reply_completion_guard", own: ["reply_completion_guard"], agentGroup: true },
@@ -59,7 +68,9 @@ export const FIELDS = Object.freeze({
   tool_set: { keys: ["tool_set"], path: "defaults.tool_set", own: ["tool_set"], agentGroup: true },
   agent_mode: { keys: ["agent_mode"], path: "defaults.agent_mode", own: ["agent_mode"], agentGroup: true },
   log_level: { keys: ["log_level"], path: "defaults.log_level", own: ["log_level"], agentGroup: true },
-  dash: { keys: DASHBOARD_FEATURES.map((k) => `dash_${k}`), path: "defaults.dashboard", agentGroup: true, owns: ownsDashboard },
+  // One part per feature: an agent that sets the office switch still follows the others (a change to the appearance reaches it).
+  dash: { keys: DASHBOARD_FEATURES.map((k) => `dash_${k}`), path: "defaults.dashboard", agentGroup: true,
+    parts: DASHBOARD_FEATURES.map((k) => ({ keys: [`dash_${k}`], owns: (inst) => ownsDashboardFeature(inst, k), label: `dashboardShort_${k}` })) },
   locale: { keys: ["locale"], path: "defaults.locale" },
   tips: { keys: ["tips"], path: "defaults.tips" },
   roots: { keys: ["roots"], path: "fleet.project_roots", confirm: "noteConfirmAdmin" },
@@ -77,11 +88,33 @@ const ownsPart = (part, inst) => (part.owns ? part.owns(inst) : (part.own || [])
 /**
  * The agents that set a field themselves, and how many there are. Fields agents cannot override have none. `parts`: only
  * these parts count — an agent is left out of an edit only when it sets every one of them (default: all of the field's).
+ * A field of several parts also says who sets only some of them (`partial`: they follow this page for the rest) and who
+ * sets each part (`byPart`, for the list under the pill).
  */
 export function usageOf(fleet, field, parts = partsOf(FIELDS[field])) {
   const agents = agentsOf(fleet);
-  const owners = agents.filter(([, inst]) => parts.every((part) => ownsPart(part, inst))).map(([name, inst]) => ({ name, label: shortName(name, inst) }));
-  return { total: agents.length, owners, names: agents.map(([name]) => name) };
+  const who = (name, inst) => ({ name, label: shortName(name, inst) });
+  const owners = agents.filter(([, inst]) => parts.every((part) => ownsPart(part, inst))).map(([name, inst]) => who(name, inst));
+  const partial = parts.length > 1 ? agents.filter(([, inst]) => parts.some((part) => ownsPart(part, inst)) && !parts.every((part) => ownsPart(part, inst))).map(([name, inst]) => who(name, inst)) : [];
+  const byPart = parts.length > 1 ? parts.map((part) => ({ label: part.label, owners: agents.filter(([, inst]) => ownsPart(part, inst)).map(([name, inst]) => who(name, inst)) })) : [];
+  return { total: agents.length, owners, partial, byPart, names: agents.map(([name]) => name) };
+}
+// ── Which ClassicBot rooms follow a field ──
+/** The ClassicBot rooms of classicBot.yaml: [key, room]. */
+export const roomsOf = (classic) => Object.entries((classic && classic.channels) || {}).filter(([, room]) => room && typeof room === "object");
+/** ClassicChannelManager reads a room's backend and model with `||` (an empty value follows), its auto-pause with `??`. */
+const roomGiven = (obj, key) => (key === "auto_pause_after" ? obj != null && obj[key] != null : !!obj && !!obj[key]);
+/**
+ * The rooms that take this page's value for `field`: those that neither set it themselves nor have it in ClassicBot's
+ * defaults (room → ClassicBot defaults → the fleet's: ClassicChannelManager.getBackend / getModel / getAutoPauseAfter).
+ * Fields the fleet's reconciliation leaves alone (it compares only backend, model and auto-pause) have none.
+ */
+export function roomsFollowing(classic, field) {
+  const key = FIELDS[field].room;
+  if (!key) return [];
+  const defaults = (classic && classic.defaults) || {};
+  if (roomGiven(defaults, key)) return [];
+  return roomsOf(classic).filter(([, room]) => !roomGiven(room, key)).map(([k, room]) => ({ key: k, instanceName: room.instanceName }));
 }
 const NAMES_SHOWN = 5;
 /** A list of agent names for a sentence: the first few, then how many more. */
@@ -93,10 +126,11 @@ const edited = (f, base, field) => FIELDS[field].keys.some((k) => !sameValue(f[k
  * What saving the edited fields costs, as notes: `fields` — per field, its notes (`{ text }` each); `bar` — the same added
  * up for the Save bar, one line per kind of cost (an agent restarted by two fields counted once), for the write of the
  * defaults (`bar.defaults`) and for the project folders' own (`bar.roots`). A field that applies at once has no note;
- * an invalid one has none yet.
+ * an invalid one has none yet. Besides the agents of fleet.yaml, the ClassicBot rooms that follow the value (`classic`: what
+ * classicBot.yaml says; `classicStatus(instanceName)`: a room's status) are named — the fleet restarts a running one too.
  */
-export function sharedNotes({ schema, fleet, live = {}, fleetUp = true, f, base, errors = {} }) {
-  const fields = {}, hit = new Set(), bar = { defaults: [], roots: [] };
+export function sharedNotes({ schema, fleet, classic, classicStatus = () => "stopped", live = {}, fleetUp = true, f, base, errors = {} }) {
+  const fields = {}, hit = new Set(), hitRooms = new Map(), bar = { defaults: [], roots: [] };
   // Whether an agent restarts when a setting that is not hot changes: one that is running, and one that crashed (the fleet
   // restarts a crash-looping daemon too); a paused or stopped one just takes the value at its next start. When the page
   // could not read the agents' state (the fleet did not answer, or listed none) it cannot tell: every agent counts as restarting.
@@ -104,11 +138,19 @@ export function sharedNotes({ schema, fleet, live = {}, fleetUp = true, f, base,
   // A Windows agent that runs one command at a time (not a persistent terminal) has no process of its own: it takes a changed default at its next run.
   const oneShot = (name) => { const inst = fleet && fleet.instances && fleet.instances[name]; return !!inst && inst.runtime === "windows" && inst.native_adapter !== "pane"; };
   const restarts = (name) => !oneShot(name) && (!known || (!!live[name] && (live[name].status === "running" || live[name].status === "crashed")));
+  // A ClassicBot room restarts on the same terms (the reconciliation restarts the ones that have a daemon).
+  const roomRestarts = (room) => !known || ["running", "crashed"].includes(classicStatus(room.instanceName));
+  const roomsText = (rooms, kind) => { const n = rooms.filter(roomRestarts).length; return n === rooms.length ? tn(`${kind}RestartRooms`, rooms.length) : n ? tn(`${kind}ApplyRooms`, rooms.length, n) : tn(`${kind}IdleRooms`, rooms.length); };
   let fleetRestart = false;
   const add = (list, text) => { if (!list.includes(text)) list.push(text); };
   for (const [field, spec] of Object.entries(FIELDS)) {
     if (!edited(f, base, field) || errors[field]) continue;
     const notes = [], kind = impactOf(schema, spec.path);
+    // The ClassicBot rooms that follow it. A room has its own idea of "hot" (a ClassicBot channel takes tool progress and the reply
+    // guard at once, nothing else): auto-pause applies at once to an agent but restarts a room, so this does not depend on `kind`.
+    // A fleet restart (`kind` "fleet") restarts them with everything else.
+    const rooms = kind !== "fleet" && spec.room && impactOf(schema, `classic.${spec.room}`) === "instance" ? roomsFollowing(classic, field) : [];
+    for (const room of rooms) hitRooms.set(room.key, room);
     if (kind === "fleet") { notes.push({ text: tn("noteRestartFleet") }); fleetRestart = true; }
     else if (kind === "instance") {
       // Only the parts that were edited count: an agent is left alone when it sets all of them itself.
@@ -120,8 +162,10 @@ export function sharedNotes({ schema, fleet, live = {}, fleetUp = true, f, base,
       const restarting = reached.filter(restarts).length;
       const main = restarting === reached.length ? tn("noteRestartAgents", reached.length)
         : restarting ? tn("noteApplyAgents", reached.length, restarting) : tn("noteApplyIdle", reached.length);
-      notes.push({ text: u.total === 0 ? tn("noteNoAgents") : !reached.length ? tn("noteAllOverride") : `${main}${skipped.length ? tn("noteSkip", nameList(skipped)) : ""}` });
+      // With only rooms, "No agents yet — agents you create later start with this value" would read as if nothing is affected.
+      if (!(u.total === 0 && rooms.length)) notes.push({ text: u.total === 0 ? tn("noteNoAgents") : !reached.length ? tn("noteAllOverride") : `${main}${skipped.length ? tn("noteSkip", nameList(skipped)) : ""}` });
     }
+    if (rooms.length) notes.push({ text: roomsText(rooms, "note") });
     if (spec.confirm) { notes.push({ text: tn(spec.confirm) }); add(field === "roots" ? bar.roots : bar.defaults, tn(spec.confirm)); }
     // Ticking a dashboard feature on is confirmed first (unticking applies at once): only a feature newly ticked asks.
     if (field === "dash" && DASHBOARD_FEATURES.some((k) => f[`dash_${k}`] === true && base[`dash_${k}`] !== true)) {
@@ -129,10 +173,13 @@ export function sharedNotes({ schema, fleet, live = {}, fleetUp = true, f, base,
     }
     if (notes.length) fields[field] = notes;
   }
+  const lead = [];
   if (hit.size) {
     const restarting = [...hit].filter(restarts).length;
-    bar.defaults.unshift(restarting === hit.size ? tn("barRestartAgents", hit.size) : restarting ? tn("barApplyAgents", hit.size, restarting) : tn("barApplyIdle", hit.size));
+    lead.push(restarting === hit.size ? tn("barRestartAgents", hit.size) : restarting ? tn("barApplyAgents", hit.size, restarting) : tn("barApplyIdle", hit.size));
   }
+  if (hitRooms.size) lead.push(roomsText([...hitRooms.values()], "bar"));
+  bar.defaults.unshift(...lead);
   if (fleetRestart) add(bar.defaults, tn("barRestartFleet"));
   return { fields, bar };
 }
@@ -177,12 +224,21 @@ export function Tip({ text, cls = "", ariaLabel, children }) {
 export function InfoTip({ text, name }) {
   return html`<${Tip} text=${text} cls="s-i" ariaLabel=${tn("tipLabel", name)}>i</${Tip}>`;
 }
-/** "6/7 in use · artist custom" at a field's right: how many agents use this page's value; hover lists the ones that set their own. */
+/**
+ * "6/7 in use · artist custom" at a field's right: how many agents use this page's value; hover lists the ones that set their own.
+ * A field of several items (the dashboard's features) says "partly custom" for an agent that sets only some of them — it still
+ * follows this page for the rest — and the hover lists who sets which item. The count is agents only: the ClassicBot rooms that
+ * follow the value are named in the hover (`rooms`), not counted.
+ */
 export function UsageBadge({ usage }) {
   if (!usage || !usage.total) return null;
-  const { total, owners } = usage;
-  const text = `${tn("usageCount", total - owners.length, total)}${owners.length ? ` · ${tn("usageOwn", owners.length === 1 ? owners[0].label : tn("usageMany", owners.length))}` : ""}`;
-  return html`<${Tip} text=${owners.length ? tn("usageTipOwners", nameList(owners.map((o) => o.label))) : tn("usageTipAll")} cls="s-use" ariaLabel=${text}>${text}</${Tip}>`;
+  const { total, owners, partial = [], byPart = [], rooms = 0 } = usage;
+  const who = (list, key) => tn(key, list.length === 1 ? list[0].label : tn("usageMany", list.length));
+  const text = [tn("usageCount", total - owners.length, total), owners.length ? who(owners, "usageOwn") : "", partial.length ? who(partial, "usagePartly") : ""].filter(Boolean).join(" · ");
+  const parts = byPart.filter((p) => p.owners.length).map((p) => `${tn(p.label)}: ${nameList(p.owners.map((o) => o.label))}`);
+  const tip = parts.length ? tn("usageTipParts", parts.join("; "))
+    : owners.length ? tn("usageTipOwners", nameList(owners.map((o) => o.label))) : tn("usageTipAll");
+  return html`<${Tip} text=${rooms ? `${tip} ${tn("usageRooms", rooms)}` : tip} cls="s-use" ariaLabel=${text}>${text}</${Tip}>`;
 }
 /** A field's header: its name, where it applies ("this host"), "default" when nobody set it, the ⓘ and the usage pill. */
 export function FieldHead({ id, text, tip, mark, host, usage, bare }) {
@@ -220,7 +276,7 @@ export function SharedAgentSettings({ ctx, form }) {
   const primary = channelsOf(fleet)[0];
   const defaultTip = tn("defaultMarkTip");
   const mark = (...ks) => (ks.every((k) => unset[k] && sameValue(f[k], base[k])) ? html`<${DefaultMark} tip=${defaultTip} />` : null);
-  const u = (field) => usageOf(fleet, field);
+  const u = (field) => ({ ...usageOf(fleet, field), rooms: roomsFollowing(ctx.classic, field).length });
   const note = (field) => html`<${Notes} notes=${notes.fields[field]} />`;
   const head = (field, id, text, tip, extra = {}) => html`<${FieldHead} id=${id} text=${text} tip=${tip} usage=${FIELDS[field].agentGroup ? u(field) : null} ...${extra} />`;
   const seg = (kind, values) => values.map((v) => ({ value: v, label: tn(`seg_${kind}_${v}`) }));
@@ -280,7 +336,7 @@ export function SharedAgentSettings({ ctx, form }) {
     ${card(tn("sharedGroupSystem"), tn("sharedGroupSystemSub"), systemMain)}
     <${Drawer} title=${tn("advancedCount", ADVANCED_COUNT)}>
       ${card(tn("sharedGroupAgents"), tn("sharedGroupAgentsSub"), agentAdvanced)}
-      ${card(tn("sharedGroupSystem"), tn("sharedGroupSystemSub"), systemAdvanced, html`<${Info}>${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</${Info}>`)}
+      ${card(tn("sharedGroupSystem"), tn("sharedGroupSystemAdvancedSub"), systemAdvanced, html`<${Info}>${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</${Info}>`)}
     </${Drawer}>
   </div>`;
 }
