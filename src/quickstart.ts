@@ -423,6 +423,14 @@ export function newWebOnlyFleet(projectRoots: string[], backend: string, agent: 
   return fleetObj;
 }
 
+/**
+ * #3095: a fresh quickstart's first question — this machine is my own fleet (Enter, "1", anything else) unless "2", a team
+ * Hub (experimental; `agend hub init`). The fleet is the default, so Enter keeps quickstart as it was.
+ */
+export function quickstartMachine(answer: string): "fleet" | "hub" {
+  return answer.trim() === "2" ? "hub" : "fleet";
+}
+
 /** #2910: the first question — web only (Enter, "1", anything else) unless "2", with a bot. Web is the default. */
 export function quickstartMode(answer: string): "web" | "bot" {
   return answer.trim() === "2" ? "bot" : "web";
@@ -853,6 +861,22 @@ export async function runQuickstart(): Promise<void> {
       if (existsSync(join(DATA_DIR, "fleet.pid"))) {
         try { process.kill(parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10), 0); console.error("Fleet is running. Stop it first: agend stop"); process.exit(1); } catch { /* stale pid, ok to proceed */ }
       }
+    }
+
+    // #3095: the first question of a fresh setup (an existing fleet keeps its menu above), asked only once this build
+    // can actually set up a Hub (its key generation ships with the Hub transport); until then quickstart is unchanged.
+    // A team Hub is set up by its own wizard and needs no tmux or AI CLI, so it is asked before those checks.
+    if ((await import("./hub/init/identity.js")).hubIdentityProvider().available) {
+      console.log(bold(t("qs.machine_title")));
+      console.log(`    1. ${t("qs.machine_fleet")}`);
+      console.log(`    2. ${t("qs.machine_hub")}`);
+      if (quickstartMachine(await rl.question("  Choose [1]: ")) === "hub") {
+        rl.close();
+        const { runHubInitCommand } = await import("./hub/init/cli.js");
+        await runHubInitCommand();
+        return;
+      }
+      console.log();
     }
 
     // Check tmux
