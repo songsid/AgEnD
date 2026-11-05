@@ -233,9 +233,12 @@ function transportStream() {
 export function createLogger(level: string = "info") {
   ensureAgendHome(DATA_DIR);
   rotateLogIfNeeded(LOG_FILE);
-  // Before the transport's writer opens it: it would create the log 0644 under a usual umask, and never repairs one.
+  const stream = transportStream();
+  // The transport's writer creates the log 0644 under a usual umask and never repairs one. Whichever opens it first —
+  // its worker or this — the file ends 0600 (created 0600 here, or repaired by descriptor). After the transport is
+  // built, so nothing is written for a transport that could not be built.
   ensurePrivateLogFiles(LOG_FILE);
-  return pino({ level }, transportStream());
+  return pino({ level }, stream);
 }
 
 export type Logger = ReturnType<typeof createLogger>;
