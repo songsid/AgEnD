@@ -885,7 +885,7 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 | `summary` | 同樣的貼文，每則一行：`發送方 → 接收方: ` 加上發送方的任務摘要，或訊息開頭 |
 | `hidden` | 不貼 |
 
-每個主題依自己的 instance 而定：`instances.<name>.cross_instance_visibility`，否則 `defaults.cross_instance_visibility`，否則 `full`。Fleet 管理員可用 `/visibility full|summary|hidden`（Telegram General topic 或 Discord）設定 fleet 預設值，並存入 `fleet.yaml`；只打 `/visibility` 會顯示目前設定，以及有自己設定的 instance。Settings 有 fleet 預設值（Agent 預設值）與每個 agent 的覆寫（agent → 進階）。變更立即生效，不需重啟。
+每個主題依自己的 instance 而定：`instances.<name>.cross_instance_visibility`，否則 `defaults.cross_instance_visibility`，否則 `full`。Fleet 管理員可用 `/visibility full|summary|hidden`（Telegram General topic 或 Discord）設定 fleet 預設值，並存入 `fleet.yaml`；只打 `/visibility` 會顯示目前設定，以及有自己設定的 instance。Settings 有 fleet 預設值（Agent 共用設定）與每個 agent 的覆寫（agent → 進階）。變更立即生效，不需重啟。
 
 同樣的內容也會出現在各 instance 的 web chat（#1672），規則與模式相同；沒有聊天平台的 fleet、或沒有主題的 instance 也一樣。它們顯示為淡色、唯讀的狀態列：純文字，絕不當成 agent 的回覆（沒有預覽卡片），過長時會先收合。它們計入聊天紀錄的上限，重啟後仍在。
 
@@ -1179,7 +1179,7 @@ instances:
     auto_pause_after: 30  # 個別 instance 覆寫：閒置 30 分鐘後暫停
 ```
 
-也可以在 Settings 網頁設定：**Agent 預設值 → auto_pause_after**。
+也可以在 Settings 網頁設定：**Agent 共用設定 → auto_pause_after**。
 
 ### 手動控制
 

@@ -327,7 +327,7 @@ templates:
 | `workflow` | string \| false | `"builtin"` | 工作流程：`"builtin"`、`"file:path"`、內嵌內容或 `false`。可放在 instance 或 `defaults`，不可放在 fleet.yaml 頂層 |
 | `skipPermissions` | boolean | 未設 `false` 時視為 `true` | 依 backend 使用不同 bypass flag，見[安全邊界](SECURITY.zh-TW.md)。OpenCode：其 `--help` 有列 `--auto` 時以 `--auto` 啟動（明確的 `deny` 規則仍然有效）；舊版沒有啟動開關，prompt 由執行期回答「Allow once」 |
 | `cross_instance_visibility` | `"full"` \| `"summary"` \| `"hidden"` | `"full"` | Agent 之間（跨 instance）的訊息在此 instance 主題與 web chat 中顯示多少，不論它是發送方還是接收方：`full` 完整訊息（與以往相同）、`summary` 一行、`hidden` 不顯示。在 `defaults` 設定整個 fleet（也可用 `/visibility`），在這裡為單一 instance 覆寫；Settings 兩者都有。立即生效，不需重啟。訊息送達與 Mirror Topic 一律不受影響 —— 見 [features](features.zh-TW.md#agent-之間的訊息顯示-bot-to-bot-message-visibility)。 |
-| `dashboard` | object | 全部允許 | 在 `tool_set` 之外，這個 instance 能在 dashboard 上用哪些功能：`appearance`（自己的外觀：主題、圖片、小工具、背景效果、特效、mod 提案）、`task_board`（`task` 工具）、`web_settings`（替人改設定 → 外觀）；Office 改用獨立的 `office_access` 設定。設成 `false` 就關掉：每次呼叫都會被拒絕並說明原因（不用重啟），agent 的工具清單也會立刻拿掉（它的 MCP server 會跟著 fleet.yaml）；沒有任務看板的 agent，啟動說明也不再叫它用看板；重新打開時會通知那個 agent。**新的 fleet**（`agend init`、`agend quickstart`、設定頁）寫入時會帶 `defaults.dashboard.task_board: false`：任務看板維持關閉，直到你把它設為 `true`（或刪掉這一行），或在設定頁勾選。既有的 fleet.yaml 不會被改寫。`defaults.dashboard` 套用到所有 instance；instance 自己的設定會逐項合併（例如 `dashboard: { task_board: false }`）。設定頁：agent 對話框 → 進階 → Dashboard 權限，以及 Agent 預設值。關閉立即生效；打開要先確認。 |
+| `dashboard` | object | 全部允許 | 在 `tool_set` 之外，這個 instance 能在 dashboard 上用哪些功能：`appearance`（自己的外觀：主題、圖片、小工具、背景效果、特效、mod 提案）、`task_board`（`task` 工具）、`web_settings`（替人改設定 → 外觀）；Office 改用獨立的 `office_access` 設定。設成 `false` 就關掉：每次呼叫都會被拒絕並說明原因（不用重啟），agent 的工具清單也會立刻拿掉（它的 MCP server 會跟著 fleet.yaml）；沒有任務看板的 agent，啟動說明也不再叫它用看板；重新打開時會通知那個 agent。**新的 fleet**（`agend init`、`agend quickstart`、設定頁）寫入時會帶 `defaults.dashboard.task_board: false`：任務看板維持關閉，直到你把它設為 `true`（或刪掉這一行），或在設定頁勾選。既有的 fleet.yaml 不會被改寫。`defaults.dashboard` 套用到所有 instance；instance 自己的設定會逐項合併（例如 `dashboard: { task_board: false }`）。設定頁：agent 對話框 → 進階 → Dashboard 權限，以及 Agent 共用設定。關閉立即生效；打開要先確認。 |
 | `office_access` | boolean | `false` | 允許這個 agent 使用 `office_view`、`office_set`。繼承 `defaults.office_access`，只有 `true` 才開啟。設定頁仍放在 Dashboard 權限；開啟須確認，關閉立即拒絕呼叫並移除工具。修改預設值會立即更新繼承該設定的 agent；個別設定仍優先。獨立存放，讓 2.3.1、2.2.6 能驗證此設定檔並忽略 Office。既有 `dashboard.office` 會在啟動或接受重新載入時保留 `.bak` 備份後轉換；設定頁只寫入新欄位。 |
 | `office_pack_access` | boolean | `false` | 允許這個 agent 修改辦公室畫面的外觀包（全 fleet 都看得到）：`office_pack_check`、`office_pack_upload`、`office_pack_delete`、`office_pack_restore`、`office_pack_list`、`office_set_style`（#2692；見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)）。和 `office_access` 分開的獨立開關；繼承 `defaults.office_pack_access`；沒設成 true 就是關閉。在設定的 Dashboard 權限中顯示（**辦公室外觀包**）。打開需要確認；關閉會立即拒絕呼叫並移除工具。和 `office_access` 一樣存在 `dashboard` 之外，讓 2.3.1 與 2.2.6 接受這份 YAML 並忽略它；過渡用的 `dashboard.office_packs` 會被搬到這裡。agent 外觀包變更的核准模式（直接套用，或先要 fleet 管理者核准——預設）在辦公室頁面選擇，存在外觀包旁邊（`web-office-skins/.agent-changes.json`），不在 fleet.yaml；上限：每個 agent 每小時 20 批、200 MiB，外觀包連同上一版在磁碟上共 640 MiB。 |
 | `board_cards_at_once` | number | `1` | 別人交辦給這個 instance 的看板卡，最多能同時有幾張在進行中；到上限時再認領會被擋下。必須是至少 1 的整數。instance 開給自己的卡不算。需要同時做好幾張交辦卡的角色（例如 reviewer）可以調高。每次認領時讀取，立即生效。見 [features](features.zh-TW.md#在網頁上fleet--tasks)。 |
@@ -445,7 +445,7 @@ channels:
 - **重新載入**：每 30 秒偵測變更；backend、model、自動暫停或 profile 等啟動設定改變時，會重啟執行中的 agent；支援的執行期設定則直接套用。
 - **Instance 命名**：`classic-<sanitized-channel-name>-<channelId末4碼>`；非主要連線加上經清理的 adapter 後綴。已保存的 `instanceName` 優先，否則由 `name`（未填時為 channel ID）推導，不直接取自任意 YAML key
 - **Discord auto-collab**：`/start` 自動開啟 collab；預設只有發送者自己文字中的精確 `<@bot>` 提及才觸發回合。開啟 `reply_triggers` 後，也接受直接回覆該 bot（一跳）；若被回覆的訊息本身是在回覆 bot，仍不觸發。無論此設定開關為何，轉發的 reference 與轉發內容裡的提及都不算對 bot 發話；轉發圖片仍保留作為脈絡。
-- **回覆觸發設定**：**設定 → Agent 預設值** 顯示 fleet 預設（關閉）；**聊天與連線 → ClassicBot 預設值** 與各 ClassicBot 聊天室編輯視窗顯示繼承的有效值及覆寫。變更立即生效，不重啟 agent。例如 `fleet.yaml` 設 `defaults.reply_triggers: true`，仍可在 `classicBot.yaml` 設 `channels.<key>.reply_triggers: false`，讓該聊天室只接受提及。
+- **回覆觸發設定**：**設定 → Agent 共用設定** 顯示 fleet 預設（關閉）；**聊天與連線 → ClassicBot 預設值** 與各 ClassicBot 聊天室編輯視窗顯示繼承的有效值及覆寫。變更立即生效，不重啟 agent。例如 `fleet.yaml` 設 `defaults.reply_triggers: true`，仍可在 `classicBot.yaml` 設 `channels.<key>.reply_triggers: false`，讓該聊天室只接受提及。
 - **Fleet `/collab`**：逐 instance 的記憶體開關，fleet 重啟後重置；讓 bot／webhook 訊息通過 fleet topic 的 bot 篩選，不取代存取控制
 - **`agend ls`**：classic instance 會顯示 `(classic)` 標籤
 
@@ -712,7 +712,7 @@ AgEnD 會以 `0700` 建立主目錄（預設 `~/.agend`，也可由 `AGEND_HOME`
 
 登入通知（`web.notify_login`）與每日提示（`defaults.tips`）一律發在頻道，與 2.3.2 之前相同，不會私訊（Telegram bot 無法私訊還沒啟動過它的使用者）。兩者都是 `true`（預設）或 `false`。`web.notify_login: false` 只關閉管理者的本機登入通知；訪客與公開連結安全通知仍會發出。登入碼、重新發送的登入碼、訪客登入碼與公開連結仍以私下方式送出。
 
-在**設定 → 存取與安全 → 網頁登入通知**與 **Agent 預設值 → 每日提示**選擇「頻道／關閉」，變更立即生效。
+在**設定 → 存取與安全 → 網頁登入通知**與 **Agent 共用設定 → 每日提示**選擇「頻道／關閉」，變更立即生效。
 
 2.3.2 beta 曾提供的私訊選項已撤回。舊的 `notify_login: dm`、`tips: dm` 以及任何 `web.notice_delivery` 路由仍可讀取，視為 `true`。啟動或接受重新載入時，AgEnD 會改寫成 boolean 並移除 `web.notice_delivery`，保留註解與 `.bak`；在那之前 `agend validate` 會發出警告。
 

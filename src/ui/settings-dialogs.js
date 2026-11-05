@@ -45,11 +45,11 @@ export function Select({ value, options, onChange, disabled, id, label }) {
  * #2072: a backend field shows every backend with what this host says about it — one it cannot run is disabled with
  * why (not installed, not signed in, too old); one not checked yet stays selectable; the current value always can be.
  */
-export function BackendSelect({ value, onChange, disabled, id }) {
+export function BackendSelect({ value, onChange, disabled, id, hostOnly }) {
   const rows = useBackendRows();
   const known = backendOptions(value).filter((o) => !o.unavailable).map((o) => o.value);
   const opts = backendChoices(known, rows || [], value, {
-    notInstalled: tn("backendNotInstalled"), notSignedIn: tn("backendNotSignedIn"), tooOld: (v) => tn("backendTooOld", v),
+    notInstalled: tn(hostOnly ? "backendNotInstalledHost" : "backendNotInstalled"), notSignedIn: tn("backendNotSignedIn"), tooOld: (v) => tn("backendTooOld", v),
     unchecked: tn("backendUnchecked"), removed: (v) => tn("backendUnavailable", v),
   });
   return html`<select id=${id} value=${value} disabled=${disabled} onChange=${(e) => onChange(e.target.value)}>
@@ -87,7 +87,7 @@ export function Label({ text, schema, field, htmlFor, mark }) {
 }
 /** #2347 §10: the mark of a value nobody set — what is in effect is the built-in default. */
 export function DefaultMark() {
-  return html`<span class="tag s-default">${tn("defaultMark")}</span>`;
+  return html`<span class="tag s-default" title=${tn("defaultMarkTip")}>${tn("defaultMark")}</span>`;
 }
 /** #2347 §10: what an empty field means — the value in effect, in plain text, and where it comes from (the mark, or why). */
 export function InEffect({ text, why }) {
