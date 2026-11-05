@@ -168,7 +168,7 @@ export function OutsideCard() {
     live.current.refocus = true;
     setDlg(null); setCode(""); setMsg("");
   }
-  const confirm = () => act(async () => {
+  const submitBind = () => act(async () => {
     let r;
     try { r = await api("/ui/outside/enroll/confirm", { method: "POST", body: JSON.stringify({ code }) }); } catch { r = null; }
     if (r && r.ok) { await load(); closeDlg(); return; }                          // read first: the card behind is the new state when it closes
@@ -204,7 +204,7 @@ export function OutsideCard() {
       : html`<p class="note" id="outNoRecovery">${to("noRecovery")}</p>${here ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${() => begin("setup")}>${to("setUp")}</button></div>` : null}`}
     ${dlg ? html`<${Dialog} title=${to(dlg.kind === "again" ? "again" : "setUp")} onClose=${closeDlg} busy=${busy} actions=${html`
         <button type="button" class="btn" id="outCancel" disabled=${busy} onClick=${closeDlg}>${t("app.cancel")}</button>
-        <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !canConfirm} onClick=${confirm}>${to("activate")}</button>`}>
+        <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !canConfirm} onClick=${submitBind}>${to("activate")}</button>`}>
       <div class="s-out-enroll" id="outEnroll">${dlg.enroll ? html`
         <p class="s-out-step" id="outStep1"><strong>${to("step1")}</strong></p>
         <p class="note">${to("scan")}</p>
@@ -214,7 +214,7 @@ export function OutsideCard() {
         <div class="field"><label for="outCode">${to("code")}</label>
           <input id="outCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" value=${code}
             onInput=${(e) => setCode(e.target.value)}
-            onKeyDown=${(e) => { if (e.key === "Enter" && canConfirm && !busy) { e.preventDefault(); confirm(); } }} /></div>
+            onKeyDown=${(e) => { if (e.key === "Enter" && canConfirm && !busy) { e.preventDefault(); submitBind(); } }} /></div>
         ${dlg.kind === "again" ? html`<p class="note" id="outAgainNote">${to("againConfirm")}</p>` : null}
         <p class="note" id="outEnrollNoRecovery">${to("noRecovery")}</p>
         ${msg ? html`<p class="feedback error" role="alert" id="outMsg">${msg}</p>` : null}`
