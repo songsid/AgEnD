@@ -76,12 +76,12 @@ export function Label({ text, schema, field, htmlFor, mark }) {
   return html`<label for=${htmlFor}>${text}${mark ? html` ${mark}` : null}${field ? html` <${Impact} schema=${schema} field=${field} />` : null}</label>`;
 }
 /** #2347 §10: the mark of a value nobody set — what is in effect is the built-in default. */
-export function DefaultMark() {
-  return html`<span class="tag s-default" title=${tn("defaultMarkTip")}>${tn("defaultMark")}</span>`;
+export function DefaultMark({ tip }) {
+  return html`<span class="tag s-default" title=${tip || undefined}>${tn("defaultMark")}</span>`;
 }
 /** #2347 §10: what an empty field means — the value in effect, in plain text, and where it comes from (the mark, or why). */
-export function InEffect({ text, why }) {
-  return html`<p class="s-effect">${tn("inEffect", text)} ${why ? html`<span class="tag">${why}</span>` : html`<${DefaultMark} />`}</p>`;
+export function InEffect({ text, why, tip }) {
+  return html`<p class="s-effect">${tn("inEffect", text)} ${why ? html`<span class="tag">${why}</span>` : html`<${DefaultMark} tip=${tip} />`}</p>`;
 }
 /**
  * #2347 §10: what an inherited field inherits — its value, marked "default" when nobody set it there either — and a

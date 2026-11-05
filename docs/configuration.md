@@ -699,7 +699,7 @@ and different profile names do not guarantee different billing accounts.
 
 Sign-in notices (`web.notify_login`) and daily tips (`defaults.tips`) always post in the topic, as before 2.3.2; they are never sent by DM (a Telegram bot cannot DM someone who has not started it). Each is `true` (default) or `false`. `web.notify_login: false` suppresses only the operator's local sign-in notice; guest and public-link security notices still post. Sign-in codes, a new code, guest codes and public-link delivery stay private.
 
-Change them in **Settings → Access & security → Web sign-in notices** and **Shared agent settings → Daily tips** (Topic / Off); both apply immediately.
+Change them in **Settings → Access & security → Web sign-in notices** (Topic / Off) and **Shared agent settings → Daily tips** (an on / off switch); both apply immediately.
 
 The DM choice that 2.3.2 betas offered is withdrawn. An old `notify_login: dm` or `tips: dm`, and any `web.notice_delivery` route, is accepted and read as `true`. On startup or an accepted reload AgEnD rewrites it as the boolean and drops `web.notice_delivery`, keeping comments and a `.bak`; `agend validate` warns until then.
 

@@ -16,6 +16,8 @@ import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 const schema = buildSettingsImpactSchema();
 let p: AppPage;
 let raw: any;
+/** What /api/fleet says about each agent (default: running). */
+let status: Record<string, string> = {};
 const sent: Array<{ method: string; path: string; body: any }> = [];
 const realFetch = (globalThis as any).fetch;
 /** Seven agents: artist sets its own model, tester its own tool set, ops its own dashboard permissions; General is one too. */
@@ -39,7 +41,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
     if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
     if (path === "/api/settings/status-emojis") return { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] };
     if (path === "/api/settings/pending") return [];
-    if (path === "/api/fleet") return { version: "2.4.0", instances: Object.keys(raw.instances).map((name) => ({ name, status: "running" })) };
+    if (path === "/api/fleet") return { version: "2.4.0", instances: Object.keys(raw.instances).map((name) => ({ name, status: status[name] ?? "running" })) };
     if (path.startsWith("/ui/")) return {};
     return [];
   })();
@@ -53,7 +55,7 @@ beforeAll(async () => {
 });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
 beforeEach(async () => {
-  raw = fleet(); sent.length = 0; (globalThis as any).confirm = () => true;
+  raw = fleet(); status = {}; sent.length = 0; (globalThis as any).confirm = () => true;
   (await import("/assets/app-i18n.js")).setLang("en");
 });
 afterEach(async () => { await p.unmount(); });
@@ -117,7 +119,9 @@ describe("the page", () => {
     for (const id of ["g-tips", "g-reply", "g-reply-triggers", "g-hang-on"]) expect([id, $(`#${id}`).type, $(`#${id}`).getAttribute("role")]).toEqual([id, "checkbox", "switch"]);
     const labels = (id: string) => $(`#${id}`).querySelectorAll("option").map((o: any) => text(o));
     expect(labels("g-ts")).toEqual(["Not set (worker; a General: general)", "Worker — talk, read, do the work", "Coordinator — worker plus fleet management",
-      "Standard — a mid-sized set (30 tools)", "Minimal — only 9 tools", "Full — every tool"]);
+      "Standard — a mid-sized set", "Minimal — only the basics", "Full — every tool"]);
+    // The numbers of tools change with the tool profiles: no option says one.
+    expect($("#g-ts").querySelectorAll("option").map(text).join(" ")).not.toMatch(/\d/);
     expect(labels("g-ll")).toEqual(["Trace — everything", "Debug — for troubleshooting", "Info — normal", "Warn — problems only", "Error — failures only"]);
     expect($("#g-ts").querySelectorAll("option").map((o: any) => o.value)).toEqual(["", "worker", "coordinator", "standard", "minimal", "full"]);
   });
@@ -151,6 +155,21 @@ describe("the page", () => {
     fire(p.window.document, "keydown", { key: "Escape" }); await settle(2);
     expect(shown()).toBe(false);
     expect(btn.getAttribute("aria-describedby")).toBe(body.getAttribute("id"));
+  });
+
+  it("the “default” tip is on this page's marks only — the Agent dialog's marks are as they were", async () => {
+    await open();
+    const marks = p.root.querySelectorAll(".s-default");
+    expect(marks.length).toBeGreaterThan(10);
+    expect(marks.filter((m: any) => !m.getAttribute("title"))).toEqual([]);          // the field marks and the "in effect" ones too
+    expect(marks[0].getAttribute("title")).toBe("Nobody set this in fleet.yaml, so the built-in value shown is in use. Editing it saves your own value.");
+    await p.unmount();
+    await open("agents");
+    p.root.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Settings").click(); await settle(8);
+    const dialog = p.root.querySelector("dialog");
+    const inDialog = dialog.querySelectorAll(".s-default");
+    expect(inDialog.length).toBeGreaterThan(0);
+    expect(inDialog.filter((m: any) => m.getAttribute("title"))).toEqual([]);
   });
 
   it("marks the backend as this host's and says why in a grey line — not a warning", async () => {
@@ -191,6 +210,17 @@ describe("who uses a field", () => {
   it("only the shared agent settings have a pill — the system and channel fields are the fleet's, not an agent's", async () => {
     await open();
     for (const id of ["g-locale", "g-tips", "g-roots", "g-hang-on", "g-conc", "g-stag"]) expect([id, pill(id)]).toEqual([id, null]);
+  });
+
+  it("a dashboard feature set to null (or a dashboard with no feature) is not the agent's own", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].dashboard = { task_board: null, appearance: undefined };
+    raw.instances["reviewer-t2"].dashboard = {};
+    raw.instances["writer-t6"] = { working_directory: "/w/w", dashboard: { task_board: false } };
+    raw.instances["office-t7"] = { working_directory: "/w/o", office_pack_access: null };
+    await open();
+    expect(pill("g-dash")).toBe("6/8 in use · 2 agents custom");
+    expect(pillTip("g-dash")).toContain("ops, writer");
   });
 
   it("with several overrides it says how many, and the hover lists them", async () => {
@@ -258,6 +288,49 @@ describe("what an edit costs", () => {
     expect(pill("g-model")).toBeNull();
     await choose("g-model", "gpt-5.5-mini");
     expect(notes("g-model")).toEqual(["No agents yet — agents you create later start with this value."]);
+  });
+
+  it("every agent without its own value takes it, but only a running one restarts — the note says which", async () => {
+    status = { "dev-t1": "stopped", "reviewer-t2": "paused" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) use the new value; the 3 running restart (artist set their own — not affected)"]);
+    expect(bar()).toBe("↻ 5 agent(s) use the new value; the 3 running restart");
+  });
+
+  it("with no agent running, nothing restarts — and it does not say so", async () => {
+    status = Object.fromEntries(Object.keys(fleet().instances).map((n) => [n, "stopped"]));
+    await open();
+    await choose("g-model", "gpt-5.5-mini");
+    expect(notes("g-model")).toEqual(["After saving, 5 agent(s) use the new value; none is running, so none restarts (artist set their own — not affected)"]);
+    expect(bar()).toBe("5 agent(s) use the new value; none is running");
+    expect(`${notes("g-model")}${bar()}`).not.toMatch(/↻/);
+  });
+
+  it("the hang detector's switch and its minutes are counted apart: an agent that sets one still follows the other", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].hang_detector = { timeout_minutes: 5 };                // sets the minutes, inherits the switch
+    raw.instances["reviewer-t2"].hang_detector = { enabled: false };                // sets the switch, inherits the minutes
+    await open();
+    expect(pill("g-hang-on")).toBeNull();                                           // no pill: it is the fleet's setting
+    await check($("#g-hang-on"), false);                                            // the switch only: nobody who inherits it is left out
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (reviewer set their own — not affected)"]);
+    await check($("#g-hang-on"), true);
+    await type("g-hang", "20");                                                     // the minutes only
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (dev set their own — not affected)"]);
+    await check($("#g-hang-on"), false);                                            // both: each agent is reached by one of them
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 6 agent(s) restart"]);
+    expect(bar()).toBe("↻ 6 agent(s) restart after saving");
+  });
+
+  it("an agent that sets both hang detector settings is left out of an edit to either", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].hang_detector = { enabled: true, timeout_minutes: 5 };
+    await open();
+    await check($("#g-hang-on"), false);
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (dev set their own — not affected)"]);
+    await type("g-hang", "20");
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 5 agent(s) restart (dev set their own — not affected)"]);
   });
 
   it("project folders and a newly ticked dashboard feature say that someone must confirm; unticking says nothing", async () => {
