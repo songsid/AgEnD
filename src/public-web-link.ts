@@ -185,6 +185,15 @@ export class PublicWebLink {
 
   get exposureId(): string | undefined { return this.entry?.id; }
   /**
+   * Resolves once a link that is closing has finished (at once when none is): a caller about to open the next one waits
+   * here instead of being told "busy" by the old one's cleanup (alpha CI 4abe58cd). A cleanup that cannot be confirmed
+   * still resolves — the next open then reports "busy", as it should.
+   */
+  whenClosed(): Promise<void> {
+    const closing = this.entry?.closing;
+    return closing ? closing.then(() => undefined, () => undefined) : Promise.resolve();
+  }
+  /**
    * #1920 step 4b: the open, current exposure — its id, sign-in page and the admin who opened it (whose General hears
    * of a guest signing in through it) — else null. A guest code then also works through it.
    */
