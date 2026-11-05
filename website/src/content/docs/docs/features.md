@@ -223,4 +223,4 @@ Every backend gets the full fleet instructions through its own route (a system-p
 
 - macOS and Linux only. On Windows, use WSL — the [Windows installer](/AgEnD/install-windows/) sets it up
 - The official Telegram plugin in a global `enabledPlugins` causes 409 polling conflicts
-- Agents run with permission checks skipped unless you set `skipPermissions: false` for an instance — except Antigravity, which always launches with `--dangerously-skip-permissions`. Read the security notes before pointing one at something you care about
+- Agents run with permission checks skipped unless you set `skipPermissions: false` for an instance. Read the security notes before pointing one at something you care about
