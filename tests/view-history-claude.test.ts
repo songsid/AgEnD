@@ -25,7 +25,7 @@ process.env.AGEND_HOME = home;
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { WEB_SESSION_COOKIE } = await import("../src/web-auth.js");
 const { tokenEpoch } = await import("../src/web-session.js");
-const { resetGuestPanes } = await import("../src/view-api.js");
+const { resetGuestPanes, resetTranscriptReads, VIEW_HISTORY_READS } = await import("../src/view-api.js");
 const { tmuxExecHelper } = await import("../src/tmux-exec-helper.js");
 const { VIEW_HISTORY_PAGE, VIEW_FOLD, viewStep, viewHistoryQuery } = await import("../src/view-history.js");
 
@@ -91,7 +91,7 @@ afterAll(async () => {
 });
 let tmux: ReturnType<typeof vi.fn>;
 beforeEach(() => {
-  resetGuestPanes();
+  resetGuestPanes(); resetTranscriptReads();
   writeFileSync(transcript, conversation(60));
   tmux = vi.fn(async (_file: string, args: string[]) => ({ stdout: args.includes("capture-pane") ? "screen\n" : "120x40\n", stderr: "" }));
   vi.spyOn(tmuxExecHelper, "exec").mockImplementation(tmux as never);
@@ -175,6 +175,29 @@ describe("the View's own access rules", () => {
     const screen = await get(sid, "/api/pane/a");
     const over = await get(sid, "/api/pane/a?transcript=1");
     expect([screen.status, over.status, json(over).error]).toEqual([200, 429, "guest_view_rate_limited"]);
+  });
+});
+
+describe("bounded work", () => {
+  it(`at most ${VIEW_HISTORY_READS.reads} reads at once (then 429 with Retry-After); the same read asked again shares the one running`, async () => {
+    const own = fm.viewHistory;
+    let release!: () => void; const gate = new Promise<void>((r) => { release = r; });
+    let calls = 0;
+    fm.viewHistory = async function (this: unknown, ...args: unknown[]) { calls++; await gate; return own.apply(this, args); };
+    try {
+      const sid = session("admin");
+      const running = Array.from({ length: VIEW_HISTORY_READS.reads }, (_, i) => get(sid, `/api/pane/a?transcript=1&before=${100 + i}`));
+      await vi.waitFor(() => expect(calls).toBe(VIEW_HISTORY_READS.reads));
+      const over = await get(sid, "/api/pane/a?transcript=1&before=999");
+      expect([over.status, json(over).error, over.headers["retry-after"]]).toEqual([429, "history_busy", "1"]);
+      const shared = get(sid, "/api/pane/a?transcript=1&before=100");
+      await new Promise((r) => setTimeout(r, 50));
+      expect(calls).toBe(VIEW_HISTORY_READS.reads);
+      release();
+      const all = await Promise.all([...running, shared]);
+      expect(all.map((r) => r.status)).toEqual(Array(VIEW_HISTORY_READS.reads + 1).fill(200));
+      expect((await get(sid, "/api/pane/a?transcript=1")).status).toBe(200);          // the slots are free again
+    } finally { fm.viewHistory = own; release(); }
   });
 });
 

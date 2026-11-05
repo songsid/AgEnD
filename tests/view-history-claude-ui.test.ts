@@ -194,6 +194,19 @@ describe("in the View", () => {
     await mount(); await scroll();
     expect([...pre().querySelectorAll(".vh-step")].map((s: any) => s.dataset.step)).toEqual(["qu1", "qa1"]);
   });
+  it("no transcript yet (a fresh session): nothing earlier — still offered and asked again; no history at all: as a CLI without", async () => {
+    pages.newest = { view_history: 1, supported: false, reason: "no_transcript" };
+    await mount(); await scroll();
+    expect([p.root.querySelector(".v-term-history-note")!.textContent, !!p.root.querySelector("button.v-term-earlier"), p.root.querySelector("a.v-term-log")])
+      .toEqual(["Nothing has scrolled off the screen yet.", true, null]);
+    pages.newest = { view_history: 1, supported: true, key: "1-1", before: null, end: 900, steps: [...steps(1), ...ON_SCREEN] };
+    fire(term(), "wheel", { deltaY: -120 }); await until(() => pre().querySelector(".vh-step"));
+    expect(pre().querySelectorAll(".vh-step").length).toBe(2);
+    await p.unmount();
+    pages.newest = { view_history: 1, supported: false, reason: "unsupported" };
+    await mount(); await scroll();
+    expect([p.root.querySelector(".v-term-history-note")!.textContent!.includes("redraws"), p.root.querySelector("button.v-term-earlier")]).toEqual([true, null]);
+  });
   it("a failed read says so and stays following", async () => {
     transcriptStatus = 503;
     await mount(); await scroll();

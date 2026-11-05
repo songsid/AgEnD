@@ -16,7 +16,7 @@
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> CLAUDE_BIN=<claude 2.1.318> [OLD_REF=v2.3.4-beta.8] \
 //     npx --prefix <checkout> tsx scripts/manual/smoke/smoke-claude-view-history.mts
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { bootFixture, shotPath } from "../smoke-fixture/index.mts";
@@ -94,16 +94,19 @@ async function say(text: string, wait = true): Promise<void> {
   await sleep(600); t("send-keys", "-t", SESSION, "Enter");
   if (wait) { await sleep(1500); await settled(); }
 }
-/** The transcript the instance's statusline names (the fleet's own source for a Claude without a daemon). */
+/**
+ * The transcript the instance's statusline names — written by Claude's own statusLine (the production launch's
+ * statusline.js), the fleet's source for a Claude without a daemon. Never written here.
+ */
 function transcriptPath(): string {
   const sl = join(instDir, "statusline.json");
-  if (existsSync(sl)) { const p = JSON.parse(readFileSync(sl, "utf8")).transcript_path; if (p && existsSync(p)) return p; }
-  // The statusline has not run yet: the newest session file (and the fleet is told the same way).
-  const dir = join(H, ".claude", "projects"); const files: string[] = [];
-  for (const d of readdirSync(dir)) for (const f of readdirSync(join(dir, d))) if (f.endsWith(".jsonl")) files.push(join(dir, d, f));
-  const p = files.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0]!;
-  writeFileSync(sl, JSON.stringify({ transcript_path: p })); r.statuslineWrittenByHarness = true;
+  const p = existsSync(sl) ? JSON.parse(readFileSync(sl, "utf8")).transcript_path : null;
+  if (typeof p !== "string" || !existsSync(p)) throw new Error("the statusline names no transcript (yet)");
   return p;
+}
+async function statuslineNamesTranscript(): Promise<string> {
+  for (let i = 0; i < 40; i++) { try { return transcriptPath(); } catch { await sleep(500); } }
+  return transcriptPath();
 }
 // ── The transcript, read independently of AgEnD's parser: prompts, reply texts, tool calls, in order ──
 const WORDS: Record<string, string> = { Edit: "Update", MultiEdit: "Update", Grep: "Search", Glob: "Search", WebFetch: "Fetch" };
@@ -136,7 +139,7 @@ async function viewHistory(state: string, device: "desk" | "phone", lang: "en" |
   const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
   tmuxCalls.length = 0;
   await page.goto(`${fx.base}/view/${encodeURIComponent(NAME)}`);
-  await page.waitForFunction(`(document.querySelector(".v-pre")?.textContent || "").includes("❯")`, null, { timeout: 15000 });
+  await page.waitForSelector(".v-pre:has-text(\"❯\")", { timeout: 15000 });
   await page.click("button.v-term-earlier");
   await page.waitForSelector(".vh-divider", { timeout: 15000 });
   await page.waitForTimeout(600);
@@ -159,6 +162,8 @@ try {
   if (!(await (async () => { for (let i = 0; i < 40; i++) { try { execFileSync("python3", ["-I", "-c", `import socket; socket.create_connection(("127.0.0.1", ${MOCK_PORT}), 1)`]); return true; } catch { await sleep(250); } } return false; })())) throw new Error("mock did not start");
   launch(false);
   await ready();
+  await say("Hello there.");
+  r.transcript = (await statuslineNamesTranscript()).replace(scratch, "<scratch>");
   for (let i = 1; i <= 6; i++) await say(`Question ${i}: what does part ${i} of the forecast module do?`);
   await say("The forecast command crashes when the city has a space in it. VHFIX please.");
   await say("Explain the forecast module in detail. VHLONG");
@@ -184,18 +189,31 @@ try {
   // ── busy: a reply streaming ──
   await say("Take your time on this one. VHSLOW", false);
   await sleep(4000);
-  r.busyScreen = /Working through it slowly/.test(cap());
-  { const { ctx } = await viewHistory("busy", "desk", "en"); await ctx.close(); }
-  { const { ctx } = await viewHistory("busy", "phone", "zh-TW"); await ctx.close(); }
+  // Busy: Claude's spinner with its running time ("✶ Tempering… (15s · …") on the pane before and after each read.
+  const spinning = () => /…\s*\(\d+s\b/.test(cap());
+  const busy: boolean[] = [];
+  for (const [device, lang] of [["desk", "en"], ["phone", "zh-TW"]] as const) {
+    busy.push(spinning());
+    const { ctx } = await viewHistory("busy", device, lang); busy.push(spinning()); await ctx.close();
+  }
+  check("busy-was-busy", busy.every(Boolean), busy);
   await settled();
 
   // ── just resumed: the CLI exits, then `--continue` ──
+  // The marker a running daemon keeps (daemon.ts: the session id it last saw idle), which makes the production launch
+  // resume (`--continue`); this harness runs no daemon, so it writes the same value from Claude's own statusline.
+  const sid = JSON.parse(readFileSync(join(instDir, "statusline.json"), "utf8")).session_id;
+  writeFileSync(join(instDir, "session-id"), String(sid));
+  const before = transcriptPath();
   t("kill-session", "-t", SESSION);
   await sleep(1000);
   launch(true);
+  check("resume-launch-continues", / --continue\b/.test(String(r.resumeCommand)), r.resumeCommand);
   await ready();
   await sleep(1500);
-  r.resumedTranscript = transcriptPath();
+  const resumed = await statuslineNamesTranscript();
+  r.resumedTranscript = resumed.replace(scratch, "<scratch>");
+  r.resumedSameFile = resumed === before;
   { const { ctx } = await viewHistory("resumed", "desk", "en"); await ctx.close(); }
   { const { ctx } = await viewHistory("resumed", "phone", "zh-TW"); await ctx.close(); }
 
@@ -208,7 +226,7 @@ try {
     const transcriptReads: string[] = []; page.on("request", (q: any) => { if (q.url().includes("transcript=1")) transcriptReads.push(q.url()); });
     await route(page);
     await page.goto(`${fx.base}/view/${encodeURIComponent(NAME)}`);
-    await page.waitForFunction(`(document.querySelector(".v-pre")?.textContent || "").includes("❯")`, null, { timeout: 15000 });
+    await page.waitForSelector(".v-pre:has-text(\"❯\")", { timeout: 15000 });
     const earlier = await page.$("button.v-term-earlier");
     if (earlier) { await earlier.click(); await page.waitForTimeout(2500); }
     else { await page.mouse.move(400, 300); await page.mouse.wheel(0, -600); await page.waitForTimeout(2500); }

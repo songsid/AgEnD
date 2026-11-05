@@ -373,7 +373,10 @@ export function createHistory({ name, fetch, alive = () => true, doc = document,
       let body;
       try { body = await read(""); } catch { return { kind: "failed", status: 0 }; }
       if (body.failed) return { kind: "failed", status: body.status };
-      if (body.unsupported || !body.supported) return { kind: "unsupported" };
+      if (body.unsupported) return { kind: "unsupported" };
+      // No history here at all (not Claude, or no reader) — or none YET (a session that has written nothing so far):
+      // that one is only nothing earlier, asked again next time.
+      if (!body.supported) return { kind: body.reason === "unsupported" || body.reason === "unavailable" ? "unsupported" : "empty" };
       key = body.key; before = body.before;
       let steps = beforeScreen(body.steps || [], screen);
       let end = body.end;

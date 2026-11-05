@@ -369,13 +369,33 @@ function paneFailed(ctx: ViewApiContext, res: ServerResponse, name: string, err:
   res.writeHead(200, { "Content-Type": "text/plain" }); res.end("");
 }
 
+/**
+ * Claude history in the View: at most `reads` transcript reads run at once (each parses up to a page's records); the
+ * same read asked again while it runs shares it. Over the cap: 429 (the page keeps what it shows).
+ */
+export const VIEW_HISTORY_READS = { reads: 4, retryAfterS: 1 } as const;
+const transcriptReads = new Map<string, Promise<ViewHistoryAnswer | null>>();
+/** For tests: no read in flight. */
+export function resetTranscriptReads(): void { transcriptReads.clear(); }
 /** Claude history in the View: one page of the transcript's steps (or one step whole), as JSON never cached. */
 function transcriptHistory(ctx: ViewApiContext, name: string, params: URLSearchParams, res: ServerResponse): void {
   const headers = { "Cache-Control": "private, no-store" };
-  const send = (code: number, body: unknown) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", ...headers }); res.end(JSON.stringify(body)); };
-  if (!ctx.viewHistory) { send(200, { view_history: 1, supported: false, reason: "unavailable" }); return; }
-  ctx.viewHistory(name, viewHistoryQuery(params)).then(
-    (answer) => { if (!answer) send(404, { error: "unknown instance" }); else send(200, answer); },
+  const send = (code: number, body: unknown, extra: Record<string, string> = {}) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", ...headers, ...extra }); res.end(JSON.stringify(body)); };
+  const read = ctx.viewHistory;
+  if (!read) { send(200, { view_history: 1, supported: false, reason: "unavailable" }); return; }
+  const q = viewHistoryQuery(params);
+  const key = JSON.stringify([name, q.before ?? null, q.key ?? null, q.step ?? null, q.end ?? null]);
+  let answer = transcriptReads.get(key);
+  if (!answer) {
+    if (transcriptReads.size >= VIEW_HISTORY_READS.reads) { send(429, { error: "history_busy", retry_after_s: VIEW_HISTORY_READS.retryAfterS }, { "Retry-After": String(VIEW_HISTORY_READS.retryAfterS) }); return; }
+    const reading = read.call(ctx, name, q);
+    answer = reading;
+    transcriptReads.set(key, reading);
+    const done = () => { if (transcriptReads.get(key) === reading) transcriptReads.delete(key); };
+    reading.then(done, done);
+  }
+  answer.then(
+    (a) => { if (!a) send(404, { error: "unknown instance" }); else send(200, a); },
     (err) => { ctx.logger.debug({ err, name }, "view history read failed"); send(503, { error: "history_unavailable" }); },
   );
 }
