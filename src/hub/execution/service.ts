@@ -10,6 +10,7 @@ import type { HubAnswer, HubAuthorizationLease, HubAuthorizationRequest, HubExec
 import { HubDocumentView, executionPolicyDigest } from "./views.js";
 import { HubExecutionStore } from "./store.js";
 import type { HubExecutionAttentionInput } from "../../needs-you.js";
+import { HubProviderSetupError, isHubProviderSetupReason, hubProviderSetupReason, type HubProviderSetupReason } from "./provider-setup.js";
 
 const localSchema = z.strictObject({ agent: identifier, providerId: identifier, consentId: uuid, generation: epoch, exposure: exposureSchema });
 export type HubLocalExposure = z.infer<typeof localSchema>;
@@ -19,7 +20,7 @@ export interface HubExecutionBinding extends Omit<HubIdentityBinding, "now"> {
   current(): boolean;
 }
 export type HubExecutionReadiness = { ok: true; policyDigest: string; exposureRevision: number }
-  | { ok: false; reasonCode: "unavailable" | "provider-unavailable" | "policy-unavailable" | "stale" };
+  | { ok: false; reasonCode: HubProviderSetupReason | "provider-unavailable" | "policy-unavailable" | "stale" };
 export interface HubExecutionGateway {
   invoke(name: string, args: unknown): Promise<unknown>;
   propose(action: string, args: unknown, consequences: string): Promise<void>;
@@ -47,6 +48,8 @@ export interface HubExecutionOptions {
   views: ReadonlyMap<string, HubDocumentView>;
   /** Default is empty. Native/full-tool provider drivers must never be placed here. */
   providers?: ReadonlyMap<string, HubIsolatedProvider>;
+  /** Bounded member-local startup diagnostic only. It cannot install a provider or grant readiness. */
+  providerSetupReason?: () => unknown;
   now?: () => number;
   /** Pokes the local Needs-you renderer; durable items are read with attentionItems(). No approval callback. */
   attentionChanged(): void;
@@ -109,7 +112,11 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
       || e.state === "frozen" || published && e.state !== "published") throw new HubProtocolError("stale");
     const view = this.options.views.get(e.dataViewId), provider = this.options.providers?.get(local.providerId);
     if (!HubDocumentView.installed(view) || e.policyDigest !== executionPolicyDigest(view, e.allowedTools)) throw new HubProtocolError("denied");
-    if (!provider || provider.isolation !== "hub-restricted-v1") throw new HubProtocolError("incompatible");
+    if (!provider || provider.isolation !== "hub-restricted-v1") {
+      const reason = this.setupReason();
+      if (reason) throw new HubProviderSetupError(reason);
+      throw new HubProtocolError("incompatible");
+    }
     const policy: HubExecutionPolicy = { dataViewId: e.dataViewId, policyDigest: e.policyDigest, allowedTools: [...e.allowedTools], readOnly: true };
     const bindingDigest = sha256(canonicalArguments([local, view.digest, policy]));
     return { b, local, view, provider, policy, bindingDigest };
@@ -119,10 +126,20 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
       const { policy, revision } = check();
       return { ok: true, policyDigest: policy.policyDigest, exposureRevision: revision };
     } catch (error) {
-      return { ok: false, reasonCode: error instanceof HubProtocolError
+      return { ok: false, reasonCode: hubProviderSetupReason(error) ?? (error instanceof HubProtocolError
         ? error.code === "incompatible" ? "provider-unavailable" : error.code === "stale" ? "stale" : error.code === "denied" || error.code === "invalid" ? "policy-unavailable" : "unavailable"
-        : "unavailable" };
+        : "unavailable") };
     }
+  }
+  private setupReason(): HubProviderSetupReason | undefined {
+    try { const reason = this.options.providerSetupReason?.(); return isHubProviderSetupReason(reason) ? reason : undefined; }
+    catch { return undefined; }
+  }
+  /** Presentation for unpublished agents too. A null result grants no consent, policy approval or execution authority. */
+  providerReason(providerId?: string | null): HubProviderSetupReason | "provider-unavailable" | null {
+    try { if (providerId && this.options.providers?.get(providerId)?.isolation === "hub-restricted-v1") return null; }
+    catch { /* A stopped/poisoned provider remains unavailable. */ }
+    return this.setupReason() ?? "provider-unavailable";
   }
   readiness(exposureId: string, expectedRevision: number): HubExecutionReadiness {
     return this.readinessCheck(() => {

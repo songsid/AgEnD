@@ -6,6 +6,7 @@ import { execFile, spawn } from "../../child-process.js";
 import { z } from "zod";
 import { HubProtocolError, parseStrictJson, plain, uuid, validated } from "../validation.js";
 import type { HubExecutionGateway, HubIsolatedProvider } from "./service.js";
+import { HubProviderSetupError } from "./provider-setup.js";
 import { documentArguments, documentTool, HubForbiddenModelTool, MODEL_WIRE_LIMIT, restrictedModelRequest, validateModelReply,
   type HubCliBackend, type HubModelBroker } from "./model-broker.js";
 
@@ -57,23 +58,32 @@ export function verifyHubContainer(value: unknown, imageId: string, token: strin
 /** Explicit async availability check; merely importing this module cannot install or start anything. */
 export async function createHubCliProvider(options: HubCliProviderOptions): Promise<HubCliProvider> {
   const backend = z.enum(["claude", "codex"]).parse(options.backend);
-  const imageId = z.string().regex(/^sha256:[a-f0-9]{64}$/).parse(options.imageId);
+  const selectedImage = z.string().regex(/^sha256:[a-f0-9]{64}$/).safeParse(options.imageId);
+  if (!selectedImage.success) throw new HubProviderSetupError("image-unconfigured");
+  const imageId = selectedImage.data;
   const model = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$/).parse(options.model);
-  const socket = z.string().regex(/^\/(?:var\/run|run)\/[a-zA-Z0-9/_.-]+\.sock$/).parse(options.dockerSocket ?? "/var/run/docker.sock");
-  if (socket.split("/").some(part => part === "." || part === "..")) throw new HubProtocolError("invalid");
-  if (!lstatSync(socket).isSocket()) throw new HubProtocolError("unavailable");
+  const selectedSocket = z.string().regex(/^\/(?:var\/run|run)\/[a-zA-Z0-9/_.-]+\.sock$/).safeParse(options.dockerSocket ?? "/var/run/docker.sock");
+  if (!selectedSocket.success || selectedSocket.data.split("/").some(part => part === "." || part === "..")) throw new HubProviderSetupError("engine-unavailable");
+  const socket = selectedSocket.data;
+  try { if (!lstatSync(socket).isSocket()) throw new Error(); }
+  catch { throw new HubProviderSetupError("engine-unavailable"); }
   const modelBroker = options.modelBroker;
-  if (typeof modelBroker !== "function") throw new HubProtocolError("unavailable");
+  if (typeof modelBroker !== "function") throw new HubProviderSetupError("credential-unconfigured");
   const docker = ["--host", `unix://${socket}`];
   const command = async (args: string[]): Promise<string> => {
     try { return (await run("docker", [...docker, ...args], { env: cliEnv, timeout: 10_000, maxBuffer: MODEL_WIRE_LIMIT })).stdout.trim(); }
     catch { throw new HubProtocolError("unavailable"); }
   };
-  if (await command(["info", "--format", "{{.OSType}}"] ) !== "linux") throw new HubProtocolError("incompatible");
-  const images = z.array(z.unknown()).length(1).parse(parseStrictJson(await command(["image", "inspect", imageId]), MODEL_WIRE_LIMIT));
-  const image = object(images[0]), config = object(image.Config), labels = object(config.Labels);
-  if (image.Id !== imageId || image.Architecture !== "amd64" || labels["org.agend.hub.protocol"] !== "1" || labels[`org.agend.hub.${backend}`] !== HUB_PROVIDER_CLI_VERSIONS[backend]
-    || (config.Volumes && Object.keys(object(config.Volumes)).length) || (config.OnBuild && (config.OnBuild as unknown[]).length)) throw new HubProtocolError("incompatible");
+  let engine: string;
+  try { engine = await command(["info", "--format", "{{.OSType}}/{{.Architecture}}"]); }
+  catch { throw new HubProviderSetupError("engine-unavailable"); }
+  if (!/^linux\/(?:amd64|x86_64)$/.test(engine)) throw new HubProviderSetupError("engine-unsupported");
+  try {
+    const images = z.array(z.unknown()).length(1).parse(parseStrictJson(await command(["image", "inspect", imageId]), MODEL_WIRE_LIMIT));
+    const image = object(images[0]), config = object(image.Config), labels = object(config.Labels);
+    if (image.Id !== imageId || image.Architecture !== "amd64" || labels["org.agend.hub.protocol"] !== "1" || labels[`org.agend.hub.${backend}`] !== HUB_PROVIDER_CLI_VERSIONS[backend]
+      || (config.Volumes && Object.keys(object(config.Volumes)).length) || (config.OnBuild && (config.OnBuild as unknown[]).length)) throw new Error();
+  } catch { throw new HubProviderSetupError("image-mismatch"); }
   let poisoned = false, active = 0, stopped = false;
   const sessions = new Set<() => Promise<void>>();
   return {

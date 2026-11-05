@@ -145,6 +145,22 @@ describe("the shell", () => {
 });
 
 describe("Settings → Connect to a Hub", () => {
+  it.each(["en", "zh-TW"])("shows actionable fixed provider guidance in %s and keeps every unavailable Share disabled", async lang => {
+    i18n.setLang(lang, { store: false });
+    const c = stub(); await c.connect({ address: "https://hub.example.test", code: "ABCD-EFGH" }); c.control.approve({});
+    const reasons = ["engine-unavailable", "engine-unsupported", "image-unconfigured", "image-mismatch", "credential-unconfigured", "unavailable", "provider-unavailable", "PRIVATE-KEY <script>", "__proto__"];
+    c.exposures = async () => reasons.map((reason, n) => ({ agent: `agent-${n}`, display: `Agent ${n}`, exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: false, reason }));
+    const pg = await mountCard(); await until(() => pg.root.querySelectorAll(".hub-exposure").length === reasons.length);
+    expect(pg.root.querySelectorAll(".hub-provider-guidance").length).toBe(7);
+    const text = pg.root.textContent!;
+    for (const term of ["Docker", "Linux/amd64", "imageId", "SHA-256", "credentialRef", "API"]) expect(text).toContain(term);
+    expect(text).toContain(lang === "en" ? "Start the local Docker engine" : "請啟動本機 Docker 引擎");
+    expect(text).toContain(lang === "en" ? "Images are never pulled automatically" : "系統不會自動下載映像檔");
+    expect(text).not.toContain("PRIVATE-KEY"); expect(text).not.toContain("hub.provider_");
+    expect(pg.root.querySelectorAll("script").length).toBe(0);
+    const boxes = [...pg.root.querySelectorAll(".hub-exposure input")] as any[];
+    expect(boxes).toHaveLength(reasons.length); expect(boxes.every(box => box.disabled)).toBe(true);
+  });
   async function mountCard() {
     const pg = await pageWith("member", "/settings/access");
     await pg.mount(h(card.HubConnectCard, {}));

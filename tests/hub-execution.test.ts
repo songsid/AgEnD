@@ -71,6 +71,23 @@ function rig(installedProvider = true, root?: string) {
 }
 
 describe("Hub restricted member execution", () => {
+  it.each(["engine-unavailable", "engine-unsupported", "image-unconfigured", "image-mismatch", "credential-unconfigured", "unavailable"])("explains %s for unpublished and committed agents without granting readiness", async reason => {
+    const f = rig(); f.providers.clear(); f.options.providerSetupReason = () => reason;
+    expect(f.service.providerReason()).toBe(reason); expect(f.service.providerReason("inert-test-adapter")).toBe(reason);
+    expect(f.service.readiness(f.local().exposure.id, 1)).toEqual({ ok: false, reasonCode: reason });
+    expect(f.service.readinessCandidate({ ...f.local(), exposure: { ...f.local().exposure, state: "withdrawn" } })).toEqual({ ok: false, reasonCode: reason });
+    await expect(f.admission.admit(f.q)).rejects.toThrow(); expect(f.open).not.toHaveBeenCalled();
+  });
+  it("keeps setup diagnostics bounded and subordinate to real provider, binding and policy checks", () => {
+    const f = rig(); f.options.providerSetupReason = () => "engine-unavailable";
+    expect(f.service.providerReason("inert-test-adapter")).toBeNull();
+    f.providers.clear(); f.options.providerSetupReason = () => "PRIVATE-ERROR";
+    expect(f.service.providerReason()).toBe("provider-unavailable");
+    f.options.providerSetupReason = () => { throw Error("PRIVATE-ERROR"); };
+    expect(f.service.readiness(f.local().exposure.id, 1)).toEqual({ ok: false, reasonCode: "provider-unavailable" });
+    f.options.providerSetupReason = () => "credential-unconfigured"; f.stop();
+    expect(f.service.readiness(f.local().exposure.id, 1)).toEqual({ ok: false, reasonCode: "unavailable" });
+  });
   it("checks an unpublished candidate against actual member capabilities without reading or installing exposure rows", async () => {
     const f = rig(), candidate = { ...f.local(), exposure: { ...f.local().exposure, state: "withdrawn" as const } };
     const lookup = vi.fn(() => null); f.options.localExposure = lookup;

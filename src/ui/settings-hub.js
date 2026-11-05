@@ -9,6 +9,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { compareGroups, hubClient, safeWebOrigin, ADDRESS_HINT, CODE_HINT } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
+import { guidanceFor } from "./hub-provider-guidance.js";
 
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
 const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked"]);
@@ -161,6 +162,8 @@ function HubExposures({ client }) {
       ${row.state === "frozen" ? html`<small class="hub-exposure-why">${hw("frozen")}</small>`
         : !row.enforceable && row.state !== "published" ? html`<small class="hub-exposure-why">${hw("notEnforceable")}</small>`
         : row.policy ? html`<small class="hub-exposure-why">${hw("policy", row.policy.dataView, row.policy.tools.join(", ") || "—")}</small>` : null}
+      ${!row.enforceable && row.state !== "frozen" && guidanceFor(row.reason)
+        ? html`<small class="hub-exposure-why hub-provider-guidance">${hw(guidanceFor(row.reason))}</small>` : null}
     </li>`)}</ul>` : null}
     ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
   </div>`;
