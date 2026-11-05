@@ -11,7 +11,7 @@ case "$url" in
   https://claude.ai/install.sh) echo "mkdir -p /root/.local/bin; cat > /root/.local/bin/claude <<'X'"; cli claude "2.1.310 (Claude Code)"; echo "X"; echo "chmod +x /root/.local/bin/claude";;
   https://antigravity.google/cli/install.sh) echo "mkdir -p /root/.local/bin; cat > /root/.local/bin/agy <<'X'"; cli agy "1.4.7"; echo "X"; echo "chmod +x /root/.local/bin/agy";;
   https://chatgpt.com/codex/install.sh) echo "mkdir -p /root/.local/bin; cat > /root/.local/bin/codex <<'X'"; cli codex "codex-cli 0.164.0"; echo "X"; echo "chmod +x /root/.local/bin/codex"; echo 'echo "Codex CLI 0.164.0 installed successfully."';;
-  https://songsid.github.io/AgEnD/install.sh) printf '%s\n' '#!/usr/bin/env bash' '# AgEnD Bootstrap Installer (test)' 'sh /opt/stubs/agend-install.sh';;
+  https://songsid.github.io/AgEnD/install.sh) printf '%s\n' '#!/usr/bin/env bash' '# AgEnD Bootstrap Installer' 'sh /opt/stubs/agend-install.sh';;
   *raw.githubusercontent.com/nvm-sh/*) echo "mkdir -p /root/.nvm; echo 'nvm() { :; }' > /root/.nvm/nvm.sh";;
   *) echo "curl (test): no canned answer for $url" >&2; exit 22;;
 esac
