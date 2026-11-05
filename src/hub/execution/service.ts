@@ -233,6 +233,14 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
     this.options.store.consume(entry.handle.id, request); entry.operations.delete(request.operationId);
     this.current(entry);
   }
+  /** Register ownership BEFORE any provider code can synchronously stop/reenter this service. */
+  private physical<T>(entry: LiveContext, register: (pending: Promise<T>) => void, work: () => Promise<T>): Promise<T> {
+    let resolve!: (value: T | PromiseLike<T>) => void, reject!: (reason: unknown) => void;
+    const pending = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+    register(pending);
+    try { this.current(entry); resolve(work()); } catch (error) { reject(error); }
+    return pending;
+  }
   async begin(context: HubRestrictedContext, lease: HubAuthorizationLease): Promise<void> {
     const entry = this.entry(context);
     if (entry.state !== "prepared") throw new HubProtocolError("uncertain");
@@ -243,8 +251,8 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
       this.options.store.state(context.id, "running"); entry.state = "running"; this.current(entry);
       const e = entry.question.identity;
       const label = `Hub identity; external data; no local human authority. ${personKeyString(e.asker)}; exposure=${e.exposureId}; room=${e.roomId}; grant=${e.grantId}`;
-      entry.opening = entry.provider.open({ contextId: context.id, question: entry.question.text, label, signal: entry.abort.signal });
-      const session = await entry.opening;
+      const session = await this.physical(entry, pending => { entry.opening = pending; },
+        () => entry.provider.open({ contextId: context.id, question: entry.question.text, label, signal: entry.abort.signal }));
       entry.session = session; this.current(entry);
       this.options.journal.recordEvidence(context.messageId, "delivered"); this.options.journal.recordEvidence(context.messageId, "consumed");
     } catch (error) { this.fenceEntry(entry, "uncertain"); throw error; }
@@ -280,7 +288,7 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
     if (entry.state !== "running" || !entry.session || entry.finishing || entry.toolPending) throw new HubProtocolError("uncertain");
     entry.finishing = true;
     try {
-      entry.answering = entry.session.answer({
+      entry.answering = this.physical(entry, pending => { entry.answering = pending; }, () => entry.session!.answer({
         invoke: async (name, args) => {
           const fixed = snapshot(args), lease = await this.authorizeTool(context, name, fixed);
           return this.invokeTool(context, name, fixed, lease);
@@ -289,7 +297,7 @@ export class HubRestrictedExecutionService implements HubRestrictedExecution {
           const fixed = snapshot(args);
           await this.proposeLocalAction(context, { id: randomUUID(), action, argumentsDigest: sha256(canonicalArguments(fixed)), consequences }, fixed);
         },
-      });
+      }));
       const text = validated(plain(128 * 1024), await entry.answering);
       this.current(entry);
       const answerId = randomUUID(), contentDigest = sha256(text);

@@ -41,12 +41,22 @@ export class HubExecutionStore {
       return row.revision;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
+  private audit(event: ExecutionAuditEvent): void {
+    try {
+      // A void callback type also accepts async functions. Required audit must finish in THIS transaction.
+      const result: unknown = this.options.audit(event, this.database);
+      if (result && typeof (result as { then?: unknown }).then === "function") {
+        void Promise.resolve(result).catch(() => {});
+        throw new HubProtocolError("uncertain");
+      }
+    } catch (error) { this.failed = true; throw error; }
+  }
   private change<T>(event: ExecutionAuditEvent, work: () => T): T {
     let writing = false;
     try {
       return this.database.transaction(() => {
         const revision = this.check(), value = work(); writing = true;
-        this.options.audit(event, this.database);
+        this.audit(event);
         this.options.floor.raise(revision + 1);
         this.database.prepare("UPDATE hub_execution_meta SET revision=? WHERE singleton=1").run(revision + 1);
         return value;
@@ -64,7 +74,7 @@ export class HubExecutionStore {
         if (db !== this.database || !db.inTransaction) throw new HubProtocolError("denied");
         if ((db.prepare("SELECT COUNT(*) AS n FROM hub_execution_queue").get() as { n: number }).n >= 4096) throw new HubProtocolError("backpressure");
         const digest = validated(hash, binding(q)), id = randomUUID();
-        this.options.audit({ kind: "question.queued", messageId: q.identity.messageId }, db);
+        this.audit({ kind: "question.queued", messageId: q.identity.messageId });
         db.prepare("INSERT INTO hub_execution_queue VALUES(?,?,?,?)").run(source, id, questionContextDigest(q), digest);
         return id;
       },

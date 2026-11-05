@@ -71,6 +71,42 @@ function rig(installedProvider = true, root?: string) {
 }
 
 describe("Hub restricted member execution", () => {
+  it.each(["pending", "rejected"])("refuses a %s asynchronous required audit before committing admission", async kind => {
+    const f = rig(), wait = deferred<void>();
+    f.storeOptions.audit = () => kind === "pending" ? wait.promise : Promise.reject(Error("async audit failed"));
+    await expect(f.admission.admit(f.q)).rejects.toThrow();
+    expect(f.db.prepare("SELECT COUNT(*) AS n FROM hub_execution_queue").get()).toEqual({ n: 0 });
+    expect(f.db.prepare("SELECT COUNT(*) AS n FROM execution_audit").get()).toEqual({ n: 0 });
+    expect(f.service.readiness(f.q.identity.exposureId, 1).ok).toBe(false);
+    expect(() => f.store.check()).toThrow(); expect(f.open).not.toHaveBeenCalled(); wait.resolve();
+  });
+  it.each(["pending", "rejected"])("refuses a %s asynchronous required audit before reading approved data", async kind => {
+    const f = rig(), context = await f.prepare(); await f.begin(context);
+    const lease = await f.service.authorizeTool(context, "documents.read", { documentId: "public-note" });
+    const reads = vi.spyOn(HubDocumentView.prototype, "read"), wait = deferred<void>();
+    const audits = f.db.prepare("SELECT COUNT(*) AS n FROM execution_audit").get();
+    f.storeOptions.audit = () => kind === "pending" ? wait.promise : Promise.reject(Error("async audit failed"));
+    await expect(f.service.invokeTool(context, "documents.read", { documentId: "public-note" }, lease)).rejects.toThrow();
+    expect(reads).not.toHaveBeenCalled(); expect(f.db.prepare("SELECT COUNT(*) AS n FROM execution_audit").get()).toEqual(audits);
+    expect(f.db.prepare("SELECT state FROM hub_execution_operations WHERE id=?").get(lease.operationId)).toEqual({ state: "reserved" });
+    expect(() => f.store.check()).toThrow(); wait.resolve();
+  });
+  it.each(["open", "answer"])("drains physical work when a provider synchronously closes the service inside %s", async phase => {
+    const f = rig(), context = await f.prepare(), gate = deferred<string>(), opening = deferred<Awaited<ReturnType<HubIsolatedProvider["open"]>>>();
+    let closing!: Promise<void>, settled = false;
+    const stop = () => { closing = f.service.close(); void closing.then(() => { settled = true; }); };
+    if (phase === "open") f.open.mockImplementationOnce(() => { stop(); return opening.promise; });
+    else { await f.begin(context); f.answer.mockImplementationOnce(() => { stop(); return gate.promise; }); }
+    const pending = phase === "open" ? f.service.begin(context, await f.service.authorizeBegin(context)) : f.service.finish(context);
+    const refused = expect(pending).rejects.toThrow();
+    await Promise.resolve(); await Promise.resolve();
+    expect(settled).toBe(false); expect((f.service as unknown as { live: Map<string, unknown> }).live.size).toBe(1);
+    if (phase === "open") opening.resolve({ answer: f.answer, close: f.close }); else gate.resolve("WITHHELD");
+    await refused; await closing;
+    expect(settled).toBe(true); expect(f.close).toHaveBeenCalledTimes(1);
+    expect((f.service as unknown as { live: Map<string, unknown> }).live.size).toBe(0);
+    expect(f.journal.reconcile(0, [{ messageId: f.q.identity.messageId, contentDigest: f.q.identity.contentDigest }])[0].stage).not.toBe("answered");
+  });
   it.each(["claude-idle", "claude-busy", "claude-resumed", "codex-idle", "codex-busy", "codex-resumed"])("refuses publication/admission of unisolated %s", async providerId => {
     const f = rig(false); f.changeLocal({ providerId });
     expect(f.service.readiness(f.q.identity.exposureId, 1)).toEqual({ ok: false, reasonCode: "provider-unavailable" });
