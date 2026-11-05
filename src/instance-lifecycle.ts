@@ -206,6 +206,7 @@ export interface LifecycleContext {
   onNativePaneRecoverySettled?(name:string):void;
   holdNativePaneRecovery?(name:string,error:unknown):boolean;
   setNativePanePaused?(name: string, paused: boolean): void;
+  invalidateNativeMcp?(name: string): void;
   readonly agentCredentials?: Pick<import("./agent-credentials.js").AgentCredentials, "issue" | "invalidate">;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
@@ -1810,6 +1811,7 @@ export class InstanceLifecycle {
 
   /** Invalidate every start/wake already running for `name` (they will not publish). */
   invalidate(name: string, nativeOwner?:symbol): void {
+    this.ctx.invalidateNativeMcp?.(name);
     this.ctx.agentCredentials?.invalidate(name);
     const native=this.nativeExitOwners.get(name);if(native&&native.token!==nativeOwner)this.cancelNativeRecovery(name);
     this.lifecycleEpochs.set(name, this.epochOf(name) + 1);

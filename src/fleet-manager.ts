@@ -1274,6 +1274,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   nativeMcpSessions(): NativeMcpSessions {
     return this.nativeMcpStore ??= new NativeMcpSessions(this as unknown as AgentEndpointContext);
   }
+  /** Retire only existing native capabilities; ordinary lifecycle changes do not instantiate the Windows path. */
+  invalidateNativeMcp(name: string): void { this.nativeMcpStore?.closeInstance(name); }
   /** The same instance registry and delivery entry point, with a native Windows execution adapter. */
   nativeInstanceRuntime(): FleetWindowsRuntime {
     return this.fleetWindowsRuntime ??= new FleetWindowsRuntime({
@@ -4635,6 +4637,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * guild channel.
    */
   private reregisterClassicChannels(): void {
+    this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
@@ -13962,6 +13965,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Object.assign(current, resolved);
     }
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
@@ -23616,6 +23620,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.nativeMcpStore?.observePolicies();
     this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();

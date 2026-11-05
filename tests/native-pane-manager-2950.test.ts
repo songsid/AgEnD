@@ -151,3 +151,20 @@ it('wires a lower tool failure to its bound daemon metadata logger',async()=>{
  const response=await f.manager.handle('local',{op:'pane-mcp',owner:f.owner(),helperId:randomUUID(),method:'tools/call',callId:'e'.repeat(64),params:{name:'reply',arguments:{text:'inert'}}},()=>true)as any;
  expect(response.result.isError).toBe(true);expect(failed).toHaveBeenCalledExactlyOnceWith({tool:'reply',operationId:expect.any(String),reason:'Fleet outbound timed out',code:'ETIMEDOUT'});await native.release('close');
 });
+
+it('retains the launch tool ceiling across a wider live menu and coordinator reattach; only a fresh launch adopts it',async()=>{
+ const f=await fixture();let menu=[{name:'reply'}];f.options.menu=()=>menu;f.options.allowed=(_name,tool)=>menu.some(row=>row.name===tool);
+ const first=await f.manager.prepare('native',f.config,()=>{});first.bindDaemon({paneToolResponseWritten:vi.fn()}as never);await first.acquire(()=>{});f.publish();
+ const call=()=>({op:'pane-mcp' as const,owner:f.owner(),helperId:randomUUID(),method:'tools/call' as const,callId:'f'.repeat(64),params:{name:'task',arguments:{action:'create',title:'inert'}}});
+ await expect(f.manager.handle('local',call(),()=>true)).rejects.toThrow('revoked');
+ const oldLaunch=first.snapshot()!.launchId;menu=[...menu,{name:'task'}];
+ await expect(f.manager.handle('local',call(),()=>true)).rejects.toThrow('revoked');
+ await first.release('detach');
+ const manager=new NativePaneManager(f.options),reattached=await manager.prepare('native',f.config,()=>{});reattached.bindDaemon({paneToolResponseWritten:vi.fn()}as never);await reattached.acquire(()=>{});
+ expect(reattached.snapshot()!.launchId).toBe(oldLaunch);
+ expect(await manager.handle('local',{op:'pane-mcp',owner:f.owner(),helperId:randomUUID(),method:'tools/list',params:{}},()=>true)).toEqual({result:{tools:[{name:'reply'}]}});
+ await expect(manager.handle('local',call(),()=>true)).rejects.toThrow('revoked');expect(f.invoke).not.toHaveBeenCalled();
+ await reattached.release('close');
+ const fresh=await manager.prepare('native',f.config,()=>{});fresh.bindDaemon({paneToolResponseWritten:vi.fn()}as never);await fresh.acquire(()=>{});expect(fresh.snapshot()!.launchId).not.toBe(oldLaunch);
+ expect(await manager.handle('local',call(),()=>true)).toMatchObject({result:{content:[{type:'text',text:'ok'}]}});expect(f.invoke).toHaveBeenCalledOnce();await fresh.release('close');
+});

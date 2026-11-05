@@ -11,7 +11,7 @@ afterEach(()=>{roots.splice(0).forEach(path=>rmSync(path,{recursive:true,force:t
 function rig(){const root=mkdtempSync(join(tmpdir(),'agend-pane-tool-'));roots.push(root);let active=true,permitted=true;
  const owner={hostBootId:randomUUID(),paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:'agent-中文'},machineId=randomUUID(),file=join(root,'calls.json');
  const invoke=vi.fn(async(_input:any,_current:()=>boolean)=>({result:{ok:true}})),written=vi.fn();
- const authority:PaneMcpAuthority={machineId,owner,current:()=>active,menu:()=>permitted?[{name:'reply'}]:[],allowed:()=>permitted,invoke,responseWritten:written};
+ const authority:PaneMcpAuthority={machineId,owner,toolCeiling:['reply'],current:()=>active,menu:()=>permitted?[{name:'reply'}]:[],allowed:()=>permitted,invoke,responseWritten:written};
  const lease=new PaneMcpAuthorityLease(file,authority),body:Extract<PaneMcpBody,{method:'tools/call'}>={op:'pane-mcp',method:'tools/call',owner,helperId:randomUUID(),callId:'a'.repeat(64),params:{name:'reply',arguments:{text:'PRIVATE_PROMPT'}}};
  return{lease,authority,file,owner,machineId,body,invoke,written,inactive:()=>active=false,revoke:()=>permitted=false,call:(b:unknown=body,current=()=>true)=>lease.handle(machineId,b,current)};
 }
@@ -80,4 +80,21 @@ it.each([undefined,-32001])('keeps an absent or numeric code %s without inventin
  const f=rig();f.authority.invoke=async()=>({result:null,error:'No active chat context',...(code===undefined?{}:{errorCode:code})});f.authority.toolFailed=()=>{throw Error('logger offline');};
  const response=await f.call()as any;expect(response.result).toMatchObject({isError:true,structuredContent:{error:{reason:'No active chat context',code:code??null}}});
  expect(response.result.content[0].text).not.toContain('Tool outcome is unconfirmed');
+});
+
+it('keeps a copied issuing tool ceiling when the current menu widens; a new launch lease may use the new menu',async()=>{
+ const f=rig();f.lease.close();let tools=[{name:'delivery_status'}];
+ f.authority.menu=()=>tools;f.authority.allowed=tool=>tools.some(row=>row.name===tool);
+ const authority={...f.authority,toolCeiling:['delivery_status']};
+ const issued=new PaneMcpAuthorityLease(join(roots.at(-1)!,'bounded.json'),authority);
+ const call={...f.body,params:{name:'task',arguments:{action:'create',title:'inert'}}};
+ await expect(issued.handle(f.machineId,call,()=>true)).rejects.toThrow('revoked');
+ tools=[...tools,{name:'task'}];authority.toolCeiling.push('task'); // external array mutation cannot change an issued lease
+ await expect(issued.handle(f.machineId,call,()=>true)).rejects.toThrow('revoked');
+ expect(await issued.handle(f.machineId,{op:'pane-mcp',method:'tools/list',owner:f.owner,helperId:f.body.helperId,params:{}},()=>true)).toEqual({result:{tools:[{name:'delivery_status'}]}});
+ expect(f.invoke).not.toHaveBeenCalled();
+ const freshAuthority={...authority,owner:{...f.owner,launchId:randomUUID()},toolCeiling:['delivery_status','task']};
+ const fresh=new PaneMcpAuthorityLease(join(roots.at(-1)!,'fresh.json'),freshAuthority);
+ expect(await fresh.handle(f.machineId,{...call,owner:freshAuthority.owner},()=>true)).toMatchObject({result:{content:[{type:'text',text:expect.any(String)}]}});
+ expect(f.invoke).toHaveBeenCalledOnce();issued.close();fresh.close();
 });
