@@ -285,7 +285,11 @@ describe.skipIf(!enabled)("hub directory sign-in against the fake directory (S-4
         try {
           const dir = directory({ url: `ldaps://127.0.0.1:${relayPort}` });
           expect(await dir.signIn("alice", rig.AGEND_HUB_RIG_SEED_PASSWORD!)).toEqual({ ok: false, reason: "unavailable" });
-          expect(diagnostics.at(-1)?.error).toMatch(/refusing to reconnect|no verified TLS connection/);
+          // The cut lands on the service or the user connection, before the next request is written (our guard
+          // refuses) or while it is in flight (the library reports the close): timing decides. Every one of those is a
+          // refusal on the session's own connection. Without the guards, ldapts reconnects and runs the search
+          // unbound, which ends in a directory error such as NoSuchObject instead (mutation-checked).
+          expect(diagnostics.at(-1)?.error).toMatch(/refusing to reconnect|no verified TLS connection|Connection closed before message response/);
         } finally {
           cut = false;
         }
