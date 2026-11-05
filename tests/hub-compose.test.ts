@@ -356,3 +356,58 @@ describe.skipIf(process.platform === "win32")("review #3113 regressions (lifecyc
     await recovered.close();
   });
 });
+
+describe.skipIf(process.platform === "win32")("review #3113 round 2: a failed creation's leftover is drained on Off and Stop", () => {
+  function brokenRuntime(home: string, state: { closeFails: boolean; closes: number }) {
+    return new HubRuntime({
+      home,
+      log: () => {},
+      components: { http: async () => ({ ...fakeHttp().entry, createHubHttp: () => { throw new Error("S3 failed to build"); } }) },
+      createDirectory: () => ({
+        realm: "corp",
+        signIn: async () => ({ ok: false, reason: "unavailable" }),
+        checkEligibility: async () => ({ eligible: false, reason: "unavailable" }),
+        close: async () => {
+          state.closes += 1;
+          if (state.closeFails) throw new Error("directory client stuck");
+        },
+      }),
+    });
+  }
+
+  for (const how of ["off", "stop"] as const) {
+    it(`${how}: a recoverable leftover is cleaned up; a still-failing one stays owned and held`, async () => {
+      const hub = await initializedHub();
+      const state = { closeFails: true, closes: 0 };
+      const runtime = brokenRuntime(hub.home, state);
+      await runtime.apply(hub.config);
+      expect(runtime.currentHolds()).toMatchObject([{ side: "server", code: "service-unavailable" }]);
+      expect(state.closes).toBe(1);
+
+      // Still failing: Off keeps it held; Stop rejects and keeps it held.
+      if (how === "off") {
+        await runtime.apply({});
+        expect(runtime.currentHolds()).toMatchObject([{ side: "server", code: "service-unavailable" }]);
+      } else {
+        await expect(runtime.close()).rejects.toThrow(/directory client stuck/);
+        expect(runtime.currentHolds()).toMatchObject([{ side: "server", code: "service-unavailable" }]);
+      }
+      expect(state.closes).toBe(2);
+
+      // Healthy again: the same leftover is drained (the directory closes, then the DB under it).
+      state.closeFails = false;
+      if (how === "off") {
+        await runtime.apply({ hub: { enabled: false } }); // a changed view: applied again, drained
+        expect(runtime.currentHolds()).toEqual([]);
+        await runtime.close();
+      } else {
+        await runtime.close();
+      }
+      expect(state.closes).toBe(3);
+      // The DB handle is released: a fresh complete open works and the file is not locked by a leftover writer.
+      const db = new Database(join(hub.home, "hub/hub.sqlite"));
+      db.exec("BEGIN IMMEDIATE; ROLLBACK;");
+      db.close();
+    });
+  }
+});

@@ -179,9 +179,9 @@ function readKeyFile(home: string, rel: string): Buffer {
 
 export function createHubServerFactory(options: HubServerFactoryOptions) {
   const now = options.now ?? Date.now;
-  /** A previous attempt whose cleanup was not confirmed: nothing new is created until it is. */
+  /** A previous attempt whose cleanup was not confirmed: nothing new is created until it is, and Off/Stop drain it. */
   let unconfirmed: Teardown | null = null;
-  return async function createServer(cfg: Record<string, unknown>, current: () => boolean): Promise<HubMountedService> {
+  const createServer = async function createServer(cfg: Record<string, unknown>, current: () => boolean): Promise<HubMountedService> {
     if (unconfirmed) {
       try {
         await unconfirmed.run();
@@ -353,6 +353,19 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       return fail(err);
     }
   };
+  /**
+   * The factory owns what a failed creation could not clean up (HubMount never received a service for it). The runtime
+   * calls drain() when the Hub is switched off and when it stops: it retries that cleanup and rejects while it still
+   * fails, so the leftover stays owned and reported instead of being forgotten.
+   */
+  const drain = async (): Promise<void> => {
+    if (!unconfirmed) return;
+    await unconfirmed.run();
+    unconfirmed = null;
+  };
+  return Object.assign(createServer, { drain });
 }
+
+export type HubServerFactory = ReturnType<typeof createHubServerFactory>;
 
 export type { HubPerson };

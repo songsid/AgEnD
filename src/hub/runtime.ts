@@ -8,7 +8,7 @@
  * unchanged. A change fences first, then closes, then mounts again through S1's HubMount (which verifies the sealed
  * manifest). Failures never throw into the fleet: they become one visible hold with a reason code.
  */
-import { createHubDirectory } from "./directory/index.js";
+import { createHubDirectory, type HubDirectory, type HubDirectoryConfig } from "./directory/index.js";
 import { hubPlanDigest } from "./init/plan-digest.js";
 import { HubMount, type HubMountedService } from "./mount.js";
 import { createHubServerFactory, type HubServerComponents } from "./compose/server.js";
@@ -29,6 +29,7 @@ export interface HubRuntimeOptions {
   now?: () => number;
   /** Test seams. */
   components?: HubServerComponents;
+  createDirectory?: (config: HubDirectoryConfig, secrets: { bindPassword: string }) => HubDirectory;
   createServer?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
   createMember?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
 }
@@ -70,21 +71,27 @@ export class HubRuntime {
   /** The most specific reason a factory reported for the side currently being mounted. */
   private reported: { side: "server" | "member"; code: HubHoldCode; detail: string } | null = null;
   private mounting: "server" | "member" | null = null;
+  /** Retries cleanup a failed server creation could not confirm (never handed to HubMount). */
+  private readonly drainServer: () => Promise<void>;
+  /** A leftover whose cleanup is still unconfirmed: every later Off (even an unchanged one) and Stop retries it. */
+  private leftover = false;
 
   constructor(private readonly options: HubRuntimeOptions) {
     const now = options.now ?? Date.now;
-    const serverFactory =
-      options.createServer ??
-      createHubServerFactory({
-        home: options.home,
-        components: options.components ?? {},
-        createDirectory: createHubDirectory,
+    const composed = options.createServer
+      ? null
+      : createHubServerFactory({
+          home: options.home,
+          components: options.components ?? {},
+          createDirectory: options.createDirectory ?? createHubDirectory,
         report: (code, detail) => {
           this.reported = { side: "server", code, detail };
         },
-        log: options.log,
-        now,
-      });
+          log: options.log,
+          now,
+        });
+    this.drainServer = composed ? () => composed.drain() : async () => {};
+    const serverFactory = options.createServer ?? composed!;
     const memberFactory =
       options.createMember ??
       (async () => {
@@ -160,12 +167,16 @@ export class HubRuntime {
 
   private async applyOnce(config: HubConfigView): Promise<void> {
     const view = effectiveHubView(config);
-    if (view === this.view) return;
+    if (view === this.view) {
+      if (this.leftover && obj(config.hub)?.enabled !== true) await this.drainLeftovers();
+      return;
+    }
     this.view = view;
     this.clearHolds();
     this.reported = null;
     try {
       await this.mount.apply(config); // fences, closes the previous services, then mounts what is on
+      if (obj(config.hub)?.enabled !== true) await this.drainLeftovers();
     } catch (err) {
       // HubMount already raised its hold (service-unavailable on an unconfirmed cleanup).
       this.options.log("warn", "Hub apply did not finish cleanly", { err: (err as Error).message });
@@ -190,5 +201,25 @@ export class HubRuntime {
       /* already reported */
     }
     await this.mount.close();
+    await this.drainLeftovers(true);
+  }
+
+  /** Off/Stop: confirm a failed creation's cleanup; while it still fails it stays owned and held (and Stop rejects). */
+  private async drainLeftovers(rethrow = false): Promise<void> {
+    try {
+      await this.drainServer();
+      if (this.leftover) {
+        this.leftover = false;
+        const rest = this.holds.filter((h) => h.side !== "server");
+        if (rest.length !== this.holds.length) {
+          this.holds = rest;
+          this.options.onHoldsChanged?.(this.holds);
+        }
+      }
+    } catch (err) {
+      this.leftover = true;
+      this.addHold({ side: "server", code: "service-unavailable", detail: (err as Error).message, since: (this.options.now ?? Date.now)() });
+      if (rethrow) throw err;
+    }
   }
 }
