@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPrivateKey, generateKeyPairSync, randomUUID } from "node:crypto";
+import { createPrivateKey, generateKeyPairSync, randomUUID, X509Certificate } from "node:crypto";
 import { createServer } from "node:https";
 import { readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { HubServer } from "../src/hub/server.js";
+import { beginHubPairing, claimHubPairing } from "../src/hub/pairing-client.js";
 import { hubRig } from "./helpers/hub-rig.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { signAsker, sha256, issuerKeyId } from "../src/hub/identity.js";
@@ -128,4 +131,27 @@ it("fences a member profile at the atomic rename against an expired owner contin
     return true;
   })).toThrow("stale");
   expect(store.readProfile().credential).toBe("c".repeat(64));
+});
+
+it.each([-10_000, 30_000])("publishes the verified live certificate when an approved claim crosses same-key renewal (expiry offset %i ms)", async offset => {
+  const r = await rig(), oldCertificate = readFileSync(join(r.root, "hub/keys/tls-cert.pem"), "utf8");
+  const expiry = Date.parse(new X509Certificate(oldCertificate).validTo), clock = vi.spyOn(Date, "now").mockReturnValue(expiry - 30_000);
+  let renewedServer: HubServer | undefined;
+  try {
+    const offer = await r.pairing.create(r.ctx, r.owner);
+    const pending = await beginHubPairing({ home: r.memberHome, memberOrigin: r.memberOrigin, code: offer.code, current: () => true });
+    await r.pairing.confirmOwner(r.ctx, pending.pairingId, pending.fingerprint); await r.pairing.approve(r.ctx, pending.pairingId, pending.fingerprint);
+    await r.server.close();
+    execFileSync("/usr/bin/openssl", ["req", "-new", "-x509", "-sha256", "-days", "730", "-key", join(r.root, "hub/keys/tls-key.pem"), "-out", join(r.root, "hub/keys/tls-cert.pem"), "-subj", "/CN=AgEnD Hub", "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore", timeout: 10_000 });
+    const renewed = readFileSync(join(r.root, "hub/keys/tls-cert.pem"), "utf8"); expect(renewed).not.toBe(oldCertificate);
+    clock.mockReturnValue(expiry + offset); expect(pending.expiresAt).toBeGreaterThan(Date.now());
+    renewedServer = new HubServer({ home: r.root, hubId: r.identity.hubId, memberOrigin: r.memberOrigin,
+      listen: { host: "127.0.0.1", port: Number(new URL(r.memberOrigin).port) }, pairing: r.pairing, current: () => true,
+      receive: async () => {}, hold: () => {} }); await renewedServer.start();
+    await expect(claimHubPairing({ home: r.memberHome, hubId: r.identity.hubId, approvedFingerprint: pending.fingerprint, expectedProfileDigest: null, current: () => true })).resolves.toEqual({ status: "paired" });
+    const profile = new HubMemberProfileStore(r.memberHome, r.identity.hubId).readProfile();
+    expect(profile.certificatePem).toBe(renewed); expect(profile.hub.spkiSha256).toBe(pending.hub.spkiSha256);
+    expect(profile.fleetId).toBe(pending.fleetId); expect(r.store.read().pairings.filter(p => p.state === "claimed")).toHaveLength(1);
+    await expect(r.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret })).rejects.toThrow();
+  } finally { await renewedServer?.close(); clock.mockRestore(); }
 });
