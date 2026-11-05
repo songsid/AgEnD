@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { provisionHubIdentity } from "../../src/hub/tls.js";
 import { HubTransportStore, migrateHubTransportStore } from "../../src/hub/store.js";
 import { HubPairingService } from "../../src/hub/pairing.js";
-import { HubServer } from "../../src/hub/server.js";
+import { HubServer, type HubServerOptions } from "../../src/hub/server.js";
 import { beginHubPairing, claimHubPairing } from "../../src/hub/pairing-client.js";
 import { HubMemberProfileStore } from "../../src/hub/profile.js";
 import { HubMemberClient, type HubMemberLink } from "../../src/hub/client.js";
@@ -29,9 +29,11 @@ export async function hubRig() {
   let server!: HubServer;
   const pairing = new HubPairingService({ store, directory, identity: { ...identity, memberOrigin, webOrigin: `https://127.0.0.1:${port + 1}` }, enabled: () => enabled, fenceFleet: (id, reason) => server?.fenceFleet(id, reason) });
   let serverGate: (() => Promise<void>) | undefined;
+  let receiver: HubServerOptions["receive"] | undefined;
   server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing,
     current: () => enabled, hold: (fleet, code) => holds.push({ fleet, code }), receive: async (frame, link) => {
       received.push(frame); await serverGate?.(); if (!link.current()) return;
+      if (receiver) return receiver(frame, link);
       const common = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
       if (frame.type === "reconcile") return { ...common, type: "reconcile", payload: { receipts: [], nextReceiptSequence: 0, more: false } };
       if (frame.type === "authorize.request") return { ...common, type: "authorize.result", payload: { ok: true, lease: { decisionId: randomUUID(), messageId: frame.payload.messageId, operationId: frame.payload.operationId, phase: frame.payload.phase,
@@ -53,5 +55,6 @@ export async function hubRig() {
   };
   return { root, memberHome, memberOrigin, identity, owner, db, store, pairing, ctx, server, received, holds, pair, client,
     disableOwner: () => { eligible = false; }, disable: () => { enabled = false; }, setServerGate: (gate?: () => Promise<void>) => { serverGate = gate; },
+    setReceive: (receive: HubServerOptions["receive"]) => { receiver = receive; },
     close: async () => { for (const c of clients) await c.close(); await server.close(); db.close(); rmSync(root, { recursive: true, force: true }); } };
 }
