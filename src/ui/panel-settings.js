@@ -1068,7 +1068,7 @@ function General({ ctx, part = "all" }) {
   const firstError = Object.values(errors).find(Boolean);
   // What saving the edited fields costs (the schema's impact, the agents that set the field themselves): shown under each
   // edited field, and added up on the Save bar.
-  const notes = sharedNotes({ schema, fleet: ctx.fleet, live: ctx.live, f, base, errors });
+  const notes = sharedNotes({ schema, fleet: ctx.fleet, live: ctx.live, fleetUp: ctx.fleetUp, f, base, errors });
   // #2347: every edit, staged as it is made (the first render included: a draft kept from before is staged again).
   useEffect(() => {
     if (!ready) {

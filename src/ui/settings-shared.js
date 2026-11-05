@@ -31,10 +31,10 @@ export function ownsDashboard(inst) {
   return Object.values(SEPARATE_FEATURE_KEYS).some((k) => given(inst, k))
     || (!!dash && typeof dash === "object" && !Array.isArray(dash) && DASHBOARD_FEATURES.some((f) => given(dash, f)));
 }
-/** An agent's own `a` or `a.b` (the hang detector's two settings are merged one by one: setting the timeout leaves `enabled` inherited). */
+/** An agent's own `a` or `a.b`, with a value (the hang detector's two settings are merged one by one: setting the timeout leaves `enabled` inherited). */
 const ownsPath = (inst, path) => {
   const [a, b] = path.split(".");
-  return b ? hasOwn((inst && inst[a]) || {}, b) : hasOwn(inst, a);
+  return b ? given((inst && inst[a]) || {}, b) : given(inst, a);
 };
 
 /**
@@ -94,9 +94,13 @@ const edited = (f, base, field) => FIELDS[field].keys.some((k) => !sameValue(f[k
  * defaults (`bar.defaults`) and for the project folders' own (`bar.roots`). A field that applies at once has no note;
  * an invalid one has none yet.
  */
-export function sharedNotes({ schema, fleet, live = {}, f, base, errors = {} }) {
+export function sharedNotes({ schema, fleet, live = {}, fleetUp = true, f, base, errors = {} }) {
   const fields = {}, hit = new Set(), bar = { defaults: [], roots: [] };
-  const running = (name) => !!live && !!live[name] && live[name].status === "running";
+  // Whether an agent restarts when a setting that is not hot changes: one that is running, and one that crashed (the fleet
+  // restarts a crash-looping daemon too); a paused or stopped one just takes the value at its next start. When the page
+  // could not read the agents' state (the fleet did not answer, or listed none) it cannot tell: every agent counts as restarting.
+  const known = fleetUp !== false && !!live && Object.keys(live).length > 0;
+  const restarts = (name) => !known || (!!live[name] && (live[name].status === "running" || live[name].status === "crashed"));
   let fleetRestart = false;
   const add = (list, text) => { if (!list.includes(text)) list.push(text); };
   for (const [field, spec] of Object.entries(FIELDS)) {
@@ -110,9 +114,9 @@ export function sharedNotes({ schema, fleet, live = {}, f, base, errors = {} }) 
       const reached = u.names.filter((n) => !skippedNames.has(n));
       for (const n of reached) hit.add(n);
       // Every agent without its own value takes the new one (a stopped agent at its next start), but only a running one restarts.
-      const live_ = reached.filter(running).length;
-      const main = live_ === reached.length ? tn("noteRestartAgents", reached.length)
-        : live_ ? tn("noteApplyAgents", reached.length, live_) : tn("noteApplyIdle", reached.length);
+      const restarting = reached.filter(restarts).length;
+      const main = restarting === reached.length ? tn("noteRestartAgents", reached.length)
+        : restarting ? tn("noteApplyAgents", reached.length, restarting) : tn("noteApplyIdle", reached.length);
       notes.push({ text: u.total === 0 ? tn("noteNoAgents") : !reached.length ? tn("noteAllOverride") : `${main}${skipped.length ? tn("noteSkip", nameList(skipped)) : ""}` });
     }
     if (spec.confirm) { notes.push({ text: tn(spec.confirm) }); add(field === "roots" ? bar.roots : bar.defaults, tn(spec.confirm)); }
@@ -123,8 +127,8 @@ export function sharedNotes({ schema, fleet, live = {}, f, base, errors = {} }) 
     if (notes.length) fields[field] = notes;
   }
   if (hit.size) {
-    const live_ = [...hit].filter(running).length;
-    bar.defaults.unshift(live_ === hit.size ? tn("barRestartAgents", hit.size) : live_ ? tn("barApplyAgents", hit.size, live_) : tn("barApplyIdle", hit.size));
+    const restarting = [...hit].filter(restarts).length;
+    bar.defaults.unshift(restarting === hit.size ? tn("barRestartAgents", hit.size) : restarting ? tn("barApplyAgents", hit.size, restarting) : tn("barApplyIdle", hit.size));
   }
   if (fleetRestart) add(bar.defaults, tn("barRestartFleet"));
   return { fields, bar };
