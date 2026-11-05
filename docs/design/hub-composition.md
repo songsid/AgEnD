@@ -55,7 +55,14 @@ Rules:
 - **Reason codes** (closed set): `hub-incomplete` (a slice's component is missing in this build), `hub-unsealed`
   (manifest missing, signature invalid or plan digest mismatch), `hub-state-newer` (the DB was written by a newer
   version), `hub-state-mismatch` (DB, manifest and floor disagree), `hub-storage` (private-file or DB failure),
-  `hub-directory-secret` (the bind secret is missing or not private), `service-unavailable` (S1's close failed).
+  `hub-directory-secret` (the bind secret is missing or not private), `hub-member-pairing` (the member's pairing
+  state is missing or invalid), `service-unavailable` (a valid Hub could not start or close: listener, factory or
+  cleanup failure).
+- **S1's codes map onto these.** `HubMount.hold` reports `initialization`, `member-pairing` or `service-unavailable`.
+  Composition maps `initialization` to `hub-unsealed` (or `hub-incomplete` when a component is missing),
+  `member-pairing` to `hub-member-pairing`, and `service-unavailable` to itself. Transport link states
+  (`unavailable`, `invalid`, `backpressure`, `replaced`, `revoked`, `key-changed`; S1's closed enum) are per-link
+  status, not mount holds.
 
 ## 3. Storage
 
