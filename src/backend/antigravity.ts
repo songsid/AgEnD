@@ -222,7 +222,8 @@ export class AntigravityBackend implements CliBackend {
     const prefix = config.agentMode === "mcp" && existsSync(this.mcpWrapperPath)
       ? `${shellQuote(this.mcpWrapperPath)} `
       : "";
-    let cmd = `${prefix}${this.binaryPath} --dangerously-skip-permissions`;
+    let cmd = `${prefix}${this.binaryPath}`;
+    if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
     if (!config.skipResume) cmd += " --continue";
     if (config.model) warnIfModelMismatch("antigravity", config.model);
     // #1811: the configured effort, where this agy takes it (1.0.x has no --effort; launch-effort.ts); else a quiet note.
