@@ -5,20 +5,27 @@
  * after a restart all went to its profile. Now install.ps1 passes the SID it was started with (-InitiatingSid), and
  * install-agend.ps1 stops before it changes anything when its own SID differs, naming both accounts. A restart names
  * the account to log in with, because the resume and the progress live under it.
- * The functions are the scripts' own, taken from their syntax trees and run in pwsh. A real alternate-admin UAC run is
+ * The functions are the scripts' own, sliced in Node and run in pwsh. A real alternate-admin UAC run is
  * the user's Windows checklist.
  */
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { extractPsFunction } from './support/installer-ps-extract.js';
+import { InstallerC2Batch, hasPwsh as pwsh } from './support/installer-pwsh-c2.js';
 
 const ROOT = join(import.meta.dirname, "..");
 const BOOTSTRAP = join(ROOT, "website", "public", "install.ps1");
 const INSTALLER = join(ROOT, "website", "public", "install-agend.ps1");
 const code = (f: string) => readFileSync(f, "utf8").split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
-const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
+const installerSource = readFileSync(INSTALLER,'utf8'), bootstrapSource = readFileSync(BOOTSTRAP,'utf8');
+const batch = new InstallerC2Batch({
+ installer: ['Get-InstallIdentityMismatch','Write-InstallIdentityMismatch','Get-AccountName','Request-Reboot','Write-Err','Write-Warn','Write-Info','Write-InstallLog','Protect-LogText']
+  .map(n => extractPsFunction(installerSource,n)).join('\n'),
+ bootstrap: ['Start-ElevatedInstaller','Resolve-AgendInstallVersion','Resolve-AgendWslDrive','Write-BootstrapLog','Get-LaunchFailure']
+  .map(n => extractPsFunction(bootstrapSource,n)).join('\n'),
+});
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
@@ -46,32 +53,24 @@ describe("static", () => {
   });
 });
 
-function run(file: string, body: string) {
-  const dir = mkdtempSync(join(tmpdir(), "agend-2650id-")); dirs.push(dir);
-  const script = join(dir, "t.ps1");
-  writeFileSync(script, `$ErrorActionPreference = 'Stop'
-$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${file}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-${body}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", script], { encoding: "utf8", timeout: 60_000, env: { ...process.env, TMPDIR: dir } });
-  if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
-  return r.stdout + r.stderr;
+async function run(file: string, body: string) {
+ const dir=mkdtempSync(join(tmpdir(),'agend-2650id-')); dirs.push(dir);
+ return batch.run(file === INSTALLER ? 'installer' : 'bootstrap',body,dir);
 }
 
 const A = "S-1-5-21-1111111111-2222222222-3333333333-1001";
 const B = "S-1-5-21-1111111111-2222222222-3333333333-500";
 
-describe.skipIf(!pwsh)("with pwsh: the account check", { timeout: 90_000 }, () => {
-  it("same account, no SID passed, or a malformed one: no mismatch; another account: both are named", () => {
-    const out = run(INSTALLER, `function Get-AccountName([string]$sid) { if ($sid -eq '${A}') { return 'PC\\alice' }; return 'PC\\admin' }
+describe.skipIf(!pwsh)("with pwsh: the account check", () => {
+  it("same account, no SID passed, or a malformed one: no mismatch; another account: both are named", async () => {
+    const out = (await run(INSTALLER, `function Get-AccountName([string]$sid) { if ($sid -eq '${A}') { return 'PC\\alice' }; return 'PC\\admin' }
 Write-Output ('SAME=' + ($null -eq (Get-InstallIdentityMismatch '${A}' '${A}')))
 Write-Output ('NONE=' + ($null -eq (Get-InstallIdentityMismatch '' '${A}')))
 Write-Output ('BAD=' + ($null -eq (Get-InstallIdentityMismatch 'S-1-5; whoami' '${A}')))
 Write-Output ('NOCURRENT=' + ($null -eq (Get-InstallIdentityMismatch '${A}' $null)))
 $m = Get-InstallIdentityMismatch '${A}' '${B}'
 Write-Output ('DIFF=' + $m.Started + '|' + $m.Running)
-Write-InstallIdentityMismatch $m`);
+Write-InstallIdentityMismatch $m`));
     expect(out).toContain("SAME=True");
     expect(out).toContain("NONE=True");
     expect(out).toContain("BAD=True");
@@ -83,33 +82,33 @@ Write-InstallIdentityMismatch $m`);
     expect(out).toContain("要給「PC\\alice」用：請公司的 IT 人員暫時讓這個帳號有系統管理員權限");
     expect(out).toContain("要給「PC\\admin」用：登出，用「PC\\admin」登入 Windows");
   });
-  it("an unresolvable SID is shown as the SID itself", () => {
-    expect(run(INSTALLER, `Write-Output ('NAME=' + (Get-AccountName '${B}'))`)).toContain(`NAME=${B}`);
+  it("an unresolvable SID is shown as the SID itself", async () => {
+    expect((await run(INSTALLER, `Write-Output ('NAME=' + (Get-AccountName '${B}'))`))).toContain(`NAME=${B}`);
   });
-  it("a restart names the account to log in with, registered or not", () => {
+  it("a restart names the account to log in with, registered or not", async () => {
     for (const registered of ["$true", "$false"]) {
-      const out = run(INSTALLER, `function Register-ResumeAtLogon { return ${registered} }
+      const out = (await run(INSTALLER, `function Register-ResumeAtLogon { return ${registered} }
 function Get-InstallAccountName { return 'PC\\alice' }
 function Read-Host { return 'n' }
 function Restart-Computer { throw 'must not restart' }
-Request-Reboot 'reboot needed'`);
+Request-Reboot 'reboot needed'`));
       expect(out).toContain("請用 Windows 帳號「PC\\alice」登入");
       expect(out).toContain("用別的帳號登入不會接續：進度和自動接續只記在「PC\\alice」底下。");
     }
   });
-  it.each(["auto", "conhost"])("the SID reaches the installer through the %s elevation; a malformed one is not passed to Windows Terminal", mode => {
-    const out = run(BOOTSTRAP, `$tmp = Join-Path $env:TMPDIR 'stub-installer.ps1'
+  it.each(["auto", "conhost"])("the SID reaches the installer through the %s elevation; a malformed one is not passed to Windows Terminal", async mode => {
+    const out = (await run(BOOTSTRAP, `$tmp = Join-Path $env:TMPDIR 'stub installer.ps1'
 Set-Content $tmp 'param([switch]$Force, [string]$InstallVersion, [string]$InitiatingSid); [IO.File]::WriteAllText((Join-Path $env:TMPDIR "sid.txt"), $InitiatingSid)'
 function Get-Command { param($Name, $CommandType); return @{ Source = 'stub-wt' } }
 function Start-Process { param($FilePath, $ArgumentList, $Verb, [switch]$Wait, [switch]$PassThru)
-  if ($FilePath -eq 'stub-wt') { & pwsh -NoProfile -File ($ArgumentList[-1].Trim('"')); return }
-  & pwsh @ArgumentList; return @{ ExitCode = 0 } }
+  if ($FilePath -eq 'stub-wt') { . ($ArgumentList[-1].Trim('"')); return }
+  $child=($ArgumentList -join ' ') -replace '^-NoProfile -File ', ''; . ([scriptblock]::Create('& '+$child)); return @{ ExitCode = 0 } }
 $r = Start-ElevatedInstaller 'pwsh' @('-NoProfile', '-File', $tmp, '-InitiatingSid', '${A}') $tmp '${mode}' 5 2
 Write-Output ('SID=' + [IO.File]::ReadAllText((Join-Path $env:TMPDIR 'sid.txt')))
 if ('${mode}' -eq 'auto') {
   $r = Start-ElevatedInstaller 'pwsh' @('-NoProfile', '-File', $tmp, '-InitiatingSid', 'S-1-5;x') $tmp 'auto' 5 2
   Write-Output ('BADSID=[' + [IO.File]::ReadAllText((Join-Path $env:TMPDIR 'sid.txt')) + ']')
-}`);
+}`));
     expect(out).toContain(`SID=${A}`);
     if (mode === "auto") expect(out).toContain("BADSID=[]");
   });
