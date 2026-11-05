@@ -29,6 +29,7 @@
  * In memory only — a restart drops every request, as it does an unused login code.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { isIPv4, isIPv6 } from "node:net";
 import { constantTimeMatches, formatOneTimeCode, generateOneTimeCode, normalizeOneTimeCode } from "./auth/one-time-code.js";
 import { fleetCookieName } from "./web-cookie-names.js";
 
@@ -113,6 +114,30 @@ export interface DeviceLoginRequestsOptions {
   readonly onEvent?: (event: "created" | "approved" | "denied" | "claimed" | "breaker-open") => void;
 }
 
+/**
+ * The key the per-address limits count by. An IPv4 address (also one an IPv6 socket reports as `::ffff:a.b.c.d`) is its
+ * own key. An IPv6 address counts by its /64: a single network hands one machine a whole /64, so keying by the full
+ * address would give one host as many allowances as it has addresses. Whatever is not an IP address (`unknown`) is its
+ * own key. Never read from a header: only the socket's peer.
+ */
+export function peerKeyOf(address: string): string {
+  const a = address.replace(/%.*$/, "").toLowerCase();                       // a zone id (fe80::1%eth0) is not part of the address
+  const dotted = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(a);
+  if (dotted) return dotted[1]!;
+  const hex = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(a);
+  if (hex) { const hi = parseInt(hex[1]!, 16), lo = parseInt(hex[2]!, 16); return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`; }
+  if (isIPv4(a) || !isIPv6(a)) return a;
+  const halves = a.split("::");
+  const groups = (part: string | undefined): string[] => (part ? part.split(":").flatMap(g => {
+    if (!g.includes(".")) return [g];
+    const [b0, b1, b2, b3] = g.split(".").map(Number) as [number, number, number, number];     // an embedded IPv4 is two groups
+    return [((b0 << 8) | b1).toString(16), ((b2 << 8) | b3).toString(16)];
+  }) : []);
+  const head = groups(halves[0]), tail = halves.length > 1 ? groups(halves[1]) : [];
+  const all = halves.length > 1 ? [...head, ...Array<string>(Math.max(0, 8 - head.length - tail.length)).fill("0"), ...tail] : head;
+  return `${all.slice(0, 4).map(g => parseInt(g || "0", 16).toString(16)).join(":")}::/64`;
+}
+
 /** The key a request id is kept under: its hash, so the map never holds what the new browser presents. */
 function keyOf(requestId: string): string {
   return createHash("sha256").update(`agend-device-login-v1:${requestId}`).digest("hex");
@@ -139,6 +164,9 @@ export class DeviceLoginRequests {
   /** How many requests are waiting (or approved and not yet taken up) — for tests and status lines. */
   get size(): number { this.prune(); return this.entries.size; }
 
+  /** How many addresses the creation rate limit is holding stamps for (for tests: it must not grow without bound). */
+  get rateTableSize(): number { return this.createdByPeer.size; }
+
   /**
    * A new request. `replaces` is the request id the same browser held (its cookie): it is withdrawn first, so "get a
    * new code" never counts against the room — but it does count against the rate. `label`, `peer` and `address` are
@@ -150,8 +178,13 @@ export class DeviceLoginRequests {
     if (input.replaces && REQUEST_ID.test(input.replaces)) this.entries.delete(keyOf(input.replaces));
     const cutoff = now - DEVICE_LOGIN_CREATE_WINDOW_MS;
     this.created = this.created.filter(t => t > cutoff);
-    const mine = (this.createdByPeer.get(input.peerKey) ?? []).filter(t => t > cutoff);
-    if (mine.length) this.createdByPeer.set(input.peerKey, mine); else this.createdByPeer.delete(input.peerKey);
+    // The whole per-address table, not just this address: one whose every stamp is out of the window is forgotten, so
+    // addresses seen once never pile up (the table holds at most what the window admitted — DEVICE_LOGIN_CREATES_GLOBAL).
+    for (const [key, stamps] of this.createdByPeer) {
+      const live = stamps.filter(t => t > cutoff);
+      if (live.length) this.createdByPeer.set(key, live); else this.createdByPeer.delete(key);
+    }
+    const mine = this.createdByPeer.get(input.peerKey) ?? [];
     if (mine.length >= DEVICE_LOGIN_CREATES_PER_PEER) return { kind: "limited", retryAfterMs: Math.max(1000, mine[0]! + DEVICE_LOGIN_CREATE_WINDOW_MS - now) };
     if (this.created.length >= DEVICE_LOGIN_CREATES_GLOBAL) return { kind: "limited", retryAfterMs: Math.max(1000, this.created[0]! + DEVICE_LOGIN_CREATE_WINDOW_MS - now) };
     let waitingHere = 0;

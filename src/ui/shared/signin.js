@@ -35,7 +35,7 @@
       minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
       // #3061: sign in with another device — an 8-character code shown here, approved on a device that is already signed in.
       another: "Sign in with another device", dev_title: "Sign in with another device",
-      dev_lead: "On a device that is already signed in to AgEnD as the owner, open Settings → Access & security → Add device and enter this code.",
+      dev_lead: "On a device that is already signed in to AgEnD as the owner, open Settings → Access & security, choose Add device under Devices & sign-in, and enter this code.",
       dev_waiting: "Waiting for approval… Expires in {time}.", dev_approved: "Approved — signing in…",
       dev_expired: "This code has expired.", dev_denied: "This request was denied.", dev_new: "Get a new code", dev_back: "Back",
       dev_busy: "Too many devices are waiting right now. Try again in a moment.", dev_limited: "Too many codes asked for. Try again in {duration}.",
@@ -64,7 +64,7 @@
       paused_outside: "錯誤次數太多，請 {duration} 後再試。",
       minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
       another: "使用其他裝置登入", dev_title: "使用其他裝置登入",
-      dev_lead: "在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全 → 新增裝置」，輸入這組代碼。",
+      dev_lead: "在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組代碼。",
       dev_waiting: "等待核准中… {time} 後失效。", dev_approved: "已核准，登入中…",
       dev_expired: "這組代碼已失效。", dev_denied: "這個請求已被拒絕。", dev_new: "取得新代碼", dev_back: "返回",
       dev_busy: "目前等待核准的裝置太多，請稍後再試。", dev_limited: "要求代碼的次數太多，請 {duration} 後再試。",
@@ -261,6 +261,7 @@
         clearBounce(); location.replace(nextTarget());
         return;
       }
+      if (p && p.status === 404) { devEnded(t("dev_unavailable"), true); return; }          // closed while waiting (e.g. web authorization turned off)
       if (state === "denied") { devEnded(t("dev_denied"), true); return; }
       if (state === "expired") { devEnded(t("dev_expired"), true); return; }
       if (state === "pending") { mine.lost = 0; again(); return; }

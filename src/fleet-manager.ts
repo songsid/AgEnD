@@ -3118,6 +3118,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.liveOwner(req, { hostOnly: false });
   }
 
+  /**
+   * Refs #3061 (auth-api): device-code sign-in is offered — a web-only fleet with web authorization on. With
+   * `web.verified_authority.enabled: false` no one is an owner (liveOwner → null), so no one could approve: the three
+   * `/auth/device-login*` routes answer 404 and the sign-in page shows no button. "Only this computer can authorize"
+   * does not close it: this computer's own session can still approve.
+   */
+  deviceLoginAvailable(): boolean {
+    return this.isWebOnlyFleet() && this.webAuthorityState().enabled;
+  }
+
   /** GET /ui/devices: is this a web-only fleet, and may THIS session approve a new device (is it the verified owner). */
   webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean } {
     const webOnly = this.isWebOnlyFleet();
@@ -25999,7 +26009,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && !!this.webDeviceLogins });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable() });
             return;
           }
           res.writeHead(decision.status);

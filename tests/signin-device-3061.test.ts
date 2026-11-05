@@ -148,11 +148,29 @@ describe("#3061 P2a the sign-in page: Sign in with another device", () => {
     expect(p.text("devStatus")).toBe("This code has expired.");
   });
 
+  it("the page's words name the path that exists today: Settings → Access & security, Devices & sign-in, Add device (and say nothing of a sub-page it does not have)", async () => {
+    const p = await page("en", { deviceLogin: true, replies: {} });
+    expect(p.i18n("dev_lead")).toBe("On a device that is already signed in to AgEnD as the owner, open Settings → Access & security, choose Add device under Devices & sign-in, and enter this code.");
+    expect(HTML).toContain("open Settings → Access &amp; security, choose Add device under Devices &amp; sign-in, and enter this code.");
+    expect(SRC).not.toContain("Access & security → Add device");
+  });
+
+  it("the route closing while the device waits (web authorization turned off): the poll's 404 ends it with the unavailable line — it does not keep asking", async () => {
+    const p = await page("en", { deviceLogin: true, replies: { "/auth/device-login": [ASKED], "/auth/device-login/poll": [PENDING, { status: 404, body: { error: "not_found" } }] } });
+    await p.click("another");
+    await p.flush(2000);
+    await p.flush(2000);
+    expect([p.text("devStatus"), p.el("devNew").hidden, p.el("devCode").classes.has("spent")]).toEqual(["Signing in with another device isn't available here.", false, true]);
+    const seen = p.posts().length;
+    await p.flush(20_000);
+    expect(p.posts().length).toBe(seen);
+  });
+
   it("zh-TW: the button, the page and the answers", async () => {
     const p = await page("zh-TW", { deviceLogin: true, replies: {
       "/auth/device-login": [ASKED], "/auth/device-login/poll": [{ status: 200, body: { state: "expired" } }] } });
     expect([p.i18n("another"), p.i18n("dev_title"), p.i18n("dev_new"), p.i18n("dev_back")]).toEqual(["使用其他裝置登入", "使用其他裝置登入", "取得新代碼", "返回"]);
-    expect(p.i18n("dev_lead")).toBe("在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全 → 新增裝置」，輸入這組代碼。");
+    expect(p.i18n("dev_lead")).toBe("在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全」，在「裝置與登入」選「新增裝置」，輸入這組代碼。");
     await p.click("another");
     expect(p.text("devStatus")).toBe("等待核准中… 5:00 後失效。");
     await p.flush(2000);

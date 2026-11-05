@@ -21,6 +21,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
+import { PassThrough, Readable } from "node:stream";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -34,7 +35,7 @@ import { DEVICE_LOGIN_COOKIE, DEVICE_LOGIN_CREATES_PER_PEER, DEVICE_LOGIN_TTL_MS
 import { fleetCookieName } from "../src/web-cookie-names.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { setLocale } from "../src/locale.js";
-import { serveSigninPage } from "../src/auth-api.js";
+import { handleAuthRequest, serveSigninPage } from "../src/auth-api.js";
 
 const dirs: string[] = [];
 const stops: Array<() => Promise<void>> = [];
@@ -334,10 +335,13 @@ describe("#3061 P2a: who may approve — only this web-only fleet's verified own
   }, 30_000);
 
   it("the switch off (`web.verified_authority.enabled: false`) or \"Only this computer can authorize\" (from outside): the owner's authority — and the approval — are gone at once", async () => {
-    const off = await startFleet({ web: { verified_authority: { enabled: false } } });
+    const off = await startFleet();
     const owner = await off.hostSignIn();
     const mine = await off.ask();
-    expect((await approve(off, owner, mine.code)).status).toBe(403);
+    expect((await approve(off, owner, mine.code)).status).toBe(200);                      // while it is on: yes
+    const waiting = await off.ask({ "x-forwarded-for": "10.0.0.7" });
+    off.fm.fleetConfig = { ...off.fm.fleetConfig, web: { ...(off.fm.fleetConfig as any).web, verified_authority: { enabled: false } } } as never;
+    expect((await approve(off, owner, waiting.code)).status).toBe(403);                  // …off: the owner is no one, at once
     expect(parse(await off.local(owner, "GET", "/ui/devices"))).toEqual({ webOnly: true, owner: false });
     const only = await startFleet({ web: { verified_authority: { enabled: true, loopback_only: true } } });
     const host = await only.hostSignIn();
@@ -422,7 +426,6 @@ describe("#3061 P2a: the public link, a rotated token, /dashboard revoke", () =>
       expect((await h.outside("POST", path, { body: {} })).status).toBe(404);
     }
     // Even were a route to slip into the manifest, the handler itself refuses the gateway:
-    const { handleAuthRequest } = await import("../src/auth-api.js");
     const { bindGatewayRequest } = await import("../src/web-request-context.js");
     const req: any = { method: "POST", url: "/auth/device-login", headers: { host: HOST, origin: `https://${HOST}`, "content-type": "application/json" }, socket: { remoteAddress: "127.0.0.1" } };
     bindGatewayRequest(req, { surface: "gateway", named: false, exposureId: h.any.publicWebLink.exposureId, expectedOrigin: `https://${HOST}`, isCurrent: () => true });
@@ -501,5 +504,99 @@ describe("#3061 P2a: the public link, a rotated token, /dashboard revoke", () =>
     const gated = await raw(h.port, "GET", "/ui", { accept: "text/html" });
     expect(gated.status).toBe(401);
     expect(gated.body).toContain('data-device-login="1"');
+  }, 20_000);
+});
+
+describe("#3061 P2a (review): the entrance is open only while someone could approve; limits count the socket's peer", () => {
+  it("web authorization off: the three routes answer 404 (also after the body is read), and the sign-in page shows no button — nothing is created", async () => {
+    const h = await startFleet({ web: { verified_authority: { enabled: false } } });
+    for (const path of ["", "/poll", "/cancel"]) expect([path, (await h.device(path)).status]).toEqual([path, 404]);
+    expect(h.any.webDeviceLogins.size).toBe(0);
+    expect((await raw(h.port, "GET", "/signin", {})).body).not.toContain("data-device-login");
+    const gated = await raw(h.port, "GET", "/ui", { accept: "text/html" });
+    expect([gated.status, gated.body.includes("data-device-login"), gated.body.includes('data-web-only="1"')]).toEqual([401, false, true]);
+  }, 20_000);
+
+  it("turned off while a request waits (even an approved one): the poll answers 404 and no session is made", async () => {
+    const h = await startFleet();
+    const owner = await h.hostSignIn();
+    const mine = await h.ask();
+    expect((await approve(h, owner, mine.code)).status).toBe(200);
+    expect((await raw(h.port, "GET", "/signin", {})).body).toContain('data-device-login="1"');
+    h.fm.fleetConfig = { ...h.fm.fleetConfig, web: { ...(h.fm.fleetConfig as any).web, verified_authority: { enabled: false } } } as never;
+    const polled = await h.poll(mine.cookie);
+    expect([polled.status, setCookies(polled).length, h.any.webSessions.list().length]).toEqual([404, 0, 1]);
+    expect((await h.device("")).status).toBe(404);
+    expect((await raw(h.port, "GET", "/signin", {})).body).not.toContain("data-device-login");
+  }, 20_000);
+
+  it("\"Only this computer can authorize\" on: the entrance stays open (this computer's own session can still approve)", async () => {
+    const h = await startFleet({ web: { verified_authority: { enabled: true, loopback_only: true } } });
+    const host = await h.hostSignIn();
+    expect((await raw(h.port, "GET", "/signin", {})).body).toContain('data-device-login="1"');
+    const mine = await h.ask();
+    expect((await approve(h, host, mine.code)).status).toBe(200);
+    expect(parse(await h.poll(mine.cookie)).state).toBe("approved");
+  }, 20_000);
+
+  /** A request as the socket reports it — to see an IPv6 peer, which a loopback test server cannot show. */
+  function viaSocket(h: Fleet, remoteAddress: string, extra: Record<string, string> = {}) {
+    const req: any = Readable.from([Buffer.from("{}")]);
+    Object.assign(req, { method: "POST", url: "/auth/device-login", socket: { remoteAddress },
+      headers: { host: `127.0.0.1:${h.port}`, origin: h.origin, "content-type": "application/json", "user-agent": ANDROID, ...extra } });
+    return new Promise<{ status: number; body: any }>((resolve, reject) => {
+      let status = 0;
+      const res: any = { headersSent: false, destroyed: false, setHeader() {}, getHeader() { return undefined; },
+        writeHead(code: number) { status = code; return res; }, end(text: string) { try { resolve({ status, body: JSON.parse(text) }); } catch (err) { reject(err); } } };
+      handleAuthRequest(req, res, new URL(`http://127.0.0.1:${h.port}/auth/device-login`), h.any);
+    });
+  }
+
+  it("asked again once the body is in: web authorization turned off while the body is still arriving — 404, nothing created, whichever of the three", async () => {
+    for (const path of ["/auth/device-login", "/auth/device-login/poll", "/auth/device-login/cancel"]) {
+      const h = await startFleet();
+      const req: any = new PassThrough();                                                   // the body has not arrived yet
+      Object.assign(req, { method: "POST", url: path, socket: { remoteAddress: "10.1.1.1" },
+        headers: { host: `127.0.0.1:${h.port}`, origin: h.origin, "content-type": "application/json", "user-agent": ANDROID } });
+      const answered = new Promise<number>(resolve => {
+        const res: any = { headersSent: false, destroyed: false, setHeader() {}, getHeader() { return undefined; }, writeHead(code: number) { resolve(code); return res; }, end() {} };
+        handleAuthRequest(req, res, new URL(`http://127.0.0.1:${h.port}${path}`), h.any);
+      });
+      h.fm.fleetConfig = { ...h.fm.fleetConfig, web: { ...(h.fm.fleetConfig as any).web, verified_authority: { enabled: false } } } as never;
+      req.end("{}");
+      expect([path, await answered, h.any.webDeviceLogins.size]).toEqual([path, 404, 0]);
+    }
+  }, 30_000);
+
+  it("IPv6 counts by its /64: six codes per window for the whole /64; another /64 and an IPv4 peer are separate; the approver is shown the full address", async () => {
+    const h = await startFleet();
+    for (let i = 1; i <= 6; i++) { expect((await viaSocket(h, `2001:db8:1:2::${i}`)).status).toBe(200); h.any.webDeviceLogins.revokeAll(); }   // revokeAll: the room, not the allowance
+    const limited = await viaSocket(h, "2001:db8:1:2:ffff:ffff:ffff:ffff");
+    expect([limited.status, limited.body.error]).toEqual([429, "limited"]);
+    expect((await viaSocket(h, "2001:db8:1:3::1")).status).toBe(200);
+    expect((await viaSocket(h, "10.9.9.9")).status).toBe(200);
+    h.any.webDeviceLogins.revokeAll();
+    const shown = await viaSocket(h, "2001:db8:1:3::1:abcd");
+    expect(shown.status).toBe(200);
+    const view = h.any.webDeviceLogins.lookup(shown.body.code, tokenEpoch(h.token));
+    expect(view).toMatchObject({ kind: "ok", view: { address: "2001:db8:1:3::1:abcd" } });
+  }, 20_000);
+
+  it("an IPv4-mapped peer (::ffff:a.b.c.d) is the IPv4 one — one allowance, shown as a.b.c.d", async () => {
+    const h = await startFleet();
+    for (let i = 0; i < 3; i++) { expect((await viaSocket(h, "::ffff:10.0.0.5")).status).toBe(200); h.any.webDeviceLogins.revokeAll(); }
+    for (let i = 0; i < 3; i++) { expect((await viaSocket(h, "10.0.0.5")).status).toBe(200); h.any.webDeviceLogins.revokeAll(); }
+    expect((await viaSocket(h, "::ffff:10.0.0.5")).status).toBe(429);
+    h.any.webDeviceLogins.revokeAll();
+    const other = await viaSocket(h, "::ffff:10.0.0.6");
+    expect(other.status).toBe(200);
+    expect(h.any.webDeviceLogins.lookup(other.body.code, tokenEpoch(h.token))).toMatchObject({ view: { address: "10.0.0.6" } });
+  }, 20_000);
+
+  it("X-Forwarded-For is never trusted for the limits: behind a reverse proxy on this machine every device is one address and shares one allowance", async () => {
+    const h = await startFleet();
+    for (let i = 1; i <= 6; i++) { expect((await h.device("", { extra: { "x-forwarded-for": `203.0.113.${i}` } })).status).toBe(200); h.any.webDeviceLogins.revokeAll(); }
+    const seventh = await h.device("", { extra: { "x-forwarded-for": "203.0.113.200", "x-real-ip": "198.51.100.7" } });
+    expect([seventh.status, parse(seventh).error]).toEqual([429, "limited"]);
   }, 20_000);
 });

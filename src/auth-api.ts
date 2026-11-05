@@ -57,7 +57,7 @@ import { classifyWebPeer, type WebPeer } from "./authority/web-authority.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
 import { fleetCookieName } from "./web-cookie-names.js";
-import { buildDeviceLoginCookie, clearDeviceLoginCookie, DEVICE_LOGIN_TTL_MS, readDeviceLoginCookie, type DeviceLoginRequests } from "./web-device-login.js";
+import { buildDeviceLoginCookie, clearDeviceLoginCookie, DEVICE_LOGIN_TTL_MS, peerKeyOf, readDeviceLoginCookie, type DeviceLoginRequests } from "./web-device-login.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -110,9 +110,14 @@ export interface AuthApiContext {
     Promise<{ kind: "sent" } | { kind: "limited"; retryAfterMs: number } | { kind: "refused" }>;
   /**
    * Refs #3061 (P2a): the requests of device-code sign-in (web-device-login.ts). With `isWebOnlyFleet()`, what makes
-   * `/auth/device-login*` exist: a fleet with a chat connection, or the public link, answers 404 there.
+   * `/auth/device-login*` exist: a fleet with a chat connection, web authorization off, or the public link, answers 404 there.
    */
   readonly webDeviceLogins?: DeviceLoginRequests | null;
+  /**
+   * Refs #3061: device-code sign-in is open right now — a web-only fleet with web authorization on (with it off no one
+   * can approve, so nothing is offered). Asked again after the body is read. Absent: not open.
+   */
+  deviceLoginAvailable?(): boolean;
 }
 
 export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /web.";
@@ -306,7 +311,7 @@ export function handleAuthRequest(
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
     const link = gatewayRequestContext(req);
     serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
-      deviceLogin: !link && !!ctx.webDeviceLogins });
+      deviceLogin: !link && ctx.deviceLoginAvailable?.() === true });
     return true;
   }
 
@@ -371,7 +376,7 @@ export function handleAuthRequest(
   if (path === "/auth/device-login" || path === "/auth/device-login/poll" || path === "/auth/device-login/cancel") {
     if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
     const token = ctx.webToken, logins = ctx.webDeviceLogins, sessions = ctx.webSessions;
-    if (gatewayRequestContext(req) || !token || !logins || !sessions || ctx.isWebOnlyFleet?.() !== true) { json(res, 404, { error: "not_found" }); return true; }
+    if (gatewayRequestContext(req) || !token || !logins || !sessions || ctx.deviceLoginAvailable?.() !== true) { json(res, 404, { error: "not_found" }); return true; }
     // As the one-time code's own exchange: Origin required, from this very site, JSON.
     if (!req.headers.origin || !isSameOriginRequest(gateReq)) { json(res, 403, { error: "Cross-site request rejected" }); return true; }
     if (!isJsonRequest(req)) { json(res, 415, { error: "expected application/json" }); return true; }
@@ -381,16 +386,19 @@ export function handleAuthRequest(
     const userAgent = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined;
     void readJsonBody(req).then(body => {
       if (!body) { json(res, 400, { error: "expected a JSON object" }); return; }
-      if (!isWebRequestCurrent(req) || ctx.webToken !== token || ctx.isWebOnlyFleet?.() !== true) { json(res, 404, { error: "not_found" }); return; }
+      // …and again now the body is in: the switch may have gone off, or the fleet changed, while it arrived.
+      if (!isWebRequestCurrent(req) || ctx.webToken !== token || ctx.deviceLoginAvailable?.() !== true) { json(res, 404, { error: "not_found" }); return; }
       if (path === "/auth/device-login/cancel") { logins.cancel(held); json(res, 200, { ok: true }, { "Set-Cookie": gone }); return; }
 
       if (path === "/auth/device-login") {
         // The server's own reading of who is asking — never anything the body says: a label for the person approving
         // (a coarse User-Agent hint, display only), whether the request came from this computer or the network, and
-        // the peer's address (also the key the rate limits count by).
-        const address = (req.socket?.remoteAddress ?? "unknown").replace(/^::ffff:/, "").slice(0, 64);
+        // the peer's address. The approver is shown the whole of it; the rate limits count an IPv6 one by its /64
+        // (peerKeyOf) and an IPv4 one as it is — from the socket, never a header, so behind a reverse proxy on this
+        // machine every device is one address and shares one allowance.
+        const address = (req.socket?.remoteAddress ?? "unknown").replace(/^::ffff:/i, "").slice(0, 64);
         const peer = classifyWebPeer(req) === "loopback" ? "host" as const : "network" as const;
-        const made = logins.create({ epoch, peerKey: address, label: labelFromUserAgent(userAgent), peer, address, ...(held ? { replaces: held } : {}) });
+        const made = logins.create({ epoch, peerKey: peerKeyOf(req.socket?.remoteAddress ?? "unknown"), label: labelFromUserAgent(userAgent), peer, address, ...(held ? { replaces: held } : {}) });
         if (made.kind === "limited") {
           ctx.logger.warn({ address }, "Device sign-in code requests limited");
           json(res, 429, { error: "limited", retryAfterMs: made.retryAfterMs }, { "Retry-After": String(Math.ceil(made.retryAfterMs / 1000)), ...(held ? { "Set-Cookie": gone } : {}) });

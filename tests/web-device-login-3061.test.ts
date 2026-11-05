@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildDeviceLoginCookie, clearDeviceLoginCookie, DEVICE_APPROVE_PAUSE_MS, DEVICE_APPROVE_THRESHOLD, DEVICE_LOGIN_COOKIE, DEVICE_LOGIN_CREATE_WINDOW_MS,
   DEVICE_LOGIN_CREATES_GLOBAL, DEVICE_LOGIN_CREATES_PER_PEER, DEVICE_LOGIN_TTL_MS, DeviceLoginRequests, MAX_PENDING_DEVICE_LOGINS, MAX_PENDING_PER_PEER,
-  readDeviceLoginCookie, type DeviceLoginCreate,
+  peerKeyOf, readDeviceLoginCookie, type DeviceLoginCreate,
 } from "../src/web-device-login.js";
 import { fleetCookieName } from "../src/web-cookie-names.js";
 
@@ -186,6 +186,53 @@ describe("#3061 P2a: asking for codes is rate-limited, per address and for the f
     const { r, ask } = setup();
     for (let i = 0; i < MAX_PENDING_DEVICE_LOGINS; i++) ask();
     for (let i = 0; i < 20; i++) expect(r.create({ epoch: EPOCH, peerKey: "10.5.5.5", label: "x", peer: "network", address: "10.5.5.5" }).kind).toBe("full");
+  });
+});
+
+describe("#3061 P2a (review): the per-address table forgets, and IPv6 counts by its /64", () => {
+  it("addresses seen once do not pile up: after thousands, the table holds only what the window admitted", () => {
+    const { r, advance } = setup();
+    for (let i = 0; i < 5000; i++) {
+      const made = r.create({ epoch: EPOCH, peerKey: `once-${i}`, label: "x", peer: "network", address: "10.0.0.1" });
+      expect(made.kind).toBe("ok");
+      if (made.kind === "ok") r.cancel(made.requestId);
+      advance(40_000);                                            // the fleet-wide allowance (20 per 10 min) is never what stops this
+      expect(r.rateTableSize).toBeLessThanOrEqual(DEVICE_LOGIN_CREATES_GLOBAL);
+    }
+    expect(r.rateTableSize).toBeLessThanOrEqual(DEVICE_LOGIN_CREATE_WINDOW_MS / 40_000);
+    advance(DEVICE_LOGIN_CREATE_WINDOW_MS);
+    r.create({ epoch: EPOCH, peerKey: "last", label: "x", peer: "network", address: "10.0.0.1" });
+    expect(r.rateTableSize).toBe(1);                                // everything older than the window is gone, whoever it was
+  });
+
+  it("sweeping does not forget an address still inside its window: its allowance keeps counting", () => {
+    const { r, advance } = setup();
+    const ask = (peerKey: string) => r.create({ epoch: EPOCH, peerKey, label: "x", peer: "network", address: "10.0.0.1" });
+    for (let i = 0; i < DEVICE_LOGIN_CREATES_PER_PEER; i++) { const m = ask("busy"); if (m.kind === "ok") r.cancel(m.requestId); advance(1000); }
+    for (let i = 0; i < 5; i++) { ask(`other-${i}`); advance(1000); }
+    expect(ask("busy").kind).toBe("limited");
+  });
+
+  it.each([
+    ["127.0.0.1", "127.0.0.1"], ["192.168.1.5", "192.168.1.5"],
+    ["::ffff:192.168.1.5", "192.168.1.5"], ["::ffff:c0a8:0105", "192.168.1.5"], ["::FFFF:192.168.1.5", "192.168.1.5"],
+    ["2001:db8:1:2:3:4:5:6", "2001:db8:1:2::/64"], ["2001:db8:1:2::9", "2001:db8:1:2::/64"], ["2001:DB8:1:2:ffff::", "2001:db8:1:2::/64"],
+    ["2001:db8::1", "2001:db8:0:0::/64"], ["2001:db8:0:0:0:0:0:1", "2001:db8:0:0::/64"], ["fe80::1%eth0", "fe80:0:0:0::/64"],
+    ["::1", "0:0:0:0::/64"], ["64:ff9b::1.2.3.4", "64:ff9b:0:0::/64"], ["unknown", "unknown"],
+  ])("peerKeyOf(%s) = %s", (address, key) => { expect(peerKeyOf(address)).toBe(key); });
+
+  it("a different /64 is a different key; the same /64 is one", () => {
+    expect(peerKeyOf("2001:db8:1:2::1")).toBe(peerKeyOf("2001:db8:1:2:aaaa:bbbb:cccc:dddd"));
+    expect(peerKeyOf("2001:db8:1:2::1")).not.toBe(peerKeyOf("2001:db8:1:3::1"));
+    expect(peerKeyOf("10.0.0.5")).not.toBe(peerKeyOf("10.0.0.6"));
+  });
+
+  it(`${DEVICE_LOGIN_CREATES_PER_PEER} codes per window for a whole /64, however many addresses in it ask; the next /64 is not held back`, () => {
+    const { r } = setup();
+    const ask = (address: string) => r.create({ epoch: EPOCH, peerKey: peerKeyOf(address), label: "x", peer: "network", address });
+    for (let i = 1; i <= DEVICE_LOGIN_CREATES_PER_PEER; i++) { const m = ask(`2001:db8:1:2::${i.toString(16)}`); expect(m.kind).toBe("ok"); if (m.kind === "ok") r.cancel(m.requestId); }
+    expect(ask("2001:db8:1:2:ffff:ffff:ffff:ffff").kind).toBe("limited");
+    expect(ask("2001:db8:1:3::1").kind).toBe("ok");
   });
 });
 
