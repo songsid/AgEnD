@@ -34,7 +34,7 @@ register("needs", {
     notifyMobile: "On a phone, rely on your chat app's notification: a new item is a new post in General.", notifyMobileWeb: "On a phone, open this page to see what needs you.",
     notifyInsecure: "Notifications need a secure address (localhost or the HTTPS public link), not a plain-HTTP LAN address.",
     notifyUnsupported: "This browser cannot show notifications.", turnOn: "Turn on", turnOff: "Turn off",
-    typePrompt: "Fleet prompt", typeAwaiting: "At its terminal", typeInstance: "Instance", typeDelivery: "Delivery",
+    typePrompt: "Fleet prompt", typeAwaiting: "At its terminal", typeInstance: "Instance", typeDelivery: "Delivery", typeMissed: "Missed while offline",
   },
   "zh-TW": {
     title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
@@ -47,10 +47,18 @@ register("needs", {
     notifyMobile: "在手機上請以聊天 app 的通知為主：每個新項目都會在 General 發一則新訊息。", notifyMobileWeb: "在手機上請打開這個頁面查看等你處理的事。",
     notifyInsecure: "通知需要安全的網址（localhost 或 HTTPS 公開連結），區網的一般 HTTP 網址不行。",
     notifyUnsupported: "這個瀏覽器無法顯示通知。", turnOn: "開啟", turnOff: "關閉",
-    typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Instance", typeDelivery: "傳送",
+    typePrompt: "Fleet 提示", typeAwaiting: "在終端機上", typeInstance: "Instance", typeDelivery: "傳送", typeMissed: "離線時錯過",
   },
 });
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
+/** Stale shells keep the old app-i18n.js; a missing key would otherwise show as app.needs_reason_*. */
+function itemReason(item) {
+  const text = reasonText(item);
+  if (typeof text === "string" && text.startsWith("app.needs_reason_") && (item.type === "missed" || item.reason === "missed_offline")) {
+    return tn("typeMissed");
+  }
+  return text;
+}
 
 /**
  * The page's claims on what Needs you writes, kept for the life of the page — not of a panel or a render (#1463
@@ -86,7 +94,7 @@ const setClaim = (kind, key, value) => claims.set((c) => {
   return { ...c, [kind]: next };
 });
 
-const ICON = { prompt: "chat", awaiting_input: "clock", instance: "alert", delivery: "send", task: "tasks" };
+const ICON = { prompt: "chat", awaiting_input: "clock", instance: "alert", delivery: "send", task: "tasks", missed: "clock" };
 const BAD = new Set(["crashed", "delivery_failed", "hang", "exited"]);
 
 /**
@@ -195,12 +203,12 @@ function NeedsItem({ item, nowMs, owner }) {
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${reasonText(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      <div class="n-title"><strong>${itemReason(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
       ${detailOf(item) ? html`<p class="n-detail">${detailOf(item)}</p>` : null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
-        ${item.type === "delivery" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
+        ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
         ${item.type === "task" && item.card ? html`<a class="btn btn-sm" href=${`/ui/fleet?card=${encodeURIComponent(item.card.code)}`}>${tn("openCard")}</a>` : null}
