@@ -8876,8 +8876,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    *
    * Prism #3073: no estimate rather than a wrong one —
    * - a window is measured only where the ledger has its hours: kept (31 days) and scanned (`days.coverage`) for every
-   *   instance whose hours count for the account; the quota history goes back 12 weeks;
-   * - a profile literally named "default", "unknown" or "unrecorded" makes those hours ambiguous: neither the host
+   *   instance of the account's backend, and every instance whose hours count for it; the quota history goes back 12 weeks;
+   * - a profile literally named "default", "unknown" or "unrecorded" (configured, on disk, or in the quota history) makes
+   *   those hours ambiguous: neither the host
    *   account nor the named one is estimated (each would be credited the other's use, or lose its own);
    * - only a metric the vendor marks per-model (`scope: "model"`) is filtered by model; another named weekly pool
    *   ("Luna Reserve (weekly)", Antigravity pools) is no model name and is not estimated.
@@ -8892,10 +8893,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const now = Date.now(), DAY = 24 * 3_600_000, HOUR = 3_600_000;
       const keptFrom = now - KEEP_DAYS * DAY + HOUR;           // the oldest hour still in every ledger (an hour of margin)
       // Profiles whose names are also the ledger's own tags: their hours cannot be told from the host's / unattributed.
+      // Any trace of such a profile counts (Prism #3073 r2), not only today's config — a binding removed or switched
+      // leaves its hours in the ledger: configured now, its directory on this host, or its account in the quota history.
       const RESERVED = new Set(["default", "unknown", PROFILE_UNRECORDED]);
+      const historyProviders = new Set(readings.map((r) => r.provider));
       const reservedNamed = new Map<string, Set<string>>();
-      const reservedFor = (backend: string): Set<string> => reservedNamed.get(backend)
-        ?? reservedNamed.set(backend, new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)))).get(backend)!;
+      const reservedFor = (backend: string): Set<string> => {
+        const known = reservedNamed.get(backend);
+        if (known) return known;
+        const found = new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)));
+        const base = usageProviderIdForBackend(backend);
+        for (const n of RESERVED) {
+          if (base && historyProviders.has(`${base}:${n}`)) found.add(n);
+          if (credentialHomeSpec(backend) && existsSync(credentialProfileHome(this.dataDir, backend, n))) found.add(n);
+        }
+        return reservedNamed.set(backend, found).get(backend)!;
+      };
+      // Every instance of a backend may have used any of its accounts (bindings change): an account is measured only
+      // where all of them were scanned (Prism #3073 r2) — one still waiting for its first scan has no hours yet, not none.
+      const daysOfBase = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        const base = usageProviderIdForBackend(inst.inst.backend);
+        if (base) (daysOfBase.get(base) ?? daysOfBase.set(base, []).get(base)!).push(inst.days);
+      }
       // provider id → hour → model key → totals; and the instances whose hours count for it (their scan coverage).
       const byProvider = new Map<string, Map<number, Record<string, HourTotals>>>();
       const daysOf = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
@@ -8940,7 +8960,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           if (all > 0) hours.push({ hour, api, output, all });
         }
-        const scanned = daysOf.get(provider) ?? [];
+        const base = provider.split(":")[0]!;
+        const scanned = [...new Set([...(daysOf.get(provider) ?? []), ...(daysOfBase.get(base) ?? [])])];
         const available = (from: number, to: number): boolean => {
           if (from < keptFrom || !scanned.length) return false;
           for (let h = from; h <= to; h += HOUR) if (!scanned.every((d) => covered(d, h))) return false;

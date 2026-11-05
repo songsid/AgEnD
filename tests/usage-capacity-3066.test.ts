@@ -179,14 +179,16 @@ describe("the fleet's refresh (#3066 §1)", () => {
   /** Everything from 40 days back to now scanned. */
   const scanned = () => ({ coverage: [[T0 - 40 * 24 * H, T0 + 3 * 24 * H]] });
   const hoursOf = (src: string, model: string, n: number, from = T0) => Object.fromEntries(Array.from({ length: n }, (_, i) => [String(from + i * H), { m: {}, g: [], src: { [src]: { [`${model}|0`]: [1, 100, 0, 0, 0, 0, 900] } } }]));
-  const fleetWith = async (lines: QuotaReading[], instances: Array<{ hours: Record<string, unknown>; days?: unknown }>, fleetConfig?: unknown) => {
-    const home = join(dir, "home"); mkdirSync(home, { recursive: true });
+  let homes = 0;
+  const fleetWith = async (lines: QuotaReading[], instances: Array<{ hours: Record<string, unknown>; days?: unknown; backend?: string }>, fleetConfig?: unknown, profileDirs: string[] = []) => {
+    const home = join(dir, `home${++homes}`); mkdirSync(home, { recursive: true });
     const fm = new FleetManager(home);
     if (fleetConfig) (fm as any).fleetConfig = fleetConfig;
+    for (const d of profileDirs) mkdirSync(join(home, "credential-profiles", d), { recursive: true });
     const hist = join(dir, "h.jsonl");
     writeFileSync(hist, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
     await setQuotaHistoryFileForTests(hist);
-    vi.spyOn(fm as any, "cacheServiceFor").mockReturnValue({ usageData: async () => ({ scanning: {}, instances: instances.map((x, i) => ({ inst: { name: `i${i}` }, status: "ok", ledger: { hours: x.hours }, days: x.days ?? scanned() })) }) });
+    vi.spyOn(fm as any, "cacheServiceFor").mockReturnValue({ usageData: async () => ({ scanning: {}, instances: instances.map((x, i) => ({ inst: { name: `i${i}`, backend: x.backend ?? "claude-code" }, status: "ok", ledger: { hours: x.hours }, days: x.days ?? scanned() })) }) });
     await fm.refreshCapacity();
     return (fm as any).capacityEstimates as Map<string, any>;
   };
@@ -196,13 +198,34 @@ describe("the fleet's refresh (#3066 §1)", () => {
     const cfg = (name: string) => ({ instances: { x: { backend: "claude-code", backend_options: { "claude-code": { credential_profile: name } } } } });
     const named = await fleetWith(lines, [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }], cfg("default"));
     expect([...named.keys()]).toEqual([]);                        // never credited to the host account
-    // Control: an ordinary named profile beside the host — the host is estimated from its own hours.
-    const control = await fleetWith(lines, [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }], cfg("hsinlin"));
+    // Control: an ordinary named profile beside the host — the host is estimated from its own hours. (Its history
+    // holds no "claude:default": that alone would make it ambiguous, r2.)
+    const control = await fleetWith(lines.slice(0, 2), [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }], cfg("hsinlin"));
     expect(control.get("claude\u0000Weekly")?.status).toBe("ok");
     // "unrecorded" named for codex: its hours are not dropped as no one's while the account is estimated without them.
     const cx = [{ ...rd(T0, 0), provider: "codex:unrecorded", profile: "unrecorded" }, { ...rd(T0 + 20 * H, 20), provider: "codex:unrecorded", profile: "unrecorded" }];
     const unrec = await fleetWith(cx, [{ hours: hoursOf("codex:unrecorded", "gpt-5.5", 20) }], { instances: { y: { backend: "codex", backend_options: { codex: { credential_profile: "unrecorded" } } } } });
     expect([...unrec.keys()]).toEqual([]);
+  });
+  it("Prism #3073 r2: a named reserved profile no longer configured still makes the account ambiguous (history, or its directory)", async () => {
+    const hostLines = [host(rd(T0, 0)), host(rd(T0 + 20 * H, 20))];
+    const namedLines = [{ ...rd(T0, 0), provider: "claude:default", profile: "default" }, { ...rd(T0 + 20 * H, 20), provider: "claude:default", profile: "default" }];
+    const buckets = [{ hours: hoursOf("claude:default", "claude-opus-4-5", 20) }];
+    // configure → record → remove: the binding is gone; its readings stay in the quota history.
+    expect([...(await fleetWith([...hostLines, ...namedLines], buckets)).keys()]).toEqual([]);
+    // … or only its profile directory is left on this host.
+    expect([...(await fleetWith(hostLines, buckets, undefined, ["claude-code/default"])).keys()]).toEqual([]);
+    // Control: no trace of a named "default" — the host's own hours are its.
+    expect((await fleetWith(hostLines, buckets, undefined, ["claude-code/hsinlin"])).get("claude\u0000Weekly")?.status).toBe("ok");
+  });
+  it("Prism #3073 r2: an instance of the backend still waiting for its first scan (no hours, no coverage) holds the estimate back", async () => {
+    const lines = [rd(T0, 0), rd(T0 + 20 * H, 20)];
+    const hs = { hours: hoursOf("claude:hsinlin", "claude-opus-4-5", 20) };
+    expect((await fleetWith(lines, [hs, { hours: {}, days: { coverage: [] } }])).has("claude:hsinlin\u0000Weekly")).toBe(false);
+    // Control: the sibling was scanned and used nothing — zero is known, the estimate stands.
+    expect((await fleetWith(lines, [hs, { hours: {} }])).get("claude:hsinlin\u0000Weekly")?.status).toBe("ok");
+    // Another backend's pending instance is no contributor.
+    expect((await fleetWith(lines, [hs, { hours: {}, days: { coverage: [] }, backend: "codex" }])).get("claude:hsinlin\u0000Weekly")?.status).toBe("ok");
   });
   it("Prism #3073 P2: only a vendor per-model weekly is filtered by model; a named pool (Luna Reserve) gets no estimate", async () => {
     const lines = [rd(T0, 0, undefined, "Luna Reserve (weekly)"), rd(T0 + 20 * H, 20, undefined, "Luna Reserve (weekly)"),
