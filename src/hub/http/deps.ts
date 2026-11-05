@@ -3,7 +3,7 @@
  * step 5, agreed with S5 on cid-hub-s3b-deps). Types only — importing this file creates no state.
  */
 import type Database from "better-sqlite3";
-import type { HubAskerEnvelope, HubAuditSink, HubDirectory, HubServerTransport, HubTx, HubUnitOfWork, PersonKey } from "../types.js";
+import type { HubAskerEnvelope, HubAuditSink, HubDirectory, HubMode, HubServerTransport, HubTx, HubUnitOfWork, PersonKey } from "../types.js";
 import type { HubPairingService } from "../pairing.js";
 import type { HubTransportStore } from "../store.js";
 
@@ -34,10 +34,10 @@ export interface HubHttpDeps {
   config: HubHttpConfig;
   issuer: HubIssuer;
   /** Re-read on every use: null before HubServer exists and after fence/close — then work is unavailable, never queued. */
-  transport(): HubServerTransport | null;
+  transport(): Pick<HubServerTransport, "send"> | null;
   content: HubContentStore;
-  /** False once the server is fenced: every request and continuation refuses from then on. */
-  current(): boolean;
+  /** The server's mode (S5): `serverEnabled()` false once fenced — every request and continuation refuses from then on. */
+  current(): HubMode;
   now?: () => number;
 }
 /**

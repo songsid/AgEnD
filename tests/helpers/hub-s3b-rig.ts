@@ -90,7 +90,7 @@ export async function s3bRig(opts: { now?: () => number } = {}) {
     fenceFleet: () => {}, now: opts.now });
   const config = Object.freeze({ hubId, name: "Team Hub", webOrigin: WEB_ORIGIN, administrator: admin });
   const http = createHubHttp({ uow, audit, directory, pairing, store, config, issuer, content,
-    transport: () => (transportOn && enabled ? transport : null), current: () => enabled, now: opts.now }, sql);
+    transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now }, sql);
 
   const server: Server = createServer((req, res) => { if (!http.handle(req, res)) { res.writeHead(404); res.end("fleet-404"); } });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

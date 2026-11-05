@@ -40,7 +40,7 @@ it("pairs, publishes, grants, asks, leases and answers end to end over S1's real
 
   // S5 (faked as agreed): the DB with every migration, unit of work, audit, content.
   const db = new Database(join(root, "hub.sqlite")); chmodSync(join(root, "hub.sqlite"), 0o600);
-  cleanup.push(() => db.close());
+  cleanup.push(() => { db.close(); });
   migrateHubTransportStore(db); for (const m of HUB_HTTP_MIGRATIONS) m.up(db);
   db.exec("CREATE TABLE audit_rows (value TEXT NOT NULL)");
   const live = new WeakMap<HubTx, Database.Database>(), audits: HubAuditRecord[] = [], contents = new Map<string, { question?: string; answer?: string }>();
@@ -63,7 +63,7 @@ it("pairs, publishes, grants, asks, leases and answers end to end over S1's real
   let enabled = true, server!: HubServer;
   const pairing = new HubPairingService({ store, directory, enabled: () => enabled, fenceFleet: (id, reason) => server?.fenceFleet(id, reason),
     identity: { hubId: identity.hubId, memberOrigin, webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey } });
-  const http = createHubHttp({ uow, audit, directory, pairing, store, content, current: () => enabled, transport: () => (enabled ? server : null),
+  const http = createHubHttp({ uow, audit, directory, pairing, store, content, current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), transport: () => (enabled ? server : null),
     config: Object.freeze({ hubId: identity.hubId, name: "Team Hub", webOrigin, administrator: people.get("admin")! }),
     issuer: { keyId: identity.issuerKeyId, sign: (e) => signAsker(e, issuerKey) } }, sql);
   server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing,

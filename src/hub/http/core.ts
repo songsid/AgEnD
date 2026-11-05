@@ -21,7 +21,8 @@ export class HubCore {
   constructor(readonly deps: HubHttpDeps, private readonly sql: HubTxDatabase) {}
   now(): number { return this.deps.now?.() ?? Date.now(); }
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
-  check(): void { if (!this.deps.current()) throw new HubProtocolError("unavailable"); }
+  live(): boolean { try { return this.deps.current().serverEnabled() === true; } catch { return false; } }
+  check(): void { if (!this.live()) throw new HubProtocolError("unavailable"); }
   /** One synchronous unit of work on the Hub DB; a promise returned from `work` is refused. */
   atomic<T>(work: (db: Database.Database, tx: HubTx) => T): T {
     this.check();

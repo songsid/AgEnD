@@ -104,7 +104,7 @@ export class HubSessions {
 
   /** The current session of this token, or null (ended, expired, idle, or the server fenced). Refreshes "seen". */
   session(token: string | null): (HubSessionView & { token: string }) | null {
-    if (!token || !this.core.deps.current()) return null;
+    if (!token || !this.core.live()) return null;
     const now = this.core.now();
     return this.core.atomic((db) => {
       const row = db.prepare(`SELECT s.id, s.person, s.created_at, s.seen_at, s.expires_at, s.state, p.realm, p.object_id, p.display_name, p.login_label

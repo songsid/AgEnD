@@ -31,6 +31,8 @@ import { serveHubWorkspaceShell } from "../../web-api.js";
 import { servePublicAsset } from "../../auth-api.js";
 
 export { HUB_HTTP_MIGRATIONS };
+/** S5's lazy entry (HubHttpEntry): this module itself — `createHubHttp` and `migrations`. */
+export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
@@ -81,7 +83,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const rooms = new HubRoomsService(core, policy);
   const uiDir = join(__dirname, "..", "..", "ui");
   let closed = false;
-  const live = () => !closed && deps.current();
+  const live = () => !closed && core.live();
 
   /** One API request: method and path enumerated, mutations same-origin with the session's CSRF token. */
   async function api(req: IncomingMessage, res: ServerResponse, path: string, query: URLSearchParams): Promise<void> {

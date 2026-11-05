@@ -122,14 +122,25 @@ describe("the shell", () => {
     expect(pg.root.querySelector(".hub-switch")).toBeNull();
   });
   it("a Hub workspace: AgEnD Hub · its name; Ask / My exposures / Administration; no fleet list; zh-TW", async () => {
-    stub();
+    const fetched: string[] = [];
+    const realFetch = g.fetch;
+    g.fetch = async (url: string) => { fetched.push(String(url)); return { ok: true, status: 200, json: async () => ({ signedIn: false }), text: async () => "", headers: { get: () => null } }; };
+    try {
+    client.setHubClient(client.createHubWebClient());
+    hubPanel.resetHubSession();
     const pg = await app("hub", "/ui/hub/exposures", "Team Hub");
     expect(pg.root.querySelector(".hub-brand")!.textContent).toBe("AgEnD Hub · Team Hub");
     const rows = [...pg.root.querySelectorAll(".side-nav a.side-row")].map((a: any) => [a.textContent, a.getAttribute("href"), a.getAttribute("aria-current")]);
     expect(rows).toEqual([["Ask", "/ui/hub", null], ["My exposures", "/ui/hub/exposures", "page"], ["Administration", "/ui/hub/admin", null]]);
     expect(pg.root.querySelector("#instanceList")).toBeNull();
+    // S3b: none of the fleet's bottom tabs or rails; the session row is the Hub's own (never /auth/session).
+    expect([pg.root.querySelector("nav.tabs"), pg.root.querySelector(".u-rail-body")]).toEqual([null, null]);
+    await until(() => pg.root.querySelector(".hub-session"));
+    expect(pg.root.querySelector(".side-foot .hub-session")).not.toBeNull();
+    expect(fetched.filter((u) => !u.startsWith("/hub/v1/") && !u.startsWith("/assets/"))).toEqual([]);
     i18n.setLang("zh-TW", { store: false }); await settle(5);
     expect([...pg.root.querySelectorAll(".side-nav a.side-row")].map((a: any) => a.textContent)).toEqual(["提問", "我的公開 Agent", "管理"]);
+    } finally { g.fetch = realFetch; }
   });
 });
 
