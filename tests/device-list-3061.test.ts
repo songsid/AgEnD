@@ -192,6 +192,17 @@ describe("#3061 P2b: the device list", () => {
     expect(await list(chat, admin)).toEqual({ webOnly: false, owner: false, devices: [] });
   }, 40_000);
 
+  it("the methods themselves hand nothing to a guest (the gate's guest scope stops one first; this is the second line)", async () => {
+    const h = await startFleet();
+    const owner = await h.hostSignIn();
+    const guest = h.stored({ tier: "guest", label: "A guest" });
+    const asked = (s: Signed) => ({ method: "GET", headers: { cookie: s.cookie, host: `127.0.0.1:${h.port}` }, socket: { remoteAddress: "127.0.0.1" } });
+    expect(h.any.webDevicesStatus(asked(guest))).toEqual({ webOnly: true, owner: false, devices: [] });
+    expect(h.any.webDevicesStatus(asked(owner)).devices.map((r: { label: string }) => r.label).sort()).toEqual([h.sessionOf(owner)!.label]);
+    expect(h.any.webDeviceSignOut(asked(guest), handleOf(h, owner))).toEqual({ status: 403, body: { error: "owner_required" } });
+    expect(await h.alive(owner)).toBe(true);
+  }, 30_000);
+
   it("describes a session by what its record carries (display only: authority never reads it)", () => {
     expect(sessionVia({})).toBe("code");
     expect(sessionVia({ host: true })).toBe("host");
@@ -273,6 +284,17 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     expect((await h.local(owner, "GET", "/ui/devices/signout")).status).not.toBe(200);
     expect(await h.alive(target)).toBe(true);
   }, 40_000);
+
+  it("a sign-out the session file could not record is said so (500, not durable) — never 'ok': a restart may bring the device back", async () => {
+    const h = await startFleet();
+    const owner = await h.hostSignIn();
+    const other = h.stored({ label: "Plain code" });
+    vi.spyOn(h.any.webSessions, "persistNow").mockReturnValue(false);
+    const res = await signOut(h, owner, handleOf(h, other));
+    expect([res.status, parse(res)]).toEqual([500, { ok: false, durable: false, error: "not_durable" }]);
+    expect(h.sessionOf(other)).toBeNull();                                                // gone from memory all the same
+    expect(h.infos.some(([o, m]) => m === "Device signed out by the owner" && o.durable === false)).toBe(true);
+  }, 30_000);
 
   it("THE OLDER WAY IN is closed the same: DELETE /auth/sessions/<handle> and DELETE /auth/sessions by a non-owner are 403 — while ending one's OWN session stays everyone's", async () => {
     const h = await startFleet();
