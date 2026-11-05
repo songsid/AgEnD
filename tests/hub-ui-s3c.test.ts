@@ -69,7 +69,7 @@ describe("the card's picker and pending rows", () => {
     await until(() => pg.root.querySelector(".hub-exposure input"));
     return pg;
   }
-  const fakeClient = (rows: any[], setExposed = vi.fn(async () => ({ ok: true, view: rows[0] }))) => ({
+  const fakeClient = (rows: any[], setExposed: any = vi.fn(async () => ({ ok: true, view: rows[0] }))) => ({
     stub: false, pairing: async () => ({ state: "paired", hub: { hubId: "h", name: "Team", memberOrigin: "https://hub.test", webOrigin: "https://hub.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "online" }),
     subscribe: () => () => {}, exposures: async () => rows, setExposed });
   it("switching on opens the picker (one choice preselected); Share sends the pick; a 202 says it waits for confirmation", async () => {
