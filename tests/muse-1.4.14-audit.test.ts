@@ -19,6 +19,19 @@ const verdict = (p: string) => ({
 });
 const IDLE = { background: false, busy: false, idle: true, draft: [], dialogs: [], errors: [] };
 const ABNORMAL = /warning: the previous run of this session ended abnormally around .+ \(no clean shutdown was\n\s+recorded\)\. It was resumed cleanly\./;
+/** 1.4.14-R7309.1 empty-composer hints (offsets 11216301 / 11216047). Removing either must fail (#3090). */
+const HINTS_1414 = [
+  "Ask to monitor a running build or log and get pinged on changes",
+  "Ask to 'use a workflow' to fan out parallel agents on big tasks",
+];
+
+function withComposer(idle: string, text: string): string {
+  const lines = idle.split("\n");
+  const i = lines.findIndex(l => l === "❯");
+  if (i < 0) throw new Error("idle fixture has no empty prompt");
+  lines[i] = text === "" ? "❯" : `❯ ${text}`;
+  return lines.join("\n");
+}
 
 describe("Muse 1.4.14: the 1.4.13 surfaces, re-captured", () => {
   it.each(["echo-idle", "echo-done", "echo-resumed", "meta-idle", "meta-done", "prod-escalation-denied", "approval-escalated-after-esc", "approval-untrusted-after-1"])(
@@ -77,6 +90,33 @@ describe("Muse 1.4.14: the 1.4.13 surfaces, re-captured", () => {
     "%s has the same detector verdict on 1.4.13 and 1.4.14", name => {
       expect(verdict(pane(name))).toEqual(verdict(pane13(name)));
     });
+});
+
+describe("Muse 1.4.14 empty-composer hints are not a draft (#3090)", () => {
+  it("the live parked pane with the monitor-build hint proves idle", () => {
+    const p = pane("live-idle-placeholder");
+    expect(p).toContain(HINTS_1414[0]);
+    expect(p).not.toMatch(/agend-delivery-id/i);
+    expect(backend.getReadyPattern().test(p)).toBe(true);
+    expect(verdict(p)).toEqual(IDLE);
+  });
+
+  it.each(HINTS_1414)("catalog hint %s is empty", hint => {
+    const p = withComposer(pane("echo-idle"), hint);
+    expect(verdict(p)).toEqual(IDLE);
+  });
+
+  it("a prefix of a 1.4.14 hint is typed text", () => {
+    expect(verdict(withComposer(pane("echo-idle"), "Ask to monitor a running build"))).toMatchObject({
+      busy: false, idle: false, draft: ["Ask to monitor a running build"],
+    });
+  });
+
+  it("a 1.4.14 hint plus extra characters is typed text", () => {
+    expect(verdict(withComposer(pane("echo-idle"), `${HINTS_1414[1]} please`))).toMatchObject({
+      busy: false, idle: false, draft: [`${HINTS_1414[1]} please`],
+    });
+  });
 });
 
 describe("Muse 1.4.14: a resume after the process was lost (resume_reconcile:orphaned_by_process_loss)", () => {
