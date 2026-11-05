@@ -35,8 +35,10 @@ vi.mock("../src/daemon.js", async importOriginal => {
     seeded = false;
     pauseReasons: string[] = [];
     leaseCheck: (() => boolean) | null = null;
+    credentialIssuer: ((token: string) => void) | null = null;
     constructor(public name: string) { super(); fake.created.push(this); }
     setDeliveryOutboxPort() {}
+    setAgentCredentialIssuer(issue: (token: string) => void) { this.credentialIssuer = issue; }
     setPeerWorkingDirectories() {}
     setStatusEmojiAvoidList() {}
     setWorkLeaseCheck(check: () => boolean) { this.leaseCheck = check; }
@@ -113,6 +115,17 @@ const oomStop = () => ({ owner: { bootId: "old-owner", spawnGeneration: 1, launc
   sessionKey: JSON.stringify(["claude-code", "old-session"]), configuration: "a".repeat(64), stoppedAt: 100, count: 2, victim: { pid: 123, at: 99 }, evidence: selfEvidence() });
 
 describe("#2473 stage2: only an explicit per-instance retry lifts the durable stop", () => {
+  it("binds credential issuance to the daemon's lifecycle generation", async () => {
+    const { fm, config } = fleet();
+    await fm.lifecycle.start("worker", config, false);
+    const daemon = fake.created[0];
+    daemon.credentialIssuer("inert-issued-token");
+    expect(fm.agentCredentials.capture("worker", "inert-issued-token")).not.toBeNull();
+    await fm.lifecycle.stop("worker");
+    expect(fm.agentCredentials.capture("worker", "inert-issued-token")).toBeNull();
+    expect(() => daemon.credentialIssuer("inert-late-token")).toThrow(SupersededStartError);
+    expect(fm.agentCredentials.capture("worker", "inert-late-token")).toBeNull();
+  });
   it("cold starts and delayed retries do not construct a daemon for the stopped session", async () => {
     const { fm, config, dir } = fleet(); writeSessionOomStop(dir, oomStop());
     await expect(fm.startInstance("worker", config, false)).rejects.toMatchObject({ code: "SESSION_OOM_STOPPED" });
