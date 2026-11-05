@@ -1878,6 +1878,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
           pokeAttention: () => this.needsYou?.poke(),
+          linkState: state => { this.hubMemberLink = state; },
         },
       });
       // Stop began during the import: it holds this promise and closes the runtime; do not hand it out again.
@@ -1901,6 +1902,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.attachHubMemberPairing(createHubMemberPairingApi({
       home: this.dataDir,
       enabled: () => (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
+      link: () => (this.hubMemberLink === "online" ? "online" : "offline"),
+      hold: () => (this.hubMemberLink === "revoked" ? "revoked" : null),
       // Disconnect: stop the member client now (the runtime re-composes from the saved binding, fencing first).
       fence: () => { void this.hubRuntime?.refresh(); },
       // A claim saved, a disconnect tombstone or a cancel: re-compose the member side for the new binding.
@@ -1984,6 +1987,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubRuntime: import("./hub/runtime.js").HubRuntime | null = null;
   /** S3c's currentBinding reader, loaded with the pairing API (only while the member switch is on). */
   private hubMemberBinding: ((home: string) => { hubId: string } | null) | null = null;
+  /** The member link as the "Connect to a Hub" view shows it (S5's client lifecycle). */
+  private hubMemberLink: "online" | "offline" | "revoked" = "offline";
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;

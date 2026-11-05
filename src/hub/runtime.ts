@@ -29,7 +29,7 @@ export const MEMBER_COMPONENTS: HubMemberComponents = {
 };
 
 /** What the fleet gives the member side (FleetManager): its binding, agents and attachment points. */
-export type HubMemberHost = Pick<HubMemberFactoryOptions, "boundHub" | "agents" | "attachExposures" | "attachAttention" | "pokeAttention"> & {
+export type HubMemberHost = Pick<HubMemberFactoryOptions, "boundHub" | "agents" | "attachExposures" | "attachAttention" | "pokeAttention" | "linkState"> & {
   views?: HubViewSource;
 };
 

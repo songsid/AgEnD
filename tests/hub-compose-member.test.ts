@@ -25,7 +25,7 @@ async function paired() {
 
 function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS) {
   const reports: { code: string; detail: string }[] = [];
-  const attached: { exposures: unknown; attention: unknown } = { exposures: null, attention: null };
+  const attached: { exposures: unknown; attention: unknown; link: string[] } = { exposures: null, attention: null, link: [] };
   const create = createHubMemberFactory({
     home,
     components,
@@ -34,6 +34,7 @@ function factory(home: string, hubId: string | null, components: HubMemberCompon
     attachExposures: (api) => { attached.exposures = api; },
     attachAttention: (read) => { attached.attention = read; },
     pokeAttention: () => {},
+    linkState: (state) => { attached.link.push(state); },
     report: (code, detail) => reports.push({ code, detail }),
     log: () => {},
   });
@@ -60,7 +61,10 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     // The handshake ran on the real link: the Hub saw the member's snapshot.
     for (let i = 0; i < 50 && !rig.received.some((x) => x.type === "exposure.snapshot"); i += 1) await new Promise((r) => setTimeout(r, 50));
     expect(rig.received.some((x) => x.type === "exposure.snapshot")).toBe(true);
+    for (let i = 0; i < 50 && !f.attached.link.includes("online"); i += 1) await new Promise((r) => setTimeout(r, 50));
+    expect(f.attached.link).toContain("online"); // after the completed #3116 handshake
     service.fence();
+    expect(f.attached.link.at(-1)).toBe("offline");
     await service.close();
     expect(f.attached.exposures).toBeNull();
     expect(f.attached.attention).toBeNull();

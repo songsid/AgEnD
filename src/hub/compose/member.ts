@@ -69,6 +69,8 @@ export interface HubMemberFactoryOptions {
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null): void;
   pokeAttention(): void;
+  /** The member link as S3c's pairing view shows it: online after a completed handshake, revoked when the Hub said so. */
+  linkState?(state: "online" | "offline" | "revoked"): void;
   report(code: HubHoldCode, detail: string): void;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   now?: () => number;
@@ -347,9 +349,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           link = l;
           generation += 1;
           await handshake(l);
+          if (l.current() && live()) options.linkState?.("online");
         },
         receive,
-        hold: (code) => options.log("warn", "Hub link held", { code }),
+        hold: (code) => {
+          options.linkState?.(code === "revoked" ? "revoked" : "offline");
+          options.log("warn", "Hub link held", { code });
+        },
         now,
       });
       teardown.add("the Hub connection", () => client?.close());
@@ -379,6 +385,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           generation += 1;
           client?.fence();
           options.attachExposures(null);
+          options.linkState?.("offline");
         },
         async close() {
           fenced = true;
