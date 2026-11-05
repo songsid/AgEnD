@@ -12250,7 +12250,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // before the removal was awaited (a new owner of the topic, or the bot rebuilt).
     return deletePlannedTopic(plan, this.logger, (p) => {
       if (this.instanceTopicAdapter(p.adapterId) !== p.adapter) return "the agent's bot changed while it was being deleted, so its topic was left";
-      return topicMustStay(p.destination, this.topicOwnership(), name);
+      return topicMustStay(p.destination, this.topicOwnership(), null);       // the original is gone: every owner now counts
     }, { begin: (d) => this.topicDeletionsInFlight.add(d), end: (d) => this.topicDeletionsInFlight.delete(d) });
   }
 
@@ -12260,6 +12260,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   isTopicDeletionInFlight(topicId: number | string): boolean {
     const tail = `:${topicId}`;
     return [...this.topicDeletionsInFlight].some(d => d.endsWith(tail));
+  }
+
+  /**
+   * #3055 review r2 (Prism P1-3): would this instance config bind a topic whose deletion is running now? Compared by
+   * physical destination, so the same thread number in another Telegram group is not held. Settings asks it at commit.
+   */
+  topicBindingInFlight(inst: { channel_id?: unknown; topic_id?: unknown }): boolean {
+    if (this.topicDeletionsInFlight.size === 0 || inst.topic_id == null || inst.topic_id === "") return false;
+    const adapterId = typeof inst.channel_id === "string" && inst.channel_id ? inst.channel_id : this.getPrimaryAdapterId();
+    return this.topicDeletionsInFlight.has(this.destinationFor(adapterId, inst.topic_id as number | string));
+  }
+
+  /** Any topic deletion running now (a connection's group or General may not be re-pointed meanwhile). */
+  topicDeletionPending(): boolean { return this.topicDeletionsInFlight.size > 0; }
+
+  /** The physical destination of `topicId` on the bot `adapterId`. */
+  private destinationFor(adapterId: string | undefined, topicId: number | string): string {
+    const world = adapterId ? this.worlds.get(adapterId) : undefined;
+    const platform = world?.adapter?.type ?? this.getChannelConfig(adapterId)?.type;
+    const groupId = world?.groupId ?? String(this.getChannelConfig(adapterId)?.group_id ?? "");
+    return topicDestination(platform, groupId, adapterId, topicId);
   }
 
   /** The adapter of the bot `adapterId` names — never a substitute for a bot that is not there. */
@@ -12277,10 +12298,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const destinationOf = (n: string): string | null => {
       const cfg = this.fleetConfig?.instances?.[n];
       if (!cfg || cfg.topic_id == null || cfg.topic_id === "") return null;
-      const adapterId = this.getInstanceAdapterId(n);
-      const world = adapterId ? this.worlds.get(adapterId) : undefined;
-      const platform = world?.adapter?.type ?? this.getChannelConfig(adapterId)?.type;
-      return topicDestination(platform, this.getGroupIdForInstance(n), adapterId, cfg.topic_id);
+      return this.destinationFor(this.getInstanceAdapterId(n), cfg.topic_id);
     };
     const generalDestinations = (): Set<string> => {
       const out = new Set<string>();
@@ -22949,6 +22967,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private async runConnectionBindingApply(job: SecretApplyJob, binding: ConnectionBinding, execution?: SettingsExecution): Promise<void> {
     try {
+      // #3055 review r2: a connection is not re-pointed while one of its topics is being deleted (nothing is changed).
+      if (this.topicDeletionPending()) throw new Error("a topic deletion is running; try again in a moment");
       await this.rebuildAdapterForBinding(job.connectionId, binding, execution);
       job.result = "applied";
     } catch (err) {

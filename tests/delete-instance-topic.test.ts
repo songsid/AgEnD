@@ -14,6 +14,8 @@ import { FleetManager } from "../src/fleet-manager.js";
 import { describeTopicDeleteError, planInstanceTopicDelete, topicFields } from "../src/instance-topic-delete.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
+import { EventEmitter } from "node:events";
+import { handleSettingsRequest } from "../src/settings-api.js";
 import { t } from "../src/locale.js";
 
 const dirs: string[] = [];
@@ -234,5 +236,82 @@ describe("#3055 review (Prism): ownership by physical destination, every General
     release();
     expect((await pending).result.topic_deleted).toBe(true);
     expect(r.fm.isTopicDeletionInFlight("998877")).toBe(false);
+  });
+});
+
+describe("#3055 review r2 (Prism P1-3): every binding door is held while the platform call runs; a same-name replacement is an owner", () => {
+  /** Run worker's deletion with the Discord call held; returns the release and the pending result. */
+  async function heldDeletion(r: ReturnType<typeof rig>) {
+    let release!: () => void;
+    r.dc.deleteTopic.mockImplementationOnce(() => new Promise<void>(res => { release = res; }));
+    const pending = r.del({ name: "worker" });
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    return { release: () => release(), pending };
+  }
+  /** The real Settings handler, admitted (no gateway context), on the rig's fleet. */
+  function settingsPatch(r: ReturnType<typeof rig>, name: string, body: unknown) {
+    const save = vi.fn();
+    const ctx: any = { fleetConfig: r.fm.fleetConfig, dataDir: dirs.at(-1)!, webToken: "t".repeat(48), webSessions: undefined,
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, getRawFleetConfig: () => r.fm.fleetConfig, saveFleetConfig: save,
+      lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
+      topicBindingInFlight: (inst: any) => r.fm.topicBindingInFlight(inst) };
+    return new Promise<{ status: number; body: any; saved: number }>((resolve) => {
+      const req: any = new EventEmitter(); req.method = "PATCH"; req.url = `/api/settings/fleet/instances/${name}`; req.headers = {}; req.destroy = vi.fn();
+      const res: any = { destroyed: false, headersSent: false, setHeader: vi.fn(), once: vi.fn(), writeHead(status: number) { this.status = status; this.headersSent = true; },
+        end(text: string) { resolve({ status: this.status, body: JSON.parse(text), saved: save.mock.calls.length }); } };
+      expect(handleSettingsRequest(req, res, new URL(req.url, "http://localhost"), ctx)).toBe(true);
+      queueMicrotask(() => { req.emit("data", Buffer.from(JSON.stringify(body))); req.emit("end"); });
+    });
+  }
+
+  it("Settings: binding another agent to the topic being deleted is refused (409), nothing saved; the deletion finishes", async () => {
+    const r = rig();
+    r.fm.fleetConfig!.instances.keeper = { topic_id: 5, working_directory: "/tmp", channel_id: "dc-main" } as any;
+    const held = await heldDeletion(r);
+    const patched = await settingsPatch(r, "keeper", { topic_id: "998877" });
+    expect([patched.status, patched.body.error, patched.saved]).toEqual([409, "topic_deletion_in_flight", 0]);
+    expect(r.fm.fleetConfig!.instances.keeper.topic_id).toBe(5);
+    held.release();
+    expect((await held.pending).result.topic_deleted).toBe(true);
+    expect((await settingsPatch(r, "keeper", { topic_id: "998877" })).status).toBe(200);    // over: free again
+  });
+
+  it("Settings control: the same thread number in ANOTHER Telegram group is not held", async () => {
+    const r = rig();
+    const tg2 = adapter("tg-two", "telegram");
+    r.fm.fleetConfig!.channels!.push({ id: "tg-two", type: "telegram", mode: "topic", group_id: "-100999", bot_token_env: "TG2" } as any);
+    r.fm.worlds.set("tg-two", { id: "tg-two", adapter: tg2, groupId: "-100999", channelConfig: r.fm.fleetConfig!.channels![2] } as any);
+    let release!: () => void;
+    r.tg.deleteTopic.mockImplementationOnce(() => new Promise<void>(res => { release = res; }));
+    const pending = r.del({ name: "helper" });                        // topic 77 in -100123, being deleted
+    await vi.waitFor(() => expect(release).toBeTypeOf("function"));
+    expect(r.fm.topicBindingInFlight({ channel_id: "tg-main", topic_id: 77 })).toBe(true);
+    expect(r.fm.topicBindingInFlight({ channel_id: "tg-two", topic_id: 77 })).toBe(false);
+    r.fm.fleetConfig!.instances.other = { topic_id: 3, working_directory: "/tmp", channel_id: "tg-two" } as any;
+    expect((await settingsPatch(r, "other", { topic_id: 77 })).status).toBe(200);
+    release(); await pending;
+  });
+
+  it("a connection is not re-pointed (verified rebind) while one of its topics is being deleted; nothing is rebuilt", async () => {
+    const r = rig();
+    const rebuild = vi.spyOn(r.fm as any, "rebuildAdapterForBinding").mockResolvedValue(undefined);
+    const held = await heldDeletion(r);
+    const job: any = { connectionId: "dc-main", id: "j1", status: "running" };
+    await (r.fm as any).runConnectionBindingApply(job, { group_id: "g2" });
+    expect([job.result, rebuild.mock.calls.length]).toEqual(["rolled_back", 0]);
+    held.release(); await held.pending;
+    const after: any = { connectionId: "dc-main", id: "j2", status: "running" };
+    await (r.fm as any).runConnectionBindingApply(after, { group_id: "g2" });
+    expect([after.result, rebuild.mock.calls.length]).toEqual(["applied", 1]);
+  });
+
+  it("a replacement under the SAME name, bound to the topic while the removal was awaited, keeps it", async () => {
+    const r = rig();
+    r.removed.mockImplementationOnce(async (name: string) => {
+      delete r.fm.fleetConfig!.instances[name];
+      r.fm.fleetConfig!.instances.worker = { topic_id: "998877", working_directory: "/tmp", channel_id: "dc-main" } as any;
+    });
+    expect((await r.del({ name: "worker" })).result).toMatchObject({ topic_deleted: false, topic_reason: "the topic is also used by worker" });
+    expect(r.dc.deleteTopic).not.toHaveBeenCalled();
   });
 });

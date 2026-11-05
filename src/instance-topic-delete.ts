@@ -43,8 +43,12 @@ export interface TopicOwnership {
   generalDestinations(): Set<string>;
 }
 
-/** Why `destination` must stay, given the fleet now (`except`: the instance being deleted), or null. */
-export function topicMustStay(destination: string, own: TopicOwnership, except: string): string | null {
+/**
+ * Why `destination` must stay, given the fleet now, or null. `except`: the instance being deleted, while it still exists
+ * (planning). After its removal nothing is excepted (#3055 review r2): an entry under that name then is a replacement,
+ * and it owns the topic like anyone else.
+ */
+export function topicMustStay(destination: string, own: TopicOwnership, except: string | null): string | null {
   if (own.generalDestinations().has(destination)) return "the General topic is never deleted";
   for (const [other, oc] of Object.entries(own.instances ?? {})) {
     if (other === except || own.destinationOf(other) !== destination) continue;
