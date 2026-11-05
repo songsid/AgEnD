@@ -182,6 +182,18 @@ describe("its writes are a person's", () => {
     const items = p.root.querySelectorAll(".n-item");
     expect(items.map((i: any) => i.querySelectorAll("button").map((b: any) => b.textContent.trim()))).toEqual([["Ask General", "Myself"], [], [], ["Acknowledge"]]);
   });
+
+  it("a missed-offline item offers Acknowledge and posts its id", async () => {
+    app.appStore.set({ needs: [{
+      id: "missed:tg:9", type: "missed", instance: "ccm", reason: "missed_offline",
+      detail: "han · Test Group · #101 · hello after restart", since: Date.now() - 3 * 3_600_000, missedId: "missed:tg:9",
+    }] });
+    answer = () => ({ acknowledged: true, message: "Acknowledged." });
+    await mount(); await settle(4);
+    expect(p.root.querySelector(".n-title strong")?.textContent).toBe("Missed while AgEnD was offline");
+    btn(p.root.querySelector(".n-item"), "Acknowledg").click(); await settle(4);
+    expect(reqs).toEqual([{ method: "POST", url: "/ui/needs/ack", body: { id: "missed:tg:9" } }]);
+  });
 });
 
 describe("the shell", () => {

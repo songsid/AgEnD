@@ -4,8 +4,9 @@ import { randomBytes } from "node:crypto";
 import { inboxTempName } from "../inbox-temp-name.js";
 import { Agent as HttpAgent } from "node:http";
 import { Agent as HttpsAgent } from "node:https";
-import { createReadStream, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { join, extname, basename } from "node:path";
+import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
+import { join, extname, basename, dirname } from "node:path";
+import { atomicWriteFileSync } from "../../atomic-write.js";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
@@ -57,8 +58,45 @@ export const TELEGRAM_ALLOWED_UPDATES = [
   "message_reaction",
 ] as const;
 
+/**
+ * Pending Telegram updates older than this are filed as a Needs-you item
+ * ("missed while AgEnD was offline") and never auto-injected into an agent.
+ * Telegram itself keeps the getUpdates queue for about 24 hours.
+ */
+export const TELEGRAM_PENDING_LIVE_MAX_MS = 2 * 60 * 60 * 1000;
+
+/** Crash-safe last processed `update_id` for this adapter (sibling of inboxDir). */
+export function telegramLastUpdateIdPath(inboxDir: string, adapterId: string): string {
+  const safe = adapterId.replace(/[^A-Za-z0-9._-]+/g, "_") || "adapter";
+  return join(dirname(inboxDir), `telegram-${safe}-last-update-id`);
+}
+
+/** An inbound Telegram update that was too old to inject; Needs you lists it. */
+export interface MissedOfflineInbound {
+  source: "telegram";
+  adapterId: string;
+  updateId: number;
+  chatId: string;
+  threadId?: string;
+  messageId: string;
+  userId: string;
+  username: string;
+  preview: string;
+  timestamp: Date;
+  chatTitle?: string;
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function telegramUpdateAgeMs(
+  update: { message?: { date?: number }; callback_query?: { message?: { date?: number } } },
+  now: number,
+): number | null {
+  const date = update.message?.date ?? update.callback_query?.message?.date;
+  if (typeof date !== "number" || !Number.isFinite(date)) return null;
+  return now - date * 1000;
 }
 
 /** Remove Bot API credentials from nested node-fetch errors before logging. */
@@ -282,6 +320,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   /** Topics the probe itself is addressing right now — their failures are results, not hints. */
   private readonly probingThreads = new Set<string>();
   private readonly topicGoneHintAt = new Map<string, number>();
+  /** Last `update_id` persisted for this adapter; Telegram ids are monotonic. */
+  private lastUpdateId = 0;
+  /** First getUpdates after start() carries the downtime backlog. */
+  private firstGetUpdatesNoted = false;
+  private readonly backlogUpdateIds = new Set<number>();
 
   constructor(opts: TelegramAdapterOptions) {
     super();
@@ -294,6 +337,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     this.apiRoot = (opts.apiRoot ?? "https://api.telegram.org").replace(/\/+$/, "");
 
     mkdirSync(this.inboxDir, { recursive: true, mode: 0o700 });
+    this.lastUpdateId = this.readLastUpdateId();
 
     this.bot = new Bot(opts.botToken, {
       client: {
@@ -362,7 +406,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     this.bot.api.config.use(async (prev, method, payload, signal) => {
       const requestGeneration = this.httpAgentGeneration;
       try {
-        return await prev(method, payload, signal);
+        const result = await prev(method, payload, signal);
+        this.noteFirstGetUpdates(method, result);
+        return result;
       } catch (err) {
         if (!(err instanceof HttpError)) throw err;
         const firstDetail = telegramNetworkErrorDetails(err, this.botToken);
@@ -423,13 +469,36 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private _registerHandlers(): void {
-    // Own messages must never become inbound work even when transport replays
-    // them. Fleet-wide echo provenance is checked in the common ingress path.
-    // Put this ahead of rich-message middleware as well as ordinary messages.
+    // Dedup, own-message skip, and the downtime age cap run before any handler.
+    // Record the update_id before acting so a crash mid-batch cannot inject twice.
     this.bot.use(async (ctx, next) => {
-      const message = (ctx.update as any)?.message;
+      const update = ctx.update as {
+        update_id?: number;
+        message?: Record<string, unknown> & { from?: { id?: number; is_bot?: boolean; username?: string; first_name?: string }; chat?: { id?: number; title?: string }; date?: number; message_id?: number; message_thread_id?: number; text?: string; caption?: string };
+        callback_query?: { message?: { date?: number } };
+      };
+      const updateId = update.update_id;
+      if (typeof updateId === "number") {
+        if (updateId <= this.lastUpdateId) return;
+        this.lastUpdateId = updateId;
+        this.persistLastUpdateId();
+      }
+      const message = update.message;
       const sender = message?.from?.id;
       if (sender != null && sender === this.bot.botInfo?.id) return;
+
+      const ageMs = telegramUpdateAgeMs(update, Date.now());
+      if (ageMs != null && ageMs > TELEGRAM_PENDING_LIVE_MAX_MS) {
+        if (update.callback_query) {
+          if (typeof updateId === "number" && this.backlogUpdateIds.has(updateId)) {
+            ctx.answerCallbackQuery().catch(() => {});
+            return;
+          }
+        } else if (message && !this._isServiceMessage(message as unknown as NonNullable<Context["message"]>)) {
+          this.emitMissedOffline(updateId ?? 0, message);
+          return;
+        }
+      }
       return next();
     });
     // Middleware: catch Rich Message updates that grammy doesn't route to bot.on("message")
@@ -713,6 +782,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async start(): Promise<void> {
     // #1537 review: a new start borrows nothing from the last one — not ready until its own onStart, and not stopped.
     this.pollingReady = false; this.stopped = false;
+    this.firstGetUpdatesNoted = false;
+    this.backlogUpdateIds.clear();
     this.queue.start();
     this._pruneInbox();
     this.cleanupTimer = setInterval(() => this._pruneInbox(), 60 * 60 * 1000);
@@ -739,7 +810,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
               // client deadlines. Equal 30s deadlines race the normal empty
               // getUpdates response and would churn the HTTP pool while idle.
               timeout: TELEGRAM_LONG_POLL_TIMEOUT_SECONDS,
-              drop_pending_updates: attempt === 1 && reconnects === 0,
+              // Telegram queues ~24h of updates. Dropping them on a cold start
+              // discards messages sent while AgEnD was stopped. Keep them; the
+              // adapter delivers recent ones and files older ones as Needs-you.
+              drop_pending_updates: false,
               // Telegram's DEFAULT allowed_updates excludes message_reaction, so
               // reactions cannot arrive unless the set is listed explicitly. Passing
               // this list also FREEZES the set: any update type omitted here stops
@@ -801,6 +875,74 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     await this.bot.stop();
     this.httpAgent.destroy();
     this.httpsAgent.destroy();
+  }
+
+  private lastUpdateIdFile(): string {
+    return telegramLastUpdateIdPath(this.inboxDir, this.id);
+  }
+
+  private readLastUpdateId(): number {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(this.lastUpdateIdFile(), "utf8"));
+      const id = parsed && typeof parsed === "object" ? (parsed as { update_id?: unknown }).update_id : undefined;
+      return typeof id === "number" && Number.isSafeInteger(id) && id >= 0 ? id : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  private persistLastUpdateId(): void {
+    try {
+      atomicWriteFileSync(this.lastUpdateIdFile(), `${JSON.stringify({ update_id: this.lastUpdateId })}\n`, { mode: 0o600 });
+    } catch (err) {
+      console.warn(`[telegram:${this.id}] could not persist last update_id (${errorMessage(err)})`);
+    }
+  }
+
+  private noteFirstGetUpdates(method: string, result: unknown): void {
+    if (method !== "getUpdates" || this.firstGetUpdatesNoted) return;
+    if (result && typeof result === "object" && "ok" in result && (result as { ok: unknown }).ok !== true) return;
+    this.firstGetUpdatesNoted = true;
+    // Transformers see the raw Bot API envelope `{ ok, result }`; callApi unwraps after.
+    const updates = result && typeof result === "object" && "result" in result
+      ? (result as { result: unknown }).result
+      : result;
+    if (!Array.isArray(updates)) return;
+    for (const item of updates) {
+      if (item && typeof item === "object" && typeof (item as { update_id?: unknown }).update_id === "number") {
+        this.backlogUpdateIds.add((item as { update_id: number }).update_id);
+      }
+    }
+  }
+
+  private emitMissedOffline(updateId: number, msg: {
+    from?: { id?: number; username?: string; first_name?: string };
+    chat?: { id?: number; title?: string };
+    date?: number;
+    message_id?: number;
+    message_thread_id?: number;
+    text?: string;
+    caption?: string;
+  }): void {
+    const userId = msg.from?.id;
+    if (userId == null || msg.chat?.id == null) return;
+    const text = String(msg.text ?? msg.caption ?? "").replace(/\s+/g, " ").trim();
+    const preview = text.length > 160 ? `${text.slice(0, 159)}…` : text;
+    const threadId = msg.message_thread_id != null ? String(msg.message_thread_id) : undefined;
+    const payload: MissedOfflineInbound = {
+      source: "telegram",
+      adapterId: this.id,
+      updateId,
+      chatId: String(msg.chat.id),
+      ...(threadId !== undefined ? { threadId } : {}),
+      messageId: String(msg.message_id ?? ""),
+      userId: String(userId),
+      username: msg.from?.username ?? msg.from?.first_name ?? String(userId),
+      preview,
+      timestamp: new Date((msg.date ?? 0) * 1000),
+      ...(msg.chat.title ? { chatTitle: String(msg.chat.title) } : {}),
+    };
+    this.emit("missed_offline", payload);
   }
 
   /** Delete inbox files older than 1 hour */

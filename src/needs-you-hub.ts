@@ -23,7 +23,7 @@ import type { ChannelAdapter } from "./channel/types.js";
 import { isMessageEditLoss } from "./channel/message-edit-errors.js";
 import {
   deriveNeedsYou, itemsForWorld, itemsForLane, lanesOf, renderLiveMessage, renderSignature, messageLink, instanceLink,
-  type BackendSignInInput, type DeliveryInput, type InstanceInput, type NeedsYouItem, type PromptInput, type TaskInput, type WorldPlace,
+  type BackendSignInInput, type DeliveryInput, type InstanceInput, type MissedOfflineInput, type NeedsYouItem, type PromptInput, type TaskInput, type WorldPlace,
 } from "./needs-you.js";
 import { GroupMembership, topicUrl } from "./topic-link.js";
 import { NeedsYouLiveMessage, canonicalTarget, samePlace, type LiveAcks, type LivePointer, type LiveTarget } from "./needs-you-live.js";
@@ -78,6 +78,10 @@ export interface NeedsYouHubContext {
   emitSse(event: string, data: unknown): void;
   /** outbox.acknowledge: true when this call acknowledged it; throws on a write error. */
   acknowledge(deliveryId: string, by: string): boolean;
+  /** Missed-while-offline Telegram rows (Needs you type `missed`). */
+  missedOffline?(): MissedOfflineInput[];
+  /** true when this call removed the missed row. */
+  acknowledgeMissed?(id: string, by: string): boolean;
   /** Task board cards waiting for the person (#2246 step 3); none when the board is not open. */
   tasks?(): TaskInput[];
   backendSignIns?(): BackendSignInInput[];
@@ -153,6 +157,7 @@ interface AckEntry {
   /** What the button does: Acknowledge a delivery, or a person's move on a task card. */
   verb: "ack" | TaskVerb;
   deliveryId?: string;
+  missedId?: string;
   card?: { code: string; version: number };
   instance: string;
   /** #2352: the lane whose message showed it (absent: General). */
@@ -251,7 +256,7 @@ export class NeedsYouHub {
     try { tasks = this.ctx.tasks?.() ?? []; } catch (err) {
       this.ctx.log("warn", "Needs you: could not read the task board", { err: String((err as Error)?.message ?? err) });
     }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
@@ -348,7 +353,7 @@ export class NeedsYouHub {
     const reason = item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);
-    return (item.type === "task" || item.type === "config") && item.detail ? `${reason}: ${item.detail}` : reason;
+    return (item.type === "task" || item.type === "config" || item.type === "missed") && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
   /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */
@@ -413,7 +418,7 @@ export class NeedsYouHub {
       const entry: AckEntry = {
         world, owner, generation, deadline: this.ctx.mono() + ACK_TTL_MS, chatId: place.chatId, ...(place.threadId !== undefined ? { threadId: place.threadId } : {}),
         ...(place.messageId ? { messageId: place.messageId } : {}), verb, instance: item.instance, ...(lane ? { lane } : {}),
-        ...(item.deliveryId ? { deliveryId: item.deliveryId } : {}), ...(item.card ? { card: { ...item.card } } : {}),
+        ...(item.deliveryId ? { deliveryId: item.deliveryId } : {}), ...(item.missedId ? { missedId: item.missedId } : {}), ...(item.card ? { card: { ...item.card } } : {}),
       };
       this.acks.set(nonce, entry);
       minted.push(entry);
@@ -421,6 +426,7 @@ export class NeedsYouHub {
     };
     const choices = items.flatMap(item => {
       if (item.deliveryId) return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance))];
+      if (item.missedId) return [mint(item, "ack", this.ctx.t("needs.ack_button", item.instance || item.missedId))];
       if (item.type !== "task" || !item.card) return [];
       const code = item.card.code;
       return item.reason === "task_review"
@@ -465,7 +471,11 @@ export class NeedsYouHub {
     }
     const platform = this.ctx.worlds().find(w => w.id === adapterId)?.place.type ?? "chat";
     if (entry.verb === "ack") {
-      data.ack?.(this.ctx.t(`needs.ack_${this.acknowledge(entry.deliveryId!, `${platform}:${data.userId}`)}`));
+      const who = `${platform}:${data.userId}`;
+      const outcome = entry.missedId
+        ? this.acknowledgeMissed(entry.missedId, who)
+        : this.acknowledge(entry.deliveryId!, who);
+      data.ack?.(this.ctx.t(`needs.ack_${outcome}`));
       return true;
     }
     const card = entry.card!;
@@ -615,11 +625,12 @@ export class NeedsYouHub {
 
   /** The web's Acknowledge: any item (the web is global, §5.0). `principal` is "web:<session handle>" or "cli". */
   webAcknowledge(itemId: string, principal: string): { status: 200 | 400 | 404 | 409 | 500; message: string } {
-    const m = /^delivery:([A-Za-z0-9._:-]{1,128})$/.exec(itemId);
-    if (!m) return { status: 400, message: "Not an item that can be acknowledged" };
+    const delivery = /^delivery:([A-Za-z0-9._:-]{1,128})$/.exec(itemId);
+    const missed = /^missed:([A-Za-z0-9._:-]{1,128})$/.exec(itemId);
+    if (!delivery && !missed) return { status: 400, message: "Not an item that can be acknowledged" };
     const listed = this.items.some(i => i.id === itemId);
     if (!listed) return { status: 409, message: this.ctx.t("needs.ack_already") };
-    const outcome = this.acknowledge(m[1], principal);
+    const outcome = missed ? this.acknowledgeMissed(itemId, principal) : this.acknowledge(delivery![1], principal);
     return { status: outcome === "failed" ? 500 : 200, message: this.ctx.t(`needs.ack_${outcome}`) };
   }
 
@@ -634,6 +645,20 @@ export class NeedsYouHub {
     }
     this.poke();
     if (done) this.ctx.log("info", "Needs you: delivery acknowledged", { deliveryId, by });
+    return done ? "done" : "already";
+  }
+
+  private acknowledgeMissed(id: string, by: string): "done" | "already" | "failed" {
+    if (!this.ctx.acknowledgeMissed) return "failed";
+    let done: boolean;
+    try {
+      done = this.ctx.acknowledgeMissed(id, by);
+    } catch (err) {
+      this.ctx.log("warn", "Needs you: could not record a missed-offline acknowledgement", { id, err: String((err as Error)?.message ?? err) });
+      return "failed";
+    }
+    this.poke();
+    if (done) this.ctx.log("info", "Needs you: missed inbound acknowledged", { id, by });
     return done ? "done" : "already";
   }
 

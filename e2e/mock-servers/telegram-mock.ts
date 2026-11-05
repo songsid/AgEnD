@@ -49,6 +49,10 @@ export interface TelegramMock {
     threadId?: number;
     replyToMessageId?: number;
     replyToText?: string;
+    /** Unix seconds; defaults to now. */
+    date?: number;
+    /** Override the assigned update_id (crash-replay tests). */
+    updateId?: number;
     /** Attach a photo (Telegram sends several sizes; the last is the largest). */
     photo?: Array<{ fileId: string; size?: number }>;
     /** Attach a document. */
@@ -69,6 +73,8 @@ export interface TelegramMock {
     threadId?: number;
     userId?: number;
     username?: string;
+    date?: number;
+    updateId?: number;
   }): void;
   /** Get all recorded API calls */
   getCalls(): ApiCall[];
@@ -140,6 +146,10 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
     const body = JSON.stringify({ ok, result: data });
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(body);
+  }
+
+  function isTruthyTelegramFlag(value: unknown): boolean {
+    return value === true || value === "true" || value === 1 || value === "1";
   }
 
   // Route: /bot<token>/<method>
@@ -290,6 +300,16 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
         jsonResponse(res, true);
         break;
 
+      case "deleteWebhook": {
+        if (isTruthyTelegramFlag(params.drop_pending_updates)) {
+          pendingUpdates = [];
+          pollResolvers.forEach(r => r([]));
+          pollResolvers = [];
+        }
+        jsonResponse(res, true);
+        break;
+      }
+
       default:
         // Unknown method — return ok:true with empty result (safe default)
         jsonResponse(res, true);
@@ -342,11 +362,15 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
     threadId?: number;
     replyToMessageId?: number;
     replyToText?: string;
+    date?: number;
+    updateId?: number;
     photo?: Array<{ fileId: string; size?: number }>;
     document?: { fileId: string; fileName?: string; mimeType?: string; size?: number };
   }): void {
+    const updateId = opts.updateId ?? updateIdCounter++;
+    if (opts.updateId != null) updateIdCounter = Math.max(updateIdCounter, opts.updateId + 1);
     const update: PendingUpdate = {
-      update_id: updateIdCounter++,
+      update_id: updateId,
       message: {
         message_id: nextMessageId(),
         from: {
@@ -360,7 +384,7 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
           type: "supergroup",
           title: "Test Group",
         },
-        date: Math.floor(Date.now() / 1000),
+        date: opts.date ?? Math.floor(Date.now() / 1000),
         ...(opts.photo || opts.document ? { caption: opts.text } : { text: opts.text }),
         ...(opts.photo ? {
           photo: opts.photo.map((p, i) => ({ file_id: p.fileId, file_unique_id: `unique_${p.fileId}`, width: 100 * (i + 1), height: 100 * (i + 1), ...(p.size != null ? { file_size: p.size } : {}) })),
@@ -395,16 +419,20 @@ export function createTelegramMock(opts: TelegramMockOptions = {}): TelegramMock
     threadId?: number;
     userId?: number;
     username?: string;
+    date?: number;
+    updateId?: number;
   }): void {
+    const updateId = opts.updateId ?? updateIdCounter++;
+    if (opts.updateId != null) updateIdCounter = Math.max(updateIdCounter, opts.updateId + 1);
     const update: PendingUpdate = {
-      update_id: updateIdCounter++,
+      update_id: updateId,
       callback_query: {
         id: String(Date.now()),
         from: { id: opts.userId ?? 111222333, is_bot: false, first_name: opts.username ?? "TestUser", username: opts.username ?? "testuser" },
         message: {
           message_id: opts.messageId,
           chat: { id: opts.chatId, type: "supergroup" },
-          date: Math.floor(Date.now() / 1000),
+          date: opts.date ?? Math.floor(Date.now() / 1000),
           ...(opts.threadId != null ? { message_thread_id: opts.threadId } : {}),
         },
         data: opts.data,

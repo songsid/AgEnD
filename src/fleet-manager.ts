@@ -121,7 +121,8 @@ import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
 import { formatFleetTime } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
 import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
-import { TelegramAdapter } from "./channel/adapters/telegram.js";
+import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
+import { MissedOfflineStore } from "./missed-offline.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
@@ -1386,6 +1387,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
   private configHistoryTimer: ReturnType<typeof setInterval> | null = null;
   private loadedFleetSource: ConfigSource | null = null;
@@ -2510,6 +2512,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.topicCommands = new TopicCommands(this);
     this.topicArchiver = new TopicArchiver(this);
     this.statuslineWatcher = new StatuslineWatcher(this);
+    this.missedOfflineStore = new MissedOfflineStore(this.dataDir);
   }
 
   /** #1266: a reply's buttons — the store (reply-buttons.db) and what a click does. Created on first use. */
@@ -9464,6 +9467,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, "adapter.callback_query"));
+    adapter.on("missed_offline", (ev: MissedOfflineInbound) => {
+      if (!isCurrentAdapter()) return;
+      this.recordMissedOffline(ev);
+    });
 
     this.bindTopicClosedHandler(adapter, adapterId, "adapter.topic_closed");
 
@@ -9614,6 +9621,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, `adapter[${adapterId}].callback_query`));
+    adapter.on("missed_offline", (ev: MissedOfflineInbound) => {
+      if (!isCurrentAdapter()) return;
+      this.recordMissedOffline(ev);
+    });
 
     this.bindTopicClosedHandler(adapter, adapterId, `adapter[${adapterId}].topic_closed`);
 
@@ -10302,6 +10313,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ownerUser && suffix.toLowerCase() !== ownerUser.toLowerCase()) return false;
     }
     return true;
+  }
+
+  /** File a Telegram update that was too old to inject; Needs you lists it until Acknowledge. */
+  private recordMissedOffline(ev: MissedOfflineInbound): void {
+    if (!this.missedOfflineStore) this.missedOfflineStore = new MissedOfflineStore(this.dataDir);
+    const stub: InboundMessage = {
+      source: "telegram", adapterId: ev.adapterId, chatId: ev.chatId, threadId: ev.threadId,
+      messageId: ev.messageId, userId: ev.userId, username: ev.username, text: ev.preview,
+      timestamp: ev.timestamp, isBotMessage: false,
+    };
+    const threadId = this.inboundRouteThreadId(stub);
+    const target = threadId ? this.resolveInboundTarget(stub, threadId) : undefined;
+    let instance = target?.name ?? "";
+    if (!instance) {
+      instance = Object.entries(this.fleetConfig?.instances ?? {}).find(([name, cfg]) =>
+        cfg.general_topic && this.getInstanceAdapterId(name) === ev.adapterId)?.[0] ?? "";
+    }
+    const place = [ev.chatTitle, ev.threadId ? `#${ev.threadId}` : ""].filter(Boolean).join(" · ") || ev.chatId;
+    this.missedOfflineStore.add({
+      id: `missed:${ev.adapterId}:${ev.updateId}`,
+      adapterId: ev.adapterId,
+      instance,
+      username: ev.username,
+      place,
+      preview: ev.preview,
+      since: ev.timestamp.getTime(),
+    });
+    this.logger.info({ adapterId: ev.adapterId, updateId: ev.updateId, instance, chatId: ev.chatId, threadId: ev.threadId },
+      "Telegram message missed while AgEnD was offline — filed for Needs you");
+    this.needsYou?.poke();
   }
 
   /**
@@ -15424,6 +15465,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
         return this.deliveryOutbox.acknowledge(deliveryId, by);
       },
+      missedOffline: () => (this.missedOfflineStore?.list(Date.now()) ?? []).map(m => ({
+        id: m.id, instance: m.instance, owner: m.adapterId, username: m.username, place: m.place, preview: m.preview, since: m.since,
+      })),
+      acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
