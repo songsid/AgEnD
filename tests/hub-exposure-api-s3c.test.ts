@@ -26,7 +26,7 @@ import { createHubMemberExposureApi, type HubMemberExposureApi } from "../src/hu
 const dbs: Database.Database[] = [], caps: SettingsExecution[] = [];
 afterEach(() => { dbs.splice(0).forEach((d) => d.close()); caps.splice(0).forEach((c) => c.close()); });
 
-function member(opts: { provider?: boolean; views?: boolean } = {}) {
+function member(opts: { provider?: boolean; views?: boolean; providerReason?: Parameters<typeof createHubMemberExposureApi>[0]["providerReason"] } = {}) {
   const db = new Database(":memory:"); dbs.push(db);
   applyHubMigrations(db, [HUB_AUDIT_MIGRATION, HUB_EXPOSURE_MIGRATION]);
   let floor = 0;
@@ -39,11 +39,27 @@ function member(opts: { provider?: boolean; views?: boolean } = {}) {
   const readinessCandidate = vi.fn((c: HubLocalExposure): HubExecutionReadiness => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision }));
   const afterCommit = vi.fn(async () => "pending");
   const api = createHubMemberExposureApi({ store, views, readinessCandidate, readiness: () => ({ ok: true, policyDigest: "x", exposureRevision: 1 }) as HubExecutionReadiness,
+    providerReason: opts.providerReason,
     agents: () => [{ name: "atlas", display: "Atlas", providerId: opts.provider === false ? null : "inert" }], afterCommit, pending: (a) => (a === "atlas" ? null : null) });
   return { api, store, view, afterCommit, readinessCandidate };
 }
 
 describe("the member's exposure API", () => {
+  it.each(["engine-unavailable", "engine-unsupported", "image-unconfigured", "image-mismatch", "credential-unconfigured", "unavailable"] as const)("explains %s before a first publish while preserving S4's exact candidate gate", reason => {
+    const m = member({ providerReason: () => reason });
+    expect(m.api.list()[0]).toMatchObject({ exposureId: null, enforceable: false, reason });
+    expect(m.readinessCandidate).not.toHaveBeenCalled();
+    m.readinessCandidate.mockReturnValue({ ok: false, reasonCode: reason });
+    expect(() => m.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 })).toThrow();
+    expect(m.store.list().every(row => !row.committed)).toBe(true); expect(m.afterCommit).not.toHaveBeenCalled();
+  });
+  it("sanitizes a throwing or unknown provider diagnostic and cannot gain readiness from null", () => {
+    for (const providerReason of [() => { throw Error("PRIVATE-KEY"); }, () => "PRIVATE-KEY" as never]) {
+      expect(member({ providerReason }).api.list()[0]).toMatchObject({ enforceable: false, reason: "provider-unavailable" });
+    }
+    expect(member({ provider: false, providerReason: () => null }).api.list()[0].enforceable).toBe(false);
+    expect(member({ views: false, providerReason: () => null }).api.list()[0].enforceable).toBe(false);
+  });
   it("lists the owner's agents with their choices; publish (after confirmation) and withdraw move the revision; each commit sends the snapshot", async () => {
     const m = member();
     expect(m.api.list()).toEqual([{ agent: "atlas", display: "Atlas", exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: true,

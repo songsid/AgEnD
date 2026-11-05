@@ -6,6 +6,7 @@
  */
 import { HUB_READ_TOOLS, type HubDocumentView } from "../execution/views.js";
 import type { HubExecutionReadiness, HubLocalExposure } from "../execution/service.js";
+import { isHubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
 import { HubExposureRefusal, publishExposure, type HubExposureStore } from "./exposures.js";
 
 export interface HubExposureView {
@@ -44,6 +45,8 @@ export function createHubMemberExposureApi(deps: {
   /** S4: readinessCandidate (a candidate) and readiness (a committed mapping). */
   readinessCandidate(candidate: HubLocalExposure): HubExecutionReadiness;
   readiness(exposureId: string, expectedRevision: number): HubExecutionReadiness;
+  /** S4 provider availability, including unpublished agents. Metadata only; publish still checks its exact candidate. */
+  providerReason?(agent: HubMemberAgent): HubProviderSetupReason | "provider-unavailable" | null;
   /** The local owner's agents (never the Hub's inventory), with the S4 provider each would run under (null: none). */
   agents(): HubMemberAgent[];
   /** The same approved-view registry S4 has. */
@@ -60,10 +63,15 @@ export function createHubMemberExposureApi(deps: {
   const viewOf = (a: HubMemberAgent): HubExposureView => {
     const row = deps.store.list().find((r) => r.agent === a.name), c = row?.committed ?? null, e = c?.exposure ?? null;
     const ready = e && e.state === "published" ? deps.readiness(e.id, e.revision) : null;
-    const enforceable = !!a.providerId && deps.views.size > 0 && (ready ? ready.ok : true);
+    let providerReason: HubProviderSetupReason | "provider-unavailable" | null = null;
+    try {
+      const reason = deps.providerReason?.(a);
+      if (reason != null) providerReason = isHubProviderSetupReason(reason) ? reason : "provider-unavailable";
+    } catch { providerReason = "provider-unavailable"; }
+    const enforceable = !providerReason && !!a.providerId && deps.views.size > 0 && (ready ? ready.ok : true);
     return { agent: a.name, display: a.display, exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
       policy: e && e.state !== "withdrawn" ? { dataView: e.dataViewId, tools: [...e.allowedTools] } : null,
-      enforceable, ...(enforceable ? {} : { reason: !a.providerId ? "no_restricted_provider" : deps.views.size === 0 ? "no_approved_view" : (ready && !ready.ok ? ready.reasonCode : "unavailable") }),
+      enforceable, ...(enforceable ? {} : { reason: providerReason ?? (!a.providerId ? "no_restricted_provider" : deps.views.size === 0 ? "no_approved_view" : (ready && !ready.ok ? ready.reasonCode : "unavailable")) }),
       choices: choices(a), pending: deps.pending?.(a.name) ?? null };
   };
   const checked = (raw: unknown) => {
