@@ -127,11 +127,11 @@ export function validateModelReply(backend: HubCliBackend, reply: HubModelReply)
 /** Explicit construction only; production endpoints are fixed, TLS checked, redirects forbidden. */
 export function createHubModelBroker(credentials: { claude?: string; codex?: string }): HubModelBroker {
   const keys = Object.freeze({ ...credentials });
-  if (!Object.values(keys).some(key => typeof key === "string" && key.trim())
-    || Object.values(keys).some(key => typeof key !== "string" || !key.trim() || /[\r\n]/.test(key))) throw new HubProviderSetupError("credential-unconfigured");
+  const usable = (key: unknown): key is string => typeof key === "string" && key.trim().length > 0 && !/[\r\n]/.test(key);
+  if (!Object.values(keys).some(usable)) throw new HubProviderSetupError("credential-unconfigured");
   return async (backend, body, signal) => {
     const key = keys[backend];
-    if (!key) throw new HubProviderSetupError("credential-unconfigured");
+    if (!usable(key)) throw new HubProviderSetupError("credential-unconfigured");
     const response = await fetch(backend === "claude" ? "https://api.anthropic.com/v1/messages" : "https://api.openai.com/v1/responses", {
       method: "POST", redirect: "error", signal,
       headers: backend === "claude" ? { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" }

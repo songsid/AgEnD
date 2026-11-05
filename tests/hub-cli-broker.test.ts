@@ -14,6 +14,19 @@ function container() {
       CapDrop: ["ALL"], SecurityOpt: ["no-new-privileges:true"], CapAdd: [], PidMode: "", IpcMode: "private", UTSMode: "", Binds: [], Devices: [], DeviceRequests: [], PortBindings: {}, Tmpfs: { "/scratch": "rw,nosuid,nodev,noexec,size=67108864,mode=1777" } } };
 }
 describe("Hub CLI model and tool broker", () => {
+  it.each(["claude", "codex"] as const)("keeps an unconfigured unused backend from disabling %s and refuses that backend before network", async backend => {
+    const unused = backend === "claude" ? "codex" : "claude";
+    const fetcher = vi.fn<typeof fetch>(async () => new Response("{}", { headers: { "content-type": "application/json" } })); vi.stubGlobal("fetch", fetcher);
+    for (const absent of [undefined, "", "   ", "PRIVATE-UNUSED\n"]) {
+      let broker!: ReturnType<typeof createHubModelBroker>;
+      expect(() => { broker = createHubModelBroker({ [backend]: "FAKE-SELECTED", [unused]: absent }); }).not.toThrow();
+      const calls = fetcher.mock.calls.length;
+      await expect(broker(backend, {}, new AbortController().signal)).resolves.toMatchObject({ body: "{}" });
+      expect(fetcher).toHaveBeenCalledTimes(calls + 1);
+      await expect(broker(unused, {}, new AbortController().signal)).rejects.toMatchObject({ reason: "credential-unconfigured" });
+      expect(fetcher).toHaveBeenCalledTimes(calls + 1);
+    }
+  });
   it.each([{}, { claude: "" }, { codex: "   " }, { claude: "PRIVATE-KEY\n" }])("explains missing/unusable configured credentials before a network request: %j", credentials => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     let failure: unknown; try { createHubModelBroker(credentials); } catch (error) { failure = error; }
