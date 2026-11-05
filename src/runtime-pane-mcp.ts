@@ -13,6 +13,8 @@ export interface PaneToolFailure { tool: string; operationId: string; reason: st
 export interface PaneMcpAuthority {
   machineId: string;
   owner: PaneMcpOwner;
+  /** Immutable ceiling from the durable launch; live policy may only narrow it. */
+  toolCeiling: readonly string[];
   /** Bound to the daemon/launch identity and dynamic config; never a cached permission set. */
   current(): boolean;
   menu(): ToolMenu[];
@@ -27,12 +29,14 @@ const errorResult = (text: string): Record<string, unknown> => ({ content: [{ ty
 /** One ledger per exact pane launch; no plaintext arguments, result, provider credential or user input is persisted. */
 export class PaneMcpAuthorityLease {
   private ledger: Ledger;
+  private readonly toolCeiling: ReadonlySet<string>;
   private closed = false;
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private readonly results = new Map<string, unknown>();
   private presence: { at: number; epoch: string } | undefined;
   constructor(private file: string, readonly authority: PaneMcpAuthority) {
     validatePaneMcpOwner(authority.owner);
+    this.toolCeiling = new Set(authority.toolCeiling);
     this.ledger = { version: 1, machineId: authority.machineId, owner: { ...authority.owner }, calls: {} };
     try {
       const stat = lstatSync(file);
@@ -53,6 +57,7 @@ export class PaneMcpAuthorityLease {
       && this.authority.transportEpoch?.() === presence.epoch;
   }
   private current(transport: () => boolean): boolean { return !this.closed && transport() && this.authority.current(); }
+  private allowed(tool: string, args: Record<string, unknown>): boolean { return this.toolCeiling.has(tool) && this.authority.allowed(tool, args); }
   private save(): void { atomicWriteFileSync(this.file, JSON.stringify(this.ledger), { mode: 0o600 }); }
   private key(body: Extract<PaneMcpBody, { method: "tools/call" | "response-written" }>): string {
     return createHash("sha256").update(JSON.stringify([body.helperId, body.callId])).digest("hex");
@@ -65,7 +70,7 @@ export class PaneMcpAuthorityLease {
       const epoch = this.authority.transportEpoch?.(); if (!epoch) throw Error("Pane helper transport identity is unavailable");
       this.presence = { at: performance.now(), epoch }; return { result: { ok: true } };
     }
-    if (body.method === "tools/list") return { result: { tools: this.authority.menu() } };
+    if (body.method === "tools/list") return { result: { tools: this.authority.menu().filter(tool => this.toolCeiling.has(tool.name)) } };
     const key = this.key(body), previous = this.ledger.calls[key];
     if (body.method === "response-written") {
       if (!previous || previous.state === "prepared" || previous.responseId !== body.responseId) throw Error("Pane tool response receipt differs");
@@ -78,7 +83,7 @@ export class PaneMcpAuthorityLease {
       return { result: { ok: true } };
     }
     const { name: tool, arguments: args } = body.params;
-    if (!this.authority.allowed(tool, args)) throw Error("Pane tool access was revoked");
+    if (!this.allowed(tool, args)) throw Error("Pane tool access was revoked");
     const parsed = OUTBOUND_TOOL_SCHEMAS.get(tool)?.safeParse(args);
     if (!parsed?.success) return { result: errorResult("Invalid tool arguments") };
     const checked = parsed.data as Record<string, unknown>, digest = runtimeJobDigest({ tool, args: checked });
@@ -93,7 +98,7 @@ export class PaneMcpAuthorityLease {
     const call: Call = { digest, operationId: randomUUID(), responseId: randomBytes(32).toString("hex"), state: "prepared" };
     this.ledger.calls[key] = call;
     try { this.save(); } catch (error) { delete this.ledger.calls[key]; throw error; }
-    const allowed = (): boolean => current() && this.authority.allowed(tool, checked);
+    const allowed = (): boolean => current() && this.allowed(tool, checked);
     const run = Promise.resolve().then(async () => {
       if (!allowed()) throw Error("Pane tool permission was revoked before dispatch");
       let response: Record<string, unknown>;
