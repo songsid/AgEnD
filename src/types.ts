@@ -379,13 +379,6 @@ export interface FleetTemplate {
   instances: Record<string, TemplateInstanceDef>;
 }
 
-/**
- * AgEnD Hub P1 (docs/design/hub.md §1, #3095), both off by default. Only what the web UI reads is typed here; slice 1
- * owns the full schema (origins, listener, directory, retention) and the effective switch (HubMode).
- */
-export interface HubServerConfig { enabled?: boolean; name?: string }
-export interface HubMemberConfig { enabled?: boolean }
-
 /** Web UI feature toggles (fleet.yaml `web:` section). */
 export interface WebConfig {
   /** Canvas Worker effects are experimental and off unless explicitly enabled. Ambient effects are independent. */
@@ -601,10 +594,6 @@ export interface WebTerminalConfig {
 }
 
 export interface FleetConfig {
-  /** AgEnD Hub P1: this instance is a Hub (off by default; slice 1 owns the schema). */
-  hub?: HubServerConfig;
-  /** AgEnD Hub P1: this fleet may connect to a Hub (off by default; slice 1 owns the schema). */
-  hub_member?: HubMemberConfig;
   channel?: ChannelConfig;
   channels?: ChannelConfig[];
   project_roots?: string[];
