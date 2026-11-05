@@ -1,8 +1,9 @@
 // AgEnD Hub P1 slice 3 (S-44): the Hub UI in a real browser on the smoke fixture (never `fleet start`), with stub data.
 // - off (the default): Settings → Access & security has no Hub card and no Hub module or stylesheet is ever requested;
 // - a member fleet (hub_member.enabled): the card unpaired / pending / paired, the "My fleet ↔ Hub" switcher once paired;
-// - a Hub workspace: slice 1's own listener is not built yet, so a navigation to /ui/hub* is answered with the shell this
-//   server renders for a Hub workspace (serveAppShell's hubWorkspace) — Ask / My exposures / Administration;
+// - a Hub workspace: answered with the shell a Hub's own listener renders (serveAppShell's hubWorkspace) — Ask / My
+//   exposures / Administration, booted Hub-only: with no Hub API at this origin, its pages ask to sign in to the Hub
+//   (the real Hub listener is smoke-hub-s3b.mts);
 // - the stale-tab skew (rule 3): the old shell (every long-lived /assets file from OLD_REF) with this branch's lazy Hub
 //   modules; this shell with the old lazy Settings module. No page errors, no CSP reports.
 // Desk/en and phone/zh-TW, dark; screenshots under OUT/hub-ui-s3.
@@ -86,7 +87,7 @@ try {
       const tag = `hub-${c.device}-${c.lang}`;
       const o = await open(c, path, hubShell);
       if (c.device === "phone") { await o.page.evaluate(`import("/assets/app-shell.js").then((m) => m.openDrawer())`); await o.page.waitForTimeout(600); }
-      const got = await o.page.evaluate(`({ brand: document.querySelector(".hub-brand")?.textContent || null, rows: [...document.querySelectorAll(".side-nav a.side-row")].map((a) => a.textContent), list: !!document.querySelector("#instanceList"), empty: !!document.querySelector(".hub-empty") })`);
+      const got = await o.page.evaluate(`({ brand: document.querySelector(".hub-brand")?.textContent || null, rows: [...document.querySelectorAll(".side-nav a.side-row")].map((a) => a.textContent), list: !!document.querySelector("#instanceList"), empty: !!document.querySelector(".hub-signin") })`);
       await o.page.screenshot({ path: shotPath("hub-ui-s3", tag, tab) });
       check(`${tag}-${tab}`, got.brand === "AgEnD Hub · Team Hub" && got.rows.length === 3 && !got.list && got.empty && o.errs.length === 0, { ...got, errs: o.errs });
       await o.ctx.close();
@@ -114,13 +115,15 @@ try {
     await o.ctx.close();
   }
   {
-    // This shell with the old lazy Settings module: no card (it knows none), the rest unchanged, nothing broken.
+    // This shell with the old lazy Settings module: the card only if that module has it, the rest unchanged, nothing broken.
     const body = old("panel-settings.js");
     const o = await open(CASES[0], "/settings/access", async (page) => {
       await page.route(/\/ui\/js\/panel-settings\.js(\?.*)?$/, (route: any) => route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body }));
     });
     const got = { card: !!(await o.page.$(".s-hub-connect")), access: !!(await o.page.$(".s-access-related, .p-settings")), errs: o.errs };
-    check("skew-new-shell-old-settings", !got.card && got.access && got.errs.length === 0, got);
+    // An OLD_REF from before #3098 has no card; one after it (alpha now) draws its own — either way nothing breaks.
+    const oldHasCard = !!body && body.includes("HubCardSlot");
+    check("skew-new-shell-old-settings", got.card === oldHasCard && got.access && got.errs.length === 0, { ...got, oldHasCard });
     await o.ctx.close();
   }
 } catch (e) {

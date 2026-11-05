@@ -127,7 +127,9 @@ export function SharePage({ base, timers = globalThis, pollMs = POLL_MS }) {
         if (stopped || !lease.current()) return;
         appStore.set((s) => ({ ...s, ...appFromState(d) }));
         if (d.traffic && traffic.load(d.traffic)) setItems(traffic.items());
-        setState({ phase: "live", org: d.org, office: typeof d.office === "string" ? d.office : null, ends: typeof d.ends === "number" ? d.ends : null });
+        // #2861: the dialogue box's news (when someone talked to a person here — never what was said), as read.
+        setState({ phase: "live", org: d.org, office: typeof d.office === "string" ? d.office : null, ends: typeof d.ends === "number" ? d.ends : null,
+          talk: d.talk && typeof d.talk === "object" ? d.talk : null });
       } catch { if (!stopped) setState((s) => (s.phase === "live" ? s : { phase: "offline" })); }
     };
     void read();
@@ -149,7 +151,7 @@ export function SharePage({ base, timers = globalThis, pollMs = POLL_MS }) {
     </header>
     ${state.phase === "offline" ? html`<p class="note share-note" role="status">${to("offline")}</p>` : null}
     ${view ? html`<div class="share-stage"><${Office} view=${view} traffic=${items} lease=${lease} assetUrl=${(p) => shareUrl(base, p) || p}
-      assetImage=${(url) => shareImage(url, { fetch: (...a) => timers.fetch(...a), timers })} opening=${state.office === "all" ? ALL_ID : state.office || undefined} /></div>`
+      assetImage=${(url) => shareImage(url, { fetch: (...a) => timers.fetch(...a), timers })} opening=${state.office === "all" ? ALL_ID : state.office || undefined} talk=${state.talk || null} /></div>`
       : html`<p class="muted share-loading" role="status">${to("loading")}</p>`}
   </main>`;
 }

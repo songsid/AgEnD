@@ -263,6 +263,8 @@ export interface OfficeShareSource {
   skins?: { list(): { packs: Array<{ id: string; files?: number; bytes?: number }> } & Record<string, unknown>; get(id: string): unknown; picture(id: string, sha: string): Buffer | null };
   /** #2661: the Office levels as last worked out (never waits); null: off, or none worked out yet. */
   levels?(): Record<string, OfficeLevel> | null;
+  /** #2861: who was talked to and answered lately, `scope`'s instances only — when, never what or by whom (office-talk.ts). */
+  talk?(scope: ReadonlySet<string>): { now: number; items: Array<{ instance: string; kind: "heard" | "answered"; at: number }> };
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -307,6 +309,13 @@ export class OfficeShareView {
     });
   }
 
+  /** #2861: `talk`, cut to this share (its scope again, and each item's three fields only: nothing else ever goes out). */
+  private talkOf(t: { now: number; items: Array<{ instance: string; kind: string; at: number }> }): { now: number; items: Array<{ instance: string; kind: string; at: number }> } {
+    const items = (Array.isArray(t?.items) ? t.items : []).filter(i => isObj(i) && typeof i.instance === "string" && this.scope.has(i.instance)
+      && (i.kind === "heard" || i.kind === "answered") && typeof i.at === "number").map(i => ({ instance: i.instance, kind: i.kind, at: i.at }));
+    return { now: typeof t?.now === "number" ? t.now : Date.now(), items };
+  }
+
   /** The status frame as the page's app store takes it, and the chart's structure (no descriptions, threads or info). */
   state(): Record<string, unknown> {
     const org = this.src.org();
@@ -318,6 +327,8 @@ export class OfficeShareView {
       org: { general: strings(org.general).filter(n => this.scope.has(n)), teams, instances: {} },
       needs: this.src.needs().filter(n => this.scope.has(n)).map(instance => ({ instance })),
       traffic: { now: traffic.now, items: traffic.items.filter(among), delegations: (traffic.delegations ?? []).filter(among) },
+      // #2861: the dialogue box's news — when someone talked to a person shown here and when they answered; no words.
+      ...(this.src.talk ? { talk: this.talkOf(this.src.talk(this.scope)) } : {}),
       text: this.share.text,
       // Which office the page opens on: the shared one, All offices, or (#2716) the whole-fleet office.
       office: this.share.office,
@@ -396,6 +407,12 @@ export class OfficeShareView {
         : { ...a, seats: a.seats.map(st => (isObj(st) && st.for !== undefined ? { ...st, for: this.cutOwners(typeof st.for === "string" ? [st.for] : st.for) } : st)) }]));
     }
     if (isObj(manifest.byInstance)) manifest.byInstance = Object.fromEntries(Object.entries(manifest.byInstance).filter(([k]) => this.scope.has(k)));
+    // #2861: the dialogue box's faces — an instance's only when it is shown; a person's never (a share names no one but
+    // the instances it shows, and the box there is faceless); an NPC's (a furniture id) stays.
+    if (isObj(manifest.portraits)) {
+      const { byUser: _people, ...rest } = manifest.portraits;
+      manifest.portraits = { ...rest, ...(isObj(rest.byInstance) ? { byInstance: Object.fromEntries(Object.entries(rest.byInstance).filter(([k]) => this.scope.has(k))) } : {}) };
+    }
     if (isObj(manifest.characters)) {
       const worn = new Set(["default", ...Object.values(isObj(manifest.byInstance) ? manifest.byInstance : {}).filter((v): v is string => typeof v === "string")]);
       manifest.characters = Object.fromEntries(Object.entries(manifest.characters).filter(([k]) => worn.has(k)));
