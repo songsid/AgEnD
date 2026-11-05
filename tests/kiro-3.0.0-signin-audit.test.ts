@@ -35,11 +35,12 @@ const authError = () => {
 };
 const WIDTHS = [120, 80] as const;
 const flow = LOGIN_FLOWS["kiro-cli"]!;
+const loginScreen = flow.loginScreenPattern!;
 
 describe("kiro-cli 3.0.0 sign-in surfaces (captured offline from the real binary)", () => {
   it.each(WIDTHS)("`kiro-cli login` at %i: the same menu and labels — the structured sign-in offers the four methods", (w) => {
     const screen = pane(`login-menu-${w}`);
-    expect(flow.loginScreenPattern.test(screen)).toBe(true);
+    expect(loginScreen.test(screen)).toBe(true);
     expect(structuredSignInPrompt("kiro-cli", screen)).toEqual({ phase: "method", selected: 0, choices: ["builder_id", "google", "github", "organization"] });
   });
 
@@ -50,7 +51,7 @@ describe("kiro-cli 3.0.0 sign-in surfaces (captured offline from the real binary
       const auth = authError(); auth.lastIndex = 0;
       expect(auth.test(screen)).toBe(true);
       expect(KIRO_LOGIN_REQUIRED_SCREEN.test(screen)).toBe(true);
-      expect(flow.loginScreenPattern.test(screen)).toBe(true);
+      expect(loginScreen.test(screen)).toBe(true);
       const b = backend();
       expect([...b.getStartupDialogs(), ...b.getRuntimeDialogs()].filter(d => active([d], screen).length && (d.keys?.length ?? 0) > 0)).toEqual([]);
     });
