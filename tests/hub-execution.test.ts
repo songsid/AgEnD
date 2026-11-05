@@ -42,7 +42,7 @@ function rig(installedProvider = true, root?: string) {
   const lease = (r: HubAuthorizationRequest): HubAuthorizationLease => ({ decisionId: randomUUID(), messageId: r.messageId, operationId: r.operationId, phase: r.phase, operationDigest: operationDigest(r), exposureRevision: r.exposureRevision, linkEpoch, revocationVersion, expiresAt: now + 5_000 });
   const authorize = vi.fn(async (r: HubAuthorizationRequest) => lease(r));
   const answer = vi.fn(async (_gateway: Parameters<Awaited<ReturnType<HubIsolatedProvider["open"]>>["answer"]>[0]) => "APPROVED ANSWER");
-  const close = vi.fn(async () => {}), open = vi.fn<HubIsolatedProvider["open"]>(async () => ({ answer, close }));
+  const close = vi.fn(async () => {}), open = vi.fn<HubIsolatedProvider["open"]>(async input => { input.beforeInput(); return { answer, close }; });
   const providers = new Map<string, HubIsolatedProvider>();
   if (installedProvider) providers.set("inert-test-adapter", { isolation: "hub-restricted-v1", open });
   const views = new Map([[view.id, view], [otherView.id, otherView]]);
@@ -71,6 +71,37 @@ function rig(installedProvider = true, root?: string) {
 }
 
 describe("Hub restricted member execution", () => {
+  it("checks an unpublished candidate against actual member capabilities without reading or installing exposure rows", async () => {
+    const f = rig(), candidate = { ...f.local(), exposure: { ...f.local().exposure, state: "withdrawn" as const } };
+    const lookup = vi.fn(() => null); f.options.localExposure = lookup;
+    expect(f.service.readinessCandidate(candidate)).toEqual({ ok: true, policyDigest: candidate.exposure.policyDigest, exposureRevision: 1 });
+    expect(lookup).not.toHaveBeenCalled(); expect(f.open).not.toHaveBeenCalled();
+    expect(f.service.readiness(candidate.exposure.id, 1).ok).toBe(false);
+    await expect(f.admission.admit(f.q)).rejects.toThrow(); expect(f.db.prepare("SELECT COUNT(*) AS n FROM hub_execution_queue").get()).toEqual({ n: 0 });
+  });
+  it("refuses candidate readiness without exact owner, policy, unpublished state, healthy binding and installed provider", () => {
+    const f = rig(), candidate = { ...f.local(), exposure: { ...f.local().exposure, state: "withdrawn" as const } };
+    for (const altered of [{ ...candidate, exposure: { ...candidate.exposure, state: "published" } },
+      { ...candidate, exposure: { ...candidate.exposure, owner: { realm: "directory", objectId: randomUUID() } } },
+      { ...candidate, exposure: { ...candidate.exposure, allowedTools: ["shell"] } }, { ...candidate, enforceable: true }]) {
+      expect(f.service.readinessCandidate(altered as HubLocalExposure).ok).toBe(false);
+    }
+    f.providers.clear(); expect(f.service.readinessCandidate(candidate)).toEqual({ ok: false, reasonCode: "provider-unavailable" });
+    f.stop(); expect(f.service.readinessCandidate(candidate).ok).toBe(false);
+    const broken = rig(); broken.db.prepare("UPDATE hub_execution_meta SET revision=999").run(); expect(broken.service.readinessCandidate(candidate).ok).toBe(false);
+  });
+  it.each(["expired-before-input", "missing-check", "reused-check"])("holds provider startup with %s before reporting consumption", async scenario => {
+    const f = rig(), context = await f.prepare();
+    f.open.mockImplementationOnce(async input => {
+      if (scenario === "expired-before-input") f.advance(5_001);
+      if (scenario !== "missing-check") input.beforeInput();
+      if (scenario === "reused-check") input.beforeInput();
+      return { answer: f.answer, close: f.close };
+    });
+    await expect(f.begin(context)).rejects.toThrow(); expect(f.answer).not.toHaveBeenCalled();
+    expect(f.journal.reconcile(0, [{ messageId: f.q.identity.messageId, contentDigest: f.q.identity.contentDigest }])[0].stage).not.toBe("consumed");
+    await f.service.close();
+  });
   it.each(["pending", "rejected"])("refuses a %s asynchronous required audit before committing admission", async kind => {
     const f = rig(), wait = deferred<void>();
     f.storeOptions.audit = () => kind === "pending" ? wait.promise : Promise.reject(Error("async audit failed"));
@@ -130,7 +161,7 @@ describe("Hub restricted member execution", () => {
     expect(f.open.mock.calls[0][0]).toMatchObject({ contextId: context.id, question: f.q.text });
     expect(f.open.mock.calls[0][0].label).toContain("Hub identity; external data; no local human authority");
     expect(f.open.mock.calls[0][0].label).toContain(f.q.identity.asker.objectId);
-    expect(Object.keys(f.open.mock.calls[0][0]).sort()).toEqual(["contextId", "label", "question", "signal"]);
+    expect(Object.keys(f.open.mock.calls[0][0]).sort()).toEqual(["beforeInput", "contextId", "label", "question", "signal"]);
     expect(result.contentDigest).toBe(sha256(result.text)); expect(Object.isFrozen(result)).toBe(true);
     const release = f.authorize.mock.calls.map(([r]) => r).find(r => r.phase === "release-answer")!;
     expect(release).toMatchObject({ answer: { answerId: result.answerId, contentDigest: result.contentDigest } });

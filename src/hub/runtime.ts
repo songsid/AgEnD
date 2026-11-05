@@ -11,8 +11,17 @@
 import { createHubDirectory, type HubDirectory, type HubDirectoryConfig } from "./directory/index.js";
 import { hubPlanDigest } from "./init/plan-digest.js";
 import { HubMount, type HubMountedService } from "./mount.js";
-import { createHubServerFactory, type HubServerComponents } from "./compose/server.js";
-import type { HubHoldCode } from "./db.js";
+import { createHubServerFactory, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
+
+/**
+ * The Hub web service (S3b, src/hub/http/compose.ts), imported lazily only inside the server factory. S3b takes
+ * S5's hubTxDatabase as its second argument.
+ */
+export const S3B_HTTP_ENTRY = async (): Promise<HubHttpEntry> => {
+  const s3 = await import("./http/compose.js");
+  return { migrations: s3.migrations, createHubHttp: (deps) => s3.createHubHttp(deps, hubTxDatabase) };
+};
+import { hubTxDatabase, type HubHoldCode } from "./db.js";
 
 export interface HubHold {
   side: "server" | "member";
@@ -82,7 +91,7 @@ export class HubRuntime {
       ? null
       : createHubServerFactory({
           home: options.home,
-          components: options.components ?? {},
+          components: options.components ?? { http: S3B_HTTP_ENTRY },
           createDirectory: options.createDirectory ?? createHubDirectory,
         report: (code, detail) => {
           this.reported = { side: "server", code, detail };

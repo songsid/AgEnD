@@ -16566,6 +16566,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
+      hubHolds: () => this.hubHolds.map(h => ({ side: h.side, code: h.code, since: h.since, detail: t(`hub.hold.${h.code}`) })),
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
         ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,
       })),

@@ -58,7 +58,12 @@ export type NeedsYouReason =
   | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback"
-  | "hub_proposal" | "hub_execution_hold";
+  | "hub_proposal" | "hub_execution_hold" | "hub_unavailable";
+
+/** S-51: the Hub (or this fleet's Hub membership) is held: why, as the composition's reason code and localized text. */
+export interface HubHoldInput {
+  side: "server" | "member"; code: string; detail: string; since: number;
+}
 
 export interface HubExecutionAttentionInput {
   id: string; kind: "proposal" | "hold"; agent: string; messageId: string; exposureId: string; since: number;
@@ -143,6 +148,7 @@ export interface NeedsYouInputs {
   backendSignIns?: BackendSignInInput[];
   configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
   hubExecution?: HubExecutionAttentionInput[];
+  hubHolds?: HubHoldInput[];
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
   ownerOf: (instance: string) => string | undefined;
 }
@@ -244,6 +250,12 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     id: `config:${issue.file}:${issue.since}`, type: "config", instance: "", owner: issue.owner,
     reason: issue.mode === "fallback" ? "config_fallback" : "config_invalid", detail: issue.detail, since: issue.since,
     configIssue: { file: issue.file, line: issue.line, column: issue.column, reason: issue.reason, mode: issue.mode, time: issue.time, since: issue.since },
+  });
+
+  // S-51: a held Hub says so once per side, with why; it is display-only (repair is local: settings, init, restart).
+  for (const hold of inputs.hubHolds ?? []) items.push({
+    id: `hub-hold:${hold.side}:${hold.code}:${hold.since}`, type: "hub", instance: "",
+    reason: "hub_unavailable", detail: hold.detail, since: hold.since,
   });
 
   // Hub proposals remain display-only in the member owner's local inbox.

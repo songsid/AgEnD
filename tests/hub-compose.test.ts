@@ -207,7 +207,7 @@ describe.skipIf(process.platform === "win32")("Hub runtime (S5b lifecycle)", () 
   it("mounts a sealed Hub; without S3 it holds hub-incomplete; an edit after sealing holds hub-unsealed; off clears", async () => {
     const hub = await initializedHub();
     const holds: (readonly HubHold[])[] = [];
-    const runtime = new HubRuntime({ home: hub.home, log: () => {}, onHoldsChanged: (h) => holds.push(h) });
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: {}, onHoldsChanged: (h) => holds.push(h) });
     await runtime.apply(hub.config);
     expect(runtime.currentHolds()).toMatchObject([{ side: "server", code: "hub-incomplete" }]);
     await runtime.apply({ hub: { ...hub.config.hub, name: "Edited by hand" } });
@@ -410,4 +410,26 @@ describe.skipIf(process.platform === "win32")("review #3113 round 2: a failed cr
       db.close();
     });
   }
+});
+
+describe.skipIf(process.platform === "win32")("S5b PR 2: the real Hub web service (S3b) is the default", () => {
+  it("a sealed, enabled Hub serves S3b's session API, the Hub-only shell and its assets over TLS; nothing else", async () => {
+    const hub = await initializedHub();
+    const runtime = new HubRuntime({ home: hub.home, log: () => {} });
+    await runtime.apply(hub.config);
+    expect(runtime.currentHolds()).toEqual([]);
+    const session = await get(hub.webPort, "/hub/v1/session", hub.caPem);
+    const shell = await get(hub.webPort, "/web", hub.caPem);
+    const panel = await get(hub.webPort, "/ui/js/panel-hub.js", hub.caPem);
+    const fleetModule = await get(hub.webPort, "/ui/js/app.js", hub.caPem);
+    const unknown = await get(hub.webPort, "/api/status", hub.caPem);
+    expect(session).toEqual({ status: 200, body: JSON.stringify({ signedIn: false, hub: { name: "Compose Hub" } }) });
+    expect(shell.status).toBe(200);
+    expect(shell.body).toContain('data-hub="hub"');
+    expect(panel.status).toBe(200);
+    expect(fleetModule.status).toBe(404); // the fleet's own modules are not on the Hub listener
+    expect(unknown.status).toBe(404);
+    await runtime.close();
+    expect(await refused(hub.webPort)).toBe(true);
+  });
 });
