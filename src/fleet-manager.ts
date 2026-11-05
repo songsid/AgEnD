@@ -1828,6 +1828,41 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * them at once; what the fleet itself holds (paired computers' connections, this PC's Windows process, agents' tool
    * sessions) follows just after, outside the save that changed them (applyRuntimeSwitches): no restart is needed.
    */
+  /** S-51: the Hub switches follow the configuration in force (load, save, reload rollback), like the runtime ones. */
+  private observeHubSwitches(): void {
+    if (!this.hubEffectsReady || this.hubEffectsScheduled || this.shuttingDown) return;
+    this.hubEffectsScheduled = true;
+    queueMicrotask(() => { this.hubEffectsScheduled = false; void this.applyHubSwitches(); });
+  }
+
+  /** Reads the raw configuration at run time (the newest wins); off and never started: returns before any import. */
+  private async applyHubSwitches(): Promise<void> {
+    if (this.shuttingDown || !this.hubEffectsReady) return;
+    const raw = this.rawFleetConfig as { hub?: { enabled?: unknown }; hub_member?: { enabled?: unknown } };
+    const on = raw?.hub?.enabled === true || raw?.hub_member?.enabled === true;
+    if (!on && !this.hubRuntime) return;
+    try {
+      if (!this.hubRuntime) {
+        const { HubRuntime } = await import("./hub/runtime.js");
+        if (this.shuttingDown || !this.hubEffectsReady) return;
+        this.hubRuntime = new HubRuntime({
+          home: this.dataDir,
+          log: (level, message, meta) => this.logger[level](meta ?? {}, message),
+          onHoldsChanged: holds => { this.hubHolds = holds; },
+        });
+      }
+      const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
+      await this.hubRuntime.apply({ hub: current?.hub, hub_member: current?.hub_member });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error)?.message ?? String(err) }, "Hub switches could not be applied");
+    }
+  }
+
+  /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */
+  getHubHolds(): readonly import("./hub/runtime.js").HubHold[] {
+    return this.hubHolds;
+  }
+
   private observeRuntimeSwitches(): void {
     setConfiguredRuntimeSwitches(this.fleetConfig?.runtimes);
     if (!this.runtimeEffects || this.runtimeEffectsScheduled) return;
@@ -1876,6 +1911,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.daemons.get(name)?.bootId ?? null;
   }
   private rawFleetConfig: RawFleetConfig = {};
+  /**
+   * S-51 (#3095, experimental, off by default): the Hub runtime. src/hub/runtime.js is imported only once a Hub switch
+   * (hub.enabled / hub_member.enabled) is on; while both are off nothing Hub-related loads, opens or listens.
+   */
+  private hubRuntime: import("./hub/runtime.js").HubRuntime | null = null;
+  private hubEffectsReady = false;
+  private hubEffectsScheduled = false;
+  private hubHolds: readonly import("./hub/runtime.js").HubHold[] = [];
   private rawFleetDocument: ReturnType<typeof parseDocument> | null = null;
   /** #2208: the paths a saveFleetConfig() wrote, for its check that nothing else changed. */
   private fleetDocumentWrites: Array<Array<string | number>> | null = null;
@@ -4580,6 +4623,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.enforceGuestSwitch();
     this.observeWebAuthority();                      // #2453 review: a reload's web-authority switches are seen at once
     this.observeRuntimeSwitches();                   // M-2255: so are the Windows runtimes' switches
+    this.observeHubSwitches();                       // S-51: and the Hub's (no-op until the fleet has started)
     // Child tool/guidance readers must follow this fleet's actual config, including --config.
     // Scope the path to its owning data directory so another inherited home's override cannot enable CW.
     process.env.AGEND_FLEET_DATA_DIR = resolvePath(this.dataDir);
@@ -9572,6 +9616,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       .filter(name => !this.lifecycle.isPaused(name)));
     await this.startHealthServer(fleet.health_port ?? 19280);
     if (this.shuttingDown) return;
+    // S-51: from here on the Hub switches apply (an enabled Hub mounts now, beside the fleet; it never blocks startup).
+    this.hubEffectsReady = true;
+    this.observeHubSwitches();
 
     if (generals.length > 0) {
       for (const [name, cfg] of generals) {
@@ -13973,6 +14020,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       "Saved fleet config (lossless patch)",
     );
     this.observeRuntimeSwitches();                   // M-2255: a saved Windows runtime switch applies now
+    this.observeHubSwitches();                       // S-51: so does a saved Hub switch
   }
 
   /** A permission tightening is effective when its save returns, independently of the later apply job or IPC. */
@@ -23168,6 +23216,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * settles, so a later genuine stop (after a restart) still does the work.
    */
   stopAll(): Promise<void> {
+    // S-51: no new Hub admission, dispatch or listener work from this tick on; doStopAll awaits the close.
+    this.hubEffectsReady = false;
+    this.hubRuntime?.fence();
     this.lifecycle.cancelNativeRecovery?.();
     this.nativeMcpStore?.closeAll();
     this.runtimeExecutor?.close();this.runtimeExecutor=null;
@@ -23259,6 +23310,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // #1565: the web chat's last changes reach the disk (bounded: a slow disk does not hold the shutdown).
     const webChatStopped = this.webChatStore ? Promise.race([this.webChatStore.flush().catch(() => {}), new Promise<void>(r => setTimeout(r, 3_000).unref?.())]) : Promise.resolve();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
+    // S-51: the Hub closes in the same drain, bounded so an unanswering listener does not hold the shutdown.
+    const hubRuntime = this.hubRuntime; this.hubRuntime = null;
+    const hubStopped = hubRuntime ? Promise.race([hubRuntime.close().catch(() => {}), new Promise<void>(r => setTimeout(r, 10_000).unref?.())]) : Promise.resolve();
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
     // reject spawn work which has not started. Otherwise a storm backoff could
@@ -23287,6 +23341,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await publicStopped;
     await sharesStopped?.catch(() => {});
     await profileStopped;
+    await hubStopped;
     await needsStopped;
     await settingsControlStopped;
     await cacheStopped;
@@ -23601,6 +23656,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.loadedFleetSource = previousSource;
       this.observeWebAuthority();                    // #2453 review: the configuration back in force is the one seen
       this.observeRuntimeSwitches();                 // M-2255: and the Windows runtimes' switches
+      this.observeHubSwitches();                     // S-51: and the Hub's
       this.logger.error({
         oldCount,
         newCount,
