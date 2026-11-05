@@ -408,7 +408,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -446,8 +446,8 @@ import { OwnStatusMessages, discordMessageKey } from "./chat-log-ids.js";
 import { PROFILE_TIMELINE_FILE, PROFILE_UNRECORDED, recordProfileLaunch } from "./usage/profile-timeline.js";
 import { readQuotaHistory, type QuotaReading } from "./usage/quota-history.js";
 import { estimateCapacity, type CapacityEstimate, type CapacityHour } from "./usage/capacity.js";
-import { hourSources } from "./usage-rollup.js";
-import type { HourTotals } from "./cache-ledger.js";
+import { covered, hourSources } from "./usage-rollup.js";
+import { KEEP_DAYS, type HourTotals } from "./cache-ledger.js";
 import { ratesFor } from "./cache-prices.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
@@ -8873,6 +8873,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * asynchronously, the arithmetic small (usage/capacity.ts). An account is its usage provider id ("claude",
    * "claude:hsinlin", "codex:yanxianchen"): its hours are the ledger sources of that backend under that credential profile
    * (Codex's "unrecorded" hours are no account's). A per-model weekly ("Sonnet (weekly)") counts only that model's tokens.
+   *
+   * Prism #3073: no estimate rather than a wrong one —
+   * - a window is measured only where the ledger has its hours: kept (31 days) and scanned (`days.coverage`) for every
+   *   instance whose hours count for the account; the quota history goes back 12 weeks;
+   * - a profile literally named "default", "unknown" or "unrecorded" makes those hours ambiguous: neither the host
+   *   account nor the named one is estimated (each would be credited the other's use, or lose its own);
+   * - only a metric the vendor marks per-model (`scope: "model"`) is filtered by model; another named weekly pool
+   *   ("Luna Reserve (weekly)", Antigravity pools) is no model name and is not estimated.
    */
   async refreshCapacity(): Promise<number> {
     try {
@@ -8881,14 +8889,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for (const r of readings) { const k = `${r.provider}\u0000${r.metric}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
       if (!groups.size) { this.capacityEstimates = new Map(); return 0; }
       const data = await this.cacheServiceFor().usageData();
-      // provider id → hour → model key → totals.
+      const now = Date.now(), DAY = 24 * 3_600_000, HOUR = 3_600_000;
+      const keptFrom = now - KEEP_DAYS * DAY + HOUR;           // the oldest hour still in every ledger (an hour of margin)
+      // Profiles whose names are also the ledger's own tags: their hours cannot be told from the host's / unattributed.
+      const RESERVED = new Set(["default", "unknown", PROFILE_UNRECORDED]);
+      const reservedNamed = new Map<string, Set<string>>();
+      const reservedFor = (backend: string): Set<string> => reservedNamed.get(backend)
+        ?? reservedNamed.set(backend, new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)))).get(backend)!;
+      const ambiguous = new Set<string>();
+      // provider id → hour → model key → totals; and the instances whose hours count for it (their scan coverage).
       const byProvider = new Map<string, Map<number, Record<string, HourTotals>>>();
+      const daysOf = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
       for (const inst of data.instances) {
         for (const [hk, hour] of Object.entries(inst.ledger.hours)) {
           for (const src of hourSources(hour)) {
             const base = usageProviderIdForBackend(src.backend);
-            if (!base || src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
+            if (!base) continue;
+            if (reservedFor(src.backend).has(src.profile)) {
+              ambiguous.add(src.profile === "default" ? base : `${base}:${src.profile}`).add(`${base}:${src.profile}`);
+              continue;
+            }
+            if (src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
             const provider = src.profile === "default" ? base : `${base}:${src.profile}`;
+            const list = daysOf.get(provider) ?? daysOf.set(provider, []).get(provider)!;
+            if (!list.includes(inst.days)) list.push(inst.days);
             const hours = byProvider.get(provider) ?? byProvider.set(provider, new Map()).get(provider)!;
             const into = hours.get(Number(hk)) ?? hours.set(Number(hk), Object.create(null) as Record<string, HourTotals>).get(Number(hk))!;
             for (const [mk, tot] of Object.entries(src.m)) {
@@ -8901,8 +8925,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const next = new Map<string, CapacityEstimate>();
       for (const [key, list] of groups) {
         const [provider, metric] = key.split("\u0000") as [string, string];
-        // "Sonnet (weekly)", "Fable (weekly)": that model's tokens only; "Weekly", "Weekly limit": everything.
-        const named = /^(.+) \(weekly\)$/i.exec(metric)?.[1]?.toLowerCase() ?? null;
+        if (ambiguous.has(provider)) continue;
+        // A per-model weekly ("Sonnet (weekly)", the vendor's scope "model"): that model's tokens only. Another named
+        // pool is not a model: no estimate. "Weekly", "Weekly limit": everything.
+        const named = /^(.+) \((?:weekly|monthly|\d+d)\)$/i.exec(metric)?.[1]?.toLowerCase() ?? null;
+        const perModel = list.some((r) => r.scope === "model");
+        if (named && !perModel) continue;
         const hours: CapacityHour[] = [];
         for (const [hour, models] of byProvider.get(provider) ?? []) {
           let api: number | null = 0, output = 0, all = 0;
@@ -8916,7 +8944,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           if (all > 0) hours.push({ hour, api, output, all });
         }
-        next.set(key, estimateCapacity(list, hours));
+        const scanned = daysOf.get(provider) ?? [];
+        const available = (from: number, to: number): boolean => {
+          if (from < keptFrom || !scanned.length) return false;
+          for (let h = from; h <= to; h += HOUR) if (!scanned.every((d) => covered(d, h))) return false;
+          return true;
+        };
+        const est = estimateCapacity(list, hours, available);
+        if (est) next.set(key, est);
       }
       this.capacityEstimates = next;
       return next.size;

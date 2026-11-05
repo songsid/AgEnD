@@ -482,33 +482,37 @@ export const compactTokens = (n: number): string => (n >= 1e9 ? `${(n / 1e9).toF
 const ref = (key: string, args: Array<string | number>): UsageI18nRef => ({ key: key as UsageI18nRef["key"], args });
 const fill = (text: string, args: Array<string | number>): string => args.reduce<string>((s, a, i) => s.split(`{${i}}`).join(String(a)), text);
 
-/** The words for an estimate (English text; the page shows its own language from the key). */
-export function capacityText(est: CapacityEstimate): UsageCapacity {
+/**
+ * The words for an estimate (English text; the page shows its own language from the key). Null when an "ok" estimate
+ * has no basis (Prism #3073 P1: estimateCapacity never makes one, but a read must not fail on it).
+ */
+export function capacityText(est: CapacityEstimate): UsageCapacity | null {
   const onlyAgend = { text: "Counts only this fleet's agents; use of the same account elsewhere makes this low.", i18n: ref("usage.capacity.only_agend", []) };
   if (est.status === "not_enough") {
     const args = [est.deltaPct];
     return { status: "not_enough", deltaPct: est.deltaPct, line: { text: fill("Not enough usage yet to measure 100% (Δ {0}% of 10%)", args), i18n: ref("usage.capacity.not_enough", args) }, notes: [onlyAgend] };
   }
-  const api = est.bases.api, tokensBasis = est.bases.all ?? est.bases.output!;
+  const api = est.bases.api, tokensBasis = est.bases.all ?? est.bases.output;
+  if (!api && !tokensBasis) return null;
   const basis: CapacityBasis = api ? "api" : est.bases.all ? "all" : "output";
+  const chosen = est.bases[basis]!;
   let line: { text: string; i18n: UsageI18nRef };
   if (api && est.bases.all) {
-    const args = [money0(api.median), money0(api.low), money0(api.high), compactTokens(est.bases.all.median), est.windows];
+    const args = [money0(api.median), money0(api.low), money0(api.high), compactTokens(est.bases.all.median), api.windows];
     line = { text: fill("100% ≈ {0} ({1}–{2}) · ≈ {3} tokens · from {4} weeks", args), i18n: ref("usage.capacity.line", args) };
   } else {
-    const args = [compactTokens(tokensBasis.median), compactTokens(tokensBasis.low), compactTokens(tokensBasis.high), est.windows];
+    const args = [compactTokens(chosen.median), compactTokens(chosen.low), compactTokens(chosen.high), chosen.windows];
     line = { text: fill("100% ≈ {0} tokens ({1}–{2}) · from {3} weeks", args), i18n: ref("usage.capacity.line_tokens", args) };
   }
   const notes = [onlyAgend];
   const fit = est.bestFit ? est.bases[est.bestFit] : undefined;
   if (est.bestFit && fit && fit.cv !== null) {
-    const args = [Math.round(fit.cv * 100), est.windows];
+    const args = [Math.round(fit.cv * 100), fit.windows];
     const sentence = { api: "API-equivalent fits best: ±{0}% across {1} weeks", output: "Output tokens fit best: ±{0}% across {1} weeks", all: "All tokens fit best: ±{0}% across {1} weeks" }[est.bestFit];
     notes.push({ text: fill(sentence, args), i18n: ref(`usage.capacity.best_fit_${est.bestFit}`, args) });
   }
   if (est.mixed) notes.push({ text: "Bases disagree — possibly used outside this fleet", i18n: ref("usage.capacity.mixed", []) });
-  const chosen = est.bases[basis]!;
-  return { status: "ok", deltaPct: est.deltaPct, windows: est.windows, basis, median: chosen.median, low: chosen.low, high: chosen.high,
+  return { status: "ok", deltaPct: est.deltaPct, windows: chosen.windows, basis, median: chosen.median, low: chosen.low, high: chosen.high,
     ...(api && est.bases.all ? { tokens: est.bases.all.median } : {}), bestFit: est.bestFit, mixed: est.mixed, line, notes };
 }
 
@@ -522,10 +526,11 @@ function withCapacity(payload: UsagePayload): UsagePayload {
     let changed = false;
     const metrics = p.metrics.map((m) => {
       if (m.type !== "percent" || typeof m.windowMs !== "number" || m.windowMs < 24 * 3_600_000) return m;
-      const est = look(p.id, m.label);
-      if (!est) return m;
+      let capacity: UsageCapacity | null = null;
+      try { const est = look(p.id, m.label); capacity = est ? capacityText(est) : null; } catch { capacity = null; }
+      if (!capacity) return m;                       // an estimate that cannot be put in words never fails the read
       changed = true;
-      return { ...m, capacity: capacityText(est) };
+      return { ...m, capacity };
     });
     if (!changed) return p;
     any = true;

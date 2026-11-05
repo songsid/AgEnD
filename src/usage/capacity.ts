@@ -17,7 +17,7 @@
  * token here, so the estimate comes out LOW; a window whose bases disagree with each other by more than 2× is marked
  * `mixed`. The page says so (usage.capacity.only_agend, usage.capacity.mixed).
  */
-import type { QuotaReading } from "./quota-history.js";
+import { sameReset, type QuotaReading } from "./quota-history.js";
 
 export const CAPACITY_MIN_DELTA = 10;
 export const BASES = ["api", "output", "all"] as const;
@@ -27,22 +27,27 @@ const H = 3_600_000;
 /** One hour of one account's usage, on each basis (api null: a model in it has no list price). */
 export interface CapacityHour { hour: number; api: number | null; output: number; all: number }
 
-export interface BasisEstimate { median: number; low: number; high: number; cv: number | null }
+/** `windows`: how many reset windows this basis was measured over (a basis can miss one: an unpriced hour). */
+export interface BasisEstimate { median: number; low: number; high: number; cv: number | null; windows: number }
 export type CapacityEstimate =
   | { status: "ok"; windows: number; deltaPct: number; bases: Partial<Record<CapacityBasis, BasisEstimate>>; bestFit: CapacityBasis | null; mixed: boolean }
   | { status: "not_enough"; deltaPct: number };
 
 interface Window { t1: number; p1: number; t2: number; p2: number }
 
-/** The reset windows the readings span: a new `resetsAt`, or a percent that went down, starts the next. */
+/**
+ * The reset windows the readings span: a new `resetsAt`, or a percent that went down, starts the next. "New" is
+ * quota-history's sameReset (Prism #3073 P2): a vendor that gives only "resets in N seconds" drifts by seconds between
+ * reads and is still one window; compared with the window's latest reading, a real reset moves it by days.
+ */
 export function quotaWindows(readings: readonly QuotaReading[]): Window[] {
   const out: Window[] = [];
   let cur: (Window & { resetsAt: string | null }) | null = null;
   for (const r of [...readings].sort((a, b) => a.t - b.t)) {
-    if (!cur || r.resetsAt !== cur.resetsAt || r.used < cur.p2) {
+    if (!cur || !sameReset(r.resetsAt, cur.resetsAt) || r.used < cur.p2) {
       if (cur) out.push(cur);
       cur = { t1: r.t, p1: r.used, t2: r.t, p2: r.used, resetsAt: r.resetsAt };
-    } else { cur.t2 = r.t; cur.p2 = r.used; }
+    } else { cur.t2 = r.t; cur.p2 = r.used; cur.resetsAt = r.resetsAt; }
   }
   if (cur) out.push(cur);
   return out.map(({ t1, p1, t2, p2 }) => ({ t1, p1, t2, p2 }));
@@ -55,11 +60,20 @@ const cv = (xs: number[]): number | null => {
   return mean > 0 ? Math.sqrt(xs.reduce((a, x) => a + (x - mean) ** 2, 0) / xs.length) / mean : null;
 };
 
-/** The estimate for one account's one weekly metric. */
-export function estimateCapacity(readings: readonly QuotaReading[], hours: readonly CapacityHour[]): CapacityEstimate {
-  const windows = quotaWindows(readings);
+/**
+ * The estimate for one account's one weekly metric. `available(from, to)`: whether every hour from `from` to `to` is in
+ * the ledger — kept and scanned (Prism #3073 P2): the quota history keeps 12 weeks, the hours 31 days, so a window
+ * outside them would count as zero use and the estimate would come out absurdly low. Such a window is left out.
+ * Null: there are windows to measure, but no usage of this account in any of them on any basis — nothing to show.
+ */
+export function estimateCapacity(readings: readonly QuotaReading[], hours: readonly CapacityHour[], available: (from: number, to: number) => boolean = () => true): CapacityEstimate | null {
+  const windows = quotaWindows(readings).filter((w) => available(Math.floor(w.t1 / H) * H, w.t2));
   const usable = windows.filter((w) => w.p2 - w.p1 >= CAPACITY_MIN_DELTA);
-  if (!usable.length) return { status: "not_enough", deltaPct: Math.max(0, ...windows.map((w) => w.p2 - w.p1)) };
+  if (!usable.length) {
+    // No window inside the ledger at all: "not enough usage" would be a claim about weeks it cannot see. Say nothing.
+    if (!windows.length) return null;
+    return { status: "not_enough", deltaPct: Math.max(0, ...windows.map((w) => w.p2 - w.p1)) };
+  }
   const per: Array<Partial<Record<CapacityBasis, { low: number; mid: number; high: number }>>> = usable.map((w) => {
     const delta = w.p2 - w.p1;
     const inside = hours.filter((h) => h.hour >= w.t1 && h.hour + H <= w.t2);                // whole hours within: low
@@ -82,10 +96,11 @@ export function estimateCapacity(readings: readonly QuotaReading[], hours: reado
     const ws = per.map((p) => p[b]).filter((x): x is { low: number; mid: number; high: number } => !!x);
     if (!ws.length) continue;
     const mids = ws.map((x) => x.mid);
-    bases[b] = { median: median(mids), low: Math.min(...ws.map((x) => x.low)), high: Math.max(...ws.map((x) => x.high)), cv: cv(mids) };
+    bases[b] = { median: median(mids), low: Math.min(...ws.map((x) => x.low)), high: Math.max(...ws.map((x) => x.high)), cv: cv(mids), windows: ws.length };
   }
+  if (!BASES.some((b) => bases[b])) return null;                      // Prism #3073 P1: no basis, no estimate
   // Best fit: with three windows or more, the basis that varies least across them.
-  const scored = BASES.filter((b) => bases[b]?.cv !== null && bases[b]?.cv !== undefined && per.filter((p) => p[b]).length >= 3);
+  const scored = BASES.filter((b) => bases[b]?.cv !== null && bases[b]?.cv !== undefined && bases[b]!.windows >= 3);
   const bestFit = scored.length ? scored.reduce((a, b) => (bases[b]!.cv! < bases[a]!.cv! ? b : a)) : null;
   // Mixed: in some window the API-equivalent and the token count disagree (each against its own median) by over 2×.
   let mixed = false;
