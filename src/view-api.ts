@@ -9,6 +9,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
  *   GET  /api/pane/:instance    → `tmux capture-pane -ep` output (ANSI text),
  *                                plus X-Pane-Cols / X-Pane-Rows response headers;
  *                                `?history=1`: the scrollback above it too, on demand (VIEW_HISTORY)
+ *                                `?transcript=1`: Claude's earlier conversation from its transcript (view-history.ts)
  *   GET  /api/profiles          → merged roster (live status + config + profile)
  *   GET  /api/profile/:instance → one profile row
  *   POST /api/profile/:instance → upsert profile              (signed in)
@@ -53,6 +54,7 @@ import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import type { ThemeCard } from "./web-theme.js";
 import { GUEST_PANE_MAX_BYTES, GUEST_PANE_READS, GUEST_PANE_SHARE_MS, guestRequestOf } from "./web-guest-access.js";
 import { OfficeWriteLimiter } from "./web-office-store.js";
+import { viewHistoryQuery, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 
 const execFileP = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -78,6 +80,11 @@ export interface ViewApiContext {
   readonly themeStore?: { get(name: string): { theme: { card?: ThemeCard } }; asset(name: string, id: string): { bytes: Buffer; mime: string } | null };
   /** #1958: a profile, card or colour write landed — every open page repaints (a status frame), not only the writer's. */
   identityChanged?(): void;
+  /**
+   * Claude history in the View (view-history.ts): the instance's transcript steps, read when its View is scrolled up.
+   * Asked only after this route's own access rules (the pane's). Absent: the page is told there is none to show.
+   */
+  viewHistory?(name: string, q: ViewHistoryQuery): Promise<ViewHistoryAnswer | null>;
 }
 
 interface ProfileRow {
@@ -285,15 +292,8 @@ const sharedCaptures = new Map<string, { at: number; capture: Promise<{ text: st
 /** For tests: forget the guests' read counts and shared captures. */
 export function resetGuestPanes(): void { guestPaneReads = paneReadLimiter(); guestPaneAgents.clear(); sharedCaptures.clear(); }
 function guestPane(ctx: ViewApiContext, name: string, guest: import("./web-guest-access.js").GuestRequest, res: ServerResponse, history = false): void {
-  if (!guest.trusted?.()) { json(res, 403, { error: "guest_not_trusted" }); return; }
-  const account = `${guest.owner.adapterId}:${guest.owner.userId}`, now = performance.now();
-  const agents = guestPaneAgents.get(account) ?? new Map<string, number>();
-  for (const [agent, at] of agents) if (now - at >= GUEST_PANE_READS.panesWindowMs) agents.delete(agent);
-  if (!agents.has(name) && agents.size >= GUEST_PANE_READS.panes) { json(res, 429, { error: "guest_view_too_many_agents" }); return; }
-  const limit = guestPaneReads.check(account);
-  if (!limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_view_rate_limited", retry_after_s: limit.retry_after_s }); return; }
-  guestPaneReads.record(account);
-  agents.set(name, now); guestPaneAgents.set(account, agents);
+  if (!guestAdmitted(name, guest, res)) return;
+  const now = performance.now();
   // The scrollback (a person scrolled up): one read within the same limits, at most the same bytes (its end).
   if (history) { historyCapture(ctx, name).then((c) => sendHistory(res, c, GUEST_PANE_MAX_BYTES, { "Cache-Control": "private, no-store" }), (err) => historyFailed(ctx, res, name, err)); return; }
   let shared = sharedCaptures.get(name);
@@ -303,6 +303,22 @@ function guestPane(ctx: ViewApiContext, name: string, guest: import("./web-guest
     shared.capture.catch(() => { if (sharedCaptures.get(name) === shared) sharedCaptures.delete(name); });
   }
   shared.capture.then((c) => sendPane(res, c, GUEST_PANE_MAX_BYTES, { "Cache-Control": "private, no-store" }), (err) => paneFailed(ctx, res, name, err));
+}
+/**
+ * #2855: whether a guest may read this agent's pane now — Trusted, within its agents and its reads a second (counted);
+ * refused with the answer already sent. Claude history in the View reads under the same rule and count as its screen.
+ */
+function guestAdmitted(name: string, guest: import("./web-guest-access.js").GuestRequest, res: ServerResponse): boolean {
+  if (!guest.trusted?.()) { json(res, 403, { error: "guest_not_trusted" }); return false; }
+  const account = `${guest.owner.adapterId}:${guest.owner.userId}`, now = performance.now();
+  const agents = guestPaneAgents.get(account) ?? new Map<string, number>();
+  for (const [agent, at] of agents) if (now - at >= GUEST_PANE_READS.panesWindowMs) agents.delete(agent);
+  if (!agents.has(name) && agents.size >= GUEST_PANE_READS.panes) { json(res, 429, { error: "guest_view_too_many_agents" }); return false; }
+  const limit = guestPaneReads.check(account);
+  if (!limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_view_rate_limited", retry_after_s: limit.retry_after_s }); return false; }
+  guestPaneReads.record(account);
+  agents.set(name, now); guestPaneAgents.set(account, agents);
+  return true;
 }
 
 /**
@@ -351,6 +367,17 @@ function historyFailed(ctx: ViewApiContext, res: ServerResponse, name: string, e
 function paneFailed(ctx: ViewApiContext, res: ServerResponse, name: string, err: unknown): void {
   ctx.logger.debug({ err, name }, "capture-pane failed");
   res.writeHead(200, { "Content-Type": "text/plain" }); res.end("");
+}
+
+/** Claude history in the View: one page of the transcript's steps (or one step whole), as JSON never cached. */
+function transcriptHistory(ctx: ViewApiContext, name: string, params: URLSearchParams, res: ServerResponse): void {
+  const headers = { "Cache-Control": "private, no-store" };
+  const send = (code: number, body: unknown) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", ...headers }); res.end(JSON.stringify(body)); };
+  if (!ctx.viewHistory) { send(200, { view_history: 1, supported: false, reason: "unavailable" }); return; }
+  ctx.viewHistory(name, viewHistoryQuery(params)).then(
+    (answer) => { if (!answer) send(404, { error: "unknown instance" }); else send(200, answer); },
+    (err) => { ctx.logger.debug({ err, name }, "view history read failed"); send(503, { error: "history_unavailable" }); },
+  );
 }
 
 /** A pane's logical grid size in cells, as tmux sees it. */
@@ -472,6 +499,13 @@ export function handleViewRequest(
     // M-2262: `?history=1` — the scrollback too (on demand: the person scrolled up). Any other query is the screen.
     const history = url.searchParams.get("history") === "1";
     const guest = guestRequestOf(req);
+    // Claude history in the View (view-history.ts): the transcript's earlier steps, under this route's rules — a guest
+    // within its scope, Trusted and its read limit, as for the screen.
+    if (url.searchParams.get("transcript") === "1") {
+      if (guest && !guestAdmitted(name, guest, res)) return true;
+      transcriptHistory(ctx, name, url.searchParams, res);
+      return true;
+    }
     if (guest) { guestPane(ctx, name, guest, res, history); return true; }
     if (history) historyCapture(ctx, name).then((c) => sendHistory(res, c, VIEW_HISTORY.maxBytes), (err) => historyFailed(ctx, res, name, err));
     else capturePane(ctx, name).then((c) => sendPane(res, c, Number.MAX_SAFE_INTEGER), (err) => paneFailed(ctx, res, name, err));

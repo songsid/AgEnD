@@ -383,6 +383,10 @@ to that instance's Log).
 
 **Chat | View | Log | Details** switch at the top of an instance.
 - **View** — the live terminal (read only), the identity card, and **Edit profile** (or **Sign in to edit** when signed out).
+  Scrolling up (or **Earlier output**) shows what scrolled off: tmux's scrollback; for Claude Code, its earlier
+  conversation from its transcript, drawn in Claude's own terminal style above the live screen under **History above**
+  (long output folded, click to expand; older pages near the top; the latest ~1000 steps). Same access as View; the Log
+  tab's switch plays no part.
 - **Log** — [the Log tab](#the-log-tab).
 - **Details** — Configuration (display name, description, directory, bound to, tags; "Read only — change it in
   Settings." with **Edit in Settings**), Runtime (backend, model, effort, cost, context, 5 h and 7 d rate), Recent
