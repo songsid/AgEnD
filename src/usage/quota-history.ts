@@ -4,8 +4,10 @@
  * 30-minute background read): never an extra vendor call of its own.
  *
  * One JSON line per change: a weekly metric's percent or its reset time moved since the last line for that (provider,
- * metric). A week is at most ~100 steps of a whole percent, so ≤ ~110 lines an account-week (~1–3 KB). Kept 12 weeks,
- * and never over 2 MB (the oldest lines go first). Written off the fleet's thread (fs/promises), one write at a time.
+ * metric). A week is at most ~100 steps of a whole percent, so ≤ ~110 lines an account-week (~1–3 KB). Kept 12 weeks
+ * (older lines are dropped on the first write of each day) and never over 2 MB (the oldest lines go first, whenever the
+ * file is over it). A reset time within 10 minutes of the last is the same reset. Written off the fleet's thread
+ * (fs/promises), one write at a time.
  * `usage-quota-history.jsonl` in AGEND_HOME.
  */
 import { appendFile, readFile, rename, stat, writeFile } from "node:fs/promises";
@@ -41,6 +43,17 @@ let loaded = false;
 let chain: Promise<void> = Promise.resolve();
 
 const keyOf = (provider: string, metric: string): string => `${provider}\u0000${metric}`;
+/**
+ * The same reset (Fable r1 #5): a vendor that gives only "resets in N seconds" yields a time that drifts by the read's own
+ * timing; within 10 minutes it is the same window, never a new line on every read. A real reset moves it by days.
+ */
+export const RESET_TOLERANCE_MS = 10 * 60_000;
+export function sameReset(a: string | null, b: string | null): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  const ta = Date.parse(a), tb = Date.parse(b);
+  return Number.isFinite(ta) && Number.isFinite(tb) && Math.abs(ta - tb) < RESET_TOLERANCE_MS;
+}
 
 /** A line from the file, checked whole (it is not trusted): null when it is not a reading. */
 export function parseQuotaReading(line: string): QuotaReading | null {
@@ -81,10 +94,15 @@ async function load(path: string): Promise<void> {
 }
 
 /** Keep the last 12 weeks, and the file under its cap (oldest first out). Rewritten atomically. */
+/** When lines older than 12 weeks were last dropped: once a day (Fable r1 #3), and whenever the file is over its cap. */
+let lastAgePrune = Number.NEGATIVE_INFINITY;
+const AGE_PRUNE_EVERY_MS = 24 * 3_600_000;
+
 async function prune(path: string, now: number): Promise<void> {
   let size = 0;
   try { size = (await stat(path)).size; } catch { return; }
-  if (size <= QUOTA_HISTORY_MAX_BYTES) return;
+  if (size <= QUOTA_HISTORY_MAX_BYTES && now - lastAgePrune < AGE_PRUNE_EVERY_MS) return;
+  lastAgePrune = now;
   const lines = (await readFile(path, "utf8")).split("\n").filter((l) => {
     const r = l ? parseQuotaReading(l) : null;
     return r !== null && r.t >= now - QUOTA_HISTORY_KEEP_MS;
@@ -109,7 +127,7 @@ export function recordQuotaReadings(p: ProviderUsage, now = Date.now()): void {
     await load(path);
     const fresh = readings.filter((r) => {
       const was = last.get(keyOf(r.provider, r.metric));
-      return !was || was.used !== r.used || was.resetsAt !== r.resetsAt;
+      return !was || was.used !== r.used || !sameReset(was.resetsAt, r.resetsAt);
     });
     if (!fresh.length) return;
     await appendFile(path, fresh.map((r) => `${JSON.stringify(r)}\n`).join(""), { mode: 0o600 });
@@ -133,6 +151,7 @@ export async function setQuotaHistoryFileForTests(path: string | null): Promise<
   fileOf = path === null ? null : () => path;
   last.clear();
   loaded = false;
+  lastAgePrune = Number.NEGATIVE_INFINITY;
 }
 /** Tests (usage-api's fetcher seam): record nothing, at once — never into the real AGEND_HOME. */
 export function quotaHistoryOffForTests(): void { fileOf = null; last.clear(); loaded = false; }

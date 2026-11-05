@@ -14,11 +14,16 @@ register("fusage", {
   en: {
     range: "Range", today: "Today", r7d: "7 days", month: "This month", all: "All", custom: "Custom", from: "From", to: "To", apply: "Apply",
     group: "Group by", g_instance: "Agent", g_backend: "Backend", g_model: "Model", g_profile: "Credential profile", g_team: "Team (as configured now)",
-    csv: "Download CSV", basis: "API-equivalent at list price (checked {0}) — not money spent. Subscriptions are not billed per token.",
+    csv: "Download CSV", basis: "API-equivalent at list price ({0}) — not money spent.", basisMore: "Subscriptions are not billed per token.",
     amount: "API-equivalent", input: "Input", output: "Output", reasoning: "Reasoning", read: "Cache read", write: "Cache write", total: "Total tokens", requests: "Requests", messages: "Messages",
     notPriced: "not priced", partial: "partial", noTeam: "(no team)", unknown: "unknown",
-    f_cache_write_not_reported: "cache writes not reported (Codex, Muse) — an estimate", f_not_priced: "not priced: {0}", f_source_unknown: "read before backend and profile were recorded",
-    f_estimated: "estimated from text size — Kiro records no token counts", f_includes_estimates: "includes estimates (Kiro)", f_cost_reported: "amount as the CLI reported it (no list price for this model)", estimatedPart: "of which estimated: {0}",
+    // #3066 §3: what a row's numbers are, said once each as a small mark with its tooltip (never a pill per row).
+    t_not_priced: "Not priced: {0}", t_partial: "Part of this row's models have no price", t_write_unreported: "Codex/Muse don't report cache writes",
+    t_cost_reported: "Amount as the CLI reported it", t_estimated: "Estimated from text size (Kiro records no token counts)", t_reasoning_none: "Not reported by this CLI",
+    sourceNote: "Some hours were read before AgEnD recorded their backend and profile.", profileUnrecorded: "profile not recorded",
+    l_partial: "◐ partly priced", l_cost_reported: "† amount from the CLI", l_estimated: "≈ estimated",
+   
+    f_includes_estimates: "includes estimates (Kiro)", estimatedPart: "of which estimated: {0}",
     scanning: "Scanning — totals may still grow.", updated: "Updated {0} · read every 10 min", since: "Collected since {0}", notYet: "Not collected yet",
     refresh: "Refresh",
     notMeasured: "Not measured", nm_credit_billed: "Kiro is credit-billed and records no tokens", nm_unsupported: "AgEnD can't read this CLI's usage yet", nm_no_data: "nothing read yet",
@@ -42,11 +47,15 @@ register("fusage", {
   "zh-TW": {
     range: "期間", today: "今天", r7d: "7 天", month: "本月", all: "全部", custom: "自訂", from: "從", to: "到", apply: "套用",
     group: "分組", g_instance: "Agent", g_backend: "Backend", g_model: "模型", g_profile: "憑證 profile", g_team: "Team（依目前設定）",
-    csv: "下載 CSV", basis: "依牌價換算的 API 等值（查證日期 {0}）——不是實際花費。訂閱方案不按 token 計費。",
+    csv: "下載 CSV", basis: "依牌價換算的 API 等值（{0}）——不是實際花費。", basisMore: "訂閱方案不按 token 計費。",
     amount: "API 等值", input: "輸入", output: "輸出", reasoning: "推理", read: "快取讀取", write: "快取寫入", total: "token 總計", requests: "請求數", messages: "訊息數",
     notPriced: "未定價", partial: "部分", noTeam: "（不屬於任何 team）", unknown: "未知",
-    f_cache_write_not_reported: "未回報快取寫入（Codex、Muse）——是估算", f_not_priced: "未定價：{0}", f_source_unknown: "讀取時尚未記錄 backend 與 profile",
-    f_estimated: "依文字長度估算——Kiro 不記錄 token 數", f_includes_estimates: "含估算值（Kiro）", f_cost_reported: "金額為 CLI 自行回報（價目表沒有此模型）", estimatedPart: "其中估算：{0}",
+    t_not_priced: "未定價：{0}", t_partial: "這一列有部分模型沒有價格", t_write_unreported: "Codex／Muse 不回報快取寫入",
+    t_cost_reported: "金額為 CLI 自行回報", t_estimated: "依文字長度估算（Kiro 不記錄 token 數）", t_reasoning_none: "這個 CLI 不回報",
+    sourceNote: "部分時段在 AgEnD 記錄 backend 與 profile 之前就已讀取。", profileUnrecorded: "未記錄 profile",
+    l_partial: "◐ 部分定價", l_cost_reported: "† 金額由 CLI 回報", l_estimated: "≈ 估算值",
+   
+    f_includes_estimates: "含估算值（Kiro）", estimatedPart: "其中估算：{0}",
     scanning: "掃描中——總數可能還會增加。", updated: "更新於 {0} · 每 10 分鐘讀取一次", since: "自 {0} 起收集", notYet: "尚未收集",
     refresh: "重新整理",
     notMeasured: "未量測", nm_credit_billed: "Kiro 以 credit 計費，不記錄 token", nm_unsupported: "AgEnD 目前還讀不到這個 CLI 的用量", nm_no_data: "尚未讀到任何資料",
@@ -95,10 +104,6 @@ export function keyText(group, key) {
   return key;
 }
 const writes = (r) => (r.cacheWrite5m || 0) + (r.cacheWrite1h || 0) + (r.cacheWrite || 0);
-function flagText(f, r) {
-  if (f === "not_priced") return tu("f_not_priced", (r.unpriced || []).join(", "));
-  return ["cache_write_not_reported", "source_unknown", "estimated", "includes_estimates", "cost_reported"].includes(f) ? tu(`f_${f}`) : f;
-}
 
 // ── CSV (design §4): the daily rows of this same answer; messages on their own rows (they are per agent, not per model).
 const CSV_COLUMNS = ["date", "zone", "instance", "backend", "model", "tier", "profile", "input", "output", "reasoning", "cache_read", "cache_write_5m", "cache_write_1h", "cache_write", "requests", "messages", "amount", "basis", "flags", "estimated"];
@@ -318,24 +323,52 @@ function Heatmap({ report, dates }) {
   </section>`;
 }
 
-function Row({ r, group, max, measure }) {
+/** A mark with what it means: shown as its sign, said (title, and aria-label for readers) as words. */
+const mark = (sign, words, cls = "us-mark") => html`<span class=${cls} title=${words} aria-label=${words}>${sign}</span>`;
+/** "—" that says why there is no number. */
+const dash = (words) => html`<span class="us-none" title=${words} aria-label=${words}>—</span>`;
+/** The marks a row's numbers carry (#3066 §3): ◐ partly priced, † the CLI's own amount, ≈ estimated. */
+export function rowMarks(r) {
+  const flags = r.flags || [];
+  return { partial: r.priced === "partial", cost: flags.includes("cost_reported"), est: flags.includes("estimated") || r.estimated === true,
+    writeUnreported: flags.includes("cache_write_not_reported") && writes(r) === 0, unpriced: r.amount === null || r.amount === undefined };
+}
+/** A profile as shown: Codex's older hours were never tagged with one. */
+const profileText = (p) => (p === "unrecorded" ? tu("profileUnrecorded") : p);
+
+function Row({ r, group, max, measure, cols }) {
   const share = max > 0 ? Math.max(0.01, measure(r) / max) : 0;
-  const meta = [r.backends.join(", "), r.models.join(", "), r.profiles.join(", ")].filter(Boolean).join(" · ");
+  const meta = [r.backends.join(", "), r.models.join(", "), r.profiles.map(profileText).join(", ")].filter(Boolean).join(" · ");
+  const m = rowMarks(r);
+  // Estimated rows (Kiro): every number is an estimate — "≈" before each, the reason in its tooltip.
+  const num = (text) => (m.est ? html`${mark("≈", tu("t_estimated"), "us-mark us-approx")}${text}` : text);
+  const key = group === "profile" ? profileText(keyText(group, r.key)) : keyText(group, r.key);
   return html`<tr class="us-row">
-    <th scope="row" class="us-name"><span class="mono">${keyText(group, r.key)}</span>
+    <th scope="row" class="us-name"><span class="mono">${key}</span>
       <svg class="us-bar" aria-hidden="true"><rect class="us-bar-bg" width="100%" height="6" rx="3" /><rect class="us-bar-fg" width=${`${Math.round(share * 100)}%`} height="6" rx="3" /></svg>
-      ${group !== "instance" || meta ? html`<span class="us-meta">${meta}</span>` : null}
-      ${r.flags.length ? html`<span class="us-flags">${r.flags.map((f) => html`<span key=${f} class="ch-tag">${flagText(f, r)}</span>`)}</span>` : null}</th>
-    <td data-label=${tu("amount")} class=${`num${r.amount === null ? " muted" : ""}`}>${amountText(r)}</td>
-    <td data-label=${tu("input")} class="num">${tokens(r.input)}</td>
-    <td data-label=${tu("output")} class="num">${tokens(r.output)}</td>
-    <td data-label=${tu("reasoning")} class="num">${r.reasoningReported === false ? "—" : tokens(r.reasoning || 0)}</td>
-    <td data-label=${tu("read")} class="num">${tokens(r.cacheRead)}</td>
-    <td data-label=${tu("write")} class="num">${r.flags.includes("cache_write_not_reported") && writes(r) === 0 ? "—" : tokens(writes(r))}</td>
-    <td data-label=${tu("total")} class="num">${tokens(r.total)}</td>
+      ${group !== "instance" || meta ? html`<span class="us-meta">${meta}</span>` : null}</th>
+    <td data-label=${tu("amount")} class=${`num${m.unpriced ? " muted" : ""}`}>${m.unpriced ? dash(tu("t_not_priced", (r.unpriced || []).join(", "))) : html`${num(money(r.amount))}${m.partial ? mark("◐", tu("t_partial")) : null}${m.cost ? mark("†", tu("t_cost_reported")) : null}`}</td>
+    <td data-label=${tu("input")} class="num">${num(tokens(r.input))}</td>
+    <td data-label=${tu("output")} class="num">${num(tokens(r.output))}</td>
+    ${cols.reasoning ? html`<td data-label=${tu("reasoning")} class="num">${r.reasoningReported === false ? dash(tu("t_reasoning_none")) : num(tokens(r.reasoning || 0))}</td>` : null}
+    <td data-label=${tu("read")} class="num">${num(tokens(r.cacheRead))}</td>
+    <td data-label=${tu("write")} class="num">${m.writeUnreported ? dash(tu("t_write_unreported")) : num(tokens(writes(r)))}</td>
+    <td data-label=${tu("total")} class="num">${num(tokens(r.total))}</td>
     <td data-label=${tu("requests")} class="num">${n(r.requests)}</td>
-    <td data-label=${tu("messages")} class="num">${r.messages === null ? "—" : n(r.messages)}</td>
+    ${cols.messages ? html`<td data-label=${tu("messages")} class="num">${r.messages === null ? "—" : n(r.messages)}</td>` : null}
   </tr>`;
+}
+/** Columns worth a place (#3066 §3): Reasoning only when some row reports it; Messages only when some row has them. */
+export function usageColumns(rows) {
+  return { reasoning: rows.some((r) => r.reasoningReported !== false), messages: rows.some((r) => r.messages !== null && r.messages !== undefined) };
+}
+/** The legend under the table: only the marks that appear, and the one footnote when an hour's source was not recorded. */
+function Legend({ rows }) {
+  const marks = rows.map(rowMarks);
+  const parts = [marks.some((m) => m.partial) && tu("l_partial"), marks.some((m) => m.cost) && tu("l_cost_reported"), marks.some((m) => m.est) && tu("l_estimated")].filter(Boolean);
+  const source = rows.some((r) => (r.flags || []).includes("source_unknown"));
+  if (!parts.length && !source) return null;
+  return html`<p class="note us-key">${parts.join(" · ")}${parts.length && source ? html`<br />` : null}${source ? tu("sourceNote") : null}</p>`;
 }
 
 /** The tab's body for one answer of GET /ui/usage-report. */
@@ -355,6 +388,7 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
   const zones = zonesChanged(report);
   const csvFrom = report.dailyTruncated ? report.dailyFrom : report.range.kind === "all" ? "all" : report.range.from;
   const rows = report.rows.filter((r) => r.total > 0 || (r.messages || 0) > 0);
+  const cols = usageColumns(rows);
   const anyAmount = rows.some((r) => r.amount !== null && r.amount > 0);
   const measure = (r) => (anyAmount ? r.amount || 0 : r.total);
   const max = Math.max(0, ...rows.map(measure));
@@ -375,7 +409,7 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
       <label>${tu("from")} <input type="date" value=${draft.from} max=${draft.to} onInput=${(e) => setDraft({ ...draft, from: e.target.value })} /></label>
       <label>${tu("to")} <input type="date" value=${draft.to} min=${draft.from} onInput=${(e) => setDraft({ ...draft, to: e.target.value })} /></label>
       <button type="submit" class="btn btn-sm">${tu("apply")}</button></form>` : null}
-    <p class="us-basis" role="note">${tu("basis", report.pricesChecked)}</p>
+    <p class="us-basis" role="note" title=${tu("basisMore")}>${tu("basis", report.pricesChecked)}</p>
     ${noDaily ? html`<p class="us-partial" role="status">${tu("noDaily")}</p>` : report.dailyTruncated ? html`<p class="us-partial" role="status">${tu("partialDays", report.dailyFrom)}</p>` : null}
     ${zones ? html`<p class="us-partial" role="status">${tu("zoneChanged", zones.join(", "), report.zone)}</p>` : null}
     <p class="note us-fresh">${tu("updated", new Date(fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }))} · ${Number.isFinite(since) ? tu("since", new Date(since).toLocaleDateString()) : tu("notYet")} · ${tu("zoneNote", report.zone)}${group === "team" ? ` ${tu("teamsNote")}` : ""}
@@ -389,9 +423,10 @@ export function UsageReport({ report, choice, setChoice, refresh, fetchedAt }) {
         <div class="ch-metric"><dt>${tu("messages")}</dt><dd>${report.totals.messages === null ? "—" : n(report.totals.messages)}</dd></div>
       </dl>
       ${rows.length ? html`<table class="us-table"><thead><tr><th scope="col">${tu(`g_${group}`)}</th><th scope="col" class="num">${tu("amount")}</th>
-        <th scope="col" class="num">${tu("input")}</th><th scope="col" class="num">${tu("output")}</th><th scope="col" class="num">${tu("reasoning")}</th><th scope="col" class="num">${tu("read")}</th><th scope="col" class="num">${tu("write")}</th>
-        <th scope="col" class="num">${tu("total")}</th><th scope="col" class="num">${tu("requests")}</th><th scope="col" class="num">${tu("messages")}</th></tr></thead>
-        <tbody>${rows.map((r) => html`<${Row} key=${r.key} r=${r} group=${group} max=${max} measure=${measure} />`)}</tbody></table>`
+        <th scope="col" class="num">${tu("input")}</th><th scope="col" class="num">${tu("output")}</th>${cols.reasoning ? html`<th scope="col" class="num">${tu("reasoning")}</th>` : null}<th scope="col" class="num">${tu("read")}</th><th scope="col" class="num">${tu("write")}</th>
+        <th scope="col" class="num">${tu("total")}</th><th scope="col" class="num">${tu("requests")}</th>${cols.messages ? html`<th scope="col" class="num">${tu("messages")}</th>` : null}</tr></thead>
+        <tbody>${rows.map((r) => html`<${Row} key=${r.key} r=${r} group=${group} max=${max} measure=${measure} cols=${cols} />`)}</tbody></table>
+        <${Legend} rows=${rows} />`
         : html`<p class="note">${tu("noRows")}</p>`}
       <${Trend} report=${report} dates=${dates} />
       <${Heatmap} report=${report} dates=${dates} />`}

@@ -153,4 +153,52 @@ describe("the fleet's hooks (#3066 §1d)", () => {
     expect(await fm.backgroundQuotaRead()).toBe(false);
     expect(FleetManager.QUOTA_BACKGROUND_READ_MS).toBe(30 * 60_000);
   });
+  it("Fable r1 #4: shutting down reads nothing", async () => {
+    const fm = rig();
+    const fetches = vi.fn(async () => ({ providers: [], fetchedAt: new Date().toISOString() }) as any);
+    setUsageFetcherForTests(fetches);
+    vi.spyOn(fm, "getActiveUsageProviderIds").mockReturnValue(new Set(["codex"]));
+    (fm as any).shuttingDown = true;
+    expect(await fm.backgroundQuotaRead()).toBe(false);
+    expect(fetches).not.toHaveBeenCalled();
+  });
+  it("Fable r1 #4: no credential profile is \"default\" (what an account's usage provider id joins on); another boot's ready records nothing", async () => {
+    const fm = rig();
+    mkdirSync(fm.getInstanceDir("cx"), { recursive: true });
+    (fm as any).daemons.set("cx", { bootId: "b2" });
+    vi.spyOn(fm as any, "listenForWorkingState").mockImplementation(() => {});
+    vi.spyOn(fm as any, "credentialProfileOf").mockReturnValue(undefined);
+    const path = join(fm.getInstanceDir("cx"), PROFILE_TIMELINE_FILE);
+    fm.onDaemonReady("cx", "b1");                                                // a stale boot's report: not this daemon
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await readProfileTimeline(path)).toEqual([]);
+    fm.onDaemonReady("cx", "b2");
+    await vi.waitFor(async () => expect((await readProfileTimeline(path)).map((s) => s.profile)).toEqual(["default"]));
+  });
+  it("Fable r1 #2: a ClassicBot Codex room's launches are read too (its timeline is passed to the scan)", () => {
+    const fm = rig();
+    (fm as any).classicChannels = { getAll: () => [{ instanceName: "room" }], getBackendByInstance: () => "codex" };
+    const room = (fm as any).cacheInstances().find((i: any) => i.name === "room");
+    expect(room.profileTimelinePath).toBe(join(fm.getInstanceDir("room"), PROFILE_TIMELINE_FILE));
+  });
+});
+
+describe("Fable r1 #3 and #5: the age cutoff and a drifting reset time", () => {
+  it("lines older than 12 weeks go on the first write of a day, however small the file", async () => {
+    const path = join(dir, "h.jsonl");
+    const now = Date.parse("2026-11-05T00:00:00.000Z");
+    writeFileSync(path, `${JSON.stringify({ t: now - 13 * WEEK, provider: "claude", metric: "Weekly", used: 1, resetsAt: null, windowMs: WEEK })}\n`);
+    await setQuotaHistoryFileForTests(path);
+    recordQuotaReadings(row("claude", 5), now); await flushQuotaHistory();
+    expect((await readQuotaHistory()).some((r) => r.t === now - 13 * WEEK)).toBe(false);
+  });
+  it("a reset time that drifts by seconds (\"resets in N s\") is the same reset — no line on every read; a real reset is", async () => {
+    const path = join(dir, "h.jsonl"); await setQuotaHistoryFileForTests(path);
+    const t = Date.parse("2026-11-05T00:00:00.000Z");
+    recordQuotaReadings(row("codex", 40, new Date(t + 3 * 86_400_000).toISOString()), t);
+    recordQuotaReadings(row("codex", 40, new Date(t + 3 * 86_400_000 + 7_000).toISOString()), t + 60_000);
+    recordQuotaReadings(row("codex", 40, new Date(t + 10 * 86_400_000).toISOString()), t + 120_000);
+    await flushQuotaHistory();
+    expect((await readQuotaHistory()).filter((r) => r.metric === "Weekly").map((r) => r.t)).toEqual([t, t + 120_000]);
+  });
 });
