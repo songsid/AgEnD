@@ -22,7 +22,7 @@ register("fusage", {
     t_cost_reported: "Amount as the CLI reported it", t_estimated: "Estimated from text size (Kiro records no token counts)", t_reasoning_none: "Not reported by this CLI",
     sourceNote: "Some hours were read before AgEnD recorded their backend and profile.", profileUnrecorded: "profile not recorded",
     l_partial: "◐ partly priced", l_cost_reported: "† amount from the CLI", l_estimated: "≈ estimated",
-    // #3066 §2: output speed after the first token.
+    // #3066 §2: output speed (Claude after the first token, Codex over the response window).
     speed: "Speed", speedUnit: "{0} tok/s", speedCoverage: "{0} of {1} requests timed", speedSpread: "p10–p90: {0}–{1} tok/s",
     speedNone: "no timing in its transcripts", speedByModel: "Speed by model",
     speedBasis: "Output tokens ÷ the model's own response time (tool time excluded); method after tokdash.",
@@ -376,7 +376,7 @@ export function usageColumns(rows) {
   return { reasoning: rows.some((r) => r.reasoningReported !== false), messages: rows.some((r) => r.messages !== null && r.messages !== undefined),
     speed: rows.some((r) => !!r.speed) };
 }
-/** #3066 §2: each model's speed after the first token — rate · requests timed (coverage) · p10–p90 from 30 timed. */
+/** #3066 §2: each model's speed — rate · requests timed (coverage) · p10–p90 from 30 timed. */
 function SpeedCard({ report }) {
   const list = report.speedByModel || [];
   if (!list.length) return null;

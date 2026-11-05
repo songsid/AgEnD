@@ -99,11 +99,11 @@ export interface UsageRow extends UsageTotals {
   backends: string[];
   models: string[];
   profiles: string[];
-  /** #3066 §2: output speed after the first token (null: no response timed in it). */
+  /** #3066 §2: output speed — Claude after its first token, Codex over its response window (null: none timed in it). */
   speed: UsageSpeed | null;
 }
 /**
- * #3066 §2: output tokens per second after the first token — Σ tokens ÷ Σ duration of the timed responses (the method
+ * #3066 §2: output tokens per second of the model's own generation (Claude: post_first_token; Codex: response_window) — Σ tokens ÷ Σ duration of the timed responses (the method
  * of tokdash, MIT, Jingbiao Mei). `coverage`: the timed share of the row's requests. `p10`/`p90`: duration-weighted, from
  * 30 timed responses (null below), to a √2 step.
  */
@@ -135,7 +135,7 @@ export interface UsageDaily extends UsageTotals {
   flags: string[];
 }
 export interface UsageReport {
-  /** #3066 §2: each model's output speed after the first token, whatever the grouping; only models with one timed. */
+  /** #3066 §2: each model's output speed (as `speed`), whatever the grouping; only models with one timed. */
   speedByModel: Array<{ model: string; backends: string[]; requests: number; speed: UsageSpeed }>;
   range: { kind: UsageRange["kind"]; from: string; to: string };
   zone: string;

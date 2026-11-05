@@ -70,7 +70,7 @@ export interface HourAgg {
   rs?: Record<string, Record<string, number>>;
   /** #2122 §10.2: the cost a CLI reported (USD), by source and model key — beside the totals, as `rs`. */
   cs?: Record<string, Record<string, number>>;
-  /** #3066 §2: output speed after the first token, by source and model key (SpeedAgg) — beside the totals, as `rs`. */
+  /** #3066 §2: output speed, by source and model key (SpeedAgg) — beside the totals, as `rs`. */
   sp?: Record<string, Record<string, SpeedAgg>>;
 }
 /** A source of an hour's totals: the reader that read them and the profile it read them under. */
@@ -103,7 +103,7 @@ export interface FileCursor {
   ids?: string[];
   /** #3066 §2, Claude: the response being read, for its speed (its window ends at its last block). */
   resp?: ClaudeResponse;
-  /** #3066 §2, Codex: the model items' clocks since the last token_usage_record. */
+  /** #3066 §2, Codex: the turn being read — the open response's clocks, hosted tool intervals, responses awaiting count. */
   cx?: CodexResponse;
   /** #3066 §2: timed responses read from the last lines, for the reader to count (addSpeed); never kept. */
   speeds?: SpeedSample[];
@@ -221,7 +221,7 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
   ledger.gaps.push([turn.t, gap, prev.ctx, prev.model, ttlBefore, turn.model, turn.prompt, measured, estimated]);
 }
 
-// ── #3066 §2: output speed, measured after the first token ──
+// ── #3066 §2: output speed — Claude after the first token, Codex over the response window ──
 /**
  * Output tokens per second of a response's own generation — after its first token (the user's choice), the method of
  * tokdash (MIT, © 2026 Jingbiao Mei; github.com/JingbiaoMei/tokdash, its `post_first_token`): Claude Code stamps each
@@ -286,36 +286,99 @@ function observeClaudeSpeed(file: FileCursor, id: string | undefined, d: { times
 /**
  * Codex (0.147+ rollouts): a response's model items (AgentMessage, Reasoning) carry `started_at_ms` / `completed_at_ms`
  * on their `item_completed` event, and a `token_usage_record` closes the response with its own usage — tokdash's
- * `response_window`: first model item's start → last model item's end, minus the hosted tool time (WebSearch) inside
- * it; client tools (commands, edits, MCP) are not the model's time and bound nothing. Faster than 3000 tok/s is a clock
- * artefact (tokdash's ceiling) and is not counted. Older rollouts have no item clocks: not timed.
+ * `response_window` (not a first-token boundary: the rollout does not mark one): the first model item's start → the last
+ * model item's end, minus the hosted tool time (WebSearch) inside that window; client tools (commands, edits, MCP) are
+ * not the model's time and bound nothing. Faster than 3000 tok/s is a clock artefact (tokdash's ceiling), not counted.
+ * Older rollouts have no item clocks: not timed.
+ *
+ * Owned, never guessed (Prism #3075):
+ * - clocks belong to their turn (`turn_id`): a new turn, an abort, an error or a compaction drops the open response's
+ *   clocks, and an item or record of another turn makes the response ambiguous — untimed;
+ * - hosted tool intervals are kept per turn and clipped into each response's own window, so a search logged after its
+ *   response's record still counts against that response only; the turn's samples are made when the turn ends;
+ * - a sample is the response's counted usage, timed: it waits (in the cursor, across restarts) for the `token_count`
+ *   that counts the response, and is filed at that count's time — the same hour, source and model as its tokens.
  */
 export const CODEX_MAX_TOK_PER_S = 3000;
 const CODEX_MODEL_ITEMS = new Set(["AgentMessage", "Reasoning"]);
 const CODEX_HOSTED_ITEMS = new Set(["WebSearch"]);
 const CX_ITEM_TYPE = /"item":\{"type":"([A-Za-z]+)"/, CX_STARTED = /"started_at_ms":(\d{10,16})/, CX_DONE = /"completed_at_ms":(\d{10,16})/;
-export interface CodexResponse { start: number | null; end: number | null; hosted: number }
+const CX_TURN = /"turn_id":"([^"]+)"/;
+const CX_EVENT = /"type":"event_msg","payload":\{"type":"(task_started|task_complete|turn_aborted|error|stream_error|context_compacted)"/;
+const CX_PENDING_MAX = 64, CX_HOSTED_MAX = 256;
+/** One response closed by its record, waiting for its count (`counted`, the token_count's time) and its turn's end. */
+export interface CodexPending { start: number; end: number; out: number; prompt: number; model: string; counted?: number }
+/** A turn being read: its id, the open response's clocks, its hosted tool intervals, its closed responses. */
+export interface CodexResponse { turn: string | null; start: number | null; end: number | null; bad?: true; hosted: Array<[number, number]>; pend: CodexPending[] }
+const newCx = (turn: string | null): CodexResponse => ({ turn, start: null, end: null, hosted: [], pend: [] });
+
+/** The time inside [start, end] that the intervals cover, each instant once (clip, then union). */
+export function clippedUnionMs(intervals: ReadonlyArray<readonly [number, number]>, start: number, end: number): number {
+  let total = 0, cursor = start;
+  for (const [lo, hi] of intervals.map(([a, b]) => [Math.max(start, a), Math.min(end, b)] as const).sort((x, y) => x[0] - y[0])) {
+    if (hi > Math.max(cursor, lo)) { total += hi - Math.max(cursor, lo); cursor = hi; }
+  }
+  return total;
+}
+
+/** The turn has ended: its counted responses become samples; one never counted is no one's usage and is dropped. */
+function finishCodexTurn(file: FileCursor): void {
+  const r = file.cx;
+  delete file.cx;
+  if (!r || !Array.isArray(r.pend)) return;
+  for (const p of r.pend) {
+    if (typeof p.counted !== "number") continue;
+    const ms = p.end - p.start - clippedUnionMs(Array.isArray(r.hosted) ? r.hosted : [], p.start, p.end);
+    if (!(ms > 0) || !(p.out > 0) || (p.out * 1000) / ms > CODEX_MAX_TOK_PER_S) continue;
+    (file.speeds ??= []).push({ t: p.counted, model: p.model, prompt: p.prompt, tokens: p.out, ms });
+  }
+}
+
 function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
-  const text = ("whole" in line ? line.whole : line.head).toString("utf8", 0, Math.min(("whole" in line ? line.whole : line.head).length, 4096));
+  const buf = "whole" in line ? line.whole : line.head;
+  const text = buf.toString("utf8", 0, Math.min(buf.length, 4096));
+  const event = CX_EVENT.exec(text)?.[1];
+  if (event) {
+    const turn = CX_TURN.exec(text)?.[1] ?? null;
+    if (event === "task_started") { finishCodexTurn(file); file.cx = newCx(turn); return; }
+    if (event === "task_complete") { finishCodexTurn(file); return; }
+    // An abort, an error, a compaction: the open response is cut off — its clocks are no one's.
+    const r = file.cx;
+    if (r) { r.start = null; r.end = null; delete r.bad; }
+    return;
+  }
   if (text.includes("\"type\":\"item_completed\"")) {
     const kind = CX_ITEM_TYPE.exec(text)?.[1], s = Number(CX_STARTED.exec(text)?.[1]), e = Number(CX_DONE.exec(text)?.[1]);
-    if (!kind || !Number.isFinite(s) || !Number.isFinite(e) || e < s) return;
-    const r = file.cx ??= { start: null, end: null, hosted: 0 };
-    if (CODEX_MODEL_ITEMS.has(kind)) { r.start = r.start === null ? s : Math.min(r.start, s); r.end = r.end === null ? e : Math.max(r.end, e); }
-    else if (CODEX_HOSTED_ITEMS.has(kind)) r.hosted += e - s;
+    const turn = CX_TURN.exec(text)?.[1] ?? null;
+    if (kind === "ContextCompaction") { const r = file.cx; if (r) { r.start = null; r.end = null; delete r.bad; } return; }
+    if (!kind || !(CODEX_MODEL_ITEMS.has(kind) || CODEX_HOSTED_ITEMS.has(kind))) return;
+    const r = file.cx ??= newCx(turn);
+    if (r.turn === null) r.turn = turn;
+    const valid = Number.isFinite(s) && Number.isFinite(e) && e >= s;
+    if (turn !== r.turn) { if (CODEX_MODEL_ITEMS.has(kind)) r.bad = true; return; }     // another turn's: owner unproven
+    if (CODEX_HOSTED_ITEMS.has(kind)) { if (valid && r.hosted.length < CX_HOSTED_MAX) r.hosted.push([s, e]); return; }
+    if (!valid || e === s) { r.bad = true; return; }
+    r.start = r.start === null ? s : Math.min(r.start, s); r.end = r.end === null ? e : Math.max(r.end, e);
     return;
   }
   if (!("whole" in line) || line.whole.indexOf("\"token_usage_record\"") === -1) return;
-  let d: { type?: unknown; payload?: { usage?: Record<string, unknown> } };
+  let d: { type?: unknown; payload?: { turn_id?: unknown; usage?: Record<string, unknown> } };
   try { d = JSON.parse(line.whole.toString("utf8")); } catch { return; }
   if (d.type !== "token_usage_record") return;
   const r = file.cx;
-  delete file.cx;                                           // a record closes its response, timed or not
+  if (!r) return;
+  const timed = r.start !== null && r.end !== null && !r.bad && (r.turn === null || d.payload?.turn_id === r.turn);
   const out = num(d.payload?.usage?.output_tokens);
-  if (!r || r.start === null || r.end === null || !(out > 0)) return;
-  const ms = r.end - r.start - r.hosted;
-  if (!(ms > 0) || (out * 1000) / ms > CODEX_MAX_TOK_PER_S) return;
-  (file.speeds ??= []).push({ t: r.start, model: file.model ?? "unknown", prompt: num(d.payload?.usage?.input_tokens), tokens: out, ms });
+  if (timed && out > 0 && r.pend.length < CX_PENDING_MAX) {
+    r.pend.push({ start: r.start!, end: r.end!, out, prompt: num(d.payload?.usage?.input_tokens), model: file.model ?? "unknown" });
+  }
+  r.start = null; r.end = null; delete r.bad;               // a record closes its response, timed or not
+}
+
+/** A token_count was counted at `t`: the oldest closed response waiting for its count is this one. */
+function codexCounted(file: FileCursor, t: number): void {
+  const p = file.cx?.pend?.find((x) => typeof x.counted !== "number");
+  if (p) p.counted = t;
 }
 
 /**
@@ -406,6 +469,7 @@ export function codexLine(line: ScanLine, file: FileCursor): Turn | null {
   if (total) file.total = total;
   const t = Date.parse(d.timestamp);
   if (!Number.isFinite(t)) return null;
+  codexCounted(file, t);                                    // #3066 §2: the waiting response's usage is this count
   const input = num(u.input_tokens), read = Math.min(num(u.cached_input_tokens), input), output = num(u.output_tokens);
   const write = typeof u.cache_write_input_tokens === "number" ? Math.min(num(u.cache_write_input_tokens), input - read) : null;
   // Reasoning is counted inside output_tokens (total_tokens = input + output): kept as its part, capped at output.

@@ -44,7 +44,7 @@ SOFTWARE.
 - **Project:** tokdash, https://github.com/JingbiaoMei/tokdash
 - **Version read:** commit `f0868fe1` (2026-11-05)
 - **Used in:**
-  - `src/cache-ledger.ts` (#3066 §2): the output speed after the first token follows tokdash's timing rules in
+  - `src/cache-ledger.ts` (#3066 §2): the output speed follows tokdash's timing rules in
     `src/tokdash/output_speed_readers.py` — Claude Code's `post_first_token` window (a leading thinking block's stamp
     minus `thinkingDurationMs`, to the last block; no stop_reason or an API error is not timed) and Codex's
     `response_window` (first model item's start to last model item's end, minus hosted WebSearch time; over 3000 tok/s
