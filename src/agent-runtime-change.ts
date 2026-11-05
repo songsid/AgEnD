@@ -14,6 +14,7 @@ export const AgentRuntimeChangeInput = z.object({
   if(value.runtime==="wsl"&&(value.machineId||value.adapter!=="exec"))ctx.addIssue({code:"custom",message:"Choose the Fleet host for a WSL/Linux agent"});
   if(value.runtime==="windows"&&value.adapter==="pane"&&!['codex','claude-code'].includes(value.backend))ctx.addIssue({code:"custom",message:"Persistent Windows terminals support Codex and Claude Code"});
 });
+export const GENERAL_USES_LOCATION_SWITCH="General is moved from Settings → Agent defaults → General location, not from Runtime settings";
 export type AgentRuntimeTarget = z.infer<typeof AgentRuntimeChangeInput>;
 export interface PreparedAgentRuntime { config:InstanceConfig; discard():void; current?():boolean }
 export interface AgentRuntimeChangeHost {
@@ -35,16 +36,20 @@ export interface AgentRuntimeChangeHost {
 export class AgentRuntimeChanges {
   private attempts=new Map<string,{id:string;digest:string;pending:boolean;result:Promise<unknown>}>();
   constructor(private readonly host:AgentRuntimeChangeHost){}
+  private isGeneral(name:string,config:InstanceConfig|undefined){return config?.general_topic===true||name==="general";}
   describe(name:string){
     const config=this.host.config(name);if(!config)throw Error("Agent not found");
     const backend=config.backend||(this.host.defaults() as {backend?:string}|undefined)?.backend||"claude-code";
     return {revision:settingsFingerprint([config,this.host.defaults(),this.host.generation(name),this.host.epoch(name)]),
       runtime:config.runtime==="windows"?"windows":"wsl",machineId:config.machine_id,backend,backendState:this.host.backendState?.(name,backend),
-      directory:config.working_directory,model:config.model??"",general:config.general_topic===true||name==="general",adapter:config.native_adapter??"exec",sandbox:config.native_sandbox??"read-only"};
+      directory:config.working_directory,model:config.model??"",general:this.isGeneral(name,config),adapter:config.native_adapter??"exec",sandbox:config.native_sandbox??"read-only"};
   }
   change(name:string,raw:unknown,authorized:()=>boolean):Promise<unknown>{
     const target=AgentRuntimeChangeInput.parse(raw),digest=settingsFingerprint(target),old=this.attempts.get(name);
     if(!authorized())throw Error("Runtime change requires a current dashboard administrator");
+    // General's location has its own journalled switch (Agent defaults → General location, #3036): it holds deliveries,
+    // confirms the old host exited and clears the Linux-only fields. This path does none of that, so it is not offered.
+    if(this.isGeneral(name,this.host.config(name)))throw Error(GENERAL_USES_LOCATION_SWITCH);
     if(old?.id===target.requestId){if(old.digest!==digest)throw Error("Runtime request ID belongs to another change");return old.result;}
     if(old?.pending)throw Error("A Runtime change is already in progress for this Agent");
     if(this.describe(name).revision!==target.expectedRevision)throw Error("Agent settings changed; reopen Runtime settings before switching");
@@ -60,7 +65,6 @@ export class AgentRuntimeChanges {
         return !revoked;
       };
       if(!current())throw Error("Wait for this Agent and its queued work to finish before switching Runtime");
-      if((before.general_topic||name==="general")&&target.runtime==="windows"&&target.adapter!=="pane")throw Error("A General needs a persistent Windows terminal; choose Codex or Claude Code with the terminal adapter");
       let undoSession:(()=>void)|undefined,saved=false;
       try{
         prepared=await this.host.prepare(name,before,target,current);

@@ -2,7 +2,7 @@ import {afterAll,afterEach,beforeAll,beforeEach,describe,it,expect,vi} from "vit
 import {page,settle,h,type AppPage} from "./helpers/app-harness.js";
 import {fire} from "./helpers/mini-dom.js";
 const a="12345678-1234-4321-abcd-123456789012",b="22345678-1234-4321-abcd-123456789012",originalFetch=globalThis.fetch;
-let p:AppPage,Dialog:any,app:any,catalog:any,windows:any,models:any,posts:any[],reads:string[],complete:(()=>void)|null,error=false;
+let p:AppPage,Dialog:any,Section:any,app:any,catalog:any,windows:any,models:any,posts:any[],reads:string[],complete:(()=>void)|null,error=false;
 const source={revision:"a".repeat(64),runtime:"wsl",directory:"/wsl-private",backend:"claude-code",model:"old-model",adapter:"exec",sandbox:"read-only",general:false};
 const inst={working_directory:source.directory,backend:source.backend};
 const cli={id:"codex",path:"C:\\codex.exe",runnable:true,readOnlySupport:true,supports:{execution:true,resume:true,mcp:true}};
@@ -21,7 +21,7 @@ beforeAll(async()=>{
   if(path.startsWith("/ui/models?"))return response({models:[{id:"model-b",label:"Laptop model"}],source:"cli-cache"});
   return response({});
  }) as any;
- const {setLang}=await import("/assets/app-i18n.js");setLang("en",{store:false});app=await import("/assets/app-store.js");catalog=await import("/ui/js/runtime-catalog.js");windows=await import("/ui/js/windows-cli-catalog.js");models=await import("/ui/js/settings-catalog.js");Dialog=(await import("/ui/js/agent-runtime-settings.js")).AgentRuntimeChangeDialog;
+ const {setLang}=await import("/assets/app-i18n.js");setLang("en",{store:false});app=await import("/assets/app-store.js");catalog=await import("/ui/js/runtime-catalog.js");windows=await import("/ui/js/windows-cli-catalog.js");models=await import("/ui/js/settings-catalog.js");Section=(await import("/ui/js/agent-runtime-settings.js")).AgentRuntimeSettings;Dialog=(await import("/ui/js/agent-runtime-settings.js")).AgentRuntimeChangeDialog;
 });
 beforeEach(()=>{posts=[];reads=[];complete=null;error=false;app.appStore.set({windowsCli:true});catalog.forgetRuntimeCatalog();windows.forgetWindowsCliCatalog();models.forgetCatalogs();});
 afterEach(async()=>{await p.unmount();catalog.forgetRuntimeCatalog();});afterAll(()=>{p.restore();globalThis.fetch=originalFetch;});
@@ -55,5 +55,17 @@ describe("existing Agent runtime steps",()=>{
   await configure();error=true;button("Save runtime change").click();await settle(3);complete!();await settle(4);
   expect(p.root.textContent).toContain("Read the Agent state again");const save=button("Save runtime change");expect(save.disabled).toBe(true);fire(save,"click");await settle(3);expect(posts).toHaveLength(1);
   button("Read state again").click();await settle(6);expect(button("Next")).toBeTruthy();expect(p.root.querySelector('.agent-runtime-change input[type="checkbox"]')).toBeNull();
+ });
+});
+describe("a General Agent",()=>{
+ it.each([["general_topic","agent-1",{general_topic:true}],["its name","general",{}]])("is not offered a runtime switch (%s): the card points to Agent defaults → General location",async(_how,name,extra)=>{
+  await p.mount(h(Section,{name,inst:{...inst,...extra},onChanged:vi.fn()}));await settle(4);
+  expect(p.root.querySelectorAll("button").some((node:any)=>node.textContent.includes("Change runtime"))).toBe(false);
+  const link=p.root.querySelector(".agent-runtime-general a");expect(link.getAttribute("href")).toBe("/settings/agent-defaults#general-location");expect(p.root.textContent).toContain("General location");
+  expect(reads.filter(path=>path.includes("/runtime"))).toEqual([]);
+ });
+ it("an ordinary Agent keeps the switch",async()=>{
+  await p.mount(h(Section,{name:"agent-1",inst,onChanged:vi.fn()}));await settle(4);
+  expect(p.root.querySelectorAll("button").some((node:any)=>node.textContent.includes("Change runtime"))).toBe(true);expect(p.root.querySelector(".agent-runtime-general")).toBeNull();
  });
 });

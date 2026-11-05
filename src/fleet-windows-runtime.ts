@@ -124,7 +124,9 @@ export class FleetWindowsRuntime {
       const config:InstanceConfig={...before,runtime:"windows",native_agent_id:agent.id,native_adapter:target.adapter,
       native_sandbox:agent.sandbox,working_directory:agent.cwd,backend:agent.cli,model:agent.model||"",agent_mode:"cli"};
       if(agent.machineId)config.machine_id=agent.machineId;else delete config.machine_id;
-      delete config.backend_options;if(before.backend!==target.backend)config.model_failover=[];
+      // A Windows Agent has no Linux credential profile or shell hook; #3036's General move drops the same three fields.
+      for(const key of ["backend_options","credential_profile","pre_task_command"] as const)delete (config as unknown as Record<string,unknown>)[key];
+      if(before.backend!==target.backend)config.model_failover=[];
       return {config,discard,current:targetCurrent};}
     catch(error){discard();throw error;}
   }

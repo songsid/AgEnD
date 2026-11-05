@@ -3975,6 +3975,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .agent-runtime-settings{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid var(--border);border-radius:10px;margin-bottom:20px;min-width:0}
 .agent-runtime-settings>div{min-width:0}.agent-runtime-settings p{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 0;overflow-wrap:anywhere}
 .agent-runtime-settings>.btn{flex:0 0 auto}.agent-runtime-change .field{margin-top:0}.agent-runtime-change .check{align-items:flex-start}.agent-runtime-change .check input{flex:0 0 auto}
+.agent-runtime-settings>.agent-runtime-general{display:block;flex:1 1 240px;margin:0;max-width:44em}
 .agent-runtime-removed{color:var(--warn);font-weight:600}
 .agent-runtime-change>p{margin:0}
 .agent-runtime-change-dialog.dlg{height:fit-content;max-height:88dvh;margin:auto;overflow:hidden}

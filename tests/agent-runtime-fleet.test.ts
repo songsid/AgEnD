@@ -42,11 +42,21 @@ describe("real Fleet runtime migration wiring with inert providers",()=>{
   await r.service.change("agent-1",r.body(),()=>true);
   const config=r.fm.fleetConfig!.instances["agent-1"]!;expect(config).not.toHaveProperty("backend_options");
  });
- it("keeps a General's role on a capable terminal target and leaves its profile ready for the explicit terminal start",async()=>{
-  const r=fixture();r.before.general_topic=true;r.before.tool_set="general";
-  await r.service.change("agent-1",{...r.body(),adapter:"pane"},()=>true);
-  const config=r.fm.fleetConfig!.instances["agent-1"]!;expect(config).toMatchObject({general_topic:true,tool_set:"general",native_adapter:"pane",topic_id:7,channel_id:"chat"});
-  const store=new WindowsAgents(r.home,r.bridge);expect(store.get(config.native_agent_id!).paused).toBe(false);expect(store.reservePane(config.native_agent_id!,crypto.randomUUID()).paneLaunchId).toBeTruthy();
+ it.each([["general_topic",(r:any)=>{r.before.general_topic=true;r.before.tool_set="general";}],["its name",(r:any)=>{r.any.fleetConfig=r.fm.fleetConfig;r.fm.fleetConfig.instances.general=r.fm.fleetConfig.instances["agent-1"];delete r.fm.fleetConfig.instances["agent-1"];}]])("refuses a General (by %s): it moves through Agent defaults → General location, not here",async(_how,mark)=>{
+  const r=fixture();mark(r);const name=Object.keys(r.fm.fleetConfig!.instances)[0]!,config=r.fm.fleetConfig!.instances[name]!,snapshot=JSON.stringify(config);
+  expect(r.service.describe(name).general).toBe(true);
+  const input=(runtime:"wsl"|"windows"="windows")=>({requestId:crypto.randomUUID(),expectedRevision:r.service.describe(name).revision,runtime,...(runtime==="windows"?{machineId:b}:{}),backend:"codex",sandbox:"read-only",startNewConversation:true});
+  for(const adapter of ["pane","exec"] as const)expect(()=>r.service.change(name,{...input(),adapter},()=>true)).toThrow("General location");
+  expect(()=>r.service.change(name,input("wsl"),()=>true)).toThrow("General location");
+  expect(r.save).not.toHaveBeenCalled();expect(r.bridge.prepareWorkspace).not.toHaveBeenCalled();expect(r.any.stopInstance).not.toHaveBeenCalled();expect(JSON.stringify(r.fm.fleetConfig!.instances[name])).toBe(snapshot);
+ });
+ it("drops the Linux-only credential profile and pre-task command when an ordinary Agent moves to Windows, as #3036 does for General",async()=>{
+  const r=fixture();r.before.credential_profile="work-account";r.before.pre_task_command="source ~/.profile";r.before.backend_options={"claude-code":{credential_profile:"work-account"}};
+  expect(r.service.describe("agent-1").general).toBe(false);
+  await r.service.change("agent-1",r.body(),()=>true);
+  const config=r.fm.fleetConfig!.instances["agent-1"]!;
+  expect(config).toMatchObject({runtime:"windows",machine_id:b,topic_id:7});
+  for(const key of ["credential_profile","pre_task_command","backend_options"])expect(config).not.toHaveProperty(key);
  });
  it("refuses a persistent terminal destination whose Runtime does not negotiate panes",async()=>{
   const r=fixture();r.machines.get(b)!.paneProtocol=0;
