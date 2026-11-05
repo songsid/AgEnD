@@ -322,17 +322,20 @@ export function clippedUnionMs(intervals: ReadonlyArray<readonly [number, number
   return total;
 }
 
+/** A counted response becomes a sample, its window less the turn's hosted tool time inside it. */
+function emitCodexSample(file: FileCursor, r: CodexResponse, p: CodexPending): void {
+  if (typeof p.counted !== "number") return;                          // never counted: no one's usage
+  const ms = p.end - p.start - clippedUnionMs(Array.isArray(r.hosted) ? r.hosted : [], p.start, p.end);
+  if (!(ms > 0) || !(p.out > 0) || (p.out * 1000) / ms > CODEX_MAX_TOK_PER_S) return;
+  (file.speeds ??= []).push({ t: p.counted, model: p.model, prompt: p.prompt, tokens: p.out, ms });
+}
+
 /** The turn has ended: its counted responses become samples; one never counted is no one's usage and is dropped. */
 function finishCodexTurn(file: FileCursor): void {
   const r = file.cx;
   delete file.cx;
   if (!r || !Array.isArray(r.pend)) return;
-  for (const p of r.pend) {
-    if (typeof p.counted !== "number") continue;
-    const ms = p.end - p.start - clippedUnionMs(Array.isArray(r.hosted) ? r.hosted : [], p.start, p.end);
-    if (!(ms > 0) || !(p.out > 0) || (p.out * 1000) / ms > CODEX_MAX_TOK_PER_S) continue;
-    (file.speeds ??= []).push({ t: p.counted, model: p.model, prompt: p.prompt, tokens: p.out, ms });
-  }
+  for (const p of r.pend) emitCodexSample(file, r, p);
 }
 
 function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
@@ -370,8 +373,12 @@ function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
   if (!r) return;
   const timed = r.start !== null && r.end !== null && !r.bad && (r.turn === null || d.payload?.turn_id === r.turn);
   const out = num(d.payload?.usage?.output_tokens);
+  // Every record — timed or not — is now the response the next count belongs to (Prism #3075 r3): one still waiting
+  // from before never had its count, and is dropped, so a later count can only ever be this record's.
+  r.pend = r.pend.filter((x) => typeof x.counted === "number");
   if (timed && out > 0) {
-    if (r.pend.length >= CX_PENDING_MAX) r.pend.splice(r.pend.findIndex((x) => typeof x.counted !== "number") >>> 0, 1);  // the oldest orphan, else the oldest
+    // At the cap, the oldest counted response is made a sample now (with the hosted time seen so far), not lost.
+    while (r.pend.length >= CX_PENDING_MAX) emitCodexSample(file, r, r.pend.shift()!);
     r.pend.push({ start: r.start!, end: r.end!, out, prompt: num(d.payload?.usage?.input_tokens), model: file.model ?? "unknown" });
   }
   r.start = null; r.end = null; delete r.bad;               // a record closes its response, timed or not
@@ -380,8 +387,8 @@ function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
 /**
  * A token_count was counted at `t` with this usage. Its response is the latest closed one still waiting — and only if
  * that response's own record has the same usage (Prism #3075 r2): a count never goes to a response it does not match.
- * Every older one still waiting is an orphan (its count never came: a turn ended first, a compaction): never given a
- * later response's count, the first evicted when the turn holds too many, and dropped uncounted when the turn ends.
+ * Each record drops the responses still waiting before it (observeCodexSpeed), so the latest waiting one is always the
+ * latest record's — an untimed record leaves none waiting, and its count times nothing.
  */
 function codexCounted(file: FileCursor, t: number, usage: { input: number; output: number }): void {
   const pend = file.cx?.pend;
