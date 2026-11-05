@@ -63,9 +63,15 @@ export function hubName(doc = typeof document !== "undefined" ? document : null)
  * @typedef {{ ok: true, remote: "confirmed" | "pending" } | { ok: false, error: "unsaved" | "conflict" }} HubWithdrawResult
  */
 
-/** The client every Hub page uses (one per page). */
+/**
+ * The client every Hub page uses (one per page). On a Hub's own workspace it is the real one: the Hub's /hub/v1/* API
+ * at this page's own origin, with the Hub's session. On a member fleet's Settings card it is still the stub (until the
+ * member side is composed).
+ */
 let client = null;
-export function hubClient() { return client ??= createStubClient({ agents: () => (appStore.get().instances || []).filter((i) => i && i.name) }); }
+export function hubClient() {
+  return client ??= hubMarks().hub ? createHubWebClient() : createStubClient({ agents: () => (appStore.get().instances || []).filter((i) => i && i.name) });
+}
 /** For tests and the switch-over to slice 1: put another client in place (null: the stub again, fresh). */
 export function setHubClient(next) { client = next; }
 
@@ -148,10 +154,6 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
     },
     /** Hear pairing changes (slice 1: the member's local status projections). @returns {() => void} */
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
-    // Hub shell (placeholders until slices 2, 3 and 5): what a person can ask, what they publish, administration.
-    async askable() { return []; },
-    async myExposures() { return []; },
-    async administration() { return { fleets: [], grants: [], audit: [] }; },
     /** The stub's own controls (tests, smokes, a demo) — what the Hub, its administrator and the owner would do. */
     control: {
       ownerConfirmed() { if (pairing.state === "pending") { pairing = { ...pairing, ownerConfirmed: true }; emit(); } },
@@ -168,4 +170,50 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
     },
   };
   return api;
+}
+
+/**
+ * AgEnD Hub P1, slice 3b: the Hub workspace's client — /hub/v1/* on this page's own origin (the Hub's), with its own
+ * session cookie (HttpOnly; this page never sees it) and the CSRF token /hub/v1/session gives a same-origin read.
+ * Every answer is { ok: true, ...body } or { ok: false, status, code }; a 401 also tells the page the session ended.
+ */
+export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
+  let csrf = null;
+  const ended = new Set();
+  async function call(method, path, body) {
+    const headers = { Accept: "application/json" };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (method !== "GET" && csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
+    let r;
+    try { r = await fetchImpl(path, { method, headers, credentials: "same-origin", cache: "no-store", body: body === undefined ? undefined : JSON.stringify(body) }); }
+    catch { return { ok: false, status: 0, code: "unreachable" }; }
+    let json = null;
+    try { json = await r.json(); } catch { json = null; }
+    if (r.status === 401) { csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+    if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0 };
+    return { ok: true, ...(json && typeof json === "object" ? json : {}) };
+  }
+  const id = (v) => encodeURIComponent(String(v));
+  return {
+    stub: false, web: true,
+    /** Hear the session end (a 401 anywhere). @returns {() => void} */
+    onSignedOut(fn) { ended.add(fn); return () => ended.delete(fn); },
+    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) csrf = r.signedIn ? r.csrf || null : null; return r; },
+    async signIn(login, password) { const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) csrf = r.csrf || null; return r; },
+    async signOut() { const r = await call("DELETE", "/hub/v1/session"); csrf = null; return r; },
+    catalog() { return call("GET", "/hub/v1/exposures"); },
+    grant(input) { return call("POST", "/hub/v1/grants", input); },
+    revokeGrant(grantId, revision) { return call("DELETE", `/hub/v1/grants/${id(grantId)}?revision=${id(revision)}`); },
+    freeze(exposureId, revision, admin = false) { return call("POST", `/hub/v1/${admin ? "admin/" : ""}exposures/${id(exposureId)}/freeze`, { revision }); },
+    rooms() { return call("GET", "/hub/v1/rooms"); },
+    openRoom(exposureId, grantId) { return call("POST", "/hub/v1/rooms", { exposureId, grantId }); },
+    ask(roomId, idempotencyKey, text) { return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { idempotencyKey, text }); },
+    read(roomId, after = 0) { return call("GET", `/hub/v1/rooms/${id(roomId)}/messages?after=${id(after)}`); },
+    pairings() { return call("GET", "/hub/v1/pairings"); },
+    confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
+    adminOverview() { return call("GET", "/hub/v1/admin/overview"); },
+    createPairing(login) { return call("POST", "/hub/v1/admin/pairings", { login }); },
+    approvePairing(pairingId, fingerprint) { return call("POST", `/hub/v1/admin/pairings/${id(pairingId)}/approve`, { fingerprint }); },
+    revokeFleet(fleetId) { return call("POST", `/hub/v1/admin/fleets/${id(fleetId)}/revoke`); },
+  };
 }

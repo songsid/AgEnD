@@ -3971,20 +3971,20 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
 
 /**
  * AgEnD Hub P1 (docs/design/hub.md, docs/design/hub-ui-client.md): the page's Hub mark — presentation only, never
- * authority, set by the listener that serves the page (never a client's choice): `hub` only on a Hub listener's own
- * workspace (slice 1's separate listener and origin passes `hubWorkspace`); `member` on this fleet's listener when
- * `hub_member.enabled`. Nothing otherwise: no Hub UI is drawn and no Hub module loads.
+ * authority, set by the listener that serves the page (never a client's choice): `member` on this fleet's listener when
+ * `hub_member.enabled`, never over the public link. `hub` is only the Hub listener's own workspace page
+ * (serveHubWorkspaceShell). Nothing otherwise: no Hub UI is drawn and no Hub module loads.
  */
-function hubBodyAttrs(config: HubSwitches, hubWorkspace: { name: string } | undefined, attr: (v: string | null | undefined) => string): string {
-  if (hubWorkspace) return ` data-hub="hub"${hubWorkspace.name ? ` data-hub-name="${attr(hubNameOf(hubWorkspace.name))}"` : ""}`;
-  return hubModeOf(config).member ? ' data-hub="member"' : "";
+function hubBodyAttrs(req: IncomingMessage, config: HubSwitches): string {
+  // hub.md §1: member handlers are local-owner-only and unavailable through the public gateway — no member mark there.
+  return hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
 }
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
   const trusted = ctx.guestTrusted?.(owner) ? ' data-guest-level="trusted"' : "";
   return ` data-tier="guest"${trusted}${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
 }
-function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null, hubWorkspace?: { name: string }): string {
+function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
   const ownerCss = shellOwnerCss(ctx, mode, viewer);
   let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
@@ -4015,9 +4015,28 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
     + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
     // AgEnD Hub P1 (docs/design/hub-ui-client.md): the Hub's marks — only when a switch is on, never on a guest's page.
-    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(ctx.fleetConfig, hubWorkspace, attr) : ""}`
+    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(req, ctx.fleetConfig) : ""}`
     // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
     + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
+}
+/**
+ * AgEnD Hub P1, slice 3: the app shell as a Hub's own workspace (served only by the Hub's listener, at its own origin).
+ * It boots Hub-only (app.js: no fleet stream, chat, Needs you, preferences or themes). Nothing of the request is read
+ * — no cookie (the fleet's or the Hub's), no session, no Host: who is signed in is the page's own /hub/v1/session.
+ */
+export const HUB_SHELL_DROPS = '<script src="/assets/agend-auth.js"></script>';
+export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string }): void {
+  try {
+    // Without the fleet's fetch wrapper (agend-auth.js): it reads the fleet's /auth/session for a CSRF value and answers
+    // a 401 with the fleet's "session ended" banner. The Hub's pages carry the Hub's own CSRF (hub-client.js).
+    const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8").replace(HUB_SHELL_DROPS, "");
+    const attr = (v: string) => v.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+    const name = hubNameOf(hub.name);
+    const body = `<body data-mode="full" data-web-transport="none" data-usage-panel="0" data-log-tab="0" data-hub="hub"${name ? ` data-hub-name="${attr(name)}"` : ""}>`;
+    sendPanelHtml(res, withAppIconLinks(html).replace("<body>", body), 200, { "Cache-Control": "no-store" }, { mediaSrc: "'none'" });
+  } catch {
+    json(res, 500, { error: "app.html not found" });
+  }
 }
 /** The app shell page for one entry, under the panels' CSP; it may frame exactly <preview origin>/frame, and only
  *  when this load chose one. */
@@ -4026,6 +4045,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
  * listener never passes it), so it is drawn as the Hub shell.
  */
 export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: AppShellContext, mode: AppShellMode, opts: { hubWorkspace?: { name: string } } = {}): void {
+  // A Hub workspace is drawn from nothing of this fleet's: no fleet cookie, session, preference or preview is read.
+  if (opts.hubWorkspace) { serveHubWorkspaceShell(res, opts.hubWorkspace); return; }
   try {
     const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
     const viewer = mode === "full" ? prefsViewer(req, new URL(req.url ?? "/", "http://localhost"), ctx) : null;
@@ -4039,7 +4060,7 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
     const frameSrc = previewFrames ?? "";
-    sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer, opts.hubWorkspace)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
+    sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }
