@@ -36,7 +36,8 @@ a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offse
 .hub-exposure-name { min-width: 0; overflow-wrap: anywhere; }
 .hub-exposure-why { color: var(--text-3); padding-left: calc(var(--s-2) + 18px); }
 /* S3b: the Hub workspace's pages */
-.hub-body { display: grid; gap: var(--s-3); align-content: start; padding: var(--s-4) var(--s-5) var(--s-6); }
+.hub-body { display: grid; gap: var(--s-3); align-content: start; padding: var(--s-4) var(--s-3) var(--s-6); }
+.hub-ask, .hub-mine, .hub-admin { display: grid; gap: var(--s-3); align-content: start; }
 .hub-body > * { width: 100%; max-width: 860px; min-width: 0; }
 .hub-body .card { margin-bottom: 0; }
 @media (max-width: 899px) { .hub-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
