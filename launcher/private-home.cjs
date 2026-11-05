@@ -32,7 +32,7 @@ function ensurePrivateHome(dir, options) {
     if (opts.afterOpen) opts.afterOpen(); // test seam: replacement at the check/change boundary
     var info = io.fstatSync(fd), current = checkedPath(dir, io, false, message);
     if (!info.isDirectory() || info.uid !== uid || current.dev !== info.dev || current.ino !== info.ino) throw new Error(message);
-    if (info.mode & 18) { // 0022: repair affected 0775/0777 homes; existing non-writable roots keep their mode
+    if (info.mode & 63) { // 0077: an owned home is private: repair legacy 0755/0775/0777 homes to 0700
       io.fchmodSync(fd, 448);
       if ((io.fstatSync(fd).mode & 511) !== 448) throw new Error(message);
       (opts.log || function (line) { console.warn(line); })("AgEnD: tightened owned AGEND_HOME permissions to 0700.");
