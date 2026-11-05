@@ -11,6 +11,7 @@ export class InstallerPsBatch {
   private child?: ChildProcessWithoutNullStreams;
   private dir?: string;
   private next = 0;
+  private terminalError?: Error;
   private pending = new Map<number, { resolve: (r: { out: string; status: number }) => void; reject: (e: Error) => void }>();
   private stderr = "";
   private consoleOutput = "";
@@ -78,6 +79,7 @@ while($null -ne ($line=[Console]::ReadLine())) {
 }
 `);
     this.child = spawn("pwsh", ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", driver, templates]);
+    this.child.stdin.on("error", e => this.fail(e));
     this.child.stderr.on("data", (b: Buffer) => { this.stderr += b; });
     createInterface({ input: this.child.stdout }).on("line", line => {
       try {
@@ -94,14 +96,19 @@ while($null -ne ($line=[Console]::ReadLine())) {
     this.child.on("error", e => this.fail(e));
     this.child.on("close", code => this.fail(new Error(`pwsh batch exited ${code}: ${this.stderr}`)));
   }
-  private fail(e: Error) { for (const p of this.pending.values()) p.reject(e); this.pending.clear(); }
+  private fail(e: Error) {
+    this.terminalError ??= e;
+    for (const p of this.pending.values()) p.reject(this.terminalError);
+    this.pending.clear();
+  }
   async run(template: string, body: string, options: { env?: Record<string, string>; input?: string; status?: number } = {}) {
+    if (this.terminalError) throw this.terminalError;
     if (!this.child) this.start();
     const id = ++this.next;
     const result = await new Promise<{ out: string; status: number }>((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.child!.kill();
         this.fail(new Error("pwsh case exceeded the existing 10 s test budget"));
+        this.child!.kill();
       }, 10_000);
       this.pending.set(id, {
         resolve: r => { clearTimeout(timeout); resolve(r); },
