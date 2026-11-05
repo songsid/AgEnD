@@ -3,6 +3,7 @@ import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identit
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
 import { SEPARATE_FEATURE_KEYS, hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
+import { maskSecrets } from "./log-steps.js";
 import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
@@ -17339,13 +17340,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Make a tool summary safe to paste into a channel message.
    *
    * The text is agent-controlled (it is built from tool inputs — file paths,
-   * shell commands), so it gets flattened to one line, capped, and stripped of
-   * the two Discord mass-mention triggers. Neither channel renders it with a
-   * parse mode, so no markup escaping is needed beyond that.
+   * shell commands), so it gets flattened to one line, secrets masked, capped,
+   * and stripped of the two Discord mass-mention triggers. Masking comes BEFORE
+   * the cap: a cap can cut a mask's context but must never be what hides (or
+   * fails to hide) a secret. Neither channel renders it with a parse mode, so no
+   * markup escaping is needed beyond that.
    */
   private static sanitizeActivity(activity?: string | null): string | null {
     if (!activity) return null;
-    const flat = activity.replace(/\s+/g, " ").replace(/@(everyone|here)/g, "@​$1").trim();
+    const flat = maskSecrets(activity.replace(/\s+/g, " ")).replace(/@(everyone|here)/g, "@​$1").trim();
     if (!flat) return null;
     return flat.length > PROGRESS_ACTIVITY_MAX_CHARS
       ? `${flat.slice(0, PROGRESS_ACTIVITY_MAX_CHARS - 1)}…`
