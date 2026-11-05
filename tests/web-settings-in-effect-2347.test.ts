@@ -1,7 +1,7 @@
 /**
  * #2347 §10: every field shows the value actually in effect and where it comes from.
  * - Agent defaults: a default nobody set in fleet.yaml carries a "default" mark (gone once it is edited, absent when set).
- * - An agent's dialog: an inherited field says what it inherits ("Inherited: 30 min · change in Agent defaults"),
+ * - An agent's dialog: an inherited field says what it inherits ("Inherited: 30 min · change in Shared agent settings"),
  *   marked "default" when Agent defaults do not set it either; the link goes to that field in Agent defaults.
  * - A ClassicBot room: inherits from ClassicBot defaults when they set it (the link goes there), else from Agent defaults.
  * - The model pickers' empty choice names the model it inherits.
@@ -105,8 +105,8 @@ describe("#2347 §10: an agent's inherited fields say what they inherit, and fro
     await open("agents", "web-dev");
     const dlg = p.root.querySelector("dialog");
     expect([inheritedOf("ag-be"), inheritedOf("ag-auto"), inheritedOf("ag-hang"), inheritedOf("ag-tool_progress"), inheritedOf("ag-log_level")])
-      .toEqual(["Inherited: Codex · change in Agent defaults", "Inherited: 30 min · change in Agent defaults", "Inherited: 10 min default · change in Agent defaults",
-        "Inherited: standard · change in Agent defaults", "Inherited: info default · change in Agent defaults"]);
+      .toEqual(["Inherited: Codex · change in Shared agent settings", "Inherited: 30 min · change in Shared agent settings", "Inherited: 10 min default · change in Shared agent settings",
+        "Inherited: standard · change in Shared agent settings", "Inherited: info default · change in Shared agent settings"]);
     const links = ["ag-auto", "ag-hang", "ag-log_level"].map((id) => p.root.querySelector(`#${id}`).closest(".field").querySelector(".s-inherited a").getAttribute("href"));
     expect(links).toEqual(["/settings/agent-defaults#g-auto", "/settings/agent-defaults#g-hang", "/settings/agent-defaults#g-ll"]);
     // The model's empty choice names the model it inherits.
@@ -140,17 +140,17 @@ describe("#2347 §10: a ClassicBot room inherits from ClassicBot defaults first"
     await open("chat", "ops");
     const link = (id: string) => p.root.querySelector(`#${id}`).closest(".field").querySelector(".s-inherited a").getAttribute("href");
     expect([inheritedOf("cl-tp"), link("cl-tp"), inheritedOf("cl-auto"), link("cl-auto"), inheritedOf("cl-be")])
-      .toEqual(["Inherited: verbose · change in ClassicBot defaults", "/settings/chat#g-ctp", "Inherited: 30 min · change in Agent defaults", "/settings/agent-defaults#g-auto",
-        "Inherited: Codex · change in Agent defaults"]);
+      .toEqual(["Inherited: verbose · change in ClassicBot defaults", "/settings/chat#g-ctp", "Inherited: 30 min · change in Shared agent settings", "/settings/agent-defaults#g-auto",
+        "Inherited: Codex · change in Shared agent settings"]);
     expect(text(p.root.querySelectorAll("#cl-model option")[0])).toBe("inherit (gpt-5.5)");
     // Every inherited line, including built-in reply guard on and reply-trigger off.
-    expect(p.root.querySelector("dialog").querySelectorAll(".s-inherited").map(text)).toEqual(["Inherited: Codex · change in Agent defaults",
-      "Inherited: 30 min · change in Agent defaults", "Inherited: verbose · change in ClassicBot defaults", "Inherited: on default · change in Agent defaults", "Inherited: off default · change in Agent defaults"]);
+    expect(p.root.querySelector("dialog").querySelectorAll(".s-inherited").map(text)).toEqual(["Inherited: Codex · change in Shared agent settings",
+      "Inherited: 30 min · change in Shared agent settings", "Inherited: verbose · change in ClassicBot defaults", "Inherited: on default · change in Shared agent settings", "Inherited: off default · change in Shared agent settings"]);
   });
   it("ClassicBot defaults' own inherited fields say what they take from Agent defaults", async () => {
     await open("chat", "classic-defaults");
     expect([inheritedOf("g-cbe"), text(p.root.querySelector("#g-creply").closest(".field").querySelector(".s-inherited"))])
-      .toEqual(["Inherited: Codex · change in Agent defaults", "Inherited: on default · change in Agent defaults"]);
+      .toEqual(["Inherited: Codex · change in Shared agent settings", "Inherited: on default · change in Shared agent settings"]);
   });
 });
 

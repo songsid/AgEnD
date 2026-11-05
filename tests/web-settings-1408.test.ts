@@ -833,7 +833,7 @@ describe("the other ways in: Developer YAML and the setup wizard hand over to th
     await mount("advanced", "settings:advanced|2|en"); await settle(6);
     const edit = btn(p.root.querySelector(".s-dev"), "Edit");
     expect(edit.disabled).toBe(true);
-    expect(p.root.querySelector(".s-dev-blocked")?.textContent).toContain("Save or discard the unsaved changes to agents, agent defaults or connections first");
+    expect(p.root.querySelector(".s-dev-blocked")?.textContent).toContain("Save or discard the unsaved changes to agents, shared agent settings or connections first");
     // A form's change that writes something else (You, Web) does not hold the editor.
     btn(p.root.querySelector(".s-pending"), "Discard").click(); await settle(6);
     expect(btn(p.root.querySelector(".s-dev"), "Edit").disabled).toBe(false);

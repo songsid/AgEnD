@@ -13,6 +13,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
+import { pickSeg, segValue } from "./helpers/settings-controls.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { replyGuardSupported } from "/ui/js/settings-model.js";
 
@@ -180,8 +181,8 @@ describe("Settings P0 redesign shell", () => {
     // Then the default: the General form shows it, stages it, and Apply asks for one job (watched, keyed).
     await mountSettings("general");
     const defaults = p.root.querySelector("#g-tp")!;
-    expect(defaults.value).toBe("off");
-    await choose(defaults, "standard");
+    expect(segValue(defaults)).toBe("off");
+    await pickSeg(defaults, "standard");
     await settle(4);
     expect(pending()!.textContent).toContain("Immediately");       // tool progress is a hot setting
     await applyStaged();
@@ -242,25 +243,23 @@ describe("Settings P0 redesign shell", () => {
     expect(p.root.querySelector("dialog")!.textContent).toContain("Stored but inactive: kiro-cli in mcp mode does not support reply-drop recovery.");
   });
 
-  it("daily tips offer only Topic and Off (no DM, hmsg-d1809f2a), default Topic, and stage Off", async () => {
+  it("daily tips are an on/off switch (no DM, hmsg-d1809f2a): on by default, and stage Off", async () => {
     answer = succeed;
     await mountSettings("agent-defaults");
-    const select = p.root.querySelector("#g-tips");
-    expect(select.value).toBe("true");
-    expect([...select.querySelectorAll("option")].map(o => o.value)).toEqual(["true", "false"]);
-    expect(select.closest(".field").textContent).toContain("In effect: Topic");
-    expect(select.closest(".field").textContent).not.toMatch(/DM|Direct message/);
-    await choose(select, "false"); await applyStaged();
+    const sw = p.root.querySelector("#g-tips");
+    expect([sw.type, sw.getAttribute("role"), sw.checked]).toEqual(["checkbox", "switch", true]);
+    expect(sw.closest(".field").textContent).toContain("On");
+    expect(sw.closest(".field").textContent).not.toMatch(/DM|Direct message/);
+    await check(sw, false); await applyStaged();
     expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: false });
   });
-  it("a legacy tips DM route or \"dm\" value shows as Topic, and Topic saves canonical true", async () => {
+  it("a legacy tips DM route or \"dm\" value shows as on, and on saves canonical true", async () => {
     for (const fleet of [{ defaults: { tips: true }, web: { notice_delivery: { tips: "dm" } } }, { defaults: { tips: "dm" } }]) {
       w = world({ fleet: { ...fleet, instances: {}, channels: [] } });
       answer = succeed; await mountSettings("agent-defaults");
-      const select = p.root.querySelector("#g-tips"); expect(select.value).toBe("true");
-      expect(select.closest(".field").textContent).toContain("In effect: Topic");
+      const sw = p.root.querySelector("#g-tips"); expect(sw.checked).toBe(true);
     }
-    await choose(p.root.querySelector("#g-tips"), "false"); await applyStaged();
+    await check(p.root.querySelector("#g-tips"), false); await applyStaged();
     expect(writes().find(s => s.path === "/api/settings/fleet/defaults")?.body).toEqual({ tips: false });
   });
   it("shows the off fleet reply-trigger default and stages an explicit on", async () => {
@@ -280,7 +279,7 @@ describe("Settings P0 redesign shell", () => {
     await mountSettings("chat");
     expect(p.root.querySelector("#g-creply-triggers").checked).toBe(true);
     expect(p.root.querySelector("#g-creply-triggers").disabled).toBe(true);
-    expect(p.root.textContent).toContain("change in Agent defaults");
+    expect(p.root.textContent).toContain("change in Shared agent settings");
     await mountSettings("classic"); await click(button("Settings"));
     const dlg = p.root.querySelector("dialog");
     const box = dlg.querySelectorAll("label.check").find((l: any) => l.textContent.includes("Native replies trigger ClassicBot"))?.querySelector("input");

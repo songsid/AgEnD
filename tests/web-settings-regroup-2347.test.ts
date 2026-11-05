@@ -57,7 +57,7 @@ describe("#2347: the sections in two groups, and the old addresses", () => {
     const groups = p.root.querySelectorAll(".s-nav .s-nav-group").map((g: any) => [g.querySelector(".s-nav-head").textContent,
       g.querySelectorAll(".seg-item").map((a: any) => a.textContent.trim())]);
     expect(groups).toEqual([["You", ["Preferences", "Look"]],
-      ["Fleet", ["Agents", "Agent defaults", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]]]);
+      ["Fleet", ["Agents", "Shared agent settings", "Chat & connections", "Web dashboard", "Access & security", "Advanced"]]]);
     expect(p.root.querySelector(".s-nav .seg-item[aria-current=page]").textContent.trim()).toBe("Agents");
   });
   it("each old address names its new section, on the page and on the server; ClassicBot's carries its place", () => {
@@ -171,7 +171,7 @@ describe("#2347 §7: the list of sections and a section on its own (phone)", () 
     expect([atList, panel().getAttribute("class"), panel().getAttribute("data-view"), back?.getAttribute("href"), back?.textContent.trim()]).toEqual([
       // #1629: the root's class is the effects producer's, exactly — which view is shown is data-view.
       ["panel p-settings", "index", ["/settings/preferences", "/settings/look", "/settings/agents", "/settings/agent-defaults", "/settings/chat", "/settings/web-dashboard", "/settings/access", "/settings/advanced"]],
-      "panel p-settings", "section", "/settings", "SettingsAgent defaults"]);
+      "panel p-settings", "section", "/settings", "SettingsShared agent settings"]);
     nav.navigate("/settings");
   });
   it("the CSS: on a phone the list is alone at /settings, a section alone with ‹ Settings; the list marks no section", async () => {

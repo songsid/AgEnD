@@ -929,7 +929,7 @@ When one instance sends another a message (`send_to_instance`, `delegate_task`, 
 | `summary` | The same posts, each one line: `sender → target: ` plus the sender's task summary, or the opening of the message |
 | `hidden` | Nothing |
 
-Each topic follows its own instance: `instances.<name>.cross_instance_visibility`, else `defaults.cross_instance_visibility`, else `full`. A fleet admin sets the fleet default with `/visibility full|summary|hidden` (Telegram General topic, or Discord), which saves it to `fleet.yaml`; `/visibility` alone shows the current setting and the instances that have their own. Settings has the fleet default (Agent defaults) and a per-agent override (agent → Advanced). A change applies at once, with no restart.
+Each topic follows its own instance: `instances.<name>.cross_instance_visibility`, else `defaults.cross_instance_visibility`, else `full`. A fleet admin sets the fleet default with `/visibility full|summary|hidden` (Telegram General topic, or Discord), which saves it to `fleet.yaml`; `/visibility` alone shows the current setting and the instances that have their own. Settings has the fleet default (Shared agent settings) and a per-agent override (agent → Advanced). A change applies at once, with no restart.
 
 The same lines appear in each instance's web chat (#1672), by the same rules and the same mode, even on a fleet with no chat platform or for an instance with no topic. They are drawn as muted, read-only status lines: plain text, never an agent's reply (no preview cards), and a long one is folded until opened. They count toward the chat history's limits and are there again after a restart.
 
@@ -1223,7 +1223,7 @@ instances:
     auto_pause_after: 30  # per-instance override: pause after 30 min idle
 ```
 
-Also configurable via the Settings web page: **Agent defaults → auto_pause_after**.
+Also configurable via the Settings web page: **Shared agent settings → auto_pause_after**.
 
 ### Manual control
 
