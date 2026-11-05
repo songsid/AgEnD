@@ -417,12 +417,17 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // no transformer configuration surface. Real grammY clients always do.
     if (!this.bot.api.config?.use) return;
     this.bot.api.config.use(async (prev, method, payload, signal) => {
+      // grammY.stop sends a final offset ACK, and an already-fetched batch can finish later.
+      // Once fenced, neither path may confirm or admit updates for the stopping fleet.
+      if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
       const requestGeneration = this.httpAgentGeneration;
       try {
         const result = await prev(method, payload, signal);
+        if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
         this.noteGetUpdatesBacklog(method, result);
         return result;
       } catch (err) {
+        if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
         if (!(err instanceof HttpError)) throw err;
         const firstDetail = telegramNetworkErrorDetails(err, this.botToken);
         const reset = this.resetHttpAgent(requestGeneration);
@@ -432,6 +437,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
         if (isDefinitelyPreDeliveryNetworkError(err) && !signal?.aborted) {
           await new Promise(resolve => setTimeout(resolve, TELEGRAM_NETWORK_RETRY_MS));
+          if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
           const retryGeneration = this.httpAgentGeneration;
           try {
             return await prev(method, payload, signal);
@@ -485,6 +491,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // Dedup, own-message skip, and the downtime age cap run before any handler.
     // Record the update_id before acting so a crash mid-batch cannot inject twice.
     this.bot.use(async (ctx, next) => {
+      if (this.stopped) return; // Before the durable floor as well as handler dispatch.
       const update = ctx.update as {
         update_id?: number;
         message?: Record<string, unknown> & { from?: { id?: number; is_bot?: boolean; username?: string; first_name?: string }; chat?: { id?: number; title?: string }; date?: number; message_id?: number; message_thread_id?: number; text?: string; caption?: string };
@@ -794,13 +801,16 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   private authRejected = false;
   /** #1537 review: stop() was called (and no start() since). */
   private stopped = false;
+  private pollingGeneration = 0;
+  private receiveStop: Promise<void> | null = null;
   connectionEvidence(): { ready: boolean; authRejected: boolean; stopped: boolean } {
     return { ready: this.pollingReady, authRejected: this.authRejected, stopped: this.stopped };
   }
 
   async start(): Promise<void> {
     // #1537 review: a new start borrows nothing from the last one — not ready until its own onStart, and not stopped.
-    this.pollingReady = false; this.stopped = false;
+    this.pollingReady = false; this.stopped = false; this.receiveStop = null;
+    const generation = ++this.pollingGeneration, current = () => !this.stopped && this.pollingGeneration === generation;
     this.backlogDrained = false;
     this.backlogUpdateIds.clear();
     this.queue.start();
@@ -821,8 +831,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const MAX_RECONNECT_RETRIES = 10; // auto-reconnect on non-409 errors
     void (async () => {
       let reconnects = 0;
-      while (true) {
-        for (let attempt = 1; attempt <= MAX_409_RETRIES; attempt++) {
+      while (current()) {
+        for (let attempt = 1; current() && attempt <= MAX_409_RETRIES; attempt++) {
           try {
             await this.bot.start({
               // Keep the server-side long poll comfortably below both 30s
@@ -842,6 +852,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
               // added here too, or it will never fire.
               allowed_updates: TELEGRAM_ALLOWED_UPDATES,
               onStart: (info) => {
+                if (!current()) return;
                 reconnects = 0; // reset on successful start
                 this.pollingReady = true; this.authRejected = false;
                 this.discardFloorIfStale(Date.now(), info.id);
@@ -850,6 +861,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
             });
             return; // bot.stop() was called — clean exit
           } catch (err) {
+            if (!current()) return;
             // #1519 P6: what the connection's status reports — not polling now, and whether Telegram refused the token.
             this.pollingReady = false;
             if (err instanceof GrammyError && err.error_code === 401) this.authRejected = true;
@@ -881,10 +893,17 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     })();
   }
 
-  async stop(): Promise<void> {
-    // #1537 review: the connection is not polling from the moment it is told to stop (before any await).
-    this.pollingReady = false; this.stopped = true;
+  stopReceiving(): Promise<void> {
+    if (this.receiveStop) return this.receiveStop;
+    // Set before bot.stop (and its final getUpdates ACK); do not close the outbound queue yet.
+    this.pollingReady = false; this.stopped = true; this.pollingGeneration++;
     this.flushPersistFloor();
+    this.receiveStop = this.bot.stop();
+    return this.receiveStop;
+  }
+
+  async stop(): Promise<void> {
+    const receivingStopped = this.stopReceiving();
     // Invalidate queued status work before any await. Re-created adapters must
     // not inherit proof from this object's pending requests.
     this.reactionGeneration = (this.reactionGeneration ?? 0) + 1;
@@ -893,9 +912,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     this.reactionTrackingStartedAt = Date.now();
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     this.queue.stop();
-    await this.bot.stop();
-    this.httpAgent.destroy();
-    this.httpsAgent.destroy();
+    try { await receivingStopped; }
+    finally { this.httpAgent.destroy(); this.httpsAgent.destroy(); }
   }
 
   private lastUpdateIdFile(): string {

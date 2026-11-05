@@ -21961,6 +21961,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    // Stop receive admission before the first await or any instance shutdown; outbound
+    // adapters remain available below to retire notices and pending prompts.
+    for (const state of this.adapterState.values()) {
+      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
+    }
+    const inboundStopped = Promise.all([...this.adapters.values()].map(async adapter => {
+      try { await adapter.stopReceiving?.(); }
+      catch (err) { this.logger.warn({ adapterId: adapter.id, err }, "Adapter receive stop failed; inbound remains fenced"); }
+    }));
     this.workingRecovery?.reset();
     if (this.workingRecoveryTimer) clearInterval(this.workingRecoveryTimer);
     this.workingRecoveryTimer = null;
@@ -22010,6 +22019,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
+    await inboundStopped;
     await publicStopped;
     await sharesStopped?.catch(() => {});
     await profileStopped;
@@ -22020,10 +22030,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
     await this.shutdownLoginWindows();
-    // Cancel adapter retry timers
-    for (const state of this.adapterState.values()) {
-      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
-    }
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
