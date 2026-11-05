@@ -17,6 +17,21 @@ export class HubMount implements HubMode {
   private memberOn = false;
   private server: HubMountedService | null = null;
   private member: HubMountedService | null = null;
+  // Includes factories and startup: close must drain their eventual physical resources too.
+  private transition: Promise<void> = Promise.resolve();
+  private enqueue(work: () => Promise<void>): Promise<void> {
+    const result = this.transition.then(work);
+    this.transition = result.catch(() => {});
+    return result;
+  }
+  private async drain(): Promise<void> {
+    const owned = (["server", "member"] as const).filter(kind => this[kind] !== null);
+    const results = await Promise.allSettled(owned.map(async kind => {
+      const service = this[kind]!; service.fence(); await service.close();
+      if (this[kind] === service) this[kind] = null; // Retain ownership until positive shutdown.
+    }));
+    if (results.some(r => r.status === "rejected")) { this.options.hold("service-unavailable"); throw Error("Hub cleanup is unconfirmed"); }
+  }
   constructor(private readonly options: HubMountOptions) {}
   epoch(): number { return this.generation; }
   serverEnabled(): boolean { return this.serverOn; }
@@ -26,17 +41,16 @@ export class HubMount implements HubMode {
     this.generation++; this.serverOn = this.memberOn = false;
     this.server?.fence(); this.member?.fence();
   }
-  async close(): Promise<void> {
-    this.fence(); const server = this.server, member = this.member; this.server = this.member = null;
-    const results = await Promise.allSettled([server?.close(), member?.close()]);
-    if (results.some(r => r.status === "rejected")) { this.options.hold("service-unavailable"); throw Error("Hub cleanup is unconfirmed"); }
+  close(): Promise<void> {
+    this.fence(); return this.enqueue(() => this.drain());
   }
-  async apply(input: { hub?: unknown; hub_member?: unknown }): Promise<void> {
-    // Neither a query parameter, env variable nor a page mark reaches this branch.
-    this.fence(); const generation = this.generation;
-    const oldServer = this.server, oldMember = this.member; this.server = this.member = null;
-    try { await Promise.all([oldServer?.close(), oldMember?.close()]); }
-    catch { if (generation === this.generation) this.options.hold("service-unavailable"); throw Error("Hub cleanup is unconfirmed"); }
+  apply(input: { hub?: unknown; hub_member?: unknown }): Promise<void> {
+    // Revoke synchronously, even while a previous factory/start/cleanup is still awaiting.
+    this.fence(); const generation = this.generation, snapshot = structuredClone(input);
+    return this.enqueue(() => this.applyOwned(snapshot, generation));
+  }
+  private async applyOwned(input: { hub?: unknown; hub_member?: unknown }, generation: number): Promise<void> {
+    await this.drain();
     if (generation !== this.generation) return;
     const server = record(input.hub) && input.hub.enabled === true ? structuredClone(input.hub) : null;
     const member = record(input.hub_member) && input.hub_member.enabled === true ? structuredClone(input.hub_member) : null;
@@ -52,11 +66,13 @@ export class HubMount implements HubMode {
         reason = "service-unavailable"; this.serverOn = true;
         const current = () => this.serverOn && generation === this.generation;
         const service = await this.options.createServer(server, current);
-        if (!current()) { service.fence(); await service.close(); return; }
-        this.server = service; await service.start();
-        if (!current()) { service.fence(); await service.close(); return; }
+        this.server = service;
+        if (!current()) { await this.drain(); return; }
+        await service.start();
+        if (!current()) { await this.drain(); return; }
       } catch {
-        if (generation === this.generation) { this.serverOn = false; this.server?.fence(); await this.server?.close().catch(() => {}); this.server = null; this.options.hold(reason); }
+        if (generation === this.generation) { this.serverOn = false; this.options.hold(reason); }
+        await this.drain();
       }
     }
     if (member && generation === this.generation) {
@@ -66,11 +82,13 @@ export class HubMount implements HubMode {
         this.memberOn = true;
         const current = () => this.memberOn && generation === this.generation;
         const service = await this.options.createMember(member, current);
-        if (!current()) { service.fence(); await service.close(); return; }
-        reason = "service-unavailable"; this.member = service; await service.start();
-        if (!current()) { service.fence(); await service.close(); return; }
+        reason = "service-unavailable"; this.member = service;
+        if (!current()) { await this.drain(); return; }
+        await service.start();
+        if (!current()) { await this.drain(); return; }
       } catch {
-        if (generation === this.generation) { this.memberOn = false; this.member?.fence(); await this.member?.close().catch(() => {}); this.member = null; this.options.hold(reason); }
+        if (generation === this.generation) { this.memberOn = false; this.options.hold(reason); }
+        await this.drain();
       }
     }
   }

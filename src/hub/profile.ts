@@ -5,7 +5,7 @@ import { createPublicKey } from "node:crypto";
 import { z } from "zod";
 import { atomicWriteFileSync } from "../atomic-write.js";
 import { ensurePrivateDirectory, readPrivateFile } from "./private-files.js";
-import { hubOrigin, verifyHubCertificate } from "./tls.js";
+import { hubOrigin, verifyHubCertificate, verifyHubCertificateBinding } from "./tls.js";
 import { hash, person, token, uuid, epoch, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 import { sha256, issuerKeyId } from "./identity.js";
 import { hubPairingFingerprint, type HubPairingIdentity } from "./pairing.js";
@@ -15,9 +15,10 @@ export const profileSchema = z.strictObject({ ...base, credential: token, issuer
 export const pendingSchema = z.strictObject({ ...base, pairingId: uuid, claimSecret: token, fingerprint: hash, expiresAt: epoch });
 export type HubMemberProfile = z.infer<typeof profileSchema>;
 export type HubPendingPairing = z.infer<typeof pendingSchema>;
-export function validateHubBinding<T extends { hub: HubPairingIdentity; certificatePem: string }>(input: T, now = Date.now()): T {
+export function validateHubBinding<T extends { hub: HubPairingIdentity; certificatePem: string }>(input: T, now: number | null = Date.now()): T {
   if (hubOrigin(input.hub.memberOrigin) !== input.hub.memberOrigin || hubOrigin(input.hub.webOrigin) !== input.hub.webOrigin || input.hub.memberOrigin === input.hub.webOrigin) throw new HubProtocolError();
-  verifyHubCertificate(input.certificatePem, input.hub.memberOrigin, input.hub.spkiSha256, now);
+  if (now === null) verifyHubCertificateBinding(input.certificatePem, input.hub.memberOrigin, input.hub.spkiSha256);
+  else verifyHubCertificate(input.certificatePem, input.hub.memberOrigin, input.hub.spkiSha256, now);
   const key = createPublicKey(input.hub.issuerPublicKey);
   if (key.asymmetricKeyType !== "ed25519" || key.export({ type: "spki", format: "pem" }).toString() !== input.hub.issuerPublicKey) throw new HubProtocolError();
   return input;
@@ -27,11 +28,11 @@ export class HubMemberProfileStore {
   private suffix(name: string): string { return `hub-member/${this.hubId}/${name}.json`; }
   private read(name: string): unknown { return parseStrictJson(readPrivateFile(this.home, this.suffix(name))); }
   readProfile(): HubMemberProfile {
-    const p = validateHubBinding(validated(profileSchema, this.read("pairing")));
+    const p = validateHubBinding(validated(profileSchema, this.read("pairing")), null);
     if (p.hub.hubId !== this.hubId || issuerKeyId(createPublicKey(p.hub.issuerPublicKey)) !== p.issuerKeyId) throw new HubProtocolError(); return p;
   }
   readPending(): HubPendingPairing {
-    const p = validateHubBinding(validated(pendingSchema, this.read("pending")));
+    const p = validateHubBinding(validated(pendingSchema, this.read("pending")), null);
     if (p.hub.hubId !== this.hubId || p.fingerprint !== hubPairingFingerprint(p.hub, p.pairingId, p.owner, sha256(p.claimSecret))) throw new HubProtocolError(); return p;
   }
   profileDigest(): string | null { return existsSync(join(this.home, this.suffix("pairing"))) ? sha256(readPrivateFile(this.home, this.suffix("pairing"))) : null; }

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, chmodSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { HubMemberProfileStore } from "../src/hub/profile.js";
+import { hubPairingFingerprint } from "../src/hub/pairing.js";
 import { provisionHubIdentity, readHubIdentity, verifyHubCertificate, hubOrigin } from "../src/hub/tls.js";
 import { sealHubInitialization, verifyHubInitialization } from "../src/hub/initialization.js";
 import { sha256 } from "../src/hub/identity.js";
@@ -76,4 +80,53 @@ it("accepts only the initializer's canonical ISO timestamp in the signed manifes
   for (const committedAt of [Date.now(), [f.manifest.committedAt], "2026-13-01T00:00:00.000Z", "2026-01-01T00:00:00Z"]) {
     expect(() => sealHubInitialization({ home: f.root, planDigest: f.digest, confirmationId: "a".repeat(32), committedAt: committedAt as never })).toThrow();
   }
+});
+
+it.each(["server", "member"] as const)("retains %s cleanup ownership after a refused close and blocks replacement until a positive close", async kind => {
+  const f = await initialized(); let physical = 0, refuse = true;
+  const factory = vi.fn(async () => {
+    physical++; let closed = false;
+    return { start: async () => {}, fence: vi.fn(), close: async () => { if (refuse) throw Error("unconfirmed"); if (!closed) { closed = true; physical--; } } };
+  });
+  const hold = vi.fn(), mount = new HubMount({ home: f.root, planDigest: () => f.digest, createServer: factory, createMember: factory, hold });
+  const config = kind === "server" ? { hub: { enabled: true, hubId: f.identity.hubId, memberOrigin: f.memberOrigin } } : { hub_member: { enabled: true } };
+  await mount.apply(config); expect(physical).toBe(1);
+  await expect(mount.apply({})).rejects.toThrow("cleanup");
+  await expect(mount.apply(config)).rejects.toThrow("cleanup");
+  expect(factory).toHaveBeenCalledTimes(1); expect(physical).toBe(1); expect(hold).toHaveBeenCalledWith("service-unavailable");
+  refuse = false; await mount.apply(config); expect(physical).toBe(1); expect(factory).toHaveBeenCalledTimes(2);
+  await mount.close(); expect(physical).toBe(0);
+});
+it.each(["factory", "start"] as const)("close drains an owned pending %s before reporting shutdown", async phase => {
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+  const service = { start: vi.fn(async () => { if (phase === "start") await gate; }), fence: vi.fn(), close: vi.fn(async () => {}) };
+  const factory = vi.fn(async () => { if (phase === "factory") await gate; return service; });
+  const mount = new HubMount({ home: "/nonexistent/inert", planDigest: vi.fn(), createServer: vi.fn(), createMember: factory, hold: vi.fn() });
+  const starting = mount.apply({ hub_member: { enabled: true } });
+  await vi.waitFor(() => expect(phase === "factory" ? factory : service.start).toHaveBeenCalled());
+  let closed = false; const stopping = mount.close().then(() => { closed = true; });
+  await new Promise(resolve => setTimeout(resolve, 0)); expect(closed).toBe(false);
+  release(); await Promise.all([starting, stopping]); expect(closed).toBe(true); expect(service.close).toHaveBeenCalled();
+  if (phase === "factory") expect(service.start).not.toHaveBeenCalled();
+});
+
+it("reads historical pairing receipts after same-key renewal while the live peer still needs a valid matching certificate", async () => {
+  const f = await initialized(), store = new HubMemberProfileStore(f.root, f.identity.hubId);
+  const certificatePem = readFileSync(join(f.root, "hub/keys/tls-cert.pem"), "utf8");
+  const hub = { hubId: f.identity.hubId, spkiSha256: f.identity.spkiSha256, issuerPublicKey: f.identity.issuerPublicKey, memberOrigin: f.memberOrigin, webOrigin: "https://127.0.0.1:39444" };
+  const owner = { realm: "directory", objectId: randomUUID() }, fleetId = randomUUID(), pairingId = randomUUID(), claimSecret = "a".repeat(64);
+  store.saveProfile({ v: 1, hub, owner, fleetId, certificatePem, credential: "b".repeat(64), issuerKeyId: f.identity.issuerKeyId }, null, () => true);
+  store.savePending({ v: 1, hub, owner, fleetId, certificatePem, pairingId, claimSecret,
+    fingerprint: hubPairingFingerprint(hub, pairingId, owner, sha256(claimSecret)), expiresAt: Date.now() + 600_000 }, () => true);
+  execFileSync("/usr/bin/openssl", ["req", "-new", "-x509", "-sha256", "-days", "730", "-key", join(f.root, "hub/keys/tls-key.pem"), "-out", join(f.root, "hub/keys/tls-cert.pem"), "-subj", "/CN=AgEnD Hub", "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore", timeout: 10_000 });
+  const future = Date.now() + 366 * 86_400_000, renewed = readFileSync(join(f.root, "hub/keys/tls-cert.pem"), "utf8");
+  expect(verifyHubCertificate(renewed, f.memberOrigin, f.identity.spkiSha256, future)).toBeDefined();
+  expect(() => verifyHubCertificate(certificatePem, f.memberOrigin, f.identity.spkiSha256, future)).toThrow();
+  expect(() => verifyHubCertificate(renewed, f.memberOrigin, "c".repeat(64), future)).toThrow();
+  expect(() => verifyHubCertificate(renewed, "https://different.test", f.identity.spkiSha256, future)).toThrow();
+  const clock = vi.spyOn(Date, "now").mockReturnValue(future);
+  try {
+    expect(readHubIdentity({ home: f.root, memberOrigin: f.memberOrigin })).toEqual(f.identity);
+    expect(store.readProfile().certificatePem).toBe(certificatePem); expect(store.readPending().certificatePem).toBe(certificatePem);
+  } finally { clock.mockRestore(); }
 });
