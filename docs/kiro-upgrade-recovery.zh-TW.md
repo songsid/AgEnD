@@ -1,5 +1,23 @@
 # 升級後認領 Kiro 對話
 
+## 升級 Kiro CLI 3.x 之前
+
+Kiro 3.0 已移除 Classic。這與下方舊版 AgEnD 的對話認領修復是兩件事。
+
+1. 請 General 查詢 `kiro_engine_status`。`kiro3_readiness` 會列出每個 Kiro Agent 的準備狀態，包含
+   General 與 ClassicBot 房間；即使只查一個名稱，總數仍涵蓋整個 Fleet。這裡的準備狀態只表示是否已離開
+   Classic，不表示所有未來的 3.x 版本都已通過相容性驗證。
+2. 先保留相容的 Kiro 2.x。對每個仍用 Classic 的 Fleet Agent，請 General 發起
+   `migrate_kiro_instance`，再由管理員確認該次遷移。依照
+   [既有遷移說明](../src/general-knowledge/skills/kiro-engine-migration/SKILL.md)操作，兩次啟動驗證都必須保留
+   同一段對話與模型。不要直接修改 `kiro_ui` 跳過遷移。
+3. ClassicBot 房間不能使用這個遷移工具。請在 Classic 設定把房間換成其他後端，或繼續使用 Kiro 2.x；
+   房間也會計入尚未離開 Classic 的總數。
+4. 再查一次準備狀態：所有剩餘的 Kiro Agent 都必須是 TUI 或原本已使用 V3，且 `still_classic: 0`。
+   General 也包含在內。確認後再自行升級 Kiro；AgEnD 不會安裝 CLI，也不會替你選 V3 選單。
+5. 若啟動時出現引擎選單，或無法確認已儲存的對話，請查看「等你處理」。保留對話 ID、歷史與遷移收據，
+   不要開新對話，也不要回到已凍結的 Classic 副本。
+
 啟動紀錄從 2.1.11（#1171）引入。從 2.1.10 或更早版本升級，或 instance 此後尚未啟動過，可能有對話卻沒有
 啟動紀錄。#1624 只在以下條件全部成立時，允許一次性的認領：
 

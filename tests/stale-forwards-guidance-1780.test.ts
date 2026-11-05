@@ -6,6 +6,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { TOOLS } from "../src/channel/mcp-tools.js";
+import { VERIFY_PEER_MESSAGE_RULE } from "../src/instructions.js";
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -28,5 +29,17 @@ describe("forwarding guidance names the stale-schema failure (#1780)", () => {
     const en = read("docs/delivery-verification.md"), zh = read("docs/delivery-verification.zh-TW.md");
     for (const s of ["**The ID must be in `forwards`, not in the text.**", "Pass the parameter anyway", "#1780"]) expect(en, s).toContain(s);
     for (const s of ["**ID 必須放在 `forwards`，不是寫在文字裡。**", "照樣傳這個參數即可", "#1780"]) expect(zh, s).toContain(s);
+  });
+});
+
+describe("forwarding guidance: ids stay out of the message text people see (#3056)", () => {
+  const NOTICE = "do not repeat them in the message text, because people see that text in the topic notices";
+
+  it("fleet collaboration rule, CLI consent, and both skills name the topic-notice reason", () => {
+    expect(VERIFY_PEER_MESSAGE_RULE).toContain("Put those ids in the `forwards` field only");
+    expect(VERIFY_PEER_MESSAGE_RULE).toContain(NOTICE);
+    expect(read("src/agent-cli-instructions.md")).toContain(NOTICE);
+    expect(read("src/general-knowledge/skills/cross-instance-messaging/SKILL.md")).toContain(NOTICE);
+    expect(read("src/general-knowledge/skills/worker-collaboration/SKILL.md")).toContain(NOTICE);
   });
 });

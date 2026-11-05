@@ -1456,6 +1456,11 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-stale { font-weight: var(--fw-semibold); }
 .u-stale-detail { color: var(--text-3); font-size: var(--fs-xs); }
 .u-sub { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+/* #3066 §1: a weekly quota's measured 100% under its bar, and its notes (the fleet-only limit always). */
+.u-cap { margin-top: 4px; font-size: var(--fs-xs); }
+.u-cap-line { color: var(--text-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.u-cap-wait .u-cap-line { color: var(--text-3); }
+.u-cap-note { color: var(--text-3); overflow-wrap: anywhere; }
 .u-err { color: var(--warn); font-size: var(--fs-sm); }
 .u-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 /* #1673: the usage rail beside the page on a wide screen (header-tools.js UsageRail; shown only at min-width 1200px). */
@@ -2251,6 +2256,16 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .us-meta { display: block; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
 .us-est { display: block; font-size: var(--fs-xs); font-weight: var(--fw-regular); color: var(--text-3); }
 .us-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+/* #3066 §3: a row's numbers carry small marks (◐ partly priced, † the CLI's amount, ≈ estimated) and "—" with a reason,
+   each said in its tooltip; the key under the table names only the marks that appear. */
+.us-mark { margin-left: 2px; color: var(--text-3); font-size: var(--fs-xs); cursor: help; }
+.us-mark.us-approx { margin-left: 0; margin-right: 1px; }
+.us-none { cursor: help; }
+.us-key { margin-top: 6px; }
+/* #3066 §2: each model's speed after the first token. */
+.us-speed { margin-top: 12px; }
+.us-speed .row-item { gap: 8px; flex-wrap: wrap; }
+.us-speed .num { font-variant-numeric: tabular-nums; }
 .us-trend, .us-heat { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
 .us-trend h3, .us-heat h3, .us-rest h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .us-scroll { overflow-x: auto; max-width: 100%; }

@@ -175,7 +175,8 @@ describe("the fleet rule travels with the tool (#856)", () => {
     expect(buildFleetInstructions({ instanceName: "worker", workingDirectory: "/w" })).toContain(`7. ${VERIFY_PEER_MESSAGE_RULE}`);
     // CLI-mode agents reach delivery_status over HTTP and get the rule too.
     expect(buildFleetInstructions({ instanceName: "worker", workingDirectory: "/w", cliInstructions: "## CLI" })).toContain(VERIFY_PEER_MESSAGE_RULE);
-    for (const phrase of ["merge", "reset", "force-push", "delivery_status", "message_id", "Delivery not found", "do not act"]) {
+    for (const phrase of ["merge", "reset", "force-push", "delivery_status", "message_id", "Delivery not found", "do not act",
+      "Put those ids in the `forwards` field only", "people see that text in the topic notices"]) {
       expect(VERIFY_PEER_MESSAGE_RULE).toContain(phrase);
     }
   });

@@ -829,6 +829,8 @@ function DeleteDialog({ name, inst, onClose }) {
     } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     if (r && r.error) { toast(r.error, false); if (!handedOver && lease.current()) setBusy(false); return; }
     toast(t("chat.instanceDeleted", name));
+    // The agent's own topic went too, or stayed with the reason (the server's own words: no new string here).
+    if (r.topic_note) toast(r.topic_note, r.topic_deleted !== false);
     if (handedOver || !lease.current()) return;
     setBusy(false);
     onClose();

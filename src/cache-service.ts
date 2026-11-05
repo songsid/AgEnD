@@ -19,7 +19,7 @@
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { scanJsonl } from "./cache-scan.js";
-import { addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
+import { addSpeed, addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, carryPruned, foldHours, pruneDays, readDays, readLifetime, writeDays, type UsageDays, type UsageLifetime } from "./usage-rollup.js";
@@ -27,6 +27,7 @@ import { officeLevels, type OfficeLevel } from "./office-levels.js";
 import type { KiroScanInput, KiroScanOutput } from "./kiro-usage-scan.js";
 import type { OpencodeScanInput, OpencodeScanOutput } from "./opencode-usage-scan.js";
 import { antigravityUsageSupported, type AntigravityScanInput, type AntigravityScanOutput } from "./antigravity-usage-scan.js";
+import { profileAt, readProfileTimeline } from "./usage/profile-timeline.js";
 
 /** An instance to analyse: a fleet.yaml instance, or a ClassicBot room (its workspace under the AgEnD home). */
 export interface CacheInstance {
@@ -38,6 +39,11 @@ export interface CacheInstance {
    * without one); "unrecorded" for codex (a rollout does not say which login wrote it).
    */
   profile?: string;
+  /**
+   * #3066 §1d: a Codex instance's launch timeline (usage/profile-timeline.ts): each turn is tagged with the credential
+   * profile it ran under, by its time — instead of `profile` ("unrecorded") for every turn.
+   */
+  profileTimelinePath?: string;
   /** #2122: a Kiro instance's classic store — its credential profile's `data.sqlite3`; absent = `kiroDbPath()`. */
   kiroDbPath?: string;
 }
@@ -360,6 +366,9 @@ export class CacheService {
       // again from its start once it is listed (Prism #2605). An instance whose store stays unreadable keeps its cursors
       // until it is readable again — bounded by its own files.
       const listed = new Set(files.map((f) => f.path));
+      // #3066 §1d: a Codex turn's profile is the one its run was launched under (read once a pass, off the thread).
+      const spans = kind === "codex" && inst.profileTimelinePath ? await readProfileTimeline(inst.profileTimelinePath) : null;
+      const profileOf = spans && spans.length ? (t: number) => profileAt(spans, t) : inst.profile;
       if (!this.unread.has(inst.name)) for (const path of Object.keys(ledger.files)) if (!listed.has(path)) { delete ledger.files[path]; this.dirty.add(inst.name); }
       for (const f of files) {
         let cur = ledger.files[f.path];
@@ -369,7 +378,7 @@ export class CacheService {
         // Only an unfinished line was left, and the file has not grown since: nothing new to read.
         if (cur.stalled === f.size) continue;
         if (budget <= 0) { behindBytes += f.size - cur.offset; behindFiles++; continue; }
-        const done = await this.read(ledger, cur, f.path, budget, cutoff, inst.profile);
+        const done = await this.read(ledger, cur, f.path, budget, cutoff, profileOf);
         if (done.failed) this.unread.add(inst.name);
         this.dirty.add(inst.name);
         budget -= done.read;
@@ -537,12 +546,16 @@ export class CacheService {
     return ledger.files[path] = next;
   }
 
-  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string): Promise<{ read: number; behind: number; failed?: true }> {
+  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string | ((t: number) => string)): Promise<{ read: number; behind: number; failed?: true }> {
+    const pf = (t: number): string | undefined => (typeof profile === "function" ? profile(t) : profile);
     try {
       const res = await scanJsonl(path, cur.offset, { maxBytes: budget, ino: cur.ino }, (line) => {
-        if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, profile); return; }
+        if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, pf(t.t)); return; }
         const turn = cur.kind === "claude" ? claudeLine(line, cur) : cur.kind === "muse" ? museLine(line, cur) : codexLine(line, cur);
-        if (turn) addTurn(ledger, cur, turn, cutoff, profile);
+        if (turn) addTurn(ledger, cur, turn, cutoff, pf(turn.t));
+        // #3066 §2: responses timed by these lines (their last block seen) — counted into their hour, under the profile in
+        // effect at their time (§1d), then dropped.
+        if (cur.speeds?.length) { for (const s of cur.speeds) addSpeed(ledger, cur, s, cutoff, pf(s.t)); delete cur.speeds; }
       });
       if (res.replaced) { this.followFromEnd(ledger, path, cur, res.ino, res.size); return { read: 0, behind: 0 }; }
       cur.offset = res.offset;

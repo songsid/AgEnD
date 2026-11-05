@@ -17,7 +17,7 @@ import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { createHumanReceipt, initializeHumanReceipts, nativeHumanOrigin, webHumanOrigin } from "../src/human-delivery-receipts.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { tokenEpoch } from "../src/web-session.js";
-import { SessionAuthorizations, SESSION_AUTHORIZATIONS_MAX, type SessionAuthorizationsIo } from "../src/authority/session-authorizations.js";
+import { SessionAuthorizations, SESSION_AUTHORIZATIONS_MAX, SESSION_AUTHORIZATIONS_RETRY_MS, type SessionAuthorizationsIo } from "../src/authority/session-authorizations.js";
 import { AuthorityStateStore, type AuthorityStateIo } from "../src/authority/authority-state.js";
 import { authorityNow, evaluateWebAuthority, type HumanAuthority } from "../src/authority/web-authority.js";
 import Database from "better-sqlite3";
@@ -281,9 +281,10 @@ describe("§0 sessions authorized once: the store", () => {
   const H = "a1b2c3d4e5f60718", OWNER = { adapterId: "owner", userId: "admin" };
   function mem(initial?: string) {
     const files = new Map<string, string>(initial === undefined ? [] : [["/a.json", initial]]);
-    const io: SessionAuthorizationsIo & { fail: boolean } = { fail: false,
+    const io: SessionAuthorizationsIo & { fail: boolean; failUnlink: boolean } = { fail: false, failUnlink: false,
       read: p => { const v = files.get(p); if (v === undefined) throw Object.assign(new Error("no"), { code: "ENOENT" }); return v; },
-      write: (p, d) => { if (io.fail) throw new Error("EROFS"); files.set(p, d); } };
+      write: (p, d) => { if (io.fail) throw new Error("EROFS"); files.set(p, d); },
+      unlink: p => { if (io.failUnlink) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); files.delete(p); } };
     return { io, files, stored: () => JSON.parse(files.get("/a.json")!) };
   }
   it("authorize, get, kept across a restart (the file)", () => {
@@ -329,11 +330,55 @@ describe("§0 sessions authorized once: the store", () => {
   it("prune drops what fails the test and saves; capped, oldest out", () => {
     const m = mem(); const s = new SessionAuthorizations("/a.json", log(), m.io);
     s.authorize(H, OWNER, 1, 1, 1 + HOUR_MS); s.authorize("b".repeat(16), OWNER, 2, 2, 2 + HOUR_MS);
-    expect(s.prune(a => a.epoch === 2)).toBe(1);
+    expect(s.prune(a => a.epoch === 2)).toEqual({ dropped: 1, durable: true });
     expect(m.stored().authorizations.map((a: any) => a.handle)).toEqual(["b".repeat(16)]);
     for (let i = 0; i <= SESSION_AUTHORIZATIONS_MAX; i++) s.authorize(i.toString(16).padStart(16, "0"), OWNER, 10 + i, 2, 10 + i + HOUR_MS);
     expect(s.list().length).toBe(SESSION_AUTHORIZATIONS_MAX);
     expect(s.get("b".repeat(16))).toBeNull();
+  });
+  describe("Prism L1: a prune that could not be saved is never quietly undone by a restart", () => {
+    const B = "b".repeat(16);
+    function twoSaved() {
+      let mono = 0;
+      const m = mem(); const l = log();
+      const s = new SessionAuthorizations("/a.json", l, m.io, () => mono);
+      s.authorize(H, OWNER, 1, 1, 1 + HOUR_MS); s.authorize(B, OWNER, 2, 1, 2 + HOUR_MS);
+      return { m, l, s, advance: (ms: number) => { mono += ms; }, restart: () => new SessionAuthorizations("/a.json", log(), m.io).list().map(a => a.handle) };
+    }
+    it("the write refused, the old file (holding the dropped one) removable: removed — a restart asks again, never restores it", () => {
+      const t = twoSaved();
+      t.m.io.fail = true;
+      expect(t.s.prune(a => a.handle !== H)).toEqual({ dropped: 1, durable: true });
+      expect(t.restart()).toEqual([]);
+      expect(t.l.warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining("removed the old file"));
+    });
+    it("neither rewritten nor removed: not durable (a restart would restore it) — the write is kept owed and retried, then it holds", () => {
+      const t = twoSaved();
+      t.m.io.fail = true; t.m.io.failUnlink = true;
+      expect(t.s.prune(a => a.handle !== H)).toEqual({ dropped: 1, durable: false });
+      expect(t.restart(), "what the honest answer warns about").toEqual([H, B]);
+      expect(t.s.get(H)).toBeNull();
+      t.m.io.fail = false; t.m.io.failUnlink = false;
+      t.advance(SESSION_AUTHORIZATIONS_RETRY_MS - 1); t.s.get(B);
+      expect(t.restart(), "not before its wait").toEqual([H, B]);
+      t.advance(1); t.s.get(B);
+      expect(t.restart(), "retried by a read").toEqual([B]);
+    });
+    it("…or by the next change, at once; a prune with nothing new to drop still reports whether an earlier one now holds", () => {
+      const t = twoSaved();
+      t.m.io.fail = true; t.m.io.failUnlink = true;
+      t.s.prune(a => a.handle !== H);
+      expect(t.s.prune(() => true), "still owed and still refused").toEqual({ dropped: 0, durable: false });
+      t.m.io.fail = false; t.m.io.failUnlink = false;
+      expect(t.s.prune(() => true)).toEqual({ dropped: 0, durable: true });
+      expect(t.restart()).toEqual([B]);
+    });
+    it("a file that is only behind (nothing dropped on it) is not removed: a restart only forgets the newest", () => {
+      const t = twoSaved();
+      t.m.io.fail = true;
+      expect(t.s.authorize("c".repeat(16), OWNER, 3, 1, 3 + HOUR_MS).durable).toBe(false);
+      expect(t.restart()).toEqual([H, B]);
+    });
   });
   it("authorizing a session again moves it to the back: at the cap the oldest authorization goes first", () => {
     const s = new SessionAuthorizations("/a.json", log(), mem().io);

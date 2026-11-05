@@ -10,6 +10,7 @@ import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identit
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
 import { SEPARATE_FEATURE_KEYS, hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
+import { maskSecrets } from "./log-steps.js";
 import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
@@ -117,6 +118,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
+import { deletePlannedTopic, planInstanceTopicDelete, topicDestination, topicMustStay, type InstanceTopicPlan, type TopicDeleteOutcome, type TopicOwnership } from "./instance-topic-delete.js";
 import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
@@ -281,7 +283,7 @@ import { envFileKeys } from "./token-env-name.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
-import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
@@ -313,6 +315,8 @@ import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteC
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
+import { AgentCredentials, agentCredentialPolicy } from "./agent-credentials.js";
+import { writeSecretFile } from "./secret-file.js";
 import { ConfigHistory, ConfigSyntaxError, configIssueText } from "./config-history.js";
 import type { ConfigSource } from "./config-history.js";
 import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt, readClassicRoomNames } from "./classic-channel-manager.js";
@@ -434,7 +438,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -469,6 +473,12 @@ import {
 
 import { getTmuxSession } from "./config.js";
 import { OwnStatusMessages, discordMessageKey } from "./chat-log-ids.js";
+import { PROFILE_TIMELINE_FILE, PROFILE_UNRECORDED, recordProfileLaunch } from "./usage/profile-timeline.js";
+import { readQuotaHistory, type QuotaReading } from "./usage/quota-history.js";
+import { estimateCapacity, type CapacityEstimate, type CapacityHour } from "./usage/capacity.js";
+import { covered, hourSources } from "./usage-rollup.js";
+import { KEEP_DAYS, type HourTotals } from "./cache-ledger.js";
+import { ratesFor } from "./cache-prices.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
@@ -2023,6 +2033,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
   /** Unsupported-CLI refusals waiting to go out, grouped by reason (#1109). */
   private unsupportedCliNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
+  private kiroCompatibilityHolds = new Map<string, { message: string; since: number }>();
   private kiroIncompatNotices = new Map<string, { names: string[]; timer: NodeJS.Timeout }>();
   /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
   static readonly STARTUP_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
@@ -2171,6 +2182,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private discordPresenceEagerPending = false;
   private discordPresenceInFlight: Promise<void> | null = null;
   private static readonly DISCORD_PRESENCE_REFRESH_MS = 15 * 60_000;
+  /** #3066 §1d: how often a fleet with no Discord bot reads the quota for its history (the user's choice: 30 min). */
+  static readonly QUOTA_BACKGROUND_READ_MS = 30 * 60_000;
+  private quotaReadTimer: ReturnType<typeof setInterval> | null = null;
   /** Days of event/activity history to keep. */
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
@@ -3304,6 +3318,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fleetSignatureMismatch: string[] | null = null;
   private healthServerListening = false;
 
+  private agentCredentialsCache?: AgentCredentials;
+  get agentCredentials(): AgentCredentials {
+    return this.agentCredentialsCache ??= new AgentCredentials(
+      name => agentCredentialPolicy(this.fleetConfig, name, this.isClassicInstance(name)),
+      name => {
+        try {
+          const token = randomBytes(32).toString("hex");
+          const result = writeSecretFile(join(this.getInstanceDir(name), "agent.token"), token);
+          if (!result.ok) this.logger.error({ name, mode: result.mode, reason: result.reason }, "Agent token file is not owner-only");
+          return token;
+        } catch {
+          this.logger.error({ name }, "Agent credential renewal failed; prior generation remains retired");
+          return null;
+        }
+      },
+    );
+  }
+
   constructor(public dataDir: string) {
     FleetManager.signalTarget = this;
     if (!FleetManager.sighupHandlerInstalled) {
@@ -3687,6 +3719,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         try { if (this.generalBindings().completeSelected(name, cfg)) { this.needsYou?.poke(); this.logger.info({ name }, "General location's selected start receipt settled after recovery"); } }
         catch (err) { this.logger.warn({ name, err }, "General location start receipt remains held"); }
       }
+    }
+    // #3066 §1d: a Codex launch records the credential profile it runs under, so its usage is told by account.
+    if (daemon?.bootId === daemonBootId && this.backendNameOf(name) === "codex") {
+      void recordProfileLaunch(join(this.getInstanceDir(name), PROFILE_TIMELINE_FILE), this.credentialProfileOf(name, "codex") ?? "default");
     }
     // #2802: no post-restart notices. The outbox still delivers or fails a row accepted before the restart, and an open
     // request is reminded by the ordinary turn-ended nudge (sweepReplyObligations) once the owner is idle.
@@ -4599,6 +4635,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * guild channel.
    */
   private reregisterClassicChannels(): void {
+    this.agentCredentialsCache?.observePolicies();
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
     // Classic's persisted adapter is authoritative. Legacy adapter-less rows
@@ -7314,6 +7351,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  /** No pane is needed for a compatibility refusal to remain in Needs you. */
+  setKiroCompatibilityHold(name: string, message: string | null): void {
+    const holds = this.kiroCompatibilityHolds ??= new Map();
+    if ((message === null && !holds.has(name)) || (message !== null && holds.get(name)?.message === message)) return;
+    if (message === null) holds.delete(name);
+    else holds.set(name, { message, since: Date.now() });
+    this.needsYou?.poke();
+  }
+
   /**
    * LifecycleContext: a kiro instance the installed kiro-cli cannot run as
    * configured (#1109) — at start, or at a respawn after kiro-cli replaced
@@ -9627,6 +9673,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.startInstancesWithConcurrency(others, topicMode, () => startupProgress.markReady(), classicAtBoot);
     }
 
+    // #3066 §1d (Fable r1): on every fleet — a web-only one (#2910) has no chat connection at all, and is the clearest
+    // case with no Discord bot reading. Each tick decides for itself whether to read (backgroundQuotaRead).
+    this.startQuotaBackgroundReads();
+
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
       await adapterStartup;
       this.startDiscordUsagePresence();
@@ -9806,6 +9856,148 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (health.status !== "ok") {
       this.logger.warn({ health }, "Fleet started with problems — see /health");
     }
+  }
+
+  /**
+   * #3066 §1d (the user: yes, every 30 min): the quota history (usage/quota-history.ts) records only the readings AgEnD
+   * makes. A Discord bot's presence refresh reads every 15 min; without one, nothing reads while nobody looks. So, with no
+   * Discord bot and while some account has a running agent, read every 30 min — the same cached read (its 5-minute TTL
+   * still bounds the vendor calls), recorded like any other.
+   */
+  private startQuotaBackgroundReads(): void {
+    if (this.quotaReadTimer) clearInterval(this.quotaReadTimer);
+    this.quotaReadTimer = setInterval(() => { void this.backgroundQuotaRead(); }, FleetManager.QUOTA_BACKGROUND_READ_MS);
+    this.quotaReadTimer.unref?.();
+    // #3066 §1: the measured capacity, published for the usage reads (get_usage, the page) — refreshed every 10 min.
+    setCapacityLookup((provider, metric) => this.capacityEstimates.get(`${provider}\u0000${metric}`) ?? null);
+    if (this.capacityTimer) clearInterval(this.capacityTimer);
+    void this.refreshCapacity();
+    this.capacityTimer = setInterval(() => { void this.refreshCapacity(); }, FleetManager.CAPACITY_REFRESH_MS);
+    this.capacityTimer.unref?.();
+  }
+
+  /** #3066 §1: the latest estimates, by `provider\0metric` (what usage-api's lookup reads, synchronously). */
+  private capacityEstimates = new Map<string, CapacityEstimate>();
+  private capacityTimer: ReturnType<typeof setInterval> | null = null;
+  static readonly CAPACITY_REFRESH_MS = 10 * 60_000;
+
+  /**
+   * #3066 §1: estimate each account's weekly 100% from the quota history (§1d) and the usage ledger's hours — both read
+   * asynchronously, the arithmetic small (usage/capacity.ts). An account is its usage provider id ("claude",
+   * "claude:hsinlin", "codex:yanxianchen"): its hours are the ledger sources of that backend under that credential profile
+   * (Codex's "unrecorded" hours are no account's). A per-model weekly ("Sonnet (weekly)") counts only that model's tokens.
+   *
+   * Prism #3073: no estimate rather than a wrong one —
+   * - a window is measured only where the ledger has its hours: kept (31 days) and scanned (`days.coverage`) for every
+   *   instance of the account's backend, and every instance whose hours count for it; the quota history goes back 12 weeks;
+   * - a profile literally named "default", "unknown" or "unrecorded" (configured, on disk, or in the quota history) makes
+   *   those hours ambiguous: neither the host
+   *   account nor the named one is estimated (each would be credited the other's use, or lose its own);
+   * - only a metric the vendor marks per-model (`scope: "model"`) is filtered by model; another named weekly pool
+   *   ("Luna Reserve (weekly)", Antigravity pools) is no model name and is not estimated.
+   */
+  async refreshCapacity(): Promise<number> {
+    try {
+      const readings = await readQuotaHistory();
+      const groups = new Map<string, QuotaReading[]>();
+      for (const r of readings) { const k = `${r.provider}\u0000${r.metric}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
+      if (!groups.size) { this.capacityEstimates = new Map(); return 0; }
+      const data = await this.cacheServiceFor().usageData();
+      const now = Date.now(), DAY = 24 * 3_600_000, HOUR = 3_600_000;
+      const keptFrom = now - KEEP_DAYS * DAY + HOUR;           // the oldest hour still in every ledger (an hour of margin)
+      // Profiles whose names are also the ledger's own tags: their hours cannot be told from the host's / unattributed.
+      // Any trace of such a profile counts (Prism #3073 r2), not only today's config — a binding removed or switched
+      // leaves its hours in the ledger: configured now, its directory on this host, or its account in the quota history.
+      const RESERVED = new Set(["default", "unknown", PROFILE_UNRECORDED]);
+      const historyProviders = new Set(readings.map((r) => r.provider));
+      const reservedNamed = new Map<string, Set<string>>();
+      const reservedFor = (backend: string): Set<string> => {
+        const known = reservedNamed.get(backend);
+        if (known) return known;
+        const found = new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)));
+        const base = usageProviderIdForBackend(backend);
+        for (const n of RESERVED) {
+          if (base && historyProviders.has(`${base}:${n}`)) found.add(n);
+          if (credentialHomeSpec(backend) && existsSync(credentialProfileHome(this.dataDir, backend, n))) found.add(n);
+        }
+        return reservedNamed.set(backend, found).get(backend)!;
+      };
+      // Every instance of a backend may have used any of its accounts (bindings change): an account is measured only
+      // where all of them were scanned (Prism #3073 r2) — one still waiting for its first scan has no hours yet, not none.
+      const daysOfBase = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        const base = usageProviderIdForBackend(inst.inst.backend);
+        if (base) (daysOfBase.get(base) ?? daysOfBase.set(base, []).get(base)!).push(inst.days);
+      }
+      // provider id → hour → model key → totals; and the instances whose hours count for it (their scan coverage).
+      const byProvider = new Map<string, Map<number, Record<string, HourTotals>>>();
+      const daysOf = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        for (const [hk, hour] of Object.entries(inst.ledger.hours)) {
+          for (const src of hourSources(hour)) {
+            const base = usageProviderIdForBackend(src.backend);
+            if (!base) continue;
+            // Ambiguous (a named profile with the tag's name), or no account's: counted for no one, so an account whose
+            // hours these may be has none — and gets no estimate, never a low one.
+            if (reservedFor(src.backend).has(src.profile) || src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
+            const provider = src.profile === "default" ? base : `${base}:${src.profile}`;
+            const list = daysOf.get(provider) ?? daysOf.set(provider, []).get(provider)!;
+            if (!list.includes(inst.days)) list.push(inst.days);
+            const hours = byProvider.get(provider) ?? byProvider.set(provider, new Map()).get(provider)!;
+            const into = hours.get(Number(hk)) ?? hours.set(Number(hk), Object.create(null) as Record<string, HourTotals>).get(Number(hk))!;
+            for (const [mk, tot] of Object.entries(src.m)) {
+              const cur = into[mk] ??= [0, 0, 0, 0, 0, 0, 0];
+              for (let i = 0; i < 7; i++) cur[i] = (cur[i] ?? 0) + (tot[i] ?? 0);
+            }
+          }
+        }
+      }
+      const next = new Map<string, CapacityEstimate>();
+      for (const [key, list] of groups) {
+        const [provider, metric] = key.split("\u0000") as [string, string];
+        // A per-model weekly ("Sonnet (weekly)", the vendor's scope "model"): that model's tokens only. Another named
+        // pool is not a model: no estimate. "Weekly", "Weekly limit": everything.
+        const named = /^(.+) \((?:weekly|monthly|\d+d)\)$/i.exec(metric)?.[1]?.toLowerCase() ?? null;
+        const perModel = list.some((r) => r.scope === "model");
+        if (named && !perModel) continue;
+        const hours: CapacityHour[] = [];
+        for (const [hour, models] of byProvider.get(provider) ?? []) {
+          let api: number | null = 0, output = 0, all = 0;
+          for (const [mk, tot] of Object.entries(models)) {
+            const bar = mk.lastIndexOf("|"), model = mk.slice(0, bar), long = mk.slice(bar + 1) === "1";
+            if (named && !model.toLowerCase().includes(named)) continue;
+            const [, uncached, read, w5, w1h, w, out] = tot;
+            const r = ratesFor(model, long ? Number.MAX_SAFE_INTEGER : 0);
+            api = api === null || !r ? null : api + (uncached * r.input + read * r.read + w5 * r.write5m + w1h * r.write1h + w * r.write + out * r.output) / 1_000_000;
+            output += out; all += uncached + read + w5 + w1h + w + out;
+          }
+          if (all > 0) hours.push({ hour, api, output, all });
+        }
+        const base = provider.split(":")[0]!;
+        const scanned = [...new Set([...(daysOf.get(provider) ?? []), ...(daysOfBase.get(base) ?? [])])];
+        const available = (from: number, to: number): boolean => {
+          if (from < keptFrom || !scanned.length) return false;
+          for (let h = from; h <= to; h += HOUR) if (!scanned.every((d) => covered(d, h))) return false;
+          return true;
+        };
+        const est = estimateCapacity(list, hours, available);
+        if (est) next.set(key, est);
+      }
+      this.capacityEstimates = next;
+      return next.size;
+    } catch (err) {
+      this.logger.debug({ err }, "capacity estimate refresh failed");
+      return -1;
+    }
+  }
+
+  /** One background quota read, when nothing else reads (no Discord bot) and an account has a running agent. */
+  async backgroundQuotaRead(): Promise<boolean> {
+    if (this.shuttingDown) return false;
+    if ([...this.adapters.values()].some(a => a.type === "discord" && typeof a.setActivity === "function")) return false;
+    const active = this.getActiveUsageProviderIds();
+    if (active.size === 0) return false;
+    try { await getUsageSnapshot(false, active); return true; } catch { return false; }
   }
 
   /** Keep Discord profile activity aligned with the same cached usage source as /usage. */
@@ -12719,6 +12911,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       switch (msg.type) {
         case "fleet_decision_create": {
+          const supersedes = this.decisionSupersedes("ipc-typed", instanceName, payload.supersedes);
+          if ("error" in supersedes) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: supersedes.error }); return; }
           // Prune expired decisions on create
           db.pruneExpiredDecisions();
           result = db.createDecision({
@@ -12729,7 +12923,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             tags: payload.tags as string[] | undefined,
             ttl_days: payload.ttl_days as number | undefined,
             created_by: instanceName,
-            supersedes: payload.supersedes as string | undefined,
+            supersedes: supersedes.id,
           });
           break;
         }
@@ -12922,6 +13116,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * `post_decision` with `supersedes` changes a decision someone else may have recorded (it stops being active): the
+   * same permission as `update_decision`, asked through the same live check (tool set + dashboard switches), on both
+   * create paths. An empty or absent value supersedes nothing and needs nothing; anything else must be an id.
+   */
+  private decisionSupersedes(sink: ToolSink, instanceName: string, value: unknown): { id: string | undefined } | { error: string } {
+    if (value === undefined || value === null || value === "") return { id: undefined };
+    if (typeof value !== "string") return { error: "supersedes must be a decision id" };
+    const permitted = this.checkToolPermission(sink, instanceName, "update_decision");
+    if (!permitted.allowed) return { error: `Superseding a decision needs update_decision. ${permitted.message}` };
+    return { id: value };
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
@@ -12936,16 +13143,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
         const scope = args.scope === "fleet" ? "fleet" : "project";
-        return db.createDecision({
-          project_root: projectRoot,
-          scope,
-          title,
-          content,
-          tags: asStrArr(args.tags),
-          ttl_days: asNum(args.ttl_days),
-          supersedes: asStr(args.supersedes),
-          created_by: instance,
-        });
+        const supersedes = this.decisionSupersedes("agent-endpoint", instance, args.supersedes);
+        if ("error" in supersedes) return { error: supersedes.error };
+        try {
+          return db.createDecision({
+            project_root: projectRoot,
+            scope,
+            title,
+            content,
+            tags: asStrArr(args.tags),
+            ttl_days: asNum(args.ttl_days),
+            supersedes: supersedes.id,
+            created_by: instance,
+          });
+        } catch (err) {
+          return { error: (err as Error).message };                   // a refused predecessor: nothing was inserted
+        }
       }
       // #2152: titles by default (agend-agent decision-list); one decision's full text by id (decision-get <id>).
       // The CLI sends include_archived (snake case, as the MCP tool): both spellings are read.
@@ -13226,14 +13439,90 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return adapter.createTopic(topicName);
   }
 
-  async deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void> {
-    try {
-      const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
-      if (!adapter?.deleteTopic) return;
-      await adapter.deleteTopic(topicId);
-    } catch (err) {
-      this.logger.warn({ err, topicId }, "Failed to delete forum topic during rollback");
-    }
+  /**
+   * Delete an agent and, unless asked not to, its own chat topic (user decision: by default). The topic is planned
+   * before the removal (its id and bot go with the fleet.yaml entry) and deleted through the agent's OWN bot after it;
+   * the outcome is the platform's answer (instance-topic-delete.ts). A topic that cannot go never fails the removal.
+   */
+  async removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval,
+    opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome> {
+    const plan = opts.deleteTopic ? this.planInstanceTopicDelete(name) : null;
+    if (opts.execution) await this.removeInstance(name, authorization, opts.execution);
+    else await this.removeInstance(name, authorization);
+    // #3055 review (Prism P1): asked again right before the platform call — the fleet as it is NOW, not as planned
+    // before the removal was awaited (a new owner of the topic, or the bot rebuilt).
+    return deletePlannedTopic(plan, this.logger, (p) => {
+      if (this.instanceTopicAdapter(p.adapterId) !== p.adapter) return "the agent's bot changed while it was being deleted, so its topic was left";
+      return topicMustStay(p.destination, this.topicOwnership(), null);       // the original is gone: every owner now counts
+    }, { begin: (d) => this.topicDeletionsInFlight.add(d), end: (d) => this.topicDeletionsInFlight.delete(d) });
+  }
+
+  /** #3055: destinations whose platform deletion is running now; a binding to one waits until it is over. */
+  private readonly topicDeletionsInFlight = new Set<string>();
+  /** True while a topic with this id is being deleted on any connection (a new binding of it is refused meanwhile). */
+  isTopicDeletionInFlight(topicId: number | string): boolean {
+    const tail = `:${topicId}`;
+    return [...this.topicDeletionsInFlight].some(d => d.endsWith(tail));
+  }
+
+  /**
+   * #3055 review r2 (Prism P1-3): would this instance config bind a topic whose deletion is running now? Compared by
+   * physical destination, so the same thread number in another Telegram group is not held. Settings asks it at commit.
+   */
+  topicBindingInFlight(inst: { channel_id?: unknown; topic_id?: unknown }): boolean {
+    if (this.topicDeletionsInFlight.size === 0 || inst.topic_id == null || inst.topic_id === "") return false;
+    const adapterId = typeof inst.channel_id === "string" && inst.channel_id ? inst.channel_id : this.getPrimaryAdapterId();
+    return this.topicDeletionsInFlight.has(this.destinationFor(adapterId, inst.topic_id as number | string));
+  }
+
+  /** Any topic deletion running now (a connection's group or General may not be re-pointed meanwhile). */
+  topicDeletionPending(): boolean { return this.topicDeletionsInFlight.size > 0; }
+
+  /** The physical destination of `topicId` on the bot `adapterId`. */
+  private destinationFor(adapterId: string | undefined, topicId: number | string): string {
+    const world = adapterId ? this.worlds.get(adapterId) : undefined;
+    const platform = world?.adapter?.type ?? this.getChannelConfig(adapterId)?.type;
+    const groupId = world?.groupId ?? String(this.getChannelConfig(adapterId)?.group_id ?? "");
+    return topicDestination(platform, groupId, adapterId, topicId);
+  }
+
+  /** The adapter of the bot `adapterId` names — never a substitute for a bot that is not there. */
+  private instanceTopicAdapter(adapterId: string | undefined): ChannelAdapter | undefined {
+    return (adapterId ? this.worlds.get(adapterId)?.adapter : this.worlds.size === 0 ? this.adapter ?? undefined : undefined) ?? undefined;
+  }
+
+  /**
+   * Topic ownership by physical destination (#3055 review, Prism P1): an instance's topic is where its bot's platform
+   * puts it (a Telegram group + thread, a Discord channel), so two bots in one group, or two instances on one
+   * channel, are seen to share it; and every connection's own General is protected, with or without a General agent.
+   */
+  private topicOwnership(): TopicOwnership {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const destinationOf = (n: string): string | null => {
+      const cfg = this.fleetConfig?.instances?.[n];
+      if (!cfg || cfg.topic_id == null || cfg.topic_id === "") return null;
+      return this.destinationFor(this.getInstanceAdapterId(n), cfg.topic_id);
+    };
+    const generalDestinations = (): Set<string> => {
+      const out = new Set<string>();
+      for (const ch of channels) {
+        const id = ch.id ?? ch.type;
+        const groupId = this.worlds.get(id)?.groupId ?? (ch.group_id != null ? String(ch.group_id) : undefined);
+        if (ch.type === "telegram") out.add(topicDestination("telegram", groupId, id, 1));
+        if (ch.type === "discord") {
+          const gcid = discordGeneralChannelId(ch as unknown as Record<string, unknown>);
+          if (gcid) out.add(topicDestination("discord", groupId, id, gcid));
+        }
+      }
+      return out;
+    };
+    return { instances: this.fleetConfig?.instances, destinationOf, generalDestinations };
+  }
+
+  /** What deleting `name`'s topic would act on: its own bot only — a bot that is not there is never substituted. */
+  private planInstanceTopicDelete(name: string): InstanceTopicPlan {
+    const adapterId = this.getInstanceAdapterId(name);
+    return planInstanceTopicDelete({ name, adapterId, adapter: this.instanceTopicAdapter(adapterId), ...this.topicOwnership() });
   }
 
   getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null {
@@ -13661,6 +13950,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Object.assign(current, resolved);
     }
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
       { path: this.configPath, strippedDefaults: redundantPaths.length },
@@ -15924,6 +16214,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleet = Object.entries(this.fleetConfig?.instances ?? {}).filter(([,cfg])=>!isWindowsInstance(cfg)).map(([name, cfg]) => ({
       name, backend: this.backendNameOf(name), workingDirectory: cfg.working_directory, ledgerPath: join(this.getInstanceDir(name), "cache-ledger.json"),
       claudeConfigDir: this.claudeConfigDirOf(name), profile: this.usageProfileOf(name, this.backendNameOf(name)),
+      ...(this.backendNameOf(name) === "codex" ? { profileTimelinePath: join(this.getInstanceDir(name), PROFILE_TIMELINE_FILE) } : {}),
       kiroDbPath: this.kiroDbPathOf(name, this.backendNameOf(name)),
     }));
     const taken = new Set(fleet.map(i => i.name));
@@ -15935,6 +16226,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       claudeConfigDir: this.claudeConfigDirOf(ch.instanceName),
       profile: this.usageProfileOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
       kiroDbPath: this.kiroDbPathOf(ch.instanceName, this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code"),
+      // #3066 §1d (Fable r1 #2): a ClassicBot Codex room records its launches too (onDaemonReady) — read them the same way.
+      ...((this.classicChannels?.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend) ?? this.fleetConfig?.defaults?.backend) === "codex"
+        ? { profileTimelinePath: join(this.getInstanceDir(ch.instanceName), PROFILE_TIMELINE_FILE) } : {}),
     }));
     return [...fleet, ...new Map(classic.map(c => [c.name, c])).values()];
   }
@@ -16082,7 +16376,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       out.push({
         name, state: p.state ?? undefined,
         interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
-        interactionSummary: p.interaction_summary ?? null,
+        interactionSummary: p.interaction?.kind === "kiro_choice" ? t("kiro3.running") : p.interaction_summary ?? null,
+        kiroCompatibility: this.kiroCompatibilityHolds?.get(name),
         pauseReason, pausedAt,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
@@ -17153,8 +17448,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
       signOut: (handle) => {
-        this.webSessions?.revokeByHandle(handle);
-        this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+        const session = this.webSessions?.revokeByHandle(handle) ?? { found: false, durable: true };
+        const authorization = this.sessionAuthorizationStore()?.prune(a => a.handle !== handle) ?? { dropped: 0, durable: true };
+        return { durable: session.durable, authorizationDurable: authorization.durable };
       },
       event: (type, payload) => { try { this.eventLog?.insert("web", type, payload); } catch { /* the event log is best effort */ } },
       text: {
@@ -17164,6 +17460,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
         revoked: (c) => t("web_auth.card_revoked", c.label),
+        notSaved: (c) => t("web_auth.card_not_saved", c.label),
         ended: (c) => t("web_auth.card_ended", c.label),
         generalHint: () => t("web_auth.general_hint"),
         confirmLabel: () => t("web_auth.confirm"),
@@ -18309,13 +18606,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Make a tool summary safe to paste into a channel message.
    *
    * The text is agent-controlled (it is built from tool inputs — file paths,
-   * shell commands), so it gets flattened to one line, capped, and stripped of
-   * the two Discord mass-mention triggers. Neither channel renders it with a
-   * parse mode, so no markup escaping is needed beyond that.
+   * shell commands), so it gets flattened to one line, secrets masked, capped,
+   * and stripped of the two Discord mass-mention triggers. Masking comes BEFORE
+   * the cap: a cap can cut a mask's context but must never be what hides (or
+   * fails to hide) a secret. Neither channel renders it with a parse mode, so no
+   * markup escaping is needed beyond that.
    */
   private static sanitizeActivity(activity?: string | null): string | null {
     if (!activity) return null;
-    const flat = activity.replace(/\s+/g, " ").replace(/@(everyone|here)/g, "@​$1").trim();
+    const flat = maskSecrets(activity.replace(/\s+/g, " ")).replace(/@(everyone|here)/g, "@​$1").trim();
     if (!flat) return null;
     return flat.length > PROGRESS_ACTIVITY_MAX_CHARS
       ? `${flat.slice(0, PROGRESS_ACTIVITY_MAX_CHARS - 1)}…`
@@ -22998,6 +23297,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.wakeCoordinator?.stop();
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
+    if (this.quotaReadTimer) { clearInterval(this.quotaReadTimer); this.quotaReadTimer = null; }
+    if (this.capacityTimer) { clearInterval(this.capacityTimer); this.capacityTimer = null; }
+    setCapacityLookup(null);
     if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }
     this.discordPresenceEagerPending = false;
     // Cancel-button timers were never cleared here. The idle-check interval is not
@@ -23302,6 +23604,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
@@ -24192,6 +24495,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async runConnectionBindingApply(job: SecretApplyJob, binding: ConnectionBinding, execution?: SettingsExecution): Promise<void> {
     try {
+      // #3055 review r2: a connection is not re-pointed while one of its topics is being deleted (nothing is changed).
+      if (this.topicDeletionPending()) throw new Error("a topic deletion is running; try again in a moment");
       await this.rebuildAdapterForBinding(job.connectionId, binding, execution);
       job.result = "applied";
     } catch (err) {

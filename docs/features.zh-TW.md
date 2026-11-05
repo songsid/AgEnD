@@ -250,7 +250,7 @@ Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕
 - `send_to_instance` — 傳訊息給另一個 fleet instance；支援結構化的 metadata（`request_kind`、`requires_reply`、`correlation_id`、`task_summary`）
 - `start_instance` — 喚醒已停止的 instance，好讓你傳訊息給它
 - `create_instance` — 建立新 instance 和它的 topic（目錄可省略；省略時自動建立 `~/.agend/workspaces/<name>`）；支援用 `branch` 建立 git worktree 隔離
-- `delete_instance` — 移除 instance 和它的 topic
+- `delete_instance` — 移除 instance，並預設一併刪除它自己的 topic（`delete_topic: false` 會保留；在 Discord 上 topic 是頻道，訊息記錄也會一起刪除；General topic 永遠不會刪除；結果會說明平台是否真的刪掉了 topic，沒刪的話原因是什麼）
 - `replace_instance` — 把 instance 換成全新的（交接 + 刪除 + 建立）
 - `describe_instance` — 取得某個 instance 的詳細資訊（描述、模型、最後活動）
 - `set_display_name` — 設定顯示名稱，會出現在訊息、活動紀錄與其他 agent 看到的地方
@@ -413,7 +413,7 @@ agent 能做什麼，由每個 instance 的 `tool_set` 決定，而且是由 fle
 
 **`coordinator` 和 `full` 目前是同樣的 55 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
 
-`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。
+`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。General 是 AgEnD 的管理入口，因此 `general` 權限組合包含所有編排工具（`ORCHESTRATION`：建立、刪除、替換、啟動、停止、暫停、喚醒與重啟 instance；部署與拆除模板；team 增刪改；`update_instance_config` 與 `update_fleet_defaults`；`migrate_kiro_instance` 與 `reconcile_kiro_instance`；`update_decision`；以及 `get_web_settings`／`set_web_settings`），同時預設不納入工作倉租用與主機原始設定／紀錄檢視工具（`checkout_repo`、`release_repo`、`get_fleet_config`、`get_instance_logs`、`list_deployments`、`validate_config`）。
 
 `delegate_task` 刻意設計成 worker 工具。它不建立任何東西、不刪除任何東西，而且目標必須已經存在，所以一般 agent 可以把工作交給同伴，卻不能自己生出一個同伴。
 
@@ -723,7 +723,7 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 `kiro_engine_status`（除了 `minimal` 以外每種權限組合都有的唯讀工具）會針對每個 kiro instance 和 ClassicBot 頻道，顯示它的 `kiro_ui`、下次啟動會用的引擎旗標（或 kiro-cli 會拒絕的原因）、歷次啟動紀錄（每次變動時的 kiro-cli 和 AgEnD 版本）、它的 V3 session，以及它的憑證 profile。它讀的是 AgEnD 在上次啟動時記錄的內容，自己從不執行 kiro-cli。它也會顯示 `engine_floor`（見下）。
 
-**從經典引擎搬到 TUI（`migrate_kiro_instance`，#2598）。** kiro-cli 3.0 拿掉了經典引擎。手動設 `kiro_ui: tui` 會讓 instance 在空的 TUI 對話上啟動。`migrate_kiro_instance`（coordinator 與 full 權限組合才有）一次搬一個 fleet instance，並帶著它的對話：
+**從經典引擎搬到 TUI（`migrate_kiro_instance`，#2598）。** kiro-cli 3.0 拿掉了經典引擎。手動設 `kiro_ui: tui` 會讓 instance 在空的 TUI 對話上啟動。`migrate_kiro_instance`（general、coordinator 與 full 權限組合才有）一次搬一個 fleet instance，並帶著它的對話：
 - 它會在 General 貼出「搬過去／取消」提示，fleet admin 在那裡確認之前什麼都不會變。
 - 確認後，AgEnD 會設定 `kiro_ui: tui`，把 instance 的經典對話預備為它的 TUI 對話，並重啟執行中的 instance。第一次 TUI 啟動會接續那個對話一次（kiro 因此把整段歷史複製到它的 session 檔），並登記為 instance 自己的對話。
 - 結果會貼在 General 和該 instance 的 topic。
@@ -870,6 +870,8 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 ## delete_instance 自動清理 team (delete_instance team cleanup)
 
 用 `delete_instance` 刪除 instance 時，它會自動從所屬的每個 team 中移除，不必手動整理 team 成員。
+
+除非傳入 `delete_topic: false`，它自己的聊天 topic 也會透過該 instance 自己的 bot 一併刪除；dashboard 的「刪除」也一樣。只有 Telegram 或 Discord 確認刪除時，`topic_deleted` 才是 true；否則 `topic_reason` 會說明 topic 為什麼留下（例如 Telegram bot 沒有「管理主題」的管理員權限，或 topic 早已不存在）。無論如何，instance 本身都會刪除。
 
 ## HTML 對話匯出 (HTML Chat Export)
 
@@ -1334,6 +1336,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 - **Agent 發布外觀包**（#2692）：替某個 agent 打開 **辦公室外觀包** 後（`office_pack_access: true`，獨立的開關，沒設定就是關閉），它可以檢查、上傳、取代、刪除與還原辦公室的外觀包；每次變更都會記錄、在 General 通知管理者，而且預設要等管理者核准。見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)。
 - **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。2.2.5 起（#2010）會顯示 5 分鐘與 1 小時快取寫入的比例，並實際量測 5 分鐘快取能撐多久：計算每個 instance 過去 7 天內 5 到 60 分鐘的間隔，至少有 10 個時，若最多 10% 重寫了快取，就當作 1 小時來模擬；若至少一半重寫了，卡片會建議改用 `backend_options.claude-code.prompt_cache_ttl: "1h"` 而不是保溫（這個自選設定會在 instance 下次啟動時帶入 `CLAUDE_CODE_PROMPT_CACHE_TTL`；不設定時由 CLI 自己決定）。agent 可以用 `get_cache_report` 讀取同一份報告：General、coordinator 與 full 權限組合看得到所有 instance，其他 instance 只看得到自己那一列。
 - **Fleet → 用量**（`/ui/fleet/usage`，2.2.5，#2122）：每個 agent 的 token、請求數、已送達訊息數與依牌價換算的 API 等值（不是實際花費），可依 agent、backend、模型、憑證 profile 或 team 分組，期間可選今天、7 天、本月、全部或自訂日期；附每日趨勢、能分辨「沒有用量」與「未收集」的日曆熱度圖，以及同一份資料的 CSV。可量測 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity（Codex 與 Muse 的快取寫入顯示為「未回報」；Muse 未定價）；Kiro 不記錄 token 數，依文字長度估算並標示「估算」；其他 CLI 會列出原因。自 fleet 啟動起收集並保留 400 天；agent 以 `get_usage_report` 讀取。◔ 用量對話框有連到這裡的連結。
+  - **速度**（#3066）：每個模型本身生成時的每秒輸出 token 數（不含工具執行時間），以「速度」欄與「各模型速度」卡片呈現，並列出可計時的請求數；累積 30 個可計時的回應後，另顯示 p10–p90 範圍。`get_usage_report` 以 `speed` 回傳。Claude Code 的回應從第一個 token（以思考區塊開頭時，由其思考時間推得）計到最後一個區塊。Codex 的回應則以回應時窗計時，依 codex 0.147 之後寫入的項目時間：從第一個模型項目開始到最後一個結束，扣除伺服器端網頁搜尋的時間。rollout 不標記第一個 token，所以這個時窗可能含有一部分等待第一個 token 的時間。方法參考 [tokdash](https://github.com/JingbiaoMei/tokdash)（MIT，Jingbiao Mei；見 `THIRD_PARTY_NOTICES.md`）。
 - **新增 agent**（2.2.5，#2074）：側欄清單最後的按鈕會打開新增 agent 對話框。側欄收合時，☰ 旁邊的 **+** 有同樣的作用；手機上它在選單抽屜裡。只有能新增 agent 的 session 看得到它。
 - **篩選側欄時**（2.2.5，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
 - **可以點開 instance 的名稱**（2.2.5，#1990）：聊天裡跨 instance 的狀態行中，對方的名稱會打開它的聊天；提示卡片裡的 instance 名稱會打開它的 View。agent 或人寫的訊息永遠不會有這種連結。

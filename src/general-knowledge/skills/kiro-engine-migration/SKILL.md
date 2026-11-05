@@ -10,6 +10,24 @@ roles: [general]
   instances as configured, so AgEnD stopped them and will not retry.
 - Or the user asks about kiro's engine change: Classic/legacy UI being deprecated, kiro-cli 3.0, or V3.
 
+## Kiro CLI 3.0: current refusal and migration instructions
+
+Kiro CLI 3.0 removed Classic. AgEnD refuses a Classic launch on major 3 or later before launching it or changing
+its saved conversation. Needs you names the Agent and explains how to continue. If a retirement/V2-V3 choice appears
+in an already running pane, AgEnD blocks messages and leaves the choice to the owner; never answer it for them.
+An explicitly pinned TUI/V2 launch remains allowed: it is not a Classic launch.
+
+For Classic today, ask the host owner to use a compatible Kiro CLI 2.x. The existing admin-confirmed Classic→TUI
+migration below requires **2.34+ within 2.x**, not 3.x. Do not remove the migration version fence or edit `kiro_ui` to
+bypass it. Keep the original pin, history and receipts; never resume a frozen Classic copy after work continued on V2.
+
+The guided **admin-confirmed migration on 2.x followed by a safe upgrade to 3.0 (plan C, #3047)** is coming separately.
+It is not implemented by this refusal/Needs-you change. Do not promise an automatic conversion or an upgrade date.
+
+繁體中文：Kiro CLI 3.0 已移除 Classic。請由主機管理者改用相容的 2.x；這個拒絕啟動的保護不會更動已存對話。
+既有管理員確認的 Classic→TUI 遷移只接受 2.34 以上的 **2.x**。先在 2.x 經管理員確認遷移、再安全升級到 3.0
+的引導流程（計畫 C，#3047）會另外提供，並未包含在這次保護裡。不要直接改 `kiro_ui` 或刪除版本檢查來繞過。
+
 ## What is true
 
 - **Each kiro instance's conversation lives in its engine's own store:**
@@ -56,11 +74,30 @@ The user has already been shown the plain notice in this topic. When they ask, e
 - Never run `kiro-cli` yourself, and never delete or edit anything under `~/.kiro` or kiro's data directory.
 - Never reply to the `[system:kiro-incompat]` notice itself. It is information, not a request.
 
+## Preparing for Kiro CLI 3.x
+
+1. Call `kiro_engine_status` with no name filter. Its `kiro3_readiness` summary counts **all** Kiro Agents and
+   Classic rooms, including General; filtering to one Agent still keeps that whole-fleet count. A Classic Agent
+   is not ready for Kiro 3.x. This readiness describes the removal of Classic, not a promise that every 3.x
+   release supports every session or tool.
+2. Keep a compatible Kiro **2.x** installed. For each Classic fleet Agent, ask the owner to confirm the existing
+   `migrate_kiro_instance` move described below. Do not change `kiro_ui` by hand. Wait for the same conversation
+   and model to pass both verification starts; failure stops the Agent for inspection. The migration itself is
+   unchanged and is not available on 3.x.
+3. A **ClassicBot room** cannot use `migrate_kiro_instance`: its owner must change the room to another backend
+   in Classic settings, or continue using Kiro 2.x. Such rooms count as still Classic until their effective Kiro
+   configuration no longer selects Classic. Do not present a fleet-Agent migration tool as room recovery.
+4. Check `kiro_engine_status` again: every remaining Kiro Agent must use TUI (or already use V3), and the
+   `still_classic` count must be zero before recommending an upgrade. General is subject to the same check.
+5. The owner then upgrades Kiro themselves. AgEnD neither installs the CLI nor answers a V2/V3 menu. If a menu
+   or an unverified resume blocks startup, inspect Needs-you; do not clear the pin or start a fresh conversation
+   to make the check pass. The version-specific exact-resume evidence is documented separately from readiness.
+
 ## Moving an instance from classic to the TUI engine (#2598)
 
 kiro-cli 3.0 drops the classic engine (`kiro_ui: legacy`), so classic instances are being moved to the TUI engine,
-**one batch at a time and only with the user's OK for that batch**. The move is `migrate_kiro_instance` (a
-coordinator-level tool; you do not have it). It carries the conversation: the instance's classic conversation is
+**one batch at a time and only with the user's OK for that batch**. The move is `migrate_kiro_instance` (available
+in the `general`, `coordinator` and `full` tool sets). It carries the conversation: the instance's classic conversation is
 resumed once under the TUI and becomes its own. A fleet admin confirms each move in this General topic: a
 "Move it / Cancel" prompt. Explain it if asked; never press it on the user's behalf.
 
@@ -92,8 +129,8 @@ session identity after `/chat` or `/clear`.
   this instance's. When it can't be proven, or the check passes its 30 s / 2 GiB limit, the instance resumes the
   conversation on record and the Log tab says why.
 - **Two conversations after an interrupted carry (#2753).** When a stopped TUI instance has its original carried
-  conversation and a newer one with work, recovery holds instead of choosing. `reconcile_kiro_instance` (full and
-  coordinator tool sets) asks a fleet admin to confirm, in General, keeping the original and archiving the named
+  conversation and a newer one with work, recovery holds instead of choosing. `reconcile_kiro_instance` (general,
+  coordinator and full tool sets) asks a fleet admin to confirm, in General, keeping the original and archiving the named
   newer one intact. Offer it only after the user chose those exact ids; docs/kiro-reconciliation.md explains it.
 - **"Kiro's terminal is in use by another program" (#2682).** While a kiro pane runs `/editor`, `/transcript`, a
   `!` command or a focused `/kvim` panel (legacy: `/editor`, `/reply`, `!`), AgEnD holds deliveries. Tell the user

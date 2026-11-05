@@ -1,0 +1,40 @@
+Kiro CLI 3.0 is here. The new V3 agent brings workflows, simplified permissions,
+cloud sessions, sandbox, specs, and more. Learn more:
+https://kiro.dev/docs/cli/v3/
+
+V2 no longer receives new features and will be removed in January.
+
+❯ Continue with V3
+  Stay on V2, remind me later
+  Stay on V2, don't ask again
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
