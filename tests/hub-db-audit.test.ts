@@ -283,3 +283,118 @@ describe("audit sink", () => {
     expect(audit.verifyChain().ok).toBe(true);
   });
 });
+
+describe("review #3113 regressions", () => {
+  it("P1: the auditor assignment is checked where the data leaves; a revocation racing the read is honoured", async () => {
+    for (let depth = 0; depth < 6; depth += 1) {
+      for (const kind of ["content", "metadata"] as const) {
+        const { audit, uow, db } = openAudited();
+        const owner = PERSON(1), auditor = PERSON(3);
+        const id = uow.atomic((tx) => {
+          const r = audit.content.put(tx, { question: "PRIVATE OWNER QUESTION" });
+          const rec = record({ action: "room.asked", ownerAtEvent: owner, contentRef: r });
+          audit.append(tx, rec);
+          audit.setAuditor(tx, auditor, true, { kind: "local-host" }, "assign");
+          return rec.id;
+        });
+        const c = ctx(auditor);
+        c.requirePerson = () => {
+          let left = depth;
+          const revoke = () => (left-- > 0 ? queueMicrotask(revoke) : uow.atomic((tx) => audit.setAuditor(tx, auditor, false, { kind: "local-host" }, "remove")));
+          queueMicrotask(revoke);
+          return Promise.resolve(auditor);
+        };
+        let got: unknown;
+        try {
+          got = kind === "content" ? (await audit.readContent(c, id)).question : (await audit.read(c, {})).filter((r) => r.action === "room.asked").length;
+        } catch {
+          got = undefined;
+        }
+        await new Promise((r) => setTimeout(r, 0));
+        const seq = (action: string) => (db.prepare("SELECT MAX(sequence) AS s FROM hub_audit WHERE action = ?").get(action) as { s: number | null }).s;
+        const removed = seq("audit.auditor-removed")!;
+        const readAt = seq(kind === "content" ? "audit.read-content" : "audit.read");
+        const disclosed = kind === "content" ? got === "PRIVATE OWNER QUESTION" : got === 1;
+        // Disclosure is allowed only by a read that happened (and was recorded) before the revocation.
+        if (disclosed) expect(readAt !== null && readAt < removed, `${kind} depth ${depth}`).toBe(true);
+        else if (readAt !== null) expect(readAt > removed || kind === "metadata", `${kind} depth ${depth}`).toBe(true);
+      }
+    }
+    // Control: an unchanged assignment reads normally.
+    const { audit, uow } = openAudited();
+    const id = uow.atomic((tx) => {
+      const r = audit.content.put(tx, { question: "q" });
+      const rec = record({ ownerAtEvent: PERSON(1), contentRef: r });
+      audit.append(tx, rec);
+      audit.setAuditor(tx, PERSON(3), true, { kind: "local-host" }, "assign");
+      return rec.id;
+    });
+    expect((await audit.readContent(ctx(PERSON(3)), id)).question).toBe("q");
+  });
+
+  it("P2: content is bound to its record — a transplanted ref or record id never decrypts for another record", async () => {
+    const { audit, uow, db } = openAudited();
+    const a = PERSON(1), b = PERSON(2);
+    const [refA, idB] = uow.atomic((tx) => {
+      const ra = audit.content.put(tx, { question: "A's secret" });
+      audit.append(tx, record({ ownerAtEvent: a, contentRef: ra }));
+      const rb = audit.content.put(tx, { question: "B's own" });
+      const recB = record({ ownerAtEvent: b, contentRef: rb });
+      audit.append(tx, recB);
+      return [ra, recB.id];
+    });
+    expect((await audit.readContent(ctx(b), idB)).question).toBe("B's own");
+    db.prepare("UPDATE hub_audit SET content_ref = ? WHERE id = ?").run(refA, idB); // DB-level substitution
+    await expect(audit.readContent(ctx(b), idB)).rejects.toThrow(/another record/);
+    db.prepare("UPDATE hub_audit_content SET record_id = NULL WHERE record_id = ?").run(idB); // and the content rows too
+    db.prepare("UPDATE hub_audit_content SET record_id = ? WHERE ref = ?").run(idB, refA);
+    await expect(audit.readContent(ctx(b), idB)).rejects.toThrow();
+    // A ref can be attached to one record only.
+    expect(() => uow.atomic((tx) => audit.append(tx, record({ contentRef: refA })))).toThrow(/another record|already/);
+    // Unbound content (no record in its transaction) is never served.
+    const loose = uow.atomic((tx) => audit.content.put(tx, { question: "loose" }));
+    expect(audit.content.get(loose)).toBeUndefined();
+  });
+
+  it("P2: the head must match even when no rows are left — an erased table or suffix fails verification", () => {
+    expect(openAudited().audit.verifyChain()).toEqual({ ok: true, checked: 0 }); // genesis
+    const { audit, uow, db } = openAudited();
+    uow.atomic((tx) => { for (let i = 0; i < 3; i += 1) audit.append(tx, record({ action: `test.n${i}` })); });
+    db.exec("DELETE FROM hub_audit");
+    expect(audit.verifyChain().ok).toBe(false);
+    // After a checkpoint: an erased suffix fails, the intact checkpoint-only chain passes.
+    let t = Date.UTC(2026, 0, 1);
+    const h = home();
+    const db2 = openHubDatabase(h, "hub/hub.sqlite", { create: true });
+    applyHubMigrations(db2, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION]);
+    const audit2 = createHubAudit({ db: db2, contentKey: randomBytes(32), now: () => t });
+    const uow2 = createHubUnitOfWork(db2);
+    uow2.atomic((tx) => audit2.append(tx, record({ at: t, action: "test.old" })));
+    t += 40 * 86_400_000;
+    audit2.purge({ contentDays: 30, eventDays: 30 });
+    expect(audit2.verifyChain().ok).toBe(true);
+    db2.exec("DELETE FROM hub_audit");
+    expect(audit2.verifyChain().ok).toBe(false);
+  });
+
+  it("P2: async migration or transaction callbacks are refused and rolled back, and their late rejections are observed", async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (r: unknown) => rejections.push(r);
+    process.on("unhandledRejection", onRejection);
+    try {
+      const h = home();
+      const db = openHubDatabase(h, "hub/hub.sqlite", { create: true });
+      const late: HubMigration = { component: "test-async", version: 1, up: (async (d: Database.Database) => { await null; d.exec("CREATE TABLE late(x)"); throw new Error("late"); }) as unknown as HubMigration["up"] };
+      expect(() => applyHubMigrations(db, [late])).toThrow(/synchronous/);
+      const published = db.prepare("SELECT name FROM sqlite_master WHERE name = 'hub_schema'").get()
+        ? db.prepare("SELECT 1 FROM hub_schema WHERE component = 'test-async'").get() : undefined;
+      expect(published).toBeUndefined(); // the version was never published
+      const uow = createHubUnitOfWork(db);
+      expect(() => uow.atomic((async (tx) => { await null; hubTxDatabase(tx); }) as never)).toThrow(/synchronous/);
+      await new Promise((r) => setTimeout(r, 20));
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onRejection);
+    }
+  });
+});

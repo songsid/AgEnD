@@ -42,7 +42,7 @@ export const HUB_AUDIT_MIGRATION: HubMigration = Object.freeze({
       CREATE INDEX IF NOT EXISTS hub_audit_message ON hub_audit(message_id);
       CREATE TABLE IF NOT EXISTS hub_audit_head (singleton INTEGER PRIMARY KEY CHECK(singleton = 1), sequence INTEGER NOT NULL, hash TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS hub_audit_checkpoint (sequence INTEGER PRIMARY KEY, hash TEXT NOT NULL, at INTEGER NOT NULL);
-      CREATE TABLE IF NOT EXISTS hub_audit_content (ref TEXT PRIMARY KEY, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS hub_audit_content (ref TEXT PRIMARY KEY, record_id TEXT UNIQUE, nonce BLOB NOT NULL, ciphertext BLOB NOT NULL, created_at INTEGER NOT NULL);
       CREATE INDEX IF NOT EXISTS hub_audit_content_created ON hub_audit_content(created_at);
       CREATE TABLE IF NOT EXISTS hub_auditors (person_id TEXT PRIMARY KEY, assigned_at INTEGER NOT NULL, assigned_by TEXT NOT NULL);
     `);
@@ -190,9 +190,6 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
     if (!RESULTS.has(record.result)) throw new Error("Hub audit: invalid result");
     if (!Number.isSafeInteger(record.at) || !Number.isSafeInteger(record.policyVersion) || record.policyVersion < 0) throw new Error("Hub audit: invalid time or policy version");
     if (!record.actor || !["person", "local-host", "member"].includes(record.actor.kind)) throw new Error("Hub audit: invalid actor");
-    if (record.contentRef !== undefined && !db.prepare("SELECT 1 FROM hub_audit_content WHERE ref = ?").get(record.contentRef)) {
-      throw new Error("Hub audit: contentRef was not stored in this transaction's database");
-    }
     const prev = head();
     const row: Omit<AuditRow, "hash"> = {
       sequence: prev.sequence + 1,
@@ -215,25 +212,47 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
       component_sequence: Number.isSafeInteger(record.sequence) ? record.sequence : null,
       prev_hash: prev.hash,
     };
+    if (record.contentRef !== undefined) bindContent(record.contentRef, row.id);
     const hash = chainHash(prev.hash, row);
     insert.run({ ...row, hash });
     db.prepare("INSERT INTO hub_audit_head(singleton, sequence, hash) VALUES(1, ?, ?) ON CONFLICT(singleton) DO UPDATE SET sequence = excluded.sequence, hash = excluded.hash").run(row.sequence, hash);
     return row.sequence;
   };
 
-  const encrypt = (ref: string, payload: HubContentPayload) => {
+  // GCM authenticated data binds a payload to its ref and, once its record exists, to that record's immutable id
+  // (hub-composition.md §4): a ciphertext moved to another ref or record does not decrypt.
+  const aad = (ref: string, recordId: string | null) => Buffer.from(`${ref}\n${recordId ?? ""}`);
+  const encrypt = (ref: string, recordId: string | null, payload: HubContentPayload) => {
     const nonce = randomBytes(12);
     const cipher = createCipheriv("aes-256-gcm", key, nonce);
-    cipher.setAAD(Buffer.from(ref));
+    cipher.setAAD(aad(ref, recordId));
     const body = Buffer.concat([cipher.update(JSON.stringify(payload), "utf8"), cipher.final(), cipher.getAuthTag()]);
     return { nonce, body };
   };
-  const decrypt = (ref: string, nonce: Buffer, body: Buffer): HubContentPayload => {
+  const decrypt = (ref: string, recordId: string | null, nonce: Buffer, body: Buffer): HubContentPayload => {
     const decipher = createDecipheriv("aes-256-gcm", key, nonce);
-    decipher.setAAD(Buffer.from(ref));
+    decipher.setAAD(aad(ref, recordId));
     decipher.setAuthTag(body.subarray(body.length - 16));
     const plain = Buffer.concat([decipher.update(body.subarray(0, body.length - 16)), decipher.final()]).toString("utf8");
     return JSON.parse(plain) as HubContentPayload;
+  };
+
+  /** Inside the record's own transaction: the content row gets the record's id, re-encrypted under it. Once only. */
+  const bindContent = (ref: string, recordId: string) => {
+    const row = db.prepare("SELECT record_id, nonce, ciphertext FROM hub_audit_content WHERE ref = ?").get(ref) as { record_id: string | null; nonce: Buffer; ciphertext: Buffer } | undefined;
+    if (!row) throw new Error("Hub audit: contentRef was not stored in this transaction's database");
+    if (row.record_id !== null) throw new Error("Hub audit: this content already belongs to another record");
+    const payload = decrypt(ref, null, row.nonce, row.ciphertext);
+    const { nonce, body } = encrypt(ref, recordId, payload);
+    db.prepare("UPDATE hub_audit_content SET record_id = ?, nonce = ?, ciphertext = ? WHERE ref = ?").run(recordId, nonce, body, ref);
+  };
+
+  /** A bound content row, decrypted under its own (ref, record id); `expectedRecordId` must match when given. */
+  const readBound = (ref: string, expectedRecordId?: string): HubContentPayload | undefined => {
+    const row = db.prepare("SELECT record_id, nonce, ciphertext FROM hub_audit_content WHERE ref = ?").get(ref) as { record_id: string | null; nonce: Buffer; ciphertext: Buffer } | undefined;
+    if (!row || row.record_id === null) return undefined;
+    if (expectedRecordId !== undefined && row.record_id !== expectedRecordId) throw new HubAuditAccessError("this content belongs to another record");
+    return decrypt(ref, row.record_id, row.nonce, row.ciphertext);
   };
 
   const sameDb = (tx: HubTx) => {
@@ -247,31 +266,31 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
       if (typeof payload.question === "string") clean.question = payload.question;
       if (typeof payload.answer === "string") clean.answer = payload.answer;
       const ref = randomBytes(16).toString("hex");
-      const { nonce, body } = encrypt(ref, clean);
-      db.prepare("INSERT INTO hub_audit_content(ref, nonce, ciphertext, created_at) VALUES(?, ?, ?, ?)").run(ref, nonce, body, now());
+      const { nonce, body } = encrypt(ref, null, clean);
+      db.prepare("INSERT INTO hub_audit_content(ref, record_id, nonce, ciphertext, created_at) VALUES(?, NULL, ?, ?, ?)").run(ref, nonce, body, now());
       return ref;
     },
     get(ref) {
       if (typeof ref !== "string" || !/^[0-9a-f]{32}$/.test(ref)) return undefined;
-      const row = db.prepare("SELECT nonce, ciphertext FROM hub_audit_content WHERE ref = ?").get(ref) as { nonce: Buffer; ciphertext: Buffer } | undefined;
-      return row ? decrypt(ref, row.nonce, row.ciphertext) : undefined;
+      return readBound(ref);
     },
   };
 
-  /** Who may read: the asked owner (their own events) or an assigned auditor (all). Checked afresh every time. */
-  const reader = async (ctx: HubRequestContext): Promise<{ personId: string; auditor: boolean; actor: HubAuditRecord["actor"] }> => {
+  /**
+   * Who is asking: resolved asynchronously (fresh session and directory eligibility). The scope itself (auditor
+   * assignment, ownership) is decided later, synchronously, in the same transaction that records the read and runs the
+   * query: nothing is awaited between that check and the data leaving.
+   */
+  const identity = async (ctx: HubRequestContext): Promise<{ personId: string; actor: HubAuditRecord["actor"] }> => {
     const actor = await ctx.current();
     if (actor.kind !== "directory") throw new HubAuditAccessError("audit is read with a directory identity; the local host is not an auditor");
     const person = await ctx.requirePerson();
-    const personId = personKeyString(person);
-    const auditor = db.prepare("SELECT 1 FROM hub_auditors WHERE person_id = ?").get(personId) !== undefined;
-    return { personId, auditor, actor: { kind: "person", person } };
+    return { personId: personKeyString(person), actor: { kind: "person", person } };
   };
+  const isAuditor = (personId: string) => db.prepare("SELECT 1 FROM hub_auditors WHERE person_id = ?").get(personId) !== undefined;
 
-  const auditRead = (ctx: HubRequestContext, actor: HubAuditRecord["actor"], action: string, extra: Partial<HubAuditRecord> = {}) => {
-    db.transaction(() => {
-      write({ id: randomUUID(), sequence: 0, at: now(), requestId: ctx.requestId, actor, action, result: "completed", policyVersion: 0, ...extra } as HubAuditRecord);
-    }).immediate();
+  const recordRead = (ctx: HubRequestContext, actor: HubAuditRecord["actor"], action: string, extra: Partial<HubAuditRecord> = {}) => {
+    write({ id: randomUUID(), sequence: 0, at: now(), requestId: ctx.requestId, actor, action, result: "completed", policyVersion: 0, ...extra } as HubAuditRecord);
   };
 
   return {
@@ -288,39 +307,44 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
     content,
 
     async read(ctx, scope) {
-      const who = await reader(ctx);
-      const where: string[] = [];
-      const args: unknown[] = [];
-      if (!who.auditor) {
-        where.push("owner_at_event = ?");
-        args.push(who.personId);
-      }
-      if (scope.exposureId !== undefined) {
-        where.push("exposure_id = ?");
-        args.push(scope.exposureId);
-      }
-      if (scope.after !== undefined) {
-        where.push("sequence > ?");
-        args.push(scope.after);
-      }
-      // Record the read before returning anything; a failed record fails the read.
-      auditRead(ctx, who.actor, "audit.read", scope.exposureId ? { exposureId: scope.exposureId } : {});
-      const rows = db.prepare(`SELECT * FROM hub_audit ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY sequence LIMIT 500`).all(...args) as AuditRow[];
-      return rows.map(toRecord);
+      const who = await identity(ctx);
+      return db.transaction(() => {
+        const auditor = isAuditor(who.personId);
+        const where: string[] = [];
+        const args: unknown[] = [];
+        if (!auditor) {
+          where.push("owner_at_event = ?");
+          args.push(who.personId);
+        }
+        if (scope.exposureId !== undefined) {
+          where.push("exposure_id = ?");
+          args.push(scope.exposureId);
+        }
+        if (scope.after !== undefined) {
+          where.push("sequence > ?");
+          args.push(scope.after);
+        }
+        // Recorded first, in the same transaction; a failed record fails the read.
+        recordRead(ctx, who.actor, "audit.read", scope.exposureId ? { exposureId: scope.exposureId } : {});
+        const rows = db.prepare(`SELECT * FROM hub_audit ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY sequence LIMIT 500`).all(...args) as AuditRow[];
+        return rows.map(toRecord);
+      }).immediate();
     },
 
     async readContent(ctx, recordId): Promise<HubAuditContent> {
-      const who = await reader(ctx);
-      const row = db.prepare("SELECT * FROM hub_audit WHERE id = ?").get(recordId) as AuditRow | undefined;
-      if (!row || (!who.auditor && row.owner_at_event !== who.personId)) throw new HubAuditAccessError();
-      auditRead(ctx, who.actor, "audit.read-content", { ...(row.message_id ? { messageId: row.message_id } : {}) });
-      const payload = row.content_ref ? content.get(row.content_ref) : undefined;
-      const audience: PersonKey[] = [];
-      const actor = JSON.parse(row.actor) as HubAuditRecord["actor"];
-      if (actor.kind === "person") audience.push(actor.person);
-      const owner = parsePersonId(row.owner_at_event);
-      if (owner && !audience.some((p) => personKeyString(p) === row.owner_at_event)) audience.push(owner);
-      return { recordId: row.id, ...(payload?.question !== undefined ? { question: payload.question } : {}), ...(payload?.answer !== undefined ? { answer: payload.answer } : {}), audience };
+      const who = await identity(ctx);
+      return db.transaction(() => {
+        const row = db.prepare("SELECT * FROM hub_audit WHERE id = ?").get(recordId) as AuditRow | undefined;
+        if (!row || (!isAuditor(who.personId) && row.owner_at_event !== who.personId)) throw new HubAuditAccessError();
+        recordRead(ctx, who.actor, "audit.read-content", { ...(row.message_id ? { messageId: row.message_id } : {}) });
+        const payload = row.content_ref ? readBound(row.content_ref, row.id) : undefined;
+        const audience: PersonKey[] = [];
+        const actor = JSON.parse(row.actor) as HubAuditRecord["actor"];
+        if (actor.kind === "person") audience.push(actor.person);
+        const owner = parsePersonId(row.owner_at_event);
+        if (owner && !audience.some((p) => personKeyString(p) === row.owner_at_event)) audience.push(owner);
+        return { recordId: row.id, ...(payload?.question !== undefined ? { question: payload.question } : {}), ...(payload?.answer !== undefined ? { answer: payload.answer } : {}), audience };
+      }).immediate();
     },
 
     verifyChain() {
@@ -335,8 +359,10 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
         expected += 1;
         checked += 1;
       }
+      // The head must end exactly where the rows (or the checkpoint, or genesis) end: an erased table or suffix is
+      // a broken chain even when no row is left to check.
       const h = head();
-      if (checked > 0 && (h.hash !== prev || h.sequence !== expected - 1)) return { ok: false, sequence: h.sequence };
+      if (h.hash !== prev || h.sequence !== expected - 1) return { ok: false, sequence: h.sequence };
       return { ok: true, checked };
     },
 

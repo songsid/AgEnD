@@ -61,6 +61,8 @@ const MOUNT_CODE: Record<"initialization" | "member-pairing" | "service-unavaila
 export class HubRuntime {
   private readonly mount: HubMount;
   private view: string | null = null;
+  /** The newest configuration view asked for (admitted), which may still be waiting behind a running apply. */
+  private admitted: string | null = null;
   private running: Promise<void> | null = null;
   private pending: HubConfigView | null = null;
   private stopped = false;
@@ -129,6 +131,16 @@ export class HubRuntime {
   /** Serialized: one apply at a time; calls made meanwhile coalesce to the newest configuration. */
   apply(config: HubConfigView): Promise<void> {
     if (this.stopped) return Promise.resolve();
+    const view = effectiveHubView(config);
+    if (view !== this.admitted) {
+      this.admitted = view;
+      if (this.running) {
+        // A changed configuration revokes the current generation now, even while a factory or start is still held:
+        // S1's fence is synchronous, and a held service must not start for a configuration that is already gone.
+        this.mount.fence();
+        this.view = null; // whatever is applied next is applied for real (A → B → A must not look unchanged)
+      }
+    }
     this.pending = { hub: config.hub, hub_member: config.hub_member };
     if (!this.running) {
       this.running = (async () => {

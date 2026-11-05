@@ -96,3 +96,24 @@ describe("FleetManager Hub hooks (S-51)", () => {
     expect(src).toMatch(/await import\("\.\/hub\/runtime\.js"\)/);
   });
 });
+
+describe("review #3113 regression (single-flight runtime)", () => {
+  it("P2: overlapping first observations create one runtime; Stop during creation closes it", async () => {
+    const { fm } = harness({ hub_member: { enabled: true } });
+    fm.hubEffectsReady = true;
+    await Promise.all([fm.applyHubSwitches(), fm.applyHubSwitches(), fm.applyHubSwitches()]);
+    expect(hub.created).toBe(1);
+    await fm.stopAll();
+    expect(hub.events.filter((e) => e === "close")).toHaveLength(1);
+
+    const second = harness({ hub_member: { enabled: true } });
+    second.fm.hubEffectsReady = true;
+    const pending = second.fm.applyHubSwitches();
+    const stopping = second.fm.stopAll(); // Stop while the import/creation is in flight
+    await pending;
+    await stopping;
+    expect(hub.created).toBe(2);
+    expect(hub.events.filter((e) => e === "close")).toHaveLength(2);
+    expect(second.fm.hubRuntime).toBeNull();
+  }, 30_000);
+});

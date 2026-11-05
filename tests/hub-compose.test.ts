@@ -257,9 +257,9 @@ describe.skipIf(process.platform === "win32")("Hub runtime (S5b lifecycle)", () 
     void runtime.apply({ hub_member: { enabled: true, label: "b" } });
     await runtime.apply({ hub_member: { enabled: true, label: "c" } });
     await a;
-    expect(created).toEqual(["a", "c"]);
-    expect(events.indexOf("fence a")).toBeLessThan(events.indexOf("close a"));
-    expect(events.indexOf("close a")).toBeLessThan(events.indexOf("start c"));
+    // "a" was revoked when "b" arrived (before its factory ran) and "b" when "c" arrived: only the newest is built.
+    expect(created).toEqual(["c"]);
+    expect(events).toEqual(["start c"]);
     await runtime.close();
     expect(events.at(-1)).toBe("close c");
 
@@ -267,5 +267,92 @@ describe.skipIf(process.platform === "win32")("Hub runtime (S5b lifecycle)", () 
     await s4less.apply({ hub_member: { enabled: true } });
     expect(s4less.currentHolds()).toMatchObject([{ side: "member", code: "hub-incomplete" }]);
     await s4less.close();
+  });
+});
+
+describe.skipIf(process.platform === "win32")("review #3113 regressions (lifecycle and cleanup)", () => {
+  function gate() {
+    let open!: () => void;
+    const promise = new Promise<void>((r) => (open = r));
+    return { promise, open };
+  }
+
+  for (const held of ["factory", "start"] as const) {
+    it(`P2: a changed configuration fences at once while the ${held} is held; the held service never starts`, async () => {
+      const hub = await initializedHub();
+      const g = gate();
+      const entered = gate();
+      let current: (() => boolean) | undefined;
+      const events: string[] = [];
+      const runtime = new HubRuntime({
+        home: hub.home,
+        log: () => {},
+        createServer: async (_cfg, cur) => {
+          current = cur;
+          entered.open();
+          if (held === "factory") await g.promise;
+          return {
+            start: async () => { events.push("start"); if (held === "start") await g.promise; },
+            fence: () => events.push("fence"),
+            close: async () => { events.push("close"); },
+          };
+        },
+      });
+      const first = runtime.apply(hub.config);
+      await entered.promise;
+      if (held === "start") await new Promise((r) => setTimeout(r, 10));
+      void runtime.apply({}); // switched off while held
+      expect(current!()).toBe(false); // synchronously revoked
+      g.open();
+      await first;
+      await runtime.apply({});
+      if (held === "factory") expect(events).not.toContain("start");
+      expect(events).toContain("close");
+      await runtime.close();
+    });
+  }
+
+  it("P2: an unconfirmed cleanup is reported, keeps its owner, blocks a replacement, and is retried", async () => {
+    const hub = await initializedHub();
+    let failClose = true;
+    const http = fakeHttp();
+    const entry: HubHttpEntry = {
+      ...http.entry,
+      createHubHttp(deps) {
+        const inner = http.entry.createHubHttp(deps);
+        return { ...inner, close: async () => { if (failClose) throw new Error("S3 still draining"); await inner.close(); } };
+      },
+    };
+    const f = factory(hub.home, entry);
+    const service = await f.create(hub.config.hub, () => true);
+    await service.start();
+    await expect(service.close()).rejects.toThrow(/unconfirmed/);
+    expect(await refused(hub.webPort)).toBe(true); // closed before the failing step
+    expect(await refused(hub.memberPort)).toBe(true);
+    failClose = false;
+    await service.close(); // retried from the failed step
+    expect(http.state.closed).toBe(1);
+
+    // A factory that fails and cannot clean up blocks the next creation until its cleanup succeeds.
+    let s3Fails = true, directoryCloseFails = true;
+    const reports: string[] = [];
+    const ok = fakeHttp();
+    const flaky = createHubServerFactory({
+      home: hub.home,
+      components: { http: async () => ({ ...ok.entry, createHubHttp: (deps) => { if (s3Fails) throw new Error("S3 failed to build"); return ok.entry.createHubHttp(deps); } }) },
+      createDirectory: () => ({ realm: "corp", signIn: async () => ({ ok: false, reason: "unavailable" }), checkEligibility: async () => ({ eligible: false, reason: "unavailable" }),
+        close: async () => { if (directoryCloseFails) throw new Error("directory client stuck"); } }),
+      report: (code) => reports.push(code),
+      log: () => {},
+    });
+    await expect(flaky(hub.config.hub, () => true)).rejects.toThrow(/unconfirmed.*directory client stuck/);
+    expect(reports.at(-1)).toBe("service-unavailable");
+    s3Fails = false;
+    await expect(flaky(hub.config.hub, () => true)).rejects.toThrow(/directory client stuck/); // still blocked
+    directoryCloseFails = false;
+    const recovered = await flaky(hub.config.hub, () => true); // cleanup confirmed first, then a fresh service
+    await recovered.start();
+    expect((await get(hub.webPort, "/hub/v1/ping", hub.caPem)).status).toBe(200);
+    await recovered.close();
   });
 });

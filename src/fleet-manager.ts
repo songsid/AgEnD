@@ -1840,22 +1840,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.shuttingDown || !this.hubEffectsReady) return;
     const raw = this.rawFleetConfig as { hub?: { enabled?: unknown }; hub_member?: { enabled?: unknown } };
     const on = raw?.hub?.enabled === true || raw?.hub_member?.enabled === true;
-    if (!on && !this.hubRuntime) return;
+    if (!on && !this.hubRuntime && !this.hubRuntimeInit) return;
     try {
-      if (!this.hubRuntime) {
-        const { HubRuntime } = await import("./hub/runtime.js");
-        if (this.shuttingDown || !this.hubEffectsReady) return;
-        this.hubRuntime = new HubRuntime({
-          home: this.dataDir,
-          log: (level, message, meta) => this.logger[level](meta ?? {}, message),
-          onHoldsChanged: holds => { this.hubHolds = holds; },
-        });
-      }
+      const runtime = this.hubRuntime ?? (await this.hubRuntimeCreated());
+      if (this.shuttingDown || !this.hubEffectsReady) return; // Stop owns it now (fenced in stopAll, closed in doStopAll)
       const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
-      await this.hubRuntime.apply({ hub: current?.hub, hub_member: current?.hub_member });
+      await runtime.apply({ hub: current?.hub, hub_member: current?.hub_member });
     } catch (err) {
       this.logger.warn({ err: (err as Error)?.message ?? String(err) }, "Hub switches could not be applied");
     }
+  }
+
+  /** Single flight: one import, one runtime, assigned once; every caller (and Stop) gets that same runtime. */
+  private hubRuntimeCreated(): Promise<import("./hub/runtime.js").HubRuntime> {
+    this.hubRuntimeInit ??= (async () => {
+      const { HubRuntime } = await import("./hub/runtime.js");
+      const runtime = new HubRuntime({
+        home: this.dataDir,
+        log: (level, message, meta) => this.logger[level](meta ?? {}, message),
+        onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
+      });
+      // Stop began during the import: it holds this promise and closes the runtime; do not hand it out again.
+      if (this.shuttingDown || !this.hubEffectsReady) runtime.fence();
+      else this.hubRuntime = runtime;
+      return runtime;
+    })();
+    return this.hubRuntimeInit;
   }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */
@@ -1916,6 +1926,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * (hub.enabled / hub_member.enabled) is on; while both are off nothing Hub-related loads, opens or listens.
    */
   private hubRuntime: import("./hub/runtime.js").HubRuntime | null = null;
+  /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
+  private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;
   private hubEffectsScheduled = false;
   private hubHolds: readonly import("./hub/runtime.js").HubHold[] = [];
@@ -23311,8 +23323,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const webChatStopped = this.webChatStore ? Promise.race([this.webChatStore.flush().catch(() => {}), new Promise<void>(r => setTimeout(r, 3_000).unref?.())]) : Promise.resolve();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     // S-51: the Hub closes in the same drain, bounded so an unanswering listener does not hold the shutdown.
-    const hubRuntime = this.hubRuntime; this.hubRuntime = null;
-    const hubStopped = hubRuntime ? Promise.race([hubRuntime.close().catch(() => {}), new Promise<void>(r => setTimeout(r, 10_000).unref?.())]) : Promise.resolve();
+    const hubInit = this.hubRuntimeInit, hubNow = this.hubRuntime;
+    this.hubRuntime = null; this.hubRuntimeInit = null;
+    const hubClose = async () => {
+      const runtime = hubNow ?? (hubInit ? await hubInit.catch(() => null) : null);
+      await runtime?.close();
+    };
+    const hubStopped = hubNow || hubInit
+      ? Promise.race([hubClose().catch(err => this.logger.warn({ err: (err as Error)?.message }, "Hub did not close cleanly")), new Promise<void>(r => setTimeout(r, 10_000).unref?.())])
+      : Promise.resolve();
     this.ipcStoppingInstances.add("__fleet_stopping__");
     // Release held delivery promises before awaiting daemon shutdown, then
     // reject spawn work which has not started. Otherwise a storm backoff could
