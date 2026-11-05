@@ -75,7 +75,7 @@ describe("Hub disposable provider lifecycle", () => {
     ["wrong CLI version", "image-mismatch", { imageVersion: "unreviewed" }],
   ] as const)("explains %s safely without starting a session", async (_scenario, reason, changes) => {
     Object.assign(state, changes);
-    const error = await factory().then(() => { throw Error("unexpected ready provider"); }, error => error);
+    const error = await factory().then(async provider => { await provider.close(); return null; }, error => error);
     expect(hubProviderSetupReason(error)).toBe(reason); expect(error.reason).toBe(reason);
     expect(error.message).not.toContain("PRIVATE-"); expect(JSON.stringify(error)).not.toContain("PRIVATE-");
     expect(state.processes).toHaveLength(0); expect(state.containers.size).toBe(0); expect(broker).not.toHaveBeenCalled();

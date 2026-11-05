@@ -91,4 +91,4 @@ try {
     } finally { await p.ctx.close(); }
   }
   writeFileSync(join(out, "setup-guidance.json"), JSON.stringify({ base, rows, limits: "Inert metadata inputs; real local/public HTTP and lazy renderers. No engine, CLI, model login or S5 startup composition qualification." }, null, 2));
-} finally { await fx.close(); }
+} finally { await link.close(); await fx.close(); }
