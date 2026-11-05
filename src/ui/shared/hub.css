@@ -7,7 +7,7 @@
 .hub-switch-item.is-current { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); font-weight: var(--fw-medium); }
 a.hub-switch-item:hover { color: var(--text); }
 a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.hub-preview { border-left: 3px solid var(--warn-line); background: var(--warn-bg); padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); }
+.hub-preview { border-left: 3px solid var(--warn-line); background: var(--warn-bg); padding: var(--s-2) var(--s-3); }
 .hub-empty { padding: var(--s-6) 0; }
 .s-hub-connect .hub-connect { max-width: 520px; }
 .hub-state { display: grid; gap: var(--s-2); margin-top: var(--s-3); }

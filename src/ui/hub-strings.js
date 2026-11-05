@@ -16,7 +16,7 @@ register("hub", {
     // Settings → Connect to a Hub
     title: "Connect to a Hub",
     lead: "A Hub lets people in your organisation ask agents you choose to share. Your fleet stays yours: you decide which agents are shared and who may ask them.",
-    address: "Hub address", addressHint: "The https:// address your Hub administrator gave you.", code: "One-time pairing code", connect: "Connect",
+    address: "Hub address", addressPh: "https://", addressHint: "The https:// address your Hub administrator gave you.", code: "One-time pairing code", connect: "Connect",
     errAddress: "Enter the Hub's https:// address.", errCode: "Enter the pairing code exactly as it was given.",
     errBusy: "This fleet is already connected or waiting for approval.", errUnreachable: "Could not reach the Hub at that address.",
     errRefused: "The Hub refused this code.", errFailed: "That didn't work. Try again.",
@@ -51,7 +51,7 @@ register("hub", {
     adminTitle: "管理", adminEmpty: "目前沒有要管理的項目", adminHint: "已配對的 Fleet、授權與稽核紀錄會出現在這裡。",
     title: "連線到 Hub",
     lead: "Hub 讓組織裡的人可以向你選擇公開的 Agent 提問。你的 Fleet 仍然屬於你：要公開哪些 Agent、誰可以提問，都由你決定。",
-    address: "Hub 位址", addressHint: "Hub 管理者給你的 https:// 位址。", code: "一次性配對碼", connect: "連線",
+    address: "Hub 位址", addressPh: "https://", addressHint: "Hub 管理者給你的 https:// 位址。", code: "一次性配對碼", connect: "連線",
     errAddress: "請輸入 Hub 的 https:// 位址。", errCode: "請完整輸入配對碼。",
     errBusy: "這個 Fleet 已經連線，或正在等待核准。", errUnreachable: "無法連到這個位址的 Hub。",
     errRefused: "Hub 拒絕了這個配對碼。", errFailed: "沒有成功，請再試一次。",

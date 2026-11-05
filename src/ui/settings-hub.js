@@ -68,9 +68,9 @@ export function HubConnectCard() {
   else if (p.state === "unpaired") {
     const addressOk = ADDRESS_HINT.test(form.address.trim()), codeOk = CODE_HINT.test(form.code.trim());
     body = html`<form class="form hub-connect" onSubmit=${(e) => { e.preventDefault(); connect(); }}>
-      <label class="field"><span>${hw("address")}</span><input id="hubAddress" type="url" inputmode="url" autocomplete="off" spellcheck="false"
-        placeholder="https://" value=${form.address} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, address: v })); }} /><small class="note">${hw("addressHint")}</small></label>
-      <label class="field"><span>${hw("code")}</span><input id="hubCode" autocomplete="one-time-code" spellcheck="false" autocapitalize="characters"
+      <label class="field"><span>${hw("address")}</span><input id="hubAddress" type="url" inputmode="url" autocomplete="off" spellcheck=${false}
+        placeholder=${hw("addressPh")} value=${form.address} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, address: v })); }} /><small class="note">${hw("addressHint")}</small></label>
+      <label class="field"><span>${hw("code")}</span><input id="hubCode" autocomplete="one-time-code" spellcheck=${false} autocapitalize="characters"
         value=${form.code} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, code: v })); }} /></label>
       <div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !addressOk || !codeOk}>${hw("connect")}</button></div>
     </form>`;
