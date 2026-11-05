@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { CAPACITY_MIN_DELTA, estimateCapacity as estimateOrNull, quotaWindows, type CapacityEstimate, type CapacityHour } from "../src/usage/capacity.js";
 import { capacityText as textOrNull, getUsageSnapshot, setCapacityLookup, setUsageFetcherForTests } from "../src/usage/usage-api.js";
-import { setQuotaHistoryFileForTests, type QuotaReading } from "../src/usage/quota-history.js";
+import { parseQuotaReading, quotaReadingsOf, setQuotaHistoryFileForTests, type QuotaReading } from "../src/usage/quota-history.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
@@ -108,13 +108,27 @@ describe("Prism #3073 review (the estimate)", () => {
     for (let k = 0; k < 3; k++) {
       const start = T0 + k * WEEK, reset = new Date(start + WEEK).toISOString();
       readings.push(rd(start, 0, reset), rd(start + 50 * H, 50, reset));
-      hs.push(...hours(start, 50, k === 2 ? { api: null } : {}));
+      // Dollars steady; tokens swing — yet the API-equivalent, measured over two weeks only, cannot be the best fit.
+      hs.push(...hours(start, 50, k === 2 ? { api: null } : { api: 1, all: [1000, 3000][k]!, output: [100, 300][k]! }));
     }
     const est = estimateCapacity(readings, hs);
     expect([est.windows, est.bases.api.windows, est.bases.all.windows]).toEqual([3, 2, 3]);
+    expect(est.bases.api.cv).toBe(0);
+    expect(est.bestFit).not.toBe("api");
     const c = capacityText(est);
     expect(c.line.i18n.args?.at(-1)).toBe(2);                         // "from 2 weeks": the dollars are from two
     expect(c.windows).toBe(2);
+  });
+});
+
+describe("Prism #3073 P2: the quota history records a per-model quota's scope", () => {
+  it("recorded from the metric, read back; anything else in the field is not a reading", () => {
+    const rs = quotaReadingsOf({ id: "claude", name: "Claude", status: "ok", metrics: [
+      { label: "Weekly", type: "percent", used: 10, windowMs: WEEK }, { label: "Sonnet (weekly)", scope: "model", type: "percent", used: 3, windowMs: WEEK },
+      { label: "Luna Reserve (weekly)", type: "percent", used: 7, windowMs: WEEK }] } as any, T0);
+    expect(rs.map((r) => [r.metric, r.scope])).toEqual([["Weekly", undefined], ["Sonnet (weekly)", "model"], ["Luna Reserve (weekly)", undefined]]);
+    expect(parseQuotaReading(JSON.stringify(rs[1]))).toEqual(rs[1]);
+    expect(parseQuotaReading(JSON.stringify({ ...rs[1], scope: "pool" }))).toBeNull();
   });
 });
 
@@ -193,7 +207,8 @@ describe("the fleet's refresh (#3066 §1)", () => {
   it("Prism #3073 P2: only a vendor per-model weekly is filtered by model; a named pool (Luna Reserve) gets no estimate", async () => {
     const lines = [rd(T0, 0, undefined, "Luna Reserve (weekly)"), rd(T0 + 20 * H, 20, undefined, "Luna Reserve (weekly)"),
       { ...rd(T0, 0, undefined, "Sonnet (weekly)"), scope: "model" as const }, { ...rd(T0 + 20 * H, 20, undefined, "Sonnet (weekly)"), scope: "model" as const }];
-    const est = await fleetWith(lines, [{ hours: { ...hoursOf("claude:hsinlin", "claude-sonnet-4-5", 20) } }]);
+    // Even a model whose name has the pool's word in it does not make the pool a per-model quota.
+    const est = await fleetWith(lines, [{ hours: { ...hoursOf("claude:hsinlin", "claude-sonnet-4-5", 20) } }, { hours: hoursOf("claude:hsinlin", "luna reserve", 20) }]);
     expect(est.has("claude:hsinlin\u0000Luna Reserve (weekly)")).toBe(false);
     expect(est.get("claude:hsinlin\u0000Sonnet (weekly)")?.status).toBe("ok");
   });

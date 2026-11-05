@@ -8896,7 +8896,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const reservedNamed = new Map<string, Set<string>>();
       const reservedFor = (backend: string): Set<string> => reservedNamed.get(backend)
         ?? reservedNamed.set(backend, new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)))).get(backend)!;
-      const ambiguous = new Set<string>();
       // provider id → hour → model key → totals; and the instances whose hours count for it (their scan coverage).
       const byProvider = new Map<string, Map<number, Record<string, HourTotals>>>();
       const daysOf = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
@@ -8905,11 +8904,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           for (const src of hourSources(hour)) {
             const base = usageProviderIdForBackend(src.backend);
             if (!base) continue;
-            if (reservedFor(src.backend).has(src.profile)) {
-              ambiguous.add(src.profile === "default" ? base : `${base}:${src.profile}`).add(`${base}:${src.profile}`);
-              continue;
-            }
-            if (src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
+            // Ambiguous (a named profile with the tag's name), or no account's: counted for no one, so an account whose
+            // hours these may be has none — and gets no estimate, never a low one.
+            if (reservedFor(src.backend).has(src.profile) || src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
             const provider = src.profile === "default" ? base : `${base}:${src.profile}`;
             const list = daysOf.get(provider) ?? daysOf.set(provider, []).get(provider)!;
             if (!list.includes(inst.days)) list.push(inst.days);
@@ -8925,7 +8922,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const next = new Map<string, CapacityEstimate>();
       for (const [key, list] of groups) {
         const [provider, metric] = key.split("\u0000") as [string, string];
-        if (ambiguous.has(provider)) continue;
         // A per-model weekly ("Sonnet (weekly)", the vendor's scope "model"): that model's tokens only. Another named
         // pool is not a model: no estimate. "Weekly", "Weekly limit": everything.
         const named = /^(.+) \((?:weekly|monthly|\d+d)\)$/i.exec(metric)?.[1]?.toLowerCase() ?? null;
