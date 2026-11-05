@@ -20,7 +20,7 @@ import { HubProtocolError } from "./validation.js";
 import { personKeyString } from "./identity.js";
 import type { HubExposure, HubExposureSnapshot, HubGrant, HubRequestContext, PersonKey } from "./types.js";
 import type { HubLinkContext } from "./server.js";
-import { personFromString, type HubCore } from "./http/core.js";
+import { personByLogin, personFromString, type HubCore } from "./http/core.js";
 
 /** P1 grants last at most this long; the owner chooses within it. */
 export const GRANT_MAX_MS = 365 * 24 * 60 * 60_000;
@@ -132,13 +132,10 @@ export class HubCatalogService {
   async grant(ctx: HubRequestContext, input: { exposureId: string; exposureRevision: number; login: string; days: number }): Promise<HubGrant> {
     const owner = await ctx.requirePerson(), me = personKeyString(owner), now = this.core.now();
     if (!Number.isSafeInteger(input.days) || input.days < 1 || input.days * 86_400_000 > GRANT_MAX_MS) throw new HubProtocolError("invalid");
-    const subjectId = this.core.atomic((db) => {
-      const rows = db.prepare("SELECT person FROM hub_people WHERE login_label=? COLLATE NOCASE").all(input.login.trim()) as { person: string }[];
-      return rows.length === 1 ? rows[0]!.person : null;   // unknown or ambiguous: refused (a name never stands for an id)
-    });
-    if (!subjectId || subjectId === me) throw new HubProtocolError("not-found");
-    const subject = personFromString(subjectId);
-    if (!(await this.core.eligible(subject))) throw new HubProtocolError("not-found");
+    // Unknown, shared or renamed-away labels are refused: a name never stands for an id (personByLogin).
+    const subject = await personByLogin(this.core, input.login);
+    const subjectId = subject ? personKeyString(subject) : null;
+    if (!subject || !subjectId || subjectId === me) throw new HubProtocolError("not-found");
     await ctx.current();
     const grant: HubGrant = { id: randomUUID(), revision: 1, owner, exposureId: input.exposureId, exposureRevision: input.exposureRevision,
       approvedBy: owner, approvedAt: now, subject: { kind: "person", person: subject }, permissions: [...PERMISSIONS],

@@ -25,7 +25,7 @@ import { HubSessions, hubClearCookie, hubSetCookie } from "../sessions.js";
 import { HubCatalogService } from "../catalog.js";
 import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
-import { HubCore, personFromString } from "./core.js";
+import { HubCore, personByLogin } from "./core.js";
 import { HUB_HTTP_MIGRATIONS } from "./schema.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { serveHubWorkspaceShell } from "../../web-api.js";
@@ -203,12 +203,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); const login = str(b.login).trim();
       await guard(() => ctx.requireAdmin());
-      const owner = core.atomic((db) => {
-        const rows = db.prepare("SELECT person FROM hub_people WHERE login_label=? COLLATE NOCASE").all(login) as { person: string }[];
-        return rows.length === 1 ? rows[0]!.person : null;
-      });
+      const owner = await personByLogin(core, login);
       if (!owner) throw new HubProtocolError("not-found");
-      const offer = await guard(() => deps.pairing.create(ctx, personFromString(owner)));
+      const offer = await guard(() => deps.pairing.create(ctx, owner));
       return send(res, 200, offer);
     }
     if ((r = /^\/hub\/v1\/admin\/pairings\/([^/]+)\/approve$/.exec(path))) {

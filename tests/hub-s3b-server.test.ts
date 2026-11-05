@@ -180,6 +180,28 @@ describe("Hub catalog mirror and grants (S3b)", () => {
     expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "bea", days: 1 })).status).toBe(200);
   });
 
+  it("a grant goes to whoever the directory says holds that login NOW: a rename never redirects it; a shared label is refused (Fable on #3112)", async () => {
+    rig = await s3bRig();
+    const { e, o } = await world(rig);
+    const bob = rig.addPerson("bob", "Bob Old");
+    await rig.signIn("bob");                                   // the Hub knows "bob" → Bob Old
+    rig.rename("bob", "robert");                               // the directory renames him …
+    const newBob = rig.addPerson("bob", "Bob New");             // … and gives "bob" to a new colleague (never signed in)
+    const g = await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "bob", days: 1 });
+    expect(g.status).toBe(404);                                 // not to Bob Old
+    expect(rig.db.prepare("SELECT COUNT(*) AS n FROM hub_grants WHERE subject=?").get(`${bob.realm}/${bob.objectId}`)).toEqual({ n: 0 });
+    await rig.signIn("bob");                                   // the new colleague signs in: now "bob" is theirs
+    const g2 = await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "bob", days: 1 });
+    expect(g2.status).toBe(200);
+    expect(g2.json.grant.subject.person).toEqual(newBob);
+    // Two rows carrying one label (case-insensitively): refused, whoever the directory says.
+    rig.addPerson("sam");
+    await rig.signIn("sam");
+    rig.db.prepare("INSERT INTO hub_people(person, realm, object_id, display_name, login_label, status, last_checked_at) VALUES(?,?,?,?,?,'active',0)")
+      .run(`corp/${randomUUID()}`, "corp", randomUUID(), "Other Sam", "SAM");
+    expect((await rig.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "sam", days: 1 })).status).toBe(404);
+  });
+
   it("a new exposure revision leaves the old grant inapplicable; a freeze stops asking", async () => {
     rig = await s3bRig();
     const { e, link, a, o, roomId } = await world(rig);
@@ -287,6 +309,49 @@ describe("Hub rooms, dispatch, leases and answers (S3b)", () => {
     await expect(answer(lease, "changed")).rejects.toMatchObject({ code: "conflict" });
     const read = await rig.call(a, "GET", `/hub/v1/rooms/${roomId}/messages`);
     expect(read.json.entries[0]).toMatchObject({ question: "Q3?", answer: text, receipt: { stage: "answered" } });
+  });
+
+  it("a release lease is spent only on the link it was issued on (a replaced link's lease is refused)", async () => {
+    rig = await s3bRig();
+    const { a, roomId, link, fleetId, owner } = await world(rig);
+    rig.setTransport(false);
+    const ask = await rig.call(a, "POST", `/hub/v1/rooms/${roomId}/messages`, { idempotencyKey: randomUUID(), text: "Q" });
+    const messageId = ask.json.receipt.messageId, answerId = randomUUID(), text = "A";
+    const r = await rig.http.receive(rig.frame("authorize.request", { messageId, operationId: randomUUID(), exposureRevision: 1, phase: "release-answer",
+      answer: { answerId, contentDigest: sha(text) } }, link) as never, link) as any;
+    const next = rig.link(fleetId, owner, 2);                  // S1 replaced the link: a new epoch
+    link.alive = false;
+    await expect(rig.http.receive(rig.frame("answer", { messageId, answerId, text, contentDigest: sha(text), releaseLease: r.payload.lease }, next) as never, next))
+      .rejects.toMatchObject({ code: "denied" });
+    expect(rig.db.prepare("SELECT answer_ref FROM hub_messages WHERE id=?").get(messageId)).toEqual({ answer_ref: null });
+  });
+
+  it("authorization is re-checked at the answer: a grant revoked after the release lease stores nothing", async () => {
+    rig = await s3bRig();
+    const { a, o, roomId, link, grant } = await world(rig);
+    rig.setTransport(false);
+    const ask = await rig.call(a, "POST", `/hub/v1/rooms/${roomId}/messages`, { idempotencyKey: randomUUID(), text: "Q" });
+    const messageId = ask.json.receipt.messageId, answerId = randomUUID(), text = "secret answer";
+    const r = await rig.http.receive(rig.frame("authorize.request", { messageId, operationId: randomUUID(), exposureRevision: 1, phase: "release-answer",
+      answer: { answerId, contentDigest: sha(text) } }, link) as never, link) as any;
+    expect(r.payload.ok).toBe(true);
+    await rig.call(o, "DELETE", `/hub/v1/grants/${grant.id}?revision=1`);
+    await expect(rig.http.receive(rig.frame("answer", { messageId, answerId, text, contentDigest: sha(text), releaseLease: r.payload.lease }, link) as never, link))
+      .rejects.toMatchObject({ code: "revoked" });
+    expect(rig.db.prepare("SELECT answer_ref, stage FROM hub_messages WHERE id=?").get(messageId)).toEqual({ answer_ref: null, stage: "queued" });
+    expect([...rig.contents.values()].some((c) => c.answer !== undefined)).toBe(false);
+    expect(rig.db.prepare("SELECT state FROM hub_rooms WHERE id=?").get(roomId)).toEqual({ state: "closed" });
+  });
+
+  it("an expired grant can no longer read its room (nor ask in it)", async () => {
+    let now = Date.now();
+    rig = await s3bRig({ now: () => now });
+    const { a, roomId } = await world(rig);
+    now += 7 * 86_400_000 + 1;                                  // world() granted 7 days
+    const a2 = await rig.signIn("alex");
+    expect((await rig.call(a2, "GET", `/hub/v1/rooms/${roomId}/messages`)).status).toBe(403);
+    expect((await rig.call(a2, "POST", `/hub/v1/rooms/${roomId}/messages`, { idempotencyKey: randomUUID(), text: "Q" })).status).toBe(403);
+    void a;
   });
 
   it("member receipts are monotonic, never downgrade evidence, and page through reconcile", async () => {

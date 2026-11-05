@@ -125,6 +125,8 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = 
     db, http, base, hubId, admin, addPerson, people, directory, issuer, keys, store, pairing, audits, contents, sent, signIn, call, link, frame, config,
     get directoryCalls() { return directoryCalls; },
     setEligible: (login: string, v: boolean) => { people.get(login)!.eligible = v; },
+    /** The directory renames an account (its key stays); the old login may later be given to someone else. */
+    rename: (from: string, to: string) => { const p = people.get(from)!; people.delete(from); p.login = to; p.password = `pw-${to}`; people.set(to, p); },
     setAuditFails: (v: boolean) => { auditFails = v; },
     setTransport: (v: boolean) => { transportOn = v; },
     setSendFails: (v: boolean) => { sendFails = v; },

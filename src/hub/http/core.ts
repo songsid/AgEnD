@@ -47,7 +47,12 @@ export class HubCore {
    * A fresh directory eligibility check (no allow-cache). Ineligible or unreachable is denied; the person's row records
    * what was seen. Bounded per person and in all — over the bound is "backpressure".
    */
-  async eligible(person: PersonKey): Promise<boolean> {
+  async eligible(person: PersonKey): Promise<boolean> { return (await this.current(person)) !== null; }
+  /**
+   * The person as the directory has them now (its current login and name), or null when they are not eligible. The
+   * person's row takes the current login label, so a rename never leaves an old label pointing at them.
+   */
+  async current(person: PersonKey): Promise<{ login: string; displayName?: string } | null> {
     const id = personKeyString(person);
     const mine = this.inflight.get(id) ?? 0;
     if (mine >= DIRECTORY_PER_PERSON || this.total >= DIRECTORY_TOTAL) throw new HubProtocolError("backpressure");
@@ -59,9 +64,10 @@ export class HubCore {
       this.atomic((db) => {
         db.prepare("UPDATE hub_people SET status=?, last_checked_at=? WHERE person=?")
           .run(ok ? "active" : r.eligible ? "unknown" : r.reason === "unavailable" ? "unknown" : "disabled", this.now(), id);
+        if (ok && r.eligible && typeof r.person.login === "string" && r.person.login) db.prepare("UPDATE hub_people SET login_label=? WHERE person=?").run(r.person.login.slice(0, 256), id);
         if (!ok && !(!r.eligible && r.reason === "unavailable")) db.prepare("UPDATE hub_sessions SET state='ended' WHERE person=? AND state='active'").run(id);
       });
-      return ok;
+      return ok && r.eligible ? { login: r.person.login, ...(r.person.displayName ? { displayName: r.person.displayName } : {}) } : null;
     } finally {
       const n = (this.inflight.get(id) ?? 1) - 1;
       if (n > 0) this.inflight.set(id, n); else this.inflight.delete(id);
@@ -74,4 +80,21 @@ export const personFromRow = (row: { realm: string; object_id: string }): Person
 export function personFromString(id: string): PersonKey {
   const at = id.indexOf("/");
   return { realm: id.slice(0, at), objectId: id.slice(at + 1) };
+}
+
+/**
+ * A login label → the one Hub person it names NOW: exactly one row carries it (a shared or unknown label is refused),
+ * and the directory's current login for that person is still that label (a rename — and a colleague later given the old
+ * login — never redirects a grant or a pairing to the wrong person). Null otherwise.
+ */
+export async function personByLogin(core: HubCore, login: string): Promise<PersonKey | null> {
+  const label = login.trim();
+  if (!label) return null;
+  const id = core.atomic((db) => {
+    const rows = db.prepare("SELECT person FROM hub_people WHERE login_label=? COLLATE NOCASE").all(label) as { person: string }[];
+    return rows.length === 1 ? rows[0]!.person : null;
+  });
+  if (!id) return null;
+  const person = personFromString(id), now = await core.current(person);
+  return now && now.login.toLowerCase() === label.toLowerCase() ? person : null;
 }
