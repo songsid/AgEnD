@@ -153,7 +153,7 @@ function HubExposures({ client }) {
     ${rows && !rows.length ? html`<p class="note">${hw("noAgents")}</p>` : null}
     ${rows && rows.length ? html`<ul class="hub-exposure-list">${rows.map((row) => html`<li key=${row.agent} class=${`hub-exposure${row.state === "published" ? " is-shared" : ""}`}>
       <label class="hub-exposure-main">
-        <input type="checkbox" role="switch" checked=${row.state === "published"} aria-label=${hw("share", row.display)}
+        <input class="s-ui-toggle" type="checkbox" role="switch" checked=${row.state === "published"} aria-label=${hw("share", row.display)}
           disabled=${busy !== null || row.state === "frozen" || (row.state !== "published" && !row.enforceable)}
           onChange=${(e) => toggle(row, e.target.checked)} />
         <span class="hub-exposure-name">${row.display}${row.display !== row.agent ? html` <small><code>${row.agent}</code></small>` : null}</span>
