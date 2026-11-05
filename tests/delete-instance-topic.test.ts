@@ -106,6 +106,14 @@ describe("delete_instance's topic (beta.9)", () => {
     expect(tg.deleteTopic).not.toHaveBeenCalled();
   });
 
+  it("Telegram's topic 1 is refused on its own (no other agent configured on it)", async () => {
+    const { fm, tg, del } = rig();
+    delete fm.fleetConfig!.instances.general;                       // the shared-topic guard has nothing to match
+    fm.fleetConfig!.instances.root = { topic_id: 1, working_directory: "/tmp", channel_id: "tg-main" } as any;
+    expect((await del({ name: "root" })).result).toMatchObject({ topic_deleted: false, topic_reason: "the General topic is never deleted" });
+    expect(tg.deleteTopic).not.toHaveBeenCalled();
+  });
+
   it("a topic another agent of the same bot uses is kept", async () => {
     const { fm, tg, del } = rig();
     fm.fleetConfig!.instances.twin = { topic_id: 77, working_directory: "/tmp", channel_id: "tg-main" } as any;
