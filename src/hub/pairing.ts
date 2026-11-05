@@ -80,21 +80,35 @@ export class HubPairingService {
       p.adminApproved = true;
     });
   }
+  private throttled(state: HubTransportState, key: string, maximum: number): boolean {
+    const bucket = state.buckets.find(b => b.key === sha256(key));
+    return !!bucket && this.now() - bucket.since < 60_000 && bucket.attempts >= maximum;
+  }
   async claim(input: unknown): Promise<{ status: "pending" } | { status: "approved"; fleetId: string; credential: string }> {
     const body = validated(claimBody, input); this.check(); const credential = secret();
-    const offered = this.options.store.read().pairings.find(p => p.id === body.pairingId && p.fleetId === body.fleetId && p.claimHash === sha256(body.claimSecret));
+    const matches = (p: HubTransportState["pairings"][number]) => p.id === body.pairingId && p.fleetId === body.fleetId && p.claimHash === sha256(body.claimSecret)
+      && p.state === "pending" && p.expiresAt > this.now();
+    const initial = this.options.store.read(), offered = initial.pairings.find(matches);
+    const key = offered ? `claim:${offered.id}` : "claim:invalid", maximum = offered ? 60 : 10;
+    // Already-throttled requests publish no additional audit/floor write. Valid claims have their own budget.
+    if (this.throttled(initial, key, maximum)) throw new HubProtocolError("denied");
+    let eligible = false;
     if (offered) {
-      const eligible = await this.options.directory.checkEligibility(offered.owner);
-      if (!eligible.eligible || personKeyString(eligible.person.key) !== personKeyString(offered.owner)) throw new HubProtocolError("denied");
+      const result = await this.options.directory.checkEligibility(offered.owner);
+      eligible = result.eligible && personKeyString(result.person.key) === personKeyString(offered.owner);
     }
     this.check();
-    const outcome = this.options.store.mutate(this.audit({ kind: "member", fleetId: body.fleetId }, "pairing.claimed", randomUUID()), state => {
-      const p = state.pairings.find(p => p.id === body.pairingId && p.fleetId === body.fleetId && p.claimHash === sha256(body.claimSecret));
-      if (!p || p.state !== "pending" || p.expiresAt <= this.now() || !this.budget(state, `claim:${p.id}`, 60)) return null;
-      if (!p.ownerConfirmed || !p.adminApproved) return { status: "pending" as const };
+    const event = { ...this.audit({ kind: "member" as const, fleetId: body.fleetId }, "pairing.claimed", randomUUID()), result: "denied" as "allowed" | "denied" };
+    const outcome = this.options.store.mutate(event, state => {
+      // Recheck after directory I/O: concurrent polling or claim consumption cannot bypass the durable budget.
+      const p = state.pairings.find(matches), liveKey = p ? `claim:${p.id}` : "claim:invalid", limit = p ? 60 : 10;
+      if (this.throttled(state, liveKey, limit)) throw new HubProtocolError("denied");
+      if (!this.budget(state, liveKey, limit) || !p || !eligible) return null;
+      if (!p.ownerConfirmed || !p.adminApproved) { event.result = "allowed"; event.action = "pairing.claim-pending"; return { status: "pending" as const }; }
       if (state.fleets.length >= 256) throw new HubProtocolError("backpressure");
       p.state = "claimed"; p.claimHash = null;
       state.fleets.push({ id: body.fleetId, owner: p.owner, credentialHash: sha256(credential), generation: 1, status: "active" });
+      event.result = "allowed";
       return { status: "approved" as const, fleetId: body.fleetId, credential };
     });
     if (!outcome) throw new HubProtocolError("denied"); return outcome;

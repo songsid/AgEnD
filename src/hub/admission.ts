@@ -21,8 +21,12 @@ export class HubMemberAdmissionAdapter implements HubMemberAdmission {
   private binding(): HubAdmissionBinding { const b = this.options.binding(); if (!b.current()) throw new HubProtocolError("unavailable"); return b; }
   private owns(q: HubQuestion, b: HubAdmissionBinding): boolean {
     const e = this.options.exposure(q.identity.exposureId);
-    return !!e && e.state === "published" && e.id === q.identity.exposureId && e.fleetId === b.profile.fleetId
-      && personKeyString(e.owner) === personKeyString(b.profile.owner) && e.revision === q.identity.exposureRevision;
+    const identity = q.identity;
+    return !!e && e.state === "published" && e.id === identity.exposureId && e.fleetId === b.profile.fleetId
+      && identity.destinationFleetId === b.profile.fleetId && identity.issuer === b.profile.hub.hubId && identity.issuerKeyId === b.profile.issuerKeyId
+      && personKeyString(identity.owner) === personKeyString(b.profile.owner) && identity.revocationVersion === b.revocationVersion
+      && identity.expiresAt > (this.options.now?.() ?? Date.now())
+      && personKeyString(e.owner) === personKeyString(b.profile.owner) && e.revision === identity.exposureRevision;
   }
   async admit(question: HubQuestion): Promise<HubReceipt> {
     const b = this.binding();

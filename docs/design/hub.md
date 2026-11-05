@@ -299,8 +299,8 @@ These are named TypeScript boundaries, not JSON schemas or forgeable capabilitie
 ```ts
 export interface HubDirectoryConfig {
   realm: string; url: string; // ldaps: ONLY in P1; reject ldap:/StartTLS/plaintext
-  caFile?: string; baseDn: string; bindDn: string;
-  profile: "ad" | "openldap"; userFilter?: string; timeoutMs?: number;
+  caPem?: string; baseDn: string; bindDn: string; bindPasswordRef?: string;
+  profile: "ad" | "openldap"; loginAttribute?: string; userFilter?: string; timeoutMs?: number;
 }
 export interface DirectoryPerson {
   key: PersonKey; login: string; dn: string; displayName?: string;
@@ -311,6 +311,7 @@ export type SignInResult = { ok: true; person: DirectoryPerson }
 export type Eligibility = { eligible: true; person: DirectoryPerson }
   | { eligible: false; reason: "gone" | "disabled" | "unavailable" };
 export interface HubDirectory {
+  readonly realm: string;
   signIn(login: string, password: string): Promise<SignInResult>;
   checkEligibility(key: PersonKey): Promise<Eligibility>;
   close(): Promise<void>;
@@ -424,13 +425,18 @@ export interface HubInitPlan {
   directory: HubDirectoryConfig; bindPasswordRef: string; administrator: PersonKey;
   retention: { contentDays: number; eventDays: number };
   coexistence: "dedicated" | "same-user-pilot";
+  memberListen: { host: string; port: number }; webListen: { host: string; port: number };
+  webTls: { certFile: string; keyFile: string }; // confirmed source PEMs; private copies are config outputs
 }
 export interface HubInitializer {
   inspect(): Promise<{ existingFleet: boolean; existingHub: boolean }>;
   validate(plan: HubInitPlan): Promise<void>;
-  commit(plan: HubInitPlan, localOwnerConfirmation: string): Promise<void>;
+  prepareConfirmation(plan: HubInitPlan, secrets: { bindPassword: string }): Promise<{ reference: string; planDigest: string; summary: string }>;
+  commit(plan: HubInitPlan, localOwnerConfirmation: string): Promise<{ hubId: string; spkiSha256: string; issuerKeyId: string; configPath: string }>;
 }
 ```
+
+The runtime type definitions are re-exported from `src/hub/directory/` and `src/hub/init/types.ts`. The initialization manifest uses a canonical UTC ISO timestamp with milliseconds for `committedAt`; the issuer seal binds that exact value and plan digest. S1 supplies a lazy identity provider; S5b separately owns FleetManager lifecycle and complete server/member composition. Until that composition is available, these library interfaces do not mount a partial Hub.
 
 `agend hub init` and quickstart's “personal fleet / team Hub” choice share S5 validation/composition. Steps: name/stable addresses → generate transport and issuer keys/certificate → separately configure browser HTTPS → configure **LDAPS** and test the operator's sign-in → bind local host owner as Hub administrator → choose retention and confirm any same-account pilot warning → install the existing supported service wrapper with explicit confirmation → provide member pairing instructions. Supported placement follows existing service tooling (including Windows through the supported WSL path), not an invented native Windows service. The Hub needs no AI CLI installation/sign-in. No install/service action occurs just by opening a wizard or toggling a YAML field.
 

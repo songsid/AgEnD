@@ -111,7 +111,7 @@ function describeServer(path: string): string {
   const m = shellRoute("GET", path);
   if (!m) return "none";
   if (m.kind === "malformed") return "malformed";
-  if (m.route.panel === "fleet") return `fleet:${m.route.tab}`;
+  if (m.route.panel === "fleet" || m.route.panel === "hub") return `${m.route.panel}:${m.route.tab}`;
   if (m.route.panel === "settings") return `settings:${m.route.section}`;
   if (m.route.panel === "needs" || m.route.panel === "notices") return `${m.route.panel}:`;
   return `${m.route.panel}:${m.route.instance ?? ""}`;

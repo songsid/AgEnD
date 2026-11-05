@@ -1,0 +1,37 @@
+/* AgEnD Hub P1, slice 3: the Hub pages' own stylesheet, linked by their lazy modules (hub-strings.js linkHubCss), so a
+   tab opened before an upgrade (an app.css without these rules) draws them the same. Never loaded while the Hub is off. */
+.hub-brand-name { color: var(--text-2); font-weight: var(--fw-medium); }
+.hub-switch { display: flex; gap: 2px; margin: 0 var(--s-3) var(--s-2); padding: 2px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); }
+.hub-switch-item { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: var(--s-1); min-height: 28px; padding: 0 var(--s-2);
+  border-radius: var(--r-sm); font-size: var(--fs-sm); color: var(--text-2); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-switch-item.is-current { background: var(--surface); color: var(--text); box-shadow: var(--shadow-1); font-weight: var(--fw-medium); }
+a.hub-switch-item:hover { color: var(--text); }
+a.hub-switch-item:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.hub-preview { border-left: 3px solid var(--warn-line); background: var(--warn-bg); padding: var(--s-2) var(--s-3); }
+.hub-empty { padding: var(--s-6) 0; }
+.s-hub-connect .hub-connect { max-width: 520px; }
+.hub-state { display: grid; gap: var(--s-2); margin-top: var(--s-3); }
+.hub-state h4 { margin: 0; display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.hub-origin code { overflow-wrap: anywhere; }
+.hub-fp { display: grid; gap: var(--s-1); }
+.hub-fp-label { font-size: var(--fs-sm); color: var(--text-2); }
+.hub-fp-groups { font-family: var(--font-mono); font-size: var(--fs-md); letter-spacing: .04em; word-spacing: .3em; overflow-wrap: anywhere; }
+.hub-fp-full { font-family: var(--font-mono); font-size: var(--fs-xs); overflow-wrap: anywhere; color: var(--text-2); }
+.hub-fp .btn-link { justify-self: start; }
+.hub-steps-lead { margin: var(--s-1) 0 0; }
+.hub-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }
+.hub-steps li { display: flex; align-items: center; gap: var(--s-2); color: var(--text-2); }
+.hub-steps li.is-done { color: var(--ok); }
+.hub-steps small { margin-left: auto; color: var(--text-3); }
+.hub-link { font-size: var(--fs-xs); font-weight: var(--fw-medium); padding: 1px var(--s-2); border-radius: var(--r-full); }
+.hub-link.is-online { background: var(--ok-bg); color: var(--ok); }
+.hub-link.is-offline { background: var(--warn-bg); color: var(--warn); }
+.hub-key-changed, .hub-held { border-left: 3px solid var(--danger-line); padding-left: var(--s-3); }
+.hub-exposures { margin-top: var(--s-4); border-top: 1px solid var(--border); padding-top: var(--s-3); }
+.hub-exposures h4 { margin: 0 0 var(--s-1); }
+.hub-exposure-list { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: grid; gap: var(--s-2); }
+.hub-exposure { display: grid; gap: 2px; padding: var(--s-2) var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); }
+.hub-exposure.is-shared { border-color: var(--accent); }
+.hub-exposure-main { display: flex; align-items: center; gap: var(--s-2); min-height: var(--tap); }
+.hub-exposure-name { min-width: 0; overflow-wrap: anywhere; }
+.hub-exposure-why { color: var(--text-3); padding-left: calc(var(--s-2) + 18px); }

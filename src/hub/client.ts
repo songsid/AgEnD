@@ -1,11 +1,11 @@
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
-import { createPublicKey, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { HUB_CAPABILITIES, HUB_LIMITS, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
 import { HubSocket } from "./socket.js";
 import { HubProtocolError } from "./validation.js";
 import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
-import { verifyLease, personKeyString } from "./identity.js";
+import { verifyLease } from "./identity.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "./profile.js";
 import type { HubAuthorizationLease, HubAuthorizationRequest, HubMemberFrame, HubServerFrame, HubMemberTransport } from "./types.js";
 export class HubAuthorizationError extends Error {
@@ -80,11 +80,11 @@ export class HubMemberClient implements HubMemberTransport {
       const handshakeTimer = setTimeout(() => link.end(), HUB_LIMITS.rpcTimeout); handshakeTimer.unref();
       link = new HubSocket(ws, { current: () => this.current() && this.link === link, parse: parseServerFrame, encode: encodeMemberFrame,
         receive: frame => this.receive(frame, link, handshake, handshakeTimer), closed: code => {
-          clearTimeout(handshakeTimer);
+          clearTimeout(handshakeTimer); const wasStopped = this.stopped;
           if (code === "replaced" || code === "revoked") this.stopped = true;
           if (this.link !== link) return;
           this.link = null; this.view = null; this.ready = false; this.deferred = []; this.deferredBytes = 0;
-          this.rejectPending(); this.options.hold(code); this.firstReject?.(new HubAuthorizationError("unavailable", code)); this.firstReject = this.firstResolve = null; this.reconnect();
+          this.rejectPending(); if (!wasStopped) this.options.hold(code); this.firstReject?.(new HubAuthorizationError("unavailable", code)); this.firstReject = this.firstResolve = null; this.reconnect();
         } });
       this.link = link;
       void link.send({ v: 1, type: "hello", requestId: handshake, linkEpoch: 0,
@@ -94,6 +94,9 @@ export class HubMemberClient implements HubMemberTransport {
   private async receive(frame: HubServerFrame, link: HubSocket<HubServerFrame, HubMemberFrame>, handshake: string, timeout: NodeJS.Timeout): Promise<void> {
     if (!link.current()) return;
     if (!this.view) {
+      if (frame.type === "welcome" && frame.requestId === handshake && frame.payload.hubId !== this.profile!.hub.hubId) {
+        this.fence(); this.options.hold("key-changed"); return;
+      }
       if (frame.type !== "welcome" || frame.requestId !== handshake || frame.payload.hubId !== this.profile!.hub.hubId || frame.payload.fleetId !== this.profile!.fleetId
         || frame.linkEpoch !== frame.payload.linkEpoch || frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       clearTimeout(timeout); this.epoch = frame.linkEpoch; this.revocation = frame.payload.revocationVersion;
@@ -135,6 +138,9 @@ export class HubMemberClient implements HubMemberTransport {
       this.revocation = frame.payload.revocationVersion;
     }
     if (frame.type === "question") {
+      if (frame.payload.identity.issuer !== view.profile.hub.hubId || frame.payload.identity.issuerKeyId !== view.profile.issuerKeyId) {
+        this.fence(); this.options.hold("key-changed"); return;
+      }
       // Admission awaits authorize() on this very socket. Queue work separately so its reply (or a
       // revocation) can be processed; never block the control receive queue behind external work.
       const bytes = Buffer.byteLength(JSON.stringify(frame));
