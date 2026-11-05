@@ -58,15 +58,24 @@ describe("the conversations (createDialogue, pickFront, stageOf)", () => {
     expect(d.answered("atlas", "hi there", 2000)).toBe(c);
     expect(d.answered("atlas", "again", 2500)).toBeNull();                 // answered once
     expect([c.text, c.reply]).toEqual(["hello", "hi there"]);
-    expect(d.sweep(2000 + D.DLG.HOLD_MS + D.DLG.FADE_MS - 1)).toBe(false);
-    expect(d.sweep(2000 + D.DLG.HOLD_MS + D.DLG.FADE_MS)).toBe(true);
+    // Not shown yet (queued behind another, Prism #3111 P2): kept, however long the hold — until WAIT_MS after it came.
+    expect(d.sweep(2000 + D.DLG.HOLD_MS + D.DLG.FADE_MS + 60_000)).toBe(false);
+    // First drawn at 70 s: its hold and fade count from then.
+    D.stageOf(c, 70_000, false, false);
+    expect(c.replyShownAt).toBe(70_000);
+    expect(d.sweep(70_000 + D.DLG.HOLD_MS + D.DLG.FADE_MS - 1)).toBe(false);
+    expect(d.sweep(70_000 + D.DLG.HOLD_MS + D.DLG.FADE_MS)).toBe(true);
+    const never = d.heard("unseen", null, "x", 0)!; d.answered("unseen", "y", 100);
+    expect(d.sweep(100 + D.DLG.WAIT_MS - 1)).toBe(false);
+    expect(d.sweep(100 + D.DLG.WAIT_MS)).toBe(true);
+    expect(never.replyShownAt).toBeNull();
     expect(d.size()).toBe(0);
     d.heard("quill", null, null, 0);
     expect(d.sweep(D.DLG.WAIT_MS - 1)).toBe(false);
     expect(d.sweep(D.DLG.WAIT_MS)).toBe(true);
     // Reduced motion: no fade to wait for.
-    d.heard("sage", null, null, 0); d.answered("sage", null, 10);
-    expect(d.sweep(10 + D.DLG.HOLD_MS, true)).toBe(true);
+    const sage = d.heard("sage", null, null, 0)!; d.answered("sage", null, 10); D.stageOf(sage, 20, false, true);
+    expect(d.sweep(20 + D.DLG.HOLD_MS, true)).toBe(true);
   });
   it("newest first; the box shows the newest shown here and awake, +N for the rest shown here; a new message replaces its agent's", () => {
     const d = D.createDialogue();
@@ -235,6 +244,15 @@ describe("the host's talk record and a share's /state (no words, no one named, t
     expect(JSON.stringify(one)).not.toMatch(/leak|Han/);
     const all = new OfficeShareView({ office: "all", text: false }, src).state() as any;
     expect(all.talk.items.map((i: any) => i.instance)).toEqual(["atlas", "quill"]);
+    // #3111 review P1: the pack a share hands out — portraits of shown instances only, no person's at all, an NPC's kept;
+    // files of the dropped portraits leave with them.
+    const v1 = new OfficeShareView({ office: "o1", text: false }, src);
+    const packed = v1.pack({ manifest: { id: "p", characters: { default: {} }, furniture: [{ id: "elder" }], portraits: { default: { idle: "d.png" },
+      byInstance: { atlas: { idle: "a.png" }, quill: { idle: "q.png" } }, byUser: { "discord:42": { idle: "u.png" } }, npc: { elder: { idle: "e.png" } } } },
+      files: { "d.png": "1".repeat(32), "a.png": "2".repeat(32), "q.png": "3".repeat(32), "u.png": "4".repeat(32), "e.png": "5".repeat(32) } }) as any;
+    expect(packed.manifest.portraits).toEqual({ default: { idle: "d.png" }, byInstance: { atlas: { idle: "a.png" } }, npc: { elder: { idle: "e.png" } } });
+    expect(Object.keys(packed.files).sort()).toEqual(["a.png", "d.png", "e.png"]);
+    expect(JSON.stringify(packed)).not.toMatch(/discord:42|quill/);
     // A source without talk (an older one): no key at all.
     const { talk: _gone, ...older } = src;
     expect("talk" in (new OfficeShareView({ office: "o1", text: false }, older).state() as any)).toBe(false);

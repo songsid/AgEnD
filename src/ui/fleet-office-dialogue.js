@@ -72,11 +72,17 @@ export function createDialogue() {
       rev++;
       return c;
     },
-    /** Drop answers past their fade and conversations never answered; whether anything went. */
+    /**
+     * Drop what is over; whether anything went. An answer shown: HOLD_MS (and its fade) from when the box first showed
+     * it (stageOf's replyShownAt) — never from when it came, so one queued behind another is seen in full when its turn
+     * comes; an answer never shown (its agent not drawn here, or waiting in the queue): WAIT_MS after it came. A
+     * conversation never answered: WAIT_MS after it was heard.
+     */
     sweep(t, still = false) {
       let gone = false;
       for (const [k, c] of convs) {
-        const over = c.answeredAt !== null ? t >= c.answeredAt + DLG.HOLD_MS + (still ? 0 : DLG.FADE_MS) : t >= c.heardAt + DLG.WAIT_MS;
+        const over = c.answeredAt === null ? t >= c.heardAt + DLG.WAIT_MS
+          : c.replyShownAt !== null ? t >= c.replyShownAt + DLG.HOLD_MS + (still ? 0 : DLG.FADE_MS) : t >= c.answeredAt + DLG.WAIT_MS;
         if (over) { convs.delete(k); gone = true; }
       }
       if (gone) rev++;

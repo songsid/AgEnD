@@ -407,6 +407,12 @@ export class OfficeShareView {
         : { ...a, seats: a.seats.map(st => (isObj(st) && st.for !== undefined ? { ...st, for: this.cutOwners(typeof st.for === "string" ? [st.for] : st.for) } : st)) }]));
     }
     if (isObj(manifest.byInstance)) manifest.byInstance = Object.fromEntries(Object.entries(manifest.byInstance).filter(([k]) => this.scope.has(k)));
+    // #2861: the dialogue box's faces — an instance's only when it is shown; a person's never (a share names no one but
+    // the instances it shows, and the box there is faceless); an NPC's (a furniture id) stays.
+    if (isObj(manifest.portraits)) {
+      const { byUser: _people, ...rest } = manifest.portraits;
+      manifest.portraits = { ...rest, ...(isObj(rest.byInstance) ? { byInstance: Object.fromEntries(Object.entries(rest.byInstance).filter(([k]) => this.scope.has(k))) } : {}) };
+    }
     if (isObj(manifest.characters)) {
       const worn = new Set(["default", ...Object.values(isObj(manifest.byInstance) ? manifest.byInstance : {}).filter((v): v is string => typeof v === "string")]);
       manifest.characters = Object.fromEntries(Object.entries(manifest.characters).filter(([k]) => worn.has(k)));
