@@ -13,7 +13,8 @@ import { api } from "./settings-confirm.js";
 
 register("outside", {
   en: {
-    title: "Connections from outside", switch: "Allow connections from outside",
+    title: "Owner verification", lead: "Use your authenticator app's 6-digit code to prove, from outside, that you own this fleet.",
+    stateOn: "Authenticator set up", stateOff: "Not set up", switch: "Allow connections from outside",
     needApp: "Set up an authenticator app first. Signing in from outside will ask for its code.",
     setUp: "Set up authenticator app",
     scan: "Scan this with Authy, Google Authenticator or Microsoft Authenticator, or type the key. Then enter the 6-digit code it shows.",
@@ -21,13 +22,15 @@ register("outside", {
     againConfirm: "Codes from the old app stop working, and everyone signed in from outside is signed out.",
     remove: "Remove", removeConfirm: "Connections from outside are turned off, and everyone signed in from outside is signed out.",
     openAt: "Open at {0}.", quick: "A quick link gets a new address each time it opens.",
-    hereOnly: "Only on the AgEnD computer.", lostPhone: "Lost your phone? On the AgEnD computer, choose “Set up again”.",
+    hereOnly: "Only on the AgEnD computer. Go back to that computer to set up, set up again or remove the app.",
+    lostPhone: "Lost your phone? On the AgEnD computer, choose “Set up again”. There is no email or backup-code recovery.",
     wrong: "That code didn't work. Check that your phone's clock is right and try the newest code.",
     paused: "Too many wrong codes. Try again in {0}.", code: "Authenticator code", key: "Key",
     minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
   },
   "zh-TW": {
-    title: "從外面連線", switch: "允許從外面連線",
+    title: "擁有者驗證", lead: "使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。",
+    stateOn: "驗證器已設定", stateOff: "尚未設定", switch: "允許從外面連線",
     needApp: "請先設定驗證器 App。從外面登入時會要求輸入它的代碼。",
     setUp: "設定驗證器 App",
     scan: "用 Authy、Google Authenticator 或 Microsoft Authenticator 掃描，或手動輸入金鑰，再輸入 App 顯示的 6 位數代碼。",
@@ -35,7 +38,8 @@ register("outside", {
     againConfirm: "舊 App 的代碼會失效，所有從外面登入的人都會被登出。",
     remove: "移除", removeConfirm: "從外面連線會關閉，所有從外面登入的人都會被登出。",
     openAt: "已開啟：{0}。", quick: "快速連結每次開啟網址都不同。",
-    hereOnly: "只能在 AgEnD 電腦上變更。", lostPhone: "手機遺失？請在 AgEnD 電腦上選「重新設定」。",
+    hereOnly: "只能在 AgEnD 電腦上變更。設定、重新設定或移除 App，請回到那台電腦操作。",
+    lostPhone: "手機遺失？請在 AgEnD 電腦上選「重新設定」。沒有電子郵件或備用碼可以復原。",
     wrong: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
     paused: "錯誤次數太多，請 {0} 後再試。", code: "驗證器代碼", key: "金鑰",
     minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
@@ -148,7 +152,7 @@ export function OutsideCard() {
     if (!r.ok) toast(t("app.failed"), false);
   }); };
   const link = s.link, open = link && link.state === "open";
-  return html`<section class="card s-outside" id="outsideCard"><h3>${to("title")}</h3>
+  return html`<section class="card s-outside" id="outsideCard"><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
     ${!here ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
     <label class="check"><input id="outSwitch" type="checkbox" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
       onChange=${(e) => flip(e.target.checked)} /><span>${to("switch")}</span></label>

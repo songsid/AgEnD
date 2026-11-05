@@ -77,7 +77,7 @@ describe("#3008 ② the helpers", () => {
   });
 });
 
-describe("#3008 ② Settings → Access & security → Connections from outside", () => {
+describe("#3008 ② Settings → Access & security → Owner verification (Connections from outside)", () => {
   it("a fleet with a chat connection (the server says webOnly: false): no card", async () => {
     const w = await open({ webOnly: false });
     expect(w.$("#outsideCard")).toBeNull();
@@ -85,7 +85,7 @@ describe("#3008 ② Settings → Access & security → Connections from outside"
   it("nothing set up: the switch can't be turned on; set up shows the QR code, the key and the code field; a wrong code, then a right one", async () => {
     const w = await open();
     expect([w.$("#outsideCard h3").textContent, w.$("#outSwitch").disabled, w.$("#outNeedApp").textContent])
-      .toEqual(["Connections from outside", true, "Set up an authenticator app first. Signing in from outside will ask for its code."]);
+      .toEqual(["Owner verification", true, "Set up an authenticator app first. Signing in from outside will ask for its code."]);
     await w.click(w.$("#outSetUp"));
     await settle(10);
     expect(w.$("#outEnroll .note").textContent).toBe("Scan this with Authy, Google Authenticator or Microsoft Authenticator, or type the key. Then enter the 6-digit code it shows.");
@@ -114,7 +114,7 @@ describe("#3008 ② Settings → Access & security → Connections from outside"
   });
   it("set up: the switch turns it on; the status says where it is open (a quick link's note); Set up again and Remove ask first", async () => {
     const w = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
-    expect(p.root.textContent).toContain("Lost your phone? On the AgEnD computer, choose “Set up again”.");
+    expect(p.root.textContent).toContain("Lost your phone? On the AgEnD computer, choose “Set up again”. There is no email or backup-code recovery.");
     status = { ...base, enrolled: true, enrolledAt: Date.UTC(2026, 10, 4), outside: true, link: { state: "open", url: "https://abc.trycloudflare.com/signin", quick: true } };
     await w.check(w.$("#outSwitch"), true);
     expect(w.$("#outOpenAt").textContent).toBe("Open at https://abc.trycloudflare.com/signin. A quick link gets a new address each time it opens.");
@@ -174,6 +174,6 @@ describe("#3008 ② Settings → Access & security → Connections from outside"
   it("from elsewhere: only on the AgEnD computer — the switch read-only, no buttons", async () => {
     const w = await open({ here: false, enrolled: true, enrolledAt: 1, outside: true, link: { state: "open", quick: true } });
     expect([w.$("#outHereOnly").textContent, w.$("#outSwitch").disabled, w.$("#outSwitch").checked, w.$("#outAgain"), w.$("#outRemove"), w.$("#outSetUp"), w.$("#outOpenAt")])
-      .toEqual(["Only on the AgEnD computer.", true, true, null, null, null, null]);
+      .toEqual(["Only on the AgEnD computer. Go back to that computer to set up, set up again or remove the app.", true, true, null, null, null, null]);
   });
 });

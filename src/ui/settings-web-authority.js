@@ -65,7 +65,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     syncStage(ctx, "verified_authority", body ? { label: tn("vaTitle"), count: Object.keys(body).length,
       impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.verified_authority"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } } : null);
   }, [f, original, overview]);
-  const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText("revAuthorityBrief")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
+  const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText("revAuthorityBrief")}</p><p class="note s-authority-rule">${layoutText("revAuthorityRule")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
   if (failed) return card(html`<p class="note" role="status">${tn("vaLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`);
   if (!overview || !f) return card(html`<p class="note">${t("app.loading")}</p>`);
 
