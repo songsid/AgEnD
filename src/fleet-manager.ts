@@ -3,6 +3,7 @@ import { listKiroV1Sessions, readKiroClassicLinks } from "./backend/kiro-identit
 import { readKiroV1SavedModel } from "./backend/kiro-retired-model.js";
 import { sharedKiroV2StoreLane } from "./backend/kiro-v2-store.js";
 import { SEPARATE_FEATURE_KEYS, hasLegacyOffice, normalizeOfficeStorage } from "./dashboard-permissions.js";
+import { maskSecrets } from "./log-steps.js";
 import { loginNoticeMode, normalizeNoticeDelivery, setNoticeMode } from "./notice-delivery.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecoveryPrompt, type RecoveryCause } from "./working-recovery.js";
@@ -257,7 +258,7 @@ import { envFileKeys } from "./token-env-name.js";
 import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
-import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, checkAuthStatus, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
@@ -288,6 +289,8 @@ import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteC
 import { recentChatContext } from "./log-tail.js";
 import { describeSignalSource, recordInternalRequest, withOrigin } from "./fleet-control-audit.js";
 import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
+import { AgentCredentials, agentCredentialPolicy } from "./agent-credentials.js";
+import { writeSecretFile } from "./secret-file.js";
 import { ConfigHistory, ConfigSyntaxError, configIssueText } from "./config-history.js";
 import type { ConfigSource } from "./config-history.js";
 import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt, readClassicRoomNames } from "./classic-channel-manager.js";
@@ -408,7 +411,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -443,7 +446,12 @@ import {
 
 import { getTmuxSession } from "./config.js";
 import { OwnStatusMessages, discordMessageKey } from "./chat-log-ids.js";
-import { PROFILE_TIMELINE_FILE, recordProfileLaunch } from "./usage/profile-timeline.js";
+import { PROFILE_TIMELINE_FILE, PROFILE_UNRECORDED, recordProfileLaunch } from "./usage/profile-timeline.js";
+import { readQuotaHistory, type QuotaReading } from "./usage/quota-history.js";
+import { estimateCapacity, type CapacityEstimate, type CapacityHour } from "./usage/capacity.js";
+import { covered, hourSources } from "./usage-rollup.js";
+import { KEEP_DAYS, type HourTotals } from "./cache-ledger.js";
+import { ratesFor } from "./cache-prices.js";
 
 /** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
 type ManagedSkillRole = "general" | "worker" | "classic";
@@ -2462,6 +2470,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fleetSignatureMismatch: string[] | null = null;
   private healthServerListening = false;
 
+  private agentCredentialsCache?: AgentCredentials;
+  get agentCredentials(): AgentCredentials {
+    return this.agentCredentialsCache ??= new AgentCredentials(
+      name => agentCredentialPolicy(this.fleetConfig, name, this.isClassicInstance(name)),
+      name => {
+        try {
+          const token = randomBytes(32).toString("hex");
+          const result = writeSecretFile(join(this.getInstanceDir(name), "agent.token"), token);
+          if (!result.ok) this.logger.error({ name, mode: result.mode, reason: result.reason }, "Agent token file is not owner-only");
+          return token;
+        } catch {
+          this.logger.error({ name }, "Agent credential renewal failed; prior generation remains retired");
+          return null;
+        }
+      },
+    );
+  }
+
   constructor(public dataDir: string) {
     FleetManager.signalTarget = this;
     if (!FleetManager.sighupHandlerInstalled) {
@@ -3673,6 +3699,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * guild channel.
    */
   private reregisterClassicChannels(): void {
+    this.agentCredentialsCache?.observePolicies();
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
     // Classic's persisted adapter is authoritative. Legacy adapter-less rows
@@ -8850,6 +8877,127 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.quotaReadTimer) clearInterval(this.quotaReadTimer);
     this.quotaReadTimer = setInterval(() => { void this.backgroundQuotaRead(); }, FleetManager.QUOTA_BACKGROUND_READ_MS);
     this.quotaReadTimer.unref?.();
+    // #3066 §1: the measured capacity, published for the usage reads (get_usage, the page) — refreshed every 10 min.
+    setCapacityLookup((provider, metric) => this.capacityEstimates.get(`${provider}\u0000${metric}`) ?? null);
+    if (this.capacityTimer) clearInterval(this.capacityTimer);
+    void this.refreshCapacity();
+    this.capacityTimer = setInterval(() => { void this.refreshCapacity(); }, FleetManager.CAPACITY_REFRESH_MS);
+    this.capacityTimer.unref?.();
+  }
+
+  /** #3066 §1: the latest estimates, by `provider\0metric` (what usage-api's lookup reads, synchronously). */
+  private capacityEstimates = new Map<string, CapacityEstimate>();
+  private capacityTimer: ReturnType<typeof setInterval> | null = null;
+  static readonly CAPACITY_REFRESH_MS = 10 * 60_000;
+
+  /**
+   * #3066 §1: estimate each account's weekly 100% from the quota history (§1d) and the usage ledger's hours — both read
+   * asynchronously, the arithmetic small (usage/capacity.ts). An account is its usage provider id ("claude",
+   * "claude:hsinlin", "codex:yanxianchen"): its hours are the ledger sources of that backend under that credential profile
+   * (Codex's "unrecorded" hours are no account's). A per-model weekly ("Sonnet (weekly)") counts only that model's tokens.
+   *
+   * Prism #3073: no estimate rather than a wrong one —
+   * - a window is measured only where the ledger has its hours: kept (31 days) and scanned (`days.coverage`) for every
+   *   instance of the account's backend, and every instance whose hours count for it; the quota history goes back 12 weeks;
+   * - a profile literally named "default", "unknown" or "unrecorded" (configured, on disk, or in the quota history) makes
+   *   those hours ambiguous: neither the host
+   *   account nor the named one is estimated (each would be credited the other's use, or lose its own);
+   * - only a metric the vendor marks per-model (`scope: "model"`) is filtered by model; another named weekly pool
+   *   ("Luna Reserve (weekly)", Antigravity pools) is no model name and is not estimated.
+   */
+  async refreshCapacity(): Promise<number> {
+    try {
+      const readings = await readQuotaHistory();
+      const groups = new Map<string, QuotaReading[]>();
+      for (const r of readings) { const k = `${r.provider}\u0000${r.metric}`; (groups.get(k) ?? groups.set(k, []).get(k)!).push(r); }
+      if (!groups.size) { this.capacityEstimates = new Map(); return 0; }
+      const data = await this.cacheServiceFor().usageData();
+      const now = Date.now(), DAY = 24 * 3_600_000, HOUR = 3_600_000;
+      const keptFrom = now - KEEP_DAYS * DAY + HOUR;           // the oldest hour still in every ledger (an hour of margin)
+      // Profiles whose names are also the ledger's own tags: their hours cannot be told from the host's / unattributed.
+      // Any trace of such a profile counts (Prism #3073 r2), not only today's config — a binding removed or switched
+      // leaves its hours in the ledger: configured now, its directory on this host, or its account in the quota history.
+      const RESERVED = new Set(["default", "unknown", PROFILE_UNRECORDED]);
+      const historyProviders = new Set(readings.map((r) => r.provider));
+      const reservedNamed = new Map<string, Set<string>>();
+      const reservedFor = (backend: string): Set<string> => {
+        const known = reservedNamed.get(backend);
+        if (known) return known;
+        const found = new Set(listConfiguredProfiles(this.fleetConfig as never, backend).filter((n) => RESERVED.has(n)));
+        const base = usageProviderIdForBackend(backend);
+        for (const n of RESERVED) {
+          if (base && historyProviders.has(`${base}:${n}`)) found.add(n);
+          if (credentialHomeSpec(backend) && existsSync(credentialProfileHome(this.dataDir, backend, n))) found.add(n);
+        }
+        return reservedNamed.set(backend, found).get(backend)!;
+      };
+      // Every instance of a backend may have used any of its accounts (bindings change): an account is measured only
+      // where all of them were scanned (Prism #3073 r2) — one still waiting for its first scan has no hours yet, not none.
+      const daysOfBase = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        const base = usageProviderIdForBackend(inst.inst.backend);
+        if (base) (daysOfBase.get(base) ?? daysOfBase.set(base, []).get(base)!).push(inst.days);
+      }
+      // provider id → hour → model key → totals; and the instances whose hours count for it (their scan coverage).
+      const byProvider = new Map<string, Map<number, Record<string, HourTotals>>>();
+      const daysOf = new Map<string, Array<(typeof data.instances)[number]["days"]>>();
+      for (const inst of data.instances) {
+        for (const [hk, hour] of Object.entries(inst.ledger.hours)) {
+          for (const src of hourSources(hour)) {
+            const base = usageProviderIdForBackend(src.backend);
+            if (!base) continue;
+            // Ambiguous (a named profile with the tag's name), or no account's: counted for no one, so an account whose
+            // hours these may be has none — and gets no estimate, never a low one.
+            if (reservedFor(src.backend).has(src.profile) || src.profile === "unknown" || src.profile === PROFILE_UNRECORDED) continue;
+            const provider = src.profile === "default" ? base : `${base}:${src.profile}`;
+            const list = daysOf.get(provider) ?? daysOf.set(provider, []).get(provider)!;
+            if (!list.includes(inst.days)) list.push(inst.days);
+            const hours = byProvider.get(provider) ?? byProvider.set(provider, new Map()).get(provider)!;
+            const into = hours.get(Number(hk)) ?? hours.set(Number(hk), Object.create(null) as Record<string, HourTotals>).get(Number(hk))!;
+            for (const [mk, tot] of Object.entries(src.m)) {
+              const cur = into[mk] ??= [0, 0, 0, 0, 0, 0, 0];
+              for (let i = 0; i < 7; i++) cur[i] = (cur[i] ?? 0) + (tot[i] ?? 0);
+            }
+          }
+        }
+      }
+      const next = new Map<string, CapacityEstimate>();
+      for (const [key, list] of groups) {
+        const [provider, metric] = key.split("\u0000") as [string, string];
+        // A per-model weekly ("Sonnet (weekly)", the vendor's scope "model"): that model's tokens only. Another named
+        // pool is not a model: no estimate. "Weekly", "Weekly limit": everything.
+        const named = /^(.+) \((?:weekly|monthly|\d+d)\)$/i.exec(metric)?.[1]?.toLowerCase() ?? null;
+        const perModel = list.some((r) => r.scope === "model");
+        if (named && !perModel) continue;
+        const hours: CapacityHour[] = [];
+        for (const [hour, models] of byProvider.get(provider) ?? []) {
+          let api: number | null = 0, output = 0, all = 0;
+          for (const [mk, tot] of Object.entries(models)) {
+            const bar = mk.lastIndexOf("|"), model = mk.slice(0, bar), long = mk.slice(bar + 1) === "1";
+            if (named && !model.toLowerCase().includes(named)) continue;
+            const [, uncached, read, w5, w1h, w, out] = tot;
+            const r = ratesFor(model, long ? Number.MAX_SAFE_INTEGER : 0);
+            api = api === null || !r ? null : api + (uncached * r.input + read * r.read + w5 * r.write5m + w1h * r.write1h + w * r.write + out * r.output) / 1_000_000;
+            output += out; all += uncached + read + w5 + w1h + w + out;
+          }
+          if (all > 0) hours.push({ hour, api, output, all });
+        }
+        const base = provider.split(":")[0]!;
+        const scanned = [...new Set([...(daysOf.get(provider) ?? []), ...(daysOfBase.get(base) ?? [])])];
+        const available = (from: number, to: number): boolean => {
+          if (from < keptFrom || !scanned.length) return false;
+          for (let h = from; h <= to; h += HOUR) if (!scanned.every((d) => covered(d, h))) return false;
+          return true;
+        };
+        const est = estimateCapacity(list, hours, available);
+        if (est) next.set(key, est);
+      }
+      this.capacityEstimates = next;
+      return next.size;
+    } catch (err) {
+      this.logger.debug({ err }, "capacity estimate refresh failed");
+      return -1;
+    }
   }
 
   /** One background quota read, when nothing else reads (no Discord bot) and an account has a running agent. */
@@ -11762,6 +11910,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       switch (msg.type) {
         case "fleet_decision_create": {
+          const supersedes = this.decisionSupersedes("ipc-typed", instanceName, payload.supersedes);
+          if ("error" in supersedes) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: supersedes.error }); return; }
           // Prune expired decisions on create
           db.pruneExpiredDecisions();
           result = db.createDecision({
@@ -11772,7 +11922,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             tags: payload.tags as string[] | undefined,
             ttl_days: payload.ttl_days as number | undefined,
             created_by: instanceName,
-            supersedes: payload.supersedes as string | undefined,
+            supersedes: supersedes.id,
           });
           break;
         }
@@ -11965,6 +12115,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * `post_decision` with `supersedes` changes a decision someone else may have recorded (it stops being active): the
+   * same permission as `update_decision`, asked through the same live check (tool set + dashboard switches), on both
+   * create paths. An empty or absent value supersedes nothing and needs nothing; anything else must be an id.
+   */
+  private decisionSupersedes(sink: ToolSink, instanceName: string, value: unknown): { id: string | undefined } | { error: string } {
+    if (value === undefined || value === null || value === "") return { id: undefined };
+    if (typeof value !== "string") return { error: "supersedes must be a decision id" };
+    const permitted = this.checkToolPermission(sink, instanceName, "update_decision");
+    if (!permitted.allowed) return { error: `Superseding a decision needs update_decision. ${permitted.message}` };
+    return { id: value };
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
@@ -11979,16 +12142,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
         const scope = args.scope === "fleet" ? "fleet" : "project";
-        return db.createDecision({
-          project_root: projectRoot,
-          scope,
-          title,
-          content,
-          tags: asStrArr(args.tags),
-          ttl_days: asNum(args.ttl_days),
-          supersedes: asStr(args.supersedes),
-          created_by: instance,
-        });
+        const supersedes = this.decisionSupersedes("agent-endpoint", instance, args.supersedes);
+        if ("error" in supersedes) return { error: supersedes.error };
+        try {
+          return db.createDecision({
+            project_root: projectRoot,
+            scope,
+            title,
+            content,
+            tags: asStrArr(args.tags),
+            ttl_days: asNum(args.ttl_days),
+            supersedes: supersedes.id,
+            created_by: instance,
+          });
+        } catch (err) {
+          return { error: (err as Error).message };                   // a refused predecessor: nothing was inserted
+        }
       }
       // #2152: titles by default (agend-agent decision-list); one decision's full text by id (decision-get <id>).
       // The CLI sends include_archived (snake case, as the MCP tool): both spellings are read.
@@ -12780,6 +12949,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Object.assign(current, resolved);
     }
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.agentCredentialsCache?.observePolicies();
     this.refreshSavedDashboardPermissions();
     this.logger.info(
       { path: this.configPath, strippedDefaults: redundantPaths.length },
@@ -16013,8 +16183,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return r.ok ? { ok: true, until: Math.min(r.authorization.until, record.absoluteExpiry) } : { ok: false, refusal: r.refusal };
       },
       signOut: (handle) => {
-        this.webSessions?.revokeByHandle(handle);
-        this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+        const session = this.webSessions?.revokeByHandle(handle) ?? { found: false, durable: true };
+        const authorization = this.sessionAuthorizationStore()?.prune(a => a.handle !== handle) ?? { dropped: 0, durable: true };
+        return { durable: session.durable, authorizationDurable: authorization.durable };
       },
       event: (type, payload) => { try { this.eventLog?.insert("web", type, payload); } catch { /* the event log is best effort */ } },
       text: {
@@ -16024,6 +16195,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
         revoked: (c) => t("web_auth.card_revoked", c.label),
+        notSaved: (c) => t("web_auth.card_not_saved", c.label),
         ended: (c) => t("web_auth.card_ended", c.label),
         generalHint: () => t("web_auth.general_hint"),
         confirmLabel: () => t("web_auth.confirm"),
@@ -17168,13 +17340,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Make a tool summary safe to paste into a channel message.
    *
    * The text is agent-controlled (it is built from tool inputs — file paths,
-   * shell commands), so it gets flattened to one line, capped, and stripped of
-   * the two Discord mass-mention triggers. Neither channel renders it with a
-   * parse mode, so no markup escaping is needed beyond that.
+   * shell commands), so it gets flattened to one line, secrets masked, capped,
+   * and stripped of the two Discord mass-mention triggers. Masking comes BEFORE
+   * the cap: a cap can cut a mask's context but must never be what hides (or
+   * fails to hide) a secret. Neither channel renders it with a parse mode, so no
+   * markup escaping is needed beyond that.
    */
   private static sanitizeActivity(activity?: string | null): string | null {
     if (!activity) return null;
-    const flat = activity.replace(/\s+/g, " ").replace(/@(everyone|here)/g, "@​$1").trim();
+    const flat = maskSecrets(activity.replace(/\s+/g, " ")).replace(/@(everyone|here)/g, "@​$1").trim();
     if (!flat) return null;
     return flat.length > PROGRESS_ACTIVITY_MAX_CHARS
       ? `${flat.slice(0, PROGRESS_ACTIVITY_MAX_CHARS - 1)}…`
@@ -21812,6 +21986,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
     if (this.quotaReadTimer) { clearInterval(this.quotaReadTimer); this.quotaReadTimer = null; }
+    if (this.capacityTimer) { clearInterval(this.capacityTimer); this.capacityTimer = null; }
+    setCapacityLookup(null);
     if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }
     this.discordPresenceEagerPending = false;
     // Cancel-button timers were never cleared here. The idle-check interval is not
@@ -22115,6 +22291,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // mark every row done and tell the user "changes applied".
       return { rejected: why };
     }
+    this.agentCredentialsCache?.observePolicies();
     if (this.loadedFleetSource) this.getConfigHistory().accepted("fleet.yaml", this.configPath, this.loadedFleetSource);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();

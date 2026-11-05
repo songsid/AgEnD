@@ -500,14 +500,24 @@ export class SchedulerDb {
     const expiresAt = ttl > 0 ? new Date(Date.now() + ttl * 86_400_000).toISOString() : null;
 
     const scope = params.scope ?? "project";
-    this.db.prepare(`
-      INSERT INTO decisions (id, project_root, scope, title, content, tags, created_by, created_at, expires_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, params.project_root, scope, params.title, params.content, params.tags?.length ? JSON.stringify(params.tags) : null, params.created_by, now, expiresAt, now);
-
-    if (params.supersedes) {
-      this.supersedeDecision(params.supersedes, id);
-    }
+    // One transaction: a predecessor that is not there, not visible to this project, or no longer active — or an update
+    // that changes no row — throws, and the new decision is not inserted either (never a new one beside an old one
+    // still standing, never an old one marked superseded by nothing).
+    this.db.transaction(() => {
+      const old = params.supersedes ? this.getDecision(params.supersedes) : null;
+      if (params.supersedes) {
+        const visible = old && (old.scope === "fleet" || old.project_root === params.project_root);
+        if (!old || !visible) throw new Error(`Decision "${params.supersedes}" not found`);
+        if (old.status !== "active") throw new Error(`Decision "${params.supersedes}" is ${old.status}, not active: only an active decision can be superseded`);
+      }
+      this.db.prepare(`
+        INSERT INTO decisions (id, project_root, scope, title, content, tags, created_by, created_at, expires_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, params.project_root, scope, params.title, params.content, params.tags?.length ? JSON.stringify(params.tags) : null, params.created_by, now, expiresAt, now);
+      if (params.supersedes && this.supersedeDecision(params.supersedes, id) !== 1) {
+        throw new Error(`Decision "${params.supersedes}" could not be superseded`);
+      }
+    })();
 
     return this.getDecision(id)!;
   }
@@ -571,9 +581,10 @@ export class SchedulerDb {
     this.db.prepare("UPDATE decisions SET status = 'archived', updated_at = ? WHERE id = ?").run(new Date().toISOString(), id);
   }
 
-  supersedeDecision(oldId: string, newId: string): void {
-    this.db.prepare("UPDATE decisions SET status = 'superseded', superseded_by = ?, updated_at = ? WHERE id = ?")
-      .run(newId, new Date().toISOString(), oldId);
+  /** Mark an active decision superseded by `newId`: the number of rows changed (0 when it is not there or not active). */
+  supersedeDecision(oldId: string, newId: string): number {
+    return this.db.prepare("UPDATE decisions SET status = 'superseded', superseded_by = ?, updated_at = ? WHERE id = ? AND status = 'active'")
+      .run(newId, new Date().toISOString(), oldId).changes;
   }
 
   pruneExpiredDecisions(): number {

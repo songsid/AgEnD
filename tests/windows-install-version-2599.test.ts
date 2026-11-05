@@ -66,16 +66,19 @@ Write-Output ('FRESH='+(Get-SavedInstallVersion '' $false))`);
   it('RunOnce restores the selected version through install.ps1 without Force or shell injection', () => {
     const out = run(`
 $RESUME_KEY='scratch'; $RESUME_NAME='AgEnDInstallResume'
-$RESUME_COMMAND='powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"'
+$env:LOCALAPPDATA = Join-Path $env:TMPDIR 'lad'
 $AgendInstallVersion='beta'
-function Test-Path {return $true}
 function Set-ItemProperty {param($Path,$Name,$Value);Write-Output ('REGISTER='+$Value) | Out-Host}
 Register-ResumeAtLogon | Out-Null
-Write-Output ('DEFAULT='+(Get-InstallResumeCommand ''))
-try{Get-InstallResumeCommand 'beta;bad';throw 'Unsafe accepted'}catch{if($_ -match 'Unsafe accepted'){throw};Write-Output 'REJECTED'}`);
-    expect(out).toContain(`REGISTER=powershell -ExecutionPolicy ByPass -c "$env:AGEND_VERSION='beta'; irm https://songsid.github.io/AgEnD/install.ps1 | iex"`);
+Write-Output ('SCRIPT='+([IO.File]::ReadAllText((Get-InstallResumeScriptPath)) -replace "\`r?\`n", ' | '))
+Write-Output ('DEFAULT='+((Get-InstallResumeScript '') -replace "\`r?\`n", ' | '))
+try{Get-InstallResumeScript 'beta;bad';throw 'Unsafe accepted'}catch{if($_ -match 'Unsafe accepted'){throw};Write-Output 'REJECTED'}`);
+    // RunOnce runs the saved resume script (github.io first, then the deployed raw copy); it carries the version.
+    expect(out).toMatch(/REGISTER=powershell -NoProfile -ExecutionPolicy ByPass -File "[^"]*lad[\\/]AgEnD[\\/]install-resume\.ps1"/);
+    expect(out).toContain("SCRIPT=");
+    expect(out).toMatch(/SCRIPT=.*\$env:AGEND_VERSION = 'beta'.*irm|SCRIPT=.*\$env:AGEND_VERSION = 'beta'.*Invoke-RestMethod/);
     expect(out).not.toContain('-Force'); expect(out).toContain('REJECTED');
-    expect(out).toContain('DEFAULT=powershell -ExecutionPolicy ByPass -c "irm ');
+    expect(out).toMatch(/DEFAULT=(?!.*AGEND_VERSION).*Invoke-Expression/);
   });
   it('fresh stage installs beta.x in stub WSL; latest/unset/exact stay scoped to the installer bash', () => {
     const out = run(`
@@ -88,7 +91,7 @@ function Invoke-WslStep {param($Label,$Usually,$UpperMinutes,$Script)
   Write-Host ('INSTALL='+$Script)
   if($Script -match 'AGEND_VERSION=beta bash'){$script:installed='2.3.2-beta.5'}
   elseif($Script -match 'AGEND_VERSION=2.3.2-beta.4 bash'){$script:installed='2.3.2-beta.4'}
-  elseif($Script -match 'install.sh \\| (AGEND_VERSION=latest )?bash'){$script:installed='2.3.1'}
+  elseif($Script -match '; (AGEND_VERSION=latest )?bash < \\$f \\)'){$script:installed='2.3.1'}
   else{throw 'Unexpected install script'}
   return 0
 }
@@ -97,7 +100,7 @@ function Get-VerifiedAgendVersion($expected){if($expected -cne $script:installed
 foreach($v in @('beta','latest','','2.3.2-beta.4')){$AgendInstallVersion=$v;. ([scriptblock]::Create($stage.Extent.Text))}`);
     expect(out).toContain('VERIFIED=2.3.2-beta.5'); expect(out).toContain('VERIFIED=2.3.2-beta.4');
     expect(out.match(/VERIFIED=2.3.1/g)).toHaveLength(2);
-    expect(out).toContain('install.sh | AGEND_VERSION=beta bash');
+    expect(out).toContain('AGEND_VERSION=beta bash < $f )');
   });
   it.each(['terminal','conhost'])('explicit version and drive arguments survive %s elevation with an empty child environment', mode => {
     const out = run(`

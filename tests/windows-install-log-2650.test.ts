@@ -137,7 +137,7 @@ Write-Warn 'warned'`);
     expect(log).toContain("  [!!] warned");
     expect(log).not.toMatch(/ABCD-EFGH|WXYZ-2345|token=abc/);
     expect(out.match(/安裝紀錄（回報問題時請附上這個檔案）：/g)?.length).toBe(1);
-    expect(out).toMatch(/安裝紀錄（回報問題時請附上這個檔案）：\n {4}\S*install-\d{8}-\d{6}-\d+\.log\n/); // #3068: the path on its own line
+    expect(out).toMatch(/安裝紀錄（回報問題時請附上這個檔案）：\S*install-\d{8}-\d{6}-\d+\.log/);
     expect(receipt).toMatchObject({ run: "a".repeat(32), outcome: "running", stage: "2", failure: null });
     expect(receipt.log).toMatch(/install-\d{8}-\d{6}-\d+\.log$/);
   });

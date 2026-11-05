@@ -64,9 +64,7 @@ function Write-Err($msg) {
     # 第一次出錯時說一次安裝紀錄在哪裡：視窗關掉以後，回報問題就附上這個檔案。
     if ($script:InstallLog -and -not $script:InstallLogShown) {
         $script:InstallLogShown = $true
-        # 路徑自己一行：接在說明後面時，窄的視窗會從路徑中間折行（#3068）。
-        Write-Host "  安裝紀錄（回報問題時請附上這個檔案）：" -ForegroundColor Yellow
-        Write-Host "    $($script:InstallLog)" -ForegroundColor Yellow
+        Write-Host "  安裝紀錄（回報問題時請附上這個檔案）：$($script:InstallLog)" -ForegroundColor Yellow
     }
 }
 function Write-Info($msg) { Write-Host "  $msg" -ForegroundColor White; Write-InstallLog "  $msg" }
@@ -189,33 +187,77 @@ function Save-InstallVersion([string]$version) {
     $version = Resolve-AgendInstallVersion $version
     if ($version) { Add-Content -Path $ProgressFile -Value ("AGEND_VERSION=" + $version) }
 }
+# 安裝檔從哪裡下載，依序：GitHub Pages，再來是 GitHub raw 上「已部署的那一份」（tag installer-live 只在 Pages 部署成功後
+# 才移到那個 commit，見 deploy-website.yml）。有些公司網路擋掉所有 *.github.io，但 raw.githubusercontent.com 可以連。
+function Get-InstallSources { return @('https://songsid.github.io/AgEnD', 'https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public') }
+# 在 WSL 裡下載 install.sh 再執行：依序試每個來源，下載完整、而且開頭兩行正好是 install.sh 的開頭才執行（不會把半份、
+# 或擋下來、內容帶著網址的網頁交給 bash）。在子 shell 裡：它的 exit 和清理只屬於這一段，外面的 set -e 照樣看結束碼。腳本裡沒有雙引號。
+function Get-AgendInstallShScript([string]$pin, [string[]]$sources = (Get-InstallSources)) {
+    $urls = ($sources | ForEach-Object { $_.TrimEnd('/') + '/install.sh' }) -join ' '
+    return ('( f=$(mktemp) || exit 1; trap ''rm -f -- $f'' EXIT; ok=; for u in ' + $urls + '; do ' +
+        'if curl --connect-timeout 20 --max-time 120 -fsSL -o $f $u && head -n 1 $f | grep -qx ''#!/usr/bin/env bash'' && sed -n 2p $f | grep -qx ''# AgEnD Bootstrap Installer''; then ok=1; break; fi; ' +
+        'echo AgEnD: could not fetch $u, trying the next source >&2; done; ' +
+        '[ x$ok = x1 ] || { echo AgEnD: install.sh could not be fetched from songsid.github.io or raw.githubusercontent.com >&2; exit 1; }; ' +
+        $pin + 'bash < $f )')
+}
 function Get-AgendInstallCommand([string]$version) {
     $version = Resolve-AgendInstallVersion $version
     $pin = ''; if ($version) { $pin = "AGEND_VERSION=$version " }
-    return ('set -o pipefail; curl --connect-timeout 20 --max-time 120 -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash')
+    return (Get-AgendInstallShScript $pin)
 }
-function Get-InstallResumeCommand([string]$version) {
+# 重新開機後的接續：Windows 的 RunOnce 只執行一行短指令（官方建議 260 字以內），放不下兩個來源，所以把「依序試兩個
+# 來源、下載 install.ps1 再執行」寫成這個帳號底下的一個小腳本，RunOnce 只執行它。內容只有 ASCII（5.1 讀沒有 BOM 的
+# 檔案用系統字碼頁）。$version 已經驗證過（Resolve-AgendInstallVersion）。
+function Get-InstallResumeScript([string]$version, [string[]]$sources = (Get-InstallSources)) {
     $version = Resolve-AgendInstallVersion $version
-    if (-not $version) { return $RESUME_COMMAND }
-    return ('powershell -ExecutionPolicy ByPass -c "$env:AGEND_VERSION=' + "'$version'; " + 'irm https://songsid.github.io/AgEnD/install.ps1 | iex"')
+    $urls = ($sources | ForEach-Object { "'" + $_.TrimEnd('/') + "/install.ps1'" }) -join ', '
+    $lines = @(
+        '# AgEnD: carry on the Windows install after a restart. Written by install-agend.ps1, run once by RunOnce.'
+        "if (`$PSVersionTable.PSEdition -eq 'Desktop') { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 }"
+    )
+    if ($version) { $lines += ("`$env:AGEND_VERSION = '" + $version + "'") }
+    $lines += @(
+        '$installer = $null'
+        ('foreach ($u in @(' + $urls + ')) {')
+        '    try {'
+        '        $t = [string](Invoke-RestMethod -Uri $u -UseBasicParsing -TimeoutSec 120)'
+        '        if ($t -match ''function Invoke-InstallDownload\('') { $installer = $t; break }'
+        '        Write-Host "AgEnD: $u did not return the installer; trying the next source."'
+        '    } catch { Write-Host "AgEnD: $u could not be reached ($($_.Exception.Message)); trying the next source." }'
+        '}'
+        'if ($installer) { Invoke-Expression $installer } else {'
+        '    Write-Host ''AgEnD: the installer could not be downloaded from songsid.github.io or raw.githubusercontent.com.'' -ForegroundColor Red'
+        '    Write-Host ''Check the network, then run the install command from the install page again: it carries on where it stopped.'''
+        '    Read-Host ''Press Enter to close'' | Out-Null'
+        '}'
+    )
+    return (($lines -join "`r`n") + "`r`n")
+}
+function Get-InstallResumeScriptPath { return (Join-Path $env:LOCALAPPDATA 'AgEnD\install-resume.ps1') }
+function Get-InstallResumeCommand([string]$path) {
+    return ('powershell -NoProfile -ExecutionPolicy ByPass -File "' + $path + '"')
 }
 
 # ── 重新開機後自動接續、自動選擇（#1853：使用者核准的第 ② 步）──────────────
 # 需要重新開機時，登記一個「登入後執行一次」（HKCU RunOnce）：登入後自動再跑同一行安裝指令，從中斷處繼續。
 # 每次安裝程式一開始就先清掉它，只在要重新開機前才登記，所以完成或失敗都不會留下舊的登記。Windows 執行它之前也會先刪掉它。
-# 接續一律用一行指令（它會請你同意一次系統管理員權限），不帶 -Force：接續只是繼續，不是重來。
+# 接續一律跑 install.ps1（它會請你同意一次系統管理員權限），不帶 -Force：接續只是繼續，不是重來。它先試 GitHub Pages，
+# 連不上再用 raw 上已部署的那一份（Get-InstallResumeScript），所以擋掉 *.github.io 的網路也能接續。
 $RESUME_KEY = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce'
 $RESUME_NAME = 'AgEnDInstallResume'
-$RESUME_COMMAND = 'powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"'
 function Register-ResumeAtLogon {
     try {
+        $path = Get-InstallResumeScriptPath
+        New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+        [IO.File]::WriteAllText($path, (Get-InstallResumeScript $AgendInstallVersion), (New-Object Text.UTF8Encoding $false))
         if (-not (Test-Path $RESUME_KEY)) { New-Item -Path $RESUME_KEY -Force | Out-Null }
-        Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value (Get-InstallResumeCommand $AgendInstallVersion)
+        Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value (Get-InstallResumeCommand $path)
         return $true
     } catch { return $false }
 }
 function Clear-ResumeAtLogon {
     try { Remove-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -ErrorAction Stop } catch { }
+    try { Remove-Item -LiteralPath (Get-InstallResumeScriptPath) -Force -ErrorAction Stop } catch { }
 }
 # 要重新開機時：登記接續，說明會發生什麼，問一次要不要現在重開。接續的登記和進度都在這個 Windows 帳號底下，
 # 所以要說清楚重新開機後要用哪個帳號登入（#2650 第 5 項）。
@@ -238,7 +280,8 @@ function Request-Reboot([string]$why) {
 # ── 網路檢查：安裝真正要連的地方，Windows 和 WSL 分開檢查（#2650 第 8 項）──────────
 # 以前只連一次 Google，連不上就整個停下來：Google 被擋、但需要的網站都能連的公司網路會被誤擋；反過來，Windows 的瀏覽器
 # 走公司 proxy 能連，WSL 裡的 curl/apt/npm 卻不行時，檢查通過了，後面的下載才失敗或一直等。現在：
-# - Windows 這邊：連 songsid.github.io（安裝指令與重新開機後的接續都從這裡下載，必須能連）和 GitHub（WSL 更新的備案，
+# - Windows 這邊：連 songsid.github.io（安裝指令與重新開機後的接續都從這裡下載；被擋時改用 raw.githubusercontent.com 上
+#   同一份已部署的，兩個有一個能連就好）和 GitHub（WSL 更新的備案，
 #   連不上只警告）。
 # - WSL 這邊（Ubuntu 好了之後、安裝 AgEnD 之前）：AgEnD 的安裝程式、npm、Node.js、nvm 必須能連；Ubuntu 套件庫和各家
 #   AI 後端的網站連不上只警告。
@@ -307,6 +350,7 @@ function Format-NetFailure([string]$kind) {
         'timeout' { return '逾時' }
         'refused' { return '連線被拒或被防火牆擋住' }
         'tls' { return 'HTTPS 憑證不被信任（常見於公司會檢查加密連線的網路）' }
+        'handshake' { return 'HTTPS 連線在握手時被切斷（常見於防火牆擋掉這個網站，不是憑證的問題）' }
         'proxy' { return 'proxy 擋住或需要登入' }
         'curl' { return 'WSL 裡沒有 curl，無法檢查' }
     }
@@ -314,14 +358,14 @@ function Format-NetFailure([string]$kind) {
 }
 # 依原因說明怎麼做。$where：'windows' 或 'wsl'；$proxy：Windows 用的 proxy（或 $null）。
 function Write-NetAdvice([string[]]$kinds, [string]$where, $proxy) {
+    if ($kinds -contains 'handshake') {
+        Write-Info "  連線在 HTTPS 握手時就被切斷：多半是防火牆擋掉了那個網站，不是憑證的問題。"
+        Write-Info "  songsid.github.io 被擋時，安裝程式會改用 raw.githubusercontent.com 上同一份已部署的安裝程式。"
+    }
     if ($kinds -contains 'tls') {
-        Write-Info "  HTTPS 憑證的問題：公司網路常用自己的憑證檢查加密連線。"
-        Write-Info "  請向 IT 人員要公司的根憑證（.crt），"
+        Write-Info "  HTTPS 憑證的問題：公司網路常用自己的憑證檢查加密連線。請向 IT 人員要公司的根憑證（.crt），"
         if ($where -eq 'wsl') {
-            # 一行一句，不讓窄的視窗把句尾折到最左邊（#3068）。
-            Write-Info "  放到 Ubuntu 的 /usr/local/share/ca-certificates/，"
-            Write-Info "  再執行 update-ca-certificates；"
-            Write-Info "  Node.js 另外要設定 NODE_EXTRA_CA_CERTS，指向這個檔案。"
+            Write-Info "  放到 Ubuntu 的 /usr/local/share/ca-certificates/ 再執行 update-ca-certificates；Node.js 另外設定 NODE_EXTRA_CA_CERTS 指向這個檔案。"
         } else {
             Write-Info "  或確認 Windows 已安裝它（IT 通常會統一安裝）。請不要關掉憑證檢查。"
         }
@@ -343,17 +387,32 @@ function Write-NetAdvice([string[]]$kinds, [string]$where, $proxy) {
         }
     }
 }
-# 印出檢查結果並決定要不要繼續：必須的都連得上（或使用者明確回答 y）回傳 $true。$results：@{ Host; Why; Required; Kind }。
+# 必須的網站有備用來源時（*.github.io 被擋的公司網路：GitHub raw 上同一份已部署的安裝程式），備用的連得上就算通過，
+# 兩個都說出來；兩個都連不上才算失敗。
+$NET_ALTERNATES = @{ 'songsid.github.io' = 'raw.githubusercontent.com' }
+# 印出檢查結果並決定要不要繼續：必須的都連得上（或它的備用來源連得上，或使用者明確回答 y）回傳 $true。$results：@{ Host; Why; Required; Kind }。
 function Resolve-NetResults($results, [string]$where) {
     $failed = @($results | Where-Object { $_.Kind })
-    $required = @($failed | Where-Object { $_.Required })
     $label = if ($where -eq 'wsl') { 'WSL 裡' } else { 'Windows' }
     if ($failed.Count -eq 0) { Write-Ok "$label 的網路連線正常（需要的網站都連得上）"; return $true }
+    $byHost = @{}; foreach ($r in $results) { $byHost[$r.Host] = $r }
+    # 連線方式和 curl 的結束碼：回報問題時，從安裝紀錄就分得出是防火牆擋網站，還是 proxy 在檢查加密連線。
+    $via = @($results | Where-Object { $_.Via } | ForEach-Object { $_.Via }) | Select-Object -First 1
+    if ($via) { Write-Info $(if ($via -eq 'direct') { "$label 直接連線（沒有設定 https_proxy）" } else { "$label 經過 proxy $via 連線" }) }
+    foreach ($r in $failed) { if ($null -ne $r.Code) { Write-InstallLog ("  {0} {1}：curl 結束碼 {2}（{3}）" -f $label, $r.Host, $r.Code, $r.Kind) } }
+    $required = @()
     foreach ($r in $failed) {
         $line = "{0} 連不上 {1}（{2}）：{3}" -f $label, $r.Host, $r.Why, (Format-NetFailure $r.Kind)
-        if ($r.Required) { Write-Err $line } else { Write-Warn ($line + "；只有用到時才需要") }
+        $alt = if ($NET_ALTERNATES.ContainsKey($r.Host)) { $NET_ALTERNATES[$r.Host] } else { $null }
+        $altOk = $alt -and $byHost.ContainsKey($alt) -and -not $byHost[$alt].Kind
+        if (-not $r.Required) { Write-Warn ($line + "；只有用到時才需要") }
+        elseif ($altOk) { Write-Warn ($line + "；改用 $alt（同一份已部署的安裝程式），可以繼續") }
+        else {
+            if ($alt) { $line += "；備用來源 $alt 也連不上" }
+            Write-Err $line; $required += $r
+        }
     }
-    Write-NetAdvice @($failed | ForEach-Object { $_.Kind }) $where (Get-WindowsProxy)
+    Write-NetAdvice @($failed | ForEach-Object { $_.Kind }) $where (Get-WindowsProxy $failed[0].Host)
     if ($required.Count -eq 0) { return $true }
     $answer = Read-Host "  安裝需要上面這些網站，現在多半會失敗。還是要繼續嗎？(y/N)"
     return (([string]$answer) -match '^\s*[yY]\s*$')
@@ -369,9 +428,12 @@ function Get-WslNetScript($endpoints) {
     return @(
         'command -v curl >/dev/null 2>&1 || { echo NET_NO_CURL; exit 0; }'
         ('for h in ' + $hosts + '; do ( c=1; for i in 1 2; do curl -sS -o /dev/null -m 10 https://$h/ 2>/dev/null; c=$?; [ $c -eq 0 ] || [ $c -eq 22 ] && break; done; echo NET\|$h\|$c ) & done; wait')
+        # 這些連線怎麼出去：直接，或經過 https_proxy（只印主機和連接埠，帳密不印）。分辨「防火牆擋網站」和「proxy 檢查加密連線」。
+        'p=${https_proxy:-${HTTPS_PROXY:-}}; p=${p#*://}; p=${p##*@}; p=${p%%/*}; echo NET_PATH\|${p:-direct}'
     ) -join "`n"
 }
-# curl 的結束碼 → 原因（0、22 是有 HTTP 回應）。
+# curl 的結束碼 → 原因（0、22 是有 HTTP 回應）。35 是握手失敗（連線在 TLS 握手時被切斷：防火牆擋網站），和 60 這類
+# 「憑證不被信任」（公司檢查加密連線）分開：兩種的處理方式不同。
 function Get-CurlFailureKind([int]$code) {
     switch ($code) {
         { $_ -in 0, 22 } { return $null }
@@ -379,7 +441,8 @@ function Get-CurlFailureKind([int]$code) {
         6 { return 'dns' }
         7 { return 'refused' }
         28 { return 'timeout' }
-        { $_ -in 35, 51, 53, 54, 58, 59, 60, 66, 77, 80, 83, 90, 91 } { return 'tls' }
+        35 { return 'handshake' }
+        { $_ -in 51, 53, 54, 58, 59, 60, 66, 77, 80, 83, 90, 91 } { return 'tls' }
     }
     return 'other'
 }
@@ -387,322 +450,28 @@ function ConvertFrom-WslNetOutput([string]$text, $endpoints) {
     if ($text -match 'NET_NO_CURL') { return @($endpoints | ForEach-Object { @{ Host = $_.Host; Why = $_.Why; Required = $false; Kind = 'curl' } }) }
     $codes = @{}
     foreach ($m in [regex]::Matches($text, '(?m)^NET\|([A-Za-z0-9.-]+)\|(\d+)\s*$')) { $codes[$m.Groups[1].Value] = [int]$m.Groups[2].Value }
+    $path = [regex]::Match($text, '(?m)^NET_PATH\|([A-Za-z0-9._:\[\]-]{1,200})\s*$')
+    $via = if ($path.Success) { $path.Groups[1].Value } else { $null }
     return @($endpoints | ForEach-Object {
-        $k = if ($codes.ContainsKey($_.Host)) { Get-CurlFailureKind $codes[$_.Host] } else { 'other' }
-        @{ Host = $_.Host; Why = $_.Why; Required = $_.Required; Kind = $k }
+        $c = if ($codes.ContainsKey($_.Host)) { $codes[$_.Host] } else { $null }
+        $k = if ($null -ne $c) { Get-CurlFailureKind $c } else { 'other' }
+        @{ Host = $_.Host; Why = $_.Why; Required = $_.Required; Kind = $k; Code = $c; Via = $via }
     })
-}
-# 在 WSL 裡跑一段 bash 腳本（短的檢查，有時間上限），回傳 @{ Code; Text }；出錯時 Code 是 -1。
-function Invoke-WslScriptText([string]$distro, [string]$user, [string]$script, [int]$timeoutSeconds = 60) {
-    $file = $null
-    $prevEAP = $ErrorActionPreference
-    try {
-        $ErrorActionPreference = 'Continue'
-        $file, $wslFile = New-WslScriptFile $script $distro
-        return (Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', $user, '--exec', 'bash', $wslFile) -TimeoutSeconds $timeoutSeconds)
-    } catch { return @{ Code = -1; Text = [string]$_ } } finally {
-        $ErrorActionPreference = $prevEAP
-        if ($file) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
-    }
-}
-function Get-WslNetResults([string]$distro) {
-    $probe = Invoke-WslScriptText $distro 'root' (Get-WslNetScript $NET_WSL) 60
-    $text = if ($probe.Code -eq 0) { [string]$probe.Text } else { '' }
-    return (ConvertFrom-WslNetOutput $text $NET_WSL)
 }
 function Test-WslNetwork([string]$distro) {
     Write-Info "檢查 WSL 裡的網路連線（安裝需要的網站）..."
-    $results = Get-WslNetResults $distro
-    # 公司網路檢查加密連線（#3068）：攔截用的根憑證如果 Windows 已經信任，經過同意後只匯入那一張，再檢查一次。
-    $tls = @($results | Where-Object { $_.Required -and $_.Kind -eq 'tls' }) | Select-Object -First 1
-    if ($tls) {
-        Write-Warn ("WSL 裡連 {0} 時，HTTPS 憑證不被信任（常見於公司會檢查加密連線的網路）" -f $tls.Host)
-        if (Invoke-OrgRootOffer $distro $tls.Host) {
-            Write-Info "重新檢查 WSL 裡的網路連線..."
-            $results = Get-WslNetResults $distro
-        }
-    }
-    return (Resolve-NetResults $results 'wsl')
-}
-
-# ── 公司網路的 HTTPS 檢查：從 Windows 匯入那一張根憑證（#3068）────────────
-# 公司網路常在中間解開再重新加密 HTTPS（TLS inspection），用公司自己的根憑證簽。IT 通常只把它裝進 Windows，WSL 裡的
-# curl、apt、Node.js、npm 不認得，安裝就停在網路檢查。這裡：
-# 1. 在 WSL 裡讀出連線實際出示的憑證鏈（openssl s_client），取最上面那張的簽發者；
-# 2. 在 Windows 的受信任根憑證（LocalMachine\Root、CurrentUser\Root）裡找「同一張」：名稱相同，而且金鑰識別碼相同
-#    （Authority Key Identifier = Subject Key Identifier），絕不只比名稱；再用 openssl 確認它真的簽了出示的憑證；
-# 3. 把名稱、SHA-256 指紋和位置給使用者看，問 y/N（預設不匯入）；同意了才只匯入這一張到 AgEnD 的 Linux
-#    （/usr/local/share/ca-certificates/agend-org-root-<指紋前 8 碼>.crt + update-ca-certificates），讓 Node.js 和 npm 也
-#    信任它：NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env、/etc/profile.d/agend-org-ca.sh（登入的 shell），也帶給這次安裝接下來的
-#    WSL 步驟（WSLENV）。.env 裡已經有指向別的檔案的 NODE_EXTRA_CA_CERTS 時，三處都不改：它仍然有效（#3071 審查）。
-# 絕不：關掉憑證檢查（NODE_TLS_REJECT_UNAUTHORIZED=0、strict-ssl=false）、匯入 Windows 全部的根憑證、沒有同意就匯入。
-# 找不到、驗證不過、使用者不同意或匯入失敗：照舊顯示手動設定的說明。
-$ORG_CA_DIR = '/usr/local/share/ca-certificates'
-$ORG_CA_PROFILE = '/etc/profile.d/agend-org-ca.sh'
-# 讀 AgEnD 的 .env 裡現在的 NODE_EXTRA_CA_CERTS 到 $old（和 env-file.ts 一樣：export 、一對引號都去掉）。
-$ORG_CA_ENV_READ = @(
-    'd=${AGEND_HOME:-$HOME/.agend}; e=$d/.env'
-    'old=; if [ -f "$e" ]; then old=$(sed -n -E ''s/^[[:space:]]*(export[[:space:]]+)?NODE_EXTRA_CA_CERTS[[:space:]]*=[[:space:]]*//p'' "$e" | tail -n 1 | sed -E ''s/[[:space:]]+$//''); fi'
-    'old=${old#\"}; old=${old%\"}; old=${old#\''}; old=${old%\''}'
-)
-
-# 讀 WSL 裡連 $hostName 時出示的憑證鏈（PEM）。有 https_proxy 時經過它（不帶帳密）。沒有 openssl 時印 CHAIN_NO_OPENSSL。
-function Get-WslChainScript([string]$hostName, [int]$port = 443) {
-    if ($hostName -notmatch '^[A-Za-z0-9.-]+$') { throw 'Invalid host name.' }
-    return (@(
-        'command -v openssl >/dev/null 2>&1 || { echo CHAIN_NO_OPENSSL; exit 0; }'
-        'p=${https_proxy:-${HTTPS_PROXY:-}}; set --'
-        'if [ -n "$p" ]; then p=${p#*://}; p=${p##*@}; p=${p%%/*}; set -- -proxy "$p"; fi'
-        ('echo | timeout 20 openssl s_client -showcerts -servername ' + $hostName + ' -connect ' + $hostName + ':' + $port + ' "$@" 2>/dev/null | sed -n ''/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p''')
-        'exit 0'
-    ) -join "`n")
-}
-function ConvertFrom-PemChain([string]$text) {
-    $certs = New-Object Collections.ArrayList
-    foreach ($m in [regex]::Matches([string]$text, '-----BEGIN CERTIFICATE-----([A-Za-z0-9+/=\s]+?)-----END CERTIFICATE-----')) {
-        try { $null = $certs.Add((New-Object Security.Cryptography.X509Certificates.X509Certificate2 (, [Convert]::FromBase64String(($m.Groups[1].Value -replace '\s', ''))))) } catch { }
-    }
-    return $certs.ToArray()                                           # 呼叫的人用 @(...) 接：空的就是 0 張
-}
-function ConvertTo-Pem($cert) {
-    $b64 = [Convert]::ToBase64String($cert.RawData)
-    $lines = for ($i = 0; $i -lt $b64.Length; $i += 64) { $b64.Substring($i, [Math]::Min(64, $b64.Length - $i)) }
-    return ("-----BEGIN CERTIFICATE-----`n" + ($lines -join "`n") + "`n-----END CERTIFICATE-----`n")
-}
-function Test-SameBytes($a, $b) {
-    if ($null -eq $a -or $null -eq $b) { return $false }
-    return ([Convert]::ToBase64String([byte[]]$a) -ceq [Convert]::ToBase64String([byte[]]$b))
-}
-# DER 的一個元素：@{ Tag; Start（內容開始）; End }，超出範圍就丟出例外。
-function Get-DerElement([byte[]]$b, [int]$i) {
-    if ($i + 2 -gt $b.Length) { throw 'DER out of range' }
-    $tag = $b[$i]; $len = [int]$b[$i + 1]; $p = $i + 2
-    if ($len -band 0x80) {
-        $n = $len -band 0x7f
-        if ($n -lt 1 -or $n -gt 3 -or $p + $n -gt $b.Length) { throw 'DER length' }
-        $len = 0; for ($k = 0; $k -lt $n; $k++) { $len = $len * 256 + $b[$p + $k] }; $p += $n
-    }
-    if ($p + $len -gt $b.Length) { throw 'DER out of range' }
-    return @{ Tag = $tag; Start = $p; End = $p + $len }
-}
-# 憑證的金鑰識別碼（大寫十六進位）：'ski' 是它自己的（Subject Key Identifier），'aki' 是簽發者的（Authority Key
-# Identifier 的 keyIdentifier）。沒有就 $null。
-function Get-CertKeyId($cert, [string]$which) {
-    $oid = if ($which -eq 'ski') { '2.5.29.14' } else { '2.5.29.35' }
-    $ext = @($cert.Extensions | Where-Object { $_.Oid.Value -eq $oid }) | Select-Object -First 1
-    if (-not $ext) { return $null }
+    $text = ''
+    $file, $wslFile = New-WslScriptFile (Get-WslNetScript $NET_WSL)
+    $prevEAP = $ErrorActionPreference
     try {
-        $b = [byte[]]$ext.RawData
-        $hex = { param($e) if ($e.End -le $e.Start) { return $null }; return ([BitConverter]::ToString($b, $e.Start, $e.End - $e.Start) -replace '-', '') }
-        if ($which -eq 'ski') { $o = Get-DerElement $b 0; if ($o.Tag -ne 0x04) { return $null }; return (& $hex $o) }
-        $s = Get-DerElement $b 0; if ($s.Tag -ne 0x30) { return $null }
-        $i = $s.Start
-        while ($i -lt $s.End) { $c = Get-DerElement $b $i; if ($c.Tag -eq 0x80) { return (& $hex $c) }; $i = $c.End }
-    } catch { }
-    return $null
-}
-function Get-CertSha256($cert) {
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { return ([BitConverter]::ToString($sha.ComputeHash($cert.RawData)) -replace '-', '') } finally { $sha.Dispose() }
-}
-# Windows 信任的根憑證：@{ Cert; Store }。
-function Get-WindowsRootCerts {
-    $out = New-Object Collections.ArrayList
-    foreach ($loc in 'LocalMachine', 'CurrentUser') {
-        try { foreach ($c in @(Get-ChildItem -Path "Cert:\$loc\Root" -ErrorAction Stop)) { $null = $out.Add(@{ Cert = $c; Store = "$loc\Root" }) } } catch { }
+        $ErrorActionPreference = 'Continue'
+        $probe = Invoke-BoundedWsl -Arguments @('-d', $distro, '-u', 'root', '--exec', 'bash', $wslFile) -TimeoutSeconds 60
+        if ($probe.Code -eq 0) { $text = $probe.Text }
+    } catch { $text = '' } finally {
+        $ErrorActionPreference = $prevEAP
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
     }
-    return $out.ToArray()
-}
-# 出示的憑證鏈最上面那張的簽發者，在 $roots 裡的「同一張」根憑證：名稱（DER 原樣）相同、自己簽自己、現在有效，而且
-# 簽發者的金鑰識別碼相同（出示的憑證有 AKI 時）。出示的最上面那張就是根憑證時，比它自己的名稱和 SKI。
-# 回傳 @{ Cert; Store; Sha256 }，或 $null。名稱相同、金鑰不同的不算。
-function Find-OrgRoot($presented, $roots, $now = $null) {
-    if (-not $now) { $now = Get-Date }
-    $presented = @($presented)
-    if ($presented.Count -eq 0) { return $null }
-    $top = $presented[$presented.Count - 1]
-    if (Test-SameBytes $top.SubjectName.RawData $top.IssuerName.RawData) {
-        $wantName = $top.SubjectName.RawData; $wantKey = Get-CertKeyId $top 'ski'
-    } else {
-        $wantName = $top.IssuerName.RawData; $wantKey = Get-CertKeyId $top 'aki'
-    }
-    $hits = @(@($roots) | Where-Object {
-        $c = $_.Cert
-        (Test-SameBytes $c.SubjectName.RawData $wantName) -and (Test-SameBytes $c.SubjectName.RawData $c.IssuerName.RawData) -and
-            $c.NotBefore -le $now -and $c.NotAfter -gt $now -and ((-not $wantKey) -or ((Get-CertKeyId $c 'ski') -eq $wantKey))
-    } | Sort-Object -Property @{ Expression = { $_.Cert.NotAfter }; Descending = $true })
-    if ($hits.Count -eq 0) { return $null }
-    $best = $hits[0]
-    $stores = @($hits | Where-Object { $_.Cert.Thumbprint -eq $best.Cert.Thumbprint } | ForEach-Object { $_.Store } | Select-Object -Unique)
-    return @{ Cert = $best.Cert; Store = ($stores -join '、'); Sha256 = (Get-CertSha256 $best.Cert) }
-}
-# 用 openssl 確認 $root 真的簽了出示的憑證鏈。成功印 VERIFY_OK。-trusted：只信任它，系統的 CAfile、CApath、CAstore
-# 和預設的都不用（只關掉 CAfile、CApath 時，OpenSSL 3 仍會讀預設的 CAstore：#3071 審查）。暫存目錄建不起來就停，
-# 什麼都不寫。
-function Get-WslVerifyScript($root, $presented) {
-    $presented = @($presented)
-    $leaf = ConvertTo-Pem $presented[0]
-    $rest = (@($presented | Select-Object -Skip 1) | ForEach-Object { ConvertTo-Pem $_ }) -join ''
-    $b = { param($s) [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes([string]$s)) }
-    return (@(
-        'set -u'
-        'd=$(mktemp -d) || exit 1'
-        '[ -n "$d" ] && [ -d "$d" ] || exit 1'
-        'trap ''rm -rf -- "$d"'' EXIT'
-        ("printf '%s' '" + (& $b (ConvertTo-Pem $root)) + "' | base64 -d > " + '"$d/root.pem"')
-        ("printf '%s' '" + (& $b $leaf) + "' | base64 -d > " + '"$d/leaf.pem"')
-        ("printf '%s' '" + (& $b $rest) + "' | base64 -d > " + '"$d/rest.pem"')
-        'set -- -trusted "$d/root.pem"'
-        'if [ -s "$d/rest.pem" ]; then set -- "$@" -untrusted "$d/rest.pem"; fi'
-        'if openssl verify "$@" "$d/leaf.pem" >/dev/null 2>&1; then echo VERIFY_OK; fi'
-        'exit 0'
-    ) -join "`n")
-}
-function Get-OrgCaPath([string]$sha256) { return ($ORG_CA_DIR + '/agend-org-root-' + $sha256.Substring(0, 8).ToLowerInvariant() + '.crt') }
-# 以 root 匯入這一張：先確認寫進去的就是使用者看過指紋的那張，再 update-ca-certificates。
-function Get-WslOrgCaImportScript($cert, [string]$sha256) {
-    if ($sha256 -notmatch '^[0-9A-F]{64}$') { throw 'Invalid fingerprint.' }
-    $pem64 = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes((ConvertTo-Pem $cert)))
-    return (@(
-        'set -eu'
-        ('f=' + (Get-OrgCaPath $sha256))
-        't=$(mktemp) || exit 1'
-        '[ -n "$t" ] && [ -f "$t" ] || exit 1'
-        'trap ''rm -f -- "$t"'' EXIT'
-        ("printf '%s' '" + $pem64 + "' | base64 -d > " + '"$t"')
-        'got=$(openssl x509 -in "$t" -outform DER | sha256sum | cut -c1-64)'
-        ('[ "$got" = ' + $sha256.ToLowerInvariant() + ' ] || { echo ''certificate fingerprint mismatch'' >&2; exit 3; }')
-        'mkdir -p -- "$(dirname -- "$f")"'
-        '[ ! -L "$f" ] || { echo "refusing symlinked $f" >&2; exit 1; }'
-        'install -m 644 -- "$t" "$f"'
-        'update-ca-certificates'
-        'echo "CA_IMPORTED=$f"'
-    ) -join "`n")
-}
-# 以 root 寫 /etc/profile.d：登入的 shell（例如在 WSL 裡打 npm view）也信任它。只在 .env 用的就是這一張時才寫。
-function Get-WslOrgCaProfileScript([string]$caPath) {
-    if ($caPath -notmatch '^/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt$') { throw 'Invalid certificate path.' }
-    return (@(
-        'set -eu'
-        ('f=' + $caPath)
-        ('profile=' + $ORG_CA_PROFILE)
-        '[ ! -L "$profile" ] || { echo "refusing symlinked $profile" >&2; exit 1; }'
-        'printf ''export NODE_EXTRA_CA_CERTS=%s\n'' "$f" > "$profile.agend-tmp"; chmod 644 "$profile.agend-tmp"; mv -f -- "$profile.agend-tmp" "$profile"'
-        'echo PROFILE_OK'
-    ) -join "`n")
-}
-# 以 AgEnD 的使用者把 NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env（其他行原樣保留）。已經指向別的檔案：不改，印 ENV_KEPT=<原本的>。
-function Get-WslOrgCaEnvScript([string]$caPath) {
-    if ($caPath -notmatch '^/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt$') { throw 'Invalid certificate path.' }
-    return (@(
-        'set -eu'
-        ('f=' + $caPath)
-        'd=${AGEND_HOME:-$HOME/.agend}; e=$d/.env'
-        'umask 077; mkdir -p -- "$d"'
-        '[ ! -L "$e" ] || { echo "refusing symlinked $e" >&2; exit 1; }'
-    ) + $ORG_CA_ENV_READ + @(
-        'if [ "$old" = "$f" ]; then echo ENV_OK; exit 0; fi'
-        'if [ -n "$old" ]; then echo "ENV_KEPT=$old"; exit 0; fi'
-        't=$e.agend-ca-$$; trap ''rm -f -- "$t"'' EXIT'
-        '{ if [ -f "$e" ]; then cat -- "$e"; if [ -s "$e" ] && [ -n "$(tail -c 1 -- "$e")" ]; then echo; fi; fi; printf ''NODE_EXTRA_CA_CERTS=%s\n'' "$f"; } > "$t"'
-        'chmod 600 "$t"; mv -f -- "$t" "$e"'
-        'echo "ENV_OK=$e"'
-    ) -join "`n")
-}
-# 這次安裝接下來的 WSL 步驟（npm、node）也要信任它：用 WSLENV 帶進每個 wsl.exe。
-function Set-OrgCaSessionEnv([string]$caPath) {
-    $env:NODE_EXTRA_CA_CERTS = $caPath
-    $keep = @(([string]$env:WSLENV) -split ':' | Where-Object { $_ -and (($_ -split '/')[0] -ne 'NODE_EXTRA_CA_CERTS') })
-    $env:WSLENV = (@($keep) + 'NODE_EXTRA_CA_CERTS') -join ':'
-}
-# 重新執行（例如重新開機後接續）時：之前匯入過（profile.d 有），而且 AgEnD 的 .env 用的就是同一張（或沒有設定），才再帶給
-# 這次的 WSL 步驟；.env 指向別的檔案時不蓋過它。
-function Get-WslOrgCaRestoreScript {
-    return ((@(
-        ('if [ -f ' + $ORG_CA_PROFILE + ' ]; then cat -- ' + $ORG_CA_PROFILE + '; fi')
-    ) + $ORG_CA_ENV_READ + @(
-        'echo "ENV=$old"'
-    )) -join "`n")
-}
-function Restore-OrgCaSessionEnv([string]$distro) {
-    try {
-        $r = Invoke-WslScriptText $distro $AGEND_USER (Get-WslOrgCaRestoreScript) 30
-        $m = [regex]::Match([string]$r.Text, '(?m)^export NODE_EXTRA_CA_CERTS=(/usr/local/share/ca-certificates/agend-org-root-[0-9a-f]{8}\.crt)\r?$')
-        $envNow = [regex]::Match([string]$r.Text, '(?m)^ENV=(.*?)\r?$')
-        if ($r.Code -ne 0 -or -not $m.Success -or -not $envNow.Success) { return }
-        if ($envNow.Groups[1].Value -and $envNow.Groups[1].Value -cne $m.Groups[1].Value) { return }
-        Set-OrgCaSessionEnv $m.Groups[1].Value
-        Write-InstallLog ("  NODE_EXTRA_CA_CERTS=" + $m.Groups[1].Value + "（之前匯入的公司根憑證）")
-    } catch { }
-}
-function Write-Fingerprint([string]$sha256) {
-    $pairs = @(for ($i = 0; $i -lt $sha256.Length; $i += 2) { $sha256.Substring($i, 2) })
-    Write-Info ("    SHA-256 指紋：" + (($pairs[0..15]) -join ':'))
-    Write-Info ("                  " + (($pairs[16..31]) -join ':'))
-}
-# 回傳 $true：已匯入（呼叫的人要再檢查一次網路）。其他情況都不改任何東西，回傳 $false。
-function Invoke-OrgRootOffer([string]$distro, [string]$hostName) {
-    Write-Info "正在讀出這個連線出示的憑證，看看 Windows 是否已經信任它的根憑證..."
-    $chainText = Invoke-WslScriptText $distro 'root' (Get-WslChainScript $hostName) 40
-    if ([string]$chainText.Text -match 'CHAIN_NO_OPENSSL') { Write-Info "WSL 裡沒有 openssl，讀不出憑證，不會自動匯入。"; return $false }
-    $chain = @(ConvertFrom-PemChain ([string]$chainText.Text))
-    if ($chain.Count -eq 0) { Write-Info "讀不出這個連線出示的憑證，不會自動匯入。"; return $false }
-    $top = $chain[$chain.Count - 1]
-    $issuer = $top.IssuerName.Name
-    Write-InstallLog ("  出示的憑證鏈：" + (($chain | ForEach-Object { $_.Subject }) -join ' <- ') + "；簽發者：$issuer")
-    $found = Find-OrgRoot $chain (Get-WindowsRootCerts)
-    if (-not $found) {
-        Write-Info "連線出示的憑證由下面這個單位簽發，但 Windows 信任的根憑證裡沒有同一張，所以不會自動匯入："
-        Write-Info ("    " + $issuer)
-        return $false
-    }
-    $verify = Invoke-WslScriptText $distro 'root' (Get-WslVerifyScript $found.Cert $chain) 30
-    if ([string]$verify.Text -notmatch '(?m)^VERIFY_OK\r?$') {
-        Write-Info "Windows 裡找到同名的根憑證，但它驗證不了這個連線出示的憑證，所以不會匯入。"
-        Write-InstallLog ("  驗證失敗：" + $found.Cert.Subject + " " + $found.Sha256)
-        return $false
-    }
-    $caPath = Get-OrgCaPath $found.Sha256
-    Write-Host ""
-    Write-Info "這個網路用公司的根憑證檢查加密連線，而 Windows 已經信任這一張（公司電腦通常由 IT 統一安裝）："
-    Write-Info ("    名稱：" + $found.Cert.Subject)
-    Write-Fingerprint $found.Sha256
-    Write-Info ("    位置：Windows 憑證存放區 " + $found.Store)
-    Write-Info ("  可以只把這一張匯入 {0}，讓 WSL 裡的 curl、apt、Node.js 和 npm 也信任它：" -f $distro)
-    Write-Info ("    " + $caPath)
-    Write-Info "  不會關掉憑證檢查，也不會匯入其他憑證。不確定的話，請先問公司的 IT 人員。"
-    $answer = Read-Host "  要匯入這一張憑證嗎？(y/N)"
-    if (([string]$answer) -notmatch '^\s*[yY]\s*$') { Write-Info "沒有匯入。"; Write-InstallLog "  使用者沒有同意匯入公司根憑證"; return $false }
-    $imported = Invoke-WslScriptText $distro 'root' (Get-WslOrgCaImportScript $found.Cert $found.Sha256) 120
-    if ($imported.Code -ne 0 -or [string]$imported.Text -notmatch ('(?m)^CA_IMPORTED=' + [regex]::Escape($caPath) + '\r?$')) {
-        Write-Warn ("匯入沒有成功（結束碼 {0}）。" -f $imported.Code)
-        Write-InstallLog ("  " + (Protect-LogText ([string]$imported.Text)))
-        return $false
-    }
-    Write-Ok ("已匯入公司根憑證：{0}（SHA-256 {1}）" -f $found.Cert.Subject, $found.Sha256)
-    Write-Info ("    " + $caPath)
-    $envResult = Invoke-WslScriptText $distro $AGEND_USER (Get-WslOrgCaEnvScript $caPath) 30
-    $kept = [regex]::Match([string]$envResult.Text, '(?m)^ENV_KEPT=(.*?)\r?$')
-    # .env 已經指向別的檔案：它仍然有效，.env、profile.d 和這次的 WSL 步驟都不改成新的這一張（#3071 審查）。
-    if ($kept.Success) {
-        Write-Warn "AgEnD 的 .env 已經有 NODE_EXTRA_CA_CERTS，指向另一個檔案；沒有改它，也不會用新的憑證蓋過它："
-        Write-Info ("    " + $kept.Groups[1].Value)
-        Write-Info "  curl 和 apt 已經信任新的憑證；Node.js 和 npm 只讀上面那個檔案。要讓它們也信任，請把這個檔案的內容加到它的最後："
-        Write-Info ("    " + $caPath)
-        return $true
-    }
-    if ($envResult.Code -ne 0 -or [string]$envResult.Text -notmatch '(?m)^ENV_OK') {
-        Write-Warn "沒能把 NODE_EXTRA_CA_CERTS 寫進 AgEnD 的 .env；之後可以手動加上這一行："
-        Write-Info ("    NODE_EXTRA_CA_CERTS=" + $caPath)
-        return $true
-    }
-    Write-Ok "AgEnD 的 .env 已設定 NODE_EXTRA_CA_CERTS（Node.js 和 npm 會信任它）"
-    $profileResult = Invoke-WslScriptText $distro 'root' (Get-WslOrgCaProfileScript $caPath) 30
-    if ($profileResult.Code -ne 0 -or [string]$profileResult.Text -notmatch '(?m)^PROFILE_OK\r?$') {
-        Write-Warn ("沒能寫入 {0}；在 WSL 裡自己開的 shell 不會自動設定 NODE_EXTRA_CA_CERTS。" -f $ORG_CA_PROFILE)
-    }
-    Set-OrgCaSessionEnv $caPath
-    return $true
+    return (Resolve-NetResults (ConvertFrom-WslNetOutput $text $NET_WSL) 'wsl')
 }
 
 # ── 安裝給哪個 Windows 帳號（#2650 第 5 項）──────────────────
@@ -1403,7 +1172,7 @@ function Find-ExistingAgend {
 # 選通道：beta 的就裝目前的 beta，否則裝正式版（#2286 審查：舊版可能還沒有會修復的安裝程式）。修好才回傳 $true。
 function Invoke-AgendRepair([string]$distro, [string]$user, [string]$version) {
     $pin = if ($version -match '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$') { 'AGEND_VERSION=beta ' } else { '' }
-    $cmd = Get-WslAgendCommand ('set -o pipefail; curl -fsSL https://songsid.github.io/AgEnD/install.sh | ' + $pin + 'bash')
+    $cmd = Get-WslAgendCommand (Get-AgendInstallShScript $pin)
     $code = Invoke-WslStep -Label "修復 AgEnD" -Usually "通常需要 1–3 分鐘" -UpperMinutes 15 -Distro $distro -User $user -Script $cmd
     if ($code -ne 0) { return $false }
     $after = Invoke-AgendInWsl $distro $user 'agend --version'
@@ -2584,6 +2353,7 @@ function Get-MergedLinuxWslConfigScript([string]$Text, [string]$ExpectedBase64 =
         ("printf '%s' '" + $encoded + "' | base64 -d > " + '"$temp"')
         'if [ -e "$file" ]; then chmod --reference="$file" "$temp"; else chmod 644 "$temp"; fi'
         'mv -f -- "$temp" "$file"'
+        'echo WSL_CONF_OK'
     ) -join "`n")
 }
 
@@ -2793,7 +2563,7 @@ if ($wslStageVerified) {
         $leaf = if ($choice -eq 'separate') { $UBUNTU_DISTRO } else { 'Ubuntu' }
         $location = Get-WslInstallLocation (Get-LocalDisks) ($env:SystemDrive + '\') $UBUNTU_DISTRO $leaf $AgendWslDrive
         $disk = $location.Disk; $wslPath = $location.Path
-        Write-Ok "要安裝的 Linux：$UBUNTU_DISTRO"
+        Write-Ok "Linux 版本：$UBUNTU_DISTRO"
         Write-Ok ("安裝位置：{0}（可用 {1} GB）" -f $wslPath, [math]::Round($disk.Free / 1GB, 1))
         Write-Host ""
 
@@ -2887,8 +2657,6 @@ ws.Run "wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'sleep infinity'", 0, False
 [IO.File]::WriteAllText($vbsPath, $vbsContent, (New-Object System.Text.UTF8Encoding $false))
 Write-Ok "開機啟動已設定（Windows 登入後自動啟動 WSL）"
 
-# 之前匯入過公司根憑證（#3068）：這次的 WSL 步驟也帶上 NODE_EXTRA_CA_CERTS。
-Restore-OrgCaSessionEnv $UBUNTU_DISTRO
 # WSL 裡的網路：還有後端或 AgEnD 要下載時才檢查（Windows 連得上不代表 WSL 也連得上，例如公司 proxy、VPN）。
 if (-not ((Stage-Done 2) -and (Stage-Done 4))) {
     if (-not (Test-WslNetwork $UBUNTU_DISTRO)) {
