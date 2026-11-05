@@ -183,7 +183,7 @@ foreach ($x in ConvertFrom-WslNetOutput '' @(@{ Host = 'a.example'; Why = 'w'; R
 
   it("Get-CurlFailureKind maps curl's exit codes", () => {
     const { out } = run(`foreach ($c in 0, 22, 5, 97, 6, 7, 28, 35, 60, 77, 52) { $k = Get-CurlFailureKind $c; Write-Output ("C$c=" + $(if ($null -eq $k) { 'ok' } else { $k })) }`);
-    for (const [c, k] of [[0, "ok"], [22, "ok"], [5, "proxy"], [97, "proxy"], [6, "dns"], [7, "refused"], [28, "timeout"], [35, "tls"], [60, "tls"], [77, "tls"], [52, "other"]]) {
+    for (const [c, k] of [[0, "ok"], [22, "ok"], [5, "proxy"], [97, "proxy"], [6, "dns"], [7, "refused"], [28, "timeout"], [35, "handshake"], [60, "tls"], [77, "tls"], [52, "other"]]) {
       expect(out).toContain(`C${c}=${k}`);
     }
   });

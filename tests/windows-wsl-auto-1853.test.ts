@@ -34,7 +34,8 @@ describe("the WSL stage decides for itself (static)", () => {
     expect(body).not.toMatch(/Register-ResumeAtLogon/);                         // only through Request-Reboot
     expect(body.match(/Request-Reboot "/g)).toHaveLength(3);                     // the feature, the MSI's 3010, wsl --version after it
     expect(body).not.toMatch(/Restart-Computer/);
-    expect(code).toMatch(/\$RESUME_COMMAND = 'powershell -ExecutionPolicy ByPass -c "irm https:\/\/songsid\.github\.io\/AgEnD\/install\.ps1 \| iex"'/);
+    // The resume runs a saved script that tries github.io, then the deployed raw copy (a short RunOnce line).
+    expect(code).toContain(`Set-ItemProperty -Path $RESUME_KEY -Name $RESUME_NAME -Value (Get-InstallResumeCommand $path)`);
     expect(code).toMatch(/\$RESUME_KEY = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce'/);
   });
   it("fixed Linux version, persisted conditional drive choice, and no Ubuntu first-run window", () => {
@@ -82,7 +83,7 @@ foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.La
 foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$RESUME_' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
 $script:OnWindows = $false
 ${script}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, input, env: { ...process.env, TMPDIR: dir } });
+  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, input, env: { ...process.env, TMPDIR: dir, LOCALAPPDATA: join(dir, "lad") } });
   if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
   return { out: r.stdout + r.stderr, dir };
 }
@@ -142,7 +143,7 @@ function Restart-Computer { param([switch]$Force) Add-Content (Join-Path $env:TM
 Request-Reboot 'WSL 功能剛啟用，需要重新開機才能繼續'
 Write-Output 'NOT-REACHED'`;
     const yes = withHelpers(stubs, "\n");
-    expect(readFileSync(join(yes.dir, "reg.txt"), "utf8")).toBe('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce|AgEnDInstallResume|powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"\n');
+    expect(readFileSync(join(yes.dir, "reg.txt"), "utf8")).toMatch(/^HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce\|AgEnDInstallResume\|powershell -NoProfile -ExecutionPolicy ByPass -File "[^"]+[\\/]AgEnD[\\/]install-resume\.ps1"\n$/);
     expect(readFileSync(join(yes.dir, "reboot.txt"), "utf8")).toBe("reboot\n");
     expect(yes.out).toMatch(/重新開機後，請用 Windows 帳號「[^」]+」登入，安裝會自動繼續（會先跳出一個 Windows 確認視窗，請選「是」）。/);   // the account to log in with (#2650 item 5)
     expect(yes.out).not.toContain("NOT-REACHED");

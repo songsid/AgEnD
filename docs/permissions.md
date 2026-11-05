@@ -79,7 +79,7 @@ Bot traffic has additional ingress filters before chat policy:
 
 ## AgEnD tool permissions
 
-`tool_set` filters the MCP tool menu **and is enforced on the server** for outbound IPC, typed IPC and agent HTTP/CLI operations. Asking for an omitted tool by name cannot bypass the profile. Profile selection uses an explicit recognized `tool_set`, otherwise the General role for General, otherwise worker.
+`tool_set` filters the MCP tool menu **and is enforced on the server** for outbound IPC, typed IPC and agent HTTP/CLI operations. Asking for an omitted tool by name cannot bypass the profile. Profile selection uses an explicit recognized `tool_set`, otherwise the General role (`general`, which includes the full `ORCHESTRATION` tool list as AgEnD's administrator) for General, otherwise `worker`. Separate privilege guards remain in effect regardless of profile: `create_instance` and `update_instance_config` cannot set or escalate `tool_set` or `skipPermissions`, and sensitive Settings changes (tokens, access policies, permission escalations) still require fleet-admin confirmation.
 
 These checks govern AgEnD tools, independently of chat admission/admin roles. They do not constrain a backend's own Bash, file or network tools, and filesystem IPC permissions do not isolate processes sharing the fleet's OS user.
 

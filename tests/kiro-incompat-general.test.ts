@@ -223,7 +223,7 @@ describe("kiro_engine_status", () => {
     const by = Object.fromEntries(status.instances.map(i => [i.name, i]));
     expect(Object.keys(by).sort()).toEqual(["legacy-one", "tui-one", "v3-one"]);
     expect(by["legacy-one"].kiro_ui).toBe("legacy");
-    expect(by["legacy-one"].next_launch).toMatchObject({ refused: expect.stringContaining("no longer offers the legacy UI") });
+    expect(by["legacy-one"].next_launch).toMatchObject({ refused: expect.stringContaining("no longer supports Classic") });
     expect(by["legacy-one"].last_launch).toMatchObject({ kiroVersion: "kiro-cli 2.27.1", flags: ["--legacy-ui", "--agent-engine=v1"] });
     expect(by["legacy-one"].history).toHaveLength(1);
     expect(by["legacy-one"].v3).toEqual({ kind: "none" });

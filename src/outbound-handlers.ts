@@ -18,7 +18,7 @@ import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
-import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
+import { crossInstanceVisibility, hideInternalMessageIds, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
@@ -671,7 +671,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // #2293: indexed for the dashboard's search as the outbox keeps it (a retried call the outbox admitted before: not again).
   if (!durableReceipt?.duplicate) ctx.indexCrossInstance?.({ messageId: ipcMeta.message_id, from: senderLabel, to: targetName, kind: ipcMeta.request_kind,
     correlationId: ipcMeta.correlation_id, taskSummary: ipcMeta.task_summary, content: message ?? "", ts: ipcMeta.ts });
-  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
+  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(hideInternalMessageIds(message ?? ""), 500)}`);
   const targetStateWarning = recipientWarning(ctx.lifecycle.daemons.get(targetInstanceName), targetName, state === "paused");
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
@@ -2005,7 +2005,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   })));
   const bDisplay = (name: string) =>
     bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
-  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(message, 500)}`);
+  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(hideInternalMessageIds(message), 500)}`);
   respond({
     sent_to: sentTo,
     failed,
