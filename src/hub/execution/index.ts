@@ -5,3 +5,7 @@ export { HubExecutionStore, migrateHubExecution } from "./store.js";
 export type { ExecutionAuditEvent, ExecutionStoreOptions } from "./store.js";
 export { HubDocumentView, executionPolicyDigest, HUB_READ_TOOLS } from "./views.js";
 export type { HubViewDocument } from "./views.js";
+export { createHubCliProvider } from "./cli-provider.js";
+export type { HubCliProvider, HubCliProviderOptions } from "./cli-provider.js";
+export { createHubModelBroker } from "./model-broker.js";
+export type { HubModelBroker, HubCliBackend } from "./model-broker.js";
