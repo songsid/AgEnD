@@ -5,7 +5,7 @@ import { inboxTempName } from "../inbox-temp-name.js";
 import { Agent as HttpAgent } from "node:http";
 import { Agent as HttpsAgent } from "node:https";
 import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
-import { join, extname, basename, dirname } from "node:path";
+import { join, extname, basename } from "node:path";
 import { atomicWriteFileSync } from "../../atomic-write.js";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
@@ -65,10 +65,10 @@ export const TELEGRAM_ALLOWED_UPDATES = [
  */
 export const TELEGRAM_PENDING_LIVE_MAX_MS = 2 * 60 * 60 * 1000;
 
-/** Crash-safe last processed `update_id` for this adapter (sibling of inboxDir). */
+/** Crash-safe last processed `update_id` for this adapter (inside inboxDir; prune skips it). */
 export function telegramLastUpdateIdPath(inboxDir: string, adapterId: string): string {
   const safe = adapterId.replace(/[^A-Za-z0-9._-]+/g, "_") || "adapter";
-  return join(dirname(inboxDir), `telegram-${safe}-last-update-id`);
+  return join(inboxDir, `telegram-${safe}-last-update-id`);
 }
 
 /** An inbound Telegram update that was too old to inject; Needs you lists it. */
@@ -487,16 +487,19 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const sender = message?.from?.id;
       if (sender != null && sender === this.bot.botInfo?.id) return;
 
-      const ageMs = telegramUpdateAgeMs(update, Date.now());
-      if (ageMs != null && ageMs > TELEGRAM_PENDING_LIVE_MAX_MS) {
-        if (update.callback_query) {
-          if (typeof updateId === "number" && this.backlogUpdateIds.has(updateId)) {
+      // Age cap applies to the first getUpdates after start() (downtime queue), not live traffic.
+      const isBacklog = typeof updateId === "number" && this.backlogUpdateIds.has(updateId);
+      if (isBacklog) {
+        const ageMs = telegramUpdateAgeMs(update, Date.now());
+        if (ageMs != null && ageMs > TELEGRAM_PENDING_LIVE_MAX_MS) {
+          if (update.callback_query) {
             ctx.answerCallbackQuery().catch(() => {});
             return;
           }
-        } else if (message && !this._isServiceMessage(message as unknown as NonNullable<Context["message"]>)) {
-          this.emitMissedOffline(updateId ?? 0, message);
-          return;
+          if (message && !this._isServiceMessage(message as unknown as NonNullable<Context["message"]>)) {
+            this.emitMissedOffline(updateId ?? 0, message);
+            return;
+          }
         }
       }
       return next();
@@ -951,6 +954,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const now = Date.now();
     try {
       for (const name of readdirSync(this.inboxDir)) {
+        if (/^telegram-.+-last-update-id$/.test(name)) continue;
         const filePath = join(this.inboxDir, name);
         try {
           const mtime = statSync(filePath).mtimeMs;

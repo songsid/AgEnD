@@ -144,6 +144,25 @@ describe("TelegramAdapter pending updates after a restart (M-2395)", () => {
     expect(missed[0]!.chatId).toBe(String(GROUP));
   });
 
+  it("a live handleUpdate with a stub date is inbound, not missed_offline", async () => {
+    const a = newAdapter();
+    const bot = a.getBot() as { botInfo?: { id: number; is_bot: boolean; first_name: string; username: string; can_join_groups: boolean; can_read_all_group_messages: boolean; supports_inline_queries: boolean }; handleUpdate: (u: unknown) => Promise<void> };
+    bot.botInfo = { id: 1, is_bot: true, first_name: "bot", username: "bot", can_join_groups: true, can_read_all_group_messages: true, supports_inline_queries: false };
+    const messages: InboundMessage[] = [];
+    const missed: MissedOfflineInbound[] = [];
+    a.on("message", (m: InboundMessage) => messages.push(m));
+    a.on("missed_offline", (m: MissedOfflineInbound) => missed.push(m));
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 7, date: 1, chat: { id: GROUP, type: "supergroup" },
+        from: { id: USER, is_bot: false, first_name: "han" }, text: "stub date",
+      },
+    });
+    expect(messages.map(m => m.text)).toEqual(["stub date"]);
+    expect(missed).toEqual([]);
+  });
+
   it("a stale queued callback_query is ignored", async () => {
     const date = Math.floor(Date.now() / 1000) - Math.ceil(TELEGRAM_PENDING_LIVE_MAX_MS / 1000) - 60;
     mock.injectCallbackQuery({ data: "needs-ack:dead", chatId: GROUP, messageId: 9, date });
