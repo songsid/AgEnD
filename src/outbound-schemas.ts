@@ -174,7 +174,7 @@ export const PostDecisionArgs = z.object({
   ttl_days: z.number().optional()
     .describe("Days until auto-archive. Default: permanent. Set e.g. 7 for temporary decisions."),
   supersedes: z.string().optional()
-    .describe("Decision ID to supersede (marks old one as superseded)"),
+    .describe("Decision ID to supersede (marks the old one superseded). Needs update_decision; the old one must be active and visible to you."),
 });
 
 export const ListDecisionsArgs = z.object({
