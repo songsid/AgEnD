@@ -224,6 +224,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
+import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
@@ -4374,6 +4375,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       changed: () => this.emitSseEvent("status", this.getUiStatus()),
     });
+  }
+
+  /**
+   * Claude history in the View: an instance's earlier conversation for its View, from the transcript the Log reads —
+   * the View's route applied its own access rules first (view-api.ts); the Log's switch plays no part.
+   */
+  viewHistory(name: string, q: ViewHistoryQuery): Promise<ViewHistoryAnswer | null> {
+    return viewHistory((n, rq) => this.log.readBack(n, rq), name, q);
   }
 
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
