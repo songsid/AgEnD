@@ -353,9 +353,15 @@ function HubSidebar({ route }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}
     </nav>
-    <div class="side-foot" data-trust="navigation"><${SessionMenu} /></div>
+    <div class="side-foot" data-trust="navigation"><${HubSessionSlot} /></div>
     <${SidebarResize} />
   </aside>`;
+}
+/** The Hub's own session row (S3b): who is signed in to the Hub, and Sign out — from the Hub's lazy module, never /auth/. */
+function HubSessionSlot() {
+  const [mod, setMod] = useState(null);
+  useEffect(() => { let live = true; import("/ui/js/panel-hub.js").then((m) => { if (live && m.HubSessionMenu) setMod(() => m.HubSessionMenu); }, () => {}); return () => { live = false; }; }, []);
+  return mod ? html`<${mod} />` : null;
 }
 /** A member fleet's "My fleet ↔ Hub" switcher: its module loads only on a member page, and shows only once paired. */
 function HubSwitcherSlot() {
@@ -872,6 +878,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     };
   }, []);
   const guest = guestPage();             // #1920: a guest's page — no operations, pending changes or owner CSS (#2855: usage, yes)
+  // AgEnD Hub P1 (S3b): a Hub workspace has none of the fleet's lines, rails, tabs or bars (their endpoints are the fleet's).
+  const hub = hubMarks().hub;
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
   return html`<div ref=${root} class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
@@ -880,18 +888,18 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     <main id="main" class="main" tabindex="-1" inert=${shell.drawer && narrow() ? true : undefined}>
       <${ConnectionLine} />
       <${StartupLine} />
-      ${viewOnly || guest ? null : html`<${OperationLine} route=${nav.route} />`}
-      ${viewOnly || guest ? null : html`<${RestartLine} />`}
-      ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
+      ${viewOnly || guest || hub ? null : html`<${OperationLine} route=${nav.route} />`}
+      ${viewOnly || guest || hub ? null : html`<${RestartLine} />`}
+      ${viewOnly || guest || hub || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
-    <${RightRail} route=${nav.route} />
-    <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
+    ${hub ? null : html`<${RightRail} route=${nav.route} />`}
+    ${hub ? null : html`<${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />`}
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
-    ${viewOnly || guest || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
+    ${viewOnly || guest || hub || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}
     <${ConfirmHost} />
     <${ColorDialogHost} />
-    ${viewOnly || guest ? null : html`<${OwnerCssKeepBar} />`}
+    ${viewOnly || guest || hub ? null : html`<${OwnerCssKeepBar} />`}
     <${Toasts} />
   </div>`;
 }

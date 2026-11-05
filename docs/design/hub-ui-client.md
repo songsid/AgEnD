@@ -15,8 +15,8 @@ The frozen contract is `docs/design/hub.md` (S0 #3096; fleet decision 7e5b8a8f; 
 
 The listener that serves the page sets the mark; a client can never choose it.
 
-- **On a Hub's own listener (slice 1):** `<body data-hub="hub" data-hub-name="…">`. It passes `serveAppShell(…, { hubWorkspace: { name } })`. The name is escaped, one line, at most 60 characters.
-- **On the fleet's own listener:** `data-hub="member"` when `hub_member.enabled` is exactly `true`, and nothing otherwise. `hub.enabled` makes no mark here.
+- **On a Hub's own web listener:** `<body data-hub="hub" data-hub-name="…">`, from `serveHubWorkspaceShell` (S3b; `serveAppShell(…, { hubWorkspace })` delegates to it). The name is escaped, one line, at most 60 characters. The page reads nothing of the request (no cookie, session, preference or preview) and leaves out the fleet's fetch wrapper (`agend-auth.js`).
+- **On the fleet's own listener:** `data-hub="member"` when `hub_member.enabled` is exactly `true`, and nothing otherwise — never over the public link (member handlers are local-owner-only, hub.md §1). `hub.enabled` makes no mark here.
 - **The fleet's listener never mounts the Hub's pages.** It answers `/ui/hub*` with the ordinary not-found.
 - **Guests:** a guest's page never carries a mark.
 - **No mark:** no Hub module is requested (`hub-client.js`, `hub-strings.js`, `hub-switcher.js`, `panel-hub.js`, `settings-hub.js`, `/assets/hub.css`).
@@ -25,7 +25,10 @@ Until slice 1's `HubMode` exists, `src/hub-mode.ts` reads `hub_member.enabled` d
 
 ## The client (`src/ui/hub-client.js`): UI projections, not wire records
 
-Every Hub page reads and writes through one object, `hubClient()`. Its answers are **projections** (`HubPairingView`, `HubExposureView`), deliberately separate from `hub.md`'s signed protocol and model records. The real client reads the member's local status through authenticated member APIs. The browser never holds the machine credential or sees WSS frames, and the server re-checks membership, config and session after every body read and every await; the public gateway and guests can't reach member management. Today the client is a stub in the page's memory (its pages say so in a preview note), and re-pointing it replaces `createStubClient`, including its `control` object.
+Every Hub page reads and writes through one object, `hubClient()`. Its answers are **projections** (`HubPairingView`, `HubExposureView`), deliberately separate from `hub.md`'s signed protocol and model records. The browser never holds the machine credential or sees WSS frames.
+
+- **On a Hub workspace** (S3b) it is `createHubWebClient()`: `/hub/v1/*` at the page's own origin, with the Hub's own session (below).
+- **On a member fleet's Settings card** it is still a stub in the page's memory (the card says so in a preview note) until S5's member composition exists; re-pointing it replaces `createStubClient`, including its `control` object. The member's publish step then follows the order agreed with S1/S4 (cid-hub-s3-readiness): stage the owner-approved candidate unpublished, ask S4 `readiness(exposureId, expectedRevision)`, re-check owner, mode and the exact local policy, then publish only that unchanged revision in S1's snapshot.
 
 ### `HubPairingView`
 
@@ -69,20 +72,44 @@ setExposed(off), disconnect → { ok: true, remote: "confirmed" | "pending" } | 
 
 - **Withdrawal and disconnect** fence locally at once, even offline. They answer `ok` only once the local restrictive state is saved. If the Hub's acknowledgement is unknown, `remote: "pending"` is shown as a warning.
 - **`subscribe(fn)`:** the local status projection's changes, through slice 1's member status; no direct connection from the page.
-- **Hub workspace placeholders** until slices 2, 3 and 5: `askable()`, `myExposures()`, `administration()`. Room polls (S3 server side) are bounded by hub.md: one per 10 s, one in flight, stopped while hidden.
+## The Hub workspace (S3b): `/hub/v1/*` and its session
+
+`src/hub/http/compose.ts` `createHubHttp(deps)` (S5's lazy entry: it exports `createHubHttp` and `migrations`) serves the Hub web listener: `/hub/v1/*`, the Hub-only pages (`/`, `/web`, `/ui`, `/ui/hub*`), the three Hub modules under `/ui/js/` and the public `/assets/`. Anything else is S5's not-found.
+
+- **Session:** directory sign-in (S2 `signIn`) → cookie `__Host-agend_hub_<hubId>` (Secure, HttpOnly, SameSite=Strict, Path=/). Only that exact name is read; a fleet cookie, bearer token or member credential is never a Hub person. 8 h absolute, 1 h idle.
+- **Mutations:** `Origin` = the Hub's `webOrigin` (and `Sec-Fetch-Site` same-origin when sent) plus `X-AgEnD-Hub-CSRF`, a value derived from the session token that only a same-origin read of `GET /hub/v1/session` learns.
+- **Fresh checks:** each protected request re-reads the session and calls the directory (`checkEligibility`) for the person — and, for a room, the exposure's owner too. Bounded per person and in all; over the bound is 429 with `Retry-After`, never a cached allow. An ineligible person's sessions end.
+- **Administration** is the configured administrator's current directory identity. Local-host repair sign-in stays reserved (refused in P1).
+
+| Route | Methods | Who |
+| --- | --- | --- |
+| `/hub/v1/session` | GET, POST (sign in), DELETE | anyone / the session |
+| `/hub/v1/exposures`, `/hub/v1/grants` | GET (own exposures with their grants; what is granted to me now) | a person |
+| `/hub/v1/grants` · `/hub/v1/grants/:id?revision=` | POST · DELETE | the exposure's owner, at the revision shown |
+| `/hub/v1/exposures/:id/freeze` | POST | the owner (narrowing only) |
+| `/hub/v1/rooms` · `/hub/v1/rooms/:id/messages` | GET, POST · GET (`after`, paced), POST (`idempotencyKey`, `text`) | the room's asker only |
+| `/hub/v1/pairings` · `/hub/v1/pairings/:id/confirm` | GET · POST (fingerprint) | the prospective owner |
+| `/hub/v1/audit` | GET | S5's sink decides (owner/auditor) |
+| `/hub/v1/admin/overview`, `/admin/pairings`, `/admin/pairings/:id/approve`, `/admin/fleets/:id/revoke`, `/admin/exposures/:id/freeze` | GET, POST | the administrator |
+
+Server rules (hub.md §2, §4, §5; S1/S4 seams):
+- **Catalog:** exposure rows mirror each member's complete, monotonic snapshots. An older one is refused, a changed repeat of the same revision conflicts, and absence withdraws only on a newer accepted one. Leaving "published" ends that exposure's grants and rooms (consent never revives from history). The Hub never asks S4 and never infers enforceable from a row.
+- **Grants** bind one known person to one exact exposure id and revision. **Rooms** are keyed by asker, exposure and grant.
+- **Asking** commits the question (an S5 content ref, never plaintext in S3's tables) with its audit before "queued". It is sent on the member's current, reconciled link with a freshly signed 120-second envelope.
+- **Leases** (admit, begin, tool, release-answer) are server records for one exact operation digest on the current link epoch, for at most 5 s, re-resolved from the persisted message and both people's eligibility now. An answer is accepted only under its own unspent release lease.
+- **Receipts** are monotonic and never downgrade evidence; reconcile pages through the retained ones.
+
+**Hub-only boot** (`app.js`): a page marked `hub` starts no fleet stream, chat, Needs you, notices, preferences upload, themes, owner CSS or search. Its sidebar's session row is the Hub's own, and it has no bottom tabs, usage rail or fleet lines. Room polls: one per 10 s, one in flight, paused while hidden.
 
 ## Stale tabs (rule 3)
 
-- **Lazy modules only:** the Hub modules are lazy, under `/ui/js/` (behind the session). They import only names every shell has had since #1408 (`register`/`t`, `html`/hooks, `appStore`, `Icon`, `Empty`, `PanelHeader`/`setTitle`, `confirmDialog`).
+- **Lazy modules only:** the Hub modules are lazy, under `/ui/js/` (behind the fleet's session on a member fleet; the Hub listener serves its three). They import only names every shell has had since #1408 (`register`/`t`, `html`/hooks, `appStore`, `Icon`, `Empty`, `PanelHeader`/`setTitle`, `confirmDialog`).
 - **Own words and stylesheet:** the words are their own (`hub-strings.js`, `register("hub", …)`), and so is the stylesheet (`/assets/hub.css`, linked by the modules).
 - **The shell's part:** the Hub sidebar (`hubShell.*` words) and two lazy slots, all drawn only under a mark.
 - **Old shells:** a shell from before this change ignores `data-hub`.
 
 ## Not in this slice
 
-- Slice 1's Hub listener, origin and cookies (`__Host-agend_hub_<hubId>`).
-- Directory sign-in (slice 2).
-- Grants, rooms and the Ask room's server side (S3 integration).
-- Restricted execution (slice 4).
-- Audit, administration and `agend hub init` (slice 5).
-- No live API routes before their service and audit composition exist.
+- S5 composition (`createServer` registering this entry, the Hub web listener, DB, audit and content store) — S5b.
+- The member side of the Settings card (pairing through S1's client, publishing through S4 readiness) — after S5's member composition.
+- Restricted execution (slice 4) and owner notifications (S5).
