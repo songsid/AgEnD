@@ -54,6 +54,7 @@ export class SettingsBaselines {
     current(): unknown; proof?: SettingsEffectContext["proof"];
     generalLocation?: SettingsEffectContext["generalLocation"];
     hubExposure?: SettingsEffectContext["hubExposure"];
+    hubPairing?: SettingsEffectContext["hubPairing"];
   }) {}
   snapshot(): unknown {
     const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env")];
@@ -77,7 +78,7 @@ export class SettingsBaselines {
       if (parsed && (typeof parsed !== "object" || Array.isArray(parsed))) throw new SettingsConfirmationError(409, "invalid_classic_baseline");
       classic = (parsed ?? {}) as Record<string, any>;
     }
-    return { config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubExposure: this.options.hubExposure,
+    return { config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing,
       fingerprint: settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]) };
   }
 }

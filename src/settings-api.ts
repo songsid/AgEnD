@@ -93,6 +93,8 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 export interface SettingsApiContext extends AppShellContext {
   /** S3c (S-55): the member's exposures (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
+  /** S3c PR B: the member's pairing (null: no Hub member composed here — the routes answer 404 "unavailable"). */
+  hubMemberPairing?(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null;
   generalLocations?(): unknown;
   switchGeneralLocation?(input: unknown, authorized: () => boolean, execution: SettingsExecution): Promise<{ started: boolean; message: string }>;
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
@@ -871,6 +873,34 @@ export function handleSettingsRequest(
         const body = JSON.parse(bytes.toString("utf8") || "{}") as { expectedRevision?: unknown };
         if (!Number.isSafeInteger(body.expectedRevision)) { json(res, 400, { ok: false, error: "conflict" }); return; }
         try { json(res, 200, { ok: true, ...(await api.withdraw(id, body.expectedRevision as number)) }); } catch (err) { refused(err); }
+      }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
+  // S3c PR B: the member's pairing — GET the projection; POST connect / confirm / disconnect only as a confirmed
+  // local-admin Settings replay (its continuation is the S1 call); POST cancel at once (local only). Never over the
+  // public link; no member composed: 404 "unavailable".
+  const pairingRoute = path.match(/^\/api\/hub\/member\/pairing(?:\/(connect|confirm|disconnect|cancel))?$/);
+  if (pairingRoute) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
+    const api = ctx.hubMemberPairing?.() ?? null;
+    if (!api) { json(res, 404, { error: "unavailable" }); return true; }
+    const step = pairingRoute[1];
+    if (!step && method === "GET") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.view() }); return true; }
+    if (step === "cancel" && method === "POST") { if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; } json(res, 200, { ok: true, pairing: api.cancel() }); return true; }
+    if (step && method === "POST") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      const current = () => { try { execution.assert(); return settingsRequestLocalAdminCurrent(req); } catch { return false; } };
+      readBody(req, 4096).then(async (bytes) => {
+        execution.assert();
+        const body = JSON.parse(bytes.toString("utf8") || "{}") as Record<string, unknown>;
+        const r = step === "connect" ? await api.connect({ address: body.address, code: body.code }, current)
+          : step === "confirm" ? await api.confirmFingerprint(body.digest, current) : await api.disconnect();
+        json(res, r.ok ? 200 : 409, r);
       }).catch(() => json(res, 400, { ok: false, error: "unsaved" }));
       return true;
     }

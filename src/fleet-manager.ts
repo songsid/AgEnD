@@ -47,6 +47,7 @@ import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { OFFICE_SHARE_TUNNEL_DIR, OfficeShareService } from "./office-share-service.js";
 import { OfficeTalk } from "./office-talk.js";
+import { pairingSummary } from "./hub/member/pairing-summary.js";
 import { ALL_OFFICES, WHOLE_FLEET, type OfficeShare } from "./office-share.js";
 import type { PageShare } from "./page-share.js";
 import { TunnelPurposeLane } from "./tunnel/purpose-lane.js";
@@ -1546,6 +1547,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberExposureApi: import("./hub/member/exposure-api.js").HubMemberExposureApi | null = null;
   hubMemberExposures(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null { return this.hubMemberExposureApi; }
   attachHubMemberExposures(api: import("./hub/member/exposure-api.js").HubMemberExposureApi | null): void { this.hubMemberExposureApi = api; }
+  /** S3c PR B: the member's pairing API, attached by S5's member composition (null: no Hub member here). */
+  private hubMemberPairingApi: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null = null;
+  hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
+  attachHubMemberPairing(api: ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null): void { this.hubMemberPairingApi = api; }
   private readonly generalLocationFlights = new Map<string, symbol>();
   private readonly generalAttentionEpisodes = new Map<string, { key: string; since: number }>();
   private generalBindings(): GeneralBindings { return new GeneralBindings(this.dataDir); }
@@ -2746,6 +2751,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const api = this.hubMemberExposureApi;
         if (!api) throw Object.assign(new Error("hub_member_unavailable"), { code: "hub_member_unavailable" });
         return api.preview(input);
+      },
+      hubPairing: (action: "connect" | "confirm" | "disconnect", input: unknown) => {
+        const api = this.hubMemberPairingApi;
+        if (!api) throw Object.assign(new Error("hub_member_unavailable"), { code: "hub_member_unavailable" });
+        return pairingSummary(action, input, api.view());
       },
       proof: (kind, target, id, binding, key) => {
         const map = kind === "provider" ? this.providerSecretChallenges : kind === "binding" ? this.connectionBindingChallenges : this.connectionSecretChallenges;
