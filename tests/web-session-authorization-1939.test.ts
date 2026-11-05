@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 vi.mock("node:child_process", async original => ({ ...await original<typeof import("node:child_process")>(),
@@ -38,10 +38,10 @@ function rig(over: Partial<SessionAuthorizationDeps> = {}) {
     sendGeneralHint: async (_o, text) => { hints.push(text); },
     editCard: async (_o, _w, text, choices) => { edits.push({ text, choices: choices.map(c => c.id) }); },
     authorize: (handle) => { authorized.push(handle); return { ok: true, until: wall + 48 * 3_600_000 }; },
-    signOut: (handle) => { signedOut.push(handle); },
+    signOut: (handle) => { signedOut.push(handle); return { durable: true, authorizationDurable: true }; },
     event: (type, payload) => { events.push([type, payload]); },
     text: { ask: (c) => `ASK ${c.label} ${c.peer} ${c.askedAt} ${c.until}`, confirmed: (c) => `OK ${c.label} ${c.until}`, denied: (c) => `DENIED ${c.label}`,
-      expired: (c) => `EXPIRED ${c.label}`, refused: (c) => `REFUSED ${c.label} ${c.refusal}`, revoked: (c) => `REVOKED ${c.label}`, ended: (c) => `ENDED ${c.label}`, generalHint: () => "HINT",
+      expired: (c) => `EXPIRED ${c.label}`, refused: (c) => `REFUSED ${c.label} ${c.refusal}`, revoked: (c) => `REVOKED ${c.label}`, notSaved: (c) => `NOT SAVED ${c.label}`, ended: (c) => `ENDED ${c.label}`, generalHint: () => "HINT",
       confirmLabel: () => "Confirm", notMeLabel: () => "Not me", notYours: () => "NOT YOURS" },
     log: { warn: vi.fn() }, ...over,
   };
@@ -182,7 +182,33 @@ describe("a tap on the card", () => {
     await h.r.handleCallback({ callbackData: h.edits.at(-1)!.choices[0]!, userId: "admin", ack: vi.fn() }, "owner");
     expect(h.signedOut).toEqual([H]);
     expect(h.edits.at(-1)).toEqual({ text: "REVOKED Firefox on Mac", choices: [] });
-    expect(h.events.at(-1)).toEqual(["session_authorization_failed", expect.objectContaining({ reason: "not_me_after_confirm" })]);
+    expect(h.events.at(-1)).toEqual(["session_authorization_failed", { challenge: expect.any(String), session: H, actor: "owner:admin", peer: "loopback", reason: "not_me_after_confirm" }]);
+    expect(h.deps.log.warn).not.toHaveBeenCalled();
+  });
+  describe("Not me whose sign-out could not be saved (Prism L1): said as it is — and only when it matters", () => {
+    const notMe = async (out: { durable: boolean; authorizationDurable: boolean }, confirmFirst: boolean) => {
+      const h = rig({ signOut: () => out });
+      await ask(h);
+      if (confirmFirst) { await h.tap(0); await h.r.handleCallback({ callbackData: h.edits.at(-1)!.choices[0]!, userId: "admin", ack: vi.fn() }, "owner"); }
+      else await h.tap(1);
+      return h;
+    };
+    it("the session signed out in memory only (its store could neither rewrite nor remove its file): the card says so, before or after Confirm", async () => {
+      for (const confirmFirst of [true, false]) {
+        const h = await notMe({ durable: false, authorizationDurable: false }, confirmFirst);
+        expect(h.edits.at(-1)).toEqual({ text: "NOT SAVED Firefox on Mac", choices: [] });
+        expect(h.events.at(-1)![1]).toMatchObject({ reason: confirmFirst ? "not_me_after_confirm" : "not_me", durable: false, authorization_durable: false });
+        expect(h.deps.log.warn).toHaveBeenCalledWith({ session: H, durable: false, authorizationDurable: false }, "Not me: the sign-out could not be saved");
+        expect(h.r.pending(H), "the card is spent all the same").toBeNull();
+      }
+    });
+    it("only the authorization's end not saved (the session is gone for good): signed out as usual on the card; logged and evented", async () => {
+      const h = await notMe({ durable: true, authorizationDurable: false }, true);
+      expect(h.edits.at(-1)).toEqual({ text: "REVOKED Firefox on Mac", choices: [] });
+      expect(h.events.at(-1)![1]).toMatchObject({ authorization_durable: false });
+      expect(h.events.at(-1)![1]).not.toHaveProperty("durable");
+      expect(h.deps.log.warn).toHaveBeenCalledTimes(1);
+    });
   });
   it("#2126 P3: at the authorization's end the confirmed card says it ended, with no button left", async () => {
     vi.useFakeTimers();
@@ -286,6 +312,44 @@ describe("the FleetManager wiring (a real one, no fleet)", () => {
     expect(h.s.webSessions.authenticate(sessionId, tokenEpoch(TOKEN), { touch: false })).toBeNull();
     expect(h.adapter.editMessageRemoveButtons).toHaveBeenCalledWith("dm-admin", "m1", expect.stringContaining("signed out"));
     h.close();
+  });
+  describe("Prism L1: Not me whose sign-out could not be saved (inert EACCES stores)", () => {
+    const eacces = () => { throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }); };
+    /** A confirmed card, then the stores' file operations refused from here on (memory still works). */
+    async function confirmedThenUnwritable(h: ReturnType<typeof fleet>, unlinkToo: boolean) {
+      const { sessionId, record } = h.session();
+      await route(h, "POST", { sessionId });
+      await h.s.dispatchAdapterCallback({ callbackData: h.dms[0]!.choices[0]!.id, chatId: "dm-admin", messageId: "m1", userId: "admin", ack: vi.fn() }, "owner", h.adapter);
+      expect(h.s.sessionAuthorizationStore().get(record.handle)).not.toBeNull();
+      const ops = h.s.webSessions.ops;
+      h.s.webSessions.ops = { ...ops, writeFileSync: eacces, ...(unlinkToo ? { unlinkSync: eacces } : {}) };
+      const auth = h.s.sessionAuthorizationStore();
+      auth.io = { ...auth.io, write: eacces, ...(unlinkToo ? { unlink: eacces } : {}) };
+      return { sessionId, record };
+    }
+    const notMe = (h: ReturnType<typeof fleet>) => h.s.dispatchAdapterCallback({ callbackData: h.dms[0]!.choices[1]!.id, chatId: "dm-admin", messageId: "m1", userId: "admin", ack: vi.fn() }, "owner", h.adapter);
+    it("neither rewritten nor removed: signed out here, and the card says a restart may bring it back (the file still holds it)", async () => {
+      const h = fleet();
+      const { sessionId, record } = await confirmedThenUnwritable(h, true);
+      await notMe(h);
+      expect(h.s.webSessions.authenticate(sessionId, tokenEpoch(TOKEN), { touch: false })).toBeNull();
+      expect(h.adapter.editMessageRemoveButtons).toHaveBeenLastCalledWith("dm-admin", "m1", expect.stringContaining("couldn't be saved: a fleet restart may bring that browser's session back"));
+      // Why it is said: the files a restart reads still hold the session and its authorization.
+      expect(readFileSync(join(h.s.dataDir, "web-sessions.json"), "utf8")).toContain(record.handle);
+      expect(readFileSync(join(h.s.dataDir, "web-authorizations.json"), "utf8")).toContain(record.handle);
+      h.close();
+    });
+    it("only the rewrite refused (the old files can be removed): signed out as usual — nothing a restart could bring back", async () => {
+      const h = fleet();
+      const { sessionId, record } = await confirmedThenUnwritable(h, false);
+      await notMe(h);
+      expect(h.s.webSessions.authenticate(sessionId, tokenEpoch(TOKEN), { touch: false })).toBeNull();
+      const card = (h.adapter.editMessageRemoveButtons.mock.calls.at(-1) as unknown as [string, string, string])[2];
+      expect([card.includes("was signed out; its authorization has ended"), card.includes("couldn't be saved")]).toEqual([true, false]);
+      expect([existsSync(join(h.s.dataDir, "web-sessions.json")), existsSync(join(h.s.dataDir, "web-authorizations.json"))]).toEqual([false, false]);
+      expect(record.handle).toMatch(/^[0-9a-f]{16}$/);
+      h.close();
+    });
   });
   it("a tap after the session ended: refused on the card (§3 again at the tap)", async () => {
     const h = fleet(); const { sessionId, record } = h.session();
