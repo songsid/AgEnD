@@ -250,7 +250,7 @@ Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕
 - `send_to_instance` — 傳訊息給另一個 fleet instance；支援結構化的 metadata（`request_kind`、`requires_reply`、`correlation_id`、`task_summary`）
 - `start_instance` — 喚醒已停止的 instance，好讓你傳訊息給它
 - `create_instance` — 建立新 instance 和它的 topic（目錄可省略；省略時自動建立 `~/.agend/workspaces/<name>`）；支援用 `branch` 建立 git worktree 隔離
-- `delete_instance` — 移除 instance 和它的 topic
+- `delete_instance` — 移除 instance，並預設一併刪除它自己的 topic（`delete_topic: false` 會保留；在 Discord 上 topic 是頻道，訊息記錄也會一起刪除；General topic 永遠不會刪除；結果會說明平台是否真的刪掉了 topic，沒刪的話原因是什麼）
 - `replace_instance` — 把 instance 換成全新的（交接 + 刪除 + 建立）
 - `describe_instance` — 取得某個 instance 的詳細資訊（描述、模型、最後活動）
 - `set_display_name` — 設定顯示名稱，會出現在訊息、活動紀錄與其他 agent 看到的地方
@@ -870,6 +870,8 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 ## delete_instance 自動清理 team (delete_instance team cleanup)
 
 用 `delete_instance` 刪除 instance 時，它會自動從所屬的每個 team 中移除，不必手動整理 team 成員。
+
+除非傳入 `delete_topic: false`，它自己的聊天 topic 也會透過該 instance 自己的 bot 一併刪除；dashboard 的「刪除」也一樣。只有 Telegram 或 Discord 確認刪除時，`topic_deleted` 才是 true；否則 `topic_reason` 會說明 topic 為什麼留下（例如 Telegram bot 沒有「管理主題」的管理員權限，或 topic 早已不存在）。無論如何，instance 本身都會刪除。
 
 ## HTML 對話匯出 (HTML Chat Export)
 

@@ -104,6 +104,7 @@ import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { getEffectiveInstanceDefaults, loadFleetConfig, loadRawFleetConfig, loadFleetConfigSource, loadRawFleetConfigSource, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG, autoGeneralInstanceConfig } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { binaryProbe } from "./binary-probe.js";
+import { deletePlannedTopic, planInstanceTopicDelete, topicDestination, topicMustStay, type InstanceTopicPlan, type TopicDeleteOutcome, type TopicOwnership } from "./instance-topic-delete.js";
 import { AVAILABILITY_STALE_MS, BackendAvailabilityStore, hostAvailabilityProbes, findExecutableIn, resolveBackendBinary, type AvailabilityProbes, type BackendAvailability } from "./backend-availability.js";
 import { classifySqliteOpenError } from "./sqlite-open-errors.js";
 import { OutboxOpenError } from "./outbox-open-error.js";
@@ -12235,14 +12236,90 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return adapter.createTopic(topicName);
   }
 
-  async deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void> {
-    try {
-      const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
-      if (!adapter?.deleteTopic) return;
-      await adapter.deleteTopic(topicId);
-    } catch (err) {
-      this.logger.warn({ err, topicId }, "Failed to delete forum topic during rollback");
-    }
+  /**
+   * Delete an agent and, unless asked not to, its own chat topic (user decision: by default). The topic is planned
+   * before the removal (its id and bot go with the fleet.yaml entry) and deleted through the agent's OWN bot after it;
+   * the outcome is the platform's answer (instance-topic-delete.ts). A topic that cannot go never fails the removal.
+   */
+  async removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval,
+    opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome> {
+    const plan = opts.deleteTopic ? this.planInstanceTopicDelete(name) : null;
+    if (opts.execution) await this.removeInstance(name, authorization, opts.execution);
+    else await this.removeInstance(name, authorization);
+    // #3055 review (Prism P1): asked again right before the platform call — the fleet as it is NOW, not as planned
+    // before the removal was awaited (a new owner of the topic, or the bot rebuilt).
+    return deletePlannedTopic(plan, this.logger, (p) => {
+      if (this.instanceTopicAdapter(p.adapterId) !== p.adapter) return "the agent's bot changed while it was being deleted, so its topic was left";
+      return topicMustStay(p.destination, this.topicOwnership(), null);       // the original is gone: every owner now counts
+    }, { begin: (d) => this.topicDeletionsInFlight.add(d), end: (d) => this.topicDeletionsInFlight.delete(d) });
+  }
+
+  /** #3055: destinations whose platform deletion is running now; a binding to one waits until it is over. */
+  private readonly topicDeletionsInFlight = new Set<string>();
+  /** True while a topic with this id is being deleted on any connection (a new binding of it is refused meanwhile). */
+  isTopicDeletionInFlight(topicId: number | string): boolean {
+    const tail = `:${topicId}`;
+    return [...this.topicDeletionsInFlight].some(d => d.endsWith(tail));
+  }
+
+  /**
+   * #3055 review r2 (Prism P1-3): would this instance config bind a topic whose deletion is running now? Compared by
+   * physical destination, so the same thread number in another Telegram group is not held. Settings asks it at commit.
+   */
+  topicBindingInFlight(inst: { channel_id?: unknown; topic_id?: unknown }): boolean {
+    if (this.topicDeletionsInFlight.size === 0 || inst.topic_id == null || inst.topic_id === "") return false;
+    const adapterId = typeof inst.channel_id === "string" && inst.channel_id ? inst.channel_id : this.getPrimaryAdapterId();
+    return this.topicDeletionsInFlight.has(this.destinationFor(adapterId, inst.topic_id as number | string));
+  }
+
+  /** Any topic deletion running now (a connection's group or General may not be re-pointed meanwhile). */
+  topicDeletionPending(): boolean { return this.topicDeletionsInFlight.size > 0; }
+
+  /** The physical destination of `topicId` on the bot `adapterId`. */
+  private destinationFor(adapterId: string | undefined, topicId: number | string): string {
+    const world = adapterId ? this.worlds.get(adapterId) : undefined;
+    const platform = world?.adapter?.type ?? this.getChannelConfig(adapterId)?.type;
+    const groupId = world?.groupId ?? String(this.getChannelConfig(adapterId)?.group_id ?? "");
+    return topicDestination(platform, groupId, adapterId, topicId);
+  }
+
+  /** The adapter of the bot `adapterId` names — never a substitute for a bot that is not there. */
+  private instanceTopicAdapter(adapterId: string | undefined): ChannelAdapter | undefined {
+    return (adapterId ? this.worlds.get(adapterId)?.adapter : this.worlds.size === 0 ? this.adapter ?? undefined : undefined) ?? undefined;
+  }
+
+  /**
+   * Topic ownership by physical destination (#3055 review, Prism P1): an instance's topic is where its bot's platform
+   * puts it (a Telegram group + thread, a Discord channel), so two bots in one group, or two instances on one
+   * channel, are seen to share it; and every connection's own General is protected, with or without a General agent.
+   */
+  private topicOwnership(): TopicOwnership {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const destinationOf = (n: string): string | null => {
+      const cfg = this.fleetConfig?.instances?.[n];
+      if (!cfg || cfg.topic_id == null || cfg.topic_id === "") return null;
+      return this.destinationFor(this.getInstanceAdapterId(n), cfg.topic_id);
+    };
+    const generalDestinations = (): Set<string> => {
+      const out = new Set<string>();
+      for (const ch of channels) {
+        const id = ch.id ?? ch.type;
+        const groupId = this.worlds.get(id)?.groupId ?? (ch.group_id != null ? String(ch.group_id) : undefined);
+        if (ch.type === "telegram") out.add(topicDestination("telegram", groupId, id, 1));
+        if (ch.type === "discord") {
+          const gcid = discordGeneralChannelId(ch as unknown as Record<string, unknown>);
+          if (gcid) out.add(topicDestination("discord", groupId, id, gcid));
+        }
+      }
+      return out;
+    };
+    return { instances: this.fleetConfig?.instances, destinationOf, generalDestinations };
+  }
+
+  /** What deleting `name`'s topic would act on: its own bot only — a bot that is not there is never substituted. */
+  private planInstanceTopicDelete(name: string): InstanceTopicPlan {
+    const adapterId = this.getInstanceAdapterId(name);
+    return planInstanceTopicDelete({ name, adapterId, adapter: this.instanceTopicAdapter(adapterId), ...this.topicOwnership() });
   }
 
   getForumTopicDeleter(adapterId?: string): ((topicId: number | string) => Promise<void>) | null {
@@ -22890,6 +22967,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private async runConnectionBindingApply(job: SecretApplyJob, binding: ConnectionBinding, execution?: SettingsExecution): Promise<void> {
     try {
+      // #3055 review r2: a connection is not re-pointed while one of its topics is being deleted (nothing is changed).
+      if (this.topicDeletionPending()) throw new Error("a topic deletion is running; try again in a moment");
       await this.rebuildAdapterForBinding(job.connectionId, binding, execution);
       job.result = "applied";
     } catch (err) {
