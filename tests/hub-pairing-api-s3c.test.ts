@@ -196,3 +196,25 @@ describe("the pairing routes", async () => {
     expect(await call({ method: "GET", path: "/api/hub/member/pairing", api: null })).toMatchObject({ status: 404, body: { error: "unavailable" } });
   });
 });
+
+describe("the claim loop's edges (mutation review)", () => {
+  it("cancel during the wait: the parked poll wakes and claims nothing more (its generation is gone)", async () => {
+    let wake: (() => void) | null = null;
+    const r = rig({ sleep: () => new Promise<void>((ok) => { wake = ok; }) });
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    r.answers.push("pending", "paired");
+    await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    expect(r.claim).toHaveBeenCalledTimes(1);
+    r.api.cancel();
+    wake!(); await r.flush();
+    expect(r.claim).toHaveBeenCalledTimes(1);
+    expect(r.api.view()).toEqual({ state: "unpaired" });
+  });
+  it("an answer that is neither pending nor paired stops the loop", async () => {
+    const claim = vi.fn(async () => ({ status: "weird" }));
+    const r = rig({ claim });
+    await r.api.connect({ address: "https://hub.test", code: "abcdef012345" }, yes);
+    await r.api.confirmFingerprint(r.digest, yes); await r.flush();
+    expect(claim).toHaveBeenCalledTimes(1);
+  });
+});
