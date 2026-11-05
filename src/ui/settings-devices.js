@@ -11,6 +11,10 @@
 // Only the verified owner may approve (GET /ui/devices' `owner`): this computer's admin here, or signed in from outside
 // with the authenticator's code. Anyone else sees the card, the explanation and a disabled button. The server decides
 // that on every request and refuses everything else regardless (POST /ui/devices/{lookup,approve,deny} → 403).
+// Refs #3061 (review of P2b): with web authorization off nobody is an owner, so nobody can add a device or sign another out —
+// the card says so and points to `agend web-token rotate` on the AgEnD computer (which ends every session); and the
+// confirm screen leads with where the request is from and its address (the device name is the browser's own word and can be
+// faked) and says to allow only when the new device shows the same code.
 // The words are English and 繁體中文, as everything in src/ui (tests/i18n-ui-literals-2390.test.ts).
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
@@ -27,6 +31,7 @@ register("devices", {
     confirmTitle: "Allow this device to sign in?", device: "Device", from: "From", address: "Address", left: "Time left", code: "Code",
     fromHost: "This computer", fromNetwork: "The network (LAN or tailnet)",
     grants: "General web actions only. Owner authorization is not included; it is verified separately.",
+    sameCode: "Only allow this if the new device's screen shows this same code. The device name comes from the browser and can be faked, so go by where it is from and its address.",
     allow: "Allow", deny: "Deny", back: "Back", done: "Done",
     approved: "Approved. The new device signs in within a few seconds.", denied: "Denied. The new device was told it may not sign in.",
     notFound: "No device is waiting with that code. Check the code on the new device; it may have expired.",
@@ -41,6 +46,8 @@ register("devices", {
     signOutTitle: "Sign out this device?", signOutLead: "{0} will have to sign in again.", signOutGo: "Sign out",
     signedOut: "{0} was signed out.", alreadyGone: "That device is already signed out.",
     notSaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. Fix the permissions on ~/.agend/web-sessions.json and sign it out again.",
+    authorityOffA: "Web authorization is off, so no device is the owner: none can add a device or sign another one out. To sign the other devices out, run ",
+    authorityOffB: " on the AgEnD computer. It ends every session, this one included, and every device has to sign in again.",
   },
   "zh-TW": {
     title: "裝置與登入", lead: "用 8 碼代碼讓新裝置登入。在已登入且已驗證擁有者的裝置上，到這裡核准。",
@@ -51,6 +58,7 @@ register("devices", {
     confirmTitle: "允許這台裝置登入？", device: "裝置", from: "來源", address: "位址", left: "剩餘時間", code: "代碼",
     fromHost: "這台電腦", fromNetwork: "網路（區網或 tailnet）",
     grants: "只能使用一般的網頁功能，不含擁有者授權；擁有者授權需另外驗證。",
+    sameCode: "只有新裝置的畫面上顯示的是同一組代碼時才允許。裝置名稱來自瀏覽器、可能被偽造，請以來源和位址為準。",
     allow: "允許", deny: "拒絕", back: "返回", done: "完成",
     approved: "已核准。新裝置幾秒內就會登入。", denied: "已拒絕。新裝置會收到不能登入的通知。",
     notFound: "沒有等待中的裝置使用這組代碼。請確認新裝置上的代碼；它可能已失效。",
@@ -65,9 +73,13 @@ register("devices", {
     signOutTitle: "登出這台裝置？", signOutLead: "{0} 需要重新登入。", signOutGo: "登出",
     signedOut: "已登出 {0}。", alreadyGone: "這台裝置已經登出了。",
     notSaved: "暫時登出了，但變更沒能存檔：重新啟動後這個工作階段可能會回來。請修正 ~/.agend/web-sessions.json 的權限，再登出一次。",
+    authorityOffA: "網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。要登出其他裝置，請在 AgEnD 電腦上執行 ",
+    authorityOffB: "。這個指令會結束所有工作階段（包括目前這個），每台裝置都要重新登入。",
   },
 });
 const td = (k, ...v) => t(`devices.${k}`, ...v);
+/** The one thing that signs other devices out when nobody is an owner: a command, the same in both languages. */
+export const ROTATE_COMMAND = "agend web-token rotate";
 
 /** A wait as words: "2 minutes" / 「2 分鐘」 (rounded up). */
 export function pauseWords(ms) {
@@ -182,6 +194,8 @@ export function DevicesCard() {
     else setNote({ ok: false, text: t("app.failed") });
     load();
   };
+  // Web authorization off (the server says so): nobody is an owner, whoever is looking — "use the AgEnD computer" would not help.
+  const authorityOff = s.authority === false;
   const devices = Array.isArray(s.devices) ? s.devices : [];
   const others = devices.filter((d) => !d.current).length;
   const viaText = (via) => td({ device: "viaDevice", host: "viaHost", totp: "viaTotp" }[via] || "viaCode");
@@ -196,12 +210,13 @@ export function DevicesCard() {
     : dlg.step === "confirm" ? html`
       <p class="note" id="devConfirmLead">${td("confirmTitle")}</p>
       <dl class="s-dev-facts" id="devFacts">
-        <div><dt>${td("device")}</dt><dd id="devLabel">${request.label}</dd></div>
+        <div class="s-dev-key"><dt>${td("from")}</dt><dd id="devFrom">${td(request.peer === "host" ? "fromHost" : "fromNetwork")}</dd></div>
+        <div class="s-dev-key"><dt>${td("address")}</dt><dd id="devAddress">${request.address}</dd></div>
         <div><dt>${td("code")}</dt><dd><code id="devCodeShown">${request.code}</code></dd></div>
-        <div><dt>${td("from")}</dt><dd id="devFrom">${td(request.peer === "host" ? "fromHost" : "fromNetwork")}</dd></div>
-        <div><dt>${td("address")}</dt><dd id="devAddress">${request.address}</dd></div>
+        <div><dt>${td("device")}</dt><dd id="devLabel">${request.label}</dd></div>
         <div><dt>${td("left")}</dt><dd id="devLeft">${leftClock(request.expiresAt - now)}</dd></div>
       </dl>
+      <p class="note s-va-warn" id="devSameCode">${td("sameCode")}</p>
       <p class="note" id="devGrants">${td("grants")}</p>
       <p class="note" id="devNoCopy">${td("noCopy")}</p>`
     : html`<p class="note" role="status" id="devDone">${td(dlg.outcome === "approve" ? "approved" : "denied")}</p>`;
@@ -224,9 +239,10 @@ export function DevicesCard() {
         </div>
         ${d.current ? null : html`<button type="button" class="btn btn-sm btn-danger" data-signout=${d.handle} disabled=${!s.owner || busy} onClick=${() => askSignOut(d)}>${t("app.signOut")}</button>`}
       </li>`)}</ul>
-      ${others && !s.owner ? html`<p class="note" id="devicesSignOutOwnerOnly">${td("signOutOwnerOnly")}</p>` : null}
+      ${others && !s.owner && !authorityOff ? html`<p class="note" id="devicesSignOutOwnerOnly">${td("signOutOwnerOnly")}</p>` : null}
       ${note ? html`<p class=${`note ${note.ok ? "" : "error"}`} role=${note.ok ? "status" : "alert"} id="devicesNote">${note.text}</p>` : null}` : null}
-    ${!s.owner ? html`<p class="note" id="devicesOwnerOnly">${td("ownerOnly")}</p>` : null}
+    ${authorityOff ? html`<p class="note s-va-warn" id="devicesAuthorityOff">${td("authorityOffA")}<code id="devicesRotate">${ROTATE_COMMAND}</code>${td("authorityOffB")}</p>`
+      : !s.owner ? html`<p class="note" id="devicesOwnerOnly">${td("ownerOnly")}</p>` : null}
     <div class="save-row"><button type="button" class="btn btn-primary" id="devicesAdd" disabled=${!s.owner} onClick=${open}>${td("add")}</button></div>
     ${dlg ? html`<${Dialog} title=${td("dlgTitle")} onClose=${close} busy=${busy} actions=${actions}>${body}</${Dialog}>` : null}
     ${out ? html`<${Dialog} title=${td("signOutTitle")} onClose=${() => { if (!busy) setOut(null); }} busy=${busy} actions=${html`

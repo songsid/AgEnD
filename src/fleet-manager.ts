@@ -3136,11 +3136,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * GET /ui/devices: is this a web-only fleet, may THIS session approve a new device and end another (is it the verified
    * owner), and — to an admin session, never to a guest or the CLI's header token — the signed-in devices (Refs #3061, P2b).
+   * `authority`: web authorization is on. With it off nobody is an owner (liveOwner → null), so nobody may add a device or
+   * sign another out; the page says why and points to `agend web-token rotate` on this computer instead of "use the AgEnD
+   * computer", which would not help.
    */
-  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; devices: WebDeviceRow[] } {
+  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority: boolean; devices: WebDeviceRow[] } {
     const webOnly = this.isWebOnlyFleet();
     const owner = webOnly && !!this.deviceApprovalOwner(req);
-    return { webOnly, owner, devices: webOnly ? this.webDeviceRows(req) : [] };
+    return { webOnly, owner, authority: webOnly && this.webAuthorityState().enabled, devices: webOnly ? this.webDeviceRows(req) : [] };
   }
 
   /**

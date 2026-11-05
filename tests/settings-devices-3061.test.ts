@@ -345,3 +345,85 @@ describe("#3061 P2b: the signed-in devices", () => {
     } finally { i18n.setLang("en"); }
   });
 });
+
+// ── P2b security review: three small things ──
+describe("#3061 P2b review: web authorization off — the card says why nobody can add or sign out a device, and what to do", () => {
+  const OFF = { webOnly: true, owner: false, authority: false, devices: ROWS };
+
+  it("authority off: one line replaces the two 'owner not verified' lines — nobody is the owner; run `agend web-token rotate` on the AgEnD computer, which ends every session", async () => {
+    const w = await open(OFF);
+    expect(w.text(w.$("#devicesAuthorityOff"))).toBe("Web authorization is off, so no device is the owner: none can add a device or sign another one out. To sign the other devices out, run agend web-token rotate on the AgEnD computer. It ends every session, this one included, and every device has to sign in again.");
+    expect(w.text(w.$("#devicesRotate"))).toBe("agend web-token rotate");                    // the command, as code, to copy
+    expect(w.$("#devicesRotate").tagName.toLowerCase()).toBe("code");
+    // The advice that would not help ("use the AgEnD computer") is not given.
+    expect([w.$("#devicesOwnerOnly"), w.$("#devicesSignOutOwnerOnly")]).toEqual([null, null]);
+    expect(p.root.textContent).not.toContain("Use the AgEnD computer");
+    // Nothing can be done from here: Add device and every Sign out are off, and a click posts nothing.
+    expect([w.$("#devicesAdd").disabled, ...[...p.root.querySelectorAll("[data-signout]")].map((b: any) => b.disabled)]).toEqual([true, true, true, true]);
+    await w.click(w.$("#devicesAdd"));
+    await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
+    expect([w.$(".dlg-title"), w.posts()]).toEqual([null, []]);
+  });
+
+  it("authority off with no other device signed in: the line is still there (Add device is off too)", async () => {
+    const w = await open({ webOnly: true, owner: false, authority: false, devices: [ROWS[0]] });
+    expect(w.$("#devicesAuthorityOff")).not.toBeNull();
+    expect(w.$("#devicesAdd").disabled).toBe(true);
+  });
+
+  it("authority ON but this device is not the owner, or an older server that says nothing: the old lines, not the rotate advice", async () => {
+    const on = await open({ webOnly: true, owner: false, authority: true, devices: ROWS });
+    expect([on.$("#devicesAuthorityOff"), on.$("#devicesOwnerOnly") !== null, on.$("#devicesSignOutOwnerOnly") !== null]).toEqual([null, true, true]);
+    const old = await open({ webOnly: true, owner: false, devices: ROWS });
+    expect([old.$("#devicesAuthorityOff"), old.$("#devicesOwnerOnly") !== null, old.$("#devicesSignOutOwnerOnly") !== null]).toEqual([null, true, true]);
+    const owner = await open({ webOnly: true, owner: true, authority: true, devices: ROWS });
+    expect([owner.$("#devicesAuthorityOff"), owner.$("#devicesOwnerOnly"), owner.$("#devicesSignOutOwnerOnly")]).toEqual([null, null, null]);
+  });
+
+  it("zh-TW", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW");
+    try {
+      const w = await open(OFF);
+      expect(w.text(w.$("#devicesAuthorityOff"))).toBe("網頁授權已關閉，所以沒有任何裝置是擁有者：不能新增裝置，也不能登出其他裝置。要登出其他裝置，請在 AgEnD 電腦上執行 agend web-token rotate。這個指令會結束所有工作階段（包括目前這個），每台裝置都要重新登入。");
+      expect(w.text(w.$("#devicesRotate"))).toBe("agend web-token rotate");
+    } finally { i18n.setLang("en"); }
+  });
+});
+
+describe("#3061 P2b review: the confirm screen — where the request is from and its address lead; allow only if the new device shows the same code", () => {
+  it("the reminder, and the order: from, address (the two that tell devices apart), then the code, the device name (the browser's own word), the time left", async () => {
+    const w = await toConfirm();
+    expect(w.text(w.$("#devSameCode"))).toBe("Only allow this if the new device's screen shows this same code. The device name comes from the browser and can be faked, so go by where it is from and its address.");
+    const rows = [...w.$("#devFacts").querySelectorAll("div")] as any[];                // the dl holds nothing but its rows
+    expect(rows.map(r => w.text(r.querySelector("dt")))).toEqual(["From", "Address", "Code", "Device", "Time left"]);
+    expect(rows.map(r => r.classList.contains("s-dev-key"))).toEqual([true, true, false, false, false]);   // the two that stand out
+    expect([w.text(w.$("#devFrom")), w.text(w.$("#devAddress")), w.text(w.$("#devCodeShown")), w.text(w.$("#devLabel"))])
+      .toEqual(["The network (LAN or tailnet)", "192.168.1.23", "ABCD-EFGH", "Chrome on Android"]);
+    // The reminder comes before what is granted, and the buttons are still the same three.
+    const order = [...w.$(".dlg-body").querySelectorAll("#devSameCode, #devGrants, #devNoCopy")].map((e: any) => e.id);
+    expect(order).toEqual(["devSameCode", "devGrants", "devNoCopy"]);
+    expect([w.text(w.$("#devBack")), w.text(w.$("#devDeny")), w.text(w.$("#devAllow"))]).toEqual(["Back", "Deny", "Allow"]);
+  });
+
+  it("opened from the QR link (?approve=): the same confirm screen, the same reminder — and a device name that claims to be something else is only text", async () => {
+    history.replaceState(null, "", "/settings/access?approve=ABCD-EFGH");
+    answers["POST /ui/devices/lookup"] = { status: 200, body: { request: { ...REQUEST, label: "<b>This computer</b>", peer: "network", address: "203.0.113.9", expiresAt: Date.now() + 200_000 } } };
+    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    await w.click(w.$("#devFind"));
+    expect(w.text(w.$("#devSameCode"))).toContain("Only allow this if the new device's screen shows this same code.");
+    expect([w.text(w.$("#devFrom")), w.text(w.$("#devAddress"))]).toEqual(["The network (LAN or tailnet)", "203.0.113.9"]);
+    expect(w.$("#devLabel b")).toBeNull();
+    expect(w.text(w.$("#devLabel"))).toBe("<b>This computer</b>");
+  });
+
+  it("zh-TW", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW");
+    try {
+      const w = await toConfirm();
+      expect(w.text(w.$("#devSameCode"))).toBe("只有新裝置的畫面上顯示的是同一組代碼時才允許。裝置名稱來自瀏覽器、可能被偽造，請以來源和位址為準。");
+      expect([...w.$("#devFacts").querySelectorAll("dt")].map((e: any) => w.text(e))).toEqual(["來源", "位址", "代碼", "裝置", "剩餘時間"]);
+    } finally { i18n.setLang("en"); }
+  });
+});

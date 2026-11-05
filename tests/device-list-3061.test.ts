@@ -189,7 +189,7 @@ describe("#3061 P2b: the device list", () => {
     expect(seen.devices.length).toBe(2);
     const chat = await startFleet({ chat: true });
     const admin = chat.stored({ label: "chat admin" });
-    expect(await list(chat, admin)).toEqual({ webOnly: false, owner: false, devices: [] });
+    expect(await list(chat, admin)).toEqual({ webOnly: false, owner: false, authority: false, devices: [] });
   }, 40_000);
 
   it("the methods themselves hand nothing to a guest (the gate's guest scope stops one first; this is the second line)", async () => {
@@ -197,7 +197,7 @@ describe("#3061 P2b: the device list", () => {
     const owner = await h.hostSignIn();
     const guest = h.stored({ tier: "guest", label: "A guest" });
     const asked = (s: Signed) => ({ method: "GET", headers: { cookie: s.cookie, host: `127.0.0.1:${h.port}` }, socket: { remoteAddress: "127.0.0.1" } });
-    expect(h.any.webDevicesStatus(asked(guest))).toEqual({ webOnly: true, owner: false, devices: [] });
+    expect(h.any.webDevicesStatus(asked(guest))).toEqual({ webOnly: true, owner: false, authority: true, devices: [] });
     expect(h.any.webDevicesStatus(asked(owner)).devices.map((r: { label: string }) => r.label).sort()).toEqual([h.sessionOf(owner)!.label]);
     expect(h.any.webDeviceSignOut(asked(guest), handleOf(h, owner))).toEqual({ status: 403, body: { error: "owner_required" } });
     expect(await h.alive(owner)).toBe(true);
@@ -333,12 +333,14 @@ describe("#3061 P2b: ending another device — only the verified owner, on every
     const other = h.stored({ label: "Plain code" });
     const body = await list(h, owner);
     expect(body.owner).toBe(false);
+    expect(body.authority).toBe(false);                                                   // …and the page is told why, to say so (settings-devices-3061)
     expect((body.devices as Array<{ ownerVerified: boolean }>).every(r => !r.ownerVerified)).toBe(true);
     expect((await signOut(h, owner, handleOf(h, other))).status).toBe(403);
     expect((await h.local(owner, "DELETE", `/auth/sessions/${handleOf(h, other)}`)).status).toBe(403);
     expect(await h.alive(other)).toBe(true);
     // Switched back on, the same session is the owner again only if it was authorized then — one that signed in while it was off was not.
     h.any.fleetConfig.web.verified_authority.enabled = true;
+    expect([(await list(h, owner)).owner, (await list(h, owner)).authority]).toEqual([false, true]);   // on again; this session is still no owner
     expect((await signOut(h, owner, handleOf(h, other))).status).toBe(403);
     const fresh = await h.hostSignIn();
     expect((await signOut(h, fresh, handleOf(h, other))).status).toBe(200);

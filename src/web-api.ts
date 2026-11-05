@@ -541,7 +541,7 @@ export interface WebApiContext {
   webOutsideRemove?(req: IncomingMessage): "ok" | "unsaved" | "not_here";
   webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
   /** Refs #3061 (P2a): a web-only fleet's new-device approval — may this session approve (the verified owner), and the decision itself. */
-  webDevicesStatus?(req: IncomingMessage): { webOnly: boolean; owner: boolean; devices?: WebDeviceRow[] };
+  webDevicesStatus?(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority?: boolean; devices?: WebDeviceRow[] };
   webDeviceLoginAct?(req: IncomingMessage, op: "lookup" | "approve" | "deny", code: string): { status: number; body: Record<string, unknown> };
   /** Refs #3061 (P2b): the owner ends another signed-in device (the settings list's button). */
   webDeviceSignOut?(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> };
