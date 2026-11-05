@@ -52,7 +52,7 @@ describe("Codex (0.147+): model items' clocks, closed by token_usage_record, cou
   const item = (type: string, s: number, e: number, turn = "u") => ev(e, { type: "item_completed", thread_id: "t", turn_id: turn, started_at_ms: T0 + s, completed_at_ms: T0 + e, item: { type, id: `${type}-${s}` } });
   const record = (out: number, turn = "u", at = 0) => L({ timestamp: iso(at), ordinal: 1, type: "token_usage_record", payload: { thread_id: "t", turn_id: turn, response_id: `r${at}`, usage: { input_tokens: 100, cached_input_tokens: 0, output_tokens: out } } });
   let total = 0;
-  const count = (out: number, at = 0) => ev(at, { type: "token_count", info: { last_token_usage: { input_tokens: 100, cached_input_tokens: 0, output_tokens: out }, total_token_usage: { total_tokens: total += 100 + out } } });
+  const count = (out: number, at = 0, input = 100) => ev(at, { type: "token_count", info: { last_token_usage: { input_tokens: input, cached_input_tokens: 0, output_tokens: out }, total_token_usage: { total_tokens: total += input + out } } });
   /** A response: its record, then the token_count that counts it (as codex writes them). */
   const resp = (out: number, turn = "u", at = 0) => [record(out, turn, at), count(out, at)];
   const run = (lines: any[]) => { const file: FileCursor = { kind: "codex", ino: 1, offset: 0, model: "gpt-5.5" }; const out: Array<{ tokens: number; ms: number; t?: number }> = [];
@@ -104,6 +104,18 @@ describe("Codex (0.147+): model items' clocks, closed by token_usage_record, cou
     expect(file.speeds).toEqual([{ t: T0 + 3_600_000, model: "gpt-5.5", prompt: 100, tokens: 400, ms: 4_000 }]);
     // Never counted (the turn ended first): no one's usage, no sample.
     expect(turn(item("AgentMessage", 0, 4_000), record(400))).toEqual([]);
+  });
+  it("Prism #3075 r2: a count goes only to the response whose usage it carries; an orphan never takes a later count", () => {
+    // A: recorded, never counted. B: recorded and counted (1000 tokens in 2 s). Only B is a sample.
+    expect(turn(item("AgentMessage", 0, 4_000), record(400), item("AgentMessage", 10_000, 12_000), resp(1_000))).toEqual([{ tokens: 1_000, ms: 2_000 }]);
+    // A count whose usage matches no waiting record times nothing (and drops the orphan).
+    expect(turn(item("AgentMessage", 0, 4_000), record(400), count(999), item("AgentMessage", 10_000, 12_000), resp(1_000))).toEqual([{ tokens: 1_000, ms: 2_000 }]);
+    // The same output but another input: not this response's count.
+    expect(turn(item("AgentMessage", 0, 4_000), record(400), count(400, 0, 555))).toEqual([]);
+    // Many orphans never crowd out a later counted response.
+    expect(turn(...Array.from({ length: 70 }, (_, i) => [item("AgentMessage", i * 10, i * 10 + 5), record(400)]), item("AgentMessage", 10_000, 12_000), resp(1_000))).toEqual([{ tokens: 1_000, ms: 2_000 }]);
+    // Control: two responses, each counted — both are samples, each with its own.
+    expect(turn(item("AgentMessage", 0, 4_000), resp(400), item("AgentMessage", 10_000, 12_000), resp(1_000))).toEqual([{ tokens: 400, ms: 4_000 }, { tokens: 1_000, ms: 2_000 }]);
   });
 });
 

@@ -297,7 +297,8 @@ function observeClaudeSpeed(file: FileCursor, id: string | undefined, d: { times
  * - hosted tool intervals are kept per turn and clipped into each response's own window, so a search logged after its
  *   response's record still counts against that response only; the turn's samples are made when the turn ends;
  * - a sample is the response's counted usage, timed: it waits (in the cursor, across restarts) for the `token_count`
- *   that counts the response, and is filed at that count's time — the same hour, source and model as its tokens.
+ *   that counts the response — the next count, carrying the same usage as its record; an unmatched one is dropped — and
+ *   is filed at that count's time: the same hour, source and model as its tokens.
  */
 export const CODEX_MAX_TOK_PER_S = 3000;
 const CODEX_MODEL_ITEMS = new Set(["AgentMessage", "Reasoning"]);
@@ -369,16 +370,24 @@ function observeCodexSpeed(line: ScanLine, file: FileCursor): void {
   if (!r) return;
   const timed = r.start !== null && r.end !== null && !r.bad && (r.turn === null || d.payload?.turn_id === r.turn);
   const out = num(d.payload?.usage?.output_tokens);
-  if (timed && out > 0 && r.pend.length < CX_PENDING_MAX) {
+  if (timed && out > 0) {
+    if (r.pend.length >= CX_PENDING_MAX) r.pend.splice(r.pend.findIndex((x) => typeof x.counted !== "number") >>> 0, 1);  // the oldest orphan, else the oldest
     r.pend.push({ start: r.start!, end: r.end!, out, prompt: num(d.payload?.usage?.input_tokens), model: file.model ?? "unknown" });
   }
   r.start = null; r.end = null; delete r.bad;               // a record closes its response, timed or not
 }
 
-/** A token_count was counted at `t`: the oldest closed response waiting for its count is this one. */
-function codexCounted(file: FileCursor, t: number): void {
-  const p = file.cx?.pend?.find((x) => typeof x.counted !== "number");
-  if (p) p.counted = t;
+/**
+ * A token_count was counted at `t` with this usage. Its response is the latest closed one still waiting — and only if
+ * that response's own record has the same usage (Prism #3075 r2): a count never goes to a response it does not match.
+ * Every older one still waiting is an orphan (its count never came: a turn ended first, a compaction): never given a
+ * later response's count, the first evicted when the turn holds too many, and dropped uncounted when the turn ends.
+ */
+function codexCounted(file: FileCursor, t: number, usage: { input: number; output: number }): void {
+  const pend = file.cx?.pend;
+  if (!Array.isArray(pend)) return;
+  const latest = pend.filter((x) => typeof x.counted !== "number").at(-1);
+  if (latest && latest.out === usage.output && latest.prompt === usage.input) latest.counted = t;
 }
 
 /**
@@ -469,8 +478,8 @@ export function codexLine(line: ScanLine, file: FileCursor): Turn | null {
   if (total) file.total = total;
   const t = Date.parse(d.timestamp);
   if (!Number.isFinite(t)) return null;
-  codexCounted(file, t);                                    // #3066 §2: the waiting response's usage is this count
   const input = num(u.input_tokens), read = Math.min(num(u.cached_input_tokens), input), output = num(u.output_tokens);
+  codexCounted(file, t, { input, output });                 // #3066 §2: the waiting response this count is the usage of
   const write = typeof u.cache_write_input_tokens === "number" ? Math.min(num(u.cache_write_input_tokens), input - read) : null;
   // Reasoning is counted inside output_tokens (total_tokens = input + output): kept as its part, capped at output.
   return { t, model: file.model ?? "unknown", prompt: input, uncached: input - read - (write ?? 0), read, write5m: 0, write1h: 0, write, output, reasoning: Math.min(num(u.reasoning_output_tokens), output) };
