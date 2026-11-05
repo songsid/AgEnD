@@ -93,11 +93,11 @@ async function load(path: string): Promise<void> {
   }
 }
 
-/** Keep the last 12 weeks, and the file under its cap (oldest first out). Rewritten atomically. */
 /** When lines older than 12 weeks were last dropped: once a day (Fable r1 #3), and whenever the file is over its cap. */
 let lastAgePrune = Number.NEGATIVE_INFINITY;
 const AGE_PRUNE_EVERY_MS = 24 * 3_600_000;
 
+/** Keep the last 12 weeks, and the file under its cap (oldest first out). Rewritten atomically. */
 async function prune(path: string, now: number): Promise<void> {
   let size = 0;
   try { size = (await stat(path)).size; } catch { return; }
