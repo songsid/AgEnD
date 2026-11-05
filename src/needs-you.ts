@@ -9,7 +9,7 @@
 
 import type { ConfigIssue } from "./config-history.js";
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config";
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "hub";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -47,6 +47,8 @@ export interface NeedsYouItem {
   generalLocation?: true;
   /** Keep reason=dialog for tabs loaded before this compatibility hold existed. */
   kiroChoice?: true;
+  /** Member-local display only; never an approval capability or a public-link projection. */
+  hubProposal?: { action: string; arguments: string; argumentsDigest: string; consequences: string };
 }
 
 export type NeedsYouReason =
@@ -55,7 +57,13 @@ export type NeedsYouReason =
   | "general_windows_offline" | "general_location_hold"
   | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
-  | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback";                                 // task
+  | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback"
+  | "hub_proposal" | "hub_execution_hold";
+
+export interface HubExecutionAttentionInput {
+  id: string; kind: "proposal" | "hold"; agent: string; messageId: string; exposureId: string; since: number;
+  proposal?: NonNullable<NeedsYouItem["hubProposal"]>;
+}
 
 /** A fleet prompt offered on the dashboard (hang / exit-restart / interactive-assist), as the fleet holds it. */
 export interface PromptInput {
@@ -134,6 +142,7 @@ export interface NeedsYouInputs {
   tasks?: TaskInput[];
   backendSignIns?: BackendSignInInput[];
   configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
+  hubExecution?: HubExecutionAttentionInput[];
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
   ownerOf: (instance: string) => string | undefined;
 }
@@ -237,6 +246,13 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     configIssue: { file: issue.file, line: issue.line, column: issue.column, reason: issue.reason, mode: issue.mode, time: issue.time, since: issue.since },
   });
 
+  // Hub proposals remain display-only in the member owner's local inbox.
+  for (const attention of inputs.hubExecution ?? []) items.push({
+    id: `hub:${attention.id}`, type: "hub", instance: attention.agent,
+    reason: attention.kind === "proposal" ? "hub_proposal" : "hub_execution_hold", detail: "", since: attention.since,
+    ...(attention.proposal ? { hubProposal: attention.proposal } : {}),
+  });
+
   // Task board cards waiting for the person (#2246 step 3), under their assignee.
   for (const c of inputs.tasks ?? []) {
     items.push({
@@ -302,6 +318,7 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
     // A card's buttons carry the version it was shown at: a newer card renders (and mints) again.
     i.card ? i.card.version : null,
     i.lane ?? null,
+    i.hubProposal ?? null,
   ]));
 }
 

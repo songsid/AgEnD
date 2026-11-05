@@ -243,6 +243,7 @@ function NeedsItem({ item, nowMs, owner }) {
     <div class="n-body">
       <div class="n-title"><strong>${reasonText(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
       ${detailOf(item) ? html`<p class="n-detail">${detailOf(item)}</p>` : null}
+      ${item.type === "hub" && item.hubProposal ? html`<p class="n-detail">${item.hubProposal.action}</p><pre>${item.hubProposal.arguments}</pre><p class="n-detail">${item.hubProposal.consequences}</p>` : null}
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
