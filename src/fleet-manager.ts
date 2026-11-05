@@ -1872,7 +1872,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
         // S-51 PR 2b: the fleet's side of a Hub membership (pairing binding, local agents, attachment points).
         member: {
-          boundHub: () => this.hubMemberPairingApi?.boundHub() ?? null,
+          // S3c's currentBinding: a fresh, fail-closed read of the pairing state (null unless consistent and connectable).
+          boundHub: () => this.hubMemberBinding?.(this.dataDir)?.hubId ?? null,
           agents: () => this.hubMemberAgents(),
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
@@ -1894,12 +1895,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async observeHubMemberPairing(on: boolean): Promise<void> {
     if (!on) { this.attachHubMemberPairing(null); return; }
     if (this.hubMemberPairingApi) return;
-    const { createHubMemberPairingApi } = await import("./hub/member/pairing-api.js");
+    const { createHubMemberPairingApi, currentBinding } = await import("./hub/member/pairing-api.js");
     if (this.shuttingDown || !this.hubEffectsReady || this.hubMemberPairingApi) return;
+    this.hubMemberBinding = currentBinding;
     this.attachHubMemberPairing(createHubMemberPairingApi({
       home: this.dataDir,
       enabled: () => (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
+      // Disconnect: stop the member client now (the runtime re-composes from the saved binding, fencing first).
       fence: () => { void this.hubRuntime?.refresh(); },
+      // A claim saved, a disconnect tombstone or a cancel: re-compose the member side for the new binding.
+      bindingChanged: () => { void this.hubRuntime?.refresh(); },
       // Disconnect withdraws every published exposure locally (each saved before this returns).
       withdrawAll: async () => {
         const api = this.hubMemberExposureApi;
@@ -1977,6 +1982,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * (hub.enabled / hub_member.enabled) is on; while both are off nothing Hub-related loads, opens or listens.
    */
   private hubRuntime: import("./hub/runtime.js").HubRuntime | null = null;
+  /** S3c's currentBinding reader, loaded with the pairing API (only while the member switch is on). */
+  private hubMemberBinding: ((home: string) => { hubId: string } | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;

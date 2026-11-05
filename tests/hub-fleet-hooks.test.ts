@@ -10,12 +10,13 @@ import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const hub = vi.hoisted(() => ({ imported: 0, created: 0, applied: [] as unknown[], events: [] as string[] }));
+const hub = vi.hoisted(() => ({ imported: 0, created: 0, applied: [] as unknown[], events: [] as string[], options: null as any }));
 vi.mock("../src/hub/runtime.js", () => {
   hub.imported += 1;
   return {
     HubRuntime: class {
-      constructor() { hub.created += 1; }
+      constructor(options: unknown) { hub.created += 1; hub.options = options; }
+      refresh() { hub.events.push("refresh"); return Promise.resolve(); }
       apply(config: unknown) { hub.applied.push(config); hub.events.push("apply"); return Promise.resolve(); }
       fence() { hub.events.push("fence"); }
       close() { hub.events.push("close"); return Promise.resolve(); }
@@ -116,5 +117,21 @@ describe("review #3113 regression (single-flight runtime)", () => {
     expect(hub.created).toBe(2);
     expect(hub.events.filter((e) => e === "close")).toHaveLength(2);
     expect(second.fm.hubRuntime).toBeNull();
+  }, 30_000);
+});
+
+describe("S5b PR 2b: the member side's fleet hooks", () => {
+  it("attaches S3c's pairing API only while the member switch is on; the member host reads the fresh binding", async () => {
+    const { fm, write } = harness({ hub_member: { enabled: true } });
+    fm.hubEffectsReady = true;
+    fm.observeHubSwitches();
+    await settle();
+    expect(fm.hubMemberPairing()).not.toBeNull();
+    expect(hub.options.member.boundHub()).toBeNull(); // nothing paired in this scratch home
+    expect(hub.options.member.agents()).toEqual([]);
+    write({ hub_member: { enabled: false } });
+    await settle();
+    expect(fm.hubMemberPairing()).toBeNull();
+    await fm.stopAll();
   }, 30_000);
 });
