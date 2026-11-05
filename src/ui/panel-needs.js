@@ -29,8 +29,8 @@ import { GeneralLocation } from "./general-location.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
-  en: { needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally" },
-  "zh-TW": { needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視" },
+  en: { needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running" },
+  "zh-TW": { needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行" },
 });
 
 register("needs", {

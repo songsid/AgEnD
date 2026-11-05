@@ -85,6 +85,7 @@ export interface NeedsYouHubContext {
   backendSignIns?(): BackendSignInInput[];
   configIssues?(): NonNullable<import("./needs-you.js").NeedsYouInputs["configIssues"]>;
   hubExecution?(): import("./needs-you.js").HubExecutionAttentionInput[];
+  hubHolds?(): import("./needs-you.js").HubHoldInput[];
   /**
    * The person's move on a card from the chat: confirm it, send it back with `text` (the reason), or answer its blocked
    * question with `text`. Checked against the version the button showed; the answer is said to the clicker.
@@ -261,7 +262,9 @@ export class NeedsYouHub {
       this.hubAttentionFailedSince ??= now;
       hubExecution = [{ id: "storage-unavailable", kind: "hold", agent: "", messageId: "", exposureId: "", since: this.hubAttentionFailedSince }];
     }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], hubExecution, ownerOf: i => this.ctx.ownerOf(i) });
+    let hubHolds: import("./needs-you.js").HubHoldInput[] = [];
+    try { hubHolds = this.ctx.hubHolds?.() ?? []; } catch { /* the holds are also in the fleet log */ }
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
