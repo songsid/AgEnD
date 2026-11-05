@@ -179,18 +179,20 @@ async function deliver(opts: Opts = {}) {
   // has returned (successfully or not) for this delivery. Awaiting it gives
   // the test a true completion signal rather than relying on spin counts.
   let resolveProof!: () => void;
+  let proofRun: Promise<void> | null = null, proofRuns = 0;
   const proofSettled = new Promise<void>(r => { resolveProof = r; });
   const realProve = daemon.proveDeliveryFromTranscript?.bind(daemon) as ((...a: unknown[]) => Promise<void>) | undefined;
   if (realProve) {
     daemon.proveDeliveryFromTranscript = async (...args: unknown[]) => {
-      try { await realProve(...args); } finally { resolveProof(); }
+      proofRuns++;
+      try { proofRun = realProve(...args); await proofRun; } finally { resolveProof(); }
     };
   } else {
     // If the method doesn't exist (backend variant), resolve immediately.
     resolveProof();
   }
 
-  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer, proofSettled };
+  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer, proofSettled, proofRun: () => proofRun, proofRuns: () => proofRuns };
 }
 
 describe("a readerless backend's idle delivery is proven by its transcript, not by the pane printing something (#758)", () => {
@@ -426,26 +428,33 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   });
 
   it("a persistence failure at settlement is logged and leaves the row for reconciliation — no rejection, no false completion, no re-paste", async () => {
-    const h = await deliver();
-    await h.begun();
-    const offset = statSync(h.transcript).size;
-    appendFileSync(h.transcript, userEntry(h.deliveryId));
-    const attemptNo = h.outbox.get(h.deliveryId)!.attemptNo;
-    const errors: unknown[] = [];
-    h.daemon.logger = { info() {}, warn() {}, error(e: unknown) { errors.push(e); }, debug() {}, child() { return this; } } as any;
-    const pastesBefore = h.tmux.pasteBuffer.mock.calls.length;
-    vi.spyOn(h.outbox, "complete").mockImplementation(() => { throw new Error("SQLITE_FULL: database or disk is full"); });
-    vi.useRealTimers();
-    // The detached `void` promise must resolve, never reject: a rejection escapes into an unhandledRejection fault.
-    await expect(h.daemon.proveDeliveryFromTranscript(
-      { deliveryId: h.deliveryId, attemptNo },
-      { backend: "claude-code", path: h.transcript, offset },
-    )).resolves.toBeUndefined();
-    expect(h.state()).toBe("submission_started");
-    expect(h.evidence()).toBeNull();
-    expect(errors).toHaveLength(1);
-    expect(h.notices()).toBe(0);
-    expect(h.tmux.pasteBuffer.mock.calls.length).toBe(pastesBefore);
+    let enterLook!: () => void, releaseLook!: () => void;
+    const lookEntered = new Promise<void>(resolve => { enterLook = resolve; });
+    const lookReleased = new Promise<void>(resolve => { releaseLook = resolve; });
+    const h = await deliver({ beforeTranscriptLook: async () => { enterLook(); await lookReleased; } });
+    try {
+      await h.begun(); await lookEntered;
+      const failure = new Error("SQLITE_FULL: database or disk is full"), errors: unknown[] = [];
+      h.daemon.logger = { info() {}, warn() {}, error(e: unknown) { errors.push(e); }, debug() {}, child() { return this; } } as any;
+      const complete = vi.spyOn(h.outbox, "complete").mockImplementation(() => { throw failure; });
+      appendFileSync(h.transcript, userEntry(h.deliveryId));
+      // Observe the ONE detached proof already started by delivery; invoking the private method
+      // here would create a second proof that races it and logs the same injected failure twice.
+      expect(h.proofRuns()).toBe(1);
+      const proof = h.proofRun(); expect(proof).toBeInstanceOf(Promise);
+      const resolved = expect(proof).resolves.toBeUndefined();
+      releaseLook(); await resolved; await h.proofSettled;
+      expect(lookHooks.results.get(h.deliveryId)).toBe("user");
+      expect(h.proofRuns()).toBe(1);
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(h.state()).toBe("submission_started");
+      expect(h.evidence()).toBeNull();
+      expect(errors).toEqual([expect.objectContaining({ err: failure, deliveryId: h.deliveryId,
+        attemptNo: h.outbox.get(h.deliveryId)!.attemptNo, outcome: "delivered", evidence: "transcript-marker" })]);
+      expect(h.notices()).toBe(0);
+      expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+      expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+    } finally { releaseLook(); }
   });
 
   it("the failure path is bounded: with no marker the wait settles uncertain after ~10 s, not a minute", async () => {
