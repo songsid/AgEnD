@@ -1392,6 +1392,11 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .u-stale { font-weight: var(--fw-semibold); }
 .u-stale-detail { color: var(--text-3); font-size: var(--fs-xs); }
 .u-sub { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+/* #3066 §1: a weekly quota's measured 100% under its bar, and its notes (the fleet-only limit always). */
+.u-cap { margin-top: 4px; font-size: var(--fs-xs); }
+.u-cap-line { color: var(--text-2); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.u-cap-wait .u-cap-line { color: var(--text-3); }
+.u-cap-note { color: var(--text-3); overflow-wrap: anywhere; }
 .u-err { color: var(--warn); font-size: var(--fs-sm); }
 .u-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 /* #1673: the usage rail beside the page on a wide screen (header-tools.js UsageRail; shown only at min-width 1200px). */
