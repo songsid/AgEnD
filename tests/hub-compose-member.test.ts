@@ -110,3 +110,23 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     }
   });
 });
+
+describe.skipIf(process.platform === "win32")("member link state", () => {
+  it("is reported online only after the #3116 handshake completes, not when the socket opens", async () => {
+    const rig = await paired();
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    rig.setServerGate(() => held); // the Hub's replies wait: the handshake cannot complete yet
+    const f = factory(rig.memberHome, rig.identity.hubId);
+    const service = await f.create({ enabled: true }, () => true);
+    const starting = service.start().catch(() => undefined);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(f.attached.link).not.toContain("online");
+    rig.setServerGate(undefined);
+    release();
+    for (let i = 0; i < 60 && !f.attached.link.includes("online"); i += 1) await new Promise((r) => setTimeout(r, 50));
+    expect(f.attached.link).toContain("online");
+    await starting;
+    await service.close();
+  });
+});
