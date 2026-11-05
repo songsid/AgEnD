@@ -34,6 +34,10 @@ export function parseRoute(pathname) {
   if (pathname === "/ui/fleet") return { panel: "fleet", tab: "tasks" };
   if (pathname === "/ui/needs") return { panel: "needs" };
   if (pathname === NOTICES_PATH) return { panel: "notices" };              // #2910 D2: a web-only fleet's Notices
+  // AgEnD Hub P1: a Hub workspace's pages (served only by a Hub's own listener; this fleet's answers not found).
+  if (pathname === "/ui/hub") return { panel: "hub", tab: "ask" };
+  if (pathname === "/ui/hub/exposures") return { panel: "hub", tab: "exposures" };
+  if (pathname === "/ui/hub/admin") return { panel: "hub", tab: "admin" };
   // #1523 N2: one instance's Details (`agent` is no Fleet tab; a tab is one segment).
   let m = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(pathname);
   if (m) return named("details", m[1]);
@@ -116,6 +120,7 @@ export function routePath(route) {
   if (route.panel === "settings") return settingsPath(route.section);
   if (route.panel === "needs") return NEEDS_PATH;
   if (route.panel === "notices") return NOTICES_PATH;
+  if (route.panel === "hub") return route.tab === "exposures" ? "/ui/hub/exposures" : route.tab === "admin" ? "/ui/hub/admin" : "/ui/hub";
   if (route.panel === "view") return viewPath(route.instance);
   if (route.panel === "details") return detailsPath(route.instance);
   if (route.panel === "log") return logPath(route.instance);
@@ -148,7 +153,7 @@ export function routeKey(route) {
   if (!route) return "none";
   if (route.panel === "needs") return "needs:";
   if (route.panel === "notices") return "notices:";
-  return `${route.panel}:${route.panel === "fleet" ? route.tab : route.panel === "settings" ? route.section : route.instance ?? ""}`;
+  return `${route.panel}:${route.panel === "fleet" || route.panel === "hub" ? route.tab : route.panel === "settings" ? route.section : route.instance ?? ""}`;
 }
 
 /**

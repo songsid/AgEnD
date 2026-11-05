@@ -1,3 +1,4 @@
+import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
 import { MachineSlotLimitError } from "./windows-agents.js";
 import { daemonTopicMode } from "./web-only-fleet.js";
@@ -1675,6 +1676,8 @@ export function handleWebRequest(
   // panel says "not found"), so the response never tells which names exist.
   const shell = shellRoute(method, path);
   if (shell?.kind === "malformed") { json(res, 400, { error: "invalid instance name" }); return true; }
+  // AgEnD Hub P1: the Hub's pages live on a Hub's own listener (slice 1), never on this fleet's: the ordinary not-found.
+  if (shell?.kind === "shell" && shell.route.panel === "hub") { json(res, 404, { error: "not found" }); return true; }
   if (shell?.kind === "shell") { serveAppShell(req, res, ctx, "full"); return true; }
 
   // Serve JS modules
@@ -3966,12 +3969,22 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
   return mode === "full" && !viewer?.guest && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
 }
 
+/**
+ * AgEnD Hub P1 (docs/design/hub.md, docs/design/hub-ui-client.md): the page's Hub mark — presentation only, never
+ * authority, set by the listener that serves the page (never a client's choice): `hub` only on a Hub listener's own
+ * workspace (slice 1's separate listener and origin passes `hubWorkspace`); `member` on this fleet's listener when
+ * `hub_member.enabled`. Nothing otherwise: no Hub UI is drawn and no Hub module loads.
+ */
+function hubBodyAttrs(config: HubSwitches, hubWorkspace: { name: string } | undefined, attr: (v: string | null | undefined) => string): string {
+  if (hubWorkspace) return ` data-hub="hub"${hubWorkspace.name ? ` data-hub-name="${attr(hubNameOf(hubWorkspace.name))}"` : ""}`;
+  return hubModeOf(config).member ? ' data-hub="member"' : "";
+}
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
   const trusted = ctx.guestTrusted?.(owner) ? ' data-guest-level="trusted"' : "";
   return ` data-tier="guest"${trusted}${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
 }
-function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
+function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null, hubWorkspace?: { name: string }): string {
   const p = shellPreview(req, ctx, mode);
   const ownerCss = shellOwnerCss(ctx, mode, viewer);
   let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
@@ -4001,12 +4014,18 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}`
     // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
     + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
+    // AgEnD Hub P1 (docs/design/hub-ui-client.md): the Hub's marks — only when a switch is on, never on a guest's page.
+    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(ctx.fleetConfig, hubWorkspace, attr) : ""}`
     // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
     + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
 }
 /** The app shell page for one entry, under the panels' CSP; it may frame exactly <preview origin>/frame, and only
  *  when this load chose one. */
-export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: AppShellContext, mode: AppShellMode): void {
+/**
+ * The app shell page. `opts.hubWorkspace`: the page is a Hub's own workspace (slice 1's Hub listener only — the fleet's
+ * listener never passes it), so it is drawn as the Hub shell.
+ */
+export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: AppShellContext, mode: AppShellMode, opts: { hubWorkspace?: { name: string } } = {}): void {
   try {
     const html = readFileSync(join(__dirname, "ui", "app.html"), "utf-8");
     const viewer = mode === "full" ? prefsViewer(req, new URL(req.url ?? "/", "http://localhost"), ctx) : null;
@@ -4020,7 +4039,7 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
     const frameSrc = previewFrames ?? "";
-    sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
+    sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer, opts.hubWorkspace)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }
