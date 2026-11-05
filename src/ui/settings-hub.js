@@ -11,8 +11,9 @@ import { compareGroups, hubClient, safeWebOrigin, ADDRESS_HINT, CODE_HINT } from
 import { hw, linkHubCss } from "./hub-strings.js";
 
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
-const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked"]);
-const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_paired: "errNotPaired", not_enforceable: "notEnforceable" };
+const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected"]);
+const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_paired: "errNotPaired", not_enforceable: "notEnforceable",
+  unknown_view: "notEnforceable", limit: "errLimit", unavailable: "notAvailable" };
 
 /** A fingerprint: its first 128 bits in groups people compare, the whole digest on request. */
 function Fingerprint({ label, fp }) {
@@ -49,15 +50,17 @@ export function HubConnectCard() {
   const connect = () => act(async () => {
     const r = await client.connect({ address: form.address.trim(), code: form.code.trim() });
     if (!live.current) return;
-    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); }
+    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); if (r.pendingConfirmation) setMsg({ error: false, text: hw("pendingSent") }); }
     else setMsg({ error: true, text: hw(CONNECT_ERRORS[r.error] || "errFailed") });
   });
   const disconnect = (name) => act(async () => {
+    const shown = pairing;                                  // #3115 r2: the pairing on screen now, before the dialog
     if (!(await confirmDialog({ message: hw("disconnectAsk", name), confirmLabel: hw("disconnect"), danger: true }))) return;
-    const r = await client.disconnect();
+    const r = await client.disconnect(shown);
     if (!live.current) return;
     if (!r.ok) { setMsg({ error: true, text: hw("errUnsaved") }); return; }
     setPairing(await client.pairing());
+    if (r.pendingConfirmation) { setMsg({ error: false, text: hw("pendingSent") }); return; }
     if (r.remote === "pending") setMsg({ error: false, text: hw("disconnectPending") });
   });
   const cancel = () => act(async () => { const p = await client.cancel(); if (live.current) setPairing(p); });
@@ -81,8 +84,18 @@ export function HubConnectCard() {
       <p class="hub-origin"><code>${p.memberOrigin}</code></p>
       <${Fingerprint} label=${hw("pairingFp")} fp=${p.fingerprint} />
       <p class="note">${hw("pendingCompare")}</p>
-      <p class="hub-steps-lead">${hw("pendingSteps")}</p>
-      <ul class="hub-steps">${step(p.ownerConfirmed, "ownerStep")}${step(p.adminApproved, "adminStep")}</ul>
+      ${p.localConfirmed === false && client.confirmFingerprint ? html`<div class="field-row"><button type="button" class="btn btn-primary hub-local-confirm" disabled=${busy}
+          onClick=${() => act(async () => { const r = await client.confirmFingerprint(p.fingerprint.digest); if (!live.current) return;
+            if (r.ok) { setPairing(r.pairing); if (r.pendingConfirmation) setMsg({ error: false, text: hw("pendingSent") }); }
+            else setMsg({ error: true, text: hw(r.error === "expired" ? "hold_expired" : r.error === "conflict" ? "errConflict" : "errUnsaved") }); })}>${hw("localMatch")}</button></div>`
+        : p.localConfirmed === true ? html`<p class="note hub-local-confirmed">${hw("localConfirmed")}</p>` : null}
+      ${p.ownerConfirmed === null && p.adminApproved === null
+        // S3c: the member cannot see the Hub's progress — the two steps as instructions, no marks.
+        ? html`<p class="hub-steps-lead">${hw("hubStillNeeded")}</p>
+          <ul class="hub-steps hub-steps-unknown"><li><span>${hw("ownerStepHub")}</span></li><li><span>${hw("adminStepHub")}</span></li></ul>
+          <p class="note">${hw("hubProgressHidden")}</p>`
+        : html`<p class="hub-steps-lead">${hw("pendingSteps")}</p>
+          <ul class="hub-steps">${step(p.ownerConfirmed, "ownerStep")}${step(p.adminApproved, "adminStep")}</ul>`}
       ${Number.isFinite(p.expiresAt) ? html`<p class="note">${hw("expires", new Date(p.expiresAt).toLocaleTimeString())}</p>` : null}
       <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw("cancel")}</button></div>
     </div>`;
@@ -105,16 +118,19 @@ export function HubConnectCard() {
       <${Fingerprint} label=${hw("keyApproved")} fp=${p.hub.fingerprint} />
       <${Fingerprint} label=${hw("keyOffered")} fp=${p.offered} />
       <div class="field-row">
-        <button type="button" class="btn" disabled=${busy} onClick=${() => act(async () => { await client.disconnect(); if (live.current) setPairing(await client.pairing()); })}>${hw("repair")}</button>
+        <button type="button" class="btn" disabled=${busy} onClick=${() => act(async () => { const shown = pairing; await client.disconnect(shown); if (live.current) setPairing(await client.pairing()); })}>${hw("repair")}</button>
         <button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => disconnect(name)}>${hw("disconnect")}</button>
       </div>
     </div>`;
+  } else if (p.state === "held" && p.hold === "unavailable") {
+    // An older host (404): one line, no form and no fake hold.
+    body = html`<p class="note hub-unavailable">${hw("notAvailable")}</p>`;
   } else if (p.state === "held") {
     body = html`<div class="hub-state hub-held" role="alert">
       <h4><${Icon} name="pause" size=${16} /> ${hw("heldTitle")}</h4>
       <p>${hw(HOLDS.has(p.hold) ? `hold_${p.hold}` : "hold_other")}</p>
       ${p.memberOrigin ? html`<p class="hub-origin"><code>${p.memberOrigin}</code></p>` : null}
-      <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw("holdClear")}</button></div>
+      <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw(p.hold === "disconnected" ? "startOver" : "holdClear")}</button></div>
     </div>`;
   }
   return html`<section class="card s-hub-connect" id="hub-connect">
@@ -132,20 +148,51 @@ function HubExposures({ client }) {
   const [rows, setRows] = useState(null);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
+  // S3c: the row whose picker is open, and what is picked there ({ agent, dataViewId, tools }).
+  const [pick, setPick] = useState(null);
   const live = useRef(true);
   const load = () => client.exposures().then((r) => { if (live.current) setRows(r); }, () => { if (live.current) setRows([]); });
   useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, []);
-  const toggle = async (row, on) => {
+  const toggle = async (row, on, choice = null) => {
     if (busy) return;
+    // Switching on opens the picker (preselected where there is one choice); Share sends what was picked.
+    if (on && !choice) {
+      const c = row.choices || { dataViews: [], tools: [] };
+      setMsg(null);
+      setPick({ agent: row.agent, dataViewId: c.dataViews.length === 1 ? c.dataViews[0].id : "", tools: c.tools.length === 1 ? [c.tools[0].name] : [] });
+      return;
+    }
     setBusy(row.agent); setMsg(null);
     try {
-      const r = await client.setExposed(row.agent, on, row.revision);
+      const r = await client.setExposed(row.agent, on, row.revision, choice);
       if (!live.current) return;
       if (!r.ok) { setMsg({ error: true, text: hw(PUBLISH_ERRORS[r.error] || "errUnsaved") }); if (r.error === "conflict") await load(); return; }
+      setPick(null);
       if (!on && r.remote === "pending") setMsg({ error: false, text: hw("withdrawPending") });
+      if (r.pending) { setMsg({ error: false, text: hw("pendingSent") }); if (r.settled && r.settled.then) r.settled.then(() => { if (live.current) load(); }, () => { if (live.current) load(); }); }
       await load();
     } catch { if (live.current) setMsg({ error: true, text: hw("errUnsaved") }); }
     finally { if (live.current) setBusy(null); }
+  };
+  const picker = (row) => {
+    const c = row.choices || { dataViews: [], tools: [] }, p = pick;
+    const ready = p.dataViewId && p.tools.length > 0;
+    return html`<div class="hub-exposure-pick" role="group" aria-label=${hw("share", row.display)}>
+      <label class="field"><span>${hw("pickView")}</span>
+        <select value=${p.dataViewId} onChange=${(e) => { const v = e.target.value; setPick((x) => ({ ...x, dataViewId: v })); }}>
+          <option value="">—</option>
+          ${c.dataViews.map((v) => html`<option key=${v.id} value=${v.id}>${v.label}</option>`)}
+        </select></label>
+      <fieldset class="hub-exposure-tools"><legend>${hw("pickTools")}</legend>
+        ${c.tools.map((t) => html`<label key=${t.name} class="check"><input type="checkbox" checked=${p.tools.includes(t.name)}
+          onChange=${(e) => { const on = e.target.checked; setPick((x) => ({ ...x, tools: on ? [...new Set([...x.tools, t.name])] : x.tools.filter((n) => n !== t.name) })); }} /><span>${t.label}</span></label>`)}
+      </fieldset>
+      ${ready ? null : html`<small class="note">${hw("pickNone")}</small>`}
+      <div class="row-actions">
+        <button type="button" class="btn btn-sm btn-primary" disabled=${!ready || busy !== null} onClick=${() => toggle(row, true, { dataViewId: p.dataViewId, tools: p.tools })}>${hw("shareNow")}</button>
+        <button type="button" class="btn btn-sm" onClick=${() => setPick(null)}>${hw("pickCancel")}</button>
+      </div>
+    </div>`;
   };
   return html`<div class="hub-exposures">
     <h4>${hw("sharedTitle")}</h4>
@@ -154,13 +201,15 @@ function HubExposures({ client }) {
     ${rows && rows.length ? html`<ul class="hub-exposure-list">${rows.map((row) => html`<li key=${row.agent} class=${`hub-exposure${row.state === "published" ? " is-shared" : ""}`}>
       <label class="hub-exposure-main">
         <input class="s-ui-toggle" type="checkbox" role="switch" checked=${row.state === "published"} aria-label=${hw("share", row.display)}
-          disabled=${busy !== null || row.state === "frozen" || (row.state !== "published" && !row.enforceable)}
+          disabled=${busy !== null || !!row.pending || row.state === "frozen" || (row.state !== "published" && !row.enforceable)}
           onChange=${(e) => toggle(row, e.target.checked)} />
         <span class="hub-exposure-name">${row.display}${row.display !== row.agent ? html` <small><code>${row.agent}</code></small>` : null}</span>
       </label>
-      ${row.state === "frozen" ? html`<small class="hub-exposure-why">${hw("frozen")}</small>`
+      ${row.pending ? html`<small class="hub-exposure-why hub-exposure-pending">${hw("waitingConfirm")}</small>`
+        : row.state === "frozen" ? html`<small class="hub-exposure-why">${hw("frozen")}</small>`
         : !row.enforceable && row.state !== "published" ? html`<small class="hub-exposure-why">${hw("notEnforceable")}</small>`
         : row.policy ? html`<small class="hub-exposure-why">${hw("policy", row.policy.dataView, row.policy.tools.join(", ") || "—")}</small>` : null}
+      ${pick && pick.agent === row.agent && row.state !== "published" ? picker(row) : null}
     </li>`)}</ul>` : null}
     ${msg ? html`<p class=${msg.error ? "err" : "note"} role=${msg.error ? "alert" : "status"}>${msg.text}</p>` : null}
   </div>`;

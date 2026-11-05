@@ -39,9 +39,15 @@ export interface SettingsEffectContext {
   config: FleetConfig | null; classic: Record<string, any>;
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
   generalLocation?(input: unknown): { summary: string[]; connections: string[] };
+  /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
+  hubExposure?(input: unknown): { summary: string[] };
+  /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
+  hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "POST" && path === "/api/settings/general-location") return true;
+  if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
+  if (method === "POST" && /^\/api\/hub\/member\/pairing\/(?:connect|confirm|disconnect)$/.test(path)) return true;   // S3c PR B
   if (method === "POST" && path === "/api/settings/public-tunnel-token/apply") return true;
   if (!["POST", "PUT", "PATCH", "DELETE"].includes(method)) return false;
   return /^\/api\/settings\/(?:fleet\/(?:defaults|channels|web|appearance|runtimes|instances(?:\/[^/]+)?)|classic\/(?:defaults|channels\/[^/]+)|(?:provider-secrets|secrets)\/[^/]+\/apply|connections\/[^/]+\/(?:secret|binding)\/apply|quickstart\/commit)$/.test(path)
@@ -72,6 +78,31 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, fingerprint: settingsFingerprint([operation, input]), summary: preview.summary,
       affectedConnections: [], authority: { connections: preview.connections, primaryGeneral: true, unknown: false } } };
+  }
+  // S3c (S-55): publishing (or revising) an exposure to the Hub widens what the Hub may ask — the owner confirms it as
+  // any other Settings change; nothing in the fleet config changes, so the effect is the request itself.
+  if (path === "/api/hub/member/exposures") {
+    if (method !== "POST" || !context.hubExposure) throw new SettingsConfirmationError(404, "hub_member_unavailable");
+    let preview: { summary: string[] };
+    try { preview = context.hubExposure(body); } catch (err) {
+      const code = String((err as { code?: string }).code ?? "conflict");
+      throw new SettingsConfirmationError(code === "hub_member_unavailable" ? 404 : 409, code);
+    }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
+      authority: { connections: [], primaryGeneral: false, unknown: false } } };
+  }
+  const pairingStep = path.match(/^\/api\/hub\/member\/pairing\/(connect|confirm|disconnect)$/);
+  if (pairingStep) {
+    if (method !== "POST" || !context.hubPairing) throw new SettingsConfirmationError(404, "hub_member_unavailable");
+    let preview: { summary: string[] };
+    try { preview = context.hubPairing(pairingStep[1] as "connect" | "confirm" | "disconnect", body); } catch (err) {
+      const code = String((err as { code?: string }).code ?? "conflict");
+      throw new SettingsConfirmationError(code === "hub_member_unavailable" ? 404 : 409, code);
+    }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, fingerprint: settingsFingerprint([operation, body]), summary: preview.summary, affectedConnections: [],
+      authority: { connections: [], primaryGeneral: false, unknown: false } } };
   }
   if (secret || connection) {
     const payload = record(body), kind = secret ? "provider" : connection![2] as "secret" | "binding", target = decodeURIComponent((secret ?? connection)![1]);

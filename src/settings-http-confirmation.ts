@@ -77,6 +77,8 @@ export class SettingsHttpConfirmation {
     if (path === "/api/settings/fleet/appearance" && gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
     // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
     if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (path.startsWith("/api/hub/member/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
+    if (path === "/api/hub/member/exposures" && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (path === "/api/settings/general-location" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
     void this.prepare(req, res, url, next).catch(err => json(res, err instanceof SettingsConfirmationError ? err.status : 409,
       { error: err instanceof SettingsConfirmationError ? err.code : "settings_confirmation_unavailable" }));

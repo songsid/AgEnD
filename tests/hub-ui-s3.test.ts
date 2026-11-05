@@ -340,6 +340,13 @@ describe("Settings → Connect to a Hub: a conflict reloads the list (Fable on #
     const before = reads;
     const box = pg.root.querySelector(".hub-exposure input") as any;
     box.checked = true; fire(box, "change");
+    // S3c: switching on opens the picker (its one data view preselected); a tool is picked, then Share sends it.
+    await until(() => pg.root.querySelector(".hub-exposure-pick"));
+    expect((pg.root.querySelector(".hub-exposure-pick select") as any).value).toBe("summary");
+    const tool = pg.root.querySelector(".hub-exposure-tools input") as any;
+    tool.checked = true; fire(tool, "change");
+    await until(() => !(pg.root.querySelector(".hub-exposure-pick .btn-primary") as any).disabled);
+    (pg.root.querySelector(".hub-exposure-pick .btn-primary") as any).click();
     await until(() => pg.root.querySelector(".hub-exposures .err"));
     expect(pg.root.querySelector(".hub-exposures .err")!.textContent).toBe("This list changed in another tab. It has been reloaded; try again.");
     expect(reads).toBe(before + 1);
