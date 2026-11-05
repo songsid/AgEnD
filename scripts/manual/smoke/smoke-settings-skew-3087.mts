@@ -13,7 +13,8 @@
 //   asks nobody; saving a project folder goes through the confirmation path (202 pending_confirmation, a request to follow) and sends exactly its own body;
 //   no page error. old-page: the old page really is the one served, and the same two saves keep their bodies and confirmation.
 // The stale and old copies are proven, not assumed: stale-shell asserts the loaded stylesheet lacks a rule the branch added;
-// every swapped URL that the page asked for is counted (a swap nobody requested is listed with 0).
+// every swapped URL must be requested at least once in its case (swapped-urls-requested), so a file list that goes stale — a file
+// renamed, a swap the page never loads — fails the case instead of passing without testing anything; the counts are in the receipt.
 // A receipt (receipt.md + result.json) names the commit, whether the tree was clean, the command, the swapped files and each case.
 // The old copies are read straight from git (`git show BASE:src/ui/…`), so BASE must be fetched; BASE defaults to the branch's base,
 // upstream/release/2.3.5-alpha (v2.3.5-alpha.4). Run it on a clean checkout of the commit to be judged. CASES=<names> runs a subset.
@@ -196,6 +197,11 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
     await page.screenshot({ path: shotPath(SMOKE, name, "saved"), fullPage: false });
     check("no-page-errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   } catch (e) { check("case-ran", false, String(e).slice(0, 400)); check("no-page-errors", errors.length === 0, errors.slice(0, 3).join(" | ")); }
+  // A swap that nobody requests tests nothing: every URL replaced in this mode must have been asked for at least once.
+  if (MODES[mode].length) {
+    const asked = MODES[mode].map(urlOf), missing = asked.filter(u => !(hits[u] > 0));
+    check("swapped-urls-requested", missing.length === 0, missing.length ? `never requested: ${missing.join(", ")}` : asked.map(u => `${u} ×${hits[u]}`).join(", "));
+  }
   const ok = Object.values(checks).every(c => c.ok);
   results.push({ name, lang, device: dev.device, mode, ok, checks, swappedHits: hits, writes });
   const bad = Object.entries(checks).filter(([, c]) => !c.ok).map(([k, c]) => `${k}${c.detail ? ` (${c.detail.slice(0, 120)})` : ""}`);
@@ -204,7 +210,9 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
 }
 
 // ── The receipt ──
-const cmd = `PW_DIR=$PW_DIR REPO=${REPO} OUT=${process.env.OUT ?? "/tmp/smoke-out"} BASE=${BASE} FONTCONFIG_FILE=/etc/fonts/fonts.conf npx --prefix ${REPO} tsx scripts/manual/smoke/smoke-settings-skew-3087.mts`;
+// The command as it was run, with the environment it needs (PW_DIR, and LD_LIBRARY_PATH where Chromium's libraries live in a user directory).
+const cmd = [...["PW_DIR", "LD_LIBRARY_PATH", "FONTCONFIG_FILE", "HP", "CASES"].filter(k => process.env[k]).map(k => `${k}=${process.env[k]}`),
+  `REPO=${REPO}`, `OUT=${process.env.OUT ?? "/tmp/smoke-out"}`, `BASE=${BASE}`, `npx --prefix ${REPO} tsx scripts/manual/smoke/smoke-settings-skew-3087.mts`].join(" ");
 const allChecks = [...new Set(results.flatMap(r => Object.keys(r.checks)))];
 const hitsOf = (mode: Mode) => (MODES[mode] as readonly string[]).map(p => `\`${urlOf(p)}\` ×${results.filter(r => r.mode === mode).reduce((n, r) => n + (r.swappedHits[urlOf(p)] ?? 0), 0)}`).join(", ") || "—";
 const receipt = [
