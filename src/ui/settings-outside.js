@@ -24,6 +24,8 @@ register("outside", {
     openAt: "Open at {0}.", quick: "A quick link gets a new address each time it opens.",
     hereOnly: "Only on the AgEnD computer. Go back to that computer to set up, set up again or remove the app.",
     lostPhone: "Lost your phone? On the AgEnD computer, choose “Set up again”. There is no email or backup-code recovery.",
+    noRecovery: "If you lose the authenticator, set it up again on the AgEnD computer. There is no email or backup-code recovery.",
+    apps: "Works with Google Authenticator, Microsoft Authenticator or another TOTP authenticator.",
     wrong: "That code didn't work. Check that your phone's clock is right and try the newest code.",
     paused: "Too many wrong codes. Try again in {0}.", code: "Authenticator code", key: "Key",
     minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
@@ -32,14 +34,16 @@ register("outside", {
     title: "擁有者驗證", lead: "使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。",
     stateOn: "驗證器已設定", stateOff: "尚未設定", switch: "允許從外面連線",
     needApp: "請先設定驗證器 App。從外面登入時會要求輸入它的代碼。",
-    setUp: "設定驗證器 App",
+    setUp: "設定驗證器",
     scan: "用 Authy、Google Authenticator 或 Microsoft Authenticator 掃描，或手動輸入金鑰，再輸入 App 顯示的 6 位數代碼。",
-    setUpOn: "驗證器 App 已於 {0} 設定。", again: "重新設定",
+    setUpOn: "驗證器 App 已於 {0} 設定。", again: "重新綁定驗證器",
     againConfirm: "舊 App 的代碼會失效，所有從外面登入的人都會被登出。",
-    remove: "移除", removeConfirm: "從外面連線會關閉，所有從外面登入的人都會被登出。",
+    remove: "停用驗證器", removeConfirm: "從外面連線會關閉，所有從外面登入的人都會被登出。",
     openAt: "已開啟：{0}。", quick: "快速連結每次開啟網址都不同。",
-    hereOnly: "只能在 AgEnD 電腦上變更。設定、重新設定或移除 App，請回到那台電腦操作。",
-    lostPhone: "手機遺失？請在 AgEnD 電腦上選「重新設定」。沒有電子郵件或備用碼可以復原。",
+    hereOnly: "只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。",
+    lostPhone: "手機遺失？請在 AgEnD 電腦上選「重新綁定驗證器」。沒有電子郵件或備援碼復原。",
+    noRecovery: "遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。",
+    apps: "可使用 Google Authenticator、Microsoft Authenticator 或其他 TOTP 驗證器。",
     wrong: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
     paused: "錯誤次數太多，請 {0} 後再試。", code: "驗證器代碼", key: "金鑰",
     minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
@@ -153,6 +157,7 @@ export function OutsideCard() {
   }); };
   const link = s.link, open = link && link.state === "open";
   return html`<section class="card s-outside" id="outsideCard"><header class="s-auth-section-head"><div><h3>${to("title")}</h3><p id="outLead">${to("lead")}</p></div><span class=${`s-auth-state${s.enrolled ? " is-usable" : ""}`} id="outState">${to(s.enrolled ? "stateOn" : "stateOff")}</span></header>
+    <p class="note" id="outApps">${to("apps")}</p>
     ${!here ? html`<p class="note" id="outHereOnly">${to("hereOnly")}</p>` : null}
     <label class="check"><input id="outSwitch" type="checkbox" checked=${s.outside} disabled=${!here || busy || (!s.enrolled && !s.outside)}
       onChange=${(e) => flip(e.target.checked)} /><span>${to("switch")}</span></label>
@@ -167,6 +172,7 @@ export function OutsideCard() {
         <div class="field"><label for="outCode">${to("code")}</label>
           <input id="outCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123456" value=${code}
             onInput=${(e) => setCode(e.target.value)} /></div>
+        <p class="note" id="outEnrollNoRecovery">${to("noRecovery")}</p>
         ${msg ? html`<p class="feedback error" role="alert" id="outMsg">${msg}</p>` : null}
         <div class="save-row"><button type="button" class="btn" id="outCancel" disabled=${busy} onClick=${() => { setEnroll(null); setMsg(""); }}>${t("app.cancel")}</button>
           <button type="button" class="btn btn-primary" id="outConfirm" disabled=${busy || !/^\s*\d{3}\s?\d{3}\s*$/.test(code)} onClick=${confirm}>${t("app.confirmOk")}</button></div>
@@ -175,6 +181,6 @@ export function OutsideCard() {
         <p class="note">${to("lostPhone")}</p>
         ${here ? html`<div class="save-row"><button type="button" class="btn" id="outAgain" disabled=${busy} onClick=${again}>${to("again")}</button>
           <button type="button" class="btn btn-danger" id="outRemove" disabled=${busy} onClick=${remove}>${to("remove")}</button></div>` : null}`
-      : here ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${begin}>${to("setUp")}</button></div>` : null}
+      : html`<p class="note" id="outNoRecovery">${to("noRecovery")}</p>${here ? html`<div class="save-row"><button type="button" class="btn btn-primary" id="outSetUp" disabled=${busy} onClick=${begin}>${to("setUp")}</button></div>` : null}`}
   </section>`;
 }

@@ -19,7 +19,7 @@ import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 
 const schema = buildSettingsImpactSchema();
-let p: AppPage, status: any, chat = false;
+let p: AppPage, status: any, chat = false, authWebOnly: boolean | undefined;
 let sent: Array<{ method: string; path: string; body: any }> = [];
 let answers: Record<string, { status: number; body: any }> = {};
 const realFetch = (globalThis as any).fetch;
@@ -33,7 +33,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
     if (method === "POST" && path === "/ui/outside/enroll") return ENROLL;
     if (method !== "GET") return { ok: true };
     if (path === "/ui/outside") return status;
-    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [] };
+    if (path === "/api/settings/web-authority") return { state: { enabled: true, loopbackOnly: false, epoch: 1 }, configured: {}, hours: { min: 1, max: 48, default: 48 }, lanHosts: [], authorized: [], ...(authWebOnly === undefined ? {} : { webOnly: authWebOnly }) };
     if (path === "/api/settings/guests") return { enabled: false, chat: true, instances: [], connections: [], guests: [] };
     if (path === "/api/settings/schema") return schema;
     if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, ...(chat ? { channels: [{ type: "telegram", id: "telegram" }] } : {}), web: {} };
@@ -46,7 +46,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
 };
 beforeAll(() => { p = page({ url: "http://127.0.0.1:19280/settings/access" }); (globalThis as any).fetch = fakeFetch; });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
-beforeEach(() => { sent = []; answers = {}; chat = false; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
+beforeEach(() => { sent = []; answers = {}; chat = false; authWebOnly = undefined; p.window.confirm = () => true; (globalThis as any).confirm = () => true; });
 afterEach(async () => { await p.unmount(); });
 
 const base = { webOnly: true, here: true, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
@@ -175,5 +175,67 @@ describe("#3008 ② Settings → Access & security → Owner verification (Conne
     const w = await open({ here: false, enrolled: true, enrolledAt: 1, outside: true, link: { state: "open", quick: true } });
     expect([w.$("#outHereOnly").textContent, w.$("#outSwitch").disabled, w.$("#outSwitch").checked, w.$("#outAgain"), w.$("#outRemove"), w.$("#outSetUp"), w.$("#outOpenAt")])
       .toEqual(["Only on the AgEnD computer. Go back to that computer to set up, set up again or remove the app.", true, true, null, null, null, null]);
+  });
+});
+
+describe("Owner verification and Web authorization: the reference page's words", () => {
+  const text = (el: any) => (el?.textContent ?? "").replace(/\s+/g, " ").trim();
+  it("nothing set up: the status says so, the app hint and the no-recovery line show, and the enrolment window repeats the no-recovery line", async () => {
+    const w = await open();
+    const state = w.$("#outState");
+    expect([text(state), state.className.includes("is-usable")]).toEqual(["Not set up", false]);
+    expect(text(w.$("#outLead"))).toBe("Use your authenticator app's 6-digit code to prove, from outside, that you own this fleet.");
+    expect(text(w.$("#outApps"))).toBe("Works with Google Authenticator, Microsoft Authenticator or another TOTP authenticator.");
+    expect(text(w.$("#outNoRecovery"))).toBe("If you lose the authenticator, set it up again on the AgEnD computer. There is no email or backup-code recovery.");
+    await w.click(w.$("#outSetUp"));
+    expect(text(w.$("#outEnrollNoRecovery"))).toBe("If you lose the authenticator, set it up again on the AgEnD computer. There is no email or backup-code recovery.");
+  });
+  it("set up: the status reads \"Authenticator set up\" and is marked usable", async () => {
+    const w = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
+    const state = w.$("#outState");
+    expect([text(state), state.className.includes("is-usable"), w.$("#outNoRecovery")]).toEqual(["Authenticator set up", true, null]);
+  });
+  it("zh-TW: the card's words follow the reference page (擁有者驗證, 重新綁定驗證器, 停用驗證器, 備援碼)", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW");
+    try {
+      const w = await open();
+      expect([text(w.$("#outsideCard h3")), text(w.$("#outState")), w.$("#outSetUp").textContent]).toEqual(["擁有者驗證", "尚未設定", "設定驗證器"]);
+      expect(text(w.$("#outLead"))).toBe("使用驗證器 App 的 6 位數代碼，從外面證明你是這個 fleet 的擁有者。");
+      expect(text(w.$("#outApps"))).toBe("可使用 Google Authenticator、Microsoft Authenticator 或其他 TOTP 驗證器。");
+      expect(text(w.$("#outNoRecovery"))).toBe("遺失驗證器時，請回 AgEnD 主機重新綁定。沒有電子郵件或備援碼復原。");
+      const on = await open({ enrolled: true, enrolledAt: Date.UTC(2026, 10, 4) });
+      expect([text(on.$("#outState")), on.$("#outState").className.includes("is-usable"), on.$("#outAgain").textContent, on.$("#outRemove").textContent])
+        .toEqual(["驗證器已設定", true, "重新綁定驗證器", "停用驗證器"]);
+      expect(p.root.textContent).toContain("手機遺失？請在 AgEnD 電腦上選「重新綁定驗證器」。沒有電子郵件或備援碼復原。");
+      expect(p.root.textContent).not.toContain("備用碼");
+      const away = await open({ here: false });
+      expect(text(away.$("#outHereOnly"))).toBe("只能在 AgEnD 電腦上變更。設定、重新綁定或停用驗證器，請回到那台電腦操作。");
+    } finally { i18n.setLang("en"); }
+  });
+  it("Web authority on a web-only fleet: the authenticator wording; with a chat connection: the Discord / Telegram wording stays", async () => {
+    authWebOnly = true;
+    let w = await open();
+    expect([text(w.$(".s-authority-brief")), text(w.$("#vaEnabled").parentNode)])
+      .toEqual(["This fleet has no chat platform connected. The host owner can verify directly; a remote session confirms who the owner is with the authenticator.", "Allow web authorization by a verified owner"]);
+    expect(text(w.$(".s-authority-rule"))).toBe("Signing in a device and authorizing an action are judged separately. When this is off, even a verified web session cannot approve actions that need authority.");
+    authWebOnly = false;
+    w = await open();
+    expect([text(w.$(".s-authority-brief")).startsWith("Only signed-in fleet administrators can confirm"), text(w.$("#vaEnabled").parentNode)]).toEqual([true, "Allow web authority"]);
+    authWebOnly = undefined;                                                                  // an older server: no flag, the chat wording
+    w = await open();
+    expect(text(w.$("#vaEnabled").parentNode)).toBe("Allow web authority");
+  });
+  it("Web authority in zh-TW: the reference page's lead, switch and rule", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW");
+    try {
+      authWebOnly = true;
+      const w = await open();
+      expect([text(w.$(".s-authority-brief")), text(w.$("#vaEnabled").parentNode), text(w.$(".s-authority-rule"))]).toEqual([
+        "這個 fleet 未連接聊天平台。主機 owner 可直接驗證；遠端工作階段需透過驗證器確認擁有者身分。",
+        "允許已驗證擁有者的網頁授權",
+        "裝置登入與擁有者授權分開判斷。關閉後，已驗證的網頁工作階段也不能核准需授權的操作。"]);
+    } finally { i18n.setLang("en"); }
   });
 });
