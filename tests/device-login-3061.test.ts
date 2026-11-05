@@ -214,8 +214,8 @@ describe("#3061 P2a: signing a new device in with its code", () => {
     // …where the owner's own session is web-verified as this computer's admin.
     expect(h.any.webAuthority({ session: h.sessionOf(owner), gateway: false, peer: "loopback" }).authority).toMatchObject({ kind: "web-verified", actor: { adapter_id: "host", user_id: "operator" } });
     // It may read its own state (not the owner), but not approve; the same for set-up and agents' requests.
-    expect(parse(await h.local(fresh, "GET", "/ui/devices"))).toEqual({ webOnly: true, owner: false });
-    expect(parse(await h.local(owner, "GET", "/ui/devices"))).toEqual({ webOnly: true, owner: true });
+    expect(parse(await h.local(fresh, "GET", "/ui/devices"))).toMatchObject({ webOnly: true, owner: false });
+    expect(parse(await h.local(owner, "GET", "/ui/devices"))).toMatchObject({ webOnly: true, owner: true });
     const another = await h.ask();
     for (const op of ["lookup", "approve", "deny"]) {
       const r = await h.local(fresh, "POST", `/ui/devices/${op}`, { code: another.code });
@@ -328,7 +328,7 @@ describe("#3061 P2a: who may approve — only this web-only fleet's verified own
       // The owner's cookie from another site: the gate's own CSRF refusal.
       expect((await h.local(owner, "POST", `/ui/devices/${op}`, { code: mine.code }, { origin: "https://evil.example", "sec-fetch-site": "cross-site" })).status).toBe(403);
     }
-    expect(parse(await h.local(lan, "GET", "/ui/devices"))).toEqual({ webOnly: true, owner: false });
+    expect(parse(await h.local(lan, "GET", "/ui/devices"))).toMatchObject({ webOnly: true, owner: false });
     // …and the request is still pending for the real owner.
     expect(parse(await lookup(h, owner, mine.code)).request.state).toBe("pending");
     expect(parse(await h.poll(mine.cookie)).state).toBe("pending");
@@ -342,7 +342,7 @@ describe("#3061 P2a: who may approve — only this web-only fleet's verified own
     const waiting = await off.ask({ "x-forwarded-for": "10.0.0.7" });
     off.fm.fleetConfig = { ...off.fm.fleetConfig, web: { ...(off.fm.fleetConfig as any).web, verified_authority: { enabled: false } } } as never;
     expect((await approve(off, owner, waiting.code)).status).toBe(403);                  // …off: the owner is no one, at once
-    expect(parse(await off.local(owner, "GET", "/ui/devices"))).toEqual({ webOnly: true, owner: false });
+    expect(parse(await off.local(owner, "GET", "/ui/devices"))).toMatchObject({ webOnly: true, owner: false });
     const only = await startFleet({ web: { verified_authority: { enabled: true, loopback_only: true } } });
     const host = await only.hostSignIn();
     const there = await only.ask();
@@ -357,7 +357,7 @@ describe("#3061 P2a: who may approve — only this web-only fleet's verified own
     expect((await h.device("/poll")).status).toBe(404);
     expect((await h.device("/cancel")).status).toBe(404);
     const owner = await h.hostSignIn();
-    expect(parse(await h.local(owner, "GET", "/ui/devices"))).toEqual({ webOnly: false, owner: false });
+    expect(parse(await h.local(owner, "GET", "/ui/devices"))).toMatchObject({ webOnly: false, owner: false });
     expect((await approve(h, owner, "ABCD-EFGH")).status).toBe(403);
     const page = await raw(h.port, "GET", "/signin", {});
     expect(page.body).not.toContain("data-device-login");
@@ -447,7 +447,7 @@ describe("#3061 P2a: the public link, a rotated token, /dashboard revoke", () =>
     const remote = await h.outsideOwner(host);
     expect(isPublicWebRoute("GET", "/ui/devices")).toBe(true);
     expect(isPublicWebRoute("POST", "/ui/devices/approve")).toBe(true);
-    expect(parse(await h.outside("GET", "/ui/devices", { session: remote }))).toEqual({ webOnly: true, owner: true });
+    expect(parse(await h.outside("GET", "/ui/devices", { session: remote }))).toMatchObject({ webOnly: true, owner: true });
     const mine = await h.ask({ "x-forwarded-for": "192.168.1.50" });
     const seen = parse(await h.outside("POST", "/ui/devices/lookup", { session: remote, body: { code: mine.code } }));
     expect(seen.request).toMatchObject({ label: "Chrome on Android", state: "pending" });

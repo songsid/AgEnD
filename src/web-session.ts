@@ -164,6 +164,36 @@ export interface SessionSummary {
   readonly surface: SessionSurface;
   readonly label: string;
   readonly current: boolean;
+  /** Refs #3061 (P2b): how it was approved — display only, never an input to a decision (sessionVia). */
+  readonly via: SessionVia;
+}
+
+/**
+ * Refs #3061 (P2b): how a session came to be, for the device list. "host": the code this computer's shell asked for
+ * (`agend web --code`). "device": a code a signed-in owner approved on another device (web-device-login.ts). "totp": the
+ * authenticator app's code, from outside. "code": any other one-time code (a chat's `/web`, for a fleet that has one).
+ * Derived from what the record already carries, so a session from before this field is described too. Display only:
+ * authority/web-authority.ts never reads it.
+ */
+export type SessionVia = "code" | "host" | "device" | "totp";
+/** Refs #3061 (P2b): one row of Settings → Devices & sign-in (fleet-manager webDeviceRows). Nothing here signs anyone in. */
+export interface WebDeviceRow {
+  /** Opaque, what a sign-out names; not the session id and not its hash. */
+  readonly handle: string;
+  readonly label: string;
+  readonly via: SessionVia;
+  /** The §3 verdict for it as it would be used from where it signs in. Display only. */
+  readonly ownerVerified: boolean;
+  /** The reader's own session. */
+  readonly current: boolean;
+  readonly surface: SessionSurface;
+  readonly created: number;
+  readonly lastSeen: number;
+  /** The sooner of its two ends (the cap from creation, the idle window). */
+  readonly expiresAt: number;
+}
+export function sessionVia(record: Pick<SessionRecord, "host" | "remote" | "via">): SessionVia {
+  return record.via === "device" ? "device" : record.host === true ? "host" : record.remote === "totp" ? "totp" : "code";
 }
 
 export function sessionIdHash(sessionId: string): string {
@@ -463,6 +493,7 @@ export class WebSessionStore {
         surface: r.surface,
         label: r.label,
         current: r.idHash === currentIdHash,
+        via: sessionVia(r),
       }));
   }
 

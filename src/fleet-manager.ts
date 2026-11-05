@@ -368,7 +368,7 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
@@ -3128,10 +3128,74 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.isWebOnlyFleet() && this.webAuthorityState().enabled;
   }
 
-  /** GET /ui/devices: is this a web-only fleet, and may THIS session approve a new device (is it the verified owner). */
-  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean } {
+  /** Refs #3061 (P2b): `web.login_qr` (default off), read per page served — the sign-in page then draws the approve link's QR code. */
+  loginQrEnabled(): boolean {
+    return this.fleetConfig?.web?.login_qr === true;
+  }
+
+  /**
+   * GET /ui/devices: is this a web-only fleet, may THIS session approve a new device and end another (is it the verified
+   * owner), and — to an admin session, never to a guest or the CLI's header token — the signed-in devices (Refs #3061, P2b).
+   */
+  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; devices: WebDeviceRow[] } {
     const webOnly = this.isWebOnlyFleet();
-    return { webOnly, owner: webOnly && !!this.deviceApprovalOwner(req) };
+    const owner = webOnly && !!this.deviceApprovalOwner(req);
+    return { webOnly, owner, devices: webOnly ? this.webDeviceRows(req) : [] };
+  }
+
+  /**
+   * Refs #3061 (P2b): the device list — this fleet's admin sessions, newest activity first (a guest's sessions are the
+   * Guests page's, and a read-only tier has none): how each was approved, whether it carries owner authority, and which
+   * one is the reader's own. The same people may read this as may read `GET /auth/sessions` (any admin session).
+   *
+   * `ownerVerified` is the §3 verdict for the session as it would be used from where it signs in (a host session from
+   * this computer, a session from outside over the link): one that signed in with a one-time code or a device approval is
+   * not an owner until the authenticator vouches for it. Display only — the checks that act on it run again at each use.
+   */
+  private webDeviceRows(req: IncomingMessage): WebDeviceRow[] {
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || auth.session.tier !== "admin" || !this.webSessions) return [];
+    const authorizations = this.sessionAuthorizationStore();
+    return this.webSessions.list(auth.session.idHash, r => r.tier === "admin").map(summary => {
+      const record = this.webSessions!.findByHandle(summary.handle);
+      const gateway = summary.surface === "gateway";
+      const peer: WebPeer = gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : "lan";
+      return { handle: summary.handle, label: summary.label, via: summary.via, current: summary.current, surface: summary.surface,
+        created: summary.created, lastSeen: summary.lastSeen, expiresAt: Math.min(summary.absoluteExpiry, summary.idleExpiry),
+        ownerVerified: !!record && !this.webAuthority({ session: record, gateway, peer }).refusal };
+    });
+  }
+
+  /**
+   * Refs #3061 (P2b): may this request's session end ANOTHER session — one signed in elsewhere, or all of them (auth-api
+   * `DELETE /auth/sessions…`, which an admin session could always do). On a web-only fleet that is the verified owner's:
+   * a session a code or a device approval made is signed in but not an owner, and could otherwise sign out the owner's
+   * own. A fleet with a chat connection is as it was (its admins are the chat's). Ending one's OWN session is never this.
+   */
+  mayEndOtherSessions(req: IncomingMessage): boolean {
+    return !this.isWebOnlyFleet() || !!this.deviceApprovalOwner(req);
+  }
+
+  /**
+   * Refs #3061 (P2b): POST /ui/devices/signout {handle} — the owner ends another signed-in device (the settings list's
+   * button). Only the verified owner, asked of the LIVE session each time (a non-owner learns nothing about any handle:
+   * 403 before anything is looked up); only an admin session of this fleet (a guest's is the Guests page's; an unknown
+   * handle and a guest's are the same 404); never the owner's own session here (Sign out is /auth/logout). The device's
+   * authorization goes with it, so a copy of its cookie is nobody's.
+   */
+  webDeviceSignOut(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> } {
+    if (!this.isWebOnlyFleet() || !this.webSessions) return { status: 404, body: { error: "not_found" } };
+    const owner = this.deviceApprovalOwner(req);
+    if (!owner) return { status: 403, body: { error: "owner_required" } };
+    if (handle === owner.handle) return { status: 400, body: { error: "this_device" } };
+    const target = this.webSessions.findByHandle(handle);
+    if (!target || target.tier !== "admin") return { status: 404, body: { error: "not_found" } };
+    const { found, durable } = this.webSessions.revokeByHandle(handle, r => r.tier === "admin");
+    if (!found) return { status: 404, body: { error: "not_found" } };
+    this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+    this.logger.info({ by: owner.handle.slice(0, 8), handle, label: target.label, via: sessionVia(target), durable }, "Device signed out by the owner");
+    if (!durable) return { status: 500, body: { ok: false, durable: false, error: "not_durable" } };
+    return { status: 200, body: { ok: true } };
   }
 
   /**
@@ -26009,7 +26073,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable() });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
             return;
           }
           res.writeHead(decision.status);

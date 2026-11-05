@@ -118,6 +118,15 @@ export interface AuthApiContext {
    * can approve, so nothing is offered). Asked again after the body is read. Absent: not open.
    */
   deviceLoginAvailable?(): boolean;
+  /** Refs #3061 (P2b): `web.login_qr` — the sign-in page may draw the QR code of the approve link beside the code. Absent: no. */
+  loginQrEnabled?(): boolean;
+  /**
+   * Refs #3061 (P2b): may this request's admin session end ANOTHER session (`DELETE /auth/sessions/<handle>` of someone
+   * else's, or `DELETE /auth/sessions`)? A web-only fleet answers yes only for its verified owner: a session a one-time
+   * code or a device approval made is not one, and could otherwise sign the owner out. Ending one's own is never asked.
+   * Absent: yes, as it always was (a fleet with a chat connection, and any caller that does not set it).
+   */
+  mayEndOtherSessions?(req: IncomingMessage): boolean;
 }
 
 export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /web.";
@@ -243,12 +252,12 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
  * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
  * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
  */
-export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean; deviceLogin?: boolean } = {}): void {
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean; deviceLogin?: boolean; loginQr?: boolean } = {}): void {
   try {
     const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
     // #3008: through the link "Allow connections from outside" opened, the page asks for the authenticator's code.
     // #3061: on this computer's own listener of a web-only fleet (never a public link), it also offers "Sign in with another device".
-    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside ? ' data-device-login="1"' : ""}`;
+    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside ? ' data-device-login="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside && opts.loginQr ? ' data-login-qr="1"' : ""}`;
     const html = marks ? page.replace("<body>", `<body${marks}>`) : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
@@ -311,7 +320,7 @@ export function handleAuthRequest(
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
     const link = gatewayRequestContext(req);
     serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
-      deviceLogin: !link && ctx.deviceLoginAvailable?.() === true });
+      deviceLogin: !link && ctx.deviceLoginAvailable?.() === true, loginQr: ctx.loginQrEnabled?.() === true });
     return true;
   }
 
@@ -641,12 +650,17 @@ export function handleAuthRequest(
       return true;
     }
 
+    // Refs #3061 (P2b): an admin session's right to end the others — told with the list so the menu can hide its buttons, and
+    // asked again by each write below (the page's idea of it is never the check). A non-admin only ever ends its own.
+    const mayEndOthers = (): boolean => own !== undefined || ctx.mayEndOtherSessions?.(req) !== false;
+
     if (path === "/auth/sessions" && method === "GET") {
-      json(res, 200, { sessions: sessions.list(sessionIdHash(sessionId), own) });
+      json(res, 200, { sessions: sessions.list(sessionIdHash(sessionId), own), ...(own === undefined && !mayEndOthers() ? { canEndOthers: false } : {}) });
       return true;
     }
 
     if (path === "/auth/sessions" && method === "DELETE") {
+      if (!mayEndOthers()) { json(res, 403, { error: "owner_required" }); return true; }
       const { count, durable } = sessions.revokeAll(own);
       if (!durable) return notDurable(res, ctx, { count }, "Web sessions revoked in memory only", cookiesToClear);
       ctx.logger.info({ count, ...(own ? { own: true } : {}) }, own ? "Web sessions revoked (the caller's own)" : "Web sessions revoked (all)");
@@ -657,6 +671,9 @@ export function handleAuthRequest(
     if (path.startsWith("/auth/sessions/") && method === "DELETE") {
       const handle = path.slice("/auth/sessions/".length);
       const wasCurrent = handle === session.handle;
+      // Someone else's session: the owner's to end on a web-only fleet (checked before the handle is looked up, so a
+      // non-owner learns nothing about which handles exist). One's own is a sign-out, as ever.
+      if (!wasCurrent && !mayEndOthers()) { json(res, 403, { error: "owner_required" }); return true; }
       const { found, durable } = sessions.revokeByHandle(handle, own);
       if (!found) { json(res, 404, { error: "no such session" }); return true; }
       if (!durable) return notDurable(res, ctx, { handle }, "Web session revoked in memory only", wasCurrent ? cookiesToClear : false);

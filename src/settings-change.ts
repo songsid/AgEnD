@@ -92,6 +92,11 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   // navigation; the banner says so); the account boundary (G1) does not change. The switch is reached only from a
   // signed-in session on the dashboard reached directly (never over the public link), so a confirmation stops nothing more.
   { path: ["fleet", "web", "preview_cdn"], def: false, looser: () => false },
+  // Refs #3061 (P2b): the QR on the new-device sign-in page applies at once either way. It encodes the page's own address and
+  // the code that page is already showing — nothing that signs anyone in — so showing it widens no one's reach; whoever
+  // scans it still has to be signed in as the verified owner to approve (the same approval, rate limits and entry
+  // condition as typing the code). A confirmation would stop nothing more.
+  { path: ["fleet", "web", "login_qr"], def: false, looser: () => false },
   // #1629 r4.1 Q3 (b): the card's upload limits and the picture quota — a lower one applies directly, a higher one is
   // confirmed. Judged as the limit they GIVE (clamped to the bounds, as the loader does): 9999 → 5000 changes nothing.
   ...Object.entries(APPEARANCE_BOUNDS).flatMap(([group, keys]) => Object.entries(keys as Record<string, readonly [number, number]>).map(([key, [floor, ceiling]]) => {

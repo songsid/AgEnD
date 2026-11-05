@@ -1,6 +1,9 @@
 /**
- * Refs #3061 (P2a): Settings → Access & security → Sign-in & authorization → "Devices & sign-in" (src/ui/settings-devices.js),
- * as rendered:
+ * Refs #3061 (P2a, P2b): Settings → Access & security → Sign-in & authorization → "Devices & sign-in" (src/ui/settings-devices.js),
+ * as rendered. P2b (the last describe): the signed-in devices — this one marked, how each was approved, whether its owner is
+ * verified, when it was last active — a Sign out for the others that only the owner gets (the server decides; a disabled
+ * button is the page saying so), its confirmation and answers, and the QR link (?approve=<code>) that opens the dialog with
+ * the code filled in. P2a, as rendered:
  *  - a fleet with a chat connection (the server says webOnly: false): no card;
  *  - not the verified owner (the server's `owner: false`): the card, its explanation, a DISABLED "Add device" and the line
  *    saying who can;
@@ -204,6 +207,141 @@ describe("#3061 P2a: Settings → Devices & sign-in", () => {
       answers["POST /ui/devices/approve"] = { status: 404, body: { error: "not_found" } };
       await o.click(o.$("#devAllow"));
       expect(o.text(o.$("#devMsg"))).toBe("沒有等待中的裝置使用這組代碼。請確認新裝置上的代碼；它可能已失效。");
+    } finally { i18n.setLang("en"); }
+  });
+});
+
+
+// ── P2b ──
+const NOW = Date.now();
+const ROWS = [
+  { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux", via: "host", ownerVerified: true, current: true, surface: "local", created: NOW - 3_600_000, lastSeen: NOW, expiresAt: NOW + 3_600_000 },
+  { handle: "bbbbbbbbbbbbbbbb", label: "Chrome on Android", via: "device", ownerVerified: false, current: false, surface: "local", created: NOW - 900_000, lastSeen: NOW - 5 * 60_000, expiresAt: NOW + 3_600_000 },
+  { handle: "cccccccccccccccc", label: "Safari on iPhone", via: "totp", ownerVerified: true, current: false, surface: "gateway", created: NOW - 7_200_000, lastSeen: NOW - 3 * 3_600_000, expiresAt: NOW + 3_600_000 },
+  { handle: "dddddddddddddddd", label: "Edge on Windows", via: "code", ownerVerified: false, current: false, surface: "local", created: NOW - 7_200_000, lastSeen: NOW - 20_000, expiresAt: NOW + 3_600_000 },
+];
+/** A row as [its name (and mark), its details, its button]. */
+const rowText = (w: any, handle: string) => [w.text(w.$(`[data-handle="${handle}"] .s-dev-name`)), w.text(w.$(`[data-handle="${handle}"] .s-dev-meta`)), w.text(w.$(`[data-handle="${handle}"] [data-signout]`))];
+
+describe("#3061 P2b: the signed-in devices", () => {
+  it("every device, this one marked: how it was approved, whether its owner is verified, when it was last active", async () => {
+    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    expect(w.text(w.$("#devicesListTitle"))).toBe("Signed-in devices");
+    expect([...p.root.querySelectorAll(".s-dev-row")].length).toBe(4);
+    expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux This device", "Approved by this computer · Owner verified · active just now", ""]);
+    expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "Approved by device code · Signed in, owner not verified yet · active 5 min ago", "Sign out"]);
+    expect(rowText(w, "cccccccccccccccc")).toEqual(["Safari on iPhone", "Approved by authenticator app · Owner verified · active 3 h ago", "Sign out"]);
+    expect(rowText(w, "dddddddddddddddd")).toEqual(["Edge on Windows", "Approved by sign-in code · Signed in, owner not verified yet · active just now", "Sign out"]);
+    // Only the others have a Sign out — never the device being used.
+    expect(w.$('[data-handle="aaaaaaaaaaaaaaaa"] [data-signout]')).toBeNull();
+    expect([...p.root.querySelectorAll("[data-signout]")].map((b: any) => b.disabled)).toEqual([false, false, false]);
+    expect([w.$('[data-handle="bbbbbbbbbbbbbbbb"] [data-owner]').getAttribute("data-owner"), w.$('[data-handle="cccccccccccccccc"] [data-owner]').getAttribute("data-owner")]).toEqual(["no", "yes"]);
+    // Labels are other browsers' User-Agents: text, never markup.
+    const hostile = [{ ...ROWS[0], label: "<img src=x onerror=alert(1)>" }];
+    const x = await open({ webOnly: true, owner: true, devices: hostile });
+    expect(x.$(".s-dev-row img")).toBeNull();
+    expect(x.text(x.$(".s-dev-name"))).toContain("<img src=x onerror=alert(1)>");
+  });
+
+  it("not the owner: the list is shown, every Sign out is disabled, and the line says who can — nothing is posted", async () => {
+    const w = await open({ webOnly: true, owner: false, devices: ROWS });
+    expect([...p.root.querySelectorAll("[data-signout]")].map((b: any) => b.disabled)).toEqual([true, true, true]);
+    expect(w.text(w.$("#devicesSignOutOwnerOnly"))).toBe("Only a device whose owner is verified can sign out another device.");
+    await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
+    expect(w.$("#devSignOutLead")).toBeNull();
+    expect(sent.filter(s => s.path === "/ui/devices/signout")).toEqual([]);
+    // Alone (no other device) there is nothing to sign out and no line about it.
+    const alone = await open({ webOnly: true, owner: false, devices: [ROWS[0]] });
+    expect(alone.$("#devicesSignOutOwnerOnly")).toBeNull();
+  });
+
+  it("the owner: Sign out asks first, then posts that device's handle; the list is read again and the line says it", async () => {
+    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
+    expect(w.text(w.$("#devSignOutLead"))).toBe("Chrome on Android will have to sign in again.");
+    expect(sent.filter(s => s.path === "/ui/devices/signout")).toEqual([]);              // nothing yet
+    await w.click(w.$("#devSignOutCancel"));
+    expect([w.$("#devSignOutLead"), sent.filter(s => s.path === "/ui/devices/signout").length]).toEqual([null, 0]);
+    await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
+    devices = { webOnly: true, owner: true, devices: ROWS.filter(r => r.handle !== "bbbbbbbbbbbbbbbb") };
+    const before = sent.filter(s => s.method === "GET" && s.path === "/ui/devices").length;
+    await w.click(w.$("#devSignOutGo"));
+    expect(sent.filter(s => s.path === "/ui/devices/signout").map(s => s.body)).toEqual([{ handle: "bbbbbbbbbbbbbbbb" }]);
+    expect(w.text(w.$("#devicesNote"))).toBe("Chrome on Android was signed out.");
+    expect(sent.filter(s => s.method === "GET" && s.path === "/ui/devices").length).toBeGreaterThan(before);
+    expect(w.$('[data-handle="bbbbbbbbbbbbbbbb"]')).toBeNull();
+    expect([...p.root.querySelectorAll(".s-dev-row")].length).toBe(3);
+  });
+
+  it("the server's answers, in words: the owner's authority gone (403: the card reads again), already gone (404), not saved (500), anything else", async () => {
+    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    const attempt = async () => { await w.click(w.$('[data-signout="cccccccccccccccc"]')); await w.click(w.$("#devSignOutGo")); return w.text(w.$("#devicesNote")); };
+    answers["POST /ui/devices/signout"] = { status: 404, body: { error: "not_found" } };
+    expect(await attempt()).toBe("That device is already signed out.");
+    answers["POST /ui/devices/signout"] = { status: 500, body: { ok: false, durable: false, error: "not_durable" } };
+    expect(await attempt()).toMatch(/^Signed out for now, but the change could not be saved: a restart may bring the session back\./);
+    answers["POST /ui/devices/signout"] = { status: 502, body: {} };
+    expect(await attempt()).toBe("That did not work — try again.");
+    devices = { webOnly: true, owner: false, devices: ROWS };
+    answers["POST /ui/devices/signout"] = { status: 403, body: { error: "owner_required" } };
+    expect(await attempt()).toBe("This device can no longer approve sign-ins: its owner verification has ended.");
+    await settle(10);
+    expect([...p.root.querySelectorAll("[data-signout]")].map((b: any) => b.disabled)).toEqual([true, true, true]);
+  });
+
+  it("the QR link: ?approve=<code> opens the dialog with the code filled in for the owner — Continue is still pressed, nothing is looked up — and leaves the address", async () => {
+    history.replaceState(null, "", "/settings/access?approve=ABCD-EFGH&keep=1");
+    const w = await open({ webOnly: true, owner: true, devices: ROWS });
+    expect(w.text(w.$(".dlg-title"))).toBe("Add device");
+    expect(w.$("#devCodeInput").value).toBe("ABCD-EFGH");
+    expect(w.$("#devFind").disabled).toBe(false);
+    expect(sent.filter(s => s.path.startsWith("/ui/devices/") && s.method === "POST")).toEqual([]);   // no lookup by itself
+    expect(location.search).toBe("?keep=1");                                              // the code is out of the address (and the history)
+    await w.click(w.$("#devFind"));
+    expect(w.posts()).toEqual([["/ui/devices/lookup", { code: "ABCD-EFGH" }]]);
+    expect(w.text(w.$("#devConfirmLead"))).toBe("Allow this device to sign in?");
+  });
+
+  it("the QR link for anyone but the owner opens nothing (and is still taken out of the address); a value that is not a code is ignored", async () => {
+    history.replaceState(null, "", "/settings/access?approve=ABCD-EFGH");
+    const w = await open({ webOnly: true, owner: false, devices: ROWS });
+    expect([w.$(".dlg-title"), w.$("#devCodeInput"), location.search]).toEqual([null, null, ""]);
+    for (const bad of ["x", "ABCD-EFGH-IJKL-MNOP", "<script>", "ABCD%20EFGH", "ABCD_EFGH"]) {
+      history.replaceState(null, "", `/settings/access?approve=${bad}`);
+      const o = await open({ webOnly: true, owner: true, devices: ROWS });
+      expect([o.$(".dlg-title"), o.$("#devCodeInput")], bad).toEqual([null, null]);
+    }
+    // Read once per page: opened, closed, it does not come back with the next read of the list.
+    history.replaceState(null, "", "/settings/access?approve=WXYZ-2345");
+    const once = await open({ webOnly: true, owner: true, devices: ROWS });
+    await once.click(once.$("#devCancel"));
+    await once.click(once.$("#devicesRefresh"));
+    expect(once.$("#devCodeInput")).toBeNull();
+  });
+
+  it("the helpers: how long ago as words; the code a QR link carries", async () => {
+    const { agoWords, approveCodeFrom } = await import("/ui/js/settings-devices.js");
+    const now = 10_000_000_000;
+    expect([agoWords(now - 10_000, now), agoWords(now - 5 * 60_000, now), agoWords(now - 89 * 60_000, now), agoWords(now - 3 * 3_600_000, now)]).toEqual(["just now", "5 min ago", "89 min ago", "3 h ago"]);
+    expect([approveCodeFrom("?approve=ABCD-EFGH"), approveCodeFrom("?x=1&approve=wxyz2345"), approveCodeFrom(""), approveCodeFrom("?approve="), approveCodeFrom("?approve=a b")]).toEqual(["ABCD-EFGH", "wxyz2345", "", "", ""]);
+  });
+
+  it("zh-TW: the list, the marks, the confirmation and the answers", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang("zh-TW");
+    try {
+      const w = await open({ webOnly: true, owner: true, devices: ROWS });
+      expect(w.text(w.$("#devicesListTitle"))).toBe("已登入的裝置");
+      expect(rowText(w, "aaaaaaaaaaaaaaaa")).toEqual(["Firefox on Linux 這台裝置", "核准方式：主機 · 已驗證擁有者 · 剛剛活動", ""]);
+      expect(rowText(w, "bbbbbbbbbbbbbbbb")).toEqual(["Chrome on Android", "核准方式：裝置代碼 · 已登入，尚未驗證擁有者 · 5 分鐘前活動", "登出"]);
+      expect(rowText(w, "cccccccccccccccc")[1]).toContain("核准方式：驗證器 App");
+      expect(rowText(w, "dddddddddddddddd")[1]).toContain("核准方式：登入碼");
+      await w.click(w.$('[data-signout="bbbbbbbbbbbbbbbb"]'));
+      expect([w.text(w.$(".dlg-title")), w.text(w.$("#devSignOutLead")), w.text(w.$("#devSignOutGo"))]).toEqual(["登出這台裝置？", "Chrome on Android 需要重新登入。", "登出"]);
+      await w.click(w.$("#devSignOutGo"));
+      expect(w.text(w.$("#devicesNote"))).toBe("已登出 Chrome on Android。");
+      const n = await open({ webOnly: true, owner: false, devices: ROWS });
+      expect(n.text(n.$("#devicesSignOutOwnerOnly"))).toBe("只有已驗證擁有者的裝置才能登出其他裝置。");
     } finally { i18n.setLang("en"); }
   });
 });

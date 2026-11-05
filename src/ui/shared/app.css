@@ -3530,6 +3530,17 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .dlg .s-dev-facts dt { margin: 0; color: var(--text-3); font-size: 13px; }
 .dlg .s-dev-facts dd { margin: 0; color: var(--text); font-size: 14px; overflow-wrap: anywhere; }
 .dlg .s-dev-facts code { font-family: var(--font-mono); letter-spacing: .08em; }
+/* Refs #3061 (P2b): the signed-in devices of Devices & sign-in. */
+.p-settings .s-devices .s-dev-listhead { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); margin: 14px 0 6px; }
+.p-settings .s-devices .s-dev-listhead h4 { margin: 0; font-size: var(--fs-sm); color: var(--text-2); font-weight: var(--fw-semibold); }
+.p-settings .s-dev-list { list-style: none; margin: 0 0 10px; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); overflow: hidden; }
+.p-settings .s-dev-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; }
+.p-settings .s-dev-row + .s-dev-row { border-top: 1px solid var(--border); }
+.p-settings .s-dev-row.current { background: var(--surface-2); }
+.p-settings .s-dev-main { display: grid; gap: 2px; min-width: 0; }
+.p-settings .s-dev-name { font-weight: var(--fw-semibold); overflow-wrap: anywhere; }
+.p-settings .s-dev-meta { font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
+.p-settings .s-dev-row .btn { flex: none; }
 .p-settings .s-auth-state { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 3px 8px; border-radius: 6px; color: var(--text-3); background: var(--surface-2); font-size: 12px; font-weight: var(--fw-regular); line-height: 1.5; white-space: nowrap; }
 .p-settings .s-auth-state.is-usable { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
 .p-settings .s-auth-state:is(.is-not_signed_in, .is-too_old) { color: var(--warn); background: var(--warn-bg); }

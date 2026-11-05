@@ -41,6 +41,7 @@
       dev_busy: "Too many devices are waiting right now. Try again in a moment.", dev_limited: "Too many codes asked for. Try again in {duration}.",
       dev_unavailable: "Signing in with another device isn't available here.", dev_failed: "Could not get a code. Check the connection and try again.",
       dev_lost: "Could not reach AgEnD. Still trying…",
+      dev_qr: "Or scan this QR code with a device that is already signed in as the owner. It holds this page's address and the code above, nothing else.",
     },
     "zh-TW": {
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
@@ -70,6 +71,7 @@
       dev_busy: "目前等待核准的裝置太多，請稍後再試。", dev_limited: "要求代碼的次數太多，請 {duration} 後再試。",
       dev_unavailable: "這裡無法使用其他裝置登入。", dev_failed: "無法取得代碼。請檢查連線後再試。",
       dev_lost: "連不上 AgEnD，仍在重試…",
+      dev_qr: "也可以用已登入且已驗證擁有者的裝置掃描這個 QR Code。裡面只有這個頁面的網址和上面的代碼，沒有其他東西。",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
@@ -81,6 +83,8 @@
   // #3061: …and one on this computer's own listener (<body data-device-login="1">, never the public link) offers "Sign in
   // with another device".
   const deviceLogin = webOnly && !outside && document.body.getAttribute("data-device-login") === "1";
+  // #3061 (P2b): …and, when `web.login_qr` is on (<body data-login-qr="1">), it also draws the QR code of the approve link.
+  const loginQr = deviceLogin && document.body.getAttribute("data-login-qr") === "1";
   const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
   /** A wait as words: "15 minutes" / 「15 分鐘」, "2 hours" / 「2 小時」 (rounded up). */
   const duration = (ms) => {
@@ -209,6 +213,7 @@
   const devPost = (path) => fetch(`/auth/device-login${path}`, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: "{}" });
   const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
   function devStop() {
+    hideQr();
     if (!dev) return;
     dev.stopped = true;
     clearTimeout(dev.poll); clearInterval(dev.tick);
@@ -223,10 +228,39 @@
     devStop();
     devSay(text, bad, true);
     $("devNew").hidden = false;
+    hideQr();
+  }
+  // ── #3061 (P2b): the approve link as a QR code ──
+  // The link is THIS page's own address plus the code on screen — /settings/access?approve=XXXX-XXXX — and nothing else: no
+  // request id, no cookie, no token (the request's poll cookie is HttpOnly and never leaves this browser). A device that
+  // opens it has to be signed in as the verified owner to do anything with it, and what it opens is the same "Add device"
+  // dialog with the code filled in: the person still presses Continue, sees who is asking, and presses Allow. A sign-in page
+  // reached as localhost cannot be opened from another device, so no code is drawn there.
+  const reachableFromElsewhere = () => !/^(localhost|.*\.localhost|127(\.\d{1,3}){3}|\[?::1\]?)$/i.test(location.hostname);
+  function hideQr() { if (!loginQr) return; $("devQr").hidden = true; $("devQrSvg").replaceChildren(); }
+  async function showQr(code, mine) {
+    if (!loginQr || !reachableFromElsewhere()) return;
+    let make;
+    try { const m = await import("/assets/qrcode.module.js"); make = m.default || m.qrcode; } catch { return; }
+    if (dev !== mine || mine.stopped) return;                  // this request ended, or a newer one began, while the encoder loaded
+    const qr = make(0, "M");
+    qr.addData(`${location.origin}/settings/access?approve=${encodeURIComponent(code)}`);
+    qr.make();
+    const n = qr.getModuleCount(), size = n + 8;
+    let d = "";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += `M${c + 4} ${r + 4}h1v1h-1z`;
+    const NS = "http://www.w3.org/2000/svg", svg = $("devQrSvg");
+    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+    const back = document.createElementNS(NS, "rect"), dark = document.createElementNS(NS, "path");
+    back.setAttribute("width", String(size)); back.setAttribute("height", String(size)); back.setAttribute("fill", "#fff");
+    dark.setAttribute("d", d); dark.setAttribute("fill", "#000");
+    svg.replaceChildren(back, dark);
+    $("devQr").hidden = false;
   }
   async function devStart() {
     devStop();
     $("form").hidden = true; $("device").hidden = false; $("devNew").hidden = true;
+    hideQr();
     $("devCode").textContent = "XXXX-XXXX";
     devSay("", false, true);
     const mine = { stopped: false, poll: 0, tick: 0, deadline: 0, lost: 0 };
@@ -244,6 +278,7 @@
     }
     $("devCode").textContent = body.code;
     $("devCode").classList?.remove("spent");
+    showQr(body.code, mine);
     // The countdown runs on this browser's own clock from when the code arrived (the server's is the authority: its poll
     // says `expired` when it is).
     mine.deadline = Date.now() + (Number.isFinite(body.ttlMs) && body.ttlMs > 0 ? body.ttlMs : 300000);

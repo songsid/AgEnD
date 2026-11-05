@@ -11,7 +11,7 @@ import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./t
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "office_levels", "preview_cdn", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "office_levels", "preview_cdn", "login_qr", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
@@ -24,6 +24,8 @@ export type WebSettingsBody = {
   officeLevels?: boolean;
   /** #2911 (7): CDN libraries in HTML previews (web.preview_cdn). */
   previewCdn?: boolean;
+  /** Refs #3061 (P2b): the QR code on the new-device sign-in page (web.login_qr). */
+  loginQr?: boolean;
   publicLink?: NonNullable<WebConfig["public_link"]>;
   session: Record<string, number | null> | null;
   terminal: Record<string, boolean | number | null> | null;
@@ -43,6 +45,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };
   if (patch.office_levels !== undefined && typeof patch.office_levels !== "boolean") return { error: "office_levels must be a boolean" };
   if (patch.preview_cdn !== undefined && typeof patch.preview_cdn !== "boolean") return { error: "preview_cdn must be a boolean" };
+  if (patch.login_qr !== undefined && typeof patch.login_qr !== "boolean") return { error: "login_qr must be a boolean" };
   // Its shape only: whether the merged result fits its mode (a quick tunnel's 1..480, auto_open only with a hostname) is
   // the validator's, run on the whole result by the gate's projection and by the handler.
   if (patch.public_link !== undefined && !publicLinkPatchShape(patch.public_link)) return { error: "invalid public_link settings" };
@@ -63,6 +66,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.usage_report_on_public_link !== undefined ? { usageOnPublicLink: patch.usage_report_on_public_link as boolean } : {}),
     ...(patch.office_levels !== undefined ? { officeLevels: patch.office_levels as boolean } : {}),
     ...(patch.preview_cdn !== undefined ? { previewCdn: patch.preview_cdn as boolean } : {}),
+    ...(patch.login_qr !== undefined ? { loginQr: patch.login_qr as boolean } : {}),
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),

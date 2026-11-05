@@ -1225,13 +1225,14 @@ function WebSection({ ctx, staged, part = "all" }) {
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
     levels: web.office_levels !== false,                                        // #2661: on by default
     cdn: web.preview_cdn === true,                                              // #2911 (7): off by default
+    loginQr: web.login_qr === true,                                             // #3061 (P2b): off by default
     pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282, auto_open: (web.public_link && web.public_link.auto_open) ?? false },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
-  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, pub: original.pub.allow_public,
+  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, loginQr: original.loginQr, pub: original.pub.allow_public,
     ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
     termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
@@ -1245,7 +1246,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     return {
       notify: String(pick(pending, "notify_login", original.notify)),
       echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
-      levels: pick(pending, "office_levels", original.levels), cdn: pick(pending, "preview_cdn", original.cdn),
+      levels: pick(pending, "office_levels", original.levels), cdn: pick(pending, "preview_cdn", original.cdn), loginQr: pick(pending, "login_qr", original.loginQr),
       pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
       hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
       abs: text(pick(session, "absolute_hours", original.session.absolute_hours)), idle: text(pick(session, "idle_hours", original.session.idle_hours)),
@@ -1299,6 +1300,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(f.usagePub !== original.usagePub ? { usage_report_on_public_link: f.usagePub } : {}),
       ...(f.levels !== original.levels ? { office_levels: f.levels } : {}),
       ...(f.cdn !== original.cdn ? { preview_cdn: f.cdn } : {}),
+      ...(f.loginQr !== original.loginQr ? { login_qr: f.loginQr } : {}),
       ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
       ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
@@ -1310,6 +1312,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(body.usage_report_on_public_link !== undefined ? ["web.usage_report_on_public_link"] : []),
       ...(body.office_levels !== undefined ? ["web.office_levels"] : []),
       ...(body.preview_cdn !== undefined ? ["web.preview_cdn"] : []),
+      ...(body.login_qr !== undefined ? ["web.login_qr"] : []),
       ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
       ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
@@ -1382,6 +1385,9 @@ function WebSection({ ctx, staged, part = "all" }) {
           ${value(f.idle) === null && !errors.abs ? html`<${InEffect} text=${tn("hoursValue", idle)} why=${idle < 48 ? tn("cappedBySession") : null} />` : null}</div>
       </div>
     <p class="note s-session-ceiling">${layoutText("revPublicSessionLimit")}</p>
+      ${/* Refs #3061 (P2b): the QR code on a new device's sign-in page (a web-only fleet's "Sign in with another device"). */ ""}
+      <label class=${fc("check", "loginQr")}><input id="webLoginQr" type="checkbox" checked=${f.loginQr} aria-describedby="webLoginQr-hint" onChange=${(e) => set("loginQr")(e.target.checked)} /><span>${tn("webLoginQr")}</span><${Impact} schema=${schema} field="web.login_qr" /></label>
+      <p class="note" id="webLoginQr-hint">${tn("webLoginQrHint")}</p>
       <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("webSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}

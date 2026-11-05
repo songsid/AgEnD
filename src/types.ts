@@ -482,6 +482,12 @@ export interface WebConfig {
    */
   preview_cdn?: boolean;
   /**
+   * Refs #3061 (P2b): the sign-in page of a web-only fleet, while it shows the 8-character code of "Sign in with another
+   * device", also draws a QR code of the approve link (the page's own address and that code, never a credential). Default
+   * false. Read per page served, so a change applies at once.
+   */
+  login_qr?: boolean;
+  /**
    * #1629: agents' own web themes and effects. `agent_edit` (default true): false refuses every agent appearance write,
    * fleet-wide; what is stored stays, and people can still reset and lock.
    */
