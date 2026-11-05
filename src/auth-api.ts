@@ -18,6 +18,9 @@ import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-contex
  *   POST   /auth/issue-code         X-Agend-Token only — how `agend web --code` asks for a code
  *   GET    /auth/device             is this a returning device (#1570) — a boolean, no side effect
  *   POST   /auth/request-code       a returning device asks for a fresh code, sent privately to its owner (#1570)
+ *   POST   /auth/device-login        a new device on a web-only fleet asks for an 8-character code to be approved elsewhere (#3061)
+ *   POST   /auth/device-login/poll   …asks where it stands; once approved, signs itself in (the session is made HERE, not at the approval)
+ *   POST   /auth/device-login/cancel …leaves
  *
  * Every GET here is free of side effects: a chat client that previews a link
  * cannot spend a code, mint a session, or move a counter. The only thing that
@@ -54,6 +57,7 @@ import { classifyWebPeer, type WebPeer } from "./authority/web-authority.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
 import { fleetCookieName } from "./web-cookie-names.js";
+import { buildDeviceLoginCookie, clearDeviceLoginCookie, DEVICE_LOGIN_TTL_MS, readDeviceLoginCookie, type DeviceLoginRequests } from "./web-device-login.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -104,6 +108,11 @@ export interface AuthApiContext {
   /** #1570: send a fresh code privately to the device's owner, if they still may have one. */
   requestReturningCode?(device: ReturningDevice, input: { surface: "local" | "gateway"; exposureId?: string; label: string }):
     Promise<{ kind: "sent" } | { kind: "limited"; retryAfterMs: number } | { kind: "refused" }>;
+  /**
+   * Refs #3061 (P2a): the requests of device-code sign-in (web-device-login.ts). With `isWebOnlyFleet()`, what makes
+   * `/auth/device-login*` exist: a fleet with a chat connection, or the public link, answers 404 there.
+   */
+  readonly webDeviceLogins?: DeviceLoginRequests | null;
 }
 
 export const CODE_REQUEST_REFUSED_MESSAGE = "A new code could not be sent. Ask for one with /web.";
@@ -229,11 +238,12 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
  * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
  * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
  */
-export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean } = {}): void {
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean; outside?: boolean; deviceLogin?: boolean } = {}): void {
   try {
     const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
     // #3008: through the link "Allow connections from outside" opened, the page asks for the authenticator's code.
-    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}`;
+    // #3061: on this computer's own listener of a web-only fleet (never a public link), it also offers "Sign in with another device".
+    const marks = `${opts.webOnly ? ' data-web-only="1"' : ""}${opts.webOnly && opts.outside ? ' data-outside="1"' : ""}${opts.webOnly && opts.deviceLogin && !opts.outside ? ' data-device-login="1"' : ""}`;
     const html = marks ? page.replace("<body>", `<body${marks}>`) : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
@@ -295,7 +305,8 @@ export function handleAuthRequest(
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
     const link = gatewayRequestContext(req);
-    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true });
+    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true, outside: !!link && ctx.isOutsideLink?.(link.exposureId) === true,
+      deviceLogin: !link && !!ctx.webDeviceLogins });
     return true;
   }
 
@@ -347,6 +358,65 @@ export function handleAuthRequest(
       if (!admitted) { sessions.revokeById(sessionId); json(res, 503, { error: "unavailable" }); return; }
       const session = buildSessionCookie(sessionId, isSecureRequest(gateReq), (record.absoluteExpiry - record.created) / 1000, token);
       json(res, 200, { ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry }, { "Set-Cookie": session });
+    }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); });
+    return true;
+  }
+
+  // ── Refs #3061 (P2a): device-code sign-in — a new device on a web-only fleet shows a code, a signed-in owner-verified device approves it ──
+  // Three POSTs, none of them a GET: asking for a code and learning where it stands both change state (the poll that finds
+  // it approved is what makes the session), and a link preview must never be able to do either. Never over the public
+  // link (the gateway's own provenance, never a header): there a person signs in with the authenticator's code. On a fleet
+  // with a chat connection the route does not exist either (its codes come from the chat). Nothing here is an input to
+  // authority: the session it makes is an ordinary admin session, owner authority not verified (SessionRecord.via).
+  if (path === "/auth/device-login" || path === "/auth/device-login/poll" || path === "/auth/device-login/cancel") {
+    if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
+    const token = ctx.webToken, logins = ctx.webDeviceLogins, sessions = ctx.webSessions;
+    if (gatewayRequestContext(req) || !token || !logins || !sessions || ctx.isWebOnlyFleet?.() !== true) { json(res, 404, { error: "not_found" }); return true; }
+    // As the one-time code's own exchange: Origin required, from this very site, JSON.
+    if (!req.headers.origin || !isSameOriginRequest(gateReq)) { json(res, 403, { error: "Cross-site request rejected" }); return true; }
+    if (!isJsonRequest(req)) { json(res, 415, { error: "expected application/json" }); return true; }
+    const secure = isSecureRequest(gateReq), epoch = tokenEpoch(token);
+    const held = readDeviceLoginCookie(typeof req.headers.cookie === "string" ? req.headers.cookie : undefined, token);
+    const gone = clearDeviceLoginCookie(secure, token);
+    const userAgent = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : undefined;
+    void readJsonBody(req).then(body => {
+      if (!body) { json(res, 400, { error: "expected a JSON object" }); return; }
+      if (!isWebRequestCurrent(req) || ctx.webToken !== token || ctx.isWebOnlyFleet?.() !== true) { json(res, 404, { error: "not_found" }); return; }
+      if (path === "/auth/device-login/cancel") { logins.cancel(held); json(res, 200, { ok: true }, { "Set-Cookie": gone }); return; }
+
+      if (path === "/auth/device-login") {
+        // The server's own reading of who is asking — never anything the body says: a label for the person approving
+        // (a coarse User-Agent hint, display only), whether the request came from this computer or the network, and
+        // the peer's address (also the key the rate limits count by).
+        const address = (req.socket?.remoteAddress ?? "unknown").replace(/^::ffff:/, "").slice(0, 64);
+        const peer = classifyWebPeer(req) === "loopback" ? "host" as const : "network" as const;
+        const made = logins.create({ epoch, peerKey: address, label: labelFromUserAgent(userAgent), peer, address, ...(held ? { replaces: held } : {}) });
+        if (made.kind === "limited") {
+          ctx.logger.warn({ address }, "Device sign-in code requests limited");
+          json(res, 429, { error: "limited", retryAfterMs: made.retryAfterMs }, { "Retry-After": String(Math.ceil(made.retryAfterMs / 1000)), ...(held ? { "Set-Cookie": gone } : {}) });
+          return;
+        }
+        if (made.kind === "full") { json(res, 503, { error: "busy" }, held ? { "Set-Cookie": gone } : {}); return; }
+        ctx.logger.info({ address, peer }, "Device sign-in code asked for");
+        json(res, 200, { code: made.code, expiresAt: made.expiresAt, ttlMs: DEVICE_LOGIN_TTL_MS },
+          { "Set-Cookie": buildDeviceLoginCookie(made.requestId, secure, token, DEVICE_LOGIN_TTL_MS / 1000), "Cache-Control": "no-store" });
+        return;
+      }
+
+      // …/poll: where does it stand? An approved request is spent by this call, and the session made here.
+      const polled = logins.poll(held, epoch);
+      if (polled.kind === "pending") { json(res, 200, { state: "pending", expiresAt: polled.expiresAt }, { "Cache-Control": "no-store" }); return; }
+      if (polled.kind !== "claimed") { json(res, 200, { state: polled.kind }, { "Set-Cookie": gone, "Cache-Control": "no-store" }); return; }
+      // A new id every time, whatever the request carried (as /auth/login): a cookie it already had is retired.
+      for (const previous of readSessionCookies(gateReq, token)) {
+        if (sessions.authenticate(previous, epoch, { touch: false, surface: "local" })) sessions.revokeById(previous);
+      }
+      const { sessionId, record } = sessions.create({ tier: "admin", surface: "local", label: polled.label, tokenEpoch: epoch, via: "device" });
+      ctx.logger.info({ handle: record.handle, label: record.label, approvedBy: polled.approvedBy.slice(0, 8), surface: record.surface }, "Web sign-in with a device code");
+      try { ctx.onWebLogin?.({ label: record.label, surface: record.surface, tier: record.tier, handle: record.handle }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
+      const session = buildSessionCookie(sessionId, secure, (record.absoluteExpiry - record.created) / 1000, token);
+      json(res, 200, { state: "approved", ok: true, csrf: csrfTokenFor(sessionId), tier: record.tier, expiresAt: record.absoluteExpiry },
+        { "Set-Cookie": [session, gone], "Cache-Control": "no-store" });
     }).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 500, { error: "sign-in failed" }); });
     return true;
   }

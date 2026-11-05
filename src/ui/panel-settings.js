@@ -56,6 +56,7 @@ import { PageSharesCard } from "./page-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
+import { DevicesCard } from "./settings-devices.js";
 /** AgEnD Hub P1: this page is a member fleet's (data-hub carries "member": set by this fleet's listener from hub_member). */
 const hubMemberPage = () => String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/).includes("member");
 /** Connect to a Hub, loaded only on a member page. */
@@ -1368,6 +1369,8 @@ function WebSection({ ctx, staged, part = "all" }) {
         <div class="s-access-login-layout"><div class="s-access-stack">
           ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
           <${OutsideCard} />
+          ${/* Refs #3061 (P2a): sign a new device in with its 8-character code — approved here by the verified owner. */ ""}
+          <${DevicesCard} />
           ${lock(html`<section class="card s-access-session"><h3>${layoutText("revLoginSessions")}</h3>
       <div class=${fc("field", "notify")}><label for="webNotifyLogin">${tn("webNotifyLogin")}<${Impact} schema=${schema} field="web.notify_login" /></label><${Select} id="webNotifyLogin" value=${f.notify} onChange=${set("notify")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.notify))} /></div>
       <div class="grid2">

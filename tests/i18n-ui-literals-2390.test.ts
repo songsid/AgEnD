@@ -32,6 +32,7 @@ const ALLOWED = new Map<string, string>([
   ["backend-signin.js\tlabel\tURL", "an acronym, the same in both languages"],
   ["settings-outside.js\ttext\tGoogle Authenticator", "an authenticator app's product name"],
   ["settings-outside.js\ttext\tMicrosoft Authenticator", "an authenticator app's product name"],
+  ["settings-devices.js\tplaceholder\tXXXX-XXXX", "the shape of a device code (an example, the same in both languages)"],
   ["panel-chat.js\ttext\tWindows", "the runtime product name"],
   ["panel-fleet.js\ttext\tRuntime", "the execution runtime's technical label"],
   ["panel-windows-agent.js\ttext\tWindows ·", "the runtime product name and separator"],

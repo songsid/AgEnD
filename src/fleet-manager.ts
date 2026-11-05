@@ -370,6 +370,7 @@ import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninP
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
+import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
@@ -3106,6 +3107,53 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.liveOwner(req, { hostOnly: false });
   }
 
+  /**
+   * Refs #3061 (P2a): the new-device approval's one authority — the same one that decides an agent's request: this web-only
+   * fleet's owner, asked of the LIVE session each time (a sign-out, an expiry, a revocation, the authority switch or
+   * "Only this computer can authorize" turning a session into a non-owner is seen at once). A LAN session that signed in
+   * with a one-time code, a session a device approval made, a guest, a chat fleet's admin and the CLI's header token are
+   * none of them this: they are told so, and learn nothing about any request.
+   */
+  private deviceApprovalOwner(req: IncomingMessage): { label: string; handle: string; current(): boolean } | null {
+    return this.liveOwner(req, { hostOnly: false });
+  }
+
+  /** GET /ui/devices: is this a web-only fleet, and may THIS session approve a new device (is it the verified owner). */
+  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean } {
+    const webOnly = this.isWebOnlyFleet();
+    return { webOnly, owner: webOnly && !!this.deviceApprovalOwner(req) };
+  }
+
+  /**
+   * Refs #3061 (P2a): look a new device's code up (for the confirm screen), approve it, or deny it — the verified owner's,
+   * on a web-only fleet. The answer is the request as it now stands. Approving only marks the request approved: the new
+   * browser makes its own session when it next asks (auth-api POST /auth/device-login/poll), so no credential passes from
+   * here to there — not in the answer, not through the fleet. A wrong code counts against one fleet-wide breaker; while
+   * it is open every code (a right one too) waits.
+   */
+  webDeviceLoginAct(req: IncomingMessage, op: "lookup" | "approve" | "deny", code: string): { status: number; body: Record<string, unknown> } {
+    const owner = this.deviceApprovalOwner(req);
+    if (!owner) return { status: 403, body: { error: "owner_required" } };
+    const logins = this.webDeviceLogins, token = this.webToken;
+    if (!logins || !token) return { status: 404, body: { error: "not_found" } };
+    const epoch = tokenEpoch(token);
+    const shown = (v: { code: string; label: string; peer: string; address: string; expiresAt: number; state: string }) =>
+      ({ code: v.code, label: v.label, peer: v.peer, address: v.address, expiresAt: v.expiresAt, state: v.state });
+    if (op === "lookup") {
+      const r = logins.lookup(code, epoch);
+      if (r.kind === "ok") return { status: 200, body: { request: shown(r.view) } };
+      return r.kind === "paused" ? { status: 429, body: { error: "paused", retryAfterMs: r.retryAfterMs } } : { status: 404, body: { error: "not_found" } };
+    }
+    // (The owner above was asked of the live session just now, after the body was read; nothing is awaited since.)
+    const r = logins.decide(code, op === "approve" ? "approved" : "denied", owner.handle, epoch);
+    if (r.kind === "ok") {
+      this.logger.info({ approvedBy: owner.handle.slice(0, 8), label: r.view.label, peer: r.view.peer, decision: r.view.state }, op === "approve" ? "New device sign-in approved" : "New device sign-in denied");
+      return { status: 200, body: { request: shown(r.view) } };
+    }
+    if (r.kind === "decided") return { status: 409, body: { error: "already_decided", state: r.state } };
+    return r.kind === "paused" ? { status: 429, body: { error: "paused", retryAfterMs: r.retryAfterMs } } : { status: 404, body: { error: "not_found" } };
+  }
+
   /** alpha.2: the agents' requests waiting for this web-only fleet's owner, or null when the reader is not that owner. */
   webAgentProposals(req: IncomingMessage): SettingsPendingView[] | null {
     if (!this.agentProposalOwner(req)) return null;
@@ -3573,6 +3621,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
   private webLoginCodes: WebLoginCodes | null = null;
+  /** Refs #3061 (P2a): device-code sign-in requests (in memory; web-device-login.ts). Read by auth-api as `webDeviceLogins`. */
+  private webDeviceLogins: DeviceLoginRequests | null = null;
   /**
    * #1920 step 4: guests' codes, apart from the admins' — one per account, so no guest's `/web` withdraws another's or
    * an admin's code (#2093 review), at most 32 at once. Local sign-in only for now (audience "local").
@@ -8159,6 +8209,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         },
       });
     }
+    if (!this.webDeviceLogins) {
+      this.webDeviceLogins = new DeviceLoginRequests({
+        onEvent: event => { if (event === "breaker-open") this.logger.warn("Device sign-in approval paused: too many wrong codes"); },
+      });
+    }
     if (!this.webGuestLoginCodes) {
       this.webGuestLoginCodes = new GuestLoginCodes({
         onEvent: event => {
@@ -8691,6 +8746,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     void this.publicWebLink?.close("dashboard revoke");
     this.forgetPublicLinkOwner();
     this.webLoginCodes!.revoke();
+    this.webDeviceLogins?.revokeAll();                // …and every new device still waiting to be approved (#3061)
     this.webGuestLoginCodes!.revokeAll();
     this.guestRevokes++;                              // and every guest /web still on its way
     // #1570: no browser may ask the sign-in page for a code any more.
@@ -25943,7 +25999,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId) });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && !!this.webDeviceLogins });
             return;
           }
           res.writeHead(decision.status);

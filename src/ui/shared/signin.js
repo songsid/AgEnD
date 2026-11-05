@@ -33,6 +33,14 @@
       refused_outside: "That code didn't work. Check that your phone's clock is right and try the newest code.",
       paused_outside: "Too many wrong codes. Try again in {duration}.",
       minutes: "{0} minutes", minute: "1 minute", hours: "{0} hours", hour: "1 hour",
+      // #3061: sign in with another device — an 8-character code shown here, approved on a device that is already signed in.
+      another: "Sign in with another device", dev_title: "Sign in with another device",
+      dev_lead: "On a device that is already signed in to AgEnD as the owner, open Settings → Access & security → Add device and enter this code.",
+      dev_waiting: "Waiting for approval… Expires in {time}.", dev_approved: "Approved — signing in…",
+      dev_expired: "This code has expired.", dev_denied: "This request was denied.", dev_new: "Get a new code", dev_back: "Back",
+      dev_busy: "Too many devices are waiting right now. Try again in a moment.", dev_limited: "Too many codes asked for. Try again in {duration}.",
+      dev_unavailable: "Signing in with another device isn't available here.", dev_failed: "Could not get a code. Check the connection and try again.",
+      dev_lost: "Could not reach AgEnD. Still trying…",
     },
     "zh-TW": {
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
@@ -55,6 +63,13 @@
       refused_outside: "代碼不對。請確認手機時間正確，並輸入最新的代碼。",
       paused_outside: "錯誤次數太多，請 {duration} 後再試。",
       minutes: "{0} 分鐘", minute: "1 分鐘", hours: "{0} 小時", hour: "1 小時",
+      another: "使用其他裝置登入", dev_title: "使用其他裝置登入",
+      dev_lead: "在已登入且已驗證擁有者的裝置上，開啟「設定 → 存取與安全 → 新增裝置」，輸入這組代碼。",
+      dev_waiting: "等待核准中… {time} 後失效。", dev_approved: "已核准，登入中…",
+      dev_expired: "這組代碼已失效。", dev_denied: "這個請求已被拒絕。", dev_new: "取得新代碼", dev_back: "返回",
+      dev_busy: "目前等待核准的裝置太多，請稍後再試。", dev_limited: "要求代碼的次數太多，請 {duration} 後再試。",
+      dev_unavailable: "這裡無法使用其他裝置登入。", dev_failed: "無法取得代碼。請檢查連線後再試。",
+      dev_lost: "連不上 AgEnD，仍在重試…",
     },
   };
   const lang = /^zh/i.test(navigator.language || "") ? "zh-TW" : "en";
@@ -63,6 +78,9 @@
   // #3008: …and one served through the link "Allow connections from outside" opened (<body data-outside="1">): signing in
   // is the authenticator app's code, posted to /auth/totp.
   const outside = webOnly && document.body.getAttribute("data-outside") === "1";
+  // #3061: …and one on this computer's own listener (<body data-device-login="1">, never the public link) offers "Sign in
+  // with another device".
+  const deviceLogin = webOnly && !outside && document.body.getAttribute("data-device-login") === "1";
   const t = (k) => (outside && (T[lang][`${k}_outside`] || T.en[`${k}_outside`])) || (webOnly && (T[lang][`${k}_web`] || T.en[`${k}_web`])) || T[lang][k] || T.en[k] || k;
   /** A wait as words: "15 minutes" / 「15 分鐘」, "2 hours" / 「2 小時」 (rounded up). */
   const duration = (ms) => {
@@ -149,6 +167,7 @@
     } catch { /* private mode */ }
     $("code").focus();
     offerResend();
+    if (deviceLogin) $("another").hidden = false;
   }
 
   // Only a returning device gets the button; the answer is a boolean and asking has no side effect. Never from outside
@@ -179,6 +198,92 @@
     }
     button.disabled = false;
   });
+
+  // ── #3061: sign in with another device ──
+  // POST /auth/device-login → the code to show (and an HttpOnly cookie that is this browser's request); then POST
+  // /auth/device-login/poll every couple of seconds until a signed-in owner has approved it (the poll that finds it
+  // approved is what signs this browser in, so nothing is handed over by the approving device), denied it, or it ran out.
+  // Never a GET: asking and polling both change state, and a preview must not.
+  const DEV_POLL_MS = 2000;
+  let dev = null;
+  const devPost = (path) => fetch(`/auth/device-login${path}`, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: "{}" });
+  const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+  function devStop() {
+    if (!dev) return;
+    dev.stopped = true;
+    clearTimeout(dev.poll); clearInterval(dev.tick);
+    dev = null;
+  }
+  function devSay(text, bad, spent) {
+    $("devStatus").textContent = text;
+    $("devStatus").classList?.[bad ? "add" : "remove"]("bad");
+    $("devCode").classList?.[spent ? "add" : "remove"]("spent");
+  }
+  function devEnded(text, bad) {
+    devStop();
+    devSay(text, bad, true);
+    $("devNew").hidden = false;
+  }
+  async function devStart() {
+    devStop();
+    $("form").hidden = true; $("device").hidden = false; $("devNew").hidden = true;
+    $("devCode").textContent = "XXXX-XXXX";
+    devSay("", false, true);
+    const mine = { stopped: false, poll: 0, tick: 0, deadline: 0, lost: 0 };
+    dev = mine;
+    let r, body = null;
+    try { r = await devPost(""); body = r.ok ? await r.json() : null; } catch { if (!mine.stopped) devEnded(t("dev_failed"), true); return; }
+    if (mine.stopped) return;
+    if (!r.ok || !body || typeof body.code !== "string") {
+      if (r.status === 429) {
+        let wait = Number(r.headers.get("Retry-After")) * 1000;
+        try { const b = await r.json(); if (Number.isFinite(b && b.retryAfterMs)) wait = b.retryAfterMs; } catch { /* the header's */ }
+        devEnded(t("dev_limited").replace("{duration}", duration(Number.isFinite(wait) && wait > 0 ? wait : 60000)), true);
+      } else devEnded(r.status === 503 ? t("dev_busy") : r.status === 404 ? t("dev_unavailable") : t("dev_failed"), true);
+      return;
+    }
+    $("devCode").textContent = body.code;
+    $("devCode").classList?.remove("spent");
+    // The countdown runs on this browser's own clock from when the code arrived (the server's is the authority: its poll
+    // says `expired` when it is).
+    mine.deadline = Date.now() + (Number.isFinite(body.ttlMs) && body.ttlMs > 0 ? body.ttlMs : 300000);
+    const waiting = () => devSay(t("dev_waiting").replace("{time}", clock(mine.deadline - Date.now())), false, false);
+    waiting();
+    mine.tick = setInterval(() => { if (!mine.stopped && !mine.approved) waiting(); }, 1000);
+    const again = () => { if (!mine.stopped) mine.poll = setTimeout(ask, DEV_POLL_MS); };
+    const ask = async () => {
+      let p, state = null, parsed = null;
+      try { p = await devPost("/poll"); parsed = await p.json(); state = parsed && parsed.state; } catch { /* below */ }
+      if (mine.stopped) return;
+      if (state === "approved" && p && p.ok) {
+        mine.approved = true;
+        devSay(t("dev_approved"), false, false);
+        clearBounce(); location.replace(nextTarget());
+        return;
+      }
+      if (state === "denied") { devEnded(t("dev_denied"), true); return; }
+      if (state === "expired") { devEnded(t("dev_expired"), true); return; }
+      if (state === "pending") { mine.lost = 0; again(); return; }
+      // The network, or an answer that is none of these: keep trying — the server ends the request when it is time —
+      // but say so after a few, and stop waiting once the code's own time is well past.
+      if (Date.now() > mine.deadline + 15000) { devEnded(t("dev_expired"), true); return; }
+      if (++mine.lost >= 3) devSay(t("dev_lost"), true, false);
+      again();
+    };
+    again();
+  }
+  async function devBack() {
+    const mine = dev;
+    devStop();
+    $("device").hidden = true; $("form").hidden = false;
+    if (mine && !mine.approved) { try { await devPost("/cancel"); } catch { /* it expires by itself */ } }
+    $("code").focus();
+  }
+  if (deviceLogin) {
+    $("another").addEventListener("click", () => { devStart(); });
+    $("devNew").addEventListener("click", () => { devStart(); });
+    $("devBack").addEventListener("click", () => { devBack(); });
+  }
 
   async function probe() {
     // A second bounce inside ten seconds means the cookie is valid but not being sent on the

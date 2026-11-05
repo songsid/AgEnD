@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **Sign in a new device with an 8-character code, on a fleet with no chat connection (#3061).** The sign-in page on the dashboard's own address offers "Sign in with another device": it shows a code and a five-minute countdown. A device that is already signed in as the owner (this computer's admin, or signed in from outside with the authenticator) approves it under Settings → Access & security → Sign-in & authorization → Devices & sign-in → Add device, after seeing which browser is asking. Approving copies no sign-in to the new device: it makes a session of its own, without owner authorization. Codes are single-use, expire after five minutes, and are rate-limited; wrong codes at the approving side pause approving. Not available through the public link or on a fleet with a chat connection.
