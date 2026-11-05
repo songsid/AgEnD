@@ -59,7 +59,7 @@ function spawnLifecycle(root: string) {
     notifyInstanceTopic: () => true,
     webhookEmit: () => {}, clearCancelButton: () => {}, instanceIpcClients: new Map(),
     spawnGate: { run: (_task: unknown, operation: () => Promise<unknown>) => operation() },
-    stormWindow: null, backendOutage: null,
+    stormWindow: null, backendOutage: null, agentCredentials: undefined,
   };
   const ctx = new Proxy(base, { get: (t, k) => (k in t ? t[k as string] : () => Promise.resolve(undefined)) }) as unknown as LifecycleContext;
   return { lc: new InstanceLifecycle(ctx), errors };

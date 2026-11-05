@@ -2275,6 +2275,10 @@ export class Daemon extends EventEmitter {
     };
   }
 
+  /** Register each issued HTTP credential with the same-process lifecycle owner. */
+  private agentCredentialIssuer?: (token: string) => void;
+  setAgentCredentialIssuer(issue: (token: string) => void): void { this.agentCredentialIssuer = issue; }
+
   /** FleetManager and this daemon share a process, so durable begin/ACK is a direct synchronous store call. */
   setDeliveryOutboxPort(port: DaemonDeliveryPort | undefined): void {
     this.deliveryOutbox = port;
@@ -12800,6 +12804,7 @@ export class Daemon extends EventEmitter {
     const agentTokenPath = join(this.instanceDir, "agent.token");
     const agentToken = randomBytes(32).toString("hex");
     const tokenWrite = writeSecretFile(agentTokenPath, agentToken);
+    this.agentCredentialIssuer?.(agentToken);
     if (!tokenWrite.ok) {
       // Do not fail the spawn over it — an instance that cannot start is worse
       // than one whose token is readable. But say so, loudly: the whole point of
