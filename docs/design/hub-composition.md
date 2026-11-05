@@ -242,5 +242,8 @@ owns the Hub session check. The personal fleet listener is untouched.
 2. **Code PR 1:** `db.ts`, `audit/`, `compose/server.ts`, `runtime.ts` and the FleetManager hooks. The server
    factory holds with `hub-incomplete` until S3b registers its entry; the member side holds until S4. Opened once S1 is merged, because it
    imports S1's types and mount.
-3. **Code PR 2:** register the S3 and S4 entries when they land, the member factory (with the S4b provider seam), the
-   Needs-you hold item, and whole-flow acceptance against the fake directory.
+3. **Code PR 2a:** register S3b as the server's web-service entry (`createHubHttp(deps, hubTxDatabase)`), the
+   Needs-you "Hub not running" item, and whole-flow acceptance against the fake directory (init → mount → directory
+   sign-in → administrator page → refused at the next request once the directory disables the person).
+4. **Code PR 2b:** the member factory over S4, S1's member reconciliation (#3116, `createHubMemberHandshake`), S3c's
+   exposure store and snapshot (#3115) and the S4b provider seam (#3119), once those land.
