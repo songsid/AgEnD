@@ -122,7 +122,7 @@ delete fm.fleetConfig.instances[A!];
   await p.page.click('.us-bar-top button:has-text("All")');
   await p.page.waitForSelector(".us .empty", { timeout: 10000 });
   const t = await text(p.page, ".us .empty");
-  check(t.includes("Nothing recorded yet") && t.includes("Usage is read from Claude Code and Codex transcripts"), `empty: "${t}"`);
+  check(t.includes("Nothing recorded yet") && t.includes("Usage is read from Claude Code, Codex"), `empty: "${t}"`);
   check(!!(await text(p.page, ".us-basis")), "empty: the basis line is still there");
   await p.page.screenshot({ path: shotPath(SMOKE, desk, "empty"), fullPage: true });
   check(pageErrors(p.errors).length === 0, `empty: no page errors (${pageErrors(p.errors).join(" | ")})`);
@@ -163,20 +163,29 @@ if (process.env.DEBUG) {
   await toUsageFromFleet(p.page);
   await p.page.waitForSelector(".us-row", { timeout: 10000 });
   const rows = await p.page.$$eval(".us-row", (rs: any[]) => rs.map(r => ({
-    name: r.querySelector(".us-name .mono").textContent, flags: r.querySelector(".us-flags")?.textContent ?? "",
-    cells: Object.fromEntries([...r.querySelectorAll("td")].map((td: any) => [td.getAttribute("data-label"), td.textContent])) })));
+    name: r.querySelector(".us-name .mono").textContent, pills: r.querySelectorAll(".us-flags, .ch-tag").length,
+    meta: r.querySelector(".us-meta")?.textContent ?? "",
+    cells: Object.fromEntries([...r.querySelectorAll("td")].map((td: any) => [td.getAttribute("data-label"), td.textContent])),
+    // #3066 §3: what a "—" or a mark means is its tooltip (title, also the aria-label).
+    tips: Object.fromEntries([...r.querySelectorAll("td")].map((td: any) => { const m = td.querySelector(".us-none, .us-mark"); return [td.getAttribute("data-label"), m && m.getAttribute("title") === m.getAttribute("aria-label") ? m.getAttribute("title") : null]; })) })));
   const row = (n: string) => rows.find((r: any) => r.name === n);
   check(rows.map((r: any) => r.name).slice(0, 2).join(",") === `${A},${B}`, `desk: ranked by API-equivalent: ${rows.map((r: any) => r.name).join(", ")}`);
   check(row(A)?.cells.Requests === "16" && row(B)?.cells.Requests === "4", `desk: requests are the fixture's (4 a copy — its sidechain turn is not counted: A 4×4, B 4): ${row(A)?.cells.Requests}, ${row(B)?.cells.Requests}`);
   check(row(A)?.cells.Input === "44" && row(B)?.cells.Input === "11", `desk: uncached input is the fixture's (A 4×11, B 11): ${row(A)?.cells.Input}, ${row(B)?.cells.Input}`);
   check(/^\$\d/.test(row(A)?.cells["API-equivalent"] ?? ""), `desk: A has an API-equivalent: ${row(A)?.cells["API-equivalent"]}`);
-  check(row(C)?.cells["API-equivalent"] === "not priced" && row(C)?.flags.includes("not priced: made-up-model-9"), `desk: C not priced: ${row(C)?.cells["API-equivalent"]} / ${row(C)?.flags}`);
-  check(!!row(X) && row(X).flags.includes("cache writes not reported (Codex) — an estimate") && row(X).cells["Cache write"] === "—", `desk: Codex's writes not reported: ${row(X)?.flags} / ${row(X)?.cells["Cache write"]}`);
+  check(row(C)?.cells["API-equivalent"] === "—" && row(C)?.tips["API-equivalent"] === "Not priced: made-up-model-9", `desk: C not priced: ${row(C)?.cells["API-equivalent"]} / ${row(C)?.tips["API-equivalent"]}`);
+  check(!!row(X) && row(X).cells["Cache write"] === "—" && row(X).tips["Cache write"] === "Codex/Muse don't report cache writes", `desk: Codex's writes not reported: ${row(X)?.cells["Cache write"]} / ${row(X)?.tips["Cache write"]}`);
+  check(rows.every((r: any) => r.pills === 0), "desk: #3066 §3 — no pill on any row");
+  check(!!row(X) && row(X).meta.includes("profile not recorded") && !row(X).meta.includes("unrecorded"), `desk: Codex's profile in words: "${row(X)?.meta}"`);
   const basis = await text(p.page, ".us-basis");
-  check(/^API-equivalent at list price \(checked \d{4}-\d{2}-\d{2}\) — not money spent\./.test(basis), `desk: basis: "${basis}"`);
+  check(/^API-equivalent at list price \(\d{4}-\d{2}-\d{2}\) — not money spent\.$/.test(basis), `desk: basis: "${basis}"`);
   const rest = await p.page.$$eval(".us-rest .row-item", (li: any[]) => li.map(l => l.textContent));
-  for (const name of UNMEASURED) check(rest.some((r: string) => r.startsWith(name)), `desk: ${name} not measured, with its reason`);
-  check(rest.some((r: string) => r.includes("Kiro is credit-billed")) && rest.some((r: string) => r.includes("AgEnD can't read this CLI's usage yet")), "desk: the reasons in words");
+  // Grok, Muse, OpenCode and Antigravity are read now and Kiro is estimated (#2122 §10): an agent of theirs with nothing
+  // read yet is "nothing read yet", never a row.
+  // A backend AgEnD reads but whose agent used nothing has no row and no entry; one it can't read is listed with why.
+  check(rest.length >= 1 && UNMEASURED.every(name => rest.some((r: string) => r.startsWith(name)) || !rows.some((r: any) => r.name === name)),
+    `desk: the unmeasured agents: listed with a reason, or simply no row (${rest.join(" | ")})`);
+  check(rest.every((r: string) => /nothing read yet|credit-billed|can't read this CLI's usage yet|shares its working directory/.test(r)), `desk: the reasons in words (${rest.join(" | ")})`);
   check(!rows.some((r: any) => UNMEASURED.includes(r.name)), "desk: never a $0 row for one");
   await p.page.screenshot({ path: shotPath(SMOKE, desk, "rows-7d"), fullPage: true });
 
@@ -207,15 +216,38 @@ if (process.env.DEBUG) {
   const [download] = await Promise.all([p.page.waitForEvent("download"), p.page.click(".us-csv")]);
   const csv = readFileSync(await download.path(), "utf8");
   const lines = csv.trimEnd().split("\r\n");
-  check(lines[0] === "date,zone,instance,backend,model,tier,profile,input,output,cache_read,cache_write_5m,cache_write_1h,cache_write,requests,messages,amount,basis,flags", "desk: CSV header");
+  check(lines[0] === "date,zone,instance,backend,model,tier,profile,input,output,reasoning,cache_read,cache_write_5m,cache_write_1h,cache_write,requests,messages,amount,basis,flags,estimated", `desk: CSV header (${lines[0]})`);
   check(lines.slice(1).filter(l => l.includes(`,${A},claude-code,`)).every(l => l.includes(",API-equivalent at list price (checked ")), "desk: CSV token rows carry the basis");
   check(download.suggestedFilename() === `agend-usage-all-${dayOf(0)}.csv`, `desk: CSV name ${download.suggestedFilename()}`);
-  const aRequests = lines.filter(l => l.split(",")[2] === A).reduce((n, l) => n + Number(l.split(",")[13] || 0), 0);
+  const aRequests = lines.filter(l => l.split(",")[2] === A).reduce((n, l) => n + Number(l.split(",")[14] || 0), 0);
   check(aRequests === 21, `desk: CSV rows sum to A's requests over all (4×4 + the older day's 5): ${aRequests}`);
   check(await noOverflow(p.page), "desk: no horizontal overflow");
   check(pageErrors(p.errors).length === 0, `desk: no page errors (${pageErrors(p.errors).join(" | ")})`);
   await p.ctx.close();
 }
+
+// ── #3066 §3, a stale tab (quality rule 3): a page that loaded one side of the change and fetches the other later.
+// The renderer and its strings are one module (fleet-usage.js); the only other file is app.css. Both mixes must render
+// every row, with no page error and no overflow: the new table on the old sheet (marks unstyled but legible), and the
+// old table on the new sheet (its pills, as before). SKEW_OLD_CSS / SKEW_OLD_JS: the previous release's app.css and
+// fleet-usage.js as files (e.g. `git show origin/main:src/ui/shared/app.css > old-app.css`); unset: the case is skipped. ──
+if (process.env.SKEW_OLD_CSS && process.env.SKEW_OLD_JS) {
+  const oldCss = readFileSync(process.env.SKEW_OLD_CSS, "utf8"), oldJs = readFileSync(process.env.SKEW_OLD_JS, "utf8");
+  for (const [mix, pattern, body, type] of [["new-js-old-css", "**/assets/app.css", oldCss, "text/css; charset=utf-8"], ["old-js-new-css", "**/ui/js/fleet-usage.js", oldJs, "text/javascript; charset=utf-8"]] as const) {
+    const desk = { device: "desk", theme: "light", lang: "en" } as const;
+    const p = await open(desk, { beforeNavigate: (ctx: any) => ctx.route(pattern, (r: any) => r.fulfill({ status: 200, contentType: type, body })) });
+    await toUsageFromFleet(p.page);
+    await p.page.waitForSelector(".us-row", { timeout: 10000 });
+    const names = await p.page.$$eval(".us-row .us-name .mono", (e: any[]) => e.map(x => x.textContent));
+    check([A, B, C, X].every(n => names.includes(n!)), `skew ${mix}: every row (${names.join(", ")})`);
+    if (mix === "new-js-old-css") check((await p.page.$$(".us-row .us-none")).length >= 2 && (await p.page.$$(".us-flags")).length === 0, `skew ${mix}: the new table (— with reasons, no pills)`);
+    else check((await p.page.$$(".us-flags")).length >= 1, `skew ${mix}: the old table (its pills)`);
+    check(await noOverflow(p.page), `skew ${mix}: no horizontal overflow`);
+    check(pageErrors(p.errors).length === 0, `skew ${mix}: no page errors (${pageErrors(p.errors).join(" | ")})`);
+    await p.page.screenshot({ path: shotPath(SMOKE, desk, `skew-${mix}`), fullPage: true });
+    await p.ctx.close();
+  }
+} else console.log("skew: skipped (set SKEW_OLD_CSS and SKEW_OLD_JS)");
 
 // ── phone, dark, zh-TW, a LAN origin, reduced motion: from the ◔ dialog ──
 {
@@ -301,7 +333,9 @@ if (process.env.DEBUG) {
   // /auth/session — the same pair every fresh sign-in has). Anything else fails.
   const local = `http://localhost:${port}`;
   const navCancelled = cancelledIn(p.errors, windows);
+  // …and the web-only notices list (#2910), which the public link answers 404 (not offered there).
   const unexpected = pageErrors(p.errors.filter((_, i) => !navCancelled.has(i))).filter(e => !((/status of 403/.test(e) && /\/ui\/usage-report\?/.test(e))
+    || (/status of 404/.test(e) && /\/ui\/notices\/list$/.test(e))
     || (/status of 401/.test(e) && (e.endsWith(`@ ${local}/settings/web-dashboard`) || e.endsWith(`@ ${local}/auth/session`)))));
   for (const i of navCancelled) known.push(p.errors[i]!);
   check(unexpected.length === 0, `public: no page errors besides the refused usage read (${unexpected.join(" | ")})`);

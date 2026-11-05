@@ -2111,6 +2111,12 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .us-meta { display: block; font-size: var(--fs-xs); color: var(--text-3); overflow-wrap: anywhere; }
 .us-est { display: block; font-size: var(--fs-xs); font-weight: var(--fw-regular); color: var(--text-3); }
 .us-flags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+/* #3066 §3: a row's numbers carry small marks (◐ partly priced, † the CLI's amount, ≈ estimated) and "—" with a reason,
+   each said in its tooltip; the key under the table names only the marks that appear. */
+.us-mark { margin-left: 2px; color: var(--text-3); font-size: var(--fs-xs); cursor: help; }
+.us-mark.us-approx { margin-left: 0; margin-right: 1px; }
+.us-none { cursor: help; }
+.us-key { margin-top: 6px; }
 .us-trend, .us-heat { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
 .us-trend h3, .us-heat h3, .us-rest h3 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .us-scroll { overflow-x: auto; max-width: 100%; }
