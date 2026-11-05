@@ -53,7 +53,7 @@ export async function hubRig() {
       reconcile: async link => { state.link = link; state.syncs++; await link.exchange({ v: 1, type: "reconcile", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { afterReceiptSequence: 0, messages: [] } }, "reconcile"); await reconcileGate?.(); }, receive: onFrame,
       hold: code => state.holds.push(code), random: () => 0 }); clients.push(value); return { value, state };
   };
-  return { root, memberHome, memberOrigin, identity, owner, db, store, pairing, ctx, server, received, holds, pair, client,
+  return { root, memberHome, memberOrigin, identity, owner, directory, db, store, pairing, ctx, server, received, holds, pair, client,
     disableOwner: () => { eligible = false; }, disable: () => { enabled = false; }, setServerGate: (gate?: () => Promise<void>) => { serverGate = gate; },
     setReceive: (receive: HubServerOptions["receive"]) => { receiver = receive; },
     close: async () => { for (const c of clients) await c.close(); await server.close(); db.close(); rmSync(root, { recursive: true, force: true }); } };
