@@ -2066,6 +2066,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   private configHistory: ConfigHistory | null = null;
   private configHistoryTimer: ReturnType<typeof setInterval> | null = null;
   private loadedFleetSource: ConfigSource | null = null;
@@ -16173,6 +16174,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.needsYou?.webItems() ?? [];
   }
 
+  /** Enabled member composition supplies only a local attention reader, never an approval/execution callback. */
+  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null): void {
+    this.hubExecutionAttention = read; this.needsYou?.poke();
+  }
+
   /**
    * #1389: the org chart's structure for the web — the instances the dashboard lists (getUiStatus's names), General,
    * fleet.yaml's teams, each instance's description and thread link. Read on demand; the live state rides the stream.
@@ -16479,6 +16485,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
+      hubExecution: () => this.hubExecutionAttention?.() ?? [],
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
         ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,
       })),

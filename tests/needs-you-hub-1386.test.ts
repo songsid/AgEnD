@@ -57,6 +57,8 @@ function rig() {
     prompts: [] as PromptInput[],
     instances: [] as InstanceInput[],
     deliveries: [] as DeliveryInput[],
+    hubExecution: [] as import("../src/needs-you.js").HubExecutionAttentionInput[],
+    hubStorageUnavailable: false,
     owners: { alpha: "dcA", beta: "dcB" } as Record<string, string | undefined>,
     admins: { dcA: ["100"], dcB: ["200"] } as Record<string, string[]>,
     acked: new Map<string, string>(),
@@ -74,6 +76,7 @@ function rig() {
     prompts: () => state.prompts,
     instances: () => state.instances,
     deliveries: () => state.deliveries.filter(d => !state.acked.has(d.deliveryId)),
+    hubExecution: () => { if (state.hubStorageUnavailable) throw Error("unreadable"); return state.hubExecution; },
     ownerOf: i => state.owners[i],
     worlds: () => [
       { id: "dcA", place: { type: "discord", groupId: state.groupA }, adapter: worldAdapters.dcA },
@@ -125,6 +128,17 @@ function lastChoices(adapterMock: any): string[] {
 }
 
 describe("§5.0 each world's chat shows only the items of the instances it owns; /ui shows all", () => {
+  it("lists local Hub proposals without approval buttons and preserves ordinary attention when Hub storage fails", async () => {
+    const r = rig(); r.state.deliveries = [delivery("d1", "alpha")];
+    r.state.hubExecution = [{ id: "proposal", kind: "proposal", agent: "alpha", messageId: "message", exposureId: "exposure", since: 1,
+      proposal: { action: "delete", arguments: "EXACT-ARGS", argumentsDigest: "digest", consequences: "consequence" } }];
+    r.hub.start(); await r.advance(0);
+    expect(r.hub.webItems().find(i => i.type === "hub")).toMatchObject({ reason: "hub_proposal", hubProposal: { arguments: "EXACT-ARGS" } });
+    expect(r.A.a.notifyAlert.mock.calls[0][1].choices).toHaveLength(1); // only the ordinary delivery acknowledgement
+    r.state.hubStorageUnavailable = true; r.hub.poke(); await r.advance(0);
+    expect(r.hub.webItems().some(i => i.type === "delivery")).toBe(true);
+    expect(r.hub.webItems().find(i => i.type === "hub")).toMatchObject({ reason: "hub_execution_hold", instance: "" });
+  });
   it("A's live message lists alpha only, B's beta only, and an instance with no world is web-only", async () => {
     const r = rig();
     r.state.deliveries = [delivery("d1", "alpha"), delivery("d2", "beta"), delivery("d3", "orphan")];
@@ -486,4 +500,3 @@ describe("live_message off", () => {
     expect(r.A.calls.at(-1)).toBe("edit A-m1 needs.live_off [0]");
   });
 });
-
