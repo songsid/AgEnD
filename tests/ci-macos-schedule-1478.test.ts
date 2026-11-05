@@ -80,7 +80,7 @@ describe("CI admission and cancellation", () => {
     return execFileSync("/bin/bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", aggregate.run!], {
       encoding: "utf8", env: { PATH: process.env.PATH, CHANGELOG: "success",
         ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success",
-        DOCS_TESTS: "success", SMOKE: result, ROLLBACK: "success", ...extra },
+        HUB_DIRECTORY: "success", DOCS_TESTS: "success", SMOKE: result, ROLLBACK: "success", ...extra },
       stdio: "pipe",
     });
   }
@@ -89,6 +89,9 @@ describe("CI admission and cancellation", () => {
     expect(ci.jobs.build.needs).toContain("install-smoke");
     expect(ci.jobs.build.needs).toContain("actions-pinned");
     expect(runAggregate()).toContain("All jobs succeeded.");
+  });
+  it.each(["failure", "cancelled", "skipped", ""])("a %s hub-directory rig job cannot make build green", result => {
+    expect(() => runAggregate("success", { HUB_DIRECTORY: result })).toThrow();
   });
   it.each(["failure", "cancelled", "skipped", "", "unknown"])("a %s Linux smoke cannot make build green", result => {
     expect(() => runAggregate(result)).toThrow();

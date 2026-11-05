@@ -22,7 +22,7 @@ import {
 import { readKiroLedger, kiroHasNoLaunchRecord } from "./kiro-engine-ledger.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
-import { type BackendAgentSwitch, type BackendLaunchWarning, type BackendSessionProof, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, UnsupportedCliError, ResumeBlockedError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type BackendAgentSwitch, type BackendLaunchWarning, type BackendSessionProof, type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, type RemoteCardOption, type RemoteInputCard, type RemoteQuestionCard, type SteerComposerMode, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { KIRO_SESSION_ID_COMMAND, kiroTitleCommand } from "../kiro-session-proof.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
@@ -911,6 +911,27 @@ function kiroLaunchPromptDialogs(spec: KiroLaunchPromptSpec, name: string, key: 
   ];
 }
 
+/** 3.0 keeps the old flags in help, but these menus cannot preserve Classic. Never answer them. */
+export function kiro3ChoiceActive(pane: string): boolean {
+  return [
+    ["Continue with V3", "Exit"],
+    ["Switch to V3", "Keep V2"],
+    ["Switch to the terminal UI and launch", "Exit"],
+    ["Continue with V3", "Stay on V2, remind me later", "Stay on V2, don't ask again"],
+  ].some(options => kiroLaunchPromptState(pane, { header: "Kiro CLI 3.0 is here.", options }).active);
+}
+
+function kiro3ChoiceDialog(): RuntimeDialog {
+  return { pattern: /Kiro CLI 3\.0 is here\./, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true,
+    interactionKind: "kiro_choice", description: t("kiro3.running"), isActive: kiro3ChoiceActive };
+}
+
+/** Advertised compatibility aliases do not prove the retired V1 engine exists. */
+function kiro3Classic(ui: string, compat: KiroCliCompatibility): boolean {
+  const version = parseSemver(compat.version);
+  return ui === "legacy" && !!version && version[0] >= 3;
+}
+
 const KIRO_ENGINE_PROMPT_DIALOGS: RuntimeDialog[] = [
   ...kiroLaunchPromptDialogs(KIRO_V3_EASE_IN, "Kiro V3 ease-in prompt", "kiro-v3-ease-in", 1),
   ...kiroLaunchPromptDialogs(KIRO_AGENT_UPGRADE, "Kiro 3.0 agent-config upgrade prompt", "kiro-agent-upgrade", 1),
@@ -1222,6 +1243,7 @@ export function readActiveKiroModel(pane: string, expectedAgent?: string): strin
 
 export function planKiroLaunch(ui: "legacy" | "tui" | "v3", compat: KiroCliCompatibility): KiroLaunchPlan {
   const version = compat.version ?? "of unknown version";
+  if (kiro3Classic(ui, compat)) return { kind: "refuse", reason: t("kiro3.classic", version.replace(/^kiro-cli\s+/, "")) };
   if (ui === "v3") return { kind: "launch", ui, flags: ["--v3"] };
   const engines = compat.agentEngines;
   // A binary with no engine choice at all (before 2.3) has nowhere to drift —
@@ -1442,6 +1464,7 @@ export class KiroBackend implements CliBackend {
     this.preparedCarry = null;
     this.preparedClassicLinks = null;
     if (!config) return;
+    this.assertLaunchSupported(config);
     if (!this.fixedCompatibility) this.compatibility = cachedKiroCliCompatibility(this.binaryPath).compatibility;
     const key = this.storeKey(config);
     const classic = planKiroLaunch(config.kiroUi ?? "legacy", this.compatibility);
@@ -1511,6 +1534,20 @@ export class KiroBackend implements CliBackend {
       this.compatibility = cached.compatibility;
       this.compatibilityCacheKey = cached.cacheKey;
       publishKiroCompatibility(this.binaryPath, this.compatibility);
+    }
+  }
+
+  assertLaunchSupported(config: CliBackendConfig): void {
+    if (!this.fixedCompatibility) {
+      const current = cachedKiroCliCompatibility(this.binaryPath);
+      this.compatibility = current.compatibility;
+      this.compatibilityCacheKey = current.cacheKey;
+    }
+    if (kiro3Classic(config.kiroUi ?? "legacy", this.compatibility)) {
+      this.replyGuardOptedIn = false;
+      this.builtLaunch = null;
+      publishKiroCompatibility(this.binaryPath, this.compatibility);
+      throw new KiroCompatibilityError(t("kiro3.classic", (this.compatibility.version ?? "3.x").replace(/^kiro-cli\s+/, "")));
     }
   }
 
@@ -1618,6 +1655,7 @@ export class KiroBackend implements CliBackend {
   }
 
   buildCommand(config: CliBackendConfig): string {
+    this.assertLaunchSupported(config);
     // Fail closed before a launch, including refused/failed command builds.
     // V3 has a different engine and no verified completion signal yet (#1144).
     this.replyGuardOptedIn = false;
@@ -1810,6 +1848,7 @@ export class KiroBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
+    this.assertLaunchSupported(config);
     this.assertCarryPrepared(config);
     // WORKAROUND: kiro-cli ignores the "env" block of an MCP server entry — the server subprocess inherits the fleet
     // manager's env, with a stale AGEND_SOCKET_PATH from whichever daemon wrote last. Each server therefore runs
@@ -2134,7 +2173,15 @@ export class KiroBackend implements CliBackend {
         //
         // `No token` / `dispatch failure` are what an expired-or-missing login
         // actually prints at runtime; the other three come from the kiro-cli
-        // binary. The No-token alternative is anchored to kiro's numbered error
+        // binary. Classic 2.x (`kiro-cli-chat`) also prints two mid-session
+        // expiry lines that were missing here, so the pane looked like an
+        // ordinary error instead of login-required (#3093):
+        // `Authentication expired - please log in again` and
+        // `Your login session has expired. Please log in again using:`
+        // (NUL-terminated runs in the 2.x chat binary at offsets 92920605 /
+        // 92921521). A prefix, or another sentence that only contains
+        // "expired", is not either line.
+        // The No-token alternative is anchored to kiro's numbered error
         // list (`   2: dispatch failure (other): No token`) rather than matched as
         // a bare keyword, because this fleet maintains AgEnD and an agent quoting
         // this very error must not pause itself.
@@ -2160,6 +2207,8 @@ export class KiroBackend implements CliBackend {
         pattern: new RegExp(
           "You are not logged in|ExpiredTokenException|no device registration found for token"
           + "|Access denied:.*bearer token.*invalid"
+          + "|Authentication expired - please log in again"
+          + "|Your login session has expired\\. Please log in again using:"
           + "|^\\s*\\d+:\\s*(?:dispatch failure[^\\n]*?)?No token\\s*$"
           + `|${KIRO_EXPIRED_LOGIN_SCREEN.source}`,
           "im",
@@ -2281,6 +2330,7 @@ export class KiroBackend implements CliBackend {
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      kiro3ChoiceDialog(),
       ...KIRO_ENGINE_PROMPT_DIALOGS,
       ...kiroTrustPromptDialogs(this.activeTrustAll),
       ...kiroWorkspaceTrustDialogs(this.activeTrustAll),
@@ -2290,6 +2340,7 @@ export class KiroBackend implements CliBackend {
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
       // The engine prompts can paint after the startup scan has moved on.
+      kiro3ChoiceDialog(),
       ...KIRO_ENGINE_PROMPT_DIALOGS,
       {
         // A service/model outage can drop Kiro into the interactive /model

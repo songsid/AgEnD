@@ -20,7 +20,7 @@
  */
 import { open, stat } from "node:fs/promises";
 import { performance } from "node:perf_hooks";
-import { transcriptDeltaDeliveryMarker } from "./delivery-reconciliation.js";
+import { transcriptDeltaDeliveryMarker, transcriptDeltaMarkerKind } from "./delivery-reconciliation.js";
 import type { ConsumedVia } from "./delivery-outbox.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import type { TranscriptLook } from "./transcript-delta-reader.js";
@@ -42,6 +42,12 @@ export const CONSUMED_WATCH = {
   maxTickMs: 60_000,
   /** A watch ends after this long (monotonic) whatever it saw. */
   lifetimeMs: 30 * 60_000,
+  /**
+   * #3030: a watch that can tell when its CLI went idle ends "not taken" once the CLI has stayed idle this long with
+   * the whole transcript read and no consumed marker: a queued message is submitted when the turn ends, so an idle CLI
+   * that still has not written it did not take it.
+   */
+  notTakenIdleMs: 90_000,
 };
 
 interface ConsumedWatchCommon {
@@ -52,6 +58,17 @@ interface ConsumedWatchCommon {
   current(): boolean;
   /** The hit: record it (the outbox decides what it changes). */
   consumed(via: ConsumedVia, evidence: string): void;
+  /** #3030: the leading marker to look for; default the delivery's own `[agend-delivery-id:<deliveryId>]`. */
+  marker?: string;
+  /**
+   * #3030: how long (ms, monotonic) the CLI has been idle without a break, or null while it is busy or unknown. With
+   * `notTaken`, an idle stretch of CONSUMED_WATCH.notTakenIdleMs after the transcript was read to its end, and no
+   * consumed marker, ends the watch "not-taken".
+   */
+  idleForMs?(): number | null;
+  notTaken?(): void;
+  /** How long this watch lives (monotonic); default CONSUMED_WATCH.lifetimeMs. */
+  lifetimeMs?: number;
   logger?: { info(obj: unknown, msg?: string): void; warn(obj: unknown, msg?: string): void; debug?(obj: unknown, msg?: string): void };
 }
 export type ConsumedWatchTarget = ConsumedWatchCommon & (
@@ -59,7 +76,7 @@ export type ConsumedWatchTarget = ConsumedWatchCommon & (
   | { path?: never; offset?: never; reader: { look(): Promise<TranscriptLook>; readonly readPosition: number; close?(): void } }
 );
 
-type Ended = "consumed" | "fenced" | "unavailable" | "expired" | "stopped";
+type Ended = "consumed" | "fenced" | "unavailable" | "expired" | "stopped" | "not-taken";
 
 /** One attempt's watch. Exported for its tests; the fleet starts watches through ConsumedWatchRegistry. */
 export class ConsumedWatch {
@@ -110,7 +127,20 @@ export class ConsumedWatch {
   private stillLive(): boolean {
     if (this.ended) return false;
     if (!this.target.current()) { this.end("fenced"); return false; }
-    if (performance.now() - this.startedAt >= CONSUMED_WATCH.lifetimeMs) { this.end("expired"); return false; }
+    if (performance.now() - this.startedAt >= (this.target.lifetimeMs ?? CONSUMED_WATCH.lifetimeMs)) { this.end("expired"); return false; }
+    return true;
+  }
+
+  /**
+   * #3030: the transcript is read to its end, nothing consumed it, and the CLI has stayed idle long enough: not taken.
+   * The idle stretch is asked last, with every read already done — a turn that started meanwhile writes first.
+   */
+  private notTakenNow(): boolean {
+    if (!this.target.notTaken || !this.target.idleForMs) return false;
+    const idle = this.target.idleForMs();
+    if (idle === null || idle < CONSUMED_WATCH.notTakenIdleMs) return false;
+    this.target.notTaken();
+    this.end("not-taken");
     return true;
   }
 
@@ -139,6 +169,7 @@ export class ConsumedWatch {
       if (!this.stillLive()) return;
       if (size < this.offset) return this.end("unavailable"); // rotated or truncated below our offset
       if (size === this.offset) {
+        if (this.carry.length === 0 && this.notTakenNow()) return;
         if (++this.idleLooks >= CONSUMED_WATCH.idleLooksBeforeBackoff) {
           this.idleLooks = 0;
           this.interval = Math.min(this.interval * 2, CONSUMED_WATCH.maxTickMs);
@@ -156,6 +187,7 @@ export class ConsumedWatch {
         this.target.consumed(found.via, found.evidence);
         return this.end("consumed");
       }
+      if (this.offset >= size && this.carry.length === 0 && this.notTakenNow()) return;
       this.schedule(this.offset < size ? CONSUMED_WATCH.catchUpMs : this.interval);
     } catch (err) {
       this.target.logger?.warn({ err, deliveryId: this.target.deliveryId }, "Consumed-signal watch failed; it proves nothing either way");
@@ -190,7 +222,10 @@ export class ConsumedWatch {
         start = nl + 1;
       }
       if (kept.length) {
-        const kind = transcriptDeltaDeliveryMarker(Buffer.concat(kept).toString("utf8"), this.target.backend, this.target.deliveryId);
+        const text = Buffer.concat(kept).toString("utf8");
+        const kind = this.target.marker
+          ? transcriptDeltaMarkerKind(text, this.target.backend, this.target.marker)
+          : transcriptDeltaDeliveryMarker(text, this.target.backend, this.target.deliveryId);
         if (kind === "user") found = { via: "turn", evidence: "transcript-consumed:user-entry" };
         else if (kind === "absorbed") found = { via: "mid_turn", evidence: "transcript-consumed:absorbed-mid-turn" };
       }

@@ -165,7 +165,7 @@ describe("P2: a binary AgEnD cannot pin is refused, never launched on kiro's def
     const { compat } = probe("3.0.0", help30(WITHOUT_LEGACY));
     expect(compat.supportsLegacyUi).toBe(false);
     const plan = planKiroLaunch("legacy", compat);
-    expect(plan.kind === "refuse" && plan.reason).toContain("legacy UI");
+    expect(plan.kind === "refuse" && plan.reason).toContain("Classic");
     expect(thrown(() => new KiroBackend("/tmp/kiro-1109", compat).buildCommand(config()))).toBeInstanceOf(UnsupportedCliError);
   });
 
@@ -173,7 +173,7 @@ describe("P2: a binary AgEnD cannot pin is refused, never launched on kiro's def
     const { compat } = probe("3.0.0", help30(WITHOUT_V1));
     expect(compat.agentEngines).toEqual(["v2", "v3"]);
     const plan = planKiroLaunch("legacy", compat);
-    expect(plan.kind === "refuse" && plan.reason).toContain("v2, v3");
+    expect(plan.kind === "refuse" && plan.reason).toContain("Classic");
   });
 
   it("a recognised 3.0 help without any engine selector: refused, not taken for an old binary (Prism #1)", () => {
@@ -199,12 +199,12 @@ describe("P2: a binary AgEnD cannot pin is refused, never launched on kiro's def
   it.each([
     ["empty", ""],
     ["truncated", "Usage: kiro-cli chat\n\nOptions:\n  --help\n"],
-  ])("3.0 with %s help: unknown → retryable failure, never an unpinned chat (Prism #1)", (_label, text) => {
+  ])("3.0 with %s help: known major3 → Classic refused even when help is unknown (Prism #1)", (_label, text) => {
     const { compat } = probe("3.0.0", text);
     expect(compat.source).toBe("unknown");
     const err = thrown(() => new KiroBackend("/tmp/kiro-1109", compat).buildCommand(config()));
     expect(err).toBeInstanceOf(Error);
-    expect(err).not.toBeInstanceOf(UnsupportedCliError); // the fleet retries this one
+    expect(err).toBeInstanceOf(UnsupportedCliError); // major3 alone proves Classic was removed
   });
 
   it("no plan for a legacy or tui instance ever selects V3 or runs unpinned on a binary with a choice", () => {
@@ -230,12 +230,12 @@ describe("P2: a binary AgEnD cannot pin is refused, never launched on kiro's def
     }
   });
 
-  it("3.0 whose --help cannot be read is not guessed about: retryable failure, not a launch", () => {
+  it("3.0 whose --help cannot be read still proves Classic was removed", () => {
     const { compat } = probe("3.0.0", null);
     expect(compat.source).toBe("unknown");
     const err = thrown(() => new KiroBackend("/tmp/kiro-1109", compat).buildCommand(config()));
     expect(err).toBeInstanceOf(Error);
-    expect(err).not.toBeInstanceOf(UnsupportedCliError);
+    expect(err).toBeInstanceOf(UnsupportedCliError);
   });
 });
 
@@ -313,7 +313,7 @@ describe("P2: a kiro-cli replaced in place is re-read at every launch (Prism #2)
       expect(launched).toEqual([]);              // nothing was launched on the 3.0 binary
       expect(daemon.healthCheckPaused).toBe(true);
       expect(ended).toHaveLength(1);
-      expect(ended[0].reason).toContain("no longer offers the legacy UI");
+      expect(ended[0].reason).toContain("no longer supports Classic");
       await vi.advanceTimersByTimeAsync(5_000);
       expect(ended).toHaveLength(1);             // stopped, not failing every tick
     } finally {

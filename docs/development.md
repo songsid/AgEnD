@@ -84,6 +84,10 @@ do not start a live fleet to test a unit path. Tests that intentionally need rea
 tmux or child processes belong in the integration configuration and must use
 temporary data directories, private sockets, test ports and cleanup.
 
+Container rehearsals: never `--privileged`; binfmt_misc is host-global on WSL. A systemd container sources
+`scripts/manual/lib/systemd-container.sh` (masked binfmt image, non-privileged flags, a guard that refuses an image that
+could register binfmt entries).
+
 ## Verifying before a PR
 
 Before requesting review, check the applicable contracts in the

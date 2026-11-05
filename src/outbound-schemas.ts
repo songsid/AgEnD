@@ -174,7 +174,7 @@ export const PostDecisionArgs = z.object({
   ttl_days: z.number().optional()
     .describe("Days until auto-archive. Default: permanent. Set e.g. 7 for temporary decisions."),
   supersedes: z.string().optional()
-    .describe("Decision ID to supersede (marks old one as superseded)"),
+    .describe("Decision ID to supersede (marks the old one superseded). Needs update_decision; the old one must be active and visible to you."),
 });
 
 export const ListDecisionsArgs = z.object({
@@ -522,7 +522,10 @@ export const UpdateFleetDefaultsArgs = z.object({
 export const DeleteInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to delete (from list_instances)"),
   delete_topic: z.boolean().optional()
-    .describe("Whether to also delete the Telegram topic. Defaults to false."),
+    .describe("Also delete the agent's own chat topic, through its own bot. Defaults to true; false keeps the topic. "
+      + "On Discord the topic is a text channel: deleting it deletes its message history. The General topic and a "
+      + "topic another agent uses are never deleted. The result's topic_deleted is true only when the platform "
+      + "confirmed it; otherwise topic_reason says why the topic stayed (the agent is deleted either way)."),
 });
 
 export const ReplaceInstanceArgs = z.object({

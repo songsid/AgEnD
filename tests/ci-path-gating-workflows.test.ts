@@ -21,7 +21,7 @@ describe("CI path-gating workflow contracts", () => {
     const ci = load(".github/workflows/ci.yml");
     for (const id of [
       "detect-changes", "changelog", "actions-pinned", "setup", "test-shard",
-      "test-integration", "docs-tests", "install-smoke", "node20-rollback-smoke",
+      "test-integration", "hub-directory", "docs-tests", "install-smoke", "node20-rollback-smoke",
     ]) {
       expect(ci.jobs[id].if, id).toBeUndefined();
     }
@@ -60,6 +60,17 @@ describe("CI path-gating workflow contracts", () => {
     expect(ci.jobs.setup.steps.some(s => s.if === "needs.detect-changes.outputs.text-only != 'true'")).toBe(true);
     expect(ci.jobs["test-shard"].steps.some(s => s.if === "needs.detect-changes.outputs.text-only != 'true'")).toBe(true);
     expect(ci.jobs["test-integration"].steps.some(s => s.if === "needs.detect-changes.outputs.text-only != 'true'")).toBe(true);
+    expect(ci.jobs["hub-directory"].steps.some(s => s.if === "needs.detect-changes.outputs.text-only != 'true'")).toBe(true);
+  });
+
+  it("the build gate waits for the hub directory rig job and counts its result", () => {
+    const ci = load(".github/workflows/ci.yml");
+    expect(ci.jobs.build.needs).toContain("hub-directory");
+    const check = ci.jobs.build.steps.find(s => s.name === "Check all jobs succeeded");
+    expect(check?.run).toContain('"hub-directory:$HUB_DIRECTORY"');
+    const run = ci.jobs["hub-directory"].steps.find(s => s.name === "Run the sign-in tests against the fake directory");
+    expect(run?.run).toContain("scripts/manual/hub-directory/run.sh up");
+    expect(run?.run).not.toMatch(/--privileged|--network[ =]host/);
   });
 
   it("npm-audit-signatures real steps gate on deps; the job always runs", () => {
