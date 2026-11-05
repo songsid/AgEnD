@@ -247,7 +247,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       });
       cleanup.push(() => memberServer?.close());
 
-      // 5. The Hub web listener: only S3's /hub/v1/* in this slice; the Hub shell routes come with S3's Hub-only boot.
+      // 5. The Hub web listener: every request goes to S3's handler (it serves /hub/v1/*, the Hub-only shell and its
+      //    assets without fleet cookies); anything it declines is 404. The personal fleet listener is untouched.
       let web: Server | null = null;
       let retentionTimer: NodeJS.Timeout | null = null;
       const serveWeb = (req: IncomingMessage, res: ServerResponse) => {
