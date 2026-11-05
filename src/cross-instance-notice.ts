@@ -47,34 +47,49 @@ const FORWARDS_LIST = /\bforwards:\s*\[[^\]]*\]/gi;
 const VERIFICATION_PAREN = /\(\s*verification_id\b[^)]*\)|（\s*verification_id\b[^）]*）/gi;
 const LABELED_MSG_ID = /\b(?:verification_id|message_id)\s*:?\s*(?:hmsg|xmsg)-[A-Za-z0-9-]+/gi;
 const BARE_MSG_ID = /\b(?:hmsg|xmsg)-[A-Za-z0-9-]+/g;
+/** Marks a removed reference. Never appears in a URL part; those are split out first. */
+const GAP = "\uE000";
+const GAP_ONLY_LINE = /^[ \t]*\uE000+[ \t]*$/;
 
 /**
  * Strip internal message-reference ids from a human-facing notice. Agent payloads must not go through this:
  * hmsg-/xmsg- ids and forwards lists are how agents verify receipts.
+ *
+ * Cleanup only touches gaps left by a removed reference. Ordinary text, indentation, `decide()`-style
+ * empty parens, doubled spaces in code, and URL bytes (including `,,`) stay as they were.
  */
 export function hideInternalMessageIds(text: string): string {
-  return tidyNoticeText(text.split(URL_SPLIT).map((part, i) => (i % 2 === 1 ? part : stripInternalIds(part))).join(""));
+  return text.split(URL_SPLIT).map((part, i) => (i % 2 === 1 ? part : hideIdsInText(part))).join("");
 }
 
-function stripInternalIds(text: string): string {
-  return text
-    .replace(FORWARDS_LIST, "")
-    .replace(VERIFICATION_PAREN, "")
-    .replace(LABELED_MSG_ID, "")
-    .replace(BARE_MSG_ID, "");
+function hideIdsInText(text: string): string {
+  const gapped = text
+    .replace(FORWARDS_LIST, GAP)
+    .replace(VERIFICATION_PAREN, GAP)
+    .replace(LABELED_MSG_ID, GAP)
+    .replace(BARE_MSG_ID, GAP);
+  return gapped.includes(GAP) ? tidyRemovedGaps(gapped) : text;
 }
 
-function tidyNoticeText(text: string): string {
-  return text
-    .replace(/\(\s*\)|（\s*）/g, "")
-    .replace(/\s+([，,;；。．.!?！？])/g, "$1")
-    .replace(/([，,])(?:\s*[，,])+/g, "$1")
-    .replace(/[ \t]*[，,][ \t]*(?=[。．.!?！？)\]]|$)/g, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/^[ \t，,]+|[ \t，,]+$/gm, "")
-    .trim();
+function tidyRemovedGaps(text: string): string {
+  let s = text;
+  for (let i = 0; i < 8; i++) {
+    const next = s
+      .replace(/\((?=[^()]*\uE000)[\s\uE000]*\)|（(?=[^（）]*\uE000)[\s\uE000]*）/g, GAP)
+      .replace(/[，,][ \t]*\uE000+[ \t]*(?=[，,。．.!?！？)\]]|$)/g, GAP);
+    if (next === s) break;
+    s = next;
+  }
+  s = s.split("\n").filter(line => !GAP_ONLY_LINE.test(line)).join("\n");
+  return s.replace(/[ \t]*\uE000+(?:[ \t]*\uE000+)*[ \t]*/g, (match, offset, whole: string) => {
+    const left = offset > 0 ? whole[offset - 1]! : "";
+    const right = whole[offset + match.length] ?? "";
+    if (!left || !right) return "";
+    if (/[。．.!?！？，,;；)\]]/.test(right) || /[。．.!?！？]/.test(left)) return "";
+    if (/[ \t]/.test(match)) return " ";
+    if (/[A-Za-z0-9]/.test(left) && /[A-Za-z0-9]/.test(right)) return " ";
+    return "";
+  });
 }
 
 /** One line: the label, then the sender's task summary or the start of the message. */

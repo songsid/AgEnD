@@ -50,6 +50,34 @@ describe("hideInternalMessageIds", () => {
     const raw = `Review ${URL} at ${SHA} (#3049) verification_id ${HMSG}`;
     expect(hideInternalMessageIds(raw)).toBe(`Review ${URL} at ${SHA} (#3049)`);
   });
+
+  it("keeps ordinary empty function-call parentheses", () => {
+    expect(hideInternalMessageIds("Call decide()")).toBe("Call decide()");
+    expect(hideInternalMessageIds(`Call decide() verification_id ${HMSG}`)).toBe("Call decide()");
+    expect(hideInternalMessageIds("Call decide() verification_id hmsg-123")).toBe("Call decide()");
+  });
+
+  it("is a no-op on indented code and doubled spaces when there are no ids", () => {
+    const message = "    print('a  b')";
+    expect(hideInternalMessageIds(message)).toBe(message);
+    expect(senderTopicNotice("full", { label: "alice → bob", message, requestKind: "task" }))
+      .toBe(`alice → bob:\n${message}`);
+  });
+
+  it("does not tidy code when an id sits on another line of the same notice", () => {
+    const code = "    print('a  b')";
+    const message = `${code}\nverification_id ${HMSG}`;
+    expect(hideInternalMessageIds(message)).toBe(code);
+    expect(senderTopicNotice("full", { label: "alice → bob", message, requestKind: "task" }))
+      .toBe(`alice → bob:\n${code}`);
+  });
+
+  it("does not rewrite doubled commas inside a URL beside an id", () => {
+    const url = "https://example.com/compare/a,,b";
+    expect(hideInternalMessageIds(url)).toBe(url);
+    expect(hideInternalMessageIds(`see ${url} verification_id ${HMSG}`)).toBe(`see ${url}`);
+    expect(hideInternalMessageIds(`see ${url} verification_id hmsg-123`)).toBe(`see ${url}`);
+  });
 });
 
 describe("topic notices hide ids, not the label", () => {
