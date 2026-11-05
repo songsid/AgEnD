@@ -11,7 +11,7 @@ import { compareGroups, hubClient, safeWebOrigin, ADDRESS_HINT, CODE_HINT } from
 import { hw, linkHubCss } from "./hub-strings.js";
 
 const CONNECT_ERRORS = { address: "errAddress", code: "errCode", busy: "errBusy", unreachable: "errUnreachable", refused: "errRefused" };
-const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked"]);
+const HOLDS = new Set(["unknown_outcome", "expired", "unsaved", "refused", "revoked", "disconnected"]);
 const PUBLISH_ERRORS = { conflict: "errConflict", unsaved: "errUnsaved", not_paired: "errNotPaired", not_enforceable: "notEnforceable",
   unknown_view: "notEnforceable", limit: "errLimit", unavailable: "notAvailable" };
 
@@ -50,7 +50,7 @@ export function HubConnectCard() {
   const connect = () => act(async () => {
     const r = await client.connect({ address: form.address.trim(), code: form.code.trim() });
     if (!live.current) return;
-    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); }
+    if (r.ok) { setPairing(r.pairing); setForm({ address: "", code: "" }); if (r.pendingConfirmation) setMsg({ error: false, text: hw("pendingSent") }); }
     else setMsg({ error: true, text: hw(CONNECT_ERRORS[r.error] || "errFailed") });
   });
   const disconnect = (name) => act(async () => {
@@ -59,6 +59,7 @@ export function HubConnectCard() {
     if (!live.current) return;
     if (!r.ok) { setMsg({ error: true, text: hw("errUnsaved") }); return; }
     setPairing(await client.pairing());
+    if (r.pendingConfirmation) { setMsg({ error: false, text: hw("pendingSent") }); return; }
     if (r.remote === "pending") setMsg({ error: false, text: hw("disconnectPending") });
   });
   const cancel = () => act(async () => { const p = await client.cancel(); if (live.current) setPairing(p); });
@@ -82,8 +83,18 @@ export function HubConnectCard() {
       <p class="hub-origin"><code>${p.memberOrigin}</code></p>
       <${Fingerprint} label=${hw("pairingFp")} fp=${p.fingerprint} />
       <p class="note">${hw("pendingCompare")}</p>
-      <p class="hub-steps-lead">${hw("pendingSteps")}</p>
-      <ul class="hub-steps">${step(p.ownerConfirmed, "ownerStep")}${step(p.adminApproved, "adminStep")}</ul>
+      ${p.localConfirmed === false && client.confirmFingerprint ? html`<div class="field-row"><button type="button" class="btn btn-primary hub-local-confirm" disabled=${busy}
+          onClick=${() => act(async () => { const r = await client.confirmFingerprint(p.fingerprint.digest); if (!live.current) return;
+            if (r.ok) { setPairing(r.pairing); if (r.pendingConfirmation) setMsg({ error: false, text: hw("pendingSent") }); }
+            else setMsg({ error: true, text: hw(r.error === "expired" ? "hold_expired" : r.error === "conflict" ? "errConflict" : "errUnsaved") }); })}>${hw("localMatch")}</button></div>`
+        : p.localConfirmed === true ? html`<p class="note hub-local-confirmed">${hw("localConfirmed")}</p>` : null}
+      ${p.ownerConfirmed === null && p.adminApproved === null
+        // S3c: the member cannot see the Hub's progress — the two steps as instructions, no marks.
+        ? html`<p class="hub-steps-lead">${hw("hubStillNeeded")}</p>
+          <ul class="hub-steps hub-steps-unknown"><li><span>${hw("ownerStepHub")}</span></li><li><span>${hw("adminStepHub")}</span></li></ul>
+          <p class="note">${hw("hubProgressHidden")}</p>`
+        : html`<p class="hub-steps-lead">${hw("pendingSteps")}</p>
+          <ul class="hub-steps">${step(p.ownerConfirmed, "ownerStep")}${step(p.adminApproved, "adminStep")}</ul>`}
       ${Number.isFinite(p.expiresAt) ? html`<p class="note">${hw("expires", new Date(p.expiresAt).toLocaleTimeString())}</p>` : null}
       <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw("cancel")}</button></div>
     </div>`;
@@ -110,12 +121,15 @@ export function HubConnectCard() {
         <button type="button" class="btn btn-danger" disabled=${busy} onClick=${() => disconnect(name)}>${hw("disconnect")}</button>
       </div>
     </div>`;
+  } else if (p.state === "held" && p.hold === "unavailable") {
+    // An older host (404): one line, no form and no fake hold.
+    body = html`<p class="note hub-unavailable">${hw("notAvailable")}</p>`;
   } else if (p.state === "held") {
     body = html`<div class="hub-state hub-held" role="alert">
       <h4><${Icon} name="pause" size=${16} /> ${hw("heldTitle")}</h4>
       <p>${hw(HOLDS.has(p.hold) ? `hold_${p.hold}` : "hold_other")}</p>
       ${p.memberOrigin ? html`<p class="hub-origin"><code>${p.memberOrigin}</code></p>` : null}
-      <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw("holdClear")}</button></div>
+      <div class="field-row"><button type="button" class="btn" disabled=${busy} onClick=${cancel}>${hw(p.hold === "disconnected" ? "startOver" : "holdClear")}</button></div>
     </div>`;
   }
   return html`<section class="card s-hub-connect" id="hub-connect">

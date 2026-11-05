@@ -109,3 +109,84 @@ describe("the card's picker and pending rows", () => {
     expect(setExposed).not.toHaveBeenCalled();
   });
 });
+
+describe("the member card's pairing (S3c PR B)", () => {
+  async function cardWith(c: any) {
+    client.setHubClient(c);
+    const pg = page({ url: "http://127.0.0.1:19280/settings/access", storage: { agend_tour_done: "1" } }); mounted.push(pg);
+    pg.document.body.setAttribute("data-hub", "member");
+    await pg.mount(h(card.HubConnectCard, {}));
+    await until(() => pg.root.querySelector(".hub-state, .hub-connect, .hub-unavailable"));
+    return pg;
+  }
+  const PENDING = { state: "pending", memberOrigin: "https://hub.test", fingerprint: { kind: "pairing", digest: "ab".repeat(32) }, expiresAt: Date.now() + 60_000, ownerConfirmed: null, adminApproved: null, localConfirmed: false };
+  const fake = (p: any, over: any = {}) => ({ stub: false, pairing: async () => p, subscribe: () => () => {}, exposures: async () => [], ...over });
+  it("pending with unknown Hub progress: the two steps as instructions (no marks); the local check before, its line after", async () => {
+    const confirmFingerprint = vi.fn(async (d: string) => ({ ok: true, pairing: { ...PENDING, localConfirmed: true }, digest: d }));
+    const pg = await cardWith(fake(PENDING, { confirmFingerprint }));
+    expect(pg.root.querySelector(".hub-steps-lead")!.textContent).toBe("Still needed on the Hub:");
+    expect(pg.root.querySelectorAll(".hub-steps-unknown li").map((li: any) => li.textContent)).toEqual([
+      "Your confirmation: sign in to the Hub, open My exposures and confirm this fingerprint.", "The Hub administrator's approval of this fingerprint."]);
+    expect(pg.root.querySelectorAll(".hub-steps-unknown svg").length).toBe(0);
+    (pg.root.querySelector(".hub-local-confirm") as any).click();
+    await until(() => pg.root.querySelector(".hub-local-confirmed"));
+    expect(confirmFingerprint).toHaveBeenCalledWith("ab".repeat(32));
+    expect(pg.root.querySelector(".hub-local-confirmed")!.textContent).toBe("You confirmed this fingerprint here.");
+    expect(pg.root.querySelector(".hub-local-confirm")).toBeNull();
+  });
+  it("known progress (true/false) keeps today's marks", async () => {
+    const pg = await cardWith(fake({ ...PENDING, ownerConfirmed: true, adminApproved: false, localConfirmed: undefined }));
+    expect(pg.root.querySelectorAll(".hub-steps li.is-done").length).toBe(1);
+    expect(pg.root.querySelector(".hub-steps-unknown")).toBeNull();
+  });
+  it("disconnected: its own words and Start over (cancel) back to the form", async () => {
+    let p: any = { state: "held", hold: "disconnected", memberOrigin: "https://hub.test" };
+    const cancel = vi.fn(async () => { p = { state: "unpaired" }; return p; });
+    const pg = await cardWith(fake(p, { pairing: async () => p, cancel }));
+    expect(pg.root.querySelector(".hub-held p")!.textContent).toBe("Disconnected here. The Hub still lists this fleet until its administrator revokes it.");
+    const btn = pg.root.querySelector(".hub-held .btn") as any;
+    expect(btn.textContent).toBe("Start over");
+    btn.click();
+    await until(() => pg.root.querySelector(".hub-connect"));
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+  it("an older host (404): the single 'not available' line, no form", async () => {
+    const c = client.createMemberClient({ confirm: { api: async () => ({ ok: false, status: 404, body: { error: "unavailable" } }), isPendingResponse: () => false, track: vi.fn(), newKey: () => "k" } });
+    const pg = await cardWith(c);
+    expect(pg.root.querySelector(".hub-unavailable")!.textContent).toBe("Not available on this AgEnD version.");
+    expect(pg.root.querySelector(".hub-connect")).toBeNull();
+  });
+});
+
+describe("the member client's pacing and steps", () => {
+  it("subscribe: one poll every pollMs while visible, never two at once, none while hidden; stops with the last listener", async () => {
+    let t: (() => void) | null = null, cleared = 0, gets = 0, release: (() => void) | null = null;
+    const timers = { setTimeout: (fn: () => void) => { t = fn; return 1; }, clearTimeout: () => { cleared++; t = null; } };
+    const doc = { hidden: false };
+    const c = client.createMemberClient({ pollMs: 5000, doc, timers, confirm: { api: () => { gets++; return new Promise((ok) => { release = () => ok({ ok: true, status: 200, body: { pairing: { state: "unpaired" } } }); }); }, isPendingResponse: () => false, track: vi.fn(), newKey: () => "k" } });
+    const seen: any[] = [];
+    const off = c.subscribe((p: any) => seen.push(p));
+    const run = t!; t = null; const first = run();                    // a tick: one request in flight
+    expect(gets).toBe(1);
+    release!(); await first;
+    expect(seen).toEqual([{ state: "unpaired" }]);
+    doc.hidden = true; const hiddenTick = t!; t = null; await hiddenTick();
+    expect(gets).toBe(1);                                             // hidden: no request
+    expect(t).not.toBeNull();                                         // still paced
+    off();
+    expect(cleared).toBe(1);
+  });
+  it("connect / confirm / disconnect: a 202 is sent for confirmation (followed); disconnect is remote pending; the hints are checked first", async () => {
+    const calls: any[] = [];
+    const confirm = { api: vi.fn(async (path: string, o: any = {}) => { calls.push([path, o.body]);
+        if (path === "/api/hub/member/pairing") return { ok: true, status: 200, body: { ok: true, pairing: { state: "unpaired" } } };
+        return { ok: false, status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "p".repeat(32) } } }; }),
+      isPendingResponse: (r: any) => r.status === 202, track: vi.fn(async () => ({})), newKey: () => "k" };
+    const c = client.createMemberClient({ confirm });
+    expect(await c.connect({ address: "http://x", code: "ABCD-EFGH" })).toEqual({ ok: false, error: "address" });
+    expect(await c.connect({ address: "https://hub.test", code: "ABCD-EF01-2345" })).toEqual({ ok: true, pendingConfirmation: true, pairing: { state: "unpaired" } });
+    expect(JSON.parse(calls[0][1])).toEqual({ address: "https://hub.test", code: "ABCD-EF01-2345" });
+    expect(await c.disconnect()).toEqual({ ok: true, remote: "pending", pendingConfirmation: true });
+    expect(confirm.track).toHaveBeenCalledTimes(2);
+  });
+});

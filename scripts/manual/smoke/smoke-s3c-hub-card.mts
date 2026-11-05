@@ -32,16 +32,24 @@ async function open(c: MatrixCase, routes: Array<[string, string, string]> = [])
   await page.goto(`${fx.base}/settings/access`);
   if (!(await mounted(page, 30000))) throw new Error("the app did not mount");
   await page.waitForSelector("#hub-connect", { timeout: 20000 });
-  // The stub's own controls: the owner and the Hub's administrator approve; this agent can run restricted.
-  await page.evaluate(async (a: string) => {
-    const m: any = await import("/ui/js/hub-client.js"), c = m.hubClient();
-    await c.connect({ address: "https://hub.example.test", code: "ABCD-EFGH" }); c.control.ownerConfirmed(); c.control.approve({ name: "Team Hub" }); c.control.enforceable([a]);
-  }, agent);
+  // This fixture composes no Hub member: the real member client (the new card's) gets 404 → the one "not available" line.
+  const unavailable = await page.waitForSelector(".hub-unavailable", { timeout: 8000 }).then(() => true, () => false);
+  // Then the stub (the card's demo client) for this agent, paired and able to run restricted, remounted by an in-page
+  // round trip, so the picker can be driven. Plain-JS strings: tsx would add helpers the page doesn't have.
+  await page.evaluate(`(async () => {
+    const m = await import("/ui/js/hub-client.js");
+    const s = m.createStubClient({ agents: function () { return [{ name: ${JSON.stringify(agent)} }]; } });
+    m.setHubClient(s);
+    await s.connect({ address: "https://hub.example.test", code: "ABCD-EFGH" }); s.control.ownerConfirmed(); s.control.approve({ name: "Team Hub" }); s.control.enforceable([${JSON.stringify(agent)}]);
+    history.pushState(null, "", "/settings/preferences"); dispatchEvent(new PopStateEvent("popstate"));
+  })()`);
+  await page.waitForTimeout(600);
+  await page.evaluate(`(() => { history.pushState(null, "", "/settings/access"); dispatchEvent(new PopStateEvent("popstate")); })()`);
   await page.waitForSelector(".hub-exposure input", { timeout: 15000 });
-  return { ctx, page, errors };
+  return { ctx, page, errors, unavailable };
 }
 for (const c of matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phone-dark-zh-TW,phone-light-en")) {
-  const { ctx, page, errors } = await open(c);
+  const { ctx, page, errors, unavailable } = await open(c);
   const box = page.locator(".hub-exposure input").first();
   await box.check({ force: true }).catch(() => box.click());
   await page.waitForSelector(".hub-exposure-pick", { timeout: 5000 }).catch(() => {});
@@ -54,6 +62,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phon
   await page.waitForSelector(".hub-exposure.is-shared", { timeout: 5000 }).catch(() => {});
   await page.screenshot({ path: shotPath(SMOKE, c, "shared") });
   record(`${caseName(c)} picker and Share`, {
+    "no member here: the one 'not available' line (real client)": unavailable,
     "the picker opened": opened === 1,
     "one view preselected": pre === "summary",
     "shared after Share": (await page.locator(".hub-exposure.is-shared").count()) === 1,
