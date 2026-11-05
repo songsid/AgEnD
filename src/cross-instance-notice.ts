@@ -42,6 +42,40 @@ export function xmsgVisibility(fleet: Pick<FleetConfig, "defaults" | "instances"
 }
 
 const SUMMARY_PREVIEW_CHARS = 100;
+const URL_SPLIT = /(https?:\/\/[^\s]+)/gi;
+const FORWARDS_LIST = /\bforwards:\s*\[[^\]]*\]/gi;
+const VERIFICATION_PAREN = /\(\s*verification_id\b[^)]*\)|（\s*verification_id\b[^）]*）/gi;
+const LABELED_MSG_ID = /\b(?:verification_id|message_id)\s*:?\s*(?:hmsg|xmsg)-[A-Za-z0-9-]+/gi;
+const BARE_MSG_ID = /\b(?:hmsg|xmsg)-[A-Za-z0-9-]+/g;
+
+/**
+ * Strip internal message-reference ids from a human-facing notice. Agent payloads must not go through this:
+ * hmsg-/xmsg- ids and forwards lists are how agents verify receipts.
+ */
+export function hideInternalMessageIds(text: string): string {
+  return tidyNoticeText(text.split(URL_SPLIT).map((part, i) => (i % 2 === 1 ? part : stripInternalIds(part))).join(""));
+}
+
+function stripInternalIds(text: string): string {
+  return text
+    .replace(FORWARDS_LIST, "")
+    .replace(VERIFICATION_PAREN, "")
+    .replace(LABELED_MSG_ID, "")
+    .replace(BARE_MSG_ID, "");
+}
+
+function tidyNoticeText(text: string): string {
+  return text
+    .replace(/\(\s*\)|（\s*）/g, "")
+    .replace(/\s+([，,;；。．.!?！？])/g, "$1")
+    .replace(/([，,])(?:\s*[，,])+/g, "$1")
+    .replace(/[ \t]*[，,][ \t]*(?=[。．.!?！？)\]]|$)/g, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^[ \t，,]+|[ \t，,]+$/gm, "")
+    .trim();
+}
 
 /** One line: the label, then the sender's task summary or the start of the message. */
 function summaryLine(label: string, message: string, taskSummary: string | undefined): string {
@@ -65,17 +99,21 @@ export interface CrossInstanceNoticeInput {
 export function targetTopicNotice(mode: CrossInstanceVisibility, input: CrossInstanceNoticeInput): string | null {
   if (mode === "hidden") return null;
   if (input.requestKind === "report" || input.requestKind === "update") return null;
-  if (mode === "summary") return summaryLine(input.label, input.message, input.taskSummary);
+  const message = hideInternalMessageIds(input.message);
+  const taskSummary = input.taskSummary === undefined ? undefined : hideInternalMessageIds(input.taskSummary);
+  if (mode === "summary") return summaryLine(input.label, message, taskSummary);
   return input.requestKind === "task" || input.requestKind === "query"
-    ? `${input.label}:\n${input.message}`
-    : `${input.label}: ${input.taskSummary ?? truncatePreview(input.message, SUMMARY_PREVIEW_CHARS)}`;
+    ? `${input.label}:\n${message}`
+    : `${input.label}: ${taskSummary ?? truncatePreview(message, SUMMARY_PREVIEW_CHARS)}`;
 }
 
 /** The text to post in the sender's topic, or null for none. `full` shows everything the agent sent. */
 export function senderTopicNotice(mode: CrossInstanceVisibility, input: CrossInstanceNoticeInput): string | null {
   if (mode === "hidden") return null;
-  if (mode === "summary") return summaryLine(input.label, input.message, input.taskSummary);
-  return `${input.label}:\n${input.message}`;
+  const message = hideInternalMessageIds(input.message);
+  const taskSummary = input.taskSummary === undefined ? undefined : hideInternalMessageIds(input.taskSummary);
+  if (mode === "summary") return summaryLine(input.label, message, taskSummary);
+  return `${input.label}:\n${message}`;
 }
 
 /**
