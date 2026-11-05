@@ -1854,6 +1854,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       const runtime = this.hubRuntime ?? (await this.hubRuntimeCreated());
       if (this.shuttingDown || !this.hubEffectsReady) return; // Stop owns it now (fenced in stopAll, closed in doStopAll)
+      await this.observeHubMemberPairing(raw?.hub_member?.enabled === true);
       const current = this.rawFleetConfig as { hub?: unknown; hub_member?: unknown };
       await runtime.apply({ hub: current?.hub, hub_member: current?.hub_member });
     } catch (err) {
@@ -1869,6 +1870,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         home: this.dataDir,
         log: (level, message, meta) => this.logger[level](meta ?? {}, message),
         onHoldsChanged: holds => { this.hubHolds = holds; this.needsYou?.poke(); },
+        // S-51 PR 2b: the fleet's side of a Hub membership (pairing binding, local agents, attachment points).
+        member: {
+          // S3c's currentBinding: a fresh, fail-closed read of the pairing state (null unless consistent and connectable).
+          boundHub: () => this.hubMemberBinding?.(this.dataDir)?.hubId ?? null,
+          agents: () => this.hubMemberAgents(),
+          attachExposures: api => this.attachHubMemberExposures(api),
+          attachAttention: read => this.attachHubExecutionAttention(read),
+          pokeAttention: () => this.needsYou?.poke(),
+          linkState: state => { this.hubMemberLink = state; },
+        },
       });
       // Stop began during the import: it holds this promise and closes the runtime; do not hand it out again.
       if (this.shuttingDown || !this.hubEffectsReady) runtime.fence();
@@ -1876,6 +1887,57 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return runtime;
     })();
     return this.hubRuntimeInit;
+  }
+
+  /**
+   * S-51 PR 2b: while the member switch is on, the local owner's "Connect to a Hub" backend (S3c's pairing API) is
+   * attached, paired or not; switched off, it is detached. A binding change re-composes the member side.
+   */
+  private async observeHubMemberPairing(on: boolean): Promise<void> {
+    if (!on) { this.attachHubMemberPairing(null); return; }
+    if (this.hubMemberPairingApi) return;
+    const { createHubMemberPairingApi, currentBinding } = await import("./hub/member/pairing-api.js");
+    if (this.shuttingDown || !this.hubEffectsReady || this.hubMemberPairingApi) return;
+    this.hubMemberBinding = currentBinding;
+    this.attachHubMemberPairing(createHubMemberPairingApi({
+      home: this.dataDir,
+      enabled: () => (this.rawFleetConfig as { hub_member?: { enabled?: unknown } })?.hub_member?.enabled === true,
+      link: () => (this.hubMemberLink === "online" ? "online" : "offline"),
+      hold: () => (this.hubMemberLink === "revoked" ? "revoked" : null),
+      // Disconnect: stop the member client now (the runtime re-composes from the saved binding, fencing first).
+      fence: () => { void this.hubRuntime?.refresh(); },
+      // A claim saved, a disconnect tombstone or a cancel: re-compose the member side for the new binding.
+      bindingChanged: () => { void this.hubRuntime?.refresh(); },
+      // Disconnect withdraws every published exposure locally (each saved before this returns).
+      withdrawAll: () => this.hubMemberWithdrawAll(),
+    }));
+  }
+
+  /**
+   * Disconnect: every published exposure is withdrawn and saved before the disconnect reports success. Through the
+   * running member's API, or — held or not composed — directly in the member's own store; a failure here makes the
+   * disconnect report "unsaved" (S3c), so consent never outlives the disconnect.
+   */
+  private async hubMemberWithdrawAll(): Promise<void> {
+    const api = this.hubMemberExposureApi;
+    if (api) {
+      for (const view of api.list()) {
+        if (view.exposureId && view.state === "published") await api.withdraw(view.exposureId, view.revision);
+      }
+      return;
+    }
+    const hubId = this.hubMemberPairingApi?.boundHub()?.hubId ?? null;
+    if (!hubId) return;
+    const { withdrawMemberExposuresOffline } = await import("./hub/compose/member.js");
+    await withdrawMemberExposuresOffline(this.dataDir, hubId);
+  }
+
+  /** The local owner's agents a Hub exposure could map to; providerId is the configured isolated provider, if any. */
+  private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
+    const member = (this.rawFleetConfig as { hub_member?: { execution?: { provider?: { backend?: unknown } } } })?.hub_member;
+    const backend = member?.execution?.provider?.backend;
+    const providerId = backend === "claude" || backend === "codex" ? backend : null;
+    return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: name, providerId }));
   }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */
@@ -1936,6 +1998,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * (hub.enabled / hub_member.enabled) is on; while both are off nothing Hub-related loads, opens or listens.
    */
   private hubRuntime: import("./hub/runtime.js").HubRuntime | null = null;
+  /** S3c's currentBinding reader, loaded with the pairing API (only while the member switch is on). */
+  private hubMemberBinding: ((home: string) => { hubId: string } | null) | null = null;
+  /** The member link as the "Connect to a Hub" view shows it (S5's client lifecycle). */
+  private hubMemberLink: "online" | "offline" | "revoked" = "offline";
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;
@@ -16566,7 +16632,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
-      hubHolds: () => this.hubHolds.map(h => ({ side: h.side, code: h.code, since: h.since, detail: t(`hub.hold.${h.code}`) })),
+      hubHolds: () => this.hubHolds.map(h => {
+        // A provider hold carries a bounded setup reason; its guidance (S4b's copy) when present, else the code's text.
+        const guidance = h.reason ? t(`hub.provider.${h.reason}`) : "";
+        return { side: h.side, code: h.code, since: h.since, detail: guidance && guidance !== `hub.provider.${h.reason}` ? guidance : t(`hub.hold.${h.code}`) };
+      }),
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
         ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,
       })),

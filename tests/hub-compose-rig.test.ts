@@ -121,5 +121,5 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub 
       await runtime.close();
       rmSync(home, { recursive: true, force: true });
     }
-  });
+  }, 60_000); // a real init, LDAPS sign-ins and TLS: well over the default 10 s when suites run in parallel
 });

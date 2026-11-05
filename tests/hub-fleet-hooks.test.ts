@@ -10,12 +10,13 @@ import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const hub = vi.hoisted(() => ({ imported: 0, created: 0, applied: [] as unknown[], events: [] as string[] }));
+const hub = vi.hoisted(() => ({ imported: 0, created: 0, applied: [] as unknown[], events: [] as string[], options: null as any }));
 vi.mock("../src/hub/runtime.js", () => {
   hub.imported += 1;
   return {
     HubRuntime: class {
-      constructor() { hub.created += 1; }
+      constructor(options: unknown) { hub.created += 1; hub.options = options; }
+      refresh() { hub.events.push("refresh"); return Promise.resolve(); }
       apply(config: unknown) { hub.applied.push(config); hub.events.push("apply"); return Promise.resolve(); }
       fence() { hub.events.push("fence"); }
       close() { hub.events.push("close"); return Promise.resolve(); }
@@ -42,7 +43,8 @@ function harness(initial: Record<string, unknown>) {
   const write = (cfg: Record<string, unknown>) => { writeFileSync(path, yaml.dump({ instances: {}, ...cfg })); fm.loadConfig(path); };
   return { fm, write };
 }
-const settle = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); await new Promise((r) => setTimeout(r, 0)); };
+// Real dynamic imports (the pairing API) run before the apply: wait until the work has settled, bounded.
+const settle = async () => { for (let i = 0; i < 40; i += 1) await new Promise((r) => setTimeout(r, 10)); };
 
 describe("FleetManager Hub hooks (S-51)", () => {
   it("off: nothing is imported, before or after the fleet starts, and through reloads", async () => {
@@ -116,4 +118,54 @@ describe("review #3113 regression (single-flight runtime)", () => {
     expect(hub.events.filter((e) => e === "close")).toHaveLength(2);
     expect(second.fm.hubRuntime).toBeNull();
   }, 30_000);
+});
+
+describe("S5b PR 2b: the member side's fleet hooks", () => {
+  it("attaches S3c's pairing API only while the member switch is on; the member host reads the fresh binding", async () => {
+    const { fm, write } = harness({ hub_member: { enabled: true } });
+    fm.hubEffectsReady = true;
+    fm.observeHubSwitches();
+    await settle();
+    expect(fm.hubMemberPairing()).not.toBeNull();
+    expect(hub.options.member.boundHub()).toBeNull(); // nothing paired in this scratch home
+    expect(hub.options.member.agents()).toEqual([]);
+    write({ hub_member: { enabled: false } });
+    await settle();
+    expect(fm.hubMemberPairing()).toBeNull();
+    await fm.stopAll();
+  }, 30_000);
+});
+
+describe("#3130 review: disconnect withdraws every published exposure", () => {
+  it("through the running member's API: each published one, at the revision the owner saw; nothing else", async () => {
+    const { fm } = harness({});
+    const withdrawn: [string, number][] = [];
+    fm.attachHubMemberExposures({
+      list: () => [
+        { exposureId: "e1", state: "published", revision: 3 },
+        { exposureId: "e2", state: "withdrawn", revision: 1 },
+        { exposureId: null, state: "withdrawn", revision: 0 },
+        { exposureId: "e3", state: "published", revision: 1 },
+      ],
+      withdraw: async (id: string, rev: number) => { withdrawn.push([id, rev]); return { remote: "pending" }; },
+    });
+    await fm.hubMemberWithdrawAll();
+    expect(withdrawn).toEqual([["e1", 3], ["e3", 1]]);
+  });
+
+  it("held or not composed: falls back to the member's own store (never composed: nothing to do)", async () => {
+    const { fm } = harness({});
+    fm.hubMemberPairingApi = { boundHub: () => ({ hubId: "11111111-2222-4333-8444-555555555555", binding: null }) };
+    await expect(fm.hubMemberWithdrawAll()).resolves.toBeUndefined();
+    fm.hubMemberPairingApi = null;
+    await expect(fm.hubMemberWithdrawAll()).resolves.toBeUndefined();
+    // The fallback really reaches the member's store: a partial member state fails the disconnect ("unsaved").
+    const hubId = "22222222-3333-4444-8555-666666666666";
+    const { mkdirSync, writeFileSync, chmodSync } = await import("node:fs");
+    chmodSync(fm.dataDir, 0o700);
+    mkdirSync(join(fm.dataDir, "hub-member", hubId, "floors"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(fm.dataDir, "hub-member", hubId, "floors", "journal"), "0", { mode: 0o600 });
+    fm.hubMemberPairingApi = { boundHub: () => ({ hubId, binding: null }) };
+    await expect(fm.hubMemberWithdrawAll()).rejects.toThrow(/partial/);
+  });
 });
