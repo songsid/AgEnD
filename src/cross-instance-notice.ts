@@ -47,8 +47,9 @@ const FORWARDS_LIST = /\bforwards:\s*\[[^\]]*\]/gi;
 const VERIFICATION_PAREN = /\(\s*verification_id\b[^)]*\)|（\s*verification_id\b[^）]*）/gi;
 const LABELED_MSG_ID = /\b(?:verification_id|message_id)\s*:?\s*(?:hmsg|xmsg)-[A-Za-z0-9-]+/gi;
 const BARE_MSG_ID = /\b(?:hmsg|xmsg)-[A-Za-z0-9-]+/g;
-/** Marks a removed reference. Never appears in a URL part; those are split out first. */
+/** Marks a removed reference. URL bytes are parked as `\uE001{i}\uE001` so a gap next to a URL stays internal. */
 const GAP = "\uE000";
+const URL_PH = "\uE001";
 const GAP_ONLY_LINE = /^[ \t]*\uE000+[ \t]*$/;
 
 /**
@@ -56,10 +57,16 @@ const GAP_ONLY_LINE = /^[ \t]*\uE000+[ \t]*$/;
  * hmsg-/xmsg- ids and forwards lists are how agents verify receipts.
  *
  * Cleanup only touches gaps left by a removed reference. Ordinary text, indentation, `decide()`-style
- * empty parens, doubled spaces in code, and URL bytes (including `,,`) stay as they were.
+ * empty parens, doubled spaces in code, and URL bytes (including `,,`) stay as they were. A space
+ * beside a URL is kept when the stripped id sat between them; true start/end of the notice still
+ * drop the leftover separator.
  */
 export function hideInternalMessageIds(text: string): string {
-  return text.split(URL_SPLIT).map((part, i) => (i % 2 === 1 ? part : hideIdsInText(part))).join("");
+  const urls: string[] = [];
+  URL_SPLIT.lastIndex = 0;
+  const masked = text.replace(URL_SPLIT, (url) => `${URL_PH}${urls.push(url) - 1}${URL_PH}`);
+  const cleaned = hideIdsInText(masked);
+  return urls.length === 0 ? cleaned : cleaned.replace(/\uE001(\d+)\uE001/g, (_, i) => urls[Number(i)] ?? "");
 }
 
 function hideIdsInText(text: string): string {

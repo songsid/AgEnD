@@ -78,6 +78,16 @@ describe("hideInternalMessageIds", () => {
     expect(hideInternalMessageIds(`see ${url} verification_id ${HMSG}`)).toBe(`see ${url}`);
     expect(hideInternalMessageIds(`see ${url} verification_id hmsg-123`)).toBe(`see ${url}`);
   });
+
+  it("keeps the space at an internal URL edge when an id is stripped before the URL", () => {
+    expect(hideInternalMessageIds("See verification_id hmsg-123 https://example.com/path"))
+      .toBe("See https://example.com/path");
+  });
+
+  it("keeps the space at an internal URL edge when an id is stripped after the URL", () => {
+    expect(hideInternalMessageIds("https://example.com/path verification_id hmsg-123 next"))
+      .toBe("https://example.com/path next");
+  });
 });
 
 describe("topic notices hide ids, not the label", () => {
