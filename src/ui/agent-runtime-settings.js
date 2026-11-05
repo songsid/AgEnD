@@ -38,7 +38,7 @@ export function AgentRuntimeChangeDialog({name,inst,onClose,onChanged}){
  const load=async()=>{
   if(claim.current)return;setSource(null);setError("");
   try{const response=await lease.fetch(`/ui/instances/${encodeURIComponent(name)}/runtime`),value=await response.json();if(!lease.current())return;if(!response.ok)throw Error(value.error||text("failed"));
-   setSource(value);setUncertain(false);setStep(1);setForm({runtime:value.runtime,machineId:value.machineId||"",backend:value.backend||inst.backend||"",directory:value.directory||"",model:value.model||"",access:value.sandbox,adapter:value.adapter,fresh:false});
+   const {sandbox:access}=value;setSource(value);setUncertain(false);setStep(1);setForm({runtime:value.runtime,machineId:value.machineId||"",backend:value.backend||inst.backend||"",directory:value.directory||"",model:value.model||"",access,adapter:value.adapter,fresh:false});
   }catch(e){if(lease.current())setError(e.message);}
  };
  useEffect(()=>{void load();},[lease]);
