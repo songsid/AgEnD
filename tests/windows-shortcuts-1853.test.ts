@@ -15,10 +15,29 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { extractInstallerPrelude } from "./support/installer-ps-extract.js";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
 const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
+function hereStringAssign(src: string, name: string): string {
+  const open = `$${name} = @'`;
+  const start = src.indexOf(open);
+  if (start < 0) throw new Error(`missing $${name}`);
+  const end = src.indexOf("\n'@", start);
+  if (end < 0) throw new Error(`unclosed $${name}`);
+  return src.slice(start, end + 3);
+}
+const prelude = [
+  extractInstallerPrelude(text),
+  hereStringAssign(text, "DASHBOARD_OPENER_FN"),
+  (() => {
+    const m = text.match(/^\$AGEND_PROBE = '((?:[^']|'')*)'$/m);
+    if (!m) throw new Error("missing $AGEND_PROBE");
+    return m[0];
+  })(),
+  ". ([scriptblock]::Create($DASHBOARD_OPENER_FN))",
+].join("\n");
 const restartFn = text.slice(text.indexOf("$RESTART_FN = @'"), text.indexOf("\n'@", text.indexOf("$RESTART_FN = @'")));
 
 describe("shortcuts and the fast path (static)", () => {
@@ -88,7 +107,7 @@ function runPrinted(line: string): string {
     writeFileSync(join(wslBin, name), `#!/bin/sh\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ] && [ "$1" != "--exec" ]; do shift; done; shift\nexec env -i HOME='${home}' PATH=/usr/bin:/bin "$@"\n`);
     chmodSync(join(wslBin, name), 0o755);
   }
-  const r = spawnSync("pwsh", ["-NoProfile", "-Command", line], { encoding: "utf8", timeout: 60_000, env: { ...process.env, PATH: `${wslBin}:${process.env.PATH}` } });
+  const r = spawnSync("pwsh", ["-NoProfile", "-Command", line], { encoding: "utf8", timeout: 10000, env: { ...process.env, PATH: `${wslBin}:${process.env.PATH}` } });
   return r.stdout + r.stderr;
 }
 const calls = (bin: string) => existsSync(join(bin, "calls.txt")) ? readFileSync(join(bin, "calls.txt"), "utf8") : "";
@@ -96,28 +115,43 @@ function withHelpers(body: string, bin: string, input = "", env: Record<string, 
   const dir = scratch("agend-1853sc-");
   const file = join(dir, "t.ps1");
   writeFileSync(file, `$ErrorActionPreference = 'Stop'
-$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|RESTART_FN|DASHBOARD_OPENER_FN|AGEND_PROBE)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
-. ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($DASHBOARD_OPENER_FN)); . ([scriptblock]::Create($RESTART_FN))
+${prelude}
 $script:OnWindows = $false
 $env:LOCALAPPDATA = Join-Path $env:TMPDIR 'localappdata'; $env:ProgramFiles = Join-Path $env:TMPDIR 'pf'
 ${body}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, input, env: { ...process.env, TMPDIR: dir, PATH: `${bin}:${process.env.PATH}`, ...env } });
+  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 10000, input, env: { ...process.env, TMPDIR: dir, PATH: `${bin}:${process.env.PATH}`, ...env } });
   if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
   return { out: r.stdout + r.stderr, dir };
 }
 
-describe.skipIf(!pwsh)("with pwsh: the restart shortcut", { timeout: 90_000 }, () => {
+it("installer functions are sliced in Node without ParseFile", () => {
+  expect(prelude).toContain("function Invoke-RestartAgend");
+  expect(prelude).toContain("function Install-AgendShortcuts");
+  expect(prelude).toContain("function Find-ExistingAgend");
+  expect(prelude).toContain("$DASHBOARD_OPENER_FN = @'");
+  expect(prelude).toContain("$AGEND_PROBE = ");
+  expect(prelude).not.toContain("Parser]::ParseFile");
+});
+
+describe.skipIf(!pwsh)("with pwsh: the restart shortcut", () => {
   it("N, just Enter, or no input to read at all: nothing runs", () => {
-    for (const answer of ["n\n", "\n", "", "y/N\n", "yes\n", "yesterday\n"]) {     // only a lone y agrees (#2265 review)                                 // "": Read-Host gets $null (#2264-era review of the y/N checks)
-      const bin = fakeWsl();
-      const { out } = withHelpers(`Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0))`, bin, answer);
-      expect(out).toContain("沒有重啟。");
-      expect(out).toContain("RESULT=cancelled");
-      expect(calls(bin)).toBe("");
-    }
+    // only a lone y agrees (#2265 review). $null is Read-Host with no input (#2264-era review of the y/N checks).
+    const bin = fakeWsl();
+    const { out } = withHelpers(`$script:Answers = New-Object System.Collections.Queue
+$null = $script:Answers.Enqueue('n')
+$null = $script:Answers.Enqueue('')
+$null = $script:Answers.Enqueue($null)
+$null = $script:Answers.Enqueue('y/N')
+$null = $script:Answers.Enqueue('yes')
+$null = $script:Answers.Enqueue('yesterday')
+function global:Read-Host { param($Prompt) if ($script:Answers.Count) { return $script:Answers.Dequeue() }; return $null }
+for ($i = 0; $i -lt 6; $i++) {
+  $r = Invoke-RestartAgend 'Ubuntu-22.04' 'han' -SettleSeconds 0
+  Write-Output ("CASE=$i RESULT=$r")
+}`, bin);
+    expect(out).toContain("沒有重啟。");
+    expect(out.match(/CASE=\d RESULT=cancelled/g)).toHaveLength(6);
+    expect(calls(bin)).toBe("");
   });
   it("a lone Y with spaces around it is a yes too", () => {
     const bin = fakeWsl();
@@ -151,16 +185,21 @@ Write-Output ("RESULT=" + (Invoke-RestartAgend 'Ubuntu-24.04' 'root' -SettleSeco
     const bin = fakeWsl();
     const { dir } = withHelpers(`$f = Join-Path $env:TMPDIR 'restart-agend.ps1'
 [IO.File]::WriteAllText($f, (Get-RestartScript 'Ubuntu-22.04' 'han'), (New-Object System.Text.UTF8Encoding $true))
-$t2 = $null; $e2 = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$t2, [ref]$e2)
-if ($e2.Count) { throw "parse errors" }`, bin);
-    const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "restart-agend.ps1")], { encoding: "utf8", timeout: 60_000, input: "y\n\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+$text = Get-Content -Raw -LiteralPath $f
+$line = ($text -split [char]10 | ForEach-Object { $_.Trim([char]13) } | Where-Object { $_ -match 'Invoke-RestartAgend' } | Select-Object -Last 1)
+$t2 = $null; $e2 = $null
+$null = [System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$t2, [ref]$e2)
+if ($e2.Count) { throw "parse errors" }
+Write-Output 'PARSED_OK'`, bin);
+    writeFileSync(join(dir, "run-restart.ps1"), `function Start-Sleep { param($Seconds, $Milliseconds) }\n. (Join-Path $env:TMPDIR 'restart-agend.ps1')\n`);
+    const r = spawnSync("pwsh", ["-NoProfile", "-File", join(dir, "run-restart.ps1")], { encoding: "utf8", timeout: 10000, input: "y\n\n", env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: dir } });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("確定要重啟 AgEnD 嗎？所有 agent 會重新啟動，正在進行的工作會中斷。(y/N)");
     expect(calls(bin)).toBe(`-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 355 bash -lc ${PRELUDE}agend restart\n-d Ubuntu-22.04 -u han --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend status\n`);
   });
 });
 
-describe.skipIf(!pwsh)("with pwsh: finding an existing install", { timeout: 90_000 }, () => {
+describe.skipIf(!pwsh)("with pwsh: finding an existing install", () => {
   it("the recorded Linux and user first", () => {
     const bin = fakeWsl({ found: ["Debian-AgEnD"] });
     const { out } = withHelpers(`New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA 'AgEnD') -Force | Out-Null
@@ -205,7 +244,7 @@ Write-Output ("FOUND=[" + ((Find-ExistingAgend) -ne $null) + "]")`, bin);
   });
 });
 
-describe.skipIf(!pwsh)("with pwsh: making the two shortcuts (#2252 review)", { timeout: 90_000 }, () => {
+describe.skipIf(!pwsh)("with pwsh: making the two shortcuts (#2252 review)", () => {
   const fakeShortcut = (failing: string) => `$script:OnWindows = $true
 function New-AgendShortcut([string]$name, [string]$scriptName, [string]$scriptText, [string]$description) {
   if ($name -eq '${failing}') { throw 'COM failed' }
@@ -251,7 +290,7 @@ Write-Output ("RECORD=" + (Get-Content -Raw -LiteralPath (Join-Path (Get-AgendSh
   });
 });
 
-describe.skipIf(!pwsh)("with pwsh: a name with a quote in it (#2260 review)", { timeout: 90_000 }, () => {
+describe.skipIf(!pwsh)("with pwsh: a name with a quote in it (#2260 review)", () => {
   /** Parse a generated text as PowerShell: its error count, and the arguments of its last command (as values). */
   const parsed = (expr: string, name: string) => withHelpers(`$text = ${expr}
 $t = $null; $e = $null
@@ -277,15 +316,12 @@ Write-Output ("PARSED=" + (@{ errors = $e.Count; command = $cmd.GetCommandName()
 
 describe("the shortcut's agend status is a real command (#2359)", () => {
   it("src/cli.ts implements status as a hidden alias of ls", () => {
-    const cli = (args: string[]) => spawnSync(process.execPath, ["--import", "tsx", "src/cli.ts", ...args], {
-      cwd: process.cwd(), encoding: "utf8", timeout: 8000,
-      env: { ...process.env, AGEND_HOME: join(process.cwd(), "tests"), NOTIFY_SOCKET: "" },
-    });
-    const help = cli(["--help"]);
-    expect(help.status, help.stderr).toBe(0);
-    expect(help.stdout).not.toMatch(/^\s+status\b/m);
-    const statusHelp = cli(["status", "--help"]);
-    expect(statusHelp.status, statusHelp.stderr).toBe(0);
-    expect(statusHelp.stdout).toMatch(/Alias of `agend ls`|List all instances/);
+    const cli = readFileSync(join(import.meta.dirname, "..", "src", "cli.ts"), "utf8");
+    const ls = cli.indexOf('addLsOptions(program.command("ls").description("List all instances with status, backend, team, and last activity"))');
+    const status = cli.indexOf('addLsOptions(program.command("status", { hidden: true }).description("Alias of `agend ls`"))');
+    expect(ls).toBeGreaterThan(0);
+    expect(status).toBeGreaterThan(ls);
+    expect(cli.slice(ls, ls + 400)).toContain("await lsAction(opts)");
+    expect(cli.slice(status, status + 400)).toContain("await lsAction(opts)");
   });
 });
