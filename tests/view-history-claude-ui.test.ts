@@ -135,6 +135,14 @@ describe("only steps before the live screen", () => {
     // Both shown, in order: both on the screen. Shown in the wrong order: the walk stops (the older one is history).
     expect(vh.beforeScreen([A, B], "● I will inspect the configuration and fix the ALPHA failure.\n● I will inspect the configuration and fix the BETA failure.")).toEqual([]);
     expect(vh.beforeScreen([A, B], "● I will inspect the configuration and fix the BETA failure.\n● I will inspect the configuration and fix the ALPHA failure.").map((s: any) => s.id)).toEqual(["alpha"]);
+    // r3: a long common opening that occurs twice INSIDE the newest reply is no proof of the older one (whole text only).
+    const p = "I will inspect the configuration files under the project root and fix the reported problem now: ";
+    const old = { id: "old", kind: "assistant", body: `${p}ALPHA failed.` };
+    const cur = { id: "cur", kind: "assistant", body: `${p}BETA succeeded.\nFor reference, ${p}BETA is the current result.` };
+    expect(vh.beforeScreen([old, cur], `● ${cur.body}`).map((s: any) => s.id)).toEqual(["old"]);
+    // …its controls: both whole on screen, in order — none is history; the newest only partly on screen — both history.
+    expect(vh.beforeScreen([old, cur], `● ${old.body}\n● ${cur.body}`)).toEqual([]);
+    expect(vh.beforeScreen([old, cur], `fix the reported problem now: BETA is the current result.`).map((s: any) => s.id)).toEqual(["old", "cur"]);
     // A different opening (the control): the older one not on screen is history, the newer one is not.
     const C = { id: "gamma", kind: "assistant", body: "Something else entirely happened here." };
     expect(vh.beforeScreen([C, B], "● I will inspect the configuration and fix the BETA failure.").map((s: any) => s.id)).toEqual(["gamma"]);
