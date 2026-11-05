@@ -83,7 +83,11 @@ describe("the preview factory is the only frame (§5.3; #2799 removed the Canvas
       } while (src !== before);
       return [...src.matchAll(/createElement\(\s*["'`]iframe["'`]\s*\)|<iframe\b|["'`]sandbox["'`]|\.sandbox\b/gi)].map(m => `${f.slice(UI.length + 1)}: ${m[0]}`);
     });
-    expect(hits.sort()).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"'].sort());
+    // The one reviewed non-frame use: the Agent runtime dialog reads the `sandbox` field of the server's runtime
+    // description (src/agent-runtime-change.ts describe()) — the Windows CLI file-access mode ("read-only" /
+    // "workspace-write"), not an iframe attribute. It is a wire field, so the UI cannot rename it. Exactly one
+    // `.sandbox` in this one file; any other file, any second use, or any iframe pattern still fails.
+    expect(hits.sort()).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"', "agent-runtime-settings.js: .sandbox"].sort());
     expect(PREVIEW.indexOf('createElement("iframe")')).toBeGreaterThan(PREVIEW.indexOf("function mountPreview("));
   });
 

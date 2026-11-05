@@ -72,7 +72,7 @@ export function WindowsCliPanel({ navKey, embedded = false, machineId = "", mach
   const clis = discovery.data?.clis || [];
   const probing = discovery.loading;
   const [tasks,setTasks] = useState([]), [cwd,setCwd] = useState(initialDraft.cwd || "");
-  const [prompt,setPrompt] = useState(initialDraft.prompt || ""), [sandbox,setSandbox] = useState(initialDraft.sandbox || "read-only");
+  const [prompt,setPrompt] = useState(initialDraft.prompt || ""), [access,setAccess] = useState(initialDraft.access || "read-only");
   const [selected,setSelected] = useState(initialDraft.selected || "codex"), [model,setModel] = useState(initialDraft.model || "");
   // The page owns a send across diagnostic-dialog close/reopen. Closing never aborts a submitted POST.
   const ownSession = useRef({requestId:null,pending:false,error:""});
@@ -82,7 +82,7 @@ export function WindowsCliPanel({ navKey, embedded = false, machineId = "", mach
   const readGeneration = useRef(0), polling = useRef(false);
   const [historyReady,setHistoryReady] = useState(false);
   const latestDraft = useRef(null), directoryInitialized = useRef(!!initialDraft.cwd);
-  latestDraft.current = {cwd,prompt,sandbox,selected,model,testOpen};
+  latestDraft.current = {cwd,prompt,access,selected,model,testOpen};
   useEffect(() => () => { drafts?.set(machineId,latestDraft.current); },[drafts,machineId]);
   const api = async (path,body,owner = lease) => {
     const r = await owner.fetch(path, { credentials:"same-origin", ...(body === undefined ? {} : { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify(body) }) });
@@ -113,7 +113,7 @@ export function WindowsCliPanel({ navKey, embedded = false, machineId = "", mach
   },[lease,running,uncertain,online,approved,submitting]);
   const run = async () => {
     if (operation.requestId || !online || !approved || !historyReady || running || uncertain) return;
-    const input = { requestId:crypto.randomUUID(), cli:selected, ...(model.trim() ? {model:model.trim()} : {}), cwd:cwd.trim(), prompt, sandbox };
+    const input = { requestId:crypto.randomUUID(), cli:selected, ...(model.trim() ? {model:model.trim()} : {}), cwd:cwd.trim(), prompt, sandbox:access };
     operation.requestId = input.requestId; operation.pending = true; operation.error = "";
     setSubmitting(true);setError("");
     try { await api(`${apiBase}/tasks`,input,taskLease || lease); }
@@ -130,7 +130,7 @@ export function WindowsCliPanel({ navKey, embedded = false, machineId = "", mach
   };
   const cancel = async id => { if (!online || !approved) return; try { await api(`${apiBase}/tasks/${id}/cancel`,{}); if (lease.current()) await refresh(); } catch(e) { if (lease.current()) setError(e.message); } };
   const current = clis.find(cli => cli.id === selected);
-  const permissionReady = sandbox !== "read-only" || current?.readOnlySupport !== false;
+  const permissionReady = access !== "read-only" || current?.readOnlySupport !== false;
   const runnable = current?.runnable === true && permissionReady && online && approved && historyReady && !uncertain;
   const providers = clis.filter(cli => cli.path);
   const choices = providers.filter(cli => cli.supports?.execution !== false).map(cli => ({value:cli.id,label:cliLabel(cli.id),disabled:!cli.runnable,description:cli.authenticated === false ? tn("signedOut") : cli.version || "Windows"}));
@@ -160,7 +160,7 @@ export function WindowsCliPanel({ navKey, embedded = false, machineId = "", mach
             <div class="windows-cli-field"><label for="windows-cwd">${tn("folder")}</label><input id="windows-cwd" class="windows-cli-directory" value=${cwd} placeholder="J:\\Project\\Game" aria-describedby="windows-cwd-hint" required spellcheck=${false} onInput=${e => setCwd(e.target.value)} /><p id="windows-cwd-hint">${tn("folderHint")}</p></div>
             <div class="windows-cli-field"><label for="windows-prompt">${tn("prompt")}</label><textarea id="windows-prompt" rows="5" value=${prompt} placeholder=${tn("promptPlaceholder")} required maxLength=${16384} onInput=${e => setPrompt(e.target.value)} /></div>
             <fieldset class="windows-cli-access"><legend>${tn("access")}</legend><div class="windows-cli-access-options">
-              ${[["read-only","readOnly","readHint","eye"],["workspace-write","write","writeHint","edit"]].map(([value,label,hint,icon]) => html`<label key=${value} class=${`windows-cli-access-option${sandbox === value ? " selected" : ""}`}><input type="radio" name="windows-sandbox" value=${value} checked=${sandbox === value} disabled=${value === "read-only" && current?.readOnlySupport === false} onChange=${() => setSandbox(value)} /><span><strong><${Icon} name=${icon} size=${15} />${tn(label)}</strong><small>${tn(value === "workspace-write" && current?.id === "claude-code" ? "writeHintClaude" : hint)}</small></span></label>`)}
+              ${[["read-only","readOnly","readHint","eye"],["workspace-write","write","writeHint","edit"]].map(([value,label,hint,icon]) => html`<label key=${value} class=${`windows-cli-access-option${access === value ? " selected" : ""}`}><input type="radio" name="windows-sandbox" value=${value} checked=${access === value} disabled=${value === "read-only" && current?.readOnlySupport === false} onChange=${() => setAccess(value)} /><span><strong><${Icon} name=${icon} size=${15} />${tn(label)}</strong><small>${tn(value === "workspace-write" && current?.id === "claude-code" ? "writeHintClaude" : hint)}</small></span></label>`)}
             </div></fieldset>
             ${!permissionReady ? html`<p class="note">${tn("noReadOnly")}</p>` : null}
             <details class="windows-cli-policy"><summary><${Icon} name="info" size=${14} />${tn("policy")}<${Icon} name="chevron" size=${14} /></summary><p>${tn("policyText")}</p></details>
