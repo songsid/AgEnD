@@ -156,7 +156,7 @@ Write-Output ('DIR=' + $env:TMPDIR)`);
     const PATH = process.env.PATH ?? "/usr/bin:/bin";
     // Control: that store really makes the chain verify for openssl's defaults.
     expect(spawnSync("openssl", ["verify", join(c, "leafother.pem")], { encoding: "utf8", env: { PATH, SSL_CERT_DIR: ambient } }).status).toBe(0);
-    for (const env of [{ SSL_CERT_DIR: ambient }, { SSL_CERT_FILE: join(c, "other.pem") }, { SSL_CERT_URI: `file:${ambient}` }]) {
+    for (const env of [{ SSL_CERT_DIR: ambient }, { SSL_CERT_FILE: join(c, "other.pem") }, { SSL_CERT_URI: `file:${ambient}` }] as Record<string, string>[]) {
       expect(bash(script, { PATH, ...env }).stdout, JSON.stringify(env)).toBe("");
     }
   });
