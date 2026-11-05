@@ -1672,6 +1672,8 @@ export function handleWebRequest(
   // panel says "not found"), so the response never tells which names exist.
   const shell = shellRoute(method, path);
   if (shell?.kind === "malformed") { json(res, 400, { error: "invalid instance name" }); return true; }
+  // AgEnD Hub P1: the Hub's pages exist only on a Hub (hub.enabled); otherwise the ordinary not-found, never the shell.
+  if (shell?.kind === "shell" && shell.route.panel === "hub" && !hubModeOf(ctx.fleetConfig).server) { json(res, 404, { error: "not found" }); return true; }
   if (shell?.kind === "shell") { serveAppShell(req, res, ctx, "full"); return true; }
 
   // Serve JS modules
@@ -3994,6 +3996,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}`
     // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
     + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
+    // AgEnD Hub P1 (docs/design/hub-ui-client.md): the Hub's marks — only when a switch is on, never on a guest's page.
+    + `${mode === "full" && !viewer?.guest ? hubBodyAttrs(ctx.fleetConfig, attr) : ""}`
     // #1920 phase 3: a guest's page — the shell shows only what a guest may use, and who it is signed in as.
     + `${mode === "full" && viewer?.guest && viewer.owner ? guestBodyAttrs(ctx, viewer.owner, attr) : ""}>`;
 }
