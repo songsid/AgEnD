@@ -380,3 +380,18 @@ describe("Prism #3115 r2", () => {
     expect(currentBinding(ok.home, prof2 as any)).toEqual({ hubId: ok.hubId });
   });
 });
+
+describe("currentBinding: each unfinished marker on its own", () => {
+  it.each([["the pending claim left (its cleanup failed)", { pending: true, receipt: false }], ["the local receipt left (the settlement save failed)", { pending: false, receipt: true }], ["neither (settled)", { pending: false, receipt: false }]])(
+    "%s", async (_name, o) => {
+      const { currentBinding } = await import("../src/hub/member/pairing-api.js");
+      const home = mkdtempSync(join(tmpdir(), "s3c-cb-")); homes.push(home); chmodSync(home, 0o700);
+      const hubId = randomUUID(), dir = join(home, "hub-member", hubId);
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
+      writeFileSync(join(dir, "pairing.json"), "{}", { mode: 0o600 });
+      if (o.pending) writeFileSync(join(dir, "pending.json"), "{}", { mode: 0o600 });
+      writeFileSync(join(home, "hub-member", "state.json"), JSON.stringify({ hubId, ...(o.receipt ? { localConfirmed: { digest: "f".repeat(64), at: 1 } } : {}) }), { mode: 0o600 });
+      const prof = () => ({ readProfile: () => ({}) as any, profileDigest: () => "p1" });
+      expect(currentBinding(home, prof as any)).toEqual(o.pending || o.receipt ? null : { hubId });
+    });
+});
