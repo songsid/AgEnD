@@ -390,7 +390,7 @@ describe("review #3113 regressions", () => {
         ? db.prepare("SELECT 1 FROM hub_schema WHERE component = 'test-async'").get() : undefined;
       expect(published).toBeUndefined(); // the version was never published
       const uow = createHubUnitOfWork(db);
-      expect(() => uow.atomic((async (tx) => { await null; hubTxDatabase(tx); }) as never)).toThrow(/synchronous/);
+      expect(() => uow.atomic((async (tx: Parameters<Parameters<typeof uow.atomic>[0]>[0]) => { await null; hubTxDatabase(tx); }) as never)).toThrow(/synchronous/);
       await new Promise((r) => setTimeout(r, 20));
       expect(rejections).toEqual([]);
     } finally {
