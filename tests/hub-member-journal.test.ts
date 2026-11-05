@@ -9,7 +9,7 @@ import type { HubMemberProfile } from "../src/hub/profile.js";
 const dbs: Database.Database[] = []; afterEach(() => dbs.splice(0).forEach(db => db.close()));
 function fixture() {
   const db = new Database(":memory:"); dbs.push(db); migrateHubMemberJournal(db); db.exec("CREATE TABLE restricted_outbox(id TEXT PRIMARY KEY, source TEXT UNIQUE, digest TEXT)");
-  const keys = generateKeyPairSync("ed25519"), now = 1_800_000_000_000, owner = { realm: "directory", objectId: randomUUID() };
+  const keys = generateKeyPairSync("ed25519"), owner = { realm: "directory", objectId: randomUUID() }; let now = 1_800_000_000_000;
   let live = true, floor = 0, revision = 1, revocation = 1;
   const profile: HubMemberProfile = { v: 1, hub: { hubId: randomUUID(), memberOrigin: "https://hub.test", webOrigin: "https://web.test", spkiSha256: "a".repeat(64), issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() }, owner, fleetId: randomUUID(), credential: "a".repeat(64), certificatePem: "not used by journal", issuerKeyId: issuerKeyId(keys.publicKey) };
   const exposure: HubExposure = { id: randomUUID(), fleetId: profile.fleetId, owner, displayName: "Exposed", revision: 1, state: "published", dataViewId: "view", allowedTools: ["read"], policyDigest: sha256("policy") };
@@ -25,7 +25,7 @@ function fixture() {
   const admission = new HubMemberAdmissionAdapter({ journal, transport, binding: () => ({ profile, linkEpoch: 1, revocationVersion: revocation, current: () => live }), exposure: () => ({ ...exposure, revision }), fenceLocal, hold, now: () => now });
   const begin = () => ({ messageId: q.identity.messageId, operationId: randomUUID(), exposureRevision: 1, phase: "begin" as const });
   const fence = { current: () => live, linkEpoch: 1, revocationVersion: 1 };
-  return { db, options, journal, admission, q, keys, profile, exposure, insert, authorize, lease, begin, fence, hold, fenceLocal, stop: () => { live = false; }, changeExposure: () => { revision++; }, revoke: () => { revocation++; } };
+  return { advanceClock: () => { now += 120_001; }, db, options, journal, admission, q, keys, profile, exposure, insert, authorize, lease, begin, fence, hold, fenceLocal, stop: () => { live = false; }, changeExposure: () => { revision++; }, revoke: () => { revocation++; } };
 }
 describe("Hub restricted member journal", () => {
   it("admits one exact source into the restricted outbox, with encrypted payload and monotonic receipts", async () => {
@@ -120,4 +120,14 @@ it("retains a question and escaped answer that each fit a real protocol frame, i
   const receipt = f.journal.saveAnswer(answer, request, f.fence);
   const reopened = new HubMemberJournal(f.db, f.options);
   expect(reopened.reconcile(0, [{ messageId: q.identity.messageId, contentDigest: q.identity.contentDigest }])).toEqual([receipt]);
+});
+
+it.each(["owner", "fleet", "expiry"] as const)("keeps the signed %s binding after authorization even if live profile references change", async which => {
+  const f = fixture(); f.authorize.mockImplementation(async request => {
+    if (which === "owner") { f.profile.owner = { realm: "directory", objectId: randomUUID() }; f.exposure.owner = f.profile.owner; }
+    else if (which === "fleet") { f.profile.fleetId = randomUUID(); f.exposure.fleetId = f.profile.fleetId; }
+    else f.advanceClock();
+    return f.lease(request);
+  });
+  await expect(f.admission.admit(f.q)).rejects.toThrow(); expect(f.insert).not.toHaveBeenCalled(); expect(f.hold).toHaveBeenCalled();
 });
