@@ -22,6 +22,7 @@ import { execFileSync } from "node:child_process";
 import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
+import { stripCodexPassiveHintRow, withCodexPassiveHintTail } from "./codex-footer-hints.js";
 import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -1129,6 +1130,7 @@ export class CodexBackend implements CliBackend {
     if (codexAppServerDisconnected(pane)) return false;
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    stripCodexPassiveHintRow(rows);
     const footer = rows.pop() ?? "";
     // Codex preserves other configured status-line items after the context
     // meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra"). They
@@ -1195,6 +1197,8 @@ export class CodexBackend implements CliBackend {
     // idle chrome.  Remove only that observed decorative glyph; broader
     // punctuation stripping could turn real tool output into a false prompt.
     const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/⋆/gu, ""));
+    while (rows.length && !rows.at(-1)!.trim()) rows.pop();
+    stripCodexPassiveHintRow(rows);
     let prompt = -1;
     for (let i = rows.length - 1; i >= 0; i--) {
       if (/^[>›]\s*Ask Codex to do anything\s*$/.test(rows[i])) {
@@ -1786,7 +1790,7 @@ export class CodexBackend implements CliBackend {
     // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
     // prompt, between prompt/footer, and below the footer. A drafted composer
     // is also idle once this same bottom footer proves it owns the screen.
-    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    const contextReady = withCodexPassiveHintTail(/(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i);
     const footerPattern = this.configuredStatusLineFooterPattern();
     if (!footerPattern) return contextReady;
 
@@ -1795,19 +1799,19 @@ export class CodexBackend implements CliBackend {
     // configured, that value must specifically be Ready. This is positive
     // structural proof, never a deny-list of known dialogs.
     const footerSource = footerPattern.source.slice(1, -1);
-    const noContextReady = new RegExp(
+    const noContextReady = withCodexPassiveHintTail(new RegExp(
       String.raw`(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${footerSource}(?:\r?\n[ \t⋆]*)*$`,
       "iu",
-    );
+    ));
     // #978: a configured footer that carries a Context item in any position
     // is the Context footer: same drafted-composer rule as Context-first. The
     // whole row must match the configured item grammar, so an arbitrary
     // indented line that merely contains `Context N% left` cannot pass.
     const configuredContextReady = this.configuredHasContextItem()
-      ? new RegExp(
+      ? withCodexPassiveHintTail(new RegExp(
         String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
         "iu",
-      )
+      ))
       : null;
     return new RegExp(
       [contextReady.source, noContextReady.source, configuredContextReady?.source]

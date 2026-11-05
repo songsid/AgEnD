@@ -25,6 +25,8 @@
         "surfaces": { "CLAUDE_MODEL_USAGE_LIMIT": "error", "CLAUDE_USAGE_LIMIT_PAUSE": "error", "CLAUDE_CREDIT_BALANCE_LOW": "error" } }
     ],
     "codex": [
+      { "file": "src/backend/codex-footer-hints.ts",
+        "surfaces": { "base": "idle-busy", "binding": "idle-busy", "shortcut": "idle-busy", "warningKey": "idle-busy", "count": "idle-busy", "warning": "idle-busy", "hint": "idle-busy", "CODEX_PASSIVE_HINT_ROW": "idle-busy", "row": "idle-busy", "stripCodexPassiveHintRow": "idle-busy", "withCodexPassiveHintTail": "idle-busy" } },
       { "file": "src/backend/codex.ts",
         "exclude": ["stripAgendMcpTables", "tomlString", "codexTrustPaths", "setTomlTableBoolean", "effectiveTuiStatusLine",
           "projectTrustTable", "effectiveProjectTrust", "setProjectTrusted", "CODEX_CONTEXT_STATUS_ITEM", "CODEX_CONTEXT_STATUS_ITEMS",
