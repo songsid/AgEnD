@@ -2,6 +2,10 @@
 #
 #   powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/install.ps1 | iex"
 #
+# Where *.github.io is blocked, the same deployed file from GitHub's raw host (the tag installer-live always names the
+# commit GitHub Pages last deployed; see deploy-website.yml):
+#   powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public/install.ps1 | iex"
+#
 # This file is run with `irm ... | iex`, so it is kept safe for that: ASCII only (Windows PowerShell 5.1 may decode a
 # download as the wrong code page), no param block, and no `exit` (under iex it would close the window). It downloads
 # the real installer, install-agend.ps1, to a temporary file - its bytes as served, UTF-8 BOM included, so its
@@ -206,12 +210,19 @@ function Resolve-AgendWslDrive([string]$value) {
         }
     }
 
-    # Where install-agend.ps1 comes from. Tests point it at a local server; anything else must be https.
-    $base = 'https://songsid.github.io/AgEnD'
-    if ($env:AGEND_INSTALL_BASE) { $base = $env:AGEND_INSTALL_BASE.TrimEnd('/') }
-    if ($base -notmatch '^https://' -and $base -notmatch '^http://(127\.0\.0\.1|localhost)(:\d+)?(/|$)') {
-        Write-Host "AgEnD: refusing to download the installer from $base (https only)." -ForegroundColor Red
-        return
+    # Where install-agend.ps1 comes from, in order: GitHub Pages, then the same deployed file from GitHub's raw host
+    # (tag installer-live, moved only after Pages deployed it) for networks that block *.github.io. Tests point
+    # AGEND_INSTALL_BASE (and AGEND_INSTALL_FALLBACK_BASE) at a local server; anything else must be https.
+    $bases = @('https://songsid.github.io/AgEnD', 'https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public')
+    if ($env:AGEND_INSTALL_BASE) {
+        $bases = @($env:AGEND_INSTALL_BASE.TrimEnd('/'))
+        if ($env:AGEND_INSTALL_FALLBACK_BASE) { $bases += $env:AGEND_INSTALL_FALLBACK_BASE.TrimEnd('/') }
+    }
+    foreach ($b in $bases) {
+        if ($b -notmatch '^https://' -and $b -notmatch '^http://(127\.0\.0\.1|localhost)(:\d+)?(/|$)') {
+            Write-Host "AgEnD: refusing to download the installer from $b (https only)." -ForegroundColor Red
+            return
+        }
     }
 
     $onWindows = ($PSVersionTable.PSEdition -eq 'Desktop') -or ($IsWindows -eq $true)
@@ -225,29 +236,47 @@ function Resolve-AgendWslDrive([string]$value) {
 
     $tmp = Join-Path ([IO.Path]::GetTempPath()) ('install-agend-' + [Guid]::NewGuid().ToString('N') + '.ps1')
     try {
-        Write-Host "AgEnD: downloading the installer from $base/install-agend.ps1 ..."
-        try {
-            Invoke-InstallDownload -Uri "$base/install-agend.ps1" -OutFile $tmp -TimeoutSec 120
-        } catch {
-            Write-Host "AgEnD: the download failed: $($_.Exception.Message)" -ForegroundColor Red
+        # Each source in turn: the first whose file is really the installer wins. A source that fails, or answers with
+        # something else (an error or block page), is reported and the next one is tried.
+        $got = $null; $lastError = $null; $lastRejected = $null
+        foreach ($base in $bases) {
+            Write-Host "AgEnD: downloading the installer from $base/install-agend.ps1 ..."
+            try {
+                Invoke-InstallDownload -Uri "$base/install-agend.ps1" -OutFile $tmp -TimeoutSec 120
+            } catch {
+                $lastError = $_
+                Write-Host "AgEnD: that download failed: $($_.Exception.Message)" -ForegroundColor Yellow
+                Write-BootstrapLog ("download failed from " + $base + ": " + $_.Exception.Message)
+                continue
+            }
+            # What arrived must be the installer: UTF-8 with its BOM, and its own admin check (not an error page).
+            $bytes = [IO.File]::ReadAllBytes($tmp)
+            $text = [Text.Encoding]::UTF8.GetString($bytes)
+            $bom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
+            if ($bytes.Length -lt 1024 -or -not $bom -or $text -notmatch 'function Check-Admin') {
+                $lastRejected = $bytes.Length
+                Write-Host "AgEnD: what $base sent is not the AgEnD installer ($($bytes.Length) bytes); not run." -ForegroundColor Yellow
+                Write-BootstrapLog ("downloaded file rejected from " + $base + ": $($bytes.Length) bytes")
+                Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+                continue
+            }
+            $got = $base
+            break
+        }
+        if (-not $got) {
+            if ($null -ne $lastRejected -and -not $lastError) {
+                Write-Host "AgEnD: the downloaded file is not the AgEnD installer ($lastRejected bytes). Nothing was run." -ForegroundColor Red
+                Write-Host "Try again later, or download install-agend.ps1 from the install page and run it by hand."
+                return
+            }
+            Write-Host "AgEnD: the download failed: $($lastError.Exception.Message)" -ForegroundColor Red
             # Say what kind of failure it was (#2650 item 8): a proxy or a company certificate needs IT, not a retry.
-            $msg = "$($_.Exception.Message) $($_.Exception.InnerException.Message)"
+            $msg = "$($lastError.Exception.Message) $($lastError.Exception.InnerException.Message)"
             if ($msg -match '\(407\)|[Pp]roxy') { Write-Host "A proxy blocked it or wants a sign-in. Check the proxy settings, or ask your IT team." }
             elseif ($msg -match 'SSL|TLS|[Cc]ertificate|trust relationship') { Write-Host "The HTTPS certificate was not trusted: company networks often inspect HTTPS. Ask your IT team; do not turn certificate checks off." }
             elseif ($msg -match 'timed out|[Tt]imeout') { Write-Host "It timed out: the network is slow or a login page (hotel, office) is waiting. Check it, then run the same command again." }
             else { Write-Host "Check your internet connection, then run the same command again." }
-            Write-BootstrapLog ("download failed: " + $_.Exception.Message)
-            return
-        }
-
-        # What arrived must be the installer: UTF-8 with its BOM, and its own admin check (not an error page).
-        $bytes = [IO.File]::ReadAllBytes($tmp)
-        $text = [Text.Encoding]::UTF8.GetString($bytes)
-        $bom = $bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF
-        if ($bytes.Length -lt 1024 -or -not $bom -or $text -notmatch 'function Check-Admin') {
-            Write-Host "AgEnD: the downloaded file is not the AgEnD installer ($($bytes.Length) bytes). Nothing was run." -ForegroundColor Red
-            Write-Host "Try again later, or download install-agend.ps1 from the install page and run it by hand."
-            Write-BootstrapLog ("downloaded file rejected: $($bytes.Length) bytes")
+            if ($bases.Count -gt 1) { Write-Host "Neither songsid.github.io nor raw.githubusercontent.com could be reached for it." }
             return
         }
         $validatedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmp).Hash

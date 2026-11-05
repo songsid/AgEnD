@@ -175,8 +175,11 @@ const STANDALONE_DEVICE_CODE = /^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/m;
 export const KIRO_EXPIRED_LOGIN_SCREEN =
   /(?:^|\n)[^\n]*, let's get you signed in![ \t]*\n(?:[^\n]*\n){0,8}?[ \t]*Press enter to continue to the browser or esc to cancel[ \t]*(?![\s\S]*\S)/;
 
+/** 3.0's pre-chat login choice, captured offline; the two options must own the screen tail. */
+export const KIRO_LOGIN_REQUIRED_SCREEN = /(?:^|\n)[ \t]*You are not logged in\. Login now\?[ \t]*\n[ \t]*(?:[❯›] )?Yes[ \t]*\n[ \t]*(?:[❯›] )?No[ \t]*(?![\s\S]*\S)/;
+
 /** Either kiro sign-in screen: the deliberate login menu, or the expiry fallback. */
-const KIRO_LOGIN_SCREEN = new RegExp(`Select login method|${KIRO_EXPIRED_LOGIN_SCREEN.source}`);
+const KIRO_LOGIN_SCREEN = new RegExp(`Select login method|${KIRO_EXPIRED_LOGIN_SCREEN.source}|${KIRO_LOGIN_REQUIRED_SCREEN.source}`);
 
 export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "codex": {
@@ -229,7 +232,8 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     // mention one of them does not read as a live sign-in screen.
     loginScreenPattern: KIRO_LOGIN_SCREEN,
     codePattern: /Code:\s*([A-Z0-9][A-Z0-9-]{3,})/,
-    successPattern: /Logged in successfully|Logged in with /,
+    // 3.0 removed the first (2.x) literal; its social/IdP messages retain the second.
+    successPattern: /Logged in successfully|Logged in with |Authenticated with API key/,
     timeoutMs: LOGIN_TIMEOUT_MS,
     // kiro-cli 2.21.1 (live-verified): any stored token record — even an
     // expired one with a refresh token — makes `login` exit 1 with "Already

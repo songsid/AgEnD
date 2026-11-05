@@ -218,3 +218,18 @@ The audit was run as `AUDIT_DIR=… OLD=314 NEW=316 PORT=18316 TMUX_TMPDIR=<shor
   - The auto-deny countdown keeps 2.1.314's wording ("block … holding up an unattended session").
   - Every cold-resume literal has the same count.
 - **The other new string**, "continue the last turn of the session it was copied from…", is the `--help` text of a hidden print-mode flag, `--session-began-as-copy`. It is not a screen.
+
+## 2.1.317 → 2.1.318
+
+The binaries were 2.1.317 (sha256 `eb224419e344575faa4a1f39b290b649425a10cd5ee2ef1d003480cd9ae57eb0`) and 2.1.318 (sha256 `708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd`, byte-identical to the host's `~/.local/share/claude/versions/2.1.318`), from the daily upstream watch (2026-11-04, MAJOR hard=4). The host had already self-updated to 2.1.318.
+
+The audit was run as `AUDIT_DIR=… OLD=317 NEW=318 PORT=18318 bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.318-*.pane.txt` (the 33 screens of the 2.1.316 set, each from the same capture, `danger-enter-swallowed` from 2.1.318's own capture 132), plus `code-mode-agent-teams`. They are held by `tests/claude-2.1.318-surfaces.test.ts`. The live tmux server kept its one session throughout.
+
+- **Classification:** all 62 captures and the error frames classify identically under the production predicates, except `132-danger-fast` (the timing race; 2.1.318 kept the menu on `No`, which the runtime table confirms with Enter on its next poll).
+  - At AgEnD's own cadence (Down, 200 ms, Enter) the dangerous-command menu was declined on both versions at every delay (0–4 s), despite the changelog's "permission prompts being answered by keys typed just after sending a message, or before a slow prompt appeared" fix.
+  - The other diffs are cosmetic: spinner verbs, the mock's reply counter, session ids, and on 2.1.318 a `◐ medium · /effort` row above the composer and `· ← for agents` in the footer.
+- **The four hard findings are not screens AgEnD meets.**
+  - "Press Enter to try again, or ^C to stop." / "… press Enter to check again, or ^C to stop." are the readline loop of `claude mcp add --web` (server flag `tengu_twinkling_aurora`). It only loops with a TTY on stdin and stdout; otherwise it prints a link and returns. AgEnD never runs it, and an agent's Bash tool has stdin from /dev/null. Offline the flag is off: "--web isn't available yet".
+  - "… turn it on again to resume the session. Where …" is not the cold-resume prompt (every cold-resume literal keeps its count). It is the opt-in dialog of the experimental Code Mode: `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` plus server flag `tengu_rustling_blossom`. Its focus is "No, start without it" (`cancelFirst`) and it arms after a delay. AgEnD launches every claude with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, which Code Mode refuses before its flag or provider checks: run with the production env plus the opt-in, the real 2.1.318 printed one passive line, "⚠ Code Mode (experimental) isn't available: it can't be used together with agent teams yet. Starting with the ordinary tools.", and started normally.
+  - The `rate_limits` string is network-settings documentation. The gone "Press 2 to try again." was the "You should know" toast (now "try again").
+- **Literals** (`predlits.py`, 310 checked, 87 in the binaries): 7 counts moved, all in bare substrings. Every exact dialog form AgEnD matches has the same count, except `Please run /login` (+2: the new "Login reached its time limit · Please run /login", read as an auth error like "Login expired").

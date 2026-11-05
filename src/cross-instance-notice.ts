@@ -42,6 +42,62 @@ export function xmsgVisibility(fleet: Pick<FleetConfig, "defaults" | "instances"
 }
 
 const SUMMARY_PREVIEW_CHARS = 100;
+const URL_SPLIT = /(https?:\/\/[^\s]+)/gi;
+const FORWARDS_LIST = /\bforwards:\s*\[[^\]]*\]/gi;
+const VERIFICATION_PAREN = /\(\s*verification_id\b[^)]*\)|（\s*verification_id\b[^）]*）/gi;
+const LABELED_MSG_ID = /\b(?:verification_id|message_id)\s*:?\s*(?:hmsg|xmsg)-[A-Za-z0-9-]+/gi;
+const BARE_MSG_ID = /\b(?:hmsg|xmsg)-[A-Za-z0-9-]+/g;
+/** Marks a removed reference. URL bytes are parked as `\uE001{i}\uE001` so a gap next to a URL stays internal. */
+const GAP = "\uE000";
+const URL_PH = "\uE001";
+const GAP_ONLY_LINE = /^[ \t]*\uE000+[ \t]*$/;
+
+/**
+ * Strip internal message-reference ids from a human-facing notice. Agent payloads must not go through this:
+ * hmsg-/xmsg- ids and forwards lists are how agents verify receipts.
+ *
+ * Cleanup only touches gaps left by a removed reference. Ordinary text, indentation, `decide()`-style
+ * empty parens, doubled spaces in code, and URL bytes (including `,,`) stay as they were. A space
+ * beside a URL is kept when the stripped id sat between them; true start/end of the notice still
+ * drop the leftover separator.
+ */
+export function hideInternalMessageIds(text: string): string {
+  const urls: string[] = [];
+  URL_SPLIT.lastIndex = 0;
+  const masked = text.replace(URL_SPLIT, (url) => `${URL_PH}${urls.push(url) - 1}${URL_PH}`);
+  const cleaned = hideIdsInText(masked);
+  return urls.length === 0 ? cleaned : cleaned.replace(/\uE001(\d+)\uE001/g, (_, i) => urls[Number(i)] ?? "");
+}
+
+function hideIdsInText(text: string): string {
+  const gapped = text
+    .replace(FORWARDS_LIST, GAP)
+    .replace(VERIFICATION_PAREN, GAP)
+    .replace(LABELED_MSG_ID, GAP)
+    .replace(BARE_MSG_ID, GAP);
+  return gapped.includes(GAP) ? tidyRemovedGaps(gapped) : text;
+}
+
+function tidyRemovedGaps(text: string): string {
+  let s = text;
+  for (let i = 0; i < 8; i++) {
+    const next = s
+      .replace(/\((?=[^()]*\uE000)[\s\uE000]*\)|（(?=[^（）]*\uE000)[\s\uE000]*）/g, GAP)
+      .replace(/[，,][ \t]*\uE000+[ \t]*(?=[，,。．.!?！？)\]]|$)/g, GAP);
+    if (next === s) break;
+    s = next;
+  }
+  s = s.split("\n").filter(line => !GAP_ONLY_LINE.test(line)).join("\n");
+  return s.replace(/[ \t]*\uE000+(?:[ \t]*\uE000+)*[ \t]*/g, (match, offset, whole: string) => {
+    const left = offset > 0 ? whole[offset - 1]! : "";
+    const right = whole[offset + match.length] ?? "";
+    if (!left || !right) return "";
+    if (/[。．.!?！？，,;；)\]]/.test(right) || /[。．.!?！？]/.test(left)) return "";
+    if (/[ \t]/.test(match)) return " ";
+    if (/[A-Za-z0-9]/.test(left) && /[A-Za-z0-9]/.test(right)) return " ";
+    return "";
+  });
+}
 
 /** One line: the label, then the sender's task summary or the start of the message. */
 function summaryLine(label: string, message: string, taskSummary: string | undefined): string {
@@ -65,17 +121,21 @@ export interface CrossInstanceNoticeInput {
 export function targetTopicNotice(mode: CrossInstanceVisibility, input: CrossInstanceNoticeInput): string | null {
   if (mode === "hidden") return null;
   if (input.requestKind === "report" || input.requestKind === "update") return null;
-  if (mode === "summary") return summaryLine(input.label, input.message, input.taskSummary);
+  const message = hideInternalMessageIds(input.message);
+  const taskSummary = input.taskSummary === undefined ? undefined : hideInternalMessageIds(input.taskSummary);
+  if (mode === "summary") return summaryLine(input.label, message, taskSummary);
   return input.requestKind === "task" || input.requestKind === "query"
-    ? `${input.label}:\n${input.message}`
-    : `${input.label}: ${input.taskSummary ?? truncatePreview(input.message, SUMMARY_PREVIEW_CHARS)}`;
+    ? `${input.label}:\n${message}`
+    : `${input.label}: ${taskSummary ?? truncatePreview(message, SUMMARY_PREVIEW_CHARS)}`;
 }
 
 /** The text to post in the sender's topic, or null for none. `full` shows everything the agent sent. */
 export function senderTopicNotice(mode: CrossInstanceVisibility, input: CrossInstanceNoticeInput): string | null {
   if (mode === "hidden") return null;
-  if (mode === "summary") return summaryLine(input.label, input.message, input.taskSummary);
-  return `${input.label}:\n${input.message}`;
+  const message = hideInternalMessageIds(input.message);
+  const taskSummary = input.taskSummary === undefined ? undefined : hideInternalMessageIds(input.taskSummary);
+  if (mode === "summary") return summaryLine(input.label, message, taskSummary);
+  return `${input.label}:\n${message}`;
 }
 
 /**

@@ -250,7 +250,7 @@ Instances collaborate through the tools their profiles allow. Ordinary workers c
 - `send_to_instance` — send a message to another fleet instance; supports structured metadata (`request_kind`, `requires_reply`, `correlation_id`, `task_summary`)
 - `start_instance` — wake a stopped instance so you can message it
 - `create_instance` — create a new instance with a topic (directory optional; auto-created at `~/.agend/workspaces/<name>` if omitted); supports `branch` for git worktree isolation
-- `delete_instance` — remove an instance and its topic
+- `delete_instance` — remove an instance and, by default, its own topic (`delete_topic: false` keeps it; on Discord the topic is a channel, so its history goes too; the General topic is never deleted; the result says whether the platform deleted the topic, and if not, why)
 - `replace_instance` — replace an instance with a fresh one (handover + delete + create)
 - `describe_instance` — get detailed info about a specific instance (description, model, last activity)
 - `set_display_name` — set the name shown in messages, activity logs and other agents' views
@@ -422,7 +422,16 @@ gets you nothing extra and opts you out of every future refinement.
 `standard` (30 tools) and `minimal` (9) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9, and `list_stickers` and `preview_stickers` in 2.1.12.
 **`general` is an identity, not a profile you can pick**: it is assigned to
 instances with `general_topic: true`, and writing it by hand fails validation —
-two ways of being a General would eventually disagree.
+two ways of being a General would eventually disagree. Because General is
+AgEnD's administrator, the `general` profile includes every orchestration tool
+(`ORCHESTRATION`: creating, deleting, replacing, starting, stopping, pausing,
+waking and restarting instances; deploying and tearing down templates; team
+CRUD; `update_instance_config` and `update_fleet_defaults`;
+`migrate_kiro_instance` and `reconcile_kiro_instance`; `update_decision`; and
+`get_web_settings` / `set_web_settings`), while leaving repository leases and
+raw host-config/log inspection (`checkout_repo`, `release_repo`,
+`get_fleet_config`, `get_instance_logs`, `list_deployments`, `validate_config`)
+out of its default tool list.
 
 `delegate_task` is deliberately a worker tool. It creates nothing, destroys
 nothing, and needs a target that already exists, so an ordinary agent can hand
@@ -750,7 +759,7 @@ kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a 
 
 `kiro_engine_status` (a read-only tool every profile except `minimal` has) shows, for each kiro instance and ClassicBot channel, its `kiro_ui`, the engine flags its next launch would use or why kiro-cli would refuse it, its recorded launches (kiro-cli and AgEnD versions per change), its V3 session and its credential profile. It reads what AgEnD recorded at the last launch and never runs kiro-cli itself. It also shows `engine_floor` (see below).
 
-**Moving from classic to the TUI (`migrate_kiro_instance`, #2598).** kiro-cli 3.0 drops the classic engine. Setting `kiro_ui: tui` by hand would start the instance on an empty TUI conversation. `migrate_kiro_instance` (coordinator and full tool sets) moves one fleet instance and carries its conversation:
+**Moving from classic to the TUI (`migrate_kiro_instance`, #2598).** kiro-cli 3.0 drops the classic engine. Setting `kiro_ui: tui` by hand would start the instance on an empty TUI conversation. `migrate_kiro_instance` (general, coordinator and full tool sets) moves one fleet instance and carries its conversation:
 - It posts a **Move it / Cancel** prompt in General, and nothing changes until a fleet admin confirms it there.
 - On the confirm, AgEnD sets `kiro_ui: tui`, arms the instance's classic conversation as its TUI conversation and restarts a running instance. The first TUI launch resumes that conversation once, which makes kiro copy the whole history into its session files, and records it as the instance's own.
 - The outcome is posted in General and in the instance's topic.
@@ -903,6 +912,8 @@ When a user replies to a previous message in Telegram, Discord or the web chat (
 ## delete_instance team cleanup
 
 When an instance is deleted via `delete_instance`, it is automatically removed from all teams it belongs to. No manual team membership cleanup is needed.
+
+Its own chat topic is deleted too, through the instance's own bot, unless `delete_topic: false` is passed. The dashboard's Delete does the same. `topic_deleted` is true only when Telegram or Discord confirmed it; otherwise `topic_reason` says why the topic stayed (for example, the Telegram bot lacks the Manage Topics admin right, or the topic was already gone). The instance is deleted either way.
 
 ## HTML Chat Export
 
@@ -1400,6 +1411,7 @@ Since then:
     - where at least half did, the card recommends `backend_options.claude-code.prompt_cache_ttl: "1h"` instead of keep-warm. That opt-in passes `CLAUDE_CODE_PROMPT_CACHE_TTL` on the instance's next start; unset, the CLI chooses.
   - **`get_cache_report`:** agents read the same report. General, coordinators and full-profile instances see every instance; any other instance sees its own row.
 - **Fleet → Usage** (`/ui/fleet/usage`, 2.2.5, #2122): each agent's tokens, requests, delivered messages and API-equivalent at list price (not money spent), by agent, backend, model, credential profile or team, over today / 7 days / this month / all / custom days, with a daily trend, a calendar heatmap that tells idle days from days not collected, and a CSV of the same rows. Claude Code, Codex, Grok, Muse, OpenCode and Antigravity are measured (Codex's and Muse's cache writes read "not reported"; Muse is not priced); Kiro, which records no token counts, is estimated from text size and marked "estimated"; the other CLIs are listed with the reason. Collected from fleet start and kept 400 days; agents read it with `get_usage_report`. The ◔ usage dialog links to it.
+  - **Speed** (#3066): each model's output tokens per second of its own generation, tool time excluded, as a Speed column and a "Speed by model" card with how many requests were timed and, from 30 timed responses, the p10–p90 spread; `get_usage_report` gives it as `speed`. Claude Code responses are timed from their first token (when they open with a thinking block, whose duration marks it) to their last block. Codex responses are timed over their response window, from the item clocks codex 0.147 and later writes: the first model item's start to the last one's end, minus hosted web-search time. The rollout does not mark the first token, so this window may include some of the wait for it. The method follows [tokdash](https://github.com/JingbiaoMei/tokdash) (MIT, Jingbiao Mei; see `THIRD_PARTY_NOTICES.md`).
 - **New agent** (2.2.5, #2074): a button at the end of the sidebar's list opens the Create agent dialog. With the sidebar collapsed, a **+** beside ☰ does the same; on a phone it is in the menu drawer. Only a session that may create agents sees it.
 - **Filtering the sidebar** (2.2.5, #1936): the instance you have open stays on top under **Current**, matching or not.
 - **Names that open an instance** (2.2.5, #1990): in a chat's cross-instance status lines the other instance's name opens its chat, and in a prompt card the instance's name opens its View. An agent's or a person's message never gets such a link.

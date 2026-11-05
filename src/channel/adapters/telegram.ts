@@ -1605,10 +1605,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async deleteTopic(topicId: number | string): Promise<void> {
-    // Telegram's General topic is the forum root, not a deletable topic.
-    if (String(topicId) === "1") return;
+    // Telegram's General topic is the forum root, not a deletable topic. Refused, never "done": a caller reports what
+    // happened (delete_instance's topic_deleted), and silence would read as a deletion.
+    if (String(topicId) === "1") throw new Error("the General topic is never deleted");
     const chatId = this.getChatId();
-    if (!chatId) return;
+    if (!chatId) throw new Error("the Telegram bot is not connected to its group");
     await this.bot.api.raw.deleteForumTopic({ chat_id: Number(chatId), message_thread_id: Number(topicId) });
   }
 

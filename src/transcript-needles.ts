@@ -66,7 +66,14 @@ function claudeAbsorbedText(value: Record<string, any>): string | null {
 }
 
 export function transcriptDeltaDeliveryMarker(rawDelta: string, backend: string, deliveryId: string): TranscriptMarkerKind | null {
-  const marker = ENTER_MARKER(deliveryId);
+  return transcriptDeltaMarkerKind(rawDelta, backend, ENTER_MARKER(deliveryId));
+}
+
+/**
+ * #3030: the same reading for any unique leading marker — a delivery's `[agend-delivery-id:…]` or a person's
+ * `[agend-human-id:…]` (both lead the pasted body).
+ */
+export function transcriptDeltaMarkerKind(rawDelta: string, backend: string, marker: string): TranscriptMarkerKind | null {
   let queued = false;
   let absorbed = false;
   for (const line of rawDelta.split(/\r?\n/)) {
@@ -124,7 +131,7 @@ function withoutPasteWrapper(text: string, backend: string): string {
  * What a transcript proof looks for: an enveloped delivery's id marker (a delivery id string), or — for a raw paste,
  * which carries no envelope (a silent schedule, a system command) — its exact text (#1647).
  */
-export type TranscriptNeedle = string | { readonly rawText: string };
+export type TranscriptNeedle = string | { readonly rawText: string } | { readonly marker: string };
 
 /**
  * #1647: a raw paste's exact text as a user entry of the CLI's own — a message that, whitespace aside and without Claude
@@ -150,6 +157,7 @@ export function transcriptDeltaHasRawText(rawDelta: string, backend: string, raw
 /** One needle against one delta: the marker's kind, `user` for a raw paste's own entry, or null. */
 export function transcriptDeltaNeedle(rawDelta: string, backend: string, needle: TranscriptNeedle): TranscriptMarkerKind | null {
   if (typeof needle === "string") return transcriptDeltaDeliveryMarker(rawDelta, backend, needle);
+  if ("marker" in needle) return transcriptDeltaMarkerKind(rawDelta, backend, needle.marker);
   return transcriptDeltaHasRawText(rawDelta, backend, needle.rawText) ? "user" : null;
 }
 
