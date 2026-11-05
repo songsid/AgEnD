@@ -73,6 +73,22 @@ export function inspectStateSet(home: string, set: HubStateSet): HubSetState {
 const COMPONENT = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /**
+ * Transaction callbacks are synchronous. A thenable result is refused (inside the transaction, so it rolls back), and
+ * its eventual settlement is observed so a late rejection is never an unhandled rejection.
+ */
+function requireSynchronous<T>(result: T, what: string): T {
+  if (result && (typeof result === "object" || typeof result === "function") && typeof (result as { then?: unknown }).then === "function") {
+    try {
+      (result as unknown as PromiseLike<unknown>).then(undefined, () => undefined);
+    } catch {
+      /* a hostile thenable: refused below either way */
+    }
+    throw new Error(`Hub ${what} must be synchronous: no awaits inside it`);
+  }
+  return result;
+}
+
+/**
  * Open (or, with `create`, first create) a private SQLite database at `rel` under `home`. The file is created 0600
  * before SQLite touches it; its directory is a private, owned, non-symlink chain (S1's privatePath). WAL/SHM files are
  * checked to be private after the journal mode is set.
@@ -132,7 +148,7 @@ export function applyHubMigrations(db: Database.Database, migrations: readonly H
         throw new HubStateError("hub-state-newer", `the Hub database has ${m.component} v${current}; this version knows v${m.version}`);
       }
       if (current === m.version) continue;
-      m.up(db);
+      requireSynchronous(m.up(db) as unknown, `migration ${m.component}`);
       db.prepare("INSERT INTO hub_schema(component, version) VALUES(?, ?) ON CONFLICT(component) DO UPDATE SET version = excluded.version").run(m.component, m.version);
     }
   }).immediate();
@@ -179,11 +195,7 @@ export function createHubUnitOfWork(db: Database.Database): HubUnitOfWork {
         const tx: HubTx = Object.freeze({ id: randomUUID() });
         liveTx.set(tx, db);
         try {
-          const result = work(tx);
-          if (result && typeof (result as { then?: unknown }).then === "function") {
-            throw new Error("Hub transactions are synchronous: no awaits inside atomic()");
-          }
-          return result;
+          return requireSynchronous(work(tx), "transaction (atomic)");
         } finally {
           liveTx.delete(tx);
         }

@@ -133,6 +133,33 @@ function settingsOf(cfg: Record<string, unknown>): ServerSettings {
   };
 }
 
+/**
+ * Ordered cleanup that never pretends: steps run in reverse creation order, each at most once successfully; the first
+ * failure stops the run (no dependency is closed under a component whose own close is unconfirmed) and is reported as
+ * an unconfirmed shutdown. Running it again retries from the failed step.
+ */
+class Teardown {
+  private readonly steps: { name: string; run: () => unknown; done: boolean }[] = [];
+  add(name: string, run: () => unknown): void {
+    this.steps.push({ name, run, done: false });
+  }
+  get pending(): boolean {
+    return this.steps.some((s) => !s.done);
+  }
+  async run(): Promise<void> {
+    for (let i = this.steps.length - 1; i >= 0; i -= 1) {
+      const step = this.steps[i]!;
+      if (step.done) continue;
+      try {
+        await step.run();
+        step.done = true;
+      } catch (err) {
+        throw new HubStateError("service-unavailable", `Hub cleanup of ${step.name} is unconfirmed: ${(err as Error).message}`);
+      }
+    }
+  }
+}
+
 /** Create a private file with random bytes, exclusively (never overwrite). */
 function createKeyFile(home: string, rel: string): void {
   ensurePrivateDirectory(home, rel.slice(0, rel.lastIndexOf("/")));
@@ -152,18 +179,27 @@ function readKeyFile(home: string, rel: string): Buffer {
 
 export function createHubServerFactory(options: HubServerFactoryOptions) {
   const now = options.now ?? Date.now;
-  return async function createServer(cfg: Record<string, unknown>, current: () => boolean): Promise<HubMountedService> {
-    const cleanup: (() => unknown)[] = [];
-    const undo = async () => {
-      for (const step of cleanup.reverse()) {
-        try {
-          await step();
-        } catch {
-          /* best effort; the hold is already reported */
-        }
+  /** A previous attempt whose cleanup was not confirmed: nothing new is created until it is, and Off/Stop drain it. */
+  let unconfirmed: Teardown | null = null;
+  const createServer = async function createServer(cfg: Record<string, unknown>, current: () => boolean): Promise<HubMountedService> {
+    if (unconfirmed) {
+      try {
+        await unconfirmed.run();
+        unconfirmed = null;
+      } catch (err) {
+        options.report("service-unavailable", (err as Error).message);
+        throw err;
       }
-    };
-    const fail = (err: unknown): never => {
+    }
+    const teardown = new Teardown();
+    const fail = async (err: unknown): Promise<never> => {
+      try {
+        await teardown.run();
+      } catch (cleanupErr) {
+        unconfirmed = teardown; // kept: retried before any replacement is created
+        options.report("service-unavailable", (cleanupErr as Error).message);
+        throw cleanupErr;
+      }
       const code: HubHoldCode = err instanceof HubStateError ? err.code : "service-unavailable";
       options.report(code, (err as Error).message);
       throw err;
@@ -177,7 +213,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       // 1. The private state set: new (create all), complete (open), anything else refused.
       const state = inspectStateSet(options.home, SERVER_SET);
       const db: Database.Database = openHubDatabase(options.home, SERVER_SET.database, { create: state === "new" });
-      cleanup.push(() => db.close());
+      teardown.add("the Hub database", () => db.close());
       const floor = new HubFileVersionFloor(options.home, SERVER_SET.floors[0]!);
       if (state === "new") {
         floor.initialize();
@@ -202,7 +238,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       }
       const { bindPasswordRef: _ref, ...directoryConfig } = settings.directory;
       const directory = options.createDirectory(directoryConfig as HubDirectoryConfig, { bindPassword });
-      cleanup.push(() => (directory as { close?: () => Promise<void> }).close?.());
+      teardown.add("the directory client", () => (directory as { close?: () => Promise<void> }).close?.());
 
       // 4. S1 identity, pairing and the member listener; S3's HTTP entry in between (it supplies receive).
       const identity = readHubIdentity({ home: options.home, memberOrigin: settings.memberOrigin });
@@ -234,7 +270,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey) },
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),
       });
-      cleanup.push(() => http.close());
+      teardown.add("the Hub web service (S3)", () => http.close());
       memberServer = new HubServer({
         home: options.home,
         hubId: settings.hubId,
@@ -245,7 +281,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         receive: (frame, link) => http.receive(frame, link),
         hold: (fleetId, code) => options.log("warn", "Hub member link held", { fleetId, code }),
       });
-      cleanup.push(() => memberServer?.close());
+      teardown.add("the member listener", () => memberServer?.close());
 
       // 5. The Hub web listener: every request goes to S3's handler (it serves /hub/v1/*, the Hub-only shell and its
       //    assets without fleet cookies); anything it declines is 404. The personal fleet listener is untouched.
@@ -269,6 +305,11 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
               { key: readPrivateFile(options.home, settings.webTls.keyFile), cert: readPrivateFile(options.home, settings.webTls.certificateFile), minVersion: "TLSv1.2" },
               serveWeb,
             );
+            teardown.add("the Hub web listener", () => {
+              if (web !== server) return;
+              server.closeAllConnections?.();
+              return new Promise<void>((resolve, reject) => server.close((err) => (err && (err as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING" ? reject(err) : resolve())));
+            });
             web = server;
             await new Promise<void>((resolve, reject) => {
               server.once("error", reject);
@@ -286,6 +327,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
               }
             }, options.retentionEveryMs ?? 86_400_000);
             retentionTimer.unref();
+            const timer = retentionTimer;
+            teardown.add("the retention timer", () => clearInterval(timer));
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;
@@ -298,14 +341,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         },
         async close() {
           fenced = true;
-          if (retentionTimer) clearInterval(retentionTimer);
-          const server = web;
-          web = null;
-          if (server) {
-            server.closeAllConnections?.();
-            await new Promise<void>((resolve) => server.close(() => resolve()));
-          }
-          await undo();
+          // Rejects while any step is unconfirmed; S1 keeps ownership and retries this close before any replacement.
+          await teardown.run();
         },
         /** Test and diagnostics seams (not part of HubMountedService). */
         webAddress: () => web?.address() ?? null,
@@ -313,10 +350,22 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         audit,
       } as HubMountedService & Record<string, unknown>;
     } catch (err) {
-      await undo();
       return fail(err);
     }
   };
+  /**
+   * The factory owns what a failed creation could not clean up (HubMount never received a service for it). The runtime
+   * calls drain() when the Hub is switched off and when it stops: it retries that cleanup and rejects while it still
+   * fails, so the leftover stays owned and reported instead of being forgotten.
+   */
+  const drain = async (): Promise<void> => {
+    if (!unconfirmed) return;
+    await unconfirmed.run();
+    unconfirmed = null;
+  };
+  return Object.assign(createServer, { drain });
 }
+
+export type HubServerFactory = ReturnType<typeof createHubServerFactory>;
 
 export type { HubPerson };
