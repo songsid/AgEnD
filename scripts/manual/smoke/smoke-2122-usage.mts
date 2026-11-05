@@ -229,7 +229,7 @@ if (process.env.DEBUG) {
 // ── #3066 §3, a stale tab (quality rule 3): a page that loaded one side of the change and fetches the other later.
 // The renderer and its strings are one module (fleet-usage.js); the only other file is app.css. Both mixes must render
 // every row, with no page error and no overflow: the new table on the old sheet (marks unstyled but legible), and the
-// old table on the new sheet (its pills, as before). SKEW_OLD_CSS / SKEW_OLD_JS: the previous release's app.css and
+// old table on the new sheet (as it was: pills before §3, "—" after; never §2's Speed column). SKEW_OLD_CSS / SKEW_OLD_JS: the previous release's app.css and
 // fleet-usage.js as files (e.g. `git show origin/main:src/ui/shared/app.css > old-app.css`); unset: the case is skipped. ──
 if (process.env.SKEW_OLD_CSS && process.env.SKEW_OLD_JS) {
   const oldCss = readFileSync(process.env.SKEW_OLD_CSS, "utf8"), oldJs = readFileSync(process.env.SKEW_OLD_JS, "utf8");
@@ -241,7 +241,9 @@ if (process.env.SKEW_OLD_CSS && process.env.SKEW_OLD_JS) {
     const names = await p.page.$$eval(".us-row .us-name .mono", (e: any[]) => e.map(x => x.textContent));
     check([A, B, C, X].every(n => names.includes(n!)), `skew ${mix}: every row (${names.join(", ")})`);
     if (mix === "new-js-old-css") check((await p.page.$$(".us-row .us-none")).length >= 2 && (await p.page.$$(".us-flags")).length === 0, `skew ${mix}: the new table (— with reasons, no pills)`);
-    else check((await p.page.$$(".us-flags")).length >= 1, `skew ${mix}: the old table (its pills)`);
+    // The old table, whichever release it is: before §3 its pills, from §3 on its "—" cells; never §2's Speed column.
+    else check(((await p.page.$$(".us-flags")).length >= 1 || (await p.page.$$(".us-row .us-none")).length >= 2) && (await p.page.$$(".us-speed")).length === 0
+      && !(await p.page.$$eval("th", (ths: any[]) => ths.some(t => t.textContent === "Speed"))), `skew ${mix}: the old table (its pills or "—", no Speed column)`);
     check(await noOverflow(p.page), `skew ${mix}: no horizontal overflow`);
     check(pageErrors(p.errors).length === 0, `skew ${mix}: no page errors (${pageErrors(p.errors).join(" | ")})`);
     await p.page.screenshot({ path: shotPath(SMOKE, desk, `skew-${mix}`), fullPage: true });

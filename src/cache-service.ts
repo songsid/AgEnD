@@ -19,7 +19,7 @@
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { scanJsonl } from "./cache-scan.js";
-import { addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
+import { addSpeed, addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, carryPruned, foldHours, pruneDays, readDays, readLifetime, writeDays, type UsageDays, type UsageLifetime } from "./usage-rollup.js";
@@ -553,6 +553,9 @@ export class CacheService {
         if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, pf(t.t)); return; }
         const turn = cur.kind === "claude" ? claudeLine(line, cur) : cur.kind === "muse" ? museLine(line, cur) : codexLine(line, cur);
         if (turn) addTurn(ledger, cur, turn, cutoff, pf(turn.t));
+        // #3066 §2: responses timed by these lines (their last block seen) — counted into their hour, under the profile in
+        // effect at their time (§1d), then dropped.
+        if (cur.speeds?.length) { for (const s of cur.speeds) addSpeed(ledger, cur, s, cutoff, pf(s.t)); delete cur.speeds; }
       });
       if (res.replaced) { this.followFromEnd(ledger, path, cur, res.ino, res.size); return { read: 0, behind: 0 }; }
       cur.offset = res.offset;
