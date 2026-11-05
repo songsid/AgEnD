@@ -1583,6 +1583,60 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .drawer { border-top: 1px solid var(--border); padding-top: var(--s-2); }
 .drawer > summary { cursor: pointer; color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); padding: var(--s-1) 0; }
 .drawer-body { display: flex; flex-direction: column; gap: var(--s-3); padding-top: var(--s-2); }
+/* Settings → Shared agent settings (settings-shared.js): two cards, a field's header (name, marks, ⓘ, usage pill), segmented
+   choices, switches, the grey line of explanation and the amber note that shows only once a field is edited. */
+.s-shared { display: flex; flex-direction: column; gap: var(--s-3); }
+.s-group h3 { font-size: var(--fs-md); letter-spacing: 0; text-transform: none; color: var(--text); }
+.s-group > div:first-child { display: flex; flex-direction: column; gap: 2px; }
+.s-wide { grid-column: 1 / -1; min-width: 0; }
+.s-lab { display: flex; align-items: center; gap: var(--s-2); min-height: 22px; min-width: 0; }
+.s-lab label, .s-lab .s-lab-text { color: var(--text); font-weight: var(--fw-semibold); word-break: keep-all; }
+.tag.s-host { background: var(--accent-dim); color: var(--accent); }
+.s-tipwrap { position: relative; display: inline-flex; flex: none; }
+.s-tipwrap.s-use { margin-left: auto; flex: 0 1 auto; min-width: 0; }
+.s-use .s-tipbtn { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.s-tipbtn { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: help; text-align: inherit; }
+.s-i .s-tipbtn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: var(--r-full); border: 1px solid var(--border-strong);
+  color: var(--text-3); font: var(--fw-semibold) 11px/1 var(--font-ui); }
+.s-i .s-tipbtn:hover, .s-i .s-tipbtn:focus-visible { color: var(--accent); border-color: var(--accent); }
+.s-use .s-tipbtn { font-size: 11px; font-weight: var(--fw-regular); color: var(--text-3); padding: 1px var(--s-2); border-radius: var(--r-full); border: 1px solid var(--border); white-space: nowrap; }
+.s-use .s-tipbtn:hover, .s-use .s-tipbtn:focus-visible { color: var(--text); border-color: var(--text-3); }
+.s-tipbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.s-tipbody { position: absolute; z-index: 60; top: calc(100% + 6px); left: var(--tip-dx, 0); width: max-content; max-width: 290px; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); border: 1px solid var(--border-strong);
+  background: var(--surface-2); color: var(--text); font-size: var(--fs-xs); line-height: 1.5; box-shadow: var(--shadow-2); pointer-events: none; text-transform: none; letter-spacing: 0; font-weight: var(--fw-regular); }
+.s-tipbody[hidden] { display: none; }
+.s-tipbody.above { top: auto; bottom: calc(100% + 6px); }
+.s-shared .field { container-type: inline-size; }
+.s-shared .field:has(.s-tipbody:not([hidden])) { position: relative; z-index: 5; }
+/* A field in a narrow column has no room for its name, marks and usage pill on one line: the pill goes under them, in every field of the column alike (the controls below stay level). */
+@container (max-width: 360px) {
+  .s-lab { flex-wrap: wrap; row-gap: 2px; }
+  .s-tipwrap.s-use { margin-left: 0; flex-basis: 100%; }
+}
+.s-info { display: flex; gap: var(--s-2); margin: 0; padding: 6px var(--s-3); border-radius: var(--r-sm); background: var(--surface-2); color: var(--text-2); font-size: var(--fs-xs); }
+.s-note { display: flex; flex-direction: column; gap: 2px; padding: 6px var(--s-3); border-radius: var(--r-sm); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-xs); }
+.s-note p { margin: 0; }
+.s-seg { display: flex; padding: 2px; border: 1px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg); }
+.s-seg-opt { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; min-height: 34px; padding: 0 var(--s-2); border-radius: 6px;
+  color: var(--text-2); font-size: var(--fs-sm); text-align: center; cursor: pointer; }
+.s-seg-opt:hover { color: var(--text); }
+.s-seg-opt.on { background: var(--accent-fill); color: var(--on-accent); font-weight: var(--fw-semibold); }
+.field .s-seg-opt input[type="radio"], .field .s-switch input[type="checkbox"] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.s-seg-opt:has(input:focus-visible), .s-switch:has(input:focus-visible) .s-track { outline: 2px solid var(--focus); outline-offset: 1px; }
+.s-switch { position: relative; display: inline-flex; align-items: center; gap: var(--s-2); min-height: 34px; cursor: pointer; }
+.field .s-switch input[type="checkbox"] { inset: 0 auto 0 0; width: 38px; }
+.s-track { position: relative; flex: none; width: 38px; height: 22px; border-radius: var(--r-full); background: var(--surface-2); border: 1px solid var(--border-strong); transition: background 0.15s; }
+.s-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-2); transition: left 0.15s, background 0.15s; }
+.s-switch input:checked + .s-track { background: var(--ok); border-color: var(--ok); }
+.s-switch input:checked + .s-track::after { left: 18px; background: #fff; }
+.s-switch-text { font-size: var(--fs-sm); color: var(--text-2); }
+.s-checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-1) var(--s-4); }
+.s-checks .check { align-items: flex-start; }
+.s-checks .check input { margin-top: 3px; }
+.s-hang-row { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
+.field .s-hang-row input[type="number"] { width: 72px; }
+.s-unit { font-size: var(--fs-sm); color: var(--text-2); }
+@media (max-width: 620px) { .s-checks { grid-template-columns: minmax(0, 1fr); } }
 .chips-box { display: flex; flex-direction: column; gap: var(--s-1); }
 .chips { display: flex; flex-wrap: wrap; gap: var(--s-1); }
 .chip { display: inline-flex; align-items: center; gap: 2px; padding: 2px 2px 2px var(--s-2); border-radius: var(--r-full); background: var(--surface-2); font-size: var(--fs-xs); }
@@ -3322,16 +3376,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings [data-section="agent-defaults"] .s-general { width: 100%; margin: 0 auto; }
 .p-settings [data-section="agent-defaults"] .s-general > .card { margin: 0; }
 .p-settings :is([data-section="agent-defaults"], [data-section="chat"]) .s-general .grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.p-settings .s-defaults-collaboration .grid2 > .field:first-child { grid-column: 1 / -1; }
-.p-settings .s-defaults-permissions .dash-perms { margin: 0; padding: 0; }
-.p-settings .s-defaults-permissions .dash-perms > .check { padding: 10px 0; border-bottom: 1px solid var(--border); }
-.p-settings .s-defaults-permissions .dash-perms > .check:last-child { border-bottom: 0; }
-.p-settings .s-defaults-workspace .card { padding: 0; border: 0; margin: 0; background: transparent; }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer { padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > summary { padding: 16px 20px; font-weight: var(--fw-semibold); }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body { display: flex; flex-direction: column; padding: 0 20px 20px; gap: 20px; }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body > .card { padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-.p-settings [data-section="agent-defaults"] .s-general > .drawer > .drawer-body > .card + .card { padding-top: 20px; border-top: 1px solid var(--border); }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer { padding: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > summary { padding: 16px 20px; font-weight: var(--fw-semibold); }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > .drawer-body { display: flex; flex-direction: column; padding: 0 20px 20px; gap: 20px; }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > .drawer-body > .card { padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.p-settings [data-section="agent-defaults"] .s-general > .s-shared > .drawer > .drawer-body > .card + .card { padding-top: 20px; border-top: 1px solid var(--border); }
 .p-settings .s-classic-defaults-card { margin: 0; }
 @container settings-page (min-width: 620px) {
   .p-settings .s-agent-runtime { grid-column: 1; }
@@ -3630,21 +3679,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* Defaults share the content width, with collaboration controls in a single column. */
 .p-settings .s-defaults-layout { width: 100%; margin: 0 auto; min-width: 0; }
 .p-settings .s-defaults-layout > .s-general { gap: 16px; }
-.p-settings .s-defaults-layout > .s-general > .card { gap: 12px; padding: 20px; }
+.p-settings .s-defaults-layout > .s-general > .s-shared { gap: 16px; }
+.p-settings .s-defaults-layout > .s-general > .s-shared > .card { gap: 12px; padding: 20px; }
 .p-settings .s-defaults-layout .grid2 { gap: 12px 16px; align-items: start; }
-.p-settings .s-defaults-model .grid2 > .field:first-child { grid-column: 1; grid-row: 1; }
-.p-settings .s-defaults-model .grid2 > .field:nth-child(2) { grid-column: 2; grid-row: 1 / span 2; }
-.p-settings .s-defaults-model .grid2 > .field:nth-child(3) { grid-column: 1; grid-row: 2; }
-.p-settings .s-defaults-layout .s-defaults-collaboration > .grid2 { grid-template-columns: minmax(0, 1fr); }
-.p-settings .s-defaults-collaboration .grid2 > .field { grid-column: 1; }
-.p-settings .s-defaults-collaboration .grid2 > .field:first-child { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 6px 16px; align-items: center; }
-.p-settings .s-defaults-collaboration .grid2 > .field:first-child > .note { grid-column: 2; }
-.p-settings .s-defaults-collaboration .grid2 > .field:not(:first-child) { display: grid; grid-template-columns: 210px 38px minmax(0, 1fr); gap: 6px 16px; align-items: center; }
-.p-settings .s-defaults-toggle-label { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-medium); }
-.p-settings .s-defaults-toggle-help { display: grid; gap: 4px; min-width: 0; }
-.p-settings .s-defaults-explanation { font-size: var(--fs-xs); color: var(--text-3); }
-.p-settings .s-defaults-explanation > summary { cursor: pointer; }
-.p-settings .s-defaults-explanation[open] > summary { margin-bottom: 6px; }
 
 /* Connection cards use compact real empty states instead of a pair of oversized generic placeholders. */
 .p-settings .s-chat-connections, .p-settings .s-chat-classic { margin: 0; padding: 24px; gap: 18px; border: 1px solid var(--border); }
@@ -3682,11 +3719,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-settings .s-color-settings { padding-left: 0; }
   .p-settings .s-look-toggle-line { grid-template-columns: minmax(0, 1fr) 38px; }
   .p-settings .s-look-toggle-line > .sub { grid-column: 1 / -1; }
-  .p-settings .s-defaults-model .grid2 > .field, .p-settings .s-defaults-model .grid2 > .field:nth-child(2), .p-settings .s-defaults-model .grid2 > .field:nth-child(3) { grid-column: 1; grid-row: auto; }
-  .p-settings .s-defaults-collaboration .grid2 > .field:first-child, .p-settings .s-defaults-collaboration .grid2 > .field:not(:first-child) { grid-template-columns: minmax(0, 1fr); }
-  .p-settings .s-defaults-collaboration .grid2 > .field:first-child > .note { grid-column: 1; }
-  .p-settings .s-defaults-collaboration .grid2 > .field:not(:first-child) { grid-template-columns: minmax(0, 1fr) 38px; }
-  .p-settings .s-defaults-toggle-help { grid-column: 1 / -1; }
   .p-settings .s-chat-connections, .p-settings .s-chat-classic, .p-settings [data-section="chat"] .s-web-chat { padding: 18px; }
 }
 
