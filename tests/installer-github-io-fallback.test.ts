@@ -9,12 +9,14 @@
  *   - the resume after a restart (the RunOnce script, for real in pwsh) — it survives a block;
  *   - the network check: either source is enough, and both are named.
  */
-import { execFile, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { InstallerPsBatch, hasPwsh, INERT_PWSH_CHILD } from "./support/installer-ps-batch.js";
+import { extractPsFunctions, extractPsAssignments } from "./support/installer-ps-extract.js";
 
 const ROOT = join(import.meta.dirname, "..");
 const BOOTSTRAP = join(ROOT, "website", "public", "install.ps1");
@@ -24,7 +26,9 @@ const MARK = join(ROOT, "scripts", "ci", "mark-installer-live.sh");
 const RAW = "https://raw.githubusercontent.com/songsid/AgEnD/installer-live/website/public";
 const PAGES = "https://songsid.github.io/AgEnD";
 const code = (f: string) => readFileSync(f, "utf8").split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
-const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
+const pwsh = hasPwsh;
+const installerText = readFileSync(INSTALLER,"utf8");
+const batch = new InstallerPsBatch({installer: extractPsFunctions(installerText) + "\n" + extractPsAssignments(installerText,["NET_WINDOWS","NET_WSL","NET_ALTERNATES","RESUME_KEY","RESUME_NAME"]), fullBootstrap:readFileSync(BOOTSTRAP,"utf8"), empty:""});
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 function scratch(): string { const d = mkdtempSync(join(tmpdir(), "agend-ghio-")); dirs.push(d); return d; }
@@ -142,19 +146,11 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
   });
 });
 
-/** The installer's functions and script-level tables, then the body, run as a script file. */
-function ps(body: string, env: Record<string, string> = {}): string {
-  const dir = scratch(), script = join(dir, "t.ps1");
-  writeFileSync(script, `$ErrorActionPreference = 'Stop'
-$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.AssignmentStatementAst] -and $_.Left.Extent.Text -match '^\\$(NET_|RESUME_)' }) { . ([scriptblock]::Create($a.Extent.Text)) }
-function Write-InstallLog { param($m) }
-${body}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", script], { encoding: "utf8", timeout: 90_000, env: { ...process.env, TMPDIR: dir, ...env } });
-  if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
-  return r.stdout + r.stderr;
+/** Sliced helper template, once per file; only case tails compile afterwards. */
+async function ps(body: string, env: Record<string, string> = {}): Promise<string> {
+  const dir = scratch();
+  return batch.run("installer", `function Write-InstallLog { param($m) }
+${body}`, { env: {TMPDIR:dir,...env} });
 }
 
 describe("install.sh inside WSL: github.io first, then the deployed raw copy (its bash, run for real)", () => {
@@ -176,27 +172,27 @@ exit 6
     chmodSync(join(bin, "curl"), 0o755);
     return bin;
   }
-  const scriptFor = (version: string) => ps(`Write-Output (Get-AgendInstallCommand '${version}')`).trim();
+  const scriptFor = async (version: string) => (await ps(`Write-Output (Get-AgendInstallCommand '${version}')`)).trim();
   const runIt = (script: string, bin: string) => spawnSync("bash", ["-c", `set -e\n${script}\necho AFTER`], { encoding: "utf8", env: { PATH: `${bin}:/usr/bin:/bin` } });
 
-  it.skipIf(!pwsh)("github.io works: it alone is fetched and run", () => {
-    const dir = scratch(), r = runIt(scriptFor("beta"), fakeCurl(dir, "ok"));
+  it.skipIf(!pwsh)("github.io works: it alone is fetched and run", async () => {
+    const dir = scratch(), r = runIt((await scriptFor("beta")), fakeCurl(dir, "ok"));
     expect(r.stdout).toContain("RAN from=pages version=beta");
     expect(r.stdout).toContain("AFTER");
     expect(readFileSync(join(dir, "calls"), "utf8").trim().split("\n")).toEqual([`${PAGES}/install.sh`]);
   });
-  it.skipIf(!pwsh)("github.io blocked, or answering a block page: the raw copy is run, and only that", () => {
+  it.skipIf(!pwsh)("github.io blocked, or answering a block page: the raw copy is run, and only that", async () => {
     // urlpage: a block page that echoes the requested URL — it contains "AgEnD", and still is not the script (Prism).
     for (const pages of ["blocked", "page", "urlpage"] as const) {
-      const dir = scratch(), r = runIt(scriptFor(""), fakeCurl(dir, pages));
+      const dir = scratch(), r = runIt((await scriptFor("")), fakeCurl(dir, pages));
       expect(r.stdout, pages).toContain("RAN from=raw version=none");
       expect(r.stdout, pages).not.toContain("Blocked by policy");
       expect(r.stderr, pages).toContain(`could not fetch ${PAGES}/install.sh, trying the next source`);
       expect(readFileSync(join(dir, "calls"), "utf8").trim().split("\n"), pages).toEqual([`${PAGES}/install.sh`, `${RAW}/install.sh`]);
     }
   });
-  it.skipIf(!pwsh)("both unreachable: nothing runs, the step fails (set -e stops what follows), both named", () => {
-    const dir = scratch(), r = runIt(scriptFor(""), fakeCurl(dir, "blocked", "blocked"));
+  it.skipIf(!pwsh)("both unreachable: nothing runs, the step fails (set -e stops what follows), both named", async () => {
+    const dir = scratch(), r = runIt((await scriptFor("")), fakeCurl(dir, "blocked", "blocked"));
     expect(r.status).not.toBe(0);
     expect(r.stdout).not.toContain("RAN");
     expect(r.stdout).not.toContain("AFTER");
@@ -208,7 +204,7 @@ exit 6
   });
 });
 
-describe.skipIf(!pwsh)("with pwsh: the one-liner and the resume over a blocked github.io", { timeout: 120_000 }, () => {
+describe.skipIf(!pwsh)("with pwsh: the one-liner and the resume over a blocked github.io", () => {
   const stub = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from([
     "param([switch]$Force, [string]$InstallVersion)", "function Check-Admin { $true }",
     "@{ version = $InstallVersion } | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath $env:STUB_OUT", "exit 0", "#" + "x".repeat(1200), "",
@@ -229,15 +225,14 @@ describe.skipIf(!pwsh)("with pwsh: the one-liner and the resume over a blocked g
     port = (server.address() as { port: number }).port;
   });
   afterAll(() => { server?.close(); });
-  const run = (args: string[], env: Record<string, string>, input = "") => new Promise<{ stdout: string; stderr: string }>(resolve => {
-    const child = execFile("pwsh", args, { encoding: "utf8", timeout: 60_000, env: { ...process.env, ...env } }, (_e, stdout, stderr) => resolve({ stdout, stderr }));
-    child.stdin?.end(input);
-  });
+
   async function oneLiner(first: string, fallback: string | null) {
     const dir = scratch(), out = join(dir, "stub.json");
     hits.length = 0;
-    const r = await run(["-NoProfile", "-ExecutionPolicy", "ByPass", "-c", `irm http://127.0.0.1:${port}/good/install.ps1 -ErrorAction SilentlyContinue | Out-Null; Get-Content -Raw '${BOOTSTRAP}' | iex; Write-Output "SESSION-GOES-ON"`],
-      { AGEND_INSTALL_BASE: first, ...(fallback ? { AGEND_INSTALL_FALLBACK_BASE: fallback } : {}), AGEND_INSTALL_SHELL: "pwsh", STUB_OUT: out, TMPDIR: dir, AGEND_VERSION: "beta" });
+    const stdout = await batch.run("empty", `${INERT_PWSH_CHILD}
+Invoke-BatchScript 'fullBootstrap'
+Write-Output 'SESSION-GOES-ON'`, {env:{ AGEND_INSTALL_BASE:first,...(fallback?{AGEND_INSTALL_FALLBACK_BASE:fallback}:{}),AGEND_INSTALL_SHELL:"pwsh",STUB_OUT:out,TMPDIR:dir,AGEND_VERSION:"beta"}});
+    const r = {stdout,stderr:""};
     return { r, ran: existsSync(out) ? JSON.parse(readFileSync(out, "utf8").replace(/^﻿/, "")) : null, hits: hits.filter(h => h.endsWith("install-agend.ps1")) };
   }
 
@@ -267,9 +262,10 @@ describe.skipIf(!pwsh)("with pwsh: the one-liner and the resume over a blocked g
   /** The resume script as Register-ResumeAtLogon writes it, for these sources, then run as RunOnce would. */
   async function resume(sources: string[], version: string) {
     const dir = scratch(), file = join(dir, "install-resume.ps1"), out = join(dir, "resumed.txt");
-    ps(`[IO.File]::WriteAllText('${file}', (Get-InstallResumeScript '${version}' @(${sources.map(s => `'${s}'`).join(", ")})), (New-Object Text.UTF8Encoding $false))`);
+    (await ps(`[IO.File]::WriteAllText('${file}', (Get-InstallResumeScript '${version}' @(${sources.map(s => `'${s}'`).join(", ")})), (New-Object Text.UTF8Encoding $false))`));
     hits.length = 0;
-    const r = await run(["-NoProfile", "-ExecutionPolicy", "ByPass", "-File", file], { RESUME_OUT: out }, "\n");
+    const stdout = await batch.run("empty", `& (Compile-Batch ([IO.File]::ReadAllText('${file}')))`, {env:{RESUME_OUT:out}, input:"\n"});
+    const r = {stdout,stderr:""};
     return { r, file, resumed: existsSync(out) ? readFileSync(out, "utf8").trim() : null, hits: hits.filter(h => h.endsWith("install.ps1")) };
   }
   it("resume after a restart: github.io first when it works", async () => {
@@ -291,9 +287,9 @@ describe.skipIf(!pwsh)("with pwsh: the one-liner and the resume over a blocked g
     expect([...readFileSync(file)].every(b => b < 0x80)).toBe(true);
   });
 
-  it("RunOnce runs the written script (a short line), with github.io then the raw tag by default; Clear removes both", () => {
+  it("RunOnce runs the written script (a short line), with github.io then the raw tag by default; Clear removes both", async () => {
     const lad = scratch();
-    const out = ps(`
+    const out = (await ps(`
 $RESUME_KEY='scratch'; $AgendInstallVersion='beta'
 function Test-Path { return $true }
 function Set-ItemProperty { param($Path, $Name, $Value) Write-Host ('REGISTER=' + $Value) }
@@ -303,7 +299,7 @@ $f = Get-InstallResumeScriptPath
 Write-Output ('FILE=' + $f)
 Write-Output ('BODY=' + ([IO.File]::ReadAllText($f) -replace "\`r?\`n", ' | '))
 Clear-ResumeAtLogon
-Write-Output ('GONE=' + -not (Test-Path -LiteralPath $f -PathType Leaf -ErrorAction SilentlyContinue))`, { LOCALAPPDATA: lad });
+Write-Output ('GONE=' + -not (Test-Path -LiteralPath $f -PathType Leaf -ErrorAction SilentlyContinue))`, { LOCALAPPDATA: lad }));
     const file = join(lad, "AgEnD", "install-resume.ps1");
     expect(out).toContain("OK=True");
     const reg = /REGISTER=(.*)/.exec(out)![1];
@@ -315,42 +311,42 @@ Write-Output ('GONE=' + -not (Test-Path -LiteralPath $f -PathType Leaf -ErrorAct
     expect(body).toContain(`foreach ($u in @('${PAGES}/install.ps1', '${RAW}/install.ps1'))`);
     expect(out).toContain("UNREGISTER=AgEnDInstallResume");
     expect(existsSync(file)).toBe(false);
-    expect(() => ps("Get-InstallResumeScript 'beta;bad'")).toThrow(/AGEND_VERSION must be/);
+    await expect(ps("Get-InstallResumeScript 'beta;bad'")).rejects.toThrow(/AGEND_VERSION must be/);
   });
 });
 
 describe.skipIf(!pwsh)("the network check: either source is enough, and both are named", () => {
-  const check = (pages: string | null, raw: string | null, where = "windows") => ps(`
+  const check = async (pages: string | null, raw: string | null, where = "windows") => (await ps(`
 function Get-WindowsProxy { param($h) Write-Host "PROXY-FOR=$h"; return $null }
 function Read-Host { param($p) Write-Host "ASKED: $p"; return '' }
 function NR($h, $req, $kind) { return @{ Host = $h; Why = 'why'; Required = $req; Kind = $kind } }
 $k1 = ${pages ? `'${pages}'` : "$null"}; $k2 = ${raw ? `'${raw}'` : "$null"}
-Write-Output ('OK=' + (Resolve-NetResults @((NR 'songsid.github.io' $true $k1), (NR 'raw.githubusercontent.com' ${where === "wsl" ? "$true" : "$false"} $k2)) '${where}'))`);
-  it("github.io blocked, raw reachable: passes without asking, saying it uses raw", () => {
+Write-Output ('OK=' + (Resolve-NetResults @((NR 'songsid.github.io' $true $k1), (NR 'raw.githubusercontent.com' ${where === "wsl" ? "$true" : "$false"} $k2)) '${where}'))`));
+  it("github.io blocked, raw reachable: passes without asking, saying it uses raw", async () => {
     for (const where of ["windows", "wsl"]) {
-      const out = check("tls", null, where);
+      const out = (await check("tls", null, where));
       expect(out).toContain("連不上 songsid.github.io（why）：HTTPS 憑證不被信任（常見於公司會檢查加密連線的網路）；改用 raw.githubusercontent.com（同一份已部署的安裝程式），可以繼續");
       expect(out).not.toContain("ASKED:");
       expect(out).toContain("PROXY-FOR=songsid.github.io");
       expect(out).toContain("OK=True");
     }
   });
-  it("both blocked: an error naming both, then the question (default no)", () => {
-    const out = check("tls", "refused");
+  it("both blocked: an error naming both, then the question (default no)", async () => {
+    const out = (await check("tls", "refused"));
     expect(out).toContain("[X] Windows 連不上 songsid.github.io（why）：HTTPS 憑證不被信任（常見於公司會檢查加密連線的網路）；備用來源 raw.githubusercontent.com 也連不上");
     expect(out).toContain("ASKED:");
     expect(out).toContain("OK=False");
   });
-  it("github.io reachable: unchanged", () => {
-    expect(check(null, null)).toContain("Windows 的網路連線正常");
-    expect(check(null, "dns")).toContain("OK=True");
+  it("github.io reachable: unchanged", async () => {
+    expect((await check(null, null))).toContain("Windows 的網路連線正常");
+    expect((await check(null, "dns"))).toContain("OK=True");
   });
 });
 
 describe.skipIf(!pwsh)("the WSL check says how WSL connects and tells a blocked site from an inspected one", () => {
-  it("the probe reports the path (proxy host:port only, never credentials); 35 is a cut handshake, 60 an untrusted certificate", () => {
+  it("the probe reports the path (proxy host:port only, never credentials); 35 is a cut handshake, 60 an untrusted certificate", async () => {
     const dir = scratch();
-    const script = ps(`Write-Output (Get-WslNetScript $NET_WSL)`);
+    const script = (await ps(`Write-Output (Get-WslNetScript $NET_WSL)`));
     const bin = join(dir, "bin"); mkdirSync(bin);
     writeFileSync(join(bin, "curl"), `#!/bin/sh\nfor a in "$@"; do case $a in https://*) h=$a;; esac; done\ncase $h in *songsid.github.io*) exit 35;; *registry.npmjs.org*) exit 60;; esac\nexit 0\n`);
     chmodSync(join(bin, "curl"), 0o755);
@@ -360,14 +356,14 @@ describe.skipIf(!pwsh)("the WSL check says how WSL connects and tells a blocked 
     expect(viaProxy).toContain("NET_PATH|proxy.corp:8080");
     expect(viaProxy).not.toContain("s3cret");
     writeFileSync(join(dir, "out.txt"), viaProxy);
-    const out = ps(`
+    const out = (await ps(`
 function Read-Host { param($p) Write-Host "ASKED: $p"; return '' }
 function Get-WindowsProxy { return $null }
 $script:logged = @(); function Write-InstallLog { param($m) $script:logged += $m }
 $r = ConvertFrom-WslNetOutput ([IO.File]::ReadAllText('${join(dir, "out.txt")}')) $NET_WSL
 foreach ($x in $r | Where-Object { $_.Host -in 'songsid.github.io', 'registry.npmjs.org' }) { Write-Output ('K=' + $x.Host + '|' + $x.Kind + '|' + $x.Code + '|' + $x.Via) }
 Write-Output ('OK=' + (Resolve-NetResults $r 'wsl'))
-Write-Output ('LOG=' + ($script:logged -join ' / '))`);
+Write-Output ('LOG=' + ($script:logged -join ' / '))`));
     expect(out).toContain("K=songsid.github.io|handshake|35|proxy.corp:8080");
     expect(out).toContain("K=registry.npmjs.org|tls|60|proxy.corp:8080");
     expect(out).toContain("WSL 裡 經過 proxy proxy.corp:8080 連線");
