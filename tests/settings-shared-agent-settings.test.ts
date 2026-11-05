@@ -18,6 +18,8 @@ let p: AppPage;
 let raw: any;
 /** What /api/fleet says about each agent (default: running). */
 let status: Record<string, string> = {};
+/** What /api/fleet does: answers (up), does not (down), or answers with no agents (empty). */
+let fleetMode: "up" | "down" | "empty" = "up";
 const sent: Array<{ method: string; path: string; body: any }> = [];
 const realFetch = (globalThis as any).fetch;
 /** Seven agents: artist sets its own model, tester its own tool set, ops its own dashboard permissions; General is one too. */
@@ -32,6 +34,7 @@ const fleet = () => ({
 });
 const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
   const method = init.method ?? "GET";
+  if (path === "/api/fleet" && fleetMode === "down") return { ok: false, status: 503, json: async () => ({}) };
   if (method !== "GET") sent.push({ method, path, body: init.body ? JSON.parse(init.body) : null });
   const body = (() => {
     if (method !== "GET") return { ok: true };
@@ -41,6 +44,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
     if (path === "/api/settings/connections") return [{ id: "main", token_present: true }];
     if (path === "/api/settings/status-emojis") return { keys: [], builtins: { discord: {}, telegram: {} }, telegram_allowed: [], suggestions: [] };
     if (path === "/api/settings/pending") return [];
+    if (path === "/api/fleet" && fleetMode === "empty") return { version: "2.4.0", instances: [] };
     if (path === "/api/fleet") return { version: "2.4.0", instances: Object.keys(raw.instances).map((name) => ({ name, status: status[name] ?? "running" })) };
     if (path.startsWith("/ui/")) return {};
     return [];
@@ -55,7 +59,7 @@ beforeAll(async () => {
 });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
 beforeEach(async () => {
-  raw = fleet(); status = {}; sent.length = 0; (globalThis as any).confirm = () => true;
+  raw = fleet(); status = {}; fleetMode = "up"; sent.length = 0; (globalThis as any).confirm = () => true;
   (await import("/assets/app-i18n.js")).setLang("en");
 });
 afterEach(async () => { await p.unmount(); });
@@ -223,6 +227,16 @@ describe("who uses a field", () => {
     expect(pillTip("g-dash")).toContain("ops, writer");
   });
 
+  it("a key set to null is not the agent's own either (the daemon takes the default for it)", async () => {
+    raw = fleet();
+    raw.instances["dev-t1"].model = null;
+    raw.instances["reviewer-t2"].hang_detector = { enabled: null, timeout_minutes: null };
+    await open();
+    expect(pill("g-model")).toBe("5/6 in use · artist custom");     // dev's null model does not count
+    await check($("#g-hang-on"), false);
+    expect(notes("g-hang-on")).toEqual(["↻ After saving, 6 agent(s) restart"]);   // reviewer's nulls leave it reached
+  });
+
   it("with several overrides it says how many, and the hover lists them", async () => {
     raw = fleet(); raw.instances["dev-t1"].model = "x"; raw.instances["ops-t5"].model = "y";
     await open();
@@ -296,6 +310,24 @@ describe("what an edit costs", () => {
     await choose("g-model", "gpt-5.5-mini");
     expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) use the new value; the 3 running restart (artist set their own — not affected)"]);
     expect(bar()).toBe("↻ 5 agent(s) use the new value; the 3 running restart");
+  });
+
+  it("a crashed agent is restarted too (the fleet restarts a crash-looping daemon); a paused or stopped one is not", async () => {
+    status = { "dev-t1": "crashed", "reviewer-t2": "paused", "tester-t4": "stopped" };
+    await open();
+    await choose("g-model", "gpt-5.5-mini");                       // reaches 5: dev (crashed), reviewer (paused), tester (stopped), ops, general
+    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) use the new value; the 3 running restart (artist set their own — not affected)"]);
+    expect(bar()).toBe("↻ 5 agent(s) use the new value; the 3 running restart");
+  });
+
+  it("when the agents' state cannot be read it does not claim that none is running", async () => {
+    for (const mode of ["down", "empty"] as const) {
+      fleetMode = mode;
+      await open();
+      await choose("g-model", "gpt-5.5-mini");
+      expect([mode, notes("g-model"), bar()]).toEqual([mode, ["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"], "↻ 5 agent(s) restart after saving"]);
+      await p.unmount();
+    }
   });
 
   it("with no agent running, nothing restarts — and it does not say so", async () => {
