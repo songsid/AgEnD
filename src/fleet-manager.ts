@@ -11909,6 +11909,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       switch (msg.type) {
         case "fleet_decision_create": {
+          const supersedes = this.decisionSupersedes("ipc-typed", instanceName, payload.supersedes);
+          if ("error" in supersedes) { ipc.send({ type: "fleet_decision_response", fleetRequestId, error: supersedes.error }); return; }
           // Prune expired decisions on create
           db.pruneExpiredDecisions();
           result = db.createDecision({
@@ -11919,7 +11921,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             tags: payload.tags as string[] | undefined,
             ttl_days: payload.ttl_days as number | undefined,
             created_by: instanceName,
-            supersedes: payload.supersedes as string | undefined,
+            supersedes: supersedes.id,
           });
           break;
         }
@@ -12112,6 +12114,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * `post_decision` with `supersedes` changes a decision someone else may have recorded (it stops being active): the
+   * same permission as `update_decision`, asked through the same live check (tool set + dashboard switches), on both
+   * create paths. An empty or absent value supersedes nothing and needs nothing; anything else must be an id.
+   */
+  private decisionSupersedes(sink: ToolSink, instanceName: string, value: unknown): { id: string | undefined } | { error: string } {
+    if (value === undefined || value === null || value === "") return { id: undefined };
+    if (typeof value !== "string") return { error: "supersedes must be a decision id" };
+    const permitted = this.checkToolPermission(sink, instanceName, "update_decision");
+    if (!permitted.allowed) return { error: `Superseding a decision needs update_decision. ${permitted.message}` };
+    return { id: value };
+  }
+
   async handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
@@ -12126,16 +12141,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const content = asStr(args.content);
         if (!title || !content) return { error: "title and content are required" };
         const scope = args.scope === "fleet" ? "fleet" : "project";
-        return db.createDecision({
-          project_root: projectRoot,
-          scope,
-          title,
-          content,
-          tags: asStrArr(args.tags),
-          ttl_days: asNum(args.ttl_days),
-          supersedes: asStr(args.supersedes),
-          created_by: instance,
-        });
+        const supersedes = this.decisionSupersedes("agent-endpoint", instance, args.supersedes);
+        if ("error" in supersedes) return { error: supersedes.error };
+        try {
+          return db.createDecision({
+            project_root: projectRoot,
+            scope,
+            title,
+            content,
+            tags: asStrArr(args.tags),
+            ttl_days: asNum(args.ttl_days),
+            supersedes: supersedes.id,
+            created_by: instance,
+          });
+        } catch (err) {
+          return { error: (err as Error).message };                   // a refused predecessor: nothing was inserted
+        }
       }
       // #2152: titles by default (agend-agent decision-list); one decision's full text by id (decision-get <id>).
       // The CLI sends include_archived (snake case, as the MCP tool): both spellings are read.
