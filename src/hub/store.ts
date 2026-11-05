@@ -62,7 +62,7 @@ export class HubTransportStore {
         this.options.floor.raise(state.revision);
         this.db.prepare("UPDATE hub_transport_state SET state=? WHERE singleton=1").run(JSON.stringify(state));
         return result;
-      })();
+      }).immediate();
     } catch (error) {
       // Validation/refusal may occur before any write. An advanced floor or failed writer freezes every future read.
       if (writing) this.failed = true;

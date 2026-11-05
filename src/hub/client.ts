@@ -32,6 +32,10 @@ export class HubMemberClient implements HubMemberTransport {
   private view: HubMemberLink | null = null;
   private pending = new Map<string, Pending>();
   private deferred: HubServerFrame[] = [];
+  private deferredBytes = 0;
+  private workTail = Promise.resolve();
+  private queuedWork = 0;
+  private queuedWorkBytes = 0;
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private attempt = 0;
@@ -53,7 +57,7 @@ export class HubMemberClient implements HubMemberTransport {
   }
   private connect(): void {
     if (!this.current() || !this.profile || this.connecting) return;
-    this.connecting = true; this.ready = false; this.deferred = [];
+    this.connecting = true; this.ready = false; this.deferred = []; this.deferredBytes = 0;
     const profile = this.profile, handshake = randomUUID();
     const endpoint = new URL(HUB_PATHS.connect, profile.hub.memberOrigin); endpoint.protocol = "wss:";
     const agent = pinnedHubAgent(profile.hub, () => this.current());
@@ -79,7 +83,7 @@ export class HubMemberClient implements HubMemberTransport {
           clearTimeout(handshakeTimer);
           if (code === "replaced" || code === "revoked") this.stopped = true;
           if (this.link !== link) return;
-          this.link = null; this.view = null; this.ready = false; this.deferred = [];
+          this.link = null; this.view = null; this.ready = false; this.deferred = []; this.deferredBytes = 0;
           this.rejectPending(); this.options.hold(code); this.firstReject?.(new HubAuthorizationError("unavailable", code)); this.firstReject = this.firstResolve = null; this.reconnect();
         } });
       this.link = link;
@@ -104,9 +108,9 @@ export class HubMemberClient implements HubMemberTransport {
       void this.options.reconcile(view).then(async () => {
         if (!view.current()) return;
         this.ready = true; this.attempt = 0; this.firstResolve?.(); this.firstReject = this.firstResolve = null;
-        const queued = this.deferred.splice(0);
+        const queued = this.deferred.splice(0); this.deferredBytes = 0;
         for (const waiting of queued) { if (!view.current()) return; await this.dispatch(waiting, view); }
-      }).catch(() => link.end());
+      }).catch(error => link.end(error instanceof HubProtocolError && error.code === "backpressure" ? "backpressure" : "unavailable"));
       return;
     }
     const view = this.view;
@@ -118,8 +122,9 @@ export class HubMemberClient implements HubMemberTransport {
     }
     if (frame.type === "authorize.result" || frame.type === "reconcile") throw new HubProtocolError();
     if (!this.ready) {
-      if (this.deferred.length >= HUB_LIMITS.pending) throw new HubProtocolError("backpressure");
-      this.deferred.push(frame); return;
+      const bytes = Buffer.byteLength(JSON.stringify(frame));
+      if (this.deferred.length + this.queuedWork >= HUB_LIMITS.pending || this.deferredBytes + this.queuedWorkBytes + bytes > HUB_LIMITS.sendQueue) throw new HubProtocolError("backpressure");
+      this.deferredBytes += bytes; this.deferred.push(frame); return;
     }
     await this.dispatch(frame, view);
   }
@@ -128,6 +133,19 @@ export class HubMemberClient implements HubMemberTransport {
     if (frame.type === "revoke") {
       if (frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       this.revocation = frame.payload.revocationVersion;
+    }
+    if (frame.type === "question") {
+      // Admission awaits authorize() on this very socket. Queue work separately so its reply (or a
+      // revocation) can be processed; never block the control receive queue behind external work.
+      const bytes = Buffer.byteLength(JSON.stringify(frame));
+      if (this.queuedWork + this.deferred.length >= HUB_LIMITS.pending || this.queuedWorkBytes + this.deferredBytes + bytes > HUB_LIMITS.sendQueue) throw new HubProtocolError("backpressure");
+      this.queuedWork++; this.queuedWorkBytes += bytes;
+      this.workTail = this.workTail.then(async () => {
+        if (view.current()) await this.options.receive(frame, view);
+      }).catch(error => {
+        if (view.current()) this.link?.end(error instanceof HubProtocolError && error.code === "backpressure" ? "backpressure" : "unavailable");
+      }).finally(() => { this.queuedWork--; this.queuedWorkBytes -= bytes; });
+      return;
     }
     await this.options.receive(frame, view);
   }

@@ -1,5 +1,6 @@
 import { t } from "./locale.js";
 /** Windows runtime adapter behind the shared Instance HTTP surface. */
+import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { readBoundedWebBody } from "./web-body.js";
@@ -82,10 +83,16 @@ export function handleNativeInstanceRequest(req:IncomingMessage,res:ServerRespon
     }
     if(method==="DELETE" && !operation){
       z.object({}).strict().parse(body);
-      if (isNativePaneInstance(ctx.fleetConfig?.instances[name])) await ctx.removeInstance(name,authorizeExplicitInstanceRemoval("dashboard-confirmed"),settingsRequestExecution(req));
+      // #3054 for Windows agents too (the user's decision on the main → alpha sync, F1, hmsg-94628faa): the agent, then
+      // its own topic through its own bot, said truthfully — the same removal as delete_instance and the ordinary Delete.
+      if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
+      const execution=settingsRequestExecution(req);
+      let topic:TopicDeleteOutcome|null=null;
+      if (ctx.removeInstanceAndTopic) topic=await ctx.removeInstanceAndTopic(name,authorizeExplicitInstanceRemoval("dashboard-confirmed"),{deleteTopic:true,...(execution?{execution}:{})});
+      else if (isNativePaneInstance(ctx.fleetConfig?.instances[name])) await ctx.removeInstance(name,authorizeExplicitInstanceRemoval("dashboard-confirmed"),execution);
       else await service.remove(name,allowed);
       if(!allowed()){json(res,403,{error:"Authorization expired"});return;}
-      ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,{deleted:name});return;
+      ctx.emitSseEvent("status",ctx.getUiStatus());json(res,200,{deleted:name,...topicFields(name,topic)});return;
     }
     if(method==="POST" && operation==="messages"){
       if(isNativePaneInstance(ctx.fleetConfig?.instances[name]))throw Error("Use the shared chat endpoint for a persistent Windows pane");

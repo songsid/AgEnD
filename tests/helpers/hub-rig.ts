@@ -21,7 +21,7 @@ export async function hubRig() {
   const memberHome = join(root, "member"); mkdirSync(memberHome, { mode: 0o700 }); const port = await freeHubPort();
   const memberOrigin = `https://127.0.0.1:${port}`, identity = await provisionHubIdentity({ home: root, memberOrigin });
   const owner = { realm: "directory", objectId: randomUUID() }; let eligible = true, enabled = true, floor = 0;
-  const directory: HubDirectory = { signIn: async () => ({ ok: false, reason: "invalid-credentials" }), checkEligibility: async () => eligible ? { eligible: true, person: { key: owner, login: "owner", dn: "private", groups: [] } } : { eligible: false, reason: "disabled" }, close: async () => {} };
+  const directory: HubDirectory = { realm: "directory", signIn: async () => ({ ok: false, reason: "invalid-credentials" }), checkEligibility: async () => eligible ? { eligible: true, person: { key: owner, login: "owner", dn: "private", groups: [] } } : { eligible: false, reason: "disabled" }, close: async () => {} };
   const ctx: HubRequestContext = { requestId: randomUUID(), current: async () => ({ kind: "directory", person: owner, sessionId: randomUUID() }), requirePerson: async () => owner, requireAdmin: async () => ({ kind: "local-host", sessionId: randomUUID(), directoryBinding: owner }) };
   const db = new Database(join(root, "test.sqlite")); chmodSync(join(root, "test.sqlite"), 0o600); db.exec("CREATE TABLE audit (value TEXT)"); migrateHubTransportStore(db);
   const store = new HubTransportStore(db, { floor: { read: () => floor, raise: n => { floor = n; } }, appendAudit: (value, tx) => { tx.prepare("INSERT INTO audit VALUES(?)").run(JSON.stringify(value)); } }); store.initialize();

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
+import { createPrivateKey, randomUUID } from "node:crypto";
 import { createServer } from "node:https";
 import { readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import { hubRig } from "./helpers/hub-rig.js";
 import { HubMemberProfileStore } from "../src/hub/profile.js";
 import { HubMemberClient } from "../src/hub/client.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
+import { signAsker, sha256 } from "../src/hub/identity.js";
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [];
 afterEach(async () => { for (const r of rigs.splice(0)) await r.close(); });
 async function rig() { const r = await hubRig(); rigs.push(r); return r; }
@@ -45,4 +46,54 @@ describe("Hub real local TLS/WSS transport with inert directory and execution", 
     const r = await rig(); await r.pair(); r.disableOwner(); const c = r.client(); await expect(c.value.start()).rejects.toThrow();
     expect(r.received).toEqual([]);
   });
+});
+
+it("admits a received question with an online authorization reply on the same link without blocking its receive queue", async () => {
+  const r = await rig(), profile = await r.pair(); let admitted = 0;
+  const c = r.client(async frame => {
+    if (frame.type !== "question") return;
+    await c.value.authorize({ messageId: frame.payload.identity.messageId, operationId: randomUUID(), exposureRevision: 1, phase: "admit" });
+    admitted++;
+  });
+  await c.value.start();
+  const text = "inert external question", now = Date.now();
+  const identity = signAsker({ v: 1, issuer: r.identity.hubId, issuerKeyId: r.identity.issuerKeyId, messageId: randomUUID(), asker: r.owner, owner: r.owner,
+    destinationFleetId: profile.fleetId, exposureId: randomUUID(), roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1,
+    exposureRevision: 1, revocationVersion: 0, contentDigest: sha256(text), issuedAt: now, expiresAt: now + 60_000,
+    nonce: "a".repeat(64) }, createPrivateKey(readFileSync(join(r.root, "hub/keys/issuer-key.pem"))));
+  await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: c.state.link!.linkEpoch, payload: { text, identity } });
+  await vi.waitFor(() => expect(admitted).toBe(1), { timeout: 1_000 });
+  expect(r.received.filter(f => f.type === "authorize.request")).toHaveLength(1);
+});
+
+it("does not resend an authorization operation when its reply is lost across a reconnect", async () => {
+  const r = await rig(), profile = await r.pair(), c = r.client(); await c.value.start();
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); r.setServerGate(() => gate);
+  const request = { messageId: randomUUID(), operationId: randomUUID(), exposureRevision: 1, phase: "begin" as const };
+  const pending = c.value.authorize(request), refusal = expect(pending).rejects.toThrow();
+  try {
+    await vi.waitFor(() => expect(r.received.filter(f => f.type === "authorize.request")).toHaveLength(1));
+    const old = c.state.link!;
+    (r.server as any).connections.get(profile.fleetId).link.ws.terminate(); await refusal;
+    r.setServerGate(); release();
+    await vi.waitFor(() => expect(c.state.syncs).toBe(2)); expect(old.current()).toBe(false);
+    expect(r.received.filter(f => f.type === "authorize.request")).toHaveLength(1);
+    expect(await c.value.authorize({ ...request, operationId: randomUUID() })).toHaveProperty("phase", "begin");
+    expect(r.received.filter(f => f.type === "authorize.request")).toHaveLength(2);
+  } finally { r.setServerGate(); release(); }
+});
+it("bounds queued external work and discards retired-link work without replaying it after reconnect", async () => {
+  const r = await rig(), profile = await r.pair(); let started = 0, release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const c = r.client(async frame => { if (frame.type === "question") { started++; await gate; } }); await c.value.start();
+  const now = Date.now(), text = "bounded inert question";
+  const identity = signAsker({ v: 1, issuer: r.identity.hubId, issuerKeyId: r.identity.issuerKeyId, messageId: randomUUID(), asker: r.owner, owner: r.owner,
+    destinationFleetId: profile.fleetId, exposureId: randomUUID(), roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1,
+    exposureRevision: 1, revocationVersion: 0, contentDigest: sha256(text), issuedAt: now, expiresAt: now + 60_000,
+    nonce: "b".repeat(64) }, createPrivateKey(readFileSync(join(r.root, "hub/keys/issuer-key.pem"))));
+  try {
+    for (let i = 0; i < 33; i++) await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: c.state.link!.linkEpoch, payload: { text, identity } });
+    await vi.waitFor(() => expect(c.state.holds).toContain("backpressure")); expect(started).toBe(1);
+    release(); await vi.waitFor(() => expect(c.state.syncs).toBe(2)); expect(started).toBe(1);
+  } finally { release(); }
 });

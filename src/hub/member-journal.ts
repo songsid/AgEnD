@@ -101,12 +101,17 @@ export class HubMemberJournal {
     const m = this.meta(); row.stage = stage; row.at = this.now(); row.sequence = m.receipt_sequence + 1;
     this.db.prepare("UPDATE hub_member_meta SET receipt_sequence=? WHERE singleton=1").run(row.sequence); this.write(row); return this.receipt(row)!;
   }
+  private authorize(row: Row, request: HubAuthorizationRequest, lease: HubAuthorizationLease, fence: { current(): boolean; linkEpoch: number; revocationVersion: number }): { question: HubQuestion; answer?: HubAnswer } {
+    if (!fence.current() || request.messageId !== row.messageId || fence.revocationVersion < this.meta().revocation_version) throw new HubProtocolError("stale");
+    const data = this.decrypt(row);
+    if (request.exposureRevision !== data.question.identity.exposureRevision) throw new HubProtocolError("stale");
+    verifyLease(lease, request, { ...fence, now: this.now() }); return data;
+  }
   commitAdmission(question: HubQuestion, request: HubAuthorizationRequest, lease: HubAuthorizationLease, fence: { current(): boolean; linkEpoch: number; revocationVersion: number }): HubReceipt {
     return this.change(() => {
       const row = this.row(question.identity.messageId);
       if (!row || row.contextDigest !== questionContextDigest(question) || row.operationId !== request.operationId || request.phase !== "admit" || !fence.current()) throw new HubProtocolError("stale");
-      if (fence.revocationVersion < this.meta().revocation_version) throw new HubProtocolError("stale");
-      verifyLease(lease, request, { ...fence, now: this.now() });
+      this.authorize(row, request, lease, fence);
       if (row.stage !== "preparing") return this.receipt(row)!;
       const existing = this.options.outbox.lookup(this.db, question, this.source(row.messageId));
       if (existing) throw new HubProtocolError("uncertain"); // a source row without our atomic receipt is inconsistent, never re-admitted
@@ -118,8 +123,7 @@ export class HubMemberJournal {
   markInputIntent(messageId: string, request: HubAuthorizationRequest, lease: HubAuthorizationLease, fence: { current(): boolean; linkEpoch: number; revocationVersion: number }): void {
     this.change(() => {
       const row = this.row(messageId); if (!row || row.stage !== "queued" || row.inputIntent || request.phase !== "begin" || request.messageId !== messageId || !fence.current()) throw new HubProtocolError("uncertain");
-      if (fence.revocationVersion < this.meta().revocation_version) throw new HubProtocolError("stale");
-      verifyLease(lease, request, { ...fence, now: this.now() }); row.inputIntent = request.operationId; this.write(row);
+      this.authorize(row, request, lease, fence); row.inputIntent = request.operationId; this.write(row);
     });
   }
   recordEvidence(messageId: string, stage: "delivered" | "consumed" | "uncertain"): HubReceipt {
@@ -135,8 +139,11 @@ export class HubMemberJournal {
     return this.change(() => {
       const row = this.row(a.messageId); if (!row || !row.inputIntent || !["consumed", "uncertain", "answered"].includes(row.stage) || !fence.current()
         || request.phase !== "release-answer" || request.answer.answerId !== a.answerId || request.answer.contentDigest !== a.contentDigest || sha256(a.text) !== a.contentDigest) throw new HubProtocolError("denied");
-      verifyLease(a.releaseLease, request, { ...fence, now: this.now() }); const data = this.decrypt(row);
-      if (data.answer && (data.answer.answerId !== a.answerId || data.answer.contentDigest !== a.contentDigest)) throw new HubProtocolError("conflict");
+      const data = this.authorize(row, request, a.releaseLease, fence);
+      if (data.answer) {
+        if (data.answer.answerId !== a.answerId || data.answer.contentDigest !== a.contentDigest) throw new HubProtocolError("conflict");
+        return this.receipt(row)!;
+      }
       data.answer = a; row.payload = this.encrypt(data, row); return this.advance(row, "answered");
     });
   }

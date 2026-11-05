@@ -13502,7 +13502,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const destinationOf = (n: string): string | null => {
       const cfg = this.fleetConfig?.instances?.[n];
       if (!cfg || cfg.topic_id == null || cfg.topic_id === "") return null;
-      return this.destinationFor(this.getInstanceAdapterId(n), cfg.topic_id);
+      return this.destinationFor(this.topicAdapterIdOf(n), cfg.topic_id);
     };
     const generalDestinations = (): Set<string> => {
       const out = new Set<string>();
@@ -13520,9 +13520,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { instances: this.fleetConfig?.instances, destinationOf, generalDestinations };
   }
 
+  /**
+   * The bot an agent's configured topic is on (#3105 review, Prism P1): a fleet.yaml agent's `channel_id` (else the
+   * primary connection) whatever its runtime — a per-turn Windows agent has no execution adapter
+   * (getInstanceAdapterId), yet its topic is still on that bot, and must be counted as an owner and deleted through it.
+   * Topic planning and ownership only; execution routing is getInstanceAdapterId's and unchanged.
+   */
+  private topicAdapterIdOf(name: string): string | undefined {
+    const cfg = this.fleetConfig?.instances?.[name];
+    if (cfg) return cfg.channel_id ?? this.getPrimaryAdapterId();
+    return this.getInstanceAdapterId(name);
+  }
+
   /** What deleting `name`'s topic would act on: its own bot only — a bot that is not there is never substituted. */
   private planInstanceTopicDelete(name: string): InstanceTopicPlan {
-    const adapterId = this.getInstanceAdapterId(name);
+    const adapterId = this.topicAdapterIdOf(name);
     return planInstanceTopicDelete({ name, adapterId, adapter: this.instanceTopicAdapter(adapterId), ...this.topicOwnership() });
   }
 

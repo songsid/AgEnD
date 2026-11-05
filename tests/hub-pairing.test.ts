@@ -14,7 +14,7 @@ function fixture() {
     if (auditFailed) throw Error("full"); tx.prepare("INSERT INTO audit VALUES(?)").run(JSON.stringify(event));
   } }); store.initialize();
   const owner = { realm: "directory", objectId: randomUUID() };
-  const directory: HubDirectory = { signIn: vi.fn(), checkEligibility: vi.fn(async () => ({ eligible: true as const, person: { key: owner, login: "owner", dn: "private", groups: [] } })), close: vi.fn() };
+  const directory: HubDirectory = { realm: "directory", signIn: vi.fn(), checkEligibility: vi.fn(async () => ({ eligible: true as const, person: { key: owner, login: "owner", dn: "private", groups: [] } })), close: vi.fn() };
   const ctx: HubRequestContext = { requestId: randomUUID(), current: vi.fn(), requirePerson: vi.fn(async () => owner), requireAdmin: vi.fn(async () => ({ kind: "local-host" as const, sessionId: randomUUID(), directoryBinding: owner })) };
   const identity = { hubId: randomUUID(), memberOrigin: "https://hub.test:9443", webOrigin: "https://hub.test:9444", spkiSha256: "a".repeat(64), issuerPublicKey: "public" };
   const fence = vi.fn(), service = new HubPairingService({ store, directory, identity, enabled: () => enabled, now: () => now, fenceFleet: fence });
