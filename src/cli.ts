@@ -20,6 +20,7 @@ checkNodeVersion();
 
 import { Command, Option } from "commander";
 import { registerBuildInfoCommand } from "./build-provenance-cli.js";
+import { launchdServiceDomain } from "./launchd-service-domain.js";
 import { registerBugReportCommand } from "./bug-report-cli.js";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
@@ -309,6 +310,20 @@ fleet
           return;
         }
       } catch { /* fleet not running, fall through */ }
+    }
+
+    // A service manager owns stop/start sequencing. Before this replacement claims any shared fleet state,
+    // an enabled Hub waits for the previous process and both old listener endpoints to close.
+    if ((loadRawFleetConfig(FLEET_CONFIG_PATH).hub as { enabled?: unknown } | undefined)?.enabled === true) {
+      const [{ waitForHubServiceStart, HubServiceStartError }, { ht }] = await Promise.all([
+        import("./hub/service-start.js"), import("./hub/init/text.js"),
+      ]);
+      console.log(ht("service_drain_wait"));
+      try { await waitForHubServiceStart(DATA_DIR); }
+      catch (err) {
+        const reason = err instanceof HubServiceStartError ? err.reason : "config";
+        console.error(ht(`service_drain_${reason}`)); process.exitCode = 1; return;
+      }
     }
 
     // Claim the singleton before constructing FleetManager: its constructor and
@@ -1395,7 +1410,7 @@ program
       const systemUnit = getSystemServicePath();
       const ownService = systemUnit ? null : getServicePath();
       const manager = systemUnit ? { kind: "systemd" as const, unit: "agend", user: false, unitPath: systemUnit }
-        : ownService && detectPlatform() === "macos" ? { kind: "launchd" as const, label: "com.agend.fleet", plistPath: ownService, domain: `gui/${process.getuid?.() ?? 501}` }
+        : ownService && detectPlatform() === "macos" ? { kind: "launchd" as const, label: "com.agend.fleet", plistPath: ownService, domain: launchdServiceDomain() }
         : ownService ? { kind: "systemd" as const, unit: "com.agend.fleet", user: true, unitPath: ownService }
         : { kind: "detached" as const };
       // C6: a failure before the fleet runs the new install puts the previous package back too (taken before npm).
@@ -1494,8 +1509,7 @@ program
       // delete so a newer plan published during the slow bootout is left (#2376 / #2439).
       if (manager.kind === "launchd") {
         const { consumeCarriedOutPlan } = await import("./service-plan.js");
-        const uid = process.getuid?.() ?? 501;
-        consumeCarriedOutPlan(DATA_DIR, `gui/${uid}/com.agend.fleet`, planDeps());
+        consumeCarriedOutPlan(DATA_DIR, `${launchdServiceDomain()}/com.agend.fleet`, planDeps());
       }
       // #1853: in a WSL terminal without the Windows desktop shortcuts, say once how to make them (never makes them).
       if (outcome.ok) await import("./windows-shortcuts.js").then(m => m.printUpdateShortcutsHint(DATA_DIR)).catch(() => { /* a hint never fails an update */ });
@@ -1804,7 +1818,14 @@ program
       existingDefinition: existingPath ? (() => { try { return readFileSync(existingPath, "utf-8"); } catch { return null; } })() : null,
       isDefault: isDefaultAgendHome,
     });
-    const serviceVars = { label: "com.agend.fleet", execPath, path: process.env.PATH!, ...service };
+    const isHub = (loadRawFleetConfig(FLEET_CONFIG_PATH).hub as { enabled?: unknown } | undefined)?.enabled === true;
+    if (isHub && opts.activate !== false) {
+      const [{ assertHubServiceInstallIdle }, { ht }] = await Promise.all([import("./hub/service-start.js"), import("./hub/init/text.js")]);
+      try { assertHubServiceInstallIdle(service.workingDirectory); }
+      catch { console.error(ht("service_install_idle")); process.exitCode = 1; return; }
+    }
+    const serviceVars = { label: "com.agend.fleet", execPath, path: process.env.PATH!, ...service,
+      ...(!existingPath && isHub ? { launchdSessionType: "Background" as const } : {}) };
     // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
     // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
     if (opts.activate === false && detectPlatform() === "macos") {
@@ -1816,9 +1837,10 @@ program
       if (!expectation.ok) { console.error(`  ✗ ${expectation.reason}`); process.exitCode = 1; return; }
       const uid = process.getuid?.() ?? 501;
       const plistPath = launchdPlistPath(serviceVars.label);
+      const domain = serviceVars.launchdSessionType === "Background" ? `user/${uid}` : launchdServiceDomain(serviceVars.label);
       mkdirSync(dirname(plistPath), { recursive: true });
       const outcome = refreshLaunchdWithoutActivating({
-        label: serviceVars.label, target: `gui/${uid}/${serviceVars.label}`, plistPath, newPlist: renderLaunchdPlist(serviceVars),
+        label: serviceVars.label, target: `${domain}/${serviceVars.label}`, plistPath, newPlist: renderLaunchdPlist(serviceVars),
         expected: expectation.expected, pkgDir: dirname(dirname(execPath)), agendHome: DATA_DIR,
       }, planDeps());
       if (!outcome.ok) { console.error(`  ✗ ${outcome.message}`); process.exitCode = 1; return; }
@@ -1856,8 +1878,10 @@ program
     if (opts.activate !== false) {
       const pidPath = join(DATA_DIR, "fleet.pid");
       try {
-        activateService(svcPath, pidPath);
-        console.log(t("install.running"));
+        if (isHub) activateService(svcPath, pidPath, { preservePidFile: true });
+        else activateService(svcPath, pidPath);
+        if (isHub) { const { ht } = await import("./hub/init/text.js"); console.log(ht("service_ok")); }
+        else console.log(t("install.running"));
       } catch (err) {
         console.error(t("install.start_failed", (err as Error).message));
         const plat = detectPlatform();
@@ -2009,7 +2033,7 @@ program
       // A service file means the service manager owns this fleet. Falling back
       // to a detached process here creates a second fleet when the bus recovers.
       console.error("Failed to start the installed AgEnD service; refusing to start a detached duplicate.");
-      console.error(t("cli.service_retry", process.platform === "darwin" ? "launchctl print gui/$(id -u)/com.agend.fleet" : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"));
+      console.error(t("cli.service_retry", process.platform === "darwin" ? `launchctl print ${launchdServiceDomain()}/com.agend.fleet` : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"));
       // #2356: a service file that cannot run here (never activated, no session for it) would otherwise leave no start.
       console.error(t("cli.service_direct_hint"));
       process.exitCode = 1;
@@ -2302,7 +2326,8 @@ program
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
       const label = "com.agend.fleet";
-      const target = `gui/${uid}/${label}`;
+      const domain = launchdServiceDomain(label, { uid });
+      const target = `${domain}/${label}`;
       const deps = planDeps();
       const printed = deps.run("launchctl", ["print", target]);
       if (printed.status === 0) {
@@ -2323,7 +2348,7 @@ program
           }
           if (await handOffLaunchdActivation("restart")) return;
           const { activateService } = await import("./service-activation.js");
-          const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
+          const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain },
             { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
               ...deps,
               readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
@@ -2343,7 +2368,12 @@ program
         // pendingPlan itself stays read-only (#2376).
         consumeCarriedOutPlan(DATA_DIR, target, deps);
         if (expectation.ok && refuses(guard.guardLaunchd(captureRun, target, plistPath, deps.readFile, expectation.expected, guardDeps))) return;
-        if (run(`launchctl kickstart -k ${target}`)) { console.log("Service restarted."); return; }
+        if (run(`launchctl kickstart -k ${target}`)) {
+          if ((loadRawFleetConfig(FLEET_CONFIG_PATH).hub as { enabled?: unknown } | undefined)?.enabled === true) {
+            const { ht } = await import("./hub/init/text.js"); console.log(ht("service_restart_requested"));
+          } else console.log("Service restarted.");
+          return;
+        }
         console.error(`  ✗ launchctl kickstart -k ${target} failed.`);
         process.exitCode = 1;
         return;

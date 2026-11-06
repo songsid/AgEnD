@@ -10,6 +10,7 @@ import { homedir, platform } from "node:os";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { t } from "./locale.js";
 import { FLEET_STOP_TIMEOUT_MS } from "./fleet-stop-budget.js";
+import { launchdServiceDomain, launchdSessionType } from "./launchd-service-domain.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatesDir = join(__dirname, "..", "templates");
@@ -39,6 +40,8 @@ interface ServiceVars {
    * the default home: the definition is then byte-identical to one without this field.
    */
   agendHome?: string;
+  /** Hub-only background login; omitted for the existing GUI fleet service. */
+  launchdSessionType?: "Background";
 }
 
 export function detectPlatform(): "macos" | "linux" {
@@ -182,7 +185,7 @@ function withDefaults(vars: ServiceVars): ServiceVars & { path: string; nodePath
 
 export function renderLaunchdPlist(vars: ServiceVars): string {
   const template = readFileSync(join(templatesDir, "launchd.plist.ejs"), "utf-8");
-  return render(template, { agendHome: undefined, ...withDefaults(vars) });
+  return render(template, { agendHome: undefined, launchdSessionType: undefined, ...withDefaults(vars) });
 }
 
 export function renderSystemdUnit(vars: ServiceVars): string {
@@ -235,11 +238,12 @@ export function serviceDefinitionHome(text: string): { known: false } | { known:
  * REFRESH (`install --no-activate`, an update's) run from the default home, an existing definition's home is kept:
  * an update typed in a shell without AGEND_HOME must not move a custom-home service back to ~/.agend.
  */
-export function serviceHomeFor(cliHome: string, opts: { refresh: boolean; existingDefinition: string | null; isDefault: (home: string) => boolean }): { workingDirectory: string; logPath: string; agendHome?: string } {
+export function serviceHomeFor(cliHome: string, opts: { refresh: boolean; existingDefinition: string | null; isDefault: (home: string) => boolean }): { workingDirectory: string; logPath: string; agendHome?: string; launchdSessionType?: "Background" } {
   const kept = opts.refresh && opts.isDefault(cliHome) && opts.existingDefinition ? serviceDefinitionAgendHome(opts.existingDefinition) : null;
   const home = kept && kept.startsWith("/") ? kept : cliHome;
   // The fleet's directory and log follow the same home it is told to use.
-  const where = { workingDirectory: home, logPath: join(home, "fleet.log") };
+  const session = launchdSessionType(opts.existingDefinition);
+  const where = { workingDirectory: home, logPath: join(home, "fleet.log"), ...(session ? { launchdSessionType: session } : {}) };
   return opts.isDefault(home) ? where : { ...where, agendHome: home };
 }
 
@@ -308,7 +312,7 @@ export function inspectService(label = SERVICE_LABEL): ServiceInfo {
 
   if (plat === "macos") {
     const uid = process.getuid?.() ?? 501;
-    const domain = `gui/${uid}`;
+    const domain = launchdServiceDomain(label, { uid });
     const activeResult = spawnSync("launchctl", ["print", `${domain}/${label}`], {
       encoding: "utf8",
       timeout: 5000,
@@ -401,7 +405,7 @@ export function uninstallService(label: string): boolean {
 
   if (plat === "macos") {
     const uid = process.getuid?.() ?? 501;
-    const domain = `gui/${uid}`;
+    const domain = launchdServiceDomain(label, { uid });
     spawnSync("launchctl", ["bootout", `${domain}/${label}`], { stdio: "ignore", timeout: 5000 });
     const disabled = spawnSync("launchctl", ["disable", `${domain}/${label}`], { encoding: "utf8", timeout: 5000 });
     if (disabled.error || disabled.status !== 0) {
@@ -438,7 +442,7 @@ export function unitCliEntry(unitText: string): string {
   return (words[0] && /(^|\/)node$/.test(words[0]) ? words[1] : words[0]) ?? "";
 }
 
-/** Where `agend install` keeps a launchd job: the user's LaunchAgents (the gui/<uid> domain of a logged-in user). */
+/** The user's LaunchAgents: GUI fleet jobs and explicit user-domain Background Hub jobs. */
 export function launchdPlistPath(label: string): string {
   return join(process.env.HOME!, "Library/LaunchAgents", `${label}.plist`);
 }
@@ -1068,7 +1072,7 @@ export function stopService(deps: LaunchdReloadDeps = defaultLaunchdReloadDeps):
   try {
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
-      const target = `gui/${uid}/${SERVICE_LABEL}`;
+      const target = `${launchdServiceDomain(SERVICE_LABEL, { uid })}/${SERVICE_LABEL}`;
       const out = deps.run("launchctl", ["bootout", target], true);
       // A bootout killed by its own timeout (a launchd that blocks until the job exits, on a long graceful stop) is not
       // a refusal: whether the job is gone is what the confirmation below asks.
@@ -1101,7 +1105,7 @@ export function startService(): boolean {
       const plistPath = join(process.env.HOME!, "Library/LaunchAgents", `${SERVICE_LABEL}.plist`);
       if (!existsSync(plistPath)) return false;
       const uid = process.getuid?.() ?? 501;
-      const domain = `gui/${uid}`;
+      const domain = launchdServiceDomain(SERVICE_LABEL, { uid });
       execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
       execSync(`launchctl enable ${domain}/${SERVICE_LABEL}`, { stdio: "inherit" });
     } else {
@@ -1139,9 +1143,10 @@ export function startSystemService(): boolean {
   }
 }
 
-export function activateService(plistPath: string, pidPath: string): void {
+export function activateService(plistPath: string, pidPath: string, options: { preservePidFile?: boolean } = {}): void {
   // Kill manually-running fleet if present
-  if (existsSync(pidPath)) {
+  // Hub callers have verified it idle and preserve the old record for the replacement's read-only drain check.
+  if (!options.preservePidFile && existsSync(pidPath)) {
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
     try {
       process.kill(pid, "SIGTERM");
@@ -1159,8 +1164,8 @@ export function activateService(plistPath: string, pidPath: string): void {
   const plat = detectPlatform();
   if (plat === "macos") {
     const uid = process.getuid?.() ?? 501;
-    const domain = `gui/${uid}`;
     const label = plistPath.replace(/.*\//, "").replace(/\.plist$/, "");
+    const domain = launchdServiceDomain(label, { uid });
     reloadLaunchdJob(domain, label, plistPath);
   } else {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
