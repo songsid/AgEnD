@@ -15,6 +15,7 @@ import { nativeUpdateGuard, boundNativeModelOptions, buildNativeInvocation, isNa
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 import { identityOf, parseClaudeAuthStatus, type AccountIdentity } from "./claude-auth-status.js";
 import { isCredentialProfileCli, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { MANAGED_CLI_ROOT_ENV, managedCliExecutable } from "./runtime-cli-install.js";
 
 const exec = promisify(execFile);
 export const NATIVE_CLI_IDS = NATIVE_PROVIDER_IDS;
@@ -107,8 +108,8 @@ const NATIVE_ENV_ALLOWED = new Set([
   // Language and terminal.
   "LANG", "LANGUAGE", "TZ", "TERM", "COLORTERM", "NO_COLOR", "FORCE_COLOR",
 ]);
-/** A CLI's own config directory: kept when it is the Windows user's (a drive path), never a WSL path. */
-const NATIVE_ENV_WINDOWS_PATH = new Set(["CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIRO_HOME", "GEMINI_HOME", "GROK_HOME", "OPENCODE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]);
+/** A CLI's own config directory: kept when it is the Windows user's (a drive path), never a WSL path. AGEND_MANAGED_CLI_ROOT (#3190 3b) is the Runtime's own folder of installed CLIs, so its helpers find them too. */
+const NATIVE_ENV_WINDOWS_PATH = new Set([MANAGED_CLI_ROOT_ENV, "CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIRO_HOME", "GEMINI_HOME", "GROK_HOME", "OPENCODE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME"]);
 export function nativeCliEnvironment(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(source)) {
@@ -166,6 +167,13 @@ async function findNode(shim: string): Promise<string | null> {
 }
 export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | null> {
   const provider = nativeProvider(id);
+  // #3190 Part 3b: a CLI this Runtime installed from the dashboard (pinned to the audited version, verified before it was switched on) comes first.
+  // The folder is the Runtime's own: it sets it in its process and passes it to the helpers it starts; AgEnD never names a path.
+  const managedRoot = process.env[MANAGED_CLI_ROOT_ENV];
+  if (managedRoot && validWindowsDirectory(managedRoot)) {
+    const managed = managedCliExecutable(managedRoot, id);
+    if (managed) return { path: managed.command, command: managed.command, args: managed.args };
+  }
   const names = provider.binaryNames.flatMap(name => [name, ...(NPM_CLI_TARGETS[id] ? [name.replace(/\.exe$/i, ".cmd")] : [])]);
   const found = await Promise.all(names.map(name => output(join(process.env.SystemRoot || "C:\\Windows", "System32", "where.exe"), [name])));
   const candidates = found.flatMap(result => result.text.split(/\r?\n/));

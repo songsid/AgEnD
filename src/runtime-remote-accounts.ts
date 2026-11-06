@@ -10,6 +10,7 @@
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
 import { existsSync } from "node:fs";
+import { CliInstallError } from "./runtime-cli-install.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
 import { CredentialProfileRefusal, credentialProfileDirectory, isCredentialProfileCli, rememberCredentialStatus, withCredentialProfile,
   type CredentialProfileCli } from "./runtime-credential-profiles.js";
@@ -47,11 +48,12 @@ export interface RemoteAccountsDeps {
 const GENERIC = "The operation could not be completed on this computer. Check that computer's Runtime window.";
 /** Text that may leave this computer: only our own refusals. Everything else (a filesystem error carries a path) becomes one fixed sentence. */
 export function safeRemoteMessage(error: unknown): string {
-  if (error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal || error instanceof CredentialProfileRefusal) return error.message;
+  if (error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal || error instanceof CredentialProfileRefusal || error instanceof CliInstallError) return error.message;
   return GENERIC;
 }
 function reasonOf(error: unknown): AuditReason {
   if (error instanceof RemoteSetupRefusal || error instanceof SignInRefusal || error instanceof ProfileOwnershipRefusal) return error.reason;
+  if (error instanceof CliInstallError) return error.reason === "timed-out" ? "timeout" : error.reason === "busy" ? "busy" : "failed";
   return "failed";
 }
 const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
@@ -116,6 +118,8 @@ export class RemoteAccounts {
       return this.audited("cli.install", "install", input.actor, { cli: input.cli, detail: (result: { version: string }) => result.version }, async () => {
         if (!this.deps.install) throw new ProfileOwnershipRefusal("This Runtime cannot install CLIs", "unsupported");
         const result = await this.deps.install(input.cli);
+        // The computer's CLI list changes now: the dashboard sees the new CLI without waiting for the next detection.
+        this.deps.changed();
         return { version: result.version };
       });
     }

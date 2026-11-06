@@ -59,8 +59,10 @@ describe("capabilities", () => {
     expect(f.hello().runtimeInfo.capabilities).not.toContain("remote-signin");
     const reply = await f.call("accounts.switches", {}); expect(reply).toMatchObject({ type: "account.response", ok: false }); expect(reply.error).toMatch(/no credential profile folder/);
   });
-  it("this program's own version information claims remote-signin but never cli-install (nothing installs yet)", () => {
-    const info = readRuntimeInfo({ panes: false }); expect(info.capabilities).toContain("remote-signin"); expect(info.capabilities).not.toContain("cli-install");
+  it("this program's own version information claims cli-install only where it has an installer (native Windows), so AgEnD never offers an install to a Runtime that cannot", () => {
+    const info = readRuntimeInfo({ panes: false, install: false }); expect(info.capabilities).toContain("remote-signin"); expect(info.capabilities).not.toContain("cli-install");
+    expect(readRuntimeInfo({ panes: false, install: true }).capabilities).toContain("cli-install");
+    expect(readRuntimeInfo({ panes: false }).capabilities.includes("cli-install")).toBe(process.platform === "win32");
   });
 });
 

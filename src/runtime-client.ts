@@ -16,6 +16,7 @@ import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { managedCliRoot, managedInstaller } from "./runtime-cli-install.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
 import { spawn as childSpawn } from "./child-process.js";
@@ -135,6 +136,8 @@ export class RuntimeClient {
   /** Run id -> the credential profile it runs under, so removing or signing out a profile waits for its runs. */
   private readonly activeProfiles = new Map<string, string>();
   private remoteAccounts: RemoteAccounts | null = null;
+  /** Ends a CLI install that is still running when this Runtime stops (the install's child process is the exact one it started). */
+  private readonly installAbort = new AbortController();
   private readonly snapshots = new Map<string, string>();
   private readonly pendingPaneTools = new Map<string, PendingTool>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -149,12 +152,12 @@ export class RuntimeClient {
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
-    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
+    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.install || process.platform === "win32" });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     this.runtimeInfo = options.credentialProfilesRoot ? info : { ...info, capabilities: info.capabilities.filter(name => name !== RUNTIME_CREDENTIAL_CAPABILITY) };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
-    this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities.filter(name => name !== REMOTE_SIGNIN_CAPABILITY || remote), ...(remote && options.remoteAccounts?.install ? [CLI_INSTALL_CAPABILITY] : [])] };
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => name === REMOTE_SIGNIN_CAPABILITY ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.install || process.platform === "win32") : true) };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -442,7 +445,9 @@ export class RuntimeClient {
       inUse: name => this.profileInUse(name),
       defaultProfile: () => { try { return this.options.store.credentialDefault(); } catch { return undefined; } },
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
-      ...(extra?.install ? { install: extra.install } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
+      // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
+      ...(extra?.install ? { install: extra.install } : process.platform === "win32" ? { install: managedInstaller({ root: managedCliRoot(this.options.store.directory) }, () => this.installAbort.signal) } : {}),
+      ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
       ...(extra?.now ? { now: extra.now } : {}),
     });
   }
@@ -568,6 +573,7 @@ export class RuntimeClient {
   async stop(options:{retirePanes?:boolean}={}): Promise<void> {
     if (this.stopped) return;
     this.stopped = true; this.welcomed = false;
+    this.installAbort.abort();
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.graceTimer) clearTimeout(this.graceTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);

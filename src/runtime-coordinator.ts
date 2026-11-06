@@ -17,7 +17,7 @@ import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protoc
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
-  type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
+  type RuntimeRunPayload, type RuntimeServerMessage, isRuntimeRemoteOperation, parseRuntimeRemotePayload, type RuntimeRemoteOperation, type RuntimeRemotePayloads } from "./runtime-protocol.js";
 
 const PAIR_TTL = 10 * 60_000;
 const MAX_STORE_BYTES = 64 * 1024 * 1024;
@@ -144,6 +144,8 @@ export class RuntimeCoordinator {
   private readonly pending = new Map<string, Pending>();
   private readonly paneToolPending = new Set<string>();
   private readonly panePending = new Map<string, Pending>();
+  /** #3190 Part 3: remote account / CLI-install calls. Memory only, never the journal (see callAccount). */
+  private readonly accountPending = new Map<string, Pending>();
   private readonly listeners = new Set<(event: RuntimeCoordinatorEvent) => void>();
   private readonly limits = new Map<string, { count: number; until: number }>();
   private readonly heartbeat: NodeJS.Timeout;
@@ -367,6 +369,9 @@ export class RuntimeCoordinator {
     for (const [id, pending] of this.panePending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
       this.panePending.delete(id); clearTimeout(pending.timer); pending.reject(Error(reason));
     }
+    for (const [id, pending] of this.accountPending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
+      this.accountPending.delete(id); clearTimeout(pending.timer); pending.reject(Error(reason));
+    }
     let changed = false;
     for (const [id, pending] of this.pending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
       this.pending.delete(id); clearTimeout(pending.timer);
@@ -448,6 +453,17 @@ export class RuntimeCoordinator {
       this.panePending.delete(value.id as string); clearTimeout(pending.timer);
       if (value.ok) pending.resolve(value.result);
       else pending.reject(Error(typeof value.error === "string" ? value.error.slice(0, 1000) : "Pane operation failed"));
+      return;
+    }
+    if (value.type === "account.response") {
+      if (!UUID.test(String(value.id)) || typeof value.ok !== "boolean") throw new RuntimeProtocolError("Invalid account transport response");
+      const pending = this.accountPending.get(value.id as string);
+      if (!pending) return; // A late reply proves nothing and is never replayed.
+      if (pending.machineId !== connection.machineId || pending.generation !== connection.generation) throw new RuntimeProtocolError("Account response belongs to another connection");
+      this.accountPending.delete(value.id as string); clearTimeout(pending.timer);
+      // Nothing of the result or the error is logged or stored here; the error is shown to the administrator who asked, in a fixed length and without control characters.
+      if (value.ok) pending.resolve(value.result);
+      else pending.reject(Error(typeof value.error === "string" ? value.error.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 400) : "The operation failed on that computer"));
       return;
     }
     if (value.type === "inventory") { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); this.save(); this.emit({ type: "machine", machineId: connection.machineId }); return; }
@@ -574,6 +590,30 @@ export class RuntimeCoordinator {
       this.panePending.set(id, { machineId, generation: connection.generation, resolve, reject, timer });
       try { this.send(connection, { v: 1, type: "pane.request", id, maxAgents, request }); }
       catch (error) { this.panePending.delete(id); clearTimeout(timer); reject(error); }
+    });
+  }
+  /**
+   * #3190 Part 3: one request to a paired computer's account / CLI-install operations, in an `account.request` frame answered by an `account.response`.
+   * Deliberately NOT `call`: `call` writes the request and its answer to the journal on disk, and a sign-in link or one-time code must never be there.
+   * This keeps the pending call in memory only, never calls `save()`, never logs the payload or the result, never replays: a lost answer is lost,
+   * and the person asks again. The payload is checked here in its closed form, and the Runtime must have reported the matching capability.
+   */
+  async callAccount<K extends RuntimeRemoteOperation>(machineId: string, operation: K, payload: RuntimeRemotePayloads[K], timeoutMs = this.options.requestTimeoutMs ?? 30_000): Promise<unknown> {
+    if (!isRuntimeRemoteOperation(operation)) throw Error("Unsupported runtime operation");
+    const input = parseRuntimeRemotePayload(operation, payload);
+    const machine = this.entry(machineId).machine, connection = this.connections.get(machineId);
+    if (this.closed || machine.status !== "online" || !connection?.ready || !this.current(connection)) throw Error("Runtime machine is offline");
+    const needed = operation === "cli.install" ? "cli-install" : "remote-signin";
+    if (!machine.runtimeInfo?.capabilities.includes(needed)) throw Error("Update the Runtime on that computer to use this; it does not offer it yet");
+    if (this.accountPending.size >= 16) throw Error("Too many account operations are waiting; try again shortly");
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 15 * 60_000) throw Error("Invalid account operation timeout");
+    const id = randomUUID();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.accountPending.delete(id); reject(Error("That computer did not answer in time")); }, timeoutMs);
+      timer.unref();
+      this.accountPending.set(id, { machineId, generation: connection.generation, resolve, reject, timer });
+      try { this.send(connection, { v: 1, type: "account.request", id, operation, payload: input }); }
+      catch (error) { this.accountPending.delete(id); clearTimeout(timer); reject(error); }
     });
   }
   /** Explicit switch-off only, after owned pane closes. A normal hub close/restart never shuts its hosts down. */

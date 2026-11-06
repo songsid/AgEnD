@@ -12,6 +12,7 @@ import { WindowsCliPanel } from "./panel-windows-cli.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { credentialProfileView, credentialProfileState } from "./credential-profile-select.js";
 import { identityText } from "./account-identity.js";
+import { CliInstall, offersCliInstall } from "./runtime-cli-install.js";
 import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
 
 register("machines", {
@@ -122,7 +123,7 @@ export function runtimeConnectCommand(server) {
   } catch { return ""; }
 }
 export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? date.toLocaleString() : machineText("unknown"); }
-function MachineCard({ machine, busy, action, openDiagnostics, probe }) {
+function MachineCard({ machine, busy, action, openDiagnostics, probe, lease, onChanged }) {
   const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name), [info,setInfo] = useState(false);
   const detection = useWindowsCliCatalogSnapshot(machine.isLocal ? "" : machine.id);
   const probing = machine.probing || detection.loading;
@@ -138,6 +139,7 @@ function MachineCard({ machine, busy, action, openDiagnostics, probe }) {
     ${status === "pending" ? html`<div class="runtime-approval"><p>${machineText("fingerprintLabel")}<code class="runtime-pairing-fingerprint">${machine.pairingFingerprint || machineText("unknown")}</code></p><p class="note">${machineText("approvalHint")}</p></div>` : null}
     ${revoked ? html`<p class="note runtime-revoked-note" role="status">${machineText("revokedNote")}</p>` : clis.length ? html`<table class="runtime-cli-table" aria-label=${machineText("cli")}><thead><tr><th>${machineText("cli")}</th><th>${machineText("versionColumn")}</th><th>${machineText("signInColumn")}</th></tr></thead><tbody>${clis.map(cli=>html`<tr key=${cli.id}><td><span class="runtime-cli-product"><${CliProductMark} id=${cli.id} size=${21} /><strong>${cliLabel(cli.id)}</strong></span>${cli.supports?.execution === false ? html`<small>${machineText("detectionOnly")}</small>` : null}</td><td><span class="runtime-cli-version" title=${cli.version || ""}>${cli.version || "—"}</span></td><td><span class=${`runtime-cli-auth ${cli.authenticated === true ? "is-signed-in" : ""}`}><span class="windows-cli-dot"></span>${machineText(cli.authenticated === true ? "signedIn" : cli.authenticated === false ? "signedOut" : "authShort")}</span>${cli.authenticated === true && identityText(cli.identity) ? html`<small class="runtime-account" data-account="default">${identityText(cli.identity)}</small>` : null}</td></tr>`)}</tbody></table>` : html`<p class="note runtime-no-clis">${machineText(local ? "noLocalClis" : "noClis")}</p>`}
     ${!local && !revoked && status !== "pending" ? html`<${CredentialProfiles} machine=${machine} />` : null}
+    ${offersCliInstall(machine) && lease ? html`<${CliInstall} machine=${machine} lease=${lease} onChanged=${onChanged} />` : null}
     <div class="runtime-machine-actions">${ready ? html`<button type="button" class="btn btn-sm runtime-inspect" onClick=${() => openDiagnostics(local ? "" : machine.id)}>${machineText("diagnosticTitle")}</button><button type="button" class="btn btn-sm runtime-probe" disabled=${busy || probing || !local && status !== "online"} onClick=${() => probe(local ? "" : machine.id)}><${Icon} name="restart" size=${14} cls=${probing ? "out-spin" : ""} />${machineText(probing ? "probeBusy" : "probeAgain")}</button>` : null}
       ${status === "pending" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy || !machine.pairingFingerprint} onClick=${() => action(machine,"approve",{fingerprint:machine.pairingFingerprint})}>${machineText("approve")}</button>` : null}
       <${Menu} cls="runtime-machine-menu" label=${machineText("machineActions",machine.name)} disabled=${busy} items=${menuItems} />
@@ -327,7 +329,7 @@ export function RuntimesPanel({navKey}) {
   const download=(setup=false)=>html`<button type="button" class="btn btn-sm runtime-bundle-download" disabled=${!!busy || !setup && !command} onClick=${setup ? connect : downloadRuntime}><${Icon} name="download" size=${15} />${machineText(busy === "download" ? "downloadBuilding" : "download")}</button>`;
 
   const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><span class="note">${machineText("machineCount",allMachines.length)}</span></div>
-    <section class="runtime-machines" aria-label=${machineText("machines")}>${allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} />`)}</section>
+    <section class="runtime-machines" aria-label=${machineText("machines")}>${allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} lease=${lease} onChanged=${state.refresh} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} />`)}</section>
     ${state.data && !allMachines.some(machine=>!machine.isLocal) ? html`<p class="note runtime-empty-remotes">${machineText("empty")}</p>` : null}
     <article class="runtime-host-note"><${Icon} name="info" size=${18} /><span>${machineText("hostLocationNote")}</span></article></section>`;
 

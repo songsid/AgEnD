@@ -2,7 +2,9 @@
 import { remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
-import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, type WindowsCliApiContext } from "./windows-cli-api.js";
+import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, remoteSetupActor, type WindowsCliApiContext } from "./windows-cli-api.js";
+import { INSTALLABLE_CLIS, isInstallableCli, type InstallableCliId } from "./runtime-cli-install.js";
+import type { RuntimeSwitchStates } from "./runtime-protocol.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { createRuntimeBundle } from "./runtime-bundle.js";
 import type { RuntimeMachine } from "./runtime-protocol.js";
@@ -11,6 +13,14 @@ import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
 
 export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator }
+/**
+ * #3190 Part 3b: one CLI install the dashboard asked a computer for. Kept in memory only (never the journal, never a file): who asked, which CLI and
+ * how it ended. The text is the Runtime's own refusal sentence (it carries no path, URL or output), or a fixed one of ours.
+ */
+export interface CliInstallJob { cli: InstallableCliId; state: "installing" | "done" | "failed"; startedAt: number; finishedAt?: number; version?: string; error?: string }
+const INSTALL_DEADLINE_MS = 11 * 60_000;          // the Runtime's own limit is 10 minutes
+const installJobs = new WeakMap<RuntimeCoordinator, Map<string, CliInstallJob>>();
+const jobsOf = (hub: RuntimeCoordinator): Map<string, CliInstallJob> => { let jobs = installJobs.get(hub); if (!jobs) installJobs.set(hub, jobs = new Map()); return jobs; };
 function json(res: ServerResponse, status: number, value: unknown): void {
   if (res.destroyed || res.writableEnded) return;
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(value));
@@ -77,6 +87,53 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
       json(res, 202, { task });
     })().catch(error => { const authorized = nativeCliAuthorization(req, url, ctx); json(res, authorized ? 400 : 403, { error: authorized ? error instanceof Error ? error.message : "Runtime task operation failed" : "Authorization expired" }); });
     return true;
+  }
+  const setupRoute = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})\/(remote-setup|cli-install)$/.exec(url.pathname);
+  if (setupRoute) {
+    // Only a local administrator session (remoteSetupActor); a header token, guest, public link or gateway gets nothing, and is not told why.
+    const id = setupRoute[1], what = setupRoute[2], machine = hub.machine(id);
+    if (!remoteSetupActor(req, url, ctx)) { json(res, 403, { error: "Installing CLIs on a computer needs a local dashboard administrator" }); return true; }
+    if (!machine) { json(res, 404, { error: "Runtime machine not found" }); return true; }
+    const jobs = jobsOf(hub);
+    if (what === "remote-setup" && method === "GET") {
+      // What the computer's owner allowed, read from the computer itself (the server cannot change it). An offline or older Runtime has no answer.
+      void (async () => {
+        let switches: RuntimeSwitchStates | null = null;
+        const capable = machine.runtimeInfo?.capabilities.includes("cli-install") === true;
+        if (capable && machine.status === "online") { try { switches = await hub.callAccount(id, "accounts.switches", {}, 15_000) as RuntimeSwitchStates; } catch { /* shown as "could not read" */ } }
+        if (!remoteSetupActor(req, url, ctx)) { json(res, 403, { error: "Authorization expired" }); return; }
+        json(res, 200, { capable, online: machine.status === "online", switches, job: jobs.get(id) ?? null,
+          catalog: Object.values(INSTALLABLE_CLIS).map(({ id: cli, version }) => ({ id: cli, version })) });
+      })().catch(() => json(res, 400, { error: "Could not read this computer's setup" }));
+      return true;
+    }
+    if (what === "cli-install" && method === "POST") {
+      void (async () => {
+        const raw = await readBoundedWebBody(req, 1024);
+        const actor = remoteSetupActor(req, url, ctx);
+        if (!actor) { json(res, 403, { error: "Authorization expired" }); return; }
+        const input: unknown = JSON.parse(raw.toString("utf8"));
+        if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 1 || !("cli" in input) || !isInstallableCli(input.cli)) throw Error("Choose Claude Code or Codex");
+        const cli = input.cli;
+        if (jobs.get(id)?.state === "installing") { json(res, 409, { error: "An install is already running on this computer", job: jobs.get(id) }); return; }
+        // Fixed fields only: the Runtime takes the CLI id and the asker's name, and decides everything else itself.
+        const job: CliInstallJob = { cli, state: "installing", startedAt: Date.now() };
+        const settled = hub.callAccount(id, "cli.install", { cli, actor }, INSTALL_DEADLINE_MS).then(result => ({ result }), (error: unknown) => ({ error }));
+        // A refusal known at once (offline, an older Runtime) is answered now; a run that is under way is followed through the job.
+        const early = await Promise.race([settled, new Promise<undefined>(resolve => setImmediate(() => resolve(undefined)))]);
+        if (early && "error" in early) throw early.error instanceof Error ? early.error : Error("The install could not start");
+        jobs.set(id, job);
+        void settled.then(outcome => {
+          job.finishedAt = Date.now();
+          if ("error" in outcome) { job.state = "failed"; job.error = outcome.error instanceof Error ? outcome.error.message.slice(0, 400) : "The install failed"; return; }
+          const version = outcome.result && typeof outcome.result === "object" ? (outcome.result as { version?: unknown }).version : undefined;
+          job.state = "done"; if (typeof version === "string") job.version = version.slice(0, 64);
+        });
+        json(res, 202, { job });
+      })().catch(error => { const ok = !!remoteSetupActor(req, url, ctx); json(res, ok ? 400 : 403, { error: ok ? error instanceof Error ? error.message : "Install request failed" : "Authorization expired" }); });
+      return true;
+    }
+    json(res, 404, { error: "Unknown runtime operation" }); return true;
   }
   const route = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})(?:\/(approve|revoke|rename|refresh|probe|inventory))?$/.exec(url.pathname);
   if (method === "GET" && route) {

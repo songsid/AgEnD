@@ -47,6 +47,16 @@ export function accountIdentityVisible(req: IncomingMessage, url: URL, ctx: Wind
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });
   return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local";
 }
+/**
+ * #3190 Part 3b: who may ask a paired computer to install a CLI. The same people as `accountIdentityVisible` (a local administrator SESSION; no public link,
+ * gateway, header token, guest or replayed confirmation), and the name the computer's audit log records for them: an opaque session handle, never an
+ * address or a free-text label. Null means refused. Checked again after every await.
+ */
+export function remoteSetupActor(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): string | null {
+  if (!accountIdentityVisible(req, url, ctx)) return null;
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" && /^[a-f0-9]{16}$/.test(v.session.handle) ? `admin:${v.session.handle}` : null;
+}
 /** The same inventory without any account: names and `loggedIn`/`authenticated` stay, every `identity` goes. A copy; the stored value is untouched. */
 export function probeWithoutAccountIdentity(probe: WindowsCliProbe): WindowsCliProbe {
   const copy = structuredClone(probe);
