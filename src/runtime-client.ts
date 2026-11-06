@@ -15,6 +15,7 @@ import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFinger
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
 import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateClientPhase, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
+import { parseRuntimeUpdateStatus, RUNTIME_UPDATE_STATUS_CAPABILITY, type RuntimeUpdateStatus } from "./runtime-update-status.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
@@ -58,6 +59,8 @@ export interface RuntimeClientOptions {
   reconnectMs?: number;
   disconnectGraceMs?: number;
   pollMs?: number;
+  /** Bounded diagnostics only; old servers must positively negotiate before any report is sent. */
+  updateStatus?: RuntimeUpdateStatus;
   /** Tests may use an isolated fake worker. Production always uses the Windows bridge. */
   socketFactory?: (url: string, credential: string) => WebSocket;
   /** Offline transport acceptance supplies its own process factory, never a public configuration field. */
@@ -142,6 +145,8 @@ export class RuntimeClient {
   private stopPromise: Promise<void> | undefined;
   private generation = 0;
   private updateProtocol = false;
+  private updateStatusProtocol = false;
+  private updateStatus: RuntimeUpdateStatus | undefined;
   private preparingUpdate = false;
   private trialFence: RuntimeUpdateFence | undefined;
   private activatedTrialId: string | undefined;
@@ -151,14 +156,20 @@ export class RuntimeClient {
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
+    this.updateStatus = options.updateStatus === undefined ? undefined : parseRuntimeUpdateStatus(options.updateStatus);
     const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     if (options.managedUpdate?.trialId !== undefined && !validRuntimeUpdateId(options.managedUpdate.trialId)) throw Error("Invalid Runtime update trial");
-    this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : [])] };
+    this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : []), ...(this.updateStatus ? [RUNTIME_UPDATE_STATUS_CAPABILITY] : [])] };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
   online(): boolean { return !this.trialFence && this.welcomed && this.socket?.readyState === WebSocket.OPEN; }
+  setUpdateStatus(value: RuntimeUpdateStatus): void { this.updateStatus = parseRuntimeUpdateStatus(value); this.publishUpdateStatus(); }
+  private publishUpdateStatus(): void {
+    if (this.updateStatus && this.updateStatusProtocol && this.online() && this.runtimeInfo.capabilities.includes(RUNTIME_UPDATE_STATUS_CAPABILITY))
+      this.send({ v: 1, type: "update.status", bootId: this.bootId, generation: this.generation, status: this.updateStatus });
+  }
   waitUntilStopped(): Promise<void> { return this.stopPromise ?? (this.stopped && this.closed ? Promise.resolve() : new Promise(done => this.stoppedListeners.add(done))); }
   async start(): Promise<void> {
     if (!this.stopped) return;
@@ -194,12 +205,14 @@ export class RuntimeClient {
   }
   private connect(): void {
     if (this.stopped || !this.credentials) return;
+    // A previous connection's positive check cannot vouch for this server generation.
+    if (this.updateStatus?.state === "current") this.updateStatus = { state: "unknown" };
     const url = validateRuntimeServer(this.credentials.server); url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/runtime/v1/connect";
     const socket = this.socket = this.options.socketFactory?.(url.href, this.credentials.credential)
       ?? new WebSocket(url.href, { headers: { Authorization: `Bearer ${this.credentials.credential}` }, followRedirects: false,
         maxPayload: MAX_FRAME, handshakeTimeout: 15_000, perMessageDeflate: false });
-    this.welcomed = false; this.updateProtocol = false; this.paneEpoch = randomUUID();
+    this.welcomed = false; this.updateProtocol = false; this.updateStatusProtocol = false; this.paneEpoch = randomUUID();
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform, runtimeInfo: this.runtimeInfo,
@@ -261,10 +274,12 @@ export class RuntimeClient {
       if (value.machineId !== this.credentials?.machineId || !Number.isSafeInteger(value.generation)) throw new Error("Runtime machine identity mismatch");
       this.welcomed = true;
       this.generation = value.generation as number; this.updateProtocol = value.updateProtocol === 1;
+      this.updateStatusProtocol = value.updateStatusProtocol === 1;
       this.reconnectAttempt = 0;
       if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
       this.report("Connected to AgEnD.");
       if (!this.trialFence) for (const job of this.options.store.list()) this.publish(job);
+      this.publishUpdateStatus();
       this.options.managedUpdate?.authenticated?.({ bootId: this.bootId, generation: this.generation, ...(this.updateProtocol ? { updateProtocol: 1 } : {}), runtimeInfo: this.runtimeInfo });
       return;
     }

@@ -26,6 +26,7 @@
 #      code from AgEnD Settings, which you type in the terminal, and your approval in AgEnD.
 #
 # Optional, set in the same PowerShell window before running it:
+#   $env:AGEND_RUNTIME_REPAIR = '1'               keep PATH unchanged; print run with an existing profile, never pairing steps
 #   $env:AGEND_RUNTIME_NO_PATH = '1'              leave PATH alone (the final message then shows the full path to run)
 #   $env:AGEND_RUNTIME_INSTALL_DIR = 'D:\agend'   install somewhere other than %LOCALAPPDATA%\agend-runtime
 # If it fails it says why, leaves what was installed before untouched, and sets $LASTEXITCODE to 1.
@@ -373,8 +374,8 @@
         if ($others.Count -gt 0) { Write-Step ('earlier versions are kept where they are (' + ($others -join ', ') + '). This installer never removes a version; clearing old ones comes later, with the update and uninstall commands.') }
 
         $onPath = $false
-        if ([string]$env:AGEND_RUNTIME_NO_PATH -eq '1') {
-            Write-Step 'AGEND_RUNTIME_NO_PATH is set; your PATH was not changed.'
+        if ([string]$env:AGEND_RUNTIME_NO_PATH -eq '1' -or [string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
+            Write-Step 'your PATH was not changed.'
         } else {
             if (Add-UserPathEntry $bin) { Write-Step ('added ' + $bin + ' to your user PATH.') } else { Write-Step ($bin + ' is already on your user PATH.') }
             $sessionHas = $false
@@ -384,13 +385,20 @@
         }
 
         Write-Host ''
-        Write-Host 'AgEnD Runtime is installed. This computer is not connected yet and nothing has been paired.'
-        Write-Host 'Next, connect it. Open Settings -> Runtime -> Connect a computer in AgEnD for the one-time pairing code, then run:'
-        Write-Host ''
-        if ($onPath) { Write-Host ('  agend-runtime connect --server "' + $origin + '"') }
-        else { Write-Host ('  & "' + $shim + '" connect --server "' + $origin + '"') }
-        Write-Host ''
-        Write-Host 'Type the pairing code when asked, compare the fingerprint with the one AgEnD shows, then approve this computer in AgEnD.'
+        if ([string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
+            Write-Host 'AgEnD Runtime is installed. Keep your existing profile and pairing; PATH was not changed.'
+            Write-Host 'Use the same existing profile folder, including any previous --profile or AGEND_RUNTIME_HOME. Run this exact new executable and enter that folder:'
+            $literalShim = $shim.Replace("'", "''")
+            Write-Host ('  $agendProfile = $null; $agendProfile = Read-Host ''Existing Runtime profile folder (same as before)''; if ($agendProfile) { & ''' + $literalShim + ''' run --profile $agendProfile } else { throw ''Existing Runtime profile folder is required'' }')
+        } else {
+            Write-Host 'AgEnD Runtime is installed. This computer is not connected yet and nothing has been paired.'
+            Write-Host 'Next, connect it. Open Settings -> Runtime -> Connect a computer in AgEnD for the one-time pairing code, then run:'
+            Write-Host ''
+            if ($onPath) { Write-Host ('  agend-runtime connect --server "' + $origin + '"') }
+            else { Write-Host ('  & "' + $shim + '" connect --server "' + $origin + '"') }
+            Write-Host ''
+            Write-Host 'Type the pairing code when asked, compare the fingerprint with the one AgEnD shows, then approve this computer in AgEnD.'
+        }
     } catch {
         Write-Problem ('install failed: ' + $_.Exception.Message)
         $global:LASTEXITCODE = 1

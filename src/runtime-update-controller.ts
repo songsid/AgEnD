@@ -11,10 +11,11 @@ import { credentialProfilesRoot } from "./runtime-credential-profiles.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { fetchRuntimeUpdateArchive, fetchRuntimeUpdateMetadata, runtimeUpdateNeeded, RuntimeUpdateArtifactError } from "./runtime-update-artifact.js";
 import { RuntimeUpdateJournal, type RuntimeUpdateBinding } from "./runtime-update-journal.js";
+import type { RuntimeUpdateStatus } from "./runtime-update-status.js";
 import { RuntimeUpdateIpc, parseRuntimeUpdateIpc, type RuntimeUpdateIpcMessage, type RuntimeUpdateIpcPeer } from "./runtime-update-ipc.js";
 import { acquireRuntimeInstallLock, assertRuntimeInstallDirectory, observeRuntimeProcess, runtimeProcessMatches, type RuntimeInstallLock, type RuntimeProcessObservation, type RuntimeProcessProof } from "./runtime-update-lock.js";
 import { readRuntimeInstallReceipt, readRuntimeInstalledProgram, readRuntimeSelectedProgram, selectRuntimeProgram, stageRuntimeUpdate, type RuntimeInstalledProgram } from "./runtime-update-install.js";
-import { adoptRuntimeInstallOwner, assertRuntimeInstallExclusive, attachRuntimeInstallChild, readRuntimeInstallOwner, registerRuntimeInstallOwner, releaseRuntimeInstallOwner, type RuntimeInstallOwner } from "./runtime-update-owners.js";
+import { adoptRuntimeInstallOwner, assertRuntimeInstallExclusive, attachRuntimeInstallChild, readRuntimeInstallOwner, registerRuntimeInstallOwner, releaseRuntimeInstallOwner, RuntimeInstallOwnerError, type RuntimeInstallOwner } from "./runtime-update-owners.js";
 
 type Authentication = Parameters<NonNullable<NonNullable<RuntimeClientOptions["managedUpdate"]>["authenticated"]>>[0];
 type Observe = (pid: number) => Promise<RuntimeProcessObservation>;
@@ -159,9 +160,15 @@ export class RuntimeUpdateController {
     finally { lock.release(); if (this.retainedLease === lock) this.retainedLease = undefined; }
   }
   private say(message: string): void { if (message !== this.lastReport) { this.lastReport = message; this.report(message); } }
+  private status(value: RuntimeUpdateStatus): void { if (!this.closed) this.client?.setUpdateStatus(value); }
+  private initialStatus(): RuntimeUpdateStatus {
+    if (!this.install.program) return { state: "manual", reason: "damaged" };
+    const state = this.journal.read(), target = state.attempt?.next ?? state.failed;
+    return target ? { state: state.attempt ? "pending" : "failed", target: { version: target.version, bundleSha256: target.sha256 } } : { state: "unknown" };
+  }
   private newClient(trialId?: string): RuntimeClient {
     this.authentication = undefined; this.trialPending = !!trialId;
-    return (this.options.makeClient ?? (value => new RuntimeClient(value)))({ store: this.options.store, credentialProfilesRoot: credentialProfilesRoot(this.options.store.directory), report: this.report,
+    return (this.options.makeClient ?? (value => new RuntimeClient(value)))({ store: this.options.store, credentialProfilesRoot: credentialProfilesRoot(this.options.store.directory), report: this.report, updateStatus: this.initialStatus(),
       managedUpdate: { ...(trialId ? { trialId } : {}), authenticated: value => { this.authentication = structuredClone(value); if (!this.trialPending) this.checkSoon(); } } });
   }
   private ownLifecycle(job: () => Promise<void>): Promise<void> {
@@ -221,6 +228,7 @@ export class RuntimeUpdateController {
             if (this.closed) return;
             this.trialPending = false; this.say("Runtime update connected and activated.");
             if (this.closed) return;
+            this.status({ state: "current" });
             this.timer = setInterval(() => this.checkSoon(), this.options.pollMs ?? 5 * 60_000); this.timer.unref(); this.checkSoon(); return;
           }
         } catch { /* Exact-ID retry; a lost acknowledgement never grants rollback. */ }
@@ -269,7 +277,10 @@ export class RuntimeUpdateController {
     if (this.closed || this.work || this.handedOff || Date.now() < this.intervalAt) return;
     // Own the promise before any callback can re-enter stop/start.
     const work = Promise.resolve().then(() => this.check()); this.work = work;
-    void work.catch(() => this.say("Runtime update check is unavailable; it will retry from the paired AgEnD.")).finally(() => { if (this.work === work) this.work = undefined; });
+    void work.catch(error => {
+      if (error instanceof RuntimeInstallOwnerError && ["shared", "owned", "unknown"].includes(error.reason)) this.status({ state: "manual", reason: error.reason === "shared" ? "shared" : "another-runtime" });
+      this.say("Runtime update check is unavailable; it will retry from the paired AgEnD.");
+    }).finally(() => { if (this.work === work) this.work = undefined; });
   }
   async checkNow(): Promise<void> {
     this.intervalAt = 0; this.checkSoon(); const work = this.work;
@@ -277,7 +288,7 @@ export class RuntimeUpdateController {
   }
   private async check(): Promise<void> {
     this.intervalAt = Date.now() + 30_000;
-    const client = this.client, program = this.install.program;
+    const client = this.client, program = this.install.program, authentication = this.authentication;
     if (this.closed || this.trialPending || !client?.online() || this.authentication?.updateProtocol !== 1 || !program) return;
     this.bindingCurrent(); const state = this.journal.read();
     if (state.attempt) { this.say("Runtime update recovery is pending; the selected build and journal were preserved."); return; }
@@ -286,16 +297,24 @@ export class RuntimeUpdateController {
       if (!same(readRuntimeSelectedProgram(this.install.root), program)) throw Error("Runtime selection changed");
     });
     const metadata = await fetchRuntimeUpdateMetadata(this.binding.origin);
+    if (this.closed || client !== this.client || !client.online() || this.authentication !== authentication) return;
     if (!runtimeUpdateNeeded(program, metadata, state.failed?.sha256)) {
-      if (state.failed?.sha256 === metadata.sha256) this.say(`Runtime update failed: ${metadata.version}/${metadata.sha256.slice(0, 8)}. Waiting for a different server build.`);
+      if (state.failed?.sha256 === metadata.sha256) {
+        this.status({ state: "failed", target: { version: metadata.version, bundleSha256: metadata.sha256 } });
+        this.say(`Runtime update failed: ${metadata.version}/${metadata.sha256.slice(0, 8)}. Waiting for a different server build.`);
+      } else this.status({ state: "current" });
       return;
     }
+    this.status({ state: "pending", target: { version: metadata.version, bundleSha256: metadata.sha256 } });
     this.say(`Runtime update pending: ${metadata.version}/${metadata.sha256.slice(0, 8)}. Waiting for idle.`);
     let bytes: Buffer;
     try { bytes = await fetchRuntimeUpdateArchive(this.binding.origin, metadata); }
     catch (error) {
       // Transport interruptions/429 are backoff, never a failed-build tombstone.
-      if (error instanceof RuntimeUpdateArtifactError && error.reason === "checksum") await this.locked(async lock => this.journal.rememberFailure(metadata, () => this.current(lock)));
+      if (error instanceof RuntimeUpdateArtifactError && error.reason === "checksum") {
+        await this.locked(async lock => this.journal.rememberFailure(metadata, () => this.current(lock)));
+        this.status({ state: "failed", target: { version: metadata.version, bundleSha256: metadata.sha256 } });
+      }
       throw error;
     }
     if (this.closed) return;
@@ -308,7 +327,10 @@ export class RuntimeUpdateController {
         let next: RuntimeInstalledProgram;
         try { next = stageRuntimeUpdate(this.install.root, bytes, metadata, lock); }
         catch (error) {
-          if (error instanceof RuntimeUpdateArtifactError && ["archive", "checksum"].includes(error.reason)) this.journal.rememberFailure(metadata, () => this.current(lock));
+          if (error instanceof RuntimeUpdateArtifactError && ["archive", "checksum"].includes(error.reason)) {
+            this.journal.rememberFailure(metadata, () => this.current(lock));
+            this.status({ state: "failed", target: { version: metadata.version, bundleSha256: metadata.sha256 } });
+          }
           throw error;
         }
         if (!await client.prepareUpdate(id)) return;

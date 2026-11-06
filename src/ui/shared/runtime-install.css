@@ -24,3 +24,7 @@
 .runtime-profile-default { padding: 1px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-2); font-size: var(--fs-xs); }
 .runtime-profiles .note, .runtime-profiles-old { margin: 4px 0 0; font-size: var(--fs-xs); }
 .runtime-profiles-old { margin-bottom: 16px; }
+/* Lazy Runtime update diagnostics remain readable with an older app.css. */
+.runtime-update-notice { margin-block: .75rem; padding: .6rem .8rem; border-inline-start: 3px solid var(--border, #777); }
+.runtime-update-notice p { margin-block: .25rem; overflow-wrap: anywhere; }
+.runtime-update-notice[role="alert"] { border-inline-start-color: var(--warning, #b87218); }
