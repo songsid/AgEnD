@@ -322,7 +322,9 @@ export class RuntimeUpdateController {
     this.current(lock);
     if (!same(readRuntimeInstalledProgram(this.install.root, program.folder), program)) throw Error("Runtime target changed");
     const child = (this.options.spawn ?? spawn)(process.execPath, [join(this.install.root, program.folder, "dist", "runtime-cli.js"), "--internal-update"],
-      { shell: false, stdio: ["inherit", "inherit", "inherit", "ipc"], env: nativeCliEnvironment(), windowsHide: false });
+      // On Windows an attached console child can die with the outgoing cmd/console owner.
+      // This is still an exact registered, unadmitted child; unref follows only its positive arm.
+      { shell: false, detached: true, stdio: ["inherit", "inherit", "inherit", "ipc"], env: nativeCliEnvironment(), windowsHide: true });
     const exited = new Promise<void>(done => {
       child.once("close", () => done()); child.once("error", () => { /* close owns physical completion */ });
       if (child.exitCode !== null || child.signalCode !== null) done();

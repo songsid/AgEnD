@@ -19,7 +19,8 @@ describe("which source files can mention an account at all", () => {
     expect(mentioning(/maskedEmail/)).toEqual(["claude-auth-status.ts", "runtime-cli.ts", "runtime-credential-profiles.ts", "ui/account-identity.js"]);
   });
   it("a computer's reported profiles (with their accounts) are read by the Runtime, the coordinator that stores them, the route that redacts them for everyone but a local administrator, the admin Runtime page and the account picker only", () => {
-    expect(mentioning(/credentialProfiles/)).toEqual(["fleet-manager.ts", "runtime-cli.ts", "runtime-client.ts", "runtime-coordinator.ts", "runtime-credential-profiles.ts", "ui/credential-profile-select.js", "ui/panel-runtimes.js", "windows-cli-api.ts", "windows-cli.ts"]);
+    // The managed controller supplies the existing private profile root to RuntimeClient; it serializes no accounts.
+    expect(mentioning(/credentialProfiles/)).toEqual(["fleet-manager.ts", "runtime-cli.ts", "runtime-client.ts", "runtime-coordinator.ts", "runtime-credential-profiles.ts", "runtime-update-controller.ts", "ui/credential-profile-select.js", "ui/panel-runtimes.js", "windows-cli-api.ts", "windows-cli.ts"]);
   });
   it("the host's sign-in accounts are read by the auth check, the fleet that caches them and the admin-only route", () => {
     expect(mentioning(/checkAuthIdentity|refreshSignInIdentities|signInIdentit/)).toEqual(["fleet-manager.ts", "login-flows.ts", "web-api.ts"]);

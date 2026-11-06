@@ -141,7 +141,7 @@ it("starts the exact verified child only after a positive idle stop and records 
   expect(f.journal().read().attempt).toMatchObject({ phase: "handoff", next: { version: b.version, sha256: b.sha256 } });
   expect(f.selected()).toEqual(f.program); // Only the new process may select after positively observing this process exit.
   expect(f.controllerOptions.spawn).toHaveBeenCalledWith(process.execPath,
-    [join(f.root, `${b.version}+${b.sha256.slice(0, 8)}`, "dist", "runtime-cli.js"), "--internal-update"], expect.objectContaining({ shell: false, stdio: ["inherit", "inherit", "inherit", "ipc"] }));
+    [join(f.root, `${b.version}+${b.sha256.slice(0, 8)}`, "dist", "runtime-cli.js"), "--internal-update"], expect.objectContaining({ shell: false, detached: true, windowsHide: true, stdio: ["inherit", "inherit", "inherit", "ipc"] }));
   await controller.close(); expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toHaveLength(1);
 });
 it("remembers a checksum failure, never stops a client or retries that hash", async () => {
