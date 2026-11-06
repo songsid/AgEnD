@@ -19,9 +19,14 @@
  *
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
-import { execFile as nodeExecFile } from "./child-process.js";
-import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, relative } from "node:path";
+import { spawn as nodeSpawn } from "./child-process.js";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { ProcessNotConfirmedEnded, killTree } from "./runtime-signin.js";
+// Types only: the lock module reaches windows-cli-worker, which imports this module, so its values are loaded when the first install starts (see `lockModule`).
+import type { RuntimeInstallLock, RuntimeProcessObservation, RuntimeProcessProof, acquireRuntimeInstallLock as AcquireRuntimeInstallLock } from "./runtime-update-lock.js";
 
 /** The whole install, all of its steps together (npm install, npm audit signatures, the signer check): one deadline, not one per step. */
 export const CLI_INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -116,14 +121,18 @@ export const isInstallableCli = (id: unknown): id is InstallableCliId => typeof 
 export type InstallStep = "installing" | "checking-integrity" | "checking-signatures" | "checking-publisher" | "ready";
 export type InstallFailure = "npm-missing" | "install-failed" | "timed-out" | "integrity-mismatch" | "signature-check-failed" | "publisher-mismatch" | "cancelled" | "busy";
 /** Its message is ours and safe to show anywhere: it carries no path, no npm output and no URL. */
-export class CliInstallError extends Error { constructor(readonly reason: InstallFailure, message: string) { super(message); this.name = "CliInstallError"; } }
+export class CliInstallError extends Error {
+  /** Set when a child process could not be confirmed ended: settles when it really has. The install lock, the Runtime's busy state and its update fence are kept until then. */
+  readonly ended?: Promise<unknown>;
+  constructor(readonly reason: InstallFailure, message: string, options: { ended?: Promise<unknown> } = {}) { super(message); this.name = "CliInstallError"; if (options.ended) this.ended = options.ended; }
+}
 
 export interface InstallDeps {
   /** `<pairing folder>\cli`. The only place anything is written. */
   root: string;
   nodePath?: string;
   /** Runs one program without a shell. Tests replace it; production uses execFile with this environment, a timeout and an exact-child cancel. */
-  run?: (file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }) => Promise<{ code: number | null; stdout: string; /** The output went over the limit and the child was stopped for it (not a timeout). */ overflow?: boolean }>;
+  run?: (file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal; killWaitMs?: number }) => Promise<{ code: number | null; stdout: string; /** The output went over the limit and the child was stopped for it (not a timeout). */ overflow?: boolean }>;
   env?: NodeJS.ProcessEnv;
   signerOf?: (file: string, signal?: AbortSignal) => Promise<{ status: string; subject: string }>;
   report?: (step: InstallStep) => void;
@@ -133,6 +142,12 @@ export interface InstallDeps {
   deadlineMs?: number;
   /** Renames a folder (the swap of the old install and the new one). Tests make it fail on purpose. */
   rename?: (from: string, to: string) => void;
+  /** The folder that holds the shared install lock (`.agend-runtime-install.lock`, #3258). Default: the managed Runtime install root this code runs from, else `root`. */
+  lockRoot?: string;
+  /** Passed to `acquireRuntimeInstallLock` (a test's own process proof and observer). Default: the real observer on Windows, a local one elsewhere. */
+  lockOptions?: Parameters<typeof AcquireRuntimeInstallLock>[1];
+  /** After a child was told to stop, how long to wait for it to really end (default 5 s) before the install reports it as not confirmed ended. */
+  killWaitMs?: number;
 }
 /** What a child npm may see: the Windows basics and the user's proxy/certificate settings, nothing else (same idea as nativeCliEnvironment). */
 export function installEnvironment(source: NodeJS.ProcessEnv, cache: string): NodeJS.ProcessEnv {
@@ -142,20 +157,43 @@ export function installEnvironment(source: NodeJS.ProcessEnv, cache: string): No
   for (const [key, value] of Object.entries(source)) if (value !== undefined && keep.includes(key.toUpperCase())) env[key] = value;
   return { ...env, npm_config_cache: cache, npm_config_update_notifier: "false", npm_config_fund: "false", npm_config_audit: "false", npm_config_registry: NPM_REGISTRY, npm_config_ignore_scripts: "true" };
 }
-const defaultRun: NonNullable<InstallDeps["run"]> = (file, args, { cwd, env, timeoutMs, signal }) => new Promise(resolve => {
-  nodeExecFile(file, args, { cwd, env, timeout: timeoutMs, maxBuffer: 512 * 1024, windowsHide: true, shell: false, encoding: "utf8", signal },
-    (error, stdout, stderr) => {
-      const code = (error as { code?: unknown } | null)?.code;
-      // Past maxBuffer the child is killed too, but that is not a timeout: it is reported as its own thing.
-      resolve({ code: error ? (typeof code === "number" ? code : null) : 0, stdout: `${stdout}${stderr}`, ...(code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? { overflow: true } : {}) });
-    });
+/**
+ * Runs one program: no shell, output capped at 512 KiB. A child that has a pid has ended ONLY when its `close` has come (an `error` event can also mean it could
+ * not be killed); only one that never started (no pid) has ended without it. On the timeout, the Runtime's stop or the output limit the whole process tree is killed
+ * and `close` is waited for up to `killWaitMs` more: if it has not come, the result is a ProcessNotConfirmedEnded, whose `ended` settles when the child really ends.
+ */
+const defaultRun: NonNullable<InstallDeps["run"]> = (file, args, { cwd, env, timeoutMs, signal, killWaitMs = 5_000 }) => new Promise((resolveRun, rejectRun) => {
+  if (signal?.aborted) { resolveRun({ code: null, stdout: "" }); return; }
+  const child = nodeSpawn(file, args, { cwd, env, shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "", bytes = 0, overflow = false, stopping = false, ended = false, settled = false;
+  let timer: ReturnType<typeof setTimeout> | undefined, gave: ReturnType<typeof setTimeout> | undefined;
+  const closed = new Promise<void>(accept => { child.on("close", () => accept()); });
+  closed.then(() => { ended = true; });
+  const settle = (act: () => void): void => { if (settled) return; settled = true; clearTimeout(timer); clearTimeout(gave); signal?.removeEventListener("abort", stop); act(); };
+  const stop = (): void => {
+    if (stopping) return; stopping = true;
+    killTree(child);
+    gave = setTimeout(() => { if (!ended) settle(() => rejectRun(new ProcessNotConfirmedEnded(closed))); }, killWaitMs); gave.unref?.();
+  };
+  const take = (part: Buffer | string): void => {
+    if (overflow) return;
+    bytes += Buffer.byteLength(part);
+    if (bytes > 512 * 1024) { overflow = true; stop(); return; }
+    output += part.toString();
+  };
+  child.stdout?.on("data", take); child.stderr?.on("data", take);
+  // A program that never started has nothing to wait for; one with a pid ends with its `close`.
+  child.on("error", () => { if (child.pid === undefined) settle(() => resolveRun({ code: 1, stdout: "" })); });
+  child.on("close", code => settle(() => resolveRun({ code: stopping || overflow ? null : code, stdout: output, ...(overflow ? { overflow: true } : {}) })));
+  timer = setTimeout(stop, timeoutMs);
+  signal?.addEventListener("abort", stop, { once: true });
 });
 /** Windows' own answer about who signed a file (Get-AuthenticodeSignature through Windows PowerShell; the path travels in the environment, never in the command text). */
-export const windowsSignerOf = async (file: string, run = defaultRun, signal?: AbortSignal): Promise<{ status: string; subject: string }> => {
+export const windowsSignerOf = async (file: string, run = defaultRun, signal?: AbortSignal, killWaitMs?: number): Promise<{ status: string; subject: string }> => {
   const system = process.env.SystemRoot || "C:\\Windows";
   const result = await run(join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-Command", "$s = Get-AuthenticodeSignature -LiteralPath $env:AGEND_CHECK_FILE; \"$($s.Status)|$($s.SignerCertificate.Subject)\""],
-    { cwd: system, env: { SystemRoot: system, AGEND_CHECK_FILE: file }, timeoutMs: 60_000, ...(signal ? { signal } : {}) });
+    { cwd: system, env: { SystemRoot: system, AGEND_CHECK_FILE: file }, timeoutMs: 60_000, ...(signal ? { signal } : {}), ...(killWaitMs !== undefined ? { killWaitMs } : {}) });
   const [status = "", ...rest] = result.stdout.trim().split("|");
   return { status, subject: rest.join("|") };
 };
@@ -185,6 +223,33 @@ function pruneManaged(root: string, id: string, keep: string): void {
   bestEffortRemove(join(root, ".npm-cache"));
 }
 
+/** The shared install lock lives in `.agend-runtime-install.lock` (#3258); its module is loaded when an install starts (it reaches windows-cli-worker, which imports this file). */
+const lockModule = (): Promise<typeof import("./runtime-update-lock.js")> => import("./runtime-update-lock.js");
+/**
+ * The managed Runtime install root this code runs from (#3215: `<root>\<version>+<sha>\dist\runtime-cli-install.js` and `<root>\bin\current.txt`), or null for a
+ * ZIP copy or a source tree. The CLI install shares that root's lock with `install.ps1` and the update supervisor, even though what it installs is in the pairing folder.
+ */
+export function managedInstallRoot(from: string = fileURLToPath(import.meta.url)): string | null {
+  try {
+    const root = resolve(dirname(from), "..", "..");
+    const stat = lstatSync(root);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return null;
+    return existsSync(join(root, "bin", "current.txt")) || existsSync(join(root, ".agend-runtime-install.json")) ? root : null;
+  } catch { return null; }
+}
+/** Off Windows (tests, development) the real process observer answers "unknown" for everything: a local one that knows this process and whether another pid exists. */
+function localLockOptions(): NonNullable<InstallDeps["lockOptions"]> {
+  let boot = "local";
+  try { boot = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim(); } catch { /* not Linux */ }
+  const ownProof: RuntimeProcessProof = { pid: process.pid, birth: String(Math.round(performance.timeOrigin * 10_000)), boot: createHash("sha256").update(`agend-local-boot:${boot}`).digest("hex") };
+  const observe = async (pid: number): Promise<RuntimeProcessObservation> => {
+    if (pid === process.pid) return { state: "alive", proof: ownProof };
+    try { process.kill(pid, 0); } catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? { state: "gone" } : { state: "unknown" }; }
+    return { state: "unknown" };
+  };
+  return { ownProof, observe };
+}
+
 /**
  * Installs the pinned CLI under `<root>\<id>\<version>`, verifies it, and only then points `current.json` at it.
  *   - Already installed (the pointer is this pin and its program is there): nothing is done at all.
@@ -205,6 +270,24 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   const npmCli = join(dirname(node), "node_modules", "npm", "bin", "npm-cli.js");
   if (!existsSync(npmCli)) fail("npm-missing", "npm was not found next to this computer's Node.js, so nothing was installed");
   mkdirSync(deps.root, { recursive: true, mode: 0o700 });
+  // The shared install lock (#3258): the same `.agend-runtime-install.lock` that `install.ps1` and the update supervisor take, so a CLI install, a manual reinstall and
+  // an automatic switch cannot run at once. It is kept until the install's last child process has really ended, not only until this call returns.
+  const lockRoot = deps.lockRoot ?? managedInstallRoot() ?? deps.root;
+  if (lockRoot === deps.root && process.platform !== "win32") { try { chmodSync(deps.root, 0o700); } catch { /* the lock module refuses a folder it cannot trust */ } }
+  const locks = await lockModule();
+  let lock: RuntimeInstallLock;
+  try { lock = await locks.acquireRuntimeInstallLock(lockRoot, { type: "installer", ...(deps.lockOptions ?? (process.platform !== "win32" ? localLockOptions() : {})) }); }
+  catch (error) {
+    if (error instanceof locks.RuntimeInstallLockError && error.reason === "held") fail("busy", "A CLI install or Runtime update is already running on this computer; wait for it to end");
+    return fail("install-failed", "This computer could not lock its Runtime install folder, so nothing was installed");
+  }
+  // While the lock holds this marker nothing may reclaim it, even if this process is gone: a Runtime that dies with a child still running leaves the marker behind, so a
+  // later owner sees uncertainty (a lock with anything beside its owner record stays held) instead of a free lock.
+  const inflight = join(lockRoot, locks.RUNTIME_INSTALL_LOCK, "inflight");
+  let marked = false, holding = false;
+  const letGo = (): void => { try { lock.assert(); if (marked) unlinkSync(inflight); lock.release(); } catch { /* kept: a failed release retains the lease, and a later start with a dead owner reclaims it */ } };
+  try { writeFileSync(inflight, JSON.stringify({ cli: id, version: cli.version }), { flag: "wx", mode: 0o600 }); marked = true; }
+  catch { letGo(); return fail("install-failed", "This computer could not lock its Runtime install folder, so nothing was installed"); }
   // One deadline for all of it; the Runtime's own stop is a separate reason and is checked first.
   const deadline = AbortSignal.timeout(deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS);
   const signal = deps.signal ? AbortSignal.any([deps.signal, deadline]) : deadline;
@@ -212,24 +295,28 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     if (deps.signal?.aborted) fail("cancelled", "The install was cancelled");
     if (deadline.aborted) fail("timed-out", "The install did not finish in time and was stopped");
   };
-  bestEffortRemove(staging); mkdirSync(staging, { recursive: true, mode: 0o700 });
-  const env = installEnvironment(deps.env ?? process.env, join(deps.root, ".npm-cache"));
-  const npm = (args: string[]) => run(node, [npmCli, ...args], { cwd: staging, env, timeoutMs: deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS, signal });
+  let staged = false;
   try {
+    stopped();
+    bestEffortRemove(staging); mkdirSync(staging, { recursive: true, mode: 0o700 }); staged = true;
+    const env = installEnvironment(deps.env ?? process.env, join(deps.root, ".npm-cache"));
+    const npm = (args: string[]) => run(node, [npmCli, ...args], { cwd: staging, env, timeoutMs: deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS, signal, ...(deps.killWaitMs !== undefined ? { killWaitMs: deps.killWaitMs } : {}) });
     report("installing");
     writeFileSync(join(staging, "package.json"), '{"name":"agend-managed-cli","private":true,"version":"0.0.0"}\n');
+    lock.assert();
     const installed = await npm(["install", `${cli.spec}@${cli.version}`, "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", NPM_REGISTRY]);
     stopped();
     if (installed.overflow) fail("install-failed", "npm could not install the package (its output was far larger than expected)");
     if (installed.code === null) fail("timed-out", "The install did not finish in time and was stopped");
     if (installed.code !== 0) fail("install-failed", "npm could not install the package (see this computer's network and proxy settings)");
     report("checking-integrity");
-    const lock = JSON.parse(readFileSync(join(staging, "package-lock.json"), "utf8")) as { packages?: Record<string, { integrity?: string; version?: string }> };
+    const lockfile = JSON.parse(readFileSync(join(staging, "package-lock.json"), "utf8")) as { packages?: Record<string, { integrity?: string; version?: string }> };
     for (const [path, expected] of Object.entries(cli.integrity)) {
-      const entry = lock.packages && Object.hasOwn(lock.packages, path) ? lock.packages[path] : undefined;
+      const entry = lockfile.packages && Object.hasOwn(lockfile.packages, path) ? lockfile.packages[path] : undefined;
       if (entry?.integrity !== expected) fail("integrity-mismatch", "A downloaded package is not the one this AgEnD version expects, so nothing was installed");
     }
     report("checking-signatures");
+    lock.assert();
     const audited = await npm(["audit", "signatures"]);
     stopped();
     if (audited.overflow) fail("signature-check-failed", "npm could not verify the registry signatures of the packages");
@@ -238,7 +325,8 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     report("checking-publisher");
     const file = join(staging, cli.native.path);
     if (!existsSync(file) || !statSync(file).isFile()) fail("install-failed", "The package did not contain the expected program");
-    const signer = await (deps.signerOf ?? ((f, s) => windowsSignerOf(f, run, s)))(file, signal);
+    lock.assert();
+    const signer = await (deps.signerOf ?? ((f, s) => windowsSignerOf(f, run, s, deps.killWaitMs)))(file, signal);
     stopped();
     if (signer.status !== "Valid" || !signerMatches(signer.subject, cli.native.signer)) fail("publisher-mismatch", "The program is not signed by the expected publisher, so nothing was installed");
     stopped();
@@ -247,10 +335,13 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     const hadOld = existsSync(folder);
     let swapped = false;
     try {
+      lock.assert();
       if (hadOld) rename(folder, old);
       rename(staging, folder); swapped = true;
       const pointer = join(deps.root, id, "current.json");
-      writeFileSync(`${pointer}.tmp`, JSON.stringify({ version: cli.version })); rename(`${pointer}.tmp`, pointer);
+      writeFileSync(`${pointer}.tmp`, JSON.stringify({ version: cli.version }));
+      lock.assert();
+      rename(`${pointer}.tmp`, pointer);
     } catch (error) {
       // Back to what it was: the new folder (if it landed) goes, the old one comes back.
       if (swapped) bestEffortRemove(folder);
@@ -263,26 +354,42 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     report("ready");
     return { version: cli.version, command: join(folder, cli.native.path) };
   } catch (error) {
-    bestEffortRemove(staging);
+    if (error instanceof ProcessNotConfirmedEnded) {
+      // A child that was told to stop has not been confirmed gone: it may still be writing into the staging folder. The lock, its marker and the staging folder stay
+      // until it really ends, and whoever called this keeps the Runtime busy (and the update fence held) on `ended`.
+      holding = true;
+      const ended = error.ended;
+      const cleanup = (): void => { if (staged) bestEffortRemove(staging); letGo(); };
+      ended.then(cleanup, cleanup);
+      throw new CliInstallError(deps.signal?.aborted ? "cancelled" : deadline.aborted ? "timed-out" : "install-failed",
+        "A program the install started could not be confirmed ended, so this computer stays busy until it is", { ended });
+    }
+    if (staged) bestEffortRemove(staging);
+    if (error instanceof CliInstallError) throw error;
     // Only our own errors keep their text; a filesystem or JSON error could carry a path or a package line.
-    throw error instanceof CliInstallError ? error : new CliInstallError("install-failed", "The install could not be completed on this computer");
+    if (error instanceof locks.RuntimeInstallLockError) throw new CliInstallError("install-failed", "This computer's Runtime install lock changed during the install, so it was stopped");
+    throw new CliInstallError("install-failed", "The install could not be completed on this computer");
+  } finally {
+    if (!holding) letGo();
   }
 }
 
 /**
- * The Runtime's installer, as `RemoteAccounts` asks for it: it knows only the CLIs in the closed table (so any other id is refused before a `started` record),
- * and it installs one at a time. The shared "one setup operation at a time" flag lives in RemoteAccounts; this guard is the installer's own, for any other caller.
+ * The Runtime's installer, as `RemoteAccounts` asks for it: it knows only the CLIs in the closed table (so any other id is refused before a `started` record).
+ * One install at a time on the computer is the shared install lock's job (see installManagedCli), so a manual reinstall or an update is excluded too; this object
+ * only follows what is under way, including a child process that could not be confirmed ended, for `running()`.
  */
 export function managedInstaller(deps: Omit<InstallDeps, "signal">, signal?: () => AbortSignal | undefined): { knows(cli: string): boolean; install(cli: string): Promise<{ version: string }>; running(): boolean } {
-  let busy = false;
+  const active = new Set<Promise<unknown>>();
+  const track = (work: Promise<unknown>): void => { active.add(work); const done = (): void => { active.delete(work); }; work.then(done, done); };
   return {
     knows: isInstallableCli,
-    running: () => busy,
+    running: () => active.size > 0,
     install: async cli => {
-      if (busy) throw new CliInstallError("busy", "A CLI install is already running on this computer; wait for it to end");
-      busy = true;
-      try { const { version } = await installManagedCli(cli, { ...deps, signal: signal?.() }); return { version }; }
-      finally { busy = false; }
+      const attempt = installManagedCli(cli, { ...deps, signal: signal?.() });
+      track(attempt.catch((error: unknown) => error instanceof CliInstallError && error.ended ? error.ended : undefined));
+      const { version } = await attempt;
+      return { version };
     },
   };
 }

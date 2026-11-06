@@ -16,7 +16,7 @@ import { CredentialProfileRefusal, credentialProfileCaseClash, credentialProfile
   type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, removeOwnedProfile, requireOwnedProfile, withIsolatedOwnedProfile, type OwnedProfileOptions } from "./runtime-profile-ownership.js";
 import { AuditLog, RemoteSetupRefusal, readRemoteSwitches, requireRemoteSwitch, validAuditActor, type AuditAction, type AuditEntry, type AuditReason, type RemoteSwitchName } from "./runtime-remote-setup.js";
-import { RuntimeSignIn, RuntimeSignInSlot, SignInRefusal, type SignInDeps, type SignInMethod } from "./runtime-signin.js";
+import { ProcessNotConfirmedEnded, RuntimeSignIn, RuntimeSignInSlot, SignInRefusal, type SignInDeps, type SignInMethod } from "./runtime-signin.js";
 import { isRuntimeRemoteOperation, parseRuntimeRemotePayload, type RuntimeRemoteOperation, type RuntimeRemotePayloads, type RuntimeSwitchStates } from "./runtime-protocol.js";
 
 /** What a CLI the server may name stands for here: the CLI's program, its sign-in, and its environment variable. */
@@ -61,10 +61,12 @@ export interface RemoteAccountsDeps {
   /** How often a sign-in that is under way looks at its switch (default 3 s), so turning the switch off or letting it expire ends the sign-in. */
   switchWatchMs?: number;
 }
-/** A process that was told to stop and was not confirmed gone: `ended` settles when it really has. Whoever owns the profile keeps it busy until then. */
-export class ProcessNotConfirmedEnded extends Error { constructor(readonly ended: Promise<unknown>) { super("The process could not be confirmed ended"); this.name = "ProcessNotConfirmedEnded"; } }
+// Defined next to `killTree` (the installer needs it too, and this module imports the installer's error): re-exported here for the existing importers.
+export { ProcessNotConfirmedEnded };
 /** What an operation knows about its own request: still the live connection of a Runtime that is not stopping. */
 interface Ctx { alive(): boolean }
+/** The key under which an install that could not be confirmed ended keeps the Runtime busy (no profile name can be this: it holds a NUL). */
+const INSTALL_KEY = "\0cli-install";
 const NOT_AVAILABLE = "This computer's Runtime is stopping or its connection changed, so nothing was done";
 /** At most this many `accounts.check` at a time on the computer: each one can start PowerShell and the CLI. */
 export const MAX_CONCURRENT_CHECKS = 2;
@@ -241,10 +243,26 @@ export class RemoteAccounts {
         check: () => {
           if (!this.deps.installer) throw new ProfileOwnershipRefusal("This Runtime cannot install CLIs", "unsupported");
           if (!this.deps.installer.knows(input.cli)) throw new ProfileOwnershipRefusal("That CLI is not in this Runtime's install list", "unsupported");
+          // An install whose child process could not be confirmed ended is still the Runtime's work: nothing else starts until it really ends.
+          if (this.retained.has(INSTALL_KEY)) throw new SignInRefusal("A CLI install on this computer has not finished ending; try again in a moment", "busy");
         },
         run: async () => {
           this.gate(ctx, "install");
-          const result = await this.deps.installer!.install(input.cli);
+          let result: { version: string };
+          try { result = await this.deps.installer!.install(input.cli); }
+          catch (error) {
+            const ended = (error as { ended?: unknown } | null)?.ended;
+            if (error instanceof ProcessNotConfirmedEnded || ended instanceof Promise) {
+              // The install's process may still be running, whatever the connection does or the server's deadline says: the Runtime stays busy (idle() is false), and the
+              // update fence is held, until it really ends. The install lock and its marker are kept by the installer for the same time.
+              const until = error instanceof ProcessNotConfirmedEnded ? error.ended : ended as Promise<unknown>;
+              this.retainBusy(INSTALL_KEY, until);
+              let leave: (() => void) | undefined;
+              try { leave = this.deps.enter?.(); } catch { /* the Runtime is stopping: its stop waits for idle() */ }
+              if (leave) { const release = leave; until.then(() => release(), () => release()); }
+            }
+            throw error;
+          }
           // The computer's CLI list changes now: the dashboard sees the new CLI without waiting for the next detection.
           this.deps.changed();
           return { version: result.version };

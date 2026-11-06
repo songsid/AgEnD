@@ -101,6 +101,8 @@ export interface SignInLaunch {
 export type SignInSpawn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
 export interface SignInDeps { spawn?: SignInSpawn; now?: () => number; ttlMs?: number; scratchRoot?: string; kill?: (child: ChildProcess) => void; /** The ten minutes ran out: the owner records it, and this ends the attempt. */ onTimeout?: () => void }
 
+/** A process that was told to stop and was not confirmed gone: `ended` settles when it really has. Whoever owns the profile (or the install lock) keeps it until then. */
+export class ProcessNotConfirmedEnded extends Error { constructor(readonly ended: Promise<unknown>) { super("The process could not be confirmed ended"); this.name = "ProcessNotConfirmedEnded"; } }
 export function killTree(child: ChildProcess): void {
   if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
   if (process.platform === "win32") {
