@@ -82,6 +82,16 @@ $wslStageVerified=$false
 Write-Output ('TARGET='+$UBUNTU_DISTRO+' VERIFIED='+$wslStageVerified+' LOCATION=['+(Get-ProgressValue 'WSL_INSTALL_PATH')+']')`));
   expect(out).toContain('TARGET=Ubuntu-26.04 VERIFIED=False LOCATION=[]');
  });
+ it('a saved 24.04 stage stays on 24.04 even when 26.04 is also installed',async ()=>{
+  const out=await run(`$UBUNTU_DISTRO='Ubuntu-24.04'
+@('DISTRO=Ubuntu-24.04','STAGE_1_DONE','WSL_INSTALL_DISTRO=Ubuntu-24.04','WSL_INSTALL_PATH=D:\\WSL\\Ubuntu')|Set-Content -LiteralPath $ProgressFile
+function Get-InstalledWslVersion {return [version]'2.6.1'}
+function Get-WslDistroNames {return ,@('Ubuntu-26.04','Ubuntu-24.04')}
+$wslStageVerified=$false
+. ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(extractLeadingStatement(source, "if (Stage-Done 1)")).toString("base64")}'))))
+Write-Output ('TARGET='+$UBUNTU_DISTRO+' VERIFIED='+$wslStageVerified+' LOCATION='+(Get-ProgressValue 'WSL_INSTALL_PATH'))`);
+  expect(out).toContain('TARGET=Ubuntu-24.04 VERIFIED=True LOCATION=D:\\WSL\\Ubuntu');
+ });
  it('an existing recorded distro and an unknown list preserve its exact location',async ()=>{
   const out=(await run(`'DISTRO=AgEnD'|Set-Content -LiteralPath $ProgressFile
 Get-WslInstallLocation $disks 'C:\\' 'AgEnD' 'AgEnD' 'D:' | Out-Null

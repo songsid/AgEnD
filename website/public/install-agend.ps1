@@ -622,7 +622,6 @@ function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) 
 # agend shortcuts 和修復都用它。之前已經裝過的 AgEnD 專用 Linux 會直接沿用，不會再裝一個。
 $AGEND_DISTRO_BASE = 'AgEnD'
 $WSL_NAME_MIN = [version]'2.4.4'
-$UBUNTU_INSTALL_CANDIDATES = @('Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04')
 $DISTRO_LIST_URL = 'https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json'
 
 # 這台電腦上的 Linux 名稱：只看清單，不啟動任何一個。wsl.exe 自己的輸出要設 WSL_UTF8=1 才是 UTF-8（否則 UTF-16LE）。
@@ -707,9 +706,10 @@ function Get-UbuntuWslImage([string]$version = 'Ubuntu-26.04') {
 # 只有確認沒有建立目標時才換版本；逾時、不明結果與 SHA256 不符都停止。$InstalledName 供接續與捷徑記下實際名稱。
 function Install-AgendDistro([string]$name, [string]$location, [switch]$UseVersionName, [ref]$InstalledName) {
     $version = Get-InstalledWslVersion
-    foreach ($candidate in $UBUNTU_INSTALL_CANDIDATES) {
+    $candidates = @('Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04')
+    foreach ($candidate in $candidates) {
         $target = if ($UseVersionName) { $candidate } else { $name }
-        if ($candidate -ne $UBUNTU_INSTALL_CANDIDATES[0]) {
+        if ($candidate -ne $candidates[0]) {
             Write-Warn ("{0} 無法安裝，改試 {1}；既有的 Linux 不會遷移。 / Previous Ubuntu unavailable; trying {1}. Existing installs are not migrated." -f $previous, $candidate)
         }
         if ($version -and $version -ge $WSL_NAME_MIN) {

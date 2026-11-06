@@ -65,7 +65,7 @@ const helperNames = [
   "Confirm-StopInstall", "Read-StepKey", "Test-CtrlC", "Stop-InstallChild",
 ];
 const prelude = helperNames.map(name => extractPsFunction(text, name)).join("\n") + "\n" +
-  extractPsAssignments(text, ["AGEND_DISTRO_BASE", "WSL_NAME_MIN", "DISTRO_LIST_URL", "UBUNTU_INSTALL_CANDIDATES", "WSL_COMMAND_FN", "RESTART_FN", "DASHBOARD_OPENER_FN"]);
+  extractPsAssignments(text, ["AGEND_DISTRO_BASE", "WSL_NAME_MIN", "DISTRO_LIST_URL", "WSL_COMMAND_FN", "RESTART_FN", "DASHBOARD_OPENER_FN"]);
 const batch = new InstallerPsBatch({ installer: prelude });
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
