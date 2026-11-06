@@ -7,6 +7,7 @@
  * - Muse: https://dev.meta.ai/docs/muse-code/extending and meta-models/muse-code-sdk MSP schema.
  * - Claude flags were checked against the installed native 2.1.299 --help.
  */
+import { parseClaudeAuthStatus } from "./claude-auth-status.js";
 export const NATIVE_PROVIDER_IDS = ["codex", "claude-code", "antigravity", "grok", "kiro-cli", "opencode", "muse"] as const;
 export type NativeProviderId = typeof NATIVE_PROVIDER_IDS[number];
 export type NativeSandbox = "read-only" | "workspace-write";
@@ -343,9 +344,8 @@ export function parseNativeAuthResult(cli: NativeProviderId, ok: boolean, output
     if (/\bnot logged in\b/i.test(output)) return false;
     return ok && /\blogged in\b/i.test(output) ? true : null;
   }
-  if (cli === "claude-code") {
-    try { const value = object(JSON.parse(output.trim())); return typeof value?.loggedIn === "boolean" ? value.loggedIn : null; } catch { return null; }
-  }
+  // The one reader of `claude auth status` (also the host's authCheck and the account identity): see claude-auth-status.ts.
+  if (cli === "claude-code") return parseClaudeAuthStatus(output).loggedIn;
   return null;
 }
 

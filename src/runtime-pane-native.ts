@@ -9,7 +9,8 @@ export function assertAuditedNativePaneVersion(provider:string,line:string|null)
  const versions=typeof line==="string"&&line.length<=4096?line.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/g):null;
  if(!expected||versions?.length!==1||versions[0]!==expected)throw Error("This native CLI version has not passed persistent-pane acceptance");
 }
-export interface NativePaneOwner { directory: string; launchId: string; mcp?: PaneMcpConnection }
+/** `credentialHome` is a folder the pane host itself resolved from a credential profile name under this Runtime's profile root. */
+export interface NativePaneOwner { directory: string; launchId: string; mcp?: PaneMcpConnection; credentialHome?: string }
 export type NativePaneCommand = { type: "start"; launch: RuntimePaneLaunch; owner: NativePaneOwner }
   | { type: "input"; data: string } | { type: "resize"; columns: number; rows: number }
   | { type: "pause" | "resume" | "close" };

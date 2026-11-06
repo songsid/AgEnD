@@ -117,6 +117,9 @@ describe("agend hub init — the whole flow", () => {
     const identity = await t.identity.read(t.home);
     expect(io.text()).toContain("https://hub.example.test:9443");
     expect(io.text()).toContain(identity!.spkiSha256);
+    expect(io.text()).toContain("Hub installation record");
+    expect(io.text()).toContain("agend uninstall");
+    expect(io.text()).toContain("does not erase");
   });
 
   it("asks for the service with an exact word: anything else installs nothing; an installed service is not reinstalled", async () => {

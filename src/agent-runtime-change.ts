@@ -2,6 +2,8 @@
 import { z } from "zod";
 import type { InstanceConfig } from "./types.js";
 import { settingsFingerprint } from "./settings-transaction.js";
+import { validCredentialProfileName } from "./runtime-credential-profiles.js";
+import { isWindowsInstance, nativeCredentialProfile } from "./native-instance-registry.js";
 
 export const AgentRuntimeChangeInput = z.object({
   requestId:z.string().uuid(), expectedRevision:z.string().regex(/^[a-f0-9]{64}$/),
@@ -10,7 +12,10 @@ export const AgentRuntimeChangeInput = z.object({
   model:z.string().max(160).default(""), directory:z.string().max(1024).default(""),
   sandbox:z.enum(["read-only","workspace-write"]).default("read-only"),
   adapter:z.enum(["exec","pane"]).default("exec"), startNewConversation:z.literal(true),
+  /** A NAME only (a Claude sign-in kept on the chosen Runtime computer). Never a path: the Runtime maps it to its own folder. */
+  credentialProfile:z.string().max(64).refine(validCredentialProfileName,"Invalid credential profile name").optional(),
 }).strict().superRefine((value,ctx)=>{
+  if(value.credentialProfile&&(value.runtime!=="windows"||!value.machineId||value.backend!=="claude-code"))ctx.addIssue({code:"custom",message:"A credential profile is a Claude Code sign-in kept on a paired Runtime computer"});
   if(value.runtime==="wsl"&&(value.machineId||value.adapter!=="exec"))ctx.addIssue({code:"custom",message:"Choose the Fleet host for a WSL/Linux agent"});
   if(value.runtime==="windows"&&value.adapter==="pane"&&!['codex','claude-code'].includes(value.backend))ctx.addIssue({code:"custom",message:"Persistent Windows terminals support Codex and Claude Code"});
 });
@@ -42,7 +47,8 @@ export class AgentRuntimeChanges {
     const backend=config.backend||(this.host.defaults() as {backend?:string}|undefined)?.backend||"claude-code";
     return {revision:settingsFingerprint([config,this.host.defaults(),this.host.generation(name),this.host.epoch(name)]),
       runtime:config.runtime==="windows"?"windows":"wsl",machineId:config.machine_id,backend,backendState:this.host.backendState?.(name,backend),
-      directory:config.working_directory,model:config.model??"",general:this.isGeneral(name,config),adapter:config.native_adapter??"exec",sandbox:config.native_sandbox??"read-only"};
+      directory:config.working_directory,model:config.model??"",general:this.isGeneral(name,config),adapter:config.native_adapter??"exec",sandbox:config.native_sandbox??"read-only",
+      credentialProfile:(()=>{try{return isWindowsInstance(config)?nativeCredentialProfile(config):undefined;}catch{return undefined;}})()};
   }
   change(name:string,raw:unknown,authorized:()=>boolean):Promise<unknown>{
     const target=AgentRuntimeChangeInput.parse(raw),digest=settingsFingerprint(target),old=this.attempts.get(name);

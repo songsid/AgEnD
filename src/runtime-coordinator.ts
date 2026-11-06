@@ -9,7 +9,10 @@ import { readBoundedWebBody } from "./web-body.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask, type NativeTaskInput } from "./windows-cli-worker.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
+import type { NativeCliRow } from "./windows-cli-worker.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
+import { assertCredentialProfileCli, assertCredentialProfileName, parseCredentialProfileReport } from "./runtime-credential-profiles.js";
+import { parseAccountIdentity } from "./claude-auth-status.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION, runtimeInfoCompatible, RUNTIME_REINSTALL_CLOSE_REASON,
@@ -38,9 +41,18 @@ function stable(value: unknown, depth = 0): string {
   if (record(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key], depth + 1)}`).join(",")}}`;
   return JSON.stringify(value) ?? "null";
 }
+/** The CLI rows' `supports` flags AgEnD knows; any other key a Runtime adds is not kept. */
+const SUPPORT_KEYS = ["execution", "resume", "model", "mcp"] as const;
+const MODEL_SOURCES = ["cli-cache", "official-catalog", "cli-list", "unavailable"] as const;
+/**
+ * A Runtime's inventory, copied field by field from an allowlist: a field AgEnD does not know is not kept (so it can never be stored or served back
+ * by /ui/runtimes), every text field has a length limit, and the account identity and the credential profile report are accepted in their
+ * closed, masked form only. A refusal names the field and the reason, never the rejected value: an unmasked e-mail must not reach a log, a close
+ * reason or an error message from here.
+ */
 function inventory(value: unknown): WindowsCliProbe {
   if (!record(value) || typeof value.home !== "string" || value.home.length > 1024 || !Array.isArray(value.clis) || value.clis.length > 16) throw new RuntimeProtocolError("Invalid runtime inventory");
-  const seen = new Set<string>();
+  const seen = new Set<string>(), clis: NativeCliRow[] = [];
   for (const row of value.clis) {
     if (!record(row) || !isNativeProviderId(row.id) || seen.has(row.id) || !record(row.supports)
       || typeof row.runnable !== "boolean" || typeof row.readOnlySupport !== "boolean"
@@ -48,13 +60,36 @@ function inventory(value: unknown): WindowsCliProbe {
       || !(row.path === null || text(row.path, 2048)) || !(row.version === null || text(row.version, 256))
       || typeof row.permissionNote !== "string" || row.permissionNote.length > 2048
       || !Array.isArray(row.models) || row.models.length > 256) throw new RuntimeProtocolError("Invalid runtime CLI inventory");
-    for (const model of row.models) if (!record(model) || !text(model.id, 256) || model.name !== undefined && !text(model.name, 256)
-      || model.description !== undefined && (typeof model.description !== "string" || model.description.length > 2048)) throw new RuntimeProtocolError("Invalid runtime model inventory");
+    const models = row.models.map(model => {
+      if (!record(model) || !text(model.id, 256) || model.name !== undefined && !text(model.name, 256)
+        || model.description !== undefined && (typeof model.description !== "string" || model.description.length > 2048)) throw new RuntimeProtocolError("Invalid runtime model inventory");
+      return { id: model.id as string, ...(model.name !== undefined ? { name: model.name as string } : {}), ...(model.description !== undefined ? { description: model.description as string } : {}) };
+    });
     if (Object.values(row.supports).some(v => typeof v !== "boolean")) throw new RuntimeProtocolError("Invalid runtime capabilities");
-    seen.add(row.id);
+    if (row.reason !== undefined && (typeof row.reason !== "string" || row.reason.length > 1024)) throw new RuntimeProtocolError("Invalid runtime CLI inventory");
+    const supports = Object.fromEntries(SUPPORT_KEYS.filter(key => Object.hasOwn(row.supports as object, key)).map(key => [key, (row.supports as Record<string, boolean>)[key]]));
+    const entry: NativeCliRow = { id: row.id, path: row.path as string | null, version: row.version as string | null, authenticated: row.authenticated as boolean | null, runnable: row.runnable, supports: supports as NativeCliRow["supports"],
+      readOnlySupport: row.readOnlySupport, permissionNote: row.permissionNote, models,
+      ...(row.reason !== undefined ? { reason: row.reason as string } : {}),
+      ...((MODEL_SOURCES as readonly unknown[]).includes(row.modelsSource) ? { modelsSource: row.modelsSource as NativeCliRow["modelsSource"] } : {}) };
+    seen.add(row.id); clis.push(entry);
   }
   if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw new RuntimeProtocolError("Runtime inventory is too large");
-  return structuredClone(value) as unknown as WindowsCliProbe;
+  if (value.probedAt !== undefined && value.probedAt !== null && (typeof value.probedAt !== "number" || !Number.isFinite(value.probedAt))) throw new RuntimeProtocolError("Invalid runtime inventory");
+  const probe: WindowsCliProbe = { clis, home: value.home, ...(value.probedAt !== undefined ? { probedAt: value.probedAt as number | null } : {} as { probedAt: null }),
+    ...(typeof value.hostname === "string" && value.hostname.trim() && value.hostname.length <= 255 && !/[\x00-\x1f\x7f]/.test(value.hostname) ? { hostname: value.hostname.trim() } : {}) };
+  const field = (error: unknown): string => /^Invalid (?:credential profile report|account identity): [A-Za-z ,.]{1,48}$/.test(String((error as Error)?.message)) ? String((error as Error).message).replace(/^Invalid (?:credential profile report|account identity): /, "") : "invalid";
+  if (value.credentialProfiles !== undefined) {
+    try { probe.credentialProfiles = parseCredentialProfileReport(value.credentialProfiles); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime credential profiles (${field(error)})`); }
+  }
+  const identities = new Map((value.clis as Array<Record<string, unknown>>).map(row => [row.id as string, row.identity]));
+  for (const row of probe.clis) {
+    const identity = identities.get(row.id);
+    if (identity === undefined) continue;
+    if (row.id !== "claude-code" || row.authenticated !== true) throw new RuntimeProtocolError("Invalid runtime CLI identity (only a signed-in Claude Code has one)");
+    try { row.identity = parseAccountIdentity(identity); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime CLI identity (${field(error)})`); }
+  }
+  return probe;
 }
 function machineView(machine: RuntimeMachine): RuntimeMachine {
   return { ...structuredClone(machine), runtimeCompatibility: machine.runtimeInfo
@@ -566,8 +601,9 @@ export class RuntimeCoordinator {
     if (machine.status !== "online" || !connection?.ready || !this.current(connection)) throw Error("Runtime machine is offline");
     let id = randomUUID(), normalized = payload;
     if (operation === "run") {
-      if (!record(payload) || Object.keys(payload).some(k => !["task", "resumeSessionId", "context", "mcp"].includes(k))) throw Error("Invalid runtime run payload");
+      if (!record(payload) || Object.keys(payload).some(k => !["task", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
       const task = validateNativeTask(payload.task);
+      if (payload.credentialProfile !== undefined) { assertCredentialProfileName(payload.credentialProfile); assertCredentialProfileCli(task.cli); }
       if (payload.resumeSessionId !== undefined && !text(payload.resumeSessionId, 256) || payload.context !== undefined && (typeof payload.context !== "string" || payload.context.length > 2000 || payload.context.includes("\0"))) throw Error("Invalid runtime turn context");
       if (payload.mcp !== undefined && (!record(payload.mcp) || Object.keys(payload.mcp).some(k => k !== "tools") || !Array.isArray(payload.mcp.tools) || !payload.mcp.tools.length || payload.mcp.tools.length > 128 || payload.mcp.tools.some(v => typeof v !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(v)))) throw Error("Invalid runtime tool scope");
       normalized = { ...payload, task } satisfies RuntimeRunPayload; id = task.requestId as typeof id;

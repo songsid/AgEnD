@@ -8,7 +8,8 @@ import { localWindowsCliEnabled, remoteRuntimeEnabled } from "./runtime-switches
 
 /** M-2255: the switch for where this agent runs — this PC's Windows CLIs, or the other Windows computers. */
 const switchedOn = (agent: { machineId?: string }): boolean => agent.machineId ? remoteRuntimeEnabled() : localWindowsCliEnabled();
-import { isWindowsInstance, isNativeExecInstance, nativeAgentId, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, previewWindowsProfile, syncWindowsProfile } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativeExecInstance, nativeAgentId, nativeCredentialProfile, nativeInstanceConfig, nativeInstanceName, registerWindowsProfiles, previewWindowsProfile, syncWindowsProfile } from "./native-instance-registry.js";
+import { assertCredentialProfileName } from "./runtime-credential-profiles.js";
 import { validWindowsAgentId } from "./windows-cli-worker.js";
 import type { NativeHistoryMessage, WebChatHistory } from "./web-chat-history.js";
 import type { SettingsExecution } from "./settings-transaction.js";
@@ -28,7 +29,8 @@ export interface FleetWindowsRuntimeHost {
   removed?(name: string,config: InstanceConfig): void;
   machineAvailable?(machineId: string): boolean;
   paneCurrent?(name: string): boolean;
-  validateMachine?(machineId: string, cli: string, sandbox?: unknown): void;
+  /** `credentialProfile`: also refuses a Runtime that cannot honour it, a name that computer never reported, and one it reports as signed out. */
+  validateMachine?(machineId: string, cli: string, sandbox?: unknown, credentialProfile?: string): void;
   machineGeneration?(machineId:string):string|null;
   paneAvailable?(machineId:string):boolean;
 }
@@ -104,13 +106,16 @@ export class FleetWindowsRuntime {
     const targetCurrent=()=>{
       if(revoked)return false;
       try{
-      if(target.machineId){if(!remoteRuntimeEnabled()||!this.host.validateMachine)throw Error("Remote runtime is disabled");this.host.validateMachine(target.machineId,target.backend,target.sandbox);}
+      if(target.machineId){if(!remoteRuntimeEnabled()||!this.host.validateMachine)throw Error("Remote runtime is disabled");this.host.validateMachine(target.machineId,target.backend,target.sandbox,target.credentialProfile);}
       else if(!localWindowsCliEnabled())throw Error(LOCAL_WINDOWS_CLI_OFF);
+      if(target.credentialProfile&&!target.machineId)throw Error("A credential profile is a sign-in kept on a paired Runtime computer");
       if(target.machineId&&this.host.machineGeneration&&(!identity||this.host.machineGeneration(target.machineId)!==identity))throw Error("Runtime connection changed");
       if(target.machineId&&target.adapter==="pane"&&this.host.paneAvailable?.(target.machineId)===false)throw Error("This Runtime does not support persistent terminals; update it before switching");
       return true;
       }catch{revoked=true;return false;}
     };
+    // The profile checks say what to do next (sign in there, update the Runtime); the generic race check below would swallow them.
+    if(target.credentialProfile&&target.machineId)this.host.validateMachine?.(target.machineId,target.backend,target.sandbox,target.credentialProfile);
     const validate=()=>{if(!current()||!targetCurrent())throw Error("Selected Runtime is unavailable or changed during the operation");};validate();
     if(!target.machineId){
       const inventory=await this.bridge.probe({force:false});validate();
@@ -124,8 +129,11 @@ export class FleetWindowsRuntime {
       const config:InstanceConfig={...before,runtime:"windows",native_agent_id:agent.id,native_adapter:target.adapter,
       native_sandbox:agent.sandbox,working_directory:agent.cwd,backend:agent.cli,model:agent.model||"",agent_mode:"cli"};
       if(agent.machineId)config.machine_id=agent.machineId;else delete config.machine_id;
-      // A Windows Agent has no Linux credential profile or shell hook; #3036's General move drops the same three fields.
+      // A Windows Agent has no Linux shell hook and no Linux credential home; #3036's General move drops the same three fields. The one thing
+      // that does carry over is a NAME the target computer resolves itself: Claude Code's credential profile on a paired Runtime.
       for(const key of ["backend_options","credential_profile","pre_task_command"] as const)delete (config as unknown as Record<string,unknown>)[key];
+      if(target.credentialProfile)config.backend_options={"claude-code":{credential_profile:assertCredentialProfileName(target.credentialProfile)}};
+      nativeCredentialProfile(config);
       if(before.backend!==target.backend)config.model_failover=[];
       return {config,discard,current:targetCurrent};}
     catch(error){discard();throw error;}
@@ -143,10 +151,14 @@ export class FleetWindowsRuntime {
     if (!fleet) throw new Error("Fleet configuration is unavailable");
     // #3021 review: a Windows agent inherits the defaults too — never a second General on a fleet with no chat connection.
     if (addsSecondGeneral(fleet as never)) throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true");
-    const {tags,...profile} = input;
+    const {tags,credentialProfile,...profile} = input;
+    if (credentialProfile !== undefined) {
+      if (profile.machineId === undefined || profile.cli !== "claude-code") throw new Error("A credential profile is a Claude Code sign-in kept on a paired Runtime computer; choose that computer and Claude Code");
+      assertCredentialProfileName(credentialProfile);
+    }
     if (profile.machineId !== undefined) {
       if (typeof profile.machineId !== "string" || !this.host.validateMachine) throw new Error("Remote runtime is not enabled");
-      this.host.validateMachine(profile.machineId,String(profile.cli ?? "codex"),profile.sandbox);
+      this.host.validateMachine(profile.machineId,String(profile.cli ?? "codex"),profile.sandbox,credentialProfile as string|undefined);
     } else if (!localWindowsCliEnabled()) throw new Error(LOCAL_WINDOWS_CLI_OFF);   // M-2255: refused before anything is made
     const agent = await this.store.create(profile,authorized), name = nativeInstanceName(agent.id), before=fleet.instances[name];
     try {
@@ -155,7 +167,8 @@ export class FleetWindowsRuntime {
         if (Object.hasOwn(fleet.instances,name)) throw new Error("Instance name already exists");
         // #3021 review r2: asked again at the commit, after the profile's await — a create made meanwhile counts.
         if (addsSecondGeneral(fleet as never)) throw new Error("one_general: this fleet already has its General, and a new agent would inherit defaults.general_topic: true");
-        fleet.instances[name] = {...nativeInstanceConfig(agent),...binding,...(Array.isArray(tags) ? {tags:tags as string[]} : {})};
+        fleet.instances[name] = {...nativeInstanceConfig(agent),...binding,...(Array.isArray(tags) ? {tags:tags as string[]} : {}),
+          ...(credentialProfile ? {backend_options:{"claude-code":{credential_profile:credentialProfile as string}}} : {})};
         this.host.save();
       };
       if(transaction)transaction.mutate(persist);else persist();
@@ -264,6 +277,8 @@ export class FleetWindowsRuntime {
     const agent=syncWindowsProfile(config,this.store);
     if(!switchedOn(agent))throw new Error(agent.machineId ? "Other Windows computers are turned off. Turn them on in Settings → Runtime." : LOCAL_WINDOWS_CLI_OFF);
     if(agent.machineId && this.host.machineAvailable?.(agent.machineId)!==true)throw new Error("This runtime machine is offline. Reconnect it before sending a message.");
+    // Fail closed before anything is journaled: a malformed profile never becomes "run on the computer's own account".
+    const credentialProfile=nativeCredentialProfile(config);
     const raw = typeof payload.content === "string" ? payload.content : typeof payload.text === "string" ? payload.text
       : payload.payload && typeof payload.payload === "object" ? (payload.payload as {message?:unknown}).message : undefined;
     if (typeof raw !== "string" || !raw.trim()) throw new Error("Windows delivery needs a text message");
@@ -290,7 +305,7 @@ export class FleetWindowsRuntime {
       ...(typeof meta.from_instance === "string" ? [`Incoming Fleet context: ${JSON.stringify({from_instance:meta.from_instance.slice(0,128),correlation_id:typeof meta.correlation_id === "string" ? meta.correlation_id.slice(0,256) : undefined,requires_reply:meta.requires_reply === "true"})}`] : []),
     ].join("\n") : undefined;
     let task:ReturnType<WindowsAgents["send"]>;
-    try { task=this.store.send(agent.id,{requestId,prompt:raw},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection,context} : {}),onSettled:task=>{
+    try { task=this.store.send(agent.id,{requestId,prompt:raw},()=>!this.host.stopping() && authority?.() !== false,{...(lease ? {mcp:lease.connection,context} : {}),...(credentialProfile ? {credentialProfile} : {}),onSettled:task=>{
       const reportedCorrelationIds=lease?.reportedCorrelations(typeof meta.from_instance === "string" ? meta.from_instance : undefined) ?? [];
       closeLease();
       const replyId=`native:${task.id}:reply`;

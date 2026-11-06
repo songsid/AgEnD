@@ -811,6 +811,11 @@ export interface CliBackend {
    */
   launchMayShowInputTransient?(): boolean;
 
+  /** Positive pre-launch quota history, read only from the exact conversation being resumed. */
+  quotaReplayHistory?(): { messages: readonly string[]; current(): boolean } | null;
+  /** Grok wake: the command explicitly resumes the preserved window's conversation. */
+  resumesPreservedQuotaHistory?(): boolean;
+
   /** Write all config files the CLI needs before launch. */
   writeConfig(config: CliBackendConfig): void;
 

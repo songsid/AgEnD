@@ -10,6 +10,7 @@ import {atomicWriteFileSync} from "./atomic-write.js";
 import {runtimeJobDigest} from "./runtime-client-store.js";
 import {RuntimeNativePaneLifecycle} from "./native-pane-lifecycle.js";
 import {assertAuditedNativePaneVersion} from "./runtime-pane-native.js";
+import {nativeCredentialProfile} from "./native-instance-registry.js";
 import {PaneMcpAuthorityLease} from "./runtime-pane-mcp.js";
 import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,validateRuntimePaneSessionProof,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
 import {validatePaneMcpBody,type PaneMcpBody} from "./runtime-pane-mcp-protocol.js";
@@ -67,12 +68,14 @@ export class NativePaneManager {
  }
  private save(file:string,value:Manifest):void{atomicWriteFileSync(file,JSON.stringify(value),{mode:0o600});}
  private configurationHash(agent:WindowsAgent,config:InstanceConfig):string{
+  // A profile joins the hash only when there is one, so every launch made before this existed keeps the hash it was saved with.
+  const credentialProfile=nativeCredentialProfile(config);
   return runtimeJobDigest({cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,model:config.model||"",prompt:config.systemPrompt||"",workflow:config.workflow??null,
-   ...(config.general_topic?{general:true,binding:config.native_general_binding}: {})});
+   ...(config.general_topic?{general:true,binding:config.native_general_binding}: {}),...(credentialProfile?{credentialProfile}:{})});
  }
  private newManifest(name:string,config:InstanceConfig,agent:WindowsAgent,machineId:string,resume=true,identity?:Pick<RuntimePaneLaunch,"paneId"|"launchId">):Manifest{
   const launch=validateRuntimePaneLaunch({cli:agent.cli,cwd:agent.cwd,sandbox:config.native_sandbox,instructions:this.options.instructions(name,config),
-   ...(config.model?{model:config.model}:{}),agentId:agent.id,instance:name,paneId:identity?.paneId??randomUUID(),launchId:identity?.launchId??randomUUID(),
+   ...(config.model?{model:config.model}:{}),...(nativeCredentialProfile(config)?{credentialProfile:nativeCredentialProfile(config)}:{}),agentId:agent.id,instance:name,paneId:identity?.paneId??randomUUID(),launchId:identity?.launchId??randomUUID(),
    columns:120,rows:40,...(resume&&agent.threadId?{sessionId:agent.threadId}:{}),mcpTools:this.options.menu(name).map(tool=>tool.name),
    ...(config.general_topic?{generalWorkspace:{bindingId:config.native_general_binding,packHash:loadGeneralKnowledge(agent.cli as "codex"|"claude-code").hash}}: {})});
   return {version:1,machineId,configuration:this.configurationHash(agent,config),launch};

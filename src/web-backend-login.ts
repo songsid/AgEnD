@@ -11,6 +11,7 @@
  *   sessions see that a sign-in is running (backend, device, phase) and may cancel it; nothing more.
  * - A sign-in whose session signs out, expires or is revoked is cancelled (WEB_LOGIN_WATCH_MS).
  */
+import type { AccountIdentity } from "./claude-auth-status.js";
 import { randomBytes } from "node:crypto";
 import type { ChannelAdapter } from "./channel/types.js";
 import type { LoginChat, LoginStartOptions, WebLoginSink } from "./login-controller.js";
@@ -48,6 +49,8 @@ export interface SignInTarget {
   install?: string;
   /** Too old: the command that installs the current version over it. */
   update?: string;
+  /** Which account this sign-in is (a masked e-mail and a plan), Claude Code only, from the host's own `claude auth status`. Local administrators only: this list is never served to anyone else. */
+  identity?: AccountIdentity;
 }
 
 export interface WebLoginRequester {
@@ -71,7 +74,12 @@ export interface WebBackendLoginDeps {
   /** A sign-in started from the dashboard: said where a chat login would be seen (General, or the Log). */
   notice(info: { shown: string; label: string; handle: string }): void;
   /** The current sign-in started, changed phase or went: the pages are told to read it again (no details in the event). */
-  changed?(): void;
+  changed?(phase?: "running" | "ended"): void;
+  /**
+   * Any sign-in this registry started has ended (success, failure or cancel), including one that a later one replaced or that ended before it was ever
+   * published as the current one. It says nothing about what the pages show: what is known about the accounts may be out of date, that is all.
+   */
+  loginEnded?(): void;
   now?(): number;
 }
 
@@ -188,7 +196,10 @@ export class WebBackendLogins {
         run.phase = "ended"; run.ok = result.ok; run.endedAt = this.now();
         this.live.delete(run);
         if (!this.live.size) this.stopWatch();
-        if (this.run === run) this.changed();
+        // Every end forgets the accounts, whichever sign-in it was: the account behind a login may have changed. Only the sign-in the pages are
+        // showing tells them it ended; one that was replaced (or never published) must not make them show the current one as over.
+        this.loginEnded();
+        if (this.run === run) this.changed("ended");
       },
     };
     // Watched from admission, not from publication: a session revoked while its listener, tunnel or cloudflared is
@@ -209,7 +220,7 @@ export class WebBackendLogins {
     // A start that took longer than a later one (its listener held, then cancelled) never replaces what that one shows.
     if (this.run && this.run.seq > run.seq) return running ? { login: this.viewOf(run, who.handle) } : { message: message ?? run.lines.join("\n") };
     this.run = run;
-    this.changed();
+    this.changed(run.phase);
     if (running) {
       try { this.deps.notice({ shown: asked.profile ? `${asked.backend} (${asked.profile})` : asked.backend, label: who.label, handle: who.handle }); } catch { /* a notice never stops a sign-in */ }
     }
@@ -243,7 +254,8 @@ export class WebBackendLogins {
     };
   }
 
-  private changed(): void { try { this.deps.changed?.(); } catch { /* the pages read it on their own next time */ } }
+  private loginEnded(): void { try { this.deps.loginEnded?.(); } catch { /* a cache of what is known about accounts never stops a sign-in */ } }
+  private changed(phase?: "running" | "ended"): void { try { this.deps.changed?.(phase); } catch { /* the pages read it on their own next time */ } }
 
   private chatFor(who: WebLoginRequester, sink: WebLoginSink, lines: string[]): LoginChat {
     // The status lines chat would post (done, recovery, a download notice) — this sign-in's own, shown to its session.

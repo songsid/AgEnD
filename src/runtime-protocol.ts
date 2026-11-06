@@ -61,6 +61,8 @@ export interface RuntimeRunPayload {
   context?: string;
   /** Tool names only; coordinator credentials never cross this transport. */
   mcp?: { tools: string[] };
+  /** A credential profile NAME (a Claude sign-in kept on that computer). Never a path: the Runtime maps it to its own folder. */
+  credentialProfile?: string;
 }
 export interface RuntimeMachine {
   id: string;

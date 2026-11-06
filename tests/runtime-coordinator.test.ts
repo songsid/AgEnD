@@ -112,6 +112,21 @@ describe("runtime pairing durable identity", () => {
       expect(h.machine(identity.machineId)).toMatchObject({status:"online",runtimeCompatibility:"compatible"});
     });
   });
+  it("stores a Runtime's credential profile report as names and signed-in yes/no only, and refuses anything else",async()=>{
+    const h=hub(),identity=pair(h),base=await listen(h);
+    const open=async(report:unknown)=>{
+      const ws=new WebSocket(base.replace("http:","ws:")+"/runtime/v1/connect",{headers:{Authorization:`Bearer ${identity.credential}`}});clients.push(ws);await once(ws,"open");
+      const closed=once(ws,"close"),welcome=once(ws,"message");ws.send(JSON.stringify({v:1,type:"hello",bootId:"profiles-boot",inventory:{home:"C:\\Users\\test",clis:[],credentialProfiles:report}}));
+      return {ws,closed,welcome};
+    };
+    const good=await open({profiles:[{name:"work",loggedIn:true},{name:"home",loggedIn:null}],default:"work"});await good.welcome;
+    expect(h.machine(identity.machineId)?.inventory?.credentialProfiles).toEqual({profiles:[{name:"work",loggedIn:true},{name:"home",loggedIn:null}],default:"work"});
+    good.ws.terminate();await vi.waitFor(()=>expect(h.machine(identity.machineId)?.status).toBe("offline"));
+    for(const bad of [{profiles:[{name:"work",loggedIn:true,path:"C:\\Users\\u\\.claude"}]},{profiles:[{name:"C:\\x",loggedIn:true}]},{profiles:[{name:"work",loggedIn:true,email:"a@b.c"}]},{profiles:[],default:"ghost"},{profiles:"x"}]){
+      const refused=await open(bad);const[code]=await refused.closed;expect(code,JSON.stringify(bad)).toBe(1008);
+    }
+    expect(JSON.stringify(h.listMachines())).not.toMatch(/\.claude|a@b\.c/);
+  });
   it("rejects malformed version metadata before making the connection ready",async()=>{
     const h=hub(),identity=pair(h),base=await listen(h);
     const ws=new WebSocket(base.replace("http:","ws:")+"/runtime/v1/connect",{headers:{Authorization:`Bearer ${identity.credential}`}});clients.push(ws);await once(ws,"open");const closed=once(ws,"close");

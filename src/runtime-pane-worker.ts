@@ -11,6 +11,7 @@ import type {} from "./transcript-records.js";
 import type {} from "./transcript-needles.js";
 import type {} from "./runtime-pane-transcript.js";
 import { findCli, nativeCliEnvironment, validWindowsDirectory, validWindowsAgentId } from "./windows-cli-worker.js";
+import { withCredentialProfile } from "./runtime-credential-profiles.js";
 import { validateRuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { prepareNativePaneConfig, type NativePaneConfig } from "./runtime-pane-config.js";
 import { validatePaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
@@ -45,9 +46,17 @@ export async function nativePaneWorker(): Promise<void> {
         if (value.type !== "start" || Object.keys(value).some(key => !["type", "launch", "owner"].includes(key))) throw Error("Helper start required");
         started = true;
         const launch = validateRuntimePaneLaunch(value.launch);
-        if (!value.owner || typeof value.owner !== "object" || Object.keys(value.owner).some(key => !["directory", "launchId", "mcp"].includes(key))
+        if (!value.owner || typeof value.owner !== "object" || Object.keys(value.owner).some(key => !["directory", "launchId", "mcp", "credentialHome"].includes(key))
           || !validWindowsDirectory(value.owner.directory) || !validWindowsAgentId(value.owner.launchId)) throw Error("Invalid helper owner");
         const owner: NativePaneOwner = { directory: value.owner.directory as string, launchId: value.owner.launchId as string };
+        // The launch names a profile only when the host resolved it: both must agree, and the folder must be a native directory.
+        if ((launch.credentialProfile === undefined) !== (value.owner.credentialHome === undefined)) throw Error("Pane credential profile folder is missing or unexpected");
+        if (value.owner.credentialHome !== undefined) {
+          if (!validWindowsDirectory(value.owner.credentialHome) || !statSync(value.owner.credentialHome).isDirectory()) throw Error("Invalid pane credential profile folder");
+          owner.credentialHome = value.owner.credentialHome as string;
+        }
+        // One environment for the version check and the CLI: with a profile its folder replaces any ambient config directory, never combines with it.
+        const environment = (): NodeJS.ProcessEnv => owner.credentialHome ? withCredentialProfile(nativeCliEnvironment(), launch.cli, owner.credentialHome) : nativeCliEnvironment();
         if (value.owner.mcp) {
           const mcp = value.owner.mcp;
           if (typeof mcp !== "object" || Object.keys(mcp).some(key => !["owner", "endpoint", "token", "tools"].includes(key))) throw Error("Invalid pane MCP owner");
@@ -66,13 +75,13 @@ export async function nativePaneWorker(): Promise<void> {
         // This is a bounded version-only check inside the owned Job, not inventory/auth/model discovery.
         // An out-of-band CLI update must not run newer terminal layouts under a stale cached inventory.
         const version=await promisify(execFile)(executable.command,[...executable.args,...nativeUpdateGuard(launch.cli),"--version"],{
-          cwd:actual,env:{...nativeCliEnvironment(),NO_COLOR:"1"},timeout:30_000,maxBuffer:4096,encoding:"utf8",windowsHide:true,shell:false,
+          cwd:actual,env:{...environment(),NO_COLOR:"1"},timeout:30_000,maxBuffer:4096,encoding:"utf8",windowsHide:true,shell:false,
         });
         assertAuditedNativePaneVersion(launch.cli,String(version.stdout));
         if(disconnected||finished)throw Error("Pane helper was disconnected before version verification");
         pty = binding.spawn(executable.command, args, {
           cwd: actual, cols: launch.columns, rows: launch.rows, name: "xterm-256color", useConpty: true, useConptyDll: true,
-          env: { ...nativeCliEnvironment(), TERM: "xterm-256color", COLORTERM: "truecolor" },
+          env: { ...environment(), TERM: "xterm-256color", COLORTERM: "truecolor" },
         });
         pty.onData(data => {
           for (let start = 0; start < data.length;) {
