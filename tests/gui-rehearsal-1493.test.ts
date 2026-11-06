@@ -6,7 +6,7 @@
  * The real script runs here with inert npm / launchctl / curl / agend stubs (no service, fleet or install).
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -26,6 +26,8 @@ function rehearse(updater: { rc: number; leavesPlan: boolean }) {
   // #1819: the published 2.3.3 comes as a tarball (the CI action restores and checks it); a placeholder here.
   const oldTgz = join(root, "songsid-agend-2.3.3.tgz");
   writeFileSync(oldTgz, "");
+  const prefixBin = join(temp, "gui", "prefix", "bin");
+  mkdirSync(prefixBin, { recursive: true });
   const calls = join(root, "calls"), state = join(root, "installed");
   writeFileSync(state, "2.3.3");
   const stub = (name: string, body: string) => { writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> '${calls}'\n${body}\n`); chmodSync(join(bin, name), 0o755); };
@@ -43,6 +45,8 @@ function rehearse(updater: { rc: number; leavesPlan: boolean }) {
     `  restart) exit 0 ;;`,
     `esac`,
   ].join("\n"));
+  // The installer owns this absolute bin as well as the PATH entry.
+  symlinkSync(join(bin, "agend"), join(prefixBin, "agend"));
   const r = spawnSync("bash", [SCRIPT, pkgs], {
     encoding: "utf8", timeout: 60_000,
     env: { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, RUNNER_TEMP: temp, AGEND_OLD_TARBALL: oldTgz },
