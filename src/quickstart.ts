@@ -518,7 +518,7 @@ export async function fetchWebSignInCode(run: () => { status: number | null; std
  */
 export async function offerPlatformGeneral(rl: { question(q: string): Promise<string> }, config: Record<string, any>, channels: any[], index: number, home = DATA_DIR): Promise<boolean> {
   config.instances ??= {};
-  const plan = platformGeneralPlan(config.instances, channels, index, home);
+  const plan = platformGeneralPlan(config.instances, channels, index, home, config.defaults);
   if (!plan) return false;
   const platformName = channels[index]?.type === "telegram" ? "Telegram" : channels[index]?.type === "discord" ? "Discord" : String(channels[index]?.type);
   const answer = (await rl.question(`  ${t("setup.platform_general.ask", platformName, plan.name)} `)).trim().toLowerCase();
@@ -812,6 +812,11 @@ export async function runQuickstart(): Promise<void> {
             config.channels = channels;
             writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
             console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
+            // A running fleet applies it now (its reconciliation starts the new General), as Add allowed users does.
+            const pidPathGeneral = join(DATA_DIR, "fleet.pid");
+            if (existsSync(pidPathGeneral)) {
+              try { process.kill(parseInt(readFileSync(pidPathGeneral, "utf-8").trim(), 10), "SIGHUP"); console.log(`  ${green("✓")} Fleet hot-reloaded.`); } catch { /* not running */ }
+            }
           }
           await maybeUpdateClassicBot(rl);
           printDone();
