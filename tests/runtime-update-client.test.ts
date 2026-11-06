@@ -151,6 +151,16 @@ it("a trial publishes nothing or probes no CLI until activation and then accepts
   expect(await f.hub.call(f.machineId, "workspace", { agentId: randomUUID() })).toMatchObject({ cwd: "C:\\fixture" });
   expect(f.bridge.probe).toHaveBeenCalled();
 });
+it("an exact positive trial acknowledgement remains idempotent without another admission or idle requirement", async () => {
+  const id = randomUUID(), f = await fixture({ managedUpdate: { trialId: id } });
+  const sent = vi.spyOn(f.hub as any, "send");
+  expect(await f.client.activateTrial(id)).toBe(true);
+  const acknowledgements = () => sent.mock.calls.filter(([, frame]) => (frame as any).type === "update.control" && (frame as any).phase === "activated").length;
+  expect(acknowledgements()).toBe(1); f.bridge.idleForUpdate = () => false;
+  expect(await f.client.activateTrial(id)).toBe(true); expect(acknowledgements()).toBe(1);
+  expect(await f.client.activateTrial(randomUUID())).toBe(false); expect(f.client.online()).toBe(true);
+  expect(f.bridge.cancel).not.toHaveBeenCalled();
+});
 it("withholds a persisted completed job throughout trial welcome and publishes it only after activation", async () => {
   const f = await fixture(), id = randomUUID();
   vi.mocked(f.bridge.start).mockImplementation((raw: any) => ({ id: raw.requestId, cli: raw.cli, cwd: raw.cwd, sandbox: raw.sandbox,

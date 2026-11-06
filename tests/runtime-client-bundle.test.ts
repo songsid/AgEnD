@@ -26,6 +26,9 @@ describe("standalone Windows runtime bundle", () => {
       const runtimeHome=join(directory,"unused-profile");
       const info=JSON.parse(execFileSync(process.execPath,[join(bundle,"dist/runtime-cli.js"),"--version"],{cwd:directory,encoding:"utf8",timeout:10_000,env:{...process.env,AGEND_RUNTIME_HOME:runtimeHome}}));
       expect(info).toMatchObject({version:pkg.version,buildId:manifest.buildId,protocolVersions:[1]});expect(info.buildId).toMatch(/^[a-f0-9]{64}$/);expect(existsSync(runtimeHome)).toBe(false);
+      expect(() => execFileSync(process.execPath, [join(bundle, "dist/runtime-cli.js"), "--internal-update"],
+        { cwd: directory, stdio: "pipe", timeout: 10_000, env: { ...process.env, AGEND_RUNTIME_HOME: runtimeHome } })).toThrow(/Inherited native Runtime update channel required/);
+      expect(existsSync(runtimeHome)).toBe(false);
       const source=join(bundle,"dist/runtime-cli.js");writeFileSync(source,readFileSync(source,"utf8")+"\n// changed runtime code\n");
       const changed=JSON.parse(execFileSync(process.execPath,[source,"--version"],{cwd:directory,encoding:"utf8",timeout:10_000}));
       expect(changed.version).toBe(info.version);expect(changed.buildId).not.toBe(info.buildId);
