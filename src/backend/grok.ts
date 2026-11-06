@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { selectionCard } from "../selection-card.js";
+import { displayWidth } from "../ls-rows.js";
 import { quotaLine, quotaPausedLine } from "../quota-notice.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
@@ -135,6 +136,11 @@ const GROK_BOX_MAX_ROWS = 40;
  *
  * Captured from grok 1.0.52–1.0.70 audit panes (`tests/fixtures/grok-1.0.*-audit`)
  * and the watcher fixtures. A live draft is `06-after-cancel` (`│ ❯ stall forever b`).
+ *
+ * Borders are located by terminal column (`displayWidth`: CJK 2, combining `\p{M}` 0,
+ * box-drawing 1). UTF-16 indexes are not columns: a CJK inner shifts the closer
+ * left in the string, and a combining inner can put an extra `│` at the top `╮`'s
+ * UTF-16 offset while the real closer (and an unsent id) sit further right.
  */
 export function readGrokInputBox(pane: string): InputBox | null {
   const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
@@ -147,27 +153,32 @@ export function readGrokInputBox(pane: string): InputBox | null {
     if (row.trim() !== "" && ++footer > GROK_BOX_FOOTER_MAX_ROWS) return null;
   }
   if (bottom < 1) return null;
-  const left = rows[bottom]!.indexOf("╰");
-  if (left < 0) return null;
+  const leftIdx = rows[bottom]!.indexOf("╰");
+  if (leftIdx < 0) return null;
+  const leftCol = displayWidth(rows[bottom]!.slice(0, leftIdx));
 
   let top = -1;
   for (let i = bottom - 1; i >= 0 && bottom - i <= GROK_BOX_MAX_ROWS + 1; i--) {
     const row = rows[i]!;
-    if (row.indexOf("╭") === left && row.lastIndexOf("╮") > left) { top = i; break; }
-    if (row.length <= left || row[left] !== "│") return null;
+    const atLeft = indexAtDisplayCol(row, leftCol);
+    if (atLeft >= 0 && row[atLeft] === "╭" && row.lastIndexOf("╮") > atLeft) { top = i; break; }
+    if (atLeft < 0 || row[atLeft] !== "│") return null;
   }
   if (top < 0 || bottom - top < 2) return null;
-  // Inner `│` and the top `╮` line up. The bottom `╯` may sit further right: a long
-  // model label (`Grok 4.5 (high) · always-approve`) grows that row past the top rule
-  // (tests/fixtures/grok-watcher-idle.pane.txt).
-  const right = rows[top]!.lastIndexOf("╮");
-  if (right <= left || rows[bottom]!.lastIndexOf("╯") < right) return null;
+  // Inner `│` and the top `╮` line up in terminal columns. The bottom `╯` may sit
+  // further right: a long model label (`Grok 4.5 (high) · always-approve`) grows
+  // that row past the top rule (tests/fixtures/grok-watcher-idle.pane.txt).
+  const rightIdx = rows[top]!.lastIndexOf("╮");
+  const rightCol = displayWidth(rows[top]!.slice(0, rightIdx));
+  const bottomRightCol = displayWidth(rows[bottom]!.slice(0, rows[bottom]!.lastIndexOf("╯")));
+  if (rightCol <= leftCol || bottomRightCol < rightCol) return null;
+  if (!frameAt(rows[top]!, leftCol, rightCol, "╭", "╮")) return null;
 
   const lines: string[] = [];
   for (let i = top + 1; i < bottom; i++) {
-    const row = rows[i]!;
-    if (row.length <= right || row[left] !== "│" || row[right] !== "│") return null;
-    const content = row.slice(left + 1, right);
+    const sides = frameAt(rows[i]!, leftCol, rightCol, "│", "│");
+    if (!sides) return null;
+    const content = rows[i]!.slice(sides.left + 1, sides.right);
     if (lines.length === 0) {
       const prompt = /^ ❯ ?(.*)$/.exec(content);
       if (!prompt) return null;
@@ -179,6 +190,38 @@ export function readGrokInputBox(pane: string): InputBox | null {
   }
   if (lines.length === 0) return null;
   return { text: lines.join("\n").trimEnd(), collapsedPastes: 0 };
+}
+
+/** UTF-16 index of the first positive-width character whose display column starts at `col`. */
+function indexAtDisplayCol(s: string, col: number): number {
+  let display = 0;
+  let i = 0;
+  for (const ch of s) {
+    const w = displayWidth(ch);
+    if (w > 0) {
+      if (display === col) return i;
+      if (display > col) return -1;
+      display += w;
+    }
+    i += ch.length;
+  }
+  return -1;
+}
+
+/** Cell-aligned `leftCh`/`rightCh` at `leftCol`/`rightCol`; leftover outside the frame is not a box. */
+function frameAt(
+  row: string,
+  leftCol: number,
+  rightCol: number,
+  leftCh: string,
+  rightCh: string,
+): { left: number; right: number } | null {
+  const left = indexAtDisplayCol(row, leftCol);
+  const right = indexAtDisplayCol(row, rightCol);
+  if (left < 0 || right <= left) return null;
+  if (row[left] !== leftCh || row[right] !== rightCh) return null;
+  if (row.slice(0, left).trim() !== "" || row.slice(right + 1).trim() !== "") return null;
+  return { left, right };
 }
 
 /**
