@@ -19,3 +19,21 @@ export function quotaHistoryCount(pane: string, pattern: RegExp, messages: reado
   }
   return count;
 }
+
+/** A newly echoed acknowledged-input marker separates older rows from errors produced for that input.
+ * Ambiguous/repeated markers prove nothing. Strip whitespace only to follow terminal line wrapping, retaining
+ * the raw offset so error patterns are evaluated on their ordinary text rather than a normalized approximation.
+ */
+export function quotaAfterInput(pane: string, marker: string): string | null {
+  const value = marker.replace(/\s/gu, ""), compact = pane.replace(/\s/gu, "");
+  if (!value) return null;
+  const start = compact.indexOf(value);
+  if (start < 0 || compact.indexOf(value, start + 1) >= 0) return null;
+  const end = start + value.length;
+  let seen = 0;
+  for (let index = 0; index < pane.length; index++) {
+    if (!/\s/u.test(pane[index])) seen++;
+    if (seen === end) return pane.slice(index + 1);
+  }
+  return null;
+}
