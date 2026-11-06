@@ -72,7 +72,7 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, formatReplyDropDetection, turnExpectsPersonReply, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { CLAUDE_CREDIT_BALANCE_LOW, CLAUDE_MODEL_USAGE_LIMIT, CLAUDE_USAGE_LIMIT_PAUSE } from "./backend/claude-transcript-errors.js";
 import { t } from "./locale.js";
-import { claudeResetTime, quotaPausedLine } from "./quota-notice.js";
+import { claudeResetInstant, claudeResetTime, quotaPausedLine } from "./quota-notice.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
@@ -2079,11 +2079,37 @@ export class Daemon extends EventEmitter {
   /** #2834 (#816): Claude's usage-limit auto-continue note, as it records it (`system` / `informational`). */
   static readonly USAGE_LIMIT_PAUSE = CLAUDE_USAGE_LIMIT_PAUSE;
 
-  /** #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. */
-  private noteClaudeInformational(text: string): void {
-    const match = Daemon.USAGE_LIMIT_PAUSE.exec(text.trim());
+  /** Claude's note that its usage window opened again ("Usage limit reset · continuing automatically"). */
+  static readonly USAGE_LIMIT_RESET = /^Usage limit reset\b/i;
+  /** Repeats of one usage pause ("reached again" every few minutes) collapse into the first notice for this long. */
+  static readonly USAGE_PAUSE_NOTICE_WINDOW_MS = 30 * 60_000;
+  /** The usage-pause notice told last: when (monotonic), Claude's words for the reset, and that reset (wall clock). */
+  private usagePauseNotice: { at: number; when: string; resetAt: number | null } | null = null;
+
+  /**
+   * #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. `at`: when
+   * Claude wrote it (its record's timestamp). One notice per pause: a reset time already past is not this pause (an old
+   * note), and its repeats ("reached again") within the window — or naming the same reset, until it comes — say nothing
+   * more. Claude's own "Usage limit reset" ends it.
+   */
+  private noteClaudeInformational(text: string, at: number | null = null): void {
+    const line = text.trim();
+    if (Daemon.USAGE_LIMIT_RESET.test(line)) { this.usagePauseNotice = null; return; }
+    const match = Daemon.USAGE_LIMIT_PAUSE.exec(line);
     if (!match) return;
     const when = match[1]!.trim();
+    const wallNow = Date.now(), now = performance.now();
+    const resetAt = claudeResetInstant(when, at ?? wallNow);
+    if (resetAt !== null && resetAt <= wallNow) {
+      this.logger.debug({ when, writtenAt: at }, "Claude usage-limit note names a reset already past — an old note, not told");
+      return;
+    }
+    const told = this.usagePauseNotice;
+    if (told && (now - told.at < Daemon.USAGE_PAUSE_NOTICE_WINDOW_MS || (told.when === when && told.resetAt !== null && wallNow < told.resetAt))) {
+      this.logger.debug({ when }, "Claude usage-limit note repeats a pause already told — collapsed");
+      return;
+    }
+    this.usagePauseNotice = { at: now, when, resetAt };
     this.emit("pty_error", { name: this.name, type: "quota", action: "notify", verifyQuota: true, skipCooldown: true, skipRecoveryWait: true,
       message: `Claude Code usage limit reached — paused; continuing automatically ${when}`,
       notice: quotaPausedLine("Claude", "usage", claudeResetTime(when)) });
@@ -3064,7 +3090,7 @@ export class Daemon extends EventEmitter {
       });
       this.transcriptMonitor.on("api_error", (text: string, status: number | null, _at: number | null, errorKind: string | null) =>
         this.noteClaudeApiError(text, status, errorKind));
-      this.transcriptMonitor.on("system_informational", (text: string) => this.noteClaudeInformational(text));
+      this.transcriptMonitor.on("system_informational", (text: string, at: number | null) => this.noteClaudeInformational(text, at));
       this.transcriptMonitor.on("user_prompt", () => this.noteClaudePrompt());
       this.transcriptMonitor.on("assistant_text", (text: string) => {
         this.noteClaudeOutput();
