@@ -198,10 +198,11 @@ describe("callAccount: a connection that goes away, an answer from the wrong con
     const call = f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }).then(() => "answered", (e: Error) => e.message);
     await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
     expect(inside(f.hub).accountPending.size).toBe(1);
-    await f.client.stop();
+    // stop() now waits for the work in flight (3a's fence), and ends the connection first; the fake installer ignores the abort, so it is let go here.
+    const stopping = f.client.stop();
     expect(await call).toMatch(/Runtime disconnected/);
     expect(inside(f.hub).accountPending.size).toBe(0);
-    release();
+    release(); await stopping;
   });
   it("an answer that names a pending call of another generation is refused, and does not settle that call", async () => {
     const f = await fixture(), hub = inside(f.hub), connection = hub.connections.get(f.machineId) as { generation: number };
