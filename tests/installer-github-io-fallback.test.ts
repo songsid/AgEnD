@@ -1,9 +1,10 @@
 /**
- * Some company networks block every *.github.io at the TLS handshake while github.com and raw.githubusercontent.com work.
- * The installer then falls back to the same DEPLOYED files on GitHub's raw host, at the tag `installer-live`, which only
+ * Some networks block every *.github.io at the TLS handshake while github.com and raw.githubusercontent.com work.
+ * The installer then falls back to the same DEPLOYED files on GitHub's raw host, at the branch `installer-live`, which only
  * the website deploy moves — after Pages deployed that commit from main, and only forward — so it never serves
  * undeployed main. Covered here, with github.io simulated as unreachable (a refused port) or answering a block page:
- *   - the tag script (the deploy job's step) against a local bare origin: created, moved forward, never back;
+ *   - the branch script (the deploy job's step) against a local bare origin: created, moved forward, never back, and the
+ *     one-time cutover from the old tag (refused while that tag exists);
  *   - install.ps1 (the one-liner): github.io first when it works; the fallback when it fails or sends something else;
  *   - install-agend.ps1's install.sh fetch inside WSL (its bash, for real, with a fake curl);
  *   - the resume after a restart (the RunOnce script, for real in pwsh) — it survives a block;
@@ -35,7 +36,7 @@ function scratch(): string { const d = mkdtempSync(join(tmpdir(), "agend-ghio-")
 const DEAD = "http://127.0.0.1:1";                                     // refused: github.io blocked
 
 describe("installer-live: the raw ref only ever names what Pages deployed", () => {
-  it("the deploy workflow admits only main, forward, BEFORE Pages changes; then moves the tag to that commit, with the only write grant", () => {
+  it("the deploy workflow admits only main, forward, BEFORE Pages changes; then moves the branch to that commit, with the only write grant", () => {
     const wf = readFileSync(WORKFLOW, "utf8");
     const admit = wf.slice(wf.indexOf("\n  admit:"), wf.indexOf("\n  build:"));
     expect(admit).toContain('[ "$REF" = refs/heads/main ] ||');
@@ -43,7 +44,7 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
     expect(admit).toMatch(/permissions:\n\s+contents: read/);
     expect(wf).toMatch(/\n  build:\n    needs: admit\n/);
     expect(wf).toMatch(/\n  deploy:\n    needs: build\n/);
-    expect(wf).toContain("needs: [admit, build, deploy, mark-live]");             // a failed tag move is reported
+    expect(wf).toContain("needs: [admit, build, deploy, mark-live]");             // a failed branch move is reported
     const job = wf.slice(wf.indexOf("\n  mark-live:"), wf.indexOf("\n  notify:"));
     expect(job).toMatch(/needs: deploy\n/);
     expect(job).toMatch(/permissions:\n\s+contents: write/);
@@ -51,7 +52,7 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
     expect(job).toContain('run: bash scripts/ci/mark-installer-live.sh "$DEPLOYED"');
     expect(job).toContain("fetch-depth: 0");
     expect(wf.match(/contents: write/g)).toHaveLength(1);
-    // Nothing else in the repo's workflows writes that tag.
+    // Nothing else in the repo's workflows writes that ref.
     for (const f of spawnSync("git", ["ls-files", ".github/workflows"], { cwd: ROOT, encoding: "utf8" }).stdout.trim().split("\n")) {
       if (!f.endsWith("deploy-website.yml")) expect(readFileSync(join(ROOT, f), "utf8"), f).not.toContain("installer-live");
     }
@@ -67,12 +68,13 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
     for (const n of [1, 2, 3]) { writeFileSync(join(work, "f"), String(n)); git(work, "add", "f"); git(work, "commit", "-qm", `c${n}`); shas.push(git(work, "rev-parse", "HEAD").stdout.trim()); }
     git(work, "push", "-q", "origin", "main");
     const mark = (args: string[], extra: Record<string, string> = {}) => spawnSync("bash", [MARK, ...args], { cwd: work, encoding: "utf8", env: { ...env, ...extra } });
-    const live = () => git(origin, "rev-parse", "--verify", "-q", "refs/tags/installer-live^{commit}").stdout.trim();
-    return { work, origin, git, shas, mark, live };
+    const live = () => git(origin, "rev-parse", "--verify", "-q", "refs/heads/installer-live^{commit}").stdout.trim();
+    const oldTag = () => git(origin, "rev-parse", "--verify", "-q", "refs/tags/installer-live^{commit}").stdout.trim();
+    return { work, origin, git, shas, mark, live, oldTag };
   }
 
-  it("the tag script: created on the first deploy, moved forward, never back, idempotent; refuses a non-SHA", () => {
-    const { work, git, shas, mark, live } = repo();
+  it("the branch script: created on the first deploy, moved forward, never back, idempotent; refuses a non-SHA; never a tag", () => {
+    const { work, git, shas, mark, live, oldTag } = repo();
     let r = mark([shas[1]]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[1]);
     r = mark([shas[2]]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[2]);
     r = mark([shas[0]]); expect(r.status).toBe(1); expect(r.stderr).toContain("refusing to move installer-live"); expect(live()).toBe(shas[2]);
@@ -82,6 +84,24 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
     r = mark([git(work, "rev-parse", "HEAD").stdout.trim()]); expect(r.status).toBe(1); expect(live()).toBe(shas[2]);
     for (const bad of ["main", shas[2].slice(0, 12), `${shas[2]};x`, ""]) { r = mark([bad]); expect(r.status, bad).toBe(2); }
     expect(live()).toBe(shas[2]);
+    expect(oldTag()).toBe(""); // a branch: no tag is ever written
+  });
+
+  it("cutover: while origin still has the old TAG, both modes refuse and write nothing; once it is deleted, the branch moves", () => {
+    const { git, origin, shas, mark, live, oldTag } = repo();
+    // The state at cutover: the old tag at the deployed commit, the branch created at that same commit.
+    git(origin, "update-ref", "refs/tags/installer-live", shas[1]);
+    git(origin, "update-ref", "refs/heads/installer-live", shas[1]);
+    for (const args of [[shas[2]], ["--check", shas[2]]]) {
+      const r = mark(args);
+      expect(r.status, args.join(" ")).toBe(4);
+      expect(r.stderr).toContain("still has the old TAG installer-live");
+    }
+    expect(live()).toBe(shas[1]); expect(oldTag()).toBe(shas[1]);
+    // The one-time tag deletion (by a person, once): then deploys move the branch forward as before.
+    git(origin, "update-ref", "-d", "refs/tags/installer-live");
+    expect(mark(["--check", shas[2]]).status).toBe(0);
+    const r = mark([shas[2]]); expect(r.status, r.stderr).toBe(0); expect(live()).toBe(shas[2]); expect(oldTag()).toBe("");
   });
 
   it("admission (--check, before Pages): forward or first passes and writes nothing; an older commit is refused", () => {
@@ -97,7 +117,7 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
       const { origin, shas, mark, live } = repo();
       if (start !== null) expect(mark([shas[start]]).status).toBe(0);
       // B read the tag, then C deployed and moved it (to c3), then B pushes c2.
-      const racer = `git --git-dir='${origin}' update-ref refs/tags/installer-live ${shas[2]}`;
+      const racer = `git --git-dir='${origin}' update-ref refs/heads/installer-live ${shas[2]}`;
       const r = mark([shas[1]], { MARK_INSTALLER_LIVE_BEFORE_PUSH: racer });
       expect(r.status, String(start)).not.toBe(0);
       expect(live(), String(start)).toBe(shas[2]);
@@ -124,7 +144,7 @@ describe("installer-live: the raw ref only ever names what Pages deployed", () =
     expect(code(INSTALLER)).toContain("head -n 1 $f | grep -qx ''#!/usr/bin/env bash'' && sed -n 2p $f | grep -qx ''# AgEnD Bootstrap Installer''");
   });
 
-  it("every fallback URL in the scripts is that tag, never a branch", () => {
+  it("every fallback URL in the scripts names installer-live (the deployed ref), never main or another branch", () => {
     for (const f of [BOOTSTRAP, INSTALLER]) {
       const raws = code(f).match(/https:\/\/raw\.githubusercontent\.com\/songsid\/AgEnD\/[^'"\s/]+/g) ?? [];
       expect(raws.length, f).toBeGreaterThan(0);

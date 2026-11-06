@@ -1,6 +1,7 @@
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
 import { generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
+import { CODEX_SPEEDS, isCodexSpeed } from "./backend/codex-speed.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
@@ -201,6 +202,10 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
           // #2010: opt-in Claude prompt-cache TTL ("1h" | "5m"); unset leaves the CLI's own choice.
           if (backendName === "claude-code" && settings.prompt_cache_ttl !== undefined && !PROMPT_CACHE_TTLS.includes(settings.prompt_cache_ttl as never)) {
             err(`${optionPath}.prompt_cache_ttl`, `must be one of: ${PROMPT_CACHE_TTLS.join(", ")}`);
+          }
+          // M-2446: Codex speed, allow-listed (codex itself silently drops an unknown tier).
+          if (backendName === "codex" && settings.speed !== undefined && !isCodexSpeed(settings.speed)) {
+            err(`${optionPath}.speed`, `must be one of: ${CODEX_SPEEDS.join(", ")}`);
           }
           if (backendName === "codex" && settings.provider !== undefined) {
             if (typeof settings.provider !== "string") {

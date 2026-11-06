@@ -283,6 +283,13 @@ const FULL_SCREEN = new Set(["claude-code", "opencode", "grok"]);   // agy: its 
 /** The full-screen CLIs whose earlier output the Log tab shows (it reads their transcript: log-service.ts). */
 const LOG_HAS_HISTORY = new Set(["claude-code"]);
 /**
+ * Claude history in the View (view-history.js): the full-screen CLIs whose View shows their earlier conversation from
+ * their transcript, above the live screen. A server without it (an older one) leaves them as before: no scrollback.
+ */
+const TRANSCRIPT_HISTORY = new Set(["claude-code"]);
+/** How near the top (px) a history being read asks for the page before it. */
+const OLDER_AT_PX = 48;
+/**
  * M-2267 option (2), the leader's safe default: where a full-screen CLI's earlier output is — its Log tab (or that the
  * Log tab is off, and where to turn it on). Only for whom the Log tab is (a signed-in session on the full app; never a
  * guest or a View-only reader: they get the plain words), and only for a CLI the Log tab reads.
@@ -304,8 +311,11 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
   const [newBelow, setNewBelow] = useState(false);
   const [historyNote, setHistoryNoteState] = useState(null);
   // A CLI found to keep no scrollback (full screen): nothing is offered or read again for it; the note says why, briefly.
-  const [noScrollback, setNoScrollback] = useState(FULL_SCREEN.has(backend));
-  const noScrollbackRef = useRef(FULL_SCREEN.has(backend));
+  const keepsNone = FULL_SCREEN.has(backend) && !TRANSCRIPT_HISTORY.has(backend);
+  const [noScrollback, setNoScrollback] = useState(keepsNone);
+  const noScrollbackRef = useRef(keepsNone);
+  // Claude history in the View: the history shown while reading (view-history.js's createHistory), or null.
+  const transcript = useRef(null);
   const logLink = logLinkFor(name, backend, signedIn);
   const noteTimer = useRef(null);
   const setHistoryNote = (note, brief = false) => {
@@ -402,6 +412,7 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
   // The person asked for what scrolled off: one bounded read, then reading (or why there is nothing to read).
   const loadEarlier = useRef(null);
   const follow = useRef(null);
+  const olderPage = useRef(null);
   useEffect(() => {
     const reads = readStream(lease);
     const refresh = async () => {
@@ -439,6 +450,7 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
       const from = modeRef.current;
       if (from !== "follow" && !(from === "reading" && !screenAt.current.history)) return;
       if (noScrollbackRef.current) { setHistoryNote(tn("noEarlier"), true); return; }   // known: nothing to read
+      if (TRANSCRIPT_HISTORY.has(backend)) { await loadTranscript(from); return; }
       const box0 = term.current;
       // Where the person is, measured from the end: the screen's lines stay where they are under the scrollback added.
       const fromEnd = box0 ? box0.scrollHeight - box0.scrollTop : 0;
@@ -477,8 +489,65 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
         }
       } catch { if (lease.current()) { back(); setHistoryNote(tn("earlierFailed"), true); } }
     };
+    /**
+     * Claude history in the View: the conversation before the live screen, from the transcript (the renderer is its own
+     * lazy module), drawn above the screen as it is now — then reading, as for a scrollback. Older pages come as the
+     * person nears the top. A server without it: this CLI keeps no scrollback, as before.
+     */
+    const loadTranscript = async (from) => {
+      const back = () => { setMode(from); if (from === "follow") toBottom(); };
+      const screen = screenAt.current.drawn == null ? "" : screenAt.current.drawn;
+      setMode("loading"); setHistoryNote(tn("loadingEarlier"));
+      try {
+        const mod = await import("./view-history.js");
+        if (!lease.current() || modeRef.current !== "loading" || !pre.current) return;
+        let h = null;
+        h = mod.createHistory({ name, fetch: (u) => lease.fetch(u), alive: () => lease.current() && transcript.current === h,
+          doc: document, font: getComputedStyle(pre.current).fontFamily, cols: grid.current.cols });
+        transcript.current = h;
+        const got = await h.first(screen);
+        if (!lease.current() || modeRef.current !== "loading" || !pre.current || transcript.current !== h) return;
+        if (got.kind !== "ok") {
+          transcript.current = null;
+          if (got.kind === "unsupported") { noScrollbackRef.current = true; setNoScrollback(true); back(); setHistoryNote(tn("noEarlier"), true); return; }
+          back();
+          setHistoryNote(got.kind === "empty" ? tn("nothingEarlier") : got.status === 429 ? null : tn("earlierFailed"), true);
+          return;
+        }
+        screenAt.current.reading = screen; screenAt.current.history = true;
+        setNewBelow(screenAt.current.latest != null && !sameScreen(screen, screenAt.current.latest));
+        setMode("reading"); setHistoryNote(null);
+        draw(screen);                                     // the screen as it is (the one frame write), then the history above it
+        pre.current.insertBefore(h.root, pre.current.firstChild);
+        fit();
+        const box = term.current;
+        if (box) {
+          const px = parseFloat(getComputedStyle(pre.current).fontSize);
+          const lineH = Number.isFinite(px) && px > 0 ? px * 1.2 : 16;
+          // The history's last lines and the divider right above the screen.
+          box.scrollTop = Math.max(0, box.scrollHeight - box.clientHeight - lineH * 3);
+        }
+      } catch { if (lease.current() && modeRef.current === "loading") { transcript.current = null; back(); setHistoryNote(tn("earlierFailed"), true); } }
+    };
+    /** The page before the history shown, above it — where the person is stays where it is. */
+    let olderBusy = false;
+    olderPage.current = async () => {
+      const h = transcript.current, box = term.current;
+      if (olderBusy || !h || !box || modeRef.current !== "reading" || !screenAt.current.history) return;
+      olderBusy = true;
+      const fromEnd = box.scrollHeight - box.scrollTop;
+      const capped = !h.hasOlder();
+      if (!capped) setHistoryNote(tn("loadingEarlier"));
+      try {
+        const got = await h.older();
+        if (!lease.current() || transcript.current !== h) return;
+        box.scrollTop = Math.max(0, box.scrollHeight - fromEnd);
+        if (!capped) setHistoryNote(got.kind === "failed" ? tn("earlierFailed") : null, got.kind === "failed");
+      } finally { olderBusy = false; }
+    };
     follow.current = () => {
       if (modeRef.current === "follow") return;
+      transcript.current = null;
       setMode("follow"); setNewBelow(false); setHistoryNote(null); screenAt.current.history = false;
       const latest = screenAt.current.latest;
       if (latest != null && pre.current) { draw(latest); fit(); }
@@ -501,7 +570,9 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
       // Asking for the earlier output: from following, or from reading the screen as it was — at the top.
       const mayLoad = () => (modeRef.current === "follow" || (modeRef.current === "reading" && !screenAt.current.history)) && box.scrollTop <= 0;
       const gesture = () => { gestureAt.current = performance.now(); };
-      lease.on(box, "wheel", (e) => { gesture(); if (e.deltaY < 0 && mayLoad()) loadEarlier.current(); }, { passive: true });
+      // Claude's history being read, at (or near) its top: the page before it.
+      const nearTop = () => modeRef.current === "reading" && screenAt.current.history && transcript.current && box.scrollTop <= OLDER_AT_PX;
+      lease.on(box, "wheel", (e) => { gesture(); if (e.deltaY < 0 && mayLoad()) loadEarlier.current(); else if (e.deltaY < 0 && nearTop()) olderPage.current(); }, { passive: true });
       let touchY = null;
       lease.on(box, "touchstart", (e) => { gesture(); touchY = e.touches && e.touches[0] ? e.touches[0].clientY : null; }, { passive: true });
       lease.on(box, "touchmove", (e) => {
@@ -509,15 +580,17 @@ function Terminal({ name, lease, density, every = 800, backend = "", signedIn = 
         const y = e.touches && e.touches[0] ? e.touches[0].clientY : null;
         if (touchY == null || y == null) return;
         if (y - touchY > 24 && mayLoad()) { touchY = null; loadEarlier.current(); }
+        else if (y - touchY > 24 && nearTop()) { touchY = null; olderPage.current(); }
       }, { passive: true });
       lease.on(box, "pointerdown", gesture, { passive: true });             // the scrollbar, dragged
       lease.on(box, "keydown", (e) => {
         gesture();
         if ((e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") && mayLoad()) { e.preventDefault(); loadEarlier.current(); }
+        else if ((e.key === "PageUp" || e.key === "ArrowUp" || e.key === "Home") && nearTop()) olderPage.current();
         else if (modeRef.current === "reading" && e.key === "End") { e.preventDefault(); follow.current(); }
       });
       lease.on(box, "scroll", () => {
-        if (modeRef.current === "reading") { if (atBottom()) follow.current(); return; }
+        if (modeRef.current === "reading") { if (atBottom()) follow.current(); else if (nearTop()) olderPage.current(); return; }
         // #2969 review (Prism P2): a screen taller than its box (a larger Aa), moved up from the bottom by the person:
         // reading what is on it — the refresh no longer pulls them back down.
         if (modeRef.current === "follow" && recentGesture() && !atBottom()) startReading(screenAt.current.drawn, false);

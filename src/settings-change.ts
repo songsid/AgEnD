@@ -8,6 +8,7 @@ import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
 import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, featureConfigKey, separateAccessValue, type DashboardFeature } from "./dashboard-permissions.js";
+import { isCodexSpeed } from "./backend/codex-speed.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -230,6 +231,18 @@ function ordinary(path: readonly string[], old: unknown, next: unknown): boolean
   if (parent !== undefined && !namedEntry(path, -2) && immediate.has(parent)) return IMMEDIATE_CHILDREN[parent]?.has(key) ?? false;
   return immediate.has(key);
 }
+/**
+ * M-2446: an agent's (or the defaults') Codex speed — `…backend_options.codex.speed`, fast | standard or unset — is an
+ * ordinary setting, like the model: it applies directly. Exactly that path and those values; anything else under
+ * backend_options (a credential profile, a provider) is still judged by the rules below.
+ */
+function codexSpeedPath(path: readonly string[], old: unknown, next: unknown): boolean {
+  if (path.at(-1) !== "speed" || path.at(-2) !== "codex" || path.at(-3) !== "backend_options") return false;
+  // fleet.defaults.backend_options… or fleet.instances.<name>.backend_options… (the walk starts at the effect's root).
+  if (!(path.at(-4) === "defaults" && path.at(-5) === "fleet") && !(path.at(-5) === "instances" && path.at(-6) === "fleet")) return false;
+  const allowed = (v: unknown) => v === undefined || v === null || isCodexSpeed(v);
+  return allowed(old) && allowed(next);
+}
 function plainList(path: readonly string[], old: unknown, next: unknown): boolean {
   if (!PLAIN_LISTS.has(path.at(-1) ?? "") || namedEntry(path, -1) || path.some(key => SENSITIVE_SEGMENT.test(key))) return false;
   // Only an agent's own list or the defaults' (#2346 review: never a child of an immediate key, e.g. startup.tags).
@@ -398,7 +411,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       if (next !== undefined && next !== "") add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "absent")} → ${settingsDisplay(next)}`);
       return;
     }
-    if (ordinary(path, old, next) || plainList(path, old, next)) return;
+    if (ordinary(path, old, next) || plainList(path, old, next) || codexSpeedPath(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Native creation projects a strictly validated request at this exact root. These fields affect where code
