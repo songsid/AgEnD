@@ -6,6 +6,8 @@ import type Database from "better-sqlite3";
 import type { HubAskerEnvelope, HubAuditSink, HubDirectory, HubMode, HubServerTransport, HubTx, HubUnitOfWork, PersonKey } from "../types.js";
 import type { HubPairingService } from "../pairing.js";
 import type { HubTransportStore } from "../store.js";
+import type { HubAnswerButtons } from "../types.js";
+import type { PollBallot } from "../../reply-polls.js";
 
 /** The `hub` section the sealed manifest covers — frozen, validated, never re-read from a request. */
 export interface HubHttpConfig {
@@ -21,9 +23,9 @@ export interface HubIssuer {
 }
 /** Encrypted question/answer payloads (S5, under content.key). One payload per record; S5 chooses the ref. */
 export interface HubContentStore {
-  put(tx: HubTx, payload: { question?: string; answer?: string }): string;
+  put(tx: HubTx, payload: { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: PollBallot }): string;
   /** S3's own room projection only, after its audience check. Undefined: retention removed it (shown as expired). */
-  get(ref: string): { question?: string; answer?: string } | undefined;
+  get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: PollBallot } | undefined;
 }
 export interface HubHttpDeps {
   uow: HubUnitOfWork;

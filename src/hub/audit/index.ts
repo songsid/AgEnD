@@ -136,6 +136,8 @@ function toRecord(row: AuditRow): HubAuditRecord {
 export interface HubContentPayload {
   question?: string;
   answer?: string;
+  buttons?: import("../types.js").HubAnswerButtons;
+  pollBallot?: import("../../reply-polls.js").PollBallot;
 }
 
 export interface HubContentStore {
@@ -265,6 +267,8 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
       const clean: HubContentPayload = {};
       if (typeof payload.question === "string") clean.question = payload.question;
       if (typeof payload.answer === "string") clean.answer = payload.answer;
+      if (payload.buttons !== undefined) clean.buttons = payload.buttons;
+      if (payload.pollBallot !== undefined) clean.pollBallot = payload.pollBallot;
       const ref = randomBytes(16).toString("hex");
       const { nonce, body } = encrypt(ref, null, clean);
       db.prepare("INSERT INTO hub_audit_content(ref, record_id, nonce, ciphertext, created_at) VALUES(?, NULL, ?, ?, ?)").run(ref, nonce, body, now());
