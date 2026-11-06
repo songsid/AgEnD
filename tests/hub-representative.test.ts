@@ -32,7 +32,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
 }
 
 /** files/features/hubFiles: attachments-v1 (D) — the member's files service, the link's features, the Hub's stored files by id. */
-function fixture(opts: { legacy?: boolean; handOff?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer> } = {}) {
+function fixture(opts: { legacy?: boolean; handOff?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
   const db = new Database(":memory:");
   dbs.push(db);
   migrateHubMemberJournal(db);
@@ -59,7 +59,7 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean; files?: HubMemberF
       frames.push(frame);
       if (frame.type === "attachment.get") {
         const bytes = opts.hubFiles?.get(frame.payload.id); if (!bytes) throw new Error("not-found");
-        return { v: 1, type: "attachment.chunk", requestId: frame.requestId, linkEpoch: 1, payload: { id: frame.payload.id, offset: frame.payload.offset, total: bytes.length, sha256: sha256(bytes), data: bytes.subarray(frame.payload.offset, frame.payload.offset + HUB_ATTACHMENT_CHUNK).toString("base64") } };
+        return { v: 1, type: "attachment.chunk", requestId: frame.requestId, linkEpoch: 1, payload: { id: frame.payload.id, offset: frame.payload.offset, total: bytes.length, sha256: opts.claimedSha?.get(frame.payload.id) ?? sha256(bytes), data: bytes.subarray(frame.payload.offset, frame.payload.offset + HUB_ATTACHMENT_CHUNK).toString("base64") } };
       }
       if (frame.type === "attachment.put") {
         const list = puts.get(frame.payload.id) ?? []; list.push(Buffer.from(frame.payload.data, "base64")); puts.set(frame.payload.id, list);
@@ -392,7 +392,9 @@ describe("Hub representative files (attachments-v1, #3226 D)", () => {
   it.each([["the link does not take files", { features: [] as string[] }], ["a chunk does not match its digest", { corrupt: true }]] as const)(
     "%s: the question is held (Needs you), never handed over without its files", async (_why, how) => {
       const fs = files(), txt = ref("notes.txt", TXT, "text/plain");
-      const f = fixture({ files: fs.service, features: "features" in how ? how.features : ["attachments-v1"], hubFiles: new Map([[txt.id, "corrupt" in how ? Buffer.from("tampered!!\n") : TXT]]) });
+      // A corrupt chunk claims the ref's own digest: only the member's whole-file check can catch it.
+      const f = fixture({ files: fs.service, features: "features" in how ? how.features : ["attachments-v1"], hubFiles: new Map([[txt.id, "corrupt" in how ? Buffer.from("x".repeat(TXT.length)) : TXT]]),
+        claimedSha: new Map([[txt.id, txt.sha256]]) });
       f.publish();
       const q = f.question("See attached", [txt]);
       await f.admission.admit(q);

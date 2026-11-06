@@ -56,6 +56,8 @@ describe("Hub attachment store", () => {
     const r = rig(1_000_000), room = randomUUID();
     const old = r.tx(() => r.store.createUpload(r.db, { roomId: room, uploader: "corp/a", name: "old.txt", bytes: Buffer.from("old") }));
     r.tx(() => r.store.bindQuestion(r.db, [old], randomUUID(), randomUUID()));
+    // Uploaded after the content cut but never used: gone once its hour is up, not by the content policy.
+    r.at(1_000_000 + 10);
     r.tx(() => r.store.createUpload(r.db, { roomId: room, uploader: "corp/a", name: "unused.txt", bytes: Buffer.from("unused") }));
     r.at(1_000_000 + 2 * 3_600_000);
     const fresh = r.tx(() => r.store.createUpload(r.db, { roomId: room, uploader: "corp/a", name: "new.txt", bytes: Buffer.from("new") }));
