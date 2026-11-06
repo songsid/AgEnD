@@ -144,3 +144,43 @@ describe("one parser, written once", () => {
     expect(loggedIn).toEqual([]);
   });
 });
+
+// The keys a real `claude auth status` printed (Claude Code 2.1.318, an account signed in on the WSL computer; the names only were recorded, never a value).
+// The values here are fixtures on example.com.
+const REAL_KEYS = ["analyticsDisabled", "apiProvider", "authMethod", "configDirectory", "email", "loggedIn", "loginExpiresAt", "orgId", "orgName", "planTier", "projectsDirectory", "storedClaudeAiLogin", "subscriptionType"];
+const realStatus = (over: Record<string, unknown> = {}) => ({
+  analyticsDisabled: false, apiProvider: "firstParty", authMethod: "claude.ai", configDirectory: "/home/fixture/.claude", email: "alice.fixture@example.com", loggedIn: true,
+  loginExpiresAt: "2030-01-01T00:00:00.000Z", orgId: "00000000-0000-0000-0000-000000000000", orgName: "Fixture Org", planTier: "other", projectsDirectory: "/home/fixture/.claude/projects",
+  storedClaudeAiLogin: true, subscriptionType: "max", ...over,
+});
+describe("the keys of a real `claude auth status`", () => {
+  it("has exactly the fixture's keys, so the fixture below is the real shape", () => {
+    expect(Object.keys(realStatus()).sort()).toEqual([...REAL_KEYS].sort());
+  });
+  it("every key the parser reads is one a real status has", () => {
+    const source = readFileSync(resolve(__dirname, "../src/claude-auth-status.ts"), "utf8");
+    const read = new Set([...source.matchAll(/\brow\.([A-Za-z]+)\b|\(value as Record<string, unknown>\)\.([A-Za-z]+)/g)].map(match => match[1] ?? match[2]));
+    for (const key of ["loggedIn", "authMethod", "email", "subscriptionType"]) expect(read.has(key), `the parser reads ${key}`).toBe(true);
+    const fromCli = [...read];
+    for (const key of fromCli) expect(REAL_KEYS, `${key} is not a key of a real status`).toContain(key);
+  });
+  it("reads an account sign-in: masked e-mail and plan, from the real keys, and nothing else of the status", () => {
+    const result = parseClaudeAuthStatus(JSON.stringify(realStatus()));
+    expect(result).toEqual({ loggedIn: true, maskedEmail: "al***@example.com", plan: "max" });
+    const text = JSON.stringify(result);
+    for (const private_ of ["alice.fixture", "Fixture Org", "00000000-0000", "/home/fixture"]) expect(text).not.toContain(private_);
+  });
+  it("reads each plan name as the plan the status names it", () => {
+    for (const plan of ["free", "pro", "max", "team", "enterprise"]) expect(parseClaudeAuthStatus(JSON.stringify(realStatus({ subscriptionType: plan }))).plan).toBe(plan);
+    expect(parseClaudeAuthStatus(JSON.stringify(realStatus({ subscriptionType: "Max " }))).plan).toBe("max");
+    expect(parseClaudeAuthStatus(JSON.stringify(realStatus({ subscriptionType: "something_new" }))).plan).toBe("unknown");
+  });
+  it("reads an API-key sign-in and a signed-out status, with the same keys around them", () => {
+    expect(parseClaudeAuthStatus(JSON.stringify(realStatus({ authMethod: "api_key", email: undefined, subscriptionType: undefined })))).toEqual({ loggedIn: true, apiKey: true });
+    expect(parseClaudeAuthStatus(JSON.stringify(realStatus({ loggedIn: false, email: undefined, subscriptionType: undefined, storedClaudeAiLogin: false })))).toEqual({ loggedIn: false });
+  });
+  it("reads it with the CLI's text around it, as both streams are merged", () => {
+    const text = `Checking...\n${JSON.stringify(realStatus(), null, 2)}\n`;
+    expect(parseClaudeAuthStatus(text)).toEqual({ loggedIn: true, maskedEmail: "al***@example.com", plan: "max" });
+  });
+});

@@ -38,7 +38,7 @@ export function nativeCliAuthorization(req: IncomingMessage, url: URL, ctx: Wind
   return v.kind === "allow" && (v.via === "header-token" || v.session.tier === "admin");
 }
 /**
- * Who may be shown WHICH account a sign-in is (a masked e-mail and a plan): a local administrator SESSION, and no one else. These routes also
+ * Who may be shown WHICH account a sign-in is (a masked e-mail and a plan): an admin SESSION on the dashboard reached directly (surface "local": this machine, a LAN, a tailnet or your own proxy), and no one else. These routes also
  * serve the CLI's own header token (an agent's) and other flows that predate the account display, so the callers are not turned away: the
  * answer is the same without the account (`withoutAccountIdentity`). No public link or gateway, no read or guest session, no header token,
  * no replayed confirmation.
