@@ -74,7 +74,7 @@ export interface WebBackendLoginDeps {
   /** A sign-in started from the dashboard: said where a chat login would be seen (General, or the Log). */
   notice(info: { shown: string; label: string; handle: string }): void;
   /** The current sign-in started, changed phase or went: the pages are told to read it again (no details in the event). */
-  changed?(): void;
+  changed?(phase?: "running" | "ended"): void;
   now?(): number;
 }
 
@@ -191,7 +191,7 @@ export class WebBackendLogins {
         run.phase = "ended"; run.ok = result.ok; run.endedAt = this.now();
         this.live.delete(run);
         if (!this.live.size) this.stopWatch();
-        if (this.run === run) this.changed();
+        if (this.run === run) this.changed("ended");
       },
     };
     // Watched from admission, not from publication: a session revoked while its listener, tunnel or cloudflared is
@@ -212,7 +212,7 @@ export class WebBackendLogins {
     // A start that took longer than a later one (its listener held, then cancelled) never replaces what that one shows.
     if (this.run && this.run.seq > run.seq) return running ? { login: this.viewOf(run, who.handle) } : { message: message ?? run.lines.join("\n") };
     this.run = run;
-    this.changed();
+    this.changed(run.phase);
     if (running) {
       try { this.deps.notice({ shown: asked.profile ? `${asked.backend} (${asked.profile})` : asked.backend, label: who.label, handle: who.handle }); } catch { /* a notice never stops a sign-in */ }
     }
@@ -246,7 +246,7 @@ export class WebBackendLogins {
     };
   }
 
-  private changed(): void { try { this.deps.changed?.(); } catch { /* the pages read it on their own next time */ } }
+  private changed(phase?: "running" | "ended"): void { try { this.deps.changed?.(phase); } catch { /* the pages read it on their own next time */ } }
 
   private chatFor(who: WebLoginRequester, sink: WebLoginSink, lines: string[]): LoginChat {
     // The status lines chat would post (done, recovery, a download notice) — this sign-in's own, shown to its session.

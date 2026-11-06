@@ -19599,7 +19599,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
-        if (event.phase === "done") this.signInIdentities.clear();   // a sign-in may be a different account now
+        if (event.phase === "done") this.forgetSignInIdentities();   // a sign-in may be a different account now
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
         if (event.phase === "starting") {
@@ -19635,7 +19635,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
-      changed: () => { this.signInIdentities.clear(); broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
+      // The accounts are forgotten only when a sign-in ENDS (it may be a different account now): a running one raises this at every step.
+      changed: phase => { if (phase === "ended") this.forgetSignInIdentities(); broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
     });
     return this.webBackendLoginsInstance;
   }
@@ -19653,26 +19654,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   /** Which account each sign-in is, as the host's own `claude auth status` said (masked; see checkAuthIdentity). Keys are `backend\0profile` in a Map: a name is data, never a property. */
   private readonly signInIdentities = new Map<string, { identity: AccountIdentity | null; at: number }>();
+  /** Reads in flight, by the same key: a second request for a sign-in that is already being read joins it instead of starting another process. */
+  private readonly signInIdentityReads = new Map<string, Promise<boolean>>();
+  /** Raised each time the accounts are forgotten: a read that began before is never allowed to write what it found. */
+  private signInIdentityGeneration = 0;
+  private signInIdentitySlots = 0;
+  private readonly signInIdentityWaiters: Array<() => void> = [];
   private signInIdentity(backend: string, profile?: string): AccountIdentity | undefined { return this.signInIdentities.get(`${backend}\0${profile ?? ""}`)?.identity ?? undefined; }
+  /** A sign-in finished (or changed): forget what was read and let no read that was already running put its answer back. */
+  private forgetSignInIdentities(): void { this.signInIdentityGeneration++; this.signInIdentities.clear(); this.signInIdentityReads.clear(); }
+  /** At most three `claude auth status` at once across the whole host, however many requests ask. */
+  private async withSignInIdentitySlot<T>(task: () => Promise<T>): Promise<T> {
+    while (this.signInIdentitySlots >= 3) await new Promise<void>(resolve => this.signInIdentityWaiters.push(resolve));
+    this.signInIdentitySlots++;
+    try { return await task(); } finally { this.signInIdentitySlots--; this.signInIdentityWaiters.shift()?.(); }
+  }
   /**
-   * Read, for the sign-in list, the account of each Claude Code sign-in that is signed in (the default and every profile an agent uses). Bounded: at most
-   * three at a time, each limited by the auth check's own timeout, the whole wait capped, and a sign-in's answer reused for five minutes. No login, no network
-   * request of ours, nothing logged. What it could not read in time is simply shown the next time.
+   * Start reading, in the background, the account of each Claude Code sign-in that is signed in (the default and every profile an agent uses) and
+   * not read in the last five minutes. It never waits and never blocks a request: the list shows what is already known, and the pages are told to
+   * read it again when something new was learned. A sign-in already being read is not read twice, and a read that began before the accounts were
+   * forgotten (a sign-in finished meanwhile) is dropped. No login, no network request of ours, nothing logged.
    */
-  async refreshSignInIdentities(): Promise<void> {
+  refreshSignInIdentities(): void {
     const now = Date.now(), fresh = (target: SignInTarget): boolean => { const entry = this.signInIdentities.get(`${target.backend}\0${target.profile ?? ""}`); return !!entry && now - entry.at < 5 * 60_000; };
-    const pending = this.backendSignInTargets().filter(target => target.state === "usable" && authIdentitySupported(target.backend) && !fresh(target));
-    const work = (async () => {
-      for (let index = 0; index < pending.length; index += 3) await Promise.all(pending.slice(index, index + 3).map(async target => {
+    const started: Array<Promise<boolean>> = [];
+    for (const target of this.backendSignInTargets()) {
+      const key = `${target.backend}\0${target.profile ?? ""}`;
+      if (target.state !== "usable" || !authIdentitySupported(target.backend) || fresh(target) || this.signInIdentityReads.has(key)) continue;
+      const generation = this.signInIdentityGeneration;
+      const read: Promise<boolean> = this.withSignInIdentitySlot(async () => {
         let env: Record<string, string> | undefined;
-        if (target.profile) { try { env = credentialProfileEnv(this.dataDir, target.backend, target.profile) ?? undefined; } catch { return; } }
-        const identity = await checkAuthIdentity(target.backend, env);
-        this.signInIdentities.set(`${target.backend}\0${target.profile ?? ""}`, { identity: identity ?? null, at: Date.now() });
-      }));
-    })().catch(() => {});
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    await Promise.race([work, new Promise<void>(done => { timer = setTimeout(done, 4000); })]);
-    clearTimeout(timer);
+        if (target.profile) env = credentialProfileEnv(this.dataDir, target.backend, target.profile) ?? undefined;
+        return checkAuthIdentity(target.backend, env);
+      }).then(identity => {
+        if (generation !== this.signInIdentityGeneration) return false;            // forgotten while it ran: its answer may be the old account
+        this.signInIdentities.set(key, { identity: identity ?? null, at: Date.now() }); return true;
+      }).catch(() => false).finally(() => { if (this.signInIdentityReads.get(key) === read) this.signInIdentityReads.delete(key); });
+      this.signInIdentityReads.set(key, read); started.push(read);
+    }
+    if (started.length) void Promise.all(started).then(results => {
+      if (results.some(Boolean)) broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));   // read the list again: it knows more now
+    });
   }
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
