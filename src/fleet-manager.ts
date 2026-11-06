@@ -28,7 +28,7 @@ import { clearPublicLinkOwner, readPublicLinkOwner, writePublicLinkOwner } from 
 import { PUBLIC_PREVIEW_FRAME_SRC, PUBLIC_PREVIEW_TUNNEL_DIR, PublicPreview, publicPreviewWanted } from "./public-preview.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import { ensureCloudflared } from "./tunnel/cloudflared-install.js";
-import { unattendedInstallCommand, loginShell } from "./unattended-install.js";
+import { installExitMarker, unattendedInstallCommand, loginShell } from "./unattended-install.js";
 import { InstallStream } from "./install-stream.js";
 import { namedTestLane, runNamedLinkTest, type NamedTestResult } from "./tunnel/named-link-test.js";
 import { daemonTopicMode, isWebOnlyFleetConfig } from "./web-only-fleet.js";
@@ -18550,9 +18550,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.loginWindow.release(claim);
       return t("login.web_shutting_down");
     }
+    // The wrapper says its own exit code after this marker: tmux may never record it (unattended-install.ts).
+    const exitMarker = installExitMarker();
     const flow: LoginFlow = {
       backend,
-      command: unattendedInstallCommand(info.unattended ?? info.install, shell),
+      command: unattendedInstallCommand(info.unattended ?? info.install, shell, exitMarker),
+      exitMarker,
       successPattern: /$^/,
       timeoutMs: this.installTimeoutMs,
     };

@@ -15,10 +15,12 @@
  *   line lands in the file the user's own terminals read.
  *
  * - **Its verdict is kept.** In a tmux pane it starts once remain-on-exit is on (see the script): an install that ends
- *   at once still leaves a dead pane with its exit code and output for the session to judge.
+ *   at once still leaves a dead pane with its exit code and output for the session to judge. The wrapper also prints
+ *   its exit code after the session's marker, for when tmux never records the pane's exit status (see the script).
  *
  * The exit code is the install's own: the session judges success by it.
  */
+import { randomBytes } from "node:crypto";
 import { userInfo } from "node:os";
 import { isAbsolute } from "node:path";
 import { shellQuote } from "./backend/types.js";
@@ -37,7 +39,13 @@ export const UNATTENDED_INSTALL_SCRIPT = [
   // `kill -TERM -$pid`, not `kill -- -$pid`: dash's kill refuses `--` ("Illegal number"). Before setsid has run there is
   // no such group yet, and the plain pid is what exists.
   "trap 'kill -TERM -$pid 2>/dev/null || kill -TERM $pid 2>/dev/null; exit 129' HUP INT TERM",
-  'wait "$pid"',
+  // The verdict, said by the wrapper itself as its last line ("$2<code>", $2 = the session's own marker): tmux 3.4 can
+  // miss the pane's SIGCHLD — the pane is dead (its pty closed) but the shell stays an unreaped zombie and
+  // #{pane_dead_status} never appears (reproduced: 3 in 40 runs, the status still absent 15 s later). The session reads
+  // this line instead; no marker, no line.
+  'wait "$pid"; rc=$?',
+  'if [ -n "${2:-}" ]; then printf \'\\n%s%s\\n\' "$2" "$rc"; fi',
+  'exit "$rc"',
 ].join("\n");
 
 /** The account's login shell, when it is an absolute path to an executable; else undefined (keep the inherited one). */
@@ -65,8 +73,32 @@ export async function loginShell(read: () => string | null | undefined = () => u
   }
 }
 
-/** The window's command for an install command. `shell`: the $SHELL to give it; null keeps the inherited one. */
-export function unattendedInstallCommand(command: string, shell: string | null = null): string {
+/**
+ * The window's command for an install command. `shell`: the $SHELL to give it; null keeps the inherited one.
+ * `exitMarker` (installExitMarker()): the wrapper prints `<marker><exit code>` as its last line, for the session.
+ */
+export function unattendedInstallCommand(command: string, shell: string | null = null, exitMarker?: string): string {
   const env = shell ? `SHELL=${shellQuote(shell)} ` : "";
-  return `${env}sh -c ${shellQuote(UNATTENDED_INSTALL_SCRIPT)} agend-install ${shellQuote(command)}`;
+  if (exitMarker !== undefined && !/^[A-Za-z0-9-]+=$/.test(exitMarker)) throw new Error("exit marker: letters, digits and '-' ending in '='");
+  return `${env}sh -c ${shellQuote(UNATTENDED_INSTALL_SCRIPT)} agend-install ${shellQuote(command)}${exitMarker ? ` ${shellQuote(exitMarker)}` : ""}`;
+}
+
+/** A marker for one install: random per run, so nothing the installer prints can pass for the wrapper's verdict. */
+export function installExitMarker(): string {
+  return `AGEND-INSTALL-EXIT-${randomBytes(8).toString("hex")}=`;
+}
+/** The exit code the wrapper printed after `marker` (its last such line), or undefined when there is none. */
+export function exitCodeFromMarker(pane: string, marker: string): number | undefined {
+  let code: number | undefined;
+  for (const line of pane.split("\n")) {
+    const at = line.indexOf(marker);
+    if (at < 0) continue;
+    const m = /^(\d{1,3})\s*$/.exec(line.slice(at + marker.length));
+    if (m) code = Number(m[1]);
+  }
+  return code;
+}
+/** The pane without the wrapper's verdict line (what a person is shown). */
+export function withoutExitMarker(pane: string, marker: string): string {
+  return pane.split("\n").filter((l) => !l.includes(marker)).join("\n");
 }
