@@ -129,11 +129,22 @@ it("does not send the new diagnostic to an older peer without a positive welcome
 });
 
 it("a replacement connection cannot inherit a previous boot's current report", async () => {
-  const f = await fixture({ updateStatus: { state: "current" } });
+  const f = await fixture(); f.client.setUpdateStatus({ state: "current" });
   await vi.waitFor(() => expect(f.hub.machine(f.machineId)?.updateReport?.status.state).toBe("current"));
   const oldBoot = f.hub.machine(f.machineId)!.bootId; await f.client.stop();
   const replacement = new RuntimeClient({ store: f.store, bridge: f.bridge, reconnectMs: 60_000 }); clients.push(replacement);
   await replacement.start(); await vi.waitFor(() => expect(replacement.online()).toBe(true));
   expect(f.hub.machine(f.machineId)?.bootId).not.toBe(oldBoot);
   expect(f.hub.machine(f.machineId)?.updateReport).toBeUndefined();
+});
+
+it("a same-client reconnect invalidates cached current until a new positive check", async () => {
+  const f = await fixture({ reconnectMs: 1 }); f.client.setUpdateStatus({ state: "current" });
+  await vi.waitFor(() => expect(f.hub.machine(f.machineId)?.updateReport?.status.state).toBe("current"));
+  const generation = (f.client as any).generation; ((f.client as any).socket as WebSocket).terminate();
+  await vi.waitFor(() => expect((f.client as any).generation).toBeGreaterThan(generation));
+  await f.hub.call(f.machineId, "workspace", { agentId: randomUUID() });
+  expect(f.hub.machine(f.machineId)?.updateReport?.status).toEqual({ state: "unknown" });
+  f.client.setUpdateStatus({ state: "current" });
+  await vi.waitFor(() => expect(f.hub.machine(f.machineId)?.updateReport?.status).toEqual({ state: "current" }));
 });

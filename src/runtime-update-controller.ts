@@ -288,7 +288,7 @@ export class RuntimeUpdateController {
   }
   private async check(): Promise<void> {
     this.intervalAt = Date.now() + 30_000;
-    const client = this.client, program = this.install.program;
+    const client = this.client, program = this.install.program, authentication = this.authentication;
     if (this.closed || this.trialPending || !client?.online() || this.authentication?.updateProtocol !== 1 || !program) return;
     this.bindingCurrent(); const state = this.journal.read();
     if (state.attempt) { this.say("Runtime update recovery is pending; the selected build and journal were preserved."); return; }
@@ -297,6 +297,7 @@ export class RuntimeUpdateController {
       if (!same(readRuntimeSelectedProgram(this.install.root), program)) throw Error("Runtime selection changed");
     });
     const metadata = await fetchRuntimeUpdateMetadata(this.binding.origin);
+    if (this.closed || client !== this.client || !client.online() || this.authentication !== authentication) return;
     if (!runtimeUpdateNeeded(program, metadata, state.failed?.sha256)) {
       if (state.failed?.sha256 === metadata.sha256) {
         this.status({ state: "failed", target: { version: metadata.version, bundleSha256: metadata.sha256 } });

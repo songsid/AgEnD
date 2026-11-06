@@ -70,10 +70,10 @@ class InertChild extends EventEmitter {
 
 async function fixture(options: { shared?: boolean; unmanaged?: boolean; failChild?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-controller-")), requests: string[] = [], children: InertChild[] = [], clients: InertClient[] = [], reports: string[] = [];
-  let target = b, archive: Buffer | undefined, interrupted = false, onArchive: (() => void) | undefined;
+  let target = b, archive: Buffer | undefined, interrupted = false, onArchive: (() => void) | undefined, onMetadata: (() => void) | undefined;
   const server = createServer((req, res) => {
     requests.push(req.url!); const value = metadata(target); res.setHeader("ETag", `"${value.version}-${value.sha256}"`);
-    if (req.url === "/runtime/v1/bundle/windows.json") { res.end(JSON.stringify(value)); return; }
+    if (req.url === "/runtime/v1/bundle/windows.json") { onMetadata?.(); res.end(JSON.stringify(value)); return; }
     if (req.url !== "/runtime/v1/bundle/windows.zip") { res.writeHead(404).end(); return; }
     const bytes = archive ?? target.bytes; res.setHeader("Content-Length", bytes.length);
     onArchive?.();
@@ -120,6 +120,7 @@ async function fixture(options: { shared?: boolean; unmanaged?: boolean; failChi
     setTarget(value: RuntimeBundle) { target = value; }, corrupt() { archive = Buffer.from(target.bytes); archive[100] ^= 1; },
     interrupt(value: boolean) { interrupted = value; },
     beforeArchive(callback: () => void) { onArchive = callback; },
+    beforeMetadata(callback: () => void) { onMetadata = callback; },
     async open() { return controller = await RuntimeUpdateController.open(controllerOptions); },
     own(value: RuntimeUpdateController) { controller = value; },
     selected() { return readRuntimeSelectedProgram(root); },
@@ -453,4 +454,13 @@ it("rechecks a lockless manual selection made during download before stopping th
   const controller = (await f.open())!; await controller.start(); await controller.checkNow();
   expect(f.selected()).toEqual(third); expect(f.clients[0].prepare).not.toHaveBeenCalled(); expect(f.clients[0].online()).toBe(true);
   expect(f.children).toEqual([]); expect(f.journal().read().attempt).toBeUndefined();
+});
+
+it("metadata started under an older connection cannot confirm current after reconnect", async () => {
+  const f = await fixture(); f.setTarget(a); let changed = false;
+  f.beforeMetadata(() => { if (!changed) { changed = true; f.clients[0].options.managedUpdate!.authenticated!({ bootId: f.clients[0].bootId, generation: 2, updateProtocol: 1, runtimeInfo: { version: a.version, buildId: f.program.buildId, protocolVersions: [1], capabilities: ["exec"] } }); } });
+  const controller = (await f.open())!; await controller.start(); await controller.checkNow();
+  expect(changed).toBe(true); expect(f.clients[0].setUpdateStatus).not.toHaveBeenCalledWith({ state: "current" });
+  f.beforeMetadata(() => {}); await controller.checkNow();
+  expect(f.clients[0].setUpdateStatus).toHaveBeenCalledWith({ state: "current" });
 });

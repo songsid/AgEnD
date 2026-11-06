@@ -56,6 +56,7 @@ for(const device of ["desk","phone"] as const)for(const lang of ["en","zh-TW"] a
       const commands=await page.locator(".runtime-command-card").innerText();
       need(commands.includes("AGEND_RUNTIME_INSTALL_DIR")&&commands.includes("[Guid]::NewGuid()"),"fresh separate root");
       need(commands.includes(fm.runtimeInstaller().installer().scriptSha256),"server-pinned script hash");need(!commands.includes("connect --server"),"no new pairing");
+      await page.screenshot({path:join(out,`${label}-repair.png`),fullPage:true});
       await page.locator(".dlg-x").click();
     }else need(await page.locator(".runtime-update-notice").count()===0,"actual old panel ignores new fields");
     await page.screenshot({path:join(out,`${label}-runtime.png`),fullPage:true});

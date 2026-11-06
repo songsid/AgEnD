@@ -146,7 +146,7 @@ const serveScript = (bytes: Buffer, status = 200) => (req: IncomingMessage, res:
 
 describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run against a loopback server", { timeout: 180_000 }, () => {
   it("the fresh-root repair command runs only in a new folder with the pinned script; blocked controls never fall back", async () => {
-    const s=scratch(), sentinel="Write-Output ('FRESH-RAN:' + $env:AGEND_RUNTIME_INSTALL_DIR)", quoted=(value:string)=>`'${value.replace(/'/g,"''")}'`;
+    const s=scratch(), sentinel="Write-Output ('FRESH-RAN:' + $env:AGEND_RUNTIME_INSTALL_DIR + ':' + $env:AGEND_RUNTIME_NO_PATH + ':' + $env:AGEND_RUNTIME_REPAIR)", quoted=(value:string)=>`'${value.replace(/'/g,"''")}'`;
     const file=join(s.root,"fresh-command.ps1");writeFileSync(file,runtimeFreshInstallCommand("https://paired.example.test",sha(Buffer.from(sentinel))));
     const out=await helperRun(s,`$ErrorActionPreference='Continue'
       function global:Invoke-WebRequest { param($Uri,[switch]$UseBasicParsing); [pscustomobject]@{Content=$global:Sentinel} }
@@ -161,7 +161,28 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       }`);
     expect((out.match(/FRESH-RAN:/g)??[])).toHaveLength(1);expect(out).toContain(`FRESH-RAN:${join(s.local,"agend-runtime-")}`);
     for(const blocked of ['no-home','exists','bad-download'])expect(out).toContain(`BLOCKED:${blocked}`);
-    expect(out).not.toContain('UNVERIFIED');expect(readdirSync(s.local)).toEqual([]);
+    expect(out).not.toContain('UNVERIFIED');expect(out).toContain(':1:1');expect(readdirSync(s.local)).toEqual([]);
+  });
+  it("repair output selects the new shim over an old PATH entry and retains the supplied existing profile", async () => {
+    const s=scratch(), old=join(s.root,"old-bin"), profile=join(s.root,"existing 'profile'"), quoted=(value:string)=>`'${value.replace(/'/g,"''")}'`;
+    s.local=join(s.root,"local's data");s.install=join(s.local,"agend-runtime");mkdirSync(s.local);
+    mkdirSync(old); const oldCommand=join(old,process.platform==="win32"?"agend-runtime.cmd":"agend-runtime");writeFileSync(oldCommand,process.platform==="win32"?"@echo OLD-PATH-RUNTIME\r\n":"#!/bin/sh\necho OLD-PATH-RUNTIME\n");chmodSync(oldCommand,0o700);
+    mkdirSync(profile); writeFileSync(join(profile,"connection.json"),'{"paired":"keep"}'); const before=snapshot(profile);
+    const preset=`$env:PATH=${quoted(old)}+[IO.Path]::PathSeparator+$env:PATH`;
+    const r=await run(s,{AGEND_RUNTIME_REPAIR:"1",AGEND_RUNTIME_NO_PATH:"1",T_PRESET:preset});
+    expect(r.code,r.out).toBe(0); expect(r.out).not.toContain('connect --server'); expect(r.out).not.toContain('one-time pairing code');
+    const command=r.out.split(/\r?\n/).find(line=>line.includes('Read-Host')&&line.includes('run --profile'))?.trim(); expect(command,r.out).toBeTruthy();
+    const shim=join(s.install,"bin","agend-runtime.cmd");expect(command).toContain(shim.replace(/'/g,"''"));
+    const out=await helperRun(s,`${preset}
+      'OLD-RESOLVES:' + (Get-Command agend-runtime).Source
+      function global:Invoke-NewFixtureRuntime { 'NEW:' + ($args | ConvertTo-Json -Compress) }
+      Set-Alias -Name ${quoted(shim)} -Value Invoke-NewFixtureRuntime
+      function global:Read-Host { ${quoted(profile)} }
+      ${command}
+      function global:Read-Host { '' }
+      try { ${command} } catch { 'EMPTY-PROFILE-REFUSED' }`);
+    expect(out).toContain('OLD-RESOLVES:'+oldCommand);expect(out).toContain('EMPTY-PROFILE-REFUSED');expect((out.match(/NEW:/g)??[])).toHaveLength(1);
+    expect(out).toContain('NEW:'+JSON.stringify(['run','--profile',profile]));expect(out).not.toContain('OLD-PATH-RUNTIME');expect(snapshot(profile)).toEqual(before);
   });
   it("runs the page's command: downloads the script, checks its hash, then installs under <LOCALAPPDATA>\\agend-runtime\\<version> and only prints the connect command", async () => {
     const s = scratch(), r = await run(s);

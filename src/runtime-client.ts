@@ -205,6 +205,8 @@ export class RuntimeClient {
   }
   private connect(): void {
     if (this.stopped || !this.credentials) return;
+    // A previous connection's positive check cannot vouch for this server generation.
+    if (this.updateStatus?.state === "current") this.updateStatus = { state: "unknown" };
     const url = validateRuntimeServer(this.credentials.server); url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/runtime/v1/connect";
     const socket = this.socket = this.options.socketFactory?.(url.href, this.credentials.credential)
