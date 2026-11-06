@@ -6,6 +6,7 @@
 #   scripts/tmux/smoke-tmux.sh <dir holding bin/tmux and share/terminfo> <expected version, e.g. 3.8>
 set -eu
 DIR=${1:?bundle dir}; WANT=${2:?expected tmux version}
+DIR=$(cd "$DIR" && pwd)   # absolute: the verbose start runs from its log dir
 T="$DIR/bin/tmux"
 # A UTF-8 locale the host has: macOS names it en_US.UTF-8, Linux (glibc and musl) C.UTF-8.
 case "$(uname -s)" in Darwin) LOC=en_US.UTF-8 ;; *) LOC=C.UTF-8 ;; esac
