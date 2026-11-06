@@ -18,6 +18,7 @@
 // would fail though they ran): it gets no more calls, its stdin is ended, and it exits once they have answered.
 // A helper that is not running, or not trusted, is not used: the call goes direct, as before. Only the fleet starts
 // and restarts the helper (start/maintain, from its own lifecycle and timer), never a tool handler.
+import { bundledTmuxEnabled, tmuxBinary } from "./tmux-binary.js";
 import type { ChildProcess } from "node:child_process";
 import { execFile, spawn } from "./child-process.js";
 import { delimiter, isAbsolute, join } from "node:path";
@@ -124,6 +125,11 @@ async function firstExecutable(candidates: string[]): Promise<string | null> {
   }
 }
 
+/** The bundled tmux the helper may start, or null when it cannot be resolved (calls then go direct and fail there). */
+function bundledHelperTmux(): string | null {
+  try { return tmuxBinary(); } catch { return null; }
+}
+
 /** The absolute path `name` resolves to on this PATH (an executable file), or null. */
 export async function resolveOnPath(name: string, path: string | undefined): Promise<string | null> {
   if (isAbsolute(name)) return name;
@@ -197,7 +203,8 @@ export class ExecHelper {
     const allow = new Map<string, string>();
     const byName = new Map<string, string | null>();
     await Promise.all(HELPER_BINARIES.map(async (name) => {
-      const abs = await resolveOnPath(name, path);
+      // M-2457: with AgEnD's bundled tmux on, "tmux" is that binary (absolute), never PATH's; unresolvable: none.
+      const abs = name === "tmux" && bundledTmuxEnabled() ? bundledHelperTmux() : await resolveOnPath(name, path);
       byName.set(name, abs);
       if (abs) allow.set(name, abs);
     }));

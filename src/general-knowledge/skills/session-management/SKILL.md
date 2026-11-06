@@ -67,7 +67,7 @@ cur.execute("SELECT value FROM conversations_v2 WHERE conversation_id = ?", (tar
 open('<instance-workspace>/restore.json', 'w').write(cur.fetchone()[0])
 ```
 ```bash
-tmux send-keys -t agend:<instance> '/chat load restore.json' Enter
+agend tmux send-keys -t agend:<instance> '/chat load restore.json' Enter
 # Success: "✔ Imported chat session state", context % jumps up
 ```
 

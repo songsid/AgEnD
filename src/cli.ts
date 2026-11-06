@@ -45,7 +45,8 @@ import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawnSync, execSync, execFileSync } from "node:child_process";
 import { spawn } from "./child-process.js";
-import { getAgendHome, getTmuxSocketName, isDefaultAgendHome, realDefaultAgendHome } from "./paths.js";
+import { getAgendHome, isDefaultAgendHome, realDefaultAgendHome } from "./paths.js";
+import { tmuxArgs as tmuxArgsFor, tmuxBinary as tmuxBin, tmuxEnvOption as tmuxEnvOpt } from "./tmux-binary.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
 import {
@@ -74,7 +75,7 @@ import {
   selectSystemdRestartTarget,
   SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
 } from "./service-restart-selection.js";
-import { loadRawFleetConfig } from "./config.js";
+import { getTmuxSession, loadRawFleetConfig } from "./config.js";
 import { detectLocale, setLocale, getLocale, t } from "./locale.js";
 import { settingsSourceLabel } from "./settings-confirmation.js";
 import { DeliveryOutbox, deliveryStatusSelector, type DeliveryStatusSelector } from "./delivery-outbox.js";
@@ -86,11 +87,8 @@ import { canonicalCliEntry, selfCommand } from "./cli-entry.js";
 import { DIRECT_FLEET_START_ENV, redirectsToService, serviceRunsHome, startedByServiceManager } from "./service-owner.js";
 import { handOff, shouldHandOff } from "./launchd-handoff.js";
 
-/** Prefix tmux args with -L when socket isolation is active. */
-function tmuxArgs(args: string[]): string[] {
-  const socket = getTmuxSocketName();
-  return socket ? ["-L", socket, ...args] : args;
-}
+/** This fleet's tmux socket (and, with the bundled tmux, its config) in front of `args` (tmux-binary.ts). */
+const tmuxArgs = (args: string[]): string[] => tmuxArgsFor(args);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -843,7 +841,9 @@ backend
     // tmux
     try {
       const { execSync } = await import("node:child_process");
-      const ver = execSync("tmux -V", { stdio: "pipe" }).toString().trim();
+      const { tmuxBinary, tmuxEnvOption } = await import("./tmux-binary.js");
+      const { execFileSync: run } = await import("node:child_process");
+      const ver = run(tmuxBinary(), ["-V"], { stdio: "pipe", ...tmuxEnvOption() }).toString().trim();
       ok(`tmux${" ".repeat(16)} ${ver}`);
     } catch {
       fail(`tmux${" ".repeat(16)} not found — brew install tmux / apt install tmux`);
@@ -3274,8 +3274,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     // tmux captures overlap instead of stacking their 2s bounds serially.
     const { collectLsRows, capturePaneAsync, formatTimeSince, lsStatusIcon, lsStatusLabel, displayWidth, computeLsNameWidth, padToDisplayWidth } =
       await import("./ls-rows.js");
-    const { getTmuxSocketName } = await import("./paths.js");
-    const socketName = getTmuxSocketName();
+    const { tmuxSocket } = await import("./tmux-binary.js");
+    const socketName = tmuxSocket();
     const rows = await collectLsRows(
       allNames.map(name => {
         const isClassic = classicNames.has(name);
@@ -3717,6 +3717,24 @@ program
   });
 
 program
+  .command("tmux")
+  .description("Run a tmux command on this fleet's own tmux server — its tmux binary and socket — e.g. `agend tmux ls`, `agend tmux capture-pane -p -t <window>`.")
+  .argument("[args...]", "tmux's own command and arguments")
+  .allowUnknownOption(true)
+  .helpOption(false)
+  .action(async (rest: string[] = []) => {
+    // Everything after the command goes to tmux as typed (its own options and a `--` included: commander keeps them in
+    // order, with allowUnknownOption), with this fleet's -L socket (and, with AgEnD's bundled tmux, its binary and -f
+    // config) in front: M-2457 §5.
+    let bin: string;
+    try { bin = tmuxBin(); } catch (e) { console.error((e as Error).message); process.exit(1); }
+    const { spawnSync } = await import("node:child_process");
+    const r = spawnSync(bin, tmuxArgs(rest), { stdio: "inherit", ...tmuxEnvOpt() });
+    if (r.error) { console.error(`tmux could not run: ${r.error.message}`); process.exit(1); }
+    process.exit(r.status ?? 1);
+  });
+
+program
   .command("attach")
   .description("Attach to an instance's tmux window. Accepts display name, instance name, row number from ls, or a substring. No argument: interactive picker.")
   .argument("[name]", "Instance name, display name, row number, or substring (omit for interactive picker)")
@@ -3740,11 +3758,12 @@ program
       }
     } catch { /* ignore */ }
 
-    const session = "agend";
+    // The fleet's session (AGEND_TMUX_SESSION, else per AGEND_HOME), not a hardcoded "agend" (M-2457 §5).
+    const session = getTmuxSession();
 
     // Verify tmux session exists
     try {
-      execFileSync("tmux", tmuxArgs(["has-session", "-t", session]), { stdio: "pipe" });
+      execFileSync(tmuxBin(), tmuxArgs(["has-session", "-t", session]), { stdio: "pipe" });
     } catch {
       console.error(`tmux session "${session}" not found. Is the fleet running?`);
       process.exit(1);
@@ -3756,18 +3775,18 @@ program
       : [`${session}:${name}`];
     let selected = false;
     for (const t of targets) {
-      try { execFileSync("tmux", tmuxArgs(["select-window", "-t", t]), { stdio: "pipe" }); selected = true; break; }
+      try { execFileSync(tmuxBin(), tmuxArgs(["select-window", "-t", t]), { stdio: "pipe" }); selected = true; break; }
       catch { /* try next */ }
     }
     // Fallback: search tmux windows for a partial name match (handles CJK truncation)
     if (!selected) {
       try {
-        const winList = execFileSync("tmux", tmuxArgs(["list-windows", "-t", session, "-F", "#{window_id} #{window_name}"]), { stdio: "pipe" }).toString().trim();
+        const winList = execFileSync(tmuxBin(), tmuxArgs(["list-windows", "-t", session, "-F", "#{window_id} #{window_name}"]), { stdio: "pipe" }).toString().trim();
         for (const line of winList.split("\n")) {
           const [wid, ...rest] = line.split(" ");
           const wname = rest.join(" ").replace(/-?\*?$/, ""); // strip trailing -/* markers
           if (wname === name || name.startsWith(wname) || wname.startsWith(name)) {
-            try { execFileSync("tmux", tmuxArgs(["select-window", "-t", `${session}:${wid}`]), { stdio: "pipe" }); selected = true; break; }
+            try { execFileSync(tmuxBin(), tmuxArgs(["select-window", "-t", `${session}:${wid}`]), { stdio: "pipe" }); selected = true; break; }
             catch { /* try next */ }
           }
         }
@@ -3778,11 +3797,14 @@ program
       process.exit(1);
     }
 
-    // Attach or switch-client depending on whether we're already in tmux
-    if (process.env.TMUX) {
+    // Attach or switch-client depending on whether we're already in tmux — in THIS fleet's tmux: with the bundled tmux,
+    // $TMUX naming another server (the user's own, on its own socket) is not "inside"; that is an ordinary attach.
+    const { bundledTmuxEnabled, insideFleetTmux, tmuxSocket } = await import("./tmux-binary.js");
+    const insideOurs = insideFleetTmux(process.env.TMUX, bundledTmuxEnabled(), tmuxSocket());
+    if (insideOurs) {
       // Already inside tmux — switch client
       try {
-        execFileSync("tmux", tmuxArgs(["switch-client", "-t", session]), { stdio: "inherit" });
+        execFileSync(tmuxBin(), tmuxArgs(["switch-client", "-t", session]), { stdio: "inherit", ...tmuxEnvOpt() });
       } catch {
         console.error("Failed to switch tmux client.");
         process.exit(1);
@@ -3790,7 +3812,7 @@ program
     } else {
       // Outside tmux — attach
       try {
-        execFileSync("tmux", tmuxArgs(["attach-session", "-t", session]), { stdio: "inherit" });
+        execFileSync(tmuxBin(), tmuxArgs(["attach-session", "-t", session]), { stdio: "inherit", ...tmuxEnvOpt() });
       } catch {
         console.error("Failed to attach to tmux session.");
         process.exit(1);
