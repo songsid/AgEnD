@@ -18,7 +18,7 @@
  *
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
-import { execFile as nodeExecFile } from "node:child_process";
+import { execFile as nodeExecFile } from "./child-process.js";
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { AUDITED_NATIVE_PANE_VERSIONS } from "./runtime-pane-native.js";
@@ -165,10 +165,14 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   }
 }
 
-/** One install at a time on this computer: a second request while one runs is refused (the caller asks `running` first, so it is refused before it is recorded), not queued. */
-export function managedInstaller(deps: Omit<InstallDeps, "signal">, signal?: () => AbortSignal | undefined): { install: (cli: string) => Promise<{ version: string }>; running: () => boolean } {
+/**
+ * The Runtime's installer, as `RemoteAccounts` asks for it: it knows only the CLIs in the closed table (so any other id is refused before a `started` record),
+ * and it installs one at a time. The shared "one setup operation at a time" flag lives in RemoteAccounts; this guard is the installer's own, for any other caller.
+ */
+export function managedInstaller(deps: Omit<InstallDeps, "signal">, signal?: () => AbortSignal | undefined): { knows(cli: string): boolean; install(cli: string): Promise<{ version: string }>; running(): boolean } {
   let busy = false;
   return {
+    knows: isInstallableCli,
     running: () => busy,
     install: async cli => {
       if (busy) throw new CliInstallError("busy", "A CLI install is already running on this computer; wait for it to end");

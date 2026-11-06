@@ -119,10 +119,13 @@ export interface AuditEntry {
   reason?: AuditReason;
   /** How many identical refusals this one stands for (see AuditLog). Absent for a single one. */
   repeated?: number;
+  /** Where the folded run began (a closed ISO time, UTC). `at` stays the time the line was written. Only present together with `repeated`. */
+  since?: string;
 }
 /** What the dashboard may call a person in the record: a name or an id, not an address and not free text. */
 export const AUDIT_ACTOR = /^[A-Za-z0-9._:-]{1,64}$/;
 const AUDIT_DETAIL = /^(?:on|off|expired|\d{1,4}\.\d{1,4}\.\d{1,4}(?:[-+][A-Za-z0-9.-]{1,32})?)$/;
+const AUDIT_SINCE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const AUDIT_CLI = /^[a-z][a-z0-9-]{0,31}$/;
 const AUDIT_PROFILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export function validAuditActor(value: unknown): value is string { return typeof value === "string" && AUDIT_ACTOR.test(value); }
@@ -131,11 +134,11 @@ export function validAuditActor(value: unknown): value is string { return typeof
 export function formatAuditLine(entry: AuditEntry, now = Date.now()): string {
   if (!validAuditActor(entry.actor) || !(AUDIT_ACTIONS as readonly string[]).includes(entry.action) || !(AUDIT_OUTCOMES as readonly string[]).includes(entry.outcome)
     || entry.cli !== undefined && !AUDIT_CLI.test(entry.cli) || entry.profile !== undefined && !AUDIT_PROFILE.test(entry.profile)
-    || entry.detail !== undefined && !AUDIT_DETAIL.test(entry.detail) || entry.repeated !== undefined && (!Number.isSafeInteger(entry.repeated) || entry.repeated < 2 || entry.repeated > 1_000_000_000) || entry.reason !== undefined && !(AUDIT_REASONS as readonly string[]).includes(entry.reason)) throw new Error("Audit entry is not in its closed form");
+    || entry.detail !== undefined && !AUDIT_DETAIL.test(entry.detail) || entry.repeated !== undefined && (!Number.isSafeInteger(entry.repeated) || entry.repeated < 2 || entry.repeated > 1_000_000_000) || entry.since !== undefined && (entry.repeated === undefined || !AUDIT_SINCE.test(entry.since)) || entry.reason !== undefined && !(AUDIT_REASONS as readonly string[]).includes(entry.reason)) throw new Error("Audit entry is not in its closed form");
   return `${JSON.stringify({ at: new Date(now).toISOString(), actor: entry.actor, action: entry.action, outcome: entry.outcome,
     ...(entry.cli !== undefined ? { cli: entry.cli } : {}), ...(entry.profile !== undefined ? { profile: entry.profile } : {}),
     ...(entry.detail !== undefined ? { detail: entry.detail } : {}), ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
-    ...(entry.repeated !== undefined ? { repeated: entry.repeated } : {}) })}\n`;
+    ...(entry.repeated !== undefined ? { repeated: entry.repeated } : {}), ...(entry.since !== undefined ? { since: entry.since } : {}) })}\n`;
 }
 /**
  * Appends to `<pairing folder>\audit.jsonl` (private; a link is refused; five rotated copies, each up to about 1 MiB). Throws when it cannot write: a remote
@@ -185,7 +188,7 @@ export class AuditLog {
     if (entry.outcome !== "refused") { appendAudit(this.directory, entry, now); return; }
     const key = `${entry.action}\u0000${entry.reason ?? ""}`, seen = this.folded.get(key);
     if (seen && now - seen.since < AUDIT_FOLD_MS) { seen.suppressed++; return; }
-    appendAudit(this.directory, { ...entry, ...(seen && seen.suppressed + 1 >= 2 ? { repeated: seen.suppressed + 1 } : {}) }, now);
+    appendAudit(this.directory, { ...entry, ...(seen && seen.suppressed + 1 >= 2 ? { repeated: seen.suppressed + 1, since: new Date(seen.since).toISOString() } : {}) }, now);
     this.folded.set(key, { since: now, suppressed: 0, entry });
   }
   /** Writes what was folded and not yet written (best effort), so no count is lost when a process ends. */
@@ -193,7 +196,7 @@ export class AuditLog {
     const now = this.now();
     for (const [key, seen] of [...this.folded]) {
       if (!seen.suppressed) continue;
-      try { appendAudit(this.directory, { ...seen.entry, ...(seen.suppressed >= 2 ? { repeated: seen.suppressed } : {}) }, now); seen.suppressed = 0; seen.since = now; } catch { /* kept for the next flush */ }
+      try { appendAudit(this.directory, { ...seen.entry, ...(seen.suppressed >= 2 ? { repeated: seen.suppressed, since: new Date(seen.since).toISOString() } : {}) }, now); seen.suppressed = 0; seen.since = now; } catch { /* kept for the next flush */ }
       this.folded.set(key, seen);
     }
   }

@@ -52,7 +52,7 @@ describe("capabilities", () => {
   it("a Runtime with a profile folder and a way to run the CLI reports remote-signin, and cli-install only with an installer", async () => {
     const f = await fixture();
     expect(f.hello().runtimeInfo.capabilities).toContain("remote-signin"); expect(f.hello().runtimeInfo.capabilities).not.toContain("cli-install");
-    const g = await fixture({ remoteAccounts: { install: async () => ({ version: "2.1.318" }) } });
+    const g = await fixture({ remoteAccounts: { installer: { knows: () => true, install: async () => ({ version: "2.1.318" }) } } });
     expect(g.hello().runtimeInfo.capabilities).toEqual(expect.arrayContaining(["remote-signin", "cli-install"]));
   });
   it("a Runtime without a profile folder offers neither, and answers an account request with a plain refusal", async () => {
@@ -172,6 +172,7 @@ describe("a state this computer cannot confirm is not reported as a running term
     write(paneLedgerFiles(f.home)[0]!, ledger({ named: { launch: { cli: "claude-code", credentialProfile: "elsewhere" }, snapshot: { state: "running" } } }));
     expect((await f.call("accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error ?? "").not.toMatch(/could not confirm/);
     write(paneLedgerFiles(f.home)[0]!, ledger({ nameless: { launch: { cli: "claude-code" }, snapshot: { state: "running" } } }));
-    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error).toMatch(/could not confirm whether a terminal is running/);
+    createRuntimeProfile(f.root, "claude-code", "second");                                       // (the first sign-out of "work" started its 5 s wait)
+    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "second", actor: "admin:u1" })).error).toMatch(/could not confirm whether a terminal is running/);
   });
 });

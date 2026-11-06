@@ -14,9 +14,9 @@ import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfi
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
-import { RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
+import { RemoteAccounts, type RemoteAccountsDeps, type RemoteInstaller } from "./runtime-remote-accounts.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
-import { isInstallableCli, managedCliRoot, managedInstaller } from "./runtime-cli-install.js";
+import { managedCliRoot, managedInstaller } from "./runtime-cli-install.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
 import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
@@ -82,7 +82,7 @@ export interface RuntimeClientOptions {
    * operations: the CLI lookup, the logout run, the CLI installer (its presence is what makes this Runtime report `cli-install`), the sign-in
    * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
    */
-  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "install" | "knowsCli" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
+  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
@@ -140,7 +140,7 @@ export class RuntimeClient {
   /** Ends a CLI install that is still running when this Runtime stops (the install's child process is the exact one it started). */
   private readonly installAbort = new AbortController();
   /** The Runtime's own installer (native Windows only): its closed table, its pinned versions and one install at a time. */
-  private readonly managed: ReturnType<typeof managedInstaller> | null;
+  private readonly managed: RemoteInstaller | null;
   private readonly snapshots = new Map<string, string>();
   private readonly pendingPaneTools = new Map<string, PendingTool>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -156,12 +156,12 @@ export class RuntimeClient {
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
     this.managed = process.platform === "win32" ? managedInstaller({ root: managedCliRoot(options.store.directory) }, () => this.installAbort.signal) : null;
-    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.install || process.platform === "win32" });
+    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.installer || process.platform === "win32" });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     this.runtimeInfo = options.credentialProfilesRoot ? info : { ...info, capabilities: info.capabilities.filter(name => name !== RUNTIME_CREDENTIAL_CAPABILITY) };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
-    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => name === REMOTE_SIGNIN_CAPABILITY ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.install || process.platform === "win32") : true) };
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => name === REMOTE_SIGNIN_CAPABILITY ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.installer || process.platform === "win32") : true) };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -466,12 +466,12 @@ export class RuntimeClient {
         const timer = setTimeout(() => { child.kill(); done(null); }, 30_000); timer.unref?.();
         child.on("error", () => { clearTimeout(timer); done(null); }); child.on("close", code => { clearTimeout(timer); done(code); });
       })),
-      inUse: name => this.profileInUse(name),
+      inUse: name => this.profileInUse(name), report: text => this.report(text),
       defaultProfile: () => { try { return this.options.store.credentialDefault(); } catch { return undefined; } },
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
       // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
-      ...(extra?.install ? { install: extra.install } : this.managed ? { install: this.managed.install, knowsCli: isInstallableCli, installing: this.managed.running } : {}),
-      ...(extra?.knowsCli ? { knowsCli: extra.knowsCli } : {}), ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
+      ...(extra?.installer ? { installer: extra.installer } : this.managed ? { installer: this.managed } : {}),
+      ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
       ...(extra?.now ? { now: extra.now } : {}),
     });
   }

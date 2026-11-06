@@ -43,12 +43,13 @@ afterEach(async () => {
 });
 const everything = (path: string): string => { let out = ""; for (const entry of readdirSync(path, { withFileTypes: true })) { const full = join(path, entry.name); out += entry.isDirectory() ? everything(full) : statSync(full).size < 1_000_000 ? readFileSync(full, "utf8") : ""; } return out; };
 const audit = (dir: string): string[] => { try { return readFileSync(join(dir, AUDIT_FILE), "utf8").trim().split("\n").filter(Boolean); } catch { return []; } };
+const installerOf = (install: (cli: string) => Promise<{ version: string }>, knows: (cli: string) => boolean = () => true) => ({ knows, install });
 const ACTOR = "admin:0123456789abcdef";
 
 describe("callAccount: the server's way to an account or install operation", () => {
   it("installs through the Runtime when its owner turned the switch on, records it there, and tells the server the version", async () => {
     const install = vi.fn(async (cli: string) => ({ version: cli === "codex" ? "0.165.0" : "2.1.316" }));
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(install) } });
     expect(f.hub.machine(f.machineId)?.runtimeInfo?.capabilities).toEqual(expect.arrayContaining(["remote-signin", "cli-install"]));
     expect(await f.hub.callAccount(f.machineId, "accounts.switches", {})).toEqual({ accounts: { on: false }, install: { on: false } });
     setRemoteSwitch(f.dir, "install", true, 3_600_000);
@@ -59,21 +60,21 @@ describe("callAccount: the server's way to an account or install operation", () 
   });
   it("refuses while the switch is off, with the command to run on that computer, and installs nothing", async () => {
     const install = vi.fn(async () => ({ version: "2.1.316" }));
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(install) } });
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "claude-code", actor: ACTOR })).rejects.toThrow(/agend-runtime remote-setup install on/);
     expect(install).not.toHaveBeenCalled();
     expect(audit(f.dir).map(line => JSON.parse(line)).map(line => `${line.outcome}|${line.reason}`)).toEqual(["refused|switch_off"]);
   });
   it("switch scope: the accounts switch alone never allows an install", async () => {
     const install = vi.fn(async () => ({ version: "2.1.316" }));
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(install) } });
     setRemoteSwitch(f.dir, "accounts", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "claude-code", actor: ACTOR })).rejects.toThrow(/install on/);
     expect(install).not.toHaveBeenCalled();
   });
   it("shows the installer's own sentence for a failure, and a generic one for anything else (a path would travel in it)", async () => {
     let next: Error = new CliInstallError("integrity-mismatch", "A downloaded package is not the one this AgEnD version expects, so nothing was installed");
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install: async () => { throw next; } } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(async () => { throw next; }) } });
     setRemoteSwitch(f.dir, "install", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR })).rejects.toThrow(/not the one this AgEnD version expects/);
     next = new Error("ENOENT: no such file C:\\Users\\secret\\x");
@@ -88,7 +89,7 @@ describe("callAccount: the server's way to an account or install operation", () 
   });
   it("is closed: an extra field, an unknown operation, a path or a command is refused before anything is sent", async () => {
     const install = vi.fn(async () => ({ version: "x" }));
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(install) } });
     setRemoteSwitch(f.dir, "install", true);
     const call = (operation: string, payload: unknown) => f.hub.callAccount(f.machineId, operation as "cli.install", payload as { cli: string; actor: string });
     await expect(call("cli.install", { cli: "codex", actor: ACTOR, argv: ["calc"] })).rejects.toThrow(/Invalid cli.install request/);
@@ -99,20 +100,20 @@ describe("callAccount: the server's way to an account or install operation", () 
     expect(install).not.toHaveBeenCalled();
   });
   it("an installable id is not enough: the Runtime refuses a CLI that is not in its table", async () => {
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install: async cli => { throw new CliInstallError("install-failed", `cannot: ${cli}`); } } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(async cli => { throw new CliInstallError("install-failed", `cannot: ${cli}`); }) } });
     setRemoteSwitch(f.dir, "install", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "grok", actor: ACTOR })).rejects.toThrow(/cannot: grok/);
   });
   it("a CLI outside the installer's table is refused before anything is recorded as started", async () => {
     const install = vi.fn(async () => ({ version: "x" }));
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install, knowsCli: isInstallableCli } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(install, isInstallableCli) } });
     setRemoteSwitch(f.dir, "install", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "grok", actor: ACTOR })).rejects.toThrow(/not in this Runtime's install list/);
     expect(install).not.toHaveBeenCalled();
     expect(audit(f.dir).map(line => JSON.parse(line)).filter(line => line.action === "cli.install").map(line => line.outcome)).not.toContain("started");
   });
   it("is not journaled: the request, its actor and its answer reach no file on the server", async () => {
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install: async () => ({ version: "0.165.0" }) } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(async () => ({ version: "0.165.0" })) } });
     setRemoteSwitch(f.dir, "install", true);
     const before = JSON.parse(readFileSync(join(f.hubHome, "runtime-machines.json"), "utf8")).commands.length;
     await f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR });
@@ -124,7 +125,7 @@ describe("callAccount: the server's way to an account or install operation", () 
   });
   it("gives up after its deadline, forgets the call, and ignores a late answer", async () => {
     let release = (): void => {}; const gate = new Promise<void>(done => { release = done; });
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install: async () => { await gate; return { version: "0.165.0" }; } } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(async () => { await gate; return { version: "0.165.0" }; }) } });
     setRemoteSwitch(f.dir, "install", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }, 1000)).rejects.toThrow(/did not answer in time/);
     release();

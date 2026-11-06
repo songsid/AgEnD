@@ -57,7 +57,7 @@ describe("switches gate every operation", () => {
     expect(f.audit().filter(row => row.outcome === "refused" && row.reason === "switch_off").map(row => row.action)).toEqual(["signin", "profile.signout", "profile.remove", "cli.install"]);
   });
   it("keeps the two scopes independent", async () => {
-    const f = fixture({ install: async () => ({ version: "2.1.318" }) }); owned(f); f.on("install");
+    const f = fixture({ installer: { knows: () => true, install: async () => ({ version: "2.1.318" }) } }); owned(f); f.on("install");
     await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/accounts.*turned off/);
     await expect(ask(f, "cli.install", { cli: "claude-code", actor })).resolves.toEqual({ version: "2.1.318" });
     f.on("accounts"); setRemoteSwitch(f.pairing, "install", false);
@@ -274,7 +274,7 @@ describe("cli install", () => {
     const f = fixture(); f.on("install");
     await expect(ask(f, "cli.install", { cli: "claude-code", actor })).rejects.toThrow(/cannot install CLIs/);
     expect(f.audit().at(-1)).toMatchObject({ action: "cli.install", outcome: "refused", reason: "unsupported" });
-    const g = fixture({ install: async cli => ({ version: cli === "claude-code" ? "2.1.318" : "0.1.0" }) }); g.on("install");
+    const g = fixture({ installer: { knows: () => true, install: async cli => ({ version: cli === "claude-code" ? "2.1.318" : "0.1.0" }) } }); g.on("install");
     expect(g.accounts.canInstall).toBe(true);
     await expect(ask(g, "cli.install", { cli: "claude-code", actor })).resolves.toEqual({ version: "2.1.318" });
     expect(g.audit().at(-1)).toMatchObject({ action: "cli.install", outcome: "ok", cli: "claude-code", detail: "2.1.318" });
@@ -426,7 +426,7 @@ describe("every refusal that changes nothing is made before `started` (the flood
     expect(f.audit().map(row => row.reason).sort()).toEqual(["default_profile", "in_use", "in_use", "not_owned", "unconfirmed"].sort());
   });
   it("install: a CLI id outside the installer's table is refused before `started`", async () => {
-    const f = fixture({ install: async () => ({ version: "2.1.318" }), knowsCli: cli => cli === "claude-code" }); f.on("install");
+    const f = fixture({ installer: { knows: cli => cli === "claude-code", install: async () => ({ version: "2.1.318" }) } }); f.on("install");
     for (let i = 0; i < 20; i++) await ask(f, "cli.install", { cli: "kiro-cli", actor }).catch(() => {});
     expect(f.audit().map(row => `${row.outcome}:${row.reason}`)).toEqual(["refused:unsupported"]);
     await expect(ask(f, "cli.install", { cli: "claude-code", actor })).resolves.toEqual({ version: "2.1.318" });
@@ -475,5 +475,80 @@ describe("a profile cannot be signed out or removed in quick succession (item 8)
     const f = fixture(); f.on(); owned(f); f.inUse.mockReturnValueOnce("task");
     await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/running task/);
     f.setAnswer({ loggedIn: false }); await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
+  });
+});
+
+describe("concurrent requests (round 3): check and run are separated by awaits, so exclusivity is taken before the first one", () => {
+  const startReq = (profile: string) => ({ cli: "claude-code", profile, method: "subscription", actor });
+  it("50 sign-ins started at the same moment under 50 names: one succeeds, one `started`, one folder, one child; the rest are one folded refusal", async () => {
+    const f = fixture(); f.on();
+    const names = Array.from({ length: 50 }, (_, i) => `p${i}`);
+    const results = await Promise.allSettled(names.map(name => ask(f, "signin.start", startReq(name))));
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.filter(result => result.status === "rejected").every(result => /Another sign-in/.test(String((result as PromiseRejectedResult).reason.message)))).toBe(true);
+    expect(f.audit().filter(row => row.action === "signin" && row.outcome === "started")).toHaveLength(1);
+    expect(f.audit().filter(row => row.action === "profile.add")).toHaveLength(1);
+    expect(names.filter(name => existsSync(join(f.root, "claude-code", name)))).toHaveLength(1);
+    expect(isCreatedProfile(f.root, "claude-code", names.find(name => existsSync(join(f.root, "claude-code", name)))!)).toBe(true);
+    expect(JSON.parse(readFileSync(join(f.root, "created.json"), "utf8")).created["claude-code"]).toBeDefined();
+    expect(Object.keys(JSON.parse(readFileSync(join(f.root, "created.json"), "utf8")).created["claude-code"])).toHaveLength(1);
+    expect(f.children).toHaveLength(1); expect(f.spawned).toHaveLength(1);
+    const refusals = f.audit().filter(row => row.outcome === "refused" && row.reason === "busy");   // the first one, and the count written when the winner's `started` went out
+    expect(refusals).toHaveLength(2); expect(refusals[1]).toMatchObject({ repeated: 48 }); expect(typeof refusals[1]!.since).toBe("string");
+    expect(f.audit().length).toBeLessThanOrEqual(6);
+  });
+  it("the same name sent twice at once is stopped by the profile lock, and a start after the first has finished is stopped by the slot", async () => {
+    const f = fixture(); f.on();
+    const both = await Promise.allSettled([ask(f, "signin.start", startReq("work")), ask(f, "signin.start", startReq("work"))]);
+    expect(both.filter(result => result.status === "fulfilled")).toHaveLength(1); expect(f.children).toHaveLength(1);
+    await expect(ask(f, "signin.start", startReq("other"))).rejects.toThrow(/Another sign-in/); expect(existsSync(join(f.root, "claude-code", "other"))).toBe(false);
+  });
+  it("the flag is released when a start is refused or fails, and when the sign-in is closed, so the next start works", async () => {
+    const f = fixture({ find: async () => null }); f.on();
+    await expect(ask(f, "signin.start", startReq("a"))).rejects.toThrow(/not installed/);
+    await expect(ask(f, "signin.start", startReq("b"))).rejects.toThrow(/not installed/);           // not "Another sign-in is starting": the flag was released
+    const g = fixture(); g.on(); const { sessionId } = await ask(g, "signin.start", startReq("a")); await ask(g, "signin.close", { sessionId }); g.tick(6000);
+    await expect(ask(g, "signin.start", startReq("b"))).resolves.toMatchObject({ sessionId: expect.any(String) });
+  });
+  it("two installs at the same moment: one runs, the other is refused `busy` before `started`; afterwards the next one runs", async () => {
+    let release!: () => void; let calls = 0;
+    const f = fixture({ installer: { knows: () => true, install: () => { calls++; return new Promise(done => { release = () => done({ version: "2.1.318" }); }); } } }); f.on("install");
+    const first = ask(f, "cli.install", { cli: "claude-code", actor }); await vi.waitFor(() => expect(calls).toBe(1));
+    await expect(ask(f, "cli.install", { cli: "codex", actor })).rejects.toThrow(/Another install is running/);
+    expect(calls).toBe(1); expect(f.audit().filter(row => row.action === "cli.install" && row.outcome === "started")).toHaveLength(1);
+    release(); await expect(first).resolves.toEqual({ version: "2.1.318" });
+    const second = ask(f, "cli.install", { cli: "codex", actor }); await vi.waitFor(() => expect(calls).toBe(2)); release(); await second;
+  });
+  it("sign-outs and removes of one profile at the same moment: one of them runs (the profile lock), the others are `busy`", async () => {
+    const f = fixture(); f.on(); owned(f);
+    let logouts = 0; f.runLogout.mockImplementation(async () => { logouts++; await new Promise(done => setTimeout(done, 20)); f.setAnswer({ loggedIn: false }); return 0; });
+    const results = await Promise.allSettled([...Array(10)].map(() => ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })));
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1); expect(logouts).toBe(1);
+    expect(f.audit().filter(row => row.action === "profile.signout" && row.outcome === "started")).toHaveLength(1);
+  });
+});
+
+describe("round 3: the order of the pace check, `since`, and the local report", () => {
+  it("a request that is too soon is refused before the ownership check (no PowerShell), and the time is taken only when every check passed", async () => {
+    let inspected = 0; const f = fixture({ ownership: { inspect: paths => { inspected++; return paths.map(() => false); } } }); f.on(); owned(f);
+    f.setAnswer({ loggedIn: true }); f.runLogout.mockImplementation(async () => { f.setAnswer({ loggedIn: false }); return 0; });
+    await ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }); const seen = inspected; expect(seen).toBeGreaterThan(0);
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/wait a few seconds/);
+    expect(inspected).toBe(seen);                                                                 // not asked again
+    f.inUse.mockReturnValue("task"); f.tick(6000);
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/running task/);   // refused for another reason: no new wait
+    f.inUse.mockReturnValue(undefined); await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
+  });
+  it("a profile name that was never owned does not enter the pace table (it is refused for ownership first, and only owned names are marked)", async () => {
+    const f = fixture(); f.on(); mkdirSync(join(f.root, "claude-code", "byhand"), { recursive: true });
+    for (let i = 0; i < 3; i++) await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "byhand", actor })).rejects.toThrow(/not created by this Runtime/);
+  });
+  it("tells the person at this computer, and only them, when a removal can be neither finished nor undone", async () => {
+    const report = vi.fn(); const f = fixture({ report, ownership: { inspect: paths => { if (paths.length === 1) writeFileSync(join(f.root, "claude-code", "work"), "in the way"); return paths.map(() => paths.length === 1); } } });
+    f.on(); owned(f);
+    const error = (await ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e)) as Error;
+    expect(error.message).toBe("The operation could not be completed on this computer. Check that computer's Runtime window.");
+    expect(report).toHaveBeenCalledTimes(1); expect(report.mock.calls[0]![0]).toMatch(/could not finish and could not be undone.*agend-runtime profile list/); expect(report.mock.calls[0]![0]).not.toMatch(/[A-Za-z]:\\|\/tmp|\.removing/);
+    expect(f.auditText()).not.toMatch(/removing|profile list/);
   });
 });

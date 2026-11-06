@@ -22,6 +22,14 @@ import { isRuntimeRemoteOperation, parseRuntimeRemotePayload, type RuntimeRemote
 /** What a CLI the server may name stands for here: the CLI's program, its sign-in, and its environment variable. */
 export interface RemoteCliExecutable { path: string; command: string; args: string[] }
 export interface RemoteStatusAnswer { loggedIn: boolean | null; identity?: AccountIdentity }
+/**
+ * What installs a CLI here. One object, so that an installer cannot be wired in without saying which CLI ids it has in its closed table: an id
+ * outside it is refused BEFORE anything is recorded as started, and the installer is never asked about it.
+ */
+export interface RemoteInstaller {
+  knows(cli: string): boolean;
+  install(cli: string): Promise<{ version: string }>;
+}
 export interface RemoteAccountsDeps {
   /** This pairing's folder: the switches, the audit log and the credential profiles all live in it. */
   pairingDirectory: string;
@@ -41,11 +49,9 @@ export interface RemoteAccountsDeps {
   /** A cached answer was written or forgotten: the caller re-reports the computer's inventory. */
   changed(): void;
   /** Installs a CLI from the closed table and returns the version that landed. Absent: this Runtime cannot install (and does not claim to). */
-  install?: (cli: string) => Promise<{ version: string }>;
-  /** Which CLI ids the installer has in its closed table; an id outside it is refused BEFORE anything is recorded as started. Absent: every id is passed on. */
-  knowsCli?: (cli: string) => boolean;
-  /** Whether an install is running now (checked with the switch, so a second request is refused without a `started` record). */
-  installing?: () => boolean;
+  installer?: RemoteInstaller;
+  /** A line for the person at this computer (the Runtime window). Never sent to AgEnD. */
+  report?: (text: string) => void;
   signIn?: SignInDeps;
   ownership?: OwnedProfileOptions;
   /** How often a sign-in that is under way looks at its switch (default 3 s), so turning the switch off or letting it expire ends the sign-in. */
@@ -76,6 +82,8 @@ export class RemoteAccounts {
   private watch: ReturnType<typeof setInterval> | null = null;
   /** Profiles (lower-case: on Windows `Work` and `work` are one folder) with an operation in flight. */
   private readonly busy = new Set<string>();
+  /** Operations of which only one may be in progress on the whole computer (its `check` and `run` are separated by awaits). */
+  private readonly exclusive = new Set<string>();
   /** When a sign-out or remove of a profile (lower-case name) last passed its checks. Only profiles this Runtime created get here. */
   private readonly lastChange = new Map<string, number>();
   constructor(private readonly deps: RemoteAccountsDeps) { this.slot = new RuntimeSignInSlot(deps.now); this.audit = new AuditLog(deps.pairingDirectory, () => this.now()); }
@@ -83,7 +91,7 @@ export class RemoteAccounts {
   /** The switches as they stand now (read-only; the server cannot change them). */
   switches(): RuntimeSwitchStates { return readRemoteSwitches(this.deps.pairingDirectory, this.now()); }
   /** True when this Runtime can install a CLI at all (the `cli-install` capability). */
-  get canInstall(): boolean { return !!this.deps.install; }
+  get canInstall(): boolean { return !!this.deps.installer; }
   /** A profile with a sign-in under way, which makes sign-out and remove refuse. */
   signInProfile(): string | undefined { return this.slot.current() ? this.meta?.profile : undefined; }
   /** The Runtime is stopping: nothing is left running, and the folded counts of the record are written. */
@@ -105,12 +113,18 @@ export class RemoteAccounts {
    *   5. `run`, then `ok` or the reason it failed.
    */
   private async audited<T>(action: AuditAction, switchName: RemoteSwitchName, actor: string, subject: { cli?: string; profile?: string; detail?: (result: T) => string | undefined },
-    steps: { check?: () => void | Promise<void>; run: () => Promise<T>; /** The operation goes on after `run` (a sign-in): its own end is recorded later, so no `ok` here. */ openEnded?: boolean }): Promise<T> {
+    steps: { check?: () => void | Promise<void>; run: () => Promise<T>; /** The operation goes on after `run` (a sign-in): its own end is recorded later, so no `ok` here. */ openEnded?: boolean;
+      /** Only one operation of this kind at a time on the computer, taken in the same synchronous step as the switch and profile checks (before any await). */ exclusive?: "signin-start" | "install" }): Promise<T> {
     const base = { actor, action, ...(subject.cli ? { cli: subject.cli } : {}), ...(subject.profile ? { profile: subject.profile } : {}) };
     const refuse = (error: unknown): never => { this.record({ ...base, outcome: error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal ? "refused" : "failed", reason: reasonOf(error) }, false); throw error; };
     const key = subject.profile?.toLowerCase();
     try { requireRemoteSwitch(this.deps.pairingDirectory, switchName, this.now()); } catch (error) { return refuse(error); }
     if (key !== undefined) { if (this.busy.has(key)) return refuse(new SignInRefusal(`Another operation on "${subject.profile}" is in progress; try again in a moment`, "busy")); this.busy.add(key); }
+    const taken = steps.exclusive;
+    if (taken !== undefined) {
+      if (this.exclusive.has(taken)) { if (key !== undefined) this.busy.delete(key); return refuse(new SignInRefusal(taken === "install" ? "Another install is running on this computer" : "Another sign-in is starting on this computer", "busy")); }
+      this.exclusive.add(taken);
+    }
     try {
       try { await steps.check?.(); } catch (error) { return refuse(error); }
       this.record({ ...base, outcome: "started" }, true);
@@ -119,7 +133,7 @@ export class RemoteAccounts {
         if (!steps.openEnded) this.record({ ...base, outcome: "ok", ...(subject.detail && subject.detail(result) ? { detail: subject.detail(result) } : {}) }, false);
         return result;
       } catch (error) { return refuse(error); }
-    } finally { if (key !== undefined) this.busy.delete(key); }
+    } finally { if (key !== undefined) this.busy.delete(key); if (taken !== undefined) this.exclusive.delete(taken); }
   }
   private cliOf(value: string): CredentialProfileCli {
     if (!isCredentialProfileCli(value)) throw new ProfileOwnershipRefusal("Only Claude Code accounts can be managed on a computer. Codex may keep its sign-in in the Windows Credential Manager, which a profile folder cannot hold or remove, so it is not offered yet", "unsupported");
@@ -131,12 +145,15 @@ export class RemoteAccounts {
     if (using === "unknown") throw new ProfileOwnershipRefusal("This computer could not confirm whether a terminal is running under this profile, so nothing was changed. Check that computer's terminals and Runtime folder", "unconfirmed");
     if (using) throw new ProfileOwnershipRefusal(`Credential profile "${name}" is in use by a running ${using === "pane" ? "terminal" : "task"} on this computer; stop it first`, "in_use");
   }
-  /** At least `PROFILE_OP_MIN_GAP_MS` between two sign-outs/removes of one profile; the time is taken when the checks pass, so a refused try does not extend it. */
-  private pace(name: string): void {
-    const key = name.toLowerCase(), now = this.now(), last = this.lastChange.get(key);
-    if (last !== undefined && now - last < PROFILE_OP_MIN_GAP_MS) throw new SignInRefusal(`"${name}" was just changed; wait a few seconds`, "rate_limited");
-    this.lastChange.set(key, now);
+  /**
+   * At least `PROFILE_OP_MIN_GAP_MS` between two sign-outs/removes of one profile. Asked first (it only looks, so a request that is too soon never costs
+   * the ownership check, which can start PowerShell); the time is taken by `paceMark` only when every check has passed, so a refused try does not extend it.
+   */
+  private paceCheck(name: string): void {
+    const last = this.lastChange.get(name.toLowerCase());
+    if (last !== undefined && this.now() - last < PROFILE_OP_MIN_GAP_MS) throw new SignInRefusal(`"${name}" was just changed; wait a few seconds`, "rate_limited");
   }
+  private paceMark(name: string): void { this.lastChange.set(name.toLowerCase(), this.now()); }
 
   /** The one entry: a remote request already received from the server. Returns what the dashboard may see, or throws a message safe to send. */
   async handle(operation: string, payload: unknown): Promise<unknown> {
@@ -152,14 +169,13 @@ export class RemoteAccounts {
     if (operation === "cli.install") {
       const input = this.parse(operation, payload);
       return this.audited("cli.install", "install", this.actorOf(input.actor), { cli: input.cli, detail: (result: { version: string }) => result.version }, {
+        exclusive: "install",
         check: () => {
-          if (!this.deps.install) throw new ProfileOwnershipRefusal("This Runtime cannot install CLIs", "unsupported");
-          if (this.deps.knowsCli && !this.deps.knowsCli(input.cli)) throw new ProfileOwnershipRefusal("That CLI is not in this Runtime's install list", "unsupported");
-          // Refused before anything is recorded as started: an install is already running here.
-          if (this.deps.installing?.()) throw new RemoteSetupRefusal("A CLI install is already running on this computer; wait for it to end", "busy");
+          if (!this.deps.installer) throw new ProfileOwnershipRefusal("This Runtime cannot install CLIs", "unsupported");
+          if (!this.deps.installer.knows(input.cli)) throw new ProfileOwnershipRefusal("That CLI is not in this Runtime's install list", "unsupported");
         },
         run: async () => {
-          const result = await this.deps.install!(input.cli);
+          const result = await this.deps.installer!.install(input.cli);
           // The computer's CLI list changes now: the dashboard sees the new CLI without waiting for the next detection.
           this.deps.changed();
           return { version: result.version };
@@ -196,6 +212,8 @@ export class RemoteAccounts {
     // A sign-in begins by creating the profile when it is new: this is "Add account". The record says so. Nothing is created until every refusal
     // that does not need a change has been made (the slot, the profile's state, the CLI), so refused requests leave no folder behind.
     return this.audited("signin", "accounts", actor, { cli, profile: input.profile }, {
+      // The slot is only taken at the end of `run`; until then another start (under any name) must not get past `check`.
+      exclusive: "signin-start",
       check: async () => {
         // Only a subscription sign-in: a Console sign-in may be kept outside the profile's folder, so a profile could not hold or remove it.
         if (input.method !== "subscription") throw new ProfileOwnershipRefusal(SUBSCRIPTION_ONLY, "unsupported");
@@ -302,11 +320,12 @@ export class RemoteAccounts {
     let directory = "", executable: RemoteCliExecutable | null = null;
     return this.audited("profile.signout", "accounts", actor, { cli, profile: input.profile }, {
       check: async () => {
+        this.paceCheck(input.profile);
         directory = await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
         await this.busyProfile(input.profile);
         executable = await this.deps.find(cli);
         if (!executable) throw new SignInRefusal("Claude Code is not installed on this computer", "failed");
-        this.pace(input.profile);
+        this.paceMark(input.profile);
       },
       run: async () => {
         await this.deps.runLogout(executable!, ["auth", "logout"], withCredentialProfile(this.deps.environment(), cli, directory));
@@ -324,14 +343,15 @@ export class RemoteAccounts {
     const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli);
     return this.audited("profile.remove", "accounts", actor, { cli, profile: input.profile }, {
       check: async () => {
+        this.paceCheck(input.profile);
         await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
         const fallback = this.deps.defaultProfile();
         if (fallback && fallback.toLowerCase() === input.profile.toLowerCase()) throw new ProfileOwnershipRefusal(`Credential profile "${input.profile}" is this computer's default for agents; change it there first: agend-runtime profile default NAME`, "default_profile");
         await this.busyProfile(input.profile);
-        this.pace(input.profile);
+        this.paceMark(input.profile);
       },
       run: async () => {
-        await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
+        await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}) });
         this.deps.changed();
         return { removed: true as const };
       },
