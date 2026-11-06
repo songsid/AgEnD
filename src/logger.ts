@@ -2,7 +2,7 @@ import { ensureAgendHome } from "./agend-home.js";
 import pino from "pino";
 import { join } from "node:path";
 import { Writable } from "node:stream";
-import { lstatSync, fstatSync, unlinkSync, renameSync, copyFileSync, openSync, closeSync, fchmodSync, ftruncateSync, constants, promises as fsp } from "node:fs";
+import { lstatSync, fstatSync, unlinkSync, renameSync, copyFileSync, openSync, closeSync, fchmodSync, ftruncateSync, truncateSync, constants, promises as fsp } from "node:fs";
 import { getAgendHome } from "./paths.js";
 
 const DATA_DIR = getAgendHome();
@@ -31,6 +31,12 @@ export function getStdoutPrettyOptions(destinationIsFile = stdoutIsRegularFile()
 const PRIVATE_LOG_MODE = 0o600;
 
 const OPEN_LOG = constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+const OPEN_READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+
+/** Copy through this path so a swapped directory entry cannot redirect the held fd. */
+function heldFdPath(fd: number): string {
+  return process.platform === "darwin" ? `/dev/fd/${fd}` : `/proc/self/fd/${fd}`;
+}
 
 /** Unix: open `path` without following a symlink. Caller closes the fd. Undefined = leave the path alone. */
 function openOwnedLog(path: string, create: boolean): number | undefined {
@@ -71,14 +77,36 @@ function unlinkIfSymlink(path: string): void {
 
 function truncateOwnedLog(path: string): void {
   const fd = openOwnedLog(path, false);
-  if (fd === undefined) return;
-  try { ftruncateSync(fd, 0); } finally { closeSync(fd); }
+  if (fd !== undefined) {
+    try { ftruncateSync(fd, 0); } finally { closeSync(fd); }
+    return;
+  }
+  if (process.platform === "win32") {
+    try { truncateSync(path, 0); } catch { /* best effort */ }
+  }
+}
+
+/** Unlink a planted symlink or leftover file so the next create/copy is exclusive. */
+function unlinkIfNotDir(path: string): void {
+  try { if (!lstatSync(path).isDirectory()) unlinkSync(path); } catch { /* missing */ }
 }
 
 function copyOwnedLog(src: string, dst: string): void {
-  if (!lstatRegular(src)) return;
-  unlinkIfSymlink(dst);
-  copyFileSync(src, dst);
+  if (process.platform === "win32") {
+    if (!lstatRegular(src)) return;
+    try { copyFileSync(src, dst); } catch { /* best effort */ }
+    return;
+  }
+  let srcFd: number | undefined;
+  try {
+    srcFd = openSync(src, OPEN_READ);
+    const info = fstatSync(srcFd);
+    if (!info.isFile() || (typeof process.getuid === "function" && info.uid !== process.getuid())) return;
+    unlinkIfNotDir(dst);
+    copyFileSync(heldFdPath(srcFd), dst, constants.COPYFILE_EXCL);
+  } catch { /* best effort */ } finally {
+    if (srcFd !== undefined) closeSync(srcFd);
+  }
 }
 
 function shiftRotated(src: string, dst: string): void {
@@ -203,6 +231,10 @@ async function unlinkIfSymlinkAsync(path: string): Promise<void> {
 }
 
 async function truncateOwnedLogAsync(path: string): Promise<void> {
+  if (process.platform === "win32") {
+    await fsp.truncate(path, 0).catch(() => {});
+    return;
+  }
   let handle: Awaited<ReturnType<typeof fsp.open>> | undefined;
   try {
     handle = await fsp.open(path, OPEN_LOG);
@@ -210,6 +242,27 @@ async function truncateOwnedLogAsync(path: string): Promise<void> {
     if (!info.isFile() || (typeof process.getuid === "function" && info.uid !== process.getuid())) return;
     await handle.truncate(0);
   } catch { /* best effort */ } finally { await handle?.close().catch(() => {}); }
+}
+
+async function unlinkIfNotDirAsync(path: string): Promise<void> {
+  try { if (!(await fsp.lstat(path)).isDirectory()) await fsp.unlink(path); } catch { /* missing */ }
+}
+
+async function copyOwnedLogAsync(src: string, dst: string): Promise<boolean> {
+  if (process.platform === "win32") {
+    if (!(await lstatRegularAsync(src))) return false;
+    await fsp.copyFile(src, dst);
+    return true;
+  }
+  let handle: Awaited<ReturnType<typeof fsp.open>> | undefined;
+  try {
+    handle = await fsp.open(src, OPEN_READ);
+    const info = await handle.stat();
+    if (!info.isFile() || (typeof process.getuid === "function" && info.uid !== process.getuid())) return false;
+    await unlinkIfNotDirAsync(dst);
+    await fsp.copyFile(heldFdPath(handle.fd), dst, constants.COPYFILE_EXCL);
+    return true;
+  } catch { return false; } finally { await handle?.close().catch(() => {}); }
 }
 
 async function rotateAsync(logPath: string, size: number, maxSize: number, maxFiles: number): Promise<void> {
@@ -230,30 +283,35 @@ async function rotateAsync(logPath: string, size: number, maxSize: number, maxFi
   }
   const rotated = `${logPath}.1`;
   if (!(await lstatRegularAsync(logPath))) return;
-  await unlinkIfSymlinkAsync(rotated);
-  await fsp.copyFile(logPath, rotated);
+  if (!(await copyOwnedLogAsync(logPath, rotated))) return;
   ensurePrivateLogFile(rotated, false);                // a copy is as private as the log, whatever the source's mode
   // The writer kept appending while we copied: carry what it added, then truncate.
   // In fixed-size chunks (the delta is whatever the writer managed during the copy, not
   // something to allocate in one piece), and a short read is not "done": keep reading
   // until the range is in. No progress (a zero read, the file shrank under us) → give up
   // this rotation WITHOUT truncating: the live log keeps everything it has.
-  let copied = (await lstatRegularAsync(rotated))?.size ?? 0;
-  const chunk = Buffer.allocUnsafe(DELTA_CHUNK_BYTES);
-  for (let pass = 0; pass < MAX_DELTA_PASSES; pass++) {
-    const live = (await lstatRegularAsync(logPath))?.size ?? 0;
-    if (live <= copied) break;
-    const handle = await fsp.open(logPath, constants.O_RDONLY | constants.O_NOFOLLOW);
-    try {
-      while (copied < live) {
-        const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, live - copied), copied);
-        if (bytesRead === 0) return;
-        await fsp.appendFile(rotated, chunk.subarray(0, bytesRead));
-        copied += bytesRead;
+  const dest = await fsp.open(rotated, OPEN_LOG).catch(() => undefined);
+  if (!dest) return;
+  try {
+    let copied = (await dest.stat()).size;
+    const chunk = Buffer.allocUnsafe(DELTA_CHUNK_BYTES);
+    for (let pass = 0; pass < MAX_DELTA_PASSES; pass++) {
+      const live = (await lstatRegularAsync(logPath))?.size ?? 0;
+      if (live <= copied) break;
+      const handle = await fsp.open(logPath, OPEN_READ);
+      try {
+        while (copied < live) {
+          const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, live - copied), copied);
+          if (bytesRead === 0) return;
+          await dest.write(chunk.subarray(0, bytesRead));
+          copied += bytesRead;
+        }
+      } finally {
+        await handle.close();
       }
-    } finally {
-      await handle.close();
     }
+  } finally {
+    await dest.close().catch(() => {});
   }
   await truncateOwnedLogAsync(logPath);
 }
@@ -314,8 +372,18 @@ function transportStream() {
       },
     );
   }
-  if (targets.length === 0) return undefined;
-  sharedTransport ??= pino.transport({ targets });
+  if (targets.length === 0) {
+    if (typeof destination === "number") closeSync(destination);
+    return undefined;
+  }
+  try {
+    sharedTransport ??= pino.transport({ targets });
+  } catch (err) {
+    if (typeof destination === "number") {
+      try { closeSync(destination); } catch { /* already closed */ }
+    }
+    throw err;
+  }
   return sharedTransport;
 }
 

@@ -8,7 +8,7 @@
  *    and nothing lands in the scratch home. A real transport into the run's own test home is still allowed.
  *  - Both vitest configs load the setup.
  */
-import { closeSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, readlinkSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -118,6 +118,22 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
         expect(named[0]).toMatch(/daemon\.log/);
       } finally { closeSync(allowedFd); closeSync(strayFd); }
     } finally { rmSync(home, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.platform === "win32")("a refused transport closes the destination fd", async () => {
+    const home = scratchHome();
+    const { createLogger } = await vi.importActual<typeof import("../src/logger.js")>("../src/logger.js");
+    const count = () => {
+      try {
+        return readdirSync("/proc/self/fd").filter(n => {
+          try { return readlinkSync(join("/proc/self/fd", n)).includes("daemon.log"); } catch { return false; }
+        }).length;
+      } catch { return -1; }
+    };
+    const before = count();
+    if (before < 0) return;
+    for (let i = 0; i < 12; i++) expect(() => createLogger("silent")).toThrow(/#2725/);
+    expect(count(), home).toBe(before);
   });
 
   it("the wrapper is pino's own transport function, wrapped once per worker", () => {
