@@ -116,7 +116,9 @@ export class RemoteAccounts {
     steps: { check?: () => void | Promise<void>; run: () => Promise<T>; /** The operation goes on after `run` (a sign-in): its own end is recorded later, so no `ok` here. */ openEnded?: boolean;
       /** Only one operation of this kind at a time on the computer, taken in the same synchronous step as the switch and profile checks (before any await). */ exclusive?: "signin-start" | "install" }): Promise<T> {
     const base = { actor, action, ...(subject.cli ? { cli: subject.cli } : {}), ...(subject.profile ? { profile: subject.profile } : {}) };
-    const refuse = (error: unknown): never => { this.record({ ...base, outcome: error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal ? "refused" : "failed", reason: reasonOf(error) }, false); throw error; };
+    // A failure in `check` changed nothing, so it is a refusal whatever threw (a `find` or `knows` that throws too): it joins the folded refusals instead of
+    // writing one unmergeable `failed` line per request. Only a failure of `run` is `failed`.
+    const refuse = (error: unknown, inCheck = false): never => { this.record({ ...base, outcome: inCheck || error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal ? "refused" : "failed", reason: reasonOf(error) }, false); throw error; };
     const key = subject.profile?.toLowerCase();
     try { requireRemoteSwitch(this.deps.pairingDirectory, switchName, this.now()); } catch (error) { return refuse(error); }
     if (key !== undefined) { if (this.busy.has(key)) return refuse(new SignInRefusal(`Another operation on "${subject.profile}" is in progress; try again in a moment`, "busy")); this.busy.add(key); }
@@ -126,7 +128,7 @@ export class RemoteAccounts {
       this.exclusive.add(taken);
     }
     try {
-      try { await steps.check?.(); } catch (error) { return refuse(error); }
+      try { await steps.check?.(); } catch (error) { return refuse(error, true); }
       this.record({ ...base, outcome: "started" }, true);
       try {
         const result = await steps.run();

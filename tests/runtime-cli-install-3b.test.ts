@@ -112,6 +112,30 @@ describe("callAccount: the server's way to an account or install operation", () 
     expect(install).not.toHaveBeenCalled();
     expect(audit(f.dir).map(line => JSON.parse(line)).filter(line => line.action === "cli.install").map(line => line.outcome)).not.toContain("started");
   });
+  it("an installer whose `knows` throws is a refusal, folded with the rest: many requests leave a few lines, not one per request", async () => {
+    const install = vi.fn(async () => ({ version: "x" }));
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: { knows: () => { throw new Error("C:\\Users\\secret\\boom"); }, install } } });
+    setRemoteSwitch(f.dir, "install", true);
+    for (let i = 0; i < 40; i++) { const error = await f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }).catch(e => e as Error); expect(error.message).toMatch(/could not be completed/); expect(error.message).not.toMatch(/secret|boom/); }
+    expect(install).not.toHaveBeenCalled();
+    const lines = audit(f.dir).map(line => JSON.parse(line)).filter(line => line.action === "cli.install");
+    expect(lines.length).toBeLessThanOrEqual(2);
+    expect(lines.every(line => line.outcome === "refused" && line.reason === "failed")).toBe(true);
+    expect(lines.map(line => line.outcome)).not.toContain("started");
+  });
+  it("two installs asked at the same moment: one runs, the other is answered busy", async () => {
+    let release = (): void => {}; const gate = new Promise<void>(done => { release = done; });
+    const install = vi.fn(async () => { await gate; return { version: "0.165.0" }; });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(install) } });
+    setRemoteSwitch(f.dir, "install", true);
+    const calls = Array.from({ length: 5 }, () => f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }).then(() => "ok", (e: Error) => e.message));
+    await vi.waitFor(() => expect(install).toHaveBeenCalledTimes(1));
+    release();
+    const results = await Promise.all(calls);
+    expect(results.filter(r => r === "ok")).toHaveLength(1);
+    expect(results.filter(r => r !== "ok").every(r => /Another install is running/.test(r))).toBe(true);
+    expect(install).toHaveBeenCalledTimes(1);
+  });
   it("is not journaled: the request, its actor and its answer reach no file on the server", async () => {
     const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(async () => ({ version: "0.165.0" })) } });
     setRemoteSwitch(f.dir, "install", true);
