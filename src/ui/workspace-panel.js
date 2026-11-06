@@ -92,72 +92,90 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   const [hlEntry, setHlEntry] = useState(null);
   const [followInfo, setFollowInfo] = useState(null);  // { supported, running }
   const gen = useRef(0);
+  const changesGen = useRef(0), dirGen = useRef(0), alive = useRef(true);
+  const actions = useRef(null), autoScroll = useRef(null);
   const followRef = useRef("off");
-  const pos = useRef({ turn: null, last: 0 });
+  const pos = useRef({ scope: null, turn: null, last: 0 });
   const pending = useRef(null);
   const lastApply = useRef(0);
   const changesTimer = useRef(0);
   const instance = open.instance;
   followRef.current = follow;
+  const visible = () => !(typeof document !== "undefined" && document.hidden);
+  const valid = (mine, automatic) => alive.current && mine === gen.current && (!automatic || followRef.current === "on" && visible());
   const loadChanges = async () => {
-    const mine = ++gen.current;
+    const mine = ++changesGen.current;
     setChanges((c) => (c && c.state === "ready" ? { ...c, refreshing: true } : { state: "loading" }));
     const r = await read(instance, "changes");
-    if (mine !== gen.current) return;
+    if (!alive.current || mine !== changesGen.current) return;
     setChanges(r.ok ? { state: "ready", body: r.body } : { state: "failed", error: r.error });
   };
-  const loadDir = async (path) => {
+  const loadDir = async (path, automatic = false) => {
     const mine = ++gen.current;
     setListing({ state: "loading", path }); setFile(null);
     const r = await read(instance, "list", path);
-    if (mine !== gen.current) return;
+    if (!valid(mine, automatic)) return;
     setDir(path);
     setListing(r.ok ? { state: "ready", body: r.body, path } : { state: "failed", error: r.error, path });
   };
   /** `step` (#3160): the agent's step that opened it: a read's range, or an edit's changed lines (from that file's diff). */
-  const loadFile = async (path, step) => {
+  const loadFile = async (path, step, automatic = false) => {
     const mine = ++gen.current;
-    setFile({ path, state: "loading" });
-    const [r, d] = await Promise.all([read(instance, "file", path), step && step.kind === "edit" ? read(instance, "diff", path) : null]);
-    if (mine !== gen.current) return;
-    const hl = !step ? null : step.kind === "edit" ? { kind: "edit", lines: d && d.ok ? changedLines(d.body.patch) : new Set() }
+    if (!automatic) setFile({ path, state: "loading" });
+    if (step) loadDirQuiet(parentOf(path), mine, automatic);
+    const [r, d] = await Promise.all([read(instance, "file", path), step && step.kind === "edit" && !step.editLines ? read(instance, "diff", path) : null]);
+    if (!valid(mine, automatic)) return;
+    const hl = !step ? null : step.kind === "edit" ? { kind: "edit", exact: !!step.editLines, lines: step.editLines ? new Set(step.editLines) : d && d.ok ? changedLines(d.body.patch) : new Set() }
       : step.range ? { kind: "read", from: step.range.from, to: step.range.to } : null;
     setFile(r.ok ? { path, state: "ready", body: r.body, hl } : { path, state: "failed", error: r.error });
   };
-  const refresh = () => { if (tab === "changes") loadChanges(); else if (file) loadFile(file.path); else loadDir(dir); };
+  const refresh = () => { pause(); if (tab === "changes") loadChanges(); else if (file) loadFile(file.path); else loadDir(dir); };
   // Anything you do yourself pauses Follow (until you resume): it never pulls the view from under you.
-  const pause = () => { if (followRef.current === "on") setFollow("paused"); };
+  const pause = () => {
+    if (followRef.current !== "on") return;
+    followRef.current = "paused"; setFollow("paused");
+    gen.current++; dirGen.current++; pending.current = null;
+    clearTimeout(changesTimer.current);
+  };
   const userTab = (t2) => { pause(); setTab(t2); };
   const userDir = (p) => { pause(); setHlEntry(null); loadDir(p); };
   const userFile = (p) => { pause(); loadFile(p); };
 
   /** #3160: show one of the agent's steps (Follow on, or a click in the strip). */
-  const show = (step) => {
+  const show = (step, automatic = true) => {
     const p = step.paths[0];
-    setCurrent(step.seq);
+    setCurrent(step.id || step.seq);
     if (!p || p.hidden) return;                                                     // listed, never opened
+    if (step.phase === "failed") return;
     setTab("files");
     if (!p.dir && (step.kind === "read" || step.kind === "edit")) {
-      if (parentOf(p.path) !== dir || !listing) loadDirQuiet(parentOf(p.path));
       setHlEntry(p.path);
-      loadFile(p.path, step);
-    } else if (p.dir) { setHlEntry(null); loadDir(p.path); }
-    else { setHlEntry(p.path); loadDir(parentOf(p.path)); }
+      loadFile(p.path, step, automatic);
+    } else if (p.dir) { setHlEntry(null); loadDir(p.path, automatic); }
+    else { setHlEntry(p.path); loadDir(parentOf(p.path), automatic); }
     if (step.kind === "edit") {                                                     // Changes is current when you look
       clearTimeout(changesTimer.current);
-      changesTimer.current = setTimeout(() => { loadChanges(); }, FOLLOW_TIMING.changesMs);
+      changesTimer.current = setTimeout(() => { if (alive.current && followRef.current === "on" && visible()) loadChanges(); }, FOLLOW_TIMING.changesMs);
     }
   };
   // The crumbs follow the file without dropping the viewer (loadDir would close it).
-  const loadDirQuiet = async (path) => {
+  const loadDirQuiet = async (path, token = gen.current, automatic = false) => {
+    const mine = ++dirGen.current;
     const r = await read(instance, "list", path);
-    if (r.ok) { setDir(path); setListing({ state: "ready", body: r.body, path }); }
+    if (r.ok && mine === dirGen.current && valid(token, automatic)) { setDir(path); setListing({ state: "ready", body: r.body, path }); }
   };
+  actions.current = { show };
 
   useEffect(() => { linkWorkspaceCss(); }, []);
-  useEffect(() => { loadChanges(); }, [instance]);
+  useEffect(() => {
+    alive.current = true; gen.current++; dirGen.current++; changesGen.current++;
+    followRef.current = "off"; setFollow("off"); setHistory([]); setCurrent(null); setFile(null); setListing(null); setTab("changes");
+    pos.current = { scope: null, turn: null, last: 0 }; pending.current = null;
+    loadChanges();
+    return () => { alive.current = false; gen.current++; dirGen.current++; changesGen.current++; clearTimeout(changesTimer.current); };
+  }, [instance]);
   // The first visit to Files lists the folder's top without closing a file Follow (or you) just opened.
-  useEffect(() => { if (tab === "files" && !listing) loadDirQuiet(""); }, [tab]);
+  useEffect(() => { if (tab === "files" && !listing && !file) loadDirQuiet(""); }, [tab]);
   // The end of the agent's turn: its reply arrives — read Changes again (once, shortly after), never while hidden.
   useEffect(() => {
     if (typeof subscribe !== "function") return undefined;
@@ -178,26 +196,32 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
     const tick = async () => {
       if (stopped || busy || (typeof document !== "undefined" && document.hidden)) return;
       busy = true;
-      const { turn, last } = pos.current;
-      const r = await read(instance, "follow", undefined, `&after=${last}${turn != null ? `&turn=${turn}` : ""}`);
+      const { scope, turn, last } = pos.current;
+      const r = await read(instance, "follow", undefined, `&after=${last}${turn != null ? `&turn=${turn}` : ""}${scope ? `&scope=${encodeURIComponent(scope)}` : ""}`);
       busy = false;
-      if (stopped || !r.ok) return;
+      if (stopped || !visible()) return;
+      if (!r.ok) { if (r.status === 400) setFollowInfo({ supported: false, running: true }); return; }
       const b = r.body;
       setFollowInfo({ supported: !!b.supported, running: !!b.running });
-      const fresh = turn !== b.turn;
-      pos.current = { turn: b.turn, last: b.last };
+      const fresh = turn !== b.turn || scope !== (b.scope || null);
+      pos.current = { scope: b.scope || null, turn: b.turn, last: b.last };
+      if (fresh) { pending.current = null; setCurrent(null); }
       if (fresh) setHistory(b.steps.slice(-FOLLOW_TIMING.historyMax));
-      else if (b.steps.length) setHistory((h) => [...h, ...b.steps].slice(-FOLLOW_TIMING.historyMax));
+      else if (b.steps.length) setHistory((h) => {
+        const merged = new Map(h.map(s => [s.id || s.seq, s]));
+        for (const s of b.steps) merged.set(s.id || s.seq, s);
+        return [...merged.values()].slice(-FOLLOW_TIMING.historyMax);
+      });
       if (b.steps.length) pending.current = b.steps[b.steps.length - 1];
       apply();
     };
     const apply = () => {
       const step = pending.current;
-      if (!step || followRef.current !== "on") return;
+      if (!step || followRef.current !== "on" || !visible()) return;
       const now = Date.now();
       if (now - lastApply.current < FOLLOW_TIMING.applyMs) return;                  // the next tick shows the newest
       lastApply.current = now; pending.current = null;
-      show(step);
+      actions.current.show(step);
     };
     tick();
     const iv = setInterval(() => { tick(); apply(); }, FOLLOW_TIMING.pollMs);
@@ -205,10 +229,11 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   }, [follow === "off", instance]);
   useEffect(() => () => clearTimeout(changesTimer.current), []);
   const toggleFollow = () => {
-    if (follow === "on") { setFollow("off"); setHistory([]); setCurrent(null); pos.current = { turn: null, last: 0 }; pending.current = null; return; }
+    if (follow === "on") { pause(); followRef.current = "off"; setFollow("off"); setHistory([]); setCurrent(null); pos.current = { scope: null, turn: null, last: 0 }; pending.current = null; return; }
     // Turning it on (or resuming) shows the newest step at once.
     if (follow === "paused" && history.length) pending.current = history[history.length - 1];
     lastApply.current = 0;
+    followRef.current = "on";
     setFollow("on");
   };
 
@@ -234,9 +259,10 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
       <button type="button" class=${`btn btn-sm only-wide pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
         onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
     </div>
-    ${follow !== "off" ? html`<${FollowStrip} history=${history} current=${current} info=${followInfo} pick=${(s) => { pause(); show(s); }} />` : null}
+    ${follow !== "off" ? html`<${FollowStrip} history=${history} current=${current} info=${followInfo} pick=${(s) => { pause(); show(s, false); }} />` : null}
     <div class="pv-note ws-readonly" role="note">${t("chat.wsReadOnly")}</div>
-    <div class="pv-panel-body show-code ws-body" onWheel=${pause} onTouchMove=${pause}
+    <div class="pv-panel-body show-code ws-body" onWheel=${pause} onTouchMove=${pause} onPointerDown=${pause}
+      onScroll=${(e) => { const target = e.currentTarget; if (autoScroll.current === target.scrollTop) { autoScroll.current = null; return; } pause(); }}
       onKeyDown=${(e) => { if (["PageUp", "PageDown", "ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) pause(); }}>
       ${tab === "changes" ? html`<${Changes} state=${changes} openFiles=${openFiles} toggle=${(p) => { pause(); setOpenFiles((s) => { const n = new Set(s); if (n.has(p)) n.delete(p); else n.add(p); return n; }); }} />`
         : html`<div class="ws-files">
@@ -244,7 +270,12 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
             <button type="button" class="btn btn-sm btn-ghost" onClick=${() => userDir("")}>${name}</button>
             ${crumbs.map((c, i) => html`<span aria-hidden="true">/</span><button type="button" class="btn btn-sm btn-ghost" onClick=${() => userDir(crumbs.slice(0, i + 1).join("/"))}>${c}</button>`)}
           </nav>
-          ${file ? html`<${Viewer} file=${file} instance=${instance} back=${() => { pause(); setFile(null); }} />`
+          ${file ? html`<${Viewer} file=${file} instance=${instance} scroll=${(el) => {
+            const body = panel.current && panel.current.querySelector(".ws-body");
+            if (!body || typeof el.getBoundingClientRect !== "function") return;
+            body.scrollTop += el.getBoundingClientRect().top - body.getBoundingClientRect().top - body.clientHeight / 2;
+            autoScroll.current = body.scrollTop;
+          }} back=${() => { pause(); setFile(null); }} />`
             : html`<${Listing} listing=${listing} dir=${dir} hl=${hlEntry} openDir=${userDir} openFile=${userFile} />`}
         </div>`}
     </div>
@@ -258,11 +289,11 @@ function FollowStrip({ history, current, info, pick }) {
   if (!history.length) return html`<div class="ws-follow-note" role="status">${t("chat.wsFollowIdle")}</div>`;
   return html`<div class="ws-history" role="list" aria-label=${t("chat.wsThisTurn")}>
     <span class="ws-history-label">${t("chat.wsThisTurn")}</span>
-    ${history.map((s) => {
+    ${history.flatMap(s => s.paths.map(p => ({ ...s, paths: [p] }))).map((s) => {
       const p = s.paths[0], hidden = !!(p && p.hidden);
       const title = [`${t(`chat.wsKind_${s.kind}`)} ${s.paths.map((x) => x.path || ".").join(", ")}`, hidden ? t("chat.wsHiddenStep") : null, s.exact ? null : t("chat.wsBestEffort")].filter(Boolean).join(" — ");
-      return html`<button type="button" role="listitem" key=${s.seq} class=${`ws-step k-${s.kind}${s.seq === current ? " is-current" : ""}${hidden ? " is-hidden" : ""}`}
-        title=${title} aria-current=${s.seq === current ? "true" : undefined} disabled=${hidden} onClick=${() => pick(s)}>
+      return html`<button type="button" role="listitem" key=${`${s.id || s.seq}:${p && p.path}`} class=${`ws-step k-${s.kind}${(s.id || s.seq) === current ? " is-current" : ""}${hidden ? " is-hidden" : ""}`}
+        title=${title} aria-current=${(s.id || s.seq) === current ? "true" : undefined} disabled=${hidden} onClick=${() => pick(s)}>
         <span class="ws-step-kind">${t(`chat.wsKind_${s.kind}`)}${s.exact ? "" : " ≈"}</span><span class="ws-step-path">${p ? baseOf(p.path) : ""}</span></button>`;
     })}
   </div>`;
@@ -316,13 +347,13 @@ function Listing({ listing, hl, openDir, openFile }) {
 /** Whether line `n` (1-based) is in the step's highlight. */
 const hlOf = (hl, n) => !hl ? null : hl.kind === "edit" ? (hl.lines.has(n) ? "hl-edit" : null) : n >= hl.from && n <= hl.to ? "hl-read" : null;
 
-function Viewer({ file, instance, back }) {
+function Viewer({ file, instance, back, scroll }) {
   const pre = useRef(null);
   const head = html`<div class="ws-viewer-head"><button type="button" class="btn btn-sm" onClick=${back}><${Icon} name="back" size=${14} />${t("chat.pvBack")}</button><code class="ws-path">${file.path}</code></div>`;
   // #3160: bring the first highlighted line into view (a programmatic scroll: it does not pause Follow).
   useEffect(() => {
     const el = pre.current && pre.current.querySelector(".ws-line.hl-edit, .ws-line.hl-read");
-    if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "center" });
+    if (el && typeof scroll === "function") scroll(el);
   }, [file]);
   if (file.state === "loading") return html`<div>${head}<div class="pv-note">${t("chat.pvLoading")}</div></div>`;
   if (file.state === "failed") return html`<div>${head}<div class="pv-note" role="alert">${errText(file.error)}</div></div>`;
@@ -333,7 +364,7 @@ function Viewer({ file, instance, back }) {
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
   const hl = file.hl, w = String(lines.length).length;
   return html`<div>${head}
-    ${hl ? html`<div class="ws-follow-note" role="status">${t(hl.kind === "edit" ? "chat.wsFollowHlEdit" : "chat.wsFollowHlRead")}</div>` : null}
+    ${hl ? html`<div class="ws-follow-note" role="status">${t(hl.kind === "edit" ? hl.exact ? "chat.wsFollowHlEditExact" : "chat.wsFollowHlEdit" : "chat.wsFollowHlRead")}</div>` : null}
     <pre class="pv-code ws-text" ref=${pre}><code>${lines.map((l, i) => {
       const cls = hlOf(hl, i + 1);
       return html`<span class=${`ws-line${cls ? ` ${cls}` : ""}`} data-line=${i + 1}><span class="ws-ln" aria-hidden="true">${String(i + 1).padStart(w, " ")}</span>${`${l}\n`}</span>`;

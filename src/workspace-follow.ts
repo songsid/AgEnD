@@ -17,151 +17,52 @@ import { lstat, realpath } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { isHiddenPath, placeOf, type WorkspaceRoot } from "./agent-workspace.js";
 
-export const FOLLOW_LIMITS = Object.freeze({ steps: 40, pathsPerStep: 8, pathChars: 1024 });
-
-export type FollowKind = "read" | "edit" | "search" | "list";
-/** One step as recorded: the CLI's own paths (absolute, or relative to the agent's folder). */
-export interface FollowStep {
-  seq: number;
-  at: number;
-  kind: FollowKind;
-  tool: string;
-  paths: string[];
-  /** 1-based, inclusive, when the CLI said which lines it read. */
-  range?: { from: number; to: number };
-  /** false: read from a shell command line, best-effort. */
-  exact: boolean;
-}
-export type FollowStepInput = Omit<FollowStep, "seq" | "at">;
-
-const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 && v.length <= FOLLOW_LIMITS.pathChars && !/[\u0000-\u001f]/.test(v) ? v : null);
-const int = (v: unknown): number | null => (typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : null);
-
-/** The file paths a Codex `apply_patch` touches (`*** Add|Update|Delete File: <path>`, `*** Move to: <path>`). */
-export function applyPatchPaths(patch: string): string[] {
-  const out: string[] = [];
-  for (const m of patch.matchAll(/^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+?)\s*$/gm)) {
-    const p = str(m[1]); if (p && !out.includes(p)) out.push(p);
-    if (out.length >= FOLLOW_LIMITS.pathsPerStep) break;
-  }
-  return out;
-}
-
-/** A shell command line split into words, quotes honoured, stopping at the first `|`, `;`, `&&`, `||` or redirect. */
-function firstCommandWords(line: string): string[] {
-  const words: string[] = [];
-  let cur = "", quote: string | null = null, has = false;
-  for (let i = 0; i < line.length && words.length < 64; i++) {
-    const c = line[i]!;
-    if (quote) { if (c === quote) quote = null; else cur += c; continue; }
-    if (c === "'" || c === '"') { quote = c; has = true; continue; }
-    if (c === "|" || c === ";" || c === "&" || c === ">" || c === "<") break;
-    if (/\s/.test(c)) { if (has || cur) { words.push(cur); cur = ""; has = false; } continue; }
-    cur += c;
-  }
-  if (has || cur) words.push(cur);
-  return words;
-}
-/** The command line a Codex shell call ran: `["bash","-lc","<line>"]`, a `cmd` string, or plain argv. */
-function shellLine(input: unknown): string | null {
-  const o = input as Record<string, unknown> | null;
-  const c = o && (o.command ?? o.cmd);
-  if (typeof c === "string") return c;
-  if (Array.isArray(c) && c.every((x) => typeof x === "string")) {
-    const a = c as string[];
-    const at = a.findIndex((x) => x === "-c" || x === "-lc");
-    return at >= 0 && a[at + 1] ? a[at + 1]! : a.join(" ");
-  }
-  return null;
-}
-const operands = (words: string[]): string[] => words.slice(1).filter((w) => !w.startsWith("-"));
-
-/** A shell read / search / listing, best-effort (`exact: false`). */
-export function shellStep(line: string): FollowStepInput | null {
-  let words = firstCommandWords(line.trim());
-  // `cd dir && …` changes the folder the rest is read in: don't guess past it.
-  if (words[0] === "cd") return null;
-  if (words[0] === "env" || words[0] === "command") words = words.slice(1);
-  const cmd = words[0] ?? "";
-  const paths = (list: string[]) => list.map(str).filter((p): p is string => !!p).slice(0, FOLLOW_LIMITS.pathsPerStep);
-  if (cmd === "sed") {
-    const script = words.find((w, i) => i > 0 && /^\d+(?:,\d+)?p$/.test(w));
-    const files = operands(words).filter((w) => w !== script && !/^\d+(?:,\d+)?p$/.test(w));
-    if (!files.length) return null;
-    const m = script ? /^(\d+)(?:,(\d+))?p$/.exec(script) : null;
-    const from = m ? Number(m[1]) : null, to = m ? Number(m[2] ?? m[1]) : null;
-    return { kind: "read", tool: "shell", paths: paths(files.slice(-1)), exact: false, ...(from && to && to >= from ? { range: { from, to } } : {}) };
-  }
-  if (["cat", "head", "tail", "nl", "bat", "less", "more", "wc"].includes(cmd)) {
-    const files = operands(words).filter((w) => !/^\d+$/.test(w));
-    return files.length ? { kind: "read", tool: "shell", paths: paths(files), exact: false } : null;
-  }
-  if (cmd === "rg" || cmd === "grep" || cmd === "ag" || cmd === "git" && words[1] === "grep") {
-    // The first operand is the pattern (never kept); what follows are where it looks.
-    const ops = operands(cmd === "git" ? words.slice(1) : words);
-    return { kind: "search", tool: "shell", paths: paths(ops.slice(1)), exact: false };
-  }
-  if (cmd === "ls" || cmd === "find" || cmd === "tree" || cmd === "fd") {
-    const ops = cmd === "find" ? words.slice(1).filter((w, i, a) => !w.startsWith("-") && !(i > 0 && a[i - 1]!.startsWith("-"))) : operands(words);
-    return { kind: "list", tool: "shell", paths: paths(ops.length ? ops : ["."]), exact: false };
-  }
-  return null;
-}
-
-/** One tool call → a step, or null when it says nothing about a file. Pure. */
-export function followStepOf(tool: string, input: unknown): FollowStepInput | null {
-  const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-  switch (tool) {
-    case "Read": {
-      const p = str(o.file_path); if (!p) return null;
-      const off = int(o.offset), lim = int(o.limit);
-      return { kind: "read", tool, paths: [p], exact: true, ...(off || lim ? { range: { from: off ?? 1, to: (off ?? 1) + (lim ?? 1) - 1 } } : {}) };
-    }
-    case "Edit": case "MultiEdit": case "Write": {
-      const p = str(o.file_path); return p ? { kind: "edit", tool, paths: [p], exact: true } : null;
-    }
-    case "NotebookEdit": {
-      const p = str(o.notebook_path); return p ? { kind: "edit", tool, paths: [p], exact: true } : null;
-    }
-    case "Grep": case "Glob": { const p = str(o.path); return { kind: "search", tool, paths: p ? [p] : ["."], exact: true }; }
-    case "LS": { const p = str(o.path); return p ? { kind: "list", tool, paths: [p], exact: true } : null; }
-    case "apply_patch": {
-      const text = typeof input === "string" ? input : typeof o.input === "string" ? o.input : typeof o.patch === "string" ? o.patch : null;
-      const paths = text ? applyPatchPaths(text) : [];
-      return paths.length ? { kind: "edit", tool, paths, exact: true } : null;
-    }
-    case "shell": case "exec_command": case "local_shell": case "container.exec": {
-      const line = shellLine(input);
-      return line ? shellStep(line) : null;
-    }
-    default: return null;
-  }
-}
+import { randomUUID } from "node:crypto";
+import { FOLLOW_LIMITS, followStepOf, type FollowStep, type FollowStepInput } from "./workspace-follow-parse.js";
+export * from "./workspace-follow-parse.js";
+import type { FollowObservation } from "./workspace-follow-records.js";
 
 /** One agent's steps in its current turn. */
 export class FollowLog {
   private steps: FollowStep[] = [];
   private seq = 0;
   private turnNo = 0;
+  private scope = randomUUID();
   constructor(private readonly now: () => number = () => Date.now()) {}
   record(tool: string, input: unknown): void {
     let step: FollowStepInput | null;
     try { step = followStepOf(tool, input); } catch { step = null; }
-    if (!step) return;
+    if (!step?.paths.length) return;
     this.steps.push({ ...step, seq: ++this.seq, at: this.now() });
     if (this.steps.length > FOLLOW_LIMITS.steps) this.steps.splice(0, this.steps.length - FOLLOW_LIMITS.steps);
   }
   /** A new prompt or turn: what the last one touched is no longer "this turn". */
   newTurn(): void { this.steps = []; this.turnNo++; }
+  reset(): void { this.newTurn(); this.scope = randomUUID(); }
+  observe(event: FollowObservation): void {
+    if (event.type === "turn") { this.newTurn(); return; }
+    if (event.type === "call") {
+      if (this.steps.some(s => s.id === event.id)) return;
+      this.steps.push({ ...event.step, id: event.id, phase: "running", seq: ++this.seq, at: this.now() });
+      if (this.steps.length > FOLLOW_LIMITS.steps) this.steps.shift();
+      return;
+    }
+    const index = this.steps.findIndex(s => s.id === event.id);
+    if (index < 0) return;
+    const step = this.steps[index]!;
+    this.steps[index] = { ...step, seq: ++this.seq, at: this.now(), phase: event.failed ? "failed" : "done",
+      ...(step.kind === "search" && event.paths?.length ? { paths: event.paths } : {}),
+      ...(step.kind === "edit" && event.editLines ? { editLines: event.editLines } : {}) };
+  }
   /** The turn, and its steps after `after` (all of them when the caller's turn is another). */
-  snapshot(after = 0, turn?: number): { turn: number; steps: FollowStep[]; last: number } {
-    const fresh = turn !== this.turnNo;
-    return { turn: this.turnNo, steps: this.steps.filter((s) => fresh || s.seq > after).map((s) => ({ ...s, paths: [...s.paths] })), last: this.seq };
+  snapshot(after = 0, turn?: number, scope?: string): { scope: string; turn: number; steps: FollowStep[]; last: number } {
+    const fresh = turn !== this.turnNo || (scope !== undefined && scope !== this.scope);
+    return { scope: this.scope, turn: this.turnNo, steps: this.steps.filter((s) => fresh || s.seq > after).map((s) => ({ ...s, paths: [...s.paths] })), last: this.seq };
   }
 }
 
 export interface ResolvedFollowPath { path: string; hidden: boolean; dir: boolean }
-export interface ResolvedFollowStep extends Omit<FollowStep, "paths"> { paths: ResolvedFollowPath[] }
+export interface ResolvedFollowStep extends Omit<FollowStep, "paths" | "cwd"> { paths: ResolvedFollowPath[] }
 
 const under = (p: string, root: string) => p === root || p.startsWith(root.endsWith(sep) ? root : root + sep);
 
@@ -171,6 +72,7 @@ const under = (p: string, root: string) => p === root || p.startsWith(root.endsW
  * parent, not AgEnD's state); a file that does not exist yet (Write about to create it) is kept when its parent does.
  */
 export async function resolveFollowPath(ws: WorkspaceRoot, given: string): Promise<ResolvedFollowPath | null> {
+  if (/[\u0000-\u001f\u007f\\]/.test(given) || given.split("/").includes("..")) return null;
   let abs = isAbsolute(given) ? resolve(given) : resolve(ws.root, given);
   if (!under(abs, ws.root)) {
     // The CLI may name the folder by another spelling (a symlinked home): compare real paths.
@@ -183,6 +85,7 @@ export async function resolveFollowPath(ws: WorkspaceRoot, given: string): Promi
     const place = await placeOf(ws, rel);
     const st = await lstat(place.abs).catch(() => null);
     if (st?.isSymbolicLink()) return null;
+    if (st && !st.isDirectory() && !st.isFile()) return null;
     return { path: place.rel, hidden: isHiddenPath(place.rel), dir: !!st?.isDirectory() };
   } catch { return null; }
 }
@@ -192,8 +95,18 @@ export async function resolveFollowSteps(ws: WorkspaceRoot, steps: readonly Foll
   const out: ResolvedFollowStep[] = [];
   for (const s of steps) {
     const paths: ResolvedFollowPath[] = [];
-    for (const p of s.paths) { const r = await resolveFollowPath(ws, p); if (r && !paths.some((x) => x.path === r.path)) paths.push(r); }
-    if (paths.length) out.push({ ...s, paths });
+    if (s.cwd !== undefined && (/[\u0000-\u001f\u007f\\]/.test(s.cwd) || s.cwd.split("/").includes(".."))) continue;
+    const cwd = s.cwd === undefined ? ws.root : resolve(ws.root, s.cwd);
+    // A call made in another folder cannot be attributed to this agent's root, even for relative operands.
+    const context = await resolveFollowPath(ws, cwd);
+    if (!context?.dir) continue;
+    for (const p of s.paths) {
+      if (p.split("/").includes("..")) continue;
+      const r = await resolveFollowPath(ws, isAbsolute(p) ? p : resolve(cwd, p));
+      if (r && !paths.some((x) => x.path === r.path)) paths.push(r);
+    }
+    const { cwd: _cwd, ...metadata } = s;
+    if (paths.length) out.push({ ...metadata, paths });
   }
   return out;
 }

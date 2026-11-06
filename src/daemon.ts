@@ -6790,13 +6790,14 @@ export class Daemon extends EventEmitter {
 
   /** #3160: this agent's file steps in its current turn (the CLI's own record), for the Files & changes panel. */
   private readonly followLog = new FollowLog();
-  workspaceFollow(after = 0, turn?: number) { return this.followLog.snapshot(after, turn); }
+  workspaceFollow(after = 0, turn?: number, scope?: string) { return this.followLog.snapshot(after, turn, scope); }
 
   /**
    * This launch's transcript monitor. #1510: its turn boundaries feed the reply guard's ledger, which starts empty
    * with it — a new monitor re-baselines at the transcript's end, so nothing the old one read can be attributed.
    */
   private buildTranscriptMonitor(source: TranscriptSource | null): TranscriptMonitor {
+    this.followLog.reset();
     const monitor = new TranscriptMonitor(this.instanceDir, this.logger, source);
     this.transcriptTurns.reset();
     this.transcriptActivityAt = 0;
@@ -6804,14 +6805,15 @@ export class Daemon extends EventEmitter {
     const touch = () => { this.transcriptActivityAt = performance.now(); };
     monitor.on("turns", (turns: TranscriptTurnEvent[]) => {
       this.transcriptTurns.observe(turns, performance.now()); touch();
-      if (turns.some((t) => t.kind === "start")) this.followLog.newTurn();             // #3160: codex's turn boundary
     });
     // #3160: the files this turn reads, edits and searches, for the Files & changes panel's Follow (a few string checks;
     // nothing is read from disk until someone asks). Claude's turn boundary is its next prompt.
-    monitor.on("tool_use", (tool: string, input: unknown) => this.followLog.record(tool, input));
-    monitor.on("user_prompt", () => this.followLog.newTurn());
+    const canFollow = () => this.transcriptMonitor === monitor && this.config.runtime !== "windows"
+      && (this.backend?.binaryName === "claude" || this.backend?.binaryName === "codex");
+    monitor.on("workspace_follow", (event) => { if (canFollow()) this.followLog.observe(event); });
+    monitor.on("workspace_reset", () => { if (this.transcriptMonitor === monitor) this.followLog.reset(); });
     // #1641 R2: a re-baselined source starts over, and so does what it said (an open turn read before is withdrawn).
-    monitor.on("reset", () => { if (this.transcriptMonitor === monitor) { this.transcriptTurns.reset(); this.transcriptActivityAt = 0; this.followLog.newTurn(); } });
+    monitor.on("reset", () => { if (this.transcriptMonitor === monitor) { this.transcriptTurns.reset(); this.transcriptActivityAt = 0; this.followLog.reset(); } });
     for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
     return monitor;
   }

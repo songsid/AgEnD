@@ -173,8 +173,10 @@ export class TranscriptMonitor extends EventEmitter {
   private async pollSource(): Promise<void> {
     const generation = this.generation;
     try {
+      const previousPath = this.source!.currentPath?.();
       const events = await this.source!.poll();
       if (generation !== this.generation) return;
+      if (previousPath !== this.source!.currentPath?.()) this.emit("workspace_reset");
       for (const record of events.records ?? []) { if (generation !== this.generation) return; this.emit(record[0], ...record.slice(1)); }
       for (const use of events.toolUses) { if (generation !== this.generation) return; this.emit("tool_use", use.name, use.input); }
       for (const result of events.toolResults) { if (generation !== this.generation) return; this.emit("tool_result", result.name, undefined); }
@@ -194,6 +196,7 @@ export class TranscriptMonitor extends EventEmitter {
     // that never grows again and reports nothing, with no error (#528 trap 1).
     const current = await this.resolveTranscriptPath();
     if (current && current !== this.transcriptPath) {
+      this.emit("workspace_reset");
       const replacedKnownTranscript = this.transcriptPath !== null;
       this.transcriptPath = current;
       if (replacedKnownTranscript) {
@@ -285,8 +288,10 @@ export class TranscriptMonitor extends EventEmitter {
     const history = this.isHistoryAlarm(at);
     if (Number.isFinite(at) && at > this.seenThrough) this.seenThrough = at;
     claudeTranscriptRecord(entry, (...event) => {
+      // A copied record with no timestamp cannot prove that its file activity belongs to this launch.
+      if (event[0] === "workspace_follow" && this.historyBefore > 0 && !Number.isFinite(at)) return;
       // Claude's alarm records (its status notes, its failed API calls) read from a start: history is not told again.
-      if (history && (event[0] === "system_informational" || event[0] === "api_error")) {
+      if (history && (event[0] === "system_informational" || event[0] === "api_error" || event[0] === "workspace_follow")) {
         this.logger.debug({ at: entry.timestamp, event: event[0] }, "Transcript history: an old alarm record is not told again");
         return;
       }
@@ -303,6 +308,7 @@ export class TranscriptMonitor extends EventEmitter {
 
   stop(): void {
     this.generation++;
+    this.emit("workspace_reset");
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;

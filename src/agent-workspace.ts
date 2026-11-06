@@ -218,7 +218,6 @@ export async function workspaceFileDiff(ws: WorkspaceRoot, rel: unknown): Promis
 }
 
 // ── the tree ──
-// ── the tree ──
 
 export interface WorkspaceEntry { name: string; type: "dir" | "file" | "symlink" | "other"; size: number | null; hidden: boolean }
 /** One directory's entries (directories first, then names), gitignored ones left out in a repository. */

@@ -11,7 +11,8 @@ register("chat", {
     wsFollowNotRunning: "The agent isn't running", wsFollowIdle: "Waiting for the agent to read or edit a file…",
     wsThisTurn: "This turn", wsKind_read: "Read", wsKind_edit: "Edit", wsKind_search: "Search", wsKind_list: "List",
     wsBestEffort: "From a shell command, so this is a best guess", wsHiddenStep: "A hidden file (its contents are never shown)",
-    wsFollowHlRead: "Lines the agent read", wsFollowHlEdit: "Lines the agent changed",
+    wsFollowHlRead: "Lines the agent read", wsFollowHlEdit: "Uncommitted changes (including your edits)",
+    wsFollowHlEditExact: "Lines changed by this edit",
   },
   "zh-TW": {
     wsFollow: "跟隨 Agent", wsFollowing: "跟隨中", wsFollowPaused: "已暫停 · 繼續",
@@ -21,6 +22,7 @@ register("chat", {
     wsFollowNotRunning: "Agent 沒有在執行", wsFollowIdle: "等 Agent 讀取或修改檔案…",
     wsThisTurn: "這一輪", wsKind_read: "讀取", wsKind_edit: "修改", wsKind_search: "搜尋", wsKind_list: "列出",
     wsBestEffort: "來自 shell 指令，只是推測", wsHiddenStep: "隱藏的檔案（內容一律不顯示）",
-    wsFollowHlRead: "Agent 讀過的行", wsFollowHlEdit: "Agent 改過的行",
+    wsFollowHlRead: "Agent 讀過的行", wsFollowHlEdit: "尚未提交的變更（包含你的修改）",
+    wsFollowHlEditExact: "這次修改的行",
   },
 });

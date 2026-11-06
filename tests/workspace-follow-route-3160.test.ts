@@ -106,4 +106,23 @@ describe("GET /ui/workspace op=follow / op=diff (#3160)", () => {
     expect((await get(sid, "instance=dev&op=diff&path=.env")).status).toBe(403);
     expect((await get(sid, "instance=dev&op=diff&path=../x")).status).toBe(403);
   });
+  it("rechecks session, daemon and working-directory binding after the snapshot is taken", async () => {
+    const cfg = fm.fleetConfig.instances.dev, originalDir = cfg.working_directory;
+    for (const change of ["session", "daemon", "cwd", "launch"]) {
+      const sid = session("admin");
+      let snapshots = 0;
+      fm.daemons.set("dev", { workspaceFollow: () => {
+        snapshots++;
+        if (change === "session") fm.webSessions.revokeById(sid);
+        if (change === "daemon") fm.daemons.set("dev", steps([]));
+        if (change === "cwd") cfg.working_directory = dir;
+        return { scope: change === "launch" && snapshots > 1 ? "launch-new" : "launch-old", turn: 1, last: 1, steps: [{ seq: 1, at: 1, kind: "read", tool: "Read", paths: ["a.txt"], exact: true }] };
+      } });
+      try {
+        const r = await get(sid, "instance=dev&op=follow");
+        expect(r.status, change).toBe(403);
+        expect(r.body.toString("utf8"), change).not.toContain("a.txt");
+      } finally { cfg.working_directory = originalDir; }
+    }
+  });
 });

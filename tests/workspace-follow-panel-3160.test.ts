@@ -46,17 +46,17 @@ const P = (path: string, extra: Record<string, unknown> = {}) => ({ path, hidden
 const step = (seq: number, kind: string, paths: unknown[], extra: Record<string, unknown> = {}) => ({ seq, at: seq, kind, tool: kind === "edit" ? "Edit" : "Read", paths, exact: true, ...extra });
 const CHANGES = { repo: true, branch: "main", hiddenCount: 0, cut: { files: false, bytes: false }, files: [], patch: "" };
 let calls: string[] = [];
-let follow: { supported: boolean; running: boolean; turn: number; steps: unknown[] }[] = [];
-function serve(defaultFollow = { supported: true, running: true, turn: 1, steps: [] as unknown[] }) {
+let follow: { supported: boolean; running: boolean; scope?: string; turn: number; steps: unknown[] }[] = [];
+function serve(defaultFollow: { supported: boolean; running: boolean; turn: number; steps: unknown[]; scope?: string } = { supported: true, running: true, turn: 1, steps: [] }) {
   calls = [];
-  let last = 0, lastTurn = defaultFollow.turn;
+  let last = 0, lastTurn = defaultFollow.turn, lastScope = defaultFollow.scope;
   globalThis.fetch = vi.fn(async (url: string) => {
     calls.push(url);
     const q = new URL(url, "http://x").searchParams, op = q.get("op"), path = q.get("path") ?? "";
     let status = 200, body: unknown;
     if (op === "follow") {
-      const next = follow.shift() ?? { ...defaultFollow, turn: lastTurn, steps: [] };   // no news: the same turn
-      lastTurn = next.turn;
+      const next = follow.shift() ?? { ...defaultFollow, scope: lastScope, turn: lastTurn, steps: [] };   // no news: the same scope/turn
+      lastTurn = next.turn; lastScope = next.scope;
       for (const s of next.steps as { seq: number }[]) last = Math.max(last, s.seq);
       body = { ...next, last };
     } else if (op === "changes") body = CHANGES;
@@ -156,6 +156,55 @@ describe("Follow agent (#3160)", () => {
     const n = follows();
     await wait();
     expect(follows()).toBe(n);
+  });
+
+  it("a late automatic read cannot replace the file after the user scrolls or turns Follow off", async () => {
+    for (const action of ["scroll", "off"]) {
+      serve();
+      follow = [{ supported: true, running: true, turn: 1, steps: [step(1, "read", [P("src/a.ts")])] }];
+      const doc = await chat(); await openWs(); followBtn(doc).click(); await wait();
+      const original = globalThis.fetch;
+      let release!: () => void, entered!: () => void;
+      const started = new Promise<void>(r => { entered = r; });
+      globalThis.fetch = (async (...args: any[]) => {
+        const url = String(args[0]);
+        if (url.includes("op=file&path=src%2Fb.ts")) { entered(); await new Promise<void>(r => { release = r; }); }
+        return (original as any)(...args);
+      }) as any;
+      follow = [{ supported: true, running: true, turn: 1, steps: [step(2, "read", [P("src/b.ts")])] }];
+      await started;
+      if (action === "scroll") fire(doc.querySelector(".ws-body"), "wheel"); else followBtn(doc).click();
+      await settleAll(); release(); await wait();
+      expect(doc.querySelector(".ws-viewer-head .ws-path").textContent, action).toBe("src/a.ts");
+      expect(followBtn(doc).getAttribute("aria-pressed"), action).toBe("false");
+      pp.closePanel(); await current!.unmount(); current!.restore(); current = null;
+    }
+  });
+
+  it("a replacement launch with repeated turn/cursor numbers replaces the strip", async () => {
+    serve();
+    follow = [{ supported: true, running: true, scope: "launch-a", turn: 1, steps: [step(1, "read", [P("src/a.ts")])] },
+      { supported: true, running: true, scope: "launch-b", turn: 1, steps: [step(1, "read", [P("src/b.ts")])] }];
+    const doc = await chat(); await openWs(); followBtn(doc).click(); await wait();
+    expect([...doc.querySelectorAll(".ws-step")].map((e: any) => e.textContent)).toEqual(["Readb.ts"]);
+    expect(doc.querySelector(".ws-viewer-head .ws-path").textContent).toBe("src/b.ts");
+    expect(calls.some(u => u.includes("scope=launch-a"))).toBe(true);
+  });
+
+  it("does no polling while hidden and coalesces navigation while keeping the turn strip", async () => {
+    serve();
+    const doc = await chat(); await openWs();
+    Object.defineProperty(doc, "hidden", { configurable: true, value: true });
+    followBtn(doc).click(); await wait();
+    expect(follows()).toBe(0);
+    Object.defineProperty(doc, "hidden", { configurable: true, value: false });
+    const previous = wsp.FOLLOW_TIMING.applyMs; wsp.FOLLOW_TIMING.applyMs = 100;
+    try {
+      follow = Array.from({ length: 6 }, (_, i) => ({ supported: true, running: true, turn: 1, steps: [step(i + 1, "read", [P(i % 2 ? "src/b.ts" : "src/a.ts")])] }));
+      await wait(160);
+      expect(doc.querySelectorAll(".ws-step").length).toBe(6);
+      expect(calls.filter(u => u.includes("op=file")).length).toBeLessThanOrEqual(2);
+    } finally { wsp.FOLLOW_TIMING.applyMs = previous; }
   });
 
   it("a backend Follow does not cover, or an agent that is not running, is said in words", async () => {

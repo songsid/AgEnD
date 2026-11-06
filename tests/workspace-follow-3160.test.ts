@@ -29,7 +29,7 @@ describe("followStepOf: Claude Code's tool calls", () => {
     const s = JSON.stringify([followStepOf("Grep", { pattern: "SECRET_TOKEN_123", path: "/w" }), followStepOf("Edit", { file_path: "/w/a", old_string: "PASSWORD=1", new_string: "PASSWORD=2" }),
       followStepOf("Write", { file_path: "/w/a", content: "API_KEY=abc" })]);
     for (const leak of ["SECRET_TOKEN_123", "PASSWORD", "API_KEY"]) expect(s).not.toContain(leak);
-    for (const [tool, input] of [["Bash", { command: "ls" }], ["WebFetch", { url: "https://x" }], ["Read", {}], ["Read", { file_path: 7 }], ["Read", { file_path: "a\u0000b" }], ["Edit", null]] as const)
+    for (const [tool, input] of [["ToolSearch", { query: "ls" }], ["WebFetch", { url: "https://x" }], ["Read", {}], ["Read", { file_path: 7 }], ["Read", { file_path: "a\u0000b" }], ["Edit", null]] as const)
       expect(followStepOf(tool, input), tool).toBeNull();
   });
 });
@@ -59,13 +59,25 @@ describe("followStepOf: Codex's rollout", () => {
     expect(followStepOf("local_shell", { command: ["cat", "z.txt"] })?.paths).toEqual(["z.txt"]);
     expect(shellStep("sed -n 5p f.txt")?.range).toEqual({ from: 5, to: 5 });
   });
+  it("consumes search option values and rejects ambiguous commands instead of treating patterns as paths", () => {
+    for (const cmd of ["rg --glob '*.ts' PRIVATE_PATTERN src", "rg -e FIRST -e PRIVATE_PATTERN src", "rg --regexp=PRIVATE_PATTERN src", "grep -n -e PRIVATE_PATTERN src", "rg -g'*.ts' PRIVATE_PATTERN src",
+      "rg -- -ePRIVATE_PATTERN src", "rg -- --regexp=PRIVATE_PATTERN src", "rg --glob -e PRIVATE_PATTERN src", "rg --glob --files PRIVATE_PATTERN src"]) {
+      const step = shellStep(cmd);
+      expect(step?.paths, cmd).toEqual(["src"]);
+      expect(JSON.stringify(step), cmd).not.toMatch(/PRIVATE_PATTERN|FIRST|\*\.ts/);
+    }
+    for (const cmd of ["rg --unknown SECRET src", "grep --files PRIVATE_PATTERN src", "git grep --files PRIVATE_PATTERN src", "rg '$TOKEN' $DIR", "cat $(whoami)", "sed -n 'unterminated", "env SECRET=x cat a", "node -e 'cat a'"])
+      expect(shellStep(cmd), cmd).toBeNull();
+    expect(followStepOf("exec_command", { cmd: "cat a.ts", workdir: "/other" })?.cwd).toBe("/other");
+    expect(followStepOf("Bash", { command: "grep -n NEEDLE src/a.ts" })?.paths).toEqual(["src/a.ts"]);
+  });
 });
 
 describe("FollowLog: this turn only", () => {
   it("records steps, reads after a sequence number, starts over on a new turn, and keeps at most the cap", () => {
     let now = 1000;
     const log = new FollowLog(() => now++);
-    log.record("Read", { file_path: "/w/a" }); log.record("Bash", { command: "ls" }); log.record("Edit", { file_path: "/w/b" });
+    log.record("Read", { file_path: "/w/a" }); log.record("ToolSearch", { query: "ls" }); log.record("Edit", { file_path: "/w/b" });
     const s1 = log.snapshot();
     expect([s1.steps.map((s) => s.kind), s1.last]).toEqual([["read", "edit"], 2]);
     expect(log.snapshot(1, s1.turn).steps.map((s) => s.seq)).toEqual([2]);
@@ -112,6 +124,13 @@ describe("resolveFollowSteps: confined like the panel's reads", () => {
     ]);
     expect(r).toHaveLength(1);
     expect(r[0]!.paths).toEqual([{ path: ".env", hidden: true, dir: false }, { path: "src/a.ts", hidden: false, dir: false }]);
+  });
+  it("binds relative shell paths to the explicit cwd and never returns the cwd itself", async () => {
+    const ws = await workspaceRoot(work, join(work, "state"));
+    const inside = await resolveFollowSteps(ws, [{ ...step(["a.ts"]), cwd: join(work, "src") }]);
+    expect(inside[0]!.paths[0]!.path).toBe("src/a.ts");
+    expect(JSON.stringify(inside)).not.toContain(work);
+    expect(await resolveFollowSteps(ws, [{ ...step(["src/a.ts"]), cwd: join(base, "outside") }])).toEqual([]);
   });
 });
 
