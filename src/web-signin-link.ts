@@ -37,7 +37,7 @@ export function describeCodeLifetime(ms: number): string {
 }
 
 /** How long the launch file lives: long enough for a browser that is still starting, short enough to be gone when it matters. */
-export const SIGNIN_LAUNCH_FILE_TTL_MS = 15_000;
+export const SIGNIN_LAUNCH_FILE_TTL_MS = 45_000;
 const LAUNCH_PREFIX = "agend-signin-";
 const LAUNCH_SUFFIX = ".html";
 
@@ -79,7 +79,7 @@ export function sweepSigninLaunchFiles(homeDir: string, now: number, maxAgeMs = 
 export function scheduleSigninLaunchCleanup(path: string, delayMs = SIGNIN_LAUNCH_FILE_TTL_MS): void {
   try {
     const child = spawn(process.execPath, ["-e", "setTimeout(()=>{try{require('fs').unlinkSync(process.argv[1])}catch{}},Number(process.argv[2]))", path, String(delayMs)],
-      { detached: true, stdio: "ignore" });
+      { detached: true, stdio: "ignore", windowsHide: true });
     child.on("error", () => { /* swept by the next run */ });
     child.unref();
   } catch { /* swept by the next run */ }

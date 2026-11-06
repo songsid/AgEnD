@@ -96,11 +96,12 @@ describe.skipIf(process.platform !== "linux")("agend web / view without a browse
     expect(stdout).not.toContain("#code=");
     // A code that goes into a URL is asked for as one: the ordinary lifetime, never the first-install one.
     expect(deliveries).toEqual(["url"]);
-    // …and the file is deleted a few seconds later by the helper the command started.
+    // …and the file is a 0600 one that a detached helper deletes after SIGNIN_LAUNCH_FILE_TTL_MS (the delay and the helper
+    // are covered in signin-launch-cleanup-3270.test.ts; waiting out a real 45 s here would only slow the suite).
     const file = decodeURIComponent(new URL(opened).pathname);
     if (process.platform !== "win32") expect((statSync(file).mode & 0o777).toString(8)).toBe("600");
-    await expect.poll(() => existsSync(file), { timeout: 25_000, interval: 500 }).toBe(false);
-  }, 40_000);
+    expect(existsSync(file)).toBe(true);
+  }, 20_000);
 
   it("agend web on WSL: the clean address is opened (the code never reaches a Windows command line) and the code is printed", async () => {
     const { argv } = recordingOpener();
@@ -109,6 +110,8 @@ describe.skipIf(process.platform !== "linux")("agend web / view without a browse
     expect(stdout).toContain("ABCD-2345");
     await expect.poll(read(argv)).toMatch(/^http:\/\/localhost:\d+\/signin$/);
     expect(existsSync(join(home, "signin-launch"))).toBe(false);
+    // Nothing goes into a URL on WSL — the person types the printed code — so it may be the 24 h first-install one: no `url` header.
+    expect(deliveries).toEqual([undefined]);
   });
 
   it("agend web --code: prints the page and code, opens nothing", async () => {

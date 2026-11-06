@@ -2638,12 +2638,14 @@ program
     let lifetime: string;
     const link = await import("./web-signin-link.js");
     const { describeCodeLifetime, webSigninLinks } = link;
+    // #3270: only a code that will travel inside a local launch file (the browser is opened for it, off WSL) keeps the ordinary
+    // short lifetime. `--code` and WSL print the code and the person types it — nothing reaches a URL — so they may get the
+    // long first-install one.
+    const codeDeliveredByUrl = !opts.code && !link.isWsl();
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/auth/issue-code`, {
         method: "POST",
-        // #3270: a code that is going into a URL keeps the ordinary short lifetime; the long first-install one is only for
-        // a code that is printed (`--code`) and typed.
-        headers: { "X-Agend-Token": token, ...(opts.code ? {} : { "X-Agend-Code-Delivery": "url" }) },
+        headers: { "X-Agend-Token": token, ...(codeDeliveredByUrl ? { "X-Agend-Code-Delivery": "url" } : {}) },
         signal: AbortSignal.timeout(5000),
       });
       const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; error?: string };
@@ -2664,7 +2666,7 @@ program
     console.log(`Sign-in page: ${links.display}`);
     console.log(`Code:         ${code}   (works once, valid ${lifetime})`);
     if (opts.code) return;
-    if (link.isWsl()) { openInBrowser(links.display); return; }          // the code stays out of a Windows command line: type it
+    if (!codeDeliveredByUrl) { openInBrowser(links.display); return; }   // WSL: the code stays out of a Windows command line: type it
     let launch: string | null = null;
     try {
       link.sweepSigninLaunchFiles(DATA_DIR, Date.now());

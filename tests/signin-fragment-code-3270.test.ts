@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import { mkdtempSync, readFileSync as readFile, rmSync, statSync, utimesSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { describeCodeLifetime, isWsl, launchFileArgument, signinLaunchHtml, sweepSigninLaunchFiles, webSigninLinks, writeSigninLaunchFile } from "../src/web-signin-link.js";
+import { SIGNIN_LAUNCH_FILE_TTL_MS, describeCodeLifetime, isWsl, launchFileArgument, signinLaunchHtml, sweepSigninLaunchFiles, webSigninLinks, writeSigninLaunchFile } from "../src/web-signin-link.js";
 
 const SRC = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8");
 
@@ -197,6 +197,16 @@ describe("#3270 agend web: the launch file keeps the code out of every command l
     expect([existsSync(old), existsSync(fresh), existsSync(other)]).toEqual([false, true, true]);
     expect(readdirSync(join(home, "signin-launch")).length).toBe(2);
     expect(sweepSigninLaunchFiles(join(home, "none"), Date.now())).toBe(0);    // no directory: nothing, no throw
+  }));
+
+  it("the file lives 45 s — long enough for a browser that is slow to start — and a run's sweep spares a younger one", () => withHome(home => {
+    expect(SIGNIN_LAUNCH_FILE_TTL_MS).toBe(45_000);
+    const young = writeSigninLaunchFile(home, "http://localhost:1/signin#code=AAAA-2222");
+    const old = writeSigninLaunchFile(home, "http://localhost:1/signin#code=BBBB-3333");
+    utimesSync(young, new Date(Date.now() - 30_000), new Date(Date.now() - 30_000));
+    utimesSync(old, new Date(Date.now() - 50_000), new Date(Date.now() - 50_000));
+    expect(sweepSigninLaunchFiles(home, Date.now())).toBe(1);
+    expect([existsSync(young), existsSync(old)]).toEqual([true, false]);
   }));
 
   it("the page cannot be broken out of by what is in the address", () => {

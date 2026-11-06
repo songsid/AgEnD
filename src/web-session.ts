@@ -343,9 +343,10 @@ export class WebSessionStore {
     this.markerPath = opts.dataDir ? join(opts.dataDir, "web-host-authorized") : null;
     this.warn = opts.onWarn ?? (() => {});
     this.ops = { writeFileSync, renameSync, unlinkSync, fsyncSync, openSync, closeSync, ...opts.fileOps };
-    // #3270: authorized before if the marker is there — or if a sessions file already exists: a fleet from before the marker
-    // (or one that lost it) has had sessions, and the safe reading of "unknown" is "not first-install".
-    if (this.markerPath && (existsSync(this.markerPath) || (this.path && existsSync(this.path)))) this.hostAuthorized = true;
+    // #3270: authorized before if the marker is there. A fleet from before the marker (or one that lost it) is recognised by
+    // `load()`, from a host session recorded in the sessions file — a file that holds nothing but guest or remote sessions, or
+    // an empty list, says nothing about the operator and leaves a new fleet its first-install code.
+    if (this.markerPath && existsSync(this.markerPath)) this.hostAuthorized = true;
     this.load();
   }
 
@@ -739,6 +740,9 @@ export class WebSessionStore {
     }
     const list = (parsed as { sessions?: unknown } | null)?.sessions;
     if (!Array.isArray(list)) return;
+    // #3270: a host session on record — expired or not — proves this fleet has had its operator sign in (an upgrade from before
+    // the marker existed); make that permanent in the marker. Nothing else in the file counts.
+    if (list.some(entry => isRecord(entry) && entry.host === true)) this.markHostAuthorized();
     const now = this.now();
     for (const entry of list) {
       if (!isRecord(entry)) continue;

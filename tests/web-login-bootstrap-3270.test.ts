@@ -9,7 +9,7 @@
  * name that is not a loopback name, or a forwarding header.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, request, type Server } from "node:http";
@@ -98,12 +98,60 @@ describe("#3270 issuing: the first code, and the ones after a host session has e
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
-  it("an empty directory is a fresh install; a fleet that already has a sessions file (from before the marker) is not", () => {
+  it("an empty directory is a fresh install, and so is a fleet whose sessions file holds no host session — empty, guest, remote, or a plain admin", () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-host-marker-"));
+    const marker = join(dir, "web-host-authorized");
     try {
       expect(new WebSessionStore({ dataDir: dir }).hostEverAuthorized).toBe(false);
       writeFileSync(join(dir, "web-sessions.json"), JSON.stringify({ version: 1, sessions: [] }));
-      expect(new WebSessionStore({ dataDir: dir }).hostEverAuthorized).toBe(true);
+      expect(new WebSessionStore({ dataDir: dir }).hostEverAuthorized).toBe(false);
+      expect(existsSync(marker)).toBe(false);
+
+      const sessions = new WebSessionStore({ dataDir: dir });
+      sessions.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: EPOCH });
+      sessions.create({ tier: "guest", surface: "local", label: "x", tokenEpoch: EPOCH, owner: { adapterId: "a", userId: "u" } });
+      sessions.create({ tier: "admin", surface: "gateway", label: "x", tokenEpoch: EPOCH, exposureId: "a".repeat(32), remote: "totp" });
+      expect(JSON.parse(readFileSync(join(dir, "web-sessions.json"), "utf8")).sessions).toHaveLength(3);
+      const restarted = new WebSessionStore({ dataDir: dir });
+      expect([restarted.size, restarted.hostEverAuthorized, existsSync(marker)]).toEqual([3, false, false]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("a fleet from before the marker (a host session in the sessions file, no marker) is already authorized — and the marker is written", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-host-marker-"));
+    const marker = join(dir, "web-host-authorized");
+    try {
+      const before = new WebSessionStore({ dataDir: dir });
+      before.create({ tier: "guest", surface: "local", label: "x", tokenEpoch: EPOCH, owner: { adapterId: "a", userId: "u" } });
+      before.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: EPOCH, host: true });
+      rmSync(marker, { force: true });                                        // what a fleet from before the marker looked like
+      const restarted = new WebSessionStore({ dataDir: dir });
+      expect([restarted.hostEverAuthorized, existsSync(marker)]).toEqual([true, true]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("an expired host session on record still counts: the operator did sign in once", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-host-marker-"));
+    const marker = join(dir, "web-host-authorized");
+    try {
+      const clock = { t: 1_700_000_000_000 };
+      const before = new WebSessionStore({ dataDir: dir, now: () => clock.t });
+      before.create({ tier: "admin", surface: "local", label: "x", tokenEpoch: EPOCH, host: true });
+      rmSync(marker, { force: true });
+      clock.t += 400 * 24 * HOUR;
+      const restarted = new WebSessionStore({ dataDir: dir, now: () => clock.t });
+      expect([restarted.size, restarted.hostEverAuthorized, existsSync(marker)]).toEqual([0, true, true]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("a restart of a new fleet whose sessions file holds no host session still gets the first-install code", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-host-marker-"));
+    try {
+      const guestOnly = new WebSessionStore({ dataDir: dir });
+      guestOnly.create({ tier: "guest", surface: "local", label: "x", tokenEpoch: EPOCH, owner: { adapterId: "a", userId: "u" } });
+      const f = await fleet({ dataDir: dir });
+      const first = await f.issue();
+      expect([first.status, first.body.bootstrap, (first.body.expiresAt as number) - f.clock.t]).toEqual([200, true, BOOTSTRAP_LOGIN_CODE_TTL_MS]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 
