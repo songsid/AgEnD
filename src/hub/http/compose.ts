@@ -223,12 +223,13 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         const n = (uploading.get(s.sessionId) ?? 1) - 1; if (n > 0) uploading.set(s.sessionId, n); else uploading.delete(s.sessionId); uploadingTotal--;
       }
     }
-    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files\/([^/]+)$/))) {
+    // `/inline` (a plain path, as the shared thread's renderer takes it) is the same as `?inline=1`: images only.
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files\/([^/]+)(\/inline)?$/))) {
       if (method !== "GET") throw new HttpError(405, "method");
       const roomId = uuid(r[1]), fileId = uuid(r[2]); signedIn();
       const file = await guard(() => rooms.download(ctx, roomId, fileId));
       // Never executed or sniffed: a download, in a sandbox; only a magic-checked image may show inline when asked.
-      const inline = query.get("inline") === "1" && file.image;
+      const inline = (query.get("inline") === "1" || r[3] === "/inline") && file.image;
       res.writeHead(200, { "Content-Type": file.mime, "Content-Length": String(file.bytes.length), "X-Content-Type-Options": "nosniff",
         "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "Cross-Origin-Resource-Policy": "same-origin",
         "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}` });

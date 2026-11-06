@@ -34,7 +34,7 @@ export function hubFileAttachment(f) {
   if (!f || typeof f.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(f.id)
     || typeof f.url !== "string" || !f.url.startsWith("/hub/v1/rooms/") || f.url.startsWith("//")) return null;
   const image = /^image\/(?:png|jpeg|gif|webp)$/.test(f.mime || "");
-  return { id: f.id.replace(/-/g, ""), name: String(f.name || "file"), size: Number(f.size) || 0, mime: f.mime, url: image ? `${f.url}?inline=1` : f.url, ...(image ? { kind: "photo" } : {}) };
+  return { id: f.id.replace(/-/g, ""), name: String(f.name || "file"), size: Number(f.size) || 0, mime: f.mime, url: image ? `${f.url}/inline` : f.url, ...(image ? { kind: "photo" } : {}) };
 }
 
 /** Why the server refused an upload, in words. */

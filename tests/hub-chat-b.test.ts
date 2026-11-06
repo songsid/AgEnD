@@ -40,7 +40,7 @@ describe("hubEntryToMessages", () => {
   it("the strings stay strings; D/E/F's files, buttons and quote are taken from beside them", () => {
     // D: a Hub file (uuid id, room URL) becomes the shared thread's attachment (32-hex id; an image a photo, shown inline).
     const fid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", files = [{ id: fid, name: "a.png", size: 1, mime: "image/png", url: `/hub/v1/rooms/r/files/${fid}` }];
-    const drawn = [{ id: fid.replace(/-/g, ""), name: "a.png", size: 1, mime: "image/png", url: `/hub/v1/rooms/r/files/${fid}?inline=1`, kind: "photo" }];
+    const drawn = [{ id: fid.replace(/-/g, ""), name: "a.png", size: 1, mime: "image/png", url: `/hub/v1/rooms/r/files/${fid}/inline`, kind: "photo" }];
     const buttons = { id: "b".repeat(32), labels: ["Yes", "No"], state: "open" };
     const [q, a] = S.hubEntryToMessages({ messageId: "m", sequence: 1, receipt: { stage: "answered", at: 1 }, question: "Q", answer: "A",
       questionFiles: files, answerFiles: files, buttons, quote: { kind: "page", fileId: "f", label: "p.html" } }, room, {});
