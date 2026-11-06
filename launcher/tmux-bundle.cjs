@@ -86,7 +86,7 @@ function processGone(pid, platform) {
 
 /**
  * Prove the bundled tmux. Returns { ok: true, tmux, sha256, size, mtime, real } or { ok: false, reason }.
- * The private-socket proof records the server it creates (pid, socket path and inode) and accepts its end only on
+ * The private-socket proof records the server it creates (pid, socket path and identity) and accepts its end only on
  * positive evidence: that pid gone and a clean "no server" answer on the socket. An unknown observation (a timeout, a
  * signal, an error) fails the proof, and then nothing is unlinked: the reason names what may still be running.
  * Seams for tests: deps.spawnSync, deps.pid, deps.socket, deps.processGone, deps.exitWaitMs.
@@ -123,7 +123,7 @@ function verifyTmux(candidate, pin, deps) {
 
   // A throwaway server on that socket of its own: never the default socket, never AgEnD's `agend` socket.
   var failed = null;
-  var server = null;      // { pid, path, ino } once known
+  var server = null;      // { pid, path, id } once known
   var step = function (label, args) {
     var r = run(args);
     if (!clean(r) || r.status !== 0) failed = label + " failed (" + why(r) + ")";
@@ -136,10 +136,9 @@ function verifyTmux(candidate, pin, deps) {
       var mm = failed ? null : /^(\d+) (\/.+)$/.exec(idr.stdout.trim());
       if (!failed && (!mm || path.basename(mm[2]) !== sock)) failed = "the server did not say which process and socket it is ('" + idr.stdout.trim() + "')";
       if (!failed) {
-        var sst = null;
-        try { sst = fs.lstatSync(mm[2]); } catch (e) { sst = null; }
-        if (!sst || !sst.isSocket()) failed = "the server's socket " + mm[2] + " is not a socket";
-        else server = { pid: Number(mm[1]), path: mm[2], ino: sst.ino };
+        var sst = socketIdentity(mm[2]);
+        if (!sst) failed = "the server's socket " + mm[2] + " is not a socket";
+        else server = { pid: Number(mm[1]), path: mm[2], id: sst };
       }
     }
     if (!failed) step("has-session", ["-L", sock, "has-session", "-t", "verify"]);
@@ -163,6 +162,8 @@ function verifyTmux(candidate, pin, deps) {
         var after = run(["-L", sock, "has-session"]);
         if (!clean(after)) failed = "whether its server ended could not be confirmed (has-session: " + why(after) + ")";
         else if (after.status === 0) failed = "its server was still answering after kill-server";
+        // Only tmux's own "no server" answer (exit 1) is proof; any other code is an unknown observation.
+        else if (after.status !== 1) failed = "whether its server ended could not be confirmed (has-session: " + why(after) + ")";
       }
     }
   } finally {
@@ -182,14 +183,24 @@ function verifyTmux(candidate, pin, deps) {
 
 /**
  * Remove the socket file tmux leaves behind after kill-server — only the one this proof created and saw exit: the same
- * path, still a socket, the same inode. Anything else stays where it is.
+ * path, still a socket, the same identity (inode and change time). Anything else stays where it is.
  */
 function removeStaleSocket(server) {
   try {
-    var now = fs.lstatSync(server.path);
-    if (!now.isSocket() || now.ino !== server.ino) return;
+    if (socketIdentity(server.path) !== server.id) return;
     fs.unlinkSync(server.path);
   } catch (e) { /* already gone */ }
+}
+
+/**
+ * A socket file's identity: its inode and its change time to the nanosecond (an inode number alone can be reused at
+ * once by a file created where a removed one was). null when it is not a socket.
+ */
+function socketIdentity(file) {
+  try {
+    var st = fs.lstatSync(file, { bigint: true });
+    return st.isSocket() ? st.ino + ":" + st.ctimeNs : null;
+  } catch (e) { return null; }
 }
 
 function receiptText(r) {

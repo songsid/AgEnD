@@ -9,15 +9,15 @@
  */
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
-import { partsFor, readSources, srcDirName, TARGETS } from "../scripts/tmux/build-tmux.mjs";
+import { partsFor, readSources, srcDirName, stripCommand, TARGETS } from "../scripts/tmux/build-tmux.mjs";
 import { tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
-import { lockMismatches, parseApkInfo } from "../scripts/tmux/toolchain.mjs";
+import { lockMismatches, parseApkInfo, toolchainEnv } from "../scripts/tmux/toolchain.mjs";
 
 const require = createRequire(import.meta.url);
 const LAUNCHER = join(process.cwd(), "launcher");
@@ -54,6 +54,24 @@ describe("tmux-sources.json and the package manifest", () => {
     expect(s.toolchain.alpine.packages.musl.startsWith(`${s.musl.version}-`)).toBe(true);
     expect(s.toolchain.darwin.developerDir).toBe(`/Applications/Xcode_${s.toolchain.darwin.xcode}.app/Contents/Developer`);
     expect(s.toolchain.darwin.xcodeBuild).toMatch(/^\w+$/);
+  });
+
+  it("macOS strips with the LOCKED Xcode's strip, run under the locked DEVELOPER_DIR — never the runner's selection", () => {
+    const locked = readSources().toolchain.darwin.developerDir;
+    const env: Record<string, string | undefined> = { PATH: "/usr/bin", ...toolchainEnv("darwin-arm64") };
+    expect(env.DEVELOPER_DIR).toBe(locked);
+    const seen: Array<Record<string, string | undefined>> = [];
+    // xcrun answers from whichever developer dir its environment selects (an inert stand-in).
+    const xcrun = (_cmd: string, _args: string[], opts: { env: Record<string, string | undefined> }) => {
+      seen.push(opts.env);
+      return `${opts.env.DEVELOPER_DIR ?? "/Applications/Xcode_26.3.app/Contents/Developer"}/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip\n`;
+    };
+    expect(stripCommand("darwin-arm64", env, xcrun)).toEqual({ cmd: `${locked}/Toolchains/XcodeDefault.xctoolchain/usr/bin/strip`, args: ["-x"] });
+    expect(seen[0]!.DEVELOPER_DIR).toBe(locked);
+    // A strip from another Xcode (the runner's own selection) is refused, and so is a build with no lock in its env.
+    expect(() => stripCommand("darwin-arm64", env, () => "/Applications/Xcode_26.3.app/Contents/Developer/usr/bin/strip\n")).toThrow(/outside the locked Xcode/);
+    expect(() => stripCommand("darwin-x64", { PATH: "/usr/bin" }, xcrun)).toThrow(/no locked DEVELOPER_DIR/);
+    expect(stripCommand("linux-x64", {}, xcrun)).toEqual({ cmd: "strip", args: [] });
   });
 
   it("a toolchain that drifted from the lock is named, version by version", () => {
@@ -310,7 +328,7 @@ describe("postinstall proves the bundled tmux before the install is accepted", (
 describe("verifyTmux: an unknown observation is never taken for the server's exit", () => {
   type R = { status: number | null; stdout: string; stderr: string; error?: { code: string }; signal?: string };
   const PINV = { name: `@songsid/agend-tmux-${HOST.id}`, version: PIN };
-  async function scenario(opts: { afterKill?: Partial<R>; gone?: (pid: number) => boolean; idPath?: (dir: string, sock: string) => string; swapAfterKill?: boolean }) {
+  async function scenario(opts: { afterKill?: Partial<R>; gone?: (pid: number) => boolean; idPath?: (dir: string, sock: string) => string; swapAfterKill?: boolean; chmodAfterKill?: boolean }) {
     const f = fixture();
     const sock = "agend-verify-4242";
     const dir = mkdtempSync(join(tmpdir(), "agend-sock-")); roots.push(dir);
@@ -332,6 +350,8 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
           killed = true;
           // Someone else's socket now sits at that path (a new inode): it is not the one this proof saw exit.
           if (opts.swapAfterKill) { rmSync(path); spawnSync(process.execPath, ["-e", "require('net').createServer().listen(process.argv[1], () => process.exit(0))", path]); }
+          // The same inode, changed since the proof saw it: only the change time tells (an inode number can be reused).
+          if (opts.chmodAfterKill) { const before = statSync(path).ctimeMs; while (statSync(path).ctimeMs === before) chmodSync(path, (statSync(path).mode & 0o777) ^ 0o020); }
           return { status: 0, stdout: "", stderr: "" };
         }
         if (c === "has-session" && killed) return { status: 1, stdout: "", stderr: "no server running", ...opts.afterKill };
@@ -358,6 +378,8 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     ["has-session was killed by a signal", { status: null, signal: "SIGKILL" }, /could not be confirmed \(has-session: signal SIGKILL\)/],
     ["has-session could not run", { status: null, error: { code: "EACCES" } }, /could not be confirmed \(has-session: EACCES\)/],
     ["the socket still answers", { status: 0 }, /still answering after kill-server/],
+    ["has-session exited 2 (not tmux's 'no server')", { status: 2, stderr: "usage" }, /could not be confirmed \(has-session: exit 2: usage\)/],
+    ["has-session exited 124 (a wrapper's timeout code)", { status: 124 }, /could not be confirmed \(has-session: exit 124[:)]/],
   ])("refused when %s — and the still-open socket is left in place", async (_why, afterKill, reason) => {
     const r = await scenario({ afterKill });
     expect(r.proved.ok).toBe(false);
@@ -383,6 +405,12 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
 
   it("accepted, but a socket file that is not the one it created (another inode at that path) is left alone", async () => {
     const r = await scenario({ swapAfterKill: true });
+    expect(r.proved.ok, r.proved.reason).toBe(true);
+    expect(r.left).toBe(true);
+  });
+
+  it("accepted, but a socket file changed since the proof saw it (same inode, new change time) is left alone", async () => {
+    const r = await scenario({ chmodAfterKill: true });
     expect(r.proved.ok, r.proved.reason).toBe(true);
     expect(r.left).toBe(true);
   });

@@ -16,4 +16,5 @@ export const TARGETS: string[];
 export function readSources(file?: string): TmuxSources & Record<string, TmuxSource>;
 export function partsFor(sources: TmuxSources, target: string): string[];
 export function srcDirName(part: string, version: string): string;
+export function stripCommand(target: string, env: Record<string, string | undefined>, run?: (cmd: string, args: string[], opts: { env: Record<string, string | undefined> }) => string): { cmd: string; args: string[] };
 export function hostTarget(platform?: string, arch?: string): string | null;

@@ -56,6 +56,20 @@ export function srcDirName(part, version) {
   return `${part}-${version}`;
 }
 
+/**
+ * The strip that finishes a binary: on macOS, the LOCKED Xcode's (resolved by xcrun under the locked DEVELOPER_DIR,
+ * which `env` carries, and required to live inside it) — never whatever developer tools the runner has selected.
+ * `run` is a seam for tests.
+ */
+export function stripCommand(target, env, run = (cmd, args, opts) => execFileSync(cmd, args, opts)) {
+  if (!target.startsWith("darwin")) return { cmd: "strip", args: [] };
+  const dir = env.DEVELOPER_DIR;
+  if (!dir) throw new Error("no locked DEVELOPER_DIR for the macOS strip");
+  const found = String(run("xcrun", ["--find", "strip"], { env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] })).trim();
+  if (!found.startsWith(`${dir}/`)) throw new Error(`xcrun found strip at ${found}, outside the locked Xcode (${dir})`);
+  return { cmd: found, args: ["-x"] };
+}
+
 export function hostTarget(platform = process.platform, arch = process.arch) {
   const t = `${platform}-${arch}`;
   return TARGETS.includes(t) ? t : null;
@@ -163,7 +177,8 @@ async function main(argv) {
   mkdirSync(join(dest, "bin"), { recursive: true });
   const bin = join(dest, "bin/tmux");
   copyFileSync(join(dirs.tmux, "tmux"), bin);
-  sh("strip", darwin ? ["-x", bin] : [bin]);
+  const strip = stripCommand(target, env);
+  sh(strip.cmd, [...strip.args, bin], { env });
   chmodSync(bin, 0o755);
   for (const name of sources.terminfo) {
     const from = findTerminfo(tdb, name);

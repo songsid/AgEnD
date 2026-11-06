@@ -30,6 +30,13 @@ got=$("$T" -L "$SOCK" -V) || fail "tmux -V failed"
   || fail "the server did not start on a private socket"
 SERVER_PID=$("$T" -L "$SOCK" display-message -p -t s '#{pid}') || fail "display-message"
 SOCKET_PATH=$("$T" -L "$SOCK" display-message -p -t s '#{socket_path}') || fail "display-message socket_path"
+# The socket's identity while its server is up: only this inode is removed after the proved exit.
+[ "$(basename "$SOCKET_PATH")" = "$SOCK" ] && [ -S "$SOCKET_PATH" ] || fail "the server's socket '$SOCKET_PATH' is not this run's"
+# Identity = inode + change time to the nanosecond: an inode number alone can be reused at once by a file created
+# where a removed one was.
+inode() { case "$(uname -s)" in Darwin) stat -f '%i %Fc' "$1" 2>/dev/null ;; *) stat -c '%i %z' "$1" 2>/dev/null ;; esac; }
+SOCKET_INO=$(inode "$SOCKET_PATH")
+[ -n "$SOCKET_INO" ] || fail "the server's socket has no inode"
 case "$SERVER_PID" in ''|*[!0-9]*) fail "the server did not say its pid ('$SERVER_PID')" ;; esac
 "$T" -L "$SOCK" has-session -t s || fail "has-session"
 i=0; line=""
@@ -50,6 +57,7 @@ done
 # The socket answers a clean "no server" (exit 1); anything else (a hang, a signal, another code) is not proof.
 set +e; "$T" -L "$SOCK" has-session >/dev/null 2>&1; rc=$?; set -e
 [ "$rc" = 1 ] || fail "whether the server ended could not be confirmed (has-session exit $rc)"
-# tmux leaves its socket file behind: remove this run's, now that its server is proved gone.
-[ "$(basename "$SOCKET_PATH")" = "$SOCK" ] && [ -S "$SOCKET_PATH" ] && rm -f "$SOCKET_PATH"
+# tmux leaves its socket file behind: remove this run's — the same inode — now that its server is proved gone. A file
+# that replaced it at that path is someone else's and stays.
+if [ -S "$SOCKET_PATH" ] && [ "$(inode "$SOCKET_PATH")" = "$SOCKET_INO" ]; then rm -f "$SOCKET_PATH"; fi
 echo "smoke ok: tmux $WANT, private socket, CJK/emoji width 8, server pid $SERVER_PID gone"

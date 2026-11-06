@@ -4,7 +4,7 @@
  * control and negative controls. No real tmux server, container, CLI or fleet is started.
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -26,7 +26,9 @@ const run = (script: string, env: Record<string, string>, args: string[] = []) =
 
 /**
  * A stub rig (README.md's interface). It records sends; `calls` answers PONG-<tag> for every PING-<tag> sent when
- * STUB_REPLY=1. STUB_START_FAIL / STUB_SEND_FAIL make those verbs fail; STUB_RAW=SENT|SWALLOWED is what a raw trial sees.
+ * STUB_REPLY=1. STUB_START_FAIL / STUB_SEND_FAIL make those verbs fail.
+ * A raw trial (`r` with a new-session in it): STUB_RAW_EXEC=1 RUNS the real trial script, with HOME=<dir> and a stub
+ * tmux (rawTmux) first on PATH; otherwise the rig prints STUB_RAW (default "SENT $TAG") and exits STUB_RAW_RC.
  */
 function stubRig(dir: string) {
   return exe(join(dir, "rig.sh"), `#!/bin/bash
@@ -40,7 +42,13 @@ case "$1" in
     const reply=process.env.STUB_REPLY==="1";console.log(JSON.stringify({result:reply?sent.map(t=>({method:"sendMessage",params:{text:t.replace("PING-","PONG-")}})):[]}))' "$S/sent" ;;
   r|x) case "$2" in
          "tmux -V") echo "tmux 3.8" ;;
-         *new-session*) echo "\${STUB_RAW:-SENT}" ;;
+         *new-session*)
+           if [ -n "\${STUB_RAW_EXEC:-}" ]; then
+             mkdir -p "$S/home/w/raw1" "$S/home/w/raw2"
+             HOME="$S/home" PATH="$S/rawbin:$PATH" bash -c "$2"; exit $?
+           fi
+           tag=\${2#*TAG=}; tag=\${tag%%;*}
+           echo "\${STUB_RAW:-SENT $tag}"; exit "\${STUB_RAW_RC:-0}" ;;
          *) : ;;
        esac ;;
   *) exit 2 ;;
@@ -73,17 +81,59 @@ describe("delivery-309.sh", () => {
   });
 });
 
-describe("raw-309.sh", () => {
-  const go = (env: Record<string, string>) => { const d = scratch(); return run("raw-309.sh", { RIG: stubRig(d), N: "2", SETTLE: "0", ...env }); };
+/**
+ * The tmux a raw trial runs against (STUB_RAW_EXEC): a pane that shows Claude Code's composer ("❯" + U+00A0), then
+ * what was pasted, then — after Enter — "mock reply". STUB_TMUX_FAIL=<command> fails it; STUB_STALE=1: a reply is on
+ * the screen from the start; STUB_NO_REPLY=1: Enter is swallowed; STUB_DIALOG=1: only a dialog ("❯ No, exit", an
+ * ordinary space) is ever on screen; STUB_OLD_PANE=1: a pane from before survives kill-server and answers.
+ */
+function rawTmux(dir: string) {
+  mkdirSync(join(dir, "rawbin"), { recursive: true });
+  exe(join(dir, "rawbin", "tmux"), `#!/bin/bash
+S=${JSON.stringify(dir)}/rawstate; mkdir -p "$S"
+[ -z "\${STUB_OLD_PANE:-}" ] || : > "$S/up"
+cmd=$3
+[ "\${STUB_TMUX_FAIL:-}" = "$cmd" ] && { echo "$cmd failed" >&2; exit 1; }
+case "$cmd" in
+  kill-server) [ -n "\${STUB_OLD_PANE:-}" ] || rm -f "$S"/* ;;
+  new-session) : > "$S/up" ;;
+  load-buffer) cat > "$S/buffer" ;;
+  paste-buffer) cp "$S/buffer" "$S/pasted" ;;
+  send-keys) echo "$*" >> ${JSON.stringify(dir)}/send-keys.log; [ -n "\${STUB_NO_REPLY:-}" ] || : > "$S/sent" ;;
+  capture-pane) [ -f "$S/up" ] || exit 1
+    if [ -n "\${STUB_DIALOG:-}" ]; then printf ' ❯ No, exit\n   Yes, I trust this folder\n'; exit 0; fi
+    printf '❯\u00a0%s\n' "$(cat "$S/pasted" 2>/dev/null)"
+    { [ -f "$S/sent" ] || [ -n "\${STUB_STALE:-}" ]; } && echo "● mock reply" ;;
+esac
+exit 0
+`);
+}
 
-  it("passing control: every trial submitted — exit 0", () => {
-    const r = go({});
+describe("raw-309.sh", () => {
+  const go = (env: Record<string, string>) => { const d = scratch(); rawTmux(d); return run("raw-309.sh", { RIG: stubRig(d), N: "2", SETTLE: "0", RAW_WAIT_TRIES: "2", RAW_READY_TRIES: "5", ...env }); };
+
+  it("only a dialog is on screen (the trust dialog's \"❯ No, exit\") — never taken for the composer: no Enter sent, exit 1", () => {
+    const d = scratch(); rawTmux(d);
+    const r = run("raw-309.sh", { RIG: stubRig(d), N: "2", SETTLE: "0", RAW_WAIT_TRIES: "2", RAW_READY_TRIES: "5", STUB_RAW_EXEC: "1", STUB_DIALOG: "1" });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/SETUP-FAILED: the prompt never painted/);
+    expect(existsSync(join(d, "send-keys.log"))).toBe(false);
+  });
+
+  it("passing control: the real trial script, each step succeeding and its own text answered — exit 0", () => {
+    const r = go({ STUB_RAW_EXEC: "1" });
     expect(r.status, r.stdout + r.stderr).toBe(0);
-    expect(r.stdout).toContain("raw #309: 2 of 2 submitted, 0 swallowed");
+    expect(r.stdout).toContain("raw #309: 2 of 2 submitted, 0 not");
   });
 
   it.each([
-    ["the trials are swallowed", { STUB_RAW: "SWALLOWED" }, /2 of 2 trials were not submitted/],
+    ["Enter is swallowed (real trial script)", { STUB_RAW_EXEC: "1", STUB_NO_REPLY: "1" }, /2 of 2 trials were not submitted/],
+    ["new-session fails, with an old reply on the screen (real trial script)", { STUB_RAW_EXEC: "1", STUB_TMUX_FAIL: "new-session", STUB_STALE: "1" }, /2 of 2 trials were not submitted/],
+    ["load-buffer fails, with an old reply on the screen (real trial script)", { STUB_RAW_EXEC: "1", STUB_TMUX_FAIL: "load-buffer", STUB_STALE: "1" }, /2 of 2 trials were not submitted/],
+    ["a reply is on the screen before the trial submits (real trial script)", { STUB_RAW_EXEC: "1", STUB_STALE: "1" }, /2 of 2 trials were not submitted/],
+    ["new-session fails while a pane from before still answers (real trial script)", { STUB_RAW_EXEC: "1", STUB_TMUX_FAIL: "new-session", STUB_OLD_PANE: "1" }, /2 of 2 trials were not submitted/],
+    ["the rig prints SENT but exits 1", { STUB_RAW_RC: "1" }, /2 of 2 trials were not submitted/],
+    ["the rig prints another trial's SENT", { STUB_RAW: "SENT RAW309Tother" }, /2 of 2 trials were not submitted/],
     ["the rig does not start", { STUB_START_FAIL: "1" }, /the rig did not start/],
   ])("negative control: %s — exit 1", (_why, env, reason) => {
     const r = go(env);
@@ -189,34 +239,52 @@ describe("smoke-tmux.sh", () => {
     exe(join(d, "bin", "tmux"), `#!/bin/bash
 S=${JSON.stringify(d)}
 alive() { [ -f "$S/server.pid" ] && kill -0 "$(cat "$S/server.pid")" 2>/dev/null; }
+mksock() { rm -f "$1"; node -e 'require("net").createServer().listen(process.argv[1], () => process.exit(0))' "$1"; }
+sock=$2
 args=" $* "
 case "$args" in
   *" -V "*) echo "tmux 3.8" ;;
   *" new-session "*) case "$args" in *" /bin/sh -c "*) ;; *) echo "no argv-form pane program" >&2; exit 7 ;; esac
-    sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$S/server.pid"; : > "$S/sock" ;;
+    sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$S/server.pid"; mksock "$S/$sock" ;;
   *"#{pid}"*) cat "$S/server.pid" ;;
-  *"#{socket_path}"*) echo "$S/sock" ;;
+  *"#{socket_path}"*) echo "$S/$sock" ;;
   *"#{cursor_x}"*) echo "\${STUB_WIDTH:-8}" ;;
   *" capture-pane "*) printf '中文🫨ok\\n' ;;
   *" has-session -t "*) alive || exit 1 ;;
-  *" has-session "*) if alive; then exit 0; fi; exit "\${STUB_HAS:-1}" ;;
+  *" has-session "*) if alive; then exit 0; fi
+    # STUB_SWAP=1: someone else's socket now sits at that path (a new inode).
+    [ -z "\${STUB_SWAP:-}" ] || mksock "$S/$sock"
+    exit "\${STUB_HAS:-1}" ;;
   *" kill-server "*) alive || exit 1; [ -n "\${STUB_STICKY:-}" ] || kill "$(cat "$S/server.pid")" ;;
 esac
 exit 0
 `);
     return d;
   }
-  const go = (env: Record<string, string> = {}) => spawnSync("sh", [join(process.cwd(), "scripts/tmux/smoke-tmux.sh"), bundle(), "3.8"], { encoding: "utf8", timeout: 60_000, env: { ...process.env, ...env } });
+  const go = (env: Record<string, string> = {}) => {
+    const d = bundle();
+    const r = spawnSync("sh", [join(process.cwd(), "scripts/tmux/smoke-tmux.sh"), d, "3.8"], { encoding: "utf8", timeout: 60_000, env: { ...process.env, ...env } });
+    const sockets = readdirSync(d).filter((f) => f.startsWith("agend-smoke-"));
+    return { ...r, d, sockets };
+  };
 
-  it("passing control: started, captured at width 8, the server pid gone, a clean exit-1 no-server — exit 0", () => {
+  it("passing control: started, captured at width 8, the server pid gone, a clean exit-1 no-server — exit 0, its own socket removed", () => {
     const r = go();
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toMatch(/smoke ok: tmux 3\.8, .* server pid \d+ gone/);
+    expect(r.sockets).toEqual([]);
+  });
+
+  it("a socket that replaced the server's at that path (another inode) is left in place", () => {
+    const r = go({ STUB_SWAP: "1" });
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    expect(r.sockets.length).toBe(1);
   });
 
   it.each([
     ["the server survives kill-server", { STUB_STICKY: "1" }, /still running after kill-server/],
     ["the no-server answer is not a clean exit 1 (a timeout/signal/error)", { STUB_HAS: "124" }, /could not be confirmed \(has-session exit 124\)/],
+    ["the no-server answer is exit 2", { STUB_HAS: "2" }, /could not be confirmed \(has-session exit 2\)/],
     ["the line is the wrong width", { STUB_WIDTH: "7" }, /7 cells wide, not 8/],
   ])("negative control: %s — exit 1", (_why, env, reason) => {
     const r = go(env);

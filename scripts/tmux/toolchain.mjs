@@ -85,7 +85,7 @@ export function toolchainIdentity(target, sources = readSources()) {
   return {
     kind: "xcode", developerDir: d.developerDir, xcode: xcode.replace(/\n/g, ", "), sdk,
     clang: out(clang, ["--version"], env).split("\n")[0],
-    sha256: { clang: sha256File(realpathSync(clang)), ld: sha256File(realpathSync(out("xcrun", ["-f", "ld"], env))) },
+    sha256: { clang: sha256File(realpathSync(clang)), ld: sha256File(realpathSync(out("xcrun", ["-f", "ld"], env))), strip: sha256File(realpathSync(out("xcrun", ["-f", "strip"], env))) },
   };
 }
 
