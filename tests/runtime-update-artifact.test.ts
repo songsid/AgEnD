@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { createServer, type RequestListener, type Server } from "node:http";
+import { createServer as createTlsServer } from "node:https";
 import { crc32 } from "node:zlib";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createRuntimeBundle, RUNTIME_MAX_ARCHIVE_BYTES } from "../src/runtime-bundle.js";
@@ -7,6 +8,7 @@ import { compareRuntimeVersions, fetchRuntimeUpdateArchive, fetchRuntimeUpdateMe
   RUNTIME_UPDATE_ARCHIVE_PATH, RUNTIME_UPDATE_METADATA_PATH, RUNTIME_UPDATE_MAX_BYTES, runtimeUpdateEtag,
   runtimeUpdateNeeded, validateRuntimeUpdateArchive, type RuntimeUpdateMetadata } from "../src/runtime-update-artifact.js";
 import { runtimeBundleFixture, unzipStored } from "./support/runtime-bundle-fixture.js";
+import { runtimeUpdateTlsFixture } from "./support/runtime-update-tls.js";
 
 const metadataFor = (bytes: Buffer, version = "2.3.5-alpha.7"): RuntimeUpdateMetadata => ({ version, bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") });
 let fixture: ReturnType<typeof runtimeBundleFixture>, bundle: ReturnType<typeof createRuntimeBundle>;
@@ -70,6 +72,16 @@ describe("paired-origin downloads over a real loopback fake server", () => {
     await expect(fetchRuntimeUpdateArchive(origin, metadataFor(bundle.bytes))).rejects.toMatchObject({ reason: "transport" });
     expect(otherHits).toBe(0);
   });
+  it("refuses an untrusted HTTPS certificate before reading any metadata", async () => {
+    let hits = 0;
+    const server = createTlsServer(runtimeUpdateTlsFixture(), (_req, res) => {
+      hits++; const metadata = metadataFor(bundle.bytes); res.setHeader("ETag", runtimeUpdateEtag(metadata)); res.end(JSON.stringify(metadata));
+    });
+    servers.push(server);
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    await expect(fetchRuntimeUpdateMetadata(`https://127.0.0.1:${(server.address() as { port: number }).port}`)).rejects.toMatchObject({ reason: "transport" });
+    expect(hits).toBe(0);
+  });
   it("refuses non-origin or non-loopback HTTP inputs before sending", async () => {
     for (const origin of ["http://192.0.2.1", "https://fleet.example.test/alternate", "https://user:password@fleet.example.test", "https://fleet.example.test/?url=other", "file:///tmp/bundle"])
       await expect(fetchRuntimeUpdateMetadata(origin)).rejects.toMatchObject({ reason: "transport" });
@@ -130,6 +142,14 @@ function repack(entries: Array<[string, Buffer]>, options: { flags?: number; met
   end.writeUInt32LE(0x06054b50); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(offset, 16);
   return Buffer.concat([...local, directory, end]);
 }
+function withFiles(edit: (files: Map<string, Buffer>) => void): Buffer {
+  const files = new Map(validateRuntimeUpdateArchive(bundle.bytes, metadataFor(bundle.bytes)).files);
+  edit(files);
+  const manifest = JSON.parse(files.get("bundle-manifest.json")!.toString());
+  manifest.sha256 = Object.fromEntries([...files].filter(([name]) => name !== "bundle-manifest.json").map(([name, bytes]) => [name, createHash("sha256").update(bytes).digest("hex")]));
+  files.set("bundle-manifest.json", Buffer.from(JSON.stringify(manifest)));
+  return repack([...files]);
+}
 describe("stored ZIP code validation before any filesystem write", () => {
   it("accepts the real producer bundle and its exact package/code identity", () => {
     const metadata = metadataFor(bundle.bytes), value = validateRuntimeUpdateArchive(bundle.bytes, metadata), files = unzipStored(bundle.bytes);
@@ -143,12 +163,22 @@ describe("stored ZIP code validation before any filesystem write", () => {
   });
   it("refuses unsafe Windows paths, aliases, duplicate entries and file/directory collisions", () => {
     for (const name of ["../outside", "/absolute", "C:/outside", "dir\\outside", "dir/file:stream", "dir/NUL.txt", "dir/file.", "dir/./file", "dir//file", "x\0y"]) {
-      const archive = repack([[name, Buffer.from("unsafe")]]);
+      const archive = withFiles(files => files.set(name, Buffer.from("unsafe")));
       expect(() => validateRuntimeUpdateArchive(archive, metadataFor(archive)), name).toThrow(/archive/);
     }
-    for (const names of [["file", "FILE"], ["file", "file"], ["dir", "dir/file"]]) {
-      const archive = repack(names.map(n => [n, Buffer.from("unsafe")])); expect(() => validateRuntimeUpdateArchive(archive, metadataFor(archive))).toThrow(/archive/);
-    }
+    const alias = withFiles(files => files.set("readme.txt", Buffer.from("alias")));
+    expect(() => validateRuntimeUpdateArchive(alias, metadataFor(alias))).toThrow(/archive/);
+    const files = new Map(validateRuntimeUpdateArchive(bundle.bytes, metadataFor(bundle.bytes)).files);
+    const duplicate = repack([...files, ["README.txt", files.get("README.txt")!]]);
+    expect(() => validateRuntimeUpdateArchive(duplicate, metadataFor(duplicate))).toThrow(/archive/);
+    const collision = withFiles(files => files.set("node_modules/ws", Buffer.from("parent file")));
+    expect(() => validateRuntimeUpdateArchive(collision, metadataFor(collision))).toThrow(/archive/);
+  });
+  it("checks the stored data CRC even when local and central records agree on a false value", () => {
+    const archive = Buffer.from(bundle.bytes), central = archive.readUInt32LE(archive.length - 6), local = archive.readUInt32LE(central + 42);
+    const incorrect = (archive.readUInt32LE(central + 16) ^ 1) >>> 0;
+    archive.writeUInt32LE(incorrect, central + 16); archive.writeUInt32LE(incorrect, local + 14);
+    expect(() => validateRuntimeUpdateArchive(archive, metadataFor(archive))).toThrow(/archive/);
   });
   it("refuses links, compressed/encrypted records and hidden/trailing data", () => {
     const entries = [...validateRuntimeUpdateArchive(bundle.bytes, metadataFor(bundle.bytes)).files];
@@ -157,10 +187,19 @@ describe("stored ZIP code validation before any filesystem write", () => {
     }
     const extra = Buffer.concat([bundle.bytes, Buffer.from("hidden")]); expect(() => validateRuntimeUpdateArchive(extra, metadataFor(extra))).toThrow(/archive/);
   });
+  it("bounds the record count and each uncompressed file even within the total archive cap", () => {
+    const many = withFiles(files => { for (let i = files.size; i < 513; i++) files.set(`extra/${i}.txt`, Buffer.from("bounded")); });
+    expect(many.length).toBeLessThan(RUNTIME_UPDATE_MAX_BYTES);
+    expect(() => validateRuntimeUpdateArchive(many, metadataFor(many))).toThrow(/archive/);
+    const large = withFiles(files => files.set("README.txt", Buffer.alloc(2 * 1024 * 1024 + 1)));
+    expect(large.length).toBeLessThan(RUNTIME_UPDATE_MAX_BYTES);
+    expect(() => validateRuntimeUpdateArchive(large, metadataFor(large))).toThrow(/archive/);
+  });
   it("refuses changed code, package version, manifest build identity or file inventory even with a newly verified archive hash", () => {
-    for (const variant of ["code", "package", "build", "inventory", "module", "origin"]) {
+    for (const variant of ["code", "document", "package", "build", "inventory", "module", "origin"]) {
       const files = new Map(validateRuntimeUpdateArchive(bundle.bytes, metadataFor(bundle.bytes)).files), manifest = JSON.parse(files.get("bundle-manifest.json")!.toString());
       if (variant === "code") files.set("dist/runtime-cli.js", Buffer.from("throw Error('changed')"));
+      if (variant === "document") files.set("README.txt", Buffer.from("changed non-module asset"));
       if (variant === "package") files.set("package.json", Buffer.from(JSON.stringify({ ...JSON.parse(files.get("package.json")!.toString()), version: "0.0.1" })));
       if (variant === "build") manifest.buildId = "f".repeat(64);
       if (variant === "inventory") delete manifest.sha256["README.txt"];
