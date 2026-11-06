@@ -400,6 +400,27 @@ describe("LoginSession hands its captures to onProgress (M-2281)", () => {
     }
   });
 
+  it("tmux recorded the exit code (the common path): a poll's capture that already holds the verdict line never shows it", async () => {
+    vi.useFakeTimers();
+    try {
+      const marker = installExitMarker();
+      const done = vi.fn(), seen: string[] = [];
+      // The verdict line is in the captures while the pane is still alive and when it is seen dead; tmux has the
+      // code (the default fake status: exitCode 0), so no late capture is taken and every frame comes from a poll.
+      const tmux = fakeTmux(["Installing…", `Installing…\ndone!\n${marker}0`, `Installing…\ndone!\n${marker}0\n\nPane is dead`], [true, true, false]);
+      const s = new LoginSession({ backend: "codex", command: "x", successPattern: /$^/, timeoutMs: 60_000, exitMarker: marker },
+        tmux, { onDone: done, onProgress: p => seen.push(p) }, logger, 10);
+      await s.start();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(done).toHaveBeenCalledWith(expect.objectContaining({ ok: true, detail: "clean exit" }));
+      expect(seen).toHaveLength(3);
+      expect(seen.slice(1).every((p) => p.includes("done!"))).toBe(true);
+      expect(seen.some((p) => p.includes(marker))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("only the session's own marker counts: a line the installer prints with another marker is just output", async () => {
     vi.useFakeTimers();
     try {
