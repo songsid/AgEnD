@@ -5,26 +5,48 @@ permissions:
   contents: read
 jobs:
   observe:
-    name: observe START (${{ matrix.os }}, cold ${{ matrix.cold }})
+    name: observe START (${{ matrix.os }}, ${{ matrix.warm }}, sample ${{ matrix.cold }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, ubuntu-26.04]
         cold: [1, 2, 3]
+        warm: [cold, primed]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
           node-version: 22
           cache: npm
-      - name: Observe uncensored START only
+      - name: Prepare Node build without starting PowerShell
         run: |
-          set -euo pipefail
-          echo "DIAGNOSTIC BRANCH ONLY: START at most30s; cases10s; single worker; no preceding pwsh warm-up"
           command -v pwsh
           npm ci
           npm run build
+      - name: Measured PowerShell preparation
+        if: matrix.warm == 'primed'
+        run: |
+          set -euo pipefail
+          phase_started=$(date +%s%3N)
+          for attempt in 1 2; do
+            started=$(date +%s%3N)
+            timeout 30s pwsh -NoLogo -NoProfile -NonInteractive -Command '[Console]::WriteLine($PSVersionTable.PSVersion.ToString())'
+            echo "[pwsh-warmup] version=$attempt elapsedMs=$(( $(date +%s%3N) - started ))"
+          done
+          cat > "$RUNNER_TEMP/agend-pwsh-prime.ps1" <<'PWSH'
+          [Console]::WriteLine('__WARM_COMPILE_BOOT__')
+          Add-Type -TypeDefinition 'public static class AgendWarm { public static int Ready() { return 1; } }'
+          [Console]::WriteLine([AgendWarm]::Ready())
+          [Console]::WriteLine([scriptblock]::Create('1 + 1').Invoke())
+          PWSH
+          started=$(date +%s%3N)
+          timeout 30s pwsh -NoLogo -NoProfile -NonInteractive -File "$RUNNER_TEMP/agend-pwsh-prime.ps1"
+          echo "[pwsh-warmup] compileElapsedMs=$(( $(date +%s%3N) - started )) totalMs=$(( $(date +%s%3N) - phase_started ))"
+      - name: Observe uncensored START only
+        run: |
+          set -euo pipefail
+          echo "DIAGNOSTIC BRANCH ONLY: START at most30s; cases10s; single worker; warm=${{ matrix.warm }}"
           npx vitest run --config vitest.config.pwsh.ts tests/install-no-tty-codex.test.ts tests/installer-github-io-fallback.test.ts tests/installer-ps-batch.test.ts tests/installer-ps-start.test.ts tests/windows-agend-distro-1853.test.ts tests/windows-backend-probe-exec.test.ts tests/windows-dashboard-1853.test.ts tests/windows-dashboard-port-holder.test.ts tests/windows-install-identity-2650.test.ts tests/windows-install-log-2650.test.ts tests/windows-installer-keep-kiro-2583.test.ts tests/windows-installer-ux-1853.test.ts tests/windows-login-1853.test.ts tests/windows-repair-1853.test.ts tests/windows-resume-backends.test.ts tests/windows-shortcuts-cli-1853.test.ts tests/windows-wsl-auto-1853.test.ts tests/windows-wsl-config-2651.test.ts tests/windows-wsl-drive-2712.test.ts tests/windows-wsl-step-scope-2716.test.ts
       - name: Runtime after observation
         if: always()
