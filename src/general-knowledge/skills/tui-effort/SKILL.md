@@ -34,10 +34,10 @@ agend reload
 
 ```bash
 INSTANCE='<instance-name>'
-tmux send-keys -t "agend:${INSTANCE}" -l '/effort max'
-tmux send-keys -t "agend:${INSTANCE}" Enter
+agend tmux send-keys -t "agend:${INSTANCE}" -l '/effort max'
+agend tmux send-keys -t "agend:${INSTANCE}" Enter
 sleep 1
-tmux capture-pane -t "agend:${INSTANCE}" -p | tail -5
+agend tmux capture-pane -t "agend:${INSTANCE}" -p | tail -5
 ```
 
 成功回應：
@@ -58,19 +58,19 @@ kiro_default · claude-sonnet-4.6 · Max · ◔ 10% · λ ...
 
 ```bash
 INSTANCE='<instance-name>'
-tmux send-keys -t "agend:${INSTANCE}" -l '/effort'
-tmux send-keys -t "agend:${INSTANCE}" Enter
+agend tmux send-keys -t "agend:${INSTANCE}" -l '/effort'
+agend tmux send-keys -t "agend:${INSTANCE}" Enter
 sleep 1
-tmux capture-pane -t "agend:${INSTANCE}" -p | tail -10
+agend tmux capture-pane -t "agend:${INSTANCE}" -p | tail -10
 ```
 
 如需 tmux 自動導航，每個按鍵**分開送**並加短暫間隔：
 
 ```bash
-tmux send-keys -t "agend:${INSTANCE}" Down; sleep 0.2
-tmux send-keys -t "agend:${INSTANCE}" Down; sleep 0.2
-tmux send-keys -t "agend:${INSTANCE}" Down; sleep 0.2
-tmux send-keys -t "agend:${INSTANCE}" Enter
+agend tmux send-keys -t "agend:${INSTANCE}" Down; sleep 0.2
+agend tmux send-keys -t "agend:${INSTANCE}" Down; sleep 0.2
+agend tmux send-keys -t "agend:${INSTANCE}" Down; sleep 0.2
+agend tmux send-keys -t "agend:${INSTANCE}" Enter
 ```
 
 **不要假設固定次數 = 固定 level。** 游標初始在 Low，每次 Down 移一格；支援 `xhigh` 的 model 會多一個選項，所需次數不同。自動化一律用 `/effort <level>`。

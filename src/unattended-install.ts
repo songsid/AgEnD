@@ -31,7 +31,8 @@ export const UNATTENDED_INSTALL_SCRIPT = [
   // In a tmux pane, start only once AgEnD has set remain-on-exit on the window (at most ~10 s): an install that fails
   // at once — a prompt with no terminal does — would otherwise close the window before it is set, taking its exit code
   // and output with it. Outside tmux ($TMUX_PANE unset) there is nothing to wait for.
-  'if [ -n "${TMUX_PANE:-}" ] && command -v tmux >/dev/null 2>&1; then i=0; while [ "$(tmux show-options -wqv -t "$TMUX_PANE" remain-on-exit 2>/dev/null)" != on ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done; fi',
+  // ${AGEND_TMUX:-tmux}: the tmux the fleet runs (its server exports it with the bundled tmux, M-2457); else PATH's.
+  'T="${AGEND_TMUX:-tmux}"; if [ -n "${TMUX_PANE:-}" ] && command -v "$T" >/dev/null 2>&1; then i=0; while [ "$("$T" show-options -wqv -t "$TMUX_PANE" remain-on-exit 2>/dev/null)" != on ] && [ $i -lt 100 ]; do sleep 0.1; i=$((i+1)); done; fi',
   'P=""',
   'if command -v ionice >/dev/null 2>&1 && ionice -c2 -n7 true >/dev/null 2>&1; then P="ionice -c2 -n7"; fi',
   'if command -v setsid >/dev/null 2>&1; then setsid -w nice -n 10 $P sh -c "$1" </dev/null & else nice -n 10 $P sh -c "$1" </dev/null & fi',

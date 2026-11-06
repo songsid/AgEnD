@@ -1,4 +1,5 @@
 import { execFile } from "./child-process.js";
+import { tmuxBinary, tmuxConfArgs, tmuxEnvOption } from "./tmux-binary.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { clampContextPercent, parseContextPercent } from "./context-percent.js";
@@ -28,11 +29,9 @@ export function formatTimeSince(isoStr: string): string {
 export function capturePaneAsync(
   sessionName: string, socket: string | null, target: string, timeoutMs = 2000,
 ): Promise<string> {
-  const args = socket
-    ? ["-L", socket, "capture-pane", "-t", `${sessionName}:${target}`, "-p"]
-    : ["capture-pane", "-t", `${sessionName}:${target}`, "-p"];
+  const args = [...(socket ? ["-L", socket] : []), ...tmuxConfArgs(), "capture-pane", "-t", `${sessionName}:${target}`, "-p"];
   return new Promise<string>((resolve, reject) => {
-    execFile("tmux", args, { encoding: "utf-8", timeout: timeoutMs }, (err, stdout) => {
+    execFile(tmuxBinary(), args, { encoding: "utf-8", timeout: timeoutMs, ...tmuxEnvOption() }, (err, stdout) => {
       if (err) reject(err);
       else resolve(stdout);
     });

@@ -101,6 +101,7 @@ agend ls --team <name>          # Filter by team
 agend ls --backend <name>       # Filter by backend
 agend ls --display              # Add display names as last column (hidden by default)
 agend attach [name]             # Attach to instance tmux window (accepts real name, display name, row number, or substring)
+agend tmux <tmux args…>         # Run a tmux command on this fleet's own tmux server and socket (e.g. agend tmux ls)
 agend logs                      # Show fleet log (daemon.log, or fleet.log if the daemon log is not there yet)
 agend logs -n 100               # Show last 100 lines (default: 50)
 agend logs -f                   # Follow mode (tail -f)

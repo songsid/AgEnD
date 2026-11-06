@@ -9826,8 +9826,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    const { getTmuxSocketName: getSocket } = await import("./paths.js");
-    TmuxManager.setSocketName(getSocket());
+    // M-2457: the bundled tmux's socket while it is on; getTmuxSocketName() as before while off.
+    const { tmuxSocket } = await import("./tmux-binary.js");
+    TmuxManager.setSocketName(tmuxSocket());
 
     await TmuxManager.ensureSession(getTmuxSession());
     this.tmuxSessionEnsured = true;
@@ -11447,13 +11448,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             try {
               const { execFile } = await import("./child-process.js");
               const { promisify } = await import("node:util");
-              const { getTmuxSocketName } = await import("./paths.js");
+              const { tmuxArgs, tmuxBinary, tmuxEnvOption } = await import("./tmux-binary.js");
               // Honour socket isolation: without -L this queried the user's default
               // tmux server instead of the fleet's, so under a custom AGEND_HOME the
               // check was meaningless (it reported every pane dead).
-              const socket = getTmuxSocketName();
-              const args = socket ? ["-L", socket, "list-panes", "-t", windowId] : ["list-panes", "-t", windowId];
-              await promisify(execFile)("tmux", args, { timeout: 5_000 });
+              const args = tmuxArgs(["list-panes", "-t", windowId]);
+              await promisify(execFile)(tmuxBinary(), args, { timeout: 5_000, ...tmuxEnvOption() });
             } catch {
               // Pane dead — respawn
               this.logger.info({ name }, "Tmux pane dead after IPC loss — respawning instance");
