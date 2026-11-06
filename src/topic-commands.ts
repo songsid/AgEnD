@@ -580,6 +580,14 @@ const typedCommand = (forms: TypedForms, text: string, source: string | undefine
 /** A typed name that is another spelling of a command-table entry. */
 const TELEGRAM_COMMAND_ALIASES: Readonly<Record<string, string>> = { "install-cli": "login" };
 
+/** A Telegram menu: locks from the command table's Telegram column (#1177), descriptions from the locale. */
+const menuCommands = (which: TelegramMenu): Array<{ command: string; description: string }> => telegramMenu(which).map(({ name, lock, argHint }) => ({
+  command: name,
+  description: lock + t(`slash.${name}`) + (argHint ? ` ${t(argHint)}` : ""),
+}));
+/** #2870: an id Telegram can take as a chat id (a user's private chat, or a group): an integer of at most 16 digits. */
+const isTelegramChatId = (id: string): boolean => /^-?\d{1,16}$/.test(id) && Number.isSafeInteger(Number(id));
+
 export class TopicCommands {
   constructor(private ctx: ExecutionFleetContext) {}
 
@@ -1247,7 +1255,7 @@ export class TopicCommands {
   sendSteer(
     instanceName: string,
     content: string,
-    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody">,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody"> & { webGuest?: boolean },
   ): string {
     const backend = this.effectiveBackend(instanceName);
     const launchSupportsSteer = this.ctx.instanceLaunchSupportsSteer?.(instanceName);
@@ -1269,6 +1277,7 @@ export class TopicCommands {
         thread_id: msg.threadId ?? "",
         adapter_id: msg.adapterId ?? "",
         source: msg.source,
+        ...(msg.webGuest ? { web_guest: "1" } : {}),     // #2855: "[user:… via web (guest), id:…]", as /ui/send
       },
     };
     const sent = this.ctx.sendHumanControl
@@ -1282,7 +1291,7 @@ export class TopicCommands {
   sendBtw(
     instanceName: string,
     content: string,
-    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody">,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source" | "humanOrigin" | "humanOriginalBody"> & { webGuest?: boolean },
   ): string {
     const backend = this.effectiveBackend(instanceName);
     if (!BTW_SUPPORTED_BACKENDS.has(backend)) return t("btw.unsupported", backend);
@@ -1300,6 +1309,7 @@ export class TopicCommands {
         thread_id: msg.threadId ?? "",
         adapter_id: msg.adapterId ?? "",
         source: msg.source,
+        ...(msg.webGuest ? { web_guest: "1" } : {}),     // #2855: "[user:… via web (guest), id:…]", as /ui/send
       },
     };
     const sent = this.ctx.sendHumanControl
@@ -1859,6 +1869,9 @@ export class TopicCommands {
   /** Create instance config, save fleet.yaml, start daemon, connect IPC. */
   async bindAndStart(dirPath: string, topicId: number | string): Promise<string> {
     if (!this.ctx.fleetConfig) throw new Error("Fleet config not loaded");
+    // #3055 review (Prism P1): the topic of an agent being deleted is going away on the platform right now — a new
+    // agent bound to it would lose it. The deletion re-checked ownership just before; this keeps that check true.
+    if (this.ctx.isTopicDeletionInFlight?.(topicId)) throw new Error("This topic is being deleted with its agent; try again in a moment.");
 
     // Short unique suffix (#1301), same rule as create_instance. Reuse of a
     // taken name requires proof it belongs to this same topic (#1305 P1):
@@ -1966,11 +1979,13 @@ export class TopicCommands {
    *
    * Two menus, with different needs:
    *  - the fleet menu, on the fleet's forum group (`chat` and `chat_administrators` of `group_id`) — needs `group_id`;
-   *  - the ClassicBot menu, on `default` and `all_group_chats` — needs only the token. A Telegram connection that runs
-   *    ClassicBot alone has no forum group and no `group_id`, and used to get no menu at all (#1191).
-   * Telegram picks the most specific scope: the forum group's own scopes outrank `all_group_chats`, which outranks
-   * `default`, so the ClassicBot list is registered on both of those — a stale group-level list (left by another
-   * tool) would otherwise hide it in groups.
+   *  - the ClassicBot menu, only in the chats ClassicBot answers (#2870): a `chat` scope for each of this bot's
+   *    ClassicBot rooms and each Telegram id in classicBot.yaml's allowed_users, admin_users and allowed_groups
+   *    (classicMenuChats). A Telegram connection that runs ClassicBot alone needs no `group_id` for it (#1191).
+   * The broad scopes — `default`, `all_private_chats`, `all_group_chats` — are emptied explicitly: Telegram keeps a list
+   * once set, so not writing them would leave the old menu to every stranger who opens the bot. A chat granted later
+   * (General's Allow) gets its scope at once (addClassicMenuChat); the whole set is written again whenever the adapter
+   * starts. A chat taken off the lists keeps its scope until removed by hand (Telegram has no way to list them).
    */
   async registerBotCommands(channel?: ChannelConfig): Promise<void> {
     const channels = channel ? [channel]
@@ -1989,48 +2004,20 @@ export class TopicCommands {
     }
     // #1736: honour telegram_api_root the same way the adapter does.
     const apiRoot = (ch.telegram_api_root ?? "https://api.telegram.org").replace(/\/+$/, "");
-    // Locks come from the command table's Telegram column (#1177), descriptions from the locale.
-    const menu = (which: TelegramMenu) => telegramMenu(which).map(({ name, lock, argHint }) => ({
-      command: name,
-      description: lock + t(`slash.${name}`) + (argHint ? ` ${t(argHint)}` : ""),
-    }));
-    const fleetCommands = menu("fleet");
-    const classicCommands = menu("classic");
+    const fleetCommands = menuCommands("fleet");
+    const classicCommands = menuCommands("classic");
 
-    const setCommands = async (
-      commands: Array<{ command: string; description: string }>,
-      scope: Record<string, string | number>,
-    ): Promise<void> => {
-      const response = await fetch(
-        `${apiRoot}/bot${botToken}/setMyCommands`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ commands, scope }),
-          // Registration runs beside the adapter's login, never in front of it; it must also end on its own.
-          signal: AbortSignal.timeout(TELEGRAM_COMMANDS_TIMEOUT_MS),
-        },
-      );
-      type TelegramApiResponse = { ok?: boolean; result?: boolean; description?: string };
-      let result: TelegramApiResponse | null = null;
-      try {
-        result = await response.json() as TelegramApiResponse;
-      } catch { /* handled by the validation below */ }
-      // fetch() resolves on Telegram 4xx/5xx. Without checking both layers we
-      // logged a successful registration while Telegram kept the old (often
-      // four-command) menu indefinitely.
-      if (!response.ok || result?.ok !== true || result.result !== true) {
-        throw new Error(
-          `Telegram setMyCommands failed (${response.status}): ${result?.description ?? "invalid Bot API response"}`,
-        );
-      }
-    };
+    const setCommands = (commands: Array<{ command: string; description: string }>, scope: Record<string, string | number>): Promise<void> =>
+      this.setTelegramCommands(apiRoot, botToken, commands, scope);
 
     // A chat_administrators scope has higher precedence than the chat scope.
     // Keep both synchronized so a stale admin-only list from BotFather or an
     // older deployment cannot hide newly added commands from fleet admins.
     // Try every scope even if one fails: a bad fleet chat id must not prevent
     // the default Classic menu from being refreshed (or vice versa).
+    // #2870: the fleet group keeps its own scopes; the ClassicBot chats never include it.
+    const fleetGroup = ch.group_id != null ? String(ch.group_id) : "";
+    const classicChats = this.classicMenuChats(adapterId).filter(id => id !== fleetGroup);
     const registrations: Array<{
       commands: Array<{ command: string; description: string }>;
       scope: Record<string, string | number>;
@@ -2039,8 +2026,10 @@ export class TopicCommands {
         { commands: fleetCommands, scope: { type: "chat", chat_id: ch.group_id } },
         { commands: fleetCommands, scope: { type: "chat_administrators", chat_id: ch.group_id } },
       ] : []),
-      { commands: classicCommands, scope: { type: "all_group_chats" } },
-      { commands: classicCommands, scope: { type: "default" } },
+      { commands: [], scope: { type: "default" } },
+      { commands: [], scope: { type: "all_private_chats" } },
+      { commands: [], scope: { type: "all_group_chats" } },
+      ...classicChats.map(id => ({ commands: classicCommands, scope: { type: "chat", chat_id: Number(id) } })),
     ];
     const failures: Error[] = [];
     for (const registration of registrations) {
@@ -2059,9 +2048,77 @@ export class TopicCommands {
       adapterId,
       fleetCommandCount: ch.group_id ? fleetCommands.length : 0,
       classicCommandCount: classicCommands.length,
+      classicChats: classicChats.length,
       scopes: registrations.map(r => r.scope.type),
     }, ch.group_id
-      ? "Registered Telegram bot commands for fleet chat/admin and Classic group/default scopes"
-      : "Registered Telegram bot commands for Classic group/default scopes (no group_id: no fleet menu)");
+      ? "Registered Telegram bot commands: fleet chat/admin, the ClassicBot chats; the broad scopes emptied"
+      : "Registered Telegram bot commands: the ClassicBot chats; the broad scopes emptied (no group_id: no fleet menu)");
   }
+
+  /**
+   * #2870: the Telegram chats ClassicBot answers on this bot — its rooms here, and the Telegram ids in classicBot.yaml's
+   * allowed_users, admin_users and allowed_groups (a private chat's id is its user's). Those lists are shared with
+   * Discord: an id that cannot be a Telegram chat (a Discord snowflake is 17–20 digits; Telegram's fit 52 bits) is left
+   * out rather than refused by Telegram on every start.
+   */
+  classicMenuChats(adapterId: string): string[] {
+    const classic = this.ctx.classicChannels;
+    if (!classic) return [];
+    const ids = new Set<string>();
+    // The gate's own test (isClassicChannel): this bot's rooms, and an untyped legacy room the primary adapter serves.
+    for (const room of classic.getAll()) if (classic.isClassicChannel(room.channelId, adapterId)) ids.add(String(room.channelId));
+    const d = classic.getDefaults();
+    for (const list of [d.allowed_users, d.admin_users, d.allowed_groups]) for (const id of Array.isArray(list) ? list : []) ids.add(String(id));
+    return [...ids].filter(isTelegramChatId);
+  }
+
+  /**
+   * #2870: give one chat the ClassicBot menu now — a chat General just allowed (or whose user it made a ClassicBot
+   * admin) — without waiting for the next adapter start. Telegram connections only; never the fleet group.
+   */
+  async addClassicMenuChat(adapterId: string, chatId: string): Promise<void> {
+    if (!isTelegramChatId(chatId)) return;
+    const channels = this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
+    const ch = channels.find(c => (c.id ?? c.type) === adapterId);
+    if (!ch || ch.type !== "telegram" || (ch.group_id != null && String(ch.group_id) === chatId)) return;
+    const botToken = process.env[ch.bot_token_env];
+    if (!botToken) return;
+    const apiRoot = (ch.telegram_api_root ?? "https://api.telegram.org").replace(/\/+$/, "");
+    const commands = menuCommands("classic");
+    try {
+      await this.setTelegramCommands(apiRoot, botToken, commands, { type: "chat", chat_id: Number(chatId) });
+      this.ctx.logger.info({ adapterId }, "Registered the ClassicBot menu for a newly allowed chat");
+    } catch (err) {
+      this.ctx.logger.warn({ err, adapterId }, "Failed to register the ClassicBot menu for a newly allowed chat (non-fatal; the next start registers it)");
+    }
+  }
+
+  /** One Telegram setMyCommands for one scope; throws unless Telegram says it took it. */
+  private async setTelegramCommands(apiRoot: string, botToken: string, commands: Array<{ command: string; description: string }>,
+    scope: Record<string, string | number>): Promise<void> {
+    const response = await fetch(
+      `${apiRoot}/bot${botToken}/setMyCommands`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ commands, scope }),
+        // Registration runs beside the adapter's login, never in front of it; it must also end on its own.
+        signal: AbortSignal.timeout(TELEGRAM_COMMANDS_TIMEOUT_MS),
+      },
+    );
+    type TelegramApiResponse = { ok?: boolean; result?: boolean; description?: string };
+    let result: TelegramApiResponse | null = null;
+    try {
+      result = await response.json() as TelegramApiResponse;
+    } catch { /* handled by the validation below */ }
+    // fetch() resolves on Telegram 4xx/5xx. Without checking both layers we
+    // logged a successful registration while Telegram kept the old (often
+    // four-command) menu indefinitely.
+    if (!response.ok || result?.ok !== true || result.result !== true) {
+      throw new Error(
+        `Telegram setMyCommands failed (${response.status}): ${result?.description ?? "invalid Bot API response"}`,
+      );
+    }
+  }
+
 }

@@ -117,7 +117,10 @@ describe("the fleet logs it and tells General once per failure streak", () => {
 
   /** The real notifier, with General reachable or not; returns the bodies General got. */
   function realNotifier(fm: FleetManager) {
-    fm.fleetConfig = { defaults: {}, instances: { general: { working_directory: "/tmp/g", general_topic: true } } } as any;
+    // A chat fleet (its adapters are the ones under test). Without a channel it would be web-only (#2910 D2), where a
+    // notice General cannot take yet is kept in the dashboard's Notices instead — and counts as told.
+    fm.fleetConfig = { defaults: {}, channel: { type: "discord", mode: "topic", bot_token_env: "T", group_id: "1" },
+      instances: { general: { working_directory: "/tmp/g", general_topic: true } } } as any;
     const received: string[] = [];
     let reachable = true;
     vi.spyOn(fm, "notifyInstanceTopic").mockImplementation(((_name: string, text: string) => {

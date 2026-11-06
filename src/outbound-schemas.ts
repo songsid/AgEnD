@@ -34,7 +34,7 @@ export const ReplyArgs = z.object({
   reply_to: z.string().optional()
     .describe("Message ID to thread under. Use message_id from the inbound block."),
   files: z.array(z.string()).optional()
-    .describe("Absolute file paths to attach (at most 20). Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (up to 1 MiB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets."),
+    .describe("Absolute file paths to attach (at most 20). Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (it previews at once up to 8 MB, after the person confirms up to 50 MB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets. The preview has no network: inline libraries, unless the fleet allows CDN ones (web.preview_cdn: cdnjs /ajax/libs/, jsDelivr /npm/)."),
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
   stickers: z.array(NonEmptyString).max(3).optional()
     .describe("Up to 3 sticker ids from list_stickers, sent with the text (Discord: the same message; Telegram: after it). Stickers are never written in the text."),
@@ -174,7 +174,7 @@ export const PostDecisionArgs = z.object({
   ttl_days: z.number().optional()
     .describe("Days until auto-archive. Default: permanent. Set e.g. 7 for temporary decisions."),
   supersedes: z.string().optional()
-    .describe("Decision ID to supersede (marks old one as superseded)"),
+    .describe("Decision ID to supersede (marks the old one superseded). Needs update_decision; the old one must be active and visible to you."),
 });
 
 export const ListDecisionsArgs = z.object({
@@ -279,15 +279,6 @@ export const SetWebAmbientArgs = z.object({
 export const ClearWebAmbientArgs = z.object({
   which: z.enum(["loop", "click"]).optional().describe("loop (fall, rise, twinkle) or click (burst-on-click); default both. One a person set stays."),
 }).strict();
-// #1629 r4-5b: mods — your own look as a file, and proposing one for a person to review. Agents never import.
-export const ExportWebModArgs = z.object({
-  name: NonEmptyString.describe("The mod's name: a-z, 0-9 and - (1..64)"),
-  version: NonEmptyString.describe("MAJOR.MINOR.PATCH, e.g. 1.0.0"),
-  title: z.string().optional().describe("A title for people (1..60 characters; default: the name)"),
-});
-export const ProposeWebModArgs = z.object({
-  file: NonEmptyString.describe("A .agendmod.json file in your working directory (at most 8 MiB, no custom CSS)"),
-});
 export const RemoveWebWidgetArgs = z.object({
   slot: z.enum(["chat_header", "details"]).optional().describe("The slot to empty (default both). A widget a person placed stays."),
 });
@@ -337,22 +328,8 @@ export const OfficePackRestoreArgs = z.object({
 export const OfficePackListArgs = z.object({}).strict();
 export const OfficeSetStyleArgs = z.object({
   office: z.string().min(1).max(40).describe("A stored office's id"),
-  pack: z.string().min(1).max(40).describe("A pack the fleet keeps, or a built-in style (pixel, studio, cozy)"),
+  pack: z.string().min(1).max(40).describe("A pack the fleet keeps, or a built-in style (pixel, studio, cozy, guild, school)"),
 }).strict();
-
-// #1629 CW1 effects: own caller only. Internal upload bytes are never public MCP args.
-export const UploadWebEffectArgs = z.object({
-  dir: z.string().min(1).max(4096).describe("A CW1 directory in your working directory: effect.json, worker.js, optional poster/cursor and at most sixteen raster assets. No HTML or CSS; normalized size <=1 MiB."),
-}).strict();
-export const ListWebEffectsArgs = z.object({}).strict();
-export const PreviewWebEffectArgs = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/) }).strict();
-export const ProfileWebEffectArgs = PreviewWebEffectArgs;
-export const ApplyWebEffectArgs = z.object({
-  id: z.string().regex(/^[0-9a-f]{32}$/),
-  params: z.record(z.string().max(32), z.union([z.string().max(128), z.number().finite(), z.boolean()])).optional().describe("Typed overrides declared by the effect; unknown keys or out-of-range values refuse the whole apply."),
-}).strict();
-export const RemoveWebEffectArgs = z.object({ id: z.string().regex(/^[0-9a-f]{32}$/).optional() }).strict();
-export const DeleteWebEffectArgs = PreviewWebEffectArgs;
 
 export const SetDescriptionArgs = z.object({
   description: NonEmptyString.describe(
@@ -390,6 +367,9 @@ export const StartInstanceArgs = z.object({
 
 export const RestartInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to restart"),
+  // M-2266: a one-shot for the next launch only; codex instances only.
+  resume_session_id: z.string().regex(/^[0-9a-fA-F-]{36}$/).optional()
+    .describe("Codex only: resume this conversation (its session id) on this restart only. It must be a rollout in the instance's own sessions, for its working directory, started by the CLI; otherwise nothing is restarted and the reason is returned."),
 });
 
 export const PauseInstanceArgs = z.object({
@@ -432,7 +412,7 @@ export const GetUsageArgs = z.object({
 
 // #2056: Settings → Web appearance for the user — General, a coordinator or a full profile; the page's own checks.
 const Person = NonEmptyString.optional()
-  .describe("Whose own settings (custom CSS, effect slots): a `person` from get_web_settings' people — the one whose platform id is the user's. Default: the host operator. Host settings are everyone's on this host.");
+  .describe("Whose own settings (custom CSS): a `person` from get_web_settings' people — the one whose platform id is the user's. Default: the host operator. Host settings are everyone's on this host.");
 const Places = z.array(z.enum(["name", "bar", "ring"])).max(3);
 export const GetWebSettingsArgs = z.object({ person: Person }).strict();
 export const SetWebSettingsArgs = z.object({
@@ -441,7 +421,7 @@ export const SetWebSettingsArgs = z.object({
     z.object({
       what: z.literal("host"),
       set: z.object({
-        themes_shown: z.boolean().nullable().optional().describe("Show agents' themes, effects and widgets (null: the default, shown)"),
+        themes_shown: z.boolean().nullable().optional().describe("Show agents' themes and widgets (null: the default, shown)"),
         card_size: z.enum(["s", "m", "l"]).nullable().optional().describe("Identity cards' size (null: the default, m)"),
         card_sizes: z.record(z.string(), z.enum(["s", "m", "l"])).nullable().optional().describe("Cards set apart from it: { <instance>: s|m|l } (null: none)"),
         page_colours: z.record(z.string(), z.enum(["page", "chat"])).nullable().optional().describe("Where agents' theme colours go, set apart from each agent's own choice: { <instance>: page (the whole page) | chat (only its chat) } (null: every agent's own)"),
@@ -469,23 +449,6 @@ export const SetWebSettingsArgs = z.object({
       text: z.string().optional().describe("save: the stylesheet (same rules as the page: no remote URLs, assets as url(\"asset:<id>\"), at most 64 KiB). It goes on trial: it waits until they open the dashboard (up to 10 minutes), then goes back by itself 20 s after it is on their screen unless kept — keep it (keep, with the trial id save returned) once they say they like it; kept after it went back, it is put back in force (as use)."),
       version: z.string().optional().describe("use: an earlier saved version's sha, from get_web_settings' custom_css.versions; it applies at once"),
       trial: z.string().optional().describe("keep: the trial's id, as save returned it (or get_web_settings' custom_css.trial); a different trial on now is not kept"),
-    }).strict(),
-    z.object({
-      what: z.literal("mod"), action: z.enum(["review", "install", "cancel", "dismiss", "uninstall"]),
-      instance: z.string().optional().describe("review / dismiss: the agent whose proposal it is"),
-      stage: z.string().optional().describe("install / cancel: from review"), plan_hash: z.string().optional().describe("install: from review"),
-      include: z.record(z.string(), z.unknown()).optional().describe("install: the parts to apply, as the plan names them (custom CSS only when you mean it)"),
-      target: z.string().optional().describe("install: the agent the look applies to"),
-      id: z.string().optional().describe("uninstall: an installed mod's id"),
-    }).strict(),
-    z.object({
-      what: z.literal("effect"), action: z.enum(["apply", "remove"]), instance: NonEmptyString,
-      id: z.string().optional().describe("apply: the effect's id; remove: one id (omit for all)"),
-      params: z.record(z.string(), z.unknown()).optional().describe("apply: typed params the effect declares"),
-    }).strict(),
-    z.object({
-      what: z.literal("effect_slot"), slot: z.enum(["sidebar", "header", "page", "box", "cursor"]),
-      id: z.string().nullable().describe("An effect id from the library for that slot, or null to clear it"),
     }).strict(),
     z.object({
       what: z.literal("ambient"), instance: NonEmptyString,
@@ -559,7 +522,10 @@ export const UpdateFleetDefaultsArgs = z.object({
 export const DeleteInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to delete (from list_instances)"),
   delete_topic: z.boolean().optional()
-    .describe("Whether to also delete the Telegram topic. Defaults to false."),
+    .describe("Also delete the agent's own chat topic, through its own bot. Defaults to true; false keeps the topic. "
+      + "On Discord the topic is a text channel: deleting it deletes its message history. The General topic and a "
+      + "topic another agent uses are never deleted. The result's topic_deleted is true only when the platform "
+      + "confirmed it; otherwise topic_reason says why the topic stayed (the agent is deleted either way)."),
 });
 
 export const ReplaceInstanceArgs = z.object({

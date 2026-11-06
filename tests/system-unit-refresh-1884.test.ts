@@ -121,3 +121,86 @@ describe("#1884: the refresh brings a legacy system unit's ExecStart to this ins
     expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "unreadable" });
   });
 });
+
+describe("#1884 follow-ups (Fable on #1886): what counts as this package's fleet", () => {
+  it("a Node running a script outside the package, or a non-Node interpreter on the package's entry, is foreign", () => {
+    const h = host();
+    const outside = join(h.root, "elsewhere/cli.js");
+    mkdirSync(join(outside, ".."), { recursive: true }); writeFileSync(outside, "");
+    for (const line of [`ExecStart=/usr/bin/node ${outside} fleet start`, `ExecStart=/usr/bin/python3 ${join(h.pkg, "dist/cli.js")} fleet start`]) {
+      const path = h.unit(line);
+      const before = readFileSync(path, "utf8");
+      expect(refreshSystemUnitExecStart(path, h.vars, h.pkg), line).toEqual({ kind: "foreign", reason: "its ExecStart does not start this package's fleet" });
+      expect(readFileSync(path, "utf8")).toBe(before);
+    }
+  });
+  it("a sibling whose path only starts with the package directory's name is not inside it", () => {
+    const h = host();
+    const sibling = `${h.pkg}-fork/launcher/agend`;            // …/@songsid/agend-fork: a prefix match without the "/"
+    mkdirSync(join(sibling, ".."), { recursive: true }); writeFileSync(sibling, "");
+    for (const line of [`ExecStart=${sibling} fleet start`, `ExecStart=/usr/bin/node ${h.pkg}-fork/launcher/agend fleet start`]) {
+      const path = h.unit(line);
+      const before = readFileSync(path, "utf8");
+      expect(refreshSystemUnitExecStart(path, h.vars, h.pkg).kind, line).toBe("foreign");
+      expect(readFileSync(path, "utf8")).toBe(before);
+    }
+  });
+  it("only [Service] counts: an ExecStart in [Unit] is neither rewritten nor counted", () => {
+    const h = host();
+    const path = h.unit(`ExecStart=${h.bin} fleet start`);
+    writeFileSync(path, readFileSync(path, "utf8").replace("Description=AgEnD (operator's own)\n", `Description=AgEnD (operator's own)\nExecStart=${h.bin} fleet start\n`));
+    const before = readFileSync(path, "utf8");
+    expect(refreshSystemUnitExecStart(path, h.vars, h.pkg)).toEqual({ kind: "updated", execStart: h.selected, oomPolicyAdded: true });
+    const after = readFileSync(path, "utf8");
+    expect(after.split(/^\[Service\]/m)[0]).toBe(before.split(/^\[Service\]/m)[0]);    // [Unit] byte for byte
+    expect(after.split(/^\[Service\]/m)[1]).toContain(`ExecStart=${h.selected}`);
+  });
+});
+
+describe("#1884 follow-up: the `agend install --no-activate` wiring in cli.ts (the real statements, run with stubs)", () => {
+  /** The block between the #1884 and #2331 comments in cli.ts, run as it is with stubbed modules and output. */
+  async function wiring(opts: { activate?: boolean; platform: string; systemUnit: string | null; refresh: (...a: unknown[]) => unknown }) {
+    const { readFileSync: read } = await import("node:fs");
+    const { createContext, runInContext } = await import("node:vm");
+    const ts = (await import("typescript")).default;
+    const src = read(new URL("../src/cli.ts", import.meta.url), "utf8");
+    const start = src.indexOf("    // #1884: a legacy system unit is the service a root fleet runs under");
+    const end = src.indexOf("    // #2331: a host whose fleet runs under the system unit", start);
+    expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
+    const calls: unknown[][] = [];
+    const out: string[] = [];
+    const context = createContext({
+      opts: { activate: opts.activate }, detectPlatform: () => opts.platform, getSystemServicePath: () => opts.systemUnit,
+      serviceVars: { label: "com.agend.fleet" }, execPath: "/p/lib/node_modules/@songsid/agend/dist/cli.js",
+      dirname: (p: string) => p.replace(/\/[^/]*$/, ""),
+      console: { log: (s: string) => out.push(s), error: (s: string) => out.push(`ERR ${s}`) }, process: { exitCode: 0 },
+      load: async () => ({ refreshSystemUnitExecStart: (...a: unknown[]) => { calls.push(a); return opts.refresh(...a); } }),
+    });
+    const body = ts.transpileModule(`(async () => {\n${src.slice(start, end)}\n})()`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText.replaceAll("import(", "load(");
+    await runInContext(body, context);
+    return { calls, out, exitCode: (context as { process: { exitCode: number } }).process.exitCode };
+  }
+  it("a refresh on Linux with a system unit rewrites it against this package (two levels above dist/cli.js) and says what changed", async () => {
+    const r = await wiring({ activate: false, platform: "linux", systemUnit: "/etc/systemd/system/agend.service", refresh: () => ({ kind: "updated", execStart: "X", oomPolicyAdded: true }) });
+    expect(r.calls).toEqual([["/etc/systemd/system/agend.service", { label: "com.agend.fleet" }, "/p/lib/node_modules/@songsid/agend"]]);
+    expect(r.out).toEqual(["  ✓ /etc/systemd/system/agend.service: ExecStart=X", "  ✓ /etc/systemd/system/agend.service: OOMPolicy=continue (one OOM-killed process no longer stops the fleet)"]);
+  });
+  it.each([
+    [{ activate: true, platform: "linux", systemUnit: "/etc/systemd/system/agend.service" }, "an activating install"],
+    [{ activate: false, platform: "macos", systemUnit: "/etc/systemd/system/agend.service" }, "macOS"],
+    [{ activate: false, platform: "linux", systemUnit: null }, "no system unit"],
+  ])("%j (%s): the system unit is not touched", async (o, _what) => {
+    const r = await wiring({ ...o, refresh: () => { throw new Error("must not run"); } });
+    expect(r.calls).toEqual([]); expect(r.out).toEqual([]);
+  });
+  it("foreign and unreadable say so and leave it; a failed write is an error with exit code 1", async () => {
+    const unit = "/etc/systemd/system/agend.service";
+    expect((await wiring({ activate: false, platform: "linux", systemUnit: unit, refresh: () => ({ kind: "foreign", reason: "2 ExecStart lines" }) })).out)
+      .toEqual([`  ℹ ${unit} left as it is: 2 ExecStart lines.`]);
+    expect((await wiring({ activate: false, platform: "linux", systemUnit: unit, refresh: () => ({ kind: "unreadable" }) })).out)
+      .toEqual([`  ⚠ ${unit} could not be read; left as it is.`]);
+    const failed = await wiring({ activate: false, platform: "linux", systemUnit: unit, refresh: () => { throw new Error("EACCES"); } });
+    expect(failed.exitCode).toBe(1);
+    expect(failed.out[0]).toMatch(/^ERR {3}✗ \/etc\/systemd\/system\/agend\.service could not be updated \(EACCES\)/);
+  });
+});

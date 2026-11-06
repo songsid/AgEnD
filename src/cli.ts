@@ -2,7 +2,7 @@
 // #2481: first — counts a `fleet start` attempt before anything below can fail (start-failure.ts).
 import "./start-attempt.js";
 import "./node-warnings.js";
-import { installFleetProcessHandlers } from "./fleet-process-handlers.js";
+import { installFleetProcessHandlers, startFleetOrExit } from "./fleet-process-handlers.js";
 import { applyNetworkReliabilityDefaults } from "./network-family.js";
 
 // Preserve Node's dual-stack Happy Eyeballs behavior, but avoid its 250ms
@@ -347,7 +347,7 @@ fleet
       if (process.env.AGEND_HOME) {
         console.log(`  Using AGEND_HOME: ${process.env.AGEND_HOME}`);
       }
-      await fm.startAll(FLEET_CONFIG_PATH);
+      await startFleetOrExit(fm, FLEET_CONFIG_PATH, process, console);
     }
     console.log("Fleet started");
   });
@@ -1168,16 +1168,14 @@ topic
   .argument("<topic-id>", "Topic ID")
   .action(async (instance: string, topicId: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    config.instances[instance].topic_id = topicId;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], value: topicId }]);
     console.log(`Bound ${instance} \u2192 topic #${topicId}`);
   });
 
@@ -1187,16 +1185,14 @@ topic
   .argument("<instance>", "Instance name")
   .action(async (instance: string) => {
     const { loadFleetConfig } = await import("./config.js");
-    const yaml = await import("js-yaml");
+    const { applyFleetYamlPatches } = await import("./fleet-yaml-patch.js");
 
     const config = loadFleetConfig(FLEET_CONFIG_PATH);
     if (!config.instances[instance]) {
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    delete config.instances[instance].topic_id;
-
-    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
+    applyFleetYamlPatches(FLEET_CONFIG_PATH, [{ path: ["instances", instance, "topic_id"], remove: true }]);
     console.log(`Unbound ${instance} from topic`);
   });
 
@@ -2654,6 +2650,7 @@ program
   .option("--connections", "Only print how many chat connections fleet.yaml has, as CONNECTIONS=<n> (for scripts; CONNECTIONS=unknown and exit 1 when it cannot be read)")
   .action(async (opts: { connections?: boolean }) => {
     const { validateFleetConfig, validateClassicBotConfig, configuredConnectionCount } = await import("./config-validator.js");
+    const { readClassicRoomNames } = await import("./classic-channel-manager.js");
     const yaml = (await import("js-yaml")).default;
     if (opts.connections) {
       // #2233: the Windows installer's question — did the setup page make a web-only fleet? Parsed, never grepped.
@@ -2681,7 +2678,8 @@ program
       if (r.errors.length === 0 && r.warnings.length === 0) console.log(`  ${green("✓ OK")}`);
     };
 
-    check("Fleet", FLEET_CONFIG_PATH, validateFleetConfig);
+    // #2851: guest grants may name ClassicBot rooms; without these names the validator warns that they give nothing.
+    check("Fleet", FLEET_CONFIG_PATH, (c) => validateFleetConfig(c, { rooms: readClassicRoomNames(DATA_DIR) }));
     check("ClassicBot", join(DATA_DIR, "classicBot.yaml"), validateClassicBotConfig);
 
     console.log();

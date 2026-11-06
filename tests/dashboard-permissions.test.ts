@@ -89,7 +89,7 @@ describe("enforced at the fleet's sinks, as configured now", () => {
     const { FleetManager } = await import("../src/fleet-manager.js");
     const warn = vi.fn();
     const fm = { fleetConfig: { defaults: {}, instances: { dev: { working_directory: "/tmp/d", dashboard: { task_board: false } } } },
-      logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() }, canvasWorkerEnabled: () => false };
+      logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() } };
     const check = (FleetManager.prototype as any).checkToolPermission.bind(fm);
     expect(check("ipc-outbound", "dev", "task")).toEqual({ allowed: false, message: dashboardRefusal({ task_board: false }, "task") });
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ sink: "ipc-outbound", tool: "task", dashboard: true }), expect.stringContaining("refused"));

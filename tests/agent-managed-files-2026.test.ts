@@ -4,8 +4,7 @@ import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, sym
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readAgentFile, writeAgentFile } from "../src/agent-file-read.js";
-import { readAgentEffect } from "../src/web-effect-upload.js";
-import { writeModFile, writePreview } from "../src/web-asset-parts.js";
+import { writePreview } from "../src/web-asset-parts.js";
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 function fixture(name = "general", part = name) {
@@ -31,11 +30,9 @@ describe("managed in-state appearance files", () => {
       const file = f.save(join(f.workspace, part));
       for (const path of [file, part]) expect(await f.read(path)).toMatchObject({ ok: true, bytes: Buffer.from("asset") });
     }
-    expect(await readAgentEffect(f.effect(join(f.workspace, "web-effects/demo")), f.opts)).toMatchObject({ ok: true });
-    expect(await readAgentEffect("web-effects/demo", f.opts)).toMatchObject({ ok: true });
+    
     f.save(join(f.workspace, "root.png")); f.effect(join(f.workspace, "effect"));
     expect(await f.read("root.png")).toMatchObject({ ok: false });
-    expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: false });
   });
   it("a configured project inside its own workspace has ordinary access without granting sibling files", async () => {
     const f = fixture("worker", "workspaces/worker/project");
@@ -51,7 +48,6 @@ describe("managed in-state appearance files", () => {
     f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ defaults: { working_directory: f.workspace }, instances: { general: {} } }));
     for (const extra of [{}, { configuredWorkspace: f.workspace }]) {
       expect(await f.read("web-assets/banner.png", extra)).toMatchObject({ ok: true });
-      expect(await readAgentEffect("web-effects/demo", { ...f.opts, ...extra })).toMatchObject({ ok: true });
       expect(await writeAgentFile(".agend/appearance", "dark.svg", Buffer.from("x"), { ...f.opts, ...extra })).toMatchObject({ ok: true });
     }
   });
@@ -92,11 +88,9 @@ describe("managed in-state appearance files", () => {
       }
     }
   });
-  it("keeps classic ordinary files, generated preview and mod export/readback", async () => {
+  it("keeps classic ordinary files and generated preview readback", async () => {
     for (const part of ["general", "workspaces/general"]) {
       const f = fixture("general", part);
-      const mod = await writeModFile([{ name: "demo-1.0.0.agendmod.json", data: Buffer.from("mod") }], f.opts);
-      expect(mod).toHaveProperty("path"); if ("path" in mod) expect(await f.read(mod.path)).toMatchObject({ ok: true });
       const preview = await writePreview([{ name: "dark.svg", data: Buffer.from("<svg/>") }], f.opts);
       expect(preview).toHaveProperty("files"); if ("files" in preview) expect(readFileSync(preview.files[0]!.path, "utf8")).toBe("<svg/>");
       if (part.startsWith("workspaces/")) { f.save(join(f.workspace, "ordinary.png")); expect(await f.read("ordinary.png")).toMatchObject({ ok: true }); }
@@ -117,7 +111,6 @@ describe("managed in-state appearance files", () => {
     symlinkSync(target, link, "dir");
     const file = part === "general" ? "web-assets/banner.png" : part + "/banner.png";
     expect(await f.read(file)).toMatchObject({ ok: false });
-    expect(await readAgentEffect(join(link, "effect"), f.opts)).toMatchObject({ ok: false });
     expect(await writeAgentFile(".agend/appearance", "dark.svg", Buffer.from("x"), f.opts)).toMatchObject(part === ".agend" || part === "general" ? { ok: false } : { ok: true });
     expect(existsSync(join(target, "appearance/dark.svg"))).toBe(false);
   });
@@ -125,7 +118,6 @@ describe("managed in-state appearance files", () => {
     const f = fixture(), target = join(f.root, "outside"); f.save(join(target, "web-assets/banner.png"));
     rmSync(f.workspace, { recursive: true }); symlinkSync(target, f.workspace, "dir");
     expect(await f.read("web-assets/banner.png")).toMatchObject({ ok: false });
-    expect(await readAgentEffect(f.effect(join(target, "web-effects/demo")), f.opts)).toMatchObject({ ok: false });
     expect(await writeAgentFile(".agend/appearance", "dark.svg", Buffer.from("x"), f.opts)).toMatchObject({ ok: false });
     expect(existsSync(join(target, ".agend"))).toBe(false);
   });
@@ -141,7 +133,6 @@ describe("managed in-state appearance files", () => {
     symlinkSync(secret, join(f.workspace, "web-assets/link.png")); linkSync(secret, join(f.workspace, "web-assets/hard.png"));
     for (const name of ["link.png", "hard.png"]) expect(await f.read("web-assets/" + name)).toMatchObject({ ok: false });
     const dir = f.effect(join(f.workspace, "web-effects/demo")); rmSync(join(dir, "worker.js")); symlinkSync(secret, join(dir, "worker.js"));
-    expect(await readAgentEffect(dir, f.opts)).toMatchObject({ ok: false });
   });
   it.each(["same", "ancestor", "descendant", "alias"])("refuses %s shared/overlapping configured directories", async mode => {
     const f = fixture(); f.save(join(f.workspace, "web-assets/banner.png"));
@@ -210,7 +201,6 @@ describe("managed in-state appearance files", () => {
     const f = fixture(name, "workspaces/" + name); f.save(join(f.workspace, "web-assets/banner.png"));
     f.effect(join(f.workspace, "web-effects/demo"));
     expect(await f.read("web-assets/banner.png")).toMatchObject({ ok: false });
-    expect(await readAgentEffect("web-effects/demo", f.opts)).toMatchObject({ ok: false });
   });
   it("external projects retain ordinary reads despite malformed fleet config", async () => {
     const f = fixture(), project = join(f.root, "project"); f.save(join(project, "ordinary.png")); f.save(join(f.stateDir, "fleet.yaml"), "{broken");

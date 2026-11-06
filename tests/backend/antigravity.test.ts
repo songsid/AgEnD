@@ -106,6 +106,16 @@ describe("AntigravityBackend MCP and workspace isolation", () => {
     expect(backend.buildCommand(cfg)).toMatch(/^'.*agy-mcp-env\.sh' .*agy --dangerously-skip-permissions/);
   });
 
+  it.each([
+    [false, false],
+    [true, true],
+    [undefined, true],
+  ] as const)("buildCommand skipPermissions %j includes --dangerously-skip-permissions: %j", (skipPermissions, present) => {
+    const cmd = backend.buildCommand(config({ skipPermissions }));
+    if (present) expect(cmd).toContain("--dangerously-skip-permissions");
+    else expect(cmd).not.toContain("--dangerously-skip-permissions");
+  });
+
   it("refuses to overwrite corrupt shared MCP config", () => {
     const configDir = join(home, ".gemini", "config");
     mkdirSync(configDir, { recursive: true });

@@ -1,0 +1,25 @@
+# kiro-cli-chat string windows around the agent-config upgrade text (printable bytes; other bytes shown as '.').
+# Read statically from the release tarballs; no kiro binary was run.
+
+## 2.36.0 kiro-cli-chat sha256 644f2354f56795dc1e730720ac6a8458201a9568fd5976cea37366b9ee75d761
+### Your agent configs are still in the V2 format — 1 hit(s)
+warningFailed to auto-upgrade agent configevent crates/chat-cli/src/launch/auto_migrate.rs:157event crates/chat-cli/src/launch/auto_migrate.rs:126You're on Kiro CLI V3 ... thanks for giving it a try..Your agent configs are still in the V2 format. Upgrade them to run on V3? They'll keep working in V2..Enable auto-upgradeNot now ... I'll do it latertoolIdrequested agent was not found; the engine's notification did not name itKIRO_CLASSIC_NUDGE
+
+### Agent upgrade prompt failed — 1 hit(s)
+-cli/src/cli/update/legacy.rs......removing-..  Current: .....  Current: .....)Config conflict: Both .amazonq and .kiro .  configs exist, using .kiro at: ..(Failed to save auto-upgrade preference: ..'Agent upgrade prompt failed, skipping: ..(workflow activity did not settle within ..; .. (adjust with ..)..ignoring .#: expected `treatment` or `control`.&Build persistent knowledge bases with .B! Add docs, code, or any files f
+
+count 'Enable auto-upgrade': 1
+count 'Not now': 1
+count 'Your agent configs are still in the V2 format': 1
+
+## 2.37.0 kiro-cli-chat sha256 ca82b4b38aa880a47bedb24e6a759dd1951de6dabf8063687b73b25c22ef6da1
+### in the V2 format and may not work — 1 hit(s)
+ble: .. ... .....remove: ..crates/chat-cli/src/cli/update/legacy.rs......removing-..  Current: .....  Current: .....)Config conflict: Both .amazonq and .kiro .  configs exist, using .kiro at: .... .A in the V2 format and may not work as expected on V3. To upgrade .9, run kiro-cli settings chat.enableAutoAgentUpgrade true..(workflow activity did not settle within ..; .. (adjust with ..)..ignoring .#: expected `treatment` or `contr
+
+### agent config isit — 1 hit(s)
+t-cli/src/launch/auto_migrate.rs:45event crates/chat-cli/src/launch/auto_migrate.rs:55Auto-upgraded agent config to universal formatAgent config auto-upgrade warningFailed to auto-upgrade agent configagent config isitagent configs aretoolIdstopping (exit 4)requested agent was not found; the engine's notification did not name itevent crates/chat-cli/src/launch/classic_nudge.rs:403chat_cli::launch::classic_nudgecrat
+
+count 'Enable auto-upgrade': 0
+count 'Not now': 0
+count 'Your agent configs are still in the V2 format': 0
+

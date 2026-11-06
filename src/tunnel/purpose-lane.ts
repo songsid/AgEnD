@@ -15,7 +15,9 @@ const unproven = (): TunnelStopResult => ({ confirmed: false, reason: "stop fail
 export class TunnelPurposeLane {
   private owner: { purpose: string; id: string; reservation: TunnelReservation } | null = null;
   constructor(private readonly manager: Pick<ManagedTunnel, "start" | "stop">) {}
-  reserve(purpose: "login" | "dashboard", id: string): TunnelReservation | null {
+  /** #2906: who holds the lane now (the fixed address's Test connection says which), or null. */
+  holder(): string | null { return this.owner?.purpose ?? null; }
+  reserve(purpose: "login" | "dashboard" | "named-test", id: string): TunnelReservation | null {
     if (this.owner) return this.owner.purpose === purpose && this.owner.id === id ? this.owner.reservation : null;
     let stopped = true;
     let starting: Promise<ManagedStartResult> | undefined;

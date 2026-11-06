@@ -48,8 +48,10 @@ import "./chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
 import { OfficeSharesCard } from "./office-share-dialog.js";
+import { PageSharesCard } from "./page-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
+import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
@@ -1199,13 +1201,14 @@ function WebSection({ ctx, staged, part = "all" }) {
     log: web.log_tab === true,                                                  // #1218: off by default
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
     levels: web.office_levels !== false,                                        // #2661: on by default
+    cdn: web.preview_cdn === true,                                              // #2911 (7): off by default
     pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282, auto_open: (web.public_link && web.public_link.auto_open) ?? false },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
-  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, pub: original.pub.allow_public,
+  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, pub: original.pub.allow_public,
     ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
     termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
@@ -1219,7 +1222,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     return {
       notify: String(pick(pending, "notify_login", original.notify)),
       echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
-      levels: pick(pending, "office_levels", original.levels),
+      levels: pick(pending, "office_levels", original.levels), cdn: pick(pending, "preview_cdn", original.cdn),
       pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
       hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
       abs: text(pick(session, "absolute_hours", original.session.absolute_hours)), idle: text(pick(session, "idle_hours", original.session.idle_hours)),
@@ -1272,6 +1275,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(f.log !== original.log ? { log_tab: f.log } : {}),
       ...(f.usagePub !== original.usagePub ? { usage_report_on_public_link: f.usagePub } : {}),
       ...(f.levels !== original.levels ? { office_levels: f.levels } : {}),
+      ...(f.cdn !== original.cdn ? { preview_cdn: f.cdn } : {}),
       ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
       ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
@@ -1282,6 +1286,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(body.log_tab !== undefined ? ["web.log_tab"] : []),
       ...(body.usage_report_on_public_link !== undefined ? ["web.usage_report_on_public_link"] : []),
       ...(body.office_levels !== undefined ? ["web.office_levels"] : []),
+      ...(body.preview_cdn !== undefined ? ["web.preview_cdn"] : []),
       ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
       ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
@@ -1353,6 +1358,7 @@ function WebSection({ ctx, staged, part = "all" }) {
         <div class=${fc("field", "originPort")}><label for="publicWebOriginPort">${tn("namedOriginPort")}</label><input id="publicWebOriginPort" type="number" min="1024" max="65535" value=${f.originPort} class=${errors.originPort ? "invalid" : ""} onInput=${(e) => set("originPort")(e.target.value)} /><${Feedback} error=${errors.originPort} /></div>
       </div>
       <p class="note">${tn("namedTunnelHint")} <a href="https://github.com/songsid/AgEnD/blob/main/docs/named-tunnel.md" target="_blank" rel="noopener noreferrer">${tn("namedTunnelSetup")}</a></p>
+      ${String(f.hostname || "").trim() ? html`<${NamedLinkTest} hostname=${f.hostname} port=${f.originPort} protocol=${f.protocol} />` : null}
       <div class="grid2">
         <div class=${fc("field", "ttl")}><label for="publicWebTtl">${tn(named ? "publicTtlNamed" : "publicTtl")}</label><input id="publicWebTtl" type="number" min=${named ? "0" : "1"} max=${named ? "10080" : "480"} step="1" class=${errors.ttl ? "invalid" : ""} value=${f.ttl} onInput=${(e) => set("ttl")(e.target.value)} /><${Feedback} error=${errors.ttl} /></div>
         <div class=${fc("field", "protocol")}><label for="publicWebProtocol">${tn("publicProtocol")}</label><${Select} id="publicWebProtocol" value=${f.protocol} onChange=${set("protocol")} options=${["http2", "quic", "auto"]} /></div>
@@ -1363,6 +1369,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     </section>`) : null}
     ${has("access") && !overPublicLink ? html`<${PublicTunnelToken} />` : null}
     ${has("access") ? html`<${OfficeSharesCard} />` : null}
+    ${has("access") ? html`<${PageSharesCard} />` : null}
     ${has("access") && !overPublicLink ? html`<${GuestsCard} ctx=${ctx} staged=${staged} /><${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
     ${has("chat") ? lock(html`<section class="card"><h3>${tn("webChat")}</h3>
       <label class=${fc("check", "echo")}><input id="webEchoToChannel" type="checkbox" checked=${f.echo} onChange=${(e) => set("echo")(e.target.checked)} /><span>${tn("webEcho")}</span><${Impact} schema=${schema} field="web.echo_to_channel" /></label>
@@ -1375,6 +1382,8 @@ function WebSection({ ctx, staged, part = "all" }) {
       <p class="note">${tn("webUsagePublicHint")}</p>
       <label class=${fc("check", "levels")}><input id="webOfficeLevels" type="checkbox" checked=${f.levels} onChange=${(e) => set("levels")(e.target.checked)} /><span>${tn("webOfficeLevels")}</span><${Impact} schema=${schema} field="web.office_levels" /></label>
       <p class="note">${tn("webOfficeLevelsHint")}</p>
+      <label class=${fc("check", "cdn")}><input id="webPreviewCdn" type="checkbox" checked=${f.cdn} onChange=${(e) => set("cdn")(e.target.checked)} /><span>${tn("webPreviewCdn")}</span><${Impact} schema=${schema} field="web.preview_cdn" /></label>
+      <p class="note">${tn("webPreviewCdnHint")}</p>
     </section>`) : null}
     ${has("readonly") ? html`<section class="card s-web-readonly"><h3>${tn("webReadOnlyTitle")}</h3>
       <p class="note">${tn("webReadOnlyLead")}</p>
@@ -1548,11 +1557,11 @@ function PublicTunnelToken() {
     const result = await api(base);
     if (lease.current() && result.ok) setPresent(result.body?.[0]?.token_present === true);
   };
-  useEffect(() => { refresh().catch(() => {}); }, []);
+  useEffect(() => { refresh().catch(() => {}); return () => setTypedTunnelToken(""); }, []);
   const go = async (clear) => {
     if (inFlight.current || !clear && !secret) return;
     const value = secret;
-    setSecret(""); inFlight.current = true; setBusy(true); setMessage("");
+    setSecret(""); setTypedTunnelToken(""); inFlight.current = true; setBusy(true); setMessage("");
     const key = newKey("tunnel-token");
     try {
       const prepared = await api(`${base}/verify`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify(clear ? { clear: true } : { secret: value }) });
@@ -1576,7 +1585,7 @@ function PublicTunnelToken() {
   return html`<section class="card"><h3>${tn("namedToken")}</h3>
     <p class="note">${tn("namedTokenHint")}</p>
     <span class="tag">${present ? tn("keyConfigured") : tn("keyNotConfigured")}</span>
-    <input id="publicTunnelToken" type="password" autocomplete="new-password" aria-label=${tn("namedToken")} value=${secret} onInput=${e => setSecret(e.target.value)} />
+    <input id="publicTunnelToken" type="password" autocomplete="new-password" aria-label=${tn("namedToken")} value=${secret} onInput=${e => { setSecret(e.target.value); setTypedTunnelToken(e.target.value); }} />
     <button type="button" class="btn btn-sm" disabled=${busy || !secret} onClick=${() => go(false)}>${tn("namedTokenSet")}</button>
     <button type="button" class="btn btn-sm" disabled=${busy || !present} onClick=${() => go(true)}>${tn("namedTokenClear")}</button>
     ${message ? html`<p class="note" role="status">${message}</p>` : null}

@@ -11,7 +11,7 @@ import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./t
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "office_levels", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "usage_report_on_public_link", "office_levels", "preview_cdn", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
@@ -22,6 +22,8 @@ export type WebSettingsBody = {
   usageOnPublicLink?: boolean;
   /** #2661: Office levels (web.office_levels). */
   officeLevels?: boolean;
+  /** #2911 (7): CDN libraries in HTML previews (web.preview_cdn). */
+  previewCdn?: boolean;
   publicLink?: NonNullable<WebConfig["public_link"]>;
   session: Record<string, number | null> | null;
   terminal: Record<string, boolean | number | null> | null;
@@ -40,6 +42,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (patch.log_tab !== undefined && typeof patch.log_tab !== "boolean") return { error: "log_tab must be a boolean" };
   if (patch.usage_report_on_public_link !== undefined && typeof patch.usage_report_on_public_link !== "boolean") return { error: "usage_report_on_public_link must be a boolean" };
   if (patch.office_levels !== undefined && typeof patch.office_levels !== "boolean") return { error: "office_levels must be a boolean" };
+  if (patch.preview_cdn !== undefined && typeof patch.preview_cdn !== "boolean") return { error: "preview_cdn must be a boolean" };
   // Its shape only: whether the merged result fits its mode (a quick tunnel's 1..480, auto_open only with a hostname) is
   // the validator's, run on the whole result by the gate's projection and by the handler.
   if (patch.public_link !== undefined && !publicLinkPatchShape(patch.public_link)) return { error: "invalid public_link settings" };
@@ -59,6 +62,7 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.log_tab !== undefined ? { logTab: patch.log_tab as boolean } : {}),
     ...(patch.usage_report_on_public_link !== undefined ? { usageOnPublicLink: patch.usage_report_on_public_link as boolean } : {}),
     ...(patch.office_levels !== undefined ? { officeLevels: patch.office_levels as boolean } : {}),
+    ...(patch.preview_cdn !== undefined ? { previewCdn: patch.preview_cdn as boolean } : {}),
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),
@@ -77,19 +81,21 @@ export type GuestsPatch = {
   open_instances?: Record<string, string[] | null>;
   narrow?: Record<string, string[] | null>;
   /** #2348: per `<connection id>:<user id>` — the grant (replaced whole), or null to remove it. */
-  grants?: Record<string, { name?: string; instances: string[] } | null>;
+  grants?: Record<string, { name?: string; instances: string[]; level?: "trusted" } | null>;
 };
 const GUEST_ACCOUNT_KEY = /^[A-Za-z0-9_.-]{1,64}:[0-9A-Za-z_-]{1,64}$/;
-/** #2348: one grant as the patch carries it: `{ name?, instances }`, or null (removed). */
-function guestGrant(v: unknown): { name?: string; instances: string[] } | null | "invalid" {
+/** #2348: one grant as the patch carries it: `{ name?, instances, level? }`, or null (removed). #2855: level "chat" (the
+ * default) is kept as no level at all; "trusted" is kept. */
+function guestGrant(v: unknown): { name?: string; instances: string[]; level?: "trusted" } | null | "invalid" {
   if (v === null) return null;
   if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
   const g = v as Record<string, unknown>;
-  if (Object.keys(g).some((k) => k !== "name" && k !== "instances")) return "invalid";
+  if (Object.keys(g).some((k) => k !== "name" && k !== "instances" && k !== "level")) return "invalid";
   if (g.name !== undefined && (typeof g.name !== "string" || g.name.length > 100)) return "invalid";
+  if (g.level !== undefined && g.level !== "chat" && g.level !== "trusted") return "invalid";
   const instances = guestList(g.instances);
   if (instances === "invalid" || instances === null) return "invalid";
-  return { ...(typeof g.name === "string" && g.name ? { name: g.name } : {}), instances };
+  return { ...(typeof g.name === "string" && g.name ? { name: g.name } : {}), instances, ...(g.level === "trusted" ? { level: "trusted" as const } : {}) };
 }
 const GUEST_LIST_MAX = 200;
 function guestList(v: unknown): string[] | null | "invalid" {

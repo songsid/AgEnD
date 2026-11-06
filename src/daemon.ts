@@ -1,3 +1,4 @@
+import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
 import { sendPackSources } from "./web-office-pack-read.js";
@@ -30,15 +31,14 @@ import { createTranscriptSource, type TranscriptSource } from "./transcript-sour
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { resolveToolSet, toolsFor } from "./tool-permissions.js";
-import { TOOLS, toolsWithCanvasWorker } from "./channel/mcp-tools.js";
+import { TOOLS } from "./channel/mcp-tools.js";
 import { dashboardAccessProblem, dashboardFeaturesOff, withoutFeatures } from "./dashboard-permissions.js";
 import { getAgendHome } from "./paths.js";
-import { readCanvasWorkerEnabled, scopedFleetConfigEnvironment } from "./web-experimental.js";
-import { readAgentEffect, sendEffectInParts } from "./web-effect-upload.js";
+import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
-import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, writeModFile, writePreview } from "./web-asset-parts.js";
+import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
-import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
+import { ProgressAccumulator, isSearchProgram, summarizeProgress } from "./tool-progress.js";
 import { assembleSystemPrompt, resolveWorkflowText, type PromptFileContext } from "./prompt-file-ref.js";
 import { isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { ContextGuardian } from "./context-guardian.js";
@@ -46,7 +46,7 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InputBox, InputDraft, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog, SteerComposerMode } from "./backend/types.js";
-import { shellQuote, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
+import { shellQuote, KiroCompatibilityError, UnsupportedCliError, ResumeBlockedError } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -70,12 +70,15 @@ import { agendMessageInInput, bottomRowIsReady, inputAreaText, inputShowsPastedT
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, formatReplyDropDetection, turnExpectsPersonReply, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
+import { CLAUDE_CREDIT_BALANCE_LOW, CLAUDE_MODEL_USAGE_LIMIT, CLAUDE_USAGE_LIMIT_PAUSE } from "./backend/claude-transcript-errors.js";
 import { t } from "./locale.js";
+import { claudeResetTime, quotaPausedLine } from "./quota-notice.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import { deliveryContentDigest, type DaemonDeliveryPort, type DeliveryAttemptEvidence, type DurableSubmissionMode } from "./delivery-outbox.js";
 import { consumedWatches } from "./delivery-consumed-watch.js";
 import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
-import { scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
+import { markerConsumed, scanTranscriptForDeliveryMarker, type TranscriptMarkerKind, type TranscriptNeedle } from "./delivery-reconciliation.js";
+import { QUEUED_HANDOFF_MAX_REDELIVERIES, QueuedHandoffStore, type QueuedHandoff } from "./queued-handoffs.js";
 import { measureSyncWork, noteSyncWork } from "./sync-work-attribution.js";
 import { TranscriptDeltaReader } from "./transcript-delta-reader.js";
 import {
@@ -96,8 +99,9 @@ import { codexLiveRowMatches } from "./backend/codex.js";
 import { codexPackageProblemMessage } from "./backend/codex-package.js";
 import { claudeConfigDirFor, claudeProfileConfigDir, claudeSwitchDialog, claudeSwitchTargetMatches } from "./backend/claude-code.js";
 import { MuseBackend } from "./backend/muse.js";
-import { InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
+import { BACKEND_LABELS, InteractionObservation, INTERACTION_CONFIRM_MS, sameInteractionOwner, type InteractionEvidence } from "./interaction-observation.js";
 import { unrecognisedPromptShape, type PromptShape } from "./unrecognised-prompt.js";
+import { selectionCard } from "./selection-card.js";
 import type { InteractionOwner, InteractionSnapshot } from "./backend/types.js";
 import type { KiroLogLaunch } from "./kiro-log-gate.js";
 
@@ -116,15 +120,6 @@ const WEB_THEME_IPC: Readonly<Record<string, string>> = Object.freeze({
   set_web_widget: "fleet_set_web_widget", remove_web_widget: "fleet_remove_web_widget",
   // #2117: its own declarative ambient.
   set_web_ambient: "fleet_set_web_ambient", clear_web_ambient: "fleet_clear_web_ambient",
-  // r4-5b: mods — an export's file is written here, a proposal's file read here (on the agent's side).
-  export_web_mod: "fleet_export_web_mod", propose_web_mod: "fleet_propose_web_mod",
-  upload_web_effect: "fleet_upload_web_effect",
-  list_web_effects: "fleet_list_web_effects",
-  preview_web_effect: "fleet_preview_web_effect",
-  profile_web_effect: "fleet_profile_web_effect",
-  apply_web_effect: "fleet_apply_web_effect",
-  remove_web_effect: "fleet_remove_web_effect",
-  delete_web_effect: "fleet_delete_web_effect",
   // #2578: its own character in the Office view — the args as they are (the fleet checks them).
   office_view: "fleet_office_view", office_set: "fleet_office_set",
   // #2692: the skin packs — check and upload read the pack here (web-office-pack-read.ts) and send its bytes in parts.
@@ -193,6 +188,8 @@ export const HANDOFF_RECHECK_MS = 1_000;
 export const WAIT_STOP_POLL_MS = 250;
 /** #2770: human messages a cancel dropped are told in one notice, this long after the last of them. */
 export const CANCELLED_HUMANS_NOTICE_MS = 1_000;
+/** #3030: a queued hand-off's watch outlives a long turn (the record outlives the watch in any case). */
+export const QUEUED_HANDOFF_WATCH_LIFETIME_MS = 12 * 60 * 60_000;
 /**
  * An instance publishing more than this many execution-state edges inside the
  * window is flapping; its edges stop being logged one by one (#1116). One
@@ -394,7 +391,8 @@ export function shellCommandLabel(command: string): string {
   if (!program) return "";
 
   const isBareWord = (t: string | undefined): boolean => !!t && /^[A-Za-z][A-Za-z0-9_-]*$/.test(t);
-  const label = isBareWord(tokens[1]) ? `${program} ${tokens[1]}` : program;
+  // A search program's next word is what it searches for, not a subcommand: `grep <token>` keeps only `grep`.
+  const label = isBareWord(tokens[1]) && !isSearchProgram(program) ? `${program} ${tokens[1]}` : program;
   return label.length > 40 ? `${label.slice(0, 39)}…` : label;
 }
 
@@ -682,6 +680,11 @@ function countOccurrences(haystack: string, needle: string): number {
 }
 /** Bottom-ready re-poll cadence for Enter-dropping TUIs once the pane is quiet. */
 const BOTTOM_READY_POLL_MS = 250;
+/** M-2267: how often a pane left in a tmux mode is looked at again, and how long the delivery Enter waits for it to end. */
+const PANE_MODE_POLL_MS = 500;
+const PANE_MODE_ENTER_WAIT_MS = 10 * 60_000;
+/** Why a delivery's Enter was withheld with the paste possibly in the CLI: a tmux mode past the bound, or a dialog (M-2290). */
+type EnterHeldReason = "pane-in-mode" | "dialog";
 /** Consecutive unreadable pane probes tolerated by the delivery gate before the delivery is failed (≈10s at the poll cadence). */
 const DIALOG_PROBE_UNKNOWN_MAX = 40;
 /** Startup dialog scan: poll cadence and wall-clock budget (keys and waits included). */
@@ -724,6 +727,8 @@ const DIALOG_ANSWER_IGNORED_MAX = 3;
  * normal pace (and a fresh count).
  */
 const DIALOG_ANSWER_BACKOFF_MS = 30_000;
+/** #2844: how long a dialog AgEnD answers itself (`answeredByAgend`) stays nobody's interaction while it is on screen. */
+const AGEND_ANSWER_GRACE_MS = 20_000;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
 /** How many times a delivery redoes itself when a spawn starts between its settle wait and its pane write. */
@@ -841,6 +846,13 @@ type DeliveryVerdict = {
   transcriptProof?: TranscriptMarkerKind;
   /** Strict human evidence; independent of weaker legacy transport outcomes. */
   humanReceipt?: HumanReceiptAttempt;
+  /**
+   * #3030: the caller (pushChannelMessage) keeps a hand-off into a busy CLI's own queue on record until a turn takes it:
+   * what a redelivery needs, and the record's id and redelivery count when this write IS a redelivery.
+   */
+  trackHandoff?: { content: string; meta: Record<string, string>; id?: string; redeliveries?: number };
+  /** #3030: the record written ahead of this hand-off's paste (cleared when the write did not end as a hand-off). */
+  handoff?: QueuedHandoff;
 };
 
 /**
@@ -1512,8 +1524,19 @@ export class Daemon extends EventEmitter {
   private dialogParkedSince = 0;
   /** Identity of that dialog: its pattern, not its description (two tables may describe one screen differently). */
   private dialogParkedKey: string | null = null;
+  /**
+   * #2893: the held dialog whose heldReason was last logged. Its own state, not the parked clock's: the delivery probe
+   * starts that clock too, and must not use up the one log line. Cleared with the hold, so a later hold logs again.
+   */
+  private heldReasonLoggedKey: string | null = null;
   private dialogParkedInteractionEpisode: number | null = null;
   private dialogParkedReported = false;
+  /**
+   * #2897: a "needs a human" notice is out for a dialog, and what it lives with: "parked" — the parked clock (retired when
+   * that dialog leaves the pane or another replaces it); "answer" — an answer episode of a dialog the parked clock does
+   * not track (a non-blocking one, whose scans pass no blocking dialog): retired when that episode ends.
+   */
+  private parkedNoticeOut: "parked" | "answer" | null = null;
   /** #2675: the card on screen that a person can answer from the chat — what it asks, since when, and whether it was posted. */
   private remoteCardShown: { identity: string; since: number; posted: boolean } | null = null;
   /** #2675: when (performance.now, taken before its capture) the newest read the card tracker used was started. */
@@ -1548,6 +1571,12 @@ export class Daemon extends EventEmitter {
     holdOnly: true,
     isActive: (pane: string) => this.unrecognisedPromptActive(pane),
     requestIdentity: () => this.unrecognisedPrompt?.block ?? null,
+    // #2910 D4: a numbered prompt no table knows (Claude's Edit / Write / MCP tool permission menus among them) is put to
+    // a web-only fleet's dashboard as its own options; still never answered by the scanner.
+    remoteCard: (pane: string) => {
+      const backend = this.config.backend ?? "claude-code";
+      return selectionCard(pane, Object.hasOwn(BACKEND_LABELS, backend) ? BACKEND_LABELS[backend]! : "CLI");
+    },
   };
   /**
    * #1690: AgEnD's own runtime `/model` in flight — from the moment its paste went in until its "Switch model?" dialog
@@ -1570,7 +1599,7 @@ export class Daemon extends EventEmitter {
    * cancels it when anything changed, and it fires at most once. The due time is on the monotonic clock.
    */
   /**
-   * How many occurrences of each `nudge_continue` pattern were already on screen when this spawn first showed a live
+   * How many occurrences of each `nudge_continue` (or `historyUntilLiveComposer`) pattern were already on screen when this spawn first showed a live
    * composer (null until then): resumed scrollback, i.e. HISTORY. An occurrence is a new episode only beyond that — a
    * resumed session whose scrollback holds an old capacity line must not be told to "keep going" for it (#949).
    */
@@ -1587,6 +1616,8 @@ export class Daemon extends EventEmitter {
   private interactionObservedOutputRevision = 0;
   private interactionCaptureSerial = 0;
   private interactionDialogKey: string | null = null;
+  /** Since when (monotonic) the `answeredByAgend` dialog now on screen has been withheld from the interaction state. */
+  private agendAnswerGrace: { key: string; since: number } | null = null;
   private acceptedInstanceSnapshot: InstanceStateSnapshot | null = null;
   /** Generation/signature fence for safety dialogs while their screen is still visible. */
   private autoResolvedDialogKey: string | null = null;
@@ -1815,6 +1846,12 @@ export class Daemon extends EventEmitter {
   private pendingWhatsNew: { notice: string; ids: string[]; version: string } | null = null;
   private pasteQueueDepth = 0;
   /** #2770: a person's messages a cancel dropped before they reached the CLI, told together (noteCancelledHuman). */
+  /** #3030: people's messages a CLI never took (or that a restart left unverifiable), told once per batch. */
+  private unsettledHandoffs: { "not-taken": Array<{ chatId: string; messageId: string; threadId?: string }>; unverifiable: Array<{ chatId: string; messageId: string; threadId?: string }> } = { "not-taken": [], unverifiable: [] };
+  private unsettledHandoffsTimer: ReturnType<typeof setTimeout> | null = null;
+  /** #3030: since when (monotonic) the CLI has been idle without a break; null while it is not. */
+  private instanceIdleSinceMono: number | null = null;
+  private queuedHandoffStore: QueuedHandoffStore | null = null;
   private cancelledHumans: Array<{ chatId: string; messageId: string; threadId?: string }> = [];
   private cancelledHumansTimer: ReturnType<typeof setTimeout> | null = null;
   private firstDeliveryDelay = new FirstDeliveryDelay();
@@ -2030,16 +2067,35 @@ export class Daemon extends EventEmitter {
   /** Transcript events in Claude's order (prompts, output, every API error): the newest, and the latest limit error. */
   private transcriptEventSeq = 0;
   private usageLimitErrorSeq = 0;
-  static readonly MODEL_USAGE_LIMIT = /^You['’]ve reached your ([A-Za-z0-9][A-Za-z0-9 .-]{0,40}?) limit\./;
+  static readonly MODEL_USAGE_LIMIT = CLAUDE_MODEL_USAGE_LIMIT;
 
   /** #2822: the usage-limit hold, while it lasts — Needs you lists it. */
   usageHold(): { model: string; since: number } | null {
     return this.usageLimitHold ? { ...this.usageLimitHold } : null;
   }
 
+  /** #2834: Claude's account is out of API credits — its own record; the same pause as the pane pattern it replaces. */
+  static readonly CREDIT_BALANCE_LOW = CLAUDE_CREDIT_BALANCE_LOW;
+  /** #2834 (#816): Claude's usage-limit auto-continue note, as it records it (`system` / `informational`). */
+  static readonly USAGE_LIMIT_PAUSE = CLAUDE_USAGE_LIMIT_PAUSE;
+
+  /** #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. */
+  private noteClaudeInformational(text: string): void {
+    const match = Daemon.USAGE_LIMIT_PAUSE.exec(text.trim());
+    if (!match) return;
+    const when = match[1]!.trim();
+    this.emit("pty_error", { name: this.name, type: "quota", action: "notify", verifyQuota: true, skipCooldown: true, skipRecoveryWait: true,
+      message: `Claude Code usage limit reached — paused; continuing automatically ${when}`,
+      notice: quotaPausedLine("Claude", "usage", claudeResetTime(when)) });
+  }
+
   /** #2822: Claude recorded a failed API call. */
-  private noteClaudeApiError(text: string, status: number | null): void {
+  private noteClaudeApiError(text: string, status: number | null, errorKind: string | null = null): void {
     const seq = ++this.transcriptEventSeq;
+    if (errorKind === "billing_error" || (status === 400 && Daemon.CREDIT_BALANCE_LOW.test(text))) {
+      this.emit("pty_error", { name: this.name, type: "quota", action: "pause", message: "Insufficient API credits", notice: quotaPausedLine("Claude", "api_credits") });
+      return;
+    }
     const match = status === 429 ? Daemon.MODEL_USAGE_LIMIT.exec(text.trim()) : null;
     if (!match) return;
     this.usageLimitErrorSeq = seq;
@@ -2049,7 +2105,7 @@ export class Daemon extends EventEmitter {
     const message = t("inst.model_usage_limit", model);
     this.logger.warn({ model }, "Usage-limit hold started (reset time unknown)");
     this.emit("usage_hold", { name: this.name, held: true });
-    this.emit("pty_error", { name: this.name, type: "quota", action: "notify", message, skipCooldown: true, skipRecoveryWait: true });
+    this.emit("pty_error", { name: this.name, type: "quota", action: "notify", message, notice: t("inst.quota_model_hold", model), skipCooldown: true, skipRecoveryWait: true });
   }
 
   /** #2822: Claude produced output (text or a tool call): the model answers again, so a hold ends. */
@@ -2220,6 +2276,10 @@ export class Daemon extends EventEmitter {
     };
   }
 
+  /** Register each issued HTTP credential with the same-process lifecycle owner. */
+  private agentCredentialIssuer?: (token: string) => void;
+  setAgentCredentialIssuer(issue: (token: string) => void): void { this.agentCredentialIssuer = issue; }
+
   /** FleetManager and this daemon share a process, so durable begin/ACK is a direct synchronous store call. */
   setDeliveryOutboxPort(port: DaemonDeliveryPort | undefined): void {
     this.deliveryOutbox = port;
@@ -2360,6 +2420,200 @@ export class Daemon extends EventEmitter {
       },
       logger: this.logger,
     });
+  }
+
+  private handoffStore(): QueuedHandoffStore {
+    return this.queuedHandoffStore ??= new QueuedHandoffStore(this.instanceDir);
+  }
+
+  /** #3030: the CLI that holds a queued hand-off; a record is settled only by a later one. */
+  private handoffHolder(): string { return `${this.bootId}:${this.spawnGeneration}`; }
+
+  /**
+   * #3030: before the paste. A hand-off into a busy Claude Code / Codex queue gets its record — the transcript
+   * checkpoint before the paste, the unique leading marker and what a redelivery needs — or, for a redelivery written
+   * as an ordinary idle submission, its record moves its checkpoint here, so a crash right after this paste is still
+   * judged from the transcript that will show it. A write that did not keep a record runs as before.
+   */
+  private async recordQueuedHandoff(
+    formatted: string,
+    handingOff: boolean,
+    verdict: DeliveryVerdict,
+    durableAttempt: DurableDeliveryAttempt | undefined,
+    humanVerificationId: string | undefined,
+  ): Promise<void> {
+    const track = verdict.trackHandoff;
+    if (!track) return;
+    if (!handingOff && !track.id) {
+      // An earlier attempt of this delivery was a hand-off; this one is an idle submission.
+      if (verdict.handoff) this.dropQueuedHandoff(verdict);
+      return;
+    }
+    const backend = this.config.backend ?? this.backend?.binaryName ?? "";
+    if (!["claude-code", "codex"].includes(backend)) return;
+    const marker = durableAttempt ? `[agend-delivery-id:${durableAttempt.deliveryId}]`
+      : humanVerificationId ? `[agend-human-id:${humanVerificationId}]` : null;
+    if (!marker || !formatted.startsWith(marker)) return;
+    let checkpoint: { path: string; offset: number } | null = verdict.transcriptCheckpoint ?? null;
+    if (!checkpoint) {
+      try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
+      catch (err) { this.logger.debug({ err }, "Could not checkpoint the transcript before a queued hand-off"); }
+    }
+    if (!checkpoint) return; // nothing could judge it later: it runs as before (✅ at the hand-off)
+    const entry: QueuedHandoff = {
+      id: track.id ?? randomUUID(), marker, backend, path: checkpoint.path, offset: checkpoint.offset,
+      content: track.content, meta: track.meta, holder: this.handoffHolder(), createdAt: Date.now(),
+      redeliveries: track.redeliveries ?? 0,
+    };
+    try {
+      const dropped = this.handoffStore().put(entry);
+      if (handingOff) verdict.handoff = entry;
+      for (const old of dropped) this.logger.warn({ handoff: old.id, createdAt: old.createdAt }, "Queued hand-off record dropped: too many on record");
+    } catch (err) {
+      this.logger.warn({ err }, "Could not record a queued hand-off; it runs as before (✅ at the hand-off)");
+    }
+  }
+
+  /**
+   * #3030: after pushChannelMessage's write. A hand-off on record whose paste went out is watched (✅ when a turn
+   * takes it); one that was never written goes. A redelivery that ended as an ordinary submission is done; one that a
+   * cancel dropped goes too (a cancel is the person's); one stopped before its write stays for the next CLI.
+   */
+  private afterTrackedWrite(meta: Record<string, string>, verdict: DeliveryVerdict, sent: boolean, deliveryEpoch: number): void {
+    try {
+      // A stale epoch with writes still allowed is a cancel (the person's); a stop fences writes too, and keeps records.
+      const cancelled = !this.isDeliveryEpochCurrent(deliveryEpoch) && !this.deliveryWritesStopping;
+      if (verdict.handoff) {
+        if (sent || verdict.paneWriteStarted) this.watchQueuedHandoff(verdict.handoff);
+        else if (!verdict.trackHandoff?.id || cancelled) this.dropQueuedHandoff(verdict);
+        return;
+      }
+      const id = meta.handoff_redelivery;
+      if (!id) return;
+      if (sent || verdict.paneWriteStarted || cancelled) {
+        this.handoffStore().remove(id);
+        this.logger.info({ handoff: id, sent, proof: verdict.proof ?? null }, "Queued hand-off redelivered as an ordinary submission");
+      }
+    } catch (err) {
+      this.logger.warn({ err }, "Could not update the queued hand-off record after its write");
+    }
+  }
+
+  private redeliveryStillOurs(meta: Record<string, string>): boolean {
+    const holder = this.handoffHolder();
+    if (meta.handoff_holder !== holder) return false;
+    try { return this.handoffStore().get(meta.handoff_redelivery)?.holder === holder; } catch { return false; }
+  }
+
+  private dropQueuedHandoff(verdict: DeliveryVerdict): void {
+    const entry = verdict.handoff;
+    verdict.handoff = undefined;
+    if (!entry) return;
+    try { this.handoffStore().remove(entry.id); } catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not remove a queued hand-off record"); }
+  }
+
+  /**
+   * #3030: the hand-off's CLI is the current one: watch its transcript for the turn that takes it (✅ then), and for an
+   * idle CLI that never did (reported). A stop ends the watch; the record stays for the next CLI to settle.
+   */
+  private watchQueuedHandoff(entry: QueuedHandoff): void {
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, epoch = this.deliveryEpoch;
+    const started = consumedWatches.start({
+      deliveryId: `handoff:${entry.id}`,
+      attemptNo: entry.redeliveries,
+      backend: entry.backend,
+      path: entry.path,
+      offset: entry.offset,
+      marker: entry.marker,
+      // A cancel or stop moves the epoch: the watch ends quietly (a cancel cleared the record, a stop leaves it).
+      current: () => !this.deliveryWritesStopping && spawn === this.spawnGeneration && fence === this.launchFenceEpoch
+        && epoch === this.deliveryEpoch,
+      consumed: (via) => this.settleQueuedHandoff(entry, "taken", `transcript:${via}`),
+      idleForMs: () => this.instanceIdleSinceMono === null ? null : performance.now() - this.instanceIdleSinceMono,
+      notTaken: () => this.settleQueuedHandoff(entry, "not-taken", "transcript:absent-while-idle"),
+      // A queued message waits for the running turn, however long that is.
+      lifetimeMs: QUEUED_HANDOFF_WATCH_LIFETIME_MS,
+      logger: this.logger,
+    });
+    if (!started) {
+      // No watch (the fleet's cap): ✅ as before; the record still lets a restart judge it.
+      const status = channelStatus(entry.meta);
+      if (status) this.emit("message_confirmed", status);
+    }
+  }
+
+  /** #3030: a record's end — taken (✅), or never taken / not judgeable (❌, told once per batch). */
+  private settleQueuedHandoff(entry: QueuedHandoff, outcome: "taken" | "not-taken" | "unverifiable", proof: string): void {
+    try { this.handoffStore().remove(entry.id); }
+    catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not remove a settled queued hand-off record"); }
+    const meta = entry.meta;
+    const status = channelStatus(meta);
+    if (outcome === "taken") {
+      this.logger.info({ handoff: entry.id, proof, redeliveries: entry.redeliveries }, "Queued hand-off taken by the CLI");
+      if (status) this.emit("message_confirmed", status);
+      return;
+    }
+    this.logger.warn({ handoff: entry.id, outcome, proof, redeliveries: entry.redeliveries }, "Queued hand-off was not taken by the CLI");
+    if (meta.from_instance) {
+      this.reportCrossInstanceDeliveryFailure(meta, { reached: true, phase: "handoff-not-consumed", proof: outcome === "not-taken" ? "not-taken" : "unverifiable" });
+      return;
+    }
+    if (!status) return;
+    this.unsettledHandoffs[outcome].push({ chatId: status.chatId, messageId: status.messageId, ...(status.threadId ? { threadId: status.threadId } : {}) });
+    if (this.unsettledHandoffsTimer) clearTimeout(this.unsettledHandoffsTimer);
+    this.unsettledHandoffsTimer = setTimeout(() => {
+      this.unsettledHandoffsTimer = null;
+      for (const reason of ["not-taken", "unverifiable"] as const) {
+        const messages = this.unsettledHandoffs[reason].splice(0);
+        if (messages.length) this.emit("human_handoffs_unsettled", { reason, messages });
+      }
+    }, CANCELLED_HUMANS_NOTICE_MS);
+    this.unsettledHandoffsTimer.unref?.();
+  }
+
+  /**
+   * #3030: right after a CLI came up — the records left by CLIs that are gone. Their queue went with them, so each is
+   * judged by its own transcript from its checkpoint: taken there (✅, nothing pasted); proven not taken (the whole
+   * delta read, the marker absent or only enqueued) → redelivered once, with the same marker, through the ordinary
+   * queue; anything that cannot be judged → never pasted, reported. Ownership is evidence: never pasted twice.
+   */
+  private async reconcileQueuedHandoffs(): Promise<void> {
+    let entries: QueuedHandoff[];
+    try { entries = this.handoffStore().list().filter(e => e.holder !== this.handoffHolder()); }
+    catch (err) { this.logger.warn({ err }, "Could not read the queued hand-off records"); return; }
+    if (!entries.length) return;
+    // Captured before any await: a reconciliation that outlives its CLI can never claim the next CLI's holder.
+    const holder = this.handoffHolder();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, epoch = this.deliveryEpoch;
+    const fresh = () => spawn === this.spawnGeneration && fence === this.launchFenceEpoch && epoch === this.deliveryEpoch
+      && !this.deliveryWritesStopping;
+    let redelivered = 0, taken = 0, unverifiable = 0;
+    for (const entry of entries) {
+      const kind = await scanTranscriptForDeliveryMarker(entry.path, entry.offset, entry.backend, { marker: entry.marker });
+      // This CLI is gone already, or a cancel came: the next CLI settles them (a cancel cleared them).
+      if (!fresh()) return;
+      // …and the record is still the one that was read (another reconciliation or a cancel did not change it meanwhile).
+      let current: QueuedHandoff | undefined;
+      try { current = this.handoffStore().get(entry.id); } catch { current = undefined; }
+      if (!current || current.holder !== entry.holder || current.redeliveries !== entry.redeliveries) continue;
+      if (markerConsumed(kind as TranscriptMarkerKind)) { taken++; this.settleQueuedHandoff(entry, "taken", `restart-transcript:${kind}`); continue; }
+      if (kind === "unavailable" || entry.redeliveries >= QUEUED_HANDOFF_MAX_REDELIVERIES) {
+        unverifiable++;
+        this.settleQueuedHandoff(entry, "unverifiable", kind === "unavailable" ? "restart-transcript:unavailable" : "redelivery-limit");
+        continue;
+      }
+      // Proven not taken: the CLI that queued it is gone and its transcript, read to the end, never took it.
+      const next: QueuedHandoff = { ...entry, holder, redeliveries: entry.redeliveries + 1 };
+      try { this.handoffStore().put(next); }
+      catch (err) { this.logger.warn({ err, handoff: entry.id }, "Could not update a queued hand-off record; not redelivered now"); continue; }
+      redelivered++;
+      // The person's receipt was settled by the first write: the redelivery carries its marker, not its receipt binding.
+      const { human_receipt_id: _r, human_owner_key: _o, human_daemon_owner: _d, human_wire_sha256: _w, ...meta } = entry.meta;
+      this.pushChannelMessage(entry.content, { ...meta, handoff_redelivery: entry.id,
+        handoff_redeliveries: String(next.redeliveries), handoff_holder: next.holder }, undefined, epoch);
+    }
+    this.logger.info({ instance: this.name, redelivered, taken, unverifiable, proof: "transcript" },
+      "Queued hand-offs left by the previous CLI settled");
   }
 
   private finishDurableSubmission(
@@ -2808,7 +3062,9 @@ export class Daemon extends EventEmitter {
         // show only elapsed time than to leave a stale "Bash: npm test" on screen.
         this.publishActivity(null);
       });
-      this.transcriptMonitor.on("api_error", (text: string, status: number | null) => this.noteClaudeApiError(text, status));
+      this.transcriptMonitor.on("api_error", (text: string, status: number | null, _at: number | null, errorKind: string | null) =>
+        this.noteClaudeApiError(text, status, errorKind));
+      this.transcriptMonitor.on("system_informational", (text: string) => this.noteClaudeInformational(text));
       this.transcriptMonitor.on("user_prompt", () => this.noteClaudePrompt());
       this.transcriptMonitor.on("assistant_text", (text: string) => {
         this.noteClaudeOutput();
@@ -2859,6 +3115,8 @@ export class Daemon extends EventEmitter {
       this.startErrorMonitor();
     }
     this.startInstanceStateMonitor();
+    // #3030: messages a gone CLI still had queued — judged by its transcript, redelivered once or reported.
+    void this.reconcileQueuedHandoffs().catch(err => this.logger.warn({ err }, "Queued hand-off reconciliation failed"));
 
     this.logger.info(`${this.name} ready`);
   }
@@ -3324,9 +3582,6 @@ export class Daemon extends EventEmitter {
             scheduleNext();
             return;
           }
-          // The CLI owns the MCP server process, so the daemon can only observe it.
-          measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
-
           // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
           const cliLabel = this.backend?.binaryName ?? "CLI";
           const healthTmux = this.tmux;
@@ -3346,6 +3601,9 @@ export class Daemon extends EventEmitter {
           // began just before pause must not classify that exit as a crash.
           if (discardStaleHealth()) return;
           if (paneStatus?.alive) {
+            // A CLI shutdown also closes its MCP children. Revive tools only for
+            // a positively live pane, never while its exit is being classified.
+            measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
             // Capture only a known primary while it lives. No extra tmux call: PID comes
             // from this same status read. Fast/unobserved deaths remain ordinary crashes.
             const key = this.oomSessionKey();
@@ -3383,6 +3641,26 @@ export class Daemon extends EventEmitter {
             if (discardStaleHealth()) return;
             if (paneStatus?.alive) {
               this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
+              this.windowQueryFailureTicks = 0;
+              this.stormWindow?.noteWindowAlive(this.name);
+              scheduleNext();
+              return;
+            }
+          }
+
+          // tmux marks the PTY dead when its fd closes, before SIGCHLD can fill
+          // pane_dead_status. Claude /exit (and any other CLI) can hit this gap.
+          // Give the status four bounded re-probes; missing is never exit zero.
+          if (paneStatus && !paneStatus.alive && paneStatus.exitCode === undefined) {
+            for (let attempt = 0; attempt < 4; attempt++) {
+              await new Promise(resolve => setTimeout(resolve, 250));
+              if (discardStaleHealth()) return;
+              const observed = await healthTmux.getPaneStatus();
+              if (discardStaleHealth()) return;
+              if (observed) paneStatus = observed;
+              if (paneStatus.alive || paneStatus.exitCode !== undefined) break;
+            }
+            if (paneStatus.alive) {
               this.windowQueryFailureTicks = 0;
               this.stormWindow?.noteWindowAlive(this.name);
               scheduleNext();
@@ -3561,6 +3839,8 @@ export class Daemon extends EventEmitter {
               try {
                 await this.spawnClaudeWindow();
                 this.setProcessStatus("running");
+                // #3030: messages a gone CLI still had queued — judged by its transcript, redelivered once or reported.
+                void this.reconcileQueuedHandoffs().catch(err => this.logger.warn({ err }, "Queued hand-off reconciliation failed"));
                 this.logger.info("Recovered from background session conflict");
                 this.emit("crash_respawn", this.name);
               } catch (err) {
@@ -3720,6 +4000,8 @@ export class Daemon extends EventEmitter {
               try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
             }
             this.setProcessStatus("running");
+            // #3030: messages a gone CLI still had queued — judged by its transcript, redelivered once or reported.
+            void this.reconcileQueuedHandoffs().catch(err => this.logger.warn({ err }, "Queued hand-off reconciliation failed"));
             this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
             this.emit("crash_respawn", this.name);
             // Emit the per-instance audit event while the storm is still active
@@ -3908,7 +4190,9 @@ export class Daemon extends EventEmitter {
         );
         if (interactivePrompt) {
           this.logger.warn(interactivePrompt, "Interactive terminal prompt is waiting for human input");
-          this.emit("interactive_prompt", { name: this.name, ...interactivePrompt });
+          // M-2269: the prompt as it was on screen, from this capture, for the Log.
+          const screen = dialogScreenText(pane);
+          this.emit("interactive_prompt", { name: this.name, ...interactivePrompt, ...(screen ? { screen } : {}) });
           // A prompt is not an error and must not enter the PTY recovery gate.
           // Continue scanning real errors in this same snapshot.
         }
@@ -3941,8 +4225,20 @@ export class Daemon extends EventEmitter {
         for (const dialog of dialogs) {
           if (!Daemon.dialogMatches(dialog, pane)) continue;
           this.noteCodexReserveDialog(dialog, pane);
+          this.noteLiveIncidentDialog(dialog, pane);
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
-          if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
+          if (dialog.holdOnly) {
+            // Recognised, deliberately not answered; trackDialogParked reports it. Why an automatic answer passed it by
+            // is logged once, when this hold begins (#2893).
+            if (this.heldReasonLoggedKey !== Daemon.dialogKey(dialog)) {
+              const reason = Daemon.heldReasonOf(dialog, pane);
+              if (Object.keys(reason).length) {
+                this.heldReasonLoggedKey = Daemon.dialogKey(dialog);
+                this.logger.warn({ description: dialog.description, ...reason }, "Runtime dialog held — not auto-answering");
+              }
+            }
+            break;
+          }
           // Reported as ignoring the daemon: the SAME request (the identity the count was made on — verbatim, the
           // backend's own when it names one) is answered only once per DIALOG_ANSWER_BACKOFF_MS. Anything else — another
           // request, an unexplained difference, the dialog gone — is not held back here; the answer path below ends or
@@ -4000,13 +4296,15 @@ export class Daemon extends EventEmitter {
             if (this.dialogAnswers?.key === Daemon.answerKey(dialog) && this.dialogAnswers.screen !== before) this.endDialogEpisode(dialog.requestIdentity !== undefined);
             if (dialog.verifyAfterKeys && autoKey && this.hasAutoDialogClaim(dialog)) return;
             if (dialog.verifyAfterKeys && autoKey) this.claimAutoDialog(dialog);
-            this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
+            this.logger.info(Daemon.answerDetailOf(dialog, currentPane), `Auto-dismissing runtime dialog: ${dialog.description}`);
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
               if (stale()) return;
               let sent = false;
               if (SPECIAL_KEYS.has(key)) {
                 sent = await pollTmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+              } else if (dialog.literalKeys) {
+                sent = await pollTmux.sendKeys(key);                     // typed, no Enter (#2872)
               } else {
                 sent = await pollTmux.pasteText(key, this.systemPasteOptions());
               }
@@ -4046,6 +4344,7 @@ export class Daemon extends EventEmitter {
               } else {
                 resolved = true;
               }
+              if (dialog.dismissIncident) this.emitDismissIncident(dialog);
             } else if (dialog.keys.length > 0) {
               // Did the keys take? Read the pane again. The same request still there is an answer that did nothing. A request
               // the backend names as DIFFERENT (the next queued one), or no dialog at all, means it took. Without a
@@ -4068,14 +4367,14 @@ export class Daemon extends EventEmitter {
           } else if (dialog.verifyAfterKeys && !resolved) {
             this.logger.warn({ dialog: dialog.description }, "Safety dialog choice was sent but follow-up verification or notice submission failed");
           }
-          this.trackDialogParked(blockingSeen);
+          this.trackDialogParked(blockingSeen, pane);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
         // Reached only when no dialog was answered this poll (none on screen, a fenced one, or one waiting out its
         // backoff): unless it is the one backing off, the screen that was being answered is gone, and the next dialog is
         // a new one.
-        if (!answersBackedOff) this.dialogAnswers = null;
-        this.trackDialogParked(blockingSeen);
+        if (!answersBackedOff && this.dialogAnswers) { this.dialogAnswers = null; this.retireParkedNotice("answer"); }
+        this.trackDialogParked(blockingSeen, pane);
         this.trackRemoteCard(blockingSeen, pane, captureMono);
         if (blockingSeen) return; // held dialog: skip error checks this cycle
 
@@ -4198,9 +4497,10 @@ export class Daemon extends EventEmitter {
       const seen = this.lastErrorCount.get(key) ?? 0;
 
       // #2282: a resumed exhausted429 row is history, not even a new
-      // notification/failover incident. Wait for the first live composer to
-      // establish its baseline; later appended occurrences remain eligible.
-      if (ep.type === "rate_limit" && ep.action === "nudge_continue") {
+      // notification/failover incident; so is a resumed codex workspace-limit row
+      // (#2844: a wake must not pause again on it). Wait for the first live
+      // composer to establish its baseline; later appended occurrences remain eligible.
+      if ((ep.type === "rate_limit" && ep.action === "nudge_continue") || ep.historyUntilLiveComposer) {
         const baseline = this.nudgeBaselines?.get(key);
         if (baseline === undefined || count <= baseline) {
           if (baseline !== undefined) this.lastErrorCount.set(key, count);
@@ -4284,6 +4584,18 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /**
+   * #2872: the incident a dialog stood for, once AgEnD's own keys closed it (RuntimeDialog.dismissIncident). It skips
+   * the usage check (the modal was the proof) and arms no pane gate: nothing on screen is its evidence, so nothing
+   * stale can raise it again.
+   */
+  private emitDismissIncident(dialog: RuntimeDialog): void {
+    const inc = dialog.dismissIncident!;
+    this.logger.warn({ errorType: inc.type, action: inc.action, dialog: dialog.description }, `Dialog incident: ${inc.message}`);
+    this.emit("pty_error", { name: this.name, type: inc.type, action: inc.action, message: inc.message, skipUsageVerify: true,
+      ...(inc.notice ? { notice: inc.notice } : {}) });
+  }
+
   /** Arm the recovery gates and emit one detected error pattern. */
   private emitErrorPattern(ep: ErrorPattern, key: string, pane: string, now: number): void {
     // #2795: auth text on the pane proves nothing about the credentials (22 of 22 such matches on the main host were
@@ -4299,7 +4611,9 @@ export class Daemon extends EventEmitter {
     const message = this.resolveErrorMessage(pane, ep);
     this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
     this.lastErrorEpisode = { key, pattern: ep.pattern, pane, spawn: this.spawnGeneration, fence: this.launchFenceEpoch };
-    this.emit("pty_error", { name: this.name, ...ep, message });
+    const { notice: noticeOf, ...rest } = ep;
+    const notice = noticeOf ? this.resolveErrorNotice(pane, ep, noticeOf) : undefined;
+    this.emit("pty_error", { name: this.name, ...rest, message, ...(notice ? { notice } : {}) });
   }
 
   /**
@@ -4310,6 +4624,18 @@ export class Daemon extends EventEmitter {
    * Uses the LAST match in the pane: an older warning may still be scrolled up
    * (10% earlier, 5% now), and the newest one is the one worth reporting.
    */
+  /** The pattern's short notice from its last match on the pane (no match: from none); undefined if it throws. */
+  private resolveErrorNotice(pane: string, ep: ErrorPattern, noticeOf: (match: RegExpMatchArray | null) => string): string | undefined {
+    try {
+      const flags = ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g";
+      const matches = [...pane.matchAll(new RegExp(ep.pattern.source, flags))];
+      return noticeOf(matches[matches.length - 1] ?? null);
+    } catch (err) {
+      this.logger.debug({ err, errorType: ep.type }, "notice failed — posting the standard notification");
+      return undefined;
+    }
+  }
+
   private resolveErrorMessage(pane: string, ep: ErrorPattern): string {
     if (!ep.formatMessage) return ep.message;
     try {
@@ -4358,6 +4684,10 @@ export class Daemon extends EventEmitter {
     // (Completion paths clear via the guard's onComplete; a cancel with no
     // later idle edge would otherwise leave the marker behind.)
     clearInFlightTurnMarker(this.instanceDir);
+    // #3030: what the person cancelled is not kept for a redelivery (nor reported as not taken).
+    try {
+      for (const entry of this.handoffStore().list()) this.handoffStore().remove(entry.id);
+    } catch (err) { this.logger.warn({ err }, "Could not clear queued hand-off records on cancel"); }
     this.deliveryEpoch = fleetEpoch === undefined
       ? this.deliveryEpoch + 1
       : Math.max(this.deliveryEpoch, fleetEpoch);
@@ -5178,6 +5508,19 @@ export class Daemon extends EventEmitter {
         && Daemon.dialogMatches(d, pane)
         // #1690: AgEnD's own switch dialog, being answered right now, is nobody's to answer.
         && !(this.ownSwitch && claudeSwitchDialog(pane) !== null));
+      // #2844: a dialog AgEnD is answering itself is nobody's to answer — for AGEND_ANSWER_GRACE_MS of being on screen,
+      // and only until its answers are reported as ignored. No evidence at all meanwhile: the catch-alls further down
+      // the table match the same screen. A dialog still there after the grace (an Escape that did not take, keys that
+      // could not be sent) is a person's again.
+      if (dialog?.answeredByAgend) {
+        const key = Daemon.answerKey(dialog);
+        const now = performance.now();
+        if (this.agendAnswerGrace?.key !== key) this.agendAnswerGrace = { key, since: now };
+        if (now - this.agendAnswerGrace.since < AGEND_ANSWER_GRACE_MS
+          && !(this.dialogAnswers?.reported && this.dialogAnswers.key === key)) return null;
+      } else {
+        this.agendAnswerGrace = null;
+      }
       if (dialog) {
         const identity = dialog.requestIdentity?.(pane) ?? pane.replace(/\r/g, "")
           .split("\n").map(row => row.replace(/^([ \t]*)[❯›]([ \t]+)(?=\d\.|Yes\b|No\b|Resume\b)/, "$1$2").trimEnd())
@@ -5557,6 +5900,8 @@ export class Daemon extends EventEmitter {
     }
     if (snapshot.state === "working" && this.recoveryBootSettled
       && this.workingRecoveryInputOwner !== JSON.stringify(this.interactionOwner())) this.recoveryNativeWork = true;
+    if (snapshot.state !== "idle") this.instanceIdleSinceMono = null;
+    else if (this.instanceState !== "idle" || this.instanceIdleSinceMono === null) this.instanceIdleSinceMono = performance.now();
     this.instanceState = snapshot.state;
     this.acceptedInstanceSnapshot = { ...snapshot };
     // Reuse an already-captured pane and the backend's pure parser, never capture for the journal.
@@ -5672,7 +6017,7 @@ export class Daemon extends EventEmitter {
    * message can arrive mid-turn and sit queued, and marking at arrival would let
    * the PREVIOUS turn's idle edge consume (and reset) the new turn's state.
    */
-  private markTurnStarted(meta: Record<string, string>, deliveredText: string, deliveryEpoch = this.deliveryEpoch): void {
+  private markTurnStarted(meta: Record<string, string>, deliveredText: string, deliveryEpoch = this.deliveryEpoch, queuedHandoff = false): void {
     // Cancel may have interrupted an in-flight paste before its promise settled.
     // Its late success must not re-arm the turn that the user just cancelled.
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
@@ -5719,7 +6064,9 @@ export class Daemon extends EventEmitter {
     // during the continuation boots clean instead of chaining resumes.
     // #2544: a reply that settled before this arm already answered the person —
     // writing a marker would re-inject a continuation for a finished turn.
-    if (!meta.resumedContinuationOf && !armed.completionDelivered) {
+    // #3030: a message only queued in the busy CLI has not started a turn: the interrupted turn is still the running one,
+    // and a queued message lost to a restart is the hand-off record's to redeliver, not a continuation's.
+    if (!meta.resumedContinuationOf && !armed.completionDelivered && !queuedHandoff) {
       const resumeBackend = this.config.backend ?? this.backend?.binaryName ?? this.runtimeIdentity?.backend;
       const resumeCwd = this.config.working_directory ?? "";
       writeInFlightTurnMarker(this.instanceDir, {
@@ -7109,8 +7456,10 @@ export class Daemon extends EventEmitter {
     if (name === "Write") return `Write ${inp.file_path ?? ""}`;
     // Command name only — never the arguments. See shellCommandLabel.
     if (name === "Bash") return `$ ${shellCommandLabel(String(inp.command ?? ""))}`;
-    if (name === "Glob") return `Glob ${inp.pattern ?? ""}`;
-    if (name === "Grep") return `Grep ${inp.pattern ?? ""}`;
+    // The tool name only — never the search pattern: it can be a literal secret someone is looking for, and this label
+    // reaches the channel's progress line.
+    if (name === "Glob") return "Glob";
+    if (name === "Grep") return "Grep";
     if (name === "Agent") return "Agent (subagent)";
     if (name.startsWith("mcp__agend__")) return ""; // skip channel tools
     return name;
@@ -7462,6 +7811,8 @@ export class Daemon extends EventEmitter {
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
           this.logger.info("Pending channel delivery dropped by user cancel");
           this.deferDurableDelivery(meta, "delivery epoch changed while queued");
+          // #3030: a cancel is the person's — a queued redelivery it dropped is not redelivered later.
+          if (meta.handoff_redelivery && !this.deliveryWritesStopping) { try { this.handoffStore().remove(meta.handoff_redelivery); } catch { /* the next CLI judges it */ } }
           return;
         }
         if (this.config.pre_task_command) {
@@ -7471,13 +7822,26 @@ export class Daemon extends EventEmitter {
         // #2800: with this real message, in the same paste — never a paste or turn of its own: after its delivery marker
         // (transcript proof anchors on it), before the message. A person's message with a verified receipt is pasted
         // byte for byte (its proof is the wire's hash), so the notice waits for the next delivery without one.
-        const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id ? this.currentWhatsNew(this.pendingWhatsNew) : null;
+        const whatsNew = this.pendingWhatsNew && !meta.human_receipt_id && !meta.handoff_redelivery
+          ? this.currentWhatsNew(this.pendingWhatsNew) : null;
         const pasted = whatsNew ? withWhatsNew(formatted, whatsNew.notice) : formatted;
         const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
         verdict = { reached: false, humanReceipt: this.humanReceiptAttempt(meta, formatted) };
+        // #3030: a hand-off into the CLI's own queue stays on record until a turn takes it (redeliveries included).
+        if (!content.startsWith("/raw ") || meta.from_instance) {
+          const { handoff_redelivery: redeliveryOf, handoff_redeliveries: redeliveries, handoff_holder: _holder, ...kept } = meta;
+          verdict.trackHandoff = { content, meta: kept,
+            ...(redeliveryOf ? { id: redeliveryOf, redeliveries: Number(redeliveries) || 0 } : {}) };
+        }
+        // #3030: a redelivery is written only by the CLI it was issued for, and only while its record still says so —
+        // one queued for a CLI that was replaced meanwhile is that next CLI's reconciliation's to judge again.
+        if (meta.handoff_redelivery && !this.redeliveryStillOurs(meta)) {
+          this.logger.info({ handoff: meta.handoff_redelivery }, "Queued hand-off redelivery dropped: its CLI was replaced before the write");
+          return;
+        }
         const durableAttempt = this.durableDeliveryAttempt(meta, content);
         if (durableAttempt === false) {
           this.deferDurableDelivery(meta, "invalid durable delivery attempt metadata");
@@ -7498,10 +7862,11 @@ export class Daemon extends EventEmitter {
           // a later step of the write threw; a paste that never reached the pane keeps it for the next message.
           if (whatsNew && (sent || verdict.paneWriteStarted)) this.recordWhatsNewSent(whatsNew);
         }
+        this.afterTrackedWrite(meta, verdict, !!sent, deliveryEpoch);
         if (sent) {
           delivered = true;
           this.finishDurableSubmission(durable, verdict);
-          this.markTurnStarted(meta, formatted, deliveryEpoch);
+          this.markTurnStarted(meta, formatted, deliveryEpoch, !!verdict.handoff);
         } else if (durableAttempt && verdict.paneWriteStarted) {
           this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`, verdict);
         } else if (durableAttempt && verdict.durableBeginCommitted) {
@@ -7788,6 +8153,8 @@ export class Daemon extends EventEmitter {
         if (verdict.paneWriteStarted) opts?.onPaneWritten?.();
         // The hand-off's last capture had no box: nothing was begun or written — wait for readiness, then try again.
         if (written === "handoff-box-unread") return "dialog";
+        // M-2267: the pane is in a tmux mode: nothing written — wait for readiness (it holds while the mode lasts), retry.
+        if (written === "pane-in-mode") return "dialog";
         // Fenced before its first write: not attempted — redo after a spawn, else drop without a ❌.
         return written === false && verdict.fenced ? stale() : written;
       });
@@ -8228,7 +8595,7 @@ export class Daemon extends EventEmitter {
       if (dialog.verifyAfterKeys && dialog.autoResolutionKey
         && this.hasAutoDialogClaim(dialog)
         && dialogs.some(other => other !== dialog && Daemon.dialogMatches(other, pane))) continue;
-      this.trackDialogParked(dialog);
+      this.trackDialogParked(dialog, pane);
       this.trackRemoteCard(dialog, pane, probeMono);
       return { state: "dialog", dialog };
     }
@@ -8331,12 +8698,35 @@ export class Daemon extends EventEmitter {
       && Daemon.countOccurrences(nudge.pattern, pane) === Daemon.countOccurrences(nudge.pattern, nudge.pane);
   }
 
+  /**
+   * #2844: a dialog that only paints for a live incident proves the newest such error row on screen is current: its
+   * baseline is held below it, so neither a first poll that sees the dialog before any live composer nor the composer
+   * after it can take that row for resumed history. Older rows, of any kind, stay history.
+   */
+  private noteLiveIncidentDialog(dialog: RuntimeDialog, pane: string): void {
+    if (!dialog.marksLiveIncident) return;
+    const baselines = this.nudgeBaselines ?? new Map<string, number>();
+    // Only the row nearest the dialog is the incident; every other kind on screen (an older credits row above a new
+    // spend cap) stays history, so the first matching pattern cannot claim the live incident under its own name.
+    const rows = (this.backend?.getErrorPatterns?.() ?? []).filter(ep => ep.historyUntilLiveComposer).map(ep => {
+      const flags = ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g";
+      const matches = [...pane.matchAll(new RegExp(ep.pattern.source, flags))];
+      return { key: Daemon.errorPatternKey(ep), count: matches.length, last: matches.at(-1)?.index ?? -1 };
+    }).filter(row => row.count > 0);
+    const newest = rows.reduce<(typeof rows)[number] | null>((best, row) => !best || row.last > best.last ? row : best, null);
+    for (const row of rows) {
+      const floor = row === newest ? row.count - 1 : row.count;
+      baselines.set(row.key, Math.min(baselines.get(row.key) ?? floor, floor));
+    }
+    this.nudgeBaselines = baselines;
+  }
+
   /** The first live composer of a spawn fixes what is history (see {@link nudgeBaselines}). */
   private takeNudgeBaselines(pane: string, patterns: ErrorPattern[]): void {
     if (!this.isCodexLivePaneSnapshot(pane)) return;
     const baselines = this.nudgeBaselines ?? new Map<string, number>();
     for (const ep of patterns) {
-      if (ep.action !== "nudge_continue") continue;
+      if (ep.action !== "nudge_continue" && !ep.historyUntilLiveComposer) continue;
       const key = Daemon.errorPatternKey(ep);
       const count = Daemon.countOccurrences(ep.pattern, pane);
       // History that has scrolled away must not hide the next real occurrence.
@@ -8417,6 +8807,7 @@ export class Daemon extends EventEmitter {
    */
   private endDialogEpisode(clearParked = true): void {
     this.dialogAnswers = null;
+    this.retireParkedNotice("answer");
     if (clearParked) this.trackDialogParked(null);
   }
 
@@ -8441,7 +8832,10 @@ export class Daemon extends EventEmitter {
    */
   private noteDialogAnswer(dialog: RuntimeDialog, outcome: "ignored" | "took" | "unproven", screen: string): void {
     const key = Daemon.answerKey(dialog);
-    if (!this.dialogAnswers || this.dialogAnswers.key !== key) this.dialogAnswers = { key, ignored: 0, reported: false, screen, lastAnswerAt: 0 };   // the exact screen being counted: every answer in the episode saw this same one
+    if (!this.dialogAnswers || this.dialogAnswers.key !== key) {
+      if (this.dialogAnswers) this.retireParkedNotice("answer");   // #2897: a different screen: the reported one is over
+      this.dialogAnswers = { key, ignored: 0, reported: false, screen, lastAnswerAt: 0 };
+    }   // the exact screen being counted: every answer in the episode saw this same one
     const episode = this.dialogAnswers;
     if (outcome !== "ignored") {
       this.endDialogEpisode(outcome === "took");
@@ -8456,6 +8850,8 @@ export class Daemon extends EventEmitter {
     const holdsDeliveries = dialog.blocksDelivery === true || dialog.holdOnly === true;
     this.logger.warn({ dialog: dialog.description, attempts: episode.ignored, holdsDeliveries },
       "Runtime dialog is ignoring AgEnD's answer — reporting for a human");
+    // #2897: a dialog the parked clock tracks keeps its notice until it leaves the pane; any other, until this episode ends.
+    this.parkedNoticeOut = this.dialogParkedSince !== 0 && this.dialogParkedKey === Daemon.dialogKey(dialog) ? "parked" : "answer";
     this.emit("dialog_answer_ignored", { name: this.name, description: dialog.description, attempts: episode.ignored, holdsDeliveries });
   }
 
@@ -8522,6 +8918,15 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /** #2893: a held dialog's own account of why no automatic answer took it (RuntimeDialog.heldReason); {} when none. */
+  private static heldReasonOf(dialog: RuntimeDialog, pane: string): Record<string, unknown> {
+    try { return dialog.heldReason?.(pane) ?? {}; } catch { return {}; }
+  }
+  /** What an answered dialog says about the answer (RuntimeDialog.answerDetail); {} when it gives none. */
+  private static answerDetailOf(dialog: RuntimeDialog, pane: string): Record<string, unknown> {
+    try { return dialog.answerDetail?.(pane) ?? {}; } catch { return {}; }
+  }
+
   /**
    * Remember how long a blocking dialog has been on screen. Once it has
    * outlived DIALOG_PARKED_NOTIFY_MS — the auto-dismiss did not take, or the
@@ -8530,13 +8935,24 @@ export class Daemon extends EventEmitter {
    * is safe. Identity is the pattern, so the delivery gate and the runtime
    * scanner (same canonical list) never reset each other's clock.
    */
-  private trackDialogParked(dialog: RuntimeDialog | null): void {
+  /** #2897: the notice out for a dialog is out of date (its `owner` ended): the fleet takes it back. */
+  private retireParkedNotice(owner: "parked" | "answer"): void {
+    if (this.parkedNoticeOut !== owner) return;
+    this.parkedNoticeOut = null;
+    this.emit("dialog_unparked", { name: this.name });
+  }
+
+  /** `pane`: the capture the caller already holds — M-2269 keeps the dialog's text from it for the Log (no new capture). */
+  private trackDialogParked(dialog: RuntimeDialog | null, pane = ""): void {
     if (!dialog) {
       if (this.dialogParkedSince !== 0) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
       this.dialogParkedSince = 0;
       this.dialogParkedKey = null;
+      this.heldReasonLoggedKey = null;
       this.dialogParkedInteractionEpisode = null;
       this.dialogParkedReported = false;
+      // #2897: whatever it posted is out of date — the fleet takes its notices back.
+      this.retireParkedNotice("parked");
       return;
     }
     const key = Daemon.dialogKey(dialog);
@@ -8547,6 +8963,8 @@ export class Daemon extends EventEmitter {
     }
     if (episode !== null) this.dialogParkedInteractionEpisode = episode;
     if (this.dialogParkedSince === 0 || this.dialogParkedKey !== key) {
+      // #2897: a different dialog replaced the one being tracked — that one's notices are out of date.
+      if (this.dialogParkedSince !== 0) this.retireParkedNotice("parked");
       this.dialogParkedSince = Date.now();
       this.dialogParkedKey = key;
       this.dialogParkedReported = false;
@@ -8557,9 +8975,13 @@ export class Daemon extends EventEmitter {
     if (unrecognised && this.unrecognisedPrompt?.reportedElsewhere) this.dialogParkedReported = true;
     if (!this.dialogParkedReported && Date.now() - this.dialogParkedSince >= (unrecognised ? 0 : DIALOG_PARKED_NOTIFY_MS)) {
       this.dialogParkedReported = true;
+      this.parkedNoticeOut = "parked";
       this.logger.warn({ dialog: dialog.description, parkedForMs: Date.now() - this.dialogParkedSince },
         "CLI dialog is still on screen — not auto-answering, reporting for a human");
+      const screen = dialogScreenText(pane);
       this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true,
+        ...(screen ? { screen } : {}),
+        ...(dialog.parkedAdvice ? { advice: dialog.parkedAdvice } : {}),
         ...(episode !== null && interaction.kind ? { kind: interaction.kind, episode, backend: this.config.backend ?? "claude-code" } : {}),
         ...(unrecognised ? { unrecognised: true, question: this.unrecognisedPrompt?.shape.question ?? null } : {}) });
     }
@@ -8899,6 +9321,13 @@ export class Daemon extends EventEmitter {
       const idle = stop ? await this.waitForPaneIdleForDelivery(windowId, remaining, stop)
         : await this.waitForPaneIdleForDelivery(windowId, remaining);
       if (idle !== true) return idle;
+      // M-2267: a person left the pane in a tmux mode (copy-mode): its keys would go to the mode. Hold — never take the
+      // pane out of it — and look again; the delivery goes once the mode ends (or this wait's own deadline).
+      if (await this.paneInTmuxMode("readiness")) {
+        if (stop && await stop()) return "stopped";
+        await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
+        continue;
+      }
       // The idle wait just resolved, so re-reading the silence gate would only
       // add a stale-cache race; ask the pane the remaining questions directly.
       const transient = await this.probeInputTransient();
@@ -9385,9 +9814,36 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
-    return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt);
+    return this.sendDeliveryEnterAfterAvailability(phase, stillCurrent, durableAttempt, onInputHeld);
+  }
+
+  /**
+   * M-2267 (hmsg-b8a170c0): is the pane in a tmux mode (a person left it in copy-mode)? Logged once per stretch. Unknown
+   * (unreadable) is not a mode: the delivery's own reads decide then, as before.
+   */
+  private paneModeSince = 0;
+  private async paneInTmuxMode(phase: string): Promise<boolean> {
+    const inMode = await this.tmux?.paneInMode?.();
+    if (inMode !== true) { this.paneModeSince = 0; return false; }
+    if (!this.paneModeSince) {
+      this.paneModeSince = performance.now();
+      this.logger.warn({ phase }, "The pane is in a tmux mode (copy-mode) — delivery waits for it to end; no key is sent to it");
+    }
+    return true;
+  }
+  /** M-2267: wait while the pane is in a tmux mode, until `deadline` (PANE_MODE_ENTER_WAIT_MS) — "clear", "stale" (fenced), "held". */
+  private async waitWhilePaneInMode(phase: string, current: () => boolean, deadline = performance.now() + PANE_MODE_ENTER_WAIT_MS): Promise<"clear" | "stale" | "held"> {
+    for (;;) {
+      const inMode = await this.paneInTmuxMode(phase);
+      if (!current()) return "stale";
+      if (!inMode) return "clear";
+      if (performance.now() >= deadline) return "held";
+      await new Promise(r => setTimeout(r, PANE_MODE_POLL_MS));
+      if (!current()) return "stale";
+    }
   }
 
   /** Write half only: callers must finish the availability wait before any final recovery ownership proof. */
@@ -9395,10 +9851,64 @@ export class Daemon extends EventEmitter {
     phase: string,
     stillCurrent?: () => boolean,
     durableAttempt?: DurableDeliveryAttempt,
+    onInputHeld?: (why: EnterHeldReason) => void,
   ): Promise<boolean> {
-    // A recovery Enter may have waited for a transient while cancel or spawn
-    // replaced the delivery. Check at the last point before the tmux write.
-    if (this.deliveryWritesStopping || (stillCurrent && !stillCurrent())) return false;
+    // A recovery Enter may have waited for a transient while cancel or spawn replaced the delivery: check here, and
+    // again after every wait below, at the last point before the tmux write.
+    // M-2290 (#2985 review, Fable): the mode wait can last up to 10 minutes, and a respawn or relaunch reuses the same
+    // tmux object and window — so the spawn generation and launch fence are part of the fence too: an Enter meant for
+    // the CLI this paste went to is never sent to its successor.
+    const tmux = this.tmux;
+    const generation = this.spawnGeneration;
+    const fence = this.launchFenceEpoch;
+    const current = () => this.tmux === tmux && this.spawnGeneration === generation && this.launchFenceEpoch === fence
+      && !this.deliveryWritesStopping && (!stillCurrent || stillCurrent());
+    if (!current()) return false;
+    // The pasted text may still be in the box: the caller keeps it uncertain (no false failure, no second paste).
+    const hold = () => {
+      onInputHeld?.("pane-in-mode");
+      this.logger.warn({ phase }, "The pane stayed in a tmux mode; Enter withheld");
+      return false;
+    };
+    // M-2267 (#2971): a pane in a tmux mode (a person left it in copy-mode) would take this Enter. Wait for the mode to
+    // end, then look once more within the same deadline — a pane flickering back into a mode is waited out again, never
+    // past the bound. (beta.5: #2958's composer proof that used to sit between the two looks is reverted, decision
+    // f57474aa: it rejected Codex's footer after a resume and while busy. #2957 is open again.)
+    const modeDeadline = performance.now() + PANE_MODE_ENTER_WAIT_MS;
+    for (;;) {
+      const mode = await this.waitWhilePaneInMode(phase, current, modeDeadline);
+      if (mode === "stale") return false;
+      if (mode === "held") return hold();
+      if (await this.paneInTmuxMode(phase)) {
+        if (!current()) return false;
+        if (performance.now() >= modeDeadline) return hold();
+        await new Promise(r => setTimeout(r, PANE_MODE_POLL_MS));
+        if (!current()) return false;
+        continue;
+      }
+      if (!current()) return false;
+      break;
+    }
+    // M-2290 (the simple half of the #2957 redesign, leader xmsg-1793712561468): a dialog the backend RECOGNISES
+    // (runtimeDialogs: a permission card, the dangerous-command card, …) that painted between the paste and this Enter
+    // would take the key as its answer. Read the pane once more: such a dialog withholds the Enter, the caller keeps the
+    // delivery uncertain (Needs-you), and the dialog scanner parks the dialog for a person. Nothing else is judged here
+    // — an unknown or unreadable screen sends, exactly as before: #2958's composer proof (decision f57474aa) is NOT back.
+    // Only a caller that can hold (onInputHeld: the delivery's initial submit, settled uncertain → Needs-you) asks: one
+    // that cannot would read `false` as a failure and paste again. Only the backend's OWN dialogs count — not AgEnD's
+    // unrecognised-prompt guess — so an unknown screen still sends.
+    if (onInputHeld) {
+      let finalPane: string | null = null;
+      try { finalPane = await tmux!.capturePane(); } catch { finalPane = null; }
+      if (!current()) return false;
+      let dialog: string | undefined;
+      try { dialog = finalPane === null ? undefined : (this.backend?.getRuntimeDialogs?.() ?? []).find(d => Daemon.dialogMatches(d, finalPane!))?.description; } catch { dialog = undefined; }
+      if (dialog !== undefined) {
+        onInputHeld?.("dialog");
+        this.logger.warn({ phase, dialog }, "A dialog is on the pane; the delivery's Enter is withheld (it would answer it)");
+        return false;
+      }
+    }
     // W1: persist the "Enter may have happened" boundary before tmux receives
     // the key. A crash after this commit is never auto-replayed without a
     // positive transcript marker, even if the stale pane still shows composer.
@@ -9408,7 +9918,7 @@ export class Daemon extends EventEmitter {
       this.logger.error({ phase, deliveryId: durableAttempt.deliveryId }, "Could not commit durable Enter write-ahead fence");
       return false;
     }
-    const sent = await this.tmux!.sendSpecialKey("Enter");
+    const sent = await tmux!.sendSpecialKey("Enter");
     if (!sent) {
       this.logger.error({
         phase,
@@ -9438,7 +9948,7 @@ export class Daemon extends EventEmitter {
     // Board 907c7899: awaited each attempt after its last capture, begin and fence; the fence is asked again after it.
     lookBeforePaste?: () => Promise<void>,
     // "handoff-box-unread": a hand-off's last capture had no readable box — nothing begun or written (#1169).
-  ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread"> {
+  ): Promise<boolean | KiroPendingDelivery | "handoff-box-unread" | "pane-in-mode"> {
     const signature = this.submissionSignature(formatted, humanVerificationId ?? submissionId, humanVerificationId !== undefined);
     const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     const humanAttempt = verdict.humanReceipt;
@@ -9475,6 +9985,9 @@ export class Daemon extends EventEmitter {
       // Every attempt, retries included: a stop or respawn during a recovery wait ends it unwritten.
       // After a durable begin, the caller's abort path owns the row; only an attempt with no begin may be redone.
       if (stillCurrent && !stillCurrent()) { verdict.fenced = !verdict.durableBeginCommitted; return false; }
+      // M-2267: the pane went into a tmux mode after the readiness wait. Nothing begun or written: the caller waits for
+      // readiness (which holds while it lasts) and tries again — as for a dialog that appeared before the write.
+      if (!verdict.durableBeginCommitted && await this.paneInTmuxMode("paste")) return "pane-in-mode";
       // A hand-off pastes and presses Enter into a busy pane: the box must still be readable on this, the last capture
       // before the write (#1169 review) — a modal that appeared after the under-lock check would take that Enter. Before
       // the durable begin the caller waits for readiness outside the lock and tries again; after it (a paste retry),
@@ -9540,6 +10053,16 @@ export class Daemon extends EventEmitter {
           }
         }
       }
+      // #3030: a hand-off into a busy CLI's own queue is on record before its paste (write-ahead): that queue lives only
+      // in the CLI process, and a stop before a turn takes it would lose it without a trace.
+      if (verdict.trackHandoff && !rawPaste) {
+        await this.recordQueuedHandoff(formatted, handingOffToNativeQueue, verdict, durableAttempt, humanVerificationId);
+        if (stillCurrent && !stillCurrent()) {
+          if (!verdict.trackHandoff.id) this.dropQueuedHandoff(verdict);
+          verdict.fenced = !verdict.durableBeginCommitted;
+          return false;
+        }
+      }
       if (lookBeforePaste) {
         await lookBeforePaste();
         // The look awaited: this attempt is still this write's — the same fence, tmux and launch — or nothing is written.
@@ -9570,6 +10093,16 @@ export class Daemon extends EventEmitter {
       // failed/throwing write as uncertain rather than retrying bytes into the
       // same pane; the write-ahead Enter marker later separates safe pre-Enter
       // recovery from a possibly executed command.
+      // M-2267 (#2971 review, Prism P2): EVERY paste attempt — a retry after a failed paste, a first paste whose durable
+      // begin already went — asks too. Before the begin: nothing begun, the caller waits for readiness and tries again.
+      // After it: this attempt waits here, keeping its durable attempt; a mode outlasting the wait fails it unwritten.
+      if (!verdict.durableBeginCommitted) {
+        if (await this.paneInTmuxMode("paste")) return "pane-in-mode";
+      } else {
+        const mode = await this.waitWhilePaneInMode("paste", () => (!stillCurrent || stillCurrent()) && !this.deliveryWritesStopping);
+        if (mode === "stale") { verdict.fenced = false; return false; }
+        if (mode === "held") return this.failDelivery(verdict, status, "paste", "pane-in-tmux-mode");
+      }
       const pasteGeneration = this.spawnGeneration;
       beforePaste?.();
       const pasted = await this.tmux!.pasteBuffer(formatted);
@@ -9655,7 +10188,15 @@ export class Daemon extends EventEmitter {
       let enterAt = Date.now();
       const enterMono = performance.now();
       const steerEnterCurrent = () => steerCurrent() && performance.now() <= steerEnterDeadline;
-      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt))) {
+      let inputHeld: EnterHeldReason | null = null;
+      if (!(await this.sendDeliveryEnter("initial-submit", steerComposerProof ? steerEnterCurrent : undefined, durableAttempt, (why) => { inputHeld = why; }))) {
+        if (inputHeld) {
+          // #2971: held in a tmux mode past the bound; M-2290: a recognised dialog on the pane. The paste may still be in
+          // the CLI: keep it uncertain (Needs-you), never re-paste, never answer the dialog.
+          verdict.phase = "submit-enter";
+          verdict.proof = inputHeld === "dialog" ? "dialog-on-pane" : "pane-in-mode-held";
+          return false;
+        }
         if (steerComposerProof && !steerCurrent()) {
           verdict.phase = "submit-enter";
           verdict.proof = "fenced-before-enter";
@@ -9743,7 +10284,8 @@ export class Daemon extends EventEmitter {
         }
         const proof = await this.confirmSubmitted(signature, pasteBaseline);
         if (proof === "submitted") {
-          if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
+          // ✅ native queue accepted — unless it is on record (#3030): then ✅ waits for the turn that takes it.
+          if (status && !verdict.handoff) this.emit("message_confirmed", status);
           return true;
         }
         if (proof === "unverifiable") {
@@ -9775,7 +10317,7 @@ export class Daemon extends EventEmitter {
           this.logger.warn("Paste reached the pane but could not be verified as submitted — accepting without proof");
           verdict.phase = "best-effort-submission";
           verdict.proof = "unverified";
-          if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
+          if (status && !verdict.handoff) this.emit("message_confirmed", status); // ✅ (best-effort; on record: when taken, #3030)
           return true;
         }
 
@@ -9792,8 +10334,13 @@ export class Daemon extends EventEmitter {
         // confirmation ladder. "stranded" is the case that used to be a silent
         // ✅ — the text was visible, so the old check called it delivered.
         this.logger.warn({ proof }, "Native-queue paste not confirmed as submitted — retrying via idle-gated delivery");
-        if (windowId && this.controlClient) {
-          await this.controlClient.waitUntilIdle(windowId);
+        // #3030: what follows is an idle submission (or a failure the caller reports): no longer a queued hand-off.
+        if (verdict.handoff && !verdict.trackHandoff?.id) this.dropQueuedHandoff(verdict);
+        verdict.handoff = undefined;
+        if (windowId && this.controlClient && !(await this.controlClient.waitUntilIdle(windowId))) {
+          verdict.phase = "native-queue-idle-wait";
+          verdict.proof = "idle-wait-failed";
+          return false;
         }
 
         // Re-read before doing anything: the CLI had a whole turn to flush its
@@ -10814,59 +11361,11 @@ export class Daemon extends EventEmitter {
           reply(written, undefined);
           return;
         }
-        if (tool === "export_web_mod") {
-          // The fleet builds the file (whole, or in parts); it is written here, in the working directory.
-          const first = await ask(args);
-          if (first.error) { reply(null, first.error); return; }
-          let failed: string | undefined;
-          const firstResult = (first.result && typeof first.result === "object" ? first.result : {}) as Record<string, unknown>;
-          const got = await receiveFiles(firstResult, async (payload) => {
-            const r = await ask(payload);
-            if (r.error) { failed = r.error; return { error: r.error }; }
-            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
-          }, { name: MOD_FILE, idKey: "transfer", what: "export", maxParts: MOD_MAX_PARTS });
-          if (failed) { reply(null, failed); return; }
-          if ("error" in got) { reply(got, undefined); return; }
-          const written = await writeModFile(got.files, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
-          if ("error" in written) { reply(null, `export_web_mod: ${written.error}`); return; }
-          reply({ ...written, ...(firstResult.effects_omitted ? { effects_omitted: firstResult.effects_omitted } : {}) }, undefined);
-          return;
-        }
-        if (tool === "propose_web_mod") {
-          const read = await readAgentFile(args.file, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name, maxBytes: MOD_UPLOAD_MAX_BYTES });
-          const named = typeof args.file === "string" ? args.file.slice(0, 200) : "the file argument";
-          if (!read.ok) { reply(null, `propose_web_mod: ${named} — ${read.reason}`); return; }
-          let failed: string | undefined;
-          const answer = await sendAssetInParts("mod", read.bytes, async (payload) => {
-            const r = await ask(payload);
-            if (r.error) { failed = r.error; return { error: r.error }; }
-            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>;
-          });
-          reply(failed ? null : answer, failed);
-          return;
-        }
         if (tool === "office_pack_check" || tool === "office_pack_upload") {
           // #2692: the folder (or the manifest's files) is read here, on the agent's side; the fleet gets bytes in parts.
           const answer = await sendPackSources(args, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name },
             async (payload) => { const r = await ask(payload); return r.error ? { error: "fleet", message: r.error } : ((r.result && typeof r.result === "object" ? r.result : {}) as Record<string, unknown>); });
           reply(answer, undefined);
-          return;
-        }
-        if (tool === "upload_web_effect") {
-          const owner = { fence:this.launchFenceEpoch, spawn:this.spawnGeneration, boot:this.bootId, ipc:this.ipcServer };
-          const current = () => !!owner.ipc && owner.ipc === this.ipcServer && owner.fence === this.launchFenceEpoch && owner.spawn === this.spawnGeneration && owner.boot === this.bootId && !this.deliveryWritesStopping && !this.startupAborted;
-          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
-          const read = await readAgentEffect(args.dir, { workspace: this.config.working_directory, configuredWorkspace: this.config.working_directory, stateDir: getAgendHome(), instance: this.name });
-          if (!current()) { reply(null,"upload_web_effect: launch no longer current"); return; }
-          if (!read.ok) { reply(null, `upload_web_effect: ${read.reason}`); return; }
-          let failed: string | undefined;
-          const answer = await sendEffectInParts(read.files, async payload => {
-            if (!current()) { failed="upload_web_effect: launch no longer current"; return {error:failed}; }
-            const r = await ask(payload);
-            if (r.error) { failed = r.error; return { error:r.error }; }
-            return (r.result && typeof r.result === "object" ? r.result : {}) as Record<string,unknown>;
-          });
-          reply(failed ? null : answer, failed);
           return;
         }
         if (tool !== "set_web_theme_asset") { const r = await ask(args); reply(r.result, r.error); return; }
@@ -11314,6 +11813,9 @@ export class Daemon extends EventEmitter {
     this.recoveryNativeWork = false;
     this.recoveryCancelled = false;
     this.dialogAnswers = null;
+    // #2897: a relaunched CLI shows none of the old dialogs — whatever notice was out for one is out of date.
+    // A dialog still tracked when the new CLI shows it again is reported afresh (its old notice is gone).
+    if (this.parkedNoticeOut) { this.parkedNoticeOut = null; this.dialogParkedReported = false; this.emit("dialog_unparked", { name: this.name }); }
     this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.lastErrorEpisode = null;
     this.nudgeBaselines = null;
@@ -12061,7 +12563,11 @@ export class Daemon extends EventEmitter {
         || this.startupAborted || this.deliveryWritesStopping || this.runtimeMonitorsFrozen || this.healthCheckPaused)) {
         throw new Error("OOM recovery cancelled: the instance was stopped, paused or replaced while memory was unavailable");
       }
-      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
+      return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs).catch(err => {
+        // Includes an in-place binary replacement during asynchronous launch preparation.
+        if (err instanceof KiroCompatibilityError) this.emit("kiro_compatibility_hold", err.message);
+        throw err;
+      });
     };
     const ready = !this.spawnGate ? await enter() : await this.spawnGate.run({
       instanceName: this.name,
@@ -12205,7 +12711,7 @@ export class Daemon extends EventEmitter {
    */
   private currentWhatsNew(pending: { notice: string; ids: string[]; version: string }): { notice: string; ids: string[]; version: string } | null {
     const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh: false, version: pending.version,
-      roles: this.whatsNewRoles(), tools: this.whatsNewTools(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
+      roles: this.whatsNewRoles(), tools: this.whatsNewTools() });
     if (!plan || "silent" in plan) {
       this.pendingWhatsNew = null;
       if (plan) this.recordWhatsNewSent({ ids: plan.silent, version: plan.version });
@@ -12222,13 +12728,13 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * #2800: the tools this instance's agend MCP server lists now — the same filters (tool set, dashboard switches, the
-   * Canvas Worker switch) — so a notice names only changes to tools it has.
+   * #2800: the tools this instance's agend MCP server lists now — the same filters (tool set, dashboard switches) — so a
+   * notice names only changes to tools it has.
    */
   private whatsNewTools(): ReadonlySet<string> {
     const allowed = toolsFor(resolveToolSet(this.config, this.name));
     const listed = withoutFeatures(TOOLS.filter(t => allowed.has(t.name)), dashboardFeaturesOff(dashboardAccessOf(this.config)));
-    return new Set(toolsWithCanvasWorker(readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")), listed).map(t => t.name));
+    return new Set(listed.map(t => t.name));
   }
 
   /**
@@ -12246,7 +12752,7 @@ export class Daemon extends EventEmitter {
   private prepareWhatsNew(fresh: boolean, version: string | null = agendVersion()): void {
     try {
       const plan = planWhatsNew({ record: readWhatsNewRecord(this.instanceDir), fresh, version, roles: this.whatsNewRoles(),
-        tools: this.whatsNewTools(), canvasWorker: readCanvasWorkerEnabled(join(this.instanceDir, "..", "..")) });
+        tools: this.whatsNewTools() });
       if (!plan) { this.pendingWhatsNew = null; return; }
       if ("silent" in plan) { recordWhatsNew(this.instanceDir, plan.silent, plan.version); this.pendingWhatsNew = null; return; }
       this.pendingWhatsNew = plan;
@@ -12261,6 +12767,12 @@ export class Daemon extends EventEmitter {
     this.startupAdmission?.();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
+
+    // A compatibility refusal is not a failed resume: no configuration, pin, history or pane may change.
+    if (this.backend?.assertLaunchSupported) {
+      this.backend.assertLaunchSupported(backendConfig);
+      this.emit("kiro_compatibility_hold", null);
+    }
 
     // #1633: decided before prev-instructions is first written — its absence is what says "never launched before".
     this.prepareWhatsNew(!existsSync(join(this.instanceDir, "prev-instructions")));
@@ -12295,6 +12807,7 @@ export class Daemon extends EventEmitter {
     const agentTokenPath = join(this.instanceDir, "agent.token");
     const agentToken = randomBytes(32).toString("hex");
     const tokenWrite = writeSecretFile(agentTokenPath, agentToken);
+    this.agentCredentialIssuer?.(agentToken);
     if (!tokenWrite.ok) {
       // Do not fail the spawn over it — an instance that cannot start is worse
       // than one whose token is readable. But say so, loudly: the whole point of
@@ -12554,12 +13067,15 @@ export class Daemon extends EventEmitter {
                 || this.hasAutoDialogClaim(dialog))) continue;
             lastDialog = dialog;
             this.noteCodexReserveDialog(dialog, pane);
+            this.noteLiveIncidentDialog(dialog, pane);
             cleanReadyPolls = 0;
+            // Before the parked clock below claims it: a hold seen for the first time is said once, with its reason (#2893).
+            const firstSight = this.dialogParkedKey !== Daemon.dialogKey(dialog);
             // Start the parked clock for every delivery-blocking dialog, exact
             // ones included: if the auto-dismiss keeps failing here, the human
             // report should count from first sight, not from the runtime scan.
             if (!dialog.fatal && this.deliveryBlockingDialogs().some(d => Daemon.dialogKey(d) === Daemon.dialogKey(dialog))) {
-              this.trackDialogParked(dialog);
+              this.trackDialogParked(dialog, pane);
             }
             // A fatal startup screen cannot be dismissed by keypresses (e.g. a
             // corrupt claude.json modal offering only "exit" / "reset config").
@@ -12583,14 +13099,15 @@ export class Daemon extends EventEmitter {
             }
             if (dialog.holdOnly) {
               // Recognised but deliberately not answered (see RuntimeDialog.holdOnly).
-              if (this.dialogParkedKey !== Daemon.dialogKey(dialog)) {
-                this.logger.warn({ description: dialog.description }, "Startup dialog held — not auto-answering, deliveries stay blocked");
+              if (firstSight) {
+                const reason = this.heldReasonLoggedKey !== Daemon.dialogKey(dialog) ? Daemon.heldReasonOf(dialog, pane) : {};
+                if (Object.keys(reason).length) this.heldReasonLoggedKey = Daemon.dialogKey(dialog);
+                this.logger.warn({ description: dialog.description, ...reason }, "Startup dialog held — not auto-answering, deliveries stay blocked");
               }
-              this.trackDialogParked(dialog);
+              this.trackDialogParked(dialog, pane);
               matched = true;
               break;
             }
-            this.logger.info(`Dismissing startup dialog: ${dialog.description}`);
             // Restart is exactly when inbound messages pile up, and nothing gates
             // delivery on `spawning`. Take the pane lock for the key sequence so a
             // queued message cannot be pasted into a half-dismissed trust dialog.
@@ -12602,12 +13119,16 @@ export class Daemon extends EventEmitter {
               // the key send. A changed pane falls through to the next scan;
               // a pane that is no longer this launch's is not read or keyed.
               if (!owned()) return false;
+              let answeredPane = pane;
               if (dialog.inputBlocked) {
                 const currentPane = await this.tmux!.capturePane(); this.startupAdmission?.();
                 // The capture is an await too: a replacement launched during it must find no answer recorded as its own.
                 if (!owned()) return false;
                 if (!Daemon.dialogMatches(dialog, currentPane)) return false;
+                answeredPane = currentPane;
               }
+              // Said of the screen actually answered — the one re-read under the lock (#2896 review).
+              this.logger.info(Daemon.answerDetailOf(dialog, answeredPane), `Dismissing startup dialog: ${dialog.description}`);
               if (dialog.autoResolutionKey) {
                 attemptedSafetyChoices.add(dialog.autoResolutionKey);
                 this.claimAutoDialog(dialog);

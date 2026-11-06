@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { CPU_PROFILE_MAX_SECONDS } from "../../cpu-profile.js";
 import { slashLock } from "../../command-table.js";
 import { randomBytes } from "node:crypto";
+import { inboxTempName } from "../inbox-temp-name.js";
 import { t } from "../../locale.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -70,6 +71,16 @@ import { protectDiscordClientRetirement, retireDiscordClient } from "./discord-c
 function isDiscordReplyRefusal(err: unknown): boolean {
   const code = (err as { code?: unknown } | null)?.code;
   return code === 50035 || code === 10008 || code === 160002;
+}
+/** #2897: Unknown Message (10008) or Unknown Channel (10003) — what a delete may treat as already done. */
+function isDiscordGone(err: unknown): boolean {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 10008 || code === 10003;
+}
+/** #2897: our own refusal of an id that is not a text channel here (another world's, a category) — "look elsewhere". */
+function isDiscordNotHere(err: unknown): boolean {
+  const message = String((err as { message?: unknown } | null)?.message ?? "");
+  return (err as { code?: unknown } | null)?.code === undefined && /is not a text channel|Cannot send to Discord channel/.test(message);
 }
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
@@ -505,6 +516,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     };
     client.on("messageReactionAdd", (reaction, user) => void onReaction(reaction, user, "add"));
     client.on("messageReactionRemove", (reaction, user) => void onReaction(reaction, user, "remove"));
+    // #2940: a message deleted in a channel this bot sees (its id only: the message may not be cached — Partials.Message).
+    // The fleet takes a chat-log line recorded for it out again (a bot's deleted status bubble, a person's deleted line).
+    const onDeleted = (id: string, channelId: string) => {
+      try { this.emit("message_deleted", { messageId: id, channelId }); }
+      catch (err) { console.warn(`[discord] message delete handler error (${(err as Error).message})`); }
+    };
+    client.on("messageDelete", (msg) => onDeleted(msg.id, msg.channelId));
+    client.on("messageDeleteBulk", (msgs, channel) => { for (const id of msgs.keys()) onDeleted(id, channel.id); });
 
     client.on("messageCreate", async (msg: Message) => {
       try {
@@ -1771,27 +1790,46 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async deleteMessage(chatId: string, messageId: string, threadId?: string): Promise<void> {
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses); fall back to scanning top-level text channels.
+    // #2897: resolves only on proof — deleted, or shown to be gone (Discord said Unknown Message / Unknown Channel for
+    // the exact lookup, or a scan that ran to the end found it nowhere). Anything else rejects (Missing Permissions, a
+    // gateway not ready, a scan that could not run), so a caller can retry or fall back.
+    let gone = false;
+    let failure: unknown;
+    let msg: Message | undefined;
     try {
       const channel = await this._fetchTextChannel(threadId ?? chatId);
-      const msg = await channel.messages.fetch(messageId);
-      await msg.delete();
-      return;
-    } catch { /* not in that channel — fall through to scan */ }
-    try {
-      const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
-      const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
-      for (const [, ch] of channels) {
-        try {
-          const textCh = ch as TextChannel;
-          const msg = await textCh.messages.fetch(messageId);
-          await msg.delete();
-          return;
-        } catch {
-          continue;
+      msg = await channel.messages.fetch(messageId);
+    } catch (err) {
+      // Not found there — or no answer at all. A local "not a text channel" proves nothing either way: look elsewhere.
+      // Unknown Channel proves the message gone only for a named thread/channel: with none, chatId may be the guild's id.
+      const code = (err as { code?: unknown } | null)?.code;
+      if (code === 10008 || (code === 10003 && threadId !== undefined)) gone = true;
+      else if (!isDiscordNotHere(err) && code !== 10003) failure = err;
+    }
+    if (!msg) {
+      try {
+        const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
+        const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
+        let scanComplete = true;
+        for (const [, ch] of channels) {
+          try {
+            msg = await (ch as TextChannel).messages.fetch(messageId);
+            break;
+          } catch (err) {
+            if (!isDiscordGone(err)) { scanComplete = false; failure ??= err; }
+          }
         }
-      }
-    } catch { /* message already gone */ }
+        if (!msg && scanComplete && failure === undefined) gone = true;
+      } catch (err) { failure ??= err; }
+    }
+    if (msg) {
+      try { await msg.delete(); } catch (err) { if (!isDiscordGone(err)) throw err; }
+      return;
+    }
+    if (gone) return;
+    throw failure ?? new Error(`Discord message ${messageId} could not be found or deleted`);
   }
+
 
   /**
    * A server's custom emojis, for the Settings status-emoji picker (#1005);
@@ -2104,7 +2142,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     if (!url) throw new Error(`No URL for attachment: ${fileId}`);
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-    const filename = `${Date.now()}-${fileId.slice(-8)}-${url.split("/").pop()?.split("?")[0] ?? "file"}`;
+    // #2959: unique per download — the inbox is shared by every bot on the host.
+    const filename = inboxTempName(fileId, url.split("/").pop()?.split("?")[0] ?? "file");
     const localPath = join(this.inboxDir, filename);
     const dest = createWriteStream(localPath);
     const body = response.body;
@@ -2226,11 +2265,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async deleteTopic(topicId: number | string): Promise<void> {
+    // #3055 review (Prism P1): this connection's own General channel is never deleted, whether or not an agent is
+    // configured as its General (a secondary connection has none).
+    if (this.generalChannelId && String(topicId) === String(this.generalChannelId)) throw new Error("the General topic is never deleted");
     const channel = await (await this.readyClient()).channels.fetch(String(topicId));
-    // Only delete GuildText channels created by createTopic — never categories or forums
-    if (channel && "type" in channel && (channel as { type: ChannelType }).type === ChannelType.GuildText && "delete" in channel) {
-      await (channel as { delete(): Promise<unknown> }).delete();
+    // Only delete GuildText channels created by createTopic — never categories or forums. Anything else is refused
+    // out loud (delete_instance reports topic_deleted from this), never skipped as if it were done.
+    if (!channel) throw new Error("Unknown Channel");
+    if (!("type" in channel) || (channel as { type: ChannelType }).type !== ChannelType.GuildText || !("delete" in channel)) {
+      throw new Error("not a topic channel AgEnD creates (a text channel), so it was left alone");
     }
+    await (channel as { delete(): Promise<unknown> }).delete();
   }
 
   async probeTopicPresence(topicId: number | string): Promise<TopicPresence> {

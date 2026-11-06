@@ -16,9 +16,14 @@ import { Icon } from "/assets/ui-icons.js";
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
-import { experimentalComponent, useCanvasWorker } from "/assets/feature-flags.js";
-const EffectTrialPanel = experimentalComponent(() => import("./effect-trial-panel.js"), m => m.EffectTrialPanel);
 import { chatTime, onDayChange } from "./chat-time.js";
+import { PanelActions } from "./preview-panel-actions.js";
+import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./preview-versions.js";
+import { pagesOf, pageIdOf } from "./preview-pages.js";
+import { drawMarkdown, TEXT_CARD_MAX } from "./chat-thread.js";
+import "./chat-md-strings.js";   // M-2448: the Markdown panel's own words (an older cached chat-strings.js lacks them)
+
+export { htmlTitle };
 
 const R = () => globalThis.AgendChatRender;
 const P = () => globalThis.AgendPreview;
@@ -47,18 +52,22 @@ export const frameKey = (key) => `panel:${key}`;
 /** Show `spec` in the panel; `run`: start it there (the card's "Open in panel" click). The block shown before stops. */
 function retire(open) {
   if (!open) return;
-  if (open.kind === "trial") { try { open.handle.stop(); } catch { /* host controller owns cleanup */ } }
-  else if (P()) P().stop(frameKey(open.key), "stopped", "");
+  if (P()) P().stop(frameKey(open.key), "stopped", "");
 }
 export function openPanel(spec, { run = false } = {}) {
   const old = state.open;
   set({ open: { ...spec, kind: "html" }, run: run ? ++runs : 0 });
   retire(old); // State changes first: cleanup reentry cannot close a newer panel.
 }
-/** A checked controller handle enters the existing component slot; no HTML run token is issued. */
-export function openTrialPanel(spec) {
+/**
+ * M-2448: show a Markdown file in the panel — `spec`: { key, instance, msgKey, att: { id, name, size }, sender, ts,
+ * text? } (text: what the card's Show already read). Nothing runs: it is rendered by the chat's own Markdown renderer.
+ * The block shown before stops, as for any open.
+ */
+export function openMarkdown(spec) {
   const old = state.open;
-  set({ open: { ...spec, kind: "trial" }, run: 0 }); retire(old);
+  set({ open: { ...spec, kind: "md" }, run: 0 });
+  retire(old);
 }
 /** Close publishes the empty slot before old-owner callbacks can reenter. */
 export function closePanel() {
@@ -68,19 +77,13 @@ export function closePanel() {
 /** The card key the panel shows, or null. */
 export const shownKey = () => (state.open ? state.open.key : null);
 
-/** The text of a block's <title>, or "" — what says two blocks are versions of one thing. */
-export function htmlTitle(code) {
-  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(String(code || ""));
-  return m ? m[1].replace(/\s+/g, " ").trim() : "";
-}
-
 /**
  * A newer version of the shown block: the last complete ```html block in an agent reply after the one it came from.
  * When the shown block has a <title>, only a block with the same title counts (another page is not a new version);
  * without one, the newest block does. `msgs` in order; `keyOf` makes a message's key.
  */
 export function newerVersion(open, msgs, keyOf) {
-  if (!open || open.kind === "trial" || !Array.isArray(msgs)) return null;
+  if (!open || !Array.isArray(msgs)) return null;
   const at = msgs.findIndex(x => keyOf(x) === open.msgKey);
   if (at < 0) return null;
   // An attached file: a later agent reply attaching a file of the same name is its newer version. Its HTML is read
@@ -126,6 +129,30 @@ export function clampWidth(w, total) {
   return Math.round(Math.min(max, Math.max(MIN_PANEL, w)));
 }
 
+// ── #2911 (7): a CDN library the preview blocked (web.preview_cdn off) — the panel says where to allow it ──
+
+/** web-preview.ts PREVIEW_CDN_SOURCES (a test keeps the two equal): what web.preview_cdn allows. */
+export const CDN_PREFIXES = ["https://cdnjs.cloudflare.com/ajax/libs/", "https://cdn.jsdelivr.net/npm/"];
+/** The CDN host of the first blocked library in a frame's error log that the setting would allow, or null. */
+export function blockedCdnHost(log) {
+  for (const x of (log && log.items) || []) {
+    if (x.kind !== "blocked") continue;
+    const p = CDN_PREFIXES.find(pre => String(x.message).startsWith(pre));
+    if (p) return new URL(p).host;
+  }
+  return null;
+}
+
+// ── #2911 (2): the page's width in the panel (a phone, a tablet, or the panel's own), this device's choice ──
+
+const DEVICE_KEY = "agend_preview_panel_device";
+/** The widths a preview can be shown at: CSS px, or null for the panel's full width. */
+export const DEVICE_WIDTHS = { full: null, tablet: 768, phone: 390 };
+export function storedDevice() { try { const v = localStorage.getItem(DEVICE_KEY); return Object.hasOwn(DEVICE_WIDTHS, v) ? v : "full"; } catch { return "full"; } }
+function storeDevice(v) { try { localStorage.setItem(DEVICE_KEY, v); } catch { /* this page only */ } }
+/** The element the page has fullscreen (standard, else webkit's), or null. */
+const fullscreenEl = () => { const d = globalThis.document; return (d && (d.fullscreenElement || d.webkitFullscreenElement)) || null; };
+
 /** #1770: as the thread shows it — the fleet's zone, with the day when it is not today. */
 const timeOf = (ts) => (ts ? chatTime(ts, { yesterday: (hm) => t("chat.yesterdayAt", hm) }) : "");
 
@@ -141,12 +168,54 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   const [run, setRun] = useState({ state: "idle", reason: "" });
   const [newer, setNewer] = useState(null);
   const [newerNote, setNewerNote] = useState("");
+  const [vers, setVers] = useState({ list: [], index: -1 });   // #2911 (1): the shown block's versions in the thread
+  const [pages, setPages] = useState([]);                      // #2911 (6): every page in the thread, newest first
+  const [cdnHost, setCdnHost] = useState(null);                // #2911 (7): a CDN library this page's run was refused
+  const [listing, setListing] = useState(false);               // the page list is on screen (instead of the page)
+  const [changes, setChanges] = useState(null);                // the Changes view: { state, from, hunks, shown, total }
+  const keepView = useRef(false);                               // a version step keeps Code / Changes on screen
+  const loaded = useRef(new Map());                             // an attached version's HTML, read once (key → code)
   const reading = useRef(null);   // the newer version whose file is being read (one at a time)
   const pending = useRef(0);      // #1704: the card's click, waiting for this device's Allow (the st.run it came with)
   const ownAllow = useRef(0);     // while this panel's own Allow commits its choice: the click it answers (not cancelled by it)
   const holder = useRef(null), divider = useRef(null), panel = useRef(null);
-  const trial = st.open?.kind === "trial" && st.open.instance === name ? st.open : null;
-  const open = st.open?.kind !== "trial" && st.open?.instance === name ? st.open : null;
+  const [device, setDeviceState] = useState(storedDevice);   // #2911 (2): the page's width
+  const setDevice = (v) => { setDeviceState(v); storeDevice(v); };
+  // Full screen: the Fullscreen API on the panel (the dashboard's document — the frame's own policy still denies it),
+  // or, where the page may not, the panel over the whole window ("immersive"). Esc leaves it before it closes the panel.
+  const [fs, setFs] = useState("");
+  const fsTarget = useRef(null);   // the element asked to go full screen (the panel may be gone when it is left)
+  // #2918 review: each request has a generation; leaving (Esc, the button, a close, the chat unmounting) moves it, so a
+  // request still pending answers nobody — a late refusal does not make a later open immersive, and a late success
+  // only takes back the full screen it made.
+  const fsGen = useRef(0);
+  const exitOwn = (el) => {
+    const d = globalThis.document;
+    if (!d || !el || fullscreenEl() !== el) return;
+    const ex = d.exitFullscreen || d.webkitExitFullscreen;
+    try { const r = typeof ex === "function" ? ex.call(d) : null; if (r && typeof r.catch === "function") r.catch(() => {}); } catch { /* already out */ }
+  };
+  const enterFs = () => {
+    const el = panel.current, d = globalThis.document; if (!el || fs) return;
+    const gen = ++fsGen.current;
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    const enabled = d ? (d.fullscreenEnabled ?? d.webkitFullscreenEnabled) : false;
+    if (typeof req !== "function" || enabled === false) { setFs("immersive"); return; }
+    let r;
+    fsTarget.current = el;
+    try { r = req.call(el); } catch { fsTarget.current = null; setFs("immersive"); return; }
+    if (r && typeof r.then === "function") {
+      r.then(() => { if (fsGen.current === gen) { if (fullscreenEl() === el) setFs("native"); } else exitOwn(el); },
+        () => { if (fsGen.current === gen) { fsTarget.current = null; setFs("immersive"); } });
+    } else setFs("native");
+  };
+  function leaveFs() {
+    fsGen.current++;
+    const el = fsTarget.current; fsTarget.current = null;
+    exitOwn(el);
+    setFs("");
+  }
+  const open = st.open?.instance === name ? st.open : null;
 
   useEffect(() => panelStore.subscribe(setSt), []);
   // This device's choice (here or in another tab) decides whether Preview is offered: re-read it when it changes.
@@ -156,16 +225,26 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   useEffect(() => (P() ? P().onChange(() => { if (pending.current && ownAllow.current !== pending.current) pending.current = 0; choice(n => n + 1); }) : undefined), []);
   // Leaving the chat (another instance, another panel) closes the panel: its frame stops with the thread's.
   useEffect(() => () => closePanel(), []);
+  // Leaving the chat: a pending request answers nobody, and our own full screen is taken back.
+  useEffect(() => () => { fsGen.current++; exitOwn(fsTarget.current); fsTarget.current = null; }, []);
+  // Full screen ends with the browser's own Esc or its exit control too: follow it.
+  useEffect(() => {
+    const d = globalThis.document; if (!d || !d.addEventListener) return undefined;
+    const sync = () => setFs(f => (f === "native" && fullscreenEl() !== fsTarget.current ? "" : f));
+    d.addEventListener("fullscreenchange", sync); d.addEventListener("webkitfullscreenchange", sync);
+    return () => { d.removeEventListener("fullscreenchange", sync); d.removeEventListener("webkitfullscreenchange", sync); };
+  }, []);
   // #1770: the source and newer-version labels say the day as the thread does — drawn again when the fleet's day
   // changes, while a block is open. A render: the frame and the run are left as they are.
   const [, dayTick] = useState(0);
   useEffect(() => (open ? onDayChange(() => dayTick(n => n + 1)) : undefined), [!!open]);
 
-  const ui = { state: (s, reason) => setRun({ state: s === "starting" || s === "running" ? s : "idle", reason: reason || "" }) };
-  const start = () => {
+  // #2863: "large" — over 8 MB, nothing runs until "Preview anyway" (or the card's, which opened it with `anyway`).
+  const ui = { state: (s, reason) => setRun({ state: s === "starting" || s === "running" || s === "large" ? s : "idle", reason: reason || "" }) };
+  const start = (anyway) => {
     if (!open || !holder.current) return;
     setView("preview");
-    P().start(frameKey(open.key), holder.current, open.code, ui, { fill: true });
+    P().start(frameKey(open.key), holder.current, open.code, ui, anyway === true || open.anyway ? { fill: true, anyway: true } : { fill: true });
   };
   const stop = () => { if (open) P().stop(frameKey(open.key), "stopped", ""); };
   // A new block in the panel: what ran before is gone (openPanel stopped it); the card's click starts it here — or,
@@ -174,7 +253,9 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   // change of this device's choice cancels it.
   useEffect(() => {
     setRun({ state: "idle", reason: "" });
-    setView("preview");
+    if (!keepView.current) setView("preview");
+    setListing(false);                     // #2920 review: a new block on screen leaves the page list
+    keepView.current = false;
     if (open && st.run) {
       if (P().availability().ok) start();
       else pending.current = st.run;
@@ -182,11 +263,21 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     // Focus goes to the panel's close control that is on screen (Back on a phone, × beside the thread).
     if (panel.current) { const f = [...panel.current.querySelectorAll(".pv-panel-close")].find(b => b.offsetParent !== null); if (f) f.focus(); }
   }, [open && open.key, st.run]);
+  // The panel closing, or showing another instance's block: out of full screen.
+  useEffect(() => { if (!open) leaveFs(); }, [!!open]);
+  // #2911 (7): the running page's blocked CDN library, read from its error log (preview.js), kept as it changes.
+  useEffect(() => {
+    const key = open ? frameKey(open.key) : null;
+    const read = () => setCdnHost(key && P() && typeof P().errors === "function" ? blockedCdnHost(P().errors(key)) : null);
+    read();
+    if (!key || !P() || typeof P().onErrors !== "function") return undefined;
+    return P().onErrors((k) => { if (k === key) read(); });
+  }, [open && open.key]);
   // A later reply with a newer version of this block: offered, not swapped in.
   useEffect(() => {
     setNewerNote(""); reading.current = null;
     if (!open) { setNewer(null); return undefined; }
-    const check = () => setNewer(newerVersion(open, msgs() || [], keyOf));
+    const check = () => { const all = msgs() || []; setNewer(newerVersion(open, all, keyOf)); setVers(versionsOf(open, all, keyOf)); setPages(pagesOf(all, keyOf, name)); };
     check();
     return subscribe((instance, kind) => { if (instance === name && kind === "msgs") check(); });
   }, [open && open.key, name]);
@@ -227,28 +318,102 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     el.addEventListener("pointerup", up);
     el.addEventListener("pointercancel", up);
   };
-  // Show the newer version: an attached file's HTML is read first. A read the panel moved on from is dropped.
-  const showNewer = async () => {
-    if (!newer || reading.current) return;
-    if (newer.code != null) { openPanel(newer); return; }
-    const was = open && open.key, mine = reading.current = newer;
+  // Show another version (the newer one offered, or a step of ‹ ›): an attached file's HTML is read first. A read the
+  // panel moved on from is dropped. It is shown as Show it shows one — waiting for Preview, never started by the step.
+  const attReason = (r) => t(r.reason === "over" ? "chat.pvAttOver" : r.reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed");
+  // #2920 review: a newer choice supersedes a read still waiting (it opens, or claims, and so moves the generation the
+  // waiting read checks) — it is never ignored because another read is pending.
+  const show = async (spec, { keep = false } = {}) => {
+    if (!spec) return;
+    const cached = spec.code == null ? loaded.current.get(spec.key) : undefined;
+    if (spec.code != null || cached != null) { keepView.current = keep; openPanel(cached != null ? { ...spec, code: cached } : spec); return; }
+    // #2915 review: the panel's generation, not just the key — a close and reopen of the same block while this read
+    // waits moves it, and the read is then dropped (claimPanel also drops any earlier click still reading).
+    const gen = claimPanel(), mine = reading.current = spec;
     setNewerNote(t("chat.pvLoading"));
-    const r = await loadHtmlAttachment(newer.att);
-    if (reading.current !== mine) return;
-    reading.current = null;
-    const now = panelStore.get().open;
-    if (!now || now.key !== was) return;
-    if (!r.ok) { setNewerNote(t(r.reason === "over" ? "chat.pvAttOver" : r.reason === "gone" ? "chat.pvAttGone" : "chat.pvAttFailed")); return; }
-    openPanel({ ...newer, code: r.code });
+    // A click on a version reads it whatever its size (up to the 50 MB ceiling); over 8 MB the panel then asks.
+    const r = await loadHtmlAttachment(spec.att, undefined, { anyway: true });
+    if (reading.current === mine) reading.current = null;
+    if (panelVersion() !== gen) return;
+    if (!r.ok) { setNewerNote(attReason(r)); return; }
+    setNewerNote("");
+    loaded.current.set(spec.key, r.code);
+    keepView.current = keep;
+    openPanel({ ...spec, code: r.code });
   };
+  const showNewer = () => show(newer);
+  /** A view button: that view on screen — the page list, if open, gives way to it (#2920 review). */
+  const pickView = (v) => { setListing(false); setView(v); };
+  const step = (by) => { const v = vers.list[vers.index + by]; if (vers.index >= 0 && v) show(v, { keep: true }); };
+  // Changes: the previous version against this one, a line diff (bounded: DIFF_LIMITS). An attached previous version
+  // is read for it, once.
+  const prev = vers.index > 0 ? vers.list[vers.index - 1] : null;
+  // A step to the first version from Changes: nothing to compare it with, so the page is shown (Changes is kept as the
+  // choice, and comes back with the next step that has a previous version).
+  const shown = view === "changes" && !prev ? "preview" : view;
+  useEffect(() => {
+    if (shown !== "changes" || !open) { setChanges(null); return undefined; }
+    let live = true;
+    const from = vers.index;   // "Changes from v{from}" (1-based: the previous one)
+    const diff = (before) => {
+      const ops = lineDiff(before, open.code);
+      if (!ops) return { state: "big", from };
+      const hunks = diffHunks(ops);
+      let total = 0; for (const h of hunks) total += h.lines.length + 1;
+      return { state: "ready", from, hunks, total };
+    };
+    const known = prev.code != null ? prev.code : loaded.current.get(prev.key);
+    if (known != null) setChanges(diff(known));
+    else {
+      setChanges({ state: "loading", from });
+      loadHtmlAttachment(prev.att, undefined, { anyway: true }).then((r) => {
+        if (!live) return;
+        if (!r.ok) { setChanges({ state: "failed", from, reason: attReason(r) }); return; }
+        loaded.current.set(prev.key, r.code);
+        setChanges(diff(r.code));
+      });
+    }
+    return () => { live = false; };
+  }, [shown, open && open.key, prev && prev.key]);
+  // M-2448: a Markdown file's text (read once per open: the same capped, same-origin read as the chat's card) and
+  // which view shows it — rendered (the chat's Markdown renderer, which escapes first) or its source.
+  const [md, setMd] = useState(null);       // { state: "loading" | "ready" | "failed", text?, reason? }
+  const [mdView, setMdView] = useState("rendered");
+  const [mdPlain, setMdPlain] = useState(false);
+  const mdBody = useRef(null);
+  const isMd = !!open && open.kind === "md";
+  useEffect(() => {
+    if (!isMd) { setMd(null); return undefined; }
+    setMdView("rendered");
+    if (typeof open.text === "string") { setMd({ state: "ready", text: open.text }); return undefined; }
+    let live = true;
+    setMd({ state: "loading" });
+    loadHtmlAttachment(open.att, undefined, { ask: TEXT_CARD_MAX, max: TEXT_CARD_MAX }).then((r) => {
+      if (!live) return;
+      setMd(r.ok ? { state: "ready", text: r.code } : { state: "failed", reason: r.reason === "over" ? t("chat.tcOver") : attReason(r) });
+    }, () => { if (live) setMd({ state: "failed", reason: t("chat.pvAttFailed") }); });
+    return () => { live = false; };
+  }, [isMd && open.key]);
+  useEffect(() => {
+    if (!isMd || !md || md.state !== "ready" || mdView !== "rendered" || !mdBody.current) return;
+    setMdPlain(drawMarkdown(mdBody.current, md.text) === "plain");
+  }, [isMd && open.key, md, mdView]);
   const fileName = open && open.att ? open.att.name : undefined;
+  // The divider between the thread and the panel (both kinds): drag, or the arrow keys, Home and End.
+  function divider0() {
+    return html`<div data-trust="preview" class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
+      aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>`;
+  }
   // Esc in the panel closes it (and is not the chat's "stop the reply").
-  const onPanelKey = (e) => { if (e.key === "Escape" && !e.isComposing) { e.preventDefault(); closePanel(); } };
+  const onPanelKey = (e) => {
+    if (e.key !== "Escape" || e.isComposing) return;
+    e.preventDefault();
+    if (fs) leaveFs(); else closePanel();
+  };
 
-  if (trial) return html`<${EffectTrialPanel} binding=${trial.binding} title=${trial.handle.reply.offer.title}
-    current=${trial.handle.current} ownerCss=${trial.ownerCss} onStage=${trial.onStage}
-    onStop=${trial.handle.stop} onClose=${() => { if (panelStore.get().open === trial) closePanel(); }} />`;
   if (!open) return null;
+  if (isMd) return html`${divider0()}<${MarkdownPanel} open=${open} name=${name} md=${md} view=${mdView} setView=${setMdView} plain=${mdPlain}
+    body=${mdBody} panel=${panel} fs=${fs} enterFs=${enterFs} leaveFs=${leaveFs} onKey=${onPanelKey} reveal=${reveal} />`;
   const going = run.state === "starting" || run.state === "running";
   const a = P().availability();
   // #1554: a device that has not allowed previews is offered the same "Allow previews" here (the same confirm). Allowing
@@ -267,34 +432,117 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     if (want && pending.current === want && panelStore.get().run === want) start();
   };
   const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
-  return html`<div data-trust="preview" class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
-      aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>
-    <aside data-trust="preview" class="pv-panel" ref=${panel} aria-label=${t("chat.pvPanel")} onKeyDown=${onPanelKey}>
+  return html`${divider0()}
+    <aside data-trust="preview" class=${`pv-panel${fs ? ` pv-fs pv-fs-${fs}` : ""}`} ref=${panel} aria-label=${t("chat.pvPanel")} onKeyDown=${onPanelKey}>
       <div class="pv-panel-head">
         <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
         <div class="pv-panel-title"><strong>${t("chat.pvPanel")}</strong>
           <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
+        ${pages.length > 1 ? html`<button type="button" class=${`btn btn-sm pv-pages-toggle${listing ? " on" : ""}`} aria-pressed=${listing ? "true" : "false"} title=${t("chat.pvPagesTitle")}
+          onClick=${() => setListing(v => !v)}><${Icon} name="file" size=${14} />${t("chat.pvPagesCount", pages.length)}</button>` : null}
         <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
       </div>
       <div class="pv-panel-bar">
+        ${vers.list.length > 1 && vers.index >= 0 ? html`<div class="pv-ver" role="group" aria-label=${t("chat.pvVersions")}>
+          <button type="button" class="icon-btn pv-ver-prev" title=${t("chat.pvVerPrev")} aria-label=${t("chat.pvVerPrev")} disabled=${vers.index === 0} onClick=${() => step(-1)}><${Icon} name="prev" size=${16} /></button>
+          <span class="pv-ver-at" aria-live="polite" title=${t("chat.pvVerLong", vers.index + 1, vers.list.length)} aria-label=${t("chat.pvVerLong", vers.index + 1, vers.list.length)}>${t("chat.pvVer", vers.index + 1, vers.list.length)}</span>
+          <button type="button" class="icon-btn pv-ver-next" title=${t("chat.pvVerNext")} aria-label=${t("chat.pvVerNext")} disabled=${vers.index === vers.list.length - 1} onClick=${() => step(1)}><${Icon} name="next" size=${16} /></button>
+        </div>` : null}
         <div class="seg-inline" role="group" aria-label=${t("chat.pvPanel")}>
-          <button type="button" class=${`btn btn-sm${view === "preview" ? " on" : ""}`} aria-pressed=${view === "preview" ? "true" : "false"} onClick=${() => setView("preview")}><${Icon} name="eye" size=${14} />${t("chat.pvPage")}</button>
-          <button type="button" class=${`btn btn-sm${view === "code" ? " on" : ""}`} aria-pressed=${view === "code" ? "true" : "false"} onClick=${() => setView("code")}><${Icon} name="code" size=${14} />${t("chat.pvCode")}</button>
+          <button type="button" class=${`btn btn-sm${shown === "preview" ? " on" : ""}`} aria-pressed=${shown === "preview" ? "true" : "false"} title=${t("chat.pvPage")} onClick=${() => pickView("preview")}><${Icon} name="eye" size=${14} /><span class="lbl">${t("chat.pvPage")}</span></button>
+          <button type="button" class=${`btn btn-sm${shown === "code" ? " on" : ""}`} aria-pressed=${shown === "code" ? "true" : "false"} title=${t("chat.pvCode")} onClick=${() => pickView("code")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvCode")}</span></button>
+          ${prev ? html`<button type="button" class=${`btn btn-sm pv-changes${shown === "changes" ? " on" : ""}`} aria-pressed=${shown === "changes" ? "true" : "false"} title=${t("chat.pvChanges")} onClick=${() => pickView("changes")}><${Icon} name="diff" size=${14} /><span class="lbl">${t("chat.pvChanges")}</span></button>` : null}
         </div>
         <span class="grow"></span>
-        ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
+        ${shown === "preview" ? html`<select class="pv-width" aria-label=${t("chat.pvWidth")} title=${t("chat.pvWidth")} value=${device} onChange=${(e) => setDevice(e.currentTarget.value)}>
+          <option value="full">${t("chat.pvWidthFull")}</option><option value="tablet">${t("chat.pvWidthTablet")}</option><option value="phone">${t("chat.pvWidthPhone")}</option></select>` : null}
+        ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(true); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
           <button type="button" class="btn btn-sm pv-panel-stop" title=${t("chat.pvStop")} onClick=${stop}><${Icon} name="stop" size=${14} /><span class="lbl">${t("chat.pvStop")}</span></button>`
-          : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${start}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
+          : run.state === "large" ? html`<button type="button" class="btn btn-sm btn-primary pv-panel-anyway" title=${t("chat.pvAnyway")} disabled=${!a.ok} onClick=${() => start(true)}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvAnyway")}</span></button>`
+          : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${() => start()}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
+        <button type="button" class=${`btn btn-sm only-wide pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+          onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
+        <${PanelActions} open=${open} name=${name} run=${run} view=${view} />
         <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
       </div>
       ${newer && newer.key !== open.key ? html`<div class="pv-newer" role="status"><span>${t("chat.pvNewer", timeOf(newer.ts))}</span>
         <button type="button" class="btn btn-sm pv-newer-show" onClick=${showNewer}>${t("chat.pvNewerShow")}</button>${newerNote ? html`<span class="pv-newer-note">${newerNote}</span>` : null}</div>` : null}
+      ${newerNote && !(newer && newer.key !== open.key) ? html`<div class="pv-note pv-ver-note" role="status">${newerNote}</div>` : null}
       ${going && !P().bannerAcked() ? html`<div class="pv-banner"><span class="pv-banner-text">${P().banner()}</span>
         <button type="button" class="btn btn-sm btn-ghost pv-ack" title=${P().bannerAckTitle()} onClick=${() => P().ackBanner()}>${P().bannerAckLabel()}</button></div>` : null}
-      ${note && view === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
-      <div class=${`pv-panel-body${view === "code" ? " show-code" : ""}`}>
+      ${cdnHost && shown === "preview" ? html`<div class="pv-note pv-cdn-note" role="status">${t("chat.pvCdnNote", cdnHost)}</div>` : null}
+      ${note && shown === "preview" ? html`<div class="pv-note">${note}${askOptIn ? html` <button type="button" class="btn btn-sm pv-panel-allow" onClick=${allowHere}>${t("chat.pvAllowButton")}</button>` : null}</div>` : null}
+      <div class=${`pv-panel-body${listing || shown !== "preview" ? " show-code" : ` w-${device}`}`}>
         <div class="pv-holder" ref=${holder}></div>
-        ${view === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}
+        ${listing ? html`<${PageList} pages=${pages} current=${pageIdOf(open)} pick=${(p) => { setListing(false); if (p.id !== pageIdOf(open)) show(p.latest); }} />` : null}
+        ${!listing && shown === "code" ? html`<pre class="pv-code"><code>${open.code}</code></pre>` : null}
+        ${!listing && shown === "changes" ? html`<${Changes} changes=${changes} />` : null}
       </div>
     </aside>`;
+}
+
+/**
+ * M-2448: a Markdown file in the panel — the HTML preview's frame (head, source, close, full screen; a full-screen
+ * sheet on a phone), with Rendered / Source and Download. Nothing in the file runs: Rendered is the chat's Markdown
+ * renderer (escaped first, no raw HTML), Source is text.
+ */
+function MarkdownPanel({ open, name, md, view, setView, plain, body, panel, fs, enterFs, leaveFs, onKey, reveal }) {
+  const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
+  const ready = md && md.state === "ready";
+  return html`<aside data-trust="preview" class=${`pv-panel pv-md-panel${fs ? ` pv-fs pv-fs-${fs}` : ""}`} ref=${panel} aria-label=${t("chat.pvMdPanel")} onKeyDown=${onKey}>
+    <div class="pv-panel-head">
+      <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
+      <div class="pv-panel-title"><strong>${open.att ? open.att.name : t("chat.pvMdPanel")}</strong>
+        <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
+      <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
+    </div>
+    <div class="pv-panel-bar">
+      <div class="seg-inline" role="group" aria-label=${t("chat.pvMdPanel")}>
+        <button type="button" class=${`btn btn-sm${view === "rendered" ? " on" : ""}`} aria-pressed=${view === "rendered" ? "true" : "false"} title=${t("chat.pvMdRendered")} onClick=${() => setView("rendered")}><${Icon} name="eye" size=${14} /><span class="lbl">${t("chat.pvMdRendered")}</span></button>
+        <button type="button" class=${`btn btn-sm${view === "source" ? " on" : ""}`} aria-pressed=${view === "source" ? "true" : "false"} title=${t("chat.pvMdSource")} onClick=${() => setView("source")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvMdSource")}</span></button>
+      </div>
+      <span class="grow"></span>
+      <button type="button" class=${`btn btn-sm only-wide pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+        onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
+      ${open.att ? html`<a class="btn btn-sm pv-panel-dl" href=${`/ui/file/${open.att.id}`} download=${open.att.name} title=${t("chat.pvDownload")}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></a>` : null}
+    </div>
+    ${md && md.state === "loading" ? html`<div class="pv-note" role="status">${t("chat.pvLoading")}</div>` : null}
+    ${md && md.state === "failed" ? html`<div class="pv-note" role="alert">${md.reason}</div>` : null}
+    ${ready && view === "rendered" && plain ? html`<div class="pv-note" role="status">${t("chat.tcPlain")}</div>` : null}
+    <div class="pv-panel-body show-code">
+      ${ready && view === "rendered" ? html`<div class="pv-code pv-md" ref=${body}></div>` : null}
+      ${ready && view === "source" ? html`<pre class="pv-code"><code>${md.text}</code></pre>` : null}
+    </div>
+  </aside>`;
+}
+
+/** The Changes view: hunks of the line diff as a unified diff shows them, drawn as text (never as HTML). */
+function Changes({ changes }) {
+  if (!changes || changes.state === "loading") return html`<div class="pv-note pv-diff-note">${t("chat.pvLoading")}</div>`;
+  if (changes.state === "failed") return html`<div class="pv-note pv-diff-note">${changes.reason}</div>`;
+  if (changes.state === "big") return html`<div class="pv-note pv-diff-note">${t("chat.pvChangesBig")}</div>`;
+  if (!changes.hunks.length) return html`<div class="pv-note pv-diff-note">${t("chat.pvChangesNone", changes.from)}</div>`;
+  const rows = [];
+  let left = DIFF_LIMITS.maxLines;
+  for (const h of changes.hunks) {
+    if (left <= 0) break;
+    rows.push(html`<span class="d-hunk">${`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@\n`}</span>`);
+    left--;
+    for (const l of h.lines) {
+      if (left-- <= 0) break;
+      rows.push(html`<span class=${l.t === "+" ? "d-add" : l.t === "-" ? "d-del" : "d-ctx"}>${`${l.t} ${l.text}\n`}</span>`);
+    }
+  }
+  return html`<div class="pv-diff-wrap"><div class="pv-diff-head">${t("chat.pvChangesFrom", changes.from)}${changes.total > DIFF_LIMITS.maxLines ? html` · <span class="pv-diff-cut">${t("chat.pvChangesCut", DIFF_LIMITS.maxLines)}</span>` : null}</div>
+    <pre class="pv-code pv-diff"><code>${rows}</code></pre></div>`;
+}
+
+/** #2911 (6): the thread's pages, newest first — one row each, its newest version opened by a click (waiting for Preview). */
+function PageList({ pages, current, pick }) {
+  return html`<ul class="pv-pages" aria-label=${t("chat.pvPagesTitle")}>${pages.map(p => html`<li key=${p.id}>
+    <button type="button" class=${`pv-page${p.id === current ? " on" : ""}`} aria-current=${p.id === current ? "true" : undefined} onClick=${() => pick(p)}>
+      <${Icon} name=${p.kind === "file" ? "attach" : "code"} size=${14} />
+      <span class="pv-page-name">${p.label || t("chat.pvPagesUntitled")}</span>
+      <span class="pv-page-meta">${p.versions > 1 ? t("chat.pvPagesVersions", p.versions) : ""}${p.versions > 1 ? " · " : ""}${timeOf(p.latest.ts)}</span>
+    </button></li>`)}</ul>`;
 }

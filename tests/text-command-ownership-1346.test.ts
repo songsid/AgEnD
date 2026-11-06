@@ -538,6 +538,9 @@ function tgClassicSetup() {
     hasChannel: () => false,
     getInstanceByChannel: vi.fn((chatId: string, adapterId?: string) =>
       (chatId === "-100" || chatId === "12345") && adapterId === "tg" ? "classic-tg" : undefined),
+    // #2870: the same two chats are its rooms (a private chat with a room is answered); nobody is on its lists.
+    isClassicChannel: (chatId: string, adapterId?: string) => (chatId === "-100" || chatId === "12345") && adapterId === "tg",
+    isAdmin: () => false, isUserAllowed: () => false,
     isCollab: () => false,
   };
   vi.spyOn(fm.topicCommands, "getCtxText").mockResolvedValue("CTX-CARD");

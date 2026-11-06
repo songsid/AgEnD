@@ -157,26 +157,59 @@ describe("Preview reads the file on the click and runs it in the preview frame",
   });
 });
 
-describe("the 1 MiB cap and a file that is gone", () => {
-  it("a listed size over 1 MiB: refused before anything is read", async () => {
+describe("#2863: up to 8 MB at once, asked above it, a download only past 50 MB; a file that is gone", () => {
+  const MB = 1024 * 1024;
+  it("a listed size over 8 MB: asked before anything is read; Preview anyway reads it and runs it in the card", async () => {
     const f = serveFiles({ [ID1]: PAGE(1) });
-    const { doc } = await chat([agent(1, [file(ID1, "big.html", 1024 * 1024 + 1)])]);
+    const { doc } = await chat([agent(1, [file(ID1, "report.html", 12 * MB + 300 * 1024)])]);
     const c = card(doc);
     await click(c.querySelector(".pv-run"));
-    expect([f.calls.length, PV.liveCount(), c.querySelector(".pv-note").textContent]).toEqual([0, 0, "This file is over 1 MiB; it is not previewed."]);
+    expect([f.calls.length, PV.liveCount(), c.querySelector(".pv-note").textContent]).toEqual([0, 0, "This file is large (12 MB). Preview anyway?"]);
+    expect([c.querySelector(".pv-run").hidden, c.querySelector(".pv-anyway").hidden], "the question replaces Preview").toEqual([true, false]);
+    await click(c.querySelector(".pv-anyway"));
+    expect([f.calls.length, PV.running(`b-1:a${ID1}`), c.querySelector(".pv-anyway").hidden]).toEqual([1, true, true]);
   });
-  it("bytes over 1 MiB though the listed size was small: refused after the read, no frame", async () => {
-    serveFiles({ [ID1]: "<p>" + "x".repeat(1024 * 1024) });
+  it("Open in panel on a large file: the card asks; Preview anyway opens it in the panel and runs it there (not asked again)", async () => {
+    const f = serveFiles({ [ID1]: "<p>" + "x".repeat(9 * MB) });
+    const { doc } = await chat([agent(1, [file(ID1, "report.html", 9 * MB)])]);
+    const c = card(doc);
+    await click(c.querySelector(".pv-open"));
+    expect([f.calls.length, pp.panelStore.get().open, c.querySelector(".pv-note").textContent]).toEqual([0, null, "This file is large (9 MB). Preview anyway?"]);
+    await click(c.querySelector(".pv-anyway"));
+    expect([f.calls.length, pp.panelStore.get().open?.key, PV.running(pp.frameKey(`b-1:a${ID1}`)), PV.running(`b-1:a${ID1}`)]).toEqual([1, `b-1:a${ID1}`, true, false]);
+  });
+  it("bytes over 8 MB though the listed size was small: asked after the read, no frame until Preview anyway", async () => {
+    const big = "<p>" + "x".repeat(8 * MB);
+    const f = serveFiles({ [ID1]: big });
     const { doc } = await chat([agent(1, [file(ID1, "grew.html", 100)])]);
     const c = card(doc);
     await click(c.querySelector(".pv-run"));
-    expect([PV.liveCount(), c.querySelector(".pv-note").textContent]).toEqual([0, "This file is over 1 MiB; it is not previewed."]);
+    expect([PV.liveCount(), c.querySelector(".pv-note").textContent]).toEqual([0, "This file is large (8 MB). Preview anyway?"]);
+    await click(c.querySelector(".pv-anyway"));
+    expect([f.calls.length, PV.running(`b-1:a${ID1}`)]).toEqual([2, true]);
   });
-  it("exactly 1 MiB of UTF-8 runs", async () => {
-    serveFiles({ [ID1]: "é".repeat(512 * 1024) });
-    const { doc } = await chat([agent(1, [file(ID1, "edge.html", 1024 * 1024)])]);
+  it("exactly 8 MB of UTF-8 runs at once", async () => {
+    serveFiles({ [ID1]: "é".repeat(4 * MB) });
+    const { doc } = await chat([agent(1, [file(ID1, "edge.html", 8 * MB)])]);
     await click(card(doc).querySelector(".pv-run"));
     expect(PV.running(`b-1:a${ID1}`)).toBe(true);
+  });
+  it("a listed size over 50 MB: the card says so from the start — no Preview, no panel, no question, nothing read", async () => {
+    const f = serveFiles({ [ID1]: PAGE(1) });
+    const { doc } = await chat([agent(1, [file(ID1, "huge.html", 50 * MB + 1)])]);
+    const c = card(doc);
+    expect([c.querySelector(".pv-run").hidden, c.querySelector(".pv-open").hidden, c.querySelector(".pv-anyway").hidden, c.querySelector(".pv-note").textContent])
+      .toEqual([true, true, true, "This file is over 50 MB; it is not previewed. Download it to open it."]);
+    c.querySelector(".pv-run").onclick(); await settle();
+    expect([f.calls.length, PV.liveCount()], "a stray click reads nothing").toEqual([0, 0]);
+  });
+  it("bytes over 50 MB though the listed size was small: the read checks them too, then the download only", async () => {
+    const { doc } = await chat([agent(1, [file(ID1, "grew.html", 100)])]);
+    serveFiles({ [ID1]: "<p>" + "x".repeat(50 * MB) });
+    const c = card(doc);
+    await click(c.querySelector(".pv-run"));
+    expect([PV.liveCount(), c.querySelector(".pv-run").hidden, c.querySelector(".pv-open").hidden, c.querySelector(".pv-note").textContent])
+      .toEqual([0, true, true, "This file is over 50 MB; it is not previewed. Download it to open it."]);
   });
   it("the fleet no longer serves it (404): the card says so and runs nothing", async () => {
     serveFiles({});
@@ -238,6 +271,21 @@ describe("a newer version of the file", () => {
     expect([open.key, open.code, PV.liveCount()]).toEqual([`b-2:a${ID2}`, PAGE(2), 0]);
     expect(f.calls.map(c => c.url)).toEqual([`/ui/file/${ID1}`, `/ui/file/${ID2}`]);
   });
+  it("#2863: a newer version over 8 MB: Show it reads it; the panel's Preview asks, and its Preview anyway runs it there", async () => {
+    const big = "<p>" + "x".repeat(8 * 1024 * 1024);
+    serveFiles({ [ID1]: PAGE(1), [ID2]: big });
+    const { doc } = await chat([agent(1, [file(ID1, "style-switcher.html")])]);
+    await click(card(doc).querySelector(".pv-open"));
+    stream.message(agent(2, [file(ID2, "Style-Switcher.html", 9 * 1024 * 1024)], "v2"));
+    await settle();
+    await click(doc.querySelector(".pv-newer-show"));
+    expect(pp.panelStore.get().open.key).toBe(`b-2:a${ID2}`);
+    await click(doc.querySelector(".pv-panel-run"));
+    expect([PV.running(pp.frameKey(`b-2:a${ID2}`)), doc.querySelector(".pv-panel .pv-note")?.textContent, !!doc.querySelector(".pv-panel-anyway")])
+      .toEqual([false, "This file is large (8 MB). Preview anyway?", true]);
+    await click(doc.querySelector(".pv-panel-anyway"));
+    expect(PV.running(pp.frameKey(`b-2:a${ID2}`))).toBe(true);
+  });
   it("which file counts", () => {
     const k = (x: any) => `${x.boot}-${x.id}`;
     const open = { key: `b-1:a${ID1}`, msgKey: "b-1", instance: "w", att: { id: ID1, name: "a.html", size: 1 }, code: PAGE(1) };
@@ -247,5 +295,35 @@ describe("a newer version of the file", () => {
     expect(at([agent(1, [file(ID1, "a.html")]), agent(2, [file(ID2, "a.html", 1, "photo")])]), "an image is not").toBeNull();
     expect(at([agent(1, [file(ID1, "a.html")]), agent(2, [file(ID2, "a.html")]), agent(3, [file(ID3, "a.html")])]), "the newest").toBe(`b-3:a${ID3}`);
     expect(at([agent(1, [file(ID1, "a.html")]), agent(2, [], "```html\n" + PAGE(2) + "\n```")]), "a block is not a file's version").toBeNull();
+  });
+});
+
+describe("#2863: loadHtmlAttachment and sizeLabel", () => {
+  const read = async (body: string, size: number | undefined, o?: Record<string, unknown>) => {
+    // @ts-expect-error — a JS module of the app, with no types
+    const { loadHtmlAttachment } = await import("../src/ui/html-attachment.js");
+    const calls: string[] = [];
+    const r = await loadHtmlAttachment({ id: ID1, name: "a.html", ...(size === undefined ? {} : { size }) },
+      (async (url: string) => { calls.push(url); return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(body).buffer }; }) as never, o);
+    return { r, calls: calls.length };
+  };
+  it("the two sizes, listed and read: over max is a download; over ask is a question (with its size) until anyway", async () => {
+    const lim = { ask: 10, max: 20 };
+    expect(await read("x".repeat(5), 21, lim)).toEqual({ r: { ok: false, reason: "over" }, calls: 0 });
+    expect(await read("x".repeat(5), 15, lim)).toEqual({ r: { ok: false, reason: "large", size: 15 }, calls: 0 });
+    expect(await read("x".repeat(21), 5, lim)).toEqual({ r: { ok: false, reason: "over" }, calls: 1 });
+    expect(await read("x".repeat(15), undefined, lim)).toEqual({ r: { ok: false, reason: "large", size: 15 }, calls: 1 });
+    expect(await read("x".repeat(15), 15, { ...lim, anyway: true })).toEqual({ r: { ok: true, code: "x".repeat(15) }, calls: 1 });
+    expect(await read("x".repeat(21), 15, { ...lim, anyway: true }), "anyway never passes max").toEqual({ r: { ok: false, reason: "over" }, calls: 1 });
+    expect(await read("x".repeat(10), 10, lim), "at ask: at once").toEqual({ r: { ok: true, code: "x".repeat(10) }, calls: 1 });
+  });
+  it("sizeLabel: one decimal under 10 MB, whole above", async () => {
+    // @ts-expect-error — a JS module of the app, with no types
+    const { sizeLabel, HTML_PREVIEW_ASK, HTML_PREVIEW_MAX } = await import("../src/ui/html-attachment.js");
+    expect([sizeLabel(8 * 1024 * 1024), sizeLabel(8.44 * 1024 * 1024), sizeLabel(12.3 * 1024 * 1024), sizeLabel(9.96 * 1024 * 1024)]).toEqual(["8 MB", "8.4 MB", "12 MB", "10 MB"]);
+    expect([HTML_PREVIEW_ASK, HTML_PREVIEW_MAX]).toEqual([8 * 1024 * 1024, 50 * 1024 * 1024]);
+    expect([PV.LIMITS.askBytes, PV.LIMITS.maxBytes], "the block's limits are the file's").toEqual([HTML_PREVIEW_ASK, HTML_PREVIEW_MAX]);
+    const { PREVIEW_HTML_MAX_BYTES } = await import("../src/web-preview.js");
+    expect(PREVIEW_HTML_MAX_BYTES, "the frame's own ceiling is the page's").toBe(HTML_PREVIEW_MAX);
   });
 });

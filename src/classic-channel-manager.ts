@@ -7,10 +7,12 @@ import yaml from "js-yaml";
 import { getAgendHome } from "./paths.js";
 import { classicInstanceName, sanitizeInstanceName } from "./instance-names.js";
 import type { Logger } from "./logger.js";
+import { ConfigHistory, ConfigStartupError, type ConfigSource } from "./config-history.js";
 import { KNOWN_BACKENDS } from "./config-validator.js";
 import { classicProfile, normalizeBackendOptions, type BackendOptions, type ClassicProfile } from "./classic-bindings.js";
 import type { Choice } from "./channel/types.js";
 import type { InstanceConfig } from "./types.js";
+import { ChatLogLines } from "./chat-log-ids.js";
 
 
 /** Last real channel activity recorded in a ClassicBot chat log. */
@@ -211,9 +213,12 @@ export class ClassicChannelManager {
   /** Config-order adapter identities, used to migrate legacy rows by platform. */
   private adapters: ClassicAdapterIdentity[] = [];
 
-  constructor(private dataDir: string, private logger: Logger) {
+  private fallbackSource: ConfigSource | undefined;
+
+  constructor(private dataDir: string, private logger: Logger, private history = new ConfigHistory(dataDir)) {
     this.configPath = join(dataDir, "classicBot.yaml");
-    this.load();
+    this.history.track("classicBot.yaml", this.configPath);
+    this.load(true);
   }
 
   /**
@@ -240,8 +245,8 @@ export class ClassicChannelManager {
 
     this.primaryAdapterId = primaryAdapterId;
     this.adapters = identities;
-    const repaired = this.load();
-    if (repaired && this.backupBeforeAdapterRepair()) this.save();
+    const repaired = this.load(false, this.fallbackSource);
+    if (repaired && !this.fallbackSource && this.backupBeforeAdapterRepair()) this.save();
   }
 
   /** Map key for a (channelId, adapterId) pair. adapterId-less = legacy entry (pre-migration). */
@@ -307,11 +312,12 @@ export class ClassicChannelManager {
    * Load the persisted registry. Returns true when it migrated/repaired data
    * and the caller should write the normalized registry back to disk.
    */
-  private load(): boolean {
+  private load(startup = false, override?: ConfigSource): boolean {
     if (!existsSync(this.configPath)) return false;
     try {
-      const raw = yaml.load(readFileSync(this.configPath, "utf-8")) as ClassicBotYaml | null;
-      if (!raw) return false;
+      const selected = override ?? this.history.read("classicBot.yaml", this.configPath, startup);
+      const raw = yaml.load(selected.source) as ClassicBotYaml | null;
+      if (!raw) { this.history.accepted("classicBot.yaml", this.configPath, selected); return false; }
       this.sourceDocument = structuredClone(raw);
       this.defaults = raw.defaults ?? {};
       this.reportUnquotedIds();
@@ -440,9 +446,12 @@ export class ClassicChannelManager {
       this.rebuildChannelIds();
       this.lastMtime = statSync(this.configPath).mtimeMs;
       this.savedProjection = structuredClone(repaired ? raw : this.document());
+      this.history.accepted("classicBot.yaml", this.configPath, selected);
+      this.fallbackSource = selected.fallback ? selected : undefined;
       this.logger.info({ count: this.channels.size }, "Loaded classic channels");
       return repaired;
     } catch (err) {
+      if (startup && (err instanceof ConfigStartupError || this.history.isFallback(this.configPath))) throw err;
       this.logger.warn({ err }, "Failed to load classicBot.yaml");
       return false;
     }
@@ -489,6 +498,8 @@ export class ClassicChannelManager {
     writeFileSync(this.configPath, YAML_HEADER + yaml.dump(next, { lineWidth: -1 }));
     this.savedProjection = structuredClone(projected);
     this.sourceDocument = structuredClone(next);
+    this.history.accepted("classicBot.yaml", this.configPath, { source: readFileSync(this.configPath, "utf8"), fallback: false });
+    this.fallbackSource = undefined;
     this.lastMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
   }
 
@@ -933,7 +944,14 @@ export class ClassicChannelManager {
     return join(getAgendHome(), "workspaces", instanceName, "chat-logs");
   }
 
-  static logMessage(instanceName: string, username: string, text: string, timestamp: Date, replyToText?: string): void {
+  /** #2940: the lines written per message key — what a deleted message, or one of our status bubbles, takes out. */
+  static readonly loggedLines = new ChatLogLines();
+
+  /**
+   * `messageKey` (#2940): the message's platform-and-place identity (chat-log-ids.ts discordMessageKey), when it is one
+   * whose line may be taken out again; the line's exact place is then recorded (only when this append is provably it).
+   */
+  static logMessage(instanceName: string, username: string, text: string, timestamp: Date, replyToText?: string, messageKey?: string): void {
     const logDir = ClassicChannelManager.chatLogDir(instanceName);
     mkdirSync(logDir, { recursive: true, mode: 0o700 });
     const tz = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -941,7 +959,17 @@ export class ClassicChannelManager {
     const dateStr = localStr.slice(0, 10);
     const logFile = join(logDir, `${dateStr}.log`);
     const replyPrefix = replyToText ? `[reply: ${replyToText.slice(0, 100)}] ` : "";
-    appendFileSync(logFile, `[${localStr}] <${username}> ${replyPrefix}${text}\n`);
+    const line = `[${localStr}] <${username}> ${replyPrefix}${text}\n`;
+    let before = 0;
+    try { before = statSync(logFile).size; } catch { /* a new file */ }
+    appendFileSync(logFile, line);
+    if (messageKey) {
+      // Its place: where the file ended before this append — only when the file grew by exactly this line.
+      try {
+        const after = statSync(logFile);
+        if (after.size === before + Buffer.byteLength(line, "utf8")) ClassicChannelManager.loggedLines.record(messageKey, logFile, after.ino, before, line);
+      } catch { /* not recorded: it simply cannot be taken out later */ }
+    }
   }
 
   /** Delete chat log files older than retentionDays. Dates parsed as local to avoid UTC off-by-one. */

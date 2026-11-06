@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TOOLS } from "../src/channel/mcp-tools.js";
+import { isCanvasWorkerTool } from "../src/web-experimental.js";
 import {
   EARLY_AGENT_OP_TOOLS,
   IPC_TYPE_TOOLS,
@@ -52,11 +53,6 @@ const BEFORE: Record<string, string[]> = {
     "set_web_widget", "remove_web_widget",
     // #2117: its own declarative ambient (no target).
     "set_web_ambient", "clear_web_ambient",
-    // #1629 r4-5b: mods — its own look as a file, and a proposal for a person (agents never import).
-    "export_web_mod", "propose_web_mod",
-    // #1629 B2: the caller-scoped Canvas Worker effect tools.
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2578: its own character in the Office view (no target; off until dashboard.office: true).
     "office_view", "office_set",
     // #2692: the Office view's skin packs (off until office_pack_access: true).
@@ -81,7 +77,15 @@ const BEFORE: Record<string, string[]> = {
     "close_poll",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models", "get_cache_report", "get_usage_report",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
-    "create_instance", "start_instance", "restart_instance", "wake_instance",
+    // Decision 9e3bea6c (#3043): General is AgEnD's administrator and carries every orchestration tool.
+    "create_instance", "delete_instance", "replace_instance",
+    "start_instance", "stop_instance", "restart_instance", "pause_instance", "wake_instance",
+    "deploy_template", "teardown_deployment",
+    "create_team", "delete_team", "update_team",
+    "update_fleet_defaults", "update_instance_config",
+    "get_web_settings", "set_web_settings",
+    "migrate_kiro_instance", "reconcile_kiro_instance",
+    "update_decision",
     "task", "list_decisions", "post_decision",
     // #895 added update_schedule: general could already create and delete.
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
@@ -97,17 +101,12 @@ const BEFORE: Record<string, string[]> = {
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
     "set_web_ambient", "clear_web_ambient",
-    "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // #2578: its own character in the Office view, as a worker's.
     "office_view", "office_set",
     // #2692: the Office view's skin packs, as a worker's.
     "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
     // kiro engine move: read-only kiro engine facts, for explaining a kiro incompatibility.
     "kiro_engine_status",
-    // #2056: the user's Settings → Web appearance, through the page's own checks.
-    "get_web_settings", "set_web_settings",
   ],
 };
 
@@ -250,10 +249,10 @@ describe("no entry path is missing from the table", () => {
     const source = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8");
     const router = source.slice(source.indexOf("private dispatchTypedIpc"), source.indexOf("private handleScheduleCrud"));
 
-    for (const type of Object.keys(IPC_TYPE_TOOLS)) {
+    for (const type of Object.keys(IPC_TYPE_TOOLS).filter(t => !isCanvasWorkerTool(IPC_TYPE_TOOLS[t]!))) {
       const family = type.startsWith("fleet_schedule_") ? "fleet_schedule_"
         : type.startsWith("fleet_decision_") ? "fleet_decision_"
-        : ["fleet_upload_web_effect", "fleet_list_web_effects", "fleet_preview_web_effect", "fleet_profile_web_effect", "fleet_apply_web_effect", "fleet_remove_web_effect", "fleet_delete_web_effect"].includes(type) ? "WEB_EFFECT_TOOLS.has(type.slice(6))" : type;
+        : type;
       expect(router, `${type} is in the table but the router drops it`).toContain(family);
     }
     expect(IPC_TYPE_TOOLS.fleet_decision_update).toBe("update_decision");
@@ -262,8 +261,10 @@ describe("no entry path is missing from the table", () => {
 
   it("maps every tool name it claims to a tool that exists", () => {
     const real = new Set(TOOLS.map(t => t.name));
+    // #2799: the CLI's effect and mod ops and their IPC types still name the removed tools, so `agend-agent effect …`
+    // and a stale MCP process are told plainly (refused before any handler: canvas-worker-removed-2799).
     for (const [, tool] of Object.entries({ ...IPC_TYPE_TOOLS, ...EARLY_AGENT_OP_TOOLS })) {
-      expect(real.has(tool), `${tool} is not a tool`).toBe(true);
+      expect(real.has(tool) || isCanvasWorkerTool(tool), `${tool} is not a tool`).toBe(true);
     }
     for (const [profile, tools] of Object.entries(TOOL_PROFILES)) {
       for (const tool of tools) expect(real.has(tool), `${profile} lists ${tool}`).toBe(true);
@@ -535,8 +536,6 @@ describe("the refusal explains itself", () => {
     for (const tool of [
       "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient",
       "get_web_appearance", "preview_web_appearance",
-      "export_web_mod", "propose_web_mod",
-      "upload_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
       "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
       "office_view", "office_set",
     ]) {
@@ -592,9 +591,6 @@ describe("own-appearance family consistency (#2132)", () => {
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
     "set_web_ambient", "clear_web_ambient",
-    "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-    "apply_web_effect", "remove_web_effect", "delete_web_effect",
   ] as const;
 
   it("every profile with set_web_theme has ALL own-appearance tools — no exceptions (#2132 + hmsg-07371500)", () => {
@@ -607,19 +603,20 @@ describe("own-appearance family consistency (#2132)", () => {
     }
   });
 
-  it("general has the full own-appearance family including ambient and effect tools (#2132 + hmsg-07371500)", () => {
+  it("general has the full own-appearance family including ambient (#2132 + hmsg-07371500)", () => {
     for (const tool of OWN_APPEARANCE) {
       expect(TOOL_PROFILES.general, `general must have ${tool}`).toContain(tool);
     }
   });
 
-  it("general size equals worker size — it carries the same own-appearance family (user decision hmsg-07371500)", () => {
-    // General and worker should both have the full own-appearance family.
-    // General has different routing/orchestration tools but not the repo/config tools
-    // a worker has. The sizes coinciding is intentional (different sets, same count).
-    // Guard: if either profile gains unexpected tools, this test fires.
-    expect(TOOL_PROFILES.general.length, "general grew beyond worker — check if new tools belong here")
-      .toBeLessThanOrEqual(TOOL_PROFILES.worker.length);
+  it("general equals coordinator minus the 6 worker-only repo/raw-config tools (decision 9e3bea6c + hmsg-07371500)", () => {
+    // General carries the full own-appearance family and every orchestration tool
+    // (decision 9e3bea6c), omitting only the 6 worker-only repo/raw-config tools.
+    const workerOnlyInCoordinator = [
+      "checkout_repo", "release_repo",
+      "get_fleet_config", "get_instance_logs", "list_deployments", "validate_config",
+    ];
+    expect(TOOL_PROFILES.general.length).toBe(TOOL_PROFILES.coordinator.length - workerOnlyInCoordinator.length);
   });
 });
 
@@ -771,5 +768,328 @@ describe("the startup notice is actually wired up", () => {
     const notices = warn.mock.calls.filter(c => String(c[1] ?? "").includes("tool permissions have changed"));
     expect(notices, "no migration notice was sent").toHaveLength(1);
     expect(String(notices[0]![1])).toContain("defaults.tool_set: full");
+  });
+});
+
+// ── Decision 9e3bea6c (#3043): General is AgEnD's administrator ─────────────
+
+describe("general administrator orchestration tools (decision 9e3bea6c, #3043)", () => {
+  const REQUIRED_ORCHESTRATION_TOOLS = [
+    "delete_instance",
+    "stop_instance",
+    "pause_instance",
+    "update_instance_config",
+    "update_fleet_defaults",
+    "create_team",
+  ] as const;
+
+  it("reuses the ORCHESTRATION constant in TOOL_PROFILES.general without duplicate entries", () => {
+    const source = readFileSync(new URL("../src/tool-permissions.ts", import.meta.url), "utf8");
+    const generalBlock = source.slice(
+      source.indexOf("general: ["),
+      source.indexOf("],", source.indexOf("general: [")) + 2,
+    );
+    expect(generalBlock).toContain("...ORCHESTRATION");
+    expect(source).toContain("9e3bea6c");
+    expect(source).not.toContain("a dispatcher has no business deleting instances");
+    // No duplicate tool names in general profile array
+    expect(new Set(TOOL_PROFILES.general).size).toBe(TOOL_PROFILES.general.length);
+  });
+
+  it("allows General to call delete_instance, stop_instance, pause_instance, update_instance_config, update_fleet_defaults and create_team through the real permission check, while refusing a worker", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const check = (FleetManager.prototype as unknown as {
+      checkToolPermission(sink: string, instance: string, tool: string): { allowed: boolean; message: string };
+    }).checkToolPermission;
+    const fm = {
+      fleetConfig: {
+        defaults: {},
+        instances: {
+          general: { working_directory: "/tmp/g", general_topic: true },
+          worker: { working_directory: "/tmp/w" },
+        },
+      },
+      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+    };
+
+    for (const tool of REQUIRED_ORCHESTRATION_TOOLS) {
+      expect(mayUseTool("general", tool), `mayUseTool("general", "${tool}")`).toBe(true);
+      expect(mayUseTool("worker", tool), `mayUseTool("worker", "${tool}")`).toBe(false);
+      expect(check.call(fm as never, "ipc-outbound", "general", tool), `checkToolPermission general ${tool}`).toEqual({
+        allowed: true,
+        message: "",
+      });
+      const workerCheck = check.call(fm as never, "ipc-outbound", "worker", tool);
+      expect(workerCheck.allowed, `checkToolPermission worker ${tool}`).toBe(false);
+      expect(workerCheck.message, `checkToolPermission worker ${tool}`).toContain(
+        `${tool} is not available to this instance: it runs with the "worker" tool set`,
+      );
+    }
+  });
+
+  it("allows General through the real ipc-outbound sink for all six orchestration tools while refusing a worker at the same sink", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const handle = (FleetManager.prototype as unknown as {
+      handleOutboundFromInstance(instance: string, msg: Record<string, unknown>): Promise<void>;
+    }).handleOutboundFromInstance;
+
+    for (const tool of REQUIRED_ORCHESTRATION_TOOLS) {
+      const generalSent: Array<Record<string, unknown>> = [];
+      const workerSent: Array<Record<string, unknown>> = [];
+      const warn = vi.fn();
+      const fm = {
+        fleetConfig: {
+          defaults: {},
+          instances: {
+            general: { working_directory: "/tmp/g", general_topic: true },
+            worker: { working_directory: "/tmp/w" },
+          },
+        },
+        logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+        instanceIpcClients: new Map([
+          ["general", { send: (m: Record<string, unknown>) => { generalSent.push(m); return true; } }],
+          ["worker", { send: (m: Record<string, unknown>) => { workerSent.push(m); return true; } }],
+        ]),
+        worlds: new Map(),
+        isWebOnlyFleet: () => false,
+        touchActivity: () => {},
+        setTopicIcon: () => {},
+        eventLog: null,
+        checkToolPermission: (FleetManager.prototype as unknown as Record<string, unknown>).checkToolPermission,
+        webChatIdentity: () => ({ generation: 0, daemon: undefined }),
+      };
+
+      await handle.call(fm as never, "general", { tool, args: {}, fleetRequestId: `gen-${tool}` });
+      await handle.call(fm as never, "worker", { tool, args: {}, fleetRequestId: `wrk-${tool}` });
+
+      // General passed checkToolPermission and reached downstream validation/adapter readiness
+      expect(generalSent, `general ${tool}`).toHaveLength(1);
+      expect(String(generalSent[0]!.error), `general ${tool} must not be refused by tool_set`).not.toContain(
+        "is not available to this instance",
+      );
+      expect(String(generalSent[0]!.error), `general ${tool} reached downstream`).toMatch(
+        /Invalid args for |adapters are not ready/,
+      );
+
+      // Worker was refused at the permission gate before reaching adapters
+      expect(workerSent, `worker ${tool}`).toHaveLength(1);
+      expect(String(workerSent[0]!.error), `worker ${tool} must be refused`).toContain(
+        `${tool} is not available to this instance: it runs with the "worker" tool set`,
+      );
+    }
+  });
+
+  it("keeps the #804/#814 privilege guard unchanged when General calls update_instance_config (refuses tool_set, ignores skipPermissions)", async () => {
+    const { outboundHandlers } = await import("../src/outbound-handlers.js");
+    const targetInstance: Record<string, unknown> = { description: "before", skipPermissions: false };
+    const ctx = {
+      fleetConfig: {
+        defaults: {},
+        instances: {
+          general: { working_directory: "/tmp/g", general_topic: true },
+          worker: targetInstance,
+        },
+      },
+      classicChannels: { getAll: () => [] },
+      saveFleetConfig: vi.fn(),
+      dataDir: tempDir(),
+    };
+    const generalMeta = {
+      instanceName: "general",
+      requestId: undefined,
+      fleetRequestId: undefined,
+      senderSessionName: undefined,
+    };
+
+    // 1. General attempting to set tool_set via update_instance_config is refused (#804/#814)
+    let result1: unknown;
+    let error1: string | null | undefined;
+    await outboundHandlers.get("update_instance_config")!(
+      ctx as never,
+      { name: "worker", config: { tool_set: "full" } } as never,
+      (r, e) => { result1 = r; error1 = e; },
+      generalMeta,
+    );
+    expect(result1).toBeNull();
+    expect(error1).toMatch(/privilege boundary[\s\S]*#804[\s\S]*#814/);
+    expect(targetInstance.tool_set).toBeUndefined();
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+
+    // 2. General passing skipPermissions via update_instance_config does not escalate skipPermissions
+    let result2: unknown;
+    let error2: string | null | undefined;
+    await outboundHandlers.get("update_instance_config")!(
+      ctx as never,
+      { name: "worker", config: { description: "after", skipPermissions: true } } as never,
+      (r, e) => { result2 = r; error2 = e; },
+      generalMeta,
+    );
+    expect(error2).toBeUndefined();
+    expect(result2).toMatchObject({ success: true });
+    expect(targetInstance.description).toBe("after");
+    expect(targetInstance.skipPermissions).toBe(false);
+  });
+
+  it("keeps create_instance's tool_set/skipPermissions refusal for General while preserving schema pass-through", async () => {
+    const { outboundHandlers } = await import("../src/outbound-handlers.js");
+    const { CreateInstanceArgs } = await import("../src/outbound-schemas.js");
+    const handleCreate = vi.fn().mockResolvedValue(undefined);
+    const ctx = {
+      fleetConfig: {
+        defaults: {},
+        instances: { general: { working_directory: "/tmp/g", general_topic: true } },
+      },
+      classicChannels: { getAll: () => [] },
+      saveFleetConfig: vi.fn(),
+      lifecycle: { handleCreate },
+      getWorldForInstance: vi.fn(),
+      dataDir: tempDir(),
+      adapters: new Map(),
+      logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+    };
+    const generalMeta = {
+      instanceName: "general",
+      requestId: undefined,
+      fleetRequestId: undefined,
+      senderSessionName: undefined,
+    };
+
+    for (const forbidden of [{ tool_set: "full" }, { skipPermissions: true }, { skipPermissions: false }]) {
+      let result: unknown;
+      let error: string | null | undefined;
+      await outboundHandlers.get("create_instance")!(
+        ctx as never,
+        { directory: "/tmp/proj", ...forbidden } as never,
+        (r, e) => { result = r; error = e; },
+        generalMeta,
+      );
+      expect(result).toBeNull();
+      expect(error).toMatch(/privilege boundary/);
+      expect(handleCreate).not.toHaveBeenCalled();
+    }
+
+    // Schema pass-through remains intact for internal callers (e.g. deploy_template)
+    const parsed = CreateInstanceArgs.safeParse({
+      directory: "/tmp/proj",
+      tool_set: "coordinator",
+      skipPermissions: false,
+    });
+    expect(parsed.success).toBe(true);
+    if (parsed.success) {
+      expect(parsed.data).toMatchObject({
+        directory: "/tmp/proj",
+        tool_set: "coordinator",
+        skipPermissions: false,
+      });
+    }
+  });
+
+  it("keeps fleet-manager's sensitive-config confirmation by a fleet admin unchanged", async () => {
+    const { EventEmitter } = await import("node:events");
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const { SettingsConfirmationStore } = await import("../src/settings-confirmation.js");
+    const dir = tempDir();
+    const fm = new FleetManager(dir) as any;
+    fm.configPath = join(dir, "fleet.yaml");
+    fm.fleetConfig = {
+      defaults: {},
+      instances: {
+        general: { working_directory: dir, general_topic: true, topic_id: "200", channel_id: "primary" },
+      },
+      channels: [{
+        id: "primary",
+        type: "discord",
+        mode: "topic",
+        bot_token_env: "TEST_BOT_TOKEN",
+        group_id: "100",
+        options: { general_channel_id: "200" },
+        access: { mode: "locked", allowed_users: ["admin-user"] },
+      }],
+    };
+    const a = Object.assign(new EventEmitter(), {
+      id: "primary",
+      type: "discord",
+      topology: "channels",
+      getHealthSnapshot: () => ({ status: "connected" }),
+      notifyAlert: vi.fn(async (chatId: string, _alert: unknown, options: { threadId?: string }) => ({
+        chatId,
+        messageId: "prompt-msg",
+        threadId: options?.threadId,
+      })),
+      editMessageRemoveButtons: vi.fn(async () => {}),
+    });
+    fm.adapters.set("primary", a);
+    fm.adapter = a;
+    fm.getInstanceAdapterId = () => "primary";
+    fm.daemons.set("general", new EventEmitter());
+    fm.adapterState.set("primary", { status: "connected", retryCount: 0 });
+    fm.getAdapterForInstance = () => fm.adapter;
+    fm.getGroupIdForInstance = () => "100";
+
+    const apply = vi.fn(async (_current: () => boolean, execution: { commit: (fn: () => string) => unknown }) =>
+      execution.commit(() => "applied"),
+    );
+    const store = new SettingsConfirmationStore({
+      notify: view => fm.promptSettingsChange(store, view),
+      audit: vi.fn(),
+    });
+    fm.settingsConfirmation = { store };
+    try {
+      const { view } = store.propose({
+        session: "browser",
+        key: "request",
+        bytes: 1,
+        source: "web_session",
+        section: "access",
+        requestedBy: "admin browser",
+        fingerprint: "effect",
+        summary: ["fleet.channels.primary.access.allowed_users: add fleet admin (F) ID 42"],
+        authority: { connections: [], primaryGeneral: true, unknown: false },
+        current: () => true,
+        unchanged: async () => true,
+        snapshot: () => null,
+        apply: apply as never,
+      });
+
+      await vi.waitFor(() => expect(fm.pendingNonceButtons.size).toBe(1));
+      const entry: any = [...fm.pendingNonceButtons.values()][0];
+      expect(store.get(view.id, "browser")!.state).toBe("pending");
+      expect(apply).not.toHaveBeenCalled();
+
+      // Non-admin cannot confirm the sensitive access/token change
+      await fm.dispatchAdapterCallback(
+        {
+          callbackData: `settings-confirm:${entry.nonce}:confirm`,
+          chatId: entry.chatId,
+          threadId: entry.threadId,
+          messageId: entry.messageId,
+          userId: "non-admin",
+          ack: vi.fn(),
+        },
+        "primary",
+        a,
+      );
+      expect(apply).not.toHaveBeenCalled();
+      expect(store.get(view.id, "browser")!.state).toBe("pending");
+
+      // Fleet admin (in allowed_users) confirms and applies the change
+      await fm.dispatchAdapterCallback(
+        {
+          callbackData: `settings-confirm:${entry.nonce}:confirm`,
+          chatId: entry.chatId,
+          threadId: entry.threadId,
+          messageId: entry.messageId,
+          userId: "admin-user",
+          ack: vi.fn(),
+        },
+        "primary",
+        a,
+      );
+      expect(apply).toHaveBeenCalledOnce();
+      expect(store.get(view.id, "browser")!.state).toBe("applied");
+    } finally {
+      store.close();
+      for (const entry of fm.pendingNonceButtons.values()) clearTimeout((entry as any).timer);
+    }
   });
 });

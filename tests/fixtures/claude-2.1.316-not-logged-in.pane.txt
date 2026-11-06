@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/han/.cache/claude-audit-316/w/xn316
+
+▎ Auto mode is now Claude Code's default permission mode.
+▎ Auto mode lets Claude handle permission prompts automatically. Claude checks each tool call for risky actions and prompt injection before executing, runs the
+▎ ones it assesses as lower-risk, and blocks the rest.
+▎ https://code.claude.com/docs/en/permission-modes
+
+❯ hello
+  ⎿  Not logged in · Please run /login
+
+✻ Churned for 0s · done 9:13 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                                                                                    Not logged in · Run /login
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

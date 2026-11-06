@@ -7,7 +7,8 @@ import {
   type ClaudeQuotaVerdict,
   type LifecycleContext,
 } from "../src/instance-lifecycle.js";
-import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { Daemon } from "../src/daemon.js";
+import pino from "pino";
 
 function percentUsage(used: number, hint?: string) {
   return {
@@ -19,6 +20,7 @@ function percentUsage(used: number, hint?: string) {
 
 function lifecycle(verifier: () => Promise<ClaudeQuotaVerdict>, names = ["worker"]) {
   const notifyInstanceTopic = vi.fn();
+  const webhookEmit = vi.fn();
   const clearCancelButton = vi.fn();
   const ctx = {
     fleetConfig: {
@@ -29,7 +31,7 @@ function lifecycle(verifier: () => Promise<ClaudeQuotaVerdict>, names = ["worker
     eventLog: null,
     isPlannedRestart: () => false,
     notifyInstanceTopic,
-    webhookEmit: vi.fn(),
+    webhookEmit,
     clearCancelButton,
     checkModelFailover() {},
     restartSingleInstance: async () => {},
@@ -42,7 +44,7 @@ function lifecycle(verifier: () => Promise<ClaudeQuotaVerdict>, names = ["worker
     instanceLifecycle.attachIncidentHandlers(name, daemon as any);
     return daemon;
   });
-  return { daemons, notifyInstanceTopic, clearCancelButton };
+  return { daemons, notifyInstanceTopic, clearCancelButton, webhookEmit };
 }
 
 const quotaError = (name: string) => ({
@@ -52,18 +54,15 @@ const quotaError = (name: string) => ({
   message: "Insufficient API credits",
 });
 
+/** #2834: the event the daemon emits for Claude's own usage-pause note (no pane pattern any more). */
 const hardUsagePauseError = (name: string) => {
-  const pane = "● Usage limit reached · continuing automatically at 1:50pm · esc or type to cancel";
-  const pattern = new ClaudeCodeBackend("/tmp/claude-usage-pause-pattern").getErrorPatterns()
-    .find(candidate => candidate.message.startsWith("Claude Code usage limit reached"));
-  if (!pattern) throw new Error("Claude usage pause pattern is missing");
-  const match = pane.match(pattern.pattern);
-  if (!match) throw new Error("Claude usage pause fixture no longer matches");
-  return {
-    name,
-    ...pattern,
-    message: pattern.formatMessage?.(match) ?? pattern.message,
-  };
+  const daemon = new Daemon(name, { working_directory: "/tmp", log_level: "silent" } as any, "/tmp/claude-usage-pause-2834", false,
+    undefined, undefined, pino({ level: "silent" }) as any) as any;
+  let event: any;
+  daemon.on("pty_error", (e: any) => { event = e; });
+  daemon.noteClaudeInformational("Usage limit reached · continuing automatically at 1:50pm · esc to cancel");
+  if (!event) throw new Error("the daemon emitted no usage-pause event");
+  return { ...event, name };
 };
 
 describe("Claude quota second opinion", () => {
@@ -110,14 +109,15 @@ describe("Claude quota second opinion", () => {
   );
 
   it("surfaces the hard pause line with its automatic resume time", async () => {
-    const { daemons, notifyInstanceTopic } = lifecycle(async () => "exhausted");
+    const { daemons, notifyInstanceTopic, webhookEmit } = lifecycle(async () => "exhausted");
     daemons[0].emit("pty_error", hardUsagePauseError("worker"));
 
     await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
-    expect(notifyInstanceTopic).toHaveBeenCalledWith(
-      "worker",
-      expect.stringMatching(/paused.*continuing automatically at 1:50pm/s),
-    );
+    // #2873: one short line in its own topic (no name, no "(action: …)"), its resume time kept.
+    expect(notifyInstanceTopic).toHaveBeenCalledWith("worker", "⚠️ Claude usage limit used up — paused (resets at 1:50pm)");
+    // …while a webhook gets the same English message as before.
+    expect(webhookEmit).toHaveBeenCalledWith("pty_error", "worker",
+      { type: "quota", action: "notify", message: "Claude Code usage limit reached — paused; continuing automatically at 1:50pm" });
     expect(daemons[0].requestPauseWhenIdle).not.toHaveBeenCalled();
   });
 

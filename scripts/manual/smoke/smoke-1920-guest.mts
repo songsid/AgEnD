@@ -18,30 +18,6 @@ const owner = { adapterId: "discord", userId: "424242424242424242" };
 fm.webPrefs.setProfileName(`person:${owner.adapterId}:${owner.userId}`, "Alice");
 fm.initializeWebSessions();
 
-// #2101 review: a static effect poster placed on an in-scope agent shows to a guest as to an admin (stock trust passes
-// on a guest's page). A real poster image, drawn here; the effect is uploaded and placed as the product does.
-const { encodeEffectFiles } = await import(process.env.REPO + "/src/web-effect-upload.ts");
-const painter = await fx.browser.newPage();
-const posterB64 = await painter.evaluate(`(() => { const c = document.createElement("canvas"); c.width = 320; c.height = 120; const g = c.getContext("2d");
-  g.fillStyle = "#3b6fd8"; g.fillRect(0, 0, 320, 120); g.fillStyle = "#fff"; g.font = "bold 28px sans-serif"; g.fillText("POSTER", 100, 70);
-  return c.toDataURL("image/png").split(",")[1]; })()`);
-await painter.close();
-const effect = new Map<string, Uint8Array>([
-  ["effect.json", Buffer.from(JSON.stringify({ v: 1, runtime: "canvas-worker-v1", worker: "worker.js", name: "poster", title: "Poster", regions: ["chat"], layer: "front", wants: ["state"], poster: "poster.png" }))],
-  ["worker.js", Buffer.from("agend.ready()")], ["poster.png", Buffer.from(posterB64, "base64")],
-]);
-const uploaded = fm.effectService.upload("operator", encodeEffectFiles(effect));
-if (typeof uploaded.id !== "string") throw new Error(`poster upload refused: ${JSON.stringify(uploaded)}`);
-const placed = fm.effectService.apply("operator", { instance: scope[0], id: uploaded.id });
-if (!placed || typeof placed.id !== "string") throw new Error(`poster placement refused: ${JSON.stringify(placed)}`);
-const POSTER_CHECK = `(async () => {
-  const trust = await import("/assets/effect-stock-trust.js").then((m) => { const r = m.stockEffectTrust(window, { ownerCss: "off" }); return { ok: r.ok, reason: r.reason }; });
-  for (let i = 0; i < 40 && !document.querySelector("img.agend-effect-poster"); i++) await new Promise((r) => setTimeout(r, 100));
-  const img = document.querySelector("img.agend-effect-poster");
-  const box = img ? img.getBoundingClientRect() : null;
-  return { trust, poster: !!img && img.complete && img.naturalWidth > 0 && !!box && box.width > 0 && box.height > 0 && getComputedStyle(img).visibility !== "hidden" };
-})()`;
-
 const results: any[] = [];
 for (const c of [{ device: "desk", theme: "light" }, { device: "desk", theme: "dark" }, { device: "phone", theme: "dark" }] as const) {
   const sid = fm.webSessions.create({ tier: "guest", surface: "local", label: "smoke", tokenEpoch: tokenEpoch(fm.webToken), owner }).sessionId;
@@ -66,7 +42,6 @@ for (const c of [{ device: "desk", theme: "light" }, { device: "desk", theme: "d
     noteShown: (() => { const n = document.querySelector(".guest-note"); return !!n && getComputedStyle(n).display !== "none" && n.getBoundingClientRect().height > 0; })(),
     chipClipped: (() => { const s = document.querySelector(".guest-chip .grow"); return !!s && s.scrollWidth > s.clientWidth; })(),
   }))()`);
-  const effectProof = await page.evaluate(POSTER_CHECK);
   const name = `${c.device}-${c.theme}`;
   if (c.device === "phone") {
     await page.screenshot({ path: shotPath(SMOKE, name, "chat") });
@@ -74,22 +49,19 @@ for (const c of [{ device: "desk", theme: "light" }, { device: "desk", theme: "d
     await page.waitForTimeout(400);
     await page.screenshot({ path: shotPath(SMOKE, name, "drawer") });
   } else await page.screenshot({ path: shotPath(SMOKE, name, "page") });
-  results.push({ case: name, ...check, ...effectProof, refused, errors });
+  results.push({ case: name, ...check, refused, errors });
   await ctx.close();
 }
 // Control: an admin's page of the same chat (the header, the sidebar and the tabs a guest does not get).
-let adminProof: any = null;
 {
   const { ctx, page } = await fx.page({ device: "desk", theme: "light", lang: "en" }, { path: `/ui/chat/${encodeURIComponent(scope[0]!)}` });
   await page.waitForSelector("#msgIn"); await page.waitForTimeout(800);
-  adminProof = await page.evaluate(POSTER_CHECK);
   await page.screenshot({ path: shotPath(SMOKE, "desk-light", "admin-control") });
   await ctx.close();
 }
-console.log(JSON.stringify({ scope, adminProof, results }, null, 1));
+console.log(JSON.stringify({ scope, results }, null, 1));
 const bad = results.filter(r => r.tier !== "guest" || !r.chip?.startsWith("Guest · Alice") || r.adminNav || r.settings.length || r.filters || r.tabs
-  || r.instSwitch || r.menu || r.usage || !r.note || !r.noteShown || r.chipClipped || !r.trust?.ok || !r.poster || r.refused.length || r.errors.length || [...r.agents].sort().join() !== [...scope].sort().join());
-const adminBad = !adminProof?.trust?.ok || !adminProof?.poster;
-console.log(bad.length || adminBad ? `FAIL ${[...bad.map(b => b.case), ...(adminBad ? ["admin-control"] : [])].join(", ")}` : "PASS");
+  || r.instSwitch || r.menu || r.usage || !r.note || !r.noteShown || r.chipClipped || r.refused.length || r.errors.length || [...r.agents].sort().join() !== [...scope].sort().join());
+console.log(bad.length ? `FAIL ${bad.map(b => b.case).join(", ")}` : "PASS");
 await fx.close();
-process.exit(bad.length || adminBad ? 1 : 0);
+process.exit(bad.length ? 1 : 0);

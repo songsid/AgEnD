@@ -44,10 +44,14 @@ export interface SessionPolicy {
 const HOUR = 60 * 60 * 1000;
 const MINUTE = 60 * 1000;
 
-/** Design D4. The gateway numbers are shorter because a session there is reachable from the internet. */
+/**
+ * Design D4. The gateway numbers are shorter because a session there is reachable from the internet. Its 8 h is the
+ * longest a temporary link lives (user, 2026-10-29): a session over the link may last as long as the link, and never
+ * longer than the tier's own policy or the link itself (`exposureEnd`).
+ */
 export const DEFAULT_SESSION_POLICY: Readonly<Record<SessionSurface, SessionPolicy>> = {
   local: { absoluteMs: 48 * HOUR, idleMs: 48 * HOUR },   // #1670: two days without signing in again (user, 2026-10-12)
-  gateway: { absoluteMs: 4 * HOUR, idleMs: 30 * MINUTE },
+  gateway: { absoluteMs: 8 * HOUR, idleMs: 30 * MINUTE },
 };
 
 /**
@@ -72,7 +76,7 @@ export function localSessionPolicy(cfg: { absolute_hours?: unknown; idle_hours?:
 
 /**
  * #1920 §5.4: a guest's session — shorter than an admin's, never longer than the surface's own policy (on the public
- * link the link's 4 h / 30 min wins). `web.guests.session`: absolute 1–24 h, idle 15 min–12 h.
+ * link the link's 8 h / 30 min, and the link's own end, win). `web.guests.session`: absolute 1–24 h, idle 15 min–12 h.
  */
 export const GUEST_SESSION_POLICY: SessionPolicy = { absoluteMs: 12 * HOUR, idleMs: 2 * HOUR };
 export const GUEST_SESSION_BOUNDS = { absoluteHours: { min: 1, max: 24 }, idleMinutes: { min: 15, max: 720 } } as const;
@@ -84,6 +88,12 @@ export function guestSessionPolicy(cfg: { absolute_hours?: unknown; idle_minutes
     typeof v !== "number" || !Number.isFinite(v) || v > max ? fallback : Math.max(v, min) * unit;
   const absoluteMs = ms(cfg?.absolute_hours, a.min, a.max, HOUR, GUEST_SESSION_POLICY.absoluteMs);
   return { absoluteMs, idleMs: Math.min(ms(cfg?.idle_minutes, i.min, i.max, MINUTE, GUEST_SESSION_POLICY.idleMs), absoluteMs) };
+}
+
+/** The tighter of two policies, its idle window never past its absolute one. */
+function shorter(a: SessionPolicy, b: SessionPolicy): SessionPolicy {
+  const absoluteMs = Math.min(a.absoluteMs, b.absoluteMs);
+  return { absoluteMs, idleMs: Math.min(a.idleMs, b.idleMs, absoluteMs) };
 }
 
 /** More than this and the least recently used one is dropped (#1920: admins' and read sessions; guests count apart). */
@@ -123,6 +133,12 @@ export interface SessionRecord {
    * For recognition only: never an authorization input (#1756 — a web message has no verified platform actor).
    */
   readonly owner?: { readonly adapterId: string; readonly userId: string };
+  /**
+   * #2910 D1: signed in with a code the host's own shell asked for (`agend web --code`) — never a code sent to an
+   * account. On a web-only fleet such a session, on this computer, is the host operator (authority/web-authority.ts).
+   * Always an admin session with no owner.
+   */
+  readonly host?: true;
 }
 
 export interface SessionSummary {
@@ -213,6 +229,8 @@ export interface WebSessionStoreOptions {
   readonly localPolicy?: () => SessionPolicy;
   /** #1920: a guest's policy, read at every check (`web.guests.session`); never longer than the surface's. */
   readonly guestPolicy?: () => SessionPolicy;
+  /** The wall-clock end of the public link a session is made over (null: none, or not that link): it never outlives it. */
+  readonly exposureEnd?: (exposureId: string) => number | null;
   readonly maxSessions?: number;
   readonly onWarn?: (message: string) => void;
 }
@@ -238,6 +256,7 @@ function isRecord(value: unknown): value is SessionRecord {
     && (v.surface === "local" || v.surface === "gateway")
     && (v.exposureId === undefined || (typeof v.exposureId === "string" && /^[0-9a-f]{32}$/.test(v.exposureId)))
     && (v.owner === undefined || isOwner(v.owner))
+    && (v.host === undefined || (v.host === true && v.tier === "admin" && v.owner === undefined && v.surface === "local"))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
@@ -252,6 +271,7 @@ export class WebSessionStore {
   private readonly policy: Record<SessionSurface, SessionPolicy>;
   private readonly localPolicy: (() => SessionPolicy) | null;
   private readonly guestPolicy: () => SessionPolicy;
+  private readonly exposureEnd: (exposureId: string) => number | null;
   private readonly maxSessions: number;
   private readonly path: string | null;
   private readonly warn: (message: string) => void;
@@ -269,6 +289,7 @@ export class WebSessionStore {
     };
     this.localPolicy = opts.localPolicy ?? null;
     this.guestPolicy = opts.guestPolicy ?? (() => GUEST_SESSION_POLICY);
+    this.exposureEnd = opts.exposureEnd ?? (() => null);
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
     this.warn = opts.onWarn ?? (() => {});
@@ -283,14 +304,13 @@ export class WebSessionStore {
 
   /**
    * The policy in force for a surface now (#1620: the local one as configured at this moment; the gateway's fixed).
-   * #1920: a guest's is its own policy, never longer than the surface's.
+   * #1920: a guest's is its own policy, never longer than the surface's. An admin's on the public link is never longer
+   * than its own `web.session.local` either (2026-10-29: the link's cap rose to 8 h).
    */
   private policyFor(surface: SessionSurface, tier: SessionTier): SessionPolicy {
-    const base = surface === "local" && this.localPolicy ? this.localPolicy() : this.policy[surface];
-    if (tier !== "guest") return base;
-    const guest = this.guestPolicy();
-    const absoluteMs = Math.min(base.absoluteMs, guest.absoluteMs);
-    return { absoluteMs, idleMs: Math.min(base.idleMs, guest.idleMs, absoluteMs) };
+    const local = this.localPolicy ? this.localPolicy() : this.policy.local;
+    if (surface === "local") return tier === "guest" ? shorter(local, this.guestPolicy()) : local;
+    return shorter(this.policy.gateway, tier === "guest" ? this.guestPolicy() : local);
   }
 
   /**
@@ -315,14 +335,15 @@ export class WebSessionStore {
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.
    */
-  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string } }): { sessionId: string; record: SessionRecord } {
+  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true }): { sessionId: string; record: SessionRecord } {
     // #1920: a guest is always someone's own account; never a guest of nobody.
     if (input.tier === "guest" && !input.owner) throw new Error("a guest session needs its owner");
     const now = this.now();
     this.purgeExpired(now);
     const sessionId = randomBytes(32).toString("hex");
     const policy = this.policyFor(input.surface, input.tier);
-    const absoluteExpiry = now + policy.absoluteMs;
+    const linkEnd = input.exposureId ? this.exposureEnd(input.exposureId) : null;
+    const absoluteExpiry = Math.min(now + policy.absoluteMs, linkEnd ?? Infinity);
     const record: SessionRecord = {
       handle: randomBytes(8).toString("hex"),
       idHash: sessionIdHash(sessionId),
@@ -336,6 +357,7 @@ export class WebSessionStore {
       label: sanitizeLabel(input.label),
       tokenEpoch: input.tokenEpoch,
       ...(input.owner ? { owner: { adapterId: input.owner.adapterId, userId: input.owner.userId } } : {}),
+      ...(input.host === true && input.tier === "admin" && !input.owner && input.surface === "local" ? { host: true as const } : {}),
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);
@@ -387,9 +409,12 @@ export class WebSessionStore {
   /** A candidate has no usable credential until the public notice and final fence passed. */
   activate(sessionId: string): boolean {
     const hash = sessionIdHash(sessionId);
-    if (!this.byHash.has(hash) || !this.pending.delete(hash)) return false;
+    const record = this.byHash.get(hash);
+    if (!record || !this.pending.delete(hash)) return false;
+    record.lastSeen = this.now();
+    this.enforceCaps();
     this.persistNow();
-    return true;
+    return this.byHash.has(hash);
   }
 
   revokeExposure(exposureId: string): { count: number; durable: boolean } {
@@ -519,18 +544,29 @@ export class WebSessionStore {
   /**
    * The caps: admins' and read sessions together; guests apart (#1920) — per account, then all guests — so a guest
    * signing in never drops an admin's session, and one account cannot fill the guests' room.
+   *
+   * Pending public candidates (#1490 row 20) sit in their own pool at the same cap: they must not evict an
+   * active session, and admission (`activate`) then applies the active cap. Guests keep their separate caps.
    */
   private enforceCaps(): void {
     const notGuest = (r: SessionRecord) => r.tier !== "guest";
-    while (this.count(notGuest) > this.maxSessions) this.evictLeastRecentlyUsed(notGuest);
+    this.enforcePool(notGuest, this.maxSessions);
     const accounts = new Set<string>();
     for (const r of this.byHash.values()) if (r.tier === "guest") accounts.add(accountKey(r.owner!));
     for (const key of accounts) {
       const mine = (r: SessionRecord) => r.tier === "guest" && accountKey(r.owner!) === key;
-      while (this.count(mine) > MAX_GUEST_SESSIONS_PER_ACCOUNT) this.evictLeastRecentlyUsed(mine);
+      this.enforcePool(mine, MAX_GUEST_SESSIONS_PER_ACCOUNT);
     }
     const guest = (r: SessionRecord) => r.tier === "guest";
-    while (this.count(guest) > MAX_GUEST_SESSIONS) this.evictLeastRecentlyUsed(guest);
+    this.enforcePool(guest, MAX_GUEST_SESSIONS);
+  }
+
+  /** Cap active and pending members of `which` separately, each at `cap`, so a candidate cannot bump a live session. */
+  private enforcePool(which: (r: SessionRecord) => boolean, cap: number): void {
+    const active = (r: SessionRecord) => which(r) && !this.pending.has(r.idHash);
+    const pending = (r: SessionRecord) => which(r) && this.pending.has(r.idHash);
+    while (this.count(active) > cap) this.evictLeastRecentlyUsed(active);
+    while (this.count(pending) > cap) this.evictLeastRecentlyUsed(pending);
   }
 
   private count(which: (r: SessionRecord) => boolean): number {

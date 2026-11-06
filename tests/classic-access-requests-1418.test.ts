@@ -292,3 +292,60 @@ describe("new ClassicBot access requests (#1418)", () => {
     expectRequest(r);
   });
 });
+
+describe("#2870: a stranger's commands in a private chat get no answer; /start still asks", () => {
+  const STRANGER_COMMANDS = ["/model", "/model opus", "/stop", "/compact", "/clear", "/pause", "/wake", "/backend", "/ctx", "/web", "/help", "/model@OurBot"];
+  it("a stranger (no list, not an admin, no room): every command but /start → nothing sent, no General alert", async () => {
+    const r = rig("telegram");
+    const topic = vi.mocked(r.fm.notifyInstanceTopic);
+    for (const text of STRANGER_COMMANDS) await r.say(USER, USER, text);
+    expect([r.adapter.sendText.mock.calls, r.adapter.notifyAlert.mock.calls, topic.mock.calls, r.start.mock.calls]).toEqual([[], [], [], []]);
+    await r.say(USER, USER, "/start");
+    expectRequest(r);
+    expect(r.adapter.sendText.mock.calls).toEqual([[USER, t("classic.access_requested")]]);
+  });
+  it("allowed users, ClassicBot admins and fleet admins are answered as before", async () => {
+    for (const [who, defaults] of [[USER, { allowed_users: [USER] }], [ADMIN, { admin_users: [ADMIN] }], [FLEET_ADMIN, {}]] as const) {
+      const r = rig("telegram", defaults);
+      await r.say(who, who, "/model opus");
+      expect(r.adapter.sendText.mock.calls.length, `${who} is answered`).toBe(1);
+    }
+  });
+  it("a chat with a ClassicBot room is answered as before, even if its user was taken off the lists", async () => {
+    const r = rig("telegram");
+    r.classic.register(USER, r.id, "classic-room", "room", USER, "codex");
+    await r.say(USER, USER, "/model opus");
+    expect(r.adapter.sendText).toHaveBeenCalledWith(USER, t("permission.denied"));
+  });
+  it("groups are unchanged: a stranger's targeted command there is still answered", async () => {
+    const r = rig("telegram");
+    await r.say("-10042", USER, "/model@OurBot opus");
+    expect(r.adapter.sendText).toHaveBeenCalledWith("-10042", t("permission.denied"));
+  });
+});
+
+describe("#2870: General's Allow gives that chat the ClassicBot menu at once", () => {
+  it.each([["allow", [["tg", USER]]], ["allow-admin", [["tg", USER]]]])("private %s → the user's chat", async (action, want) => {
+    const r = rig("telegram");
+    const add = vi.spyOn(r.fm.topicCommands, "addClassicMenuChat").mockResolvedValue(undefined);
+    await r.say();
+    await r.click(action);
+    expect(add.mock.calls).toEqual(want);
+  });
+  it("group Allow+admin → the group's chat and the new admin's own chat; Allow alone → the group only", async () => {
+    for (const [action, want] of [["allow", [["tg", "-10042"]]], ["allow-admin", [["tg", "-10042"], ["tg", USER]]]] as const) {
+      const r = rig("telegram");
+      const add = vi.spyOn(r.fm.topicCommands, "addClassicMenuChat").mockResolvedValue(undefined);
+      await r.say("-10042", USER, "/start@OurBot codex");
+      await r.click(action);
+      expect(add.mock.calls, action).toEqual(want);
+    }
+  });
+  it("Discord's Allow adds no Telegram menu", async () => {
+    const r = rig("discord");
+    const add = vi.spyOn(r.fm.topicCommands, "addClassicMenuChat").mockResolvedValue(undefined);
+    await r.slash();
+    await r.click("allow");
+    expect(add).not.toHaveBeenCalled();
+  });
+});

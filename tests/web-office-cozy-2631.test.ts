@@ -68,7 +68,7 @@ function fakeCtx() {
 
 describe("built in", () => {
   it("a third built-in style after Desks and Studio, a zones one with the built-in people; an unknown id is Desks", () => {
-    expect(K.BUILT_IN_SKINS).toEqual(["pixel", "studio", "cozy"]);
+    expect(K.BUILT_IN_SKINS).toEqual(["pixel", "studio", "cozy", "guild", "school"]);   // #2947: two more after it
     const sk = K.skinFor("cozy");
     expect([sk.id, sk.pack.id, sk.pack === K.COZY_PACK, !!sk.pack.stateZones]).toEqual(["cozy", "cozy", true, true]);
     expect([K.COZY_PACK.characters, K.COZY_PACK.byInstance]).toEqual([{}, {}]);
@@ -193,7 +193,7 @@ describe("the Style picker", () => {
   });
   it("offers Cozy after Desks and Studio; picked, each is kept per browser (Desks too) and everyone is in it", async () => {
     await office();
-    expect(style().querySelectorAll("option").map((o: any) => [o.value, o.textContent.trim()])).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["cozy", "Cozy"]]);
+    expect(style().querySelectorAll("option").map((o: any) => [o.value, o.textContent.trim()])).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["cozy", "Cozy"], ["guild", "Guild"], ["school", "School"]]);
     const pick = async (v: string) => { const s = style(); s.value = v; fire(s, "change"); await settle(4); };
     await pick("pixel");
     expect(localStorage.getItem("agend_org_office_skin")).toBe("pixel");
@@ -316,7 +316,7 @@ describe("a pack kept as \"cozy\" before it was built in", () => {
       p.root.querySelector(".oo-edit").click(); await settle(3);
       const row = p.root.querySelector(".oe-row .oe-style");
       expect(row.value).toBe("cozy");
-      expect(options(row)).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["cozy", "Our cozy"]]);
+      expect(options(row)).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["guild", "Guild"], ["school", "School"], ["cozy", "Our cozy"]]);
     });
     it("a browser that picked it keeps it; the Style picker offers it once; deleted, the built-in Cozy is offered again", async () => {
       localStorage.setItem("agend_org_office_skin", "cozy");
@@ -324,12 +324,12 @@ describe("a pack kept as \"cozy\" before it was built in", () => {
       await mount();
       const style = () => p.root.querySelectorAll(".oo-bar select")[1];
       expect(style().value).toBe("cozy");
-      expect(options(style())).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["cozy", "Our cozy"]]);
+      expect(options(style())).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["guild", "Guild"], ["school", "School"], ["cozy", "Our cozy"]]);
       expect(asked.some((u) => u.startsWith("/ui/office-skins/cozy?"))).toBe(true);
       expect(drawn()).not.toContain("Add your skin");
       packs = [];
       await p.unmount(); await mount();
-      expect(options(style())).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["cozy", "Cozy"]]);
+      expect(options(style())).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["cozy", "Cozy"], ["guild", "Guild"], ["school", "School"]]);
       expect(drawn()).toContain("Add your skin");
     });
   });

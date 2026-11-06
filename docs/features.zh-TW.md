@@ -250,7 +250,7 @@ Instance 透過權限組允許的工具協作。一般 worker 可以找到同儕
 - `send_to_instance` — 傳訊息給另一個 fleet instance；支援結構化的 metadata（`request_kind`、`requires_reply`、`correlation_id`、`task_summary`）
 - `start_instance` — 喚醒已停止的 instance，好讓你傳訊息給它
 - `create_instance` — 建立新 instance 和它的 topic（目錄可省略；省略時自動建立 `~/.agend/workspaces/<name>`）；支援用 `branch` 建立 git worktree 隔離
-- `delete_instance` — 移除 instance 和它的 topic
+- `delete_instance` — 移除 instance，並預設一併刪除它自己的 topic（`delete_topic: false` 會保留；在 Discord 上 topic 是頻道，訊息記錄也會一起刪除；General topic 永遠不會刪除；結果會說明平台是否真的刪掉了 topic，沒刪的話原因是什麼）
 - `replace_instance` — 把 instance 換成全新的（交接 + 刪除 + 建立）
 - `describe_instance` — 取得某個 instance 的詳細資訊（描述、模型、最後活動）
 - `set_display_name` — 設定顯示名稱，會出現在訊息、活動紀錄與其他 agent 看到的地方
@@ -413,7 +413,7 @@ agent 能做什麼，由每個 instance 的 `tool_set` 決定，而且是由 fle
 
 **`coordinator` 和 `full` 目前是同樣的 55 個工具**，差別在於意義，而不是內容。`coordinator` 表示「這個 agent 負責管理 fleet」，日後若發現某個動詞不屬於這裡，就會把它收窄；`full` 表示「不管怎樣都給它全部」，也是舊版預設值的名字。想讓 agent 擔任協調者，就寫 `coordinator`；為了拿到*更多*而選 `full`，什麼也不會多，反而會錯過之後所有的調整。
 
-`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。
+`standard`（30 個工具）和 `minimal`（9 個）仍然存在。`minimal` 在 2.1.9 加入了 `list_emojis` 和 `preview_emojis`，在 2.1.12 加入了 `list_stickers` 和 `preview_stickers`。**`general` 是一種身分，不是可以自己挑的權限組合**：它會指派給設定了 `general_topic: true` 的 instance，手動寫上會通不過驗證，因為兩種成為 General 的途徑遲早會互相矛盾。General 是 AgEnD 的管理入口，因此 `general` 權限組合包含所有編排工具（`ORCHESTRATION`：建立、刪除、替換、啟動、停止、暫停、喚醒與重啟 instance；部署與拆除模板；team 增刪改；`update_instance_config` 與 `update_fleet_defaults`；`migrate_kiro_instance` 與 `reconcile_kiro_instance`；`update_decision`；以及 `get_web_settings`／`set_web_settings`），同時預設不納入工作倉租用與主機原始設定／紀錄檢視工具（`checkout_repo`、`release_repo`、`get_fleet_config`、`get_instance_logs`、`list_deployments`、`validate_config`）。
 
 `delegate_task` 刻意設計成 worker 工具。它不建立任何東西、不刪除任何東西，而且目標必須已經存在，所以一般 agent 可以把工作交給同伴，卻不能自己生出一個同伴。
 
@@ -723,7 +723,7 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 
 `kiro_engine_status`（除了 `minimal` 以外每種權限組合都有的唯讀工具）會針對每個 kiro instance 和 ClassicBot 頻道，顯示它的 `kiro_ui`、下次啟動會用的引擎旗標（或 kiro-cli 會拒絕的原因）、歷次啟動紀錄（每次變動時的 kiro-cli 和 AgEnD 版本）、它的 V3 session，以及它的憑證 profile。它讀的是 AgEnD 在上次啟動時記錄的內容，自己從不執行 kiro-cli。它也會顯示 `engine_floor`（見下）。
 
-**從經典引擎搬到 TUI（`migrate_kiro_instance`，#2598）。** kiro-cli 3.0 拿掉了經典引擎。手動設 `kiro_ui: tui` 會讓 instance 在空的 TUI 對話上啟動。`migrate_kiro_instance`（coordinator 與 full 權限組合才有）一次搬一個 fleet instance，並帶著它的對話：
+**從經典引擎搬到 TUI（`migrate_kiro_instance`，#2598）。** kiro-cli 3.0 拿掉了經典引擎。手動設 `kiro_ui: tui` 會讓 instance 在空的 TUI 對話上啟動。`migrate_kiro_instance`（general、coordinator 與 full 權限組合才有）一次搬一個 fleet instance，並帶著它的對話：
 - 它會在 General 貼出「搬過去／取消」提示，fleet admin 在那裡確認之前什麼都不會變。
 - 確認後，AgEnD 會設定 `kiro_ui: tui`，把 instance 的經典對話預備為它的 TUI 對話，並重啟執行中的 instance。第一次 TUI 啟動會接續那個對話一次（kiro 因此把整段歷史複製到它的 session 檔），並登記為 instance 自己的對話。
 - 結果會貼在 General 和該 instance 的 topic。
@@ -779,9 +779,19 @@ Fleet 會在 `127.0.0.1`（`health_port`，預設 19280）提供網頁儀表板�
 - **瀏覽器終端機** — `claude-code` 和 `kiro-cli`：AgEnD 會開一個一次性的網頁終端機，執行登入指令，你在那裡完成登入（必要時把代碼貼回去）。這個連結預設只在這台機器上有效（可透過 SSH 轉發、tailscale 或你自己的 proxy 連過去）。
 - **只安裝** — `opencode` 和 `muse` 在這裡沒有登入流程。`antigravity` 不支援遠端登入，因為 `agy` 沒有獨立的登入指令。
 
+**先安裝（#2980）。** 安裝程式在沒有終端機可提問的環境下執行（stdin 來自 `/dev/null`，有 `setsid` 時也會用），以較低的 CPU 與磁碟優先權執行，並以你帳號的登入 shell 作為 `$SHELL`，讓 PATH 設定寫進你終端機會讀的 rc 檔。它要問的問題（sudo 密碼、「要取代嗎？」）會立刻失敗，並回報最後幾行。發起安裝的聊天會收到一則訊息，每隔幾秒更新為安裝程式的最後 15 行（去除 ANSI、遮蔽機密），結束時顯示最終狀態：完成、失敗或 10 分鐘後停止。取消、逾時和 fleet 停止都會結束整個安裝。安裝成功後立刻就在 fleet 的 PATH 上，不必重啟。
+
 **公開連結。** 如果手機連不到這台機器，`claude-code` 或 `kiro-cli` 的登入可以透過 Cloudflare Quick Tunnel 提供一個暫時的公開 https 連結：確認訊息上有 **I understand (temporary public link)**、**I understand (local network)** 和 **Cancel** 三個按鈕，按下第一個就代表同意，每次登入問一次。`PATH` 上有 `cloudflared` 就用它；沒有的話，AgEnD 會把 Cloudflare 的版本下載到 `~/.agend/bin/`，只下載一次，版本固定，並以隨附的 SHA256 驗證。連結和存取權杖會分成兩則私訊傳給你，絕不貼在頻道裡；登入不論以何種方式結束，tunnel 都會關閉。TLS 在 Cloudflare 端解開，所以 Cloudflare 看得到那個終端機。設定 `web_terminal.tunnel.allow_public: false` 可以在這台主機上關閉這個選項。詳見 [configuration](configuration.zh-TW.md#人不在機器旁完成-login公開連結)。
 
 **從網頁 dashboard 登入（2.3，#2233）。** 在這台機器或它的網路上登入 dashboard 的 fleet 管理員（不是透過公開連結，也不是訪客）不需要任何聊天連線也能做同樣的事：**設定 → Agent → 登入** 列出每個 backend 的登入，以及代理使用的每個憑證設定檔，附 **登入** 按鈕；網頁的 `/backend` 選單在未登入的 backend 旁提供 **登入 <backend>**；**需要你** 在因登入而暫停的代理上提供 **登入**。對話框跑的是同一個流程：裝置碼直接顯示在對話框；瀏覽器終端機登入會顯示 **開啟登入終端機** 和一次性存取碼，只給這個瀏覽器工作階段（不經過私訊，所以只用網頁的 fleet 不需要 bot）。檢查、次數限制和 10 分鐘的時限都相同，公開連結仍是每次登入自行選擇；進行中時每個管理員頁面都會顯示，附 **開啟**（啟動它的瀏覽器看得到連結和代碼，其他人只看得到是誰、在哪裡，並可取消）。啟動它的瀏覽器工作階段結束時，登入會被取消。這裡不會安裝尚未安裝的 CLI：對話框會給出安裝指令。預設的 Kiro、Claude Code 與 Codex 帳號則改用具名的瀏覽器登入控制項（#2599；[詳細說明](configuration.zh-TW.md#首次設定時從瀏覽器登入後端)），首次設定時略過的後端，即使還沒有 agent 使用，也會列在 **Needs you**。
+
+**只用網頁的 fleet 也能完整運作（#2910）。**沒有 Discord 或 Telegram 連線的 fleet（例如用 `agend quickstart` → 只用網頁，或設定頁的「只用網頁」建立的）也擁有 AgEnD 其他的功能：排程、任務板和 fleet 決策都會運作；agent 之間可以用 `send_to_instance`、`delegate_task`、`report_result`、`broadcast` 互傳訊息，接收的 agent 會看到 `[from:<名稱>]`，和聊天 fleet 一樣。在儀表板按 **新增 agent** 會建立一個沒有聊天 topic 的 agent：名稱就是你輸入的（已被使用時依序加上 `-2`、`-3`…），透過儀表板的聊天和它對話。只有聊天平台才有的 `edit_message` 和 `download_attachment` 會回覆「純網頁的 fleet 無法使用」，而不是叫 agent 重試；`reply` 則回到網頁聊天。
+
+**只用網頁的 fleet：這台電腦的管理者（#2910）。**只用網頁的 fleet 沒有 Discord 或 Telegram 帳號可以證明你是誰，所以坐在 AgEnD 電腦前的人就是管理者。用 `agend web --code` 登入、並在這台電腦上（`localhost`）使用的瀏覽器，會立即以「**這台電腦的管理者**」身分通過驗證，效期就是這個 session 的效期（最多 `web.verified_authority.max_session_hours`）。它對 agent 說的話是 `via web (verified)`，回執的 `authority.actor` 是 adapter `host`、user `operator`。它自己按 **套用** 就能確認自己的設定變更（例如 **新增 agent**），不用再執行 `agend settings confirm`。從別台機器或透過公開連結都不會通過驗證；透過聊天（`/dashboard`）送出的登入碼不算這台電腦的；撤銷授權後，要再用 `agend web --code` 登入一次。有聊天連線的 fleet 規則不變：在那裡，`agend web --code` 的 session 不是帳號。
+
+**只用網頁的 fleet：通知（#2910）。**儀表板的**通知**（`/ui/notices`，在側欄）會保留原本 General 會說的事：fleet 錯誤、agent 當掉、額度或登入的通知、網頁登入、無法執行的排程、每日摘要，以及新版本（每個版本一次，附上要在這台電腦上執行的 `agend update`）。最新的 500 則會保留，重新啟動後也還在。新的通知會即時出現，側欄會顯示未讀數量，打開頁面就會標成已讀。有按鈕的提示（agent 停止、等你輸入或卡住）則在 **等你處理**。有聊天連線的 fleet 沒有通知頁：General 照舊會說這些事。
+
+**agent 的對話框，在網頁上回答（#2910）。**只用網頁的 fleet 上，AgEnD 留給人回答的 Claude Code 或 Codex 對話框會送到儀表板：agent 的聊天和 **等你處理** 會顯示對話框本身的文字，以及它自己的選項按鈕；你的選擇會在確認過游標位置後輸入到 agent 的終端機。涵蓋的對話框包括：Bash、Edit、Write 或 MCP 工具的權限（設定 `skipPermissions: false` 時）、AgEnD 認不得的信任或 Bypass Permissions 畫面、「Background work is running」、不是 AgEnD 要求的「Switch model?」、Codex 等人處理的選單，以及任何 AgEnD 暫停等人的編號選單。不提供 Esc，因為在某些對話框上它會讓 CLI 直接結束。如果你點下去之前對話框已經變了，就不會輸入任何按鍵，卡片也會說明。終端機裡的密碼或 sudo 提示會變成一則通知，請你到 agent 的 View 回答。登入畫面不做成卡片：請從儀表板登入。有聊天連線的 fleet 照舊使用暫停通知和 General 的控制按鈕。
 
 登入成功後，這個後端執行中的 instance 會重啟，以套用新的憑證。打字 `/install-cli` 只會印一行指向 `/login`，不會執行登入；它不會出現在任何指令選單裡。
 
@@ -861,6 +871,8 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 
 用 `delete_instance` 刪除 instance 時，它會自動從所屬的每個 team 中移除，不必手動整理 team 成員。
 
+除非傳入 `delete_topic: false`，它自己的聊天 topic 也會透過該 instance 自己的 bot 一併刪除；dashboard 的「刪除」也一樣。只有 Telegram 或 Discord 確認刪除時，`topic_deleted` 才是 true；否則 `topic_reason` 會說明 topic 為什麼留下（例如 Telegram bot 沒有「管理主題」的管理員權限，或 topic 早已不存在）。無論如何，instance 本身都會刪除。
+
 ## HTML 對話匯出 (HTML Chat Export)
 
 `agend export-chat` 會把 fleet 活動匯出成一個獨立的 HTML 檔。支援用 `--from` 和 `--to` 篩選日期，用 `-o` 指定輸出路徑。匯出的檔案以好讀的聊天格式，收錄所有訊息、工具呼叫和跨 instance 的通訊。
@@ -892,10 +904,14 @@ agent 建立 instance 時，可以透過 `systemPrompt` 參數傳入自訂的系
 | 情況 | 啟動方式 |
 |---|---|
 | 這個目錄有 session | `codex resume <id>` |
+| 資料庫裡沒有這個目錄的 session，但 `sessions` 裡還有這個目錄、由 CLI 開始、有對話內容的 rollout（Codex 的清單遺失了它） | 對最新那個執行 `codex resume <id>`，並發通知；很大時另外說明 Codex 可能會先壓縮（#2963） |
+| 那次接回沒有成功（Codex 拒絕了這個 id） | 下一次啟動開一次新對話並發通知；之後不會再自動挑這段對話 |
 | 這個目錄沒有 session（例如共用 repo 裡新建的 instance） | 新對話 |
 | 讀不到 session 資料庫，且同一個 git repo 裡有其他 Codex instance | 新對話，並在該 instance 的 topic 發通知 |
 | 還沒有 session 資料庫（這台機器從未執行過 Codex），且這個目錄沒有 Codex 歷史 | 開新對話，不發通知（#2743） |
 | 讀不到 session 資料庫，且 repo 裡沒有其他 Codex instance | `codex resume --last`，並發通知 |
+
+**接回指定的對話（#2963）。** `restart_instance { name, resume_session_id }`（編排工具：General、coordinator）會讓 Codex instance 在這次重啟時接回那段對話，只限這一次。這個 id 必須是該 instance 的 sessions 裡、工作目錄完全相同、由 CLI 開始的 rollout；不符合就不會重啟，並回覆原因。之後的重啟照常。
 
 AgEnD 從不寫入 Codex 的狀態，也不搬動任何 session 檔；session 和 lock 都留在共用的 Codex home（`$CODEX_HOME`，預設值：`~/.codex`），所以在終端機執行 `codex resume` 仍然看得到每個 instance 的對話。如果 Codex 顯示「This conversation is open in another app」或「Working directory · resume」選擇器，AgEnD 會暫停投遞並通知管理者，而不是替你按鍵。它也會把「You've hit your usage limit」認定為會觸發暫停的錯誤。
 
@@ -1320,6 +1336,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 - **Agent 發布外觀包**（#2692）：替某個 agent 打開 **辦公室外觀包** 後（`office_pack_access: true`，獨立的開關，沒設定就是關閉），它可以檢查、上傳、取代、刪除與還原辦公室的外觀包；每次變更都會記錄、在 General 通知管理者，而且預設要等管理者核准。見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)。
 - **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。2.2.5 起（#2010）會顯示 5 分鐘與 1 小時快取寫入的比例，並實際量測 5 分鐘快取能撐多久：計算每個 instance 過去 7 天內 5 到 60 分鐘的間隔，至少有 10 個時，若最多 10% 重寫了快取，就當作 1 小時來模擬；若至少一半重寫了，卡片會建議改用 `backend_options.claude-code.prompt_cache_ttl: "1h"` 而不是保溫（這個自選設定會在 instance 下次啟動時帶入 `CLAUDE_CODE_PROMPT_CACHE_TTL`；不設定時由 CLI 自己決定）。agent 可以用 `get_cache_report` 讀取同一份報告：General、coordinator 與 full 權限組合看得到所有 instance，其他 instance 只看得到自己那一列。
 - **Fleet → 用量**（`/ui/fleet/usage`，2.2.5，#2122）：每個 agent 的 token、請求數、已送達訊息數與依牌價換算的 API 等值（不是實際花費），可依 agent、backend、模型、憑證 profile 或 team 分組，期間可選今天、7 天、本月、全部或自訂日期；附每日趨勢、能分辨「沒有用量」與「未收集」的日曆熱度圖，以及同一份資料的 CSV。可量測 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity（Codex 與 Muse 的快取寫入顯示為「未回報」；Muse 未定價）；Kiro 不記錄 token 數，依文字長度估算並標示「估算」；其他 CLI 會列出原因。自 fleet 啟動起收集並保留 400 天；agent 以 `get_usage_report` 讀取。◔ 用量對話框有連到這裡的連結。
+  - **速度**（#3066）：每個模型本身生成時的每秒輸出 token 數（不含工具執行時間），以「速度」欄與「各模型速度」卡片呈現，並列出可計時的請求數；累積 30 個可計時的回應後，另顯示 p10–p90 範圍。`get_usage_report` 以 `speed` 回傳。Claude Code 的回應從第一個 token（以思考區塊開頭時，由其思考時間推得）計到最後一個區塊。Codex 的回應則以回應時窗計時，依 codex 0.147 之後寫入的項目時間：從第一個模型項目開始到最後一個結束，扣除伺服器端網頁搜尋的時間。rollout 不標記第一個 token，所以這個時窗可能含有一部分等待第一個 token 的時間。方法參考 [tokdash](https://github.com/JingbiaoMei/tokdash)（MIT，Jingbiao Mei；見 `THIRD_PARTY_NOTICES.md`）。
 - **新增 agent**（2.2.5，#2074）：側欄清單最後的按鈕會打開新增 agent 對話框。側欄收合時，☰ 旁邊的 **+** 有同樣的作用；手機上它在選單抽屜裡。只有能新增 agent 的 session 看得到它。
 - **篩選側欄時**（2.2.5，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
 - **可以點開 instance 的名稱**（2.2.5，#1990）：聊天裡跨 instance 的狀態行中，對方的名稱會打開它的聊天；提示卡片裡的 instance 名稱會打開它的 View。agent 或人寫的訊息永遠不會有這種連結。
@@ -1350,7 +1367,7 @@ web:
       "<連線 id>:123456789": [helper]
     session: { absolute_hours: 12, idle_minutes: 120 }   # 1–24 小時，15–720 分鐘
     grants:                # #2348：一旦存在就是全部範圍（open_instances 和 narrow 不再給任何東西）
-      "<連線 id>:123456789": { name: Ada, instances: [helper] }
+      "<連線 id>:123456789": { name: Ada, instances: [helper], level: trusted }   # level：chat（預設）| trusted（#2855）
 ```
 
 **取得登入碼。** 訪客傳 `/web`：可以在 General 或任何 fleet topic 打字、用斜線指令，或在 ClassicBot 聊天室裡（Telegram 群組要用 `/web@你的Bot`）。登入碼一律私下送出，透過私訊或斜線指令的私人回覆，絕不會貼在他們發問的地方。在 Telegram 上，如果 bot 還不能私訊對方，回覆會附上 bot 的連結，在那裡按 **Start** 就會收到登入碼。每個帳號一次只有一組碼，有效 5 分鐘，每分鐘最多要一次。管理員開著[公開連結](web-dashboard.zh-TW.md#從別的裝置連線)時，私訊會附上它，登入碼在那裡也能用；開連結的管理員會先在自己的 General 收到通知，登入才會完成，通知送不出去時登入會被拒絕。每次訪客登入都會在 General 貼出通知。訪客自己傳 `/web revoke` 只會結束自己的 session、登入碼與記住的裝置。
@@ -1361,8 +1378,9 @@ web:
 - **外觀：** 每個人一列平面的列，有字母頭像、以標籤顯示的 agent，狀態在右側（已登入、已寄出登入碼，或私訊失敗的原因；手機上在名字下方）。修改中的列有直線標示。
 - **儲存：** 每項修改在按 **儲存** 前都不會生效。新增人員或替某人加上 agent，需 fleet 管理員在 General 同意；收回立即生效，移除某人會立刻結束對方的 session、登入碼和記住的瀏覽器。
 - **傳送登入碼** 是動作，不屬於儲存。它會私訊已儲存授權的帳號（每人每分鐘一次，不會發在其他地方）。私訊失敗時那一列會說明原因；Telegram 會附上 bot 的啟動連結讓你轉給對方。登入碼可用在直接連到的儀表板；傳送時若公開連結已開啟，也能用在公開連結上。
-- **稽核：** 事件紀錄會記下管理員每次傳送的登入碼（`guest_code_sent`：誰、給誰、結果），以及每次儲存的存取權變更（`guest_grant_changed`：誰儲存的、立即生效還是在 General 確認後生效、增加和移除的 agent，以及移除時結束的 session 數）。這一區的**最近的變更**清單會列出最新的幾筆，只給管理員看（訪客和公開連結都看不到）。每次訪客登入也都會在 General 貼出通知。
-- **在 `fleet.yaml`：** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …] } }`。一旦有 `grants`，它就是全部範圍（預設拒絕）：連線權限、房間、`open_instances` 和 `narrow` 都不再給任何東西。**以目前的訪客為起點** 會把每位現有訪客目前的範圍暫存成授權。
+- **稽核：** 事件紀錄會記下管理員每次傳送的登入碼（`guest_code_sent`：誰、給誰、結果），以及每次儲存的存取權變更（`guest_grant_changed`：誰儲存的、立即生效還是在 General 確認後生效、增加和移除的 agent、權限等級有變時改成哪一級，以及移除時結束的 session 數）。這一區的**最近的變更**清單會列出最新的幾筆，只給管理員看（訪客和公開連結都看不到）。每次訪客登入也都會在 General 貼出通知。
+- **聊天或信任（#2855）：** 每個人的權限等級。**聊天**（預設）就是下面那些；**信任**多了這些 agent 的唯讀「檢視」，以及搜尋訪客本來就看得到的內容。把人改成「信任」和加 agent 一樣，要等 fleet 管理員在 General 確認；改回「聊天」立即生效。
+- **在 `fleet.yaml`：** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …], level? } }`。一旦有 `grants`，它就是全部範圍（預設拒絕）：連線權限、房間、`open_instances` 和 `narrow` 都不再給任何東西。**以目前的訪客為起點** 會把每位現有訪客目前的範圍暫存成授權。
 
 **訪客能接觸什麼**（每次請求時重新計算，絕不儲存）。有 `grants` 時，只有授權給該帳號且仍存在的 agent。沒有時（#1920 的推導權限）：
 - 它所在連線的 fleet topic 與 General，前提是那個連線的存取設定讓這個帳號進來（允許名單或已配對）；`open` 連線則只有 `open_instances` 裡列出的 agent。
@@ -1370,9 +1388,9 @@ web:
 - 同一連線上的 ClassicBot 群組聊天室，前提是成員身分已經確認：Telegram 用 `getChatMember`；Discord 要求這個人在伺服器裡，並在那裡擁有「檢視頻道」與「讀取訊息歷史」，私人討論串還要是討論串成員（或擁有「管理討論串」）。答案在背景讀取（登入時、訪客頁面連線時，以及之後每 10 分鐘），只有在 15 分鐘內確認是成員，聊天室才會顯示；聊天室還在檢查時，頁面會等待，而不是把訪客登出。
 - 最後套用 `narrow`，它只會縮小範圍。
 
-不論哪一種，伺服器都會在訪客的每一個讀取上強制執行：聊天、歷史、檔案和事件串流都只限於這些 agent；搜尋、任務板、組織圖和用量永遠不屬於訪客。fleet 管理員永遠不會是訪客。
+不論哪一種，伺服器都會在訪客的每一個讀取上強制執行：聊天、歷史、檔案和事件串流都只限於這些 agent；任務板、組織圖和用量報表（每個 agent 的費用）永遠不屬於訪客，「檢視」和搜尋只給「信任」的訪客。fleet 管理員永遠不會是訪客。
 
-**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。它永遠不能下指令：以 `/` 開頭的文字會被拒絕。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣。訪客只能聊天：agent 不會把訪客的要求當成管理者的。它的介面只有這些：沒有 Fleet、View、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰。它讀得到主機的外觀（主題、語言），但讀不到任何提到 agent 的偏好，也可以設定自己的網頁名稱。
+**訪客能做什麼。** 和這些 agent 聊天，包括它的頻道顯示過的歷史、檔案、回覆按鈕與「取消」；`chat: false` 時訪客只能讀。指令（#2855）：只有聊天的指令表允許任何人在該 agent 頻道執行的那些；在網頁上是 `/ctx`、`/steer`、`/btw` 和 `/cancel`，指令選單只列出這些，其他的會被拒絕並說明原因；每分鐘最多 10 次、一次一個。它也看得到用量面板（◔），也就是主機上每個訂閱的剩餘額度，和聊天裡任何人用 `/usage` 看到的一樣，但不能強制重新整理。agent 看到的是 `[user:<名稱> via web (guest), id:<id>]`，打字的訊息和按鈕點擊都一樣。訪客只能聊天：agent 不會把訪客的要求當成管理者的。它的介面只有這些：沒有 Fleet、設定、等你處理、新增 agent 或小工具，並有一個**訪客**標籤標出登入的是誰；「聊天」等級的訪客也沒有「檢視」和搜尋。「信任」（#2855）的訪客多了：**檢視**，唯讀地看 agent 的畫面，不能打字、不能按鍵，畫面上會註明只能觀看；畫面會顯示 agent 終端上的一切：別人傳給它的訊息、指令和它們的輸出，其中可能有機密，聊天和搜尋仍只限訪客看得到的內容；每位訪客每秒最多讀 2 次、同時最多 2 個 agent；所有觀看同一個 agent 的訪客每 500 毫秒共用一份畫面；每次最多 256 KB；在儀表板自己的連接埠上，訪客的檢視讀取也要經過這些檢查（`web.view_access: open` 時匿名的讀取不變）。**搜尋**，只搜它的 agent 裡、它的頻道顯示過或它自己寫的聊天訊息（和它的聊天同一個規則），最多 20 筆；不搜 agent 之間的訊息、任務、團隊或設定；每分鐘 6 次、一次一個；全部訪客同時最多 3 個搜尋，讓管理員的搜尋一定有空位。偏好（#2855）：它自己的主題、語言、最愛、排序和篩選存在主機上、歸在它的帳號下（每個裝置都一樣，管理員移除它時一併刪除）；其餘照主機的外觀，也讀不到提到範圍外 agent 的偏好。它也可以設定自己的網頁名稱。
 
 **Session。** 預設絕對時限 12 小時、閒置 2 小時（`web.guests.session`），絕不超過所在介面本身的時限（公開連結是 4 小時／30 分鐘）；每個帳號最多 4 個、全部最多 64 個，和管理員分開計算，所以訪客永遠不會把管理員擠掉。範圍變成空的訪客會被登出；關閉訪客登入會結束所有訪客 session，並忘記所有訪客記住的裝置，再次開啟也不會讓任何一個恢復。
 

@@ -4,17 +4,20 @@
  * code page) and have no param block and no `exit` (under iex it closes the window). It downloads install-agend.ps1
  * to a temporary file, checks it, and runs it in its own PowerShell with -ExecutionPolicy Bypass (that process only).
  *
- * The static checks always run. With `pwsh` on PATH (GitHub's ubuntu runners have it), both scripts are parsed with
- * PowerShell's own parser, and the real one-liner (`irm … | iex`) is run against a local HTTP server serving a stub
- * install-agend.ps1: what it runs, with which arguments, what it refuses, and that the calling session goes on.
+ * The static checks always run. With `pwsh` on PATH (GitHub's ubuntu runners have it), the real one-liner (`irm … | iex`)
+ * is run for each case against a local HTTP server serving a stub install-agend.ps1: what it runs, with which arguments,
+ * what it refuses, and that the calling session goes on. All cases run in ONE pwsh (installer-ps-batch-c.ts); the
+ * installer's own child PowerShell (the dispatch under test: its exit 7 must end only that process) is still a real
+ * process per dispatching case. The whole installer is never parsed here: the stub is what runs.
  * A real Windows run (UAC elevation, Windows PowerShell 5.1, WSL) is the user's acceptance: no Windows runner here.
  */
-import { execFile, spawnSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { BATCH_MARK, psq, runPwshBatch } from "./support/installer-ps-batch-c.js";
 
 const ROOT = join(import.meta.dirname, "..");
 const BOOTSTRAP = join(ROOT, "website", "public", "install.ps1");
@@ -46,24 +49,7 @@ describe("install.ps1 is safe under iex (static)", () => {
 
 const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
 
-describe.skipIf(!pwsh)("with pwsh: both scripts parse; the one-liner downloads, checks and dispatches", { timeout: 90_000 }, () => {
-  it("PowerShell's parser finds no errors, and no exit statement or param block in install.ps1", () => {
-    const script = `
-      foreach ($f in @('${BOOTSTRAP}', '${INSTALLER}')) {
-        $t = $null; $e = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$t, [ref]$e)
-        if ($e.Count) { Write-Output "ERR $f $($e[0].Message)" }
-        if ($f -like '*install.ps1') {
-          $exits = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ExitStatementAst] }, $true)
-          $params = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ParamBlockAst] }, $true)
-          Write-Output "BOOT exits=$($exits.Count) params=$($params.Count)"
-        }
-      }`;
-    const r = spawnSync("pwsh", ["-NoProfile", "-c", script], { encoding: "utf8" });
-    expect(r.stdout).not.toContain("ERR ");
-    expect(r.stdout).toContain("BOOT exits=0 params=0");
-  });
-
+describe.skipIf(!pwsh)("with pwsh: install.ps1 parses; the one-liner downloads, checks and dispatches", { timeout: 90_000 }, () => {
   // A stub install-agend.ps1: UTF-8 with BOM, over 1 KiB, with the installer's own marker; it records how it was run.
   const ZH = "AgEnD 一鍵安裝腳本";
   const stub = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from([
@@ -75,14 +61,14 @@ describe.skipIf(!pwsh)("with pwsh: both scripts parse; the one-liner downloads, 
     "#" + "x".repeat(1200),
     "",
   ].join("\n"), "utf8")]);
-  let server: Server, port = 0, mode: "stub" | "html" | "404" = "stub";
+  let server: Server, port = 0;
   const dirs: string[] = [];
   beforeAll(async () => {
     const boot = readFileSync(BOOTSTRAP);
     server = createServer((req, res) => {
       if (req.url === "/install.ps1") { res.writeHead(200, { "Content-Type": "application/octet-stream" }); res.end(boot); return; }
-      if (req.url === "/install-agend.ps1" && mode === "stub") { res.writeHead(200, { "Content-Type": "application/octet-stream" }); res.end(stub); return; }
-      if (req.url === "/install-agend.ps1" && mode === "html") { res.writeHead(200, { "Content-Type": "text/html" }); res.end("<html><body>Rate limited</body></html>".repeat(60)); return; }
+      if (req.url === "/stub/install-agend.ps1") { res.writeHead(200, { "Content-Type": "application/octet-stream" }); res.end(stub); return; }
+      if (req.url === "/html/install-agend.ps1") { res.writeHead(200, { "Content-Type": "text/html" }); res.end("<html><body>Rate limited</body></html>".repeat(60)); return; }
       res.writeHead(404); res.end("not found");
     });
     await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
@@ -90,69 +76,124 @@ describe.skipIf(!pwsh)("with pwsh: both scripts parse; the one-liner downloads, 
   });
   afterAll(() => { server?.close(); for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 
-  /** pwsh, asynchronously: the HTTP server it downloads from lives in this process (spawnSync would block it). */
-  const run = (args: string[], env: Record<string, string>) => new Promise<{ stdout: string; stderr: string }>(resolve => {
-    execFile("pwsh", args, { encoding: "utf8", timeout: 60_000, env: { ...process.env, ...env } }, (_err, stdout, stderr) => resolve({ stdout, stderr }));
-  });
-  async function oneLiner(env: Record<string, string> = {}) {
-    const dir = mkdtempSync(join(tmpdir(), "agend-1853-")); dirs.push(dir);
-    const out = join(dir, "stub.json");
-    // The real one-liner's body, then a line after it: the calling session must still be running.
-    const r = await run(["-NoProfile", "-ExecutionPolicy", "ByPass", "-c", `irm http://127.0.0.1:${port}/install.ps1 | iex; Write-Output "SESSION-GOES-ON"`],
-      { AGEND_INSTALL_BASE: `http://127.0.0.1:${port}`, AGEND_INSTALL_SHELL: "pwsh", STUB_OUT: out, TMPDIR: dir, ...env });
-    return { r, out, dir, ran: existsSync(out) ? JSON.parse(readFileSync(out, "utf8").replace(/^﻿/, "")) : null };
-  }
+  type Case = { id: string; out: string; err: string; dir: string; stubOut: string };
+  type ParseRow = { id: "parse"; errors: string[]; exits: number; params: number };
+  type Batch = { cases: Map<string, Case>; parse: ParseRow };
+  let batch: Promise<Batch> | undefined;
+  const run = () => (batch ??= runOneLiners());
 
-  it.each(['beta', 'latest', '2.3.2-beta.5'])('passes validated AGEND_VERSION=%s explicitly to the downloaded installer', async version => {
-    mode = "stub";
-    const { ran } = await oneLiner({ AGEND_VERSION: version });
-    expect(ran).toMatchObject({ version, force: false });
+  /** Every case in one pwsh: each is `irm … | iex` as the one-liner runs it, with its environment set just before. */
+  async function runOneLiners(): Promise<Batch> {
+    const base = `http://127.0.0.1:${port}`;
+    const cases = [
+      { id: "beta", env: { AGEND_VERSION: "beta" } },
+      { id: "latest", env: { AGEND_VERSION: "latest" } },
+      { id: "2.3.2-beta.5", env: { AGEND_VERSION: "2.3.2-beta.5" } },
+      { id: "bad-version", env: { AGEND_VERSION: "beta; whoami" } },
+      { id: "default", env: {} },
+      { id: "force", env: { AGEND_INSTALL_FORCE: "1" } },
+      { id: "html", env: { AGEND_INSTALL_BASE: `${base}/html` } },
+      { id: "404", env: { AGEND_INSTALL_BASE: `${base}/404` } },
+      { id: "not-https", env: { AGEND_INSTALL_BASE: "http://example.com" } },
+    ].map(c => {
+      const dir = mkdtempSync(join(tmpdir(), "agend-1853-")); dirs.push(dir);
+      const stubOut = join(dir, "stub.json");
+      // Every variable the cases touch is set or removed (null) before each case, so no case inherits another's.
+      const vars: Record<string, string | null> = {
+        AGEND_VERSION: null, AGEND_INSTALL_FORCE: null, AGEND_INSTALL_FALLBACK_BASE: null,
+        AGEND_INSTALL_BASE: `${base}/stub`, AGEND_INSTALL_SHELL: "pwsh", STUB_OUT: stubOut, TMPDIR: dir,
+        ...c.env,
+      };
+      return { id: c.id, dir, stubOut, vars };
+    });
+    const setEnv = (vars: Record<string, string | null>) => `Set-CaseEnv @{ ${Object.entries(vars).map(([k, v]) => `${k} = ${v === null ? "$null" : psq(v)}`).join("; ")} }`;
+    const script = [
+      "$ErrorActionPreference = 'Continue'",
+      "$ProgressPreference = 'SilentlyContinue'",
+      "$script:Rows = New-Object System.Collections.Generic.List[object]",
+      "function Set-CaseEnv([hashtable]$vars) {",
+      '  foreach ($k in $vars.Keys) { if ($null -eq $vars[$k]) { Remove-Item -LiteralPath "Env:$k" -ErrorAction SilentlyContinue } else { Set-Item -LiteralPath "Env:$k" -Value ([string]$vars[$k]) } }',
+      "}",
+      "function Invoke-OneLiner([string]$id) {",
+      "  $script:LineErr = ''",
+      `  $out = [string](& { try { irm '${base}/install.ps1' | iex; Write-Output 'SESSION-GOES-ON' } catch { $script:LineErr = ($_ | Out-String) } } *>&1 | Out-String)`,
+      "  $script:Rows.Add([pscustomobject]@{ id = $id; out = $out; err = $script:LineErr })",
+      "}",
+      ...cases.flatMap(c => [setEnv(c.vars), `Invoke-OneLiner ${psq(c.id)}`]),
+      // The bootstrap (install.ps1) is parsed; the installer is not (see the header).
+      "$t = $null; $e = $null",
+      `$ast = [System.Management.Automation.Language.Parser]::ParseFile(${psq(BOOTSTRAP)}, [ref]$t, [ref]$e)`,
+      "$exits = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ExitStatementAst] }, $true))",
+      "$params = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ParamBlockAst] }, $true))",
+      "$script:Rows.Add([pscustomobject]@{ id = 'parse'; errors = @($e | ForEach-Object { $_.Message }); exits = $exits.Count; params = $params.Count })",
+      `Write-Output ("${BATCH_MARK}" + (ConvertTo-Json -InputObject $script:Rows.ToArray() -Depth 4 -Compress))`,
+    ].join("\n");
+    const workDir = mkdtempSync(join(tmpdir(), "agend-1853-batch-")); dirs.push(workDir);
+    const rows = await runPwshBatch<({ id: string; out?: string; err?: string } | ParseRow)[]>(workDir, script, { ...process.env });
+    const map = new Map<string, Case>();
+    for (const c of cases) {
+      const row = rows.find(r => r.id === c.id) as { out: string; err: string } | undefined;
+      if (!row) throw new Error(`no result for case ${c.id}`);
+      map.set(c.id, { id: c.id, out: row.out, err: row.err, dir: c.dir, stubOut: c.stubOut });
+    }
+    const parse = rows.find((r): r is ParseRow => r.id === "parse");
+    if (!parse) throw new Error("no parse result");
+    return { cases: map, parse };
+  }
+  const caseRun = async (id: string) => { const c = (await run()).cases.get(id); if (!c) throw new Error(`no case ${id}`); return c; };
+  /** What the stub recorded when it ran (null: it did not run). */
+  const ranOf = (c: Case) => existsSync(c.stubOut) ? JSON.parse(readFileSync(c.stubOut, "utf8").replace(/^﻿/, "")) : null;
+
+  it("PowerShell's parser finds no errors in install.ps1, and no exit statement or param block in it", async () => {
+    const { parse } = await run();
+    expect(parse.errors).toEqual([]);
+    expect(parse.exits).toBe(0);
+    expect(parse.params).toBe(0);
   });
-  it('rejects an invalid version before downloading or dispatching the installer', async () => {
-    const { ran, r } = await oneLiner({ AGEND_VERSION: 'beta; whoami' });
-    expect(ran).toBeNull();
-    expect(r.stderr).toContain('AGEND_VERSION must be');
-    expect(r.stderr).not.toContain('beta; whoami');
+
+  it.each(["beta", "latest", "2.3.2-beta.5"])("passes validated AGEND_VERSION=%s explicitly to the downloaded installer", async version => {
+    const c = await caseRun(version);
+    expect(ranOf(c)).toMatchObject({ version, force: false });
+  });
+  it("rejects an invalid version before downloading or dispatching the installer", async () => {
+    const c = await caseRun("bad-version");
+    expect(ranOf(c)).toBeNull();
+    expect(c.err).toContain("AGEND_VERSION must be");
+    expect(c.err).not.toContain("beta; whoami");
   });
 
   it("downloads the installer, runs it in its own PowerShell (-ExecutionPolicy Bypass -File <temp>), then cleans up", async () => {
-    mode = "stub";
-    const { r, ran, dir } = await oneLiner();
-    expect(r.stdout).toContain("SESSION-GOES-ON");                          // its exit 7 ended its own process only
+    const c = await caseRun("default");
+    expect(c.out).toContain("SESSION-GOES-ON");                             // its exit 7 ended its own process only
+    const ran = ranOf(c);
     expect(ran).toMatchObject({ force: false, zh: ZH });                     // the BOM file read as UTF-8: the Chinese is intact
     expect(ran.file).toMatch(/install-agend-[0-9a-f]{32}\.ps1$/);
-    expect(r.stdout).toContain("the installer ended with code 7");
-    expect(readdirSync(dir).filter(f => f.startsWith("install-agend-"))).toEqual([]);   // the temporary copy is gone
+    expect(c.out).toContain("the installer ended with code 7");
+    expect(readdirSync(c.dir).filter(f => f.startsWith("install-agend-"))).toEqual([]);   // the temporary copy is gone
   });
 
   it("AGEND_INSTALL_FORCE=1 passes -Force", async () => {
-    mode = "stub";
-    expect((await oneLiner({ AGEND_INSTALL_FORCE: "1" })).ran).toMatchObject({ force: true });
+    expect(ranOf(await caseRun("force"))).toMatchObject({ force: true });
   });
 
   it("something that is not the installer (an error page) is never run", async () => {
-    mode = "html";
-    const { r, ran } = await oneLiner();
-    expect(ran).toBeNull();
-    expect(r.stdout).toContain("is not the AgEnD installer");
-    expect(r.stdout).toContain("SESSION-GOES-ON");
+    const c = await caseRun("html");
+    expect(ranOf(c)).toBeNull();
+    expect(c.out).toContain("is not the AgEnD installer");
+    expect(c.out).toContain("SESSION-GOES-ON");
   });
 
   it("a failed download says so and runs nothing", async () => {
-    mode = "404";
-    const { r, ran } = await oneLiner();
-    expect(ran).toBeNull();
-    expect(r.stdout).toContain("the download failed");
-    expect(r.stdout).toContain("SESSION-GOES-ON");
+    const c = await caseRun("404");
+    expect(ranOf(c)).toBeNull();
+    expect(c.out).toContain("the download failed");
+    expect(c.out).toContain("SESSION-GOES-ON");
   });
 
   it("an address that is not https (or this machine) is refused", async () => {
-    mode = "stub";
-    const dir = mkdtempSync(join(tmpdir(), "agend-1853-")); dirs.push(dir);
-    const r = await run(["-NoProfile", "-c", `irm http://127.0.0.1:${port}/install.ps1 | iex; Write-Output "SESSION-GOES-ON"`],
-      { AGEND_INSTALL_BASE: "http://example.com", AGEND_INSTALL_SHELL: "pwsh", STUB_OUT: join(dir, "x.json") });
-    expect(r.stdout).toContain("refusing to download the installer from http://example.com");
-    expect(existsSync(join(dir, "x.json"))).toBe(false);
-    expect(r.stdout).toContain("SESSION-GOES-ON");
+    const c = await caseRun("not-https");
+    expect(c.out).toContain("refusing to download the installer from http://example.com");
+    expect(existsSync(c.stubOut)).toBe(false);
+    expect(c.out).toContain("SESSION-GOES-ON");
   });
 });

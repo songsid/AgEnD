@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.316
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/han/.cache/claude-audit-316/w/hE400LONG316
+
+
+❯ trigger E400LONG now
+  ⎿  Prompt is too long · the request is ~213487 tokens (limit 200000) but this conversation is only ~2923 tokens — the rest is system prompt, tool definitions,
+     and attachment content. A single-exchange conversation cannot be compacted; reduce attached files/tools or start with less context. · /clear to start
+     fresh
+
+✻ Worked for 0s · done 9:17 PM
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

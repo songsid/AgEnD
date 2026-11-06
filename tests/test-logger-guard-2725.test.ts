@@ -8,7 +8,7 @@
  *    and nothing lands in the scratch home. A real transport into the run's own test home is still allowed.
  *  - Both vitest configs load the setup.
  */
-import { mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -19,6 +19,12 @@ let dir: string | undefined;
 afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); if (dir) rmSync(dir, { recursive: true, force: true }); dir = undefined; });
 const tree = (d: string): string[] => readdirSync(d, { recursive: true }).map(String).sort();
 const settle = () => new Promise(r => setTimeout(r, 300));
+/** The log createLogger prepares before its writer opens it (#3083): empty and 0600, so no worker ever wrote to it. */
+function expectPreparedEmptyLog(home: string): void {
+  const log = statSync(join(home, "daemon.log"));
+  expect(log.size, "a late writer reached the scratch home").toBe(0);
+  if (process.platform !== "win32") expect(log.mode & 0o777).toBe(0o600);
+}
 /** A scratch AGEND_HOME, as the flaky tests stub it before the fleet's modules load. */
 function scratchHome(): string {
   dir = mkdtempSync(join(tmpdir(), "agend-2725-"));
@@ -61,8 +67,10 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
       const before = tree(home);
       expect(() => createLogger("silent")).toThrow(/#2725: a test built a real logger transport writing .*daemon\.log/);
       await settle();
-      expect(tree(home)).toEqual(before);
-      expect(tree(home)).not.toContain("daemon.log");
+      // The one thing there: the empty 0600 log createLogger prepares synchronously before the writer opens it. No worker
+      // was built, so nothing is written to it, now or later.
+      expect(tree(home)).toEqual([...before, "daemon.log"].sort());
+      expectPreparedEmptyLog(home);
     });
   }
 
@@ -73,7 +81,7 @@ describe("the tripwire: the real logger back by any means, on a scratch home, ne
     const { createLogger } = await vi.importActual<typeof import("../src/logger.js")>("../src/logger.js");
     expect(() => createLogger("silent")).toThrow(/#2725: a test built a real logger transport writing .*scratch-.*daemon\.log/);
     await settle();
-    expect(tree(dir)).not.toContain("daemon.log");
+    expectPreparedEmptyLog(dir);
   });
 
   it("the real transport into this run's own test home is still built (the opt-in logger-shared-transport uses it)", async () => {

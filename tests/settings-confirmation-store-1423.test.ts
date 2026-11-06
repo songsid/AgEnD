@@ -109,7 +109,7 @@ describe("#1423 pending confirmation owner (no fleet or adapter)", () => {
     const p = proposal({ section: "secret", summary: ["PROVIDER_API_KEY: fingerprint 0123456789ab"], apply: vi.fn(async () => { void secret; return { job_id: "safe-job" }; }) });
     const { view } = store.propose(p); (view.summary as string[]).push(secret); view.confirmation.kind = "chat";
     expect(store.get(view.id, p.session)?.summary).not.toContain(secret);
-    expect(store.get(view.id, p.session)?.confirmation.kind).toBe("host_cli");
+    expect(store.get(view.id, p.session)?.confirmation.kind, "#2868: the card is still being sent").toBe("posting");
     await store.decide(view.id, "reject", admin());
     expect(JSON.stringify(audit.mock.calls)).not.toContain(secret);
     expect(JSON.stringify(audit.mock.calls)).not.toContain("immutable-operation-hash");

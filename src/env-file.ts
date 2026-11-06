@@ -11,13 +11,19 @@
 export function parseEnvText(text: string): Map<string, string> {
   const out = new Map<string, string>();
   for (const line of text.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx < 0) continue;
-    const key = trimmed.slice(0, eqIdx).replace(/^export\s+/, "").trim();
+    const key = envLineKey(line);
     if (!key) continue;
-    out.set(key, trimmed.slice(eqIdx + 1).replace(/^["'](.*)["']$/, "$1"));
+    const trimmed = line.trim();
+    out.set(key, trimmed.slice(trimmed.indexOf("=") + 1).replace(/^["'](.*)["']$/, "$1"));
   }
   return out;
+}
+
+/** The key a .env line sets, as parseEnvText reads it (`export KEY=…` included); null for a blank, comment or keyless line. */
+export function envLineKey(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) return null;
+  const eqIdx = trimmed.indexOf("=");
+  if (eqIdx < 0) return null;
+  return trimmed.slice(0, eqIdx).replace(/^export\s+/, "").trim() || null;
 }

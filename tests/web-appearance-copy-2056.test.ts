@@ -32,13 +32,11 @@ afterEach(async () => { if (pg) { await pg.unmount(); pg.restore(); pg = null; }
 async function mount(lang: "en" | "zh-TW", part: "look" | "dashboard" = "look") {
   pg = page({ url: "http://127.0.0.1:19280/settings/appearance", storage: { agend_tour_done: "1" } });
   pg.document.body.dataset.mode = "full";
-  (await import("/assets/app-store.js")).appStore.set({ canvasWorker: true });
   g.fetch = fetchFake;
   (await import("/assets/app-i18n.js")).setLang(lang, { store: false });
   const { AppearanceSection } = await import("/ui/js/settings-appearance.js");
   await pg.mount(h(AppearanceSection, { part }));
   await settle(3);
-  if (part === "look") await vi.waitFor(() => expect(pg!.root.querySelector(".s-effects")).not.toBeNull());
   return pg.root;
 }
 const titles = (root: any) => [...root.querySelectorAll("h2.s-ap-group, h3.s-ap-title > span")].map((e: any) => `${e.tagName === "H2" ? "# " : ""}${e.textContent}`);
@@ -60,7 +58,7 @@ function slugs(md: string) {
 describe("Settings → Web appearance in plain words", () => {
   it("four plain headings in Look, each over its cards, in both languages; the host-wide cards in Web dashboard (#2347)", async () => {
     expect(titles(await mount("en"))).toEqual(["# Look", "Agents' themes", "Identity colours", "Identity cards", "# Your layout", "Your sidebar widget",
-      "# Styles you write", "Custom CSS (yours only)", "# Add-ons", "Mods", "Effects", "Restore defaults"]);
+      "# Styles you write", "Custom CSS (yours only)", "# Add-ons", "Mods", "Restore defaults"]);
     await pg!.unmount(); pg!.restore(); pg = null;
     const zh = titles(await mount("zh-TW"));
     expect(zh.filter((t) => t.startsWith("# "))).toEqual(["# 外觀", "# 你的版面", "# 自己寫的樣式", "# 擴充"]);
@@ -77,7 +75,7 @@ describe("Settings → Web appearance in plain words", () => {
       expect(learnHref(topic, "en")).toBe(`https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.md#${encodeURIComponent(a)}`);
       expect(learnHref(topic, "zh-TW")).toBe(`https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md#${encodeURIComponent(b)}`);
     }
-    for (const [lang, part, count] of [["en", "look", 8], ["zh-TW", "look", 8], ["en", "dashboard", 2], ["zh-TW", "dashboard", 2]] as const) {
+    for (const [lang, part, count] of [["en", "look", 7], ["zh-TW", "look", 7], ["en", "dashboard", 2], ["zh-TW", "dashboard", 2]] as const) {
       const root = await mount(lang, part);
       const links = [...root.querySelectorAll("a.s-learn")] as any[];
       expect(links.length, `${lang} ${part}: one per card (#2308: the app icon's too)`).toBe(count);

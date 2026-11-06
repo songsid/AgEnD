@@ -73,6 +73,7 @@ const CASES: Array<[string, string]> = [
   ["/view/%E0%A4", "malformed"],
   ["/view/a/b", "none"],
   ["/ui/needs", "needs:"],
+  ["/ui/notices", "notices:"],                                   // #2910 D2
   ["/ui/needs/x", "none"],
   ["/settings", "settings:agents"],
   ["/settings/agents", "settings:agents"],
@@ -99,7 +100,7 @@ const CASES: Array<[string, string]> = [
 // Every data route under /ui the server answers (web-api.ts), by shape.
 const DATA_ROUTES = ["/ui/poll", "/ui/events", "/ui/history", "/ui/steps", "/ui/file/abc", "/ui/prompts", "/ui/instance/web-dev", "/ui/instances",
   "/ui/tasks", "/ui/tasks/t1", "/ui/schedules", "/ui/schedules/s1", "/ui/teams", "/ui/teams/x", "/ui/config", "/ui/org", "/ui/cache", "/ui/backends", "/ui/js/app.js",
-  "/ui/needs/ack", "/ui/send", "/ui/upload", "/ui/prompt", "/ui/command", "/ui/cancel/x", "/ui/stop/x", "/ui/start/x", "/ui/restart/x", "/ui/instances/x/delete"];
+  "/ui/needs/ack", "/ui/notices/list", "/ui/notices/seen", "/ui/send", "/ui/upload", "/ui/prompt", "/ui/command", "/ui/cancel/x", "/ui/stop/x", "/ui/start/x", "/ui/restart/x", "/ui/instances/x/delete"];
 
 function describeServer(path: string): string {
   const m = shellRoute("GET", path);
@@ -107,7 +108,7 @@ function describeServer(path: string): string {
   if (m.kind === "malformed") return "malformed";
   if (m.route.panel === "fleet") return `fleet:${m.route.tab}`;
   if (m.route.panel === "settings") return `settings:${m.route.section}`;
-  if (m.route.panel === "needs") return "needs:";
+  if (m.route.panel === "needs" || m.route.panel === "notices") return `${m.route.panel}:`;
   return `${m.route.panel}:${m.route.instance ?? ""}`;
 }
 function describeClient(path: string): string {

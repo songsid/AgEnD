@@ -17,7 +17,7 @@ import { setLocale, t } from "../src/locale.js";
 import { formatFleetTime } from "../src/tz-utils.js";
 import { existsSync } from "node:fs";
 import { syntheticTunnelToken } from "./helpers/named-tunnel-token.js";
-import { PUBLIC_TUNNEL_TOKEN_ENV } from "../src/public-tunnel-config.js";
+import { PUBLIC_TUNNEL_TOKEN_ENV, normalizePublicTunnelToken } from "../src/public-tunnel-config.js";
 import { PUBLIC_LINK_OWNER_FILE } from "../src/public-link-owner.js";
 const rigs: Array<{dir: string; fm: FleetManager; s: any}> = [];
 let mono = 0;
@@ -265,6 +265,51 @@ describe("#named-link-ttl: no expiry and auto_open in the real dispatcher", () =
     expect(existsSync(ownerFile(named))).toBe(true);
     await named.typed("admin", "T0", "/dashboard revoke"); await flush();
     expect(existsSync(ownerFile(named))).toBe(false);
+  });
+  // #2902 (the user, hmsg-b6845a68): a permanent (named) link is never called temporary — the menu's button and the
+  // progress title in General name it as the admin's own; a quick tunnel keeps its words. The hostname itself never
+  // enters General (only static words do).
+  it.each([
+    ["en", "🌐 Other device (your permanent link)", "🌐 Opening your permanent link · ", /temporary/i, "🌐 Other device (temporary public)", "🌐 Opening a temporary public link · "],
+    ["zh-TW", "🌐 其他裝置登入（固定網域）", "🌐 正在開啟固定網域 · ", /臨時/, "🌐 其他裝置登入（臨時公開）", "🌐 正在開啟臨時公開連結 · "],
+  ] as const)("#2902 %s: a named link's button and progress say so (no hostname); a quick tunnel's are unchanged", async (language, button, title, temporary, quickButton, quickTitle) => {
+    setLocale(language);
+    const general = (h: ReturnType<typeof rig>) => [h.adapter.notifyAlert.mock.calls.map((c: any) => [c[1].message, ...c[1].choices.map((x: any) => x.label)].join("\n")),
+      h.adapter.editMessageRemoveButtons.mock.calls.map((c: any) => String(c[2]))].flat();
+    const named = rig(); named.fm.fleetConfig!.web = NAMED(); await named.typed();
+    expect(named.adapter.notifyAlert.mock.calls[0]![1].choices.map((c: any) => c.label)).toContain(button);
+    await named.click(); await flush();
+    const said = general(named), steps = named.adapter.editMessageRemoveButtons.mock.calls.map((c: any) => String(c[2]));
+    expect(steps.length).toBeGreaterThan(0);
+    expect(steps.every((text: string) => text.startsWith(title))).toBe(true);
+    expect(said.filter(text => temporary.test(text))).toEqual([]);
+    expect(said.filter(text => text.includes("agend.example.com"))).toEqual([]);
+    expect(String(named.adapter.sendDirect.mock.calls[0]![1])).toContain("/signin");                // the link goes privately
+    const quick = rig(); await quick.typed();
+    expect(quick.adapter.notifyAlert.mock.calls[0]![1].choices.map((c: any) => c.label)).toContain(quickButton);
+    await quick.click(); await flush();
+    const quickSteps = quick.adapter.editMessageRemoveButtons.mock.calls.map((c: any) => String(c[2]));
+    expect(quickSteps.length).toBeGreaterThan(0);
+    expect(quickSteps.every((text: string) => text.startsWith(quickTitle))).toBe(true);
+  });
+  it("#2902: a named link's lease-held refusal is titled as the permanent link too", async () => {
+    const h = rig(); h.fm.fleetConfig!.web = NAMED();
+    expect(h.s.tunnelPurposeLane.reserve("login", "other")).not.toBeNull();
+    await h.typed(); await h.click(); await flush();
+    const last = String((h.adapter.editMessageRemoveButtons.mock.calls.at(-1) as unknown[])[2]);
+    expect([last.startsWith("🌐 Opening your permanent link · "), last.includes(t("dashboard.progress.fail.lease-held"))]).toEqual([true, true]);
+  });
+  // #2907 review (4): the fixed address's Test connection checks an open link "as it is" only on exactly its values —
+  // the protocol too (unsaved QUIC against an open http2 link is not this link's).
+  it("#2907: liveNamedMarker matches the open named link's hostname, port, token AND protocol", async () => {
+    const h = rig(); h.fm.fleetConfig!.web = NAMED(); await h.typed(); await h.click();
+    const token = normalizePublicTunnelToken(process.env[PUBLIC_TUNNEL_TOKEN_ENV])!;
+    const same = { hostname: "agend.example.com", port: 19282, token, protocol: "http2" };
+    expect([h.s.publicWebLink.liveNamedMarker(same), h.s.publicWebLink.liveNamedMarker({ ...same, protocol: "quic" }),
+      h.s.publicWebLink.liveNamedMarker({ ...same, port: 19283 }), h.s.publicWebLink.liveNamedMarker({ ...same, hostname: "other.example.com" })])
+      .toEqual(["stub", null, null, null]);
+    await h.s.publicWebLink.close("test");
+    expect(h.s.publicWebLink.liveNamedMarker(same)).toBeNull();
   });
   it("after a start, auto_open reopens it once for the remembered admin — nothing posted, no code issued", async () => {
     const h = rig(); h.fm.fleetConfig!.web = NAMED({ auto_open: true });

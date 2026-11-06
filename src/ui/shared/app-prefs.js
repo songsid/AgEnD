@@ -91,15 +91,6 @@ let holding = 0;
 const held = new Map();        // key → value chosen in Settings, shown here, not saved yet
 const heldFrom = new Map();    // key → its cached form before it was held (a choice back to it is no change)
 const heldListeners = new Set();
-// #2193: whether the signed-in person has a personal effect slot chosen (their fx.* keys: in the page's data-prefs and
-// in every host read, never in this host cache). The effects runtime is loaded only when there is something to play.
-const ownerEffectsIn = (values) => !!values && OWNER_EFFECT_PREF_KEYS.some((k) => own(values, k) && values[k] != null && values[k] !== "");
-let ownerFx = initial ? ownerEffectsIn(initial.values) : false;
-const ownerFxListeners = new Set();
-/** Whether the person has any personal effect (fx.page/header/sidebar/box/cursor) chosen, as this page last read. */
-export function ownerEffectsChosen() { return ownerFx; }
-/** Called when that changes. Returns the unsubscribe. */
-export function onOwnerEffectsChanged(fn) { ownerFxListeners.add(fn); return () => ownerFxListeners.delete(fn); }
 
 // The host's values into the cache, now — before the sidebar, the tour or the first-run card read their keys. A key
 // the host does not have: the default, on a device in step with the host; this device's own (to upload) otherwise.
@@ -111,9 +102,20 @@ if (host) {
   }
 }
 
-/** This page may change the host's preferences: the signed-in app, not over the public link, not a guest's (#1920). */
-export function prefsWritable() {
-  return !!initial && !guestPage() && !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
+/**
+ * #2855: the preferences a guest keeps as its own, on the host under its account (the same list as web-prefs.ts
+ * GUEST_OWN_PREF_KEYS); the rest of a guest's page follows the host's look and stays on this browser.
+ */
+export const GUEST_OWN_PREF_KEYS = Object.freeze(["theme", "lang", "nav.favorites", "nav.sort", "nav.filter"]);
+const GUEST_OWN = new Set(GUEST_OWN_PREF_KEYS);
+/**
+ * This page may change a preference on the host: the signed-in app, not over the public link (#1920). A guest's page
+ * (#2855): only its own keys — over the public link too, since only its own bucket is written; no key named: none.
+ */
+export function prefsWritable(key) {
+  if (!initial) return false;
+  if (guestPage()) return key !== undefined && GUEST_OWN.has(key);
+  return !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
 }
 /**
  * The value in force for a key, in memory — never only in this browser's storage (a full storage must not bring back
@@ -140,8 +142,6 @@ function take(body) {
   if (!isView(body) || (rev !== null && body.rev < rev)) return false;
   rev = body.rev;
   host = hostValues(body.values);
-  const fx = ownerEffectsIn(body.values);
-  if (fx !== ownerFx) { ownerFx = fx; for (const fn of [...ownerFxListeners]) { try { fn(fx); } catch { /* the rest still hear */ } } }
   return true;
 }
 
@@ -153,7 +153,7 @@ export function savePref(key, value) {
   if (!hostKey(key)) return;
   if (holding && HELD_KEYS.has(key)) { hold(key, value); return; }
   cache(key, value);
-  if (!prefsWritable()) return;
+  if (!prefsWritable(key)) return;
   pending.set(key, value);
   mine.set(key, value);
   clearTimeout(flushTimer);
@@ -328,9 +328,9 @@ function apply(changed) {
  * refused session or an unreadable store leaves the device unmarked, so the next load tries again.
  */
 export async function migratePrefs() {
-  if (!prefsWritable() || inStep()) return false;
+  if (!initial || inStep() || !HOST_KEYS.some((key) => prefsWritable(key))) return false;
   for (const key of HOST_KEYS) {
-    if (own(host, key)) continue;
+    if (own(host, key) || !prefsWritable(key)) continue;
     const local = SYNCED[key].fromLocal(readLocal(SYNCED[key].ls));
     if (local === undefined) continue;
     let r;

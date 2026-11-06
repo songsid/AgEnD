@@ -1,4 +1,5 @@
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
+import { selectionCard } from "../selection-card.js";
 import { flagEffort } from "./launch-effort.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
@@ -694,6 +695,22 @@ export function claudeLoginScreenActive(pane: string): boolean {
     return rows.slice(Math.max(0, rows.length - 14), rows.length - 1)
       .some(r => /Browser didn't open\? Use the url below to sign in|oauth\/authorize/.test(r));
   }
+  // Cloud gateway sign-in (2.1.314 audit capture, unchanged in 2.1.316; claude-2.1.316-gateway-url.pane.txt): the
+  // gateway URL screen ends with "Press Enter to connect" (+ " · Esc for other login methods" unless the screen is
+  // locked), under its "Cloud gateway" title. It is a sign-in a person finishes, like the menu below.
+  if (/^[ \t]*Press Enter to connect(?: · Esc for other login methods)?[ \t]*$/.test(rows[rows.length - 1])) {
+    return rows.slice(Math.max(0, rows.length - 10), rows.length - 1).some(r => /^[ \t]*Cloud gateway[ \t]*$/.test(r));
+  }
+  // …and its "Trust gateway <host>?" step (the gateway's certificate fingerprint, the cursor on its No row; from the
+  // 2.1.314/2.1.316 source, not reached offline: the rig's gateway stops at its OAuth discovery). Never a key of
+  // AgEnD's: trusting a gateway is the person's call.
+  // Bottom-anchored: the prompt's own option row is the last row (a quote of it above a composer is not the prompt).
+  const NO_ROW = /^[ \t]*[❯›]?[ \t]*(?:\d\.[ \t]*)?No, (?:cancel login|go back)[ \t]*$/;
+  if (NO_ROW.test(rows[rows.length - 1])) {
+    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 14); i--) {
+      if (/^[ \t]*Trust gateway \S+\?[ \t]*$/.test(rows[i])) return true;
+    }
+  }
   // Login-method menu: only numbered option rows may follow the title.
   let t = -1;
   for (let i = rows.length - 1; i >= 0; i--) if (/^[ \t]*Select login method:[ \t]*$/.test(rows[i])) { t = i; break; }
@@ -862,6 +879,14 @@ export function claudeBackgroundWorkExitActive(pane: string): boolean {
     && /^[ \t]*[❯›]?[ \t]*3\.[ \t]+Stay[ \t]*$/m.test(block);
 }
 
+/**
+ * Claude's own auto-deny countdown row on a permission prompt (2.1.288–2.1.312 "deny … blocking progress on",
+ * 2.1.314 "block … holding up"): the whole row, its ⚠ marker first and its countdown in either form ("M:SS", or
+ * "about N minute(s)/second(s)"); the fixed tail is optional (a narrow pane wraps it onto the next row). A command row
+ * that merely quotes these words is not this row, and stays part of the request (#2885 review).
+ */
+export const CLAUDE_AUTO_DENY_COUNTDOWN = /^[ \t]*⚠[ \t]+Claude Code will automatically (?:deny|block) this request in (?:\d+:\d\d|about \d+ (?:minute|second)s?)(?:, to avoid (?:blocking progress on|holding up) an unattended session)?[ \t]*$/;
+
 /** Private request text: excludes history, cursor motion, and native auto-deny countdown. */
 function claudeCommandRequestIdentity(pane: string): string {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -874,21 +899,83 @@ function claudeCommandRequestIdentity(pane: string): string {
     if (/^[ \t]*Bash command[ \t]*$/.test(rows[i])) { start = i; break; }
   }
   return rows.slice(Math.max(0, start), question + 1)
-    .filter(row => !/Claude Code will automatically deny this request in \d+:\d\d/.test(row))
+    // The countdown ticks every second: never part of the request. 2.1.314 says "block … to avoid holding up an
+    // unattended session" (before: "deny … to avoid blocking progress"), as "M:SS" or "about N minutes/seconds".
+    .filter(row => !CLAUDE_AUTO_DENY_COUNTDOWN.test(row))
     .map(row => row.trim()).filter(Boolean).join("\n");
+}
+
+/**
+ * M-2296: Claude Code 2.1.317's connector file-send safety card (`circuitBreaker: "connectorFileSend"`): an MCP
+ * connector call (the email connector's attachments by reference) that would send files from this computer asks
+ * first. It is bypass-immune (`bypassImmune: true, waivableInBypass: false` in the bundle), so it appears under
+ * --dangerously-skip-permissions too, and its focus starts on "Yes" unless the request defaults to No — an Enter
+ * meant for a delivery would send the files. Never answered by AgEnD: held for a person, shown in Needs-you.
+ *
+ * Shape (2.1.317 bundle: TIe/Rwt/Njo/Ljo/Twt and the `* ` file gutter; chrome as captured from a real MCP card):
+ * the card's last question row is "Do you want to proceed?", or a refusal-only variant ending "…no files are sent."
+ * (a list too long to show, or a call that does not say which files) or "…or choose No." (a terminal too short to
+ * show every file); Yes / No options (numbered, or unnumbered when it defaults to No); the "Esc to cancel" footer
+ * last; and, between the card's top and its question, a file row `* "<path>"` / `* the file at "<path>"` or the
+ * `* Name may not be what it looks like.` warning — the marks of a file-send card that no other card carries. A
+ * question variant that only this card asks counts on its own. A Bash card (its own entry) never matches here.
+ */
+const FILE_SEND_ONLY_QUESTION = /(?:Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
+const FILE_SEND_QUESTION = /(?:Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
+/** Pre-filter only (anywhere in the pane); claudeFileSendCardActive decides. */
+export const CLAUDE_FILE_SEND_PATTERN = /Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\./;
+const FILE_SEND_MARK = /^[ \t│┃]*\* (?:the file at )?"|^[ \t│┃]*\* Name may not be what it looks like\./;
+const FILE_SEND_OPTION = /^[ \t]*[❯›]?[ \t]*(?:\d{1,2}\.[ \t]+)?(Yes|No)\b/;
+export function claudeFileSendCardActive(pane: string): boolean {
+  const rows = claudeRows(pane).filter(row => row.trim() !== "");
+  if (!rows.length || !/^[ \t]*Esc(?:ape)? to cancel\b/.test(rows[rows.length - 1])) return false;
+  // The question and the menu above the footer, as one bounded run of rows. A narrow pane wraps the question
+  // (#2992 review, Prism P2: "…Choose" / "No, and no files are sent."), and a wrapped row can even look like an
+  // option, so every split is tried from the bottom: the menu is the rows below it, the question is what the rows
+  // above it read as one line; the first split whose menu parses and whose question is a file-send question wins.
+  const block = rows.slice(Math.max(0, rows.length - 1 - 16), rows.length - 1);
+  for (let k = 1; k < block.length; k++) {
+    const menu = block.slice(block.length - k), above = block.slice(0, block.length - k);
+    const titles: string[] = [];
+    // The menu's first row is an option. (A wrapped question row may begin "No," too: the split that makes it one
+    // leaves "…Choose" as the question, which is no file-send question, so that split never wins.)
+    let parses = FILE_SEND_OPTION.test(menu[0]) || /^[ \t]*[❯›]?[ \t]*\d{1,2}\.[ \t]/.test(menu[0]);
+    for (const row of menu) {
+      const option = FILE_SEND_OPTION.exec(row);
+      if (option) { titles.push(option[1]); continue; }
+      if (/^[ \t]*[❯›]?[ \t]*\d{1,2}\.[ \t]/.test(row) || /^[ \t]{3,}\S/.test(row)) continue;  // another option, or a wrapped one
+      parses = false; break;
+    }
+    if (!parses || !titles.includes("No")) continue;
+    // The question: the rows just above the menu, read as one line (at most six physical rows).
+    const question = above.slice(-6).map(row => row.trim()).join(" ");
+    if (!FILE_SEND_QUESTION.test(question)) continue;
+    const refusalOnly = FILE_SEND_ONLY_QUESTION.test(question);
+    // A refusal-only variant may offer No alone; every other shape offers Yes as well.
+    if (!titles.includes("Yes") && !refusalOnly) continue;
+    // The card's own rows: up from the menu to the rule that opens it (or 40 rows at most).
+    const card: string[] = [];
+    for (let i = rows.length - 2 - k; i >= 0 && rows.length - 2 - k - i <= 40; i--) {
+      if (/^[ \t]*─{20,}[ \t]*$/.test(rows[i])) break;
+      card.push(rows[i]);
+    }
+    if (card.some(row => /^[ \t]*Bash command[ \t]*$/.test(row))) return false;
+    return refusalOnly || card.some(row => FILE_SEND_MARK.test(row));
+  }
+  return false;
 }
 
 const dangerPromptOnYes = (pane: string): boolean => {
   const state = claudeDangerousCommandPromptState(pane);
-  return state.active && state.cursor === "yes";
+  return state.active && state.cursor === "yes" && !claudeFileSendCardActive(pane);
 };
 const dangerPromptOnNo = (pane: string): boolean => {
   const state = claudeDangerousCommandPromptState(pane);
-  return state.active && state.cursor === "no";
+  return state.active && state.cursor === "no" && !claudeFileSendCardActive(pane);
 };
 const dangerPromptUnknown = (pane: string): boolean => {
   const state = claudeDangerousCommandPromptState(pane);
-  return state.active && state.cursor === "unknown";
+  return state.active && state.cursor === "unknown" && !claudeFileSendCardActive(pane);
 };
 
 /** This text is code-owned and intentionally never includes the command. */
@@ -909,6 +996,12 @@ export const CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE =
  * CLI quit, in 3 of 4 trials. Each step is idempotent: a refused Down is simply
  * repeated, a refused Enter is repeated, and no state ever sends Enter on "No".
  */
+/**
+ * #2910 D4: a Claude dialog AgEnD holds for a person (a Bash permission, a trust / Bypass screen it did not recognise,
+ * "Background work is running", "Switch model?"), as a card to answer from the dashboard of a web-only fleet.
+ */
+const claudeSelectionCard = (pane: string) => selectionCard(pane, "Claude Code");
+
 function claudeConfirmDialogEntries(
   pattern: RegExp,
   name: string,
@@ -931,6 +1024,7 @@ function claudeConfirmDialogEntries(
       holdOnly: true,
       blocksDelivery: true,
       inputBlocked: true,
+      remoteCard: claudeSelectionCard,
       description: `${name} (unrecognised cursor) — holding for a human, never auto-selecting`,
     },
   ];
@@ -1291,31 +1385,9 @@ export class ClaudeCodeBackend implements CliBackend {
         action: "notify",
         message: "Claude rejected the configured API key or auth token (401) — fix ANTHROPIC_API_KEY / apiKeyHelper, every turn fails until then",
       },
-      // Claude Code pauses its own turn (rather than merely warning) when the
-      // current usage window is exhausted. Keep this as a complete line match:
-      // the warning is also visible in pane scrollback, and prose discussing
-      // only part of it must not turn into a pause notification. Claude has
-      // used both `●` and `⚠` prefixes and both cancel-wordings over time.
-      // The time is deliberately captured so the channel notice tells the
-      // operator when Claude is expected to continue.
-      {
-        pattern: /^[ \t]*(?:[●⚠](?:\uFE0F)?[ \t]+)?Usage limit reached[ \t]*·[ \t]*continuing automatically at[ \t]+((?:(?:[01]?\d|2[0-3]):[0-5]\d(?:[ \t]*[ap]m)?|(?:0?[1-9]|1[0-2])(?::[0-5]\d)?[ \t]*[ap]m|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[ \t]+(?:[12]?\d|3[01]),[ \t]*(?:[01]?\d|2[0-3])(?::[0-5]\d)?[ \t]*[ap]m))[ \t]*·[ \t]*esc(?: or type)?[ \t]+to[ \t]+cancel[ \t]*$/im,
-        type: "quota",
-        action: "notify",
-        message: "Claude Code usage limit reached — paused until the next usage window",
-        formatMessage: match => `Claude Code usage limit reached — paused; continuing automatically at ${match[1].trim()}`,
-        verifyQuota: true,
-        // Count-based occurrence tracking still suppresses the same line while
-        // it remains visible, but a later pause is a distinct incident even if
-        // it happens within the generic five-minute error cooldown.
-        skipCooldown: true,
-        // The pane stays on this line until the provider's window opens. It
-        // is a self-recovering pause, so do not arm the generic recovery
-        // deadline (which would otherwise re-emit the same visible line every
-        // five minutes while the wait is still in progress).
-        skipRecoveryWait: true,
-      },
-      { pattern: /credit balance is too low/i, type: "quota", action: "pause", message: "Insufficient API credits" },
+      // #2834: Claude's usage-limit pause ("Usage limit reached · continuing automatically …", #816) and an exhausted
+      // credit balance are no longer read from the pane — quoted text paused agents. The daemon takes both from Claude's
+      // own transcript records (the `informational` system note and the `billing_error` API error).
     ];
   }
 
@@ -1339,12 +1411,12 @@ export class ClaudeCodeBackend implements CliBackend {
       // Only when the cursor is verifiably on option 1 ("❯ 1. Resume from
       // summary (recommended)") do we know that Down+Enter lands on "Resume
       // full session as-is". Any other shape is held by the guard below.
-      { pattern: CLAUDE_RESUME_PROMPT_DEFAULT, isActive: resumeDefaultActive, keys: ["Down", "Enter"], description: "Claude session resume prompt — select 'Resume full session as-is'", blocksDelivery: true },
+      { pattern: CLAUDE_RESUME_PROMPT_DEFAULT, isActive: resumeDefaultActive, keys: ["Down", "Enter"], parkedAdvice: "claude-resume", description: "Claude session resume prompt — select 'Resume full session as-is'", blocksDelivery: true },
       // The same prompt in a shape we do not know how to navigate (cursor
       // elsewhere, wording changed, options reordered): recognised by its
       // two-option menu structure, never answered — a blind Enter would take
       // the default and drop the full context. Hold the pane, report for a human.
-      { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
+      { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, parkedAdvice: "claude-resume", description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
       // 2.1.295's cold-cache resume prompt on a resumed launch: Escape (the dialog's own "resume") keeps the context.
       { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeExact, keys: ["Escape"], description: COLD_RESUME_DESCRIPTION, blocksDelivery: true, inputBlocked: true, verifyAfterKeys: true, autoResolutionKey: "claude-cold-resume-prompt" },
       { pattern: COLD_RESUME_TITLE_ANY, isActive: coldResumeUnknown, keys: [], holdOnly: true, blocksDelivery: true, description: COLD_RESUME_HOLD_DESCRIPTION },
@@ -1381,6 +1453,7 @@ export class ClaudeCodeBackend implements CliBackend {
         pattern: CLAUDE_RESUME_PROMPT_DEFAULT,
         isActive: resumeDefaultActive,
         keys: ["Down", "Enter"],
+        parkedAdvice: "claude-resume",
         description: "Claude session resume prompt — select 'Resume full session as-is'",
         blocksDelivery: true,
       },
@@ -1391,6 +1464,7 @@ export class ClaudeCodeBackend implements CliBackend {
         keys: [],
         holdOnly: true,
         blocksDelivery: true,
+        parkedAdvice: "claude-resume",
         description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting",
       },
       // 2.1.295's cold-cache resume prompt: on a resume that loads late, and — the case that matters for a fleet — by a
@@ -1413,6 +1487,21 @@ export class ClaudeCodeBackend implements CliBackend {
         blocksDelivery: true,
         inputBlocked: true,
         description: COLD_RESUME_HOLD_DESCRIPTION,
+      },
+      // M-2296: the 2.1.317 connector file-send card — ahead of the dangerous-command entries, whose two-option
+      // shape it can share: it is never auto-answered (not even "No", which would tell the agent its call was a
+      // dangerous command) and never takes a delivery's keys.
+      {
+        pattern: CLAUDE_FILE_SEND_PATTERN,
+        isActive: claudeFileSendCardActive,
+        requestIdentity: pane => claudeSelectionCard(pane)?.identity ?? null,
+        interactionKind: "permission",
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        remoteCard: claudeSelectionCard,
+        description: "Claude connector file-send approval — waiting for a human choice, never auto-approving",
       },
       // Claude's shell-command safety menu is the one runtime prompt AgEnD is
       // allowed to answer automatically. Keep cursor-known entries ahead of
@@ -1464,17 +1553,19 @@ export class ClaudeCodeBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: claudeSelectionCard,
         description: "Claude \"Background work is running\" exit prompt — holding, never answering with Enter",
       },
       {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
         isActive: claudeBashPermissionActive,
-        requestIdentity: claudeCommandRequestIdentity,
+        requestIdentity: pane => claudeSelectionCard(pane)?.identity ?? null,
         interactionKind: "permission",
         keys: [],
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: claudeSelectionCard,
         description: "Claude Bash permission — waiting for a human choice, never auto-approving",
       },
       // Trust and Bypass Permissions are STARTUP dialogs, but on a first run
@@ -1485,7 +1576,7 @@ export class ClaudeCodeBackend implements CliBackend {
       // claudeConfirmDialogEntries).
       ...claudeConfirmDialogEntries(CLAUDE_TRUST_DIALOG_PATTERN, "Claude workspace trust dialog", CLAUDE_TRUST_ENTRIES, trustUnknown),
       ...claudeConfirmDialogEntries(CLAUDE_BYPASS_DIALOG_PATTERN, "Claude Bypass Permissions warning", CLAUDE_BYPASS_ENTRIES, bypassUnknown),
-      { pattern: CLAUDE_CONFIRM_IDENTITY_PATTERN, isActive: claudeUnrecognisedConfirmActive, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, description: "Claude trust/Bypass Permissions screen (unrecognised shape) — holding for a human, never auto-selecting" },
+      { pattern: CLAUDE_CONFIRM_IDENTITY_PATTERN, isActive: claudeUnrecognisedConfirmActive, keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, remoteCard: claudeSelectionCard, description: "Claude trust/Bypass Permissions screen (unrecognised shape) — holding for a human, never auto-selecting" },
       // The sign-in screen can arrive after the startup scan ended too (theme →
       // login on a first run). No key answers it: hold delivery; the daemon's
       // runtime monitor reports the auth incident (LOGIN_FLOWS loginScreenActive).
@@ -1504,6 +1595,7 @@ export class ClaudeCodeBackend implements CliBackend {
         keys: [],
         holdOnly: true,
         blocksDelivery: true,
+        remoteCard: claudeSelectionCard,
         description: "Claude model/effort switch confirmation (\u201cSwitch model?\u201d) — not asked for by AgEnD, or its answer did not take",
       },
     ];

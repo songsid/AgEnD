@@ -33,7 +33,7 @@ const GROUP = "-100777";
 const LABEL = "alice → bob";
 const LONG = `First line of the request.\n\nSecond paragraph — ${"x".repeat(150)}`;
 type Kind = "task" | "query" | "report" | "update" | undefined;
-interface WebLine { instance: string; sender: string; role: string; text: string }
+interface WebLine { instance: string; sender: string; role: string; text: string; channel?: true }
 
 async function send(opts: {
   tool?: "send_to_instance" | "delegate_task" | "request_information" | "report_result";
@@ -156,6 +156,49 @@ describe("#1672: the web chat shows cross-instance messages like the topics", ()
   });
 });
 
+describe("#2848: a line is the channel's exactly when its topic got the same post", () => {
+  // The guest rule (#1920) shows a guest what the channel showed: a line posted to the instance's topic carries `channel`.
+  const marked = (r: Awaited<ReturnType<typeof send>>, who: "alice" | "bob") => r.web.filter(w => w.instance === who).map(w => w.channel === true);
+  it("full and summary: both chats' lines are marked, and both topics got a post", async () => {
+    for (const mode of ["full", "summary"]) {
+      const r = await send({ defaults: { cross_instance_visibility: mode }, kind: "task" });
+      expect([marked(r, "alice"), marked(r, "bob"), r.topics.map(p => p.threadId).sort()], mode).toEqual([[true], [true], ["11", "22"]]);
+    }
+  });
+  it("hidden on one side: no line there; the other side's line is marked with its post", async () => {
+    const r = await send({ kind: "task", target: { cross_instance_visibility: "hidden" } });
+    expect([marked(r, "alice"), marked(r, "bob"), r.topics.map(p => p.threadId)]).toEqual([[true], [], ["11"]]);
+  });
+  it("no post, no mark: a web-only fleet, a topic-less instance", async () => {
+    const web = await send({ kind: "task", webOnly: true });
+    expect([marked(web, "alice"), marked(web, "bob"), web.topics]).toEqual([[false], [false], []]);
+    const topicless = await send({ kind: "task", target: { topic_id: undefined } });
+    expect([marked(topicless, "alice"), marked(topicless, "bob")]).toEqual([[true], [false]]);
+  });
+  it("in every case the marked lines are exactly the posted topics", async () => {
+    const cases = [{ kind: "task" as Kind }, { kind: "report" as Kind }, { kind: "update" as Kind, defaults: { cross_instance_visibility: "summary" } },
+      { kind: "task" as Kind, sender: { cross_instance_visibility: "hidden" } }, { kind: "task" as Kind, target: { general_topic: true } },
+      { kind: "task" as Kind, sender: { topic_id: undefined } }, { kind: "task" as Kind, webOnly: true }];
+    for (const c of cases) {
+      const r = await send(c);
+      const topicOf = { alice: "11", bob: "22" } as const;
+      const markedTopics = r.web.filter(w => w.channel === true).map(w => topicOf[w.instance as "alice" | "bob"]).sort();
+      expect(markedTopics, JSON.stringify(c)).toEqual(r.topics.map(p => p.threadId).sort());
+    }
+  });
+});
+
+describe("#2855: the last reply its channel showed", () => {
+  it("lastAgentReply({ channel: true }) skips a reply to a web-only exchange; without it, every reply counts", async () => {
+    const { WebChatHistory } = await import("../src/web-chat-history.js");
+    const h = new WebChatHistory();
+    h.record({ instance: "w", sender: "w", role: "agent", text: "to the channel", ts: "2026-10-29T07:00:00.000Z", channel: true });
+    h.record({ instance: "w", sender: "w", role: "agent", text: "to someone's web chat", ts: "2026-10-29T08:00:00.000Z" });
+    expect([h.lastAgentReply("w"), h.lastAgentReply("w", { channel: true }), h.lastAgentReply("nobody", { channel: true })])
+      .toEqual(["2026-10-29T08:00:00.000Z", "2026-10-29T07:00:00.000Z", null]);
+  });
+});
+
 describe("#1672: it is in the web chat history, and there again after a restart", () => {
   it("the real fleet records the line; a new fleet on the same home restores it as a status line", async () => {
     const h = mkdtempSync(join(tmpdir(), "agend-test-1672-")); homes.push(h);
@@ -210,33 +253,93 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
       expect([msg.classList.contains("status-line"), msg.classList.contains("status"), msg.classList.contains("user"), msg.classList.contains("agent")], "status-line, never the header badge class status").toEqual([true, false, false, false]);
       expect(list.querySelector(".st-text").textContent).toBe("alice → w:\n**bold** <i>raw</i>\n```html\n<b>card</b>\n```");
       for (const sel of [".html-card", ".md", "strong", "i", "b", "pre", ".codeblock", ".rb-row"]) expect(list.querySelector(sel), sel).toBeNull();
-      expect(list.querySelector(".st-more")).toBeNull();
+      expect([msg.classList.contains("folded"), msg.classList.contains("overflows")]).toEqual([true, true]);   // five lines: two shown (hmsg-d6ac6dfb)
     } finally { dom.restore(); }
   });
 
-  it("a long one is folded: many lines → Show all N lines; one long line → Show more; the toggle opens and closes it", () => {
+  // The user (hmsg-d6ac6dfb): folded, a status line is two lines — the header and the first line, each one row.
+  it("past two lines it has an open control; drawn with no layout, a line long enough to wrap stands for clipped; two short lines are plain", () => {
     const { dom, list, th } = thread();
     try {
-      const lines = Array.from({ length: 9 }, (_, i) => `line ${i}`).join("\n");
-      th.render([status(1, lines), status(2, "y".repeat(700)), status(3, "short")]);
-      const msgs = [...list.querySelectorAll(".msg.status-line")] as any[];
-      expect(msgs.map(m => m.classList.contains("folded"))).toEqual([true, true, false]);
-      const [many, wide] = msgs.map(m => m.querySelector(".st-more"));
-      expect([many.textContent, wide.textContent]).toEqual(["Show all 9 lines", "Show more"]);
-      th.onClick({ target: many });
-      expect([msgs[0].classList.contains("folded"), many.textContent]).toEqual([false, "Show less"]);
-      th.onClick({ target: many });
-      expect([msgs[0].classList.contains("folded"), many.textContent]).toEqual([true, "Show all 9 lines"]);
-      th.onClick({ target: wide }); th.onClick({ target: wide });
-      expect([msgs[1].classList.contains("folded"), wide.textContent]).toEqual([true, "Show more"]);
+      th.render([status(1, "a → w:\none\ntwo"), status(2, "a → w:\n" + "y".repeat(120)), status(3, "a → w:\nshort"), status(4, "short")]);
+      expect([...list.querySelectorAll(".msg.status-line")].map((m: any) => m.classList.contains("overflows"))).toEqual([true, true, false, false]);
+    } finally { dom.restore(); }
+  });
+  // #2933 review (Prism): what decides is the width it is drawn at — 80 CJK characters wrap at 390 px, a 120-character
+  // line fits on a wide desk. Measured after each draw (and resize): a clipped row → its control; rows that fit → none.
+  it("measured: a row clipped at its drawn width gets the control; rows that fit lose it (a guess is replaced)", () => {
+    const { dom, list, th } = thread();
+    try {
+      const msgs = [status(1, "Weaver → worker:\n" + "測".repeat(80)), status(2, "a → w:\n" + "y".repeat(120))];
+      th.render(msgs);
+      const [cjk, wide] = [...list.querySelectorAll(".msg.status-line")] as any[];
+      const lay = (m: any, scroll: number, client: number) => { for (const r of m.querySelectorAll(".st-ln")) { r.scrollWidth = scroll; r.clientWidth = client; } };
+      lay(cjk, 1200, 300); lay(wide, 600, 700);                     // the phone: CJK clipped; the desk: the long line fits
+      th.render(msgs);
+      expect([cjk.classList.contains("overflows"), wide.classList.contains("overflows")]).toEqual([true, false]);
+      lay(cjk, 300, 300);                                             // wider again: it fits — plain two lines
+      th.render(msgs);
+      expect(cjk.classList.contains("overflows")).toBe(false);
+      th.onClick({ target: cjk.querySelectorAll(".st-ln")[1] });     // nothing hidden: a click on the text does nothing
+      expect(cjk.classList.contains("folded")).toBe(true);
+      // More than two lines is always "something hidden", whatever the widths.
+      th.render([status(3, "a → w:\n1\n2\n3")]);
+      const many = [...list.querySelectorAll(".msg.status-line")].at(-1) as any;
+      lay(many, 10, 300); th.render([status(3, "a → w:\n1\n2\n3")]);
+      expect(many.classList.contains("overflows")).toBe(true);
+    } finally { dom.restore(); }
+  });
+  it("a CRLF is one line break: no stray CR in a row, the rows' text as the message's lines (Copy keeps the message as sent)", () => {
+    const { dom, list, th } = thread();
+    try {
+      th.render([status(1, "a → w:\r\none\r\ntwo\r\nthree")]);
+      const rows = [...list.querySelectorAll(".st-ln")].map((r: any) => r.textContent);
+      expect([rows, list.querySelector(".st-text").textContent, list.querySelector(".st-more").dataset.lines]).toEqual([["a → w:", "one", "two", "three"], "a → w:\none\ntwo\nthree", "4"]);
+      // A lone CR (old Mac text) is a line break too: three lines, counted as three.
+      th.render([status(2, "a → w:\rone\rtwo")]);
+      const lone = [...list.querySelectorAll(".msg.status-line")].at(-1) as any;
+      expect([[...lone.querySelectorAll(".st-ln")].map((r: any) => r.textContent), lone.querySelector(".st-more").dataset.lines]).toEqual([["a → w:", "one", "two"], "3"]);
+    } finally { dom.restore(); }
+  });
+  it("each line its own row (the text and its line breaks unchanged); folded, the button's label is short with its full name for a screen reader", () => {
+    const { dom, list, th } = thread();
+    try {
+      const text = "Weaver → w:\nfirst line\n\nthird\nfourth\nfifth\nsixth\nseventh";
+      th.render([status(1, text), status(2, "a → w:\n" + "y".repeat(120))]);
+      const [many, wide] = [...list.querySelectorAll(".msg.status-line")] as any[];
+      expect([many.querySelector(".st-text").textContent, many.querySelectorAll(".st-ln").length]).toEqual([text, 8]);
+      const [m, w] = [many.querySelector(".st-more"), wide.querySelector(".st-more")];
+      expect([m.textContent, m.getAttribute("aria-label"), m.getAttribute("aria-expanded"), w.textContent, w.getAttribute("aria-label")])
+        .toEqual(["All 8 lines", "Show all 8 lines", "false", "More", "Show more"]);
+    } finally { dom.restore(); }
+  });
+  it("one click opens it (its button, or its text — not a link in it); Show less folds it again", () => {
+    const { dom, list, th } = thread();
+    try {
+      th.render([status(1, Array.from({ length: 9 }, (_, i) => `line ${i}`).join("\n"))]);
+      const msg = list.querySelector(".msg.status-line") as any, more = msg.querySelector(".st-more");
+      th.onClick({ target: more });
+      expect([msg.classList.contains("folded"), more.textContent, more.getAttribute("aria-expanded"), more.getAttribute("aria-label")]).toEqual([false, "Show less", "true", "Show less"]);
+      th.onClick({ target: more });
+      expect([msg.classList.contains("folded"), more.textContent, more.getAttribute("aria-label")]).toEqual([true, "All 9 lines", "Show all 9 lines"]);
+      th.onClick({ target: msg.querySelectorAll(".st-ln")[1] });                      // the text itself
+      expect(msg.classList.contains("folded")).toBe(false);
+      th.onClick({ target: more });                                                       // folded again
+      // A link in it is a link: it does not open the line.
+      th.render([{ ...status(2, "w → x:\nsee\nmore\nlines"), links: [{ offset: 0, length: 1, url: "/ui/chat/w" }] }]);
+      const second = [...list.querySelectorAll(".msg.status-line")].at(-1) as any;
+      const link = second.querySelector("a.st-link");
+      expect(link?.textContent).toBe("w");
+      th.onClick({ target: link });
+      expect(second.classList.contains("folded")).toBe(true);
     } finally { dom.restore(); }
   });
 
   it("the fold reads in English and in zh-TW", () => {
     try {
-      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9)]).toEqual(["Show more", "Show less", "Show all 9 lines"]);
+      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9), t("chat.showAllShort", 9), t("chat.showMoreShort")]).toEqual(["Show more", "Show less", "Show all 9 lines", "All 9 lines", "More"]);
       setLang("zh-TW");
-      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9)]).toEqual(["顯示更多", "收合", "展開全部 9 行"]);
+      expect([t("chat.showMore"), t("chat.showLess"), t("chat.showAll", 9), t("chat.showAllShort", 9), t("chat.showMoreShort")]).toEqual(["顯示更多", "收合", "展開全部 9 行", "全部 9 行", "更多"]);
     } finally { setLang("en"); }
   });
 });
@@ -250,6 +353,16 @@ describe("#1672: a status line is not announced as a reply", () => {
     expect(announced).toEqual([]);
     store.ingest({ boot: "x", id: 2, instance: "w", sender: "agend-x", role: "agent", text: "reply", ts: "2026-01-01T00:00:00Z" });
     expect(announced).toEqual(["chat.a11yReplied:agend-x"]);
+  });
+  it("#2848: the history answer's allHidden is kept per chat; a later answer without it clears it", async () => {
+    const answers: Record<string, unknown> = { hidden: { messages: [], allHidden: true }, plain: { messages: [] } };
+    const fetch = async (path: string) => ({ json: async () => answers[new URL(path, "http://x").searchParams.get("instance")!] });
+    const store = createChatStore({ announce() {}, t: (k: string) => k, fetch } as never);
+    await store.openHistory("hidden", null); await store.openHistory("plain", null);
+    expect([store.allHidden("hidden"), store.allHidden("plain")]).toEqual([true, false]);
+    answers.hidden = { messages: [] };
+    store.state.historyRead.delete("hidden"); await store.openHistory("hidden", null);
+    expect(store.allHidden("hidden")).toBe(false);
   });
 });
 

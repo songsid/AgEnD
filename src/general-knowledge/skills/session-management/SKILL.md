@@ -40,6 +40,8 @@ Verified by running each one, not read from docs.
 
 ## kiro-cli
 
+Switching an agent's profile or login and keeping its session → the `credential-profiles` skill (update_instance_config); never resume by hand.
+
 - **Store:** `~/.kiro/sessions/cli/<uuid>.json`
 - **DB:** `~/.local/share/kiro-cli/data.sqlite3`, table `conversations_v2`
   - `key` — the instance's working directory
@@ -103,6 +105,8 @@ cur.execute("SELECT session_id FROM session_docs_fts WHERE session_docs_fts MATC
 
 ## claude-code
 
+Switching an agent's profile or login and keeping its session → the `credential-profiles` skill (update_instance_config); never resume by hand.
+
 - **Store:** `~/.claude/projects/<path-encoded>/<session-uuid>.jsonl` — **the filename is the session ID**.
 - `<path-encoded>` = the absolute cwd with every `/` replaced by `-`.
 
@@ -126,6 +130,8 @@ A session with no `ai-title` line is simply untitled — say so rather than inve
 ---
 
 ## codex
+
+Switching an agent's profile or login and keeping its session → the `credential-profiles` skill (update_instance_config); never resume by hand.
 
 Restoring works well; **listing is the weak part — there is no index table.**
 

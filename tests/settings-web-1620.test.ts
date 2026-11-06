@@ -279,6 +279,27 @@ describe("#2661: Office levels — one switch in Settings → Web", () => {
   });
 });
 
+describe("#2911 (7): CDN libraries in HTML previews — one switch in Settings → Web", () => {
+  it("a boolean; applies at once either way (the default, off, is the gate — design approved by the leader)", () => {
+    expect(judge({ preview_cdn: true })).toBeNull();
+    expect(judge({ preview_cdn: false }, { web: { preview_cdn: true } })).toBeNull();
+    expect(() => prepareSettingsEffect("PUT", WEB, { preview_cdn: "yes" }, { config: { defaults: {}, instances: {} } as any, classic: {} })).toThrow("invalid_web_settings");
+  });
+  it("through the gate and the real handler: on written to fleet.yaml and the live config; off again the same way", async () => {
+    const h = harness();
+    const on = await h.request({ preview_cdn: true });
+    expect(on.status).toBe(200);
+    expect([h.raw().web.preview_cdn, h.config.web.preview_cdn]).toEqual([true, true]);
+    expect((await h.request({ preview_cdn: false }, { key: "k-2" })).status).toBe(200);
+    expect(h.config.web.preview_cdn).toBe(false);
+  });
+  it("never over the public link itself", async () => {
+    const h = harness();
+    const r = await h.request({ preview_cdn: true }, { publicLink: true });
+    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+  });
+});
+
 describe("never over the temporary public link", () => {
   it.each([
     ["a tightening", { session: { local: { absolute_hours: 6 } } }],

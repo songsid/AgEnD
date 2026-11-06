@@ -40,11 +40,28 @@ export class SettingsHttpConfirmation {
     if (settingsRequestExecution(req) || this.passed.has(req)) return false;
     const path = url.pathname, method = req.method ?? "GET";
     const pending = path.match(/^\/api\/settings\/pending(?:\/([0-9a-f]{32}))?$/);
+    // #2868: whether this browser could confirm a pending one itself now (#2170's own checks, asked at each read).
+    const mine = (view: SettingsPendingView): SettingsPendingView => view.state === "pending" && this.options.selfConfirm?.(req, view.id) ? { ...view, can_self_confirm: true } : view;
     if (pending && (method === "GET" || method === "DELETE" && pending[1])) {
       const principal = this.options.principal(req);
       if (!principal?.current()) { json(res, 401, { error: "session_required" }); return true; }
       const result = pending[1] ? method === "DELETE" ? this.store.withdraw(pending[1], principal.id) : this.store.get(pending[1], principal.id) : this.store.list(principal.id);
-      json(res, result === null ? 404 : 200, result === null ? { error: "not_found" } : result); return true;
+      json(res, result === null ? 404 : 200, result === null ? { error: "not_found" } : Array.isArray(result) ? result.map(mine) : mine(result)); return true;
+    }
+    // #2868: "Apply now" — the requester's own pending change, confirmed by this browser exactly as its save would have
+    // been (#2170): web-verified now, an admin of its effect owners, never over the public link, a General told. Anything
+    // else: 403, and the change keeps waiting for General or the host.
+    const self = path.match(/^\/api\/settings\/pending\/([0-9a-f]{32})\/confirm$/);
+    if (self && method === "POST") {
+      const principal = this.options.principal(req);
+      if (!principal?.current()) { json(res, 401, { error: "session_required" }); return true; }
+      const view = this.store.get(self[1], principal.id);
+      if (!view) { json(res, 404, { error: "not_found" }); return true; }
+      if (view.state !== "pending") { json(res, 409, { error: "confirmation_not_pending" }); return true; }
+      const confirm = this.options.selfConfirm?.(req, view.id) ?? null;
+      if (!confirm) { json(res, 403, { error: "self_confirm_unavailable" }); return true; }
+      void this.store.decide(view.id, "confirm", { ...confirm, via: "web" }).then(done => confirm.done?.(done)).catch(() => {});
+      json(res, 202, { ok: true, result: "pending_confirmation", pending_change: this.store.get(view.id, principal.id) ?? view }); return true;
     }
     if (!isSettingsMutation(method, path)) return false;
     // #1620: the web settings (sessions, the browser terminal, the public link itself) are never changed over the

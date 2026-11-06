@@ -24,6 +24,11 @@ const OTHER_HINTS = [
   "Press ? on an empty composer to see keyboard shortcuts",
   "Press Ctrl+O to expand collapsed tool output",
 ];
+/** 1.4.14-R7309.1 catalog (offsets 11216301 / 11216047). Removing either must fail (#3090). */
+const HINTS_1414 = [
+  "Ask to monitor a running build or log and get pinged on changes",
+  "Ask to 'use a workflow' to fan out parallel agents on big tasks",
+];
 
 function withComposer(idle: string, text: string): string {
   const lines = idle.split("\n");
@@ -92,6 +97,17 @@ describe("Muse 1.4.12 empty-composer placeholder is not a draft (#2520)", () => 
   it.each(OTHER_HINTS)("catalog hint %s is empty", hint => {
     const p = withComposer(pane("echo-idle.pane.txt"), hint);
     expect(verdict(p)).toEqual({ busy: false, idle: true, draft: [] });
+  });
+
+  it.each(HINTS_1414)("1.4.14 catalog hint %s is empty", hint => {
+    const p = withComposer(pane("echo-idle.pane.txt"), hint);
+    expect(verdict(p)).toEqual({ busy: false, idle: true, draft: [] });
+  });
+
+  it("a prefix of a 1.4.14 hint is typed text", () => {
+    expect(verdict(withComposer(pane("echo-idle.pane.txt"), "Ask to monitor a running build"))).toEqual({
+      busy: false, idle: false, draft: ["Ask to monitor a running build"],
+    });
   });
 
   it("dim text that is not a known hint is still empty (placeholder styling)", () => {

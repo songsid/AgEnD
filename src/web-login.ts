@@ -73,7 +73,7 @@ export interface IssuedLoginCode {
 }
 
 export type LoginRedeemResult =
-  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner; readonly recipient?: LoginCodeRecipient }
+  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner; readonly recipient?: LoginCodeRecipient; readonly host?: true }
   /** Wrong, expired, spent, or none issued — deliberately indistinguishable. */
   | { readonly kind: "invalid" }
   /** The breaker is open. Even a correct code is refused until it closes. */
@@ -84,6 +84,8 @@ interface Outstanding {
   readonly audience: string;
   readonly owner?: LoginCodeOwner;
   readonly recipient?: LoginCodeRecipient;
+  /** #2910 D1: issued to the host's own shell (`agend web --code`, the web token in a header) — never inferred from no owner. */
+  readonly host?: true;
   readonly code: string;
   readonly expiresAt: number;
   readonly tier: SessionTier;
@@ -101,8 +103,9 @@ export interface WebLoginCodesOptions {
 
 export class WebLoginCodes {
   private outstanding: Outstanding | null = null;
-  private failures: number[] = [];
-  private pausedUntil = 0;
+  /** Per-audience wrong-try times. A public guesser must not pause or burn a local code. */
+  private readonly failuresByAudience = new Map<string, number[]>();
+  private readonly pausedUntilByAudience = new Map<string, number>();
   private readonly now: () => number;
   private readonly generate: () => string;
   private readonly onEvent: (event: "issued" | "spent" | "burned" | "breaker-open") => void;
@@ -118,12 +121,14 @@ export class WebLoginCodes {
    * `epoch` is the current web token's (`tokenEpoch`): rotating the token — from this process or from
    * `agend web-token rotate` in another — withdraws an unused code, because redemption re-checks it.
    */
-  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient }): IssuedLoginCode {
+  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient; host?: true }): IssuedLoginCode {
     const code = this.generate();
     const tier = opts.tier ?? "admin";
     const expiresAt = this.now() + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
     this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner,
+      // #2910 D1: a host code is the shell's own: an admin code for this computer, sent to no account.
+      ...(opts.host && !opts.owner && !opts.recipient && tier === "admin" && (opts.audience ?? "local") === "local" ? { host: true as const } : {}),
       // #1827: an owner is also who the code went to; a recipient alone is recognition only.
       ...(opts.owner || opts.recipient ? { recipient: opts.recipient ?? { adapterId: opts.owner!.adapterId, userId: opts.owner!.userId, ...(opts.owner!.username ? { username: opts.owner!.username } : {}) } } : {}) };
     this.onEvent("issued");
@@ -131,8 +136,8 @@ export class WebLoginCodes {
   }
 
   /** #1570: how long redemption stays paused by the breaker (0 when it is closed). A code request is refused meanwhile. */
-  pausedForMs(): number {
-    return Math.max(0, this.pausedUntil - this.now());
+  pausedForMs(audience = "local"): number {
+    return Math.max(0, (this.pausedUntilByAudience.get(audience) ?? 0) - this.now());
   }
 
   /** Whether a redemption right now would be compared against anything. */
@@ -156,7 +161,8 @@ export class WebLoginCodes {
 
   redeem(input: string, currentEpoch: string, audience = "local"): LoginRedeemResult {
     const now = this.now();
-    if (now < this.pausedUntil) return { kind: "paused", retryAfterMs: this.pausedUntil - now };
+    const pausedUntil = this.pausedUntilByAudience.get(audience) ?? 0;
+    if (now < pausedUntil) return { kind: "paused", retryAfterMs: pausedUntil - now };
 
     const provided = normalizeOneTimeCode(input);
     // Nothing typed is not a guess; it costs nothing (same as the setup page).
@@ -173,14 +179,19 @@ export class WebLoginCodes {
       return { kind: "invalid" };
     }
 
-    if (constantTimeMatches(provided, active.code) && active.audience === audience) {
+    const matches = constantTimeMatches(provided, active.code);
+    if (matches && active.audience === audience) {
       this.outstanding = null;
       this.onEvent("spent");
-      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}) };
+      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}), ...(active.host ? { host: true as const } : {}) };
     }
 
+    // Foreign-audience guesses still compare in constant time and still feed that
+    // audience's breaker; they must not consume or burn the outstanding code (#1490 row 23).
+    this.recordFailure(now, audience);
+    if (active.audience !== audience) return { kind: "invalid" };
+
     active.failures += 1;
-    this.recordFailure(now);
     if (active.failures >= MAX_LOGIN_CODE_ATTEMPTS) {
       this.outstanding = null;
       this.onEvent("burned");
@@ -194,15 +205,17 @@ export class WebLoginCodes {
     return this.outstanding;
   }
 
-  private recordFailure(now: number): void {
-    this.failures.push(now);
+  private recordFailure(now: number, audience: string): void {
     const cutoff = now - LOGIN_BREAKER_WINDOW_MS;
-    this.failures = this.failures.filter(t => t > cutoff);
-    if (this.failures.length >= LOGIN_BREAKER_THRESHOLD) {
-      this.pausedUntil = now + LOGIN_BREAKER_PAUSE_MS;
-      this.failures = [];
+    const failures = (this.failuresByAudience.get(audience) ?? []).filter(t => t > cutoff);
+    failures.push(now);
+    if (failures.length >= LOGIN_BREAKER_THRESHOLD) {
+      this.pausedUntilByAudience.set(audience, now + LOGIN_BREAKER_PAUSE_MS);
+      this.failuresByAudience.set(audience, []);
       this.onEvent("breaker-open");
+      return;
     }
+    this.failuresByAudience.set(audience, failures);
   }
 }
 

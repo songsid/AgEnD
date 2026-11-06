@@ -57,22 +57,15 @@ describe("what's new for agents, upgrading to and from 2.2.5", () => {
   });
 });
 
-// 2.3.0 (#2275): Canvas Worker effects are experimental — off unless the person turns them on — never announced as stable,
-// and never as "still beta" any more.
-describe("Canvas Worker effects are announced as experimental", () => {
-  const CW = /Canvas Worker|upload_web_effect|apply_web_effect/;
-  it("every entry that names Canvas Worker effects or their tools says they are experimental and off unless turned on", () => {
-    const named = AGENT_WHATS_NEW.filter(x => CW.test(x.text));
-    expect(named.map(e => e.id), "the entries that name them (the check below runs on each)").toEqual(["2.3-web-appearance-topic", "2.3-web-settings-for-the-user"]);
-    for (const e of named) expect([/experimental — off unless the person turns them on/.test(e.text), /still beta/.test(e.text)], e.id).toEqual([true, false]);
-  });
-  it("the enabled 2.2.1 → 2.2.5 notice calls them experimental, never stable or beta", () => {
-    // #2800: told on the release that has them (2.2.5); a later release supersedes them.
-    const plan = planWhatsNew({ record: { announced: idsUpTo("2.2.1") }, fresh: false, version: "2.2.5", canvasWorker: true });
+// #2799: Canvas Worker effects were removed — no entry names them or their tools any more.
+describe("Canvas Worker effects are not announced", () => {
+  it("no entry names Canvas Worker effects or their tools, and a 2.2.1 → 2.2.5 notice says nothing of them", () => {
+    const CW = /Canvas Worker|upload_web_effect|apply_web_effect|export_web_mod|propose_web_mod/;
+    expect(AGENT_WHATS_NEW.filter(x => CW.test(x.text)).map(e => e.id)).toEqual([]);
+    expect(AGENT_WHATS_NEW.filter(x => (x.tools ?? []).some(t => CW.test(t))).map(e => e.id)).toEqual([]);
+    const plan = planWhatsNew({ record: { announced: idsUpTo("2.2.1") }, fresh: false, version: "2.2.5" });
     const notice = plan && "notice" in plan ? plan.notice : "";
     expect(notice).toContain("AgEnD is now 2.2.5");
-    const lines = notice.split("\n").filter(l => /Canvas Worker/.test(l));
-    expect(lines.length, "both lines that name them are in the notice").toBe(2);
-    for (const line of lines) expect([/experimental/.test(line), /still beta|stable/.test(line)]).toEqual([true, false]);
+    expect(notice).not.toMatch(CW);
   });
 });

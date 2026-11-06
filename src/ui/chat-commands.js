@@ -24,10 +24,11 @@ const BY_NAME = new Map(CHAT_COMMANDS.map((c) => [c.name, c]));
  * The palette for a draft: null when it is not one (no leading "/", or past the command's name), else the commands
  * whose name starts with what was typed (possibly none: then it goes as a message).
  */
-export function paletteFor(draft) {
+export function paletteFor(draft, allowed) {
   const m = /^\/([a-z]*)$/.exec(draft || "");
   if (!m) return null;
-  return CHAT_COMMANDS.filter((c) => c.name.startsWith(m[1]));
+  // #2855: a guest's palette — only the commands the fleet says it may run on this agent (its status frame's `commands`).
+  return CHAT_COMMANDS.filter((c) => c.name.startsWith(m[1]) && (!allowed || allowed.includes(c.name)));
 }
 
 /** `/name args` for a known command → { command, args }; anything else (unknown, not a command) → null. */

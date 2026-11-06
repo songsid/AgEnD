@@ -21,7 +21,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Admission BEFORE Pages changes: only main deploys, and only a commit that contains what installer-live names (the
+  # last deployed one). So Pages and its raw fallback (installer-live, moved by mark-live) never disagree about the
+  # deployed installer. To roll back, revert on main and let that deploy: an older commit is refused here.
+  admit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Only main deploys
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          [ "$REF" = refs/heads/main ] || { echo "Deploy Website runs from main only (got $REF)." >&2; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Forward from the last deployed commit
+        env:
+          DEPLOYED: ${{ github.sha }}
+        run: bash scripts/ci/mark-installer-live.sh --check "$DEPLOYED"
+
   build:
+    needs: admit
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -56,8 +78,27 @@ jobs:
       - id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
 
+  # The installer's second source: when a network blocks *.github.io, install.ps1, install-agend.ps1 and the resume after
+  # a restart fetch the same files from raw.githubusercontent.com at the branch `installer-live` (a moving ref is a
+  # branch: a moving tag breaks `git fetch --tags` in older clones). It moves only here: after
+  # Pages deployed this commit from main, and only forward. So it always names what Pages serves, never main's tip
+  # (main can hold reviewed but undeployed installer changes while this workflow is held).
+  mark-live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Move the installer-live branch to the deployed commit
+        env:
+          DEPLOYED: ${{ github.sha }}
+        run: bash scripts/ci/mark-installer-live.sh "$DEPLOYED"
+
   notify:
-    needs: [build, deploy]
+    needs: [admit, build, deploy, mark-live]
     if: always()
     runs-on: ubuntu-latest
     permissions: {}

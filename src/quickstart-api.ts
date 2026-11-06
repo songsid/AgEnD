@@ -509,7 +509,7 @@ function validateWebOnlyInput(input: Partial<WizardPlanInput> & { token?: unknow
  * An agent's name: a path segment of its own. Only dots (`.`, `..`) are refused (#2726 review): its workspace,
  * <AGEND_HOME>/workspaces/<name>, would be the workspaces folder or AGEND_HOME itself.
  */
-function instanceNameInvalid(name: unknown): boolean {
+export function instanceNameInvalid(name: unknown): boolean {
   return typeof name !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(name) || /^\.+$/.test(name);
 }
 

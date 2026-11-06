@@ -9,7 +9,7 @@ import { execSync } from "node:child_process";
 import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry } from "./cli-entry.js";
-import { dashboardLines, dashboardPort } from "./next-steps.js";
+import { dashboardLines, dashboardPort, webOnlyConfigFile } from "./next-steps.js";
 import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 import { DEFAULT_DAILY_SUMMARY } from "./config.js";
 
@@ -809,7 +809,7 @@ export async function runSetupWizard(): Promise<void> {
     console.log(`  Start the fleet:`);
     console.log(`    ${dim("agend start")}`);
   }
-  const [where, signIn] = dashboardLines(dashboardPort(FLEET_CONFIG_PATH));
+  const [where, signIn] = dashboardLines(dashboardPort(FLEET_CONFIG_PATH), { webOnly: webOnlyConfigFile(FLEET_CONFIG_PATH) });
   console.log(`  ${bold(where)}`);
   console.log(`  ${dim(signIn)}`);
   if (channelType === "discord") {

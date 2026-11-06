@@ -26,6 +26,12 @@ export interface LoginTmux {
 export interface LoginSessionEvents {
   /** Terminal state — exactly once per session. cleanupFailed: the window could not be confirmed removed. */
   onDone(result: { ok: boolean; detail: string; cleanupFailed?: boolean }): void | Promise<void>;
+  /**
+   * M-2281: every poll's capture of the window (the same read-only capture the verdict is judged from — no keys, no
+   * copy-mode), for a live view of an installer's output. Called before the verdict, so the last call carries the
+   * final screen. Must not throw or block: a slow consumer is the consumer's problem, never the poll's.
+   */
+  onProgress?(pane: string): void;
 }
 
 export type LoginSessionState = "starting" | "done";
@@ -100,6 +106,8 @@ export class LoginSession {
   private async poll(): Promise<void> {
     if (this.finished) return;
     const pane = await this.tmux.capturePaneJoined(200).catch(() => "");
+    if (this.finished) return;
+    try { this.events.onProgress?.(pane); } catch (err) { this.logger.debug({ err: (err as Error).message }, "login progress consumer failed"); }
 
     // Success first: the pane may show the success line with the process
     // already gone (remain-on-exit), and success must win over "exited".
@@ -112,7 +120,8 @@ export class LoginSession {
     if (status && !status.alive) {
       // Exit code 0 without the success line still counts as success (some
       // CLIs clear the screen on exit); non-zero is a failure with evidence.
-      const tail = pane.trim().split("\n").slice(-3).join(" / ").slice(0, 300);
+      // The last lines the CLI printed — not the blank rows and tmux's own "Pane is dead (…)" line below them.
+      const tail = pane.split("\n").map(l => l.trim()).filter(l => l && !/^Pane is dead\b/.test(l)).slice(-3).join(" / ").slice(0, 300);
       await this.finish(status.exitCode === 0, status.exitCode === 0
         ? "clean exit"
         : `CLI exited with code ${status.exitCode}${tail ? ` — ${tail}` : ""}`);

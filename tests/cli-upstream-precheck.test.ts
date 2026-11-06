@@ -354,6 +354,49 @@ describe("#1636: a new string order is a hint for the auditor, never an exemptio
   });
 });
 
+describe("#2883: a possible neighbour reorder is annotated with evidence; the verdict and BASIS never change", () => {
+  // kiro-cli 2.35.1 → 2.36.0 (the 21:00 watch, 2026-10-30): the pool held "  Kiro rate limit reached:" then
+  // "Authentication Error"; 2.36.0 put "    q login" (the indented tail of the login-expired message) after it, read as
+  // one new rate-limit string. Spaces prove no boundary (Prism, #2883 R1/R2), so it stays MAJOR as before; the run lists
+  // each part's counts alone in both releases for the quick look.
+  const LOGIN = "Your login session has expired. Please log in again using:\n\n    q login\n\n";
+  const kiroOld = `${OLD}${T}${pad(4)}  Kiro rate limit reached:Authentication Error\nYour prompt is too long even after truncation.${pad(4)}${LOGIN}${pad(4)}`;
+  const kiroNew = `${OLD}${T}${pad(4)}  Kiro rate limit reached:    q login\n\nThe conversation history has overflowed.${pad(4)}Your login session has expired. Please log in again using:\n\n/clear Authentication Error\nYour prompt is too long even after truncation.${pad(4)}`;
+  const tail = (r: { out: string }) => r.out.trim().split("\n").slice(-2);
+  it("kiro 2.36.0's pool: still MAJOR with the same BASIS as before (hinted), annotated: each part once in each release", () => {
+    const f = files(kiroOld, kiroNew);
+    const r = run(f.old, f.neu, f.m);
+    expect(tail(r)).toEqual(["BASIS: hard=0; hinted=1", "PRECHECK: MAJOR"]);
+    expect(r.out).toContain('POSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): 1\n'
+      + '  "rate limit reached: q login"   = "rate limit reached:" (old 1, new 1) | "q login" (old 1, new 1)   — each part exists alone in both versions');
+  });
+  it("Prism R1/R2: an old question's head + spaces + an old fragment (plain or indented, 2 or 4 spaces, UTF-8 or UTF-16LE) is MAJOR", () => {
+    for (const frag of ["remove all files?", "    remove all files?"]) {
+      const old = `${OLD}${T}${pad(4)}Do you want to proceed: keep current settings?${pad(3000)}${frag}${pad(4)}`;
+      for (const sp of ["  ", "    "]) {
+        const f = files(old, old.replace("Do you want to proceed: keep current settings?", `Do you want to proceed:${sp}remove all files?`));
+        const r = run(f.old, f.neu, f.m);
+        expect([r.verdict, /POSSIBLE NEIGHBOUR REORDERS[^\n]*: 1/.test(r.out)], `${JSON.stringify(frag)} ${JSON.stringify(sp)}`).toEqual(["PRECHECK: MAJOR", true]);
+      }
+    }
+    const u = (x: string) => Buffer.from(x, "utf16le");
+    const oldU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed: keep current settings?"), Buffer.from(pad(3000)), u("    remove all files?"), Buffer.from(pad(4))]);
+    const newU = Buffer.concat([Buffer.from(`${OLD}${T}${pad(4)}`), u("Do you want to proceed:    remove all files?"), Buffer.from(pad(3000)), u("    remove all files?"), Buffer.from(pad(4))]);
+    const fu = files(oldU, newU);
+    expect(run(fu.old, fu.neu, fu.m).verdict).toBe("PRECHECK: MAJOR");
+  });
+  it("a part the old release never had: MAJOR, and the annotation does not say each part exists in both", () => {
+    const f = files(kiroOld, kiroNew.replace("    q login", "    upgrade your plan now to keep going"));
+    const r = run(f.old, f.neu, f.m);
+    expect([r.verdict, /\(old 0, new 1\)/.test(r.out), /each part exists alone/.test(r.out)]).toEqual(["PRECHECK: MAJOR", true, false]);
+  });
+  it("no run of spaces: nothing annotated, the #1636 rule unchanged (MAJOR, hinted)", () => {
+    const f = files(kiroOld, kiroNew.replace("Kiro rate limit reached:    q login", "Kiro rate limit reached:"));
+    const r = run(f.old, f.neu, f.m);
+    expect([...tail(r), /POSSIBLE NEIGHBOUR REORDERS[^\n]*: 0/.test(r.out)]).toEqual(["BASIS: hard=0; hinted=1", "PRECHECK: MAJOR", true]);
+  });
+});
+
 describe("a scan that could not read everything is MAJOR, whatever else it saw (P1-3, P2-2)", () => {
   const MARKERS = [T, B, R].join("\0");
   it("an unreadable directory inside the artifact", () => {

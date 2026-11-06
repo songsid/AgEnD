@@ -76,6 +76,25 @@ describe("#2246 step 3: task board cards in Needs you", () => {
   });
 });
 
+describe("#2829 configuration issues", () => {
+  it("keeps configuration under Settings, separate from unassigned cards and sign-ins", async () => {
+    const config = (file: string) => ({ id: `config:${file}`, type: "config", instance: "", reason: "config_invalid", detail: `${file}: fix YAML`, since: 1 });
+    app.appStore.set({ needs: [config("fleet.yaml"),
+      { id: "task:unassigned", type: "task", instance: "", reason: "task_blocked", detail: "Task asks you", since: 2 },
+      config("classicBot.yaml"),
+      { ...ITEMS[2] },
+    ] });
+    await mount(); await settle(4);
+    expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["Settings", "Task board (nobody assigned)", "qa-bot"]);
+    expect(p.root.querySelectorAll(".n-group").map((e: any) => e.querySelectorAll(".n-detail").map((d: any) => d.textContent)))
+      .toEqual([["fleet.yaml: fix YAML", "classicBot.yaml: fix YAML"], ["Task asks you"], []]);
+    app.appStore.set({ needs: [config("fleet.yaml"), { id: "backend:codex", type: "backend", instance: "", reason: "backend_signin", detail: "Sign in", since: 3 }] });
+    await settle(4);
+    expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["Settings", "Fleet sign-ins"]);
+    expect(reqs).toEqual([]);
+  });
+});
+
 describe("the panel renders the server's list and reads nothing itself (#1374)", () => {
   it("no request on mount, and none in two minutes open (only a display tick)", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "setInterval", "clearTimeout", "clearInterval"] });
@@ -162,6 +181,18 @@ describe("its writes are a person's", () => {
     await mount(); await settle(4);
     const items = p.root.querySelectorAll(".n-item");
     expect(items.map((i: any) => i.querySelectorAll("button").map((b: any) => b.textContent.trim()))).toEqual([["Ask General", "Myself"], [], [], ["Acknowledge"]]);
+  });
+
+  it("a missed-offline item offers Acknowledge and posts its id", async () => {
+    app.appStore.set({ needs: [{
+      id: "missed:tg:9", type: "missed", instance: "ccm", reason: "missed_offline",
+      detail: "han · Test Group · #101 · hello after restart", since: Date.now() - 3 * 3_600_000, missedId: "missed:tg:9",
+    }] });
+    answer = () => ({ acknowledged: true, message: "Acknowledged." });
+    await mount(); await settle(4);
+    expect(p.root.querySelector(".n-title strong")?.textContent).toBe("Missed while AgEnD was offline");
+    btn(p.root.querySelector(".n-item"), "Acknowledg").click(); await settle(4);
+    expect(reqs).toEqual([{ method: "POST", url: "/ui/needs/ack", body: { id: "missed:tg:9" } }]);
   });
 });
 
@@ -452,5 +483,23 @@ describe("#1463 review: before Chat has booted, the page's own claim — handed 
       expect(owner.state.prompts.n1?.busy).toBe(false);
       expect(fresh.claims.get().prompts).toEqual({});
     } finally { P.render(null, p.root); await settle(); vi.resetModules(); }
+  });
+});
+
+
+describe("#3047 Kiro compatibility attention", () => {
+  it("an already mounted tab receives the post-upgrade hold and keeps its actions read-only", async () => {
+    app.appStore.set({needs:[]});await mount();await settle(3);
+    expect(p.root.textContent).toContain("Nothing needs you");
+    // The open tab stays mounted while the server starts refusing the upgraded CLI.
+    app.appStore.set({needs:[{id:"kiro-choice:general:1",type:"instance",instance:"general",reason:"dialog",kiroChoice:true,since:1,
+      detail:"Kiro CLI 3.0.0 no longer supports Classic, so this agent was not started. Its saved conversation is unchanged."}]});
+    await settle(4);
+    expect(p.root.textContent).toContain("Kiro needs your decision");
+    expect(p.root.textContent).toContain("Its saved conversation is unchanged.");
+    const open=btn(p.root,"Open agent"),instructions=btn(p.root,"Migration instructions");
+    expect(open.getAttribute("href")).toBe("/ui/chat/general");
+    expect(instructions.getAttribute("href")).toBe("https://github.com/songsid/AgEnD/blob/main/src/general-knowledge/skills/kiro-engine-migration/SKILL.md");
+    expect(reqs).toEqual([]);expect(p.root.querySelectorAll(".n-item button")).toEqual([]);
   });
 });

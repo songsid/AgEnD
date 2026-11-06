@@ -26,7 +26,7 @@ import { GrokBackend } from "../src/backend/grok.js";
 /** Every transcript look goes through the scan; the hook sees each one and may act while it is in flight. */
 // `byDelivery` counts looks per delivery id: a wait an earlier test left running (its look still in flight when the test
 // ended) can outlive it, so what a test asserts about its own delivery's looks is never the global count.
-const lookHooks = vi.hoisted(() => ({ onLook: null as null | ((count: number) => void), looks: 0, done: 0, byDelivery: new Map<unknown, number>(), slowRead: false }));
+const lookHooks = vi.hoisted(() => ({ beforeLook: null as null | ((delivery: unknown) => Promise<void>), looks: 0, done: 0, held: 0, byDelivery: new Map<unknown, number>(), results: new Map<unknown, unknown>() }));
 vi.mock("../src/delivery-reconciliation.js", async importOriginal => {
   const real = await importOriginal<typeof import("../src/delivery-reconciliation.js")>();
   return {
@@ -34,13 +34,12 @@ vi.mock("../src/delivery-reconciliation.js", async importOriginal => {
     scanTranscriptForDeliveryMarker: async (...args: Parameters<typeof real.scanTranscriptForDeliveryMarker>) => {
       lookHooks.looks++;
       lookHooks.byDelivery.set(args[3], (lookHooks.byDelivery.get(args[3]) ?? 0) + 1);
-      lookHooks.onLook?.(lookHooks.looks);
-      // slowRead: yield ONE real event-loop turn after the hook fires so the scan
-      // is still in-flight when the fence takes effect. Without this, the scan
-      // completes synchronously and the proof continuation can run before the
-      // stop-during-look scenario has a chance to be exercised.
-      if (lookHooks.slowRead) await new Promise<void>(r => realSetImmediate(r));
-      try { return await real.scanTranscriptForDeliveryMarker(...args); } finally { lookHooks.done++; }
+      try {
+        if (lookHooks.beforeLook) await lookHooks.beforeLook(args[3]);
+        const result = await real.scanTranscriptForDeliveryMarker(...args);
+        lookHooks.results.set(args[3], result);
+        return result;
+      } finally { lookHooks.done++; }
     },
   };
 });
@@ -51,7 +50,7 @@ const daemons: any[] = [];
 afterEach(() => {
   // End every wait this test left open, so none keeps reading a transcript into the next test.
   for (const daemon of daemons.splice(0)) daemon.fenceDeliveryWritesForStop();
-  lookHooks.onLook = null; lookHooks.looks = 0; lookHooks.done = 0; lookHooks.byDelivery.clear(); lookHooks.slowRead = false;
+  lookHooks.beforeLook = null; lookHooks.looks = 0; lookHooks.done = 0; lookHooks.held = 0; lookHooks.byDelivery.clear(); lookHooks.results.clear();
   vi.useRealTimers();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -81,6 +80,8 @@ interface Opts {
   steer?: boolean;
   /** #2800: a what's-new notice pending for this delivery (rides in the same paste). */
   whatsNew?: string;
+  /** Installed for this delivery before dispatch; a test may hold a scan across a stop. */
+  beforeTranscriptLook?: () => Promise<void>;
 }
 
 async function deliver(opts: Opts = {}) {
@@ -141,6 +142,13 @@ async function deliver(opts: Opts = {}) {
     delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "c",
     user: "instance:source", user_id: "instance:source", message_id: "message-758", chat_id: "chat", thread_id: "", ts: new Date().toISOString(),
   };
+  if (opts.beforeTranscriptLook) {
+    lookHooks.beforeLook = async delivery => {
+      if (delivery !== row.deliveryId) return;
+      lookHooks.held++;
+      try { await opts.beforeTranscriptLook!(); } finally { lookHooks.held--; }
+    };
+  }
   if (opts.raw) {
     daemon.queueRawPaste("/compact", daemon.deliveryEpoch, false, { deliveryId: row.deliveryId, attemptNo: claimed.attemptNo, submissionMode: "raw_paste" });
   } else if (opts.steer) {
@@ -154,7 +162,7 @@ async function deliver(opts: Opts = {}) {
   const pump = async (steps: number, until: () => boolean = () => false) => {
     for (let step = 0; step < steps && !until(); step++) {
       await vi.advanceTimersByTimeAsync(1_000);
-      for (let turn = 0; turn < 2_000 && lookHooks.done < lookHooks.looks; turn++) await ioTurn();
+      for (let turn = 0; turn < 2_000 && lookHooks.done < lookHooks.looks && lookHooks.held === 0; turn++) await ioTurn();
       for (let turn = 0; turn < 3; turn++) await ioTurn();
     }
   };
@@ -171,18 +179,20 @@ async function deliver(opts: Opts = {}) {
   // has returned (successfully or not) for this delivery. Awaiting it gives
   // the test a true completion signal rather than relying on spin counts.
   let resolveProof!: () => void;
+  let proofRun: Promise<void> | null = null, proofRuns = 0;
   const proofSettled = new Promise<void>(r => { resolveProof = r; });
   const realProve = daemon.proveDeliveryFromTranscript?.bind(daemon) as ((...a: unknown[]) => Promise<void>) | undefined;
   if (realProve) {
     daemon.proveDeliveryFromTranscript = async (...args: unknown[]) => {
-      try { await realProve(...args); } finally { resolveProof(); }
+      proofRuns++;
+      try { proofRun = realProve(...args); await proofRun; } finally { resolveProof(); }
     };
   } else {
     // If the method doesn't exist (backend variant), resolve immediately.
     resolveProof();
   }
 
-  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer, proofSettled };
+  return { looks, daemon, outbox, tmux, confirmed, transcript, deliveryId: row.deliveryId, state, evidence, pump, finished, begun, notices, settleSteer, proofSettled, proofRun: () => proofRun, proofRuns: () => proofRuns };
 }
 
 describe("a readerless backend's idle delivery is proven by its transcript, not by the pane printing something (#758)", () => {
@@ -329,30 +339,29 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   });
 
   it("a stop that lands while the look that finds the marker is in flight still leaves the row to reconciliation", async () => {
-    const h = await deliver();
-    await h.begun();
-    // Install hook and slowRead BEFORE writing the marker so that the look
-    // that finds the marker always goes through onLook. Writing the marker
-    // first leaves a window where a look can find it hook-free (the race the
-    // test exists to close). looksBeforeHook is captured before the hook so
-    // any pre-hook look does not satisfy the post-hook predicate.
-    lookHooks.slowRead = true;
-    const looksBeforeHook = h.looks();
-    let stopHookFired = false;
-    lookHooks.onLook = () => { stopHookFired = true; h.daemon.fenceDeliveryWritesForStop(); };
-    // Write the marker after the hook is in place.
-    appendFileSync(h.transcript, userEntry(h.deliveryId));
-    // Pump until a look fires AFTER the hook was installed.
-    await h.pump(400, () => h.looks() > looksBeforeHook);
-    // The stop hook must have run on the new look.
-    expect(stopHookFired, "the stop hook must fire during a post-hook look").toBe(true);
-    expect(h.looks()).toBeGreaterThan(looksBeforeHook);
-    // Wait for proveDeliveryFromTranscript to actually return (scan + settlement path).
-    // This is the true completion signal; spin counts cannot guarantee this.
-    await h.proofSettled;
-    // Drain any microtasks the proof continuation may have scheduled.
-    for (let turn = 0; turn < 20; turn++) await ioTurn();
-    expect(h.state()).toBe("submission_started");
+    let enterLook!: () => void, releaseLook!: () => void;
+    const lookEntered = new Promise<void>(resolve => { enterLook = resolve; });
+    const lookReleased = new Promise<void>(resolve => { releaseLook = resolve; });
+    // Install BEFORE dispatch, including its first scan. begun() can return while that scan is
+    // already in flight; installing a hook afterwards cannot intercept it reliably.
+    const h = await deliver({ beforeTranscriptLook: async () => { enterLook(); await lookReleased; } });
+    try {
+      await h.begun();
+      await lookEntered;
+      expect(h.state()).toBe("submission_started");
+      expect(lookHooks.held).toBe(1);
+      expect(lookHooks.results.has(h.deliveryId)).toBe(false);
+      appendFileSync(h.transcript, userEntry(h.deliveryId));
+      h.daemon.fenceDeliveryWritesForStop();
+      releaseLook();
+      // The real file scan must actually find the marker, not return unavailable after teardown.
+      await h.proofSettled;
+      expect(lookHooks.results.get(h.deliveryId)).toBe("user");
+      expect(h.state()).toBe("submission_started");
+      expect(h.evidence()).toBeNull();
+      expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+      expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+    } finally { releaseLook(); }
   });
 
   it("a respawn while it waits ends the wait with today's outcome, labelled, rather than leaving the row open", async () => {
@@ -419,26 +428,33 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   });
 
   it("a persistence failure at settlement is logged and leaves the row for reconciliation — no rejection, no false completion, no re-paste", async () => {
-    const h = await deliver();
-    await h.begun();
-    const offset = statSync(h.transcript).size;
-    appendFileSync(h.transcript, userEntry(h.deliveryId));
-    const attemptNo = h.outbox.get(h.deliveryId)!.attemptNo;
-    const errors: unknown[] = [];
-    h.daemon.logger = { info() {}, warn() {}, error(e: unknown) { errors.push(e); }, debug() {}, child() { return this; } } as any;
-    const pastesBefore = h.tmux.pasteBuffer.mock.calls.length;
-    vi.spyOn(h.outbox, "complete").mockImplementation(() => { throw new Error("SQLITE_FULL: database or disk is full"); });
-    vi.useRealTimers();
-    // The detached `void` promise must resolve, never reject: a rejection escapes into an unhandledRejection fault.
-    await expect(h.daemon.proveDeliveryFromTranscript(
-      { deliveryId: h.deliveryId, attemptNo },
-      { backend: "claude-code", path: h.transcript, offset },
-    )).resolves.toBeUndefined();
-    expect(h.state()).toBe("submission_started");
-    expect(h.evidence()).toBeNull();
-    expect(errors).toHaveLength(1);
-    expect(h.notices()).toBe(0);
-    expect(h.tmux.pasteBuffer.mock.calls.length).toBe(pastesBefore);
+    let enterLook!: () => void, releaseLook!: () => void;
+    const lookEntered = new Promise<void>(resolve => { enterLook = resolve; });
+    const lookReleased = new Promise<void>(resolve => { releaseLook = resolve; });
+    const h = await deliver({ beforeTranscriptLook: async () => { enterLook(); await lookReleased; } });
+    try {
+      await h.begun(); await lookEntered;
+      const failure = new Error("SQLITE_FULL: database or disk is full"), errors: unknown[] = [];
+      h.daemon.logger = { info() {}, warn() {}, error(e: unknown) { errors.push(e); }, debug() {}, child() { return this; } } as any;
+      const complete = vi.spyOn(h.outbox, "complete").mockImplementation(() => { throw failure; });
+      appendFileSync(h.transcript, userEntry(h.deliveryId));
+      // Observe the ONE detached proof already started by delivery; invoking the private method
+      // here would create a second proof that races it and logs the same injected failure twice.
+      expect(h.proofRuns()).toBe(1);
+      const proof = h.proofRun(); expect(proof).toBeInstanceOf(Promise);
+      const resolved = expect(proof).resolves.toBeUndefined();
+      releaseLook(); await resolved; await h.proofSettled;
+      expect(lookHooks.results.get(h.deliveryId)).toBe("user");
+      expect(h.proofRuns()).toBe(1);
+      expect(complete).toHaveBeenCalledTimes(1);
+      expect(h.state()).toBe("submission_started");
+      expect(h.evidence()).toBeNull();
+      expect(errors).toEqual([expect.objectContaining({ err: failure, deliveryId: h.deliveryId,
+        attemptNo: h.outbox.get(h.deliveryId)!.attemptNo, outcome: "delivered", evidence: "transcript-marker" })]);
+      expect(h.notices()).toBe(0);
+      expect(h.tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+      expect(h.tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+    } finally { releaseLook(); }
   });
 
   it("the failure path is bounded: with no marker the wait settles uncertain after ~10 s, not a minute", async () => {

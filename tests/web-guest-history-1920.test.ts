@@ -3,7 +3,7 @@
  * - Each kept message says whether it reached the instance's channel (`channel`) and whose account wrote it (`from`),
  *   set by the code path that knows; both survive a restart; rows from before carry neither, so no guest sees them.
  * - A guest sees an in-scope instance's channel messages, its own messages, and everything in its own Telegram private
- *   room — never someone else's web-only exchange, a status line, an effect Try, or another instance.
+ *   room — never someone else's web-only exchange, a status line, or another instance.
  * - As a guest gets a message: no account ids, another person's message id or ticks; `mine` on its own.
  * - The stream, the poll, the history and the catch-up ticks follow the same rule; a message that becomes the channel's
  *   (its copy was sent) reaches the guests' streams only.
@@ -123,12 +123,6 @@ describe("what a guest sees (§5.2)", () => {
     expect(mine).toMatchObject({ mine: true, messageId: "web-1", delivery: "delivered" });
     for (const x of [mine, platform, others]) { expect(x).not.toHaveProperty("from"); expect(x).not.toHaveProperty("channel"); }
     expect([platform, others].map((x) => [x.mine ?? null, x.messageId ?? null, x.delivery ?? null])).toEqual([[null, null, null], [null, null, null]]);
-  });
-  it("an effect Try never reaches a guest", () => {
-    const { h } = hist(), g = guestOf(h);
-    const trial = { ...h.record({ instance: "a", sender: "agend", text: "", ts: ts(), role: "status", channel: true }), effectTrial: {} } as unknown as WebChatMessage;
-    expect(guestFrameData("message", trial, SCOPE, g)).toBeDefined();          // a status row marked channel by hand…
-    expect(guestHistory({ list: () => [trial] } as never, "a", 50, g, SCOPE), "…but a Try is never in its lists").toEqual([]);
   });
 });
 

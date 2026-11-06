@@ -14,7 +14,7 @@
  *   token, clears — and only if the instance is still the one that was asked about. /backend (#1806) asks the same way
  *   once its backend, model and effort are chosen.
  */
-import { commandSpec, decideCommand, type CommandScope } from "./command-table.js";
+import { commandSpec, decideCommand, type CommandChecks, type CommandScope, type Platform } from "./command-table.js";
 import { SAVE_FILENAME_RE } from "./topic-commands.js";
 
 export const WEB_COMMANDS = ["ctx", "compact", "clear", "model", "backend", "effort", "cancel", "btw", "steer", "pause", "wake", "save"] as const;
@@ -36,6 +36,8 @@ export type WebBackendAnswer =
 export interface WebCommandDeps {
   /** The instance is one the web chat may command (a fleet instance or a ClassicBot room), and in which scope. */
   scope(instance: string): CommandScope | null;
+  /** #2855: the platform the instance's channel is on (its table cell for a guest); a web-only one: Discord's. */
+  platform?(instance: string): Platform;
   ctx(instance: string): Promise<string>;
   /** Board 003648ac: `sent` — the command went; `watch` — the id its end is followed by (null: this backend's can't be seen). */
   compact(instance: string, instructions: string | undefined): Promise<{ sent: boolean; text: string; watch: string | null }>;
@@ -74,7 +76,17 @@ export interface WebCommandResult {
 
 const isWebCommand = (c: string): c is WebCommand => (WEB_COMMANDS as readonly string[]).includes(c);
 
-export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput, opts: { publicLink: boolean }): Promise<WebCommandResult> {
+/** #2855: a guest is no admin of any kind — the table allows it exactly the commands whose level is "anyone". */
+const NO_ADMIN: CommandChecks = { fleetAdmin: () => "denied", channelAdmin: () => false, classicAdmin: () => false };
+/**
+ * #2855: the web commands a guest may run on an agent — those the same table (command-table.ts) lets anyone run in that
+ * agent's kind of channel on its platform. One rule source: the palette's list (the status frame) and the run both ask it.
+ */
+export function guestWebCommands(scope: CommandScope, platform: Platform): WebCommand[] {
+  return WEB_COMMANDS.filter((c) => { const spec = commandSpec(c); return !!spec && decideCommand(spec, scope, NO_ADMIN, platform).allow; });
+}
+
+export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput, opts: { publicLink: boolean; guest?: boolean }): Promise<WebCommandResult> {
   const { instance } = input;
   const command = input.command.replace(/^\//, "");
   if (!isWebCommand(command)) return { status: 400, body: { error: deps.t("web.command_unknown", `/${command}`) } };
@@ -86,6 +98,10 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
   if (!spec) return { status: 400, body: { error: deps.t("web.command_unknown", `/${command}`) } };
   const decision = decideCommand(spec, scope, { fleetAdmin: () => "ok", channelAdmin: () => true, classicAdmin: () => true });
   if (!decision.allow) return { status: 403, body: { error: deps.t(...decision.reply) } };
+  // #2855: a guest — only what the table lets anyone run in this agent's channel (guestWebCommands).
+  if (opts.guest && !guestWebCommands(scope, deps.platform?.(instance) ?? "discord").includes(command)) {
+    return { status: 403, body: { error: deps.t("web.command_guest_refused", `/${command}`) } };
+  }
   const originalArgs = input.args ?? "";
   const args = originalArgs.trim();
   const ok = (text: string) => ({ status: 200, body: { text } });

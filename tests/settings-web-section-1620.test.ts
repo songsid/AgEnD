@@ -116,6 +116,17 @@ describe("Settings → Web, as rendered", () => {
     expect(w.webWrites().map(s => s.body)).toEqual([{ usage_report_on_public_link: true }]);
   });
 
+  it("#2911 (7): CDN libraries in previews — off by default; says plainly the requests leave this machine; ticking it stages exactly that key", async () => {
+    const w = await open({}, "web-dashboard");
+    expect(w.$("webPreviewCdn").checked).toBe(false);
+    expect(w.text()).toContain("HTML previews may load libraries from cdnjs / jsDelivr");
+    expect(w.text()).toContain("The page's scripts may load libraries from cdnjs (/ajax/libs/) and jsDelivr (/npm/); those requests leave this machine");
+    expect(w.text()).not.toMatch(/\bsafe/i);
+    await w.check(w.$("webPreviewCdn"), true);
+    await w.review(); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ preview_cdn: true }]);
+  });
+
   it("emptying a set value — or turning the terminal back on — puts it back to its default (null)", async () => {
     const w = await open({ web: { session: { local: { absolute_hours: 48, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15 } });
     expect([w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked]).toEqual(["48", "6", "15", false]);
@@ -239,6 +250,21 @@ describe("Settings → Web, as rendered", () => {
   });
 });
 
+
+describe("#2907 review (5): the Test connection uses a typed token only while it is on screen", () => {
+  it("a token typed, then the page left and reopened: the test sends no token (the saved one is used)", async () => {
+    const withHost = { web: { public_link: { hostname: "agend.example.com" } } };
+    let w = await open(withHost);
+    await w.type(w.$("publicTunnelToken"), "eyJtyped-not-saved");
+    fire(w.$("namedLinkTest"), "click"); await settle(8);
+    expect(sent.filter(s => s.path === "/api/settings/public-link/test").at(-1)?.body.token).toBe("eyJtyped-not-saved");
+    await p.unmount();
+    w = await open(withHost);
+    expect(w.$("publicTunnelToken").value).toBe("");
+    fire(w.$("namedLinkTest"), "click"); await settle(8);
+    expect("token" in (sent.filter(s => s.path === "/api/settings/public-link/test").at(-1)?.body ?? { token: 1 })).toBe(false);
+  });
+});
 
 describe("#2307 fixed public link settings and write-only token", () => {
   it.each([

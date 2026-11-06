@@ -168,10 +168,35 @@ stays stateless: AgEnD does not put HTML in the transport URL, and the listener 
 { v: 1, type: "ready",     ch: null, boot: "<listener boot id>" }
 { v: 1, type: "resize",    ch: "<id>", height: <integer> }
 { v: 1, type: "heartbeat", ch: "<id>" }
+{ v: 1, type: "error",     ch: "<id>", kind: "error" | "rejection" | "console", message: "<≤ 1000 chars>", line: <int 0…1e7>, col: <int 0…1e7> }   // #2911
+{ v: 1, type: "pick",      ch: "<id>", selector: "<≤ 1000>", text: "<≤ 1000>", x, y, w, h: <int 0…1e6> }   // #2911, only when asked
+{ v: 1, type: "pickend",   ch: "<id>" }                                                                    // #2911
 ```
 
-**Parent → frame** — exactly one message, sent only after a valid `ready` (boot matches), and only on a device that
-has opted in (§7):
+**Amendment (#2911, user OK via the leader 2026-11-02): `error`.** The prologue reports the page's uncaught errors,
+unhandled rejections and `console.error` calls: at most 50 per run, each message cut at 300 characters. The page can
+post this shape itself, so its text is the page's: untrusted. The parent validates it like every frame message (exact
+keys, kind, sizes, integers, the card's `ch`, after `render`). It records only a count (capped at 999) and the first five
+distinct errors, each collapsed to one line of at most 200 characters. It passes nothing on. The panel's errors chip
+shows the count. Only a person's click on it puts the errors in the composer: as a reply about the page, under a
+header saying the text is the page's, each error quoted, for the person to edit and send. Nothing is sent by itself.
+The listener still has no reference to the composer (§4.2); the chip reads the log through `errors(key)` and
+`onErrors(fn)`.
+
+**Amendment (#2911): pick (annotate).** The parent may also send `{ v: 1, type: "pick", ch, on: true | false }`, only
+when the person clicks **Point at it** (or cancels). The prologue takes it only from `window.parent`. While it is on,
+it outlines the hovered element, takes one click from the page (prevented, never passed on) and posts `pick` with a
+selector it built (≤ 300), the element's words (≤ 200) and its box; the mode then ends. While the mode is on, the
+page's press events (pointer/mouse/touch down and up, dblclick, contextmenu, auxclick) and that click are stopped in a
+window capture listener registered before the page's code (`stopImmediatePropagation`), so none of the page's handlers
+runs; a touch is not prevented, or the tap would make no click. Esc in the frame posts `pickend` — when the frame has
+the keyboard focus; the panel's **Cancel pointing** always ends the mode. The parent accepts one `pick` per request and drops any it did not ask for. It keeps the strings one line
+each and hands the result to its pick listeners. The panel then adds a reply about the page and one line naming the
+element ("On `<selector>` (“<words>”, text from the page): ") to the composer, where the person writes the change
+and sends it. All of it is page text: bounded, labelled, never sent by itself.
+
+**Parent → frame** — one `render`, sent only after a valid `ready` (boot matches), and only on a device that
+has opted in (§7); since #2911 also `pick` on/off at the person's request (amendment below):
 
 ```js
 { v: 1, type: "render", ch: "<per-frame random id>", html: "<the HTML, ≤ 1 MiB>" }
@@ -200,7 +225,7 @@ One `window` `message` listener for all cards:
 |---|---|
 | Source | `event.source === card.iframe.contentWindow` for a live card; otherwise dropped silently. `event.origin` must be `"null"` (the opaque sandbox), checked *in addition*, never instead. |
 | Shape | A plain object with exactly the keys above, `v === 1`, `type` in the set, `ch` equal to the card's (for `resize`/`heartbeat`), `height` a finite integer, `boot` a string. Anything else is dropped. |
-| Effect | `ready` → validate the boot id and the device's opt-in (§7), then send `render` once (or unload with a reason). `resize` → set the height (rules below). `heartbeat` → reset the watchdog. **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class). |
+| Effect | `ready` → validate the boot id and the device's opt-in (§7), then send `render` once (or unload with a reason). `resize` → set the height (rules below). `heartbeat` → reset the watchdog. `error` (#2911) → record it in that frame's error log (§4.1 amendment). **Nothing else**: the listener has no reference to `api()`, `sendMsg`, `answerPrompt`, the composer, navigation or storage, and the test plan asserts it (the Open WebUI CVE-2026-54007 class). |
 | Height | Clamp to [40, 4000] px; at most once per animation frame and 10 times per second; ignore changes < 2 px; after 5 consecutive increases within 2 s, freeze the height and let the frame scroll. |
 | Watchdog | Best effort, §8. |
 
@@ -265,6 +290,13 @@ X-Content-Type-Options: nosniff
 Cache-Control: no-store
 (no X-Frame-Options)
 ```
+
+**Amendment (#2911 item 7, approved by the leader 2026-11-02, issuecomment-6561430534 / 6561437401):** with
+`web.preview_cdn: true` (default false), `script-src`, `style-src` and `font-src` also list
+`https://cdnjs.cloudflare.com/ajax/libs/ https://cdn.jsdelivr.net/npm/` — exact origins with a path prefix, never a
+wildcard, no unpkg. Everything else above is unchanged (`connect-src 'none'` included), and off is byte-identical. The
+path is checked on the first request only (a same-host redirect could widen it). Read per `/frame` response, on the
+local listener and the public link's gateway alike. The leak class it adds is the one §1 already accepts.
 
 - `default-src 'none'` is required: directives without their own fetch directive fall back to it (CSP3 §8.6).
 - `webrtc 'block'` is forward-looking only: no browser is relied on to enforce it (§4.3).

@@ -67,6 +67,7 @@ import {
 } from "./connection-secrets.js";
 import type { ProviderSecretStatus } from "./provider-secret-registry.js";
 import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-secret-registry.js";
+import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 import {
   STATUS_EMOJI_CONFIG_KEYS, STATUS_EMOJI_SUGGESTIONS, TELEGRAM_REACTION_EMOJIS,
   builtinStatusEmojis, customEmojiValue, emojiProxyUrl, previewStatusEmojis,
@@ -90,13 +91,17 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 
 export interface SettingsApiContext extends AppShellContext {
   retryAdapterNow?(id: string): { queued: boolean; already_running?: boolean };
+  /** #2906: the fixed address's Test connection (closed step codes only; never the token). */
+  testNamedLink?(input: { hostname: unknown; port: unknown; protocol: unknown; token?: unknown; current?: () => boolean }): Promise<import("./tunnel/named-link-test.js").NamedTestResult | { busy: true }>;
   /** #1920 phase 3: Settings → Web sign-ins → Guests. */
   guestOverview?(): unknown;
   /** #2667: the ClassicBot rooms' instance names — a guest grant may name one, so a save's validation knows them. */
   classicRoomNames?(): string[];
   revokeGuestWebSessions?(owner: { adapterId: string; userId: string }): { count: number; durable: boolean };
+  /** #2855: a removed guest's own preferences go with it. */
+  forgetGuestPrefs?(owner: { adapterId: string; userId: string }): void;
   /** #2348 delta §5: one audit entry per person whose granted agents changed with a save (event log, the Log tab). */
-  noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number }): void;
+  noteGuestGrantChange?(change: { by: string | null; via: "direct" | "confirmed"; account: string; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }): void;
   /** #2348: the people AgEnD has seen in chat (the Guests picker), never a fleet admin or a bot. */
   guestPeople?(): unknown;
   /** #2348: why an account may not be granted (not seen in chat, a fleet admin, an unknown connection), or null. */
@@ -124,6 +129,12 @@ export interface SettingsApiContext extends AppShellContext {
   /** Delete an agent the way delete_instance and the chat's Delete do (FleetManager.removeInstance): stopped, its schedules
    *  and team places dropped, its fleet.yaml entry removed. Absent in unit contexts that only exercise CRUD. */
   removeInstance?(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
+  /** #3055: this instance config would bind a topic being deleted right now (by physical destination). */
+  topicBindingInFlight?(inst: { channel_id?: unknown; topic_id?: unknown }): boolean;
+  /** #3055: a topic deletion is running now (connections may not be re-pointed meanwhile). */
+  topicDeletionPending?(): boolean;
+  /** delete_instance's removal: the agent, then its own topic (by default), with the platform's answer. */
+  removeInstanceAndTopic?(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome>;
   /** Phase 2b: an operator wake that respects the warm hard cap (FleetManager.explicitWake). */
   explicitWake?(name: string, timeoutMs?: number, retryStoppedSession?: boolean): Promise<void>;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[], execution?: SettingsExecution): Promise<void>;
@@ -458,6 +469,30 @@ export function handleSettingsRequest(
     } catch {
       json(res, 409, { error: "This connection cannot be retried. Check that it is configured and the fleet is running." });
     }
+    return true;
+  }
+
+  // #2906 (the user, 2026-11-01): Settings → Access → Test connection, on the fixed-address values as filled in. Admin
+  // only and never over the public link, like the rest of Access; the typed token is read from the body once, used
+  // only in the test connector's environment, and never echoed — the answer is closed step codes.
+  if (method === "POST" && path === "/api/settings/public-link/test") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }, true); return true; }
+    const caller = guestSettingsCaller(req, url, ctx);
+    if (!caller) { json(res, 403, { error: "An admin sign-in is required" }, true); return true; }
+    if (!ctx.testNamedLink) { json(res, 501, { error: "test unavailable" }, true); return true; }
+    // #2907 review: the same admin, still current, after the body's await — and again before anything is started.
+    const current = (): boolean => guestSettingsCaller(req, url, ctx) === caller;
+    readBody(req, 16 * 1024).then(async buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      if (!current()) return json(res, 401, { error: "no longer authorized" }, true);
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }, true); }
+      if (!body || typeof body !== "object" || Array.isArray(body)) return json(res, 400, { error: "invalid body" }, true);
+      const result = await ctx.testNamedLink!({ hostname: body.hostname, port: body.origin_port, protocol: body.protocol, token: body.token, current });
+      if ("busy" in result) return json(res, 409, { error: "test_running" }, true);
+      json(res, 200, { steps: result.steps, hostname: result.hostname, port: result.port, ...(result.cleanup ? { cleanup: result.cleanup } : {}) }, true);
+    }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }, true); });
     return true;
   }
 
@@ -833,6 +868,7 @@ export function handleSettingsRequest(
       if (parsed.logTab !== undefined) { web.log_tab = parsed.logTab; changes.push({ path: ["web", "log_tab"], value: parsed.logTab }); }
       if (parsed.usageOnPublicLink !== undefined) { web.usage_report_on_public_link = parsed.usageOnPublicLink; changes.push({ path: ["web", "usage_report_on_public_link"], value: parsed.usageOnPublicLink }); }
       if (parsed.officeLevels !== undefined) { web.office_levels = parsed.officeLevels; changes.push({ path: ["web", "office_levels"], value: parsed.officeLevels }); }
+      if (parsed.previewCdn !== undefined) { web.preview_cdn = parsed.previewCdn; changes.push({ path: ["web", "preview_cdn"], value: parsed.previewCdn }); }
       if (parsed.publicLink) {
         if (Object.keys(parsed.publicLink).length) web.public_link = { ...web.public_link, ...parsed.publicLink };
         for (const [key, value] of Object.entries(parsed.publicLink)) changes.push({ path: ["web", "public_link", key], value });
@@ -896,6 +932,11 @@ export function handleSettingsRequest(
         const at = key.indexOf(":");
         try { ended.set(key, ctx.revokeGuestWebSessions?.({ adapterId: key.slice(0, at), userId: key.slice(at + 1) })?.count ?? 0); }
         catch (err) { ctx.logger.warn({ err }, "settings: could not end a removed guest's sessions"); }
+        // #2855: removed (not just emptied): the guest's own preferences go too. Its name stays for its past messages.
+        if (grant === null) {
+          try { ctx.forgetGuestPrefs?.({ adapterId: key.slice(0, at), userId: key.slice(at + 1) }); }
+          catch (err) { ctx.logger.warn({ err }, "settings: could not delete a removed guest's preferences"); }
+        }
       }
       // #2348 delta §5: every grant change is audited, widening (confirmed in General, replayed here) or narrowing (at
       // once) alike: who, how, the agents added and taken away. Agent names only; never message content. Shown under
@@ -906,8 +947,11 @@ export function handleSettingsRequest(
         for (const key of new Set([...Object.keys(was), ...Object.keys(now)])) {
           const a = new Set(Object.hasOwn(was, key) ? was[key]!.instances : []), b = new Set(Object.hasOwn(now, key) ? now[key]!.instances : []);
           const added = [...b].filter((n) => !a.has(n)), removed = [...a].filter((n) => !b.has(n));
-          if (!added.length && !removed.length) continue;
-          try { ctx.noteGuestGrantChange({ by, via, account: key, added, removed, endedSessions: ended.get(key) ?? 0 }); }
+          // #2855: a kept grant's level, when it changed (Chat ↔ Trusted).
+          const levelOf = (g: { level?: string } | undefined) => (g?.level === "trusted" ? "trusted" as const : "chat" as const);
+          const level = Object.hasOwn(was, key) && Object.hasOwn(now, key) && levelOf(was[key]) !== levelOf(now[key]) ? levelOf(now[key]) : undefined;
+          if (!added.length && !removed.length && !level) continue;
+          try { ctx.noteGuestGrantChange({ by, via, account: key, added, removed, endedSessions: ended.get(key) ?? 0, ...(level ? { level } : {}) }); }
           catch (err) { ctx.logger.warn({ err }, "settings: could not audit a guest grant change"); }
         }
       }
@@ -1342,6 +1386,14 @@ export function handleSettingsRequest(
         for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
           changes.push({ path: ["instances", name, key, nestedKey], value: nestedValue, remove: nestedValue === null });
         }
+      } else if (key === "backend_options" && value && typeof value === "object" && !Array.isArray(value)) {
+        // M-2446: per backend namespace and key, as normalizeSettingsInstancePatch merges it; null removes the key.
+        for (const [backend, options] of Object.entries(value as Record<string, unknown>)) {
+          if (!options || typeof options !== "object" || Array.isArray(options)) continue;
+          for (const [optionKey, optionValue] of Object.entries(options as Record<string, unknown>)) {
+            changes.push({ path: ["instances", name, key, backend, optionKey], value: optionValue, remove: optionValue === null });
+          }
+        }
       } else {
         changes.push({ path: ["instances", name, key], value, remove: removesInstanceOverride(key, value) });
       }
@@ -1361,6 +1413,9 @@ export function handleSettingsRequest(
     const before = validateFleet(cfg!);
     const after = validateFleet({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
+    // #3055 review r2: a topic whose agent is being deleted is going away on the platform now — binding it here would
+    // lose it. Asked at commit, by physical destination; try again once the deletion is over.
+    if (ctx.topicBindingInFlight?.(mergedInst)) { json(res, 409, { error: "topic_deletion_in_flight" }); return; }
     settingsWrite(req, () => {
       Object.defineProperty(cfg!.instances, name, { value: mergedInst, writable: true, enumerable: true, configurable: true });
       if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
@@ -1399,8 +1454,12 @@ export function handleSettingsRequest(
         // Settings → Agents → Delete, confirmed: the same removal as delete_instance — the agent stops, nothing of it is
         // left behind (schedules, team places), and its fleet.yaml entry goes.
         const execution = settingsRequestExecution(req), authorization = authorizeExplicitInstanceRemoval("dashboard-confirmed");
-        (execution ? ctx.removeInstance(name, authorization, execution) : ctx.removeInstance(name, authorization)).then(
-          () => json(res, 200, { ok: true, deleted: name, warnings: validateFleet(cfg).warnings }),
+        // …and its own topic (the user's default), as delete_instance does; the answer says whether the platform took it.
+        const removal: Promise<TopicDeleteOutcome | null> = ctx.removeInstanceAndTopic
+          ? ctx.removeInstanceAndTopic(name, authorization, { deleteTopic: true, ...(execution ? { execution } : {}) })
+          : (execution ? ctx.removeInstance(name, authorization, execution) : ctx.removeInstance(name, authorization)).then(() => null);
+        removal.then(
+          (topic) => json(res, 200, { ok: true, deleted: name, ...topicFields(name, topic), warnings: validateFleet(cfg).warnings }),
           (err: unknown) => json(res, 500, { error: (err as Error).message }));
         return true;
       }

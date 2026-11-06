@@ -234,6 +234,7 @@ describe("cross-backend skill publishing", () => {
       .filter(name => !name.startsWith("."))
       .sort();
     expect(published).toEqual([
+      "concepts",   // concepts and definitions: the agents' built-in role reference
       "cross-instance-messaging",
       "model-discovery",
       "persona-emoji",

@@ -3,10 +3,11 @@
 // ↑↓ and Enter, Esc or a click outside to close; filters folded under one toggle. A chat row still in the agent's
 // history opens there, at the message (#m=); anything else — a chat row that has left the history, a message between
 // agents, a task — opens here as the index's copy (GET /ui/search/context). Text only: no innerHTML, no style attribute.
+// #2855: a trusted guest's — the chats it can see only (the server's rule): no settings, teams, sources or "only mine".
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
-import { appStore, useStore } from "/assets/app-store.js";
+import { appStore, guestPage, useStore } from "/assets/app-store.js";
 import { navigate } from "/assets/app-nav.js";
 import { chatPath, fleetPath } from "/assets/app-route.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
@@ -28,6 +29,8 @@ register("search", {
     building: "Still indexing — some older results may be missing.",
     limited: "Words of 1–2 characters alone search the newest 5,000 entries only — add a longer word to search everything.",
     unavailable: "Search is off or not available (web.search in fleet.yaml).", busy: "Search is busy — try again in a moment.",
+    guestPlaceholder: "Search your chats…", guestHint: "Find something said in the chats you can see: a word or two. Short words (1–2 characters) work too.",
+    tooMany: "Too many searches. Try again in {0} seconds.",
     signedOut: "Signed out — sign in again to search.", failed: "Search failed — try again.",
     keys: "↑↓ move · Enter open · Esc close", results: "Results", back: "Results",
     gone: "This message is no longer in the chat's history — this is the copy kept by search.",
@@ -47,6 +50,8 @@ register("search", {
     building: "索引仍在建立中，較舊的結果可能還沒出現。",
     limited: "只有 1–2 個字的短詞時，只會搜尋最新的 5,000 筆；加上較長的詞即可搜尋全部。",
     unavailable: "搜尋已關閉或無法使用（fleet.yaml 的 web.search）。", busy: "搜尋忙碌中，請稍後再試。",
+    guestPlaceholder: "搜尋你的聊天…", guestHint: "找你看得到的聊天裡說過的事：輸入一兩個詞。1–2 個字的短詞也可以。",
+    tooMany: "搜尋太多次了，請 {0} 秒後再試。",
     signedOut: "已登出，請重新登入後再搜尋。", failed: "搜尋失敗，請再試一次。",
     keys: "↑↓ 移動 · Enter 開啟 · Esc 關閉", results: "結果", back: "結果",
     gone: "這則訊息已不在聊天紀錄中，以下是搜尋保留的副本。",
@@ -144,7 +149,10 @@ export function jumpToMessage(instance, key, w = window) {
   w.dispatchEvent(new Event("hashchange"));
 }
 
-const errorText = (status) => (status === 404 ? t("search.unavailable") : status === 503 ? t("search.busy") : status === 401 ? t("search.signedOut") : t("search.failed"));
+const errorText = (status, retryS) => (status === 404 ? t("search.unavailable") : status === 503 ? t("search.busy") : status === 401 ? t("search.signedOut")
+  : status === 429 ? t("search.tooMany", retryS || 60) : t("search.failed"));
+/** #2855: a refused guest search's "try again in" (seconds), from its answer. */
+const retryOf = async (r) => { try { const b = await r.json(); return { error: b && b.error, s: Number(b && b.retry_after_s) || 0 }; } catch { return { error: null, s: 0 }; } };
 
 /** #2347 §6: how many settings the dialog lists above the messages (the Settings page's own search lists them all). */
 const SETTINGS_SHOWN = 5;
@@ -154,7 +162,8 @@ export function SearchDialog({ preset = {}, onClose }) {
   const app = useStore(appStore);
   const names = useStore(namesStore);
   const [q, setQ] = useState(preset.q || "");
-  const [f, setF] = useState({ instance: preset.instance || "", team: "", since: "any", sources: [...SOURCES], mine: false });
+  const guest = guestPage();
+  const [f, setF] = useState({ instance: preset.instance || "", team: "", since: "any", sources: guest ? ["chat"] : [...SOURCES], mine: false });
   const [showFilters, setShowFilters] = useState(!!preset.instance);
   const [teams, setTeams] = useState(null);
   const [res, setRes] = useState({ status: "idle" });
@@ -193,8 +202,15 @@ export function SearchDialog({ preset = {}, onClose }) {
     const ac = typeof AbortController === "function" ? new AbortController() : null;
     const timer = setTimeout(async () => {
       try {
-        const r = await fetch(url, { headers: { Accept: "application/json" }, ...(ac ? { signal: ac.signal } : {}) });
+        const ask = () => fetch(url, { headers: { Accept: "application/json" }, ...(ac ? { signal: ac.signal } : {}) });
+        let r = await ask();
         if (mine !== seq.current) return;
+        if (r.status === 429) {
+          // #2855: a guest's searches run one at a time — the one before this may still be finishing: once more, shortly.
+          const why = await retryOf(r);
+          if (why.error === "guest_search_running") { await new Promise((ok) => setTimeout(ok, 400)); if (mine !== seq.current) return; r = await ask(); if (mine !== seq.current) return; }
+          if (r.status === 429) { const again = why.error === "guest_search_running" ? await retryOf(r) : why; setRes({ status: "error", error: errorText(429, again.s) }); return; }
+        }
         if (!r.ok) { setRes({ status: "error", error: errorText(r.status) }); return; }
         const body = await r.json();
         if (mine !== seq.current) return;
@@ -209,7 +225,7 @@ export function SearchDialog({ preset = {}, onClose }) {
 
   // Teams, once the filters are first shown.
   useEffect(() => {
-    if (!showFilters || teams) return;
+    if (guest || !showFilters || teams) return;
     fetch("/ui/teams", { headers: { Accept: "application/json" } }).then(r => (r.ok ? r.json() : { teams: {} })).then(
       (b) => setTeams(Object.keys((b && b.teams) || {}).sort()), () => setTeams([]));
   }, [showFilters, teams]);
@@ -219,9 +235,9 @@ export function SearchDialog({ preset = {}, onClose }) {
   // While a new query runs, the last answer stays (dimmed) rather than flashing empty.
   const groups = useMemo(() => groupHits(res.hits || []), [res]);
   // #2347 §6: the settings matching the query, from the page's own registry (no request), above the messages.
-  const settings = useMemo(() => (q.trim() ? searchSettings(q).slice(0, SETTINGS_SHOWN) : []), [q]);
+  const settings = useMemo(() => (q.trim() && !guest ? searchSettings(q).slice(0, SETTINGS_SHOWN) : []), [q]);
   const flat = useMemo(() => [...settings.map((entry) => ({ setting: entry })), ...flatHits(groups)], [settings, groups]);
-  const activeFilters = (f.instance ? 1 : 0) + (f.team ? 1 : 0) + (f.since !== "any" ? 1 : 0) + (f.sources.length < SOURCES.length ? 1 : 0) + (f.mine ? 1 : 0);
+  const activeFilters = (f.instance ? 1 : 0) + (f.team ? 1 : 0) + (f.since !== "any" ? 1 : 0) + (!guest && f.sources.length < SOURCES.length ? 1 : 0) + (f.mine ? 1 : 0);
 
   // The active row stays in view.
   useEffect(() => {
@@ -239,7 +255,7 @@ export function SearchDialog({ preset = {}, onClose }) {
     // Any failure — the request, or a body that is not JSON — ends as an error, never "Loading…" for good.
     fetch(`/ui/search/context?key=${encodeURIComponent(hit.key)}`, { headers: { Accept: "application/json" } })
       .then(async (r) => {
-        if (!r.ok) { setDetail(d => (d && d.hit === hit ? { hit, status: "error", error: r.status === 404 ? t("search.notFound") : errorText(r.status) } : d)); return; }
+        if (!r.ok) { const s = r.status === 429 ? (await retryOf(r)).s : 0; setDetail(d => (d && d.hit === hit ? { hit, status: "error", error: r.status === 404 ? t("search.notFound") : errorText(r.status, s) } : d)); return; }
         const body = await r.json();
         setDetail(d => (d && d.hit === hit ? { hit, status: "ok", ctx: body } : d));
       })
@@ -266,7 +282,7 @@ export function SearchDialog({ preset = {}, onClose }) {
     <div class="search-box">
       <div class="search-head">
         <${Icon} name="search" />
-        <input ref=${input} class="search-input" type="search" value=${q} placeholder=${t("search.placeholder")} aria-label=${t("search.label")}
+        <input ref=${input} class="search-input" type="search" value=${q} placeholder=${t(guest ? "search.guestPlaceholder" : "search.placeholder")} aria-label=${t("search.label")}
           role="combobox" aria-expanded=${flat.length && !detail ? "true" : "false"} aria-controls="search-results" aria-autocomplete="list"
           aria-activedescendant=${activeId} autocomplete="off" spellcheck=${false} enterkeyhint="search"
           onInput=${(e) => { setQ(e.target.value); setDetail(null); }} />
@@ -288,24 +304,24 @@ export function SearchDialog({ preset = {}, onClose }) {
           ${["any", "day", "week", "month"].map(k => html`<button type="button" class=${`chip-btn${f.since === k ? " on" : ""}`} aria-pressed=${f.since === k ? "true" : "false"}
             onClick=${() => setFilter({ since: k })}>${k === "any" ? t("search.anyTime") : t(`search.${k}`)}</button>`)}
         </div>
-        <div class="search-chips" role="group" aria-label=${t("search.sources")}>
+        ${guest ? null : html`<div class="search-chips" role="group" aria-label=${t("search.sources")}>
           ${SOURCES.map(s => html`<button type="button" class=${`chip-btn${f.sources.includes(s) ? " on" : ""}`} aria-pressed=${f.sources.includes(s) ? "true" : "false"}
             onClick=${() => toggleSource(s)}>${t(`search.src_${s}`)}</button>`)}
           <label class="search-mine"><input type="checkbox" checked=${f.mine} onChange=${(e) => setFilter({ mine: e.target.checked })} />${t("search.mine")}</label>
-        </div>
+        </div>`}
       </div>` : null}
       <div class="search-body" ref=${list}>
         ${detail ? html`<${Detail} detail=${detail} q=${q} label=${label} onBack=${() => { setDetail(null); input.current && input.current.focus(); }} onClose=${onClose} />`
-          : html`<${Results} q=${q} res=${res} groups=${groups} settings=${settings} active=${active} setActive=${setActive} open=${open} label=${label} filtered=${activeFilters > 0}
+          : html`<${Results} guest=${guest} q=${q} res=${res} groups=${groups} settings=${settings} active=${active} setActive=${setActive} open=${open} label=${label} filtered=${activeFilters > 0}
               recent=${recent} pick=${(s) => { recordEdit(input.current); setQ(s); input.current && input.current.focus(); }} clearRecent=${() => { forgetRecent(); setRecent([]); }} />`}
       </div>
       <div class="search-foot" aria-hidden="true">${t("search.keys")}</div>
     </div></dialog>`;
 }
 
-function Results({ q, res, groups, settings = [], active, setActive, open, label, filtered, recent, pick, clearRecent }) {
+function Results({ guest = false, q, res, groups, settings = [], active, setActive, open, label, filtered, recent, pick, clearRecent }) {
   if (!q.trim()) {
-    return html`<div class="search-empty"><p class="search-hint">${t("search.hint")}</p>
+    return html`<div class="search-empty"><p class="search-hint">${t(guest ? "search.guestHint" : "search.hint")}</p>
       ${recent.length ? html`<div class="search-recent"><div class="search-recent-head"><span>${t("search.recent")}</span>
         <button type="button" class="chip-btn" onClick=${clearRecent}>${t("search.clearRecent")}</button></div>
         <ul>${recent.map(s => html`<li><button type="button" class="search-recent-item" onClick=${() => pick(s)}><${Icon} name="clock" size=${14} /><span>${s}</span></button></li>`)}</ul></div>` : null}</div>`;

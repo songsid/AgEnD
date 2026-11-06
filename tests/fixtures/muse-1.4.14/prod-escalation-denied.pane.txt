@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.14
+
+❯ do it
+
+◆ Ran echo hi — denied
+  └ unsandboxed execution requires human approval, but approval prompts are disabled
+
+◆ mock reply ok
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · /home/u/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

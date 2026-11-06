@@ -19,7 +19,6 @@
  * after it.
  */
 import { randomBytes } from "node:crypto";
-import { effectTrialOffer, type EffectTrialOffer } from "./web-effect-trials.js";
 import { webTextLinks, type TextLink } from "./topic-link.js";
 import { WEB_REACTIONS_MAX, webReactionsOf } from "./web-reactions.js";
 
@@ -102,8 +101,6 @@ export interface WebChatMessage {
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
   buttons?: WebChatButtons;
-  /** #1629: host display metadata only; volatile and never restored from disk. */
-  effectTrial?: Readonly<EffectTrialOffer>;
   /**
    * A person's click on a reply button (user messages only): the page shows the button's label as a chip instead of
    * `text` — the line the agent was given, value and all. `of`: the buttons' set id, to link to the reply (live only).
@@ -370,7 +367,7 @@ export class WebChatHistory {
 
   private persist(instance: string): void {
     if (!this.store) return;
-    this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).filter(m => !m.effectTrial).map((m) => this.stored(m)));
+    this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).map((m) => this.stored(m)));
   }
 
   /** #1565: a message as kept on disk: no buttons, no delivery, no message id; a file with the path it is served from. */
@@ -468,10 +465,14 @@ export class WebChatHistory {
    * shown in a channel or the web chat; a cross-instance line is never one), restored history included. Null when none
    * is kept.
    */
-  lastAgentReply(instance: string): string | null {
+  lastAgentReply(instance: string, opts: { channel?: boolean } = {}): string | null {
     const slot = this.byInstance.get(instance);
     if (!slot) return null;
-    for (let i = slot.messages.length - 1; i >= 0; i--) if (slot.messages[i]!.role === "agent") return slot.messages[i]!.ts;
+    // #2855 `channel`: only a reply that reached the channel — what any guest of it can see (its sidebar's "Recent").
+    for (let i = slot.messages.length - 1; i >= 0; i--) {
+      const m = slot.messages[i]!;
+      if (m.role === "agent" && (!opts.channel || m.channel === true)) return m.ts;
+    }
     return null;
   }
 
@@ -479,8 +480,8 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; effectTrial?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
-    return this.recordEntry(msg, null);
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; role?: string; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+    return this.recordEntry(msg);
   }
 
   /**
@@ -489,14 +490,7 @@ export class WebChatHistory {
    */
   reserve(): number { return this.nextId++; }
 
-  /** Host-only producer seam. Generic records cannot promote sender/role strings into a Try action. */
-  recordEffectTrial(instance: string, offer: unknown, ts: string): WebChatMessage | null {
-    const trial = effectTrialOffer(offer);
-    if (typeof instance !== "string" || !instance.length || instance.length > 128 || !trial) return null;
-    return this.recordEntry({ instance, sender: "agend", role: "status", text: "", ts }, trial);
-  }
-
-  private recordEntry(msg: Parameters<WebChatHistory["record"]>[0], trial: ReturnType<typeof effectTrialOffer>): WebChatMessage {
+  private recordEntry(msg: Parameters<WebChatHistory["record"]>[0]): WebChatMessage {
     // #1774: a reserved place (this boot's, not yet used) — else the next. A late one is recorded where it was reserved,
     // and counts as seen now (seenSeq): a cursor handed out while it waited moves past it, and is still sent it.
     const reserved = typeof msg.reserved === "number" && Number.isSafeInteger(msg.reserved) && msg.reserved > 0 && msg.reserved < this.nextId
@@ -515,7 +509,6 @@ export class WebChatHistory {
     };
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
-    if (trial) entry.effectTrial = trial;
     const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
     if (click) entry.click = click;
     // #1990: only a status line (the server's own text) links; never an agent's or a person's message.
@@ -842,6 +835,26 @@ function drawnSize(a: { width?: unknown; height?: unknown }): { width?: number; 
 }
 
 /** `Last-Event-ID` as `<boot>-<id>`, or null when absent or not that shape. */
+/**
+ * M-2260 (the user, hmsg-16c13410): a page left open for half a day caught up by reading every message it missed in ONE
+ * /ui/poll answer — up to replayMax across every agent, megabytes of replies — which a slow link (WSL's relay, a tunnel)
+ * could not bring within the page's poll limit; the answer was dropped and asked for again from the same cursor, so the
+ * chat stayed where it was ("Loading what is open now…") while F5 showed the newest at once. A catch-up now carries
+ * only the newest messages within this budget (at least one), and says when it left older ones out (`truncated`): the
+ * page then reads its chats' newest history as a reload would. A quiet page's empty cursor (#1577's "fresh" read: all
+ * that is retained) is bounded the same way.
+ */
+export const CATCH_UP_MAX = { messages: 100, bytes: 128 * 1024 } as const;
+export function catchUpWindow<T>(messages: readonly T[], max: { messages: number; bytes: number } = CATCH_UP_MAX): { messages: T[]; truncated: boolean } {
+  let bytes = 0, from = messages.length;
+  while (from > 0 && messages.length - from < max.messages) {
+    const size = Buffer.byteLength(JSON.stringify(messages[from - 1]));
+    if (from < messages.length && bytes + size > max.bytes) break;
+    bytes += size; from--;
+  }
+  return from === 0 ? { messages: [...messages], truncated: false } : { messages: messages.slice(from), truncated: true };
+}
+
 export function parseLastEventId(header: string | string[] | undefined): { boot: string; id: number } | null {
   const raw = (Array.isArray(header) ? header[0] : header)?.trim();
   const m = raw === undefined ? null : /^([0-9a-f]{1,32})-(\d{1,15})$/.exec(raw);

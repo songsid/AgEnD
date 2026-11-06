@@ -82,7 +82,7 @@ describe("fleet process errors (#2191)", () => {
     expect(callbacks).toHaveLength(1);
     for (const callback of callbacks) {
       const body = callback.getText(parsed);
-      expect(body.indexOf("installFleetProcessHandlers({")).toBeLessThan(body.indexOf("await fm.startAll("));
+      expect(body.indexOf("installFleetProcessHandlers({")).toBeLessThan(body.indexOf("await startFleetOrExit("));
       expect(body).not.toContain('process.on("unhandledRejection"');
       expect(body).not.toContain('process.on("uncaughtException"');
     }

@@ -45,7 +45,7 @@ describe("Telegram command-menu registration", () => {
 
     await commands.registerBotCommands();
 
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     const payloads = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
     const fleetPayloads = payloads.filter(p => p.scope.type === "chat" || p.scope.type === "chat_administrators");
     expect(fleetPayloads.map(p => p.scope.type)).toEqual(["chat", "chat_administrators"]);
@@ -65,10 +65,10 @@ describe("Telegram command-menu registration", () => {
       expect(payload.commands.find((c: { command: string }) => c.command === "restart")?.description)
         .toContain("full");
     }
-    // The ClassicBot list on default and all_group_chats (#1191); no /effort, which Telegram ClassicBot does not handle.
-    for (const scope of ["default", "all_group_chats"]) {
-      expect(payloads.find(p => p.scope.type === scope).commands.map((c: { command: string }) => c.command), scope)
-        .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "backend", "pause", "wake", "ctx"]);
+    // #2870: the broad scopes are emptied (no menu for strangers); the ClassicBot list goes only to its own chats
+    // (telegram-classic-menu-1191.test.ts).
+    for (const scope of ["default", "all_private_chats", "all_group_chats"]) {
+      expect(payloads.find(p => p.scope.type === scope).commands, scope).toEqual([]);
     }
     expect(info).toHaveBeenCalledWith(
       expect.objectContaining({ adapterId: "telegram-main", fleetCommandCount: 23, classicCommandCount: 11 }),
@@ -103,8 +103,8 @@ describe("Telegram command-menu registration", () => {
     await commands.registerBotCommands();
 
     // Each scope is independent: a rejected fleet-chat scope must not prevent
-    // AgEnD from attempting to refresh the administrator and Classic menus.
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    // AgEnD from attempting to refresh the administrator scope and empty the broad ones.
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(info).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({

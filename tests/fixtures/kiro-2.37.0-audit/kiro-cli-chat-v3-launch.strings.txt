@@ -1,0 +1,38 @@
+# kiro-cli-chat: the Kiro CLI 3.0 launch machinery new in 2.37.0 (printable bytes; other bytes shown as '.').
+# Read statically from the release tarballs; no kiro binary was run.
+
+## 2.36.0 kiro-cli-chat sha256 644f2354f56795dc1e730720ac6a8458201a9568fd5976cea37366b9ee75d761
+count 'Kiro CLI 3.0 is here': 0
+count 'Stay on V2, remind me later': 0
+count 'Keep V2': 0
+count 'no longer runs Classic': 0
+count 'no longer includes Classic': 0
+count 'V2 no longer receives new features': 0
+count 'v3_launch_prompt.rs': 0
+count 'chat.launch30': 0
+count 'v3Launch.existingUser': 0
+count 'launch_notice': 0
+count 'Kiro CLI 3.0 launches at the end of October': 1
+
+## 2.37.0 kiro-cli-chat sha256 ca82b4b38aa880a47bedb24e6a759dd1951de6dabf8063687b73b25c22ef6da1
+count 'Kiro CLI 3.0 is here': 3
+count 'Stay on V2, remind me later': 1
+count 'Keep V2': 2
+count 'no longer runs Classic': 1
+count 'no longer includes Classic': 1
+count 'V2 no longer receives new features': 1
+count 'v3_launch_prompt.rs': 8
+count 'chat.launch30': 2
+count 'v3Launch.existingUser': 1
+count 'launch_notice': 4
+count 'Kiro CLI 3.0 launches at the end of October': 1
+
+### 2.37.0 window: Stay on V2, remind me later
+owIdparentSessionIdturnActivepausedWorkflowsKIRO_COVERAGEKIRO_COVERAGE_WRAPPERKIRO_COVERAGE_DIR(no question text)package_nameevent crates/chat-cli/src/launch.rs:377failed to emit startup-failure telemetryevent crates/chat-cli/src/launch.rs:358failed to emit startup-duration telemetryevent crates/chat-cli/src/launch/v3_launch_prompt.rs:197chat_cli::launch::v3_launch_promptcrates/chat-cli/src/launch/v3_launch_prompt.rsStay on V2, remind me laterStay on V2, don't ask againSwitch to V3Keep V2event crates/chat-cli/src/launch/v3_launch_prompt.rs:327Kiro CLI 3.0 is here. The new V3 agent brings workflows, simplified permissions, cloud sessions, sandbox, specs, and more. Learn more: https://kiro.dev/docs/cli/v3/V2 no longer receives new features and will be removed in January.event crates/chat-cli/src/launch/v3_launch_prompt.rs:310event crates/chat-cli/src/launch
+
+### 2.37.0 window: no longer runs Classic
+i/mod.rs:837chat_cli::clicrates/chat-cli/src/cli/mod.rsevent crates/chat-cli/src/cli/mod.rs:979event crates/chat-cli/src/cli/mod.rs:922tui_availablehost_chat_enteredhost_profile_resolvedhost_cleanup_completeKiro CLI 3.0 no longer runs Classic (the v1 engine), so this run ignores the Classic selection.host_engine_resolvedlaunch decisionTUI assets not available, falling back to legacy UIThe TUI is currently not supported for the current platform.--cloud/--repo
+
+### 2.37.0 window: launch_notice for the 3.0 launch notice
+d: counter.    unit: "1".    priority: P1.    temporality: delta.    attributes: [version_full, agent_engine, outcome, via, entry].    cloudwatch_dimensions: [version_full, agent_engine, outcome, via, entry].  - name: kiro_cli_v3_prompt_total.    description: Decision points of the prompts that move users to 3.0, grouped by outcome (switch, switch_failed when the launch could not be moved onto 3.0, snooze, dismiss, exit when the user quit the 3.0 launch Classic prompt, or suppressed by a prior choice) and by v3_prompt_source (ease_in for users on the 2.0 default, classic for the nudge before a Classic session, launch for the 3.0 launch prompt to existing V2 users who never pinned an engine, launch_notice for the 3.0 launch notice to users who pinned V2 themselves, where dismiss means Keep V2; a launch switch_failed means V3 could not be saved, so that launch still runs on the V3 default and the next launch asks again; the Classic nudge has no dismiss; in 3.0 launch mode a classic switch on a machine that cannot run 3.0 moves the user to 2.0, not 3.0). Records from clients that predate v3_prompt_source form a separate series without that dimension and are all ease_in, so union it in when grouping by source. A classic switch does not stop a launch that passes --agent-engine v1 from reaching the nudge again, so classic outcomes count launches, not distinct users. Suppressed fires on every eligible launch a prior snooze
+

@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.312
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/han/.cache/cc312-audit/w/p312
+
+
+❯ hello from the audit
+
+● mock reply 4
+
+✻ Churned for 0s · done 10:39 PM
+
+❯ SLOW turn please
+
+●
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✢ Whisking… (2s · ↓ 6 tokens)
+  ⎿  Tip: Start with small features or bug fixes, tell Claude to propose a plan, and verify its suggested edits
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ queued while busy MARKQ
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

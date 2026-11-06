@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readAgentFile, writeAgentFile } from "../src/agent-file-read.js";
-import { readAgentEffect } from "../src/web-effect-upload.js";
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
 function fixture(part = "workspaces/alpha-home") {
@@ -25,7 +24,6 @@ describe("#2131 exclusively configured workspace names", () => {
       for (const file of ["portrait.webp", "web-assets/banner.webp"]) {
         expect(await f.read(absolute ? join(f.workspace, file) : file, launch)).toMatchObject({ ok: true, bytes: Buffer.from("asset") });
       }
-      expect(await readAgentEffect(absolute ? join(f.workspace, "effect") : "effect", { ...f.opts, ...launch })).toMatchObject({ ok: true });
       const written = await writeAgentFile("ordinary-output", "sample.svg", Buffer.from("asset"), { ...f.opts, ...launch });
       expect(written).toMatchObject({ ok: true }); if (written.ok) expect(await f.read(written.path, launch)).toMatchObject({ ok: true });
     }
@@ -42,14 +40,14 @@ describe("#2131 exclusively configured workspace names", () => {
     const f = fixture(); let other = mode === "parent" ? join(f.stateDir, "workspaces") : mode === "child" ? join(f.workspace, "web-assets") : f.workspace;
     if (mode === "alias") { other = join(f.root, "peer-alias"); symlinkSync(f.workspace, other, "dir"); }
     f.config({ peer: { working_directory: other } });
-    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: false });
+    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); 
     expect(await writeAgentFile("new-output", "sample.svg", Buffer.from("x"), f.opts)).toMatchObject({ ok: false }); expect(existsSync(join(f.workspace, "new-output"))).toBe(false);
   });
   it.each(["workspaces/peer", "workspaces/peer/project", "workspaces"])("another instance's standard folder or workspace root %s is never borrowed", async part => {
     const f = fixture(part), elsewhere = join(f.root, "project"); mkdirSync(elsewhere);
     // The peer is configured elsewhere; its standard directory must still stay protected.
     f.config({ peer: { working_directory: elsewhere } });
-    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: false });
+    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); 
     expect(await writeAgentFile("new-output", "sample.svg", Buffer.from("x"), f.opts)).toMatchObject({ ok: false });
   });
   it("symlinked configured workspace cannot claim an otherwise admissible folder", async () => {
@@ -70,23 +68,22 @@ describe("#2131 exclusively configured workspace names", () => {
     for (const part of ["general", ""]) {
       const f = fixture(part); expect(await f.read("portrait.webp")).toMatchObject({ ok: false });
       expect(await f.read("web-assets/banner.webp")).toMatchObject({ ok: part === "general" });
-      expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: false });
     }
   });
   it.each(["same", "parent", "child"].flatMap(mode => ["classic-room-1234", "archived-room"].map(peer => [mode, peer])))("a persisted Classic-only %s workspace for %s stays protected without a daemon roster", async (mode, peer) => {
     const part = mode === "same" ? `workspaces/${peer}` : mode === "parent" ? "workspaces" : `workspaces/${peer}/pictures`;
     const f = fixture(part);
     f.save(join(f.stateDir, "classicBot.yaml"), JSON.stringify({ channels: { room: { instanceName: peer, channelId: "1234", name: "Room" } } }));
-    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: false });
+    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); 
     expect(await writeAgentFile("new-output", "sample.svg", Buffer.from("x"), f.opts)).toMatchObject({ ok: false }); expect(existsSync(join(f.workspace, "new-output"))).toBe(false);
   });
   it("an exclusive alpha-home and the Classic caller's own standard workspace both remain available", async () => {
     const f = fixture(), name = "classic-room-1234", workspace = join(f.stateDir, "workspaces", name);
     f.save(join(f.stateDir, "classicBot.yaml"), JSON.stringify({ channels: { room: { instanceName: name } } }));
     f.save(join(workspace, "portrait.webp")); f.save(join(workspace, "effect/effect.json"), readFileSync(join(f.workspace, "effect/effect.json"), "utf8")); f.save(join(workspace, "effect/worker.js"), "agend.ready()");
-    expect(await f.read("portrait.webp")).toMatchObject({ ok: true }); expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: true });
+    expect(await f.read("portrait.webp")).toMatchObject({ ok: true }); 
     const opts = { ...f.opts, workspace, instance: name, configuredWorkspace: workspace };
-    expect(await readAgentFile("portrait.webp", { ...opts, maxBytes: 4096 })).toMatchObject({ ok: true }); expect(await readAgentEffect("effect", opts)).toMatchObject({ ok: true });
+    expect(await readAgentFile("portrait.webp", { ...opts, maxBytes: 4096 })).toMatchObject({ ok: true }); 
     expect(await writeAgentFile("ordinary-output", "sample.svg", Buffer.from("x"), opts)).toMatchObject({ ok: true });
   });
   it.each([
@@ -98,7 +95,7 @@ describe("#2131 exclusively configured workspace names", () => {
     f.save(join(f.stateDir, "fleet.yaml"), JSON.stringify({ channels: [{ type: "discord", id: "primary" }, { type: "telegram", id: "secondary" }], instances: { alpha: { working_directory: f.workspace } } }));
     const file = f.save(join(f.stateDir, "classicBot.yaml"), JSON.stringify({ channels: { "1234": row } }));
     const bytes = readFileSync(file), before = readdirSync(f.stateDir).sort();
-    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); expect(await readAgentEffect("effect", f.opts)).toMatchObject({ ok: false });
+    expect(await f.read("portrait.webp")).toMatchObject({ ok: false }); 
     expect(await writeAgentFile("new-output", "sample.svg", Buffer.from("x"), f.opts)).toMatchObject({ ok: false });
     expect(readFileSync(file)).toEqual(bytes); expect(readdirSync(f.stateDir).sort()).toEqual(before); expect(existsSync(join(f.workspace, "new-output"))).toBe(false);
   });

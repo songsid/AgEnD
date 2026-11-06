@@ -68,7 +68,7 @@ export async function receivePreview(
 }
 
 /**
- * Files the fleet built for the agent's side (a preview, an exported mod): sent whole, or — when larger than one
+ * Files the fleet built for the agent's side (a preview): sent whole, or — when larger than one
  * message — fetched here part by part with `{ part: { <idKey>: id, name, index } }`, each file checked against its
  * declared bytes and sha256. `name`: the only file names accepted (nothing else is ever written).
  */
@@ -105,21 +105,6 @@ export async function receiveFiles(
     out.push({ name: f.name as string, data });
   }
   return { files: out };
-}
-
-/** #1629 r4-5b: the one file name an exported mod is written under (in `.agend/mods/`). */
-export const MOD_FILE = /^[a-z0-9][a-z0-9-]{0,63}-(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.(0|[1-9]\d{0,5})\.agendmod\.json$/;
-/** An exported mod is at most 8 MiB: 24 parts of 360 KiB. */
-export const MOD_MAX_PARTS = 24;
-/** The largest mod the agent's side reads to propose (the fleet checks it again): 8 MiB. */
-export const MOD_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
-
-/** Write a received mod into `.agend/mods/` of the working directory (on the agent's side), and say where. */
-export async function writeModFile(files: Array<{ name: string; data: Buffer }>, opts: AgentFileContext): Promise<{ path: string; bytes: number } | { error: string }> {
-  const f = files.length === 1 ? files[0]! : null;
-  if (!f || !MOD_FILE.test(f.name)) return { error: ".agend/mods — not one mod file" };
-  const w = await writeAgentFile(".agend/mods", f.name, f.data, opts);
-  return w.ok ? { path: w.path, bytes: f.data.length } : { error: `.agend/mods/${f.name} — ${w.reason}` };
 }
 
 /**

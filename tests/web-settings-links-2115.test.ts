@@ -26,9 +26,8 @@ describe("every in-app Settings destination", () => {
         }
       }
     }
-    expect(seen).toContain("src/ui/panel-chat.js");
-    expect(seen).toContain("src/ui/chat-effects.js");
-    expect(seen).toContain("src/ui/shared/effect-stock-trust.js");
+    expect(seen).toContain("src/ui/panel-settings.js");
+    expect(seen).toContain("src/ui/shared/web-authorize.js");
   });
   it("settingsPath covers each supported section and its default", () => {
     for (const section of [undefined, ...routes.SETTINGS_SECTIONS]) {

@@ -33,8 +33,8 @@
 //   any part — an office names it as its style; one this page cannot load is drawn as Desks, and says so.
 // - Crowds (#2513): an area with more people than seats packs the rest into a tighter grid, then counts who is left
 //   ("+N", in its corner, never over its name); there idle and asleep people say nothing, at most a few speak (calls
-//   first, then work), no bubble covers a name tag, and the tags show on hover or focus only. "Hide paused and stopped"
-//   (per browser) leaves the sleepers out.
+//   first, then work), no bubble covers a name tag, and the tags are compact (#2860; one that would touch another shows
+//   on hover or focus only). "Hide paused and stopped" (per browser) leaves the sleepers out.
 // - Share… (#2636; an admin, on the dashboard reached directly or over the public link): a link anyone can open to watch an office live, read-only,
 //   until it ends (office-share-dialog.js; the page it opens is office-share-page.js).
 // - Edit layout (an admin, a stored office on a zones skin): fleet-office-layout.js, saved as the office's overrides.
@@ -64,7 +64,7 @@ import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
-import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, bubbleBox, loadCozySkin, loadPackSkin, modeOf, skinFor, tagBox } from "./fleet-office-skin.js";
+import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf } from "./fleet-office-levels.js";
@@ -86,7 +86,7 @@ register("orgo", {
     people: "People", peopleN: "People ({0})", findPerson: "Find a person", everyone: "Show everyone", nobody: "No one here matches this filter.",
     unseated: "{0} without a seat", skinUnknown: "Its style “{0}” is not available here: drawn as Desks.", closed: "Closed", desks: "Desks", tapAgain: "Tap again to open the chat",
     capWorking: "Typing away", capIdle: "Tea break", capPaused: "Asleep", capNeeds: "Calling for you", capAway: "Desk empty", capStarting: "Just arriving", capQueued: "Waiting to start",
-    styleLabel: "Style", style_pixel: "Desks", style_studio: "Studio", style_cozy: "Cozy", cozyNotice: "Add your skin", area_desks: "Work", area_lounge: "Lounge", area_alert: "Help desk", area_nap: "Nap corner",
+    styleLabel: "Style", style_pixel: "Desks", style_studio: "Studio", style_cozy: "Cozy", style_guild: "Guild", style_school: "School", cozyNotice: "Add your skin", area_desks: "Work", area_lounge: "Lounge", area_alert: "Help desk", area_nap: "Nap corner",
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
@@ -96,6 +96,8 @@ register("orgo", {
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
     fill: "Fill", fillTitle: "Fill the panel (the scene's overflow is cropped; drag to see it)", zoomLevel: "Zoom {0}",
     allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Double-click a tile to open that office.",
+    key: "Key", keyTitle: "What the items carried between desks are", keyLabel: "Carried between desks",
+    keyTask: "Folder: a task", keySend: "Envelope: a message", keyReport: "Paper: a report", keyBroadcast: "Horn: a broadcast",
     tileLabel: "{0} ({1})", openOffice: "Open the office {0}", lobbyTile: "Lobby tile (in no office)", lobbyEveryone: "Everyone is in an office", overviewNoEdit: "Pick one office to edit offices or a layout",
   },
   "zh-TW": {
@@ -104,7 +106,7 @@ register("orgo", {
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
     unseated: "{0} 位沒有座位", skinUnknown: "這裡沒有它的風格「{0}」：以辦公桌顯示。", closed: "休息中", desks: "桌子", tapAgain: "再點一下開啟聊天",
     capWorking: "埋頭打字中", capIdle: "喝茶休息", capPaused: "睡著了", capNeeds: "在呼叫你", capAway: "空位", capStarting: "剛到座位", capQueued: "等待啟動",
-    styleLabel: "風格", style_pixel: "辦公桌", style_studio: "工作室", style_cozy: "溫馨", cozyNotice: "換上你的外觀包", area_desks: "工作區", area_lounge: "休息區", area_alert: "求救區", area_nap: "午睡角",
+    styleLabel: "風格", style_pixel: "辦公桌", style_studio: "工作室", style_cozy: "溫馨", style_guild: "冒險者公會", style_school: "學校", cozyNotice: "換上你的外觀包", area_desks: "工作區", area_lounge: "休息區", area_alert: "求救區", area_nap: "午睡角",
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
     b_crashed: "糟糕，當掉了|救命！", b_stuck: "嗯，卡住了？|還在想…",
@@ -114,6 +116,8 @@ register("orgo", {
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
     fill: "填滿", fillTitle: "填滿整個面板（超出的部分會被裁切，拖曳即可看到）", zoomLevel: "縮放 {0}",
     allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。雙擊一格即可開啟那間辦公室。",
+    key: "圖例", keyTitle: "桌子之間傳遞的物品代表什麼", keyLabel: "桌子之間傳遞的物品",
+    keyTask: "資料夾：任務", keySend: "信封：訊息", keyReport: "紙張：回報", keyBroadcast: "喇叭：廣播",
     tileLabel: "{0}（{1}）", openOffice: "開啟辦公室「{0}」", lobbyTile: "大廳格（不在任何辦公室）", lobbyEveryone: "每個成員都已在某間辦公室", overviewNoEdit: "請先選一間辦公室，再編輯辦公室或配置",
   },
 });
@@ -131,6 +135,8 @@ const deviceRatio = () => Math.max(0.5, Math.min(4, Number(globalThis.devicePixe
 const SIZE0 = { w: 960, h: 600 };
 /** #2554: All offices' Fit keeps this many CSS px clear round the tiles (the zoom controls' column and a margin). */
 const FIT_PAD = 60;
+/** #2860: how far below its place a crowded area's compact tag drops when a neighbour's is in the way (a tag's height + 1). */
+const COMPACT_ROW = 12;
 /** #2554: in All offices a tile's name tags show (always) from this many CSS px a unit up; below it on hover only. */
 export const TAG_MIN_K = 0.75;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -418,13 +424,19 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (sk.drawForeground) sk.drawForeground(ctx, p.L, env);
     // Who found no spot in an area: a count in its corner (never over its name).
     for (const [ar, n] of p.L.crowd || []) if (p.L.areas[ar] && sk.drawCrowd) sk.drawCrowd(ctx, p.L.areas[ar], n, env);
-    // In an area over capacity the name tags show on hover or focus only (#2513: a crowd's tags covered each other).
+    // In an area over capacity (#2513: a crowd's full tags covered each other) everyone keeps a compact tag (#2860:
+    // in Cozy, the default, most of a fleet is in a crowd, and hover-only hid names and levels); one that would touch
+    // a tag already drawn, its badge included, is left to hover or focus. The full tags go first.
     const over = p.L.over || new Set();
+    const crowded = (q) => over.has(q.d.area) && q.d.key !== hot && !q.look.match;
     const tagged = (q) => !((tagsOff || over.has(q.d.area)) && q.d.key !== hot && !q.look.match);
+    const taken = [];
+    const touches = (b) => taken.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
     for (const q of people) {
       if (live.hidden.has(q.look.name) || !tagged(q)) continue;
       sk.drawTag(ctx, q.at.x, q.at.y, q.look, env);
-      tags.push(tagBox(ctx, q.at.x, q.at.y, q.look.label));
+      const box = tagBox(ctx, q.at.x, q.at.y, q.look.label);
+      tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
     }
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
@@ -434,7 +446,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) {
       const on = people.filter((q) => live.hidden.get(q.look.name) === f.id);
       if (!on.length) {
-        if (!tagsOff && f.label) { const nl = npcLook(p, f); sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(tagBox(ctx, f.x, f.y, nl.label)); }
+        if (!tagsOff && f.label) {
+          const nl = npcLook(p, f), box = tagBox(ctx, f.x, f.y, nl.label);
+          sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge));
+        }
         continue;
       }
       const order = new Map((f.activeFor || []).map((n, i) => [n, i]));
@@ -447,11 +462,24 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         if (q ? !tagged(q) : tagsOff) continue;
         sk.drawTag(ctx, r.x, f.y, r.look, env);
         const box = tagBox(ctx, r.x, f.y, r.look.label);
-        tags.push(box);
+        tags.push(box); taken.push(tagFootprint(ctx, box, r.look.badge));
         if (q) held.push({ name: q.look.name, id: f.id, box });
       }
     }
     p.heldTags = held;
+    // The crowd's compact tags go last, clear of every full tag above: people's, an item's own name and the row it
+    // carries (#2862 review). A crowd's grid is tighter than a compact tag is wide (OVERFLOW.STEPS down to 32): a
+    // neighbour's tag goes a row lower (COMPACT_ROW) rather than out, so a row of people reads as two staggered rows.
+    if (!tagsOff) for (const q of people) {
+      if (live.hidden.has(q.look.name) || !crowded(q)) continue;
+      for (const dy of [0, COMPACT_ROW]) {
+        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true), foot = tagFootprint(ctx, box, q.look.badge, true);
+        if (touches(foot)) continue;
+        sk.drawTag(ctx, q.at.x, q.at.y + dy, q.look, env, true);
+        tags.push(box); taken.push(foot);
+        break;
+      }
+    }
   } else {
     for (const d of p.desks) { const look = p.looks.get(d.key); sk.drawCharacter(ctx, d, actPosed(p, look), ms, env); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
     blit(p.layers.front);
@@ -560,6 +588,28 @@ function People({ nodes, pinned, onChange }) {
   </div>`;
 }
 
+/** #2946: the key's rows — each kind's item as the scene draws it (the built-in prop, in the theme's colour), and its words. */
+export const KEY_KINDS = [["task", "keyTask"], ["send", "keySend"], ["report", "keyReport"], ["broadcast", "keyBroadcast"]];
+const KEY_PX = 32;
+/**
+ * #2946 (hxhsandy): the key to the items carried between desks — a strip under the Office's bar (never over the scene),
+ * opened by its Key toggle. The shapes are drawn by the built-in skin, so they are the ones in the air, at their size.
+ */
+export function OfficeKey({ pal }) {
+  const paint = (hue) => (cv) => {
+    const g = cv && typeof cv.getContext === "function" ? cv.getContext("2d") : null;
+    if (!g) return;
+    const r = Math.max(1, Math.round(globalThis.devicePixelRatio || 1));
+    if (cv.width !== KEY_PX * r) { cv.width = KEY_PX * r; cv.height = KEY_PX * r; }
+    g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, KEY_PX, KEY_PX);
+    try { pixelSkin.drawProp(g, { hue, kind: hue, x: KEY_PX / 2, y: KEY_PX / 2 + 4, t: 0 }, 0, { pal }); } catch { /* left blank */ }
+  };
+  return html`<div class="oo-key" role="region" aria-label=${to("keyLabel")}>
+    <ul class="oo-key-rows">${KEY_KINDS.map(([hue, k]) => html`<li key=${hue} class="oo-key-row" data-kind=${hue}>
+      <canvas class="oo-key-icon" width=${KEY_PX} height=${KEY_PX} aria-hidden="true" ref=${paint(hue)}></canvas><span>${to(k)}</span></li>`)}</ul>
+  </div>`;
+}
+
 /**
  * The view: `view` buildOrgView's answer; `traffic` the live items (null: Live is off); `q` the Find box's needle;
  * `lease` the tab's (its reads); `onOpen(name)` what a desk opens (the canvas's: the chat; none: a desk opens nothing,
@@ -585,13 +635,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [hideAsleep, setHideAsleep] = useState(() => store.hideAsleep());
   // Bedtime (#2568), when it is on here: the idle sleep from NIGHT.FROM to NIGHT.TO on this device's clock (read every NIGHT.TICK).
   const [nightOn, setNightOn] = useState(() => store.nightOn());
+  const [keyOpen, setKeyOpen] = useState(() => store.keyOpen());
   const [nightNow, setNightNow] = useState(() => isNight());
   useEffect(() => { if (!nightOn) return undefined; setNightNow(isNight()); const h = setInterval(() => setNightNow(isNight()), NIGHT.TICK); return () => clearInterval(h); }, [nightOn]);
   const night = nightOn && nightNow;
   const [lobbyOn, setLobbyOn] = useState(() => store.lobbyTile());       // #2554: All offices' lobby tile
   const [packs, setPacks] = useState([]);                             // the skin packs the host keeps: [{ id, name, sha }]
   const [packSkins, setPackSkins] = useState(() => new Map());        // id@sha → a loaded skin, or null (not a pack)
-  const [cozyRev, setCozyRev] = useState(0);                          // #2631: the cozy's picture came in (skinFor has it)
+  const [cozyRev, setCozyRev] = useState(0);                          // #2631/#2947: a built-in's picture came in (skinFor has it)
   // Edit layout's session while it is open: { id, officeId, skin, pack (the style's identity), base (the pack as kept),
   // start, draft, rev, list (the offices and rev read when it opened — what Save sends) }; null when closed.
   const [layout, setLayout] = useState(null);
@@ -777,14 +828,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   }, [neededKey]);
   const loading = !!packInfo && !packSkins.has(packKey);
   const baseSkin = packInfo ? packSkins.get(packKey) || skinFor("pixel") : skinFor(STYLES.includes(wanted) ? wanted : custom ? wanted : "pixel");
-  // #2631: the cozy's picture, once, when this office (or a tile, or the lobby tile) is drawn in it; until then its bare floors.
-  const cozyWanted = (overview ? [...stored.map((o) => o.skin), ...(lobbyOn ? [style] : [])] : [wanted]).includes("cozy");
+  // #2631/#2947: a picture-backed built-in's picture (cozy, guild, school), once, when this office (or a tile, or the lobby
+  // tile) is drawn in it and no kept pack has its id; until then its bare floors.
+  const picturesWanted = [...new Set((overview ? [...stored.map((o) => o.skin), ...(lobbyOn ? [style] : [])] : [wanted])
+    .filter((id) => PICTURE_SKINS.includes(id) && !packOf(id)))].sort().join(",");
   useEffect(() => {
-    if (!cozyWanted) return undefined;
+    if (!picturesWanted) return undefined;
     let live = true;
-    loadCozySkin().then((sk) => { if (live && sk && sk !== baseSkin) setCozyRev((n) => n + 1); });
+    for (const id of picturesWanted.split(",")) loadBuiltInSkin(id).then((sk) => { if (live && sk) setCozyRev((n) => n + 1); });
     return () => { live = false; };
-  }, [cozyWanted]);
+  }, [picturesWanted]);
   const zones = !!(baseSkin.pack && baseSkin.pack.stateZones);
   /** The style's identity: a pack's id and sha (a pack replaced is another), or the built-in skin's id. */
   const styleKey = packKey || baseSkin.id;
@@ -1432,6 +1485,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${custom && baseSkin.id !== custom.skin && !loading ? html`<span class="muted oo-note">${to("skinUnknown", styleName(custom.skin))}</span>` : null}
       ${placed.ignored ? html`<span class="muted oo-note">${to("layoutIgnored")}</span>` : null}
       ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
+      ${traffic ? html`<button type="button" class=${`btn btn-sm oo-key-btn${keyOpen ? " on" : ""}`} aria-expanded=${keyOpen ? "true" : "false"} title=${to("keyTitle")}
+        onClick=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }}>${to("key")}</button>` : null}
       ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview) setEditing(true); }} disabled=${!!layout || overview}
         title=${overview ? to("overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
@@ -1439,6 +1494,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
     </div>
+    ${traffic && keyOpen ? html`<${OfficeKey} pal=${pal} />` : null}
     ${editing && !overview ? html`<${OfficeEditor} offices=${stored} rev=${storedRev} view=${view} store=${store} packs=${packs}
       ask=${ask} current=${() => shown.current} onSaved=${adopt} onClose=${() => setEditing(false)} />` : null}
     ${overview || people.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}

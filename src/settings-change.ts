@@ -8,6 +8,7 @@ import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
 import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, featureConfigKey, separateAccessValue, type DashboardFeature } from "./dashboard-permissions.js";
+import { isCodexSpeed } from "./backend/codex-speed.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -80,6 +81,11 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   { path: ["fleet", "web", "usage_report_on_public_link"], def: false, looser: () => false },
   // #2661: Office levels apply at once either way: a level is a badge (the numbers behind it follow the usage report's rules).
   { path: ["fleet", "web", "office_levels"], def: true, looser: () => false },
+  // #2911 (7): CDN libraries in previews apply at once either way (design, approved by the leader): the default (off) is
+  // the gate. Its threat is third-party requests that can carry data out — the leak class previews already have (WebRTC,
+  // navigation; the banner says so); the account boundary (G1) does not change. The switch is reached only from a
+  // signed-in session on the dashboard reached directly (never over the public link), so a confirmation stops nothing more.
+  { path: ["fleet", "web", "preview_cdn"], def: false, looser: () => false },
   // #1629 r4.1 Q3 (b): the card's upload limits and the picture quota — a lower one applies directly, a higher one is
   // confirmed. Judged as the limit they GIVE (clamped to the bounds, as the loader does): 9999 → 5000 changes nothing.
   ...Object.entries(APPEARANCE_BOUNDS).flatMap(([group, keys]) => Object.entries(keys as Record<string, readonly [number, number]>).map(([key, [floor, ceiling]]) => {
@@ -175,7 +181,9 @@ function guestsChange(old: unknown, next: unknown): Array<[string, unknown, unkn
         if (same(before, after) || after === undefined) continue;                     // unchanged, or removed: narrows
         const bn = before === undefined ? [] : grantNames(before), an = grantNames(after);
         if (bn === null || an === null) { out.push([`grants.${entry}`, before, after]); continue; }   // not of its kind: never quietly
-        if (an.some(n => !bn.includes(n))) out.push([`grants.${entry}`, before, after]);
+        // #2855: Chat → Trusted widens (a read-only View and search); Trusted → Chat takes away.
+        const level = (v: unknown) => (object(v) && v.level === "trusted" ? "trusted" : "chat");
+        if (an.some(n => !bn.includes(n)) || (level(after) === "trusted" && level(before) !== "trusted")) out.push([`grants.${entry}`, before, after]);
       }
     }
   }
@@ -215,6 +223,18 @@ function ordinary(path: readonly string[], old: unknown, next: unknown): boolean
   const key = path.at(-1) ?? "", parent = path.at(-2);
   if (parent !== undefined && !namedEntry(path, -2) && immediate.has(parent)) return IMMEDIATE_CHILDREN[parent]?.has(key) ?? false;
   return immediate.has(key);
+}
+/**
+ * M-2446: an agent's (or the defaults') Codex speed — `…backend_options.codex.speed`, fast | standard or unset — is an
+ * ordinary setting, like the model: it applies directly. Exactly that path and those values; anything else under
+ * backend_options (a credential profile, a provider) is still judged by the rules below.
+ */
+function codexSpeedPath(path: readonly string[], old: unknown, next: unknown): boolean {
+  if (path.at(-1) !== "speed" || path.at(-2) !== "codex" || path.at(-3) !== "backend_options") return false;
+  // fleet.defaults.backend_options… or fleet.instances.<name>.backend_options… (the walk starts at the effect's root).
+  if (!(path.at(-4) === "defaults" && path.at(-5) === "fleet") && !(path.at(-5) === "instances" && path.at(-6) === "fleet")) return false;
+  const allowed = (v: unknown) => v === undefined || v === null || isCodexSpeed(v);
+  return allowed(old) && allowed(next);
 }
 function plainList(path: readonly string[], old: unknown, next: unknown): boolean {
   if (!PLAIN_LISTS.has(path.at(-1) ?? "") || namedEntry(path, -1) || path.some(key => SENSITIVE_SEGMENT.test(key))) return false;
@@ -377,7 +397,7 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     if (direction === true) { section = section === "secret" ? section : "access"; add(`${settingsDisplay(path.join("."))}: ${settingsDisplay(old ?? "default")} → ${settingsDisplay(next ?? "default")}`); return; }
     if (visibilityPath(path)) return;                                // judged as a whole, by direction (below)
     if (dashboardPath(path)) return;                                 // likewise: the dashboard switches, by direction
-    if (ordinary(path, old, next) || plainList(path, old, next)) return;
+    if (ordinary(path, old, next) || plainList(path, old, next) || codexSpeedPath(path, old, next)) return;
     if (path.some(key => /access|permission|admin/i.test(key)) && section !== "secret") section = "access";
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.

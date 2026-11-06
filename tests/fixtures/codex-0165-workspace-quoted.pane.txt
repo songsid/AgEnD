@@ -1,0 +1,26 @@
+
+  >_ OpenAI Codex (v0.165.0)
+     ~/.cache/agend-ws-nudge/run-01650/work
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› quote them
+
+
+• Example error in the runbook:
+
+  ■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.
+
+  > ■ You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue.
+
+  ■ Usage limit reached. You've reached your usage limit. Increase your limits to continue using codex.
+  ■ Your workspace is out of credits. Add credits to continue.
+
+  Worked for <1s • 12:09
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                                                         ⚠ 2 warnings · f2 to view

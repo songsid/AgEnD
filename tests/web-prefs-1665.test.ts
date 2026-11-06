@@ -16,6 +16,7 @@ import { handleWebRequest, serveAppShell } from "../src/web-api.js";
 import { handleViewRequest } from "../src/view-api.js";
 import { isPassiveWebRead } from "../src/web-auth.js";
 import { OPERATOR, TEAM_GROUP_PREFIX, WebPrefsStore, WEB_PREF_KEYS, parseWebPrefsPatch } from "../src/web-prefs.js";
+import { bindGuestRequest } from "../src/web-guest-access.js";
 
 const token = "c".repeat(48), local = "http://127.0.0.1:19280", pub = "https://sample.trycloudflare.com", exposureId = "a".repeat(32);
 const dirs: string[] = [];
@@ -338,5 +339,53 @@ describe("the public link no longer writes the fleet-wide sort order (separate t
     const handled = handleViewRequest(h.req as never, h.res as never, new URL(h.req.url, pub),
       { webToken: token, webSessions: sessions, dataDir: tmp(), fleetConfig: { instances: {} }, logger: { info() {}, debug() {}, error() {}, warn() {} } } as never);
     expect([handled, h.status(), h.status() === 403 ? h.json().error : h.body()]).toEqual([true, 403, "sort_order_not_over_public_link"]);
+  });
+});
+
+describe("#2855: a guest's own preferences in the store", () => {
+  const person = "person:discord:42";
+  it("its five keys, in its own bucket; never another key, never the host's; forgotten on removal, its name kept", () => {
+    const prefs = new WebPrefsStore(tmp(), { exists: (n) => ["a", "b"].includes(n) });
+    prefs.write(OPERATOR, new Map<string, unknown>([["theme", "light"], ["nav.favorites", ["b"]]]));
+    prefs.setProfileName(person, "Alice");
+    const own = { theme: "dark", lang: "zh-TW", "nav.favorites": ["a"], "nav.sort": { mode: "recent", favs: "fixed" }, "nav.filter": { q: "x", status: [], cli: [] } };
+    const w = prefs.writeForGuest(person, new Map(Object.entries(own)));
+    expect([w.ok, w.ok && w.changed.sort()]).toEqual([true, Object.keys(own).sort()]);
+    expect(prefs.readGuestOwn(person)).toEqual(own);
+    expect(prefs.read(OPERATOR).values).toMatchObject({ theme: "light", "nav.favorites": ["b"] });
+    for (const key of ["nav.order", "card.size", "fx.show", "nav.collapsed"]) {
+      expect(prefs.writeForGuest(person, new Map([[key, null]])), key).toEqual({ ok: false, status: 400, error: `guest_pref_not_yours: ${key}` });
+    }
+    expect(prefs.writeForGuest(person, new Map([["nav.favorites", ["gone"]]])), "an instance that is not in the fleet").toMatchObject({ ok: false, error: "unknown_instance: gone" });
+    expect(prefs.writeForGuest(person, new Map([["theme", "light"]]), { onlyIfUnset: true }), "a device's first upload: the bucket's own value wins")
+      .toMatchObject({ ok: true, changed: [] });
+    prefs.forgetGuest(person);
+    expect(prefs.readGuestOwn(person)).toEqual({});
+    expect(prefs.profile(person)?.name, "its name stays: its past messages keep it").toBe("Alice");
+    prefs.forgetGuest("person:discord:nobody");   // no bucket: nothing to do
+  });
+});
+
+describe("#2855: a guest saves its own preferences over the public link too (only its own bucket is written)", () => {
+  it("a guest session on the gateway: POST /ui/prefs → its bucket; an admin session there is still refused", async () => {
+    const sessions = new WebSessionStore(), prefs = new WebPrefsStore(tmp(), { exists: (n) => n === "alpha" });
+    const owner = { adapterId: "discord", userId: "42" };
+    const ctx = { webToken: token, webSessions: sessions, webPrefs: prefs, logger: { info() {}, debug() {}, error() {}, warn() {} },
+      sseClients: new Set(), getUiStatus: () => ({ instances: [] }), emitSseEvent: vi.fn() } as any;
+    const post = (tier: "guest" | "admin", body: unknown) => {
+      const s = sessions.create({ tier, surface: "gateway", label: "t", tokenEpoch: tokenEpoch(token), exposureId, ...(tier === "guest" ? { owner } : {}) });
+      const h = request("/ui/prefs", "POST", { cookie: `__Host-agend_session=${s.sessionId}`, origin: pub, "sec-fetch-site": "same-origin",
+        "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" }, "sample.trycloudflare.com");
+      bindGatewayRequest(h.req as never, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
+      if (tier === "guest") bindGuestRequest(h.req, { owner, scope: () => new Set(["alpha"]), current: () => true });
+      handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, local), ctx);
+      h.feed(body);
+      return h;
+    };
+    const g = post("guest", { set: { theme: "dark", "nav.favorites": ["alpha"] } }); await flush();
+    expect([g.status(), g.json().values]).toEqual([200, { theme: "dark", "nav.favorites": ["alpha"] }]);
+    expect([prefs.read(`person:discord:42`).values, prefs.read(OPERATOR).values]).toEqual([{ theme: "dark", "nav.favorites": ["alpha"] }, {}]);
+    const a = post("admin", { set: { theme: "dark" } }); await flush();
+    expect([a.status(), a.json().error]).toEqual([403, "prefs_not_over_public_link"]);
   });
 });

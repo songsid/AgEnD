@@ -7,16 +7,17 @@ import { Toasts } from "./ui-toast.js";
 import { ConfirmHost, confirmDialog } from "./ui-confirm.js";
 import { ColorDialogHost } from "./identity-color.js";
 import { t, lang, setLang, onLang } from "./app-i18n.js";
-import { appStore, createStore, guestBadge, guestPage, useStore } from "./app-store.js";
+import { appStore, createStore, guestBadge, guestPage, guestTrusted, useStore } from "./app-store.js";
 import { navStore } from "./app-nav.js";
 import { toast } from "./ui-toast.js";
-import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, fleetEntryPath } from "./app-route.js";
+import { chatPath, viewPath, settingsPath, routeKey, NEEDS_PATH, NOTICES_PATH, fleetEntryPath } from "./app-route.js";
 import { SessionMenu } from "./app-session.js";
 import { onPrefsChanged, savePref } from "./app-prefs.js";
 import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { InstanceNav, RosterNav, namesStore, setNamesPrimary } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
+import { useWebAuthorization } from "./web-authorize.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
 import { OwnerCssKeepBar } from "./owner-css.js";
 import { AgentWidget, fleetBinds, sidebarWidget, sidebarWidgetStore } from "./agent-widget.js";
@@ -78,7 +79,8 @@ export const searchShortcut = () => (isMacLike() ? "⌘K" : "Ctrl K");
 export function searchOffered(admin) {
   const body = typeof document !== "undefined" ? document.body : null;
   const offLink = !!body && body.dataset.publicLink === "1" && body.dataset.searchLink === "0";
-  return !!admin && !guestPage() && !offLink;
+  // #2855: a trusted guest searches too (only what it can see: the server's rule).
+  return (guestPage() ? guestTrusted() : !!admin) && !offLink;
 }
 let searchModule = null;
 /** Open search; `preset.instance`: narrowed to that agent (Ctrl+F in its chat). */
@@ -106,6 +108,10 @@ export function handleSearchKey(e) {
   e.preventDefault();
   openSearch(key === "f" ? { instance: route.instance } : {});
 }
+
+/** The sidebar's Search row (Ctrl+K / ⌘K). */
+const searchRow = () => html`<button type="button" class="side-row side-search" onClick=${() => openSearch()} title=${t("app.searchTitle", searchShortcut())}
+  aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${t("app.search")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>`;
 
 function readCollapsed() { try { return localStorage.getItem("agend_sidebar") === "hidden"; } catch { return false; } }
 const narrow = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px)").matches;
@@ -322,8 +328,8 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
   const canCreate = useCanCreate();
   const on = (panel) => !!route && route.panel === panel;
   // A count badge is hidden at 0; its number is also in the link's accessible name.
-  const navLink = (panel, href, icon, label, count = 0) => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
-    aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t("app.needsCount", count)})` : undefined} onClick=${closeDrawer}>
+  const navLink = (panel, href, icon, label, count = 0, countText = "app.needsCount") => html`<a class=${`side-row${on(panel) ? " active" : ""}`} href=${href}
+    aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t(countText, count)})` : undefined} onClick=${closeDrawer}>
     <${Icon} name=${icon} /><span class="grow">${label}</span>${count ? html`<span class="nav-count" aria-hidden="true">${count}</span>` : null}</a>`;
   const needsCount = Array.isArray(app.needs) ? app.needs.length : 0;
   // View-only (an anonymous reader, #1408 §3): View and a way to sign in — nothing that needs a session is rendered.
@@ -350,6 +356,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
         <a class="brand" href="/ui" onClick=${closeDrawer}>${t("app.brand")}</a>
         <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
       </div>
+      ${searchOffered(false) ? html`<nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>${searchRow()}</nav>` : null}
       <${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false} exec=${app.exec} awaiting=${app.awaiting} onPick=${closeDrawer} />
       <div class="side-foot" data-trust="navigation">
         <${GuestChip} />
@@ -372,8 +379,9 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
       ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
-      ${searchOffered(canCreate) ? html`<button type="button" class="side-row side-search" onClick=${() => openSearch()} title=${t("app.searchTitle", searchShortcut())}
-        aria-keyshortcuts=${isMacLike() ? "Meta+K" : "Control+K"}><${Icon} name="search" /><span class="grow">${t("app.search")}</span><kbd class="kbd-hint" aria-hidden="true">${searchShortcut()}</kbd></button>` : null}
+      ${/* #2910 D2: a web-only fleet (no chat connection) has Notices — what General would have said. */
+        app.connections === 0 && app.notices && app.notices.enabled ? navLink("notices", NOTICES_PATH, "bell", t("app.noticesNav"), app.notices.unread | 0, "app.noticesCount") : null}
+      ${searchOffered(canCreate) ? searchRow() : null}
       ${canCreate && onNewInstance ? html`<button type="button" class="side-row side-new" onClick=${onNewInstance}><${Icon} name="plus" /><span class="grow">${t("app.newAgent")}</span></button>` : null}
     </nav>
     ${shell.side ? html`<${shell.side.Component} />` : html`<${InstanceNav} route=${route} items=${app.instances} loaded=${app.ready !== false}
@@ -393,8 +401,7 @@ function GuestChip() {
   const { name, platform } = guestBadge();
   const where = PLATFORM_NAMES[platform] || platform;
   const label = name ? (where ? t("app.guestAsOn", name, where) : t("app.guestAs", name)) : t("app.guestChip");
-  // Inside .side-foot (a marked, stock-trusted element): no trust marker of its own — effect-stock-trust's closed inventory
-  // refuses any element it does not know, which would hide a guest's static effect posters (#2101 review).
+  // Inside .side-foot (a marked element): no trust marker of its own (#2101 review).
   return html`<p class="guest-chip" title=${t("app.guestHint")}><${Icon} name="user" size=${14} /><span class="grow">${label}</span></p>`;
 }
 
@@ -501,12 +508,14 @@ function BottomTabs({ route, viewOnly }) {
   </nav>`;
 }
 
-function ConnectionLine() {
+export function ConnectionLine() {
   const { connection, hydration, retryHydration } = useStore(appStore);
   // A late catch-up that is not done: the chat may be missing what was open before it loaded (#1425 review).
+  // M-2260: never a dead end — beside Try again, a reload reads everything current, whatever kept the catch-up from it.
   if (hydration === "retrying" || hydration === "failed") {
     return html`<div data-trust="status" class="conn" role="status">${hydration === "failed" ? t("app.hydrateFailed") : t("app.hydrating")}
-      ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}</div>`;
+      ${hydration === "failed" && retryHydration ? html` <button type="button" class="btn btn-sm" onClick=${() => retryHydration()}>${t("app.retry")}</button>` : null}
+      ${hydration === "failed" ? html` <button type="button" class="btn btn-sm" onClick=${() => location.reload()}>${t("app.reloadPage")}</button>` : null}</div>`;
   }
   if (connection === "reconnecting") return html`<${Reconnecting} />`;
   // #1603: polling is a working transport (the public link polls by design; a buffering proxy makes a page poll), not
@@ -571,11 +580,44 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
     ${Array.isArray(p.summary) && p.summary.length ? html`<ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${line}</li>`)}</ul>` : null}
-    ${p.state === "pending" ? html`<p class="note">${p.confirmation && p.confirmation.kind === "host_cli" ? t("app.pendingHost", `agend settings confirm ${p.id}`) : t("app.pendingChat")}</p>` : null}
+    ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" && p.outcome && p.outcome.message ? html`<p class="note">${p.outcome.message}</p>` : null}
     ${p.withdraw ? html`<div class="pending-actions"><button type="button" class="btn btn-sm" onClick=${p.withdraw}>${t("app.withdraw")}</button></div>` : null}
   </section>`)}</div>`;
+}
+
+/** #2868: where the confirm card was posted: "Discord", or "Discord (team-b)" for a connection with an id of its own. */
+function whereText(where) {
+  const names = (Array.isArray(where) ? where : []).map((w) => `${PLATFORM_NAMES[w.platform] || w.platform}${w.connection && w.connection !== w.platform ? ` (${w.connection})` : ""}`);
+  return names.length ? [...new Set(names)].join(" / ") : "Discord / Telegram";
+}
+/**
+ * #2868: how a pending change is confirmed, in the order a person can act on it. First where: the General card (naming
+ * the platform it was posted on), or the host's command when no General could take it. Then, when this browser could
+ * confirm it itself (the server's read says so: #2170's rule), "Apply now"; when it isn't verified but could be,
+ * "Authorize this browser" (the same DM card as the composer's). The host's command otherwise sits folded under
+ * "Advanced".
+ */
+function PendingHow({ p }) {
+  const a = useWebAuthorization();
+  const [refused, setRefused] = useState(false);
+  const c = p.confirmation || {}, cmd = `agend settings confirm ${p.id}`;
+  const lead = c.kind === "posting" ? t("app.pendingPosting") : c.kind === "host_cli" ? t("app.pendingHostOnly", cmd) : t("app.pendingChatWhere", whereText(c.where));
+  // A browser that isn't verified but could be: authorizing it makes this one (and later ones) "Apply now".
+  const route = c.kind !== "host_cli" && !p.applyNow && a.st;
+  const canAsk = route && a.st.state === "none" && (a.st.reason === "not_authorized" || a.st.reason === "authorization_expired");
+  const asking = route && a.st.state === "pending";
+  const apply = async () => { setRefused(false); const r = await p.applyNow(); if (!r || !r.ok) setRefused(true); };
+  return html`<p class="note">${lead}</p>
+    ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
+      <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
+    ${refused && !p.applyNow ? html`<p class="note" role="status">${t("app.pendingApplyRefused")}</p>` : null}
+    ${canAsk ? html`<div class="pending-self"><span class="note">${t("app.pendingAuthorize")}</span>
+      <button type="button" class="btn btn-sm" onClick=${a.ask}>${t("webauth.authorize")}</button></div>` : null}
+    ${asking ? html`<p class="note">${t("webauth.waiting", mmss(a.left))}</p>` : null}
+    ${a.notice && (canAsk || asking) ? html`<p class="note" role="status">${a.notice}</p>` : null}
+    ${c.kind !== "host_cli" ? html`<details class="pending-host"><summary>${t("app.pendingAdvanced")}</summary><code>${cmd}</code></details>` : null}`;
 }
 
 /** Settings' Apply, followed from another panel: one line, and the way back to it (§5: progress shows in any panel). */
@@ -781,7 +823,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
     };
   }, []);
-  const guest = guestPage();             // #1920: a guest's page — no operations, usage, pending changes or owner CSS
+  const guest = guestPage();             // #1920: a guest's page — no operations, pending changes or owner CSS (#2855: usage, yes)
   const cls = ["shell", shell.collapsed ? "sb-collapsed" : "", shell.drawer ? "sb-open" : "", shell.keyboard ? "kb-open" : "", guest ? "guest" : ""].filter(Boolean).join(" ");
   return html`<div ref=${root} class=${cls}>
     <a data-trust="navigation" class="skip" href="#main">${t("app.skip")}</a>
@@ -795,7 +837,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       ${viewOnly || guest || !shell.banner ? null : html`<${shell.banner} />`}
       <${Outlet} route=${nav.route} seq=${nav.seq} panels=${panels} />
     </main>
-    ${guest ? null : html`<${RightRail} route=${nav.route} />`}
+    <${RightRail} route=${nav.route} />
     <${BottomTabs} route=${nav.route} viewOnly=${viewOnly} />
     ${shell.dialog ? html`<${shell.dialog.Component} ...${shell.dialog.props} onClose=${closeDialog} />` : null}
     ${viewOnly || guest || (nav.route && nav.route.panel === "settings") ? null : html`<${PendingChanges} />`}

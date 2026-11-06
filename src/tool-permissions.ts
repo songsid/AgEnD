@@ -59,13 +59,10 @@ const WORKER: readonly string[] = [
   "set_web_widget", "remove_web_widget",
   // Its own declarative ambient (#2117): no target, the same lock and limits.
   "set_web_ambient", "clear_web_ambient",
-  // Mods (#1629 r4-5b): its own look as a file, and proposing one for a person — never importing.
-  "export_web_mod", "propose_web_mod",
   // Its own character in the Office view (#2578): no target; off until a person switches office_access on.
   "office_view", "office_set",
   // The Office view's skin packs (#2692): everyone's, so off until a person switches office_pack_access on for it.
   "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
-  "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
   // Its own schedules. Present here, but not a free hand: scheduleOpRefusal
   // limits a non-coordinator to schedules that target itself and that it
   // created (#895). The target is the control, not whether the tool is listed.
@@ -100,8 +97,11 @@ const ALL_TOOLS = TOOLS.map(t => t.name);
 /**
  * Three tiers plus the three that already existed.
  *
- * `general` is not `coordinator` plus channel I/O — it is deliberately smaller:
- * a dispatcher has no business deleting instances or rewriting fleet defaults.
+ * `general` includes the full `ORCHESTRATION` list (fleet decision 9e3bea6c, #3043):
+ * General is AgEnD's administrator, so it gets every orchestration tool without a
+ * separate confirmation gate, while keeping repository leases and raw host-config/log
+ * inspection (`checkout_repo`, `release_repo`, `get_fleet_config`, `get_instance_logs`,
+ * `list_deployments`, `validate_config`) out of its default profile.
  */
 export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   full: ALL_TOOLS,
@@ -113,7 +113,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     // Read-only: what each kiro instance runs on, for explaining a kiro incompatibility.
     "kiro_engine_status",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
-    "create_instance", "start_instance", "restart_instance", "wake_instance",
+    ...ORCHESTRATION,
     "task", "list_decisions", "post_decision",
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
     // Persona emoji (v2.1.9): every instance can see the server's emojis, and
@@ -130,14 +130,10 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
     "set_web_ambient", "clear_web_ambient",
-    "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
     // Its own character in the Office view (#2578), as a worker's.
     "office_view", "office_set",
     // The Office view's skin packs (#2692), as a worker's: off until a person switches office_pack_access on.
     "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
-    // #2056: Settings → Web appearance for the user (the page's own checks; a worker's are its own theme only).
-    "get_web_settings", "set_web_settings",
   ],
   standard: [
     "reply", "react", "edit_message", "close_poll",
@@ -145,8 +141,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "list_decisions", "post_decision", "task", "set_display_name", "set_description", "list_emojis", "set_persona_emoji", "preview_emojis",
     "list_stickers", "preview_stickers",
     "get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme",
-    "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient", "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
+    "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient",
     "office_view", "office_set",
     "office_pack_check", "office_pack_upload", "office_pack_delete", "office_pack_restore", "office_pack_list", "office_set_style",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config", "kiro_engine_status", "get_cache_report", "get_usage_report",
@@ -274,6 +269,8 @@ export const IPC_TYPE_TOOLS: Readonly<Record<string, string>> = {
   fleet_remove_web_widget: "remove_web_widget",
   fleet_set_web_ambient: "set_web_ambient",
   fleet_clear_web_ambient: "clear_web_ambient",
+  // #2799: the removed Canvas Worker tools keep their IPC types, so a stale MCP process's call is refused with the
+  // plain message at the permission check (it never reaches a handler) instead of going unanswered.
   fleet_export_web_mod: "export_web_mod",
   fleet_propose_web_mod: "propose_web_mod",
   fleet_upload_web_effect: "upload_web_effect",
@@ -366,9 +363,6 @@ const OWN_APPEARANCE_TOOLS: ReadonlySet<string> = new Set([
   "get_web_appearance", "preview_web_appearance",
   "set_web_widget", "remove_web_widget",
   "set_web_ambient", "clear_web_ambient",
-  "export_web_mod", "propose_web_mod",
-  "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect",
-  "apply_web_effect", "remove_web_effect", "delete_web_effect",
   "office_view", "office_set",
 ]);
 

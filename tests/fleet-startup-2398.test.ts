@@ -35,6 +35,6 @@ describe("one boot's dashboard progress", () => {
       { name: "mine", status: "stopped", startup_phase: "queued" },
       { name: "hidden", status: "running", startup_phase: "starting" },
     ] }, new Set(["mine"]));
-    expect(projected).toEqual({ canvas_worker: false, instances: [{ name: "mine", status: "stopped", startup_phase: "queued" }] });
+    expect(projected).toEqual({ instances: [{ name: "mine", status: "stopped", startup_phase: "queued" }] });
   });
 });

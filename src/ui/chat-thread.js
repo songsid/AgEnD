@@ -8,8 +8,7 @@
 // Unrelated updates (a new message, another message's tick) stop nothing (#1306 §6.2, #1408 §4).
 import "./chat-render.js";
 import "./preview.js";
-import { canvasWorkerEnabled, onCanvasWorkerChange, onCanvasMetadataChange, readCanvasTrialMessage } from "/assets/feature-flags.js";
-import { loadHtmlAttachment } from "./html-attachment.js";
+import { HTML_PREVIEW_MAX, loadHtmlAttachment, sizeLabel } from "./html-attachment.js";
 import { chatTime, chatTimeFull, onDayChange } from "./chat-time.js";
 import { textLinkSegments } from "/assets/app-route.js";
 
@@ -24,16 +23,69 @@ export const TEXT_PREVIEW_LINES = 200;
 export const TEXT_PREVIEW_NODES = 4000;
 /** A csv/tsv wider than this is shown as text, as Markdown tables are capped at 20 columns. */
 export const TEXT_PREVIEW_COLUMNS = 50;
+/**
+ * #2863: the most a text card reads (bytes). It stays 1 MiB while an HTML preview goes to 8 MiB (and 50 MiB on
+ * "Preview anyway"): a text card reads, parses and formats the file on this page's own thread (Markdown, highlighting,
+ * a CSV table; Show all draws every line), where an HTML preview runs in its own frame. A bigger file is a download.
+ */
+export const TEXT_CARD_MAX = 1024 * 1024;
 const P = () => globalThis.AgendPreview;
 /** #1672: a status line longer than this (lines, or characters) is folded until it is opened. */
-export const STATUS_FOLD_LINES = 6;
-export const STATUS_FOLD_CHARS = 600;
+/**
+ * #1672 / the user (hmsg-d6ac6dfb): a status line shows two lines — its header ("A → B:") and the first line of the
+ * message, each one row (clipped with an ellipsis). Its "open" control shows when that hides something: more lines than
+ * two, or a row clipped at the width it is drawn at (measured after each draw and resize: fitStatus). Where nothing is
+ * measured (no layout), a line longer than STATUS_LINE_CHARS stands for "clipped".
+ */
+export const STATUS_FOLD_LINES = 2;
+export const STATUS_LINE_CHARS = 100;
 const REPLY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>';
 const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
 
 /** Escapes & " ' < >: safe for text and inside a quoted attribute. */
 export function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 export const msgKey = (x) => `${x.boot}-${x.id}`;
+/** How many elements an HTML string would build: its opening tags (escaped text has none). */
+function tagsIn(html) {
+  let n = 0;
+  for (let i = html.indexOf("<"); i !== -1; i = html.indexOf("<", i + 1)) { const c = html.charCodeAt(i + 1); if ((c | 32) >= 97 && (c | 32) <= 122) n++; }
+  return n;
+}
+/**
+ * M-2448: a Markdown file drawn into `el` for the side panel — renderMarkdown, which escapes first (no raw HTML, no
+ * script: the same renderer and the same output as the chat's Markdown card), or the text as plain text when its
+ * formatting would build more than TEXT_PREVIEW_NODES elements. This module is the one that writes rendered Markdown
+ * (web-csp-1268); the panel asks it. Returns "md" or "plain".
+ */
+export function drawMarkdown(el, src) {
+  const doc = el.ownerDocument;
+  el.textContent = "";
+  const html = globalThis.AgendChatRender.renderMarkdown(String(src));
+  // Each code block gains three elements below (its frame, head and label): counted before anything is built.
+  const pres = (html.match(/<pre[\s>]/g) || []).length;
+  if (tagsIn(html) + 3 * pres > TEXT_PREVIEW_NODES) {
+    const pre = doc.createElement("pre"), code = doc.createElement("code");
+    pre.className = "tc-pre"; code.textContent = String(src); pre.append(code); el.append(pre);
+    return "plain";
+  }
+  // Inside the chat's own message container, so the chat's Markdown look applies as it is (lists, links, tables, code)
+  // — also with a stylesheet from before this panel existed.
+  const msg = doc.createElement("div"), md = doc.createElement("div");
+  msg.className = "msg pv-md-msg";
+  md.className = "md";
+  md.innerHTML = html;
+  // Code blocks in the chat's frame, with their language (the thread's Wrap/Copy controls belong to the thread).
+  for (const pre of md.querySelectorAll("pre")) {
+    const box = doc.createElement("div"), head = doc.createElement("div"), lang = doc.createElement("span");
+    box.className = "codeblock"; head.className = "cb-head"; lang.className = "cb-lang";
+    lang.textContent = pre.dataset.lang || "text";
+    head.append(lang);
+    pre.replaceWith(box); box.append(head, pre);
+  }
+  msg.append(md);
+  el.append(msg);
+  return "md";
+}
 /**
  * Board 00ef2430: a thread opens with only its newest messages drawn — enough for a screen — so switching chats paints
  * at once; the older ones are drawn after that, a chunk at a time between frames, the reader's place kept.
@@ -120,7 +172,7 @@ export function createThread(list, scroller, opts) {
     if (el.textContent !== v) el.textContent = v;
   }
   // #1770: "today" ends at the fleet's midnight; the labels are rewritten then (and on every render), while there are any.
-  let offDay = null, trialTimer = null;
+  let offDay = null;
   function armDay() {
     if (nodes.size && !offDay) offDay = onDayChange(() => { for (const v of nodes.values()) timeLabel(v.node); });
     else if (!nodes.size && offDay) { offDay(); offDay = null; }
@@ -133,8 +185,6 @@ export function createThread(list, scroller, opts) {
     // is kept by: it is written into the node (timeLabels) — crossing midnight relabels in place and reloads no preview.
     const time = x.ts ? `<span class="time" data-ts="${escAttr(x.ts)}" title="${escAttr(chatTimeFull(x.ts))}"></span>` : `<span class="time"></span>`;
     if (x.outgoing) return outgoingHtml(x);
-    const trial = readCanvasTrialMessage(x);
-    if (trial) return canvasWorkerEnabled() ? trialHtml(trial, time, x) : "";
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
@@ -213,26 +263,7 @@ export function createThread(list, scroller, opts) {
       ? `<button type="button" class="click-link" data-act="showButtons" data-arg="${escAttr(of)}" title="${escAttr(tr("chat.clickShow"))}">${inner}</button>`
       : `<span class="click-text">${inner}</span>`}</div>`;
   }
-  function trialNow() { try { const t = opts.serverNow ? opts.serverNow() : Date.now(); return Number.isFinite(t) ? t : Infinity; } catch { return Infinity; } }
-  const trialReasons = new Set(["checking", "localAdmin", "chatChanged", "busy", "safe", "effectsOff", "reducedMotion", "saveData", "unsupported", "transport", "inactive", "dialog", "expired"]);
-  function trialStatus(message) {
-    const reason = opts.effectTrialStatus?.(message);
-    return reason === "ready" || trialReasons.has(reason) ? reason : opts.canTryEffect?.(message) === true ? "ready" : "localAdmin";
-  }
-  function trialHtml(offer, time, message) {
-    const reason = trialNow() >= offer.expiresAt ? "expired" : PUBLIC_LINK() ? "localAdmin" : trialStatus(message);
-    const rawFailure = opts.effectTrialFailure?.(message), failure = typeof rawFailure === "string" ? rawFailure.replace(/[\u0000-\u001f\u007f]/g, "").slice(0, 80) : null;
-    const available = reason === "ready", fix = !PUBLIC_LINK() && !available && reason !== "expired" && reason !== "checking" && typeof opts.fixEffectTrial === "function";
-    const label = available ? "chat.effectTrialStart" : reason === "busy" ? "chat.effectTrialStopOther" : reason === "localAdmin" ? "chat.effectTrialSignIn" : reason === "reducedMotion" ? "chat.effectTrialPlayMotion" : "chat.effectTrialSettings";
-    const button = available || fix ? `<button type="button" class="btn btn-sm effect-trial-start" data-act="effectTrial" data-arg="${escAttr(msgKey(message))}">${escAttr(tr(label))}</button>` : "";
-    return `<div class="msg status-line"><div class="meta">${time}</div><div class="body"><div class="effect-trial-offer" data-trust="thread-control"><strong>${escAttr(tr("chat.effectTrial"))}: ${escAttr(offer.title)}</strong><div>${escAttr(tr(available ? "chat.effectTrialLocal" : "chat.effectTrialReason_" + reason))}</div>${failure ? `<div class="effect-trial-failure" role="status">${escAttr(tr("chat.effectTrialStopped"))}: ${escAttr(failure)}</div>` : ""}${button}</div></div></div>`;
-  }
-  function armTrials() {
-    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
-    if (!canvasWorkerEnabled()) return;
-    const now = trialNow(), next = msgs.map(x => readCanvasTrialMessage(x)).filter(x => x && x.expiresAt > now).reduce((n, x) => Math.min(n, x.expiresAt), Infinity);
-    if (Number.isFinite(next)) trialTimer = setTimeout(() => { trialTimer = null; render(msgs); }, Math.max(1, Math.min(2147483647, next - now)));
-  }
+
   /**
    * #1672: a status line (another instance's message, a daemon notice) is muted, read-only plain text — never Markdown,
    * a preview card, a button or a person's bubble. Checked before isUser, which reads the sender: a fleet name need not
@@ -240,15 +271,19 @@ export function createThread(list, scroller, opts) {
    */
   function statusHtml(x, time) {
     const text = String(x.text == null ? "" : x.text);
-    const lines = R().lineCount(text);
+    // Rows split on any line break (a CRLF is one break, never a row and a stray CR); the text itself is not changed.
+    const lines = R().lineCount(text.replace(/\r\n?/g, "\n"));
     const manyLines = lines > STATUS_FOLD_LINES;
-    const more = manyLines || text.length > STATUS_FOLD_CHARS
-      ? `<button data-trust="thread-control" type="button" class="st-more" data-act="toggleFold"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""}>${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}</button>`
-      : "";
+    const overflows = manyLines || text.split(/\r\n?|\n/).some(l => l.length > STATUS_LINE_CHARS);
+    // Its control: a short label at the end of line 2; its full name (and whether it is open) for a screen reader. Shown
+    // only while the line overflows (class `overflows`, kept by fitStatus at the width it is drawn at).
+    const more = `<button data-trust="thread-control" type="button" class="st-more" data-act="toggleFold" aria-expanded="false"${manyLines ? ` data-lines="${escAttr(lines)}"` : ""} aria-label="${escAttr(manyLines ? trf("chat.showAll", lines) : tr("chat.showMore"))}">${escAttr(manyLines ? trf("chat.showAllShort", lines) : tr("chat.showMoreShort"))}</button>`;
     const tools = `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     // #1990: the other instance's name opens its chat (an in-app link the router takes: no target).
-    const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a data-trust="link" class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("");
-    return `<div class="msg status-line${more ? " folded" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
+    // Each line its own row (folded: the first two, each clipped to one row); the line breaks stay in the text.
+    const body = textLinkSegments(text, x.links).map(sg => sg.href ? `<a data-trust="link" class="st-link" href="${escAttr(sg.href)}">${escAttr(sg.text)}</a>` : escAttr(sg.text)).join("")
+      .split(/\r\n?|\n/).map(l => `<span class="st-ln">${l}</span>`).join("\n");
+    return `<div class="msg status-line folded${overflows ? " overflows" : ""}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${more}</div>${tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,
@@ -371,10 +406,10 @@ export function createThread(list, scroller, opts) {
       const att = atts.find(a => a && a.id === ph.dataset.att);
       const type = att ? R().attachmentPreviewType(att) : null;
       if (!att || !type || type !== ph.dataset.type) continue;
-      buildTextCard(ph, att, type);
+      buildTextCard(ph, att, type, x);
     }
   }
-  function buildTextCard(ph, att, type) {
+  function buildTextCard(ph, att, type, x) {
     const doc = list.ownerDocument;
     const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
     ph.textContent = "";
@@ -382,7 +417,16 @@ export function createThread(list, scroller, opts) {
     const label = el("span", "tc-label", att.name);
     const show = el("button", "btn btn-sm tc-show", tr("chat.tcShow")); show.type = "button";
     const dl = el("a", "btn btn-sm tc-dl", tr("chat.tcDownload")); dl.href = `/ui/file/${att.id}`; dl.setAttribute("download", att.name);
-    head.append(label, show, dl);
+    head.append(label, show);
+    // M-2448: a Markdown file opens in the side panel too (the panel reads it, or takes what Show already read).
+    const panel = opts.panel || null;
+    if (type === "md" && panel && typeof panel.openMarkdown === "function" && x) {
+      const toPanel = el("button", "btn btn-sm btn-ghost tc-panel", tr("chat.pvOpenPanel")); toPanel.type = "button";
+      toPanel.onclick = () => panel.openMarkdown({ key: `${msgKey(x)}:m${att.id}`, instance: x.instance, msgKey: msgKey(x),
+        att: { id: att.id, name: att.name, size: att.size }, sender: x.sender, ts: x.ts, ...(text !== null ? { text } : {}) });
+      head.append(toPanel);
+    }
+    head.append(dl);
     const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     const body = el("div", "tc-body"); body.hidden = true;
     ph.append(head, note, body);
@@ -428,7 +472,7 @@ export function createThread(list, scroller, opts) {
       if (reading) return;
       if (text !== null) { body.hidden = !body.hidden; show.textContent = tr(body.hidden ? "chat.tcShow" : "chat.tcHide"); return; }
       const mine = reading = ++reads; note.textContent = tr("chat.pvLoading");
-      const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size });
+      const r = await loadHtmlAttachment({ id: att.id, name: att.name, size: att.size }, undefined, { ask: TEXT_CARD_MAX, max: TEXT_CARD_MAX });
       if (reading !== mine) return;                      // dropped (its chat left meanwhile): a new click reads again
       reading = 0;
       if (!ph.isConnected) return;                       // the card left the page while it was read: nothing to draw
@@ -484,6 +528,8 @@ export function createThread(list, scroller, opts) {
     const head = el("div", "pv-head"); head.setAttribute("data-trust", "thread-control");
     const label = el("span", "pv-label", att ? `${tr("chat.pvHtml")} · ${att.name}` : tr("chat.pvHtml"));
     const run = el("button", "btn btn-sm pv-run", tr("chat.pvPreview")); run.type = "button";
+    // #2863: a large file (over 8 MB) is previewed only on this second click, in the card or the panel as first asked.
+    const anywayB = el("button", "btn btn-sm pv-anyway", tr("chat.pvAnyway")); anywayB.type = "button"; anywayB.hidden = true;
     const stopB = el("button", "btn btn-sm pv-stop", tr("chat.pvStop")); stopB.type = "button"; stopB.hidden = true;
     // An attachment already has its download link (the file itself) right above the card.
     const dl = att ? null : el("button", "btn btn-sm btn-ghost pv-dl", tr("chat.pvDownload"));
@@ -496,7 +542,7 @@ export function createThread(list, scroller, opts) {
     const optB = el("button", "chip-btn pv-opt"); optB.type = "button";
     const neverB = el("button", "chip-btn pv-never"); neverB.type = "button";
     menu.append(sum, optB, neverB);
-    head.append(label, run, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
+    head.append(label, run, anywayB, stopB, ...(toPanel ? [toPanel] : []), ...(dl ? [dl] : []), menu);
     const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     // #1568: the banner, with its "I understand" (hidden until the next sign-in; the frame's border stays).
     const banner = el("div", "pv-banner"); banner.setAttribute("data-trust", "thread-control"); banner.hidden = true;
@@ -508,45 +554,64 @@ export function createThread(list, scroller, opts) {
     // Reading an attachment: one read per card at a time (a second click while it reads does nothing), and a read
     // whose card was stopped, replaced or left meanwhile is dropped (`reading` moved on, or the card left the page).
     let reading = 0, reads = 0;
+    // #2863: where "Preview anyway" runs it ("card" | "panel") and what the card says meanwhile; null: not asked.
+    // `tooBig`: over the 50 MB ceiling (listed, or read) — the card says so and offers only the file's download.
+    let large = null, largeNote = "", tooBig = !!att && typeof att.size === "number" && att.size > HTML_PREVIEW_MAX;
     const refresh = (reason) => {
       const a = P().availability();
       const going = state === "starting" || state === "running";
       const inPanel = !!panel && panel.shown() === key;   // #1481: the panel shows this block; the card points there
-      run.hidden = !a.ok || going || inPanel || !!reading;
-      if (toPanel) toPanel.hidden = inPanel || !!reading;
+      if (going || reading) large = null;
+      if (reason == null && large) reason = largeNote;
+      if (reason == null && tooBig) reason = tr("chat.pvAttOver");
+      run.hidden = !a.ok || going || inPanel || !!reading || !!large || tooBig;
+      anywayB.hidden = !a.ok || !large;
+      if (toPanel) toPanel.hidden = inPanel || !!reading || tooBig;
       stopB.hidden = !going && !reading;
       banner.hidden = !going || P().bannerAcked();
       note.textContent = reason != null ? reason : reading ? tr("chat.pvLoading") : going ? (state === "starting" ? tr("chat.pvStarting") : "") : inPanel ? tr("chat.pvInPanel") : a.ok ? "" : a.reason;
       optB.textContent = P().optedIn() ? tr("chat.pvDisallow") : tr("chat.pvAllow");
       neverB.textContent = P().never() ? tr("chat.pvNeverUndo") : tr("chat.pvNever");
     };
-    /** The HTML, then `then(code)`: at once for a fence or an attachment already read; otherwise read it first. */
-    const withCode = async (then) => {
+    /** Over 8 MB: the card asks, and "Preview anyway" runs it where `target` ("card" | "panel") says. */
+    const askLarge = (target, reason) => { large = target; largeNote = reason; refresh(reason); };
+    /**
+     * The HTML, then `then(code)`: at once for a fence or an attachment already read; otherwise read it first — a large
+     * one only once `anyway` (its listed size asks before anything is fetched).
+     */
+    const withCode = async (then, target = "card", anyway = false) => {
       if (code != null) { then(code); return; }
       if (reading) return;
       const mine = reading = ++reads;
       refresh();
-      const r = await loadHtmlAttachment(att);
+      const r = await loadHtmlAttachment(att, undefined, { anyway });
       if (reading !== mine || !ph.isConnected) return;
       reading = 0;
+      if (!r.ok && r.reason === "large") { askLarge(target, trf("chat.pvLarge", sizeLabel(r.size))); return; }
+      if (!r.ok && r.reason === "over") { tooBig = true; refresh(); return; }
       if (!r.ok) { refresh(attReason(r.reason)); return; }
       code = r.code;
       refresh();
       then(code);
     };
-    const ui = { state: (name, reason) => { state = name === "starting" || name === "running" ? name : "idle"; refresh(reason || null); } };
+    const ui = { state: (name, reason) => {
+      state = name === "starting" || name === "running" ? name : "idle";
+      if (name === "large") { askLarge("card", reason || ""); return; }
+      large = null; refresh(reason || null);
+    } };
     // Nothing is read for Preview on a device that does not allow previews: the button is not even shown there.
     // A Preview click is newer than any Open in panel still reading (#1704): it claims the panel's turn too — and, its
     // own HTML read, starts only if no newer click claimed meanwhile and no preview was started since (the panel's own
     // Preview): a late read never undoes a newer choice. A close is neither, so it does not drop this click.
-    run.onclick = () => {
+    const preview = (anyway) => {
       if (!P().availability().ok || reading) return;     // this card already reading: that click stays the one
       const mine = panel ? (panel.claim(), panel.claims()) : 0, started = P().startCount();
       withCode((c) => {
         if ((panel && panel.claims() !== mine) || P().startCount() !== started) { refresh(); return; }
-        P().start(key, holder, c, ui);
-      });
+        if (anyway) P().start(key, holder, c, ui, { anyway: true }); else P().start(key, holder, c, ui);
+      }, "card", anyway);
     };
+    run.onclick = () => preview(false);
     stopB.onclick = () => { if (reading) { reading = 0; refresh(); } else P().stop(key, "stopped", ""); };
     // #1704: this click runs it in the panel, as Preview there would — a running preview moves (it stops here and
     // starts there), an idle one starts there. Whether it can run is the panel's to say: a device that has not allowed
@@ -554,15 +619,18 @@ export function createThread(list, scroller, opts) {
     // An attachment's HTML is read first. The click claims the panel at once, so a newer click (even one still reading)
     // wins: if the panel changed (another click, block, close) or any preview started meanwhile, this one is dropped —
     // a late read never undoes a newer click.
-    if (toPanel) toPanel.onclick = () => {
+    const openInPanel = (anyway) => {
       if (reading) return;                               // this card already reading: that click stays the one
       if (P().running(key)) P().stop(key, "stopped", "");
       const at = panel.claim(), started = P().startCount();
       withCode((c) => {
         if (panel.version() !== at || P().startCount() !== started) { refresh(); return; }
-        panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts }, { run: true });
-      });
+        large = null; refresh();
+        panel.open({ key, instance: x.instance, msgKey: msgKey(x), ...(att ? { att } : { n: source.n }), code: c, sender: x.sender, ts: x.ts, ...(anyway ? { anyway: true } : {}) }, { run: true });
+      }, "panel", anyway);
     };
+    if (toPanel) toPanel.onclick = () => openInPanel(false);
+    anywayB.onclick = () => { const where = large; large = null; if (where === "panel" && toPanel) openInPanel(true); else preview(true); };
     if (dl) dl.onclick = () => opts.download(code);
     ack.onclick = () => P().ackBanner();      // every card and the panel hear it (onChange)
     optB.onclick = () => { menu.open = false; opts.setPreviewOptIn(!P().optedIn()); };
@@ -602,7 +670,25 @@ export function createThread(list, scroller, opts) {
   }
   // Sizes change without a scroll event (layout after the render, the dock under the thread): while pinned, the view
   // stays flush with the bottom; a reader who scrolled up is never moved.
-  const resized = () => { if (pinned && !atBottom()) toBottom(); reportJump(); };
+  const resized = () => { fitStatus(); if (pinned && !atBottom()) toBottom(); reportJump(); };
+  /**
+   * The user (hmsg-d6ac6dfb): a folded status line whose first two rows fit is plain two lines, no control; one with a
+   * row clipped at the width it is drawn at gets its "open" control (`overflows`). Measured after each draw and resize;
+   * a line with more than two rows always overflows (data-lines). Nothing laid out (no width): the guess it was drawn with.
+   */
+  function fitStatus() {
+    for (const m of list.querySelectorAll(".msg.status-line.folded")) {
+      const btn = m.querySelector(".st-more");
+      if (!btn || btn.dataset.lines) continue;
+      let measured = false, over = false;
+      for (const row of [...m.querySelectorAll(".st-ln")].slice(0, STATUS_FOLD_LINES)) {
+        if (!row.clientWidth) continue;
+        measured = true;
+        if (row.scrollWidth > row.clientWidth + 1) over = true;
+      }
+      if (measured && m.classList.contains("overflows") !== over) m.classList.toggle("overflows", over);
+    }
+  }
   let ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
   // #2158: the reader's own hand on the thread — a wheel, a touch, the scrollbar (a pointer held), a scrolling key
@@ -668,7 +754,6 @@ export function createThread(list, scroller, opts) {
   function render(next, renderOpts = {}) {
     const stick = pinned || nearBottom();
     msgs = next || [];
-    armTrials();
     if (!msgs.length) {
       for (const v of nodes.values()) stopIn(v.node);
       nodes.clear();
@@ -693,11 +778,7 @@ export function createThread(list, scroller, opts) {
   }
   /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
   function draw(drawOpts) {
-    const shown = msgs.slice(startIndex()).filter(message => {
-      // Volatile host offer records are hidden off and while their on-only parser is loading.
-      const hostOffer = message?.role === "status" && message.sender === "agend" && Object.hasOwn(message, "effectTrial") && message.effectTrial != null;
-      return !hostOffer || canvasWorkerEnabled() && readCanvasTrialMessage(message) !== undefined;
-    });
+    const shown = msgs.slice(startIndex());
     const keep = new Set(shown.map(msgKey));
     for (const [k, v] of nodes) if (!keep.has(k)) { stopIn(v.node); v.node.remove(); nodes.delete(k); }
     let prev = null, added = 0;
@@ -711,7 +792,7 @@ export function createThread(list, scroller, opts) {
         const stopped = have ? stopIn(have.node) : [];
         const node = msgNode(html, x, stopped);
         if (have) have.node.replaceWith(node); else added++;
-        have = { html, node, x, trialButton: node.querySelector(".effect-trial-offer > button.effect-trial-start") }; nodes.set(key, have);
+        have = { html, node, x }; nodes.set(key, have);
       } else { have.x = x; timeLabel(have.node); }
       const want = prev ? prev.nextSibling : list.firstChild;
       // A node already in the list is being moved: its preview stops first. A new node (still in its template) has none.
@@ -722,6 +803,7 @@ export function createThread(list, scroller, opts) {
     armPolls();
     rove();
     progress();
+    fitStatus();
     return added;
   }
   /**
@@ -799,25 +881,31 @@ export function createThread(list, scroller, opts) {
   function onClick(e) {
     if (onImageClick(e)) return;
     const el = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
-    if (!el || !list.contains(el)) return;
+    if (!el || !list.contains(el)) {
+      // A folded status line opens by a click on its text too (not on a link in it); its button is the keyboard's way.
+      const text = e.target && e.target.closest ? e.target.closest(".msg.status-line.folded.overflows .st-text") : null;
+      const btn = text && !e.target.closest("a") ? text.parentNode.querySelector(".st-more") : null;
+      if (btn && list.contains(btn)) onClick({ target: btn });
+      return;
+    }
     const act = el.dataset.act;
     if (act === "copyMsg") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) copyFrom(el, x.text); }
     else if (act === "copyCode") { const pre = el.closest(".codeblock")?.querySelector("pre"); if (pre) copyFrom(el, pre.textContent); }
     else if (act === "toggleFold") {
       const box = el.closest(".codeblock, .msg.status-line"); if (!box) return;
       const folded = box.classList.toggle("folded");
+      if (box.classList.contains("status-line")) {
+        // A status line's own label: short at the end of line 2 while folded, its full name for a screen reader.
+        el.setAttribute("aria-expanded", folded ? "false" : "true");
+        el.setAttribute("aria-label", !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAll", el.dataset.lines) : tr("chat.showMore"));
+        el.textContent = !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAllShort", el.dataset.lines) : tr("chat.showMoreShort");
+        return;
+      }
       el.textContent = !folded ? tr("chat.showLess") : el.dataset.lines ? trf("chat.showAll", el.dataset.lines) : tr("chat.showMore");
     } else if (act === "toggleWrap") opts.toggleWrap();
     else if (act === "replyButton") {
       const m = /^([0-9a-f]{32}):(\d{1,2})$/.exec(el.dataset.arg || "");
       if (m && opts.clickReplyButton) opts.clickReplyButton(m[1], Number(m[2]));
-    } else if (act === "effectTrial") {
-      // Only the current host-produced keyed card and a real local click can request admission. No token is read from DOM.
-      const key = el.dataset.arg, row = msgs.find(x => msgKey(x) === key), owner = nodes.get(key), node = owner?.node, offer = readCanvasTrialMessage(row);
-      if (PUBLIC_LINK() || e.defaultPrevented || e.isTrusted !== true || owner?.trialButton !== el || el.className !== "btn btn-sm effect-trial-start" || !node?.contains(el) || el.closest(".effect-trial-offer")?.getAttribute("data-trust") !== "thread-control"
-        || !offer || trialNow() >= offer.expiresAt) return;
-      if (trialStatus(row) === "ready" && opts.canTryEffect?.(row) === true) opts.startEffectTrial?.(row);
-      else opts.fixEffectTrial?.(row, trialStatus(row));
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
     else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
@@ -841,7 +929,7 @@ export function createThread(list, scroller, opts) {
   /** The thread goes (the chat left, or another instance opened): every preview in it stops first. */
   /**
    * #2053: kept for a later visit — the chat left as it always did (every preview stops: "leave"), but its drawn nodes
-   * stay. Nothing of it runs meanwhile: no timer (day labels, polls, effect trials, filling in), no size observer; the
+   * stay. Nothing of it runs meanwhile: no timer (day labels, polls, filling in), no size observer; the
    * caller drops its subscriptions. Shown again: attach, then render — only what changed is drawn.
    */
   function park() {
@@ -850,7 +938,6 @@ export function createThread(list, scroller, opts) {
     if (P()) P().stopAll("leave");
     for (const node of list.querySelectorAll(".html-card[data-att], .text-card[data-att]")) { const f = cardDrop.get(node); if (f) f(); }
     if (ro) { ro.disconnect(); ro = null; }
-    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
     if (growTimer !== null) clearTimeout(growTimer);
     growTimer = growFrame = null;
@@ -868,12 +955,9 @@ export function createThread(list, scroller, opts) {
     if (ro) { ro.observe(list); ro.observe(sc); }
   }
   /** `own`: only this thread's previews stop (a thread let go while another chat is in view); else every one, as leaving. */
-  const redrawFeature = () => { if (!disposed && !parked) render(msgs); };
-  const featureOff = onCanvasWorkerChange(redrawFeature), metadataOff = onCanvasMetadataChange(redrawFeature);
   function dispose(own = false) {
-    disposed = true; featureOff(); metadataOff();
+    disposed = true;
     if (!parked) watchReader(scroller, false);
-    if (trialTimer !== null) clearTimeout(trialTimer); trialTimer = null;
     if (ro) ro.disconnect();
     if (P()) { if (own) P().stopIn(list); else P().stopAll("leave"); }
     nodes.clear();

@@ -1,9 +1,10 @@
 // The Office view's art (fleet-office.js draws with it on a <canvas>). A skin draws a layout that fleet-office-model.js
-// (desks) or fleet-office-zones.js (zones) made. Three skins are built in. Two draw everything procedurally — little
+// (desks) or fleet-office-zones.js (zones) made. Five skins are built in. Two draw everything procedurally — little
 // pixel people, desks, lamps: "pixel" (the desks layout: a room per team, a desk per instance) and "studio" (the zones
 // layout: work desks, a lounge, an alert corner and a nap corner; people walk to the area for their state). The third,
 // "cozy" (#2631), is the zones layout on one picture shipped with the page (a warm pixel-art office), the same built-in
-// people in it. Every drawing call goes through the OfficeSkin interface below, so a skin pack (pictures from an artist,
+// people in it; "guild" and "school" (#2947) are two more such pictures on the cozy's arrangement. Every drawing call
+// goes through the OfficeSkin interface below, so a skin pack (pictures from an artist,
 // format v1 in fleet-office-pack.js) can replace any part; a part a pack does not supply falls back to the built-in
 // drawing. An admin uploads a pack (#2513, the host keeps it: src/web-office-skins.ts); loadPackSkin() reads it back —
 // its manifest checked here again (checkSkinPack), its pictures by their content ids — and spriteSkin() draws it.
@@ -27,7 +28,7 @@
 // @property {(ctx, item, active, ms, env) => void} [drawFurniture]   zones: one furniture item (active: activeWhen holds)
 // @property {(ctx, L, env) => void} [drawForeground]     zones: a pack's foreground over the whole 1280×720 scene, above
 //   the people, furniture and items in the air, below the crowd counts, name tags and bubbles
-// @property {(ctx, x, y, look, env) => void} [drawTag]   zones: a name tag under feet at (x, y)
+// @property {(ctx, x, y, look, env, compact?) => void} [drawTag]   zones: a name tag under feet at (x, y) (compact: #2860)
 // @property {(ctx, area, n, env) => void} [drawCrowd]    zones: an area's "+n" (who found no spot in it)
 // @property {(ctx, desk, look, ms, env) => void} drawCharacter   the occupant in its pose at time `ms` (0: still); in
 //   zones `desk` is the character's box at its current position (its feet at desk.seat); walking, `look.heading` is
@@ -243,13 +244,21 @@ function drawDeskFront(ctx, d, look, env) {
   if (look.match) { ctx.save(); ctx.strokeStyle = pal.focus; ctx.lineWidth = 2; ctx.strokeRect(d.x + 2, d.y + 2, d.w - 4, d.h - 6); ctx.restore(); }
 }
 
-const Q = 2;                                             // a prop's art pixel
+const Q = 2;                                             // a prop's art pixel, before PROP_SCALE
+/**
+ * #2946: the built-in props are drawn this much larger than their 16 px art (a pack's own `props` keep their size). In
+ * the scene's units, so they scale with the room as its people do (zoom, a phone, an All offices tile).
+ */
+export const PROP_SCALE = 1.75;
 function drawProp(ctx, it, ms, env) {
-  const c = env.pal.fx[it.hue] || env.pal.fx.send, x0 = it.x - 8, y0 = it.y - 8 - Math.sin(Math.PI * it.t) * 10;
-  const b = (c2, r, w, h, col) => px(ctx, x0 + c2 * Q, y0 + r * Q, w * Q, h * Q, col);
+  const c = env.pal.fx[it.hue] || env.pal.fx.send, lift = Math.sin(Math.PI * it.t) * 10;
+  const b = (c2, r, w, h, col) => px(ctx, -8 + c2 * Q, -8 + r * Q, w * Q, h * Q, col);
   ctx.save();
+  ctx.translate(it.x, it.y);
+  ctx.scale(PROP_SCALE, PROP_SCALE);
   ctx.fillStyle = "rgba(0, 0, 0, 0.18)";
-  ctx.beginPath(); ctx.ellipse(it.x, it.y + 4, 7, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(0, 4, 7, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.translate(0, -lift);
   if (it.hue === "task") { b(0, 0, 4, 2, c); b(0, 1, 8, 6, c); b(0, 2, 8, 1, "rgba(255, 255, 255, 0.35)"); }
   else if (it.hue === "report") { b(1, 0, 6, 8, "#fbfbfb"); b(1, 0, 6, 1, c); b(2, 4, 1, 1, c); b(3, 5, 1, 1, c); b(4, 4, 1, 1, c); b(5, 3, 1, 1, c); }
   else if (it.hue === "broadcast") { b(0, 3, 2, 2, c); b(2, 2, 2, 4, c); b(4, 1, 2, 6, c); if (frameAt(ms, 2, 6)) { b(7, 1, 1, 2, c); b(7, 5, 1, 2, c); } else b(7, 3, 1, 2, c); }
@@ -293,21 +302,44 @@ function drawBubble(ctx, x, y, text, env, lift = 0) {
 /** A zones name tag's widest text (logical units): longer names are cut with an ellipsis. */
 export const TAG_TEXT_W = 84;
 const TAG_FONT = "600 10px system-ui, sans-serif";
+/**
+ * #2860: the compact tag a crowded area keeps on (it used to show tags on hover only, #2513): a smaller font, a smaller
+ * plate, a shorter cut, the same level badge.
+ */
+const COMPACT = { font: "500 9px system-ui, sans-serif", textW: 48, pad: 6, top: 2, h: 11 };
+const NORMAL = { font: TAG_FONT, textW: TAG_TEXT_W, pad: 10, top: 3, h: 14 };
 /** The box a name tag under feet at (x, y) takes (what drawTag draws; bubbles keep clear of it, #2513). */
-export function tagBox(ctx, x, y, label) {
+export function tagBox(ctx, x, y, label, compact = false) {
+  const k = compact ? COMPACT : NORMAL;
   ctx.save();
-  ctx.font = TAG_FONT;
-  const t = fitText(ctx, label, TAG_TEXT_W), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 10);
+  ctx.font = k.font;
+  const t = fitText(ctx, label, k.textW), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad);
   ctx.restore();
-  return { x: Math.round(x - w / 2), y: y + 3, w, h: 14, text: t };
+  return { x: Math.round(x - w / 2), y: y + k.top, w, h: k.h, text: t };
+}
+/** #2860: what a tag covers with its level badge: on a full tag's top-left corner (half outside); left of a compact one. */
+export function tagFootprint(ctx, box, badge, compact = false) {
+  if (!badge) return box;
+  if (compact) { const w = badgeWidth(ctx, badge) + 1; return { x: box.x - w, y: box.y, w: box.w + w, h: box.h }; }
+  return { x: box.x - 10, y: box.y - 7, w: box.w + 10, h: box.h + 7 };
+}
+function badgeWidth(ctx, badge) {
+  if (badge.mark) return 8;
+  ctx.save();
+  ctx.font = BADGE_FONT;
+  const w = Math.max(12, Math.ceil((ctx.measureText ? ctx.measureText(badge.text).width : badge.text.length * 5) + 6));
+  ctx.restore();
+  return w;
 }
 /**
  * #2661: a level badge on a name tag's top-left corner (x, y: the tag's corner), overlapping its edge like an app's
  * badge — it takes none of the tag's width. `badge`: { text, tier } (fleet-office-levels.js badgeOf), or { mark } for a
  * pinned title that hides the number: a small diamond.
  */
-export function drawBadge(ctx, x, y, badge, pal) {
+export function drawBadge(ctx, x, y, badge, pal, inline = false) {
   if (!badge) return;
+  // #2860 inline (a compact tag): (x, y) is the tag's left edge and middle; the badge sits just left of it, whole.
+  if (inline) { const w = badgeWidth(ctx, badge); x = x - 1 - w + (badge.mark ? w / 2 : w / 2 - 3); y = y + (badge.mark ? 0 : 1); }
   const c = tierColours(badge.tier, pal);
   ctx.save();
   ctx.globalAlpha = 1;
@@ -331,18 +363,18 @@ export function drawBadge(ctx, x, y, badge, pal) {
 }
 const BADGE_FONT = "700 8px system-ui, sans-serif";
 
-/** Zones: a name tag under someone's feet at (x, y). */
-function drawTag(ctx, x, y, look, env) {
+/** Zones: a name tag under someone's feet at (x, y); `compact` (#2860): the smaller one a crowded area keeps on. */
+function drawTag(ctx, x, y, look, env, compact = false) {
   const { pal } = env;
+  const b = tagBox(ctx, x, y, look.label, compact);
   ctx.save();
   if (look.dim) ctx.globalAlpha = 0.35;
-  ctx.font = TAG_FONT;
-  const t = fitText(ctx, look.label, TAG_TEXT_W), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + 10);
-  ctx.fillStyle = pal.surface; ctx.fillRect(Math.round(x - w / 2), y + 3, w, 14);
-  ctx.strokeStyle = look.match ? pal.focus : pal.border; ctx.lineWidth = look.match ? 2 : 1; ctx.strokeRect(Math.round(x - w / 2) + 0.5, y + 3.5, w - 1, 13);
-  ctx.fillStyle = pal.text; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(t, x, y + 10.5);
+  ctx.font = compact ? COMPACT.font : TAG_FONT;
+  ctx.fillStyle = pal.surface; ctx.fillRect(b.x, b.y, b.w, b.h);
+  ctx.strokeStyle = look.match ? pal.focus : pal.border; ctx.lineWidth = look.match ? 2 : 1; ctx.strokeRect(b.x + 0.5, b.y + 0.5, b.w - 1, b.h - 1);
+  ctx.fillStyle = pal.text; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(b.text, x, b.y + b.h / 2 + 0.5);
   ctx.restore();
-  if (look.badge) drawBadge(ctx, Math.round(x - w / 2), y + 3, look.badge, pal);
+  if (look.badge) compact ? drawBadge(ctx, b.x, b.y + b.h / 2, look.badge, pal, true) : drawBadge(ctx, b.x, b.y, look.badge, pal);
 }
 
 /**
@@ -622,28 +654,112 @@ export const COZY_PACK = {
   stateZones: { working: "desks", idle: "lounge", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" },
   characters: {}, byInstance: {}, props: {}, bubbles: {},
 };
-/** Until its picture is in (loadCozySkin): the studio's floors under the cozy's areas. */
-const cozyBare = spriteSkin(COZY_PACK, new Map(), studioSkin);
-let cozyJob = null;
+// The cozy's zones on every picture-backed built-in: work, lounge, the alert corner, the nap corner.
+const PICTURE_ZONES = { working: "desks", idle: "lounge", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" };
+const wps = (list) => list.map(([id, x, y]) => ({ id, x, y }));
+
+// ── #2947: two more on the cozy's arrangement — work top-left, the lounge top-right, the nap corner bottom-left, the
+// alert corner bottom-right, one straight aisle up the middle from a bottom-centre door ──
+
+/** The guild: a fantasy adventurers' guild hall (src/ui/shared/office/guild.png). */
+export const GUILD_BACKGROUND = "/assets/office-guild.png";
+// Seats: the chairs at the six map desks, the tavern bench, the stools round the table, the bar; the inn beds (a sleeper's
+// middle); in front of the quest board.
+const GUILD_AREAS = {
+  desks: { name: "desks", rect: { x: 130, y: 190, w: 400, h: 160 }, seats: pts([180, 200], [320, 200], [450, 200], [180, 315], [320, 315], [450, 315]) },
+  lounge: { name: "lounge", rect: { x: 780, y: 190, w: 440, h: 150 }, seats: pts([840, 200], [900, 200], [810, 290], [935, 290], [870, 325], [1040, 300]) },
+  alert: { name: "alert", rect: { x: 860, y: 560, w: 260, h: 50 }, seats: pts([900, 590], [1000, 590], [1090, 590]) },
+  nap: { name: "nap", rect: { x: 110, y: 540, w: 380, h: 80 }, seats: pts([160, 560], [285, 560], [405, 560]) },
+};
+const GUILD_WAYPOINTS = wps([
+  ["door", 640, 650], ["low", 640, 615], ["hall", 640, 345], ["top", 640, 130],
+  // the desks: the aisle under the second row (y 345), the one between the rows (y 225), the column beside them (x 540)
+  ["d-east", 540, 345], ["d2-3", 450, 345], ["d2-2", 320, 345], ["d2-1", 180, 345],
+  ["d-up", 540, 225], ["d1-3", 450, 225], ["d1-2", 320, 225], ["d1-1", 180, 225],
+  // the beds and the quest board: the aisle along the bottom (y 615)
+  ["n-x", 500, 615], ["n-3", 405, 615], ["n-2", 285, 615], ["n-1", 160, 615],
+  ["a-1", 900, 615], ["a-2", 1000, 615], ["a-3", 1090, 615],
+  // the tavern: under the round table (y 345), up the bench's west end (x 770) to in front of it (y 215)
+  ["l-hall", 770, 345], ["l-tw", 810, 345], ["l-ts", 870, 345], ["l-te", 935, 345], ["l-bar", 1040, 345],
+  ["l-up", 770, 215], ["l-b1", 840, 215], ["l-b2", 900, 215],
+]);
+const GUILD_EDGES = [
+  ["door", "low"], ["low", "hall"], ["hall", "top"],
+  ["hall", "d-east"], ["d-east", "d2-3"], ["d2-3", "d2-2"], ["d2-2", "d2-1"], ["d-east", "d-up"], ["d-up", "d1-3"], ["d1-3", "d1-2"], ["d1-2", "d1-1"],
+  ["low", "n-x"], ["n-x", "n-3"], ["n-3", "n-2"], ["n-2", "n-1"], ["low", "a-1"], ["a-1", "a-2"], ["a-2", "a-3"],
+  ["hall", "l-hall"], ["l-hall", "l-tw"], ["l-tw", "l-ts"], ["l-ts", "l-te"], ["l-te", "l-bar"], ["l-hall", "l-up"], ["l-up", "l-b1"], ["l-b1", "l-b2"],
+];
+export const GUILD_PACK = {
+  format: 1, id: "guild", scale: 1, background: GUILD_BACKGROUND, areas: GUILD_AREAS, door: { x: 640, y: 690 },
+  waypoints: GUILD_WAYPOINTS, edges: GUILD_EDGES, straight: true, furniture: [], stateZones: PICTURE_ZONES,
+  characters: {}, byInstance: {}, props: {}, bubbles: {},
+};
+
+/** The school: a classroom (src/ui/shared/office/school.png). */
+export const SCHOOL_BACKGROUND = "/assets/office-school.png";
+// Seats: the chairs at the six student desks; the sofa, the two stools, the vending machine; the nurse's beds; in front
+// of the chalkboard.
+const SCHOOL_AREAS = {
+  desks: { name: "desks", rect: { x: 130, y: 205, w: 400, h: 140 }, seats: pts([190, 215], [325, 215], [455, 215], [170, 320], [315, 320], [450, 320]) },
+  lounge: { name: "lounge", rect: { x: 770, y: 125, w: 420, h: 110 }, seats: pts([850, 135], [925, 135], [1000, 135], [810, 225], [1035, 225], [1145, 185]) },
+  alert: { name: "alert", rect: { x: 840, y: 560, w: 260, h: 50 }, seats: pts([880, 590], [965, 590], [1050, 590]) },
+  nap: { name: "nap", rect: { x: 110, y: 540, w: 380, h: 80 }, seats: pts([160, 555], [295, 555], [400, 555]) },
+};
+const SCHOOL_WAYPOINTS = wps([
+  ["door", 640, 660], ["low", 640, 625], ["hall", 640, 335], ["mid", 640, 280], ["top", 640, 100],
+  // the desks: the aisle under the second row (y 335), the one between the rows (y 232), the column beside them (x 540)
+  ["d-east", 540, 335], ["d2-3", 450, 335], ["d2-2", 315, 335], ["d2-1", 170, 335],
+  ["d-up", 540, 232], ["d1-3", 455, 232], ["d1-2", 325, 232], ["d1-1", 190, 232],
+  // the beds and the chalkboard: the aisle along the bottom (y 625)
+  ["n-x", 520, 625], ["n-3", 400, 625], ["n-2", 295, 625], ["n-1", 160, 625],
+  ["a-1", 880, 625], ["a-2", 965, 625], ["a-3", 1050, 625],
+  // the lounge: under the rug (y 280) to the stools and the machine, up its west edge (x 760) to in front of the sofa (y 150)
+  ["l-hall", 760, 280], ["l-w", 810, 280], ["l-e", 1035, 280], ["l-vend", 1145, 280],
+  ["l-up", 760, 150], ["l-s1", 850, 150], ["l-s2", 925, 150], ["l-s3", 1000, 150],
+]);
+const SCHOOL_EDGES = [
+  ["door", "low"], ["low", "hall"], ["hall", "mid"], ["mid", "top"],
+  ["hall", "d-east"], ["d-east", "d2-3"], ["d2-3", "d2-2"], ["d2-2", "d2-1"], ["d-east", "d-up"], ["d-up", "d1-3"], ["d1-3", "d1-2"], ["d1-2", "d1-1"],
+  ["low", "n-x"], ["n-x", "n-3"], ["n-3", "n-2"], ["n-2", "n-1"], ["low", "a-1"], ["a-1", "a-2"], ["a-2", "a-3"],
+  ["mid", "l-hall"], ["l-hall", "l-w"], ["l-w", "l-e"], ["l-e", "l-vend"], ["l-hall", "l-up"], ["l-up", "l-s1"], ["l-s1", "l-s2"], ["l-s2", "l-s3"],
+];
+export const SCHOOL_PACK = {
+  format: 1, id: "school", scale: 1, background: SCHOOL_BACKGROUND, areas: SCHOOL_AREAS, door: { x: 640, y: 700 },
+  waypoints: SCHOOL_WAYPOINTS, edges: SCHOOL_EDGES, straight: true, furniture: [], stateZones: PICTURE_ZONES,
+  characters: {}, byInstance: {}, props: {}, bubbles: {},
+};
+
+/**
+ * The built-ins drawn from one picture shipped with the page (#2631 cozy, #2947 guild and school): each one's pack, and
+ * until its picture is in, the studio's floors under its areas (the bare skin); `job` is the picture's load in flight.
+ */
+const PICTURES = new Map([COZY_PACK, GUILD_PACK, SCHOOL_PACK].map((pack) => [pack.id, { pack, bare: spriteSkin(pack, new Map(), studioSkin), job: null }]));
+/** Their ids: a style naming one loads its picture (loadBuiltInSkin). */
+export const PICTURE_SKINS = [...PICTURES.keys()];
 
 /** The skins built into this page; an uploaded pack is loaded by loadPackSkin. */
-export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ["cozy", cozyBare]]);
-export const BUILT_IN_SKINS = ["pixel", "studio", "cozy"];
+export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ...[...PICTURES].map(([id, p]) => [id, p.bare])]);
+export const BUILT_IN_SKINS = ["pixel", "studio", ...PICTURE_SKINS];
 /**
- * #2631: the cozy's picture, loaded once; the skin drawn from it then takes the cozy's place in SKINS (skinFor). The
- * skin, or null while it cannot load (the bare one stays; tried again next time).
+ * #2631/#2947: a picture-backed built-in's picture, loaded once; the skin drawn from it then takes the bare one's place
+ * in SKINS (skinFor). The skin, or null while it cannot load (the bare one stays; tried again next time); null for an id
+ * that is not one of them.
  */
-export function loadCozySkin({ image = defaultImage } = {}) {
-  if (SKINS.get("cozy") !== cozyBare) return Promise.resolve(SKINS.get("cozy"));
-  cozyJob ??= image(COZY_BACKGROUND).then((im) => {
-    cozyJob = null;
+export function loadBuiltInSkin(id, { image = defaultImage } = {}) {
+  const p = PICTURES.get(id);
+  if (!p) return Promise.resolve(null);
+  if (SKINS.get(id) !== p.bare) return Promise.resolve(SKINS.get(id));
+  p.job ??= image(p.pack.background).then((im) => {
+    p.job = null;
     if (!im) return null;
-    const sk = spriteSkin(COZY_PACK, new Map([[COZY_BACKGROUND, im]]), studioSkin);
-    SKINS.set("cozy", sk);
+    const sk = spriteSkin(p.pack, new Map([[p.pack.background, im]]), studioSkin);
+    SKINS.set(id, sk);
     return sk;
-  }, () => { cozyJob = null; return null; });
-  return cozyJob;
+  }, () => { p.job = null; return null; });
+  return p.job;
 }
+/** #2631: the cozy's picture (loadBuiltInSkin for "cozy"). */
+export const loadCozySkin = (opts = {}) => loadBuiltInSkin("cozy", opts);
 /** A skin by id: a built-in one, else a pack loaded here (`packs`: id → skin), else the default (pixel). */
 export const skinFor = (id, packs = null) => SKINS.get(id) || (packs && packs.get(id)) || pixelSkin;
 

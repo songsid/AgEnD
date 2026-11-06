@@ -6,8 +6,6 @@ import { register, t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { ModsCard } from "./settings-mods.js";
-import { experimentalComponent } from "/assets/feature-flags.js";
-const EffectsCard = experimentalComponent(() => import("./settings-effects.js"), m => m.EffectsCard);
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
@@ -71,7 +69,7 @@ export function AppearanceSection(props = {}) {
   return html`${group("groupLook")}<${ThemesCard} ...${props} /><${IdentityColorCard} /><${CardSizeCard} />
     ${group("groupLayout")}<${SidebarWidgetCard} />
     ${group("groupCss")}<${OwnerCssCard} />
-    ${group("groupMods")}<${ModsCard} /><${EffectsCard} />
+    ${group("groupMods")}<${ModsCard} />
     <${RestoreDefaultsCard} ...${props} />`;
 }
 

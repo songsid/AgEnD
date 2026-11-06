@@ -283,9 +283,6 @@ describe("no agent path reaches it", () => {
       // the /ui/mods routes (a signed-in session; tested in web-mods-1629), never by a tool or the agent endpoint.
       if (["web-api.ts", "web-owner-css.ts", "web-owner-css-store.ts", "fleet-manager.ts", "web-prefs.ts", "web-image-meta.ts", "auth-api.ts", "web-auth.ts",
         "web-mod-bundle.ts", "web-mod-store.ts", "web-mod-export.ts",
-        // web-mod-agent.ts (r4-5b): an agent's mod path names it only to refuse it (owner_css_not_from_agent), and its
-        // export never carries it — both tested in web-mods-agent-1629.
-        "web-mod-agent.ts",
         // #2026: file admission names the host CSS store only as a forbidden managed root (pinned below).
         "agent-file-read.ts",
         // #2636: the Office share page's static asset list — the module file, served as code; its /ui/owner-css reads
@@ -293,12 +290,7 @@ describe("no agent path reaches it", () => {
         "office-share-page.ts",
         // web-settings-tools.ts (#2056): General's tools change the user's Settings → Web appearance — custom CSS through
         // the store's own save (checkOwnerCss and all), keep, revert and restore (pinned below).
-        "web-settings-tools.ts",
-        // Playback observations name a closed reason only, never a CSS management path (pinned below).
-        "web-effect-playback.ts",
-        // Try checks the host-supplied CSS lifecycle enum for a closed diagnostic value.
-        // It neither imports the CSS store nor exposes its management routes (pinned below).
-        "web-effect-trials.ts"].includes(f)) continue;
+        "web-settings-tools.ts"].includes(f)) continue;
       if (/owner[-_ ]?css/i.test(readFileSync(join(src, f), "utf8"))) hits.push(f);
     }
     expect(hits, "no tool, CLI or agent route names it").toEqual([]);
@@ -318,19 +310,11 @@ describe("no agent path reaches it", () => {
     expect([...tools.matchAll(/store\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null", "c.version"]);
     expect(tools).not.toMatch(/setOwnerCss|writeIndex|ownerCssActive/);
     expect([...tools.matchAll(/ownerCss\.restore\(person, ([^)]*)\)/g)].map(m => m[1])).toEqual(["null"]);
-    const playback = readFileSync(join(src, "web-effect-playback.ts"), "utf8");
-    expect(playback.match(/owner[-_ ]?css/gi)).toHaveLength(1);
-    expect(playback).toContain('"gates_unknown", "owner_css", "stock_overlay"');
-    expect(playback).not.toMatch(/from\s*["']\.\/web-owner-css|import\(\s*["']\.\/web-owner-css|\/ui\/owner-css|setOwnerCss|OwnerCssStore/);
-    const trials = readFileSync(join(src, "web-effect-trials.ts"), "utf8");
-    expect(trials).toContain('["off", "on", "loading", "unknown"].includes(d.ownerCss as string)');
-    expect(trials).not.toContain('d.ownerCss !== "off"');
-    expect(trials).not.toMatch(/from\s*["']\.\/web-owner-css|\/ui\/owner-css|setOwnerCss/);
     const fm = readFileSync(join(src, "fleet-manager.ts"), "utf8");
     // Field, getter, construction — and (r4-5) handing it to the mod store, whose only door is the /ui/mods routes; and
     // (#2056) to General's web-settings tools, whose CSS door is a trial, its revert, or off (pinned above).
     expect(fm.match(/ownerCss/g)?.length, "fleet-manager only holds the store for the web context").toBe(7);
-    expect(fm).toContain("prefs: this.webPrefs, ownerCss: this.ownerCss, mods: this.mods, effects: this.effectService,");
+    expect(fm).toContain("prefs: this.webPrefs, ownerCss: this.ownerCss,\n");
     expect(fm).toContain("ownerCss: this.ownerCss,");
   });
 });

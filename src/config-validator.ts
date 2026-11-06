@@ -1,5 +1,6 @@
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
+import { CODEX_SPEEDS, isCodexSpeed } from "./backend/codex-speed.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
@@ -30,7 +31,7 @@ export interface ValidationIssue {
 
 /** Every key `web:` takes (WebConfig, checked both ways at compile time): anything else is a typo or a guess, ignored. */
 const WEB_KEYS = ["experimental", "public_link", "echo_to_channel", "usage_panel", "usage_report_on_public_link", "log_tab", "provider_secrets", "allowed_hosts", "view_access",
-  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "office_share", "office_levels"] as const satisfies ReadonlyArray<keyof WebConfig>;
+  "notify_login", "notice_delivery", "session", "preview", "preview_port", "preview_origin", "preview_on_public_link", "preview_cdn", "themes", "appearance", "upload_max_file_mb", "upload_max_total_mb", "guests", "verified_authority", "search", "office_share", "page_share", "office_levels"] as const satisfies ReadonlyArray<keyof WebConfig>;
 const WEB_KEYS_COMPLETE: Exclude<keyof WebConfig, typeof WEB_KEYS[number]> extends never ? true : never = true;
 void WEB_KEYS_COMPLETE;
 
@@ -198,6 +199,10 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
           // #2010: opt-in Claude prompt-cache TTL ("1h" | "5m"); unset leaves the CLI's own choice.
           if (backendName === "claude-code" && settings.prompt_cache_ttl !== undefined && !PROMPT_CACHE_TTLS.includes(settings.prompt_cache_ttl as never)) {
             err(`${optionPath}.prompt_cache_ttl`, `must be one of: ${PROMPT_CACHE_TTLS.join(", ")}`);
+          }
+          // M-2446: Codex speed, allow-listed (codex itself silently drops an unknown tier).
+          if (backendName === "codex" && settings.speed !== undefined && !isCodexSpeed(settings.speed)) {
+            err(`${optionPath}.speed`, `must be one of: ${CODEX_SPEEDS.join(", ")}`);
           }
           if (backendName === "codex" && settings.provider !== undefined) {
             if (typeof settings.provider !== "string") {
@@ -465,6 +470,16 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
         if (h !== undefined && (typeof h !== "number" || !Number.isInteger(h) || h < 1 || h > 24)) err("web.office_share.max_hours", "must be a whole number of hours (1-24)");
       }
     }
+    // #2911: page share links (as office_share).
+    if (config.web.page_share !== undefined) {
+      if (!isObj(config.web.page_share)) err("web.page_share", "must be a mapping");
+      else {
+        for (const k of Object.keys(config.web.page_share)) if (k !== "enabled" && k !== "max_hours") warn(`web.page_share.${k}`, "unknown key (known: enabled, max_hours) — ignored");
+        if (config.web.page_share.enabled !== undefined && typeof config.web.page_share.enabled !== "boolean") err("web.page_share.enabled", "must be a boolean");
+        const h = config.web.page_share.max_hours;
+        if (h !== undefined && (typeof h !== "number" || !Number.isInteger(h) || h < 1 || h > 24)) err("web.page_share.max_hours", "must be a whole number of hours (1-24)");
+      }
+    }
     if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
       err("web.provider_secrets", "must be a boolean");
     }
@@ -487,6 +502,7 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (config.web.preview !== undefined && typeof config.web.preview !== "boolean") err("web.preview", "must be a boolean");
     // #1723: previews over the temporary public link (a second quick tunnel of the link's own).
     if (config.web.preview_on_public_link !== undefined && typeof config.web.preview_on_public_link !== "boolean") err("web.preview_on_public_link", "must be a boolean");
+    if (config.web.preview_cdn !== undefined && typeof config.web.preview_cdn !== "boolean") err("web.preview_cdn", "must be a boolean");
     if (config.web.preview_port !== undefined) {
       const p = config.web.preview_port;
       if (typeof p !== "number" || !Number.isInteger(p) || p < 1 || p > 65535) err("web.preview_port", "must be a port number (1-65535)");
@@ -753,9 +769,11 @@ function validateWebGuests(guests: unknown, config: Record<string, any>, rooms: 
       for (const [k, grant] of Object.entries(g.grants as Record<string, unknown>)) {
         const at = `web.guests.grants.${k}`;
         if (!accountKey(k)) { err(at, "the key must be <connection id>:<user id>"); continue; }
-        if (!isObj(grant)) { err(at, "must be { name?, instances: [instance…] }"); continue; }
+        if (!isObj(grant)) { err(at, "must be { name?, instances: [instance…], level? }"); continue; }
         const gr = grant as Record<string, unknown>;
-        for (const key of Object.keys(gr)) if (key !== "name" && key !== "instances") err(`${at}.${key}`, "unknown key (name, instances)");
+        for (const key of Object.keys(gr)) if (key !== "name" && key !== "instances" && key !== "level") err(`${at}.${key}`, "unknown key (name, instances, level)");
+        // #2855: chat (the default) or trusted (adds a read-only View and search).
+        if (gr.level !== undefined && gr.level !== "chat" && gr.level !== "trusted") err(`${at}.level`, "must be chat or trusted");
         if (gr.name !== undefined && (typeof gr.name !== "string" || gr.name.length > 100)) err(`${at}.name`, "must be a text of at most 100 characters");
         const names = gr.instances;
         if (!Array.isArray(names) || names.length > 200 || !names.every((n) => typeof n === "string" && n.length > 0 && n.length <= 128)) { err(`${at}.instances`, "must be a list of instance names"); continue; }

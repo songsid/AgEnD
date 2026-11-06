@@ -22,13 +22,16 @@ const PLATFORMS = { discord: "Discord", telegram: "Telegram" };
 const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
 const sameList = (a, b) => (a || []).length === (b || []).length && (a || []).every((n) => (b || []).includes(n));
 const accountKey = (g) => `${g.adapterId}:${g.userId}`;
-const copyGrants = (m) => { const out = {}; for (const [k, v] of Object.entries(m || {})) if (v && Array.isArray(v.instances)) out[k] = { ...(v.name ? { name: v.name } : {}), instances: [...v.instances] }; return out; };
+// #2855: a grant's level — "trusted", or chat (the default, so never written).
+const grantOf = (v) => ({ ...(v.name ? { name: v.name } : {}), instances: [...v.instances], ...(v.level === "trusted" ? { level: "trusted" } : {}) });
+const copyGrants = (m) => { const out = {}; for (const [k, v] of Object.entries(m || {})) if (v && Array.isArray(v.instances)) out[k] = grantOf(v); return out; };
 /** The saved state, from the fleet's config: `grants` null while the fleet still uses #1920's derived access. */
 export function savedGuests(fleet) {
   const g = (fleet && fleet.web && fleet.web.guests) || {};
   return { enabled: g.enabled === true, chat: g.chat !== false, grants: g.grants ? copyGrants(g.grants) : null };
 }
-const sameGrant = (a, b) => !!a && !!b && (a.name || "") === (b.name || "") && sameList(a.instances, b.instances);
+const levelOf = (g) => (g && g.level === "trusted" ? "trusted" : "chat");
+const sameGrant = (a, b) => !!a && !!b && (a.name || "") === (b.name || "") && sameList(a.instances, b.instances) && levelOf(a) === levelOf(b);
 
 /**
  * What changed against the saved state, as the PUT /api/settings/fleet/web body's `guests` (null: nothing), and how
@@ -44,7 +47,7 @@ export function guestsBody(original, f) {
     for (const k of new Set([...Object.keys(was), ...Object.keys(f.grants)])) {
       const a = own(was, k) ? was[k] : undefined, b = own(f.grants, k) ? f.grants[k] : undefined;
       if (a && b && sameGrant(a, b)) continue;
-      diff[k] = b ? { ...(b.name ? { name: b.name } : {}), instances: [...b.instances] } : null;
+      diff[k] = b ? grantOf(b) : null;
       count++;
     }
     // #2365 review: turning grants on is a change by itself, even with no one in them yet (default deny): `grants: {}`.
@@ -235,6 +238,12 @@ export function GuestsSection({ ctx, staged }) {
             ${removed ? html`<span class="g-state">${tn("grantsWillBeRemoved")}</span>` : added ? html`<span class="g-state">${tn("grantsNew")}</span>` : pill(person)}</div>
           <div class="g-chips">${((draft || saved).instances || []).map((n) => html`<span key=${n} class="g-chip" title=${shownName(rooms, n) !== n ? n : undefined}>${shownName(rooms, n)}</span>`)}</div>
           ${draft && !draft.instances.length ? html`<p class="note g-error" role="alert">${tn("grantsNoAgents")}</p>` : null}
+          ${draft ? html`<div class=${`g-level${levelOf(draft) !== levelOf(saved) && saved ? " s-dirty" : ""}`}>
+            <span class="note" id=${`level-${k}`}>${tn("grantsLevel", person.name)}</span>
+            <div class="seg-inline" role="group" aria-labelledby=${`level-${k}`}>${["chat", "trusted"].map((l) => html`<button key=${l} type="button"
+              class=${`btn btn-sm${levelOf(draft) === l ? " btn-primary" : ""}`} aria-pressed=${levelOf(draft) === l ? "true" : "false"} data-level=${l}
+              onClick=${() => setGrant(k, { ...draft, level: l === "trusted" ? "trusted" : undefined })}>${tn(l === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat")}</button>`)}</div>
+            ${levelOf(draft) === "trusted" ? html`<p class="note">${tn("grantsLevelTrustedHint")}</p>` : null}</div>` : null}
           ${editing === k && draft ? html`<div class="g-edit"><p class="note">${tn("grantsMaySee", person.name)}</p>
             <${Names} id=${`grant-${k}`} all=${instances} rooms=${rooms} value=${draft.instances} wrote=${person.wrote} onChange=${(list) => setGrant(k, { ...draft, instances: list })} /></div>` : null}
           ${readOnly ? null : html`<div class="guest-actions">
@@ -260,7 +269,7 @@ export function GuestsSection({ ctx, staged }) {
     ${overview && overview.audit ? html`<h4>${tn("grantsRecent")}</h4>${!overview.audit.length ? html`<p class="note" id="grantsRecentNone">${tn("grantsRecentNone")}</p>`
       : html`<ul class="g-audit" id="grantsRecentList">${overview.audit.map((e, i) => html`<li key=${`${e.at}-${i}`} class="g-audit-row" data-kind=${e.kind}>
         <span class="g-when">${new Date(e.at).toLocaleString()}</span> <strong>${e.name}</strong>
-        ${e.kind === "grant" ? html`${e.added.map((n) => html` <span key=${`+${n}`} class="g-wrote g-add">+${n}</span>`)}${e.removed.map((n) => html` <span key=${`-${n}`} class="g-wrote g-del">−${n}</span>`)}
+        ${e.kind === "grant" ? html`${e.added.map((n) => html` <span key=${`+${n}`} class="g-wrote g-add">+${n}</span>`)}${e.removed.map((n) => html` <span key=${`-${n}`} class="g-wrote g-del">−${n}</span>`)}${e.level ? html` <span class="g-wrote g-level-to">${tn("grantsAuditLevel", tn(e.level === "trusted" ? "grantsLevelTrusted" : "grantsLevelChat"))}</span>` : null}
           <span class="note"> · <span class="g-wrote">${tn(e.via === "confirmed" ? "grantsAuditConfirmed" : "grantsAuditDirect")}</span>${e.endedSessions ? html` · <span class="g-wrote">${tn("grantsAuditEnded", e.endedSessions)}</span>` : null}</span>`
         : html` <span class="note">${e.outcome === "sent" ? tn("grantsAuditCodeSent") : tn("grantsAuditCodeNot", auditOutcome(e.outcome))}</span>`}</li>`)}</ul>`}` : null}
     ${status && status.kind === "waiting" ? html`<p class="note" role="status">${tn("grantsWaiting")}</p>` : null}

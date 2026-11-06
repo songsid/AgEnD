@@ -28,6 +28,8 @@ export type ShellRoute =
   | { panel: "view"; instance: string | null }
   | { panel: "settings"; section: SettingsSection }
   | { panel: "needs" }
+  // #2910 D2: a web-only fleet's Notices (/ui/notices).
+  | { panel: "notices" }
   // #1523 N2: Details, "the Fleet side of one instance" (/ui/fleet/agent/<name>).
   | { panel: "details"; instance: string }
   // #1218: the instance's Log (/ui/log/<name>).
@@ -62,6 +64,8 @@ export function shellRoute(method: string, path: string): ShellMatch {
   // #1386 part (b): the Needs you list. A page, not a read of the list — that arrives only over SSE `needs` and
   // /ui/poll (#1374: no new read for it).
   if (path === "/ui/needs") return { kind: "shell", route: { panel: "needs" } };
+  // #2910 D2: the Notices page (its list: GET /ui/notices/list, then SSE `notice`).
+  if (path === "/ui/notices") return { kind: "shell", route: { panel: "notices" } };
   // #1523 N2: one instance's Details. `agent` is not a Fleet tab, and a tab is one segment: no path means both.
   const details = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(path);
   if (details) {

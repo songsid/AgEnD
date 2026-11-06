@@ -71,7 +71,12 @@ Once the fleet is running you can also do this from chat: `/login` in General in
 agend quickstart
 ```
 
-It runs in four steps:
+It first asks how you will use AgEnD:
+
+- **1. Web only** (the default — press Enter): no bot and no token. It sets up your AI coding CLI, your first agent (a name, and its own workspace or a folder you give) and where your projects live, writes a fleet with no chat connection, and ends by showing the sign-in code from `agend web --code` (or the address and that command) for the web dashboard. Everything else — more agents, schedules, Settings — is done there, and a Telegram or Discord bot can be added later in Settings.
+- **2. With a Discord or Telegram bot**: the four steps below.
+
+With a bot, it runs in four steps:
 
 1. It finds the AI coding CLI you have, and asks which one if there are several.
 2. It asks for Telegram, Discord, or both. Discord is built in, so there is nothing extra to install.
@@ -140,6 +145,8 @@ agend update
 It stays on the channel you installed from (a beta stays on beta), installs the new version, checks it, and restarts the fleet. Coming from 2.2.x, read [Upgrading from 2.2 to 2.3](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.md) and [What's new in 2.3](/AgEnD/docs/whats-new/) first: it has a note for root and WSL-style hosts, where `agend update` needs `XDG_RUNTIME_DIR` set. Coming from 2.1, read [Upgrading from 2.1 to 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.md) first. From 2.1.0–2.1.11, or on a host without AgEnD's built-in Node, follow its manual steps instead.
 
 On Windows, the desktop shortcuts **AgEnD 儀表板** (the dashboard, its sign-in code filled in) and **AgEnD 重新啟動** (restart, after asking) come with the Windows installer. If you installed earlier, paste the [Windows one-liner](/AgEnD/install-windows/) again: it finds AgEnD already installed and only offers to add or update the shortcuts. Or, inside WSL, run `agend shortcuts`. After `agend update` in a WSL terminal without the shortcuts, one line says so, once; nothing is put on your desktop unless you run one of these. If `agend` itself stopped working (an update cut off half way: `agend: command not found`), the same one-liner repairs it in place, keeping your fleet's settings and data, and asks nothing about setup again.
+
+If the machine stopped in the middle of an update (a power loss or a forced OS restart) and the service now fails to start (systemd `status=203/EXEC`, or 0-byte files under the npm global `@songsid/agend`): run `systemctl --user reset-failed com.agend.fleet`, then re-run the install command (or the installer alone: `npm exec --yes --package @songsid/agend@<version> -- agend-install`; a plain `npm install -g` can fail with `ENOTEMPTY` here). The installer first puts back an intact copy npm moved aside (`@songsid/.agend-…`), then installs and starts the service; if the fleet still isn't running, `agend restart`. Your settings and data are kept.
 
 ## Next steps
 

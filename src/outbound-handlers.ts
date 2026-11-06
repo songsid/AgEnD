@@ -17,7 +17,7 @@ import { t } from "./locale.js";
 import type { InteractionSnapshot } from "./backend/types.js";
 import { presentationState, interactionSummary } from "./interaction-observation.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
-import { crossInstanceVisibility, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
+import { crossInstanceVisibility, hideInternalMessageIds, senderTopicNotice, targetTopicNotice } from "./cross-instance-notice.js";
 import { instanceSupportsSteer } from "./steer-capability.js";
 import { assignDisplayLabels, displayInstanceName, readStatuslineModel } from "./topic-commands.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileLogin, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
@@ -613,10 +613,13 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const senderShown = senderText !== null && !senderIsGeneral;
   const placed = (instance: string, text: string, opts: import("./channel/types.js").SendOpts) =>
     ctx.renderPlacesFor?.(instance, text, opts) ?? { text: stripPlaceRefs(text), opts };
+  // #2848: whether each side's line is posted to its topic — one condition for the post and for the web line's mark.
+  const targetTopicId = targetInstance?.topic_id, senderTopicId = senderInstance?.topic_id;
+  const targetPosted = !!(groupId && ctx.adapter && targetShown && targetTopicId);
+  const senderPosted = !!(groupId && ctx.adapter && senderShown && senderTopicId);
   if (groupId && ctx.adapter) {
     // ── Target topic notification ──
-    const targetTopicId = targetInstance?.topic_id;
-    if (targetShown && targetTopicId) {
+    if (targetPosted) {
       const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
       const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
       const out = placed(targetInstanceName, targetText!, { threadId: String(targetTopicId) });
@@ -625,8 +628,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     }
 
     // ── Sender topic notification ──
-    const senderTopicId = senderInstance?.topic_id;
-    if (senderShown && senderTopicId) {
+    if (senderPosted) {
       const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
       const senderGroupId = ctx.getGroupIdForInstance?.(meta.instanceName) ?? String(groupId);
       const out = placed(meta.instanceName, senderText!, { threadId: String(senderTopicId) });
@@ -637,7 +639,9 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // #1672: the same notices in each instance's web chat — a muted status line, never an agent's or a person's message.
   // Not gated on a topic or a chat platform (a web-only fleet, a topic-less instance); recorded in its history (#1565).
   // #1990: on the web each line's other side opens that instance's chat (an in-app route; only fleet instances).
-  const webNotice = (instance: string, text: string) => {
+  // #2848: a line that was also posted to the instance's topic is marked as the channel's (`channel`), so a guest sees
+  // what the topic showed (full, or the one-line summary); one that was not (hidden, General, no topic) stays unmarked.
+  const webNotice = (instance: string, text: string, posted: boolean) => {
     const out = renderPlaceRefs(text, "web", target => {
       const route = target.kind === "instance" && Object.hasOwn(instances, target.name) ? webRoute("chat", target.name) : undefined;
       return route ? { url: route } : undefined;
@@ -645,10 +649,11 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     ctx.emitSseEvent?.("message", {
       instance, sender: displayLabel(senderLabel), role: "status", text: out.text, ts: new Date().toISOString(),
       ...(out.textLinks.length ? { links: out.textLinks } : {}),
+      ...(posted ? { channel: true } : {}),
     });
   };
-  if (targetShown) webNotice(targetInstanceName, targetText!);
-  if (senderShown) webNotice(meta.instanceName, senderText!);
+  if (targetShown) webNotice(targetInstanceName, targetText!, targetPosted);
+  if (senderShown) webNotice(meta.instanceName, senderText!, senderPosted);
 
   // #856: the same line, now carrying the envelope's message_id and a short
   // content digest, so a disputed message can be matched to its outbox row
@@ -659,7 +664,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // #2293: indexed for the dashboard's search as the outbox keeps it (a retried call the outbox admitted before: not again).
   if (!durableReceipt?.duplicate) ctx.indexCrossInstance?.({ messageId: ipcMeta.message_id, from: senderLabel, to: targetName, kind: ipcMeta.request_kind,
     correlationId: ipcMeta.correlation_id, taskSummary: ipcMeta.task_summary, content: message ?? "", ts: ipcMeta.ts });
-  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(message ?? "", 500)}`);
+  ctx.queueMirrorMessage?.(`${displayLabel(senderLabel)} → ${displayLabel(targetName)}: ${truncatePreview(hideInternalMessageIds(message ?? ""), 500)}`);
   const targetStateWarning = recipientWarning(ctx.lifecycle.daemons.get(targetInstanceName), targetName, state === "paused");
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
@@ -1009,13 +1014,57 @@ const restartInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(RestartInstanceArgs, rawArgs, "restart_instance");
   if (!v.ok) { respond(null, v.error); return; }
   const targetName = v.data.name;
+  // M-2266: a codex instance may be told which conversation to resume, for this restart only. Checked here, before
+  // anything restarts: a bad id restarts nothing. The launch checks it again and consumes it (codex.ts).
+  const resumeId = v.data.resume_session_id;
+  if (resumeId !== undefined) {
+    const refused = await armCodexResume(ctx, targetName, resumeId);
+    if (refused) { respond(null, refused); return; }
+  }
   try {
     await ctx.restartSingleInstance(targetName, { explicit: true });
     respond({ success: true, status: "restarted" });
   } catch (err) {
+    // #2964 review: the one-shot is for this restart only — a restart that failed does not leave it armed.
+    if (resumeId !== undefined) await disarmCodexResume(ctx, targetName);
     respond(null, `Failed to restart instance '${targetName}': ${sanitizeError(err, ctx, `restart_instance(${targetName})`)}`);
   }
 };
+
+/**
+ * M-2266: validate `id` for `name` (a codex instance of this fleet: a rollout in its sessions, for its working
+ * directory, started by the CLI) and write the one-shot its next launch consumes. Returns why not, or null.
+ */
+async function armCodexResume(ctx: OutboundContext, name: string, id: string): Promise<string | null> {
+  const inst = ctx.fleetConfig?.instances?.[name];
+  if (!inst) return `Instance '${name}' is not a fleet instance; resume_session_id applies to fleet instances only.`;
+  if (effectiveBackendForTarget(ctx, name) !== "codex") return `resume_session_id applies to codex instances only; '${name}' is not one.`;
+  const { join } = await import("node:path");
+  const { existsSync, writeFileSync } = await import("node:fs");
+  const { CodexBackend, CODEX_RESUME_NEXT_FILE } = await import("./backend/codex.js");
+  const { checkResumeId } = await import("./backend/codex-session-lookup.js");
+  const instanceDir = join(ctx.dataDir, "instances", name);
+  // The sessions this instance's codex reads: its home's (normally a link to the shared ones), else the shared ones.
+  const homes = [join(instanceDir, "codex-home"), CodexBackend.shortHomeFor(instanceDir), process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")];
+  const sessionsDir = homes.map(h => join(h, "sessions")).find(p => existsSync(p));
+  if (!sessionsDir) return `No codex sessions found for '${name}'.`;
+  const check = checkResumeId(sessionsDir, inst.working_directory, id);
+  if (!check.ok) {
+    const why = { "bad-id": "not a codex session id", "not-found": "no rollout with that id in the instance's sessions", "other-cwd": "that conversation belongs to another working directory", "not-cli": "that conversation was not started by the codex CLI" }[check.reason];
+    return `Cannot resume ${id} on '${name}': ${why}. Nothing was restarted.`;
+  }
+  try { writeFileSync(join(instanceDir, CODEX_RESUME_NEXT_FILE), JSON.stringify({ id: check.rollout.id, at: new Date().toISOString() }), { mode: 0o600 }); }
+  catch (err) { return `Cannot resume ${id} on '${name}': ${(err as Error).message}. Nothing was restarted.`; }
+  return null;
+}
+
+/** M-2266: remove a one-shot armCodexResume wrote (its restart failed). */
+async function disarmCodexResume(ctx: OutboundContext, name: string): Promise<void> {
+  const { join } = await import("node:path");
+  const { rmSync } = await import("node:fs");
+  const { CODEX_RESUME_NEXT_FILE } = await import("./backend/codex.js");
+  try { rmSync(join(ctx.dataDir, "instances", name, CODEX_RESUME_NEXT_FILE), { force: true }); } catch { /* already gone */ }
+}
 
 const pauseInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(PauseInstanceArgs, rawArgs, "pause_instance");
@@ -1189,6 +1238,10 @@ const getWebSettings: Handler = async (ctx, rawArgs, respond) => {
   if (r.ok) respond(r); else respond(null, `get_web_settings: ${r.error}${r.detail ? ` — ${r.detail}` : ""}`);
 };
 const setWebSettings: Handler = async (ctx, rawArgs, respond) => {
+  // #2799: the Canvas Worker changes (effect, effect_slot, mod) left the schema with their code; a call that still names
+  // one (a resumed session) gets the tool's own refusal, as while the effects were off — not a schema error.
+  const raw = rawArgs as { person?: unknown; change?: { what?: unknown } } | null;
+  if (ctx.webSettings && ["effect", "effect_slot", "mod"].includes(raw?.change?.what as string)) { respond(ctx.webSettings.change(raw!.person, { what: raw!.change!.what })); return; }
   const v = validateArgs(SetWebSettingsArgs, rawArgs, "set_web_settings");
   if (!v.ok) { respond(null, v.error); return; }
   if (!ctx.webSettings) { respond(null, "set_web_settings is unavailable on this fleet"); return; }
@@ -1903,7 +1956,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   })));
   const bDisplay = (name: string) =>
     bLabels.get(name) ?? displayInstanceName(name, ctx.fleetConfig?.instances[name]?.display_name);
-  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(message, 500)}`);
+  ctx.queueMirrorMessage?.(`📢 ${bDisplay(senderLabel)} → [${sentTo.map(bDisplay).join(", ")}]: ${truncatePreview(hideInternalMessageIds(message), 500)}`);
   respond({
     sent_to: sentTo,
     failed,

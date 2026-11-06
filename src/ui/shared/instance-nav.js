@@ -504,18 +504,18 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const known = new Set(byName.keys());
   const favs = nav.favorites.filter((n) => known.has(n));
   const favSet = new Set(favs);
-  const canStar = !viewOnly && prefsWritable();
-  // #1920: a guest's list is to pick from — no reordering and no filters (one this device kept would hide rows with no
-  // way to clear it).
+  const canStar = !viewOnly && prefsWritable("nav.favorites");
+  // #1920: a guest's list is not reordered (the order is the host's). #2855: it stars, sorts and filters as its own
+  // preferences (kept on the host under its account), with reply times that only count replies its channel showed.
   const guest = guestPage();
-  // #2179: when each row last replied (a guest's list has no times). "recent" mode (never a guest's): the favorites keep
+  // #2179: when each row last replied (a guest's: replies its channel showed). "recent" mode: the favorites keep
   // their order or are sorted too, and every other row is one list, the last reply first. "custom" (the default) is the
   // person's own order — a reply never moves a row.
   const now = Date.now();
   // The anonymous View reader (viewOnly) has no reply times (/api/profiles carries none) and no way to change the sort:
   // its list is always Custom, whatever this browser kept from a signed-in page (#2181 review).
-  const ageOf = (n) => (guest || viewOnly ? null : replyAge(byName.get(n), now));
-  const recent = !guest && !viewOnly && nav.sort.mode === "recent";
+  const ageOf = (n) => (viewOnly ? null : replyAge(byName.get(n), now));
+  const recent = !viewOnly && nav.sort.mode === "recent";
   const favsSorted = recent && nav.sort.favs === "recent";
   let shownGroups, shownInsts;
   if (recent) {
@@ -528,7 +528,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     shownInsts = new Map([...instByGroup].map(([g, names]) => [g, names.filter((n) => !favSet.has(n))]));
     if (favs.length) shownInsts.set(FAV_GROUP, favs);
   }
-  const f = guest ? { q: "", status: [], cli: [] } : nav.filter;
+  const f = nav.filter;
   const shown = filterSidebar(shownGroups, shownInsts, byName, f.q, backendLabel, { status: f.status, cli: f.cli, statusOf: facetOf });
   // #1936: while a filter is on, the instance you have open stays on top, pinned and marked "Current", whether or not
   // it matches; a match is not repeated below. "N / M" still counts the filter's matches (the pinned row counts only
@@ -626,7 +626,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   return html`<div class=${`view-roster inst-nav${editing && canStar ? " fav-editing" : ""}`}>
     <div data-trust="navigation" class="side-section" id="instanceList" ref=${list}>
     <div class="inst-head"><h2 class="side-label">${tn("instancesLabel")}</h2>
-      ${canStar && items.length && !guest ? html`<${SortMenu} sort=${nav.sort} />`
+      ${canStar && items.length ? html`<${SortMenu} sort=${nav.sort} />`
         : recent ? html`<span class="chip-btn nav-sort-btn on nav-sort-static"><${Icon} name="sort" size=${12} /><span>${tn("sortRecent")}</span></span>` : null}
       ${canStar && items.length ? html`<button type="button" class="chip-btn fav-edit" aria-pressed=${editing ? "true" : "false"} onClick=${() => setEditing(!editing)}>
         ${editing ? tn("favDone") : html`<${Icon} name="star" size=${12} />${tn("favEdit")}`}</button>` : null}</div>
@@ -653,7 +653,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     })}
     ${loaded && shown.active && !shown.groups.length ? html`<p class="side-empty">${tn("filterNone")}</p>` : null}
     </div>
-    ${guest ? null : html`<div class="v-filter">
+    ${html`<div class="v-filter">
       <label class="v-filter-box"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("filterPh")}</span>
         <input ref=${filterRef} id="filterInput" type="text" autocomplete="off" spellcheck=${false} placeholder=${tn("filterPh")} value=${f.q}
           onInput=${(e) => setNavFilter({ q: e.target.value })}

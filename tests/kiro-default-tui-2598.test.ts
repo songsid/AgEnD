@@ -69,7 +69,8 @@ describe("every creation path writes a new kiro instance's engine", () => {
     const dataDir = mkdtempSync(join(home, "data-"));
     const projectDir = mkdtempSync(join(home, "proj-"));
     const configPath = join(dataDir, "fleet.yaml");
-    writeFileSync(configPath, `${defaults}${seed}`);
+    // #2910: a chat fleet (a channel), where create_instance makes a topic; with none the fleet is web-only.
+    writeFileSync(configPath, `${defaults}channel:\n  type: telegram\n  mode: topic\n  bot_token_env: T\n  group_id: -100\n  access: { mode: locked, allowed_users: [1] }\n${seed}`);
     const { FleetManager } = await import("../src/fleet-manager.js");
     const { CreateInstanceArgs } = await import("../src/outbound-schemas.js");
     const fm = new FleetManager(dataDir);

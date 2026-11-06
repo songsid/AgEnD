@@ -420,6 +420,8 @@ export interface WebConfig {
    * longest a share may live.
    */
   office_share?: { enabled?: boolean; max_hours?: number };
+  /** #2911: page share links — one agent page, read-only, for a limited time, on the Office share's tunnel (default on; 24 h at most). */
+  page_share?: { enabled?: boolean; max_hours?: number };
   /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
   provider_secrets?: boolean;
   /**
@@ -462,6 +464,11 @@ export interface WebConfig {
    * instead of it; web.preview: false turns previews off everywhere.
    */
   preview_on_public_link?: boolean;
+  /**
+   * #2911 (7): previews may load libraries from cdnjs (/ajax/libs/) and jsDelivr (/npm/) — scripts, styles and fonts
+   * only (connect-src stays 'none'). Default false. Those requests leave this machine.
+   */
+  preview_cdn?: boolean;
   /**
    * #1629: agents' own web themes and effects. `agent_edit` (default true): false refuses every agent appearance write,
    * fleet-wide; what is stored stays, and people can still reset and lock.
@@ -529,7 +536,7 @@ export interface WebGuestsConfig {
    * this key exists it is the only scope there is (default deny): the derived scope above (connection access, rooms,
    * open_instances, narrow) no longer gives anything. `name` is display only (who it was when granted).
    */
-  grants?: Record<string, { name?: string; instances: string[] }>;
+  grants?: Record<string, { name?: string; instances: string[]; /** #2855: "trusted" adds a read-only View and search; absent: chat. */ level?: "chat" | "trusted" }>;
   /** A guest session's limits: absolute 1–24 h (default 12), idle 15–720 min (default 120). */
   session?: { absolute_hours?: number; idle_minutes?: number };
 }

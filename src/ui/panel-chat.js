@@ -6,9 +6,9 @@
 // right, the agent's at full width, and one rounded composer pinned below with attach, Stop reply and Send inside it.
 // The instance's own actions (details, start, stop, restart, delete) are in the header's ⋯ menu, and only the ones
 // that apply to its state are offered (#1408 rough edges 4 and 7).
-import { html, useCallback, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, t } from "/assets/app-i18n.js";
-import { appStore, createStore, guestPage, useStore } from "/assets/app-store.js";
+import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
 import { modelText, namesOf, namesStore, navStore as instanceNavStore } from "/assets/instance-nav.js";
@@ -76,16 +76,12 @@ import { installMessageActions } from "./chat-msg-actions.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
-import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
+import { setPanelFeedback } from "./preview-panel-actions.js";
+import { PreviewPanel, claimPanel, openMarkdown, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
-import { canvasWorkerMenuAvailable, experimentalComponent, useCanvasWorker } from "/assets/feature-flags.js";
-const ChatEffectPosters = experimentalComponent(() => import("./chat-effect-posters.js"), m => m.ChatEffectPosters);
-const ChatEffects = experimentalComponent(() => import("./chat-effects.js"), m => m.ChatEffects);
-import { setFollowsReducedMotion } from "/assets/fx-motion.js";
 import { AmbientMotionNote, ChatAmbient, ambientMenuItems } from "./chat-ambient.js";
-import { startEffectsWaker, getAppEffects, wakeEffects, effectsLoaded, onEffectsAwake, chatHasEffects } from "/assets/feature-flags.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composerField = () => (typeof document !== "undefined" ? document.getElementById("msgIn") : null);
 
@@ -147,11 +143,21 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     if (auth && typeof auth.sessionHandle === "function") auth.sessionHandle().then((h) => P().setBannerScope(h), () => P().setBannerScope(null));
     else P().setBannerScope(null);
   }
+  // #2911: the preview panel's "Reply about this page" reaches the composer through these (an undoable edit, as typing).
+  setPanelFeedback({
+    findMsg: (instance, key) => (store.state.msgs[instance] || []).find((x) => msgKey(x) === key) || null,
+    startReply: (instance, x) => store.startReply(instance, x),
+    clearReply: (instance) => store.clearReply(instance),
+    addToDraft: (instance, line) => { recordEdit(composerField()); store.addToDraft(instance, line); },
+    focus: () => {
+      const el = composerField(); if (!el) return;
+      el.focus();
+      // After the render that shows the line: the caret at its end.
+      setTimeout(() => { try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
+    },
+  });
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
   installTour();
-  // #2118: viewing current in-scope Chat effects needs no management or personal-slot authority. #2193: the runtime
-  // itself loads only when there is something to play (effects-waker.js).
-  startEffectsWaker({ store });
   return store;
 }
 
@@ -261,9 +267,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const themeKey = JSON.stringify(theme);
   const card = useCard(name, inst.card_v);
   const [dialog, setDialog] = useState(null);       // "delete" | null
-  const [canvasPlayback, setCanvasPlayback] = useState(null);
-  const publishCanvasPlayback = useCallback(value => setCanvasPlayback(previous =>
-    !previous && !value.playing || previous?.name === value.name && previous.playing === value.playing ? previous : value), []);
   const [wrap, setWrap] = useState(codeWrap);
   const wide = useStore(chatWide).on;
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
@@ -312,9 +315,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     else if (r && r.held) toast(r.message);
     else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
   };
-  // #2193: this chat's Canvas Worker placements (its status row's effect_chat_v): none, no effects code runs for it.
-  const cwEnabled = useCanvasWorker();
-  const fxHere = cwEnabled && chatHasEffects(name);
   const items = [
     // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
     { key: "details", label: t("chat.details"), icon: "info", onSelect: () => navigate(detailsPath(name)) },
@@ -328,7 +328,6 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
     ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
     narrowScreen() ? null : { key: "fullWidth", checkbox: true, checked: wide, label: t("chat.fullWidth"), onSelect: () => setChatWide(!wide) },
-    cwEnabled && canvasWorkerMenuAvailable(window) ? { key: "effects", label: t("cwControls.title"), onSelect: () => setDialog("effects") } : null,
     { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
   ];
   const cls = statusClass(inst, exec, awaiting);
@@ -341,14 +340,14 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => pick("model")}>${modelText(inst)}</button>` : null}
     ${inst.effort ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
-    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? null : html`<${InstanceSwitch} name=${name} current="chat" />`} notice=${html`<${ChatEffects} name=${name} lease=${lease} element=${effectSurface} store=${store} open=${dialog === "effects"} onPlayback=${publishCanvasPlayback} onClose=${() => setDialog(null)} active=${fxHere} />`}>${fxHere ? html`<${ChatEffectPosters} name=${name} lease=${lease} element=${effectSurface} />` : null}<${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
+    <${PanelHeader} title=${headerName(namesOf(inst || { name }, names.primary))} sub=${sub} nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} />${guest ? null : html`<${Menu} items=${items} label=${t("app.more")} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
       <div ref=${effectSurface} class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
         ${theme && theme.background ? html`<img ref=${bg} class=${`th-bg th-bg-${theme.background.fit}`} src=${themeImageUrl(name, theme.background.image)} alt="" aria-hidden="true" decoding="async" />` : null}
         <${ChatAmbient} name=${name} surface=${effectSurface} part="layer" />
-        <${AmbientMotionNote} name=${name} canvasPlaying=${canvasPlayback?.name === name && canvasPlayback.playing} />
+        <${AmbientMotionNote} name=${name} />
         <${Thread} name=${name} th=${thread} />
         <${Dock} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${theme ? theme.workingLabel : undefined} />
         <${ChatAmbient} name=${name} surface=${effectSurface} part="front" />
@@ -423,20 +422,11 @@ function threadEntry(name, doc) {
   list.setAttribute("aria-label", t("chat.conversationWith", name));
   const e = { list, sink: null, lang: lang(), thread: null };
   const thread = createThread(list, doc.createElement("div"), {
-    t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j), onEmpty: (v) => e.sink?.setEmpty(v),
+    t, tf: t, isUser: (x) => store.isUser(x, name), onJump: (j) => e.sink?.setJump(j),
+    // #2848: which empty — "hidden" (a guest's chat whose every message is hidden from it) differs from a plain empty
+    // chat, so the explanation shows when the history answer comes after the first (empty) draw.
+    onEmpty: (v) => e.sink?.setEmpty(v && store.allHidden(name) ? "hidden" : v),
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
-    // #2193: an offer shown while the effects runtime sleeps wakes it; until it answers, the offer is being checked.
-    effectTrialStatus: x => { const fx = getAppEffects(); if (fx) return fx.trialStatus(x); if (!effectsLoaded()) { void wakeEffects(); return "checking"; } return "localAdmin"; },
-    effectTrialFailure: x => getAppEffects()?.trialFailure(x),
-    fixEffectTrial: (x, reason) => {
-      if (reason === "reducedMotion") setFollowsReducedMotion(false);
-      else if (reason === "busy") getAppEffects()?.stopTrial();
-      else if (reason === "transport") location.reload();
-      else if (reason === "localAdmin") location.href = "/signin?next=" + encodeURIComponent(location.pathname + location.search);
-      else navigate("/settings/look");
-    },
-    canTryEffect: x => getAppEffects()?.canTry(x) === true,
-    startEffectTrial: x => { const seq = navStore.get().seq; void getAppEffects()?.startTrial(x).then(ok => { if (!ok && e.sink && navStore.get().seq === seq && document.hasFocus?.() === true && document.visibilityState === "visible") toast(t("chat.effectTrialUnavailable")); }); },
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
     deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
@@ -448,7 +438,8 @@ function threadEntry(name, doc) {
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
     pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
-    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
+    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
+      openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
     openImage: openLightbox,                                               // an image, full size, in the page
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
@@ -472,17 +463,6 @@ function follow(name, thread) {
     else if (kind === "sent") thread.jumpLatest();
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
-  // #2193: the runtime may start later (an offer shown wakes it): its trial updates are followed from then.
-  let trialOff = null, trialOwner = null;
-  const watchTrial = () => {
-    const next = getAppEffects();
-    if (next === trialOwner) return;
-    trialOff?.(); trialOff = null; trialOwner = next;
-    trialOff = next?.subscribeTrial(() => thread.render(store.threadRows(name))) ?? null;
-  };
-  watchTrial();
-  offs.push(onEffectsAwake(() => { watchTrial(); thread.render(store.threadRows(name)); }));
-  offs.push(() => { trialOff?.(); trialOff = null; trialOwner = null; });
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
   return () => { for (const off of offs) off(); };
 }
@@ -548,7 +528,8 @@ function Thread({ name, th }) {
   }, [name]);
   return html`<div class="scroller" ref=${scroller}>
     <div class="thread-host" ref=${host}></div>
-    ${empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
+    ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
+      : empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
     <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;
@@ -677,10 +658,12 @@ function Composer({ name, label = name, lease, busy }) {
   const files = s.pendingFiles[name] || [];
   const reply = s.replies[name];                       // #2272: the message this one will reply to
   const content = !!value.trim() || files.length > 0;
-  // A file waiting: what goes is a message with its file, never a command (no palette, no command line). A guest never
-  // runs one (#1920: the server refuses its slash text), so it has no palette either.
+  // A file waiting: what goes is a message with its file, never a command (no palette, no command line). #2855: a guest's
+  // palette offers only what it may run on this agent — the table's "anyone" commands (its status frame's `commands`).
   const guest = guestPage();
-  const palette = guest || files.length || closedFor === value ? null : paletteFor(value);
+  const app = useStore(appStore);
+  const guestAllowed = guest ? (app.instances.find((i) => i.name === name)?.commands ?? []) : null;
+  const palette = files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
   // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
   // (#2478 — a long name's placeholder made the box two lines tall).
@@ -707,9 +690,12 @@ function Composer({ name, label = name, lease, busy }) {
       else complete(pick);
       return;
     }
-    // #1920: a guest's "/…" would be refused as a command — said here, the draft kept to edit.
-    if (guest && /^\s*\//.test(value)) { toast(t("chat.guestNoCommands"), false); return; }
     const cmd = files.length ? null : parseCommandLine(value);
+    // #1920/#2855: a guest's "/…" that is not one it may run here is refused here, why said, the draft kept to edit — a
+    // known command: only the channel's admins run it; anything else: it would not go as a message either.
+    if (guest && /^\s*\//.test(value) && !(cmd && guestAllowed.includes(cmd.command))) {
+      toast(cmd ? t("chat.guestCommandNotAllowed", `/${cmd.command}`) : t("chat.guestNoCommands"), false); return;
+    }
     if (cmd && needsArgument(cmd.command) && !cmd.args) { recordEdit(input.current); setValue(`/${cmd.command} `); return; }
     if (cmd) { runLine(cmd); return; }
     store.send(name);
@@ -743,7 +729,7 @@ function Composer({ name, label = name, lease, busy }) {
       ${palette.length ? palette.map((c) => html`<li key=${c.name} id=${optId(c)} role="option" aria-selected=${c === pick ? "true" : "false"}
           class=${c === pick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); complete(c); }}>
           <span class="cmd-name mono">/${c.name}${c.arg ? html` <span class="cmd-arg">${c.arg}</span>` : null}</span><span class="cmd-desc">${t(`chat.cmd_${c.name}`)}</span></li>`)
-        : html`<li class="cmd-none" role="option" aria-selected="false">${t("chat.cmdNotCommand")}</li>`}
+        : html`<li class="cmd-none" role="option" aria-selected="false">${t(guest ? "chat.cmdNotGuests" : "chat.cmdNotCommand")}</li>`}
     </ul>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status">
       <span class="reply-mark" aria-hidden="true"><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></span><span class="reply-label">${t("chat.replyingTo", reply.sender)}</span>
@@ -812,6 +798,8 @@ function DeleteDialog({ name, onClose }) {
     } catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
     if (r && r.error) { toast(r.error, false); if (!handedOver && lease.current()) setBusy(false); return; }
     toast(t("chat.instanceDeleted", name));
+    // The agent's own topic went too, or stayed with the reason (the server's own words: no new string here).
+    if (r.topic_note) toast(r.topic_note, r.topic_deleted !== false);
     if (handedOver || !lease.current()) return;
     setBusy(false);
     onClose();

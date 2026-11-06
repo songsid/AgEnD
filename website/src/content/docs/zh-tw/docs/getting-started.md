@@ -71,7 +71,12 @@ fleet 跑起來之後，也可以在聊天裡做這件事：在 General 用 `/lo
 agend quickstart
 ```
 
-它分四步：
+它會先問你要怎麼使用 AgEnD：
+
+- **1. Web only（只用網頁）**（預設——直接按 Enter）：不用 bot、不用 token。它會設定你的 AI coding CLI、你的第一個 agent（名稱，以及它自己的工作區或你指定的資料夾）和專案位置，寫好沒有聊天連線的 fleet，最後顯示 `agend web --code` 的登入碼（或網址加上那個指令），讓你登入網頁儀表板。其他事情——更多 agent、排程、設定——都在那裡完成；之後也可以在設定裡加上 Telegram 或 Discord bot。
+- **2. 接 Discord 或 Telegram bot**：照下面四步。
+
+接 bot 時分四步：
 
 1. 找出你已安裝的 AI coding CLI，有好幾個時讓你選。
 2. 問你要用 Telegram、Discord 還是兩者都要。Discord 是內建的，不用另外裝東西。
@@ -140,6 +145,8 @@ agend update
 它會留在你安裝的頻道（beta 就留在 beta），安裝新版、檢查它，然後重啟 fleet。從 2.2.x 升級，請先看[從 2.2 升級到 2.3](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.3.zh-TW.md)和[2.3 更新重點](/AgEnD/zh-tw/docs/whats-new/)，裡面有 root 與 WSL 類主機的說明：那裡的 `agend update` 需要設定 `XDG_RUNTIME_DIR`。從 2.1 升級，請先看[從 2.1 升級到 2.2](https://github.com/songsid/AgEnD/blob/main/docs/upgrade-2.2.zh-TW.md)。從 2.1.0–2.1.11 升級，或主機沒有 AgEnD 內建的 Node 時，請改照它的手動步驟。
 
 在 Windows 上，桌面捷徑 **AgEnD 儀表板**（打開儀表板並帶入登入碼）和 **AgEnD 重新啟動**（先詢問再重啟）是由 Windows 安裝程式建立的。如果你是之前安裝的，再貼一次 [Windows 一行安裝指令](/AgEnD/zh-tw/install-windows/)：它會偵測到 AgEnD 已經裝好，只提供新增或更新捷徑。也可以在 WSL 裡執行 `agend shortcuts`。在還沒有捷徑的 WSL 終端機裡執行 `agend update` 之後，會出現一行提示，只會出現一次；除非你自己執行上面其中一種方式，否則不會在桌面上放任何東西。如果是 `agend` 指令本身不能用了（例如更新中途被打斷，出現 `agend: command not found`），同一行指令也會就地修復，保留 fleet 的設定和資料，不會再問任何設定的問題。
+
+如果更新進行到一半時機器停止（斷電或作業系統強制重新開機），之後服務起不來（systemd 回報 `status=203/EXEC`，或 npm 全域目錄下 `@songsid/agend` 的檔案都是 0 bytes）：先執行 `systemctl --user reset-failed com.agend.fleet`，再執行一次安裝指令（或只執行安裝程式：`npm exec --yes --package @songsid/agend@<版本> -- agend-install`；直接 `npm install -g` 在這裡可能以 `ENOTEMPTY` 失敗）。安裝程式會先把 npm 移到旁邊、仍然完整的那份（`@songsid/.agend-…`）放回去，再安裝並啟動服務；若 fleet 仍未執行，執行 `agend restart`。設定與資料都會保留。
 
 ## 下一步
 

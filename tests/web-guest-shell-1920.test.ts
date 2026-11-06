@@ -2,9 +2,9 @@
  * #1920 phase 3 (P3a): a guest's web app — only what a guest may use, and who it is signed in as.
  * - The server marks a guest's page (data-tier="guest", its web name and platform; no usage panel) — an admin's page is
  *   unchanged.
- * - The shell: the sidebar lists its own agents to pick from (no filters, no reordering) with a "Guest · <name>
+ * - The shell: the sidebar lists its own agents to pick from (#2855: its own star, sort and filter; no reordering) with a "Guest · <name>
  *   (<platform>)" chip and its session — no Fleet overview, Needs you, Fleet, View, Settings, New agent or widget; no
- *   bottom tabs; no operations, usage rail, pending changes or owner-CSS bar. Its preferences are read-only.
+ *   bottom tabs; no operations, usage rail, pending changes or owner-CSS bar. #2855: it saves only its own preferences.
  * - The chat: no instance tabs, ⋯ menu or effects; no command palette — a "/…" draft is refused here with why (the
  *   server would refuse it as a command) and kept; the hint says the agent sees its messages as a guest's.
  * Rigs: the real handler (server), and the real Shell / chat panel in a mini DOM (as web-new-agent-2074 and
@@ -35,7 +35,7 @@ describe("the server marks a guest's page", () => {
     expect(guest).toContain('data-tier="guest"');
     expect(guest).toContain('data-guest-name="Alice &#60;&#38;&#62;"');
     expect(guest).toContain('data-guest-platform="discord"');
-    expect(guest).toContain('data-usage-panel="0"');
+    expect(guest, "#2855: the usage panel is a guest's too").toContain('data-usage-panel="1"');
     const admin = shellFor("admin");
     expect(admin).not.toContain("data-tier");
     expect(admin).not.toContain("data-guest");
@@ -52,7 +52,7 @@ afterEach(async () => {
 });
 
 describe("a guest's shell", () => {
-  async function shell(guest: boolean) {
+  async function shell(guest: boolean, trusted = false) {
     vi.resetModules();
     const harness = await import("./helpers/app-harness.js");
     // A filter this device kept ("zzz" matches no agent), and host preferences on the page (so they could be written).
@@ -60,6 +60,7 @@ describe("a guest's shell", () => {
     mounted.push(pg);
     pg.document.documentElement.setAttribute("data-prefs", JSON.stringify({ rev: 1, values: {} }));
     if (guest) { pg.document.body.setAttribute("data-tier", "guest"); pg.document.body.setAttribute("data-guest-name", "Alice"); pg.document.body.setAttribute("data-guest-platform", "discord"); }
+    if (trusted) pg.document.body.setAttribute("data-guest-level", "trusted");
     (pg.window as any).AgendAuth = { canWrite: async () => !guest, sessionEnded: () => false, onSessionEnd: () => () => {} };
     (globalThis as { fetch?: unknown }).fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
     const { startRouter } = await import("/assets/app-nav.js" as string);
@@ -85,12 +86,19 @@ describe("a guest's shell", () => {
     expect(pg.root.querySelector("#sidebar .guest-chip").parentNode.getAttribute("data-trust")).toBe("navigation");
     expect(pg.root.querySelector("#sidebar .side-nav"), "no Fleet overview, Needs you, Fleet, View or New agent").toBeNull();
     expect(texts(pg, "#sidebar .side-foot a.side-row"), "no Settings").toEqual([]);
-    expect(pg.root.querySelector("#sidebar .v-filter"), "no filters").toBeNull();
-    expect(texts(pg, "#sidebar .inst-name").sort(), "a filter this device kept hides nothing").toEqual(["docs", "web-dev"]);
+    // #2855: its own filter — the one this device kept is in the box (so it can be cleared), and applied.
+    expect((pg.root.querySelector("#sidebar .v-filter input") as any)?.value, "its filter, shown").toBe("zzz");
+    expect(texts(pg, "#sidebar .inst-name"), "and applied: only the open chat, pinned as Current (#1936)").toEqual(["web-dev"]);
     expect(pg.root.querySelector("#sidebar [draggable=true]"), "no reordering").toBeNull();
     expect(pg.root.querySelector("nav.tabs"), "no bottom tabs").toBeNull();
     expect(pg.root.querySelector(".shell.guest")).not.toBeNull();
-    expect(prefs.prefsWritable(), "its preferences are read-only").toBe(false);
+    // #2855: its own five keys only; nothing else, and nothing when no key is named.
+    expect(["theme", "lang", "nav.favorites", "nav.sort", "nav.filter", "nav.order", "card.size", undefined].map((k) => prefs.prefsWritable(k))).toEqual([true, true, true, true, true, false, false, false]);
+  });
+  it("#2855: a trusted guest's sidebar adds Search (and only Search) above its agents", async () => {
+    const { pg } = await shell(true, true);
+    expect(texts(pg, "#sidebar .side-nav .side-row")).toEqual(["SearchCtrl K"]);
+    expect(texts(pg, "#sidebar .side-foot a.side-row"), "still no Settings").toEqual([]);
   });
   it("control: an admin's shell keeps all of it", async () => {
     const { pg, prefs } = await shell(false);
@@ -105,12 +113,13 @@ describe("a guest's shell", () => {
 });
 
 describe("a guest's chat", () => {
-  async function chatPage(guest: boolean) {
+  async function chatPage(guest: boolean, commands?: string[], trusted = false) {
     vi.resetModules();
     const harness = await import("./helpers/app-harness.js");
     const p = harness.page({ storage: { agend_tour_done: "1" } });
     mounted.push(p);
     if (guest) p.document.body.setAttribute("data-tier", "guest");
+    if (trusted) p.document.body.setAttribute("data-guest-level", "trusted");
     const app = await import("/assets/app-store.js" as string);
     const panel = await import("/ui/js/panel-chat.js" as string);
     const calls: Array<{ path: string; body: unknown }> = [];
@@ -123,7 +132,7 @@ describe("a guest's chat", () => {
     const stream = { on: (n: string, fn: (d: unknown) => void) => { subs.set(n, [...(subs.get(n) ?? []), fn]); return () => {}; }, emit: (n: string, d: unknown) => { for (const fn of subs.get(n) ?? []) fn(d); }, started: () => true, catchUp: () => {} };
     stream.on("status", app.applyStatus);
     panel.boot({ stream, boot: null, deps: { fetch, toast: (m: string) => toasts.push(m), setTimeout: () => 0 } });
-    stream.emit("status", { uptime: 1, instances: [{ name: "w", status: "running", state: "idle" }] });
+    stream.emit("status", { uptime: 1, instances: [{ name: "w", status: "running", state: "idle", ...(commands ? { commands } : {}) }] });
     const { Toasts } = await import("/assets/ui-toast.js" as string);
     await p.mount(harness.h("div", null, harness.h("main", { id: "main" }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: "w" }, navKey: "chat|w" })), harness.h(Toasts, null)));
     await settle();
@@ -133,7 +142,7 @@ describe("a guest's chat", () => {
     const shown = () => [...p.root.querySelectorAll(".toast")].map((e: any) => e.textContent);
     return { p, calls, toasts, shown, box, type, key };
   }
-  it("no tabs, menu or palette; a '/…' draft refused here with why and kept; the hint says it is a guest's", async () => {
+  it("no tabs or menu; with no commands it may run here, no palette, and a '/…' draft refused here with why and kept; the hint says it is a guest's", async () => {
     const c = await chatPage(true);
     expect(c.p.root.querySelector("nav.inst-switch"), "no Chat / View / Log / Details").toBeNull();
     expect(c.p.root.querySelector("[aria-haspopup=menu]"), "no ⋯ menu").toBeNull();
@@ -141,12 +150,38 @@ describe("a guest's chat", () => {
     expect(c.p.root.querySelector(".cmd-palette"), "no command palette").toBeNull();
     await c.key("Enter");
     expect(c.calls.filter((x) => x.path === "/ui/send" || x.path === "/ui/command"), "nothing sent").toEqual([]);
-    expect(c.shown().join(" | ")).toContain("Guests can't run commands");
+    expect(c.shown().join(" | ")).toContain("/clear isn't available to guests");
     expect(c.box().value, "the draft is kept to edit").toBe("/clear");
     expect(c.p.root.querySelector(".guest-note")?.textContent).toContain("guest's (recognition only)");
     await c.type("hello");
     await c.key("Enter");
     expect(c.calls.filter((x) => x.path === "/ui/send").map((x) => (x.body as any).message), "a message goes as before").toEqual(["hello"]);
+  });
+  it("#2855: its palette offers only the commands its status says it may run here; one runs through /ui/command; another is refused here", async () => {
+    const c = await chatPage(true, ["ctx", "cancel", "btw", "steer"]);
+    await c.type("/");
+    const offered = [...c.p.root.querySelectorAll(".cmd-palette [data-cmd], .cmd-palette li, .cmd-palette button")].map((e: any) => e.textContent.trim()).filter(Boolean);
+    expect(offered.join(" "), "only the four it may run").toMatch(/ctx/);
+    for (const name of ["clear", "model", "compact", "pause", "save"]) expect(offered.join(" "), name).not.toContain(`/${name}`);
+    await c.type("/cl");
+    expect(c.p.root.querySelector(".cmd-palette .cmd-none")?.textContent, "a guest is never told Enter sends it").toBe("Not one a guest can run here.");
+    await c.type("/ctx"); await c.key("Enter");
+    expect(c.calls.filter((x) => x.path === "/ui/command").map((x) => (x.body as any).command)).toEqual(["ctx"]);
+    await c.type("/model opus"); await c.key("Enter");
+    expect(c.calls.filter((x) => x.path === "/ui/command")).toHaveLength(1);
+    expect(c.shown().join(" | ")).toContain("/model isn't available to guests");
+    await c.type("/whatever x"); await c.key("Enter");
+    expect(c.shown().join(" | ")).toContain("Guests can't send that");
+  });
+  it("#2855: a trusted guest's chat: Chat | View | Search (no Log or Details); Search opens on this agent", async () => {
+    const c = await chatPage(true, [], true);
+    const tabs = [...c.p.root.querySelectorAll("nav.inst-switch .seg-item")].map((e: any) => [e.textContent, e.getAttribute("href")]);
+    expect(tabs).toEqual([["Chat", "/ui/chat/w"], ["View", "/view/w"], ["Search", null]]);
+    const shell = await import("/assets/app-shell.js" as string);
+    fire(c.p.root.querySelector("nav.inst-switch button.seg-item"), "click");
+    await vi.waitFor(() => expect(shell.shellStore.get().dialog?.props?.preset).toEqual({ instance: "w" }));
+    shell.closeDialog();
+    expect(c.p.root.querySelector("[aria-haspopup=menu]"), "still no ⋯ menu").toBeNull();
   });
   it("control: an admin's chat has its tabs, menu and palette", async () => {
     const c = await chatPage(false);
@@ -155,5 +190,53 @@ describe("a guest's chat", () => {
     await c.type("/");
     expect(c.p.root.querySelector(".cmd-palette")).not.toBeNull();
     expect(c.p.root.querySelector(".guest-note")).toBeNull();
+  });
+});
+
+describe("#2855: a guest's View", () => {
+  async function viewPage(trusted: boolean, paneStatus = 200) {
+    vi.resetModules();
+    const harness = await import("./helpers/app-harness.js");
+    const p = harness.page({ url: "http://127.0.0.1:19280/view/w", storage: { agend_tour_done: "1" } });
+    mounted.push(p);
+    p.document.body.setAttribute("data-tier", "guest");
+    if (trusted) p.document.body.setAttribute("data-guest-level", "trusted");
+    const calls: string[] = [];
+    (globalThis as any).fetch = async (path: string) => {
+      calls.push(path);
+      const status = path.startsWith("/api/pane/") ? paneStatus : 200;
+      return { ok: status < 400, status, headers: { get: (k: string) => ({ "x-pane-cols": "80", "x-pane-rows": "24" } as Record<string, string>)[k.toLowerCase()] ?? null },
+        text: async () => "guest pane text", json: async () => ([]) };
+    };
+    const app = await import("/assets/app-store.js" as string);
+    app.applyStatus({ instances: [{ name: "w", status: "running", display_name: "Web" }] });
+    const { ViewPanel } = await import("/assets/panel-view.js" as string);
+    const every = vi.spyOn(globalThis, "setInterval");
+    await p.mount(harness.h(ViewPanel, { route: { panel: "view", instance: "w" }, navKey: `view:w|${trusted}` }));
+    await settle(4);
+    return { p, calls, every: every.mock.calls.map((c) => c[1]) };
+  }
+  it("trusted: its own agents (never /api/profiles), the pane under a watching-only line; no identity card, Edit profile or Help; Chat | View | Search", async () => {
+    const { p, calls, every } = await viewPage(true);
+    expect(calls.filter((c) => c === "/api/profiles"), "the roster is its status frame's").toEqual([]);
+    expect([every.includes(1000), every.includes(800)], "its pane every second (an admin's: 800 ms)").toEqual([true, false]);
+    expect(calls).toContain("/api/pane/w");
+    expect(p.root.querySelector(".v-watching")?.textContent).toBe("👁 Watching only. You can't type here; send a message in Chat instead.");
+    expect(p.root.querySelector(".v-pre")?.textContent).toBe("guest pane text");
+    expect([p.root.querySelector(".v-id"), p.root.querySelector("[aria-label='Help']")]).toEqual([null, null]);
+    expect(p.root.querySelector("h1")?.textContent).toBe("Web");
+    expect([...p.root.querySelectorAll("nav.inst-switch .seg-item")].map((e: any) => e.textContent)).toEqual(["Chat", "View", "Search"]);
+  });
+  it("over its read limit (429): no error shown, the last frame kept", async () => {
+    const { p, calls } = await viewPage(true, 429);
+    expect(calls).toContain("/api/pane/w");
+    expect([p.root.querySelector(".v-term-note"), p.root.querySelector(".v-pre")?.textContent]).toEqual([null, ""]);
+  });
+  it("chat-level: told it needs Trusted access; nothing read, no tabs", async () => {
+    const { p, calls } = await viewPage(false);
+    expect(p.root.querySelector(".empty-title")?.textContent).toBe("Watching needs Trusted access");
+    expect(p.root.querySelector(".empty-hint")?.textContent).toContain("Settings → Guests");
+    expect(calls.filter((c) => c.startsWith("/api/"))).toEqual([]);
+    expect(p.root.querySelector("nav.inst-switch")).toBeNull();
   });
 });

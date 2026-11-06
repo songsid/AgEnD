@@ -168,10 +168,19 @@ describe("the sidebar", () => {
     expect(css).toMatch(/\.nav-sort \{ position: static;/);
     expect(css).toMatch(/\.nav-sort-menu \{ position: absolute; left: 0; right: 0;/);
   });
-  it("a guest: no times, no sort button, the list as it is — whatever the host's sort", async () => {
-    const { pg } = await sidebar([I("a", 1), I("b", 20)], { sort: { mode: "recent", favs: "fixed" }, guest: true });
-    expect([pg.root.querySelector(".inst-when"), pg.root.querySelector(".nav-sort-btn"), pg.root.querySelector(".inst.replied")]).toEqual([null, null, null]);
-    expect(groups(pg)).toEqual([["ops", ["a", "b"]]]);
+  it("#2855 a guest: a star is saved (nav.favorites); folding a group (nav.collapsed, not a guest's key) stays on this browser", async () => {
+    const { pg } = await sidebar([I("a", 20), I("b", 1)], { guest: true });
+    fire(pg.root.querySelector(".inst-star"), "click"); await settle();
+    fire(pg.root.querySelector(".v-group-head"), "click"); await settle();
+    vi.useRealTimers(); await new Promise((r) => setTimeout(r, 450));
+    expect(posts.map((p) => Object.keys(p.set))).toEqual([["nav.favorites"]]);
+    expect(posts[0].set["nav.favorites"]).toHaveLength(1);
+  });
+  it("#2855 a guest: its own sort — reply times (its status carries only the replies its channel showed), the sort button, sorted by reply; never dragged", async () => {
+    const { pg } = await sidebar([I("a", 20), I("b", 1)], { sort: { mode: "recent", favs: "fixed" }, guest: true });
+    expect(groups(pg)).toEqual([["Recent replies first", ["b", "a"]]]);
+    expect([!!pg.root.querySelector(".inst-when"), sortBtn(pg)?.textContent]).toEqual([true, "Recent replies"]);
+    expect(pg.root.querySelector("#instanceList [draggable]"), "a guest never reorders").toBeNull();
   });
 });
 

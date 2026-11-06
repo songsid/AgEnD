@@ -43,7 +43,7 @@ describe("a deleted agent is one line in its confirmation, whatever its config h
 
 const roots: string[] = [], stores: SettingsConfirmationStore[] = [];
 afterEach(() => { for (const s of stores.splice(0)) s.close(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
-function harness(withRemove = true) {
+function harness(withRemove = true, withTopic = false) {
   const root = mkdtempSync(join(tmpdir(), "agend-test-2168-")); roots.push(root);
   const path = join(root, "fleet.yaml"), cfg: any = config();
   writeFileSync(path, yaml.dump(cfg));
@@ -52,9 +52,15 @@ function harness(withRemove = true) {
     const persist = () => { delete cfg.instances[name]; save(); };
     if (execution) execution.mutate(persist); else persist();
   });
+  const removeWithTopic = vi.fn(async (name: string, auth: unknown, opts: { deleteTopic: boolean; execution?: SettingsExecution }) => {
+    await remove(name, auth, opts.execution);
+    return { deleted: true as const };
+  });
   const ctx: any = { fleetConfig: cfg, dataDir: root, configPath: path, webToken: "t".repeat(48), webSessions: undefined,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, getRawFleetConfig: () => cfg, saveFleetConfig: save,
-    lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() }, ...(withRemove ? { removeInstance: remove } : {}) };
+    lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() }, ...(withRemove ? { removeInstance: remove } : {}),
+    // #3054: the fleet's removal that also deletes the agent's topic (by default), as delete_instance does.
+    ...(withTopic ? { removeInstanceAndTopic: removeWithTopic } : {}) };
   const baseline = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => cfg, current: () => null });
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const gate = new SettingsHttpConfirmation(store, { principal: () => ({ id: "browser", label: "browser", source: "web_session", current: () => true }),
@@ -66,7 +72,7 @@ function harness(withRemove = true) {
     try { expect(gate.handle(req, res, new URL(target, "http://localhost"), (rq, rs, u) => handleSettingsRequest(rq, rs, u, ctx))).toBe(true);
       queueMicrotask(() => req.emit("end")); } catch (e) { reject(e); }
   });
-  return { cfg, path, save, remove, store, request };
+  return { cfg, path, save, remove, removeWithTopic, store, request };
 }
 
 describe("confirmed, Settings' DELETE removes the agent the way delete_instance does", () => {
@@ -81,6 +87,14 @@ describe("confirmed, Settings' DELETE removes the agent the way delete_instance 
     expect(h.remove.mock.calls[0]![2], "the confirmation's execution").toBeInstanceOf(SettingsExecution);
     expect(Object.keys(h.cfg.instances)).toEqual(["keep"]);
     expect(Object.keys((yaml.load(readFileSync(h.path, "utf8")) as any).instances)).toEqual(["keep"]);
+  });
+  it("#3054: with the fleet's topic-aware removal, the agent's topic goes too (deleteTopic: true, the confirmation's execution)", async () => {
+    const h = harness(true, true), held = await h.request("DELETE", "/api/settings/fleet/instances/indexer");
+    expect((await h.store.decide(held.body.pending_change.id, "confirm", { label: "F", current: () => true })).state).toBe("applied");
+    expect(h.removeWithTopic).toHaveBeenCalledOnce();
+    const [name, , opts] = h.removeWithTopic.mock.calls[0]!;
+    expect([name, opts.deleteTopic, opts.execution instanceof SettingsExecution]).toEqual(["indexer", true, true]);
+    expect(Object.keys(h.cfg.instances)).toEqual(["keep"]);
   });
   it("a context without removeInstance (CRUD only) still deletes the entry", async () => {
     const h = harness(false), held = await h.request("DELETE", "/api/settings/fleet/instances/indexer");

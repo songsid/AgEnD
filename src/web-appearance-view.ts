@@ -74,7 +74,6 @@ export interface AppearanceInput {
   /** #1958: the host's identity-colour settings (color.show / color.off). */
   colorPrefs?: { show?: unknown; off?: boolean };
   /** r4-4: its placed widgets, by slot. */
-  effects?: Array<{ id: string; by: string; params?: Record<string, unknown>; playback: Record<string, unknown> }>;
   widgets?: Partial<Record<"chat_header" | "details", { spec: unknown; data: unknown; by: string }>>;
   /** #2117: its ambients, by kind. */
   ambient?: Partial<Record<AmbientKind, { spec: AmbientSpec; by: string }>>;
@@ -96,7 +95,6 @@ export function appearanceView(i: AppearanceInput): Record<string, unknown> {
     theme: effectiveTheme(i.theme),
     working_label: i.theme.workingLabel ?? null,
     background: i.theme.background ? { image: i.theme.background.image, fit: i.theme.background.fit, opacity: i.theme.background.opacity } : null,
-    effects: i.effects ?? [],
     widgets: (["chat_header", "details"] as const).flatMap(slot => { const w = i.widgets?.[slot]; return w ? [{ slot, by: w.by, spec: w.spec, data: w.data }] : []; }),
     ambient: AMBIENT_KINDS.flatMap(kind => { const a = i.ambient?.[kind]; return a ? [{ kind, by: a.by, spec: a.spec }] : []; }),
     shown_when: "A viewer who turned off \"Show agents' themes, effects and widgets\", or a page opened with ?safe=1, sees the default look, the bot's face, no card colours, no widgets and no ambient effect. An ambient effect also stays still on a device that chose to follow the system's reduced-motion setting while the system asks for it.",

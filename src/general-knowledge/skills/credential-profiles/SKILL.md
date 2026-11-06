@@ -1,6 +1,6 @@
 ---
 name: credential-profiles
-description: Run agents on more than one subscription of the same backend. Use when someone asks for a worker on a different account, wants an agent moved to another subscription, or asks which subscription an agent is using. Currently kiro-cli, codex and claude-code.
+description: Run agents on more than one subscription or login of the same backend (credential profiles). Use when someone asks for a worker on a different account; to switch, change or move an agent's profile, credential profile, account or login (codex, claude-code, kiro-cli); whether its session or conversation continues after the switch; or which subscription an agent is using. Also 換帳號、換 profile、切換 codex/claude/kiro 登入、換訂閱、切換後接續 session. Currently kiro-cli, codex and claude-code.
 roles: [general]
 ---
 
@@ -97,6 +97,15 @@ update_instance_config(
 )
 ```
 
+For codex (or claude-code) the call is the same with that backend's key:
+
+```
+update_instance_config(
+  name: "research-a",
+  config: { backend_options: { codex: { credential_profile: "personal" } } },
+)
+```
+
 The credentials are read when the CLI starts, so a running instance **is
 restarted for you** and the reply says `restarted: true`. A paused or stopped one
 is not started: the reply says `restarted: false`, and the switch applies at its
@@ -127,6 +136,7 @@ it is not a check that the new process opened the same thread. If there is no
 suitable session (or the DB is unreadable), Codex starts fresh as it would on any
 other launch. **Never** copy `state_5.sqlite`, the `cx/` hash dirs or rollout
 JSONL by hand. That can fork or corrupt the thread index.
+Do not run `codex resume <id>` by hand or look up session ids in `~/.codex/sessions`: the restart takes AgEnD's normal resume path itself.
 
 **Claude Code — copy nothing yourself.** AgEnD copies the transcript and its
 folder into the new profile and resumes it there with `--continue`. The

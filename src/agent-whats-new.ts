@@ -35,7 +35,7 @@ export interface WhatsNewEntry {
   readonly audience?: readonly WhatsNewAudience[];
   /**
    * #2800: the tools the entry is about. Told only to an instance that has at least one of them in its current tool
-   * list (tool set, dashboard switches, office_pack_access, Canvas Worker); the others record it as known. None: a
+   * list (tool set, dashboard switches, office_pack_access); the others record it as known. None: a
    * rule every instance in its audience lives by.
    */
   readonly tools?: readonly string[];
@@ -71,10 +71,10 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // 2.2.5: `since` is 2.2.5, not the beta that brought it — 2.2.5 < 2.3.0-beta.N, so with a beta's `since` a 2.2.5
   // install would never be told. The ids keep their 2.3- names: the record is by id, so an instance already told on a
   // 2.3.0 beta is not told again. An entry added before 2.2.5 is cut takes `since: "2.2.5"` too.
-  { id: "2.3-web-appearance-topic", since: "2.2.5", tools: ["get_web_appearance", "set_web_theme", "set_web_widget", "export_web_mod", "upload_web_effect", "set_web_ambient"],
-    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and mods, and Canvas Worker effects with Try, which are experimental — off unless the person turns them on (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `export_web_mod`, `upload_web_effect`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
+  { id: "2.3-web-appearance-topic", since: "2.2.5", tools: ["get_web_appearance", "set_web_theme", "set_web_widget", "set_web_ambient"],
+    text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and ambient effects (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `set_web_ambient`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." },
   { id: "2.3-web-settings-for-the-user", since: "2.2.5", tools: ["get_web_settings", "set_web_settings"], audience: ["general", "coordinator"],
-    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, custom CSS, proposed mods, Canvas Worker effects (experimental — off unless the person turns them on), Restore defaults. Load the `web-appearance` skill first." },
+    text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, ambient effects, custom CSS and Restore defaults. Load the `web-appearance` skill first." },
   { id: "2.3-web-ambient", since: "2.2.5", tools: ["set_web_ambient"],
     text: "Ambient effects: `set_web_ambient` puts falling petals, snow, rising lanterns, twinkles or stars on a click in your web chat — data only, drawn by the dashboard, no Try needed (`clear_web_ambient` removes it). Load the `web-appearance` skill." },
   { id: "2.3-repo-tools", since: "2.2.5", tools: ["checkout_repo", "release_repo"],
@@ -104,17 +104,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
     text: "A message from another agent no longer ends with a reply line. When an answer is owed, its header line ends with `reply required → report_result <correlation_id>` (CLI mode: the `agend-agent report` command) — answer with that. Without the marker, answer only if you have something to add, with `send_to_instance`; `request_kind` is no longer shown." },
 ];
 
-/** #2275: old sessions learn only the capabilities currently enabled. Keep the full
- * enabled entries above intact; ambient and all unrelated entries are unchanged. */
-export function agentWhatsNew(canvasWorker = false): readonly WhatsNewEntry[] {
-  if (canvasWorker === true) return AGENT_WHATS_NEW;
-  return AGENT_WHATS_NEW.map(entry => {
-    if (entry.id === "2.3-web-appearance-topic") return { ...entry,
-      text: "Web appearance — your own look on the web dashboard: theme, identity card and identity colour, widgets and ambient effects (`get_web_appearance`, `set_web_theme`, `set_web_widget`, `set_web_ambient`, …). Load the `web-appearance` skill before using these tools: it has their parameters, limits and rules." };
-    if (entry.id === "2.3-web-settings-for-the-user") return { ...entry,
-      text: "General (and coordinators): `get_web_settings` / `set_web_settings` read and change the user's Settings → Web appearance the way the page does — host settings, an agent's colour, ambient effects, custom CSS and Restore defaults. Load the `web-appearance` skill first." };
-    return entry;
-  });
+/** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */
+export function agentWhatsNew(): readonly WhatsNewEntry[] {
+  return AGENT_WHATS_NEW;
 }
 
 /**
@@ -233,15 +225,13 @@ export function planWhatsNew(input: {
   roles?: readonly WhatsNewAudience[];
   /** #2800: the instance's current tool names. An entry naming none of them is recorded but not shown. Absent: all. */
   tools?: ReadonlySet<string>;
-  /** #2275: absent or any value other than true keeps experimental guidance hidden. */
-  canvasWorker?: boolean;
 }):
   | { notice: string; ids: string[]; version: string }
   | { silent: string[]; version: string }
   | null {
   const { record, fresh, version } = input;
   if (!version || record === "unreadable") return null;
-  const current = (input.entries ?? agentWhatsNew(input.canvasWorker)).filter(e => { const c = compareVersions(e.since, version); return c !== null && c <= 0; });
+  const current = (input.entries ?? agentWhatsNew()).filter(e => { const c = compareVersions(e.since, version); return c !== null && c <= 0; });
   const known = new Set(record?.announced ?? []);
   const unseen = current.filter(e => !known.has(e.id));
   if (!unseen.length) return null;

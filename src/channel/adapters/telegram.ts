@@ -1,10 +1,12 @@
 import { nativeHumanOrigin } from "../../human-delivery-receipts.js";
 import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
+import { inboxTempName } from "../inbox-temp-name.js";
 import { Agent as HttpAgent } from "node:http";
 import { Agent as HttpsAgent } from "node:https";
-import { createReadStream, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
+import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync } from "node:fs";
 import { join, extname, basename } from "node:path";
+import { atomicWriteFileSync } from "../../atomic-write.js";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
@@ -56,8 +58,55 @@ export const TELEGRAM_ALLOWED_UPDATES = [
   "message_reaction",
 ] as const;
 
+/**
+ * Pending Telegram updates older than this are filed as a Needs-you item
+ * ("missed while AgEnD was offline") and never auto-injected into an agent.
+ * Telegram itself keeps the getUpdates queue for about 24 hours.
+ */
+export const TELEGRAM_PENDING_LIVE_MAX_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Telegram may pick a new random `update_id` after about a week with no
+ * updates (Bot API). A floor older than this is ignored so inbound is not
+ * dropped forever.
+ */
+export const TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Telegram's default getUpdates page size; a shorter page means the queue drained. */
+export const TELEGRAM_GETUPDATES_LIMIT = 100;
+
+/** Crash-safe last processed `update_id` for this adapter (inside inboxDir; prune skips it). */
+export function telegramLastUpdateIdPath(inboxDir: string, adapterId: string): string {
+  const safe = adapterId.replace(/[^A-Za-z0-9._-]+/g, "_") || "adapter";
+  return join(inboxDir, `telegram-${safe}-last-update-id`);
+}
+
+/** An inbound Telegram update that was too old to inject; Needs you lists it. */
+export interface MissedOfflineInbound {
+  source: "telegram";
+  adapterId: string;
+  updateId: number;
+  chatId: string;
+  threadId?: string;
+  messageId: string;
+  userId: string;
+  username: string;
+  preview: string;
+  timestamp: Date;
+  chatTitle?: string;
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function telegramUpdateAgeMs(
+  update: { message?: { date?: number }; callback_query?: { message?: { date?: number } } },
+  now: number,
+): number | null {
+  const date = update.message?.date ?? update.callback_query?.message?.date;
+  if (typeof date !== "number" || !Number.isFinite(date)) return null;
+  return now - date * 1000;
 }
 
 /** Remove Bot API credentials from nested node-fetch errors before logging. */
@@ -281,6 +330,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   /** Topics the probe itself is addressing right now — their failures are results, not hints. */
   private readonly probingThreads = new Set<string>();
   private readonly topicGoneHintAt = new Map<string, number>();
+  /** Last processed `update_id`; 0 means no floor. Telegram ids are usually monotonic. */
+  private lastUpdateId = 0;
+  private floorBotId: number | undefined;
+  private floorRecordedAt = 0;
+  /** False until a getUpdates page shorter than TELEGRAM_GETUPDATES_LIMIT (the queue drained). */
+  private backlogDrained = false;
+  private readonly backlogUpdateIds = new Set<number>();
+  private persistFloorTimer: ReturnType<typeof setImmediate> | undefined;
 
   constructor(opts: TelegramAdapterOptions) {
     super();
@@ -342,6 +399,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       },
     });
 
+    this.loadFloor();
     this._registerHandlers();
   }
 
@@ -359,10 +417,17 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // no transformer configuration surface. Real grammY clients always do.
     if (!this.bot.api.config?.use) return;
     this.bot.api.config.use(async (prev, method, payload, signal) => {
+      // grammY.stop sends a final offset ACK, and an already-fetched batch can finish later.
+      // Once fenced, neither path may confirm or admit updates for the stopping fleet.
+      if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
       const requestGeneration = this.httpAgentGeneration;
       try {
-        return await prev(method, payload, signal);
+        const result = await prev(method, payload, signal);
+        if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
+        this.noteGetUpdatesBacklog(method, result);
+        return result;
       } catch (err) {
+        if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
         if (!(err instanceof HttpError)) throw err;
         const firstDetail = telegramNetworkErrorDetails(err, this.botToken);
         const reset = this.resetHttpAgent(requestGeneration);
@@ -372,6 +437,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
         if (isDefinitelyPreDeliveryNetworkError(err) && !signal?.aborted) {
           await new Promise(resolve => setTimeout(resolve, TELEGRAM_NETWORK_RETRY_MS));
+          if (method === "getUpdates" && this.stopped) return { ok: true, result: [] } as never;
           const retryGeneration = this.httpAgentGeneration;
           try {
             return await prev(method, payload, signal);
@@ -422,13 +488,43 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private _registerHandlers(): void {
-    // Own messages must never become inbound work even when transport replays
-    // them. Fleet-wide echo provenance is checked in the common ingress path.
-    // Put this ahead of rich-message middleware as well as ordinary messages.
+    // Dedup, own-message skip, and the downtime age cap run before any handler.
+    // Record the update_id before acting so a crash mid-batch cannot inject twice.
     this.bot.use(async (ctx, next) => {
-      const message = (ctx.update as any)?.message;
+      if (this.stopped) return; // Before the durable floor as well as handler dispatch.
+      const update = ctx.update as {
+        update_id?: number;
+        message?: Record<string, unknown> & { from?: { id?: number; is_bot?: boolean; username?: string; first_name?: string }; chat?: { id?: number; title?: string }; date?: number; message_id?: number; message_thread_id?: number; text?: string; caption?: string };
+        callback_query?: { message?: { date?: number } };
+      };
+      const updateId = update.update_id;
+      this.discardFloorIfStale(Date.now());
+      if (typeof updateId === "number") {
+        if (this.lastUpdateId > 0 && updateId <= this.lastUpdateId) return;
+        this.lastUpdateId = updateId;
+        this.floorRecordedAt = Date.now();
+        if (this.bot.botInfo?.id != null) this.floorBotId = this.bot.botInfo.id;
+        this.schedulePersistFloor();
+      }
+      const message = update.message;
       const sender = message?.from?.id;
       if (sender != null && sender === this.bot.botInfo?.id) return;
+
+      // Age cap / stale callbacks apply to the downtime queue (pages until a short getUpdates).
+      const isBacklog = typeof updateId === "number" && this.backlogUpdateIds.has(updateId);
+      if (isBacklog) {
+        if (update.callback_query) {
+          // The card's date is not the click's; queued callbacks are stale by being in the backlog.
+          ctx.answerCallbackQuery().catch(() => {});
+          return;
+        }
+        const ageMs = telegramUpdateAgeMs(update, Date.now());
+        if (ageMs != null && ageMs > TELEGRAM_PENDING_LIVE_MAX_MS
+          && message && !this._isServiceMessage(message as unknown as NonNullable<Context["message"]>)) {
+          this.emitMissedOffline(updateId ?? 0, message);
+          return;
+        }
+      }
       return next();
     });
     // Middleware: catch Rich Message updates that grammy doesn't route to bot.on("message")
@@ -705,13 +801,18 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   private authRejected = false;
   /** #1537 review: stop() was called (and no start() since). */
   private stopped = false;
+  private pollingGeneration = 0;
+  private receiveStop: Promise<void> | null = null;
   connectionEvidence(): { ready: boolean; authRejected: boolean; stopped: boolean } {
     return { ready: this.pollingReady, authRejected: this.authRejected, stopped: this.stopped };
   }
 
   async start(): Promise<void> {
     // #1537 review: a new start borrows nothing from the last one — not ready until its own onStart, and not stopped.
-    this.pollingReady = false; this.stopped = false;
+    this.pollingReady = false; this.stopped = false; this.receiveStop = null;
+    const generation = ++this.pollingGeneration, current = () => !this.stopped && this.pollingGeneration === generation;
+    this.backlogDrained = false;
+    this.backlogUpdateIds.clear();
     this.queue.start();
     this._pruneInbox();
     this.cleanupTimer = setInterval(() => this._pruneInbox(), 60 * 60 * 1000);
@@ -730,15 +831,18 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const MAX_RECONNECT_RETRIES = 10; // auto-reconnect on non-409 errors
     void (async () => {
       let reconnects = 0;
-      while (true) {
-        for (let attempt = 1; attempt <= MAX_409_RETRIES; attempt++) {
+      while (current()) {
+        for (let attempt = 1; current() && attempt <= MAX_409_RETRIES; attempt++) {
           try {
             await this.bot.start({
               // Keep the server-side long poll comfortably below both 30s
               // client deadlines. Equal 30s deadlines race the normal empty
               // getUpdates response and would churn the HTTP pool while idle.
               timeout: TELEGRAM_LONG_POLL_TIMEOUT_SECONDS,
-              drop_pending_updates: attempt === 1 && reconnects === 0,
+              // Telegram queues ~24h of updates. Dropping them on a cold start
+              // discards messages sent while AgEnD was stopped. Keep them; the
+              // adapter delivers recent ones and files older ones as Needs-you.
+              drop_pending_updates: false,
               // Telegram's DEFAULT allowed_updates excludes message_reaction, so
               // reactions cannot arrive unless the set is listed explicitly. Passing
               // this list also FREEZES the set: any update type omitted here stops
@@ -748,13 +852,16 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
               // added here too, or it will never fire.
               allowed_updates: TELEGRAM_ALLOWED_UPDATES,
               onStart: (info) => {
+                if (!current()) return;
                 reconnects = 0; // reset on successful start
                 this.pollingReady = true; this.authRejected = false;
+                this.discardFloorIfStale(Date.now(), info.id);
                 this.emit("started", info.username, String(info.id));
               },
             });
             return; // bot.stop() was called — clean exit
           } catch (err) {
+            if (!current()) return;
             // #1519 P6: what the connection's status reports — not polling now, and whether Telegram refused the token.
             this.pollingReady = false;
             if (err instanceof GrammyError && err.error_code === 401) this.authRejected = true;
@@ -786,9 +893,17 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     })();
   }
 
+  stopReceiving(): Promise<void> {
+    if (this.receiveStop) return this.receiveStop;
+    // Set before bot.stop (and its final getUpdates ACK); do not close the outbound queue yet.
+    this.pollingReady = false; this.stopped = true; this.pollingGeneration++;
+    this.flushPersistFloor();
+    this.receiveStop = this.bot.stop();
+    return this.receiveStop;
+  }
+
   async stop(): Promise<void> {
-    // #1537 review: the connection is not polling from the moment it is told to stop (before any await).
-    this.pollingReady = false; this.stopped = true;
+    const receivingStopped = this.stopReceiving();
     // Invalidate queued status work before any await. Re-created adapters must
     // not inherit proof from this object's pending requests.
     this.reactionGeneration = (this.reactionGeneration ?? 0) + 1;
@@ -797,9 +912,123 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     this.reactionTrackingStartedAt = Date.now();
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     this.queue.stop();
-    await this.bot.stop();
-    this.httpAgent.destroy();
-    this.httpsAgent.destroy();
+    try { await receivingStopped; }
+    finally { this.httpAgent.destroy(); this.httpsAgent.destroy(); }
+  }
+
+  private lastUpdateIdFile(): string {
+    return telegramLastUpdateIdPath(this.inboxDir, this.id);
+  }
+
+  private loadFloor(): void {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(this.lastUpdateIdFile(), "utf8"));
+      if (!parsed || typeof parsed !== "object") return;
+      const rec = parsed as { update_id?: unknown; bot_id?: unknown; recorded_at?: unknown };
+      const id = rec.update_id;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) return;
+      this.lastUpdateId = id;
+      this.floorBotId = typeof rec.bot_id === "number" && Number.isSafeInteger(rec.bot_id) ? rec.bot_id : undefined;
+      this.floorRecordedAt = typeof rec.recorded_at === "number" && Number.isFinite(rec.recorded_at) ? rec.recorded_at : 0;
+      this.discardFloorIfStale(Date.now());
+    } catch { /* no floor yet */ }
+  }
+
+  private clearFloor(): void {
+    this.lastUpdateId = 0;
+    this.floorBotId = undefined;
+    this.floorRecordedAt = 0;
+  }
+
+  /** Drop a floor that belongs to another bot, or that is older than a week of silence. */
+  private discardFloorIfStale(now: number, botId?: number): void {
+    if (this.lastUpdateId <= 0) return;
+    if (this.floorRecordedAt > 0 && now - this.floorRecordedAt > TELEGRAM_UPDATE_ID_FLOOR_MAX_AGE_MS) {
+      this.clearFloor();
+      return;
+    }
+    const id = botId ?? (this.bot.isInited() ? this.bot.botInfo.id : undefined);
+    if (this.floorBotId != null && id != null && this.floorBotId !== id) this.clearFloor();
+  }
+
+  private schedulePersistFloor(): void {
+    if (this.persistFloorTimer) return;
+    this.persistFloorTimer = setImmediate(() => {
+      this.persistFloorTimer = undefined;
+      this.writeFloor();
+    });
+  }
+
+  private flushPersistFloor(): void {
+    if (this.persistFloorTimer) {
+      clearImmediate(this.persistFloorTimer);
+      this.persistFloorTimer = undefined;
+    }
+    this.writeFloor();
+  }
+
+  private writeFloor(): void {
+    try {
+      const rec: { update_id: number; bot_id?: number; recorded_at?: number } = { update_id: this.lastUpdateId };
+      if (this.floorBotId != null) rec.bot_id = this.floorBotId;
+      if (this.floorRecordedAt > 0) rec.recorded_at = this.floorRecordedAt;
+      atomicWriteFileSync(this.lastUpdateIdFile(), `${JSON.stringify(rec)}\n`, { mode: 0o600 });
+    } catch (err) {
+      console.warn(`[telegram:${this.id}] could not persist last update_id (${errorMessage(err)})`);
+    }
+  }
+
+  private noteGetUpdatesBacklog(method: string, result: unknown): void {
+    if (method !== "getUpdates" || this.backlogDrained) return;
+    if (result && typeof result === "object" && "ok" in result && (result as { ok: unknown }).ok !== true) return;
+    // Transformers see the raw Bot API envelope `{ ok, result }`; callApi unwraps after.
+    const updates = result && typeof result === "object" && "result" in result
+      ? (result as { result: unknown }).result
+      : result;
+    if (!Array.isArray(updates)) return;
+    const ids: number[] = [];
+    for (const item of updates) {
+      if (item && typeof item === "object" && typeof (item as { update_id?: unknown }).update_id === "number") {
+        ids.push((item as { update_id: number }).update_id);
+      }
+    }
+    // A new random sequence after a week of silence can land entirely below the stored floor.
+    if (ids.length > 0 && this.lastUpdateId > 0 && Math.max(...ids) < this.lastUpdateId) {
+      this.clearFloor();
+      this.schedulePersistFloor();
+    }
+    for (const id of ids) this.backlogUpdateIds.add(id);
+    if (updates.length < TELEGRAM_GETUPDATES_LIMIT) this.backlogDrained = true;
+  }
+
+  private emitMissedOffline(updateId: number, msg: {
+    from?: { id?: number; username?: string; first_name?: string };
+    chat?: { id?: number; title?: string };
+    date?: number;
+    message_id?: number;
+    message_thread_id?: number;
+    text?: string;
+    caption?: string;
+  }): void {
+    const userId = msg.from?.id;
+    if (userId == null || msg.chat?.id == null) return;
+    const text = String(msg.text ?? msg.caption ?? "").replace(/\s+/g, " ").trim();
+    const preview = text.length > 160 ? `${text.slice(0, 159)}…` : text;
+    const threadId = msg.message_thread_id != null ? String(msg.message_thread_id) : undefined;
+    const payload: MissedOfflineInbound = {
+      source: "telegram",
+      adapterId: this.id,
+      updateId,
+      chatId: String(msg.chat.id),
+      ...(threadId !== undefined ? { threadId } : {}),
+      messageId: String(msg.message_id ?? ""),
+      userId: String(userId),
+      username: msg.from?.username ?? msg.from?.first_name ?? String(userId),
+      preview,
+      timestamp: new Date((msg.date ?? 0) * 1000),
+      ...(msg.chat.title ? { chatTitle: String(msg.chat.title) } : {}),
+    };
+    this.emit("missed_offline", payload);
   }
 
   /** Delete inbox files older than 1 hour */
@@ -808,6 +1037,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const now = Date.now();
     try {
       for (const name of readdirSync(this.inboxDir)) {
+        if (/^telegram-.+-last-update-id$/.test(name)) continue;
         const filePath = join(this.inboxDir, name);
         try {
           const mtime = statSync(filePath).mtimeMs;
@@ -1512,7 +1742,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const token = (this.bot as unknown as { token: string }).token;
     const url = `${this.apiRoot}/file/bot${token}/${filePath}`;
 
-    const filename = `${Date.now()}-${fileId.slice(-8)}-${filePath.split("/").pop() ?? fileId}`;
+    // #2959: unique per download — the inbox is shared by every bot on the host.
+    const filename = inboxTempName(fileId, filePath.split("/").pop() ?? fileId);
     const localPath = join(this.inboxDir, filename);
 
     // Download using fetch
@@ -1603,10 +1834,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async deleteTopic(topicId: number | string): Promise<void> {
-    // Telegram's General topic is the forum root, not a deletable topic.
-    if (String(topicId) === "1") return;
+    // Telegram's General topic is the forum root, not a deletable topic. Refused, never "done": a caller reports what
+    // happened (delete_instance's topic_deleted), and silence would read as a deletion.
+    if (String(topicId) === "1") throw new Error("the General topic is never deleted");
     const chatId = this.getChatId();
-    if (!chatId) return;
+    if (!chatId) throw new Error("the Telegram bot is not connected to its group");
     await this.bot.api.raw.deleteForumTopic({ chat_id: Number(chatId), message_thread_id: Number(topicId) });
   }
 

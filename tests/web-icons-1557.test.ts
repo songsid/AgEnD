@@ -7,7 +7,6 @@ import { createPublicWebGateway, isPublicWebRoute } from "../src/public-web-gate
 import { WebSessionStore, tokenEpoch } from "../src/web-session.js";
 import { WEB_CONTENT_SECURITY_POLICY } from "../src/web-host-guard.js";
 import { isWebIconPath } from "../src/web-icons.js";
-import { createEffectBootstrap } from "../src/web-effect-bootstrap.js";
 
 const BASE_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 const token = "favicon-fixture-token", exposure = "a".repeat(32), host = "icon-fixture.trycloudflare.com";
@@ -41,7 +40,6 @@ function dispatcher() {
   const sessions = new WebSessionStore();
   const fm = Object.create(FleetManager.prototype);
   Object.assign(fm, { fleetConfig: { defaults: {}, instances: {} }, webSessions: sessions,
-    effectBootstrap: createEffectBootstrap("a".repeat(32)),
     webLoginCodes: null, rejectedHostsLogged: new Set(), logger: { warn: vi.fn(), error: vi.fn() },
     settingsGate: () => ({ handle: () => false }) });
   Object.defineProperty(fm, "webToken", { value: token });
@@ -145,7 +143,7 @@ describe("Silver Ag dashboard icons", () => {
     const d = dispatcher(), g = publicDispatcher(d);
     const session = d.sessions.create({ tier: "admin", surface: "gateway", exposureId: exposure, label: "fixture", tokenEpoch: tokenEpoch(token) });
     const h = exchange(path, "GET", { host, cookie: `__Host-agend_session=${session.sessionId}` });
-    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : "'none'", path === "/signin" ? undefined : `https://${host}/effect-bootstrap`);
+    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : "'none'");
     if (path !== "/signin") {
       expect(h.text()).toContain('data-web-transport="poll"');
       // #2396: this real dispatcher admits an owned legacy cookie and upgrades it before serving the page.

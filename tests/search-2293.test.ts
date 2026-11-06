@@ -147,10 +147,9 @@ describe("SearchStore", () => {
 
 describe("what each source indexes", () => {
   const msg = (over: Partial<WebChatMessage>): WebChatMessage => ({ instance: "dev", boot: "b1", id: 7, role: "user", sender: "han", text: "hello", ts: "2026-10-01T00:00:00.000Z", ...over } as WebChatMessage);
-  it("chat: a person's or agent's message (a click's label, its files' names); never a status line or an effect offer", () => {
+  it("chat: a person's or agent's message (a click's label, its files' names); never a status line", () => {
     expect(chatDoc(msg({ from: "discord:1" }))).toEqual({ key: "chat:dev:b1-7", source: "chat", instance: "dev", sender: "han", role: "user", mine: "discord:1", ts: Date.parse("2026-10-01T00:00:00.000Z"), ref: { boot: "b1", id: 7 }, text: "hello" });
     expect(chatDoc(msg({ role: "status" }))).toBeNull();
-    expect(chatDoc(msg({ effectTrial: { offer: "x" } as never }))).toBeNull();
     expect(chatDoc(msg({ text: "the line the agent got", click: { label: "Approve" } as never }))!.text).toBe("Approve");
     expect(chatDoc(msg({ text: "see", attachments: [{ id: "1", kind: "document", name: "nginx.conf", size: 1, mime: "text/plain" }] }))!.text).toBe("see\nnginx.conf");
     expect(chatDoc(msg({ text: "  " }))).toBeNull();

@@ -7,7 +7,9 @@ import { gatewayRequestContext } from "./web-request-context.js";
  *
  *   GET  /view                 → static page
  *   GET  /api/pane/:instance    → `tmux capture-pane -ep` output (ANSI text),
- *                                plus X-Pane-Cols / X-Pane-Rows response headers
+ *                                plus X-Pane-Cols / X-Pane-Rows response headers;
+ *                                `?history=1`: the scrollback above it too, on demand (VIEW_HISTORY)
+ *                                `?transcript=1`: Claude's earlier conversation from its transcript (view-history.ts)
  *   GET  /api/profiles          → merged roster (live status + config + profile)
  *   GET  /api/profile/:instance → one profile row
  *   POST /api/profile/:instance → upsert profile              (signed in)
@@ -50,6 +52,9 @@ import { bannerFocusOk, CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard }
 import { IdentityColorStore } from "./web-identity-color.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import type { ThemeCard } from "./web-theme.js";
+import { GUEST_PANE_MAX_BYTES, GUEST_PANE_READS, GUEST_PANE_SHARE_MS, guestRequestOf } from "./web-guest-access.js";
+import { OfficeWriteLimiter } from "./web-office-store.js";
+import { viewHistoryQuery, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 
 const execFileP = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -75,6 +80,11 @@ export interface ViewApiContext {
   readonly themeStore?: { get(name: string): { theme: { card?: ThemeCard } }; asset(name: string, id: string): { bytes: Buffer; mime: string } | null };
   /** #1958: a profile, card or colour write landed — every open page repaints (a status frame), not only the writer's. */
   identityChanged?(): void;
+  /**
+   * Claude history in the View (view-history.ts): the instance's transcript steps, read when its View is scrolled up.
+   * Asked only after this route's own access rules (the pane's). Absent: the page is told there is none to show.
+   */
+  viewHistory?(name: string, q: ViewHistoryQuery): Promise<ViewHistoryAnswer | null>;
 }
 
 interface ProfileRow {
@@ -270,6 +280,131 @@ function tmuxArgs(rest: string[]): string[] {
   return socket ? ["-L", socket, ...rest] : rest;
 }
 
+/**
+ * #2855: a trusted guest's read-only View. Per account: GUEST_PANE_READS reads a second, of at most `panes` agents at
+ * once (agents read within `panesWindowMs`). Every guest viewer of an agent reads one shared capture, at most
+ * GUEST_PANE_SHARE_MS old — one tmux read per window however many watch. At most GUEST_PANE_MAX_BYTES (the end of it).
+ */
+const paneReadLimiter = () => new OfficeWriteLimiter(undefined, { perWindow: GUEST_PANE_READS.perWindow, windowMs: GUEST_PANE_READS.windowMs });
+let guestPaneReads = paneReadLimiter();
+const guestPaneAgents = new Map<string, Map<string, number>>();     // account → agent → when it was last read (ms)
+const sharedCaptures = new Map<string, { at: number; capture: Promise<{ text: string; size: PaneSize | null }> }>();
+/** For tests: forget the guests' read counts and shared captures. */
+export function resetGuestPanes(): void { guestPaneReads = paneReadLimiter(); guestPaneAgents.clear(); sharedCaptures.clear(); }
+function guestPane(ctx: ViewApiContext, name: string, guest: import("./web-guest-access.js").GuestRequest, res: ServerResponse, history = false): void {
+  if (!guestAdmitted(name, guest, res)) return;
+  const now = performance.now();
+  // The scrollback (a person scrolled up): one read within the same limits, at most the same bytes (its end).
+  if (history) { historyCapture(ctx, name).then((c) => sendHistory(res, c, GUEST_PANE_MAX_BYTES, { "Cache-Control": "private, no-store" }), (err) => historyFailed(ctx, res, name, err)); return; }
+  let shared = sharedCaptures.get(name);
+  if (!shared || now - shared.at >= GUEST_PANE_SHARE_MS) {
+    shared = { at: now, capture: capturePane(ctx, name) };
+    sharedCaptures.set(name, shared);
+    shared.capture.catch(() => { if (sharedCaptures.get(name) === shared) sharedCaptures.delete(name); });
+  }
+  shared.capture.then((c) => sendPane(res, c, GUEST_PANE_MAX_BYTES, { "Cache-Control": "private, no-store" }), (err) => paneFailed(ctx, res, name, err));
+}
+/**
+ * #2855: whether a guest may read this agent's pane now — Trusted, within its agents and its reads a second (counted);
+ * refused with the answer already sent. Claude history in the View reads under the same rule and count as its screen.
+ */
+function guestAdmitted(name: string, guest: import("./web-guest-access.js").GuestRequest, res: ServerResponse): boolean {
+  if (!guest.trusted?.()) { json(res, 403, { error: "guest_not_trusted" }); return false; }
+  const account = `${guest.owner.adapterId}:${guest.owner.userId}`, now = performance.now();
+  const agents = guestPaneAgents.get(account) ?? new Map<string, number>();
+  for (const [agent, at] of agents) if (now - at >= GUEST_PANE_READS.panesWindowMs) agents.delete(agent);
+  if (!agents.has(name) && agents.size >= GUEST_PANE_READS.panes) { json(res, 429, { error: "guest_view_too_many_agents" }); return false; }
+  const limit = guestPaneReads.check(account);
+  if (!limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_view_rate_limited", retry_after_s: limit.retry_after_s }); return false; }
+  guestPaneReads.record(account);
+  agents.set(name, now); guestPaneAgents.set(account, agents);
+  return true;
+}
+
+/**
+ * M-2262 (the user, hmsg-435f6df6): the View's scrollback — the pane's history above its screen, read only when the
+ * person scrolls up (never on the 800 ms refresh), at most `lines` lines (tmux's own default history-limit) and at most
+ * `maxBytes` (its end, from a whole line). A viewer's tabs asking at once share one read.
+ */
+export const VIEW_HISTORY = { lines: 2000, maxBytes: 1024 * 1024 } as const;
+const historyCaptures = new Map<string, Promise<{ text: string; size: PaneSize | null; scrollback?: PaneScrollback | null }>>();
+function historyCapture(ctx: ViewApiContext, name: string): Promise<{ text: string; size: PaneSize | null; scrollback?: PaneScrollback | null }> {
+  let capture = historyCaptures.get(name);
+  if (!capture) {
+    capture = capturePane(ctx, name, VIEW_HISTORY.lines);
+    historyCaptures.set(name, capture);
+    const done = () => { if (historyCaptures.get(name) === capture) historyCaptures.delete(name); };
+    capture.then(done, done);
+  }
+  return capture;
+}
+/** A capture as the answer: the pane's grid in X-Pane-Cols / X-Pane-Rows; over `maxBytes`, its end from a whole line. */
+function sendPane(res: ServerResponse, { text, size, scrollback }: { text: string; size: PaneSize | null; scrollback?: PaneScrollback | null }, maxBytes: number, extra: Record<string, string> = {}): void {
+  const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8", ...extra };
+  if (size) { headers["X-Pane-Cols"] = String(size.cols); headers["X-Pane-Rows"] = String(size.rows); }
+  // M-2262: the scrollback's own facts (the page says when a CLI keeps none).
+  if (scrollback) { headers["X-Pane-Alternate"] = scrollback.alternate ? "1" : "0"; headers["X-Pane-History-Lines"] = String(scrollback.lines); }
+  const bytes = Buffer.from(text, "utf8");
+  res.writeHead(200, headers);
+  // Over the cap: its end, from the first whole line in it (never mid-character or mid-escape sequence).
+  if (bytes.length <= maxBytes) { res.end(text); return; }                    // whole: the text, as before
+  const tail = bytes.subarray(bytes.length - maxBytes);
+  const line = tail.indexOf(0x0a);
+  res.end(line >= 0 ? tail.subarray(line + 1) : tail);
+}
+/**
+ * #2969 review (Prism P2): the scrollback says so when it is not there — never the plain read's empty 200, which the
+ * page would draw as the earlier output (blanking the screen it had). No pane yet, or no scrollback facts: 503.
+ */
+function sendHistory(res: ServerResponse, c: { text: string; size: PaneSize | null; scrollback?: PaneScrollback | null }, maxBytes: number, extra: Record<string, string> = {}): void {
+  if (!c.scrollback) { json(res, 503, { error: "scrollback_unavailable" }); return; }
+  sendPane(res, c, maxBytes, extra);
+}
+function historyFailed(ctx: ViewApiContext, res: ServerResponse, name: string, err: unknown): void {
+  ctx.logger.debug({ err, name }, "capture-pane (scrollback) failed");
+  json(res, 503, { error: "scrollback_unavailable" });
+}
+function paneFailed(ctx: ViewApiContext, res: ServerResponse, name: string, err: unknown): void {
+  ctx.logger.debug({ err, name }, "capture-pane failed");
+  res.writeHead(200, { "Content-Type": "text/plain" }); res.end("");
+}
+
+/**
+ * Claude history in the View: at most `reads` transcript reads run at once (each parses up to a page's records); the
+ * same read asked again while it runs shares it. Over the cap: 429 (the page keeps what it shows).
+ */
+export const VIEW_HISTORY_READS = { reads: 4, retryAfterS: 1 } as const;
+const transcriptReads = new Map<string, Promise<ViewHistoryAnswer | null>>();
+/** For tests: no read in flight. */
+export function resetTranscriptReads(): void { transcriptReads.clear(); }
+/** Claude history in the View: one page of the transcript's steps (or one step whole), as JSON never cached. */
+function transcriptHistory(ctx: ViewApiContext, name: string, params: URLSearchParams, res: ServerResponse,
+  recheck: () => { status: number; error: string } | null = () => null): void {
+  const headers = { "Cache-Control": "private, no-store" };
+  const send = (code: number, body: unknown, extra: Record<string, string> = {}) => { res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", ...headers, ...extra }); res.end(JSON.stringify(body)); };
+  const read = ctx.viewHistory;
+  if (!read) { send(200, { view_history: 1, supported: false, reason: "unavailable" }); return; }
+  const q = viewHistoryQuery(params);
+  const key = JSON.stringify([name, q.before ?? null, q.key ?? null, q.step ?? null, q.end ?? null]);
+  let answer = transcriptReads.get(key);
+  if (!answer) {
+    if (transcriptReads.size >= VIEW_HISTORY_READS.reads) { send(429, { error: "history_busy", retry_after_s: VIEW_HISTORY_READS.retryAfterS }, { "Retry-After": String(VIEW_HISTORY_READS.retryAfterS) }); return; }
+    const reading = read.call(ctx, name, q);
+    answer = reading;
+    transcriptReads.set(key, reading);
+    const done = () => { if (transcriptReads.get(key) === reading) transcriptReads.delete(key); };
+    reading.then(done, done);
+  }
+  answer.then(
+    (a) => {
+      const refused = recheck();                          // asked at the hand-off, for this request alone
+      if (refused) { send(refused.status, { error: refused.error }); return; }
+      if (!a) send(404, { error: "unknown instance" }); else send(200, a);
+    },
+    (err) => { ctx.logger.debug({ err, name }, "view history read failed"); send(503, { error: "history_unavailable" }); },
+  );
+}
+
 /** A pane's logical grid size in cells, as tmux sees it. */
 export interface PaneSize { cols: number; rows: number }
 
@@ -281,23 +416,36 @@ export interface PaneSize { cols: number; rows: number }
  * sparse frame (a freshly-started CLI printing three short lines) would
  * otherwise fit to ~3 columns and blow the font up to the 48px ceiling.
  */
-async function capturePane(ctx: ViewApiContext, name: string): Promise<{ text: string; size: PaneSize | null }> {
+async function capturePane(ctx: ViewApiContext, name: string, historyLines = 0): Promise<{ text: string; size: PaneSize | null; scrollback?: PaneScrollback | null }> {
   const target = paneTarget(ctx, name);
   if (!target) return { text: "", size: null };
+  // M-2262: with the scrollback, whether the CLI keeps any (a full-screen one — the alternate screen, or one that redraws
+  // the whole window — leaves tmux nothing above the screen), from the same one display-message.
+  const format = historyLines > 0 ? "#{pane_width}x#{pane_height} #{alternate_on} #{history_size}" : "#{pane_width}x#{pane_height}";
+  // M-2262: with `historyLines`, from that many lines above the screen (tmux stops at what it kept) to the screen's end.
+  const capture = ["capture-pane", "-p", "-e", ...(historyLines > 0 ? ["-S", `-${Math.floor(historyLines)}`] : []), "-t", target];
   const [text, size] = await Promise.all([
     // #1956: through the fleet's spawn helper when it runs (a viewer polls this every 800 ms).
-    tmuxExecHelper.exec("tmux", tmuxArgs(["capture-pane", "-p", "-e", "-t", target]), { maxBuffer: 8 * 1024 * 1024 },
-      () => execFileP("tmux", tmuxArgs(["capture-pane", "-p", "-e", "-t", target]), { maxBuffer: 8 * 1024 * 1024 }))
+    tmuxExecHelper.exec("tmux", tmuxArgs(capture), { maxBuffer: 8 * 1024 * 1024 },
+      () => execFileP("tmux", tmuxArgs(capture), { maxBuffer: 8 * 1024 * 1024 }))
       .then(r => r.stdout),
     // display-message resolves the window's *active* pane, matching capture-pane.
-    tmuxExecHelper.exec("tmux", tmuxArgs(["display-message", "-p", "-t", target, "#{pane_width}x#{pane_height}"]), {},
-      () => execFileP("tmux", tmuxArgs(["display-message", "-p", "-t", target, "#{pane_width}x#{pane_height}"])))
-      .then(r => parsePaneSize(r.stdout))
+    tmuxExecHelper.exec("tmux", tmuxArgs(["display-message", "-p", "-t", target, format]), {},
+      () => execFileP("tmux", tmuxArgs(["display-message", "-p", "-t", target, format])))
+      .then(r => r.stdout)
       // A missing size must not fail the whole capture — the client falls back
       // to its last known size (or skips refitting) when the headers are absent.
-      .catch(() => null),
+      .catch(() => ""),
   ]);
-  return { text, size };
+  const [grid = "", alternate, kept] = size.trim().split(/\s+/);
+  return { text, size: parsePaneSize(grid), ...(historyLines > 0 ? { scrollback: parsePaneScrollback(alternate, kept) } : {}) };
+}
+
+/** M-2262: whether the pane shows its alternate screen, and how many lines tmux keeps above it. */
+export interface PaneScrollback { alternate: boolean; lines: number }
+export function parsePaneScrollback(alternate: string | undefined, lines: string | undefined): PaneScrollback | null {
+  if ((alternate !== "0" && alternate !== "1") || !/^\d+$/.test(lines ?? "")) return null;
+  return { alternate: alternate === "1", lines: Number(lines) };
 }
 
 /** Parse `display-message`'s `<cols>x<rows>` output. Returns null if unusable. */
@@ -371,14 +519,37 @@ export function handleViewRequest(
   if (method === "GET" && path.startsWith("/api/pane/")) {
     const name = decodeURIComponent(path.slice("/api/pane/".length));
     if (!knownInstance(ctx, name)) { json(res, 404, { error: "unknown instance" }); return true; }
-    capturePane(ctx, name)
-      .then(({ text, size }) => {
-        const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8" };
-        if (size) { headers["X-Pane-Cols"] = String(size.cols); headers["X-Pane-Rows"] = String(size.rows); }
-        res.writeHead(200, headers);
-        res.end(text);
-      })
-      .catch(err => { ctx.logger.debug({ err, name }, "capture-pane failed"); res.writeHead(200, { "Content-Type": "text/plain" }); res.end(""); });
+    // #2855: a guest (the gate bound it, and checked the agent is in its scope) — Trusted only, within its limits, and
+    // reading the capture every guest viewer of this agent shares.
+    // M-2262: `?history=1` — the scrollback too (on demand: the person scrolled up). Any other query is the screen.
+    const history = url.searchParams.get("history") === "1";
+    const guest = guestRequestOf(req);
+    // Claude history in the View (view-history.ts): the transcript's earlier steps, under this route's rules — a guest
+    // within its scope, Trusted and its read limit, as for the screen.
+    if (url.searchParams.get("transcript") === "1") {
+      if (guest && !guestAdmitted(name, guest, res)) return true;
+      // #3069 review (Prism P2-1): a read may wait on a shared one; this request's own right to the View is asked again
+      // when its answer is ready — the same live session, the agent still in its scope, still Trusted; for anyone else
+      // the gate again wherever reads need a session (the public link, web.view_access: session). Never a stale "yes".
+      const recheck = (): { status: number; error: string } | null => {
+        if (guest) {
+          if (!guest.current()) return { status: 401, error: "session_ended" };
+          if (!guest.scope().has(name)) return { status: 404, error: "unknown instance" };
+          if (!guest.trusted?.()) return { status: 403, error: "guest_not_trusted" };
+          return null;
+        }
+        if (gatewayRequestContext(req) || ctx.fleetConfig?.web?.view_access === "session") {
+          const d = verdict();
+          if (d.kind === "reject") return { status: d.status, error: d.message };
+        }
+        return null;
+      };
+      transcriptHistory(ctx, name, url.searchParams, res, recheck);
+      return true;
+    }
+    if (guest) { guestPane(ctx, name, guest, res, history); return true; }
+    if (history) historyCapture(ctx, name).then((c) => sendHistory(res, c, VIEW_HISTORY.maxBytes), (err) => historyFailed(ctx, res, name, err));
+    else capturePane(ctx, name).then((c) => sendPane(res, c, Number.MAX_SAFE_INTEGER), (err) => paneFailed(ctx, res, name, err));
     return true;
   }
 

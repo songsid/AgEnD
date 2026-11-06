@@ -363,11 +363,12 @@ describe("§2 the conversation identity", () => {
     expect(resolveAs("a")).toEqual({ mode: "resume", id: "X", agentConfirmed: false });
   });
 
-  it("a malformed state file is not 'no state': this key starts fresh, never a selection", () => {
+  it("a malformed state file is not 'no state': never a selection, never rewritten (#1490 row 49: fresh, unrecorded)", () => {
     mkdirSync(join(home(), "kiro-identity", "instances"), { recursive: true });
     writeFileSync(join(home(), "kiro-identity", "instances", stateName("a")), "{ nope");
     store.read = ok(["c1", 10]);
-    expect(resolveAs("a")).toEqual({ mode: "fresh" });
+    expect(resolveAs("a")).toMatchObject({ mode: "fresh", unrecorded: expect.stringContaining("kiro-identity") });
+    expect(readFileSync(join(home(), "kiro-identity", "instances", stateName("a")), "utf-8")).toBe("{ nope");
   });
 
   it("a fresh start that cannot be recorded refuses the launch", () => {
@@ -428,6 +429,7 @@ describe("the backend: command and files per plan", () => {
     const backend = new KiroBackend(join(root, "agend", "instances", "worker"), COMPAT);
     const cmd = launch(backend);
     expect(cmd).toContain(" --resume-id 'conv-1'");
+    expect(cmd).toMatch(/--resume-id 'conv-1'.*'!:'$/);
     expect(cmd).toContain(` --agent '${agentName()}'`);
     expect(readJson(mcpPath()).mcpServers["agend-worker"]).toBeDefined();
     expect(readFileSync(join(root, "work", ".kiro", "steering", "agend-worker.md"), "utf-8")).toContain(`agend-agent:${agentName()}`);
@@ -446,7 +448,7 @@ describe("the backend: command and files per plan", () => {
   it("a kiro-cli without --agent / --resume-id: today's command and one warning", () => {
     const backend = new KiroBackend(join(root, "agend", "instances", "worker"), { ...COMPAT, supportsInstanceAgent: false });
     const cmd = launch(backend);
-    expect(cmd).toMatch(/--trust-all-tools --resume$/);
+    expect(cmd).toMatch(/--trust-all-tools --resume '!:'$/);
     expect(cmd).not.toContain("--agent ");
     expect(backend.consumeLaunchWarning()).toContain("--resume-id");
     expect(backend.agentSwitch()).toBeNull();

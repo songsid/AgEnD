@@ -417,39 +417,14 @@ describe("ClaudeCodeBackend", () => {
     });
 
     it.each([
-      ["⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel", "1:50pm"],
-      ["● Usage limit reached · continuing automatically at 13:50 · esc or type to cancel", "13:50"],
-      ["Usage limit reached · continuing automatically at Sep 23, 9am · esc or type to cancel", "Sep 23, 9am"],
-      ["⚠️ Usage limit reached · continuing automatically at 1:50 pm · esc to cancel", "1:50 pm"],
-    ])("matches the hard usage pause line and keeps the resume time: %s", (output, expectedTime) => {
-      const backend = new ClaudeCodeBackend(TEST_DIR);
-      const pattern = backend.getErrorPatterns().find(({ pattern }) =>
-        pattern.test(output));
-
-      expect(pattern).toMatchObject({
-        type: "quota",
-        action: "notify",
-        verifyQuota: true,
-        skipCooldown: true,
-        skipRecoveryWait: true,
-      });
-      const match = output.match(pattern!.pattern);
-      expect(match).not.toBeNull();
-      expect(pattern!.formatMessage?.(match!)).toContain(`continuing automatically at ${expectedTime}`);
-    });
-
-    it.each([
-      "⚠ Usage limit reached — 25% used",
-      "Usage limit reached · continuing automatically at 1:50pm",
+      "⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel",
+      "● Usage limit reached · continuing automatically at 13:50 · esc or type to cancel",
       "The pane says: ⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel",
-      "⚠ Usage limit reached · continuing automatically at tomorrow · esc to cancel",
-    ])("does not classify non-pause usage prose as a hard pause: %s", output => {
+      "  ⎿  Credit balance too low · Add funds: https://platform.claude.com/settings/billing",
+      "Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.",
+    ])("#2834: no pane pattern reads the usage pause or the credit line (they come from Claude's transcript): %s", output => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
-      const usagePause = backend.getErrorPatterns().find(({ message }) =>
-        message.startsWith("Claude Code usage limit reached"));
-
-      expect(usagePause).toBeDefined();
-      expect(usagePause!.pattern.test(output)).toBe(false);
+      expect(backend.getErrorPatterns().filter(({ pattern }) => pattern.test(output)).map(p => p.message)).toEqual([]);
     });
   });
 

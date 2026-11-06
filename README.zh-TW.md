@@ -126,11 +126,11 @@ powershell -ExecutionPolicy ByPass -c "irm https://songsid.github.io/AgEnD/insta
 
 ```bash
 npm install -g @songsid/agend    # 1. 安裝
-agend quickstart                # 2. 設定 — backend、bot token，搞定
+agend quickstart                # 2. 設定 — 預設只用網頁（bot 可選）：backend、第一個 agent，搞定
 agend start                     # 3. 啟動 fleet 🎉（quickstart 已安裝成系統服務就不用）
 ```
 
-打開 Telegram 或 Discord，傳訊息給你的 bot，就能用手機開始工作。也可以打開網頁儀表板 `http://localhost:19280/`。要登入，在這台機器上執行 `agend web --code`，或傳 `/web` 給你的 bot。
+打開網頁儀表板 `http://localhost:19280/`，用這台機器上 `agend web --code` 印出的登入碼登入——只用網頁的 fleet 這樣就夠了。如果接了 Telegram 或 Discord bot，傳訊息給它就能用手機工作，傳 `/web` 給它也能拿到登入碼。
 
 或用 Docker：把 [在 Docker 中執行 AgEnD](docs/docker.zh-TW.md) 交給 agent（General，或你機器上的 Claude Code）。這是一份操作手冊，agent 會依它替你在容器裡架設 AgEnD 並持續維護。
 
@@ -181,7 +181,7 @@ graph LR
 - Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - 以下任一 AI coding CLI（需安裝並完成認證）
-- Telegram bot token（[@BotFather](https://t.me/BotFather)）或 Discord bot token
+- 選用：Telegram bot token（[@BotFather](https://t.me/BotFather)）或 Discord bot token，想在聊天 app 裡也能使用 AgEnD 時才需要
 - Groq API key（選用，語音轉文字用）
 
 > **⚠️** 所有 CLI 後端都以 `--dangerously-skip-permissions`（或等效參數）執行。詳見 [Security](docs/SECURITY.zh-TW.md)。

@@ -65,6 +65,8 @@ function publish() {
       // Monotonic: when the server's countdown reaches zero on this page's clock.
       deadline: at + Math.max(0, Number(view.remaining_ms) || 0),
       withdraw: view.can_withdraw && view.state === "pending" ? () => withdraw(view.id) : null,
+      // #2868: this browser may confirm it itself now (the server's read says so; it checks again on the click).
+      applyNow: view.can_self_confirm && view.state === "pending" ? () => applyNow(view.id) : null,
       dismiss: TERMINAL.has(view.state) ? () => forget(view.id) : null,
     })),
   });
@@ -148,6 +150,22 @@ export async function withdraw(id) {
   try { res = await api(`/api/settings/pending/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch { return false; }
   if (res.ok && res.body && res.body.id === id) { update(res.body, token); return true; }
   return false;
+}
+
+/**
+ * #2868: "Apply now" — confirm this session's own pending request from this browser (#2170's rule, asked again by the
+ * server). Its answer is followed like any other; a refusal (no longer allowed here) leaves it waiting and is { ok: false }.
+ */
+export async function applyNow(id) {
+  const e = tracked.get(id);
+  if (!e) return { ok: false };
+  const token = ticket(e);
+  let res;
+  try { res = await api(`/api/settings/pending/${encodeURIComponent(id)}/confirm`, { method: "POST", body: "{}" }); } catch { return { ok: false }; }
+  if (isPendingResponse(res) && res.body.pending_change.id === id) { update(res.body.pending_change, token); schedule(); return { ok: true }; }
+  // Refused (403: not allowed here any more): read it again, so "Apply now" goes until the server offers it again.
+  if (e.view.can_self_confirm) update({ ...e.view, can_self_confirm: false }, token);
+  return { ok: false, status: res.status };
 }
 
 /** This session's requests still open on the server (after a reload): followed like new ones. */

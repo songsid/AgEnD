@@ -32,9 +32,16 @@ export interface SettingsPendingView {
   source: "web_session" | "public_link" | "setup_session";
   execution?: { phase: "queued" | "running" | "cleanup"; job_id?: string; reason_code?: string };
   summary: readonly string[];
-  /** #2170: "web" — confirmed by the requester's own web-verified account (its Apply), not in chat or on the host. */
-  confirmation: { kind: "chat" | "host_cli" | "web"; code?: string };
+  /**
+   * How it is confirmed. #2868: "posting" while the General card is being sent (what the save itself answers), then
+   * "chat" with `where` the card was posted (a platform and its connection), or "host_cli" when no General could take
+   * it. #2170: "web" — confirmed by the requester's own web-verified account, not in chat or on the host. The host's
+   * command (`code`) works whatever the kind.
+   */
+  confirmation: { kind: "posting" | "chat" | "host_cli" | "web"; code?: string; where?: Array<{ platform: string; connection: string }> };
   can_withdraw: boolean;
+  /** #2868: the browser that reads it may confirm it itself now (#2170's rule, asked at that read): "Apply now". */
+  can_self_confirm?: boolean;
   outcome: SettingsChangeOutcome | null;
 }
 export interface SettingsChangeProposal {
@@ -155,10 +162,12 @@ export class SettingsConfirmationStore {
       snapshotFingerprint: settingsFingerprint(proposal.snapshot?.() ?? null),
       deadline: this.now() + ttl, requestFingerprint: proposal.requestFingerprint, proposal, view: { id, state: "pending", section: proposal.section,
         requested_at: requested, requested_by: this.display(proposal.requestedBy), expires_at: requested + ttl,
-        source: proposal.source, summary: [...proposal.summary], confirmation: { kind: "host_cli", code: id }, outcome: null } };
+        source: proposal.source, summary: [...proposal.summary], confirmation: { kind: this.options.notify ? "posting" : "host_cli", code: id }, outcome: null } };
     this.records.set(id, entry); this.keys.set(index, id); this.arm(entry); this.audit("requested", entry);
-    // Notification may fail or arrive late. Neither admits a configuration write.
-    void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).catch(() => this.audit("notification_failed", entry));
+    // Notification may fail or arrive late. Neither admits a configuration write. Once it is over, a request no General
+    // card attached to says so: the host's command is then the way (still pending: a decided one keeps its own kind).
+    void Promise.resolve().then(() => this.options.notify?.(this.snapshot(entry))).catch(() => this.audit("notification_failed", entry))
+      .finally(() => { if (entry.view.state === "pending" && entry.view.confirmation.kind === "posting") entry.view.confirmation = { kind: "host_cli", code: id }; });
     return { view: this.snapshot(entry), reused: false };
   }
   findRequest(session: string, key: string, fingerprint: string): SettingsPendingView | null {
@@ -186,10 +195,10 @@ export class SettingsConfirmationStore {
       && (entry.view.state === "pending" || entry.view.state === "applying")).map(entry => this.snapshot(entry));
   }
   /** A prompt ACK can only attach to the still-pending owner; otherwise retire it. */
-  attachPrompt(id: string, retire: () => void): boolean {
+  attachPrompt(id: string, retire: () => void, where?: { platform: string; connection: string }): boolean {
     const entry = this.records.get(id); if (entry) this.expire(entry);
     if (!entry || entry.view.state !== "pending" || this.closed || !entry.proposal?.current()) { retire(); return false; }
-    entry.retire?.(); entry.retire = retire; entry.view.confirmation = { kind: "chat" }; return true;
+    entry.retire?.(); entry.retire = retire; entry.view.confirmation = { kind: "chat", code: id, ...(where ? { where: [{ ...where }] } : {}) }; return true;
   }
   withdraw(id: string, session: string): SettingsPendingView | null {
     const entry = this.records.get(id); if (entry?.session !== session) return null;

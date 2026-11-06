@@ -115,7 +115,13 @@ export class ReplyButtonsController {
   bind(id: string, messageId: string): void {
     this.deps.store.bind(id, messageId);
     const set = this.deps.store.get(id);
+    const now = this.deps.now();
+    // #3011: the deadline was fixed at prepare(), before the send. A late bind is visible in daemon.log.
+    if (set) this.deps.logger.info({ set: id, instance: set.instance, bindDelayMs: now - set.createdAt, poll: set.poll !== null }, "Reply buttons bound");
     if (set?.poll) this.scheduleTick(set);
+    // #3011: a platform that confirmed the send after the set's deadline (a short poll, a slow send) leaves nothing for
+    // arm(): nextExpiry only looks ahead. Sweep now, which closes/expires it and re-arms the one timer.
+    if (set && set.expiresAt <= now) { void this.sweep(); return; }
     this.arm();
   }
   /** A send that failed: the set never existed. */

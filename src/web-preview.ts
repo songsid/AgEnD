@@ -2,8 +2,8 @@
  * #1306: the preview listener — where an agent's HTML may run, away from the dashboard's authority.
  * Design: docs/design/1306-inline-html-preview.md (r3, approved).
  *
- * A second loopback listener (default health_port + 1) serves `GET /frame` for HTML previews and local-only `GET /effect` for Canvas Worker effects.
- * Both accept one payload only from configured dashboard origins. Effect code never runs in the document realm. Everything else is an empty 404. It reads no cookie, no header but Host, and logs
+ * A second loopback listener (default health_port + 1) serves `GET /frame` for HTML previews. It accepts one payload
+ * only from configured dashboard origins. Everything else is an empty 404. It reads no cookie, no header but Host, and logs
  * nothing about a request. The dashboard decides per /ui load whether a preview origin is reachable from the
  * browser's address (Host only — never X-Forwarded-Host), and the page re-checks that against location.origin.
  *
@@ -14,10 +14,12 @@
 import { randomBytes } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { allowedHostNames, hostnameOf, LOOPBACK_HOST_NAMES, type HostGuardConfig } from "./web-host-guard.js";
-import { buildCanvasEffectShim } from "./web-effect-worker.js";
 
-/** The most HTML a preview takes (UTF-8 bytes): the parent refuses more before sending, the shim refuses it too. */
-export const PREVIEW_HTML_MAX_BYTES = 1024 * 1024;
+/**
+ * The most HTML a preview takes (UTF-8 bytes): the parent refuses more before sending (a download only), the shim refuses
+ * it too. #2863: 50 MiB, the default upload limit; the page asks first ("Preview anyway?") above 8 MiB.
+ */
+export const PREVIEW_HTML_MAX_BYTES = 50 * 1024 * 1024;
 
 export interface PreviewWebConfig {
   preview?: unknown;
@@ -159,11 +161,20 @@ export function dashboardOrigins(settings: PreviewSettings, healthPort: number, 
 
 const PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), clipboard-read=(), clipboard-write=(), usb=(), serial=(), hid=(), bluetooth=(), payment=(), display-capture=(), fullscreen=()";
 
-/** The /frame response's Content-Security-Policy (design §5.1): exact, no 'self', no *. */
-export function previewFrameCsp(ancestors: readonly string[]): string {
+/**
+ * #2911 (7): the CDN libraries a preview may load when `web.preview_cdn` is on (design: #2911 issuecomment-6561430534,
+ * amended 6561437401). Exact origins with a path prefix, never a wildcard; scripts, styles and fonts only — a library
+ * still cannot fetch (connect-src stays 'none'). CSP checks the path on the first request only: a same-host redirect
+ * could widen it (CSP3 §6.7.2.12), which the docs say.
+ */
+export const PREVIEW_CDN_SOURCES = ["https://cdnjs.cloudflare.com/ajax/libs/", "https://cdn.jsdelivr.net/npm/"] as const;
+
+/** The /frame response's Content-Security-Policy (design §5.1): exact, no 'self', no *. `cdn`: #2911 (7). */
+export function previewFrameCsp(ancestors: readonly string[], opts: { cdn?: boolean } = {}): string {
+  const cdn = opts.cdn ? ` ${PREVIEW_CDN_SOURCES.join(" ")}` : "";
   return [
-    "default-src 'none'", "script-src 'unsafe-inline'", "style-src 'unsafe-inline'",
-    "img-src data: blob:", "font-src data:", "media-src data: blob:",
+    "default-src 'none'", `script-src 'unsafe-inline'${cdn}`, `style-src 'unsafe-inline'${cdn}`,
+    "img-src data: blob:", `font-src data:${cdn}`, "media-src data: blob:",
     "connect-src 'none'", "worker-src 'none'", "frame-src 'none'", "child-src 'none'",
     "form-action 'none'", "base-uri 'none'", "manifest-src 'none'", "object-src 'none'",
     "webrtc 'block'",
@@ -173,8 +184,26 @@ export function previewFrameCsp(ancestors: readonly string[]): string {
 }
 
 /**
+ * #2911 (7): the prologue's report of a script, stylesheet or font the CSP blocked (a CDN library while web.preview_cdn
+ * is off): posted through the errors chip's `err` (same caps: 50 in all, 300 characters) as kind "blocked", with only the
+ * URL's origin and path — never `sample`, which can hold the page's inline text, nor its query or fragment. Inline
+ * violations (blockedURI "inline") and anything not http(s) are not reported. Runs inside the prologue's closure (err).
+ */
+export const BLOCKED_PROLOGUE = "addEventListener(\"securitypolicyviolation\",function(e){var d=String(e.effectiveDirective||e.violatedDirective||\"\");if(!/^(script-src|style-src|font-src)/.test(d))return;var u;try{u=new URL(String(e.blockedURI));}catch(x){return;}if(u.protocol!==\"https:\"&&u.protocol!==\"http:\")return;err(\"blocked\",u.origin+u.pathname,0,0);});";
+
+/**
+ * #2911: the prologue's pick mode (element annotate). Off until its parent turns it on ({v:1, type:"pick", ch, on}, from
+ * window.parent only); then a hovered element is outlined, one click is taken from the page and posted — while it is on,
+ * the press events too (pointer/mouse/touch down and up, dblclick, contextmenu, auxclick): each prevented and stopped
+ * (stopImmediatePropagation, window capture — registered before the page's own code, so none of the page's handlers
+ * runs; #2916 review; a touch is stopped but not prevented, or the tap would make no click to pick with) — posted as {v:1, type:"pick", ch, selector (≤ 300), text (≤ 200), x, y, w, h}, and the mode ends; Esc ends it with
+ * {v:1, type:"pickend", ch}. Runs inside the prologue's closure (ch, p).
+ */
+export const PICK_PROLOGUE = "var pk=false,hov=null,old=\"\";function unhl(){if(hov){try{hov.style.outline=old;}catch(x){}hov=null;}}function mode(on){pk=on;if(!on)unhl();try{document.documentElement.style.cursor=on?\"crosshair\":\"\";}catch(x){}}function path(el){var out=[],n=el,i=0;while(n&&n.nodeType===1&&i<5){var s=String(n.tagName).toLowerCase();if(n.id)s+=\"#\"+n.id;else if(typeof n.className===\"string\"&&n.className.trim())s+=\".\"+n.className.trim().split(/\\s+/).slice(0,2).join(\".\");out.unshift(s);if(n.id)break;n=n.parentElement;i++;}return out.join(\" > \").slice(0,300);}addEventListener(\"mouseover\",function(e){if(!pk)return;var t=e.target;if(t===hov)return;unhl();if(t&&t.style){hov=t;old=t.style.outline;t.style.outline=\"2px solid #f59e0b\";}},true);function eat(e){if(String(e.type).indexOf(\"touch\")!==0)e.preventDefault();e.stopImmediatePropagation();}[\"pointerdown\",\"pointerup\",\"mousedown\",\"mouseup\",\"touchstart\",\"touchend\",\"dblclick\",\"contextmenu\",\"auxclick\"].forEach(function(k){addEventListener(k,function(e){if(pk)eat(e);},{capture:true,passive:false});});addEventListener(\"click\",function(e){if(!pk)return;eat(e);var t=e.target;mode(false);if(!t||t.nodeType!==1)return;var r=t.getBoundingClientRect();var tx=String(t.innerText||t.textContent||\"\").replace(/\\s+/g,\" \").trim().slice(0,200);function n(v){v=Math.round(v);return v>0&&v<1e6?v:0;}p.postMessage({v:1,type:\"pick\",ch:ch,selector:path(t),text:tx,x:n(r.left),y:n(r.top),w:n(r.width),h:n(r.height)},\"*\");},true);addEventListener(\"keydown\",function(e){if(pk&&e.key===\"Escape\"){eat(e);mode(false);p.postMessage({v:1,type:\"pickend\",ch:ch},\"*\");}},true);addEventListener(\"message\",function(e){if(e.source!==p)return;var d=e.data;if(!d||typeof d!==\"object\"||d.v!==1||d.type!==\"pick\"||d.ch!==ch||typeof d.on!==\"boolean\")return;mode(d.on);});";
+
+/**
  * The shim (design §4): posts `ready` with the listener's boot id; takes ONE `render` — from its parent window, from
- * an exact listed dashboard origin (never "null"), with exactly {v, type, ch, html}, html ≤ 1 MiB — removes the WebRTC
+ * an exact listed dashboard origin (never "null"), with exactly {v, type, ch, html}, html ≤ PREVIEW_HTML_MAX_BYTES — removes the WebRTC
  * entry points from its realm (defence in depth only), and writes a heartbeat/height prologue and the HTML into its
  * own document. Every later message is ignored.
  */
@@ -201,7 +230,19 @@ export function buildShim(bootId: string, origins: readonly string[]): string {
       "setInterval(function(){p.postMessage({v:1,type:\\"heartbeat\\",ch:ch},\\"*\\");},2000);" +
       "p.postMessage({v:1,type:\\"heartbeat\\",ch:ch},\\"*\\");" +
       "try{new ResizeObserver(size).observe(document.documentElement);}catch(e){setInterval(size,500);}" +
-      "addEventListener(\\"load\\",size);setTimeout(size,0);})();<\\/script>";
+      "addEventListener(\\"load\\",size);setTimeout(size,0);" +
+      // #2911: the page's errors, for the panel's errors chip — at most 50, each one line cut at 300 characters. The
+      // page can send this shape too: the parent treats it as untrusted text and only records it.
+      "var n=0;function err(k,m,l,c){if(n>=50)return;n++;try{m=String(m==null?\\"\\":m);}catch(x){m=\\"(unprintable)\\";}" +
+      "p.postMessage({v:1,type:\\"error\\",ch:ch,kind:k,message:m.slice(0,300),line:l>>>0,col:c>>>0},\\"*\\");}" +
+      "addEventListener(\\"error\\",function(e){if(!e||(e.target&&e.target!==window))return;err(\\"error\\",e.message,e.lineno,e.colno);},true);" +
+      "addEventListener(\\"unhandledrejection\\",function(e){var r=e&&e.reason;err(\\"rejection\\",r&&r.message?(r.name||\\"Error\\")+\\": \\"+r.message:r,0,0);});" +
+      "try{var ce=console.error;console.error=function(){try{err(\\"console\\",Array.prototype.map.call(arguments,function(a){" +
+      "try{return a&&a.message?(a.name||\\"Error\\")+\\": \\"+a.message:typeof a===\\"object\\"?JSON.stringify(a):String(a);}catch(x){return \\"?\\";}}).join(\\" \\"),0,0);}catch(x){}" +
+      "return ce.apply(console,arguments);};}catch(x){}" +
+      ${JSON.stringify(BLOCKED_PROLOGUE)} +
+      ${JSON.stringify(PICK_PROLOGUE)} +
+      "})();<\\/script>";
     document.open();
     document.write(prologue + d.html);
     document.close();
@@ -210,9 +251,6 @@ export function buildShim(bootId: string, origins: readonly string[]): string {
 })();`;
   return `<!doctype html><html><head><meta charset="utf-8"><title>Preview</title></head><body><script>${script}</script></body></html>`;
 }
-
-/** #1629: Canvas Worker-only effect document. No mod HTML runs in this realm. */
-export const buildEffectShim = buildCanvasEffectShim;
 
 export interface PreviewListener {
   readonly server: Server;
@@ -224,7 +262,7 @@ export interface PreviewListener {
 }
 
 /**
- * The preview listener: exact GET /frame or /effect → a shim with the §5.1 headers; anything else → empty 404; a Host
+ * The preview listener: exact GET /frame → a shim with the §5.1 headers; anything else → empty 404; a Host
  * it does not answer to → empty 403. No X-Frame-Options (it must be framable by the dashboard), no cookie or
  * header parsing beyond Host, nothing logged per request. Built once: the shim and its headers never change.
  */
@@ -232,22 +270,17 @@ export interface PreviewListener {
  * The /frame response for one set of dashboard origins (design §5.1): the shim and its exact headers. Shared by the
  * local preview listener and the public link's own preview gateway (#1723), so both serve the very same frame.
  */
-export function previewFrameResponse(bootId: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
-  return shimResponse(buildShim(bootId, origins), origins);
+export function previewFrameResponse(bootId: string, origins: readonly string[], opts: { cdn?: boolean } = {}): { body: Buffer; headers: Record<string, string> } {
+  return shimResponse(buildShim(bootId, origins), origins, opts);
 }
 
-/** Effects add only local blob script/Worker execution; network/nested contexts remain denied. */
-export function previewEffectResponse(bootId: string, origins: readonly string[]): { body: Buffer; headers: Record<string, string> } {
-  return shimResponse(buildEffectShim(bootId, origins), origins, true);
-}
-
-function shimResponse(html: string, origins: readonly string[], effect = false): { body: Buffer; headers: Record<string, string> } {
+function shimResponse(html: string, origins: readonly string[], opts: { cdn?: boolean } = {}): { body: Buffer; headers: Record<string, string> } {
   const body = Buffer.from(html, "utf8");
   return {
     body,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Content-Security-Policy": effect ? previewFrameCsp(origins).replace("script-src 'unsafe-inline'", "script-src 'unsafe-inline' blob:").replace("worker-src 'none'", "worker-src blob:") : previewFrameCsp(origins),
+      "Content-Security-Policy": previewFrameCsp(origins, opts),
       "Permissions-Policy": PERMISSIONS_POLICY,
       "Referrer-Policy": "no-referrer",
       "Cross-Origin-Resource-Policy": "same-origin",
@@ -260,27 +293,24 @@ function shimResponse(html: string, origins: readonly string[], effect = false):
 
 export function createPreviewListener(opts: {
   settings: PreviewSettings; healthPort: number; config: HostGuardConfig | null | undefined; bootId?: string;
-  /** The legacy CW bootstrap shares the live experimental admission; HTML previews are independent. */
-  canvasWorkerEnabled?(): boolean;
   /**
    * #1723: dashboard origins that may frame the preview for now — the open public link's, when a web.preview_origin is
    * configured (it is used instead of a preview tunnel). Asked per request; never cached past the answer.
    */
   extraOrigins?(): readonly string[];
+  /** #2911 (7): `web.preview_cdn`, read per /frame response — a change applies to the next preview started. */
+  cdn?(): boolean;
 }): PreviewListener {
   const bootId = opts.bootId ?? randomBytes(16).toString("hex");
   const origins = dashboardOrigins(opts.settings, opts.healthPort, opts.config);
-  const { body, headers } = previewFrameResponse(bootId, origins);
-  // Public-link origins may widen /frame, never /effect. Effects remain local-dashboard only.
-  const effect = previewEffectResponse(bootId, origins);
-  let widened: { key: string; body: Buffer; headers: Record<string, string> } | null = null;
+  // Public-link origins may widen /frame; the CDN setting may change it. Built once per (origins, cdn).
+  let built: { key: string; body: Buffer; headers: Record<string, string> } | null = null;
   const frameFor = (): { body: Buffer; headers: Record<string, string> } => {
     const extra = (opts.extraOrigins?.() ?? []).filter(o => !origins.includes(o));
-    if (extra.length === 0) return { body, headers };
-    const all = [...origins, ...extra];
-    const key = all.join(" ");
-    if (widened?.key !== key) widened = { key, ...previewFrameResponse(bootId, all) };
-    return widened;
+    const all = [...origins, ...extra], cdn = opts.cdn?.() === true;
+    const key = `${cdn ? "cdn" : "-"} ${all.join(" ")}`;
+    if (built?.key !== key) built = { key, ...previewFrameResponse(bootId, all, { cdn }) };
+    return built;
   };
   const hosts = new Set<string>(LOOPBACK_HOST_NAMES);
   if (opts.settings.origin) { const h = hostnameOf(new URL(opts.settings.origin).host); if (h) hosts.add(h); }
@@ -293,11 +323,6 @@ export function createPreviewListener(opts: {
     const host = typeof req.headers.host === "string" ? hostnameOf(req.headers.host) : null;
     if (!host || !hosts.has(host)) return empty(res, 403);
     if (req.method !== "GET") return empty(res, 404);
-    if (req.url === "/effect") {
-      if (opts.canvasWorkerEnabled?.() !== true) return empty(res, 403);
-      res.writeHead(200, effect.headers);
-      return res.end(effect.body);
-    }
     if (req.url !== "/frame") return empty(res, 404);
     const frame = frameFor();
     res.writeHead(200, frame.headers);

@@ -126,6 +126,8 @@ describe("#1423 actual General nonce handler", () => {
     await vi.waitFor(() => expect(second.notifyAlert).toHaveBeenCalledOnce());
     const { data } = await promptData(h);
     expect(data).toMatchObject({ chatId: "300", threadId: "400" }); expect(p.store.get(p.view.id, "browser")!.confirmation.kind).toBe("chat");
+    // #2868: the page names where the card went — the General it fell back to, not the first one.
+    expect(p.store.get(p.view.id, "browser")!.confirmation.where?.map((w) => w.connection)).toEqual(["secondary"]);
     await h.fm.dispatchAdapterCallback({ ...data, userId: "other-F" }, "secondary", second); expect(p.apply).not.toHaveBeenCalled();
     await h.fm.dispatchAdapterCallback({ ...data, userId: "admin" }, "secondary", second); expect(p.apply).toHaveBeenCalledOnce();
   });

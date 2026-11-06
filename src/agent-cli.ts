@@ -15,8 +15,7 @@ import { splitFlags } from "./cli-flags.js";
 import { agentTokenHeader } from "./agent-token-header.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { listBundledSkills, readBundledSkill } from "./bundled-skills.js";
-import { readCanvasWorkerEnabled } from "./web-experimental.js";
-import { ASSET_UPLOAD_MAX_BYTES, MOD_FILE, MOD_MAX_PARTS, MOD_UPLOAD_MAX_BYTES, receiveFiles, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writeModFile, writePreview } from "./web-asset-parts.js";
+import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, THEME_ASSET_SLOTS, writePreview } from "./web-asset-parts.js";
 
 const PORT = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 const INSTANCE = process.env.AGEND_INSTANCE_NAME ?? "";
@@ -102,9 +101,8 @@ async function main(): Promise<void> {
   const widgetData = first === "widget" && given[0] === "data";
   // #2163: `skill [name]` reads a skill AgEnD ships, locally (no fleet, no instance needed): the list, or one whole.
   if (first === "skill") {
-    const canvasWorker = readCanvasWorkerEnabled(DATA_DIR);
-    if (!given[0]) { for (const s of listBundledSkills(undefined, canvasWorker)) console.log(`${s.name}\t${s.description}`); return; }
-    const r = readBundledSkill(given[0], undefined, canvasWorker);
+    if (!given[0]) { for (const s of listBundledSkills()) console.log(`${s.name}\t${s.description}`); return; }
+    const r = readBundledSkill(given[0]);
     if (!r.ok) die(r.error);
     process.stdout.write(r.text.endsWith("\n") ? r.text : r.text + "\n");
     return;
@@ -237,38 +235,6 @@ async function main(): Promise<void> {
       } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
       return;
     }
-    case "effect-upload": {
-      const { readAgentEffect, sendEffectInParts } = await import("./web-effect-upload.js");
-      if (rest.length !== 1) die("Usage: agend-agent effect upload <directory>");
-      const read = await readAgentEffect(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE });
-      if (!read.ok) die(`effect upload: ${read.reason}`);
-      try {
-        const answer = await sendEffectInParts(read.files, async payload => {
-          const text = await post(op, payload);
-          try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error:"answer", message:text.slice(0,200) }; }
-        });
-        console.log(JSON.stringify(answer));
-      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
-      return;
-    }
-    case "effect-list":
-      if (rest.length) die("Usage: agend-agent effect list");
-      break;
-    case "effect-preview": case "effect-profile": case "effect-delete":
-      if (rest.length !== 1 || !/^[0-9a-f]{32}$/.test(rest[0]!)) die(`Usage: agend-agent ${op.replace("-"," ")} <id>`);
-      args={id:rest[0]};break;
-    case "effect-remove":
-      if (rest.length > 1 || rest[0] !== undefined && !/^[0-9a-f]{32}$/.test(rest[0])) die("Usage: agend-agent effect remove [id]");
-      args=rest[0]===undefined?{}:{id:rest[0]};break;
-    case "effect-apply": {
-      if (rest.length < 1 || rest.length > 2 || !/^[0-9a-f]{32}$/.test(rest[0]!)) die("Usage: agend-agent effect apply <id> ['<params JSON>']");
-      let params: unknown;
-      if (rest[1] !== undefined) {
-        try { params=JSON.parse(rest[1]); } catch { die("effect apply: params is not JSON"); }
-        if (!params || typeof params !== "object" || Array.isArray(params)) die("effect apply: params must be an object");
-      }
-      args={id:rest[0],...(params!==undefined?{params}:{})};break;
-    }
     case "theme-reset":
       break;
     case "appearance-get":
@@ -344,33 +310,9 @@ async function main(): Promise<void> {
     case "ambient-clear":
       args = rest[0] ? { which: rest[0] } : {};
       break;
-    // #1629 r4-5b: `mod export <name> <version> [title]` (written to .agend/mods/ here) and `mod propose <file>`.
-    case "mod-export": {
-      if (!rest[0] || !rest[1]) die("Usage: agend-agent mod export <name> <version> [title]");
-      const ask = async (a: Record<string, unknown>) => { const text = await post(op, a); try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error: "answer", message: text.slice(0, 200) }; } };
-      try {
-        const first = await ask({ name: rest[0], version: rest[1], ...(rest[2] ? { title: rest.slice(2).join(" ") } : {}) });
-        const got = await receiveFiles(first, ask, { name: MOD_FILE, idKey: "transfer", what: "export", maxParts: MOD_MAX_PARTS });
-        if ("error" in got) { console.log(JSON.stringify(got)); process.exit(1); }
-        const written = await writeModFile(got.files, { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE });
-        if ("error" in written) die(`mod export: ${written.error}`);
-        console.log(JSON.stringify({ ...written, ...(first.effects_omitted ? { effects_omitted: first.effects_omitted } : {}) }));
-      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
-      return;
-    }
-    case "mod-propose": {
-      if (!rest[0]) die("Usage: agend-agent mod propose <file>");
-      const read = await readAgentFile(rest[0], { workspace: process.cwd(), stateDir: DATA_DIR, instance: INSTANCE, maxBytes: MOD_UPLOAD_MAX_BYTES });
-      if (!read.ok) die(`mod propose: ${rest[0]} — ${read.reason}`);
-      try {
-        const answer = await sendAssetInParts("mod", read.bytes, async (part) => {
-          const text = await post(op, part);
-          try { return JSON.parse(text) as Record<string, unknown>; } catch { return { error: "answer", message: text.slice(0, 200) }; }
-        });
-        console.log(JSON.stringify(answer));
-      } catch (err) { die(`Connection failed: ${(err as Error).message}`); }
-      return;
-    }
+    // #2799: the removed Canvas Worker ops are still sent, so the fleet answers them plainly (as while they were off).
+    case "effect-upload": case "effect-list": case "effect-preview": case "effect-profile": case "effect-apply":
+    case "effect-remove": case "effect-delete": case "mod-export": case "mod-propose": break;
     case "appearance-preview": {
       if (rest.some(m => m !== "light" && m !== "dark")) die("Usage: agend-agent appearance preview [light|dark]");
       // The fleet sends the SVGs (whole, or in parts); they are written here, in this working directory.

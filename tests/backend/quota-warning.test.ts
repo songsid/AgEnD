@@ -166,14 +166,14 @@ describe("Codex workspace credits exhausted", () => {
     const workspace = matching(LINE)[0];
     for (const line of [
       "the workspace is out of disk space",
-      "check whether the workspace is out of credits later",   // still a real report
+      // #2844: this pause skips the usage-window check, so the row must open with
+      // codex's status glyph; a sentence that quotes it is prose.
+      "check whether the workspace is out of credits later",
+      "Your workspace is out of credits. Ask your workspace owner to refill.",
       "out of credits",                                        // no workspace scope
       "your personal account is out of credits",
     ]) {
-      const hits = workspace.pattern.test(line);
-      // Only the deliberately-ambiguous third-person sentence should match; the
-      // others lack the `workspace is out of credits` phrase entirely.
-      expect(hits, line).toBe(line.includes("workspace is out of credits"));
+      expect(workspace.pattern.test(line), line).toBe(false);
     }
   });
 });

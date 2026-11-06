@@ -1,8 +1,8 @@
-import { canvasWorkerEnabled, CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
-import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
+import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE } from "./web-experimental.js";
+import { daemonTopicMode } from "./web-only-fleet.js";
 import { webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { classifyWebPeer, confirmAfterBody, noAuthority, type HumanAuthority, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
-import { guestChatRefusal, guestCommandText, guestDeliveries, guestFrameData, guestHistory, guestMessages, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
+import { guestChatRefusal, guestCommandText, guestDeliveries, GUEST_PREF_MAX_BYTES, GUEST_SEARCHES, guestFrameData, guestHistory, guestMessages, guestOwnPrefs, guestPollBody, guestPrefs, guestRequestOf, guestSeesMessage, guestStatus, type GuestRequest } from "./web-guest-access.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { binaryProbe } from "./binary-probe.js";
 import type { CachedImage } from "./web-images.js";
@@ -19,9 +19,6 @@ import { buildModBundle, type ModExportParts } from "./web-mod-export.js";
 import { AGENT_WIDGET_SLOTS, checkWidgetData, checkWidgetSpec } from "./web-widget.js";
 import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
 import { canonicalText } from "./web-theme.js";
-import type { WebEffectService } from "./web-effect-service.js";
-import type { EffectTrialActor } from "./web-effect-trials.js";
-import { EFFECT_WIRE_LIMIT } from "./web-effect-upload.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
@@ -57,7 +54,8 @@ import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js
 import { z } from "zod";
 import { evaluateWebRequest, isPassiveWebRead, isSecureRequest, isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE, type WebGateRequest } from "./web-auth.js";
 import { dashboardOriginFor, type PreviewAvailability } from "./web-preview.js";
-import { WEB_CHAT_CARDS_OVERFLOW, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
+import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEventId, webChatReplyRef, webChatReplyText, type WebChatAttachment, type WebChatHistory, type WebChatMessage, type WebChatPost } from "./web-chat-history.js";
+import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
@@ -69,11 +67,11 @@ import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { resolveTz } from "./tz-utils.js";
-import { filesPlayInChat } from "./web-effect.js";
 import { QUERY_MAX_CHARS, RESULT_MAX, SEARCH_SOURCES } from "./search/search-store.js";
 import { xmsgShown } from "./search/search-docs.js";
 import { WebSendDedupe, type WebSendClaim } from "./web-send-dedupe.js";
 import { taskBoardOffNames } from "./dashboard-permissions.js";
+import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -264,6 +262,7 @@ function visibleNeeds(ctx: WebApiContext, gateway: boolean, items: unknown[]): u
   const { hidden } = boardHiding(ctx, true);
   return items.filter((i) => {
     const item = i as { type?: unknown; card?: { code?: unknown } };
+    if (item.type === "config") return false; // private operator configuration diagnostics never cross a public link
     if (item.type !== "task") return true;
     const code = item.card?.code;
     if (!board || typeof code !== "string") return false;
@@ -362,7 +361,7 @@ export interface WebApiContext {
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
-    web?: { experimental?: { canvas_worker?: boolean }; echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
+    web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
     defaults?: { backend?: string; effort?: string };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
@@ -400,7 +399,6 @@ export interface WebApiContext {
   /** Current owned pane reader shared with status; absent means context is unavailable. */
   getPaneContextSource?(name: string): PaneContextSource | null;
   /** #1306: which preview origin this /ui load may frame (Host and the TLS signal only); absent: previews off. */
-  readonly effectBoot?: string;
   previewForUi?(hostHeader: string | undefined, secure: boolean): PreviewAvailability & { boot: string | null };
   /** #1723: the same for a page of the public link (exposure `exposureId`, at `dashboardOrigin`); absent: none there. */
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
@@ -437,6 +435,12 @@ export interface WebApiContext {
   readonly dispatcherGone?: (name: string) => boolean;
   /** How often a person may save the offices (absent: no limit, as in a test without it). */
   readonly officeWrites?: OfficeWriteLimiter;
+  /** #2855: a guest's preference saves, per account (GUEST_PREF_WRITES). */
+  readonly guestPrefWrites?: OfficeWriteLimiter;
+  /** #2855: a guest's commands, per account (GUEST_COMMAND_RUNS). */
+  readonly guestCommandRuns?: OfficeWriteLimiter;
+  /** #2855: a trusted guest's searches, per account (GUEST_SEARCHES). */
+  readonly guestSearches?: OfficeWriteLimiter;
   /** #2578: the agents' live acts in the Office view (office_set); absent: /ui/office-acts is not offered. */
   readonly officeActs?: Pick<OfficeActs, "live">;
   /** #2636: Office share links (office-share-service.ts): the open ones, making and ending one. */
@@ -445,7 +449,15 @@ export interface WebApiContext {
     list(): import("./office-share.js").OfficeShare[];
     create(opts: { office: string; minutes?: number; text?: boolean; owner: string }): Promise<import("./office-share-service.js").OfficeShareMade>;
     revoke(id: string): number;
+    /** #2911: page share links on the same tunnel (page-share.ts); absent: /ui/page-share is not offered. */
+    pagesEnabled?(): boolean;
+    pagesCdn?(): boolean;
+    listPages?(): import("./page-share.js").PageShare[];
+    createPage?(opts: { html: string; instance: string; title: string; owner: string; from?: import("./page-share.js").PageShare["from"]; minutes?: number; stillAllowed?(): boolean }): Promise<import("./office-share-service.js").PageShareMade>;
+    revokePage?(id: string): import("./page-share.js").PageShare[];
   };
+  /** #2911: a page share was made — said in that instance's channel (who, which page, for how long; never its URL). */
+  pageShareNotice?(who: string, share: import("./page-share.js").PageShare): void;
   /** #2636: a share was made or ended from the page — said in General (who, which office, until when). */
   officeShareNotice?(event: "created" | "revoked", who: string, share: import("./office-share.js").OfficeShare | null, count: number): void;
   /** #2692: the agents' skin-pack changes (approval mode, pending changes, log); absent: /ui/office-pack-changes is not offered. */
@@ -457,12 +469,8 @@ export interface WebApiContext {
   readonly webAppearance?: WebAppearance;
   /** #1629 r4-5: installed mods and a person's staged import. */
   readonly mods?: ModStore;
-  /** #1629 B2: session-only effect library, runtime resources and reported host profiles. */
-  readonly effectService?: WebEffectService;
   /** #1629 r4-5: an instance's card text as shown (a person's fields over the agent's), for a mod's export. */
   modCardText?(name: string): { tagline?: string; bio?: string };
-  /** #1629 r4-5c: an effect this person may export (their own claim, or human-shared); null for anyone else's. */
-  modPlacedEffect?(person: string, id: string): { name: string; files: ReadonlyMap<string, Uint8Array> } | null;
   /** A fleet.yaml instance (own key) or a ClassicBot room, now. */
   isKnownInstance?(name: string): boolean;
   startInstance(name: string, config: unknown, topicMode: boolean, kind?: "fleet-topic" | "classic", resumePaused?: boolean): Promise<void>;
@@ -484,7 +492,7 @@ export interface WebApiContext {
   /** #2122: the usage report (Fleet → Usage); absent: not offered. */
   usageReport?(params: { range: import("./usage-report.js").UsageRange; group: import("./usage-report.js").UsageGroup }): Promise<unknown>;
   /** #1269: an instance's chat command from the web chat (web-commands.ts); absent: not offered. */
-  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority }): Promise<{ status: number; body: unknown }>;
+  webCommand?(input: { instance: string; command: string; args?: string; confirm?: string }, opts: { publicLink: boolean; person?: WebPerson; authority?: HumanAuthority; guest?: boolean }): Promise<{ status: number; body: unknown }>;
   /** #1939 S2b: "Authorize this browser" — the Confirm card in the account's DM; and what the app shows for this browser. */
   requestSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): Promise<{ ok: true; expiresInMs: number } | { ok: false; refusal: string; retryAfterMs?: number }>;
   webSessionAuthorization?(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer }): { state: string; until?: number; expiresInMs?: number; reason?: string };
@@ -499,6 +507,8 @@ export interface WebApiContext {
   setWebPersonName?(owner: WebAccount | undefined, raw: unknown): { ok: true; person: WebPerson } | { ok: false; status: number; error: string };
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
+  /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
+  webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
   /** `text`: #2675 — the typed answer, for the one action the page shows a text box for. */
   clickWebPrompt?(instance: string, nonce: string, action: string, text?: string): Promise<{ status: number; error?: string }>;
@@ -508,6 +518,8 @@ export interface WebApiContext {
   cancelInstance?(name: string): boolean;
   restartSingleInstance(name: string, opts?: { explicit?: boolean }): Promise<void>;
   removeInstance(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution): Promise<void>;
+  /** delete_instance's removal: the agent, then its own topic (by default), with the platform's answer. */
+  removeInstanceAndTopic?(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean; execution?: SettingsExecution }): Promise<TopicDeleteOutcome>;
   lastInboundUser: Map<string, string>;
   saveFleetConfig(): void;
   readonly lifecycle: { handleCreate(args: LifecycleCreateArgs, respond: (result: unknown, error?: string) => void, adapterId?: string, execution?: SettingsExecution): Promise<void> };
@@ -544,6 +556,9 @@ export interface WebApiContext {
 async function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   return JSON.parse((await readBoundedWebBody(req, 512 * 1024)).toString("utf8"));
 }
+
+/** #2855: the guest accounts with a command in progress (one at a time each). */
+const guestCommandsRunning = new Set<string>();
 
 /** Send JSON response. */
 function json(res: ServerResponse, status: number, data: unknown): void {
@@ -697,6 +712,92 @@ function handleOfficeShare(req: IncomingMessage, res: ServerResponse, url: URL, 
   })().catch(err => {
     ctx.logger.error({ err: (err as Error).message }, "Office share failed");
     try { json(res, 500, { error: "Office share failed" }); } catch { /* already answered */ }
+  });
+  return true;
+}
+
+/**
+ * #2911 item 8: page share links — GET /ui/page-share (the open ones, and whether this fleet offers them), POST
+ * { instance, boot, id, fence | att, minutes? } (a new one: the server reads the HTML itself — the n-th complete ```html
+ * fence of that agent message, or its .html attachment — and answers the URL once the tunnel is up), DELETE
+ * /ui/page-share/<id|all>. The same admin check as the Office share's (handleOfficeShare): an admin session, directly
+ * or over the /web public link; never the CLI token, a read-only session or a guest. Asked again once the body is in.
+ */
+function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
+  const service = ctx.officeShares;
+  if (!service?.createPage || !service.listPages || !service.revokePage || !service.pagesEnabled) { json(res, 404, { error: "Page share links are not kept on this fleet" }); return true; }
+  const one = /^\/ui\/page-share\/([0-9a-f]{8}|all)$/.exec(path);
+  const known = (method === "GET" && path === "/ui/page-share") || (method === "POST" && path === "/ui/page-share") || (method === "DELETE" && !!one);
+  if (!known) { json(res, 404, { error: "not found" }); return true; }
+  const who = (): { person: string; name: string } | { status: number } => {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (verdict.kind !== "allow") return { status: 401 };
+    if (verdict.via !== "session" || verdict.session?.tier !== "admin") return { status: 403 };
+    const owner = verdict.session.owner;
+    return { person: owner ? webPersonKey(owner) : "admin-session", name: owner ? ctx.webPerson?.(owner)?.name ?? owner.userId : "admin" };
+  };
+  const refuse = (status: number) => json(res, status, { error: status === 401 ? WEB_TOKEN_INVALID_MESSAGE : "page_share_needs_an_admin_session" });
+  const first = who();
+  if ("status" in first) { refuse(first.status); return true; }
+  res.setHeader("Cache-Control", "no-store");
+  // `cdn`: whether a share made now may load the preview's CDN libraries (the confirm dialog says so).
+  if (method === "GET") { json(res, 200, { enabled: service.pagesEnabled(), cdn: service.pagesCdn?.() === true, shares: service.listPages() }); return true; }
+  if (method === "DELETE") {
+    // Its end is said in the instance's channel by the service's change listener (as an expiry is).
+    const n = service.revokePage(one![1]!).length;
+    json(res, n ? 200 : 404, n ? { revoked: n } : { error: "not_found" });
+    return true;
+  }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    const now = who();
+    if ("status" in now) { refuse(now.status); return; }
+    const fence = body?.fence, att = body?.att;
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.instance !== "string" || !body.instance
+      || typeof body.boot !== "string" || !/^[0-9a-f]{1,32}$/.test(body.boot) || !Number.isSafeInteger(body.id) || (body.id as number) < 1
+      || (fence === undefined) === (att === undefined)
+      || (fence !== undefined && (!Number.isInteger(fence) || (fence as number) < 0 || (fence as number) > 999))
+      || (att !== undefined && (typeof att !== "string" || !isFileId(att)))
+      || (body.minutes !== undefined && typeof body.minutes !== "number")) {
+      json(res, 400, { error: "instance, boot, id, and fence (number) or att (file id); minutes? (number)" });
+      return;
+    }
+    const msg = ctx.webChatHistory?.find(body.instance, body.boot, body.id as number) ?? null;
+    if (!msg || msg.instance !== body.instance) { json(res, 404, { error: "message_gone" }); return; }
+    if (msg.role !== "agent") { json(res, 400, { error: "not_an_agent_page" }); return; }
+    let html: string, name = "";
+    if (fence !== undefined) {
+      const f = htmlFences(msg.text)[fence as number];
+      if (!f || !f.terminated) { json(res, 404, { error: "page_gone" }); return; }
+      html = f.code;
+    } else {
+      const a = (msg.attachments ?? []).find((x): x is WebChatAttachment => !("gone" in x) && x.id === att);
+      if (!a || a.kind === "photo" || !/\.html?$/i.test(a.name.trim())) { json(res, 404, { error: "page_gone" }); return; }
+      const served = ctx.webFiles?.servedFile?.(a.id) ?? null;
+      if (!served) { json(res, 404, { error: "page_gone" }); return; }
+      if (served.size > PAGE_SHARE_LIMITS.maxBytes) { json(res, 413, { error: "too_large" }); return; }
+      const read = ctx.webFiles?.read?.(a.id) ?? null;
+      if (!read) { json(res, 404, { error: "page_gone" }); return; }
+      html = read.bytes.toString("utf8");
+      name = a.name;
+    }
+    const from = { boot: body.boot, id: body.id as number, ...(fence !== undefined ? { fence: fence as number } : { att: att as string }) };
+    // The caller is asked again once the tunnel is up (#2917 review P2): the same admin, the session still live.
+    const stillAllowed = (): boolean => { const currentCaller = who(); return !("status" in currentCaller) && currentCaller.person === now.person; };
+    const made = await service.createPage!({ html, instance: body.instance, title: htmlTitle(html) || name, owner: now.person, from, stillAllowed,
+      ...(typeof body.minutes === "number" ? { minutes: body.minutes } : {}) });
+    if (!made.ok) {
+      const status = made.error === "disabled" ? 404 : made.error === "tunnel" ? 503 : made.error === "too_many" ? 409 : made.error === "too_large" ? 413 : made.error === "not_allowed" ? 403 : 400;
+      json(res, status, { error: made.error, ...(made.reason ? { reason: made.reason } : {}) });
+      return;
+    }
+    ctx.pageShareNotice?.(now.name, made.share);
+    json(res, 200, { share: made.share, url: made.url });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, "Page share failed");
+    try { json(res, 500, { error: "Page share failed" }); } catch { /* already answered */ }
   });
   return true;
 }
@@ -945,88 +1046,6 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
   return true;
 }
 
-/** #1629: static current-placement posters, separate from the local human-only runtime API. */
-function handleEffectPosters(res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  const image = /^\/ui\/effect-posters\/([0-9a-f]{32})\.png$/.exec(path);
-  const names = [...url.searchParams.keys()], instance = url.searchParams.get("instance");
-  if (method !== "GET" || path !== "/ui/effect-posters" && !image || names.length !== 1 || names[0] !== "instance" || !instance || instance.length > 128) {
-    json(res, 404, { error: "not_found" }); return true;
-  }
-  const service = ctx.effectService;
-  if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
-  if (image) {
-    const r = service.placedPoster(image[1]!, instance);
-    if (!r.ok) json(res, 404, { error: "not_found" });
-    else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
-  } else {
-    const result = service.posterPlacements(instance);
-    json(res, result.error === "themes_unreadable" ? 503 : result.error ? 404 : 200, result);
-  }
-  return true;
-}
-
-/** #1629 Try: separate local-admin routes. These never borrow ordinary read-tier/placement authority. */
-function handleEffectTrials(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "trials_not_over_public_link" }); return true; }
-  const who = (): { actor: Omit<EffectTrialActor, "ownerCss"> & { ownerCss: "off" | "on" | "unknown" }; record: SessionRecord; sessions: WebSessionStore | null | undefined } | { error: string; status: number } => {
-    const sessions = ctx.webSessions;
-    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, sessions, { touch: false });
-    if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 } as const;
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "trials_need_a_local_admin", status: 403 } as const;
-    const person = webPersonKey(v.session.owner);
-    let css: "off" | "on" | "unknown" = "unknown";
-    try { const value = ctx.ownerCss?.effectState(person); if (value === "off" || value === "on") css = value; } catch { /* unavailable is never off */ }
-    // CSS is diagnostic for Try; its host-owned shadow shell isolates controls and local paint.
-    const actor = Object.freeze({ via: "session" as const, surface: "local" as const, tier: "admin" as const, sessionHash: v.session.idHash, epoch: v.session.handle, person, ownerCss: css });
-    return { actor, record: v.session, sessions };
-  };
-  const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
-  const service = ctx.effectService; if (!service) { json(res, 404, { error: "trials_unavailable" }); return true; }
-  const start = path === "/ui/effect-trials/start";
-  const route = /^\/ui\/effect-trials\/([0-9a-f]{32})\/(resource|poster\.png|profile|stop)$/.exec(path);
-  const resource = reading && route && ["resource", "poster.png", "profile"].includes(route[2]!);
-  const stop = method === "POST" && route?.[2] === "stop";
-  if (!(resource || stop || method === "POST" && start)) { json(res, 404, { error: "not_found" }); return true; }
-  const allowed = resource ? ["ownerEpoch", "instance"] : ["ownerEpoch"];
-  if ([...url.searchParams.keys()].some(k => !allowed.includes(k)) || allowed.some(k => url.searchParams.getAll(k).length !== 1)
-    || url.searchParams.get("ownerEpoch") !== first.actor.epoch) { json(res, reading ? 404 : 409, { error: reading ? "not_found" : "trials_person_changed" }); return true; }
-  const instance = url.searchParams.get("instance") ?? "";
-  const answer = (result: Record<string, unknown>) => json(res, result.error ? result.error === "not_found" ? 404
-    : ["profiles_unreadable", "profiles_busy", "profiles_write_failed"].includes(String(result.error)) ? 503 : 400 : 200, result);
-  if (resource) {
-    if (route[2] === "poster.png") {
-      const result = service.trialPoster(route[1]!, instance, first.actor);
-      if (!result.ok) json(res, 404, { error: "not_found" });
-      else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(result.bytes); }
-    } else answer(route[2] === "profile" ? service.trialProfile(route[1]!, instance, first.actor) : service.trialResource(route[1]!, instance, first.actor));
-    return true;
-  }
-  (async () => {
-    let bytes: Buffer;
-    try { bytes = await readBoundedWebBody(req, 16 * 1024); } catch { json(res, 413, { error: "trial_body_bound" }); return; }
-    if (!permitWebContinuation(req, res, ctx)) return;
-    const now = who(); if ("error" in now) { json(res, now.status, { error: now.error }); return; }
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
-    if (now.record !== first.record || now.sessions !== first.sessions || now.actor.sessionHash !== first.actor.sessionHash
-      || now.actor.person !== first.actor.person || now.actor.epoch !== first.actor.epoch) { json(res, 409, { error: "trials_person_changed" }); return; }
-    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "trial_json" }); return; }
-    if (start) {
-      const parsed = z.strictObject({ offer: z.string().regex(/^[0-9a-f]{32}$/), instance: z.string().min(1).max(128) }).safeParse(body);
-      if (!parsed.success) { json(res, 400, { error: "trial_args" }); return; }
-      answer(service.trialStart(parsed.data.offer, parsed.data.instance, now.actor));
-    } else {
-      if (!z.strictObject({}).safeParse(body).success) { json(res, 400, { error: "trial_args" }); return; }
-      answer(service.trialStop(route![1]!, now.actor));
-    }
-  })().catch(() => { try { json(res, 500, { error: "trial_request_failed" }); } catch { /* response ended */ } });
-  return true;
-}
-
 /** #2599: the same closed browser controls as setup, for a current local human admin. */
 function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext): boolean {
   res.setHeader("Cache-Control", "private, no-store");
@@ -1126,79 +1145,6 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
   return true;
 }
 
-/** #1629 B2: effect routes require a human session; route bodies never supply an actor or reference holder. */
-function handleEffects(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
-  res.setHeader("Cache-Control", "private, no-store");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  const reading = method === "GET";
-  // Reports are bounded untrusted diagnostics, not an appearance or admission write (r2 §6).
-  const profilePost = method === "POST" && /^\/ui\/effects\/profile\/[0-9a-f]{32}$/.test(path);
-  const gateway = gatewayRequestContext(req), guest = guestRequestOf(req);
-  const instanceQuery = url.searchParams.get("instance"), keys = [...url.searchParams.keys()];
-  const chatRead = reading && (path === "/ui/effects/placements" || /^\/ui\/effects\/resource\/[0-9a-f]{32}$/.test(path))
-    && keys.length === 2 && keys.includes("instance") && keys.includes("ownerEpoch") && !!instanceQuery && instanceQuery.length <= 128;
-  // Public viewing grants current Chat reads, never ordinary library/owner/Trial access or writes.
-  if (gateway && (!chatRead || !gateway.isCurrent())) { json(res, reading ? 404 : 403, { error: "effects_not_over_public_link" }); return true; }
-  const who = (): { person: string; canWrite: boolean; epoch: string; guest: boolean } | { status: number; error: string } => {
-    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-    if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
-    if (verdict.via !== "session" || !verdict.session) return { status: 403, error: "effects_need_a_signed_in_person" };
-    if (!reading && !profilePost && verdict.session.tier !== "admin") return { status: 403, error: "effects_read_only" };
-    if (verdict.session.tier === "guest" && (!chatRead || !guest || !guest.current() || !guest.scope().has(instanceQuery!))) return { status: 404, error: "not_found" };
-    return { person: webPersonKey(verdict.session.owner), canWrite: verdict.session.tier === "admin", epoch: verdict.session.handle, guest: verdict.session.tier === "guest" };
-  };
-  const first = who(); if ("status" in first) { json(res, first.status, { error: first.error }); return true; }
-  const service = ctx.effectService; if (!service) { json(res, 404, { error: "effects_unavailable" }); return true; }
-  const unavailable = new Set(["themes_unreadable", "profiles_unreadable", "library_unreadable", "references_unreadable", "library_busy", "profiles_busy", "profiles_write_failed", "library_write_failed", "prefs_unreadable"]);
-  const answer = (result: Record<string, unknown>) => json(res, typeof result.error === "string" ? result.error === "not_found" ? 404 : result.error === "profile_rate_limited" ? 429 : unavailable.has(result.error) ? 503 : 400 : 200, result);
-  const idPath = /^\/ui\/effects\/(resource|profile)\/([0-9a-f]{32})$/.exec(path);
-  const instance = url.searchParams.get("instance") ?? undefined, slot = url.searchParams.get("slot");
-  if (slot !== null && instance !== undefined) { json(res, 404, { error: "not_found" }); return true; }
-  const runtimeRead = reading && (slot !== null || path === "/ui/effects/owner" || path === "/ui/effects/placements" || idPath?.[1] === "resource" || instance !== undefined && /^\/ui\/effects\/image\//.test(path));
-  if ((runtimeRead || profilePost) && (url.searchParams.getAll("ownerEpoch").length !== 1 || url.searchParams.get("ownerEpoch") !== first.epoch)) {
-    const privateResource = reading && (slot !== null || idPath?.[1] === "resource" || /^\/ui\/effects\/image\//.test(path));
-    json(res, privateResource ? 404 : 409, { error: privateResource ? "not_found" : "effects_person_changed" }); return true;
-  }
-  if (reading) {
-    const image = /^\/ui\/effects\/image\/([0-9a-f]{32})\/(poster|cursor)\.png$/.exec(path);
-    if (image) {
-      const r = slot === null ? service.image(first.person, image[1]!, image[2] as "poster" | "cursor", instance) : service.ownerImage(first.person, image[1]!, image[2] as "poster" | "cursor", slot);
-      if (!r.ok) json(res, 404, { error: "not_found" });
-      else { res.writeHead(200, { "Content-Type": "image/png", "Content-Security-Policy": "default-src 'none'; sandbox" }); res.end(r.bytes); }
-      return true;
-    }
-    if (path === "/ui/effects") answer({ ...service.list(first.person), canWrite: first.canWrite });
-    else if (path === "/ui/effects/owner" && instance === undefined && slot === null) answer(service.ownerSelections(first.person));
-    else if (path === "/ui/effects/placements" && instance !== undefined) answer(service.placements(first.person, instance, !!gateway || first.guest));
-    else if (idPath?.[1] === "resource") answer(slot === null ? service.resource(first.person, idPath[2]!, instance, !!gateway || first.guest) : service.ownerResource(first.person, idPath[2]!, slot));
-    else if (idPath?.[1] === "profile" && instance === undefined) answer(service.profile(first.person, idPath[2]!));
-    else json(res, 404, { error: "not_found" });
-    return true;
-  }
-  const deletion = /^\/ui\/effects\/([0-9a-f]{32})$/.exec(path);
-  if (method === "DELETE" && deletion) { answer(service.delete(first.person, deletion[1]!)); return true; }
-  if (method !== "POST" || !["/ui/effects/upload", "/ui/effects/apply", "/ui/effects/remove", "/ui/effects/share"].includes(path) && idPath?.[1] !== "profile") { json(res, 404, { error: "not_found" }); return true; }
-  (async () => {
-    let bytes: Buffer;
-    try { bytes = await readBoundedWebBody(req, path === "/ui/effects/upload" ? EFFECT_WIRE_LIMIT : 16 * 1024); }
-    catch { json(res, 413, { error: "effect_body_bound" }); return; }
-    if (!permitWebContinuation(req, res, ctx)) return;
-    const now = who(); if ("status" in now) { json(res, now.status, { error: now.error }); return; }
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
-    if (now.person !== first.person || now.epoch !== first.epoch) { json(res, 409, { error: "effects_person_changed" }); return; }
-    if (path === "/ui/effects/upload") { answer(service.upload(now.person, bytes)); return; }
-    let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { json(res, 400, { error: "effect_json" }); return; }
-    if (path === "/ui/effects/apply") answer(service.apply(now.person, body));
-    else if (path === "/ui/effects/remove") answer(service.remove(now.person, body));
-    else if (path === "/ui/effects/share") answer(service.share(now.person, body));
-    else {
-      if (body && typeof body === "object" && (body as Record<string, unknown>).kind === "playback" && (url.searchParams.getAll("instance").length !== 1 || slot !== null)) { json(res, 400, { error: "playback_report" }); return; }
-      answer(service.report(now.person, idPath![2]!, body, instance, now.epoch));
-    }
-  })().catch(() => { try { json(res, 500, { error: "effect_request_failed" }); } catch { /* response ended */ } });
-  return true;
-}
-
 /**
  * #1629 r4 §4 (r4-5): mods — a person's import (stage, then commit), uninstall and export. Every route is a signed-in
  * session's, writes an admin's: never the CLI's header token (the way an agent could reach it) and never the public link
@@ -1249,14 +1195,12 @@ function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: We
     const text = mods.bundleText(fileMatch[1]!);
     const rec = mods.list().mods.find(m => m.id === fileMatch[1]);
     if (text === null || !rec) { json(res, 404, { error: "no_such_mod" }); return true; }
-    // The file is the installed bundle, effects and all — also effects its import left out, which nobody installed.
-    // So the export ACL judges what the file carries, not what was installed: it downloads only when this person may
-    // read every effect in it (their own claim on that content, or a shared one). A file without effects is any admin's.
+    // The file is the installed bundle, effects and all. #2799: a file that carries Canvas Worker effects (or can't be
+    // read to tell) is not handed out; one without is any admin's.
     const fx = mods.bundleEffects(fileMatch[1]!);
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && (fx === "unknown" || (fx?.length ?? 0) > 0)) {
+    if (fx === "unknown" || (fx?.length ?? 0) > 0) {
       json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return true;
     }
-    if (fx === "unknown" || (fx ?? []).some(id => !ctx.modPlacedEffect?.(first.person, id))) { json(res, 403, { error: "mod_effects_not_yours", detail: "this mod's file carries effects that are not yours to share: export your own look instead" }); return true; }
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
       "Content-Disposition": `attachment; filename="${rec.name}-${rec.version}.agendmod.json"` });
     res.end(text);
@@ -1329,11 +1273,9 @@ export function exportMod(ctx: WebApiContext, person: string, body: Record<strin
     const store = ctx.themeStore;
     const rec = store.get(name);
     if (inc.theme === true) {
-      // The effects the theme places travel with it, as the library keeps them (a person may export what is placed).
-      // Only effects this person may carry away travel (Sol's ACL); the rest are counted, never packaged.
-      // #2017: an older placement of an effect that doesn't play in chat stays out (a mod can't place it): counted.
-      const effects = (canvasWorkerEnabled(ctx.fleetConfig?.web) ? rec.placements.effects : []).flatMap(p => { const e = ctx.modPlacedEffect?.(person, p.id); if (!e || !filesPlayInChat(e.files)) { omitted++; return []; } return [{ name: e.name, files: e.files, params: p.params ?? {} }]; });
-      parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects };
+      // #2799: Canvas Worker effects were removed; an older placement travels nowhere (it is counted as left out).
+      omitted += rec.placements.effects.length;
+      parts.theme = { theme: rec.theme, picture: id => { const a = rec.assets.find(x => x.id === id); const b = store.asset(name!, id); return a && b ? { bytes: b.bytes, kind: a.kind } : null; }, effects: [] };
     }
     if (inc.identity === true) parts.identity = ctx.modCardText?.(name) ?? {};
     for (const slot of AGENT_WIDGET_SLOTS) {
@@ -1418,6 +1360,73 @@ export function webPeerOf(req: IncomingMessage): WebPeer {
   const gateway = gatewayRequestContext(req);
   return gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
 }
+/** #2855: the guest accounts with a search running, and how many guest searches run in all (GUEST_SEARCHES). */
+const guestSearchesRunning = new Set<string>();
+let guestSearchesInFlight = 0;
+/**
+ * #2855: a trusted guest's search — chat messages of its in-scope agents that it can see now (guestSeesMessage, on the
+ * history's own row: one no longer kept is not shown, nothing else is), at most GUEST_SEARCHES.maxResults. Per account
+ * GUEST_SEARCHES a minute and one at a time; at most GUEST_SEARCHES.global guest searches running in all, so the
+ * index's queue always has room for the admins'. Its context: the same rows only.
+ */
+function guestSearch(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, guest: GuestRequest, path: string): void {
+  const refusal = (): [number, string] | null => {
+    if (!guest.current()) return [401, WEB_TOKEN_INVALID_MESSAGE];
+    if (!guest.trusted?.()) return [403, "guest_not_trusted"];
+    if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false) return [404, "search_not_over_public_link"];
+    if (ctx.fleetConfig?.web?.search?.enabled === false || !ctx.searchIndex || ctx.searchIndex.status() === "unavailable") return [404, "search_unavailable"];
+    return null;
+  };
+  const first = refusal();
+  if (first) { json(res, first[0], { error: first[1] }); return; }
+  const account = `${guest.owner.adapterId}:${guest.owner.userId}`;
+  const limit = ctx.guestSearches?.check(account);
+  if (limit && !limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_search_rate_limited", retry_after_s: limit.retry_after_s }); return; }
+  if (guestSearchesRunning.has(account)) { json(res, 429, { error: "guest_search_running" }); return; }
+  if (guestSearchesInFlight >= GUEST_SEARCHES.global) { res.setHeader("Retry-After", "2"); json(res, 503, { error: "search_busy" }); return; }
+  const index = ctx.searchIndex!, history = ctx.webChatHistory;
+  // What this guest may see of one indexed chat row: its history row, now, by the guest rule; else nothing.
+  const visible = (hit: { source: string; instance: string; ref: Record<string, unknown> }) => {
+    if (hit.source !== "chat" || !guest.scope().has(hit.instance) || !history) return false;
+    const row = history.find(hit.instance, String(hit.ref.boot ?? ""), Number(hit.ref.id));
+    return !!row && guestSeesMessage(row, guest, guest.scope());
+  };
+  const finish = (status: number, body: unknown) => { const now = refusal(); if (now) json(res, now[0], { error: now[1] }); else json(res, status, body); };
+  const failed = (reason: string) => finish(reason === "timeout" || reason === "busy" ? 503 : 404, { error: `search_${reason}` });
+  let run: Promise<unknown>;
+  if (path === "/ui/search/context") {
+    const key = url.searchParams.get("key") ?? "";
+    if (!key || key.length > 300) { json(res, 400, { error: "key required" }); return; }
+    run = index.context(key).then(r => {
+      if (!r.ok) return failed(r.reason);
+      const value = r.value;
+      if (!value?.doc || !visible(value.doc)) return finish(404, { error: "not_found" });
+      finish(200, { doc: value.doc, before: value.before.filter(visible), after: value.after.filter(visible), building: r.building });
+    }, () => failed("unavailable"));
+  } else {
+    // Never a team (whose members, and whether it exists, are the admin's) or "only mine" (an admin's own messages).
+    const own = new URL(url.href);
+    own.searchParams.delete("team"); own.searchParams.delete("mine");
+    const parsed = parseSearchQuery(own, ctx);
+    if ("error" in parsed) { json(res, 400, { error: parsed.error }); return; }
+    const scope = guest.scope();
+    const asked = parsed.filters.instances?.filter(n => scope.has(n)) ?? [...scope];
+    if (!asked.length) { json(res, 200, { hits: [], limited: false }); return; }
+    // Chat only, its scope only; more asked of the index than shown, since rows it can't see are left out after.
+    run = index.query({ q: parsed.filters.q, instances: asked, sources: ["chat"], limit: SEARCH_LIMIT_DEFAULT,
+      ...(parsed.filters.since !== undefined ? { since: parsed.filters.since } : {}), ...(parsed.filters.until !== undefined ? { until: parsed.filters.until } : {}) }).then(r => {
+      if (!r.ok) return failed(r.reason);
+      const hits = r.value.hits.filter(visible);
+      finish(200, { hits: hits.slice(0, GUEST_SEARCHES.maxResults).map(h => ({ ...h, live: true })), limited: r.value.limited || hits.length > GUEST_SEARCHES.maxResults, building: r.building });
+    }, () => failed("unavailable"));
+  }
+  ctx.guestSearches?.record(account);
+  guestSearchesRunning.add(account); guestSearchesInFlight++;
+  void run.catch(() => { if (!res.headersSent) json(res, 500, { error: "search_failed" }); })
+    .finally(() => { guestSearchesRunning.delete(account); guestSearchesInFlight--; });
+}
+
+
 /**
  * #2122: what let this request in, asked now — its session (by handle, under the token it was signed in with) or the
  * header token; null when nothing does any more (the gate also refuses a public link that is no longer the current
@@ -1600,11 +1609,6 @@ export function handleWebRequest(
 ): boolean {
   const path = url.pathname;
   const method = req.method ?? "GET";
-  if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && isCanvasWorkerHttpPath(path)) {
-    json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE });
-    return true;
-  }
-
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
   // gate: the same session cookie or header token, and an unset token closes
   // the panel instead of comparing null against a missing credential.
@@ -1739,7 +1743,12 @@ export function handleWebRequest(
     json(res, 200, {
       status: ctx.getUiStatus(),
       // #2341 review: over the public link, without a summary line that names a card hidden there.
-      messages: history ? visibleMessages(ctx, !!gatewayRequestContext(req), fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : [],
+      // M-2260: the newest within the catch-up budget; `truncated` when older ones were left out (the page re-reads its
+      // chats' newest history, as a reload would) — never megabytes that a slow link cannot bring in time.
+      ...(() => {
+        const w = catchUpWindow(history ? visibleMessages(ctx, !!gatewayRequestContext(req), fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : []);
+        return w.truncated ? { messages: w.messages, truncated: true } : { messages: w.messages };
+      })(),
       // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
       // activity; this poll does not (isPassiveWebRead).
       deliveries: history ? history.deliveries() : [],
@@ -1851,7 +1860,10 @@ export function handleWebRequest(
     const guest = guestRequestOf(req);
     const messages = !ctx.webChatHistory ? [] : guest ? guestHistory(ctx.webChatHistory, instance, limit, guest, guest.scope())
       : visibleMessages(ctx, !!gatewayRequestContext(req), ctx.webChatHistory.list(instance, limit));
-    json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0 });
+    // #2848: the chat has messages, none of them a guest's to see (all between agents, or kept before they were marked):
+    // said, so its empty chat is explained rather than blank. Only that there are some — never how many, or what.
+    const allHidden = !!guest && messages.length === 0 && (ctx.webChatHistory?.list(instance, 1).length ?? 0) > 0;
+    json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0, ...(allHidden ? { allHidden: true } : {}) });
     return true;
   }
 
@@ -2119,6 +2131,7 @@ export function handleWebRequest(
   if (path === "/ui/office-skins" || path.startsWith("/ui/office-skins/")) return handleOfficeSkins(req, res, url, ctx, path, method);
   if (path === "/ui/office-pack-changes" || path.startsWith("/ui/office-pack-changes/")) return handleOfficePackChanges(req, res, url, ctx, path, method);
   if (path === "/ui/office-share" || path.startsWith("/ui/office-share/")) return handleOfficeShare(req, res, url, ctx, path, method);
+  if (path === "/ui/page-share" || path.startsWith("/ui/page-share/")) return handlePageShare(req, res, url, ctx, path, method);
 
   // ── #1630: avatars and Discord server emoji, same-origin (the page never loads a platform's CDN; img-src stays 'self') ──
 
@@ -2282,6 +2295,10 @@ export function handleWebRequest(
   if (path === "/ui/prefs" && method === "POST") {
     const prefs = ctx.webPrefs;
     if (!prefs) { json(res, 404, { error: "Preferences are not kept on this fleet" }); return true; }
+    // #2855: a guest saves its own preferences (GUEST_OWN_PREF_KEYS) into its own account's bucket — on any listener,
+    // the public link too, since nothing of the host's is written. At most GUEST_PREF_WRITES a minute per account.
+    const guest = guestRequestOf(req);
+    if (guest) { saveGuestPrefs(req, res, ctx, prefs, guest); return true; }
     if (gatewayRequestContext(req)) { json(res, 403, { error: "prefs_not_over_public_link" }); return true; }
     const refuse = (viewer: PrefsViewer | null) => json(res, viewer ? 403 : 401, { error: viewer ? "prefs_read_only" : WEB_TOKEN_INVALID_MESSAGE });
     const first = prefsViewer(req, url, ctx);
@@ -2297,17 +2314,10 @@ export function handleWebRequest(
       if (!now?.canWrite) { refuse(now); return; }
       if (now.person !== first.person || now.epoch !== first.epoch || now.via !== first.via) { json(res, 409, { error: "prefs_person_changed" }); return; }
       const personal = [...parsed.patch.keys()].some(isOwnerEffectKey);
-      if (personal && !canvasWorkerEnabled(ctx.fleetConfig?.web)) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
-      if (personal && now.person === null) { json(res, 403, { error: "prefs_need_a_signed_in_person" }); return; }
-      // A scope marker rejects a queued old page after a different login, including the same person's new session.
-      // It supplies neither identity nor authority; the current verified session still chooses the bucket.
-      if (personal && body.ownerEpoch !== now.epoch) { json(res, 409, { error: "prefs_person_changed" }); return; }
-      const before = prefs.readForViewer(now.person);
-      const written = prefs.writeForViewer(now.person, parsed.patch, { onlyIfUnset: body.onlyIfUnset === true,
-        validateEffect: (person, key, id) => ctx.effectService ? ctx.effectService.validateOwnerSelection(person, key, id) : "effects_unavailable" });
+      // #2799: a person's own effect selections were Canvas Worker effects' (removed): refused, as before.
+      if (personal) { json(res, 403, { error: "canvas_worker_experimental", message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }); return; }
+      const written = prefs.writeForViewer(now.person, parsed.patch, { onlyIfUnset: body.onlyIfUnset === true, validateEffect: () => "effects_unavailable" });
       if (!written.ok) { json(res, written.status, { error: written.error }); return; }
-      const dropped = written.changed.filter(isOwnerEffectKey).flatMap(key => typeof before.values[key] === "string" && before.values[key] !== written.view.values[key] ? [before.values[key] as string] : []);
-      if (dropped.length) ctx.effectService?.collectOwnerReplaced(dropped);
       if (written.changed.length) ctx.emitSseEvent("status", ctx.getUiStatus());
       json(res, 200, { ...written.view, ...prefsScope(now), changed: written.changed });
     })().catch(err => {
@@ -2331,18 +2341,38 @@ export function handleWebRequest(
   // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
 
-  // Posters remain behind the common session gate, with a closed GET-only public manifest.
-  if (path === "/ui/effect-posters" || path.startsWith("/ui/effect-posters/")) return handleEffectPosters(res, url, ctx, path, method);
-
-  // Canvas effects are absent from the public gateway manifest and independently refused above.
-  if (path === "/ui/effect-trials" || path.startsWith("/ui/effect-trials/")) return handleEffectTrials(req, res, url, ctx, path, method);
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
-  if (path === "/ui/effects" || path.startsWith("/ui/effects/")) return handleEffects(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
   // token. Who did it is recorded by principal: the session's public handle, never the session id or a credential.
+  // #2910 D2: a web-only fleet's Notices — what General would have said. Admins only (never a guest: not in
+  // GUEST_ROUTES). GET /ui/notices/list lists them; POST /ui/notices/seen {id} marks everything up to it read (a session write).
+  if (path === "/ui/notices/list" && method === "GET") {
+    const feed = ctx.webNoticesFeed?.() ?? null;
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, feed ? { enabled: true, ...feed.view() } : { enabled: false, items: [], seen: 0, unread: 0 });
+    return true;
+  }
+  if (path === "/ui/notices/seen" && method === "POST") {
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const id = body && typeof body === "object" ? body.id : undefined;
+      if (typeof id !== "number" || !Number.isSafeInteger(id) || id < 0) { json(res, 400, { error: "id required" }); return; }
+      const feed = ctx.webNoticesFeed?.() ?? null;
+      if (!feed) { json(res, 404, { error: "No notices here" }); return; }
+      const seen = feed.markSeen(id);
+      json(res, 200, { seen, unread: feed.unread() });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Notices mark-read failed");
+      try { json(res, 500, { error: "Mark read failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
   if (method === "POST" && path === "/ui/needs/ack") {
     if (!ctx.acknowledgeNeedsItem) { json(res, 404, { error: "Nothing to acknowledge here" }); return true; }
     const acknowledge = ctx.acknowledgeNeedsItem.bind(ctx);
@@ -2399,6 +2429,14 @@ export function handleWebRequest(
   if (method === "POST" && path === "/ui/command") {
     if (!ctx.webCommand) { json(res, 404, { error: "Not available" }); return true; }
     const run = ctx.webCommand.bind(ctx);
+    // #2855: a guest — an in-scope agent, while guests may chat, the table's "anyone" commands only (runWebCommand), at
+    // most GUEST_COMMAND_RUNS a minute per account and one at a time.
+    const guest = guestRequestOf(req), account = guest ? `${guest.owner.adapterId}:${guest.owner.userId}` : "";
+    if (guest) {
+      const limit = ctx.guestCommandRuns?.check(account);
+      if (limit && !limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_commands_rate_limited", retry_after_s: limit.retry_after_s }); return true; }
+      if (guestCommandsRunning.has(account)) { json(res, 429, { error: "guest_command_running" }); return true; }
+    }
     const arrival = webAuthorityOf(req, url, ctx);                         // #1939 §3: on arrival, and again after the body
     (async () => {
       let body: Record<string, unknown>;
@@ -2411,10 +2449,23 @@ export function handleWebRequest(
       if (body.confirm !== undefined && !(typeof body.confirm === "string" && /^[0-9a-f]{32}$/.test(body.confirm))) { json(res, 400, { error: "invalid confirmation" }); return; }
       const person = webPersonOr401(req, res, url, ctx);                    // #1827: asked again, now the body is in
       if (!person) return;
-      const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
-      const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
-        { publicLink: !!gatewayRequestContext(req), person, authority });
-      json(res, r.status, r.body);
+      if (guest) {
+        if (!guest.current()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+        const refused = guestChatRefusal(guest, instance);
+        if (refused) { json(res, refused.status, { error: refused.error }); return; }
+        if (guestCommandsRunning.has(account)) { json(res, 429, { error: "guest_command_running" }); return; }
+        // The budget again, now (#2857 review): commands that ran while this body was on its way have counted.
+        const budget = ctx.guestCommandRuns?.check(account);
+        if (budget && !budget.ok) { res.setHeader("Retry-After", String(budget.retry_after_s)); json(res, 429, { error: "guest_commands_rate_limited", retry_after_s: budget.retry_after_s }); return; }
+        guestCommandsRunning.add(account);
+        ctx.guestCommandRuns?.record(account);
+      }
+      try {
+        const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
+        const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined },
+          { publicLink: !!gatewayRequestContext(req), person, authority, ...(guest ? { guest: true } : {}) });
+        json(res, r.status, r.body);
+      } finally { if (guest) guestCommandsRunning.delete(account); }
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Web command failed");
       try { json(res, 500, { error: "Command failed" }); } catch { /* already answered */ }
@@ -2472,7 +2523,7 @@ export function handleWebRequest(
       json(res, 404, { error: `Instance not found: ${name}` });
       return true;
     }
-    const topicMode = ctx.fleetConfig?.channel?.mode === "topic";
+    const topicMode = daemonTopicMode(ctx.fleetConfig);
     (async () => {
       let held = false;
       try {
@@ -2504,10 +2555,14 @@ export function handleWebRequest(
           return;
         }
         const execution = settingsRequestExecution(req);
-        if (execution) await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), execution);
+        // The same removal as delete_instance: the agent, then its own topic (the user's default), said truthfully.
+        let topic: TopicDeleteOutcome | null = null;
+        if (ctx.removeInstanceAndTopic) {
+          topic = await ctx.removeInstanceAndTopic(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), { deleteTopic: true, ...(execution ? { execution } : {}) });
+        } else if (execution) await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"), execution);
         else await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"));
         ctx.emitSseEvent("status", ctx.getUiStatus());
-        json(res, 200, { deleted: name });
+        json(res, 200, { deleted: name, ...topicFields(name, topic) });
       } catch (err) {
         json(res, 500, { error: (err as Error).message });
       }
@@ -2949,9 +3004,11 @@ export function handleWebRequest(
   // #2478 (the user's request): over the public link too, unless web.search.public_link is false. Asked on arrival and
   // again before the answer is sent.
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) {
+    // #2855: a trusted guest searches only what it can see (guestSearch).
+    const searchGuest = guestRequestOf(req);
+    if (searchGuest) { guestSearch(req, res, url, ctx, searchGuest, path); return true; }
     const refusal = (): [number, string] | null => {
       if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false) return [404, "search_not_over_public_link"];
-      if (guestRequestOf(req)) return [403, "guest_forbidden"];
       if (ctx.fleetConfig?.web?.search?.enabled === false || !ctx.searchIndex || ctx.searchIndex.status() === "unavailable") return [404, "search_unavailable"];
       return null;
     };
@@ -3282,7 +3339,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       let quoted: WebChatMessage | undefined;
       if (replyTo) {
         quoted = ctx.webChatHistory?.find(instance, replyTo.boot, replyTo.id);
-        if (!quoted || quoted.effectTrial || (guest && !guestSeesMessage(quoted, guest, guest.scope()))) {
+        if (!quoted || (guest && !guestSeesMessage(quoted, guest, guest.scope()))) {
           json(res, 409, { error: t("web.reply_gone"), reason: "reply_gone" });
           return;
         }
@@ -3572,12 +3629,10 @@ function handleUpload(req: IncomingMessage, res: ServerResponse, url: URL, ctx: 
 export type PublicPreviewForUi = PreviewAvailability & { boot: string | null; frameSrc: string | null; detail?: string };
 
 export interface AppShellContext {
-  /** #2118: independent trusted opaque effect document, never HTML-preview consent or listener state. */
-  readonly effectBoot?: string;
   previewForUi?(hostHeader: string | undefined, secure: boolean): (PreviewAvailability & { boot: string | null }) | null;
   publicPreviewForUi?(exposureId: string, dashboardOrigin: string): PublicPreviewForUi;
   /** #1523 N3: `web.usage_panel` — the header's ◔ is offered unless it is false (the page needs no probe read for it). */
-  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; experimental?: { canvas_worker?: boolean }; search?: { public_link?: boolean } } } | null;
+  readonly fleetConfig?: { web?: { usage_panel?: boolean; log_tab?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { public_link?: boolean } } } | null;
   /** #1665: the host's theme and language go into the page itself, so a device paints them before any script reads. */
   readonly webPrefs?: WebPrefsStore;
   /** #1629 r4 §3: which owner CSS this load's person has in force (data-owner-css), for a signed-in human session only. */
@@ -3586,6 +3641,8 @@ export interface AppShellContext {
   readonly webSessions?: WebApiContext["webSessions"];
   /** #1920 phase 3: a guest's page says who it is signed in as (its web name and platform), for its "Guest" chip. */
   guestBadge?(owner: WebAccount): { name: string; platform: string };
+  /** #2855: whether this guest's access is Trusted (its page offers View and search). */
+  guestTrusted?(owner: WebAccount): boolean;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -3660,7 +3717,37 @@ function serveMediaRange(req: IncomingMessage, res: ServerResponse, files: WebFi
  * or replays a tour already seen, a new device included. Only for the signed-in app (the public link reads what is in
  * force too); the anonymous View reader and the sign-in page keep the browser's own.
  */
-type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" | "person" | "operator"; canWrite: boolean; via: string; guest?: boolean; owner?: WebAccount };
+type PrefsViewer = { person: string | null; epoch: string | null; scope: "none" | "person" | "operator"; canWrite: boolean; via: string; guest?: boolean; owner?: WebAccount;
+  /** #2855: a guest's scope, read at each answer (its favourites only name instances in it). */
+  guestScope?: () => ReadonlySet<string> };
+/** #2855: a guest's own preferences — its own keys, its own bucket, favourites only in its scope. */
+function saveGuestPrefs(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext, prefs: WebPrefsStore, guest: GuestRequest): void {
+  const person = webPersonKey(guest.owner), account = `${guest.owner.adapterId}:${guest.owner.userId}`;
+  const limit = ctx.guestPrefWrites?.check(account);
+  if (limit && !limit.ok) { res.setHeader("Retry-After", String(limit.retry_after_s)); json(res, 429, { error: "guest_prefs_rate_limited", retry_after_s: limit.retry_after_s }); return; }
+  // Too large by its own declared length: answered before a byte is read (the body is drained, not cut off).
+  if (Number(req.headers["content-length"]) > GUEST_PREF_MAX_BYTES) { req.resume(); json(res, 413, { error: "guest_prefs_too_large", detail: "at most 16 KB" }); return; }
+  (async () => {
+    let body: Record<string, unknown>;
+    try { body = JSON.parse((await readBoundedWebBody(req, GUEST_PREF_MAX_BYTES)).toString("utf8")); } catch { json(res, 400, { error: "Invalid JSON, or over 16 KB" }); return; }
+    if (!permitWebContinuation(req, res, ctx)) return;
+    if (!guest.current()) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+    if (!body || typeof body !== "object" || Array.isArray(body) || !body.set || typeof body.set !== "object" || Array.isArray(body.set)) { json(res, 400, { error: "set required" }); return; }
+    const set = body.set as Record<string, unknown>, scope = guest.scope();
+    const favourites = set["nav.favorites"];
+    if (Array.isArray(favourites)) {
+      const outside = favourites.find((n) => typeof n !== "string" || !scope.has(n));
+      if (outside !== undefined) { json(res, 400, { error: `not_in_scope: ${String(outside).slice(0, 64)}` }); return; }
+    }
+    const written = prefs.writeForGuest(person, new Map(Object.entries(set)), { onlyIfUnset: body.onlyIfUnset === true });
+    if (!written.ok) { json(res, written.status, { error: written.error }); return; }
+    ctx.guestPrefWrites?.record(account);
+    json(res, 200, { ...guestOwnPrefs(prefs.readForViewer(person), prefs.readGuestOwn(person), scope), ownerScope: "person", ownerEpoch: null, changed: written.changed });
+  })().catch(err => {
+    ctx.logger.error({ err: (err as Error).message }, "Saving a guest's web preferences failed");
+    try { json(res, 500, { error: "Saving preferences failed" }); } catch { /* already answered */ }
+  });
+}
 function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiContext, "webToken" | "webSessions">>): PrefsViewer | null {
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   if (v.kind !== "allow") return null;
@@ -3668,6 +3755,12 @@ function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiCon
   // it (#2094) read the host's preferences unfiltered: the sidebar's order and favourites, naming instances out of its
   // scope. Its account (phase 3) names it on its page.
   const guest = v.via === "session" && v.session?.tier === "guest" ? { guest: true, ...(v.session.owner ? { owner: v.session.owner } : {}) } : {};
+  // #2855: a guest reads its own preferences (its account's bucket) on every listener, the public link too.
+  if (v.via === "session" && v.session?.tier === "guest" && v.session.owner) {
+    const g = guestRequestOf(req);
+    return { person: webPersonKey(v.session.owner), epoch: v.session.handle, scope: "person", canWrite: false, via: "session", ...guest,
+      guestScope: () => g?.scope() ?? new Set<string>() };
+  }
   if (!gatewayRequestContext(req) && v.via === "session" && v.session) {
     const person = webPersonKey(v.session.owner);
     return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...guest };
@@ -3678,7 +3771,9 @@ const prefsScope = (v: PrefsViewer | null) => ({ ownerScope: v?.scope ?? "none",
 // #1920: a guest reads the host's look and its own, never a preference that names an instance (guestPrefs).
 const prefsView = (prefs: WebPrefsStore, v: PrefsViewer | null) => {
   const view = { ...prefs.readForViewer(v?.person ?? null), ...prefsScope(v) };
-  return v?.guest ? guestPrefs(view) : view;
+  if (!v?.guest) return view;
+  // #2855: the host's look, then the guest's own preferences (only on a guest with an account: its bucket).
+  return v.person ? guestOwnPrefs(view, prefs.readGuestOwn(v.person), v.guestScope?.() ?? new Set<string>()) : guestPrefs(view);
 };
 function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   if (mode !== "full" || !ctx.webPrefs) return '<html lang="en">';
@@ -3698,18 +3793,12 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
 
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);
-  return ` data-tier="guest"${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
-}
-/** A separate session fence for Chat playback: public/guest viewers acquire no owner-pref identity. */
-function shellEffect(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode): { boot: string; epoch: string; scope: "owner" | "chat" } | null {
-  if (mode !== "full" || typeof ctx.effectBoot !== "string" || !/^[0-9a-f]{32}$/.test(ctx.effectBoot)) return null;
-  const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
-  if (v.kind !== "allow" || v.via !== "session" || !v.session || !/^[a-f0-9]{16}$/.test(v.session.handle)) return null;
-  return { boot: ctx.effectBoot, epoch: v.session.handle, scope: gatewayRequestContext(req) || v.session.tier === "guest" ? "chat" : "owner" };
+  const trusted = ctx.guestTrusted?.(owner) ? ' data-guest-level="trusted"' : "";
+  return ` data-tier="guest"${trusted}${badge ? ` data-guest-name="${attr(badge.name)}" data-guest-platform="${attr(badge.platform)}"` : ""}`;
 }
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
-  const ownerCss = shellOwnerCss(ctx, mode, viewer), effect = shellEffect(req, ctx, mode);
+  const ownerCss = shellOwnerCss(ctx, mode, viewer);
   let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
   if (mode === "full" && !viewer?.guest && viewer?.person != null && ctx.ownerCss) {
     ownerCssState = ctx.ownerCss.effectState(viewer.person);
@@ -3717,17 +3806,15 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   return `<body data-mode="${mode}"${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
-    + `${effect ? ` data-effect-boot="${effect.boot}" data-effect-epoch="${effect.epoch}" data-effect-scope="${effect.scope}"` : ""}`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
     // #1723: why the public link's preview tunnel failed (a fixed reason the page words), when it did.
     + `${p?.detail ? ` data-preview-detail="${attr(p.detail)}"` : ""}`
     // #1523 N3: whether the fleet serves /api/ai-usage (web.usage_panel), for every page's ◔ — never to a guest (#1920).
-    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false || viewer?.guest ? "0" : "1"}"`
+    + ` data-usage-panel="${ctx.fleetConfig?.web?.usage_panel === false ? "0" : "1"}"`   // #2855: guests' too
     // #1218: whether the Log tab is on (web.log_tab; off by default): the tab says so and offers to turn it on.
     + ` data-log-tab="${ctx.fleetConfig?.web?.log_tab === true ? "1" : "0"}"`
-    + ` data-canvas-worker="${canvasWorkerEnabled(ctx.fleetConfig?.web) ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
     // checks before sending a file, and the numbers its words say. The server checks again on every upload.
     + ` data-upload-limits="${attr(JSON.stringify(uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined })))}"`
@@ -3757,10 +3844,7 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
-    // This fixed trusted document is independent of HTML preview. Its own response confines all Worker execution.
-    const effectOrigin = gatewayRequestContext(req)?.expectedOrigin ?? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req));
-    const effectFrame = shellEffect(req, ctx, mode) && effectOrigin ? `${effectOrigin}/effect-bootstrap` : null;
-    const frameSrc = [previewFrames, effectFrame].filter(Boolean).join(" ");
+    const frameSrc = previewFrames ?? "";
     sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

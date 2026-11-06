@@ -84,11 +84,24 @@ LIVE means the screen was captured on both versions, read identically by the pro
 | terminal-setup offer | BIN | did not appear in any onboarding run here (tmux, `TERM=xterm-256color`, no `TERM_PROGRAM`) on either version, so the trigger was not provoked; literal unchanged |
 | corrupt `claude.json` modal | BIN | not provoked; literal unchanged |
 
+## Every new version: Claude history in the View
+
+The web View draws a Claude agent's earlier conversation from its transcript in Claude's own Ctrl+O style, with the
+colours and glyphs sampled from the live screen (`src/ui/shared/view-history.js`; defaults: 2.1.318's own). On each new
+version, re-check the history layout:
+- capture a settled screen with a prompt, a reply, an edit (its diff) and a tool result on it
+  (`t capture-pane -p -e -t <pane> > cap.ansi`), then run
+  `npx tsx scripts/manual/claude-version-audit/view-history-sample.mts cap.ansi`; every value should read `sampled`. A
+  `NOT FOUND` means the version draws it differently (a new prompt glyph, a box, another bullet): update the sampler and
+  its fixture (`tests/fixtures/view-history-claude-*.ansi`, held by `tests/view-history-claude-ui.test.ts`);
+- compare Claude's Ctrl+O view with the View's history for the same turn (the tool words, `⎿` results, the fold), and
+  check the transcript still parses into the same steps (`tests/log-steps-1218.test.ts`; `tool_use` / `tool_result`).
+
 ## 2.1.294 → 2.1.295
 
 The audit was run as `AUDIT_DIR=… OLD=294 NEW=295 PORT=18295 bash pass1.sh` (then `extra.sh` and `extra2.sh`).
 
-- **LIVE: no change.** Every surface in the table above was captured on both versions, and all 45 frames classify identically with the production predicates. The input-box readings are identical too. The only differences are spinner verbs, the mock's reply counter, and the moment the effort hint first paints.
+- **LIVE: no change.** Every LIVE surface in the table above was captured on both versions, and all 45 frames classify identically with the production predicates. The input-box readings are identical too. The only differences are spinner verbs, the mock's reply counter, and the moment the effort hint first paints.
 - **Predicate fragments:** 3 of 215 changed count.
   - `" and the "` and `"auth token"` are in prose.
   - `"Esc to cancel"` dropped from 12 to 10. Its lost occurrences are the Claude apps gateway connect screen, which AgEnD doesn't handle. The footers AgEnD matches are composed at run time, and every part of them has the same count.
@@ -157,3 +170,79 @@ The audit was run as `AUDIT_DIR=… OLD=306 NEW=308 PORT=18308 TMUX_TMPDIR=<shor
 - ` and the `: prose.
 
 **Upstream changelog (2.1.307):** the fix for `/clear` conversations returning is for cloud and self-hosted runners, and the retry fix is for HTTP MCP servers. AgEnD's MCP server is stdio. Nothing on AgEnD's path changed.
+
+## 2.1.311 → 2.1.312
+
+The binaries were 2.1.311 (sha256 `86dc1fcc69498159eaf15f446613e847010f9036bfbbdffd4c49350be8489ada`) and 2.1.312 (sha256 `4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d`), from the daily upstream watch (2026-10-28, MAJOR hard=3). The host had already auto-updated to 2.1.312.
+
+The audit was run as `AUDIT_DIR=… OLD=311 NEW=312 PORT=18312 TMUX_TMPDIR=<short dir> bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.312-*.pane.txt` (the same 33 screens as 2.1.308), held by `tests/claude-2.1.312-surfaces.test.ts`. Each was matched to its 2.1.311 capture by content; four were picked by hand (`resumed` ← 50, `trust-keys-dropped` ← 120, `danger-enter-swallowed` ← 132, `ready-statusline` ← 20).
+
+**LIVE: no change on a screen AgEnD reads.**
+- 36 steps: 22 SAME. The 14 DIFFs are spinner and "Worked for" verbs, session ids, the working-directory name and footer hints (` · ← for agents`, `◐ medium · /effort`).
+- All 62 captures classify identically under the production predicates except `132-danger-fast` (Down and Enter written together the instant the dangerous-command menu paints). That is the timing race 2.1.306 and 2.1.308 already showed: 2.1.311 happened to decline, 2.1.312 kept the menu with the cursor on `No`, which AgEnD confirms with Enter on the next poll. At AgEnD's cadence (Down, 200 ms, Enter) both versions declined at every delay (0, 0.3, 0.6, 1, 2 and 4 s).
+
+**The upstream watch's flags (binary):**
+- Usage limit (#816): the started and re-armed rows are unchanged — `Usage limit reached · continuing automatically {when} · esc to cancel`. Only the separate "waiting" row now says `Esc to cancel`; AgEnD reads neither that row nor "Continuing automatically".
+- #2822 (#2827): `You've reached your <model> limit.` has the same count (10) in both binaries.
+- `rate limit usage (5-hour limit):` is prose in the statusline-setup help; the other new "5-hour limit" strings are the new 5-hour-reset offer's labels. Neither is a screen AgEnD acts on.
+- `Automatic continue stopped after repeated usage limit hits · This task will not resume on its own` was already in 2.1.311 (as `usage-limit hits · this task`); only its case changed. AgEnD never read it.
+- `Press esc to stop the turn.` is the Remote Control permission screen ("…a permission question that this terminal cannot show"). AgEnD does not use Remote Control.
+- `rate limit (HTTP 429, or a git wrapper that exits 75)`, `resume the session` and `resume the agent it was waiting on` are changelog prose or `claude -p` debug logs.
+- The cold-resume prompt (`COLD_RESUME_*`): every piece has the same count; the `and is` change is elsewhere.
+- Model names now drop `[1m]` where it has no effect (changelog), and `[1m]` is still accepted. AgEnD only displays the statusline model; pricing already strips `[1m]`; nothing compares it with the configured model.
+- The model-fallback and 24-hook strings named in the release notes have the same counts in 2.1.311.
+
+**Predicate literals:** 268 checked, 73 in the binaries, 4 counts changed: `Esc to cancel` (9 → 13: the usage "waiting" row and new dialogs; AgEnD's resume footer only counts after the two `Resume …` rows), ` and the `, `as given`, `claude auth login` (prose).
+
+## 2.1.312 → 2.1.314
+
+The binaries were 2.1.312 (sha256 `4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d`) and 2.1.314 (sha256 `4487042b4c4f5d88d4568f68ae98aae0b1ffae58864cf57fb868641bc5f84594`, byte-identical to the host's `~/.local/share/claude/versions/2.1.314`), from the daily upstream watch (2026-10-30, MAJOR hard=3). The host had already self-updated to 2.1.314; 2.1.313 has no release notes.
+
+The audit was run as `AUDIT_DIR=… OLD=312 NEW=314 PORT=18314 bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.314-*.pane.txt` (the same 33 screens as 2.1.312, each from the capture its 2.1.312 fixture is byte-identical to), held by `tests/claude-2.1.314-surfaces.test.ts`.
+
+**LIVE: one change on a screen AgEnD reads — the auto-deny countdown.**
+- 56 steps: 34 SAME. The 22 DIFFs are spinner and "Worked for" verbs, the mock's reply counter, session ids, the working-directory name — and `99-dangerous-rm`'s countdown row, reworded:
+  - 2.1.312: `⚠ Claude Code will automatically deny this request in 1:54, to avoid blocking progress on an unattended session`
+  - 2.1.314: `⚠ Claude Code will automatically block this request in 1:55, to avoid holding up an unattended session`
+- `claudeCommandRequestIdentity` (the dangerous-command and Bash-permission dialogs' request identity) dropped that row by the old words only, so on 2.1.314 the identity ticked every second: the after-keys check ("the same request still there") read a new request, and a parked dialog's clock restarted. Fixed by `CLAUDE_AUTO_DENY_COUNTDOWN` (`deny` or `block`, any countdown form).
+- All 62 captures and the 24 error frames classify identically under the production predicates except `132-danger-fast` (Down and Enter written together the instant the menu paints): the timing race earlier audits showed; 2.1.314 kept the menu on `No`, which AgEnD confirms with Enter on the next poll.
+
+**The upstream watch's flags (binary):**
+- `Claude Code will automatically deny this request in` (MISSING): the reworded countdown above.
+- `Continue from where you left off and finish the response. Start a new code fence or table header first…` is a message Claude sends its own model after an output-token-limit cut, not a screen.
+- `usage limit resets to show a clock time (` and `usage limit messages to call the 5-hour window the…` are changelog prose. `You've reached your <model> limit.` and the `You've hit your …` forms are unchanged in count and shape.
+- `continue this in Projects` is a slash command's model-facing description.
+
+**Predicate literals:** 274 checked, 73 in the binaries, 7 counts changed: ` and the ` (minifier churn in prose), `Esc to cancel`, `claude auth login` (prose), `as given`, `launch after`, `no conversation to` (the `--continue` screen still classifies the same).
+
+## 2.1.314 → 2.1.316
+
+The binaries were 2.1.314 (sha256 `4487042b4c4f5d88d4568f68ae98aae0b1ffae58864cf57fb868641bc5f84594`, the same as the last audit's) and 2.1.316 (sha256 `fd13c70000fec3f2116dfbcbb6121210b4a29328bf0e46210a59dd594a67d824`, byte-identical to the host's `~/.local/share/claude/versions/2.1.316`), from the daily upstream watch (2026-10-31, MAJOR hard=1). The host had already self-updated to 2.1.316.
+
+The audit was run as `AUDIT_DIR=… OLD=314 NEW=316 PORT=18316 TMUX_TMPDIR=<short dir> bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.316-*.pane.txt` (the same 33 screens as 2.1.314, each matched to its 2.1.314 capture by content, `danger-enter-swallowed` from 2.1.316's own capture 132), plus two gateway screens, held by `tests/claude-2.1.316-surfaces.test.ts`.
+
+- **Classification:** all 62 captures and the error frames classify identically under the production predicates, except `132-danger-fast`. That is the timing race earlier audits showed; this time 2.1.316 kept the menu on `No`.
+- **The hard finding, `Trust gateway ${}?` beside "Sign in", is not a new screen.** The in-TUI Cloud gateway sign-in is in 2.1.314 already: its URL screen, the `Trust gateway <host>?` step and `Signed in to Cloud gateway as`. New in 2.1.316 is the template form used by `claude auth login`. Under managed settings it runs that sign-in in a terminal (2.1.314 printed "run interactive /login") and ends with `Login successful.`, which `LOGIN_FLOWS.claude-code.successPattern` matches.
+- **Gateway screens, captured offline on both versions.** User settings `forceLoginMethod: "gateway"` + `forceLoginGatewayUrl` (loopback, a self-signed TLS mock, then `env.NODE_EXTRA_CA_CERTS`).
+  - The URL screen ("Cloud gateway" … "Press Enter to connect · Esc for other login methods") is identical on both.
+  - The flow reaches the gateway's OAuth discovery (`GET /.well-known/oauth-authorization-server`); the mock's 404 ends it there, so the trust step was not reached.
+  - On both versions the production predicates read the URL screen as nothing at all: not ready, no dialog, not a sign-in. `claudeLoginScreenActive` now recognises it, and the bottom-anchored `Trust gateway <host>?` step (from the source), as a sign-in: an auth incident, never a key.
+- **Literals** (`predlits.py`, 359 checked, 86 in the binaries): 7 counts moved, all in bare substrings. Every exact form AgEnD matches has the same count, except `Login successful` (+1: the new gateway path) and `Bash command` (+2: the Bash permission capture is unchanged).
+  - The auto-deny countdown keeps 2.1.314's wording ("block … holding up an unattended session").
+  - Every cold-resume literal has the same count.
+- **The other new string**, "continue the last turn of the session it was copied from…", is the `--help` text of a hidden print-mode flag, `--session-began-as-copy`. It is not a screen.
+
+## 2.1.317 → 2.1.318
+
+The binaries were 2.1.317 (sha256 `eb224419e344575faa4a1f39b290b649425a10cd5ee2ef1d003480cd9ae57eb0`) and 2.1.318 (sha256 `708c77b204db30086ff6f1ed34577bda03e1be74ced80557cbf7b54249ebf0bd`, byte-identical to the host's `~/.local/share/claude/versions/2.1.318`), from the daily upstream watch (2026-11-04, MAJOR hard=4). The host had already self-updated to 2.1.318.
+
+The audit was run as `AUDIT_DIR=… OLD=317 NEW=318 PORT=18318 bash pass1.sh`, then `extra.sh` through `extra6.sh`. Fixtures: `tests/fixtures/claude-2.1.318-*.pane.txt` (the 33 screens of the 2.1.316 set, each from the same capture, `danger-enter-swallowed` from 2.1.318's own capture 132), plus `code-mode-agent-teams`. They are held by `tests/claude-2.1.318-surfaces.test.ts`. The live tmux server kept its one session throughout.
+
+- **Classification:** all 62 captures and the error frames classify identically under the production predicates, except `132-danger-fast` (the timing race; 2.1.318 kept the menu on `No`, which the runtime table confirms with Enter on its next poll).
+  - At AgEnD's own cadence (Down, 200 ms, Enter) the dangerous-command menu was declined on both versions at every delay (0–4 s), despite the changelog's "permission prompts being answered by keys typed just after sending a message, or before a slow prompt appeared" fix.
+  - The other diffs are cosmetic: spinner verbs, the mock's reply counter, session ids, and on 2.1.318 a `◐ medium · /effort` row above the composer and `· ← for agents` in the footer.
+- **The four hard findings are not screens AgEnD meets.**
+  - "Press Enter to try again, or ^C to stop." / "… press Enter to check again, or ^C to stop." are the readline loop of `claude mcp add --web` (server flag `tengu_twinkling_aurora`). It only loops with a TTY on stdin and stdout; otherwise it prints a link and returns. AgEnD never runs it, and an agent's Bash tool has stdin from /dev/null. Offline the flag is off: "--web isn't available yet".
+  - "… turn it on again to resume the session. Where …" is not the cold-resume prompt (every cold-resume literal keeps its count). It is the opt-in dialog of the experimental Code Mode: `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=1` plus server flag `tengu_rustling_blossom`. Its focus is "No, start without it" (`cancelFirst`) and it arms after a delay. AgEnD launches every claude with `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, which Code Mode refuses before its flag or provider checks: run with the production env plus the opt-in, the real 2.1.318 printed one passive line, "⚠ Code Mode (experimental) isn't available: it can't be used together with agent teams yet. Starting with the ordinary tools.", and started normally.
+  - The `rate_limits` string is network-settings documentation. The gone "Press 2 to try again." was the "You should know" toast (now "try again").
+- **Literals** (`predlits.py`, 310 checked, 87 in the binaries): 7 counts moved, all in bare substrings. Every exact dialog form AgEnD matches has the same count, except `Please run /login` (+2: the new "Login reached its time limit · Please run /login", read as an auth error like "Login expired").

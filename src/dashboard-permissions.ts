@@ -4,7 +4,7 @@
  * `dashboard:` on an instance — and in `defaults:`, for every instance; the two merge key by key, so an instance sets
  * only what differs — switches whole features, the way a person thinks of them, instead of whole profiles:
  *
- * - `appearance`: its own look on the dashboard — theme, pictures, widgets, ambient, effects, mods it proposes;
+ * - `appearance`: its own look on the dashboard — theme, pictures, widgets, ambient;
  * - `task_board`: the task board (`task`, and `agend task …`);
  * - `web_settings`: Settings → Web appearance for the person (`get_web_settings`, `set_web_settings`);
  * - `office` (#2578), stored separately as `office_access`: its own character in Fleet → Org chart → Office — walking, a speech bubble, a pose
@@ -42,8 +42,6 @@ export const DASHBOARD_FEATURE_TOOLS: Readonly<Record<DashboardFeature, readonly
     "get_web_appearance", "preview_web_appearance",
     "set_web_widget", "remove_web_widget",
     "set_web_ambient", "clear_web_ambient",
-    "export_web_mod", "propose_web_mod",
-    "upload_web_effect", "list_web_effects", "preview_web_effect", "profile_web_effect", "apply_web_effect", "remove_web_effect", "delete_web_effect",
   ],
   task_board: ["task"],
   web_settings: ["get_web_settings", "set_web_settings"],

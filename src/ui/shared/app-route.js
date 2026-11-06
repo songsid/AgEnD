@@ -30,6 +30,7 @@ export function parseRoute(pathname) {
   if (pathname === "/ui") return { panel: "chat", instance: null };
   if (pathname === "/ui/fleet") return { panel: "fleet", tab: "tasks" };
   if (pathname === "/ui/needs") return { panel: "needs" };
+  if (pathname === NOTICES_PATH) return { panel: "notices" };              // #2910 D2: a web-only fleet's Notices
   // #1523 N2: one instance's Details (`agent` is no Fleet tab; a tab is one segment).
   let m = /^\/ui\/fleet\/agent\/([^/]+)$/.exec(pathname);
   if (m) return named("details", m[1]);
@@ -82,6 +83,7 @@ export function rememberFleetTab(tab) {
   try { localStorage.setItem(LAST_FLEET_TAB_KEY, tab); } catch { /* this page only */ }
 }
 export const NEEDS_PATH = "/ui/needs";
+export const NOTICES_PATH = "/ui/notices";
 /** A section's address; an old name gives its new one (and the place in it: `chat#classicbot`). */
 export function settingsPath(name) {
   const section = (name && legacySection(name)) || name;
@@ -109,6 +111,7 @@ export function routePath(route) {
   if (route.panel === "fleet") return fleetPath(route.tab);
   if (route.panel === "settings") return settingsPath(route.section);
   if (route.panel === "needs") return NEEDS_PATH;
+  if (route.panel === "notices") return NOTICES_PATH;
   if (route.panel === "view") return viewPath(route.instance);
   if (route.panel === "details") return detailsPath(route.instance);
   if (route.panel === "log") return logPath(route.instance);
@@ -140,6 +143,7 @@ export function textLinkSegments(text, links) {
 export function routeKey(route) {
   if (!route) return "none";
   if (route.panel === "needs") return "needs:";
+  if (route.panel === "notices") return "notices:";
   return `${route.panel}:${route.panel === "fleet" ? route.tab : route.panel === "settings" ? route.section : route.instance ?? ""}`;
 }
 

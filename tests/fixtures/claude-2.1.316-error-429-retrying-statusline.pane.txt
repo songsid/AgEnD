@@ -1,0 +1,50 @@
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /home/han/.cache/claude-audit-316/w/p316
+
+
+❯ hello from the audit
+
+● mock reply 2
+
+✻ Cooked for 0s · done 9:08 PM
+
+❯ SLOW turn please
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Sautéed for 25s · done 9:08 PM
+
+❯ queued while busy MARKQ
+
+● mock reply 5
+
+✻ Brewed for 0s · done 9:08 PM
+
+❯ [agend-delivery-id:11111111-2222-3333-4444-555555555555]
+  [from:audit-peer] first line of a multi-line message
+  second line with detail
+  third line closes it
+  (message_id: xmsg-1 | correlation_id: cid-1)
+
+● mock reply 7
+
+✻ Cooked for 0s · done 9:08 PM
+
+❯ same words start this paste
+  middle line
+  end with same words start this paste
+
+● mock reply 10
+
+✻ Cooked for 0s · done 9:08 PM
+
+❯ trigger E429 now
+
+✻ 429 mock rate_limit_error · Retrying in 4s · attempt 5/10
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

@@ -31,11 +31,11 @@ function world(local: SessionPolicy, dataDir?: string) {
 const errorsOf = (web: unknown) => validateFleetConfig({ instances: {}, web }).errors.map(e => `${e.path}: ${e.message}`);
 
 describe("the setting: web.session.local", () => {
-  it("the default is 48 h absolute / 48 h idle (#1670): nothing set gives exactly that, the public link stays 4 h / 30 min", () => {
+  it("the default is 48 h absolute / 48 h idle (#1670): nothing set gives exactly that, the public link's cap is 8 h / 30 min (#2850)", () => {
     expect(localSessionPolicy(undefined)).toEqual(DEFAULT_SESSION_POLICY.local);
     expect(localSessionPolicy({})).toEqual({ absoluteMs: 48 * H, idleMs: 48 * H });
     expect(DEFAULT_SESSION_POLICY.local).toEqual({ absoluteMs: 48 * H, idleMs: 48 * H });
-    expect(DEFAULT_SESSION_POLICY.gateway).toEqual({ absoluteMs: 4 * H, idleMs: 30 * M });
+    expect(DEFAULT_SESSION_POLICY.gateway).toEqual({ absoluteMs: 8 * H, idleMs: 30 * M });
     expect(errorsOf({})).toEqual([]);
   });
   it("the validator: 1 ≤ idle ≤ absolute ≤ 720 hours, decimals allowed; one left out compares against its default", () => {
@@ -84,7 +84,7 @@ describe("the store keeps the configured limits", () => {
     w.clock.now += H;
     expect(w.auth(b.sessionId, true), "30 h after sign-in, used or not").toBeNull();
   });
-  it("the public link's sessions keep their fixed 4 h / 30 min, whatever the local policy says", () => {
+  it("the public link's sessions keep their 8 h / 30 min cap when the local policy is longer", () => {
     const w = world({ absoluteMs: 720 * H, idleMs: 720 * H });
     const g = w.signIn("gateway");
     w.clock.now += 30 * M;

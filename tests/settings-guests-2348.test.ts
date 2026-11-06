@@ -113,6 +113,26 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     await w.apply();
     expect(w.writes().map((s) => s.body)).toEqual([{ guests: { chat: false, grants: { "dc:111": { name: "Alice", instances: ["alpha", "beta"] } } } }]);
   });
+  it("#2855: each person's Chat | Trusted — Trusted is staged whole with its level; back to Chat, nothing; a trusted grant's Chat writes no level", async () => {
+    const w = await open({ enabled: true, grants: { ...structuredClone(GRANTS), "tg:222": { name: "Bob", instances: ["beta"], level: "trusted" } } });
+    const pressed = (row: any) => [...row.querySelectorAll(".g-level button")].map((b: any) => [b.textContent, b.getAttribute("aria-pressed")]);
+    expect(pressed(w.row("dc:111"))).toEqual([["Chat", "true"], ["Trusted", "false"]]);
+    expect(pressed(w.row("tg:222"))).toEqual([["Chat", "false"], ["Trusted", "true"]]);
+    expect(w.row("tg:222").textContent).toContain("Trusted adds watching these agents' screens (read-only) and searching their chats.");
+    expect(w.row("dc:111").textContent).not.toContain("Trusted adds");
+    await w.click(w.button("Trusted", w.row("dc:111")));
+    expect(w.row("dc:111").classList.contains("s-dirty")).toBe(true);
+    await w.click(w.button("Chat", w.row("dc:111")));
+    expect(w.$(".s-dirty"), "back where it was: nothing edited").toBeNull();
+    await w.click(w.button("Trusted", w.row("dc:111")));
+    await w.click(w.button("Chat", w.row("tg:222")));
+    await w.apply();
+    expect(w.writes().map((s) => s.body)).toEqual([{ guests: { grants: { "dc:111": { name: "Alice", instances: ["alpha"], level: "trusted" }, "tg:222": { name: "Bob", instances: ["beta"] } } } }]);
+  });
+  it("#2855: a level change in Recent changes says what it went to", async () => {
+    const w = await open(undefined, { audit: [{ kind: "grant", at: 1_790_000_000_000, account: "dc:111", name: "Alice", via: "confirmed", added: [], removed: [], endedSessions: 0, level: "trusted" }] });
+    expect(w.$("#grantsRecentList .g-level-to")?.textContent).toBe("→ Trusted");
+  });
   it("undone, it is no longer staged: Apply writes nothing", async () => {
     const w = await open();
     await w.check(w.$("#guestsChat"), false);

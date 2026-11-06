@@ -14,6 +14,7 @@
  */
 import { stat } from "node:fs/promises";
 import { ClaudeStepParser, CodexStepParser, bounded, readTailRecords, type LogStep } from "./log-steps.js";
+import { SCREEN_MAX_BYTES } from "./dialog-screen-text.js";
 import { LOOKS_PER_POLL, isClaudeAssistantHead, readNewLines, readWholeLine, type LongLine } from "./transcript-jsonl.js";
 
 export const LOG_STEPS_LIMIT = 200;
@@ -53,7 +54,9 @@ export interface LogServiceDeps {
 export interface LogQuery { after?: number; before?: number; key?: string; skip?: boolean; limit?: number; watch?: boolean; ev?: number }
 
 /** A fleet event as the page shows it: its type (the page words it) and its details, masked. */
-export interface LogEvent { id: number; ts: number; type: string; detail?: string }
+export interface LogEvent { id: number; ts: number; type: string; detail?: string;
+  /** M-2269: the dialog or prompt as it was on screen (dialog_parked, interactive_prompt), masked; shown folded. */
+  screen?: string }
 
 /** The event types a Log shows: what changed for the instance itself, not bookkeeping (tips, cost snapshots). */
 export const LOG_EVENT_TYPES: ReadonlySet<string> = new Set([
@@ -84,6 +87,11 @@ export type LogAnswer =
     /** The newest event id this answer saw (for `ev=`). */
     ev: number;
   };
+
+/** LogService.readBack's answer: the steps before `end`, or why there are none (`reason`, no `steps`). */
+export type ReadBack =
+  | { backend: string; format: "claude" | "codex" | null; reason: string; key?: undefined; steps?: undefined }
+  | { backend: string; format: "claude" | "codex"; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
 
 const parserFor = (format: "claude" | "codex") => (format === "claude" ? new ClaudeStepParser() : new CodexStepParser());
 /** The long records worth reading whole for a Log (a reply, a turn record); every other long one by its head. */
@@ -120,6 +128,29 @@ export class LogService {
     if (q.before !== undefined && !fresh) return { ...answer, ...(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT))), after: null };
     const back = await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT));
     return { ...answer, ...back, ...((fresh || past) && (q.after !== undefined || q.before !== undefined) ? { reset: true } : {}) };
+  }
+
+  /**
+   * Claude history in the View (view-history.ts): the steps before `end` (the newest when undefined), at most `limit` —
+   * read the way the Log reads them, but without the Log's switch, its watch or its events: the View's own access rules
+   * were applied before this is asked (view-api.ts). `end` of a cursor for another transcript (a new session), or past
+   * this one's end, reads the newest instead (`reset`). Null: no such instance.
+   */
+  async readBack(name: string, q: { end?: number; key?: string; limit: number }): Promise<ReadBack | null> {
+    if (!this.deps.known(name)) return null;
+    const src = this.deps.source(name);
+    if (!src.format || !src.path) return { backend: src.backend, format: src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported") };
+    let st: { dev: number; ino: number; size: number };
+    try { st = await stat(src.path); } catch { return { backend: src.backend, format: src.format, reason: "no_transcript" }; }
+    const key = `${st.dev}-${st.ino}`;
+    const limit = Math.max(1, Math.min(q.limit, LOG_STEPS_LIMIT));
+    const stale = q.end !== undefined && ((q.key !== undefined && q.key !== key) || q.end > st.size);
+    if (q.end !== undefined && !stale) {
+      const back = await this.backward(src.path, src.format, q.end, limit);
+      return { backend: src.backend, format: src.format, key, steps: back.steps, before: back.before, end: q.end };
+    }
+    const back = await this.backward(src.path, src.format, undefined, limit);
+    return { backend: src.backend, format: src.format, key, steps: back.steps, before: back.before, end: back.after, ...(stale ? { reset: true } : {}) };
   }
 
   /** The steps before `end` (the newest when undefined), at most `limit`, and where older ones start. */
@@ -188,16 +219,19 @@ export class LogService {
     const events = rows
       .filter(r => (after === undefined || r.id > after) && LOG_EVENT_TYPES.has(r.event_type))
       .map(r => {
+        // M-2269: a dialog's screen text is its own field, masked again here, never folded into the JSON detail.
+        const rawScreen = r.payload && typeof r.payload === "object" ? (r.payload as Record<string, unknown>).screen : undefined;
+        const screen = typeof rawScreen === "string" && rawScreen ? bounded(rawScreen, SCREEN_MAX_BYTES).text : undefined;
         const detail = r.payload && typeof r.payload === "object"
           ? (() => {
-            const p = r.payload as Record<string, unknown>;
+            const { screen: _screen, ...p } = r.payload as Record<string, unknown>;
             // When the payload is only (or includes) a `message`, show that text rather than raw JSON.
             if (typeof p.message === "string" && p.message) return bounded(p.message, 300).text;
             const keys = Object.keys(p);
-            return keys.length ? bounded(JSON.stringify(r.payload), 300).text : undefined;
+            return keys.length ? bounded(JSON.stringify(p), 300).text : undefined;
           })()
           : undefined;
-        return { id: r.id, ts: dbTime(r.created_at), type: r.event_type, ...(detail ? { detail } : {}) };
+        return { id: r.id, ts: dbTime(r.created_at), type: r.event_type, ...(detail ? { detail } : {}), ...(screen ? { screen } : {}) };
       })
       .reverse();
     return { events, ev };

@@ -268,7 +268,7 @@ agend access pair <name> <uid>  # 產生配對碼
 ## 設定與安裝 (Setup & Installation)
 
 ```bash
-agend quickstart                # CLI 引導式第一次設定：backend、聊天頻道、專案、fleet 服務（建議）
+agend quickstart                # CLI 引導式第一次設定：只用網頁或聊天頻道、backend、專案、fleet 服務（建議）
 agend setup                     # 瀏覽器第一次設定頁，在 fleet 存在之前
 agend init                      # 進階互動精靈（setup-wizard）；第一次設定請用 quickstart 或 setup
 agend install                   # 安裝、啟用並啟動系統服務 (launchd/systemd)
@@ -281,6 +281,8 @@ agend shortcuts                 # WSL：建立或更新 Windows 桌面捷徑
 ```
 
 **從 WSL 建立 Windows 桌面捷徑（#1853）。** `agend shortcuts` 會在 Windows 桌面建立（或更新）**AgEnD 儀表板**和 **AgEnD 重新啟動**，給安裝時還沒有這兩個捷徑、或平常只用 `agend update` 更新的人使用。它透過 WSL interop，在 Windows PowerShell 裡執行 Windows 安裝程式自己的捷徑程式碼，對象是目前這個 Linux（`WSL_DISTRO_NAME`）和執行它的使用者，並記到 `%LOCALAPPDATA%\AgEnD\install.json`（和安裝程式寫的是同一個檔案）。每個捷徑的第一行會顯示它打開的 Linux 和使用者（「AgEnD（Linux：AgEnD，使用者：root）」）。如果 install.json 已經指向另一個 Linux 或使用者（例如 AgEnD 專用的 Linux 和你原本的 Ubuntu），會先說明並詢問才切換；沒有終端機可以詢問時就不做任何變更。不在 WSL 裡時不做任何變更。interop 關閉時（沒有 `WSLInterop` 的 binfmt 項目，或找不到 `powershell.exe`），它會直接說明，並指出另一個方法：再貼一次 Windows 一行安裝指令，已經裝好 AgEnD 的電腦上它只會問要不要更新捷徑。在還沒有捷徑的 WSL 終端機裡執行 `agend update` 之後，會出現一行提示建議執行 `agend shortcuts`，只出現一次（聊天裡的 `/update` 沒有終端機，所以不會出現）。更新本身絕不會在桌面上建立任何東西。
+
+`agend quickstart` 會先問你要怎麼使用 AgEnD（#2910）：**1. 只用網頁（不需要 Discord/Telegram）**（預設），或 **2. 搭配 Discord 或 Telegram bot**。只用網頁不會要 bot token，共三步：backend、第一個 agent（名稱，以及專案資料夾或它自己在 `~/.agend/workspaces/<名稱>` 的工作區）、專案根目錄。它寫入只有這個 agent、沒有聊天連線的 fleet.yaml（不寫 `.env`），照常詢問是否安裝服務，最後顯示登入方式：服務啟動後直接印出 `agend web --code` 的登入碼，否則印出儀表板網址和這個指令。選 2 則和以前完全一樣。
 
 `agend quickstart` 會從所選伺服器的新訊息或 bot 私訊偵測 Discord 管理員，再請你確認顯示的使用者名稱與 ID。連線後看到提示再發訊息。最多等待 30 秒；如果未偵測到或你不確認，就必須手動輸入使用者 ID（17–20 位數字，開頭不能是 0），格式錯誤會重新詢問。設定 → 設定精靈與新增連線也必須填入有效管理員 ID；網頁表單這次尚未加入 Discord 自動偵測。Telegram 保留訊息偵測，手動網頁設定時也必須填入正整數使用者 ID。既有存取名單不會遷移。
 
@@ -332,6 +334,14 @@ OOM 判定採保守原則：Linux 必須取得啟動期間的核心紀錄，且�
 - 把 npm 移到旁邊的那份 AgEnD（`@songsid/.agend-…`）在它是唯一完整的一份時放回去，讓 `agend` 恢復可用。只有在主機上沒有 npm 正在安裝、移除或更新套件時才會這麼做；否則不碰 npm 留下的東西，並說明原因。不會刪除任何東西：移到一旁的都放在 `<npm prefix>/.agend-quarantine/`；
 - 安裝該版本，並確認 `agend --version` 回報的是它。npm 失敗但前一版仍能執行時，不再做其他事，並如實說明。沒有任何能執行的 `agend` 時，才重新裝回前一版；
 - 用新版本的 `agend install --no-activate` 更新服務設定，沿用原本的服務管理方式（系統層的 `/etc/systemd/system/agend.service` 仍是系統層）。接著艦隊正在執行就重新啟動；服務已安裝但停著，就啟動它。手動啟動的艦隊不會被建立服務，只有更新時才會重新啟動它。在 Linux 上，`agend install`、`start`、`restart` 會為使用者開啟 systemd linger，並從任何 shell（包括 WSL 上的 root）找到使用者的 systemd。`status` 和 `stop` 只補上 `XDG_RUNTIME_DIR` 與 bus 位址，不改動主機設定。
+
+**更新中途機器停止（#2854）。** npm 寫入新版本時遇到斷電或作業系統強制重新開機，服務可能就起不來：systemd 回報
+`status=203/EXEC`，或 npm 全域目錄下 `@songsid/agend` 的檔案都是 0 bytes。fleet 的設定與資料不受影響。復原方式：
+1. 清除 systemd 的失敗狀態，讓服務在達到啟動次數上限後仍能再啟動：`systemctl --user reset-failed com.agend.fleet`
+   （舊的系統層 unit：以 root 執行 `systemctl reset-failed agend`）。
+2. 再執行一次安裝指令（或只執行安裝程式：`npm exec --yes --package @songsid/agend@<版本> -- agend-install`；不要直接 `npm install -g`，它可能因 npm 留下的副本而以
+   `ENOTEMPTY` 失敗）。AgEnD 安裝程式會先把 npm 移到旁邊、仍然完整的那份（`@songsid/.agend-…`）放回去，再安裝該版本並啟動服務。
+3. 若 fleet 仍未執行，執行 `agend restart`（它也會清除失敗狀態）。
 
 `agend update` 只有在目標版本自帶安裝程式時才執行它。目標是較舊的版本（例如用 `agend update --version` 回到這次改動之前的版本），或 npm prefix 需要 sudo 時，沿用下面說明的舊更新流程。在那條流程裡，搬到 nvm 之後只有 2.1 版的系統層副本會被退役。
 

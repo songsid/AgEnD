@@ -49,8 +49,17 @@ function fakeTelegram() {
  */
 const WAITING = [{ name: "dev", crashedAt: 1 }];
 
-function hubRig(waiting: Array<{ name: string; crashedAt: number }> = WAITING) {
+/**
+ * #M-2209: the rig's wall clock. A crash at the epoch renders its age in whole days ("已崩潰 (20757d)"), and the tests
+ * run up to 12 renewals (two hours): started in the two hours before 00:00 UTC (06:00–08:00 Taipei), the age rolled
+ * over to the next day mid-test, and the hub — rightly — edited the list once more ("got 2, expected 1"). Pinned to
+ * a midday that no window here reaches a day boundary from; the roll-over itself is its own test below.
+ */
+const MIDDAY = Date.UTC(2026, 9, 31, 4, 0);   // 12:00 Taipei
+
+function hubRig(waiting: Array<{ name: string; crashedAt: number }> = WAITING, at = MIDDAY) {
   vi.useFakeTimers();
+  vi.setSystemTime(at);
   setLocale("zh-TW");
   const tg = fakeTelegram();
   writeFileSync(join(tg.dir, "needs-you-message.json"), JSON.stringify({ tg: { chatId: "-100123", messageId: "1" } }));
@@ -89,6 +98,15 @@ describe("#1751 real hub → renderer → Telegram edits", () => {
     expect(r.edits).toHaveLength(1); // The persisted pointer needs one successful render this lifecycle.
     expect(r.edits[0].text).toContain("📥 等你處理");
     expect(r.logs.some(x => x.includes("posting a new one"))).toBe(false);
+  });
+
+  it("M-2209: across 00:00 UTC the day-scale age rolls over — one edit with the new age, still no post", async () => {
+    const r = hubRig(WAITING, Date.UTC(2026, 9, 31, 22, 32));   // 06:32 Taipei, when the pinned-less run failed
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(12 * RENEW_MS);
+    expect(r.posts).toEqual([]);
+    const days = Math.floor(Date.UTC(2026, 9, 31) / 86_400_000);
+    expect(r.edits.map(e => e.text.match(/\((\d+)d\)/)?.[1])).toEqual([String(days), String(days + 1)]);
   });
 
   it("#2804: with nothing waiting, a message from before the restart is deleted — no edit to \"nothing needs you\", no post", async () => {

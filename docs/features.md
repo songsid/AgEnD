@@ -250,7 +250,7 @@ Instances collaborate through the tools their profiles allow. Ordinary workers c
 - `send_to_instance` — send a message to another fleet instance; supports structured metadata (`request_kind`, `requires_reply`, `correlation_id`, `task_summary`)
 - `start_instance` — wake a stopped instance so you can message it
 - `create_instance` — create a new instance with a topic (directory optional; auto-created at `~/.agend/workspaces/<name>` if omitted); supports `branch` for git worktree isolation
-- `delete_instance` — remove an instance and its topic
+- `delete_instance` — remove an instance and, by default, its own topic (`delete_topic: false` keeps it; on Discord the topic is a channel, so its history goes too; the General topic is never deleted; the result says whether the platform deleted the topic, and if not, why)
 - `replace_instance` — replace an instance with a fresh one (handover + delete + create)
 - `describe_instance` — get detailed info about a specific instance (description, model, last activity)
 - `set_display_name` — set the name shown in messages, activity logs and other agents' views
@@ -422,7 +422,16 @@ gets you nothing extra and opts you out of every future refinement.
 `standard` (30 tools) and `minimal` (9) still exist. `minimal` gained `list_emojis` and `preview_emojis` in 2.1.9, and `list_stickers` and `preview_stickers` in 2.1.12.
 **`general` is an identity, not a profile you can pick**: it is assigned to
 instances with `general_topic: true`, and writing it by hand fails validation —
-two ways of being a General would eventually disagree.
+two ways of being a General would eventually disagree. Because General is
+AgEnD's administrator, the `general` profile includes every orchestration tool
+(`ORCHESTRATION`: creating, deleting, replacing, starting, stopping, pausing,
+waking and restarting instances; deploying and tearing down templates; team
+CRUD; `update_instance_config` and `update_fleet_defaults`;
+`migrate_kiro_instance` and `reconcile_kiro_instance`; `update_decision`; and
+`get_web_settings` / `set_web_settings`), while leaving repository leases and
+raw host-config/log inspection (`checkout_repo`, `release_repo`,
+`get_fleet_config`, `get_instance_logs`, `list_deployments`, `validate_config`)
+out of its default tool list.
 
 `delegate_task` is deliberately a worker tool. It creates nothing, destroys
 nothing, and needs a target that already exists, so an ordinary agent can hand
@@ -750,7 +759,7 @@ kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a 
 
 `kiro_engine_status` (a read-only tool every profile except `minimal` has) shows, for each kiro instance and ClassicBot channel, its `kiro_ui`, the engine flags its next launch would use or why kiro-cli would refuse it, its recorded launches (kiro-cli and AgEnD versions per change), its V3 session and its credential profile. It reads what AgEnD recorded at the last launch and never runs kiro-cli itself. It also shows `engine_floor` (see below).
 
-**Moving from classic to the TUI (`migrate_kiro_instance`, #2598).** kiro-cli 3.0 drops the classic engine. Setting `kiro_ui: tui` by hand would start the instance on an empty TUI conversation. `migrate_kiro_instance` (coordinator and full tool sets) moves one fleet instance and carries its conversation:
+**Moving from classic to the TUI (`migrate_kiro_instance`, #2598).** kiro-cli 3.0 drops the classic engine. Setting `kiro_ui: tui` by hand would start the instance on an empty TUI conversation. `migrate_kiro_instance` (general, coordinator and full tool sets) moves one fleet instance and carries its conversation:
 - It posts a **Move it / Cancel** prompt in General, and nothing changes until a fleet admin confirms it there.
 - On the confirm, AgEnD sets `kiro_ui: tui`, arms the instance's classic conversation as its TUI conversation and restarts a running instance. The first TUI launch resumes that conversation once, which makes kiro copy the whole history into its session files, and records it as the instance's own.
 - The outcome is posted in General and in the instance's topic.
@@ -806,9 +815,19 @@ Sign in with a one-time code: send `/web` (fleet admin) or run `agend web` on th
 - **Browser terminal** — `claude-code` and `kiro-cli`: AgEnD opens a one-time web terminal on the login command where you finish the sign-in (and paste a code back). The link works on this machine by default (SSH forwarding, tailscale, your own proxy).
 - **Install only** — `opencode` and `muse` have no sign-in flow here. Remote sign-in for `antigravity` is declined, because `agy` has no separate login command.
 
+**Installing first (#2980).** The installer runs with no terminal to ask on (stdin from `/dev/null`, and `setsid` where it exists), at low CPU and disk priority, with your account's login shell as `$SHELL` so its PATH line lands in the rc file your terminals read. A question it would ask (sudo's password, "replace it?") fails at once, and its last lines are reported. The chat that asked gets one message, edited every few seconds, with the installer's last 15 lines (ANSI removed, secrets masked), and its final state at the end: finished, failed, or stopped after 10 minutes. Cancelling, the timeout and a fleet stop end the whole install. A successful install is on the fleet's PATH at once, without a restart.
+
 **Public link.** For a phone that cannot reach the machine, a `claude-code` or `kiro-cli` login offers a temporary public https link through a Cloudflare Quick Tunnel: the confirmation has **I understand (temporary public link)**, **I understand (local network)** and **Cancel**, and the first button is the consent, once per login. A `cloudflared` on `PATH` is used if there is one; otherwise AgEnD downloads Cloudflare's build into `~/.agend/bin/` once, pinned and checked against a SHA256 it ships with. The link and the access token are sent to you as two private messages, never in the channel, and the tunnel is stopped when the login ends in any way. Cloudflare terminates TLS, so it can see that terminal. `web_terminal.tunnel.allow_public: false` turns the option off for the host. Details: [configuration](configuration.md#finishing-a-login-away-from-the-machine-public-link).
 
 **From the web dashboard (2.3, #2233).** A fleet admin signed in to the dashboard on this machine or its network (not over the public link, and never as a guest) can do the same without any chat connection: **Settings → Agents → Sign-ins** lists each backend's login and each credential profile an agent uses, with **Sign in**; the web `/backend` picker offers **Sign in to <backend>** for one that is not signed in; and **Needs you** offers **Sign in** on an agent paused for sign-in. The dialog runs the same flow: a device code is shown in the dialog; a browser-terminal login shows **Open the sign-in terminal** and its one-time access code, to that browser session only (no DM is involved, so a web-only fleet needs no bot). The same checks, limits and 10-minute window apply, a public link is still opt-in per sign-in, and while it runs every admin page says so, with **Open** (the browser that started it sees the link and code, the others only who and where, and may cancel it). A sign-in whose browser session ends is cancelled. A CLI that is not installed is not installed from here: the dialog gives its install command. Default Kiro, Claude Code and Codex accounts sign in with named browser controls instead (#2599; [details](configuration.md#browser-backend-sign-in-during-first-setup)), and a backend skipped at first setup shows in **Needs you** even before an agent uses it.
+
+**A web-only fleet runs whole (#2910).** A fleet with no Discord or Telegram connection, such as one made with `agend quickstart` → Web only or the setup page's Web only, has the rest of AgEnD too. Schedules, the task board and fleet decisions run. Agents message each other with `send_to_instance`, `delegate_task`, `report_result` and `broadcast`, and the receiving agent sees `[from:<name>]` as in a chat fleet. **New agent** in the dashboard creates an agent with no chat topic. It is named as you typed it, or `<name>-2`, `-3` … when that name is taken, and it is reached from the dashboard's chat. The chat-only tools `edit_message` and `download_attachment` answer "not available on a web-only fleet" instead of asking the agent to retry, and `reply` answers in the web chat.
+
+**This computer's admin, on a web-only fleet (#2910).** A web-only fleet has no Discord or Telegram account to prove who you are, so the person at the AgEnD computer is the admin. A browser signed in with `agend web --code` and used on this computer (`localhost`) is **verified** right away as **This computer's admin**, for the session's life (at most `web.verified_authority.max_session_hours`). It speaks to agents as `via web (verified)`, and the receipt names `authority.actor` adapter `host`, user `operator`. Its own **Apply** confirms its Settings changes, such as **New agent**, without `agend settings confirm`. It is never verified from another machine or over the public link, a code sent by chat (`/dashboard`) is not the host's, and a revocation ends it until you sign in again with `agend web --code`. A fleet with a chat connection keeps the rule above: an `agend web --code` session is not an account there.
+
+**Notices, on a web-only fleet (#2910).** **Notices** (`/ui/notices`, in the sidebar) keep what General would have said: fleet errors, an agent's crash, quota or sign-in notice, a web sign-in, a schedule that could not run, the daily summary and an available update (once per version, with `agend update` to run on this computer). The newest 500 are kept across restarts. New ones arrive live, the sidebar counts the unread ones, and opening the page marks them read. The prompts with buttons (an agent that stopped, waits for input or hangs) are in **Needs you** instead. A fleet with a chat connection has no Notices page: its General says these as before.
+
+**Agents' dialogs, answered from the web (#2910).** On a web-only fleet, a Claude Code or Codex dialog that AgEnD leaves for a person is put to the dashboard: the agent's chat and **Needs you** show its own words and its own options as buttons, and your choice is keyed into the agent's terminal on a checked cursor. This covers a Bash, Edit, Write or MCP tool permission (when `skipPermissions: false`), a trust or Bypass Permissions screen AgEnD did not recognise, "Background work is running", a "Switch model?" AgEnD did not ask for, Codex's held selections, and any numbered prompt AgEnD holds. Escape is never offered, because on some of these dialogs it exits the CLI. If the dialog changed before your click, nothing is keyed and the card says so. A password or sudo prompt in a terminal becomes a Notice telling you to answer it in the agent's View. Sign-in screens are not cards: sign in from the dashboard instead. A fleet with a chat connection keeps its parked notices and General's controls as before.
 
 After a successful login, the backend's running instances are restarted to pick up the new credential. Typing `/install-cli` prints a one-line pointer to `/login` and does not run login; it is in no command menu.
 
@@ -894,6 +913,8 @@ When a user replies to a previous message in Telegram, Discord or the web chat (
 
 When an instance is deleted via `delete_instance`, it is automatically removed from all teams it belongs to. No manual team membership cleanup is needed.
 
+Its own chat topic is deleted too, through the instance's own bot, unless `delete_topic: false` is passed. The dashboard's Delete does the same. `topic_deleted` is true only when Telegram or Discord confirmed it; otherwise `topic_reason` says why the topic stayed (for example, the Telegram bot lacks the Manage Topics admin right, or the topic was already gone). The instance is deleted either way.
+
 ## HTML Chat Export
 
 `agend export-chat` exports fleet activity as a self-contained HTML file. Supports `--from` and `--to` date filters and `-o` for output path. The exported file includes all messages, tool calls, and cross-instance communications in a readable chat format.
@@ -925,10 +946,14 @@ Each Codex instance resumes **its own** conversation. At launch AgEnD reads Code
 | Situation | Launch |
 |---|---|
 | A session exists for this exact directory | `codex resume <id>` |
+| No session for this directory in the database, but a CLI rollout of exactly this directory with a turn is still in `sessions` (Codex's list lost it) | `codex resume <id>` of the newest such rollout, plus a notice; a note when it is large (Codex may compact it) (#2963) |
+| That resume did not take (Codex refused the id) | the next launch starts a new conversation once, with a notice; that conversation is not picked automatically again |
 | No session for this directory (e.g. a new instance in a shared repo) | a new conversation |
 | Session database unreadable, another Codex instance shares the git repo | a new conversation, plus a notice in the instance's topic |
 | No session database yet (Codex never ran on this machine) and no Codex history in the directory | a new conversation, no notice (#2743) |
 | Session database unreadable, no other Codex instance in the repo | `codex resume --last`, plus a notice |
+
+**Resume a chosen conversation (#2963).** `restart_instance { name, resume_session_id }` (an orchestration tool: General, coordinators) restarts a Codex instance into that conversation, for that launch only. The id must be a rollout in the instance's sessions, for exactly its working directory, started by the CLI; otherwise nothing is restarted and the reason is returned. Later restarts plan as usual.
 
 AgEnD never writes Codex state and moves no session files; sessions and locks stay in the shared Codex home (`$CODEX_HOME`, default: `~/.codex`), so `codex resume` in a terminal still lists every instance's conversations. If Codex shows "This conversation is open in another app" or its "Working directory · resume" picker, AgEnD holds delivery and tells the operator instead of pressing a key. Also detects "You've hit your usage limit" as a pause-triggering error.
 
@@ -1386,6 +1411,7 @@ Since then:
     - where at least half did, the card recommends `backend_options.claude-code.prompt_cache_ttl: "1h"` instead of keep-warm. That opt-in passes `CLAUDE_CODE_PROMPT_CACHE_TTL` on the instance's next start; unset, the CLI chooses.
   - **`get_cache_report`:** agents read the same report. General, coordinators and full-profile instances see every instance; any other instance sees its own row.
 - **Fleet → Usage** (`/ui/fleet/usage`, 2.2.5, #2122): each agent's tokens, requests, delivered messages and API-equivalent at list price (not money spent), by agent, backend, model, credential profile or team, over today / 7 days / this month / all / custom days, with a daily trend, a calendar heatmap that tells idle days from days not collected, and a CSV of the same rows. Claude Code, Codex, Grok, Muse, OpenCode and Antigravity are measured (Codex's and Muse's cache writes read "not reported"; Muse is not priced); Kiro, which records no token counts, is estimated from text size and marked "estimated"; the other CLIs are listed with the reason. Collected from fleet start and kept 400 days; agents read it with `get_usage_report`. The ◔ usage dialog links to it.
+  - **Speed** (#3066): each model's output tokens per second of its own generation, tool time excluded, as a Speed column and a "Speed by model" card with how many requests were timed and, from 30 timed responses, the p10–p90 spread; `get_usage_report` gives it as `speed`. Claude Code responses are timed from their first token (when they open with a thinking block, whose duration marks it) to their last block. Codex responses are timed over their response window, from the item clocks codex 0.147 and later writes: the first model item's start to the last one's end, minus hosted web-search time. The rollout does not mark the first token, so this window may include some of the wait for it. The method follows [tokdash](https://github.com/JingbiaoMei/tokdash) (MIT, Jingbiao Mei; see `THIRD_PARTY_NOTICES.md`).
 - **New agent** (2.2.5, #2074): a button at the end of the sidebar's list opens the Create agent dialog. With the sidebar collapsed, a **+** beside ☰ does the same; on a phone it is in the menu drawer. Only a session that may create agents sees it.
 - **Filtering the sidebar** (2.2.5, #1936): the instance you have open stays on top under **Current**, matching or not.
 - **Names that open an instance** (2.2.5, #1990): in a chat's cross-instance status lines the other instance's name opens its chat, and in a prompt card the instance's name opens its View. An agent's or a person's message never gets such a link.
@@ -1425,7 +1451,7 @@ web:
       "<connection id>:123456789": [helper]
     session: { absolute_hours: 12, idle_minutes: 120 }   # 1–24 h, 15–720 min
     grants:                # #2348: once present, the whole scope (open_instances and narrow give nothing)
-      "<connection id>:123456789": { name: Ada, instances: [helper] }
+      "<connection id>:123456789": { name: Ada, instances: [helper], level: trusted }   # level: chat (default) | trusted (#2855)
 ```
 
 **Getting a code.**
@@ -1442,8 +1468,9 @@ web:
 - **How it looks:** one flat row per person with a letter avatar, the agents as chips and the state on the right (signed in, code sent, or why a DM failed; under the name on a phone). An edited row has the straight bar.
 - **Saving:** every edit is unsaved until **Save**. Adding a person, or an agent to someone, waits for a fleet admin's OK in General; taking away applies at once, and removing someone ends their sessions, code and remembered browsers right away.
 - **Send sign-in code** is an action, not part of Save. It DMs a saved grant's account its code (once a minute per person; never posted anywhere else). If the DM fails, the row says why — on Telegram, with the bot's start link to pass on. The code works on the dashboard reached directly and, if it is open when the code is sent, on the public link.
-- **Audit:** the event log records each code an admin sends (`guest_code_sent`: who, to whom, the outcome) and each saved change to someone's agents (`guest_grant_changed`: who saved it, whether it applied at once or was confirmed in General, the agents added and removed, and the sessions a removal ended). The section's **Recent changes** list shows the newest of them, to admins only (never a guest, never over the public link). Every guest sign-in is also posted in General.
-- **In `fleet.yaml`:** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …] } }`. Once `grants` exists it is the whole scope — default deny: connection access, rooms, `open_instances` and `narrow` give nothing then. **Start from today's guests** stages each current guest's reach as a grant.
+- **Audit:** the event log records each code an admin sends (`guest_code_sent`: who, to whom, the outcome) and each saved change to someone's agents (`guest_grant_changed`: who saved it, whether it applied at once or was confirmed in General, the agents added and removed, the level it went to when that changed, and the sessions a removal ended). The section's **Recent changes** list shows the newest of them, to admins only (never a guest, never over the public link). Every guest sign-in is also posted in General.
+- **Chat or Trusted (#2855):** each person's level. **Chat** (the default) is everything below; **Trusted** adds a read-only View of those agents and search of what the guest can already see. Making someone Trusted waits for a fleet admin's OK in General, like adding an agent; back to Chat applies at once.
+- **In `fleet.yaml`:** `web.guests.grants: { "<connection id>:<user id>": { name?, instances: [agent, …], level? } }`. Once `grants` exists it is the whole scope — default deny: connection access, rooms, `open_instances` and `narrow` give nothing then. **Start from today's guests** stages each current guest's reach as a grant.
 
 **What a guest reaches.** It is worked out on every request and never stored. With `grants`, only the agents granted to that account (of those that still exist). Without them (#1920's derived access):
 - **Its connection's agents:** the fleet topics and General, when that connection's access lets the account in (allowed or paired). On an `open` connection, only the agents named in `open_instances`.
@@ -1454,14 +1481,18 @@ web:
   - Answers are read in the background (at sign-in, when the guest's page connects, and again every 10 minutes). A room shows only on a "member" answer at most 15 minutes old. While a room is still being checked the page waits instead of signing the guest out.
 - **Then `narrow`,** which only takes away.
 
-Either way the server enforces it on every read a guest can make: chat, history, files and the event stream are limited to those agents; search, the task board, the org chart and usage are never a guest's. A fleet admin is never a guest.
+Either way the server enforces it on every read a guest can make: chat, history, files and the event stream are limited to those agents; the task board, the org chart and the usage report (costs per agent) are never a guest's, and View and search are a Trusted guest's only. A fleet admin is never a guest.
 
 **What a guest can do.**
 - **Chat:** with those agents only. That means the history its channel showed, files, reply buttons and Cancel, unless `chat: false` makes guests read-only.
-- **No commands:** text starting with `/` is refused.
+- **Commands (#2855):** only those the chat's command table lets anyone run in that agent's channel: on the web, `/ctx`, `/steer`, `/btw` and `/cancel`. Its palette offers just those; any other is refused with why. At most 10 a minute, one at a time.
+- **Usage (#2855):** the usage panel (◔), every subscription's headroom on the host, as `/usage` shows anyone in chat. It never forces a refresh.
 - **What the agent sees:** `[user:<name> via web (guest), id:<id>]`, for typed messages and button clicks alike. A guest only chats: the agent takes nothing they ask as an admin's.
-- **Its app:** no Fleet, View, Settings, Needs you, New agent or widgets; a **Guest** chip says who is signed in.
-- **Preferences:** it reads the host's look (theme, language) but no preference that names an agent, and it can set its own web name.
+- **Its app:** no Fleet, Settings, Needs you, New agent or widgets; a **Guest** chip says who is signed in. A Chat-level guest has no View or search either.
+- **Trusted (#2855):**
+  - **View:** watching an agent's screen, read-only — no typing, no keys. A line says it is watching only. The screen shows everything the agent's terminal does: other people's messages to it, commands and their output, which can include secrets; chat and search stay limited to what the guest may see. At most 2 reads a second and 2 agents at once per guest; every guest watching an agent shares one capture of it per 500 ms; at most 256 KB per read. On the dashboard's own port too, a guest's View read goes through these checks (an anonymous read there, under `web.view_access: open`, is unchanged).
+  - **Search:** only chat messages of its agents that its channel showed or it wrote itself (the same rule as its chat), at most 20 results. No messages between agents, tasks, teams or settings. 6 searches a minute, one at a time; at most 3 guest searches run at once, so admins' searches always have room.
+- **Preferences (#2855):** its own theme, language, favourites, sort and filter, kept on the host under its account (the same on every device; deleted when the admin removes it); otherwise the host's look, and no preference that names an agent outside its scope. It can set its own web name.
 
 **Sessions.**
 - **Lifetime:** 12 h absolute and 2 h idle by default (`web.guests.session`), never longer than the surface's own limit (the public link's 4 h / 30 min).

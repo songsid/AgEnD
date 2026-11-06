@@ -146,8 +146,8 @@ export function logDetail(text: string | undefined): string | undefined {
  * The refusal when the one tunnel is someone else's. #1525: drawn on ④, not ① — the refusal short-circuits before any
  * install work, so ① renders ✅·0s while the lease-held sentence on ④ carries the truth.
  */
-function leaseHeldProgress(now: () => number): PublicLinkProgress {
-  const refused = new PublicLinkProgressTracker(now, () => {});
+function leaseHeldProgress(now: () => number, web: WebConfig | undefined): PublicLinkProgress {
+  const refused = new PublicLinkProgressTracker(now, () => {}, publicLinkNamedHostname(web));
   refused.begin("tunnel");
   refused.fail("lease-held");
   return refused.snapshot;
@@ -201,7 +201,25 @@ export class PublicWebLink {
     if (!e || e.id !== exposureId || e.phase !== "open" || !this.current(e) || !e.preview) return null;
     return e.preview.status();
   }
+  /** The wall-clock end of this link (null: no expiry, or not the link open now): a session made over it ends by then. */
+  endOf(exposureId: string): number | null {
+    const e = this.entry;
+    return e && e.id === exposureId ? e.expiresAt : null;
+  }
   /** `noExpiry`: an open link without an expiry (no expiresAt / remainingSeconds then). */
+  /**
+   * #2906: the open named link's page marker, only while it runs on exactly these values (the fixed address's Test
+   * connection then checks this link as it is, starting nothing beside it). Null otherwise.
+   */
+  liveNamedMarker(values: { hostname: string; port: number; token: string; protocol: string }): string | null {
+    const e = this.entry;
+    if (!e || e.phase !== "open" || !e.gateway || !this.current(e)) return null;
+    let named: ReturnType<typeof namedPublicLinkSettings>;
+    try { named = namedPublicLinkSettings(this.deps.web()); } catch { return null; }
+    // #2907 review: the protocol too — a test of other values (QUIC against an open http2 link) is not this link's.
+    return named && named.hostname === values.hostname && named.port === values.port && named.token === values.token
+      && publicLinkSettings(this.deps.web()).protocol === values.protocol ? e.gateway.readinessMarker : null;
+  }
   status(): { state: string; expiresAt?: number; remainingSeconds?: number; noExpiry?: true } {
     const e = this.entry;
     if (e && this.now() >= e.deadline && !e.closing) void this.close("expired");
@@ -230,7 +248,7 @@ export class PublicWebLink {
       const created = this.create(owner);
       if (!created) {
         // The one tunnel is someone else's (a /login link, or one whose cleanup is unconfirmed): say so.
-        onProgress?.(leaseHeldProgress(this.now));
+        onProgress?.(leaseHeldProgress(this.now, this.deps.web()));
         return false;
       }
       e = created;
@@ -289,7 +307,7 @@ export class PublicWebLink {
       deadline: lasting ? this.now() + settings.ttlMs : Infinity, expiresAt: lasting ? (this.deps.wallNow ?? Date.now)() + settings.ttlMs : null,
       phase: "starting", gateway: null, starting: Promise.resolve(), requests: 0, delivered: false,
       progress: undefined as unknown as PublicLinkProgressTracker, watchers: new Set() };
-    e.progress = new PublicLinkProgressTracker(this.now, () => { for (const w of e.watchers) w(); });
+    e.progress = new PublicLinkProgressTracker(this.now, () => { for (const w of e.watchers) w(); }, publicLinkNamedHostname(this.deps.web()));
     this.entry = e;
     // No expiry: no timer at all (a setTimeout of Infinity would fire at once). Close, policy changes and shutdown end it.
     const expire = (): void => {
@@ -313,7 +331,7 @@ export class PublicWebLink {
     if (this.entry) return "busy";
     if (!this.deps.permitted(owner) || !publicLinkSettings(this.deps.web()).allowed) return "failed";
     const e = this.create(owner, "requested unattended");
-    if (!e) { onProgress?.(leaseHeldProgress(this.now)); return "failed"; }
+    if (!e) { onProgress?.(leaseHeldProgress(this.now, this.deps.web())); return "failed"; }
     // Nobody is owed a delivery: a request joining it later and failing its own delivery never closes it.
     e.delivered = true;
     const watcher = onProgress ? () => onProgress(e.progress.snapshot) : null;

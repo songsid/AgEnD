@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_HEALTH_PORT, dashboardLines, dashboardPort } from "../src/next-steps.js";
+import { DEFAULT_HEALTH_PORT, dashboardLines, dashboardPort, webOnlyConfigFile } from "../src/next-steps.js";
 
 const rl = vi.hoisted(() => ({ answers: [] as string[], asked: [] as string[] }));
 vi.mock("node:readline/promises", () => ({
@@ -39,6 +39,12 @@ describe("where the dashboard is", () => {
     writeFileSync(file, text);
     expect(dashboardPort(file)).toBe(port);
   });
+  it("#2910 D5: a web-only fleet's file (no channel) — only `agend web --code`; a chat fleet's, an unreadable or missing one — both ways", () => {
+    const dir = tempDir(), at = (name: string, text: string) => { const f = join(dir, name); writeFileSync(f, text); return f; };
+    expect([webOnlyConfigFile(at("w.yaml", "instances: {}\n")), webOnlyConfigFile(at("c.yaml", "channel: { type: telegram }\n")), webOnlyConfigFile(at("b.yaml", "[\n")),
+      webOnlyConfigFile(join(dir, "missing.yaml"))]).toEqual([true, false, false, false]);
+    expect(dashboardLines(19280, { webOnly: true })).toEqual(["Web dashboard: http://localhost:19280/", "Sign in with `agend web --code` on this machine."]);
+  });
   it("no file: the default; the lines name the address and both ways to sign in", () => {
     expect(dashboardPort(join(tempDir(), "missing.yaml"))).toBe(19280);
     expect(dashboardLines(24680)).toEqual(["Web dashboard: http://localhost:24680/", "Sign in with `agend web --code` on this machine, or send /web to your bot."]);
@@ -68,10 +74,13 @@ describe("agend quickstart", () => {
     expect(text.indexOf("Web dashboard"), "found at all").toBeGreaterThan(-1);
   });
 
-  it("its steps are numbered 1 to 4 out of 4 (was 1/3, 2/4 and two unnumbered)", () => {
+  it("its steps are numbered 1 to 4 out of 4 (was 1/3, 2/4 and two unnumbered); web only, 1 to 3 of 3 (#2910)", () => {
     const qs = SRC("quickstart.ts");
     const steps = [...qs.matchAll(/Step (\d)\/(\d)/g)].map(m => `${m[1]}/${m[2]}`);
-    expect([...new Set(steps)].sort()).toEqual(["1/4", "2/4", "3/4", "4/4"]);
+    expect([...new Set(steps)].sort()).toEqual(["2/4", "3/4"]);                                   // the bot path's own steps
+    // #2910: the first and last steps count the path's steps: 4 with a bot, 3 web only (its step 2 is the first agent).
+    expect([qs.includes("const steps = webOnly ? 3 : 4;"), qs.includes("bold(`Step 1/${steps}: Backend`)"),
+      qs.includes("bold(`Step ${steps}/${steps}: Project Roots (optional)`)"), qs.includes("askFirstAgent(rl, `2/${steps}`)")]).toEqual([true, true, true, true]);
     expect(qs).toContain('runTelegramFlow(rl, "Step 3/4")');
     expect(qs).toContain('runDiscordFlow(rl, "Step 3/4")');
     // Every way out that says Done says where the dashboard is first: one Done, printed by printDone (five exits).
@@ -99,7 +108,9 @@ describe("agend setup", () => {
     await host.shutdown(true, "finished");
     expect(spawnFleet).toHaveBeenCalledOnce();
     const at = lines.indexOf("Setup complete — starting AgEnD.");
-    expect(lines.slice(at, at + 3)).toEqual(["Setup complete — starting AgEnD.", ...dashboardLines(24681)]);
+    // #2910 D5: this fleet.yaml has no channel (a web-only fleet): only the sign-in that exists there.
+    expect(lines.slice(at, at + 3)).toEqual(["Setup complete — starting AgEnD.", ...dashboardLines(24681, { webOnly: true })]);
+    expect(lines[at + 2]).toBe("Sign in with `agend web --code` on this machine.");
   });
   it("not handing over: no dashboard line (nothing will be there)", async () => {
     const { SetupHost } = await import("../src/setup-host.js");
@@ -123,6 +134,6 @@ describe("agend init", () => {
     const init = SRC("setup-wizard.ts");
     expect([init.includes("enable --now agend"), init.includes("agend-plugin-discord")]).toEqual([false, false]);
     expect(init).toContain('activateService(svcPath, join(DATA_DIR, "fleet.pid"))');
-    expect(init).toContain("dashboardLines(dashboardPort(FLEET_CONFIG_PATH))");
+    expect(init).toContain("dashboardLines(dashboardPort(FLEET_CONFIG_PATH), { webOnly: webOnlyConfigFile(FLEET_CONFIG_PATH) })");
   });
 });

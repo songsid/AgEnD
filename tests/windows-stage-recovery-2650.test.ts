@@ -4,43 +4,84 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
+import { extractDownloadHelpers, extractInstallerPrelude, extractLeadingStatement } from './support/installer-ps-extract.js';
 const installer=resolve('website/public/install-agend.ps1'), source=readFileSync(installer,'utf8');
+const prelude=extractInstallerPrelude(source);
+const downloadHelpers=extractDownloadHelpers(source);
 const pwsh=spawnSync('pwsh',['-NoProfile','-NonInteractive','-Command','1'],{timeout:60000}).status===0;
 function fixture(){
  const dir=mkdtempSync(join(tmpdir(),'agend-stage-2650-')),bin=join(dir,'bin');mkdirSync(bin);
  writeFileSync(join(bin,'wsl.exe'),'#!/bin/sh\necho "Unexpected native WSL boundary" >&2\nexit 91\n');chmodSync(join(bin,'wsl.exe'),0o755);
  const run=(body:string)=>{
-  const file=join(dir,'test.ps1');writeFileSync(file,`$ErrorActionPreference='Stop'
-$t=$null;$e=$null;$ast=[System.Management.Automation.Language.Parser]::ParseFile('${installer}',[ref]$t,[ref]$e)
-if($e.Count){throw ($e|Out-String)}
-foreach($f in $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst]},$true)){. ([scriptblock]::Create($f.Extent.Text))}
-foreach($a in $ast.FindAll({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|RESTART_FN|ALL_BACKENDS|BACKEND_PROBE|BACKEND_PATH|UNATTENDED_INSTALL)$'},$false)){. ([scriptblock]::Create($a.Extent.Text))}
-. ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($RESTART_FN))
-function wsl {throw 'Direct native WSL forbidden'}
-function Test-LiveConsole {return $false}
-function Read-Host {throw 'Unexpected terminal question'}
-$script:OnWindows=$false;$UBUNTU_DISTRO='Scratch';$AGEND_USER='operator';$AGEND_ENV='PRIVATE; ';$ProgressFile='${dir}/progress'
-${body}`);
+  const file=join(dir,'test.ps1');
+  writeFileSync(file,[
+   "$ErrorActionPreference='Stop'\n",
+   prelude,
+   "\nfunction wsl {throw 'Direct native WSL forbidden'}\n",
+   "function Test-LiveConsole {return $false}\n",
+   "function Read-Host {throw 'Unexpected terminal question'}\n",
+   `$script:OnWindows=$false;$UBUNTU_DISTRO='Scratch';$AGEND_USER='operator';$AGEND_ENV='PRIVATE; ';$ProgressFile='${dir}/progress'\n`,
+   body,
+  ].join(''));
   return execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',file],{encoding:'utf8',timeout:20000,env:{...process.env,HOME:dir,USERPROFILE:dir,TMPDIR:dir,PATH:`${bin}:${process.env.PATH}`}});
  };
  return {dir,bin,run,close:()=>rmSync(dir,{recursive:true,force:true})};
 }
 function scratch<T>(body:(f:ReturnType<typeof fixture>)=>T):T {const f=fixture();try{return body(f)}finally{f.close()}}
 
+it('installer functions are sliced in Node without ParseFile',()=>{
+ expect(prelude).toContain('function Invoke-InstallDownload');
+ expect(prelude).toContain('function Invoke-Watched');
+ expect(prelude).toContain('$WSL_COMMAND_FN =');
+ expect(downloadHelpers.production).toContain('$clock = [Diagnostics.Stopwatch]::StartNew()');
+});
 describe.skipIf(!pwsh)('bounded resumable Windows stages, all WSL/backend/service calls stubbed',()=>{
- it.each(['ok','headers','body'])('download byte/response deadlines abort and remove partial files: %s',mode=>scratch(f=>{
-  const out=f.run(`$script:aborted=$false;$script:disposed=$false
-$script:stream=[IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes('download bytes'))
-${mode==='body'?"$script:stream=[pscustomobject]@{};$script:stream|Add-Member ScriptMethod ReadAsync {param($b,$o,$n);return ([Threading.Tasks.TaskCompletionSource[int]]::new()).Task};$script:stream|Add-Member ScriptMethod Dispose {}":''}
-$response=[pscustomobject]@{};$response|Add-Member ScriptMethod GetResponseStream {return $script:stream};$response|Add-Member ScriptMethod Dispose {$script:disposed=$true}
-$script:responseTask=${mode==='headers'?"([Threading.Tasks.TaskCompletionSource[object]]::new()).Task":"[Threading.Tasks.Task]::FromResult($response)"}
-$request=[pscustomobject]@{};$request|Add-Member ScriptMethod GetResponseAsync {return $script:responseTask};$request|Add-Member ScriptMethod Abort {$script:aborted=$true}
-function New-InstallDownloadRequest {return $request}
-try{Invoke-InstallDownload -Uri 'https://stub.invalid/file' -OutFile '${f.dir}/download' -TimeoutSec 2 -NoProgressSeconds 0.05;Write-Output 'DONE'}catch{Write-Output ('FAILED='+$_)}
-Write-Output ('ABORTED='+$script:aborted+' EXISTS='+(Test-Path '${f.dir}/download'))`);
-  expect(out).toContain('ABORTED=True');expect(out).toContain(mode==='ok'?'DONE':'no-progress deadline');
-  expect(existsSync(join(f.dir,'download'))).toBe(mode==='ok');
-  if(mode==='ok')expect(readFileSync(join(f.dir,'download'),'utf8')).toBe('download bytes');
+ it('download byte/response deadlines abort and remove partial files',()=>scratch(f=>{
+  // One pwsh, stubbed transport, injected clock. Production Wait is unchanged.
+  // headers: elapsed past TimeoutSec so left-le-0 throws without sleeping.
+  // body: elapsed 0, incomplete ReadAsync, Wait(1ms) returns false.
+  const file=join(f.dir,'deadline.ps1');
+  const outFile=join(f.dir,'download');
+  writeFileSync(file,`$ErrorActionPreference='Stop'
+${downloadHelpers.injected}
+function New-InstallDownloadRequest {return $script:request}
+function Invoke-Mode([string]$mode,[double]$elapsed,[double]$idle,[string]$out){
+  $script:DownloadElapsed=$elapsed
+  $script:aborted=$false
+  if(Test-Path -LiteralPath $out){Remove-Item -LiteralPath $out -Force}
+  $response=[pscustomobject]@{};$response|Add-Member ScriptMethod GetResponseStream {return $script:stream};$response|Add-Member ScriptMethod Dispose {}
+  if($mode -eq 'body'){
+    $script:stream=[pscustomobject]@{}
+    $script:stream|Add-Member ScriptMethod ReadAsync {param($b,$o,$n);return ([Threading.Tasks.TaskCompletionSource[int]]::new()).Task}
+    $script:stream|Add-Member ScriptMethod Dispose {}
+    $script:responseTask=[Threading.Tasks.Task]::FromResult($response)
+  } elseif($mode -eq 'headers'){
+    $script:stream=$null
+    $script:responseTask=([Threading.Tasks.TaskCompletionSource[object]]::new()).Task
+  } else {
+    $script:stream=[IO.MemoryStream]::new([Text.Encoding]::UTF8.GetBytes('download bytes'))
+    $script:responseTask=[Threading.Tasks.Task]::FromResult($response)
+  }
+  $script:request=[pscustomobject]@{}
+  $script:request|Add-Member ScriptMethod GetResponseAsync {return $script:responseTask}
+  $script:request|Add-Member ScriptMethod Abort {$script:aborted=$true}
+  try{Invoke-InstallDownload -Uri 'https://stub.invalid/file' -OutFile $out -TimeoutSec 1 -NoProgressSeconds $idle;Write-Output ('MODE='+$mode+' RESULT=DONE')}catch{Write-Output ('MODE='+$mode+' RESULT=FAILED='+$_)}
+  Write-Output ('MODE='+$mode+' ABORTED='+$script:aborted+' EXISTS='+(Test-Path -LiteralPath $out))
+}
+Invoke-Mode 'ok' 0 0.05 '${outFile}'
+Invoke-Mode 'headers' 2 0.05 '${outFile}'
+Invoke-Mode 'body' 0 0.001 '${outFile}'
+`);
+  const out=execFileSync('pwsh',['-NoProfile','-NonInteractive','-File',file],{encoding:'utf8',timeout:8000,env:{...process.env,HOME:f.dir,USERPROFILE:f.dir,TMPDIR:f.dir,PATH:`${f.bin}:${process.env.PATH}`}});
+  expect(downloadHelpers.production).toContain('$clock = [Diagnostics.Stopwatch]::StartNew()');
+  expect(downloadHelpers.injected).not.toContain('$clock = [Diagnostics.Stopwatch]::StartNew()');
+  expect(out).toMatch(/MODE=ok RESULT=DONE/);
+  expect(out).toMatch(/MODE=ok ABORTED=True EXISTS=True/);
+  expect(out).toMatch(/MODE=headers RESULT=FAILED=.*no-progress deadline/);
+  expect(out).toMatch(/MODE=headers ABORTED=True EXISTS=False/);
+  expect(out).toMatch(/MODE=body RESULT=FAILED=.*no-progress deadline/);
+  expect(out).toMatch(/MODE=body ABORTED=True EXISTS=False/);
+  expect(existsSync(outFile)).toBe(false);
  }));
  it('bootstrap and installer use identical download deadline helpers',()=>{
   const bootstrap=readFileSync(resolve('website/public/install.ps1'),'utf8');
@@ -86,9 +127,11 @@ $null=Get-VerifiedAgendVersion`);
  }));
  it('a failed curl cannot be hidden by a successful empty installer shell',()=>scratch(f=>{
   const command=f.run(`Get-AgendInstallCommand 'beta'`).trim();
-  for(const [name,code]of [['curl',22],['bash',0]] as const){writeFileSync(join(f.bin,name),`#!/bin/sh\nexit ${code}\n`);chmodSync(join(f.bin,name),0o755)}
+  for(const [name,body]of [['curl','exit 22'],['bash',`touch ${f.dir}/ran; exit 0`]] as const){writeFileSync(join(f.bin,name),`#!/bin/sh\n${body}\n`);chmodSync(join(f.bin,name),0o755)}
   const result=spawnSync('/bin/bash',['-c',command],{env:{PATH:`${f.bin}:/usr/bin:/bin`,HOME:f.dir},timeout:3000});
-  expect(result.status).toBe(22);
+  // Every source failed: the step fails and the (empty) installer shell never runs.
+  expect(result.status).not.toBe(0);
+  expect(existsSync(join(f.dir,'ran'))).toBe(false);
  }));
  it('clear one stale stage without dropping other stages, backend selection or requested version',()=>scratch(f=>{
   const out=f.run(`@('STAGE_1_DONE','STAGE_2_DONE','STAGE_4_DONE','BACKENDS=1,4','AGEND_VERSION=beta') | Set-Content -LiteralPath $ProgressFile
@@ -176,14 +219,15 @@ Write-Output ('KEPT='+(Test-Path -LiteralPath $ProgressFile))`);
   expect(out).toContain(`KEPT=${ready&&!missing?'False':'True'}`);
  }));
  it.each([false,true])('a stale service marker never overrides actual readiness: %s',ready=>scratch(f=>{
+  const handover=extractLeadingStatement(source,'if ((Stage-Done 5) -and (Test-InstallerReady))');
   const out=f.run(`'STAGE_5_DONE' | Set-Content -LiteralPath $ProgressFile
 function Test-InstallerReady {return $${ready}}
 function Invoke-SetupAndService {return $true}
 function Select-AgendPorts {return 19280}
 function Invoke-AgendInWsl {return @{Code=0;Text=''}}
 function Start-Sleep {}
-$browserSignins='';$service=$ast.FindAll({param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Extent.Text.StartsWith('if ((Stage-Done 5)')},$true)[0]
-. ([scriptblock]::Create($service.Extent.Text))
+$browserSignins=''
+${handover}
 Write-Output ('STAGE='+(Stage-Done 5)+' READY='+$script:InstallerReady)`);
   expect(out).toContain(`STAGE=${ready?'True':'False'} READY=${ready?'True':'False'}`);
  }));

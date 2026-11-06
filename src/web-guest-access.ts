@@ -16,6 +16,7 @@
  */
 import { shellRoute } from "./web-shell-routes.js";
 import type { WebChatButtons, WebChatHistory, WebChatMessage, WebDeliveryState } from "./web-chat-history.js";
+import { catchUpWindow } from "./web-chat-history.js";
 
 export type GuestRouteState = "on" | "later";
 export interface GuestRoute {
@@ -42,16 +43,12 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: READS, pattern: new RegExp(`^/api/card/${NAME}(?:/(?:portrait|banner))?$`), instance: { group: 1 }, state: "on", note: "the instance's identity card" },
   { methods: ["GET"], pattern: new RegExp(`^/ui/img/(?:avatar|bot)/${NAME}$`), instance: { group: 1 }, state: "on", note: "the instance's face in the sidebar" },
   { methods: ["GET"], pattern: new RegExp(`^/ui/img/theme/${NAME}/[0-9a-f]{32}$`), instance: { group: 1 }, state: "on", note: "the instance's theme pictures" },
-  { methods: ["GET"], pattern: /^\/ui\/effect-posters$/, instance: { query: "instance" }, state: "on", note: "the instance's static effect posters (the list)" },
-  { methods: ["GET"], pattern: /^\/ui\/effects\/placements$/, instance: { query: "instance" }, state: "on", note: "current in-scope Chat effect metadata only, with a session epoch" },
-  { methods: ["GET"], pattern: /^\/ui\/effects\/resource\/[0-9a-f]{32}$/, instance: { query: "instance" }, state: "on", note: "a current in-scope Chat effect resource, never library or personal-slot reads" },
   // Opened by phase 1b: the stream and the poll filtered per recipient; a file bound to its instance.
   // The stream and the poll, projected per recipient (guestFrameData / guestPollBody); a file, bound to its stored
   // instance by the handler (404 out of scope: an id from another instance is useless).
   { methods: ["GET"], pattern: /^\/ui\/events$/, instance: null, state: "on", note: "the stream, projected for this guest (guestFrameData)" },
   { methods: ["GET"], pattern: /^\/ui\/poll$/, instance: null, state: "on", note: "the poll, projected for this guest (guestPollBody)" },
   { methods: ["GET"], pattern: /^\/ui\/file\/[^/]+$/, instance: null, state: "on", note: "a file, served only when its stored instance is in scope (the handler checks)" },
-  { methods: ["GET"], pattern: /^\/ui\/effect-posters\/[0-9a-f]{32}\.png$/, instance: { query: "instance" }, state: "on", note: "a placed effect's static poster, bound to its instance by the query" },
   // Opened by phase 2: what needs the guest's own identity, authority and the history rule.
   { methods: ["GET"], pattern: /^\/ui\/history$/, instance: { query: "instance" }, state: "on", note: "an in-scope instance's history, as its channel showed it (guestHistory, #1920 §5.2)" },
   // Phase 2 (step 2b): chat as on the platform — authority none, never a command (guestChatRefusal, in the handlers).
@@ -60,7 +57,16 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "on", note: "a click on a reply the guest may see (the handler checks; web.guests.chat)" },
   { methods: ["POST"], pattern: new RegExp(`^/ui/cancel/${NAME}$`), instance: { group: 1 }, state: "on", note: "Cancel, as the platform's button lets anyone allowed there (web.guests.chat)" },
   { methods: ["GET"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "the host's look (theme, language, shown settings) and the guest's own — nothing that names an instance (guestPrefs)" },
-  { methods: ["POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "later", note: "phase 3: what a guest may keep of its own" },
+  // #2855: a command the table lets anyone run on an in-scope agent (the handler checks the instance, the switch and the table).
+  { methods: ["POST"], pattern: /^\/ui\/command$/, instance: null, state: "on", note: "#2855: a web command the table lets anyone run there, on an in-scope agent (the handler checks)" },
+  // #2855: the usage panel — every subscription's headroom, as /usage shows anyone in chat; never a forced refresh.
+  { methods: ["GET"], pattern: /^\/api\/ai-usage$/, instance: null, state: "on", note: "#2855: the usage panel (as /usage in chat; a guest never forces a refresh)" },
+  // #2855: a trusted guest — the read-only View of an in-scope agent (its page, its pane), and search of what it can see.
+  { methods: READS, pattern: new RegExp(`^/view/${NAME}$`), instance: { group: 1 }, state: "on", note: "#2855: the app shell for one agent's View (static; the pane read checks Trusted)" },
+  { methods: ["GET"], pattern: new RegExp(`^/api/pane/${NAME}$`), instance: { group: 1 }, state: "on", note: "#2855: a trusted guest's read-only View of an in-scope agent (the handler checks Trusted and its limits)" },
+  { methods: ["GET"], pattern: /^\/ui\/search$/, instance: null, state: "on", note: "#2855: a trusted guest's search — only messages it can see (the handler checks)" },
+  { methods: ["GET"], pattern: /^\/ui\/search\/context$/, instance: null, state: "on", note: "#2855: a trusted guest's search result in context — only rows it can see (the handler checks)" },
+  { methods: ["POST"], pattern: /^\/ui\/prefs$/, instance: null, state: "on", note: "#2855: its own preferences (theme, language, favourites, sort, filter) into its own account's bucket (the handler checks)" },
   { methods: ["GET", "POST"], pattern: /^\/ui\/profile$/, instance: null, state: "on", note: "the guest's own web name (its account's, never anyone else's)" },
 ];
 
@@ -118,6 +124,8 @@ export interface GuestRequest {
   chat?(): boolean;
   /** #1920 §3.2: its stream connected — its rooms' membership is read again, in the background. */
   streamOpened?(): void;
+  /** #2855: the admin made this guest Trusted (web.guests.grants[account].level): a read-only View and search. */
+  trusted?(): boolean;
 }
 
 /**
@@ -143,6 +151,31 @@ export function guestPrefs<T extends { values: Record<string, unknown> }>(view: 
   for (const [k, v] of Object.entries(view.values)) if (GUEST_PREF_KEYS.has(k)) values[k] = v;
   return { ...view, values };
 }
+/** #2855: a trusted guest's pane reads — at most this many a second per account, of at most PANES agents at once. */
+export const GUEST_PANE_READS = { perWindow: 2, windowMs: 1_000, panes: 2, panesWindowMs: 5_000 } as const;
+/** #2855: every guest viewer of an agent reads one capture of its pane, at most this old (one tmux read per window). */
+export const GUEST_PANE_SHARE_MS = 500;
+/** #2855: a pane read a guest gets, at most this many bytes (the end of the screen is kept). */
+export const GUEST_PANE_MAX_BYTES = 256 * 1024;
+/** #2855: a trusted guest's searches a minute, per account; one at a time; at most GLOBAL guest searches running. */
+export const GUEST_SEARCHES = { perWindow: 6, windowMs: 60_000, global: 3, maxResults: 20 } as const;
+/** #2855: a guest's commands a minute, per account (every device of it); and one at a time. */
+export const GUEST_COMMAND_RUNS = { perWindow: 10, windowMs: 60_000 } as const;
+/** #2855: a guest's preference saves a minute, per account (every device of it). */
+export const GUEST_PREF_WRITES = { perWindow: 30, windowMs: 60_000 } as const;
+/** #2855: a guest's `set`, at most this many bytes (five small keys; 50 favourites of 128-character names fit). */
+export const GUEST_PREF_MAX_BYTES = 16 * 1024;
+/**
+ * #2855: a guest's whole view — the host's look (guestPrefs), then its own preferences on top; a favourite only while its
+ * instance is in the guest's scope (never a name out of it). `own` null: its bucket could not be read (the look alone).
+ */
+export function guestOwnPrefs<T extends { values: Record<string, unknown> }>(view: T, own: Record<string, unknown> | null, scope: ReadonlySet<string>): T {
+  const base = guestPrefs(view);
+  if (!own) return base;
+  const values = { ...base.values };
+  for (const [key, value] of Object.entries(own)) values[key] = key === "nav.favorites" && Array.isArray(value) ? value.filter((n) => scope.has(n)) : value;
+  return { ...base, values };
+}
 const guestRequests = new WeakMap<object, GuestRequest>();
 /** Set by the one entry that admits a guest (FleetManager's gate); read by the handlers that answer per recipient. */
 export function bindGuestRequest(req: object, guest: GuestRequest): void { guestRequests.set(req, guest); }
@@ -151,11 +184,10 @@ export function guestRequestOf(req: object): GuestRequest | undefined { return g
 /**
  * What a guest's status frame keeps of each in-scope instance: who it is and how it looks, its state — not its model,
  * backend, effort, cost, context, description, tags or what it is waiting for (a prompt's text). And nothing of the
- * fleet identity: no public link, connections, uptime, host memory, revisions. The public CW capability bit is
- * retained so a guest also stops playback when the administrator disables it.
+ * fleet identity: no public link, connections, uptime, host memory, revisions.
  */
-const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "effect_chat_v", "color", "color_show", "status", "state", "execution_state", "startup_phase"] as const;
-export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>>; canvas_worker: boolean } {
+const STATUS_FIELDS = ["name", "display_name", "avatar", "accent", "theme_avatar", "theme_accent", "card_v", "color", "color_show", "status", "state", "execution_state", "startup_phase"] as const;
+export function guestStatus(status: unknown, scope: ReadonlySet<string>): { instances: Array<Record<string, unknown>> } {
   const list = status && typeof status === "object" && Array.isArray((status as { instances?: unknown }).instances) ? (status as { instances: unknown[] }).instances : [];
   const instances: Array<Record<string, unknown>> = [];
   for (const raw of list) {
@@ -164,10 +196,14 @@ export function guestStatus(status: unknown, scope: ReadonlySet<string>): { inst
     if (typeof i.name !== "string" || !scope.has(i.name)) continue;
     const out: Record<string, unknown> = {};
     for (const k of STATUS_FIELDS) if (Object.prototype.hasOwnProperty.call(i, k) && i[k] !== undefined) out[k] = i[k];
+    // #2855: the sidebar's "Recent" and reply times — the last reply that reached the channel, never one to someone's
+    // web-only exchange (`last_reply` itself is not passed on).
+    if (typeof i.last_reply_channel === "string") out.last_reply = i.last_reply_channel;
+    // #2855: the web commands a guest may run on it (its palette) — the table's "anyone" cells, worked out by the fleet.
+    if (Array.isArray(i.guest_commands)) out.commands = i.guest_commands;
     instances.push(out);
   }
-  // This public capability bit carries no fleet identity; guests need it for live enable/disable too.
-  return { instances, canvas_worker: !!status && typeof status === "object" && (status as { canvas_worker?: unknown }).canvas_worker === true };
+  return { instances };
 }
 
 // ── Phase 2: the chat, as the channel showed it (#1920 §5.2) ──
@@ -184,12 +220,12 @@ export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: 
 }
 /**
  * A message as a guest gets it: without whose account wrote it (`mine` says it was the guest), and without another
- * person's message id and ticks; never an effect Try (effects stay admin-only). A reply's quote (#2272) only when the
+ * person's message id and ticks. A reply's quote (#2272) only when the
  * guest may see the message it quotes — otherwise just that it replies to an earlier message (`hidden`).
  */
 export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: ReadonlySet<string>): Record<string, unknown> {
-  const { from, channel: _channel, messageId, delivery, effectTrial: _trial, seenSeq: _seen, replyTo, ...rest } = m;
-  void _channel; void _trial; void _seen;
+  const { from, channel: _channel, messageId, delivery, seenSeq: _seen, replyTo, ...rest } = m;
+  void _channel; void _seen;
   const mine = from === accountOf(guest.owner);
   // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
   // shows. A guest gets the label, as the channel showed it.
@@ -200,7 +236,7 @@ export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: Rea
   return { ...rest, ...click, ...quote, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && delivery ? { delivery } : {}) };
 }
 const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
-  rows.filter((m) => !m.effectTrial && guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));
+  rows.filter((m) => guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));
 
 /**
  * One stream event as a guest gets it, or undefined (not sent). Default deny:
@@ -262,9 +298,12 @@ export function guestHistory(history: WebChatHistory, instance: string, limit: n
 export function guestPollBody(status: unknown, scope: ReadonlySet<string>, now: number, guest?: GuestRequest, after?: string | null, replay?: (after: string | null) => readonly WebChatMessage[]): Record<string, unknown> {
   const history = guest?.history?.() ?? null;
   if (!guest || !history || !replay) return { status: guestStatus(status, scope), messages: [], deliveries: [], reply_buttons: [], reactions: [], prompts: [], needs: [], cursor: null, now };
+  // M-2260: a guest's catch-up within the same budget as anyone's, measured on what it may see.
+  const window = catchUpWindow(guestMessages(replay(after ?? null), guest, scope));
   return {
     status: guestStatus(status, scope),
-    messages: guestMessages(replay(after ?? null), guest, scope),
+    messages: window.messages,
+    ...(window.truncated ? { truncated: true } : {}),
     deliveries: guestDeliveries(history, guest, scope),
     reply_buttons: guestButtonStates(history, guest, scope),
     reactions: history.reactionStates().filter((r) => { const row = history.find(r.instance, r.boot, r.id); return !!row && guestSeesMessage(row, guest, scope); }),

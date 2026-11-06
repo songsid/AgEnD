@@ -126,11 +126,11 @@ Or install manually:
 
 ```bash
 npm install -g @songsid/agend    # 1. Install
-agend quickstart                # 2. Setup — backend, bot token, done
+agend quickstart                # 2. Setup — web only by default (a bot is optional): backend, first agent, done
 agend start                     # 3. Launch your fleet 🎉 (skip if quickstart installed it as a service)
 ```
 
-Open Telegram or Discord, send a message to your bot, and start working from your phone. Or open the web dashboard at `http://localhost:19280/`. To sign in, run `agend web --code` on this machine, or send `/web` to your bot.
+Open the web dashboard at `http://localhost:19280/` and sign in with the code `agend web --code` prints on this machine — that is all a web-only fleet needs. With a Telegram or Discord bot, send it a message to work from your phone, and `/web` to it gets you a sign-in code too.
 
 Or in Docker: give [AgEnD in Docker](docs/docker.md) to an agent (General, or Claude Code on your machine). It is a runbook: the agent sets AgEnD up in a container for you and maintains it.
 
@@ -181,7 +181,7 @@ graph LR
 - Node.js ^22.14.0 || ^23.6.0 || >=24
 - tmux
 - One of the supported AI coding CLIs (installed and authenticated)
-- Telegram bot token ([@BotFather](https://t.me/BotFather)) or Discord bot token
+- Optional: a Telegram bot token ([@BotFather](https://t.me/BotFather)) or Discord bot token, to use AgEnD from a chat app as well as the web dashboard
 - Groq API key (optional, for voice)
 
 > **⚠️** All CLI backends run with `--dangerously-skip-permissions` (or equivalent). See [Security](docs/SECURITY.md).

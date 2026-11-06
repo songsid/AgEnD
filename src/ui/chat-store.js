@@ -9,6 +9,8 @@
 // navigation — it counts as use, as the old click did). Coming back to it reads nothing; the stream keeps it current.
 import "./chat-render.js";
 import { createLiveAgentReplies } from "./chat-live-replies.js";
+/** A message's identity on this page (ids restart with each fleet process; the boot makes them unique). */
+const msgKeyOf = (m) => `${m.boot}-${m.id}`;
 
 const R = () => globalThis.AgendChatRender;
 
@@ -43,7 +45,7 @@ const COMPACT_PAGE_LIMIT_MS = 11 * 60_000;
 export function createChatStore(deps) {
   const s = {
     msgs: {}, drafts: {}, replies: {}, pendingFiles: {}, sending: {}, outgoing: {}, instanceStatus: {}, waking: {},
-    prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), rbBusy: new Set(),
+    prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), gapped: new Set(), allHidden: new Set(), rbBusy: new Set(),
     pollMine: readPollMine(),
     // #1823 (#1828 review): the server's clock minus this device's. A poll's deadline is the server's; a page whose clock
     // is a few seconds off would count a 10 s poll wrong. Only the server's explicit `clock` sets it (#1830 review): a
@@ -161,13 +163,21 @@ export function createChatStore(deps) {
   async function openHistory(name, lease, signal) {
     if (s.historyRead.has(name) || signal?.aborted) return false;
     s.historyRead.add(name);
+    // M-2260: after a gap, what this chat held when the read began may sit across a hole: the answer replaces it, and
+    // only what arrived while the read was out (the live stream) is kept beside it — exactly what a reload would show.
+    const stale = s.gapped.has(name) ? new Set((s.msgs[name] || []).map(msgKeyOf)) : null;
     try {
       const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=200`, undefined, signal);
       if (signal?.aborted) { s.historyRead.delete(name); return false; }
       if (!r || !Array.isArray(r.messages)) { s.historyRead.delete(name); return true; }
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
+      // #2848: a guest's chat whose every message is hidden from it (between agents): its empty chat says so.
+      if (r.allHidden === true) s.allHidden.add(name); else s.allHidden.delete(name);
       for (const m of r.messages) liveReplies.message(m);
-      s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500);
+      if (stale && s.gapped.has(name)) {
+        s.gapped.delete(name);
+        s.msgs[name] = R().mergeMessages((s.msgs[name] || []).filter((m) => !stale.has(msgKeyOf(m))), r.messages, 500);
+      } else s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500);
       settleOutgoing(name);
       changed(name, "msgs");
     } catch { s.historyRead.delete(name); /* the live stream still works; the next visit tries again */ }
@@ -454,6 +464,13 @@ export function createChatStore(deps) {
   const isPasted = (f) => pastedTexts.has(f);
   /** Typing stays local. */
   function setDraft(target, value) { s.drafts[target] = value; }
+  /** #2911: a line added to the composer for the person to edit (after what is typed, on its own line; never twice). */
+  function addToDraft(target, line) {
+    const d = s.drafts[target] || "";
+    if (!target || !line || d.split("\n").includes(line)) return;
+    s.drafts[target] = d ? `${d.replace(/\n+$/, "")}\n${line}` : line;
+    changed(target);
+  }
   /**
    * #2272: reply to a message of this chat — what the bar above the composer shows (its sender and first words); only
    * its row is sent. One at a time per chat: a new one replaces it.
@@ -548,8 +565,17 @@ export function createChatStore(deps) {
   /** Whether a command can start for `target` now (none is out): checked before a typed command line is consumed. */
   const commandFree = (target) => !(s.commands[target] && s.commands[target].busy);
 
+  /**
+   * M-2260: the catch-up after a long absence brought only the newest messages ("gap"): every chat this page holds may
+   * have a hole. Each reads its newest history again — the one on screen now, the others when they are next opened.
+   */
+  function onGap() {
+    for (const name of new Set([...Object.keys(s.msgs), ...s.historyRead])) { s.historyRead.delete(name); s.gapped.add(name); }
+    if (s.current) void openHistory(s.current);
+  }
   /** Wire the store to the app's stream, for the life of the page. */
   function attach(stream) {
+    stream.on("gap", onGap);
     stream.on("status", applyStatus);
     stream.on("activity", applyActivity);
     stream.on("message", ingest);
@@ -569,11 +595,12 @@ export function createChatStore(deps) {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     setCurrent(name) { s.current = name; },
     onAgentReply: liveReplies.subscribe,
-    attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory,
+    attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory, onGap,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
     uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
-    startReply, clearReply, findQuoted,
+    startReply, clearReply, findQuoted, addToDraft,
     cancelReply, isUser, runCommand, dismissCommand, commandFree,
+    allHidden: (name) => s.allHidden.has(name),
   };
 }

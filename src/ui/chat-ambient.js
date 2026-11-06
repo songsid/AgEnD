@@ -252,13 +252,13 @@ export function ChatAmbient({ name, surface, part }) {
 }
 
 /**
- * The one-time note (the user's direction): the system asks for reduced motion and this chat's ambient or Canvas Worker plays anyway —
+ * The one-time note (the user's direction): the system asks for reduced motion and this chat's ambient plays anyway —
  * say so once on this device, and turn it off right here (this device's switch: the same on the public link, where
- * Settings is not). Shown only while an ambient or Canvas Worker is playing.
+ * Settings is not). Shown only while an ambient is playing.
  */
-export function AmbientMotionNote({ name, canvasPlaying = false }) {
+export function AmbientMotionNote({ name }) {
   const block = useAmbientBlock();
-  const shown = canvasPlaying || !block && !!ambientFor(name);
+  const shown = !block && !!ambientFor(name);
   const noteDue = motionNoteDue();
   const [open, setOpen] = useState(false);
   useEffect(() => {

@@ -87,6 +87,8 @@ const INSTANCE_FIELDS = [
   "board_cards_at_once",
   // Read by the fleet at each tool call (dashboard-permissions.ts).
   "dashboard", "office_access", "office_pack_access",
+  // M-2446: the agent dialog's Codex speed (backend_options.codex.speed) — read at launch, so an agent restart.
+  "backend_options",
 ] as const;
 
 /** ClassicBot channel fields the settings page renders. */
@@ -110,6 +112,7 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "web.log_tab": "now",
   "web.usage_report_on_public_link": "now",
   "web.office_levels": "now",
+  "web.preview_cdn": "now",
   "web.public_link.allow_public": "now",
   "web.public_link.ttl_minutes": "now",
   "web.public_link.protocol": "now",

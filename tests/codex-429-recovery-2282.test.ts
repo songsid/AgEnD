@@ -52,7 +52,7 @@ describe("#2282 real exhausted429 classifier and quota separation", () => {
     expect(backend.getErrorPatterns().find(e => e.pattern.test(live))).toMatchObject({ type: "quota", action: "pause" });
     expect(backend.getErrorPatterns().some(e => e.pattern.test("    " + live))).toBe(false);
     expect(backend.getErrorPatterns().some(e => e.pattern.test("A report says Quota exceeded. Check your plan and billing details."))).toBe(false);
-    for (const row of ['■ API error {"status":429,"code":"insufficient_quota"}', "You’ve hit your usage limit", "Your workspace is out of credits"]) expect(backend.getErrorPatterns().find(e => e.pattern.test(row))).toMatchObject({ type: "quota", action: "pause" });
+    for (const row of ['■ API error {"status":429,"code":"insufficient_quota"}', "You’ve hit your usage limit", "■ Your workspace is out of credits."]) expect(backend.getErrorPatterns().find(e => e.pattern.test(row))).toMatchObject({ type: "quota", action: "pause" });
   });
   it("does not classify a plain or indented quoted exhausted-row as a recoverable turn", () => {
     expect(pattern.pattern.test("A report says exceeded retry limit, last status: 429 Too Many Requests")).toBe(false);

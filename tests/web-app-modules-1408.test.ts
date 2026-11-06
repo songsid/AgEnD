@@ -8,12 +8,6 @@
  *   polling at once, and it opens only once its listeners are attached.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
-// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
-vi.mock("../src/web-experimental.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
-  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
-}));
 import { request, type Server } from "node:http";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -81,7 +75,7 @@ describe("module admission (#1408 §4)", () => {
       // The vendored files are part of it.
       for (const v of ["/assets/preact.module.js", "/assets/preact-hooks.module.js", "/assets/htm.module.js"]) expect(seen.has(v), v).toBe(true);
       // What needs a session stays behind the gate.
-      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/js/chat-effects.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
+      for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/settings-apply.js", "/ui/js/settings-confirm.js", "/ui/js/chat-store.js", "/ui/js/chat-thread.js", "/ui/events", "/ui/poll", "/ui/instances", "/api/settings/schema", "/api/settings/pending"]) {
         expect((await get(h.port, p)).status, p).toBe(401);
       }
     } finally { await h.stop(); }
@@ -98,12 +92,14 @@ describe("module admission (#1408 §4)", () => {
     // under /ui/js/, and View, public, beside it under /assets/.
     const dynamic = [...app.matchAll(/import\(([^)]*)\)/g)].map(m => m[1]!.trim());
     // #2233: the sign-in line, on every admin page (the module is behind the session gate).
-    expect(dynamic.sort()).toEqual(['"/ui/js/backend-signin.js"', 'retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-details.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-log.js", a', 'retryUrl("/ui/js/panel-needs.js", a', 'retryUrl("/ui/js/panel-settings.js", a',
+    expect(dynamic.sort()).toEqual(['"/ui/js/backend-signin.js"', 'retryUrl("/assets/panel-view.js", a', 'retryUrl("/ui/js/panel-chat.js", a', 'retryUrl("/ui/js/panel-details.js", a', 'retryUrl("/ui/js/panel-fleet.js", a', 'retryUrl("/ui/js/panel-log.js", a', 'retryUrl("/ui/js/panel-needs.js", a',
+      'retryUrl("/ui/js/panel-notices.js", a',                     // #2910 D2: a web-only fleet's Notices
+      'retryUrl("/ui/js/panel-settings.js", a',
       // #2347: the restart banner's Restart now runs Settings' runner (behind the session gate), in any panel.
       'retryUrl("/ui/js/settings-apply.js", a']);
     // The private ones only in "full" mode: nothing under /ui/ is reached from the View-only branch.
     const fullBranch = app.slice(app.indexOf('if (mode === "full") {'), app.indexOf("} else appStore.set"));
-    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-needs.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js", "/ui/js/settings-apply.js"]) {
+    for (const p of ["/ui/js/panel-chat.js", "/ui/js/panel-fleet.js", "/ui/js/panel-settings.js", "/ui/js/panel-needs.js", "/ui/js/panel-notices.js", "/ui/js/panel-details.js", "/ui/js/panel-log.js", "/ui/js/settings-apply.js"]) {
       expect(app.indexOf(p), p).toBeGreaterThan(app.indexOf('if (mode === "full") {'));
       expect(fullBranch, p).toContain(p);
     }
@@ -458,7 +454,8 @@ describe("catching up (#1425 review r3)", () => {
     s.on("hydration", (x: string) => states.push(x));
     s.start();
     const done = s.catchUp();                                  // read A, held
-    for (let i = 0; i < 1000; i++) h.sources[0].listeners.status({ data: "{}" });
+    // Any live events but status: a burst of statuses is one (M-2260, each a whole snapshot — the newest is kept).
+    for (let i = 0; i < 1000; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
     h.sources[0].listeners.prompt({ data: JSON.stringify({ nonce: "P3" }) });   // event 1,001: dropped
     h.reads[0]!.open(snap({ prompts: [] }));                  // A's snapshot predates P3
     await vi.waitFor(() => expect(h.reads).toHaveLength(2));   // recovery read B
@@ -487,7 +484,7 @@ describe("catching up (#1425 review r3)", () => {
     const done = s.catchUp();
     for (let r = 0; r < 4; r++) {
       await vi.waitFor(() => expect(h.reads).toHaveLength(r + 1));
-      for (let i = 0; i < 1001; i++) h.sources[0].listeners.status({ data: "{}" });
+      for (let i = 0; i < 1001; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
       h.reads[r]!.open(snap());
     }
     await expect(done).resolves.toBe(false);
@@ -504,7 +501,7 @@ describe("catching up (#1425 review r3)", () => {
     s.start();
     await vi.advanceTimersByTimeAsync(15_000);                 // a silent stream: fallback read A, held
     expect(h.reads).toHaveLength(1);
-    for (let i = 0; i < 1001; i++) h.sources[0].listeners.status({ data: "{}" });
+    for (let i = 0; i < 1001; i++) h.sources[0].listeners.delivery({ data: JSON.stringify({ i }) });
     h.reads[0]!.open(snap());
     await vi.waitFor(() => expect(h.reads).toHaveLength(2));
     expect(s.hydration()).toBe("catching");

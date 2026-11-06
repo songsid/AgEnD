@@ -1,0 +1,45 @@
+
+• ok
+
+  Worked for 8s • 12:00
+
+
+› third
+
+
+• ok
+
+⚠ Heads up, you have less than 5% of your weekly limit left. Run /status for a breakdown.
+
+⚠ Heads up, you have less than 5% of your 5h limit left. Run /status for a breakdown.
+
+  Worked for <1s • 12:00
+
+
+› fourth
+
+
+■ You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or
+try again at 10:06 PM.
+
+
+› fourthb
+
+
+■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.
+
+
+› fourthc
+
+
+■ You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue.
+
+
+  Usage limit reached
+  Request a limit increase from your owner to continue using codex. Request increase?
+
+
+  1. Yes (y)
+› 2. No (default) (n)
+
+  enter select · esc back

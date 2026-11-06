@@ -72,6 +72,12 @@ export const MAX_CARD_SIZES = 200;
 /** #1664: at most this many favorites. */
 export const MAX_FAVORITES = 50;
 const FAVORITES = "nav.favorites";
+/**
+ * #2855: the preferences a guest keeps as its own — on the host, in its account's bucket (`person:<connection>:<user>`),
+ * the same on every device, and gone when the admin removes the guest. The rest of a guest's page follows the host's look.
+ */
+export const GUEST_OWN_PREF_KEYS: readonly string[] = Object.freeze(["theme", "lang", FAVORITES, "nav.sort", "nav.filter"]);
+const GUEST_OWN: ReadonlySet<string> = new Set(GUEST_OWN_PREF_KEYS);
 
 /** The status chips of the sidebar filter (src/ui/shared/instance-nav.js STATUS_FACETS). */
 const STATUS_FACETS = new Set(["working", "needs", "idle", "stopped", "crashed"]);
@@ -287,6 +293,32 @@ export class WebPrefsStore {
   }
 
   rev(): number { const s = this.load(); return s === "unreadable" ? 0 : s.rev; }
+
+  /** #2855: a guest's own preferences, as kept in its bucket (a favourite only while its instance exists); null: unreadable. */
+  readGuestOwn(person: string): Record<string, unknown> | null {
+    const state = this.load();
+    if (state === "unreadable") return null;
+    const values = this.viewOf(state, person).values, own: Record<string, unknown> = {};
+    for (const key of GUEST_OWN_PREF_KEYS) if (Object.hasOwn(values, key)) own[key] = values[key];
+    return own;
+  }
+  /** #2855: a guest's write — its own keys only, into its own bucket; never the host's. All or nothing. */
+  writeForGuest(person: string, patch: Map<string, unknown>, opts: { onlyIfUnset?: boolean } = {}): WebPrefsWrite {
+    const other = [...patch.keys()].find((key) => !GUEST_OWN.has(key));
+    if (other !== undefined) return { ok: false, status: 400, error: `guest_pref_not_yours: ${other.slice(0, 64)}` };
+    const parsed = this.parsePatch(Object.fromEntries(patch));
+    if (!parsed.ok) return { ok: false, status: 400, error: parsed.error };
+    const result = this.writeBuckets([{ identity: person, patch: parsed.patch }], opts);
+    return result.ok ? { ok: true, view: this.viewOf(result.state, person), changed: result.changed } : result;
+  }
+  /** #2855: the admin removed a guest — its own preferences go. Its name stays (its past messages are shown with it). */
+  forgetGuest(person: string): void {
+    const state = this.load();
+    if (state === "unreadable") return;
+    const bucket = state.buckets.get(person);
+    const patch = new Map<string, unknown>(GUEST_OWN_PREF_KEYS.filter((key) => bucket?.values.has(key)).map((key) => [key, null]));
+    if (patch.size) this.writeBuckets([{ identity: person, patch }], {});
+  }
 
   /** #1664: an instance was removed — drop it from every favorites list (a write, and a new rev, only if one had it). */
   forgetInstance(name: string): void {

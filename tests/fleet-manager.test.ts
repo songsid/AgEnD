@@ -1250,7 +1250,8 @@ describe("FleetManager", () => {
     await (fm as any).reconcileInstances();
 
     expect(stop).toHaveBeenCalledWith("one");
-    expect(start).toHaveBeenCalledWith("one", expect.objectContaining({ [field]: value }), false);
+    // #2910: this fixture has no channel — a web-only fleet, whose agents run in topic mode.
+    expect(start).toHaveBeenCalledWith("one", expect.objectContaining({ [field]: value }), true);
   });
 
   it("keeps the running config when hot reload reads an empty fleet", async () => {

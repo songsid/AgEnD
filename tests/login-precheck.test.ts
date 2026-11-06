@@ -27,6 +27,7 @@ describe("/login auth pre-check", () => {
     // Sign-in paths under test: the CLIs count as installed whatever this host
     // has on PATH (CI has none — /login would install first, #1131).
     vi.spyOn(fm, "isCliInstalled").mockReturnValue(true);
+    vi.spyOn(fm, "isCliInstalledOffLoop").mockResolvedValue(true);
     const notifyAlert = vi.fn(async (chatId: string, _alert: unknown, opts?: { threadId?: string }) => ({
       messageId: "prompt-1", chatId, threadId: opts?.threadId,
     }));

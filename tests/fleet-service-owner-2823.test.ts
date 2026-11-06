@@ -24,7 +24,8 @@ function rig() {
       return { isFile: () => true };
     }),
     read: (p: string) => { if (!files.has(p)) throw Error("missing " + p); return files.get(p)!; },
-    real: (p: string) => p === proc + "/exe" ? "/usr/bin/node" : p === proc + "/cwd" ? "/scratch" : p,
+    real: (p: string) => p === proc + "/cwd" ? "/scratch" : p,
+    link: vi.fn((p: string) => { if (p !== proc + "/exe") throw Error("not a link " + p); return "/usr/bin/node"; }),
     stat: vi.fn(() => ({ uid: 1000 })), alive: vi.fn(() => alive), run,
     signal: vi.fn()
   };
@@ -37,6 +38,16 @@ describe("same-home fleet service ownership", () => {
     expect(owner.updateRefusal(r.home, r.deps)).toContain("Run kill 1234 to request a normal stop, confirm that process has exited, then run agend start and retry agend update");
     expect(owner.updateRefusal(r.home, { ...r.deps, locale: "zh-TW" })).toContain("套件與服務設定均未變更");
     expect(r.deps.signal).not.toHaveBeenCalled();
+  });
+  it("a fleet whose private runtime was replaced by the update (exe link \" (deleted)\") is still the unit's own fleet", () => {
+    const r = rig();
+    r.run.mockReturnValue({ status: 0, stdout: `MainPID=1234\nControlGroup=/unit\nActiveState=active\nSubState=running\nWorkingDirectory=${r.home}` });
+    r.files.set(r.proc + "/cgroup", "0::/unit\n");
+    r.deps.link.mockReturnValue("/lib/node_modules/@songsid/.agend-fSEyCO84/node_modules/@songsid/agend-node-linux-x64/bin/node (deleted)");
+    expect(owner.inspect(r.home, service, r.deps)).toMatchObject({ kind: "managed", pid: 1234, mainPid: 1234 });
+    expect(owner.restartRefusal(r.home, service, r.deps)).toBeNull();
+    r.deps.link.mockReturnValue("/usr/bin/python3 (deleted)");
+    expect(owner.inspect(r.home, service, r.deps)).toMatchObject({ kind: "unknown" });
   });
   it("legacy role-less fleet locks keep their documented fleet meaning", () => {
     const r = rig(); r.files.set(r.home + "/fleet.lock", JSON.stringify({ pid: 1234, nonce: "legacy" }));
@@ -137,4 +148,36 @@ it("CLI and target installer enforce the shared proof before install and before 
   expect(install.indexOf("fleetServiceOwner.updateRefusal")).toBeLessThan(install.indexOf('var admitted = admit('));
   expect(install.indexOf("var ownerRecheck")).toBeLessThan(install.indexOf("var fixed = repair("));
   expect(install).not.toContain("the previous service was never stopped");
+});
+
+describe("hybrid and v1 cgroup hosts (WSL): the fleet under its user unit is still managed", () => {
+  const unit = "/user.slice/user-0.slice/user@0.service/app.slice/com.agend.fleet.service";
+  const hostWith = (cgroupText: string) => {
+    const r = rig();
+    r.run.mockReturnValue({ status: 0, stdout: `MainPID=1234\nControlGroup=${unit}\nActiveState=active\nSubState=running\nWorkingDirectory=${r.home}` });
+    r.files.set(r.proc + "/cgroup", cgroupText);
+    return r;
+  };
+  const managedWith = (cgroupText: string) => { const r = hostWith(cgroupText); return owner.inspect(r.home, service, r.deps); };
+  // A hybrid host's /proc/<pid>/cgroup, as systemd 249 lays it out (v1 controllers, name=systemd, the unified 0:: row).
+  const hybrid = ["12:freezer:/", "11:devices:" + unit, "10:memory:" + unit, "9:pids:" + unit, "5:cpu,cpuacct:" + unit,
+    "1:name=systemd:" + unit, "0::" + unit, ""].join("\n");
+  it("hybrid (both 0:: and name=systemd): managed — the field host's refusal (update_unknown) is gone", () => {
+    expect(managedWith(hybrid)).toMatchObject({ kind: "managed", pid: 1234, mainPid: 1234 });
+    const r = hostWith(hybrid);
+    expect(owner.updateRefusal(r.home, r.deps)).toBeNull();
+    expect(owner.restartRefusal(r.home, service, r.deps)).toBeNull();
+  });
+  it("pure v1: the name=systemd row (alone, or beside an unused 0::/)", () => {
+    expect(managedWith(["4:pids:" + unit, "1:name=systemd:" + unit, ""].join("\n"))).toMatchObject({ kind: "managed" });
+    expect(managedWith(["1:name=systemd:" + unit, "0::/", ""].join("\n"))).toMatchObject({ kind: "managed" });
+  });
+  it("the 0:: row wins on a hybrid host: outside the unit there, not managed (never outside-proven either)", () => {
+    expect(managedWith(["1:name=systemd:" + unit, "0::/user.slice/session-c4.scope", ""].join("\n")).kind).toBe("unknown");
+  });
+  it("two rows of one kind, or no systemd row at all: unknown, as before", () => {
+    expect(managedWith(["0::" + unit, "0::" + unit, ""].join("\n")).kind).toBe("unknown");
+    expect(managedWith(["1:name=systemd:" + unit, "2:name=systemd:" + unit, ""].join("\n")).kind).toBe("unknown");
+    expect(managedWith(["4:pids:" + unit, ""].join("\n")).kind).toBe("unknown");
+  });
 });

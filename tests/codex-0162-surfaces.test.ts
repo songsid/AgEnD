@@ -65,7 +65,8 @@ function turnErrors(pane: string): string[] {
 
 const HOLD = { keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true };
 const IDLE = { ready: true, busy: false, deliverable: true, resumeLoading: false, runtimeDialog: null, startupDialog: null };
-const TRUST = { description: "Codex folder trust needs human confirmation", ...HOLD };
+// hmsg-53600a2c: an AgEnD session always trusts its folder — Enter, with the cursor on "Trust and continue".
+const TRUST = { description: "Codex folder trust — trusting the agent's own folder", keys: ["Enter"], holdOnly: false, blocksDelivery: true, inputBlocked: true };
 const PICKER = { description: "Codex rate-limit model-switch picker — Escape keeps the current model", keys: ["Escape"], holdOnly: false, blocksDelivery: true, inputBlocked: true };
 const UNKNOWN = { description: "Codex interactive selection needs human input", ...HOLD };
 

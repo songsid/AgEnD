@@ -15,7 +15,8 @@
 import { publicTunnelHostname, normalizePublicTunnelToken } from "../public-tunnel-config.js";
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "../child-process.js";
-import { accessSync, constants as fsConstants } from "node:fs";
+import { constants as fsConstants } from "node:fs";
+import { access } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 import { probeProcess } from "../web-terminal.js";
 import { fetchViaPublicResolver, fetchViaSystemResolver, type ProbeResponse } from "./public-fetch.js";
@@ -25,6 +26,7 @@ import {
   TUNNEL_STARTUP_DEADLINE_MS,
   TUNNEL_STOP_GRACE_MS,
   type PreflightResult,
+  type TunnelErrorKind,
   type TunnelExit,
   type TunnelHandle,
   type TunnelProvider,
@@ -164,13 +166,18 @@ function jsonLineUrl(line: string): string | null {
 /** Bounded: a child that never prints a URL must not grow our memory. */
 const MAX_BUFFERED_OUTPUT = 64 * 1024;
 
-export function resolveBinary(name: string, env: NodeJS.ProcessEnv): string | null {
+/**
+ * #3009: asynchronous, never on the fleet's main thread. A PATH entry on a stalled network or automount filesystem
+ * (NFS, sshfs, autofs; /mnt/c on WSL) blocks `access` in the kernel, uninterruptibly — on the main thread that was the
+ * whole fleet, with systemd's watchdog firing; on libuv's threadpool it is one pool thread, and the login fails instead.
+ */
+export async function resolveBinary(name: string, env: NodeJS.ProcessEnv): Promise<string | null> {
   if (name.includes("/")) return isAbsolute(name) ? name : null;
   for (const dir of (env.PATH ?? "").split(delimiter)) {
     if (!dir) continue;
     const candidate = join(dir, name);
     try {
-      accessSync(candidate, fsConstants.X_OK);
+      await access(candidate, fsConstants.X_OK);
       return candidate;
     } catch { /* keep looking */ }
   }
@@ -195,6 +202,11 @@ export interface CloudflaredOptions {
   binaryName?: string;
   /** Dashboard-only remotely managed connector. Never put token in argv/errors. */
   named?: { hostname: string; token: string };
+  /**
+   * #2906 (the fixed address's Test connection): a named connector is ready once it has registered with Cloudflare;
+   * nothing is fetched through it here (the test checks DNS and the round-trip itself, step by step).
+   */
+  registeredOnly?: boolean;
   protocol?: CloudflaredProtocol;
   /** Public resolvers the readiness probe asks first. Empty disables that path (system DNS only). */
   publicResolvers?: readonly string[];
@@ -213,6 +225,8 @@ export interface CloudflaredOptions {
   env?: NodeJS.ProcessEnv;
   /** Test seam: proving a death must be testable without a real process. */
   probe?: typeof probeProcess;
+  /** Test seam: preflight's executability check (#3009: asynchronous; fake-timer tests answer it at once). */
+  access?: (path: string, mode: number) => Promise<void>;
 }
 
 export class CloudflaredProvider implements TunnelProvider {
@@ -225,7 +239,7 @@ export class CloudflaredProvider implements TunnelProvider {
 
   async preflight(signal: AbortSignal): Promise<PreflightResult> {
     if (signal.aborted) return { ok: false, errorKind: "cancelled", detail: "cancelled before preflight" };
-    const path = resolveBinary(this.binaryName, this.env);
+    const path = await resolveBinary(this.binaryName, this.env);
     if (!path) {
       return {
         ok: false,
@@ -234,7 +248,7 @@ export class CloudflaredProvider implements TunnelProvider {
       };
     }
     try {
-      accessSync(path, fsConstants.X_OK);
+      await (this.opts.access ?? access)(path, fsConstants.X_OK);
     } catch {
       return { ok: false, errorKind: "binary-not-executable", detail: `${path} is not executable` };
     }
@@ -252,8 +266,25 @@ export class CloudflaredProvider implements TunnelProvider {
       throw new TunnelStartError("bad-url", `refusing to expose ${ctx.origin.origin}: only http://127.0.0.1:<port> may be tunnelled`);
     }
 
-    const pre = await this.preflight(ctx.signal);
+    // #3009: preflight is asynchronous, and a filesystem that never answers must not hold the login past its budget —
+    // nor past a cancel (#3017 review, Prism P2): the caller's abort ends the wait too.
+    let preTimer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    const pre = await Promise.race([
+      this.preflight(ctx.signal),
+      new Promise<PreflightResult>(resolve => {
+        preTimer = setTimeout(() => resolve({ ok: false, errorKind: "timeout", detail: "the cloudflared binary could not be checked in time (its filesystem did not answer)" }),
+          Math.max(0, deadline - now()));
+      }),
+      new Promise<PreflightResult>(resolve => {
+        onAbort = () => resolve({ ok: false, errorKind: "cancelled", detail: "cancelled during preflight" });
+        if (ctx.signal.aborted) onAbort(); else ctx.signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]).finally(() => { clearTimeout(preTimer); if (onAbort) ctx.signal.removeEventListener("abort", onAbort); });
     if (!pre.ok) throw new TunnelStartError(pre.errorKind, pre.detail);
+    // The last word before a process exists: a cancel or the deadline that landed while preflight was answering wins.
+    if (ctx.signal.aborted) throw new TunnelStartError("cancelled", "cancelled before the tunnel was started");
+    if (now() >= deadline) throw new TunnelStartError("timeout", "the tunnel's startup deadline passed before it was started");
 
     const named = this.opts.named;
     const namedBase = named ? validateQuickTunnelUrl(`https://${named.hostname}`, named.hostname) : null;
@@ -284,6 +315,11 @@ export class CloudflaredProvider implements TunnelProvider {
     try {
       const base = namedBase ?? await state.awaitUrl(deadline, ctx.signal, now);
       const pageUrl = `${base}${ctx.pagePath}`;
+      if (named && this.opts.registeredOnly) {
+        await state.awaitRegistered(deadline, ctx.signal, now);
+        state.publish(base, pageUrl);
+        return state;
+      }
       // After the validator, before the probe: cloudflared passes the public
       // Host through to the origin, so the origin has to be expecting it or it
       // will refuse our own readiness check.
@@ -307,7 +343,10 @@ export class CloudflaredProvider implements TunnelProvider {
       if (named) {
         if (exitedBeforeStop) await state.drainOutput();
         const originalKind = err instanceof TunnelStartError ? err.errorKind : "spawn-failed";
-        const kind = originalKind === "cancelled" ? originalKind : state.namedFailureKind() ?? namedReadinessFailure ?? originalKind;
+        let kind: TunnelErrorKind = originalKind === "cancelled" ? originalKind : state.namedFailureKind() ?? namedReadinessFailure ?? originalKind;
+        // #2906: once the connector registered, a connection failure is not the tunnel's (its output's transient dial
+        // errors included): a self-probe that could not connect is this machine's network, not Cloudflare's.
+        if (state.registered && kind === "named-connection-failed") kind = "named-self-unreachable";
         throw new TunnelStartError(kind, namedTunnelFailureMessage(kind) ?? "named tunnel failed; check the connector token, hostname and published application route",
           stopped.confirmed ? undefined : { pid: stopped.pid, identity: stopped.identity });
       }
@@ -411,6 +450,8 @@ class CloudflaredHandle implements TunnelHandle {
     const absorb = (chunk: Buffer | string) => {
       if (this.foundBase || this.published) return;
       this.buffered = (this.buffered + String(chunk)).slice(-MAX_BUFFERED_OUTPUT);
+      // #2906: a named connector that registered is up — a failed self-probe after it is this machine's network.
+      if (this.opts.named && !this.registered && /\bRegistered tunnel connection\b/i.test(this.buffered)) this.registered = true;
       if (this.opts.named) return; // Kept private and bounded, used only for a closed failure classification.
       const base = extractTunnelUrl(this.buffered);
       if (!base) return;
@@ -442,6 +483,8 @@ class CloudflaredHandle implements TunnelHandle {
     });
   }
 
+  /** #2906: the named connector printed "Registered tunnel connection" (it is connected to Cloudflare). */
+  registered = false;
   namedFailureKind(): NamedTunnelFailureKind | undefined {
     return this.opts.named ? classifyNamedTunnelOutput(this.buffered, this.opts.named.token) : undefined;
   }
@@ -515,6 +558,19 @@ class CloudflaredHandle implements TunnelHandle {
       else if (this.neverStarted) onSpawnFail(this.spawnError!);
       else if (signal.aborted) onAbort();
     });
+  }
+
+  /** #2906: until the named connector registers; a token refusal, an exit, a cancel or the deadline end it first. */
+  async awaitRegistered(deadline: number, signal: AbortSignal, now: () => number): Promise<void> {
+    for (;;) {
+      this.checkOutput();
+      if (this.registered) return;
+      if (signal.aborted) throw new TunnelStartError("cancelled", "cancelled while waiting for the connector to register");
+      if (this.namedFailureKind() === "named-auth-failed") throw new TunnelStartError("named-auth-failed", "named tunnel credentials were refused");
+      if (this.hasExited) throw new TunnelStartError("no-url", "the connector exited before it registered");
+      if (now() >= deadline) throw new TunnelStartError("timeout", "the connector did not register in time");
+      await new Promise(r => setTimeout(r, 100));
+    }
   }
 
   checkOutput(): void {

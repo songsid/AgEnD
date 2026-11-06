@@ -27,6 +27,9 @@
 // - every reconnect catches up once the new stream speaks (catchUp(), with the page's cursor — #1566/#1578), so what
 //   was said meanwhile is shown, once.
 // - a 401 is the session ending: nothing is retried (agend-auth.js says so).
+// - M-2260: a catch-up after a long absence carries only the newest messages (the server's budget) and says so
+//   (`truncated`): "gap" tells the chats to read their newest history again — it converges like a reload, never by
+//   asking a slow link for hours of replies in one answer.
 // - suspend()/resume(): the page is leaving (pagehide) / came back from the back-forward cache.
 
 // #1218: steps_tick — an instance's transcript moved while a Log watches it (SSE only: a poll page asks the Log itself).
@@ -37,7 +40,7 @@
 // offices — the stored offices changed ({ rev }; SSE only: the Office view reads /ui/offices again).
 // office_skins — a skin pack was uploaded or deleted ({ rev }; SSE only: the Office view reads /ui/office-skins again).
 // office_acts — the agents' live acts in the Office view changed ({ acts }, #2578; a poll page reads /ui/office-acts).
-const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "reactions", "steps_tick", "clock", "traffic", "delegation", "backend_login", "tasks", "offices", "office_skins", "office_acts", "office_pack_changes"];
+const EVENTS = ["status", "message", "agent_reply_live", "delivery", "deliveries", "prompt", "prompts", "prompt_resolved", "activity", "needs", "reply_buttons", "reactions", "steps_tick", "clock", "traffic", "delegation", "backend_login", "tasks", "offices", "office_skins", "office_acts", "office_pack_changes", "notice"];
 const MAX_HELD = 1000;                    // live events held during one catch-up read; more → read again afterwards
 const RETRY_DELAYS = [1000, 2000, 4000];  // after the first failed catch-up read; then it waits for Retry
 const POLL_LIMIT_MS = 10000;              // a poll that has not answered by then counts as failed
@@ -79,6 +82,22 @@ export function createStream(opts) {
     try { return Object.freeze({ source: "sse", receivedAt: now() }); } catch { return undefined; }
   }
   function setConnection(c) { if (state.connection !== c) { state.connection = c; emit("connection", c); } }
+
+  // M-2260: a tab the browser froze for hours gets every heartbeat it missed at once when it wakes — thousands of status
+  // frames, each a whole snapshot, each redrawing the page (seconds of work before the newest message shows). A status
+  // that comes after a quiet moment is delivered at once, as before; more statuses before the next turn of the page's
+  // task loop replace the waiting one, delivered then — or before any other event, so the order of events never changes.
+  // The next turn is a 0 ms timer: in a hidden tab the browser may run it late (a minute when throttled) — a status
+  // then waits that long while nobody looks (Needs you, the title's count and notifications ride `needs`, never held).
+  let pendingStatus = null, statusBurst = false;
+  const turn = () => env.setTimeout(endBurst, 0);
+  function endBurst() { statusBurst = false; flushStatus(); }
+  function flushStatus() { const d = pendingStatus; pendingStatus = null; if (d !== null) live("status", d, null); }
+  function liveStatus(data) {
+    if (statusBurst) { pendingStatus = data; return; }
+    statusBurst = true; turn();
+    live("status", data, null);
+  }
   function setHydration(h) { if (state.hydration !== h) { state.hydration = h; emit("hydration", h); } }
 
   /** A live event: delivered now, or held (in order) while a catch-up snapshot is on its way. */
@@ -115,6 +134,7 @@ export function createStream(opts) {
     if (polling) { if (!opts.join) pollAgain = true; return polling; }
     const mine = ++pollSeq, ep = readEpoch;
     let status = 0;                                  // this read's HTTP status — its own, never another read's
+    flushStatus();                                   // a status that came before this read is older than its snapshot
     if (sse && !held) held = [];
     let limit = null;
     const read = (async () => {
@@ -128,6 +148,9 @@ export function createStream(opts) {
         if (d.status) emit("status", d.status);
         for (const m of d.messages || []) emit("message", m, { source: "poll" });
         if (typeof d.cursor === "string") state.cursor = d.cursor;
+        // M-2260: the server sent only the newest messages of a long absence (its catch-up budget): the chats read their
+        // newest history again, as a reload would, instead of this read carrying everything that was missed.
+        if (d.truncated === true) emit("gap", {});
         if (Array.isArray(d.deliveries)) emit("deliveries", d.deliveries);
         if (Array.isArray(d.prompts)) emit("prompts", d.prompts);
         if (Array.isArray(d.reply_buttons)) for (const u of d.reply_buttons) emit("reply_buttons", u);   // #1266
@@ -157,6 +180,7 @@ export function createStream(opts) {
   }
   /** #1580 review: the page lets go of everything in flight — reads, the queued poll, the catch-up and its retry wait. */
   function cancelWork() {
+    pendingStatus = null;                            // a page let go of (suspend, end, close) draws no waiting status
     readEpoch++; epoch++;
     pollSeq++; polling = null; pollAgain = false; held = null;
     env.clearTimeout(retryTimer); retryTimer = null;
@@ -225,6 +249,8 @@ export function createStream(opts) {
         else alive();
         // #1823: a clock reading is about now, not about order: it is never held behind a catch-up (it would be stale).
         if (name === "clock") { emit(name, data); return; }
+        if (name === "status") { liveStatus(data); return; }
+        flushStatus();                                   // a status waiting goes first: the order never changes
         live(name, data, name === "message" ? e.lastEventId : null, ingress);
       });
     }

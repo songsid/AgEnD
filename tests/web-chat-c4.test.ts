@@ -295,10 +295,16 @@ describe("replies on a web-only fleet", () => {
     ["a configured channel whose adapter is still starting", { channel: { type: "telegram", bot_token_env: "X" }, instances: {} }, "reply"],
     ["a configured channels list", { channels: [{ type: "discord", bot_token_env: "X" }], instances: {} }, "reply"],
     ["no config yet", null, "reply"],
-    ["another channel tool", webOnly, "react"],
   ])("unchanged for %s: retry shortly", async (_n, config, tool) => {
     const { reply, events } = await outbound(config, { tool, args: { text: "x" } });
     expect(reply.error).toBe("Channel adapters are not ready — retry shortly");
+    expect(events.filter(e => e.event === "message")).toEqual([]);
+  });
+  // #2910: another channel tool on a web-only fleet is told it is not available there (never "retry shortly":
+  // no adapter will ever come).
+  it("another channel tool on a web-only fleet: not available there (#2910)", async () => {
+    const { reply, events } = await outbound(webOnly, { tool: "react", args: { text: "x" } });
+    expect(reply.error).toBe("react is not available on a web-only fleet (no Discord or Telegram connection); answer with reply");
     expect(events.filter(e => e.event === "message")).toEqual([]);
   });
 });

@@ -5,13 +5,16 @@ import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync, statS
 import { ensureInstanceDir } from "./private-dir.js";
 import { assertNoSessionOomStop } from "./session-oom-stop.js";
 import { execFileSync } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
+import type { TopicDeleteOutcome } from "./instance-topic-delete.js";
 import { DEFAULT_INSTANCE_CONFIG, getEffectiveInstanceDefaults, getTmuxSession, newInstanceKiroUi } from "./config.js";
 import { readStatuslineModel, uniqueInstanceName } from "./topic-commands.js";
-import { isModelCompatible } from "./backend/types.js";
+import { sanitizeInstanceName } from "./instance-names.js";
+import { isModelCompatible, noteResolvedBinary } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
@@ -31,7 +34,7 @@ import type { DeliveryStatus } from "./status-emojis.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, readPauseReason, writePausedMarker, type PauseReason } from "./pause-marker.js";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
-import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { GENERAL_PAUSE_ERROR, isGeneralInstance, GENERAL_NAME } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialProfileEnv, credentialProfileLoginCommand } from "./backend/credential-profile.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
@@ -116,6 +119,19 @@ export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallat
 export function checkBinaryInstalled(binary: string): boolean {
   return measureSyncWork("lifecycle.checkBinaryInstalled", () => checkBinaryInstalledSync(binary));
 }
+/**
+ * M-2281 (#2980): the same check without holding the fleet loop — for paths a chat click runs (`/login`'s install
+ * routing), where a slow PATH (WSL's /mnt/c entries) would otherwise stall every adapter for up to the timeout.
+ */
+export function checkBinaryInstalledAsync(binary: string): Promise<boolean> {
+  return new Promise(resolve => {
+    try {
+      execFile("which", [binary], { timeout: 2000 }, err => resolve(!err));
+    } catch {
+      resolve(false);
+    }
+  });
+}
 function checkBinaryInstalledSync(binary: string): boolean {
   try {
     execFileSync("which", [binary], { stdio: "pipe", timeout: 2000 });
@@ -174,6 +190,7 @@ export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): 
  * FleetManager implements this.
  */
 export interface LifecycleContext {
+  readonly agentCredentials?: Pick<import("./agent-credentials.js").AgentCredentials, "issue" | "invalidate">;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
   readonly dataDir: string;
@@ -207,8 +224,10 @@ export interface LifecycleContext {
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
-  /** adapterId selects the world, mirroring createForumTopic (rollback must delete where it created). */
-  deleteForumTopic(topicId: number | string, adapterId?: string): Promise<void>;
+  /** #2910: no Discord or Telegram connection at all — a new agent gets no topic (it is reached from the dashboard). */
+  isWebOnlyFleet?(): boolean;
+  /** delete_instance: the removal, then (unless `deleteTopic` is false) the agent's own topic, through its own bot. */
+  removeInstanceAndTopic(name: string, authorization: ExplicitInstanceRemoval, opts: { deleteTopic: boolean }): Promise<TopicDeleteOutcome>;
   /**
    * A bound delete for the world `adapterId` selects, captured by the caller
    * BEFORE awaiting createForumTopic. Rollback must use exactly this — never
@@ -249,6 +268,8 @@ export interface LifecycleContext {
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
   notifySessionOomStop?(name: string, unclear?: boolean): Promise<void>;
+  /** A pre-launch refusal is still a visible wait when no daemon was published. */
+  setKiroCompatibilityHold?(name: string, message: string | null): void;
   /** Tell every General, as an agent, that kiro-cli can no longer run this instance as configured. */
   queueKiroIncompatNotice?(name: string, reason: string): void;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -267,6 +288,13 @@ export interface LifecycleContext {
   checkModelFailover(name: string, fiveHourPct: number): void;
   /** Retire (delete) any pending Cancel button for an instance. No-op if none. */
   clearCancelButton(name: string): void;
+  /**
+   * #2897: a held dialog's notices — the instance-topic one and the General one, each unless its text is null —
+   * edited in place on a re-report, never posted twice. Absent: each report is a fresh post (contexts without a ledger).
+   */
+  showParkedNotice?(name: string, topicText: string | null, generalText: string | null): void;
+  /** #2897: the held dialog is resolved, or the instance stopped/restarted: take its notices back. No-op if none. */
+  resolveParkedNotice?(name: string): void;
   /** Called after a replacement Daemon object is live, for generation fencing and post-resume notices. */
   onDaemonReady?(name: string, daemonBootId: string): void;
   /** Test/integration seam for the non-LLM Codex quota second opinion. */
@@ -396,6 +424,17 @@ const AUTH_ALERT_COOLDOWN_MS = 5 * 60_000;
  * token-free check answers for all of them.
  */
 const AUTH_VERIFY_CACHE_MS = 60_000;
+
+/**
+ * #2872: a one-line notice ("⚠️ Grok weekly limit used up — paused") where it is posted. In the instance's own topic
+ * (`elsewhereName` null) as it is; anywhere else (General) it must say whose: "⚠️ <name>: Grok weekly limit used up —
+ * paused". A line without a leading emoji gets the name in front.
+ */
+export function plainNoticeLine(line: string, elsewhereName: string | null): string {
+  if (!elsewhereName) return line;
+  const m = /^(\p{Extended_Pictographic}\uFE0F?)\s*/u.exec(line);
+  return m ? t("inst.notice_named", m[1], elsewhereName, line.slice(m[0].length)) : t("inst.notice_named", "", elsewhereName, line).trimStart();
+}
 
 const CODEX_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
 /**
@@ -569,6 +608,19 @@ export class InstanceLifecycle {
 
   constructor(private ctx: LifecycleContext) {}
 
+  /** M-2269: the last dialog text logged per instance — the same screen seen again on later scans is not logged again. */
+  private readonly lastLoggedScreen = new Map<string, string>();
+  /**
+   * M-2269: `{ screen }` for a dialog/prompt event's Log row (the daemon already stripped, masked and capped it), or
+   * nothing when there is none or it is the same text this instance's Log already has. Bookkeeping only.
+   */
+  private screenForLog(name: string, screen: string | undefined): { screen?: string } {
+    if (typeof screen !== "string" || !screen) return {};
+    if (this.lastLoggedScreen.get(name) === screen) return {};
+    this.lastLoggedScreen.set(name, screen);
+    return { screen };
+  }
+
   /** Seed only the Codex daemon replacing a scheduled capacity retry. */
   private applyCapacityBackoffBaseline(name: string, backendName: string, daemon: Daemon): void {
     if (backendName !== "codex") return;
@@ -604,6 +656,27 @@ export class InstanceLifecycle {
     // must not count as dispatched, or a later retraction would be an orphan.
     const dispatched = this.ctx.notifyInstanceTopic(name, text);
     return dispatched !== false;
+  }
+
+  /**
+   * #2897: a held dialog's notice in the instance's topic and in General — through the fleet's notice ledger when it
+   * has one (one live message per place, edited in place, taken back on resolve), else as two fresh posts. The topic
+   * notice is suppressed as before; the General text skips notifyFleetError's text throttle, as the ledger keeps it to one.
+   */
+  private notifyParked(name: string, kind: string, topicText: string, generalText: string): void {
+    if (!this.ctx.showParkedNotice) {
+      this.notifyIncident(name, kind, topicText);
+      this.ctx.notifyFleetError?.(generalText);
+      return;
+    }
+    if (this.ctx.isPlannedRestart()) {
+      this.ctx.logger.info({ name, kind }, "Incident notification suppressed — planned restart in progress");
+      return;
+    }
+    // As before: a storm folds the topic notice into its summary; General's is not part of that.
+    const stormed = this.ctx.stormSuppressed?.(kind) === true;
+    if (stormed) this.ctx.logger.info({ name, kind }, "Incident notification suppressed — included in tmux storm summary");
+    this.ctx.showParkedNotice(name, stormed ? null : topicText, generalText);
   }
 
   /**
@@ -872,6 +945,21 @@ export class InstanceLifecycle {
       }
       this.ctx.notifyInstanceTopic(name, t("delivery.cancelled_unsent", messages.length, name));
     }, this.ctx.logger, `daemon.human_messages_cancelled[${name}]`));
+    // #3030: messages handed to the busy CLI's own queue that it never took (it went idle without them), or that a
+    // restart left unverifiable (its transcript could not be read, so they were not sent again). Each is marked ❌ and
+    // the person is told once — never a silent ✅.
+    daemon.on("human_handoffs_unsettled", safeHandler((data: { reason: "not-taken" | "unverifiable"; messages: Array<{ chatId: string; messageId: string; threadId?: string }> }) => {
+      const messages = Array.isArray(data?.messages) ? data.messages : [];
+      if (!messages.length) return;
+      const reason = data.reason === "unverifiable" ? "unverifiable" : "not-taken";
+      this.ctx.eventLog?.insert(name, "handoffs_unsettled", { reason, count: messages.length });
+      this.ctx.logger.warn({ name, reason, count: messages.length }, "Queued messages not taken by the CLI — telling the person");
+      for (const m of messages) {
+        if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+        else this.ctx.reactMessageStatus(name, m.chatId, m.messageId, "failed", m.threadId);
+      }
+      this.ctx.notifyInstanceTopic(name, t(reason === "unverifiable" ? "delivery.handoff_unverified_after_restart" : "delivery.handoff_not_taken", messages.length, name));
+    }, this.ctx.logger, `daemon.human_handoffs_unsettled[${name}]`));
   }
 
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
@@ -1199,7 +1287,7 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
-    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null }) => {
+    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean; kind?: InteractionKind; episode?: number; backend?: string; unrecognised?: boolean; question?: string | null; advice?: "claude-resume"; screen?: string }) => {
       // A CLI dialog the daemon will NOT answer on its own. No assist buttons
       // here on purpose: the General "Confirm" assist sends Enter, and Enter is
       // exactly the destructive default for Claude's resume prompt. The text
@@ -1207,7 +1295,7 @@ export class InstanceLifecycle {
       // position, so the human must LOOK and pick the option explicitly — no
       // fixed key sequence; a known dialog whose auto-dismiss did not take gets
       // the keys we would have pressed.
-      this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly });
+      this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly, ...this.screenForLog(name, data.screen) });
       this.ctx.logger.warn({ name, description: data.description, holdOnly: data.holdOnly }, "Instance is parked on a CLI dialog — not auto-answering");
       if (this.ctx.isPlannedRestart()) return;
       // kind === "dialog" is the default bucket for dialogs without a specific
@@ -1224,18 +1312,20 @@ export class InstanceLifecycle {
       if (data.unrecognised) {
         // #1990: the question is a pane line — it may not name a place of its own.
         const asked = data.question ? t("inst.unrecognised_prompt_question", noPlaceMarkers(data.question)) : "";
-        this.notifyIncident(name, "dialog_parked", t("inst.unrecognised_prompt", name, asked));
-        this.ctx.notifyFleetError?.(t("fleet.unrecognised_prompt", instancePlace(name), asked));
+        this.notifyParked(name, "dialog_parked", t("inst.unrecognised_prompt", name, asked), t("fleet.unrecognised_prompt", instancePlace(name), asked));
         return;
       }
       const category = data.kind && data.kind !== "dialog" ? interactionCategory(data.kind, data.backend) : null;
       const text = category ? t("inst.interaction_parked", name, category) : data.holdOnly
-        ? t("inst.dialog_parked_hold", name, data.description)
-        : t("inst.dialog_parked_stuck", name, data.description);
-      this.notifyIncident(name, "dialog_parked", text);
+        // #2872: the Claude session-resume advice only for that prompt (it read as nonsense under a grok or kiro dialog).
+        ? t("inst.dialog_parked_hold", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_hold_claude_resume") : "")
+        : t("inst.dialog_parked_stuck", name, data.description) + (data.advice === "claude-resume" ? " " + t("inst.dialog_parked_stuck_claude_resume") : "");
       // #1990: in General, the instance's name links to its topic.
-      this.ctx.notifyFleetError?.(category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
+      this.notifyParked(name, "dialog_parked", text, category ? t("fleet.interaction_parked", instancePlace(name), category) : t("fleet.dialog_parked", instancePlace(name), data.description));
     }, this.ctx.logger, `daemon.dialog_parked[${name}]`));
+
+    // #2897: the held dialog is gone (closed, answered, auto-answered) — its notices go with it.
+    daemon.on("dialog_unparked", safeHandler(() => this.ctx.resolveParkedNotice?.(name), this.ctx.logger, `daemon.dialog_unparked[${name}]`));
 
     daemon.on("dialog_answer_ignored", safeHandler((data: { name: string; description: string; attempts: number; holdsDeliveries: boolean }) => {
       // A runtime dialog the daemon DID answer, that did not go away. Same rule as dialog_parked: no assist
@@ -1245,16 +1335,15 @@ export class InstanceLifecycle {
       this.ctx.logger.warn({ name, description: data.description, attempts: data.attempts }, "A CLI dialog is not taking the daemon's answer");
       if (this.ctx.isPlannedRestart()) return;
       const text = t(data.holdsDeliveries ? "inst.dialog_answer_ignored_held" : "inst.dialog_answer_ignored", name, data.description, String(data.attempts));
-      this.notifyIncident(name, "dialog_answer_ignored", text);
-      this.ctx.notifyFleetError?.(t("fleet.dialog_answer_ignored", instancePlace(name), data.description, String(data.attempts)));
+      this.notifyParked(name, "dialog_answer_ignored", text, t("fleet.dialog_answer_ignored", instancePlace(name), data.description, String(data.attempts)));
     }, this.ctx.logger, `daemon.dialog_answer_ignored[${name}]`));
 
     daemon.on("instance_interaction", () => this.ctx.onAttentionChanged?.(name));
     // #2822: a usage-limit hold began or ended — Needs you lists it while it lasts.
     daemon.on("usage_hold", () => this.ctx.onAttentionChanged?.(name));
 
-    daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
-      this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
+    daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string; screen?: string }) => {
+      this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind, ...this.screenForLog(name, data.screen) });
       this.ctx.logger.warn({ name, kind: data.kind, prompt: data.prompt }, "Instance is waiting for interactive terminal input");
       if (this.ctx.isPlannedRestart()) {
         this.ctx.logger.info({ name }, "Interactive prompt notification suppressed — planned restart in progress");
@@ -1278,6 +1367,9 @@ export class InstanceLifecycle {
       message: string;
       fleetWide?: boolean;
       verifyQuota?: boolean;
+      skipUsageVerify?: boolean;
+      /** #2872: the person's whole one-line notice, localised (posted instead of inst.notification); `message` stays for logs and webhooks. */
+      notice?: string;
       inProgress?: boolean;
       pattern?: RegExp;
     }) => {
@@ -1307,7 +1399,7 @@ export class InstanceLifecycle {
       // ChatGPT-plan feature, so an account that cannot be asked is almost
       // always a plain one, and a wrongly paused reserve wakes with /wake while
       // a missed pause fails silently forever.
-      if (data.type === "quota" && data.action === "pause" && this.backendOf(name) === "codex") {
+      if (data.type === "quota" && data.action === "pause" && !data.skipUsageVerify && this.backendOf(name) === "codex") {
         const verdict = await this.verifyCodexQuota();
         this.ctx.logger.info({ name, backend: "codex", decision: verdict === "available" || verdict === "reserve" ? "ignore" : "pause", evidence: `usage-${verdict}` },
           `codex usage-limit decision: decision=${verdict === "available" || verdict === "reserve" ? "ignore" : "pause"} evidence=usage-${verdict}`);
@@ -1401,7 +1493,11 @@ export class InstanceLifecycle {
       } else if (notificationTarget && data.action !== "backoff_restart" && data.action !== "nudge_continue") {
         // backoff_restart / nudge_continue notifications are handled in the action branch below
         // with per-attempt context (attempt N/max, delay).
-        this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, incidentMessage, data.action));
+        // #2872: a notice the user asked to be one line (grok's weekly limit) is posted as it is: no "(action: …)", and no
+        // name in the instance's own topic; elsewhere (a ClassicBot's go to General) the name follows its emoji.
+        this.notifyIncident(notificationTarget, "pty_error", data.notice
+          ? plainNoticeLine(data.notice, notificationTarget === name ? null : name)
+          : t("inst.notification", emoji, name, incidentMessage, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 
@@ -1619,6 +1715,7 @@ export class InstanceLifecycle {
 
   /** Invalidate every start/wake already running for `name` (they will not publish). */
   invalidate(name: string): void {
+    this.ctx.agentCredentials?.invalidate(name);
     this.lifecycleEpochs.set(name, this.epochOf(name) + 1);
   }
 
@@ -1734,13 +1831,21 @@ export class InstanceLifecycle {
       return;
     }
 
-    // Verify backend binary is in PATH before spawning
+    // Verify backend binary is in PATH before spawning. Off-loop resolve pins a
+    // hint so createBackend's resolveBinary does not run synchronous `which`
+    // (#1490 row 67). Missing still only logs; start continues.
     const installation = BACKEND_INSTALLATION_INFO[backendName];
-    if (installation && !checkBinaryInstalled(installation.binary)) {
-      this.ctx.logger.error(
-        { binary: installation.binary, backend: backendName, instance: name },
-        `Backend binary "${installation.binary}" not found in PATH`,
-      );
+    if (installation) {
+      const { resolveBackendBinary } = await import("./backend-availability.js");
+      const path = await resolveBackendBinary(backendName);
+      noteResolvedBinary(installation.binary, path ?? installation.binary);
+      check();
+      if (!path) {
+        this.ctx.logger.error(
+          { binary: installation.binary, backend: backendName, instance: name },
+          `Backend binary "${installation.binary}" not found in PATH`,
+        );
+      }
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
@@ -1770,6 +1875,16 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
+    daemon.on("kiro_compatibility_hold", (message: string | null) => {
+      const owner = this.daemons.get(name);
+      if (owner ? owner !== daemon : this.epochOf(name) !== epoch) return;
+      this.ctx.setKiroCompatibilityHold?.(name, message);
+    });
+    daemon.setAgentCredentialIssuer?.(token => {
+      if (this.epochOf(name) !== epoch) throw new SupersededStartError(name);
+      this.ctx.agentCredentials?.issue(name, token);
+    });
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
     daemon.setWorkLeaseCheck(() => this.hasWorkLease(name));
     if (seedNow) daemon.seedActivityNow();
@@ -1882,7 +1997,10 @@ export class InstanceLifecycle {
       this.ctx.touchActivity(name);
     });
 
+    this.ctx.setKiroCompatibilityHold?.(name, null);
     this.attachIncidentHandlers(name, daemon);
+    // #2897: a new daemon starts with no dialog held; a notice the last one left (a crash, a respawn) is out of date.
+    this.ctx.resolveParkedNotice?.(name);
 
     daemon.on("pty_recovered", safeHandler((data: { name: string; downtime_s: number }) => {
       const mins = Math.floor(data.downtime_s / 60);
@@ -2043,6 +2161,8 @@ export class InstanceLifecycle {
     this.invalidate(name);
     this.wokeAt.delete(name);
     this.ctx.setTopicIcon(name, "remove");
+    // #2897: a stopped instance holds no dialog — its "needs a human" notices are out of date.
+    this.ctx.resolveParkedNotice?.(name);
     // B1: cancel any pending capacity backoff timer so a stopped/removed
     // instance is not restarted behind the user's back.
     const pendingBackoff = this.capacityBackoffTimers.get(name);
@@ -2460,7 +2580,9 @@ export class InstanceLifecycle {
     const topicDeleter = this.ctx.getForumTopicDeleter?.(adapterId) ?? null;
 
     try {
-      check(); createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId); check();
+      // #2910: a web-only fleet has no topics to create — the agent is reached from the dashboard.
+      const webOnly = this.ctx.isWebOnlyFleet?.() === true;
+      if (!webOnly) { check(); createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId); check(); }
 
       // Use explicit topic_name as name base when provided; fall back to directory basename
       const explicitTopicName = args.topic_name;
@@ -2471,7 +2593,15 @@ export class InstanceLifecycle {
       // (#1305 P1): full topic_id string equality, plus the adapter/world
       // check when the existing entry records one (channel_id). A dir-only
       // collision (no config entry) can never prove that.
-      {
+      if (webOnly) {
+        // No topic to suffix with: the name as asked, else the first free "-2", "-3"…. "general" is never handed out
+        // here (#2919 review): that name alone makes an instance the General (its create/start tools, never paused).
+        const instances = this.ctx.fleetConfig?.instances ?? {};
+        const taken = (candidate: string) => candidate === GENERAL_NAME || candidate in instances || existsSync(this.ctx.getInstanceDir(candidate));
+        const clean = sanitizeInstanceName(nameBase);
+        newInstanceName = clean;
+        for (let n = 2; taken(newInstanceName); n++) newInstanceName = `${clean}-${n}`;
+      } else {
         const instances = this.ctx.fleetConfig?.instances ?? {};
         const wanted = String(createdTopicId!);
         newInstanceName = uniqueInstanceName(nameBase, createdTopicId!, (candidate) =>
@@ -2500,7 +2630,7 @@ export class InstanceLifecycle {
         ...DEFAULT_INSTANCE_CONFIG,
         ...getEffectiveInstanceDefaults(this.ctx.fleetConfig!.defaults ?? {}),
         working_directory: workDir,
-        topic_id: createdTopicId,
+        ...(createdTopicId != null ? { topic_id: createdTopicId } : {}),
         ...(description ? { description } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(args.model ? { model: args.model } : {}),
@@ -2530,7 +2660,7 @@ export class InstanceLifecycle {
       const beforeCreate = structuredClone(this.ctx.fleetConfig);
       const persist = (): void => {
         this.ctx.fleetConfig!.instances[newInstanceName!] = instanceConfig;
-        this.ctx.routing.register(createdTopicId!, { kind: "instance", name: newInstanceName! });
+        if (createdTopicId != null) this.ctx.routing.register(createdTopicId, { kind: "instance", name: newInstanceName! });
         try { this.ctx.saveFleetConfig(); }
         finally { createUndo = settingsUndo((this.ctx.getSettingsConfigPath?.() ?? join(this.ctx.dataDir, "fleet.yaml")), beforeCreate, this.ctx.fleetConfig, [["instances", newInstanceName!]]); }
       };
@@ -2587,7 +2717,8 @@ export class InstanceLifecycle {
     respond: (result: unknown, error?: string) => void,
   ): Promise<void> {
     const instanceName = args.name;
-    const deleteTopic = args.delete_topic ?? false;
+    // The user's decision (beta.9): deleting an agent deletes its topic, unless `delete_topic: false` keeps it.
+    const deleteTopic = args.delete_topic ?? true;
 
     const instanceConfig = this.ctx.fleetConfig?.instances[instanceName];
     if (!instanceConfig) {
@@ -2600,12 +2731,9 @@ export class InstanceLifecycle {
       return;
     }
 
-    if (deleteTopic && instanceConfig.topic_id) {
-      await this.ctx.deleteForumTopic(instanceConfig.topic_id);
-    }
-
-    await this.ctx.removeInstance(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"));
-    respond({ success: true, name: instanceName, topic_deleted: deleteTopic });
+    // topic_deleted is the platform's answer, never the request; when the topic stays, topic_reason says why.
+    const topic = await this.ctx.removeInstanceAndTopic(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"), { deleteTopic });
+    respond({ success: true, name: instanceName, topic_deleted: topic.deleted, ...(topic.deleted ? {} : { topic_reason: topic.reason }) });
   }
 
   has(name: string): boolean {

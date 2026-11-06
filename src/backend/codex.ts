@@ -22,6 +22,7 @@ import { execFileSync } from "node:child_process";
 import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
+import { stripCodexPassiveHintRow, withCodexPassiveHintTail } from "./codex-footer-hints.js";
 import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -31,13 +32,22 @@ import {
   resolveCredentialProfile,
 } from "./credential-profile.js";
 import { getAgendHome } from "../paths.js";
-import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./codex-metadata.js";
+import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels, readCodexModelServiceTiers, resolveCodexLaunchModel } from "./codex-metadata.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
+import { codexSpeed } from "./codex-speed.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
-import { type CodexResumePlan, type ExactCwdSession, codexSiblingState, codexStateDbAbsent, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestMissedCwdRollout } from "./codex-session-lookup.js";
+import { type CodexResumePlan, type ExactCwdSession, checkResumeId, codexSiblingState, codexStateDbAbsent, codexThreadRowExists, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestResumableRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
+import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
+import { selectionCard } from "../selection-card.js";
+/**
+ * #2910 D4: a Codex selection AgEnD holds for a person (an approval, a trust variant, a model switch, a session picker),
+ * as a card to answer from the dashboard of a web-only fleet. Never the sign-in screen: it is signed in from the
+ * dashboard's own sign-in (#2233), not by picking a row in the pane.
+ */
+const codexSelectionCard = (pane: string) => (/Sign in with ChatGPT|Provide your own API key|Sign in with Device Code/.test(pane) ? null : selectionCard(pane, "Codex"));
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
@@ -319,11 +329,17 @@ type CodexTrustPrompt = {
   root: string | null;
   rootNote: "absent" | "parsed" | "invalid";
   safeChoice: boolean;
+  /**
+   * The user's decision (hmsg-53600a2c): an AgEnD session always trusts its folder. The cursor is on "Trust and continue"
+   * — the default row, where Enter trusts — among only the trust layout's own options, above its enter/esc footer.
+   * A digit does not answer this list (0.160 and 0.166: "1" leaves it up), so Enter on this row is the one safe key.
+   */
+  trustCursor: boolean;
 };
 
 /** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
 function codexTrustPromptState(pane: string): CodexTrustPrompt {
-  const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false };
+  const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false, trustCursor: false };
   const rows = pane.replace(/\r/g, "").split("\n");
   let last = rows.length - 1;
   while (last >= 0 && rows[last].trim() === "") last--;
@@ -363,7 +379,16 @@ function codexTrustPromptState(pane: string): CodexTrustPrompt {
     && choices[0].cursor === "›" && choices[0].number === "1" && choices[0].text === "Trust and continue"
     && choices[1].cursor === "" && choices[1].number === "2" && choices[1].text === "Quit"
     && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
-  return { active: true, folder, root, rootNote, safeChoice };
+  const known = new Set(["Trust and continue", "Open restricted", "Quit"]);
+  // Exactly one selection marker, whichever form (› ❯ >), and it is on Trust; the footer is the one both 0.160 and 0.166
+  // show. Two markers, another footer mapping or an unknown option is held — never a guess where Enter lands (#2896 review).
+  const atCursor = choices.filter(choice => choice.cursor !== "");
+  const trustCursor = choices.length >= 2 && choices.every(choice => known.has(choice.text))
+    && choices.every((choice, index) => index === 0 || choice.row === choices[index - 1]!.row + 1)
+    && rows.slice(choices[choices.length - 1]!.row + 1, last).every(row => row.trim() === "")
+    && atCursor.length === 1 && atCursor[0]!.cursor === "›" && atCursor[0]!.text === "Trust and continue"
+    && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
+  return { active: true, folder, root, rootNote, safeChoice, trustCursor };
 }
 
 /** Unknown/older trust layouts are still input-blocking, never auto-answered. */
@@ -544,6 +569,54 @@ function codexRateSwitchPickerVisible(pane: string): boolean {
     && take(/^\s*[›>]?\s*1\.\s+Switch to \S.*$/, true)
     && take(/^\s*Switch to \S.{0,120} for lower credit usage\?\s*$/, false)
     && take(/^\s*Approaching rate limits\s*$/, false);
+}
+
+/**
+ * The workspace-member limit prompt (#2844), as codex 0.160.0–0.165.0 paint it
+ * (`open_workspace_owner_nudge_prompt`, codex-rs/tui chatwidget/rate_limits.rs),
+ * captured live on 0.165.0 against the mock's wscredits/wsspend modes:
+ *
+ *   ■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.
+ *     Usage limit reached
+ *     Request a limit increase from your owner to continue using codex. Request increase?
+ *
+ *     1. Yes (y)
+ *   › 2. No (default) (n)
+ *
+ *     enter select · esc back
+ *
+ * The other title is "You've reached your workspace credit limit" with "…Ask your
+ * workspace owner to add more. Notify owner?". Yes emails the workspace owner;
+ * Escape (the prompt's cancel) and No only close it, send nothing, and leave the
+ * error row above the composer, where the quota pause reads it.
+ *
+ * Bottom-anchored, every row exact: the hint last, the two options directly
+ * above it, the question (wrapped onto up to three rows on a narrow pane) and its
+ * own title above those. A quote in the transcript is followed by the composer
+ * and never matches.
+ */
+const WORKSPACE_LIMIT_PROMPTS: ReadonlyArray<readonly [title: RegExp, question: string]> = [
+  [/^\s*Usage limit reached\s*$/, "Request a limit increase from your owner to continue using codex. Request increase?"],
+  [/^\s*You['’]ve reached your workspace credit limit\s*$/, "Your workspace is out of credits. Ask your workspace owner to add more. Notify owner?"],
+];
+
+function codexWorkspaceLimitPromptVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+  let i = rows.length - 1;
+  const take = (shape: RegExp): boolean => {
+    if (i < 0 || !shape.test(rows[i])) return false;
+    i--;
+    return true;
+  };
+  if (!(take(/^\s*enter select\s*[·•]\s*esc back\s*$/i)
+    && take(/^\s*[›❯>]?\s*2\.\s+No \(default\)\s+\(n\)\s*$/)
+    && take(/^\s*[›❯>]?\s*1\.\s+Yes\s+\(y\)\s*$/))) return false;
+  for (let lines = 1; lines <= 3 && i - lines >= 0; lines++) {
+    const question = rows.slice(i - lines + 1, i + 1).map(row => row.trim()).join(" ");
+    const title = rows[i - lines];
+    if (WORKSPACE_LIMIT_PROMPTS.some(([shape, text]) => question === text && shape.test(title))) return true;
+  }
+  return false;
 }
 
 /** Unknown pickers own stdin too; never type or press Enter into one. */
@@ -887,6 +960,22 @@ function codexUnboxedResumeLoading(rows: string[]): boolean {
   return after.slice(composer + 1).every(row => row === "");
 }
 
+/**
+ * M-2266: a one-shot "resume this conversation" for the next launch, written by the fleet (restart_instance with
+ * resume_session_id, validated there) into the instance directory and consumed by that launch.
+ */
+export const CODEX_RESUME_NEXT_FILE = "codex-resume-next.json";
+/**
+ * M-2266: the conversation the last launch was told to resume (auto or one-shot). The next launch asks codex's
+ * database whether that resume took (codex records the thread as it opens it); if it did not, that launch starts
+ * fresh once and says so — never the same failing resume again.
+ */
+export const CODEX_RESUME_ATTEMPT_FILE = "codex-resume-attempt.json";
+/** M-2266: conversations an auto-resume could not open (codex refused the id); skipped by later auto-resumes. */
+export const CODEX_RESUME_FAILED_FILE = "codex-resume-failed.json";
+/** Above this, a resumed rollout carries a note that codex may compact it first. */
+export const CODEX_RESUME_LARGE_BYTES = 20 * 1024 * 1024;
+
 export class CodexBackend implements CliBackend {
   /**
    * #1510: the reply-completion guard covers codex, its turn end read from the rollout (task_complete /
@@ -1042,6 +1131,7 @@ export class CodexBackend implements CliBackend {
     if (codexAppServerDisconnected(pane)) return false;
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    stripCodexPassiveHintRow(rows);
     const footer = rows.pop() ?? "";
     // Codex preserves other configured status-line items after the context
     // meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra"). They
@@ -1108,6 +1198,8 @@ export class CodexBackend implements CliBackend {
     // idle chrome.  Remove only that observed decorative glyph; broader
     // punctuation stripping could turn real tool output into a false prompt.
     const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/⋆/gu, ""));
+    while (rows.length && !rows.at(-1)!.trim()) rows.pop();
+    stripCodexPassiveHintRow(rows);
     let prompt = -1;
     for (let i = rows.length - 1; i >= 0; i--) {
       if (/^[>›]\s*Ask Codex to do anything\s*$/.test(rows[i])) {
@@ -1151,9 +1243,11 @@ export class CodexBackend implements CliBackend {
   buildCommand(config: CliBackendConfig): string {
     this.lastKnownModel = config.model?.trim() || null;
     this.credentialProfile = this.readProfile(config);
+    // #2886: `--full-auto` is gone from codex (no supported version, 0.155 on, accepts it: the instance never started);
+    // spelled out, it was a workspace-write sandbox that asks for approval on request.
     const approvalFlag = config.skipPermissions !== false
       ? "--dangerously-bypass-approvals-and-sandbox"
-      : "--full-auto";
+      : "--sandbox workspace-write --ask-for-approval on-request";
 
     // #984: never trust `codex resume --last` to pick this instance's session.
     // Codex 0.157 scopes it to the git REPOSITORY, so in a worktree it resumes
@@ -1170,21 +1264,36 @@ export class CodexBackend implements CliBackend {
     if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
-      const plan = this.planResume(config);
-      this.lastLaunchResumes = plan.mode === "resume" || plan.mode === "last";
-      if (plan.mode === "resume") cmd = `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
-      else if (plan.mode === "last") cmd = `${this.binaryPath} resume --last ${approvalFlag}`;
-      else cmd = `${this.binaryPath} ${approvalFlag}`;
-      if (plan.mode === "last") this.launchWarning = t("codex.resume_db_unreadable_last", plan.cause);
-      else if (plan.mode === "fresh" && plan.reason === "unreadable-with-siblings") {
-        this.launchWarning = t("codex.resume_db_unreadable_fresh", plan.cause);
-      } else if (plan.mode === "fresh") {
-        // #1053: "none" is also what a lookup that missed looks like (#1028
-        // was a silent new session per restart). A workspace that never had
-        // a conversation stays quiet; one whose rollout shows a turn is told
-        // which conversation to resume by hand.
-        const missed = newestMissedCwdRollout(join(this.isolatedCodexHome, "sessions"), config.workingDirectory);
-        if (missed) this.launchWarning = t("codex.resume_none_but_history", config.workingDirectory, missed.id);
+      const resumeBy = (id: string, why: string, bytes: number | null): string => {
+        this.lastLaunchResumes = true;
+        this.writeResumeAttempt(id);
+        const large = bytes !== null && bytes > CODEX_RESUME_LARGE_BYTES ? ` ${t("codex.resume_large", String(Math.round(bytes / (1024 * 1024))))}` : "";
+        this.launchWarning = why + large;
+        return `${this.binaryPath} resume ${shellQuote(id)} ${approvalFlag}`;
+      };
+      const sessionsDir = join(this.isolatedCodexHome, "sessions");
+      // M-2266: the previous launch was told to resume a conversation by id. Codex records a thread as it opens it,
+      // so a resume that did not take (codex exited with "No saved session found…") left no row: this launch starts
+      // fresh, once, and says so. A database that cannot be read proves nothing, and planning goes on as usual.
+      // A new one-shot ask comes first: it is the person's explicit choice for this launch.
+      const oneShot = this.takeResumeNext();
+      const attempt = this.takeResumeAttempt();
+      const failed = !oneShot && attempt !== null && codexThreadRowExists(this.stateDbPath(), attempt) === false;
+      if (failed) {
+        // Remembered, so the auto-resume never picks this conversation again on a later launch.
+        this.rememberFailedResume(attempt!);
+        cmd = `${this.binaryPath} ${approvalFlag}`;
+        this.launchWarning = t("codex.resume_failed", config.workingDirectory, attempt!);
+      } else if (oneShot) {
+        // M-2266: validated when it was asked for (restart_instance); checked again now, as the rollout may have moved.
+        const check = checkResumeId(sessionsDir, config.workingDirectory, oneShot);
+        if (check.ok) cmd = resumeBy(check.rollout.id, t("codex.resume_oneshot", config.workingDirectory, check.rollout.id), check.rollout.bytes);
+        else {
+          cmd = this.plannedCommand(config, approvalFlag, sessionsDir, resumeBy);
+          this.launchWarning = [t("codex.resume_oneshot_invalid", config.workingDirectory, oneShot, check.reason), this.launchWarning].filter(Boolean).join("\n");
+        }
+      } else {
+        cmd = this.plannedCommand(config, approvalFlag, sessionsDir, resumeBy);
       }
     }
     if (config.model) {
@@ -1206,7 +1315,12 @@ export class CodexBackend implements CliBackend {
       ? readCodexModelEffortLevels({ isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome, model: runs.model })
       : { model: runs.model, levels: null, unproven: true });
     if (effort.arg) cmd += effort.arg;
-    this.quietLaunchNotes = effort.note ? [effort.note] : [];
+    // M-2446: the per-agent speed (codex-speed.ts) — Fast only where the running model's catalog entry offers it.
+    const speed = codexSpeed(config.backendOptions?.speed, runs.proven
+      ? readCodexModelServiceTiers({ isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome, model: runs.model })
+      : { model: runs.model, tiers: null, unproven: true });
+    if (speed.arg) cmd += speed.arg;
+    this.quietLaunchNotes = [effort.note, speed.note].filter((n): n is string => !!n);
     // AgEnD instances are unattended processes: an interactive self-update
     // picker blocks delivery and must never be enabled by a copied global or
     // managed config layer. Keep this last so the CLI override is authoritative.
@@ -1682,7 +1796,7 @@ export class CodexBackend implements CliBackend {
     // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
     // prompt, between prompt/footer, and below the footer. A drafted composer
     // is also idle once this same bottom footer proves it owns the screen.
-    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    const contextReady = withCodexPassiveHintTail(/(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i);
     const footerPattern = this.configuredStatusLineFooterPattern();
     if (!footerPattern) return contextReady;
 
@@ -1691,19 +1805,19 @@ export class CodexBackend implements CliBackend {
     // configured, that value must specifically be Ready. This is positive
     // structural proof, never a deny-list of known dialogs.
     const footerSource = footerPattern.source.slice(1, -1);
-    const noContextReady = new RegExp(
+    const noContextReady = withCodexPassiveHintTail(new RegExp(
       String.raw`(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${footerSource}(?:\r?\n[ \t⋆]*)*$`,
       "iu",
-    );
+    ));
     // #978: a configured footer that carries a Context item in any position
     // is the Context footer: same drafted-composer rule as Context-first. The
     // whole row must match the configured item grammar, so an arbitrary
     // indented line that merely contains `Context N% left` cannot pass.
     const configuredContextReady = this.configuredHasContextItem()
-      ? new RegExp(
+      ? withCodexPassiveHintTail(new RegExp(
         String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
         "iu",
-      )
+      ))
       : null;
     return new RegExp(
       [contextReady.source, noContextReady.source, configuredContextReady?.source]
@@ -1830,6 +1944,7 @@ export class CodexBackend implements CliBackend {
         type: "quota",
         action: "pause",
         message: "OpenAI quota exceeded",
+        notice: () => quotaPausedLine("OpenAI", "api_quota"),
       },
       {
         // Codex already exhausted HTTP retries and returned to its composer.
@@ -1871,7 +1986,8 @@ export class CodexBackend implements CliBackend {
       // Codex writes the apostrophe as U+2019 ("You’ve hit your usage limit.") since
       // 0.156 and as ASCII before (0.153.4): both must match, or no usage limit
       // ever pauses the instance (#1098).
-      { pattern: /you['’]ve hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required" },
+      { pattern: /you['’]ve hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required",
+        notice: () => quotaPausedLine("Codex", "usage") },
       {
         // The terminal stage of a lost app-server (#1099): Codex has given up
         // reconnecting and says so, with a counter that never stops. Nothing
@@ -1927,27 +2043,53 @@ export class CodexBackend implements CliBackend {
         skipCooldown: true,
         skipRecoveryWait: true,
       },
-      // Workspace (team) accounts report exhaustion differently from personal
-      // ones — the full line is:
-      //   "■ Your workspace is out of credits. Ask your workspace owner to
-      //    refill in order to continue."
+      // Workspace (business) accounts report exhaustion differently from personal
+      // ones, with codex's own rows (codex-rs/protocol error.rs and tui
+      // turn_runtime.rs, unchanged 0.160.0–0.165.0):
+      //   member: "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue."
+      //           "■ You hit your spend cap set by the owner of your workspace. Ask an owner to increase your spend cap to continue."
+      //   owner:  "■ You're out of credits. Your workspace is out of credits. Add credits to continue using Codex."
+      //           "■ Your workspace is out of credits. Add credits to continue."
+      //           "■ You hit your spend cap set in your workspace. Increase your spend cap to continue."
+      //           "■ Usage limit reached. You've reached your usage limit. Increase your limits to continue using codex."
       // Neither `insufficient_quota|billing` nor `you've hit your usage limit`
-      // matches it, so this state went unreported.
+      // matches them.
       //
-      // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard
-      // wrap can land a newline anywhere in the phrase. The `■` prefix and the
-      // "Ask your workspace owner…" tail are deliberately left out — the prefix
-      // is decoration and the tail is what would wrap.
+      // pause, not notify: nothing works until someone refills or raises the cap.
+      // Anchored to the status glyph in COLUMN 0, because these skip the
+      // usage-window check (a workspace limit is not one of those windows, so the
+      // check would call it "available"): codex draws its own error cells there,
+      // while an agent's message, quote or code block is indented under its `•`
+      // (captured live, tests/fixtures/codex-0165-workspace-quoted.pane.txt).
+      // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard wrap
+      // can land a newline anywhere in the sentence. A resumed transcript reprints
+      // these rows, and the first live composer of a spawn takes them as history.
       {
-        pattern: /workspace\s+is\s+out\s+of\s+credits/i,
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+(?:You['’]re\s+out\s+of\s+credits\.\s+)?Your\s+workspace\s+is\s+out\s+of\s+credits\.`, "m"),
         type: "quota",
-        // pause, not notify: exhausted credits are a dead end until someone
-        // refills, so leaving the instance running just burns cycles failing.
-        // Matches how the other terminal quota states behave (claude-code's
-        // "credit balance is too low", codex's own "you've hit your usage
-        // limit"). Costs a manual resume after the refill.
         action: "pause",
         message: "Codex workspace credits exhausted — workspace owner must refill",
+        notice: () => quotaPausedLine("Codex", "workspace_credits"),
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
+      },
+      {
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+You\s+hit\s+your\s+spend\s+cap\s+set\s+(?:by\s+the\s+owner\s+of|in)\s+your\s+workspace\.`, "m"),
+        type: "quota",
+        action: "pause",
+        message: "Codex workspace spend cap reached — workspace owner must raise it",
+        notice: () => t("inst.quota_spend_cap"),
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
+      },
+      {
+        pattern: new RegExp(String.raw`^(?:${CODEX_STATUS_GLYPH})[ \t]+Usage\s+limit\s+reached\.\s+You['’]ve\s+reached\s+your\s+usage\s+limit\.\s+Increase\s+your\s+limits`, "m"),
+        type: "quota",
+        action: "pause",
+        message: "Codex workspace usage limit reached — increase the workspace limits to continue",
+        notice: () => quotaPausedLine("Codex", "workspace_usage"),
+        skipUsageVerify: true,
+        historyUntilLiveComposer: true,
       },
       // Codex warns at 10% and 5% remaining, and scopes the limit by period —
       // "weekly" alone missed every `monthly limit` warning.
@@ -1966,6 +2108,7 @@ export class CodexBackend implements CliBackend {
         action: "notify",
         message: "Codex usage limit running low",
         formatMessage: (m) => `Codex ${m[2].toLowerCase()} limit: less than ${m[1]}% left`,
+        notice: (m) => (m ? quotaLowLine(m[2]!, m[1]!) : quotaLine("Codex", "usage")),
       },
     ];
   }
@@ -1973,22 +2116,7 @@ export class CodexBackend implements CliBackend {
   getStartupDialogs(): StartupDialog[] {
     const trustHold = this.trustHoldDialog();
     return [
-      {
-        pattern: /^\s*Trust this folder\?/m,
-        keys: ["Enter"],
-        description: "Codex authorized folder trust dialog",
-        blocksDelivery: true,
-        inputBlocked: true,
-        autoResolutionKey: "codex-authorized-folder-trust",
-        isActive: pane => {
-          const state = codexTrustPromptState(pane);
-          const authorized = this.authorizedTrust;
-          return state.active && state.safeChoice && authorized !== null
-            && state.folder === authorized.cwd
-            && (state.rootNote === "absent" ? authorized.root === authorized.cwd
-              : state.rootNote === "parsed" && state.root === authorized.root);
-        },
-      },
+      this.autoTrustDialog(),
       trustHold,
       this.updatePickerDialog(),
       this.rateSwitchPickerDialog(),
@@ -2011,6 +2139,7 @@ export class CodexBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: codexSelectionCard,
         isActive: codexSessionLockVisible,
       },
       {
@@ -2020,9 +2149,31 @@ export class CodexBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: codexSelectionCard,
         isActive: codexResumeCwdPickerVisible,
       },
     ];
+  }
+
+  /**
+   * The user's decision (hmsg-53600a2c): codex's folder-trust prompt in an AgEnD session is always answered Trust — the
+   * workspace is the agent's own, whatever preTrust covered (preTrust stays, so the prompt rarely shows at all). Enter,
+   * only with the cursor on "Trust and continue" among the known options (trustCursor); any other layout or row is
+   * held (trustHoldDialog). It trusts the folder only: per-action approvals are separate dialogs and are not touched.
+   */
+  private autoTrustDialog(): RuntimeDialog {
+    return {
+      pattern: /^\s*Trust this folder\?/m,
+      keys: ["Enter"],
+      description: "Codex folder trust — trusting the agent's own folder",
+      blocksDelivery: true,
+      inputBlocked: true,
+      autoResolutionKey: "codex-folder-auto-trust",
+      // One Enter per prompt (claimed, then checked): a prompt still up after it is held, never pressed again (#2896 review).
+      verifyAfterKeys: true,
+      isActive: pane => codexTrustPromptState(pane).trustCursor,
+      answerDetail: pane => ({ autoTrusted: true, ...this.trustPaneFields(pane) }),
+    };
   }
 
   private trustHoldDialog(): RuntimeDialog {
@@ -2034,7 +2185,41 @@ export class CodexBackend implements CliBackend {
       blocksDelivery: true,
       inputBlocked: true,
       isActive: codexTrustVariantActive,
+      remoteCard: codexSelectionCard,
+      heldReason: pane => this.trustHoldReason(pane),
     };
+  }
+
+  /**
+   * #2893: why the authorized folder-trust answer did not take this prompt (log only): what the pane shows against what
+   * preTrust authorized for this launch, and whether the instance's config trusts the folder codex is asking about. A
+   * field case of a held trust prompt then explains itself in daemon.log.
+   */
+  private trustHoldReason(pane: string): Record<string, unknown> {
+    const state = codexTrustPromptState(pane), authorized = this.authorizedTrust;
+    const configPath = join(this.isolatedCodexHome, "config.toml");
+    let configTrust: unknown = "unreadable";
+    if (state.folder) {
+      try { configTrust = effectiveProjectTrust(readFileSync(configPath, "utf-8"), state.root ?? state.folder) ?? "absent"; } catch { /* unreadable */ }
+    }
+    // The same test as the startup entry's authorized answer: when it holds, nothing differs — say so, never a mismatch.
+    const rootMatches = authorized !== null && (state.rootNote === "absent" ? authorized.root === authorized.cwd
+      : state.rootNote === "parsed" && state.root === authorized.root);
+    const authorizedMatch = state.active && state.safeChoice && authorized !== null && state.folder === authorized.cwd && rootMatches;
+    // hmsg-53600a2c: Trust is pressed whenever the cursor is on it; a hold is a layout, a row, or a press that did not take.
+    const reason = !state.active ? "a trust layout AgEnD never answers (Folder access options, or Do you trust the files…)"
+      : !state.trustCursor ? "the cursor is not on Trust and continue, or the options are not the known ones"
+      : "Trust was already pressed for this prompt and it is still up";
+    return { trustHoldReason: reason, authorizedMatch, promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
+      authorizedCwd: authorized?.cwd ?? null, authorizedRoot: authorized?.root ?? null, configPath, configTrust };
+  }
+
+  /** What an auto-trust answered (log only): the folder and root on the prompt, what preTrust covered, and the config path. */
+  private trustPaneFields(pane: string): Record<string, unknown> {
+    const state = codexTrustPromptState(pane), authorized = this.authorizedTrust;
+    return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote,
+      authorizedCwd: authorized?.cwd ?? null, authorizedRoot: authorized?.root ?? null,
+      configPath: join(this.isolatedCodexHome, "config.toml") };
   }
 
   /**
@@ -2115,6 +2300,25 @@ export class CodexBackend implements CliBackend {
     };
   }
 
+  private workspaceLimitPromptDialog(): RuntimeDialog {
+    // Escape via sendSpecialKey, the same as the Luna Reserve menu: never a paste
+    // (its implicit Enter would confirm the cursor's row) and never "y". The error
+    // row codex printed above the prompt stays, and the quota pause takes it from
+    // there: one notice, no parked dialog.
+    return {
+      pattern: /^\s*enter select\s*[·•]\s*esc back\s*$/im,
+      keys: ["Escape"],
+      description: "Codex workspace limit prompt — pressing Escape (never asking the owner)",
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexWorkspaceLimitPromptVisible,
+      verifyAfterKeys: true,
+      autoResolutionKey: "codex-workspace-limit-prompt",
+      answeredByAgend: true,
+      marksLiveIncident: true,
+    };
+  }
+
   private unknownSelectionHoldDialog(): RuntimeDialog {
     return {
       pattern: /^\s*[›❯>]\s+\S/m,
@@ -2123,12 +2327,14 @@ export class CodexBackend implements CliBackend {
       holdOnly: true,
       blocksDelivery: true,
       inputBlocked: true,
+      remoteCard: codexSelectionCard,
       isActive: codexUnknownSelectionVisible,
     };
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
+      this.autoTrustDialog(),
       this.trustHoldDialog(),
       this.rateSwitchPickerDialog(),
       {
@@ -2142,10 +2348,12 @@ export class CodexBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         inputBlocked: true,
+        remoteCard: codexSelectionCard,
         isActive: codexRateSwitchVisible,
       },
       this.updatePickerDialog(),
       this.usageLimitLunaReserveDialog(),
+      this.workspaceLimitPromptDialog(),
       ...this.sessionHoldDialogs(),
       this.unknownSelectionHoldDialog(),
     ];
@@ -2170,6 +2378,65 @@ export class CodexBackend implements CliBackend {
     // The resumed thread is chosen per launch from Codex's own state DB
     // (planResume); AgEnD persists no session id of its own (#913 was reverted).
     return null;
+  }
+
+  /** The launch as the database plans it — and, when it has no conversation for this directory, an auto-resume (M-2266). */
+  private plannedCommand(config: CliBackendConfig, approvalFlag: string, sessionsDir: string,
+    resumeBy: (id: string, why: string, bytes: number | null) => string): string {
+    const plan = this.planResume(config);
+    this.lastLaunchResumes = plan.mode === "resume" || plan.mode === "last";
+    if (plan.mode === "resume") return `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
+    if (plan.mode === "last") {
+      this.launchWarning = t("codex.resume_db_unreadable_last", plan.cause);
+      return `${this.binaryPath} resume --last ${approvalFlag}`;
+    }
+    if (plan.reason === "unreadable-with-siblings") {
+      this.launchWarning = t("codex.resume_db_unreadable_fresh", plan.cause);
+      return `${this.binaryPath} ${approvalFlag}`;
+    }
+    // #1053 found these and only told the person; M-2266 (the user's choice) resumes it: codex's database has no
+    // conversation for this directory, but its newest CLI rollout of exactly this directory, with a turn, is still
+    // there — `codex resume <id>` reads it.
+    const found = newestResumableRollout(sessionsDir, config.workingDirectory, undefined, this.failedResumes());
+    if (found) return resumeBy(found.id, t("codex.resume_auto", config.workingDirectory, found.id), found.bytes);
+    return `${this.binaryPath} ${approvalFlag}`;
+  }
+
+  /** The database this instance's codex writes (see planResume). */
+  private stateDbPath(): string {
+    const instanceDb = join(this.isolatedCodexHome, "state_5.sqlite");
+    const sharedDb = join(this.sharedCodexHome, "state_5.sqlite");
+    return existsSync(instanceDb) || sharedDb === instanceDb ? instanceDb : sharedDb;
+  }
+
+  /** M-2266: read and remove a JSON `{ id }` file in the instance directory; the id, or null. */
+  private takeIdFile(name: string): string | null {
+    const path = join(this.instanceDir, name);
+    let id: string | null = null;
+    try {
+      const v = JSON.parse(readFileSync(path, "utf-8")) as { id?: unknown };
+      if (typeof v.id === "string" && /^[0-9a-f-]{36}$/i.test(v.id)) id = v.id;
+    } catch { /* absent or unreadable */ }
+    try { unlinkSync(path); } catch { /* absent */ }
+    return id;
+  }
+  private takeResumeAttempt(): string | null { return this.takeIdFile(CODEX_RESUME_ATTEMPT_FILE); }
+  private takeResumeNext(): string | null { return this.takeIdFile(CODEX_RESUME_NEXT_FILE); }
+  /** M-2266: conversations an auto-resume tried and codex could not open; never auto-picked again. */
+  private failedResumes(): Set<string> {
+    try {
+      const v = JSON.parse(readFileSync(join(this.instanceDir, CODEX_RESUME_FAILED_FILE), "utf-8")) as { ids?: unknown };
+      return new Set(Array.isArray(v.ids) ? v.ids.filter((x): x is string => typeof x === "string") : []);
+    } catch { return new Set(); }
+  }
+  private rememberFailedResume(id: string): void {
+    const ids = [...this.failedResumes(), id].slice(-50);
+    try { writeFileSync(join(this.instanceDir, CODEX_RESUME_FAILED_FILE), JSON.stringify({ ids: [...new Set(ids)] }), { mode: 0o600 }); }
+    catch { /* best effort: then the next launch may try it once more, and fall back again */ }
+  }
+  private writeResumeAttempt(id: string): void {
+    try { writeFileSync(join(this.instanceDir, CODEX_RESUME_ATTEMPT_FILE), JSON.stringify({ id, at: new Date().toISOString() }), { mode: 0o600 }); }
+    catch { /* without it a failed resume is only retried, as any failed launch is */ }
   }
 
   /** Which Codex session this launch resumes (#984). Reads, never writes, Codex state. */

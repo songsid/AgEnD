@@ -7,15 +7,9 @@
  *   guest's, as a typed message.
  * - /ui/prefs: read only — the host's look and the guest's own, never a preference that names an instance (the app
  *   shell's embedded copy too); POST stays closed. /ui/profile: its own web name.
- * - A placed effect's poster: by its instance, in scope.
+ * - #2799: the effect posters' route is gone — a guest is refused it as any other unlisted route; an admin finds nothing.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-// #2793: Canvas Worker effects are off for good in production (canvasWorkerEnabled always answers false). This suite
-// keeps the dormant effect code tested until it is deleted, so here the switch follows the config as it did before.
-vi.mock("../src/web-experimental.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../src/web-experimental.js")>()),
-  canvasWorkerEnabled: (web?: { experimental?: { canvas_worker?: boolean } } | null) => web?.experimental?.canvas_worker === true,
-}));
 // #2095 CI: pino's worker opens daemon.log in the scratch home late — an afterAll rmSync walking it met ENOTEMPTY (as
 // #1778/#1779). This file has no use for the log: the logger is silent, so nothing writes there once the work is done.
 vi.mock("../src/logger.js", async original => {
@@ -70,6 +64,8 @@ afterEach(() => { vi.restoreAllMocks(); delete fm.fleetConfig.web; });
 const session = (tier: "admin" | "guest", owner?: typeof ALICE) =>
   fm.webSessions.create({ tier, surface: "local", label: tier, tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!), owner }).sessionId as string;
 const scopedToA = () => vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["a"]));
+/** #2855: a test's own guest-save limit (the account's count is per fleet, so one test's saves would count in the next). */
+const freshLimits = () => { fm.guestPrefWrites = new (fm.guestPrefWrites.constructor)(undefined, { perWindow: 30, windowMs: 60_000 }); };
 const guestsChat = (chat?: boolean) => { fm.fleetConfig.web = { guests: { enabled: true, ...(chat === undefined ? {} : { chat }) } }; };
 
 describe("the rules", () => {
@@ -90,6 +86,36 @@ describe("the rules", () => {
   it("guestPrefs keeps the look and the guest's own, nothing that names an instance", () => {
     const view = guestPrefs({ rev: 3, values: { theme: "dark", lang: "zh-TW", "nav.favorites": ["b"], "nav.order": ["b", "a"], "card.sizeByInstance": { b: "l" }, "widget.sidebar": { spec: {} }, "names.primary": "display", "fx.sidebar": { id: "x" } } });
     expect(view).toEqual({ rev: 3, values: { theme: "dark", lang: "zh-TW", "fx.sidebar": { id: "x" } } });
+  });
+});
+
+describe("#2855: the usage panel — a guest never forces a refresh", () => {
+  it("usageForce: ?force for an admin, never for a guest", async () => {
+    const { usageForce } = await import("../src/usage/usage-api.js");
+    const { bindGuestRequest } = await import("../src/web-guest-access.js");
+    const u = new URL("http://x/api/ai-usage?force=1"), plain = new URL("http://x/api/ai-usage");
+    const admin = {}, guest = {};
+    bindGuestRequest(guest, { owner: ALICE, scope: () => new Set(["a"]), current: () => true });
+    expect([usageForce(admin as never, u), usageForce(guest as never, u), usageForce(admin as never, plain)]).toEqual([true, false, false]);
+  });
+});
+
+describe("#2848: a chat whose messages are all hidden from the guest says so", () => {
+  it("cross-instance lines: unmarked → hidden and allHidden; marked as the topic's → shown; an admin is never told", async () => {
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["c2848"])); guestsChat();
+    const guest = session("guest", ALICE), admin = session("admin");
+    const history = async (sid: string) => JSON.parse((await raw(port, "GET", "/ui/history?instance=c2848", { cookie: cookieOf(sid) })).body);
+    expect(await history(guest), "no messages at all: an ordinary empty chat").toEqual(expect.not.objectContaining({ allHidden: expect.anything() }));
+    const line = (text: string, channel?: true) => fm.emitSseEvent("message", { instance: "c2848", sender: "alice", role: "status", text, ts: new Date().toISOString(), ...(channel ? { channel } : {}) });
+    line("alice → c2848:\nnot posted to the topic");
+    const hidden = await history(guest);
+    expect([hidden.messages, hidden.allHidden]).toEqual([[], true]);
+    const forAdmin = await history(admin);
+    expect([forAdmin.messages.length, "allHidden" in forAdmin]).toEqual([1, false]);
+    line("alice → c2848:\nposted to the topic", true);
+    const shown = await history(guest);
+    expect([shown.messages.map((m: { text: string }) => m.text), "allHidden" in shown]).toEqual([["alice → c2848:\nposted to the topic"], false]);
+    expect(shown.messages[0]).not.toHaveProperty("channel");
   });
 });
 
@@ -168,7 +194,7 @@ describe("live: a guest scoped to `a`", () => {
     expect((await raw(port, "POST", "/ui/reply-button", write(session("admin")), JSON.stringify({ instance: "a", id: ids[1], index: 0 }))).status).toBe(200);
     expect(delivered[1].meta.web_guest, "an admin's choice is not a guest's").toBeUndefined();
   });
-  it("/ui/prefs and the app shell's copy: the host's look and the guest's own only; POST closed", async () => {
+  it("/ui/prefs and the app shell's copy: the host's look and the guest's own only", async () => {
     scopedToA(); guestsChat();
     fm.webPrefs.write("operator", new Map<string, unknown>([["theme", "dark"], ["nav.favorites", ["b"]], ["nav.order", ["b", "a"]], ["card.sizeByInstance", { b: "l" }]]));
     const guest = session("guest", ALICE), admin = session("admin");
@@ -180,7 +206,119 @@ describe("live: a guest scoped to `a`", () => {
     const embedded = /data-prefs="([^"]*)"/.exec(shell.body)?.[1] ?? "";
     expect(embedded).toContain("dark");
     expect(embedded).not.toContain("nav.favorites");
-    expect((await raw(port, "POST", "/ui/prefs", write(guest), JSON.stringify({ set: { "nav.favorites": ["a"] } }))).status).toBe(403);
+  });
+  it("#2855: a guest saves its own preferences — its five keys, its own bucket, favourites in scope; the same on its other devices", async () => {
+    scopedToA(); guestsChat(); freshLimits();
+    const person = `person:${ALICE.adapterId}:${ALICE.userId}`;
+    fm.webPrefs.write("operator", new Map<string, unknown>([["theme", "light"], ["nav.favorites", ["b"]], ["nav.sort", { mode: "custom", favs: "fixed" }]]));
+    const guest = session("guest", ALICE), other = session("guest", ALICE), admin = session("admin");
+    const post = (sid: string, set: unknown, extra: Record<string, unknown> = {}) => raw(port, "POST", "/ui/prefs", write(sid), JSON.stringify({ set, ...extra }));
+    const own = { theme: "dark", lang: "zh-TW", "nav.favorites": ["a"], "nav.sort": { mode: "recent", favs: "fixed" }, "nav.filter": { q: "ops", status: [], cli: [] } };
+    const ok = await post(guest, own);
+    expect(ok.status, ok.body).toBe(200);
+    expect(JSON.parse(ok.body).values).toMatchObject(own);
+    // Its other device (another session of the same account) reads the same; the host's own values are unchanged.
+    expect(JSON.parse((await raw(port, "GET", "/ui/prefs", { cookie: cookieOf(other) })).body).values).toMatchObject(own);
+    const shell = await raw(port, "GET", "/ui", { cookie: cookieOf(other), accept: "text/html" });
+    expect(/data-prefs="([^"]*)"/.exec(shell.body)?.[1] ?? "").toContain("recent");
+    expect(fm.webPrefs.read("operator").values).toMatchObject({ theme: "light", "nav.favorites": ["b"], "nav.sort": { mode: "custom", favs: "fixed" } });
+    expect(JSON.parse((await raw(port, "GET", "/ui/prefs", { cookie: cookieOf(admin) })).body).values, "an admin's view is the host's").toMatchObject({ theme: "light" });
+    expect(fm.webPrefs.read(person).values).toMatchObject(own);
+    // Refused: another key, a favourite out of its scope, too big.
+    for (const [set, error] of [[{ "nav.order": ["a"] }, "guest_pref_not_yours: nav.order"], [{ "card.size": "l" }, "guest_pref_not_yours: card.size"],
+      [{ "nav.favorites": ["b"] }, "not_in_scope: b"]] as const) {
+      const r = await post(guest, set);
+      expect([r.status, JSON.parse(r.body).error], JSON.stringify(set)).toEqual([400, error]);
+    }
+    expect((await post(guest, { "nav.filter": { q: "x".repeat(17 * 1024), status: [], cli: [] } })).status, "over 16 KB").toBe(413);
+    // A favourite whose instance leaves the guest's scope is not shown any more (it stays in its bucket).
+    vi.spyOn(fm, "guestScope").mockReturnValue(new Set(["b"]));
+    expect(JSON.parse((await raw(port, "GET", "/ui/prefs", { cookie: cookieOf(guest) })).body).values["nav.favorites"]).toEqual([]);
+  });
+  it("#2855: the guest's status frame times its agent by the last reply its channel showed, never a web-only one", async () => {
+    const { guestStatus } = await import("../src/web-guest-access.js");
+    fm.emitSseEvent("message", { instance: "a", sender: "a", role: "agent", text: "to the channel", ts: "2026-10-29T07:00:00.000Z", channel: true });
+    fm.emitSseEvent("message", { instance: "a", sender: "a", role: "agent", text: "to someone's web chat", ts: "2026-10-29T08:00:00.000Z" });
+    const full = fm.getUiStatus();
+    expect(full.instances.find((i: { name: string }) => i.name === "a")).toMatchObject({ last_reply: "2026-10-29T08:00:00.000Z", last_reply_channel: "2026-10-29T07:00:00.000Z" });
+    expect(guestStatus(full, new Set(["a"])).instances[0]).toMatchObject({ last_reply: "2026-10-29T07:00:00.000Z" });
+  });
+  it("#2855: /ui/command — an in-scope agent, the table's \"anyone\" commands only, while guests may chat; a /steer reaches the agent as a guest's", async () => {
+    scopedToA(); guestsChat();
+    fm.guestCommandRuns = new (fm.guestCommandRuns.constructor)(undefined, { perWindow: 10, windowMs: 60_000 });
+    const guest = session("guest", ALICE);
+    const steered: any[] = [];
+    fm.instanceIpcClients.set("a", { connected: true, send: (m: any) => { steered.push(m); return true; } });
+    vi.spyOn(fm.topicCommands, "effectiveBackend").mockReturnValue("claude-code");
+    const cmd = (body: Record<string, unknown>) => raw(port, "POST", "/ui/command", write(guest), JSON.stringify(body));
+    const st = await cmd({ instance: "a", command: "steer", args: "look at the logs" });
+    expect(st.status, st.body).toBe(200);
+    const meta = steered.find((m) => m.type === "steer")?.meta;
+    expect(meta).toMatchObject({ source: "web", web_guest: "1", user_id: ALICE.userId });
+    expect(formatHumanInboundMessage("look at the logs", meta, "mcp")).toContain(`via web (guest), id:${ALICE.userId}]`);
+    const clear = await cmd({ instance: "a", command: "clear" });
+    expect([clear.status, JSON.parse(clear.body).error]).toEqual([403, expect.stringContaining("/clear")]);
+    expect(await cmd({ instance: "b", command: "ctx" })).toEqual({ status: 404, body: JSON.stringify({ error: "not found" }) });
+    guestsChat(false);
+    expect(await cmd({ instance: "a", command: "steer", args: "x" })).toEqual({ status: 403, body: JSON.stringify({ error: "guest_read_only" }) });
+    guestsChat();
+    const statuses: number[] = [];
+    for (let i = 0; i < 10; i++) statuses.push((await cmd({ instance: "a", command: "cancel" })).status);
+    expect(statuses.filter((s) => s === 429).length, "10 a minute (the steer and refusals above counted too)").toBeGreaterThan(0);
+    expect(JSON.parse((await cmd({ instance: "a", command: "cancel" })).body).error).toBe("guest_commands_rate_limited");
+    // One at a time: a second while the first is still running is refused.
+    fm.guestCommandRuns = new (fm.guestCommandRuns.constructor)(undefined, { perWindow: 10, windowMs: 60_000 });
+    let release!: () => void;
+    const slow = vi.spyOn(fm, "webCommand").mockImplementation(() => new Promise((r) => { release = () => r({ status: 200, body: { text: "ok" } }); }));
+    const first = cmd({ instance: "a", command: "ctx" });
+    await vi.waitFor(() => expect(slow).toHaveBeenCalled());
+    expect(JSON.parse((await cmd({ instance: "a", command: "ctx" })).body).error).toBe("guest_command_running");
+    release(); expect((await first).status).toBe(200);
+    // …and one whose body is still on its way when another starts (both past the check on arrival): the second check, once
+    // the body is in, refuses it — never two at once.
+    const body = JSON.stringify({ instance: "a", command: "ctx" });
+    const late = new Promise<Raw>((resolve, reject) => {
+      const r = request({ host: "127.0.0.1", port, method: "POST", path: "/ui/command", headers: { host: `127.0.0.1:${port}`, ...write(guest), "content-length": String(Buffer.byteLength(body)) } },
+        (res) => { let b = ""; res.on("data", (c: Buffer) => { b += c.toString(); }); res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b })); });
+      r.on("error", reject); r.flushHeaders();
+      setTimeout(() => { void running.then(() => r.end(body)); }, 0);
+    });
+    const callsBefore = slow.mock.calls.length;
+    const running = vi.waitFor(() => expect(slow.mock.calls.length).toBe(callsBefore + 1));
+    const other = cmd({ instance: "a", command: "ctx" });
+    await running;
+    expect(JSON.parse((await late).body).error).toBe("guest_command_running");
+    release(); expect((await other).status).toBe(200);
+    slow.mockRestore();
+    // #2857 review: a body held back past the check on arrival is counted against the budget when it comes in — ten others
+    // ran meanwhile, so it is refused (never an eleventh command in the minute).
+    fm.guestCommandRuns = new (fm.guestCommandRuns.constructor)(undefined, { perWindow: 10, windowMs: 60_000 });
+    const held = JSON.stringify({ instance: "a", command: "ctx" });
+    let send!: () => void;
+    const pending = new Promise<Raw>((resolve, reject) => {
+      const r = request({ host: "127.0.0.1", port, method: "POST", path: "/ui/command", headers: { host: `127.0.0.1:${port}`, ...write(guest), "content-length": String(Buffer.byteLength(held)) } },
+        (res) => { let b = ""; res.on("data", (c: Buffer) => { b += c.toString(); }); res.on("end", () => resolve({ status: res.statusCode ?? 0, body: b })); });
+      r.on("error", reject); r.flushHeaders();
+      send = () => r.end(held);
+    });
+    await new Promise((r) => setTimeout(r, 100));                // past the check on arrival
+    vi.spyOn(fm, "webCommand").mockResolvedValue({ status: 200, body: { text: "ok" } });
+    for (let i = 0; i < 10; i++) expect((await cmd({ instance: "a", command: "ctx" })).status, `run ${i + 1}`).toBe(200);
+    send();
+    const late2 = await pending;
+    expect([late2.status, JSON.parse(late2.body).error]).toEqual([429, "guest_commands_rate_limited"]);
+    vi.mocked(fm.webCommand).mockRestore();
+    // The status frame tells its palette which commands it may run on each agent.
+    expect(fm.getUiStatus().instances.find((i: { name: string }) => i.name === "a").guest_commands).toEqual(["ctx", "cancel", "btw", "steer"]);
+  });
+  it("#2855: at most 30 saves a minute per guest account, every device of it counted together", async () => {
+    scopedToA(); guestsChat(); freshLimits();
+    const a = session("guest", ALICE), b = session("guest", ALICE);
+    const post = (sid: string) => raw(port, "POST", "/ui/prefs", write(sid), JSON.stringify({ set: { theme: "dark" } }));
+    const statuses: number[] = [];
+    for (let i = 0; i < 30; i++) statuses.push((await post(i % 2 ? a : b)).status);
+    const over = await post(a);
+    expect([statuses.every((s) => s === 200), over.status, JSON.parse(over.body).error]).toEqual([true, 429, "guest_prefs_rate_limited"]);
   });
   it("/ui/profile: the guest's own web name", async () => {
     scopedToA(); guestsChat();
@@ -188,12 +326,14 @@ describe("live: a guest scoped to `a`", () => {
     expect((await raw(port, "POST", "/ui/profile", write(guest), JSON.stringify({ name: "Alice W" }))).status).toBe(200);
     expect(JSON.parse((await raw(port, "GET", "/ui/profile", { cookie: cookieOf(guest) })).body)).toMatchObject({ name: "Alice W", bound: true, id: ALICE.userId });
   });
-  it("a placed effect's poster: by its instance, in scope", async () => {
+  it("#2799: the effect posters' route is gone — a guest is refused it, an admin finds nothing, whatever an old fleet.yaml says", async () => {
     scopedToA(); guestsChat();
     fm.fleetConfig.web.experimental = { canvas_worker: true };
-    const guest = session("guest", ALICE);
-    expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png?instance=b`, { cookie: cookieOf(guest) })).status).toBe(404);
-    expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png`, { cookie: cookieOf(guest) })).status).toBe(404);
-    expect((await raw(port, "GET", `/ui/effect-posters/${"e".repeat(32)}.png?instance=a`, { cookie: cookieOf(guest) })).status, "in scope: the handler answers").not.toBe(403);
+    const guest = session("guest", ALICE), admin = session("admin");
+    for (const q of ["?instance=b", "", "?instance=a"]) {
+      const path = `/ui/effect-posters/${"e".repeat(32)}.png${q}`;
+      expect((await raw(port, "GET", path, { cookie: cookieOf(guest) })).status, `guest ${q}`).toBe(403);
+      expect((await raw(port, "GET", path, { cookie: cookieOf(admin) })).status, `admin ${q}`).toBe(404);
+    }
   });
 });

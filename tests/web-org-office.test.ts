@@ -202,6 +202,7 @@ describe("traffic: items carried desk to desk", () => {
     expect(f.frame(10, shown)).toEqual([]);
     expect(f.size()).toBe(0);
     f.sync([1, 2, 3, 4, 5].map((n) => item(10 + n)), 0);
+    f.frame(0, L());                                                             // admitted at the first frame (#2946)
     expect(f.size()).toBe(3);
   });
 });
@@ -786,7 +787,7 @@ describe("the Office view on the page", () => {
       editBtn().click(); await settle(3);
       const style = p.root.querySelector(".oe-row .oe-style");
       expect([style.value, style.querySelectorAll("option").map((o: any) => o.textContent.trim())])
-        .toEqual(["neon-arcade", ["Desks", "Studio", "Cozy", "neon-arcade (not available here: drawn as Desks)"]]);
+        .toEqual(["neon-arcade", ["Desks", "Studio", "Cozy", "Guild", "School", "neon-arcade (not available here: drawn as Desks)"]]);
       answer = { status: 200, body: { rev: 5, offices: [] } };
       p.root.querySelector("#oeSave").click(); await settle(4);
       expect(puts[0].offices[0].skin).toBe("neon-arcade");
@@ -966,7 +967,7 @@ describe("the Office view on the page", () => {
     try {
       await office();
       const style = p.root.querySelectorAll(".oo-bar select")[1];
-      expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy"]);
+      expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy", "Guild", "School"]);
       style.value = "studio"; fire(style, "change"); await settle(4);
       expect(localStorage.getItem("agend_org_office_skin")).toBe("studio");
       expect(desks()).toEqual(["atlas", "loner", "pixel", "quill", "sage", "orbit", "nova", "tide"]);

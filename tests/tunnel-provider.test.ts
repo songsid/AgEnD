@@ -145,6 +145,8 @@ function providerWith(child: FakeChild, over: Record<string, unknown> = {}) {
     deadlineMs: 300,
     graceMs: 10,
     probe: () => ({ kind: "gone" }),
+    // #3009: preflight's check is asynchronous; answered at once here so the scripted child's timing is unchanged.
+    access: async () => {},
     ...over,
   });
   return Object.assign(provider, { spawnCalls: calls, binaryPath: bin });
@@ -290,7 +292,9 @@ describe("a spawn that never produced a process", () => {
     const child = new FakeChild();
     child.pid = null;
     const provider = providerWith(child, { deadlineMs: 10_000 });
-    setTimeout(() => child.emit("error", new Error("spawn ENOENT")), 5);
+    // Just after the spawn (#3009: preflight before it is asynchronous, so a fixed real-time delay races it).
+    const spawn = (provider as any).opts.spawnProcess;
+    (provider as any).opts.spawnProcess = (...args: unknown[]) => { const c = spawn(...args); setImmediate(() => c.emit("error", new Error("spawn ENOENT"))); return c; };
 
     const started = Date.now();
     const err = await provider.start(context()).catch(e => e as TunnelStartError);
@@ -308,7 +312,10 @@ describe("a spawn that never produced a process", () => {
     const child = new FakeChild();
     child.pid = null;
     const provider = providerWith(child, { deadlineMs: 10_000 });
-    setTimeout(() => child.emit("error", new Error("spawn EAGAIN")), 5);
+    // The spawn's own failure, emitted just after the spawn (#3009: the lease write and preflight before it are
+    // asynchronous now, so a fixed real-time delay would race them).
+    const spawn = (provider as any).opts.spawnProcess;
+    (provider as any).opts.spawnProcess = (...args: unknown[]) => { const c = spawn(...args); setImmediate(() => c.emit("error", new Error("spawn EAGAIN"))); return c; };
 
     const result = await managed.start(provider, context());
 
@@ -476,11 +483,11 @@ describe("the lease survives the process that wrote it", () => {
     ...over,
   });
 
-  it("writes owner-only and reads back what it wrote", () => {
+  it("writes owner-only and reads back what it wrote", async () => {
     const dir = tempDir();
-    writeLease(dir, lease());
+    await writeLease(dir, lease());
 
-    expect(readLease(dir)).toMatchObject({ provider: "cloudflared", providerPid: 4242, strongIdentity: "linux:111" });
+    expect(await readLease(dir)).toMatchObject({ provider: "cloudflared", providerPid: 4242, strongIdentity: "linux:111" });
     expect(readFileSync(leasePath(dir), "utf8")).not.toContain("token");
   });
 
@@ -490,7 +497,7 @@ describe("the lease survives the process that wrote it", () => {
     const dir = tempDir();
     writeFileSync(leasePath(dir), "{ this is not json");
 
-    expect(readLease(dir)).not.toBeNull();
+    expect(await readLease(dir)).not.toBeNull();
     const outcome = await reapStaleTunnel(dir, { probe: () => ({ kind: "gone" }) });
     expect(outcome.kind).toBe("manual");
     expect(existsSync(leasePath(dir))).toBe(true);
@@ -500,7 +507,7 @@ describe("the lease survives the process that wrote it", () => {
     // The pre-fleet setup host calls this. It takes a directory and nothing
     // else on purpose — there is no FleetManager in that process to pass.
     const dir = tempDir();
-    writeLease(dir, lease());
+    await writeLease(dir, lease());
 
     const outcome = await reapStaleTunnel(dir, { probe: () => ({ kind: "gone" }) });
 
@@ -510,7 +517,7 @@ describe("the lease survives the process that wrote it", () => {
 
   it("never signals a pid that now belongs to something else", async () => {
     const dir = tempDir();
-    writeLease(dir, lease({ ownerPid: 999_999 }));
+    await writeLease(dir, lease({ ownerPid: 999_999 }));
     const killed: number[] = [];
 
     const outcome = await reapStaleTunnel(dir, {
@@ -527,7 +534,7 @@ describe("the lease survives the process that wrote it", () => {
 
   it("kills a match and clears only once it is gone", async () => {
     const dir = tempDir();
-    writeLease(dir, lease({ ownerPid: 999_999 }));
+    await writeLease(dir, lease({ ownerPid: 999_999 }));
     const killed: NodeJS.Signals[] = [];
     let alive = true;
 
@@ -546,7 +553,7 @@ describe("the lease survives the process that wrote it", () => {
 
   it("keeps the lease when the process will not die, and says what to do", async () => {
     const dir = tempDir();
-    writeLease(dir, lease({ ownerPid: 999_999 }));
+    await writeLease(dir, lease({ ownerPid: 999_999 }));
 
     const outcome = await reapStaleTunnel(dir, {
       probe: pid => pid === 999_999 ? { kind: "gone" } : { kind: "identified", identity: "linux:111", comm: "cloudflared" },
@@ -564,7 +571,7 @@ describe("the lease survives the process that wrote it", () => {
 
   it("leaves a lease a live owner is using", async () => {
     const dir = tempDir();
-    writeLease(dir, lease({ ownerPid: 4321 }));
+    await writeLease(dir, lease({ ownerPid: 4321 }));
     const killed: number[] = [];
 
     const outcome = await reapStaleTunnel(dir, {
@@ -581,7 +588,7 @@ describe("the lease survives the process that wrote it", () => {
     // Reserved, then the owner died before the pid could be recorded: a child
     // may exist that nothing can identify, and guessing is what this refuses.
     const dir = tempDir();
-    writeLease(dir, lease({ providerPid: null, strongIdentity: null, ownerPid: 999_999 }));
+    await writeLease(dir, lease({ providerPid: null, strongIdentity: null, ownerPid: 999_999 }));
 
     const outcome = await reapStaleTunnel(dir, { probe: () => ({ kind: "gone" }) });
 
@@ -594,7 +601,7 @@ describe("the lease survives the process that wrote it", () => {
     // on that basis is the same mistake as killing a reused pid — the reaper
     // simply cannot tell, so it must not act.
     const dir = tempDir();
-    writeLease(dir, lease({ strongIdentity: null, ownerPid: 999_999 }));
+    await writeLease(dir, lease({ strongIdentity: null, ownerPid: 999_999 }));
     const killed: number[] = [];
 
     const outcome = await reapStaleTunnel(dir, {
@@ -618,7 +625,7 @@ describe("the lease survives the process that wrote it", () => {
     writeFileSync(leasePath(dir), JSON.stringify({ providerPid: 4242, strongIdentity: "linux:111" }));
     const killed: number[] = [];
 
-    expect(readLease(dir)).not.toBeNull();
+    expect(await readLease(dir)).not.toBeNull();
     const outcome = await reapStaleTunnel(dir, {
       probe: () => ({ kind: "identified", identity: "linux:111", comm: "cloudflared" }),
       kill: pid => { killed.push(pid); },
@@ -635,7 +642,7 @@ describe("the lease survives the process that wrote it", () => {
     // only the number to go on, the reaper would call this "held" for as long
     // as that innocent process lives — the trap ticket 5 hit with fleet.lock.
     const dir = tempDir();
-    writeLease(dir, lease({ ownerPid: 999_999, ownerIdentity: "linux:owner-1" }));
+    await writeLease(dir, lease({ ownerPid: 999_999, ownerIdentity: "linux:owner-1" }));
 
     const outcome = await reapStaleTunnel(dir, {
       probe: pid => pid === 999_999
@@ -650,7 +657,7 @@ describe("the lease survives the process that wrote it", () => {
 
   it("still yields to an owner that really is the one that wrote the lease", async () => {
     const dir = tempDir();
-    writeLease(dir, lease({ ownerPid: 999_999, ownerIdentity: "linux:owner-1" }));
+    await writeLease(dir, lease({ ownerPid: 999_999, ownerIdentity: "linux:owner-1" }));
 
     const outcome = await reapStaleTunnel(dir, {
       probe: pid => pid === 999_999
@@ -663,7 +670,7 @@ describe("the lease survives the process that wrote it", () => {
 
   it("cannot prove anything on a platform with no fingerprint", async () => {
     const dir = tempDir();
-    writeLease(dir, lease({ ownerPid: 999_999 }));
+    await writeLease(dir, lease({ ownerPid: 999_999 }));
 
     const outcome = await reapStaleTunnel(dir, {
       probe: pid => pid === 999_999 ? { kind: "gone" } : { kind: "unknown" },
@@ -697,7 +704,7 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
     const result = await managed.start(provider, context());
 
     expect(result.ok).toBe(true);
-    expect(readLease(dir)).toMatchObject({ providerPid: 777, strongIdentity: "linux:555", ownerPid: process.pid });
+    expect(await readLease(dir)).toMatchObject({ providerPid: 777, strongIdentity: "linux:555", ownerPid: process.pid });
   });
 
   it("writes a lease before the provider can create anything", async () => {
@@ -705,7 +712,7 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
     const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
     let leaseAtStart: unknown = "not read";
     const provider = fakeProvider({
-      start: async () => { leaseAtStart = readLease(dir); return handleStub(777, "linux:555"); },
+      start: async () => { leaseAtStart = await readLease(dir); return handleStub(777, "linux:555"); },
     });
 
     await managed.start(provider, context());
@@ -756,7 +763,7 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
     const second = await managed.start(fakeProvider({ start: async () => handleStub(1, null) }), context());
 
     expect(first).toMatchObject({ ok: false, leaseHeld: true });
-    expect(readLease(dir)).toMatchObject({ providerPid: 4242, strongIdentity: "linux:111" });
+    expect(await readLease(dir)).toMatchObject({ providerPid: 4242, strongIdentity: "linux:111" });
     // Fail closed: a fallback running beside a live tunnel is the thing this
     // whole file exists to prevent.
     expect(second).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
@@ -765,7 +772,7 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
 
   it("refuses to start while another live process owns the lease", async () => {
     const dir = tempDir();
-    writeLease(dir, {
+    await writeLease(dir, {
       sid: "other", provider: "cloudflared", originPort: 1, providerPid: 5,
       strongIdentity: "linux:1", expiresAt: Date.now() + 60_000, ownerPid: 4321,
       ownerIdentity: null,
@@ -777,6 +784,74 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
 
     expect(result).toMatchObject({ ok: false, errorKind: "lease-held" });
     expect(String((result as { message: string }).message)).toContain("4321");
+  });
+
+  it("proceeds without a restart once the operator deletes a SIGKILLed start's unrecorded lease (#3010)", async () => {
+    const dir = tempDir();
+    // Left behind when the previous owner was SIGKILLed between reserving the
+    // lease and recording the spawned child's pid.
+    await writeLease(dir, {
+      sid: "killed-mid-start", provider: "cloudflared", originPort: 45678, providerPid: null,
+      strongIdentity: null, expiresAt: Date.now() + 60_000, ownerPid: 999_999,
+      ownerIdentity: null,
+    });
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+
+    // (1) First attempt sees the unresolvable lease, keeps it on disk, and blocks.
+    const first = await managed.start(
+      fakeProvider({ start: async () => { throw new Error("must not start while lease exists"); } }),
+      context(),
+    );
+    expect(first).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+    expect((first as { message: string }).message).toContain(leasePath(dir));
+    expect(existsSync(leasePath(dir))).toBe(true);
+
+    // Still blocks if retried before the operator deletes the file.
+    const stillBlocked = await managed.start(
+      fakeProvider({ start: async () => { throw new Error("must not start while lease exists"); } }),
+      context(),
+    );
+    expect(stillBlocked).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+
+    // (2) The operator deletes the stale lease file as the message instructs.
+    rmSync(leasePath(dir));
+
+    // (3) The next start on the same ManagedTunnel re-checks the lease and succeeds without a restart.
+    const next = await managed.start(
+      fakeProvider({ start: async () => handleStub(777, "linux:555") }),
+      context(),
+    );
+    expect(next.ok).toBe(true);
+    expect(await readLease(dir)).toMatchObject({ providerPid: 777, strongIdentity: "linux:555", ownerPid: process.pid });
+  });
+
+  it("still blocks on every attempt while a live foreign lease remains (#3010)", async () => {
+    const dir = tempDir();
+    await writeLease(dir, {
+      sid: "foreign-live", provider: "cloudflared", originPort: 45678, providerPid: 4242,
+      strongIdentity: null, expiresAt: Date.now() + 60_000, ownerPid: 999_999,
+      ownerIdentity: null,
+    });
+    let probes = 0;
+    const managed = new ManagedTunnel({
+      dataDir: dir,
+      probe: pid => {
+        probes += 1;
+        return pid === 999_999
+          ? { kind: "gone" }
+          : { kind: "identified", identity: "linux:4242", comm: "cloudflared" };
+      },
+    });
+    const neverStarts = fakeProvider({ start: async () => { throw new Error("must not start"); } });
+
+    const first = await managed.start(neverStarts, context());
+    const probesAfterFirst = probes;
+    const second = await managed.start(neverStarts, context());
+
+    expect(first).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+    expect(second).toMatchObject({ ok: false, errorKind: "lease-held", leaseHeld: true });
+    expect(probes).toBeGreaterThan(probesAfterFirst);
+    expect(existsSync(leasePath(dir))).toBe(true);
   });
 
   it("releases the lease only on a confirmed stop", async () => {
@@ -804,7 +879,7 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
 
     await expect(managed.stop("finished")).resolves.toEqual({ confirmed: true });
     expect(existsSync(leasePath(dir))).toBe(false);
-    clearLease(dir);
+    await clearLease(dir);
   });
 });
 

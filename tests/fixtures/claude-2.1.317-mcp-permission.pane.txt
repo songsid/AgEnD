@@ -1,0 +1,40 @@
+
+▟███▟      Claude Code v2.1.317
+█████▀     Opus 5.5 · API Usage Billing
+   ▝▝      /scratch/cwd
+
+
+❯ Send the report.
+
+  Calling mock…
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ Tool use
+ mock — Send Files Tool: (MCP)
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ to: "someone@example.com"
+ files: ["/tmp/report.pdf"]
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ About the mock — Send Files Tool:
+ │ Send local files to a recipient (inert test tool).
+
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, and don't ask again for mock — Send Files commands in /scratch/cwd
+   3. No
+
+ Esc to cancel · Tab to amend
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -6,7 +6,10 @@ export const NAMED_TUNNEL_FAILURE_MESSAGES = {
   "named-route-missing": "The named hostname did not reach a published application; check this tunnel's hostname, DNS and published application route.",
   "named-hostname-mismatch": "The named hostname answered with a different page; check that its published application points to AgEnD's origin URL.",
   "named-origin-unreachable": "Cloudflare could not reach the local origin; check the published application's origin URL and port.",
-  "named-connection-failed": "The named tunnel could not connect to Cloudflare; check network, DNS and firewall access, then retry.",
+  "named-connection-failed": "The named tunnel could not connect to Cloudflare; check that this machine's network allows outbound connections to Cloudflare, or try protocol http2.",
+  // The connector registered, but this machine's own HTTPS request to the hostname was reset or timed out: the tunnel
+  // is up; this machine's network does not open its own address (from elsewhere it may work).
+  "named-self-unreachable": "The named tunnel is connected to Cloudflare, but this machine could not open its own address; this machine's network may block the hostname or its DNS.",
 } as const;
 export type NamedTunnelFailureKind = keyof typeof NAMED_TUNNEL_FAILURE_MESSAGES;
 export function namedTunnelFailureMessage(kind: string): string | undefined {

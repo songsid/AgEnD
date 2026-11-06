@@ -1,5 +1,3 @@
-import { canvasWorkerEnabled } from "./web-experimental.js";
-import { isCanvasWorkerHttpPath } from "./web-experimental-http.js";
 import { sameAccount } from "./web-guest-access.js";
 import { withAppIconLinks } from "./web-icons.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -51,7 +49,8 @@ import {
   WEB_CSRF_MESSAGE,
   type WebGateRequest,
 } from "./web-auth.js";
-import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionTier, type WebSessionStore } from "./web-session.js";
+import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionRecord, type SessionTier, type WebSessionStore } from "./web-session.js";
+import { classifyWebPeer, type WebPeer } from "./authority/web-authority.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
 import { fleetCookieName } from "./web-cookie-names.js";
@@ -65,7 +64,6 @@ export const LOGIN_PAUSED_MESSAGE = "Too many wrong codes — sign-in is paused 
 const MAX_LOGIN_BODY = 1024;
 
 export interface AuthApiContext {
-  readonly fleetConfig?: { web?: { experimental?: { canvas_worker?: boolean } } } | null;
   readonly webToken: string | null;
   readonly webSessions: WebSessionStore | null;
   readonly webLoginCodes: WebLoginCodes | null;
@@ -79,6 +77,13 @@ export interface AuthApiContext {
   /** Told after every successful sign-in, so the operator can be shown one they did not make. */
   confirmPublicWebLogin?(info: { label: string; handle: string; owner: LoginCodeOwner }, isCurrent: () => boolean): Promise<void>;
   onWebLogin?(info: { label: string; surface: "local" | "gateway"; tier: SessionTier; handle: string; owner?: { adapterId: string; userId: string } }): void;
+  /**
+   * #2910 D1: a session signed in with the host's own code (`agend web --code`) — on a web-only fleet, from this computer,
+   * it is the host operator, authorized for its life (capped as every authorization). Anything else: nothing happens.
+   */
+  authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
+  /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
+  isWebOnlyFleet?(): boolean;
   /** #1570: record this browser as a returning device of the code's owner; the cookie value, or null when not kept. */
   rememberReturningDevice?(owner: LoginCodeOwner, input: { surface: "local" | "gateway"; label: string }): string | null;
   /** #1920 step 4b: a guest's sign-in makes this browser a guest's returning device (its own caps). The cookie, or null. */
@@ -105,6 +110,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "inter.woff2": { file: join("shared", "fonts", "inter.woff2"), type: "font/woff2" },
   // #2631: the Office's built-in Cozy style is drawn on this picture (static, no data, like the font).
   "office-cozy.png": { file: join("shared", "office", "cozy.png"), type: "image/png" },
+  // #2947: the built-in Guild and School styles' pictures (the same: static, no data).
+  "office-guild.png": { file: join("shared", "office", "guild.png"), type: "image/png" },
+  "office-school.png": { file: join("shared", "office", "school.png"), type: "image/png" },
   // #1408: the app shell's public closure — the entry module, everything it imports statically, and the vendored
   // Preact + htm (shared/vendor/vendor.json, byte-checked). Static code with no data, like signin.js; the panels that
   // need a session stay behind the gate under /ui/js/ and are reached only by a dynamic import.
@@ -113,6 +121,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-shell.js", "app-session.js", "web-authorize.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
+    // Claude history in the View: its renderer, loaded by View when a Claude agent's View is scrolled up (static code; the
+    // history is read through the pane's own route and gate).
+    "view-history.js",
     // alpha.2 (N1): the sidebar's one instance list, and View's roster read it shows to an anonymous reader.
     "instance-nav.js", "view-roster-store.js",
     // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
@@ -125,13 +136,6 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-prefs.js",
     // #2726: the setup host's words and codes in both languages (static tables, no data), for the Setup wizard and Apply.
     "setup-host-text.js",
-    // #1629: static session-bound owner preference client; every data route remains session-gated.
-    "owner-effect-prefs.js", "feature-flags.js", "effect-display-metadata.js",
-    // #1629: static host runtime closure; effect data stays behind session/epoch routes.
-    "effect-posters.js", "effect-poster-reader.js",
-    "effect-app-runtime.js", "effect-trial-source.js", "effect-owner-source.js", "effect-owner-regions.js", "effect-chat-runtime.js", "effect-runtime-loader.js", "effect-registry.js", "effect-safety.js",
-    "effect-stock-trust.js", "effect-stock-snapshot.js", "effect-trial-stage.js", "effect-trial-shadow.js", "effect-profiles.js", "effect-profiler.js",
-    "effect-baseline.js", "effect-frame.js", "effect-geometry.js", "effect-host-style.js", "effect-cursor.js", "effect-policy.js",
     // #1629 r4 §3: links the signed-in person's owner CSS (static code; the stylesheet itself is session-gated).
     "owner-css.js",
     // #1629: agents' themes on their own chat surfaces (static code; the themes are read behind the gate).
@@ -140,14 +144,15 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "identity-card.js", "card-strings.js",
     // #1629 r4-4: widgets drawn by the page's own components (static code; the widgets are read behind the gate).
     "agent-widget.js",
-    // #2117: the per-device "follow the system's reduced-motion setting" switch, shared by ambient and Canvas Worker effects.
+    // #2117: the per-device "follow the system's reduced-motion setting" switch for ambient effects.
     "fx-motion.js",
     // #1958: identity colours on the page and the Color dialog (static code; the colours come in the status frame).
     "identity-color.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
   ].map(name => [name, { file: join("shared", name), type: "text/javascript; charset=utf-8" }])),
-  "effect-trial.css": { file: join("shared", "effect-trial.css"), type: "text/css; charset=utf-8" },
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
+  // Claude history in the View: the renderer's own stylesheet (linked by it, so an older app.css never lacks its rules).
+  "view-history.css": { file: join("shared", "view-history.css"), type: "text/css; charset=utf-8" },
 };
 
 /** True for a name `/assets/` serves. The public link's manifest asks this too: one list, not two. */
@@ -190,10 +195,14 @@ function json(res: ServerResponse, code: number, body: unknown, headers: Record<
   res.end(JSON.stringify(body));
 }
 
-/** The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. */
-export function serveSigninPage(res: ServerResponse, status = 200): void {
+/**
+ * The sign-in page. Also what a browser navigation gets from a gated page it has no cookie for. #2910 D5: on a web-only
+ * fleet (`webOnly`) its <body> says so, and the page's words lead with `agend web --code` (there is no /web to send).
+ */
+export function serveSigninPage(res: ServerResponse, status = 200, opts: { webOnly?: boolean } = {}): void {
   try {
-    const html = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
+    const page = readFileSync(join(__dirname, "ui", "signin.html"), "utf-8");
+    const html = opts.webOnly ? page.replace("<body>", '<body data-web-only="1">') : page;
     sendPanelHtml(res, withAppIconLinks(html), status, { "Cache-Control": "no-store" });
   } catch {
     json(res, 500, { error: "signin.html not found" });
@@ -253,12 +262,11 @@ export function handleAuthRequest(
   // ── The page and its scripts: public, inert ──
   if (path === "/signin") {
     if (method !== "GET" && method !== "HEAD") { json(res, 405, { error: "method not allowed" }); return true; }
-    serveSigninPage(res);
+    serveSigninPage(res, 200, { webOnly: ctx.isWebOnlyFleet?.() === true });
     return true;
   }
 
   if (path.startsWith("/assets/")) {
-    if (!canvasWorkerEnabled(ctx.fleetConfig?.web) && isCanvasWorkerHttpPath(path)) { json(res, 404, { error: "canvas_worker_experimental" }); return true; }
     const asset = method === "GET" ? ASSETS[path.slice("/assets/".length)] : undefined;
     if (!asset) { json(res, 404, { error: "not found" }); return true; }
     try {
@@ -303,8 +311,8 @@ export function handleAuthRequest(
       const guestCodes = ctx.webGuestLoginCodes ?? null;
       const audience = gateway?.exposureId ?? "local";
       const guestPausedMs = guestCodes?.pausedForMs() ?? 0;
-      const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs()) }
-        : codes.pausedForMs() > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
+      const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs(audience)) }
+        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
         : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience);
       if (result.kind === "invalid") guestCodes?.recordWrong(body.code);
       if (result.kind === "paused") {
@@ -334,7 +342,9 @@ export function handleAuthRequest(
       // the web) — recognition only; no recipient (an `agend web` code): the operator, as before.
       const account = result.recipient;
       const { sessionId, record } = sessions.create({ tier: result.tier, surface: gateway?.surface ?? "local", label, tokenEpoch: tokenEpoch(token), exposureId: gateway?.exposureId, pending: !!gateway,
-        ...(account ? { owner: { adapterId: account.adapterId, userId: account.userId } } : {}) });
+        ...(account ? { owner: { adapterId: account.adapterId, userId: account.userId } } : {}),
+        // #2910 D1: only a code the host's shell asked for — never one sent to an account, never over the public link.
+        ...(result.host && !account && !gateway ? { host: true as const } : {}) });
       // …and that account's display name then is the name the person starts with (on every device of theirs). A code
       // re-sent to a returning device (#1570) carries no name: the one from their last sign-in stays.
       if (account?.username) {
@@ -360,6 +370,9 @@ export function handleAuthRequest(
         }
       }
       ctx.logger.info({ handle: record.handle, label, tier: record.tier, surface: record.surface }, "Web sign-in");
+      if (record.host) {
+        try { ctx.authorizeHostSession?.(record, classifyWebPeer(req)); } catch (err) { ctx.logger.debug({ err }, "host session not authorized"); }
+      }
       try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle, ...(record.owner ? { owner: record.owner } : {}) }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
       // #1570: a code delivered privately to its owner makes this browser a returning device (a separate cookie; the
       // session id above is unrelated to it). A code with no owner (`agend web --code`) does not.
@@ -423,7 +436,8 @@ export function handleAuthRequest(
       json(res, 401, { error: "X-Agend-Token required" });
       return true;
     }
-    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token) });
+    // #2910 D1: the shell's own code — the host operator's on a web-only fleet (fleet-manager authorizeHostSession).
+    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true });
     ctx.logger.info({ source: "cli" }, "Web login code issued");
     json(res, 200, { code: issued.display, expiresAt: issued.expiresAt });
     return true;

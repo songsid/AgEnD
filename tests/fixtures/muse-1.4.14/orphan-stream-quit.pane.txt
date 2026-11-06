@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.14
+
+  resumed session 01a182f9-21be-76f0-a862-afc4b7505268
+
+❯ please do the long thing
+
+◆ Interrupted · Report issues with /feedback
+
+  warning: the previous run of this session ended abnormally around 2026-10-28 14:45 UTC (no clean shutdown was
+  recorded). It was resumed cleanly.
+
+❯ carry on
+
+◆ mock reply ok
+
+To continue this session, run muse resume 01a182f9-21be-76f0-a862-afc4b7505268
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

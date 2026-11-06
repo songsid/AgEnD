@@ -10,55 +10,150 @@
  *    (or falls back to the console) with the backends already signed in left out, the page counts down to its TTL and
  *    says when it lost contact, and the dashboard can be opened again after the install finished.
  *
- * The installer's own functions run in pwsh (from its syntax tree; Start-Process, the browser and WSL stubbed); the
- * page's own script runs in a vm with an inert DOM; the real SetupHost runs on a scratch directory with no fleet.
+ * The installer's own functions run in pwsh (sliced in Node from the installer's text by tests/support/installer-ps-batch-a.ts;
+ * Start-Process, the browser and WSL stubbed). The pwsh cases share one pwsh process; the real SetupHost's own line gets
+ * a second one, since that line only exists once the host has started. The page's own script runs in a vm with an inert
+ * DOM; the real SetupHost runs on a scratch directory with no fleet.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { SetupHost } from "../src/setup-host.js";
 import { SETUP_FORM_HTML } from "../src/setup-form.js";
 import { setupHttp } from "./helpers/setup-confirmation-1423.js";
+import {
+  CASE_RUNNER,
+  caseOf,
+  psLiteral,
+  runPwshBatch,
+  sliceAssignments,
+  sliceFunctions,
+  type CaseResult,
+} from "./support/installer-ps-batch-a.js";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
 const code = text.split("\n").filter(l => !/^\s*#/.test(l)).join("\n");
 const ID = "0123456789abcdef0123456789abcdef";
 const requested = (fields: Record<string, unknown>) => `Settings confirmation requested: ${JSON.stringify(fields)}`;
+const PAGE = ["  Setup page: http://127.0.0.1:19280/s/a/", "  Setup code: AAAA-BBBB"];
 
 const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
-function withHelpers(body: string) {
-  const dir = mkdtempSync(join(tmpdir(), "agend-2650-")); dirs.push(dir);
-  const file = join(dir, "t.ps1");
-  writeFileSync(file, `$ErrorActionPreference = 'Stop'
-$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-$a = $ast.Find({param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$WSL_COMMAND_FN'}, $false)
-. ([scriptblock]::Create($a.Extent.Text)); . ([scriptblock]::Create($WSL_COMMAND_FN))
-$script:OnWindows = $false
-$UBUNTU_DISTRO = 'Ubuntu-24.04'
-$AGEND_USER = 'root'
-function Open-InBrowser([string]$url) { Add-Content -LiteralPath (Join-Path $env:TMPDIR 'opened.txt') -Value $url; return $true }
+
+const ROOTS = ["Get-SetupPrompt", "Invoke-BrowserSetup", "Invoke-SetupAndService", "Get-HostConfirmCommand", "Open-HostConfirmWindow", "Show-HostConfirm"];
+const PRELUDE = [
+  "$ErrorActionPreference = 'Stop'",
+  sliceFunctions(text, ROOTS),
+  sliceAssignments(text, ["AGEND_ENV"]),
+  "$script:OnWindows = $false",
+  "$UBUNTU_DISTRO = 'Ubuntu-24.04'",
+  "$AGEND_USER = 'root'",
+  CASE_RUNNER,
+].join("\n");
+
+/** Stubs for the whole batch. A case redefines one inside its own scope, so the stub is seen only by that case. */
+const STUBS = `$script:Opened = @(); $script:Clipped = @()
+function Open-InBrowser([string]$url) { $script:Opened += $url; return $true }
 function Wait-SetupPageReachable { return $true }
-function Set-SetupClipboard([string]$text) { return $true }
-# Start-Process, stubbed: what it was asked to start is written down, one line per call.
-function Start-Process { param($FilePath, $ArgumentList) Add-Content -LiteralPath (Join-Path $env:TMPDIR 'started.txt') -Value ($FilePath + ' ' + ($ArgumentList -join ' ')) }
+function Set-SetupClipboard([string]$text) { $script:Clipped += $text; return $true }
+# Start-Process, stubbed: what it was asked to start is recorded per case, one entry per call.
+function Start-Process { param($FilePath, $ArgumentList) $script:Started += ($FilePath + ' ' + ($ArgumentList -join ' ')) }
 function Lines([string[]]$lines) { return { param($hook) foreach ($l in $lines) { & $hook $l }; return 0 }.GetNewClosure() }
-${body}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, input: "", env: { ...process.env, TMPDIR: dir } });
-  if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
-  const read = (f: string) => { try { return readFileSync(join(dir, f), "utf8"); } catch { return null; } };
-  return { out: r.stdout + r.stderr, started: read("started.txt") };
+# Stage 5 (Invoke-SetupAndService) with its wsl steps, logins and answers queued per case. Running out is a failure.
+$script:Log = @(); $script:Runs = 0; $script:Late = @(); $script:Setups = $null; $script:Answers = $null
+function Reset-Stage5 { $script:Log = @(); $script:Runs = 0; $script:Late = @(); $script:Setups = [System.Collections.Queue]::new(); $script:Answers = [System.Collections.Queue]::new() }
+function Invoke-WslStep { param($Label, $Usually, $Script, $UpperMinutes, $OnLine)
+  if ($Script -match '(agend setup[^\n]*)$') {
+    $script:Log += ('run:' + $Matches[1]); $script:Runs++
+    if ($script:Setups.Count -eq 0) { throw 'unexpected setup run' }
+    $lines = $script:Setups.Dequeue()
+    foreach ($l in $lines) { if ($l -and $OnLine) { & $OnLine $l } }
+    return 0
+  }
+  $script:Log += 'service'; return 0
 }
-const ps = (s: string) => `'${s.replace(/'/g, "''")}'`;
+function Invoke-ConsoleQuickstart { $script:Log += 'console'; return 0 }
+function Read-Host { param($p) if ($script:Answers.Count -eq 0) { throw 'unexpected question' }; $a = $script:Answers.Dequeue(); $script:Log += "ask:$a"; return $a }
+function Test-WslLogin([string]$key) { return ($script:Runs -gt 0 -and $script:Late -contains $key) }`;
+
+const PROMPT_LINES = [
+  requested({ id: ID, section: "quickstart", source: "setup_session", authority: { kind: "x" } }),
+  requested({ id: ID, source: "web_session" }),
+  requested({ id: ID.toUpperCase(), source: "setup_session" }),
+  requested({ id: ID + "0", source: "setup_session" }),
+  requested({ id: ID.slice(0, 31) + "; rm -rf /", source: "setup_session" }),
+  "Settings confirmation requested: {not json",
+  `Settings confirmation confirmed: ${JSON.stringify({ id: ID, source: "setup_session" })}`,
+  "Setup host stopped (ttl). Run `agend setup` again to reopen it.",
+  "Setup host stopped (idle). Run `agend setup` again to reopen it.",
+];
+
+interface Stage5Case { name: string; setups: string[][]; answers: string[]; late: string[] }
+const STAGE5_CASES: Stage5Case[] = [
+  { name: "stage5-ttl", setups: [[...PAGE, "Setup host stopped (ttl). Run `agend setup` again to reopen it."], [...PAGE, "Setup complete — starting AgEnD."]], answers: [""], late: ["kiro"] },
+  { name: "stage5-signed", setups: [[...PAGE, "Setup host stopped (idle). Run `agend setup` again to reopen it."], [...PAGE, "Setup complete — starting AgEnD."]], answers: [""], late: ["kiro", "codex"] },
+  { name: "stage5-console", setups: [[...PAGE, "Setup host stopped (lockout). Run `agend setup` again to reopen it."]], answers: ["c"], late: [] },
+  { name: "stage5-stop", setups: [[...PAGE]], answers: ["n"], late: [] },
+];
+/** Stage 5's setup loop with the backends the installer selected (kiro-cli, codex), as Invoke-SetupAndService gets them. */
+function stage5Case({ name, setups, answers, late }: Stage5Case): string {
+  return `Invoke-Case ${psLiteral(name)} {
+  Reset-Stage5
+${setups.map(lines => `  $script:Setups.Enqueue([string[]]@(${lines.map(psLiteral).join(",")}))`).join("\n")}
+${answers.map(a => `  $script:Answers.Enqueue(${psLiteral(a)})`).join("\n")}
+  $script:Late = @(${late.map(psLiteral).join(",")})
+  $backends = @([PSCustomObject]@{ Key = 'kiro' }, [PSCustomObject]@{ Key = 'codex' })
+  $ok = Invoke-SetupAndService -BackendSignins 'kiro-cli,codex' -Backends $backends
+  Write-Output ("RESULT=" + $ok + " LOG=" + ($script:Log -join '|'))
+}`;
+}
+
+const BATCH = `${PRELUDE}
+${STUBS}
+Invoke-Case 'prompts' {
+  $cases = @(${PROMPT_LINES.map(psLiteral).join(",\n  ")})
+  $i = 0
+  foreach ($c in $cases) { $p = Get-SetupPrompt $c; Write-Output ("CASE$i=" + $(if ($null -eq $p) { 'null' } elseif ($p.Confirm) { 'confirm:' + $p.Confirm } else { 'stopped:' + $p.Stopped })); $i++ }
+}
+Invoke-Case 'window' {
+  $r = Invoke-BrowserSetup (Lines @(${PAGE.map(psLiteral).join(", ")}, ${psLiteral(requested({ id: ID, section: "quickstart", source: "setup_session" }))}, ${psLiteral(requested({ id: ID, section: "quickstart", source: "setup_session" }))}))
+  Write-Output ("SHOWN=" + $r.Shown + " DONE=" + $r.Done)
+}
+Invoke-Case 'no-window' {
+  function Start-Process { throw 'blocked' }
+  $null = Invoke-BrowserSetup (Lines @(${psLiteral(requested({ id: ID, source: "setup_session" }))}))
+}
+Invoke-Case 'flood' {
+  $null = Invoke-BrowserSetup (Lines @(${Array.from({ length: 8 }, (_, n) => psLiteral(requested({ id: n.toString(16).repeat(32), source: "setup_session" }))).join(", ")}))
+}
+Invoke-Case 'command' {
+  foreach ($id in @(${psLiteral(ID)}, 'abc', ${psLiteral(ID + "; calc")}, ${psLiteral(ID.toUpperCase())})) { try { Write-Output ("OK=" + (Get-HostConfirmCommand $id)) } catch { Write-Output "REFUSED" } }
+}
+Invoke-Case 'older' {
+  $null = Invoke-BrowserSetup (Lines @(${PAGE.map(psLiteral).join(", ")}, 'Setup complete — starting AgEnD.'))
+}
+${STAGE5_CASES.map(stage5Case).join("\n")}
+`;
+
+let batch: Map<string, CaseResult> | undefined;
+beforeAll(() => {
+  if (!pwsh) return;
+  const dir = mkdtempSync(join(tmpdir(), "agend-2650-")); dirs.push(dir);
+  batch = runPwshBatch(dir, BATCH);
+});
+const run = (name: string): CaseResult => caseOf(batch!, name);
 
 describe("item 1: host confirmation (static)", () => {
+  it("the cases' functions are sliced in Node, not parsed from the whole installer", () => {
+    expect(PRELUDE).toContain("function Open-HostConfirmWindow");
+    expect(PRELUDE).toContain("function Get-WslAgendCommand");                       // inside $WSL_COMMAND_FN, sliced by name
+    expect(PRELUDE).not.toContain("Parser]::ParseFile");
+  });
   it("nothing in the installer answers a confirmation: no --yes, no settings confirm in a watched or piped step", () => {
     expect(code).not.toMatch(/settings confirm[^\n]*--yes/);
     expect(code).not.toMatch(/settings (confirm|reject)[^\n]*(\||<<|RedirectStandardInput)/);
@@ -74,32 +169,17 @@ describe("item 1: host confirmation (static)", () => {
   });
 });
 
-describe.skipIf(!pwsh)("with pwsh: item 1, the confirmation handoff", { timeout: 90_000 }, () => {
+describe.skipIf(!pwsh)("with pwsh: item 1, the confirmation handoff", () => {
   it("reads only a setup page's own request with a canonical id; the stop reason too", () => {
-    const { out } = withHelpers(`
-$cases = @(
-  ${ps(requested({ id: ID, section: "quickstart", source: "setup_session", authority: { kind: "x" } }))},
-  ${ps(requested({ id: ID, source: "web_session" }))},
-  ${ps(requested({ id: ID.toUpperCase(), source: "setup_session" }))},
-  ${ps(requested({ id: ID + "0", source: "setup_session" }))},
-  ${ps(requested({ id: ID.slice(0, 31) + "; rm -rf /", source: "setup_session" }))},
-  'Settings confirmation requested: {not json',
-  ${ps(`Settings confirmation confirmed: ${JSON.stringify({ id: ID, source: "setup_session" })}`)},
-  'Setup host stopped (ttl). Run \`agend setup\` again to reopen it.',
-  'Setup host stopped (idle). Run \`agend setup\` again to reopen it.'
-)
-$i = 0
-foreach ($c in $cases) { $p = Get-SetupPrompt $c; Write-Output ("CASE$i=" + $(if ($null -eq $p) { 'null' } elseif ($p.Confirm) { 'confirm:' + $p.Confirm } else { 'stopped:' + $p.Stopped })); $i++ }`);
+    const { out } = run("prompts");
     expect(out).toContain(`CASE0=confirm:${ID}\n`);
     for (const n of [1, 2, 3, 4, 5, 6]) expect(out).toContain(`CASE${n}=null\n`);
     expect(out).toContain("CASE7=stopped:ttl\n");
     expect(out).toContain("CASE8=stopped:idle\n");
   });
   it("the request opens one confirmation window per id (wsl.exe, interactive, no --yes) and prints the command to paste", () => {
-    const line = requested({ id: ID, section: "quickstart", source: "setup_session" });
-    const { out, started } = withHelpers(`$r = Invoke-BrowserSetup (Lines @('  Setup page: http://127.0.0.1:19280/s/a/', '  Setup code: AAAA-BBBB', ${ps(line)}, ${ps(line)}))
-Write-Output ("SHOWN=" + $r.Shown + " DONE=" + $r.Done)`);
-    const calls = started!.trim().split("\n");
+    const { out, record } = run("window");
+    const calls = record.started;
     expect(calls).toHaveLength(1);                                                  // the same id twice: one window
     expect(calls[0]).toMatch(/^wsl\.exe -d Ubuntu-24\.04 -u root --exec bash -lc "[^"]*agend settings confirm 0123456789abcdef0123456789abcdef; echo; read -r -p 'Press Enter to close this window\. ' _"$/);
     expect(calls[0]).not.toContain("--yes");
@@ -108,24 +188,20 @@ Write-Output ("SHOWN=" + $r.Shown + " DONE=" + $r.Done)`);
     expect(out).toContain("SHOWN=True DONE=False");
   });
   it("no window could be opened: said so, and the command to paste is still there", () => {
-    const { out } = withHelpers(`function Start-Process { throw 'blocked' }
-$null = Invoke-BrowserSetup (Lines @(${ps(requested({ id: ID, source: "setup_session" }))}))`);
+    const { out } = run("no-window");
     expect(out).toContain("沒辦法自動打開確認視窗。");
     expect(out).toContain(`agend settings confirm ${ID}'`);
   });
   it("a page cannot flood the desktop: at most five windows per setup page", () => {
-    const ids = Array.from({ length: 8 }, (_, n) => n.toString(16).repeat(32));
-    const { started } = withHelpers(`$null = Invoke-BrowserSetup (Lines @(${ids.map(id => ps(requested({ id, source: "setup_session" }))).join(",")}))`);
-    expect(started!.trim().split("\n")).toHaveLength(5);
+    expect(run("flood").record.started).toHaveLength(5);
   });
   it("Get-HostConfirmCommand refuses anything but a canonical id", () => {
-    const { out } = withHelpers(`foreach ($id in @('${ID}', 'abc', '${ID}; calc', '${ID.toUpperCase()}')) { try { Write-Output ("OK=" + (Get-HostConfirmCommand $id)) } catch { Write-Output "REFUSED" } }`);
+    const { out } = run("command");
     expect(out.match(/^OK=/gm)).toHaveLength(1);
     expect(out.match(/^REFUSED$/gm)).toHaveLength(3);
   });
   it("an older AgEnD (no request line, or none yet): the page alone, nothing opened", () => {
-    const { started } = withHelpers(`$null = Invoke-BrowserSetup (Lines @('  Setup page: http://127.0.0.1:19280/s/a/', '  Setup code: AAAA-BBBB', 'Setup complete — starting AgEnD.'))`);
-    expect(started).toBeNull();
+    expect(run("older").record.started).toEqual([]);
   });
 });
 
@@ -149,7 +225,11 @@ describe("item 1 against the real SetupHost (no fleet)", () => {
     const id = pending.body.pending_change.id as string;
     const line = h.logs.find(l => l.startsWith("Settings confirmation requested: "))!;
     expect(JSON.parse(line.slice("Settings confirmation requested: ".length))).toMatchObject({ id, source: "setup_session" });
-    if (pwsh) expect(withHelpers(`Write-Output ("ID=" + (Get-SetupPrompt ${ps(line)}).Confirm)`).out).toContain(`ID=${id}\n`);
+    if (pwsh) {
+      const dir = mkdtempSync(join(tmpdir(), "agend-2650-line-")); dirs.push(dir);
+      const r = runPwshBatch(dir, `${PRELUDE}\n${STUBS}\nInvoke-Case 'line' { Write-Output ("ID=" + (Get-SetupPrompt ${psLiteral(line)}).Confirm) }\n`);
+      expect(caseOf(r, "line").out).toContain(`ID=${id}\n`);
+    }
   });
   it("item 10: setup/status says how long the page has left, from the host's own clock", async () => {
     let t = 1_000_000;
@@ -160,40 +240,21 @@ describe("item 1 against the real SetupHost (no fleet)", () => {
   });
 });
 
-describe.skipIf(!pwsh)("with pwsh: item 10, reopening and the dashboard", { timeout: 90_000 }, () => {
-  /** Stage 5's setup loop with WSL steps, logins and answers stubbed; the setup commands it ran are written down. */
-  function stage5(setups: string[][], answers: string[], loggedInAfterFirst: string[] = []) {
-    return withHelpers(`foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$AGEND_ENV' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
-$script:setups = [System.Collections.ArrayList]::new()
-${setups.map(ls => "[void]$script:setups.Add([string[]]@(" + [...ls.map(ps), "''"].join(",") + "))").join("\n")}
-$script:answers = @(${answers.map(ps).join(",") || "@()"}); $script:log = @(); $script:runs = 0
-$script:late = @(${loggedInAfterFirst.map(ps).join(",") || "@()"})
-function Test-WslLogin([string]$key) { return ($script:runs -gt 0 -and $script:late -contains $key) }
-function Invoke-WslStep { param($Label, $Usually, $Script, $UpperMinutes, $OnLine)
-  if ($Script -match '(agend setup[^\\n]*)$') { $script:log += ('run:' + $Matches[1]); $script:runs++; $lines = $script:setups[0]; $script:setups.RemoveAt(0); foreach ($l in $lines) { if ($l -and $OnLine) { & $OnLine $l } }; return 0 }
-  $script:log += 'service'; return 0 }
-function Invoke-ConsoleQuickstart { $script:log += 'console'; return 0 }
-function Read-Host { param($p) $a = $script:answers[0]; $script:answers = @($script:answers | Select-Object -Skip 1); $script:log += "ask:$a"; return $a }
-$backends = @([PSCustomObject]@{ Key = 'kiro' }, [PSCustomObject]@{ Key = 'codex' })
-$ok = Invoke-SetupAndService -BackendSignins 'kiro-cli,codex' -Backends $backends
-Write-Output ("RESULT=" + $ok + " LOG=" + ($script:log -join '|'))`);
-  }
-  const PAGE = ["  Setup page: http://127.0.0.1:19280/s/a/", "  Setup code: AAAA-BBBB"];
+describe.skipIf(!pwsh)("with pwsh: item 10, reopening and the dashboard", () => {
   it("closed on its TTL: says so; Enter reopens it asking only for the backends still signed out", () => {
-    const { out } = stage5([[...PAGE, "Setup host stopped (ttl). Run `agend setup` again to reopen it."], [...PAGE, "Setup complete — starting AgEnD."]], [""], ["kiro"]);
+    const { out } = run("stage5-ttl");
     expect(out).toContain("設定頁開滿 15 分鐘，自動關閉了。");
     expect(out).toContain("RESULT=True LOG=run:agend setup --backend-signins kiro-cli,codex|ask:|run:agend setup --backend-signins codex|service\n");
   });
   it("every backend signed in meanwhile: the reopened page asks for none", () => {
-    const { out } = stage5([[...PAGE, "Setup host stopped (idle). Run `agend setup` again to reopen it."], [...PAGE, "Setup complete — starting AgEnD."]], [""], ["kiro", "codex"]);
+    const { out } = run("stage5-signed");
     expect(out).toContain("設定頁太久沒有操作，自動關閉了。");
     expect(out).toContain("選的後端都已經登入，新的設定頁不會再要求登入。");
     expect(out).toContain("|run:agend setup|service\n");
   });
   it("closed: c sets up in this window instead; n ends with the progress kept", () => {
-    expect(stage5([[...PAGE, "Setup host stopped (lockout). Run `agend setup` again to reopen it."]], ["c"]).out)
-      .toContain("RESULT=True LOG=run:agend setup --backend-signins kiro-cli,codex|ask:c|console|service\n");
-    const stop = stage5([[...PAGE]], ["n"]).out;
+    expect(run("stage5-console").out).toContain("RESULT=True LOG=run:agend setup --backend-signins kiro-cli,codex|ask:c|console|service\n");
+    const stop = run("stage5-stop").out;
     expect(stop).toContain("設定頁關閉了，設定還沒完成。");                        // no reason printed: the plain sentence
     expect(stop).toContain("RESULT=False LOG=run:agend setup --backend-signins kiro-cli,codex|ask:n\n");
   });

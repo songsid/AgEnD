@@ -28,7 +28,6 @@ const ROWS = [
   ["look.widget", "look", ".s-widget", "settings.widgetTitle", "widget.sidebar", ["sidebar widget", "widget", "json"], ["側邊欄小工具", "小工具"]],
   ["look.css", "look", ".s-owner-css", "settings.cssTitle", null, ["custom css", "stylesheet", "style", "css"], ["自訂 CSS", "樣式表", "樣式"]],
   ["look.mods", "look", ".s-mods", "settings.modsTitle", null, ["mod", "mods", "import", "add-on", "agendmod"], ["mod", "匯入", "擴充"]],
-  ["look.effects", "look", ".s-effects", null, null, ["effects", "canvas", "ambient", "petals", "click stars"], ["特效", "效果", "花瓣", "氛圍"], L("Effects", "效果")],
   ["look.restore", "look", ".s-restore", "settings.restoreTitle", null, ["restore defaults", "reset", "default"], ["還原預設值", "重設", "預設"]],
   // Fleet · Agents
   ["agents.new", "agents", "#newAgentBtn", "settings.newAgent", null, ["new agent", "create", "add agent", "instance"], ["新增 agent", "建立", "新 agent"]],
@@ -66,6 +65,7 @@ const ROWS = [
   // Fleet · Web dashboard
   ["dash.log-tab", "web-dashboard", "#webLogTab", "settings.webLogTab", "web.log_tab", ["log tab", "steps", "log"], ["Log 分頁", "紀錄", "步驟"]],
   ["dash.usage-public", "web-dashboard", "#webUsagePublic", "settings.webUsagePublic", "web.usage_report_on_public_link", ["usage", "public link", "cost", "tokens"], ["用量", "公開連結", "費用"]],
+  ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
   ["dash.app-icon", "web-dashboard", ".s-app-icon", "settings.appIconTitle", null, ["app icon", "favicon", "home screen", "icon"], ["App 圖示", "圖示", "主畫面"]],
   ["dash.card-limits", "web-dashboard", ".s-card-limits", "settings.cardLimitsTitle", "web.appearance", ["upload limits", "portrait", "banner", "card limits"], ["上傳限制", "身分卡上傳限制"]],

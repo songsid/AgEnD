@@ -21,16 +21,14 @@ import { DEFAULT_PLACEMENTS } from "../src/web-identity-palette.js";
 const SKILL = readFileSync(join(process.cwd(), "src/general-knowledge/skills/web-appearance/SKILL.md"), "utf8");
 
 describe("the web-appearance skill", () => {
-  it("Try click is sample-only consent with isolated chrome; the ordinary CSS policy remains", () => {
-    const trial = SKILL.slice(SKILL.indexOf("### Try:"), SKILL.indexOf("### Static Chat"));
-    expect(trial).toContain("no global HTML-preview opt-in"); expect(trial).toContain("closed Shadow DOM"); expect(trial).toContain("Custom CSS stays active elsewhere"); expect(trial).not.toContain("Custom CSS must be off");
-    expect(SKILL).toContain("on, loading or unknown");
+  it("#2799: the one skill text names no removed Canvas Worker tool, and no Try", () => {
+    expect(SKILL).not.toMatch(/upload_web_effect|list_web_effects|apply_web_effect|export_web_mod|propose_web_mod|### Try:/);
   });
   it("names only real tools, and every appearance tool", () => {
     const names = new Set(TOOLS.map((t: { name: string }) => t.name));
     const named = [...SKILL.matchAll(/`([a-z_]+)`/g)].map(m => m[1]!).filter(n => /^(get|set|reset|preview)_/.test(n));
     expect(named.filter(n => !names.has(n))).toEqual([]);
-    for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "export_web_mod", "propose_web_mod"]) expect(SKILL, t).toContain(`\`${t}\``);
+    for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient"]) expect(SKILL, t).toContain(`\`${t}\``);
   });
   it("the host's default colour places are the code's (#2056: all three, no longer ring and bar)", () => {
     const words = `${DEFAULT_PLACEMENTS.slice(0, -1).join(", ")} and ${DEFAULT_PLACEMENTS.at(-1)}`;
@@ -38,14 +36,12 @@ describe("the web-appearance skill", () => {
     expect(SKILL).toContain(`${words} unless changed`);
     expect(SKILL).not.toMatch(/ring and bar/);
   });
-  it("its set_web_settings table has a row for every `what` the tool takes, and the tool says banner focus", () => {
+  it("its set_web_settings table has a row for every `what` the tool takes, banner focus included", () => {
     const src = readFileSync(join(process.cwd(), "src/outbound-schemas.ts"), "utf8");
     const body = src.slice(src.indexOf("export const SetWebSettingsArgs"), src.indexOf("export const", src.indexOf("export const SetWebSettingsArgs") + 1));
     const whats = [...body.matchAll(/what: z\.literal\("([a-z_]+)"\)/g)].map(m => m[1]!);
     expect(whats).toContain("banner_focus");
     for (const w of whats) expect(SKILL, w).toContain(`\n| \`${w}\` |`);
-    const tool = TOOLS.find((t: { name: string }) => t.name === "set_web_settings") as { description: string };
-    expect(tool.description).toMatch(/banner focus/);
   });
   it("its numbers are the code's: slots, sizes, rate limits, text limits, contrast", () => {
     for (const slot of THEME_ASSET_SLOTS) expect(SKILL, slot).toContain(`| \`${slot}\` |`);
@@ -55,7 +51,7 @@ describe("the web-appearance skill", () => {
     expect(SKILL).toContain(`default ${APPEARANCE_DEFAULTS.banner.max_width}×${APPEARANCE_DEFAULTS.banner.max_height}, ${APPEARANCE_DEFAULTS.banner.max_kib} KiB`);
     expect(SKILL).toContain(`**${APPEARANCE_LIMITS.changeGapMs / 1000} s** between changes, at most **${APPEARANCE_LIMITS.changesPerHour} changes an hour**`);
     // The user's decision (2026-10-18): uploads are not counted — the skill never promises or warns of a count.
-    expect(SKILL).toContain("Uploads (pictures, effects, proposed mods) are not counted.");
+    expect(SKILL).toContain("Picture uploads are not counted.");
     expect(SKILL).not.toMatch(/uploads? an hour|3 an hour|three-uploads/);
     expect(SKILL).toContain(`\`card.tagline\` (one line, 1..${TAGLINE_MAX_GRAPHEMES} characters), \`card.bio\` (1..${BIO_MAX_GRAPHEMES} characters, at most ${BIO_MAX_BREAKS} line breaks)`);
     const pairs = (fg: string) => CONTRAST_PAIRS.filter(([f]) => f === fg);
@@ -122,14 +118,10 @@ describe("what's new for 2.3 (#1633, #2012: topic lines; the details are the ski
       "`card.tagline`", "`card.bio`", "`card.portrait`", "A person may set their own version of any field",
       // web-appearance
       "`get_web_appearance`", "`preview_web_appearance` (`modes`", "`.agend/appearance/<mode>.svg`",
-      // web-mod
-      "`export_web_mod { name, version, title? }`", "`propose_web_mod { file }`", "Settings → Look → Mods", "**You never import**", "**A mod carrying custom CSS is refused**",
       // web-widget
       "`set_web_widget { slot, spec?, data? }`", "`chat_header`", "`details`", "`context_pct`", "`cost_usd`", "at least **10 s** apart", "`remove_web_widget { slot? }`",
-      // new in beta.2: identity colour and effects
+      // new in beta.2: identity colour (the web-mod and Canvas Worker effect facts went with their tools, #2799)
       "`identity`: `{ color?, show? }`", "first match wins: a **person's** pick", "`show_source`",
-      "`upload_web_effect { dir }`", "`list_web_effects`", "`apply_web_effect { id, params? }`", "`remove_web_effect { id? }`", "`delete_web_effect { id }`", "`profile_web_effect { id }`", "`preview_web_effect({id})`",
-      "**`mention` is reserved and never fires in 2.3.0**", "**Your `front` effects are paused while the viewer's custom CSS is on, loading or unknown**",
     ];
     for (const f of facts) expect(FLAT, f).toContain(f);
     expect(SKILL).not.toMatch(/Settings → Appearance/);

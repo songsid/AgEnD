@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 export type InstanceState = "idle" | "working" | "stuck";
 
 /** Interaction metadata is presentation only; execution/lifecycle gates remain three-valued. */
-export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "suspected_terminal_input";
+export type InteractionKind = "permission" | "dangerous_command" | "login" | "dialog" | "kiro_choice" | "suspected_terminal_input";
 export interface InteractionOwner {
   bootId: string;
   spawnGeneration: number;
@@ -63,6 +63,9 @@ export class UnsupportedCliError extends Error {
     this.name = "UnsupportedCliError";
   }
 }
+
+/** Kiro's retired Classic launch must remain visible even though no pane was started. */
+export class KiroCompatibilityError extends UnsupportedCliError {}
 
 /** A retained conversation cannot be selected safely. Stop without retry; this is not a CLI/engine incompatibility. */
 export class ResumeBlockedError extends UnsupportedCliError {
@@ -163,8 +166,18 @@ export interface ErrorPattern {
    * when the match can't be re-derived. Receives the LAST match in the pane,
    * i.e. the most recent occurrence. */
   formatMessage?: (match: RegExpMatchArray) => string;
+  /** The short line a person reads (src/quota-notice.ts), built when it fires so it is in the fleet's language; with
+   * it the incident is posted as that line, and `message` stays the English one for logs and webhooks. Receives the
+   * last match, or null when it can't be re-derived. */
+  notice?: (match: RegExpMatchArray | null) => string;
   /** Run the backend's live quota check before surfacing a quota notice. */
   verifyQuota?: boolean;
+  /** A quota pause the live usage-window check cannot judge (codex workspace credits and spend caps are not one of
+   * its windows): pause without asking it. Only for rows anchored to the CLI's own error decoration. */
+  skipUsageVerify?: boolean;
+  /** Occurrences already on the first live composer of a spawn are resumed history (codex reprints its error rows
+   * on resume), not a new incident: only later ones count. */
+  historyUntilLiveComposer?: boolean;
   /** Skip the 5-min per-type notification cooldown so every occurrence notifies
    * (e.g. Kiro "Response timed out" — each timeout should reach the user). */
   skipCooldown?: boolean;
@@ -336,6 +349,13 @@ export interface RemoteQuestionCard {
   typed: string | null;
   /** The card's width in columns (its dividers'): how long a typed-answer row clipped at the edge is. */
   rowWidth: number;
+  /**
+   * #2910 D4: Esc is not offered — on this dialog it is not a harmless skip (Claude's trust screen exits the CLI); its
+   * own options say every choice there is (selection-card.ts).
+   */
+  noSkip?: true;
+  /** #2910 D4: put to people only on a web-only fleet (the dashboard); a chat fleet keeps its parked notice, as before. */
+  webOnly?: true;
 }
 
 /**
@@ -416,6 +436,37 @@ export interface RuntimeDialog {
   remoteCard?(pane: string): RemoteCard | null;
   /** Optional static presentation category; only structural predicates qualify. */
   interactionKind?: InteractionKind;
+  /**
+   * AgEnD answers this dialog itself (`keys`), so while it is on screen nobody else is waiting to: it is not a person's
+   * interaction (no awaiting_input, no Needs-you item) unless its answers are reported as ignored. Without it, a
+   * dialog the runtime scanner closes ~5 s after it paints raced the Needs-you ping (#2844).
+   */
+  answeredByAgend?: boolean;
+  /**
+   * This dialog only paints for a live incident: the newest `historyUntilLiveComposer` error row on screen with it is
+   * the current failure, never resumed history, even when no live composer was seen before it in this spawn (#2844).
+   */
+  marksLiveIncident?: boolean;
+  /**
+   * #2872: the incident this dialog IS, raised once AgEnD's own keys are verified to have closed it (verifyAfterKeys):
+   * a quota modal that leaves no error row behind (grok's weekly limit) still pauses the instance with one notice.
+   * Never from the pane: a stale screen cannot raise it, so a wake cannot pause again on it.
+   */
+  dismissIncident?: { type: ErrorType; action: ErrorActionType; message: string; notice?: string };
+  /**
+   * #2872: send `keys` that are not special keys as typed characters (`send-keys -l`), never as a paste: a paste ends
+   * with Enter, which on a picker submits the option under the cursor.
+   */
+  literalKeys?: boolean;
+  /** #2872: the parked notice adds this advice (Claude's session-resume prompt only). */
+  parkedAdvice?: "claude-resume";
+  /**
+   * A held dialog that a sibling entry could have answered automatically: why it didn't, as log fields (daemon.log, once
+   * per hold). Log only, never shown in a channel; null when there is nothing to add.
+   */
+  heldReason?: (pane: string) => Record<string, unknown> | null;
+  /** What the daemon answered, as log fields, written with its "dismissing" line (log only; null: nothing to add). */
+  answerDetail?: (pane: string) => Record<string, unknown> | null;
   /**
    * The daemon may re-read the pane under the write lock after sending these
    * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
@@ -845,6 +896,8 @@ export interface CliBackend {
    * `buildCommand` never forks. Must not throw; a failed probe means "unknown", not a failed launch.
    */
   prepareLaunch?(config?: CliBackendConfig): Promise<void>;
+  /** Read-only admission, before any launch preparation or configuration writes. Throws to refuse. */
+  assertLaunchSupported?(config: CliBackendConfig): void;
 
   /**
    * Optional (#906): after a launch that resumed a conversation, the agent it must run as and how to tell from the
