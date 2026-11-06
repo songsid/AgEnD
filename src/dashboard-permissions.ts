@@ -192,6 +192,22 @@ export function dashboardFeaturesOffIn(fleet: unknown, name: string): DashboardF
 }
 
 /**
+ * Whether `name` is a fleet instance (an `instances` entry of its own) with the task board switched off: the board does
+ * not take it as a card's assignee and sends it no notices (TaskBoard.setBoardOff, TaskBoardWaker's boardOff). Any
+ * other name — a person, a ClassicBot room — is not one.
+ */
+export function taskBoardOffIn(fleet: unknown, name: string): boolean {
+  const instances = (fleet as { instances?: unknown } | null | undefined)?.instances;
+  if (!instances || typeof instances !== "object" || !Object.hasOwn(instances, name)) return false;
+  return dashboardFeaturesOffIn(fleet, name).includes("task_board");
+}
+/** The fleet's instances with the task board switched off, by name (the dashboard's assignee pickers mark them). */
+export function taskBoardOffNames(fleet: unknown): string[] {
+  const instances = (fleet as { instances?: unknown } | null | undefined)?.instances;
+  return instances && typeof instances === "object" ? Object.keys(instances).filter((n) => taskBoardOffIn(fleet, n)).sort() : [];
+}
+
+/**
  * (a) An agent without the task board is not told to use it: the built-in workflow's task board section ("## Progress
  * Tracking", up to the next section) leaves its instructions, and a CLI agent's `agend-agent task …` lines theirs.
  */
