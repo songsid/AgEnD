@@ -239,8 +239,12 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
   **Send back** finished work, **Answer** a blocked card — #2756: only the cards the person handed out, as Needs you;
   an agent's card in review says "Waiting for <agent>"); **No project** holds `task`-tool tasks. A project is a board
-  of main tasks (M-n) by status — To do, In progress, Blocked, To confirm, Done — with drag to move, an assignee
-  filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
+  of main tasks (M-n) by status — To do, In progress, Blocked, To confirm, Done — with drag to move and each main
+  task's sub tasks (S-n). **Filter** (status, assignee or nobody, priority, size; each chip **is** / **is not**; a main
+  task stays when it or a sub task matches) and **Display** (board or **list**; the list grouped by status, assignee or
+  priority, ordered by board order, priority, last change, newest or title; **Sub tasks as rows of their own**;
+  finished cards last 7 days / all / hidden). The project and filters are in the address (`?tp=`, `?tf=`): a link opens
+  that filtered board; the choices are remembered per device (`agend_tasks_display`, `agend_tasks_filters`). A card opens in a dialog: every field editable, its sub tasks, comments,
   progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
   (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
   delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A right

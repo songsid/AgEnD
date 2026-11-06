@@ -42,6 +42,7 @@ const P = {
   chart: () => html`<path d="M3 20h18M6 16v-4M11 16V8M16 16v-6"/>`,
   up: () => html`<path d="M12 19V5M5 12l7-7 7 7"/>`,
   sort: () => html`<path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/>`,   // #2179: the sidebar's sort
+  filter: () => html`<path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/>`,   // the task board's Filter
   star: () => html`<path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95L12 2.5z"/>`,
   eye: () => html`<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>`,
   idcard: () => html`<rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M5 16a3 3 0 0 1 6 0M14 10h5M14 14h3"/>`,
