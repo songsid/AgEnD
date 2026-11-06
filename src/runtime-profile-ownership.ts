@@ -13,7 +13,7 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { spawn } from "./child-process.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, credentialProfileDirectory, ensureCredentialProfile, forgetCredentialStatus, isCredentialProfileCli, type CredentialProfileCli } from "./runtime-credential-profiles.js";
@@ -25,8 +25,9 @@ const BACKUP = /^\.claude\.json\.backup(?:[.\-_][A-Za-z0-9._-]{0,64})?$/;
 
 /** A refusal whose text is ours: it names a profile and what to do, never a path, an account or a secret. */
 export class ProfileOwnershipRefusal extends Error {
-  constructor(message: string, readonly reason: "unsupported" | "not_owned" | "not_found" | "link" | "invalid_request" | "in_use" | "default_profile") { super(message); this.name = "ProfileOwnershipRefusal"; }
+  constructor(message: string, readonly reason: "unsupported" | "not_owned" | "not_found" | "link" | "invalid_request" | "in_use" | "default_profile" | "unconfirmed") { super(message); this.name = "ProfileOwnershipRefusal"; }
 }
+const present = (path: string): boolean => { try { lstatSync(path); return true; } catch { return false; } };
 const dictionary = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 
 /** What this Runtime created: names, by CLI. A null-prototype map, so `constructor` and `toString` are names, not properties. */
@@ -164,17 +165,26 @@ export async function requireOwnedProfile(pairingDirectory: string, root: string
 export async function removeOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): Promise<void> {
   const directory = await requireOwnedProfile(pairingDirectory, root, cli, name, options), kind = cli as CredentialProfileCli, checked = name as string;
   options.afterChecks?.();
+  const expectedBase = join(realpathSync(pairingDirectory), "credential-profiles", kind);
   // A leading dot is not a valid profile name, so the temporary name can never be one, and is never listed or selected.
   const moved = join(dirname(directory), `.removing-${randomBytes(8).toString("hex")}`);
   renameSync(directory, moved);
-  const restore = (): void => { try { renameSync(moved, directory); } catch { /* left under its temporary name, which is not a profile */ } };
+  let restored = true;
+  const restore = (): void => { try { renameSync(moved, directory); } catch { restored = !present(moved); /* else left under its temporary name, which is not a profile */ } };
   try {
+    // The folder above it, again, after the rename: a CLI folder swapped for a link in the meantime would have taken the rename elsewhere.
+    if (!same(realpathSync(dirname(moved)), expectedBase) || !same(realpathSync(moved), join(expectedBase, basename(moved)))) throw new ProfileOwnershipRefusal(`Credential profile "${checked}" is not inside this Runtime's profile folder`, "link");
     notLink(moved, `Credential profile "${checked}"`);
     let flags: readonly boolean[]; try { flags = await (options.inspect ?? (process.platform === "win32" ? windowsReparseInspector : noReparseInspector))([moved]); } catch { throw new ProfileOwnershipRefusal(NOT_PROVEN, "link"); }
     if (flags.length !== 1 || flags[0]) throw new ProfileOwnershipRefusal("The profile folder is a link or junction, so nothing is changed there", "link");
     assertNoLinksInside(moved);
     rmSync(moved, { recursive: true, force: false, maxRetries: 3, retryDelay: 50 });
-  } catch (error) { restore(); throw error; }
+  } catch (error) {
+    restore();
+    // Neither deleted nor put back: say where it is, locally (`agend-runtime profile list` names it). Nothing here deletes or restores it by itself.
+    if (!restored) throw new Error("The profile folder could not be removed or put back and is left under a temporary name; see agend-runtime profile list on that computer");
+    throw error;
+  }
   if (existsSync(moved) || existsSync(directory)) throw new Error("The profile folder could not be fully removed");
   forgetCreatedProfile(root, kind, checked); forgetCredentialStatus(root, kind, checked);
 }
@@ -194,4 +204,13 @@ export function deleteProfileBackups(directory: string): number {
     unlinkSync(path); removed++;
   }
   return removed;
+}
+
+/** Folders a removal began and could not finish (renamed to `.removing-<hex>`, then neither deleted nor put back). They may still hold a sign-in. */
+export function listRemovalLeftovers(root: string, cli: unknown): string[] {
+  const base = join(root, assertCredentialProfileCli(cli));
+  try {
+    if (!lstatSync(base).isDirectory()) return [];
+    return readdirSync(base, { withFileTypes: true }).filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && /^\.removing-[a-f0-9]{16}$/.test(entry.name)).map(entry => entry.name).sort();
+  } catch { return []; }
 }

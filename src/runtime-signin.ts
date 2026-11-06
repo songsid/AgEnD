@@ -141,12 +141,20 @@ export class RuntimeSignIn {
   /** The reduced screen: lines of the closed table only. */
   capture(): string { return reduceClaudeLoginScreen(this.raw); }
   status(): { alive: boolean; exitCode?: number } { return this.exited ? { alive: false, ...(this.exited.code !== null ? { exitCode: this.exited.code } : {}) } : { alive: !!this.child }; }
-  /** One code, only while the code prompt is the screen. */
-  async write(input: unknown): Promise<void> {
+  /**
+   * Everything that can be refused about a code without sending it: its form, the attempt being over, a code already written, the prompt not showing.
+   * Nothing changes. A caller that records its operations calls this first, so a refused write is one foldable line and not a `started` entry.
+   */
+  assertWritable(input: unknown): string {
     const code = checkedSignInInput(input);
     if (this.closeRun || this.exited || !this.child?.stdin?.writable) throw new SignInRefusal("This sign-in has ended", "invalid_request");
     if (this.codeWritten) throw new SignInRefusal("A sign-in takes one code", "invalid_request");
     if (!this.capture().endsWith(`${REDUCED_CODE_PROMPT}\n`)) throw new SignInRefusal("This sign-in is not asking for a code", "invalid_request");
+    return code;
+  }
+  /** One code, only while the code prompt is the screen. */
+  async write(input: unknown): Promise<void> {
+    const code = this.assertWritable(input);
     this.codeWritten = true;
     await new Promise<void>((done, fail) => this.child!.stdin!.write(`${code}\r`, error => error ? fail(error) : done()));
   }

@@ -30,7 +30,7 @@ function fixture(extra: Partial<RemoteAccountsDeps> = {}) {
   let answer: RemoteStatusAnswer = { loggedIn: false };
   const status = vi.fn(async (): Promise<RemoteStatusAnswer> => answer);
   const runLogout = vi.fn(async (): Promise<number | null> => { answer = { loggedIn: false }; return 0; });
-  const changed = vi.fn(); const inUse = vi.fn((): "task" | "pane" | undefined => undefined); const defaultProfile = vi.fn((): string | undefined => undefined);
+  const changed = vi.fn(); const inUse = vi.fn((): "task" | "pane" | "unknown" | undefined => undefined); const defaultProfile = vi.fn((): string | undefined => undefined);
   const deps: RemoteAccountsDeps = { pairingDirectory: pairing, credentialRoot: root, now: () => now, status, find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }),
     runLogout, inUse, defaultProfile, changed,
     signIn: { scratchRoot: scratch(), spawn: (_c, args, options) => { spawned.push({ args, env: options.env }); const child = new FakeChild(); children.push(child); return child as unknown as ChildProcess; } },
@@ -368,18 +368,112 @@ describe("one operation at a time on a profile (item 12)", () => {
     await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "home", actor })).resolves.toEqual({ removed: true });
     expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
     release(); await expect(first).resolves.toEqual({ loggedIn: false });
-    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
+    f.tick(6000); await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
     expect(f.audit().filter(row => row.reason === "busy").map(row => row.action)).toEqual(["profile.remove", "profile.signout"]);   // one line per kind
   });
   it("frees the lock when the operation fails, so the next request is not stuck", async () => {
     const f = fixture(); f.on(); owned(f); f.setAnswer({ loggedIn: true }); f.runLogout.mockResolvedValue(1);
     await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/still signed in/);
-    f.setAnswer({ loggedIn: false }); await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
+    f.setAnswer({ loggedIn: false }); f.tick(6000); await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
   });
   it("a sign-in that lost its close (the child ended, nobody closed it) does not keep the next one out", async () => {
     const f = fixture(); f.on(); await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor });
     f.children[0]!.end(1); f.tick(6000);
     await expect(ask(f, "signin.start", { cli: "claude-code", profile: "home", method: "subscription", actor })).resolves.toMatchObject({ sessionId: expect.stringMatching(/^[a-f0-9]{32}$/) });
     expect(f.children).toHaveLength(2);
+  });
+});
+
+describe("every refusal that changes nothing is made before `started` (the flood review)", () => {
+  const startReq = (profile: string, extra: Record<string, unknown> = {}) => ({ cli: "claude-code", profile, method: "subscription", actor, ...extra });
+  const lines = (f: F, action?: string) => f.audit().filter(row => !action || row.action === action);
+  it("200 wrong writes to an open sign-in add a handful of lines, and the real operations afterwards are all recorded", async () => {
+    const f = fixture(); f.on(); const { sessionId } = await ask(f, "signin.start", startReq("work")); const before = f.audit().length;
+    for (let i = 0; i < 200; i++) await ask(f, "signin.write", { sessionId, input: i % 3 ? "not a code!" : `\x15CODE${i}\r` }).catch(() => {});   // malformed, or valid but no prompt is showing
+    expect(f.audit().length - before).toBeLessThanOrEqual(2); expect(f.audit().some(row => row.action === "signin.write" && row.outcome === "started")).toBe(false);
+    f.children[0]!.stdout.write(`If the browser didn't open, visit: ${URL_OK}\nPaste code here if prompted >`);
+    await ask(f, "signin.write", { sessionId, input: `\x15${CODE}\r` });
+    for (let i = 0; i < 200; i++) await ask(f, "signin.write", { sessionId, input: `\x15SECOND${i}\r` }).catch(() => {});   // a second code, and a child that has the code already
+    f.children[0]!.end(0);
+    for (let i = 0; i < 200; i++) await ask(f, "signin.write", { sessionId, input: `\x15LATE${i}\r` }).catch(() => {});    // the child has ended
+    expect(f.audit().length - before).toBeLessThanOrEqual(8);
+    expect(lines(f, "signin.write").filter(row => row.outcome === "started" || row.outcome === "ok")).toHaveLength(2);
+    expect(lines(f, "signin.write").some(row => typeof row.repeated === "number")).toBe(true);
+    await ask(f, "signin.close", { sessionId }); f.tick(6000); owned(f, "other");
+    await ask(f, "accounts.remove", { cli: "claude-code", profile: "other", actor });
+    expect(f.audit().slice(-2).map(row => `${row.action}:${row.outcome}`)).toEqual(["profile.remove:started", "profile.remove:ok"]);
+    expect(f.auditText()).not.toMatch(/CODE\d|SECOND|LATE|SECRETCODE/);
+  });
+  it("sign-in start: a busy slot, a console request, a name clash, a missing CLI and a too-fast start write no `started` and create no folder", async () => {
+    const f = fixture(); f.on(); owned(f, "Taken"); await ask(f, "signin.start", startReq("work"));
+    const names = ["a1", "a2", "a3"];
+    for (const name of names) await expect(ask(f, "signin.start", startReq(name))).rejects.toThrow(/Another sign-in/);
+    for (const name of names) await expect(ask(f, "signin.start", startReq(name, { method: "console" }))).rejects.toThrow(/Console/);
+    expect(lines(f, "signin").filter(row => row.outcome === "started")).toHaveLength(1);
+    expect(names.some(name => existsSync(join(f.root, "claude-code", name)))).toBe(false);
+    const g = fixture(); g.on(); owned(g, "Taken");
+    await expect(ask(g, "signin.start", startReq("taken"))).rejects.toThrow(/same folder as "Taken"/);
+    expect(g.audit().map(row => `${row.outcome}:${row.reason}`)).toEqual(["refused:invalid_request"]); expect(existsSync(join(g.root, "claude-code", "taken"))).toBe(process.platform === "win32");
+  });
+  it("sign-out and remove: unowned, in use, unconfirmed, default and too-fast requests are all refusals only", async () => {
+    const f = fixture(); f.on(); owned(f); mkdirSync(join(f.root, "claude-code", "byhand"), { recursive: true });
+    const refuse = async (operation: string, profile: string) => { await ask(f, operation, { cli: "claude-code", profile, actor }).catch(() => {}); };
+    for (let i = 0; i < 20; i++) await refuse("accounts.signout", "byhand");
+    f.inUse.mockReturnValue("task"); for (let i = 0; i < 20; i++) { await refuse("accounts.signout", "work"); await refuse("accounts.remove", "work"); }
+    f.inUse.mockReturnValue("unknown"); for (let i = 0; i < 20; i++) await refuse("accounts.remove", "work");
+    f.inUse.mockReturnValue(undefined); f.defaultProfile.mockReturnValue("work"); for (let i = 0; i < 20; i++) await refuse("accounts.remove", "work");
+    expect(f.audit().some(row => row.outcome === "started")).toBe(false); expect(f.audit().length).toBeLessThanOrEqual(6);
+    expect(f.audit().map(row => row.reason).sort()).toEqual(["default_profile", "in_use", "in_use", "not_owned", "unconfirmed"].sort());
+  });
+  it("install: a CLI id outside the installer's table is refused before `started`", async () => {
+    const f = fixture({ install: async () => ({ version: "2.1.318" }), knowsCli: cli => cli === "claude-code" }); f.on("install");
+    for (let i = 0; i < 20; i++) await ask(f, "cli.install", { cli: "kiro-cli", actor }).catch(() => {});
+    expect(f.audit().map(row => `${row.outcome}:${row.reason}`)).toEqual(["refused:unsupported"]);
+    await expect(ask(f, "cli.install", { cli: "claude-code", actor })).resolves.toEqual({ version: "2.1.318" });
+  });
+});
+
+describe("how a sign-in ends (review round 2)", () => {
+  it("a sign-in that ended by itself and was never closed is ended the normal way when the next one starts: its result is recorded, its metadata is cleared", async () => {
+    const f = fixture(); f.on(); await ask(f, "signin.start", { cli: "claude-code", profile: "one", method: "subscription", actor });
+    f.setAnswer({ loggedIn: true, identity: { maskedEmail: "ab***@example.com", plan: "pro" } }); await ask(f, "accounts.check", { cli: "claude-code", profile: "one" });
+    f.children[0]!.end(0); f.tick(6000);
+    await ask(f, "signin.start", { cli: "claude-code", profile: "two", method: "subscription", actor });
+    expect(f.audit().map(row => `${row.action}:${row.outcome}:${row.profile}`)).toEqual(["signin:started:one", "profile.add:ok:one", "signin:ok:one", "signin:started:two", "profile.add:ok:two"]);
+  });
+  it("one that ended without being signed in is recorded as failed", async () => {
+    const f = fixture(); f.on(); await ask(f, "signin.start", { cli: "claude-code", profile: "one", method: "subscription", actor });
+    f.children[0]!.end(1); f.tick(6000); await ask(f, "signin.start", { cli: "claude-code", profile: "two", method: "subscription", actor });
+    expect(f.audit().filter(row => row.profile === "one" && row.action === "signin").map(row => `${row.outcome}:${row.reason ?? ""}`)).toEqual(["started:", "failed:failed"]);
+  });
+  it("two closes at the same time write one end record", async () => {
+    const f = fixture(); f.on(); const { sessionId } = await ask(f, "signin.start", { cli: "claude-code", profile: "one", method: "subscription", actor });
+    const results = await Promise.allSettled([ask(f, "signin.close", { sessionId }), ask(f, "signin.close", { sessionId }), ask(f, "signin.close", { sessionId })]);
+    expect(results.some(result => result.status === "fulfilled")).toBe(true);
+    expect(f.audit().filter(row => row.action === "signin" && row.outcome !== "started")).toHaveLength(1);
+  });
+  it("a close that arrives after a timeout or switch end does not write a second record", async () => {
+    vi.useFakeTimers(); const f = fixture({ now: () => Date.now(), switchWatchMs: 3000 }); setRemoteSwitch(f.pairing, "accounts", true, undefined, Date.now());
+    const { sessionId } = await ask(f, "signin.start", { cli: "claude-code", profile: "one", method: "subscription", actor });
+    setRemoteSwitch(f.pairing, "accounts", false, undefined, Date.now()); await vi.advanceTimersByTimeAsync(3100);
+    await ask(f, "signin.close", { sessionId }).catch(() => {});
+    expect(f.audit().filter(row => row.action === "signin" && row.outcome !== "started")).toHaveLength(1);
+  });
+});
+
+describe("a profile cannot be signed out or removed in quick succession (item 8)", () => {
+  it("at least five seconds between two changes of one profile; another profile is not held back; a refused try does not extend the wait", async () => {
+    const f = fixture(); f.on(); owned(f); owned(f, "home"); f.setAnswer({ loggedIn: true }); f.runLogout.mockImplementation(async () => { f.setAnswer({ loggedIn: false }); return 0; });
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
+    for (const operation of ["accounts.signout", "accounts.remove"]) await expect(ask(f, operation, { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/was just changed; wait a few seconds/);
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "home", actor })).resolves.toEqual({ loggedIn: false });
+    f.tick(2000); await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/wait a few seconds/);
+    f.tick(3100); await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
+    expect(f.audit().filter(row => row.reason === "rate_limited").length).toBeLessThanOrEqual(3);   // folded per (action, reason); the count of the last one goes out when the next real operation starts
+  });
+  it("the wait is by lower-case name and is not taken by a request that is refused for another reason", async () => {
+    const f = fixture(); f.on(); owned(f); f.inUse.mockReturnValueOnce("task");
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/running task/);
+    f.setAnswer({ loggedIn: false }); await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
   });
 });

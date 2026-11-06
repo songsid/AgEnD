@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cachedCredentialStatus, credentialProfilesRoot, ensureCredentialProfile, rememberCredentialStatus } from "../src/runtime-credential-profiles.js";
-import { CREATED_PROFILES_FILE, ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, isCreatedProfile, removeOwnedProfile, requireOwnedProfile } from "../src/runtime-profile-ownership.js";
+import { CREATED_PROFILES_FILE, ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, isCreatedProfile, listRemovalLeftovers, removeOwnedProfile, requireOwnedProfile } from "../src/runtime-profile-ownership.js";
 
 const directories: string[] = [];
 const scratch = (): string => { const path = mkdtempSync(join(tmpdir(), "agend-ownership-")); directories.push(path); return path; };
@@ -152,5 +152,32 @@ describe("remove is rename, verify, then delete (a swap between the check and th
     let seen: string[] = [];
     await removeOwnedProfile(pairing, root, "claude-code", "work", { inspect: paths => { seen = readdirSync(join(root, "claude-code")); return paths.map(() => false); } });
     expect(seen).toHaveLength(1); expect(seen[0]).toMatch(/^\.removing-/); expect(existsSync(directory)).toBe(false); expect(readdirSync(join(root, "claude-code"))).toEqual([]);
+  });
+});
+
+describe("the folder above is checked again after the rename, and a leftover is never silent", () => {
+  it("a CLI folder swapped for a link after the checks takes the rename elsewhere: found, put back, nothing behind the link deleted", async () => {
+    const { pairing, root } = setup(), victim = scratch(); mkdirSync(join(victim, "work")); writeFileSync(join(victim, "work", "keep.txt"), "x");
+    createRuntimeProfile(root, "claude-code", "work");
+    let swapped = false;
+    const error = await refusal(() => removeOwnedProfile(pairing, root, "claude-code", "work", { afterChecks: () => {
+      rmSync(join(root, "claude-code"), { recursive: true }); swapped = link(victim, join(root, "claude-code")); } }));
+    if (!swapped) return;
+    expect(error.reason).toBe("link"); expect(error.message).toMatch(/not inside this Runtime's profile folder/);
+    expect(readFileSync(join(victim, "work", "keep.txt"), "utf8")).toBe("x"); expect(readdirSync(victim)).toEqual(["work"]);
+  });
+  it("when it can be neither deleted nor put back, the error names the temporary folder's whereabouts (locally) and the folder is listed, never touched", async () => {
+    const { pairing, root } = setup(), directory = createRuntimeProfile(root, "claude-code", "work").directory; writeFileSync(join(directory, ".credentials.json"), "secret");
+    const error = await removeOwnedProfile(pairing, root, "claude-code", "work", { inspect: paths => { if (paths.length === 1) writeFileSync(directory, "in the way"); return paths.map(() => paths.length === 1); } }).catch((e: Error) => e);
+    expect(error).toBeInstanceOf(Error); expect((error as Error).message).toMatch(/left under a temporary name; see agend-runtime profile list/);
+    const left = listRemovalLeftovers(root, "claude-code"); expect(left).toHaveLength(1); expect(left[0]).toMatch(/^\.removing-[a-f0-9]{16}$/);
+    expect(readFileSync(join(root, "claude-code", left[0]!, ".credentials.json"), "utf8")).toBe("secret");
+    expect(isCreatedProfile(root, "claude-code", "work")).toBe(true);                         // the record is not dropped for something that was not removed
+  });
+  it("lists nothing when there is none, ignores profile-looking folders and files and links, and is Claude Code only", () => {
+    const { root } = setup(); expect(listRemovalLeftovers(root, "claude-code")).toEqual([]);
+    createRuntimeProfile(root, "claude-code", "work"); mkdirSync(join(root, "claude-code", ".removing-xyz")); writeFileSync(join(root, "claude-code", ".removing-0123456789abcdef"), "a file");
+    expect(listRemovalLeftovers(root, "claude-code")).toEqual([]); mkdirSync(join(root, "claude-code", ".removing-0123456789abcdef.d"));
+    expect(listRemovalLeftovers(root, "claude-code")).toEqual([]); expect(() => listRemovalLeftovers(root, "codex")).toThrow(/Claude Code only/);
   });
 });

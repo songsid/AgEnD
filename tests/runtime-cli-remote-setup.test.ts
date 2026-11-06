@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runtimeMain } from "../src/runtime-cli.js";
 import { credentialProfilesRoot, ensureCredentialProfile } from "../src/runtime-credential-profiles.js";
-import { isCreatedProfile } from "../src/runtime-profile-ownership.js";
+import { createRuntimeProfile, isCreatedProfile } from "../src/runtime-profile-ownership.js";
 import { AUDIT_FILE, readRemoteSwitches, setRemoteSwitch } from "../src/runtime-remote-setup.js";
 
 const directories: string[] = [];
@@ -87,5 +87,20 @@ describe("login records the profiles this Runtime creates", () => {
     await f.run(["login", "claude-code", "byhand"], { runLogin: async () => 0, probeLogin: async () => true });
     expect(isCreatedProfile(f.root, "claude-code", "byhand")).toBe(false);
     expect(existsSync(join(f.root, "claude-code", "byhand"))).toBe(true);
+  });
+});
+
+describe("profile list shows what a removal left behind", () => {
+  it("names a leftover folder and what to do, with or without other profiles, and does not touch it", async () => {
+    const f = setup(); mkdirSync(join(f.root, "claude-code", ".removing-0123456789abcdef"), { recursive: true }); writeFileSync(join(f.root, "claude-code", ".removing-0123456789abcdef", "x"), "secret");
+    await f.run(["profile", "list"]);
+    expect(f.text()).toMatch(/\.removing-0123456789abcdef\tLEFT OVER from a removal that could not finish.*may still hold a sign-in.*delete that folder yourself.*rename it.*Nothing does either for you/s);
+    expect(f.text()).not.toMatch(/No credential profiles yet/);
+    expect(readFileSync(join(f.root, "claude-code", ".removing-0123456789abcdef", "x"), "utf8")).toBe("secret");
+    createRuntimeProfile(f.root, "claude-code", "work");
+    await f.run(["profile", "list"], { probeStatus: async () => ({ loggedIn: true }) }); expect(f.text()).toMatch(/work\tsigned in/);
+  });
+  it("says nothing about leftovers when there are none", async () => {
+    const f = setup(); await f.run(["profile", "list"]); expect(f.text()).toBe("No credential profiles yet. Create one: agend-runtime login claude-code NAME\n");
   });
 });

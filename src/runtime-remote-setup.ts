@@ -103,7 +103,7 @@ export function describeRemoteSwitches(switches: RemoteSwitches, now = Date.now(
 /** Closed vocabulary of the audit record. Free text has no field here. */
 export const AUDIT_ACTIONS = ["switch", "profile.add", "signin", "signin.write", "profile.signout", "profile.remove", "cli.install"] as const;
 export const AUDIT_OUTCOMES = ["started", "ok", "refused", "failed"] as const;
-export const AUDIT_REASONS = ["switch_off", "invalid_request", "busy", "not_found", "not_owned", "in_use", "default_profile", "link", "unsupported", "timeout", "rate_limited", "failed"] as const;
+export const AUDIT_REASONS = ["switch_off", "invalid_request", "busy", "not_found", "not_owned", "in_use", "default_profile", "link", "unsupported", "unconfirmed", "timeout", "rate_limited", "failed"] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];
 export type AuditOutcome = typeof AUDIT_OUTCOMES[number];
 export type AuditReason = typeof AUDIT_REASONS[number];
@@ -167,8 +167,10 @@ export function appendAudit(directory: string, entry: AuditEntry, now = Date.now
  * stream of them could push the real operations out of a rotating file. So: a `refused` entry that repeats within a minute is not written again; it is
  * counted, and the count goes out with the next entry of its kind (or with the next non-refused entry, or at `flush`). The folding key is the
  * action and the reason ONLY. It must not hold the actor, the profile or the CLI, which the server chooses freely: a new name per request would
- * defeat it. What is never folded: `started`, `ok` and `failed` entries and the switch changes, which only a real operation can produce.
- * Therefore the most refusals can write is one line per (action, reason) pair per minute.
+ * defeat it. What is never folded: `started`, `ok` and `failed` entries and the switch changes, which only a real operation can produce. A refusal is
+ * only ever the answer to a request that changed nothing, so every check that can refuse without changing anything has to run BEFORE `started` is
+ * written (RemoteAccounts does). Therefore the most refusals can write is one line per (action, reason) pair per minute. The line of a folded run carries
+ * the actor, profile and CLI of the FIRST request of that run; `repeated` counts requests that may have named others.
  */
 export const AUDIT_FOLD_MS = 60_000;
 export class AuditLog {
@@ -177,7 +179,10 @@ export class AuditLog {
   /** Throws when the line cannot be written (the caller decides whether that stops its operation). */
   append(entry: AuditEntry): void {
     const now = this.now();
-    if (entry.outcome !== "refused") { this.flush(); appendAudit(this.directory, entry, now); return; }
+    // A real operation is about to start: the counts of what was folded so far go out first. Nothing else flushes: an `ok`, a `failed` or a refusal
+    // must not make every request write twice, which would undo the folding.
+    if (entry.outcome === "started") this.flush();
+    if (entry.outcome !== "refused") { appendAudit(this.directory, entry, now); return; }
     const key = `${entry.action}\u0000${entry.reason ?? ""}`, seen = this.folded.get(key);
     if (seen && now - seen.since < AUDIT_FOLD_MS) { seen.suppressed++; return; }
     appendAudit(this.directory, { ...entry, ...(seen && seen.suppressed + 1 >= 2 ? { repeated: seen.suppressed + 1 } : {}) }, now);

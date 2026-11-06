@@ -107,7 +107,7 @@ describe("remove and sign-out refuse while something runs under the profile", ()
     const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work"); const [production] = paneLedgerFiles(f.home);
     write(production!, ledger({ cli: "claude-code", credentialProfile: "WORK" }, "running"));
     expect((await remove(f)).error).toMatch(/running terminal/);
-    write(production!, "{ not json"); expect((await remove(f)).error).toMatch(/running terminal/);            // an unreadable ledger cannot show it is free
+    write(production!, "{ not json"); expect((await remove(f)).error).toMatch(/could not confirm whether a terminal is running/);   // an unreadable ledger cannot show it is free
     write(production!, ledger({ cli: "claude-code", credentialProfile: "work" }, "exited")); expect((await remove(f)).ok).toBe(true);
     expect(existsSync(join(f.root, "claude-code", "work"))).toBe(false);
   });
@@ -135,5 +135,41 @@ describe("remove and sign-out refuse while something runs under the profile", ()
     const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work"); f.store.setCredentialDefault("work");
     expect((await remove(f)).error).toMatch(/default for agents/);
     expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
+  });
+});
+
+describe("a state this computer cannot confirm is not reported as a running terminal", () => {
+  const ledger = (rows: Record<string, unknown>) => JSON.stringify({ version: 1, panes: rows });
+  const write = (file: string, text: string) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, text); };
+  const BOOT_A = "a".repeat(64), BOOT_B = "b".repeat(64);
+  it("an unreadable ledger is refused with its own reason and a message that sends the person to that computer, not to stop a terminal", async () => {
+    const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    write(paneLedgerFiles(f.home)[0]!, "{ not json");
+    const reply = await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" });
+    expect(reply.ok).toBe(false); expect(reply.error).toMatch(/could not confirm whether a terminal is running.*Check that computer/); expect(reply.error).not.toMatch(/stop it first|in use by a running/);
+    expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
+    expect(readFileSync(join(f.home, AUDIT_FILE), "utf8")).toMatch(/"reason":"unconfirmed"/);
+  });
+  it("a terminal recorded under another boot of the computer cannot still be running, so a restart does not block sign-out or remove", async () => {
+    const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0, systemBootId: async () => BOOT_B } });
+    setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    write(paneLedgerFiles(f.home)[0]!, ledger({ old: { launch: { cli: "claude-code", credentialProfile: "work" }, snapshot: { state: "running" }, systemBootId: BOOT_A } }));
+    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" })).ok).toBe(true);
+  });
+  it("a terminal of THIS boot still blocks, and so does one with no boot proof, and one when the boot cannot be read", async () => {
+    for (const [row, boot] of [[{ systemBootId: BOOT_B }, BOOT_B], [{}, BOOT_B], [{ systemBootId: BOOT_A }, undefined]] as Array<[Record<string, unknown>, string | undefined]>) {
+      const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0, systemBootId: async () => boot } });
+      setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+      write(paneLedgerFiles(f.home)[0]!, ledger({ live: { launch: { cli: "claude-code", credentialProfile: "work" }, snapshot: { state: "running" }, ...row } }));
+      expect((await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error, JSON.stringify(row)).toMatch(/running terminal/);
+    }
+  });
+  it("an unreadable default profile only matters when a terminal needs it", async () => {
+    const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    writeFileSync(join(f.home, "credential-default.json"), "{ not json");
+    write(paneLedgerFiles(f.home)[0]!, ledger({ named: { launch: { cli: "claude-code", credentialProfile: "elsewhere" }, snapshot: { state: "running" } } }));
+    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error ?? "").not.toMatch(/could not confirm/);
+    write(paneLedgerFiles(f.home)[0]!, ledger({ nameless: { launch: { cli: "claude-code" }, snapshot: { state: "running" } } }));
+    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error).toMatch(/could not confirm whether a terminal is running/);
   });
 });
