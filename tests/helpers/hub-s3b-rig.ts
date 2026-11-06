@@ -116,8 +116,9 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string; adm
   };
   /** An authenticated member link as S1 would hand it over. */
   const fleets = new Map<string, HubLinkContext & { alive: boolean }>();
-  const link = (fleetId: string, owner: PersonKey, linkEpoch = 1) => {
-    const l = { fleetId, owner, linkEpoch, alive: true, current: () => l.alive && enabled } as HubLinkContext & { alive: boolean };
+  /** `features`: the link's enabled optional features (none by default, as for an older member). */
+  const link = (fleetId: string, owner: PersonKey, linkEpoch = 1, features: readonly string[] = []) => {
+    const l = { fleetId, owner, linkEpoch, alive: true, features: new Set(features), current: () => l.alive && enabled } as HubLinkContext & { alive: boolean };
     fleets.set(fleetId, l); return l;
   };
   const frame = <T extends string, P>(type: T, payload: P, l: HubLinkContext) => ({ v: 1 as const, type, requestId: randomUUID(), linkEpoch: l.linkEpoch, payload });
