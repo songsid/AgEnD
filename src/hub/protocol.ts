@@ -2,12 +2,13 @@
 import { z } from "zod";
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
 import type { HubMemberFrame, HubServerFrame, HubAuthorizationRequest, HubAskerEnvelope } from "./types.js";
+import { validHubAnswerButtons } from "./buttons-model.js";
 export const HUB_VERSION = 1;
 export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect: "/hub/v1/connect" } as const;
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
 /** Optional link features this build offers (never required: an old peer that lacks one keeps working without it).
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. */
-export const HUB_OPTIONAL_CAPABILITIES = ["welcome-caps-v1", "attachments-v1"] as const;
+export const HUB_OPTIONAL_CAPABILITIES = ["welcome-caps-v1", "attachments-v1", "buttons-v1"] as const;
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -40,7 +41,13 @@ export const authorizationSchema = z.union([
 export const leaseSchema = z.strictObject({ decisionId: uuid, messageId: uuid, operationId: uuid,
   phase: z.enum(["admit", "begin", "tool", "release-answer"]), operationDigest: hash, revocationVersion: epoch,
   exposureRevision: epoch, linkEpoch: epoch.min(1), expiresAt: epoch });
-export const answerSchema = z.strictObject({ messageId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer), contentDigest: hash, releaseLease: leaseSchema, attachments: attachmentList.optional() });
+/** buttons-v1 uses the fleet's normalized poll config (the raw tool uses show_voters instead). */
+export const answerButtonsSchema = z.strictObject({ id: z.string().regex(/^[a-f0-9]{32}$/), labels: z.array(z.string()).min(1).max(10),
+  values: z.array(z.string()).min(1).max(10).optional(),
+  poll: z.strictObject({ seconds: z.number().int().min(10).max(86400), multi: z.boolean(), reveal: z.enum(["close", "live"]),
+    showVoters: z.boolean(), question: plain(1200).refine(s => s.length <= 300) }).optional() }).refine(validHubAnswerButtons, "Invalid reply buttons/poll");
+export const answerSchema = z.strictObject({ messageId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer), contentDigest: hash, releaseLease: leaseSchema,
+  attachments: attachmentList.optional(), buttons: answerButtonsSchema.optional() });
 export const revocationSchema = z.strictObject({ revocationVersion: epoch, reasonCode: reason, scope: z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("person"), personId: z.string().regex(/^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/) }),
   z.strictObject({ kind: z.literal("fleet"), fleetId: uuid }),

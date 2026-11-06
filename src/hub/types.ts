@@ -46,6 +46,11 @@ export interface HubAnswer {
   messageId: MessageId; answerId: string; text: string; contentDigest: Sha256;
   releaseLease: HubAuthorizationLease; // binds this exact answer, not another answer in the room
   attachments?: readonly HubAttachmentRef[]; // attachments-v1 links only; bound through contentDigest
+  buttons?: HubAnswerButtons; // buttons-v1 links only; all choices/settings bound through contentDigest
+}
+export interface HubAnswerButtons {
+  id: string; labels: readonly string[]; values?: readonly string[];
+  poll?: import("../reply-polls.js").PollConfig;
 }
 export interface HubReconcile {
   afterReceiptSequence: Epoch;
