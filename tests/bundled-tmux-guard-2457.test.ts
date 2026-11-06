@@ -37,6 +37,12 @@ describe("newerTmuxServer", () => {
     expect(await newerTmuxServer(deps(o))).toBe(want);
   });
 
+  it("another home where 2.4 never ran: this version's own server is not even asked (no tmux runs)", async () => {
+    let asked = 0;
+    expect(await newerTmuxServer(deps({ up: ["agend-1a2b3c"], serverPid: async () => { asked++; return 4242; } }))).toBeNull();
+    expect(asked).toBe(0);
+  });
+
   it("the message says nothing started, why, and the two ways out", () => {
     expect(guardMessage("agend")).toMatch(/^AgEnD 2\.4's own tmux server is still running \(socket agend\).*no agent was started\. Go back with `agend rollback` from 2\.4, or close that server/);
   });
