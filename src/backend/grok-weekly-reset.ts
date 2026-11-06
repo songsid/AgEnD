@@ -6,14 +6,14 @@ import { getAgendHome } from "../paths.js";
 export const GROK_WEEKLY_RESET_FILE = "grok-weekly-reset";
 const GROK_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-export type GrokWeeklyResetRecord = { pausedAt: number; resetAt: number };
+export type GrokWeeklyResetRecord = { pausedAt: number; resetAt: number; tryAgainConsumed?: boolean };
 
 export function readGrokWeeklyReset(instanceDir: string): GrokWeeklyResetRecord | null {
   try {
-    const v = JSON.parse(readFileSync(join(instanceDir, GROK_WEEKLY_RESET_FILE), "utf8")) as { pausedAt?: unknown; resetAt?: unknown };
+    const v = JSON.parse(readFileSync(join(instanceDir, GROK_WEEKLY_RESET_FILE), "utf8")) as { pausedAt?: unknown; resetAt?: unknown; tryAgainConsumed?: unknown };
     const pausedAt = Number(v?.pausedAt), resetAt = Number(v?.resetAt);
     if (!Number.isFinite(pausedAt) || pausedAt <= 0 || !Number.isFinite(resetAt) || resetAt <= 0) return null;
-    return { pausedAt, resetAt };
+    return { pausedAt, resetAt, ...(v?.tryAgainConsumed === true ? { tryAgainConsumed: true } : {}) };
   } catch {
     return null;
   }
@@ -57,8 +57,21 @@ export function inferGrokWeeklyResetAt(now: number): number {
 }
 
 export function noteGrokWeeklyLimitSeen(instanceDir: string, now = Date.now()): void {
-  if (readGrokWeeklyReset(instanceDir)) return;
+  const rec = readGrokWeeklyReset(instanceDir);
+  // Keep a clock that is still ahead, and a due clock that has not yet Try Again'd (so the next
+  // scan can still select it). After Try Again has been consumed for this episode, Shift+x starts
+  // a new pause window — re-arm only then.
+  if (rec && (now < rec.resetAt || !rec.tryAgainConsumed)) return;
   try {
     writeGrokWeeklyReset(instanceDir, { pausedAt: now, resetAt: inferGrokWeeklyResetAt(now) });
+  } catch { /* matcher-only tests pass a path that may not exist */ }
+}
+
+/** This reset episode has already sent Try Again. Survives the daemon's one-slot autoResolvedDialogKey. */
+export function markGrokWeeklyTryAgainConsumed(instanceDir: string): void {
+  const rec = readGrokWeeklyReset(instanceDir);
+  if (!rec || rec.tryAgainConsumed) return;
+  try {
+    writeGrokWeeklyReset(instanceDir, { ...rec, tryAgainConsumed: true });
   } catch { /* matcher-only tests pass a path that may not exist */ }
 }
