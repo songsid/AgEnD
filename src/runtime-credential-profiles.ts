@@ -141,7 +141,7 @@ function readStatusFile(root: string): StatusFile {
   } catch { /* an unreadable cache is "unknown", never an error */ }
   return file;
 }
-/** The last sign-in check this computer made for a profile (`login`, `profile list`, an explicit "Refresh CLI inventory"). Null when it has not been checked. */
+/** The last sign-in check this computer made for a profile (`login`, `profile list`, an explicit "Detect again"). Null when it has not been checked. */
 export function cachedCredentialLogin(root: string, cli: CredentialProfileCli, name: string): boolean | null {
   const rows = readStatusFile(root).checkedAt[cli];
   return rows && Object.hasOwn(rows, name) ? rows[name].loggedIn : null;

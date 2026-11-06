@@ -137,7 +137,7 @@ On the Windows computer, in the Runtime folder and under the Windows user whose 
 .\agend-runtime.cmd connect --credential-profile work   # the same default, set while connecting
 ```
 
-Then press **Refresh CLI inventory** for the computer in Settings → Runtime: the card lists the profile names and whether each is signed in, and the agent settings (new Windows agent, **Change runtime / CLI**) offer a **Claude account** choice. Changing the account of an existing agent starts a new conversation, like any runtime change, because a conversation lives in one account's folder.
+Then choose **Detect again** in that computer's **CLI diagnostics** (Settings → Runtime): the card lists the profile names and whether each is signed in, and the agent settings (new Windows agent, **Change runtime / CLI**) offer a **Claude account** choice. Changing the account of an existing agent starts a new conversation, like any runtime change, because a conversation lives in one account's folder.
 
 How it is kept safe:
 

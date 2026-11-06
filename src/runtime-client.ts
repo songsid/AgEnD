@@ -343,7 +343,7 @@ export class RuntimeClient {
     if (loggedIn !== true) throw credentialLoginRequired(cli, name, loggedIn);
     return directory;
   }
-  /** Names and signed-in yes/no only. `force` (an explicit "Refresh CLI inventory") asks each profile's CLI; otherwise the last known answer is reported. */
+  /** Names and signed-in yes/no only. `force` (an explicit "Detect again") asks each profile's CLI; otherwise the last known answer is reported. */
   private async credentialReport(force: boolean): Promise<CredentialProfileReport | undefined> {
     const root = this.options.credentialProfilesRoot; if (!root) return undefined;
     if (force) for (const name of listCredentialProfileNames(root, "claude-code")) {

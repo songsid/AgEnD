@@ -1316,7 +1316,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // Fail closed at selection time, not at the first message: an old Runtime would ignore the name and run another account.
           if(!machine.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY))throw new Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
           const row=machine.inventory?.credentialProfiles?.profiles.find(profile=>profile.name===credentialProfile);
-          if(!row)throw new Error(`This computer has not reported a credential profile named "${credentialProfile}". On that computer run: agend-runtime login claude-code ${credentialProfile}, then press Refresh in Settings → Runtime.`);
+          if(!row)throw new Error(`This computer has not reported a credential profile named "${credentialProfile}". On that computer run: agend-runtime login claude-code ${credentialProfile}, then choose Detect again in that computer's CLI diagnostics (Settings → Runtime).`);
           if(row.loggedIn===false)throw new Error(`Credential profile "${credentialProfile}" is not signed in on that computer. Sign in there: agend-runtime login claude-code ${credentialProfile}`);
         }
       },
