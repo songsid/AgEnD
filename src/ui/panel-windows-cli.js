@@ -34,7 +34,8 @@ register("wincli", {
 });
 const active = task => ["starting","running","cancelling"].includes(task.status);
 
-/** cc3ce4fe: a persistent-pane CLI's version AgEnD has not audited (or knows is broken), from the coordinator's label. */
+/** cc3ce4fe: a persistent-pane CLI's version AgEnD has not audited (or knows is broken), from the coordinator's label.
+ * Drawn inside the version's own cell: the diagnostics summary is a fixed five-cell grid. */
 function paneVerificationTag(cli) {
   const key = cli.paneVerification === "unverified" ? "paneUnverified" : cli.paneVerification === "denied" ? "paneDenied" : "";
   return key ? html`<span class="tag" title=${tn(`${key}Hint`)}>${tn(key)}</span>` : null;
@@ -44,7 +45,7 @@ function CliCard({ cli, probing, diagnostic = false }) {
   const checking = probing && !cli.path;
   const authKey = checking ? "checking" : !cli.path ? "missing" : signedIn ? "signedIn" : cli.authenticated === false ? "signedOut" : "unknown";
   const providerLabel = cli.company || ({codex:"OpenAI","claude-code":"Anthropic",antigravity:"Google",grok:"xAI","kiro-cli":"AWS",opencode:"Anomaly",muse:"Meta"})[cli.id];
-  if(diagnostic) return html`<details class="windows-cli-diagnostic-row"><summary><${CliProductMark} id=${cli.id} size=${24} /><strong>${cliLabel(cli.id)}</strong><span class="windows-cli-diagnostic-version">${cli.version || "—"}</span>${paneVerificationTag(cli)}<span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><${Icon} name="chevron" size=${16} /></summary>
+  if(diagnostic) return html`<details class="windows-cli-diagnostic-row"><summary><${CliProductMark} id=${cli.id} size=${24} /><strong>${cliLabel(cli.id)}</strong><span class="windows-cli-diagnostic-version">${cli.version || "—"}${paneVerificationTag(cli) ? html` ${paneVerificationTag(cli)}` : null}</span><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><${Icon} name="chevron" size=${16} /></summary>
     <div class="windows-cli-diagnostic-facts"><span class=${`windows-cli-badge ${cli.runnable ? "tone-ready" : "tone-neutral"}`}>${tn(cli.runnable ? "available" : cli.supports?.execution === false ? "detectionOnly" : "unavailableBadge")}</span><dl><dt>${tn("path")}</dt><dd><code class="windows-cli-path">${cli.path || tn("missing")}</code></dd>${cli.models?.length ? html`<dt>${tn("modelsFound")}</dt><dd><ul class="windows-cli-model-list">${cli.models.map(model=>html`<li key=${model.id}><code>${model.id}</code>${model.label && model.label!==model.id ? html`<span>${model.label}</span>` : null}</li>`)}</ul></dd>` : null}</dl>${cli.reason ? html`<p class="note">${cli.reason}</p>` : null}</div>
   </details>`;
   return html`<article class=${`windows-cli-provider is-${cli.id}`}>
@@ -53,7 +54,7 @@ function CliCard({ cli, probing, diagnostic = false }) {
       <div class="windows-cli-provider-name"><span>${providerLabel}</span><h3>${cliLabel(cli.id)}</h3></div>
       <span class=${`windows-cli-badge ${cli.runnable ? "tone-ready" : "tone-neutral"}`}>${tn(cli.runnable ? "available" : cli.supports?.execution === false ? "detectionOnly" : checking ? "checking" : "unavailableBadge")}</span>
     </div>
-    <div class="windows-cli-provider-status"><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><span class="windows-cli-version">${cli.version || "—"}</span>${paneVerificationTag(cli)}</div>
+    <div class="windows-cli-provider-status"><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><span class="windows-cli-version">${cli.version || "—"}${paneVerificationTag(cli) ? html` ${paneVerificationTag(cli)}` : null}</span></div>
     <details class="windows-cli-location"><summary>${tn("path")}<${Icon} name="chevron" size=${14} /></summary><code class="windows-cli-path">${cli.path || tn(checking ? "checking" : "notDetected")}</code></details>
     ${cli.reason ? html`<p class="note">${cli.reason}</p>` : null}
   </article>`;
