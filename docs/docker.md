@@ -325,7 +325,7 @@ docker compose exec agend ls .agend/instances/        # each instance's logs are
 ### Watch or type into an instance
 
 ```sh
-docker compose exec -it agend tmux attach -t agend
+docker compose exec -it agend agend attach
 ```
 
 Detach with `Ctrl-b d`. Don't type into an instance's window while it is working.

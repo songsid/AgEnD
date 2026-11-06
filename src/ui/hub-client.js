@@ -231,6 +231,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     catalog() { return call("GET", "/hub/v1/exposures"); },
     grant(input) { return call("POST", "/hub/v1/grants", input); },
     revokeGrant(grantId, revision) { return call("DELETE", `/hub/v1/grants/${id(grantId)}?revision=${id(revision)}`); },
+    activity(exposureId) { return call("GET", `/hub/v1/exposures/${id(exposureId)}/activity`); },
     freeze(exposureId, revision, admin = false) { return call("POST", `/hub/v1/${admin ? "admin/" : ""}exposures/${id(exposureId)}/freeze`, { revision }); },
     quotaVisibility(exposureId, revision, visible) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/quota`, { revision, visible }); },
     rooms() { return call("GET", "/hub/v1/rooms"); },

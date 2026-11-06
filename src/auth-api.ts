@@ -200,6 +200,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
   // #3226 B: the Hub chat's stylesheet (linked by hub-chat-strings.js; an older hub.css lacks it).
   "hub-chat.css": { file: join("shared", "hub-chat.css"), type: "text/css; charset=utf-8" },
+  // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
+  "hub-owner.css": { file: join("shared", "hub-owner.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
