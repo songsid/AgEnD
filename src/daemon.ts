@@ -2174,6 +2174,15 @@ export class Daemon extends EventEmitter {
   /** The usage-pause notice told last: when (monotonic), Claude's words for the reset, and that reset (wall clock). */
   private usagePauseNotice: { at: number; when: string; resetAt: number | null } | null = null;
 
+  /** Coarse status for the representative quota hint; never exports model names or transcript text. */
+  quotaPaused(): boolean {
+    if (this.usageLimitHold) return true;
+    const pause = this.usagePauseNotice;
+    return !!pause && (pause.resetAt === null
+      ? performance.now() - pause.at < Daemon.USAGE_PAUSE_NOTICE_WINDOW_MS
+      : Date.now() < pause.resetAt);
+  }
+
   /**
    * #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. `at`: when
    * Claude wrote it (its record's timestamp). One notice per pause: a reset time already past is not this pause (an old

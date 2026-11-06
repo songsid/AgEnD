@@ -1924,6 +1924,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           agents: () => this.hubMemberAgents(),
           // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
           representative: {
+            quota: agent => this.hubAgentQuota(agent),
             deliver: input => this.deliverHubQuestion(input),
             agentToken: agent => this.hubAgentToken(agent),
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
@@ -1991,6 +1992,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
     return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: this.shownInstanceName(name) }));
+  }
+
+  /** Same cached usage source as the owner's rail, scoped to the representative's CLI and credential profile. */
+  private async hubAgentQuota(agent: string): Promise<import("./hub/types.js").HubQuota> {
+    const binding = () => {
+      const config = this.fleetConfig?.instances[agent];
+      if (!config || isWindowsInstance(config)) return null; // runner usage never belongs to a Linux login
+      const backend = this.backendNameForInstance(agent), provider = usageProviderIdForBackend(backend);
+      if (!provider) return null;
+      const profile = this.credentialProfileOf(agent, backend);
+      return profile ? `${provider}:${profile}` : provider;
+    };
+    const id = binding();
+    const { quotaBand } = await import("./hub/member/quota.js");
+    const paused = () => this.daemons.get(agent)?.quotaPaused?.() === true
+      || this.lifecycle.isPaused(agent) && readPauseReason(this.getInstanceDir(agent)) === "quota";
+    if (!id) return { band: "unknown" };
+    try {
+      const snapshot = await getUsageSnapshot(false, new Set([id]));
+      if (binding() !== id) return { band: "unknown" };
+      return quotaBand(snapshot.providers.find(p => p.id === id), paused());
+    } catch { return quotaBand(undefined, paused()); }
   }
 
   /**
