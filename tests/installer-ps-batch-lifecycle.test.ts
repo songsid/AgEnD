@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { afterEach, beforeEach as vitestBeforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach as vitestBeforeEach, describe, expect, it, vi } from "vitest";
 
 const controls = vi.hoisted(() => ({ autoReady: true }));
 vi.mock("node:child_process", () => ({
@@ -20,11 +20,20 @@ vi.mock("node:child_process", () => ({
   }),
 }));
 import { spawn } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { InstallerPsStartGate } from "./support/installer-ps-start.js";
 import { InstallerPsBatch } from "./support/installer-ps-batch.js";
 
 const cases = ["close", "deadline", "stdin"] as const;
 const batches = cases.map(() => new InstallerPsBatch({ helpers: "function F { 'ok' }" }, false));
 const startups = Array.from({ length: 4 }, () => new InstallerPsBatch({ helpers: "function F { 'ok' }" }, false));
+const gateRoot = mkdtempSync(join(tmpdir(), "agend-lifecycle-gates-"));
+const gates = Array.from({length: 5}, (_, n) => new InstallerPsStartGate(join(gateRoot, String(n)), 1));
+const queuedTicket = gates[0]!.tryAcquire()!;
+const gated = gates.map(g => new InstallerPsBatch({ helpers: "function F { 'ok' }" }, false, g));
+afterAll(() => rmSync(gateRoot, { recursive: true, force: true }));
 function childNow() { return vi.mocked(spawn).mock.results.at(-1)!.value as ReturnType<typeof spawn>; }
 function signalReady(child: ReturnType<typeof spawn>) { child.stdout!.emit("data", Buffer.from("__AGEND_BOOT__\n__AGEND_READY__7\n")); }
 async function activate(batch: InstallerPsBatch) { const ready = batch.ready(); const child = childNow(); signalReady(child); await ready; return child; }
@@ -76,9 +85,9 @@ describe("PowerShell readiness boundary", () => {
   it("bounds startup independently, kills once, and retains its cause after close/late READY", async () => {
     vi.useFakeTimers(); const batch = startups[1]!;
     const first = batch.run("helpers", "F").catch(e => e as Error); const child = childNow();
-    await vi.advanceTimersByTimeAsync(29_999); expect(child.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(9_999); expect(child.kill).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    const failure = await first; expect((failure as Error).message).toContain("startup readiness exceeded 30 s");
+    const failure = await first; expect((failure as Error).message).toContain("startup readiness exceeded 10 s");
     expect(child.kill).toHaveBeenCalledTimes(1); expect(child.stdin!.write).not.toHaveBeenCalled();
     signalReady(child);
     await expect(batch.ready()).rejects.toBe(failure);
@@ -106,4 +115,50 @@ describe("PowerShell readiness boundary", () => {
     await warmed.ready(); expect(vi.mocked(spawn).mock.calls.length).toBe(count);
     expect(count).toBeGreaterThan(0);
   });
+});
+
+
+describe("START queue integration", () => {
+  it("does not charge queue time to START or case budgets, and releases at READY", async () => {
+    vi.useFakeTimers(); const count = vi.mocked(spawn).mock.calls.length;
+    const pending = gated[0]!.run("helpers", "F");
+    await vi.advanceTimersByTimeAsync(15_000); expect(vi.mocked(spawn).mock.calls.length).toBe(count);
+    queuedTicket.release(); await vi.advanceTimersByTimeAsync(20);
+    const child = childNow(); expect(vi.mocked(spawn).mock.calls.length).toBe(count + 1);
+    await vi.advanceTimersByTimeAsync(9_999); expect(child.kill).not.toHaveBeenCalled();
+    signalReady(child); await Promise.resolve();
+    const slot = gates[0]!.tryAcquire(); expect(slot).toBeDefined(); slot!.release();
+    await vi.advanceTimersByTimeAsync(9_999); expect(child.kill).not.toHaveBeenCalled();
+    child.stdout!.emit("data", Buffer.from('__AGEND_BATCH__{"id":1,"out":"done","status":0}\n'));
+    await expect(pending).resolves.toBe("done"); expect(vi.getTimerCount()).toBe(0);
+  });
+  it("holds the START reservation until a timed-out child actually closes", async () => {
+    vi.useFakeTimers(); const pending = gated[1]!.ready().catch(e => e as Error); const child = childNow();
+    vi.mocked(child.kill).mockImplementation(() => true);
+    await vi.advanceTimersByTimeAsync(10_000); expect((await pending as Error).message).toContain("readiness exceeded 10 s");
+    expect(gates[1]!.tryAcquire()).toBeUndefined();
+    child.emit("close", null); const next = gates[1]!.tryAcquire(); expect(next).toBeDefined(); next!.release();
+  });
+  it("releases a reservation if native spawn throws before creating a child", async () => {
+    const error = new Error("fixture spawn refused"); vi.mocked(spawn).mockImplementationOnce(() => { throw error; });
+    await expect(gated[2]!.ready()).rejects.toBe(error);
+    const slot = gates[2]!.tryAcquire(); expect(slot).toBeDefined(); slot!.release();
+  });
+  it("fences a fixture closed while waiting so a late slot cannot launch", async () => {
+    vi.useFakeTimers(); const ticket = gates[3]!.tryAcquire()!;
+    const count = vi.mocked(spawn).mock.calls.length; const pending = gated[3]!.ready().catch(e => e as Error);
+    // Model the registered afterAll's synchronous fence before its async drain.
+    (gated[3] as unknown as {closed:boolean}).closed = true;
+    ticket.release(); await vi.advanceTimersByTimeAsync(20);
+    expect((await pending as Error).message).toContain("fixture closed"); expect(vi.mocked(spawn).mock.calls.length).toBe(count);
+    const free = gates[3]!.tryAcquire(); expect(free).toBeDefined(); free!.release();
+  });
+  it("admits no late case when READY arrives after fixture close", async () => {
+    const pending = gated[4]!.run("helpers", "must never be written").catch(e => e as Error); const child = childNow();
+    (gated[4] as unknown as {closed:boolean}).closed = true;
+    signalReady(child); await Promise.resolve(); expect(child.stdin!.write).not.toHaveBeenCalled();
+    expect((await pending as Error).message).toContain("fixture closed before case");
+    const slot = gates[4]!.tryAcquire(); expect(slot).toBeDefined(); slot!.release();
+  });
+
 });
