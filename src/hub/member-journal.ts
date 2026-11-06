@@ -2,7 +2,7 @@
 import type Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { sha256, verifyLease } from "./identity.js";
+import { messageContentDigest, sha256, verifyLease } from "./identity.js";
 import { questionSchema, answerSchema, receiptSchema, HUB_LIMITS } from "./protocol.js";
 import { parseStrictJson, validated, HubProtocolError, uuid, hash, epoch } from "./validation.js";
 import type { HubQuestion, HubReceipt, HubAnswer, HubAuthorizationLease, HubAuthorizationRequest, HubRevocation } from "./types.js";
@@ -96,7 +96,7 @@ export class HubMemberJournal {
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
   prepare(question: HubQuestion): { operationId: string; receipt: HubReceipt | null } {
-    const q = validated(questionSchema, question); if (q.identity.issuer !== this.options.hubId || q.identity.contentDigest !== sha256(q.text)) throw new HubProtocolError("denied");
+    const q = validated(questionSchema, question); if (q.identity.issuer !== this.options.hubId || q.identity.contentDigest !== messageContentDigest("question", q.text, { attachments: q.attachments })) throw new HubProtocolError("denied");
     return this.change(() => {
       const existing = this.row(q.identity.messageId);
       if (existing) {
@@ -164,7 +164,7 @@ export class HubMemberJournal {
     const a = validated(answerSchema, answer);
     return this.change(() => {
       const row = this.row(a.messageId); if (!row || !row.inputIntent || !["consumed", "uncertain", "answered"].includes(row.stage) || !fence.current()
-        || request.phase !== "release-answer" || request.answer.answerId !== a.answerId || request.answer.contentDigest !== a.contentDigest || sha256(a.text) !== a.contentDigest) throw new HubProtocolError("denied");
+        || request.phase !== "release-answer" || request.answer.answerId !== a.answerId || request.answer.contentDigest !== a.contentDigest || messageContentDigest("answer", a.text, { attachments: a.attachments }) !== a.contentDigest) throw new HubProtocolError("denied");
       const data = this.authorize(row, request, a.releaseLease, fence);
       if (data.answer) {
         if (data.answer.answerId !== a.answerId || data.answer.contentDigest !== a.contentDigest) throw new HubProtocolError("conflict");
