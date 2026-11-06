@@ -409,7 +409,9 @@ function HubThread({ store, name, panelKey, threadRef }) {
       // #3226 E: an HTML page opens in the room's side panel, at the Hub's own preview address (hub-preview.js).
       setPreviewOptIn: setHubPreviewOptIn, copyText, download: downloadHtml, toggleWrap: () => {}, notice: (text) => toast(text, false),
       panel: roomPanelOpts(panelKey),
-      clickReplyButton: (id, index) => { void store.clickButton(id, index).then(() => store.refresh()); },
+      clickReplyButton: (id, index) => { void store.clickButton(id, index).then((r) => {
+        if (!r.ok && r.code !== "busy" && r.code !== "stopped") { toast(errText(r), false); store.refresh(); }
+      }); },
       replyButtonBusy: (id) => store.busy(id), pollMine: (id) => store.mine(id), serverNow: () => Date.now(),
       retryOutgoing: () => {}, deleteOutgoing: () => {}, putBackOutgoing: () => {}, startReply: () => {}, findQuoted: () => null,
       emojis: () => false, mentions: () => null,

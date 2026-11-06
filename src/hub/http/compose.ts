@@ -39,7 +39,7 @@ export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
-export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-preview.js"]);
+export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-button-actions.js", "hub-preview.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -187,6 +187,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...quota.projection(room.exposureId) } });
       }
       throw new HttpError(405, "method");
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/buttons$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body();
+      return send(res, 200, { receipt: await guard(() => rooms.buttons.click(ctx, uuid(r![1]), b)) });
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/messages$/))) {
       const roomId = uuid(r[1]);
@@ -378,8 +383,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     t.unref?.();
   }
 
+  rooms.buttons.start();
   return {
     handle, receive,
-    async close() { closed = true; rooms.forget(); quota.close(); },
+    async close() { closed = true; await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

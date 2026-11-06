@@ -79,7 +79,7 @@ async function hub(offered: boolean) {
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const CASES = [{ device: "desk", lang: "en", theme: "light", viewport: { width: 1366, height: 860 } }, { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } }] as const;
-const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-owner-strings|hub-preview)\.js|ui\/hub|favicon)/;
+const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-owner-strings|hub-button-actions|hub-preview)\.js|ui\/hub|favicon)/;
 const until = async (page: any, js: string, ms = 15000) => { for (let i = 0; i < ms / 250; i++) { if (await page.evaluate(js)) return true; await page.waitForTimeout(250); } return false; };
 
 async function open(h: Awaited<ReturnType<typeof hub>>, c: (typeof CASES)[number], route?: (page: any) => Promise<void>) {
