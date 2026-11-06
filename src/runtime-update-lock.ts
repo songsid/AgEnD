@@ -1,6 +1,6 @@
 /** Shared installer/supervisor lock. Process observation never sends a termination signal. */
 import { randomUUID } from "node:crypto";
-import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, rmdirSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
+import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, rmdirSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "./child-process.js";
@@ -9,7 +9,7 @@ import { nativeCliEnvironment } from "./windows-cli-worker.js";
 
 export const RUNTIME_INSTALL_LOCK = ".agend-runtime-install.lock";
 export interface RuntimeProcessProof { pid: number; birth: string; boot: string }
-export type RuntimeProcessObservation = { state: "alive"; proof: RuntimeProcessProof } | { state: "gone" | "unknown" };
+export type RuntimeProcessObservation = { state: "alive"; proof: RuntimeProcessProof } | { state: "gone" } | { state: "unknown" };
 export interface RuntimeInstallLockRecord extends RuntimeProcessProof { version: 1; type: "installer" | "supervisor"; nonce: string }
 export class RuntimeInstallLockError extends Error { constructor(readonly reason: "held" | "unsafe" | "changed" | "unknown") { super(`Runtime install lock ${reason}`); } }
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -19,8 +19,8 @@ function proof(value: unknown): value is RuntimeProcessProof {
 }
 export function parseRuntimeInstallLock(value: unknown): RuntimeInstallLockRecord {
   const v = value as RuntimeInstallLockRecord;
-  if (!proof(v) || !v || Object.keys(v).length !== 6 || Object.keys(v).some(k => !["version", "type", "nonce", "pid", "birth", "boot"].includes(k))
-    || v.version !== 1 || !["installer", "supervisor"].includes(v.type) || !UUID.test(v.nonce)) throw new RuntimeInstallLockError("unsafe");
+  if (!proof(v) || !v || Array.isArray(v) || Object.keys(v).length !== 6 || Object.keys(v).some(k => !["version", "type", "nonce", "pid", "birth", "boot"].includes(k))
+    || v.version !== 1 || !["installer", "supervisor"].includes(v.type) || typeof v.nonce !== "string" || !UUID.test(v.nonce)) throw new RuntimeInstallLockError("unsafe");
   return { version: 1, type: v.type, nonce: v.nonce, pid: v.pid, birth: v.birth, boot: v.boot };
 }
 /** Fixed local query; no command line, profile, account, credential or response-provided program is read. */
@@ -51,7 +51,7 @@ export function assertRuntimeInstallDirectory(path: string): Stats {
   return stat;
 }
 /** Only ENOENT is absence; malformed, writable or changed files never become an empty installation. */
-export function readRuntimeInstallFile(path: string, max = 8192): { text: string; stat: Stats } | undefined {
+export function readRuntimeInstallBytes(path: string, max = 8192): { bytes: Buffer; stat: Stats } | undefined {
   if (!Number.isSafeInteger(max) || max < 1 || max > 8 * 1024 * 1024) throw new RuntimeInstallLockError("unsafe");
   let before: Stats;
   try { before = lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
@@ -62,8 +62,12 @@ export function readRuntimeInstallFile(path: string, max = 8192): { text: string
     const bytes = Buffer.alloc(max + 1); let length = 0, count: number;
     while (length < bytes.length && (count = readSync(fd, bytes, length, bytes.length - length, null)) > 0) length += count;
     if (length > max || !sameFile(opened, lstatSync(path))) throw new RuntimeInstallLockError("changed");
-    return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(0, length)), stat: opened };
+    return { bytes: bytes.subarray(0, length), stat: opened };
   } finally { closeSync(fd); }
+}
+export function readRuntimeInstallFile(path: string, max = 8192): { text: string; stat: Stats } | undefined {
+  const result = readRuntimeInstallBytes(path, max);
+  return result ? { text: new TextDecoder("utf-8", { fatal: true }).decode(result.bytes), stat: result.stat } : undefined;
 }
 interface Snapshot { directory: Stats; record: RuntimeInstallLockRecord; text: string; file: Stats }
 function snapshot(path: string): Snapshot {
@@ -82,6 +86,8 @@ export async function acquireRuntimeInstallLock(root: string, options: {
   observe?: (pid: number) => Promise<RuntimeProcessObservation>;
 } = {}): Promise<RuntimeInstallLock> {
   assertRuntimeInstallDirectory(root);
+  const type = options.type ?? "supervisor";
+  if (type !== "installer" && type !== "supervisor") throw new RuntimeInstallLockError("unsafe");
   const observe = options.observe ?? observeRuntimeProcess;
   const own = options.ownProof ? { state: "alive" as const, proof: options.ownProof } : await observe(process.pid);
   if (own.state !== "alive" || !proof(own.proof) || own.proof.pid !== process.pid) throw new RuntimeInstallLockError("unknown");
@@ -105,10 +111,10 @@ export async function acquireRuntimeInstallLock(root: string, options: {
     // Another acquirer may win after the stale directory is removed. Never remove or overwrite its new owner.
     try { mkdirSync(path, { mode: 0o700 }); created = true; } catch { throw new RuntimeInstallLockError("held"); }
   }
-  const record: RuntimeInstallLockRecord = { version: 1, type: options.type ?? "supervisor", nonce: randomUUID(), ...own.proof };
+  const record: RuntimeInstallLockRecord = { version: 1, type, nonce: randomUUID(), pid: own.proof.pid, birth: own.proof.birth, boot: own.proof.boot };
   try { writeFileSync(join(path, "owner.json"), JSON.stringify(record), { flag: "wx", mode: 0o600 }); }
   catch (error) { try { rmdirSync(path); } catch {} throw error; }
-  const owned = snapshot(path); let released = false;
+  let owned = snapshot(path), released = false;
   const assert = () => { if (released || !current(path, owned)) throw new RuntimeInstallLockError("changed"); };
   return { record, assert, release: () => {
     if (released) return;
@@ -116,6 +122,17 @@ export async function acquireRuntimeInstallLock(root: string, options: {
     // A concurrent stale observer may briefly own a reclamation marker. Retain this lease and permit a later retry.
     try { lstatSync(join(path, "reclaim")); throw new RuntimeInstallLockError("held"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    unlinkSync(join(path, "owner.json")); rmdirSync(path); released = true;
+    if (readdirSync(path).some(name => name !== "owner.json")) throw new RuntimeInstallLockError("held");
+    unlinkSync(join(path, "owner.json"));
+    try { rmdirSync(path); released = true; }
+    catch (error) {
+      // A failed directory removal must not silently discard this process's ownership or prevent a positive retry.
+      try {
+        if (sameFile(lstatSync(path), owned.directory) && !readRuntimeInstallFile(join(path, "owner.json"))) {
+          writeFileSync(join(path, "owner.json"), owned.text, { flag: "wx", mode: 0o600 }); owned = snapshot(path);
+        }
+      } catch { /* absence/changed ownership remains unconfirmed, never a successful release */ }
+      throw error;
+    }
   } };
 }
