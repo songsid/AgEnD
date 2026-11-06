@@ -124,4 +124,11 @@ describe("#3195: what the tool does take is unchanged", () => {
       expect(Object.keys(s).sort()).toEqual(["id", "status", "updated_at"]);
     }
   });
+
+  it("the answer is what was SAVED, not what was asked: a priority the tool does not apply shows the stored one (Fable #3218 P3)", async () => {
+    const f = fleet();
+    const ack = await f.http("dev-a", { action: "create", title: "Plain", priority: "low" }) as { id: string };
+    const r = await f.http("dev-a", { action: "update", id: ack.id, priority: "HIGHEST" }) as Record<string, unknown>;
+    expect(r.priority).toBe("low");
+  });
 });
