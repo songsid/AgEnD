@@ -3,20 +3,22 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, wri
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { compilePortableRuntime } from "./support/runtime-portable-compile.js";
 
 describe("standalone Windows runtime bundle", () => {
   it("loads outside the AgEnD dependency tree without loading Windows native bindings for help/status", () => {
     const directory = mkdtempSync(join(tmpdir(), "agend-runtime-bundle-"));
     try {
       const compiled = join(directory, "compiled"), bundle = join(directory, "bundle");
-      execFileSync(process.execPath, [resolve("node_modules/@typescript/native/bin/tsc"), "--ignoreConfig", "--target", "ES2022", "--module", "Node16",
-        "--moduleResolution", "Node16", "--strict", "--esModuleInterop", "--skipLibCheck", "--outDir", compiled,
-        "src/runtime-cli.ts", "src/windows-native-mcp.ts"], { cwd: process.cwd(), stdio: "pipe", timeout: 30_000 });
+      compilePortableRuntime(compiled);
       // Match postbuild: the portable builder consumes the built program assets too.
       cpSync(resolve("src/general-knowledge"), join(compiled, "general-knowledge"), { recursive: true });
       execFileSync(process.execPath, [resolve("scripts/build-runtime.mjs"), bundle, compiled, "https://fleet.example.test:10443"], { cwd: process.cwd(), stdio: "pipe", timeout: 10_000 });
       const help = execFileSync(process.execPath, [join(bundle, "dist/runtime-cli.js"), "--help"], { cwd: directory, encoding: "utf8", timeout: 10_000 });
       expect(help).toContain("agend-runtime connect --server"); expect(help).toContain("foreground");
+      // The updater's verification library also loads using only this portable program tree, without profiles or CLIs.
+      const artifact = execFileSync(process.execPath, ["--input-type=module", "-e", "import('./dist/runtime-update-artifact.js').then(m=>console.log(m.compareRuntimeVersions('2.0.0','1.0.0')))"], { cwd: bundle, encoding: "utf8", timeout: 10_000 });
+      expect(artifact.trim()).toBe("1");
       expect(readdirSync(join(bundle, "node_modules"))).toEqual(["@xterm", "node-pty", "ws"]);
       expect(readFileSync(join(bundle,"LICENSE"),"utf8")).toContain("MIT License");
       const pkg = JSON.parse(readFileSync(join(bundle, "package.json"), "utf8")); expect(pkg.dependencies).toEqual({ ws: "8.22.0", "node-pty": "1.1.0", "@xterm/headless": "6.0.0", "@xterm/addon-serialize": "0.14.0" });

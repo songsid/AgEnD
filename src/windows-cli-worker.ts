@@ -24,6 +24,8 @@ export interface NativeCliRow {
   id: NativeCliId; path: string | null; version: string | null; authenticated: boolean | null; runnable: boolean;
   supports: NativeProviderDescriptor["supports"]; readOnlySupport: boolean;
   permissionNote: string; models: NativeModelOption[]; reason?: string;
+  /** Coordinator-derived (cc3ce4fe), never trusted from a runner: whether this persistent-pane CLI's version is audited. */
+  paneVerification?: "verified" | "unverified" | "denied" | "invalid";
   modelsSource?: "cli-cache" | "official-catalog" | "cli-list" | "unavailable";
   /** Claude Code only: the masked e-mail and plan of the default sign-in, taken from the same `auth status` answer as `authenticated`. */
   identity?: AccountIdentity;
@@ -153,6 +155,49 @@ export function npmCliShimTarget(id: NativeCliId, source: string): string | null
   }
   return null;
 }
+/**
+ * Newer npm packages (Claude Code 2.1.x) ship a native executable and their `.cmd` shim runs it directly, without node.
+ * Only this exact shim shape is recognized; the shim itself is never executed or interpreted.
+ */
+const NPM_NATIVE_TARGETS: Partial<Record<NativeCliId, { shim: string; packages: Partial<Record<string, readonly string[]>>; exe: string }>> = {
+  "claude-code": {
+    shim: "node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+    packages: { x64: ["@anthropic-ai/claude-code-win32-x64"], arm64: ["@anthropic-ai/claude-code-win32-arm64", "@anthropic-ai/claude-code-win32-x64"] },
+    exe: "claude.exe",
+  },
+};
+/** `npm i --ignore-scripts` leaves a ~500 byte placeholder at bin\claude.exe; the real binary is tens of MB. */
+const NPM_NATIVE_MIN_BYTES = 1024 * 1024;
+/** Claude Code's real binary is tens of MB; anything smaller is a placeholder that must never be executed. */
+export function isUsableNativeBinarySize(id: NativeCliId, size: number): boolean {
+  return !NPM_NATIVE_TARGETS[id] || size >= NPM_NATIVE_MIN_BYTES;
+}
+/** Same check on a file: a size that cannot be read (the file vanished after it was found) is not usable. */
+export function isUsableNativeBinaryFile(id: NativeCliId, path: string, sizeOf: (path: string) => number): boolean {
+  try { return isUsableNativeBinarySize(id, sizeOf(path)); } catch { return false; }
+}
+export function npmNativeShimTarget(id: NativeCliId, source: string): string | null {
+  const native = NPM_NATIVE_TARGETS[id];
+  if (!native || source.length > 32 * 1024) return null;
+  for (const match of source.matchAll(/"%dp0%[\\/]([^"\r\n]+)"/gi)) {
+    if (match[1].replace(/\\/g, "/") === native.shim) return native.shim;
+  }
+  return null;
+}
+/** The real native executable behind a recognized npm shim: the optional platform package first, then bin\claude.exe unless it is a placeholder. */
+export function npmNativeExecutable(id: NativeCliId, shimDir: string, exists: (path: string) => boolean, sizeOf: (path: string) => number, arch: string = process.arch): string | null {
+  const native = NPM_NATIVE_TARGETS[id];
+  if (!native) return null;
+  const root = win32.join(shimDir, "node_modules");
+  const packageRoot = win32.join(shimDir, ...native.shim.split("/").slice(0, 3));
+  const candidates: string[] = [];
+  for (const pkg of native.packages[arch] ?? []) {
+    const parts = pkg.split("/");
+    candidates.push(win32.join(packageRoot, "node_modules", ...parts, native.exe), win32.join(root, ...parts, native.exe));
+  }
+  candidates.push(win32.join(shimDir, ...native.shim.split("/")));
+  return candidates.find(path => exists(path) && isUsableNativeBinaryFile(id, path, sizeOf)) ?? null;
+}
 function isNativeFile(path: string): boolean {
   if (!validWindowsDirectory(path)) return false;
   try { return statSync(path).isFile(); } catch { return false; }
@@ -190,11 +235,20 @@ export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | nu
   for (const candidate of candidates) {
     const p = candidate.trim();
     if (!isNativeFile(p)) continue;
-    if (provider.binaryNames.some(name => win32.basename(p).toLowerCase() === name.toLowerCase())) return { path: p, command: p, args: [] };
+    if (provider.binaryNames.some(name => win32.basename(p).toLowerCase() === name.toLowerCase())) {
+      if (!isUsableNativeBinaryFile(id, p, path => statSync(path).size)) continue;
+      return { path: p, command: p, args: [] };
+    }
     if (/\.cmd$/i.test(p) && NPM_CLI_TARGETS[id]) {
       try {
         if (statSync(p).size > 32 * 1024) continue;
-        const target = npmCliShimTarget(id, readFileSync(p, "utf8"));
+        const source = readFileSync(p, "utf8");
+        if (npmNativeShimTarget(id, source)) {
+          const exe = npmNativeExecutable(id, win32.dirname(p), isNativeFile, path => statSync(path).size);
+          if (exe) return { path: p, command: exe, args: [] };
+          continue;
+        }
+        const target = npmCliShimTarget(id, source);
         if (!target) continue;
         const script = win32.join(win32.dirname(p), target);
         if (!isNativeFile(script)) continue;

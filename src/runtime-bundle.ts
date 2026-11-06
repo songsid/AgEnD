@@ -18,6 +18,8 @@ const WS_FILES = Object.freeze([
 ]);
 const MAX_FILE_BYTES = 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 8 * 1024 * 1024;
+/** The largest archive createRuntimeBundle() ever returns; public delivery refuses anything above it. */
+export const RUNTIME_MAX_ARCHIVE_BYTES = MAX_ARCHIVE_BYTES;
 const ROOT = "agend-runtime/";
 const CMD = '@echo off\r\nnode.exe "%~dp0dist\\runtime-cli.js" %*\r\n';
 const README = `AgEnD native Windows runtime preview
@@ -51,7 +53,7 @@ export interface RuntimeBundleOptions {
   /** Explicit administrator-selected origin. Never inferred from a request Host header. */
   serverOrigin?: string;
 }
-export interface RuntimeBundle { bytes: Buffer; filename: string; sha256: string }
+export interface RuntimeBundle { bytes: Buffer; filename: string; sha256: string; version: string }
 
 function readCodeFile(path: string, limit = MAX_FILE_BYTES): Buffer {
   const stat = lstatSync(path);
@@ -137,5 +139,5 @@ export function createRuntimeBundle(options: RuntimeBundleOptions = {}): Runtime
     nativeDependencies: [{ name: "node-pty", version: "1.1.0", platforms: ["win32-x64", "win32-arm64"], backend: "ConPTY" }],
     sha256: Object.fromEntries(entries.map(([name, bytes]) => [name, createHash("sha256").update(bytes).digest("hex")])) }, null, 2) + "\n"));
   const bytes = zip(entries);
-  return { bytes, filename: `agend-runtime-windows-${version}.zip`, sha256: createHash("sha256").update(bytes).digest("hex") };
+  return { bytes, filename: `agend-runtime-windows-${version}.zip`, sha256: createHash("sha256").update(bytes).digest("hex"), version };
 }

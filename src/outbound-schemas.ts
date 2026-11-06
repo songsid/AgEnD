@@ -122,7 +122,7 @@ export const DeleteScheduleArgs = z.object({
 // ── Fleet Task Board ────────────────────────────────────────────────────
 
 export const TaskBoardArgs = z.object({
-  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects"])
+  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create/update)"),
   description: z.string().optional().describe("Task details; a board card's goal (create/update)"),
@@ -144,7 +144,9 @@ export const TaskBoardArgs = z.object({
   verbose: z.boolean().optional()
     .describe("list: return full task records instead of compact rows (default false)"),
   // The task board (docs/design/task-board.md): naming one of these makes create/update a board card's.
-  project: z.union([z.string(), z.number().int()]).optional().describe("Project name or id: a new main task's (create), a filter (list)"),
+  project: z.union([z.string(), z.number().int()]).nullable().optional().describe("Project name or id: a new main task's (create), a filter (list). update / move_project: a main task's project by its id, or null / \"none\" to take it out of its project (sub tasks follow)"),
+  name: z.string().optional().describe("A new project's name (create_project)"),
+  ids: z.array(z.string()).optional().describe("Main tasks to move to `project`, e.g. [\"M-3\", \"M-4\"] (move_project): each is moved or refused on its own"),
   parent: z.string().optional().describe("Main task number like M-3: a new sub task's (create), its sub tasks (list)"),
   scope: z.string().optional().describe("Main task: in / out of scope (create/update)"),
   acceptance: z.array(z.string()).optional().describe("Checklist that defines done, one item each (create/update replaces it)"),

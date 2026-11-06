@@ -117,13 +117,22 @@ describe("2. projects", () => {
     expect(refusal(() => board.createCards(ANN, { project: "Website", cards: [{ title: "x" }] }))).toBe("invalid");
   });
 
-  it("only a person creates or changes a project, or moves a main task to another one; its sub tasks follow", () => {
+  it("projects: anyone creates one, only a person changes it; a main task moves by whoever may edit it; its sub tasks follow (#3195, 9af8d799)", () => {
     const { board } = withProject();
-    expect(refusal(() => board.createProject(DEV, { name: "Mine" }))).toBe("forbidden");
+    // An instance creates a project — but not with a lead, and it never changes or archives one.
+    const mine = board.createProject(DEV, { name: "Mine" });
+    expect(mine).toMatchObject({ name: "Mine", archived: false, leadInstance: null });
+    expect(refusal(() => board.createProject(DEV, { name: "Led", leadInstance: "dev-a" }))).toBe("forbidden");
+    expect(refusal(() => board.updateProject(DEV, mine.id, { name: "Renamed" }))).toBe("forbidden");
+    expect(refusal(() => board.updateProject(DEV, mine.id, { archived: true }))).toBe("forbidden");
     const other = board.createProject(ANN, { name: "Website" });
     const m = main(board, DEV);
     const s = sub(board, DEV, m.code);
-    expect(refusal(() => board.updateCard(DEV, m.code, { projectId: other.id }))).toBe("forbidden");
+    // Its own card: the instance moves it, and the sub task follows; someone else's card: refused.
+    board.updateCard(DEV, m.code, { projectId: mine.id });
+    expect(board.getCard(s.code).projectId).toBe(mine.id);
+    expect(refusal(() => board.updateCard({ kind: "instance", name: "dev-b" }, m.code, { projectId: other.id }))).toBe("forbidden");
+    expect(refusal(() => board.updateCard(DEV, s.code, { projectId: other.id }))).toBe("invalid");
     board.updateCard(ANN, m.code, { projectId: other.id });
     expect(board.getCard(s.code).projectId).toBe(other.id);
     board.updateCard(ANN, m.code, { projectId: null });

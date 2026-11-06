@@ -68,6 +68,8 @@ export interface HubRuntimeOptions {
   createMember?: (cfg: Record<string, unknown>, current: () => boolean) => Promise<HubMountedService>;
 }
 
+export type HubServerHealth = "off" | "starting" | "ready" | "unavailable" | "stopped";
+
 type HubConfigView = { hub?: unknown; hub_member?: unknown };
 
 const obj = (v: unknown): Record<string, unknown> | undefined => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined);
@@ -186,6 +188,21 @@ export class HubRuntime {
 
   currentHolds(): readonly HubHold[] {
     return this.holds;
+  }
+
+  /** Availability of the configured local server mount, not a directory/link/model or remote-reachability probe. */
+  serverHealth(expected: unknown): HubServerHealth {
+    const server = obj(expected);
+    if (server?.enabled !== true) return "off";
+    if (this.stopped) return "stopped";
+    // serverEnabled is an admission fence set before the factory/start awaits: it is not readiness on its own.
+    if (this.running || this.pending || this.admitted === null) return "starting";
+    if (this.view === null) return "unavailable";
+    try {
+      // Compare the captured immutable view, not lastConfig's caller-owned object, which can change in place.
+      if (hubPlanDigest(server) !== JSON.parse(this.view).server) return "starting";
+    } catch { return "unavailable"; }
+    return this.mount.serverEnabled() ? "ready" : "unavailable";
   }
 
   private addHold(hold: HubHold): void {

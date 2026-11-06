@@ -9,6 +9,7 @@ import { windowsAgentsFor } from "./windows-agents.js";
 import { nativeAgentId } from "./native-instance-registry.js";
 import type { FleetWindowsRuntime } from "./fleet-windows-runtime.js";
 import { isSettingsReplay, settingsRequestLocalAdmin } from "./settings-request-capability.js";
+import { withNativePaneVerification } from "./runtime-pane-native.js";
 
 export interface WindowsCliApiContext {
   readonly webToken: string | null;
@@ -140,7 +141,8 @@ export function handleWindowsCliRequest(req: IncomingMessage, res: ServerRespons
       if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => key !== "force") || (input.force !== undefined && typeof input.force !== "boolean")) throw new Error("Probe accepts only an optional boolean force field");
       const result = await service.probe(input, authorized);
       if (!authorized()) { json(res, 403, { error: "Authorization expired" }); return; }
-      json(res, 200, accountIdentityVisible(req, url, ctx) ? result : probeWithoutAccountIdentity(result));
+      const labelled = withNativePaneVerification(result);
+      json(res, 200, accountIdentityVisible(req, url, ctx) ? labelled : probeWithoutAccountIdentity(labelled));
     } else if (cancel) json(res, 202, service.cancel(cancel[1]));
     else json(res, 202, service.start(input, authorized));
   })().catch(error => json(res, 400, { error: error instanceof Error ? error.message : "Windows CLI operation failed" }));

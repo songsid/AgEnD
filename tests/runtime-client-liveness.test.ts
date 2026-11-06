@@ -9,6 +9,7 @@ import { pathToFileURL } from "node:url";
 import { WebSocketServer } from "ws";
 import { describe, expect, it } from "vitest";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
+import { compilePortableRuntime } from "./support/runtime-portable-compile.js";
 
 describe("standalone runtime foreground lifetime", () => {
   it("keeps an idle child with closed stdin alive across a dropped socket and reconnects before stopping", async () => {
@@ -17,9 +18,7 @@ describe("standalone runtime foreground lifetime", () => {
     let child: ChildProcess | undefined;
     try {
       const compiled = join(directory, "compiled"), bundle = join(directory, "bundle");
-      execFileSync(process.execPath, [resolve("node_modules/@typescript/native/bin/tsc"), "--ignoreConfig", "--target", "ES2022", "--module", "Node16",
-        "--moduleResolution", "Node16", "--strict", "--esModuleInterop", "--skipLibCheck", "--outDir", compiled,
-        "src/runtime-cli.ts", "src/windows-native-mcp.ts"], { cwd: process.cwd(), stdio: "pipe", timeout: 30_000 });
+      compilePortableRuntime(compiled);
       // Match postbuild: the portable builder consumes the built program assets too.
       cpSync(resolve("src/general-knowledge"), join(compiled, "general-knowledge"), { recursive: true });
       execFileSync(process.execPath, [resolve("scripts/build-runtime.mjs"), bundle, compiled], { cwd: process.cwd(), stdio: "pipe", timeout: 10_000 });

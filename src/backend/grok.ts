@@ -5,9 +5,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { selectionCard } from "../selection-card.js";
+import { displayWidth } from "../ls-rows.js";
 import { quotaLine, quotaPausedLine } from "../quota-notice.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
@@ -26,9 +27,10 @@ const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
  *   Tab:next answer  │  Esc:scrollback  │  Shift+x:dismiss
  *
  * AgEnD presses Shift+x (the key `X`): captured offline on 1.0.70 against the audit rig's 402 (#2872 PR), it closes
- * the modal with nothing selected and no request, and grok is back at its composer — also after Esc moved focus to the
- * scrollback (its legend then reads "Tab/Space:question │ …"). Never Enter, never a digit, never `y`. The modal leaves
- * no error row behind, so the quota pause comes from the dismissal itself (dismissIncident), once.
+ * the modal with nothing selected and no request, and grok is back at its composer. On 1.0.70, X still dismissed after
+ * Esc moved focus to the scrollback (legend "Tab/Space:question │ …"). On 1.0.77 that X is ignored; Space returns to
+ * the picker (the legend names Tab/Space:question) and the next scan types X. Never Enter, never a digit, never `y`.
+ * The modal leaves no error row behind, so the quota pause comes from the dismissal itself (dismissIncident), once.
  */
 const GROK_LEGEND_QUESTION = /^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss$/;
 const GROK_LEGEND_SCROLLBACK = /^Tab\/Space:question\s+│\s+Ctrl\+e:collapse thinking\s+│\s+Ctrl\+x:shortcuts$/;
@@ -42,6 +44,47 @@ function grokOption(n: number, label: string, description: string) {
     return d === undefined || d === description || (d.endsWith("…") && description.startsWith(d.slice(0, -1)));
   };
 }
+function grokWeeklyLimitActive(pane: string, legend: "question" | "scrollback" | "either"): boolean {
+  const pattern = /You hit your weekly limit\./;
+  pattern.lastIndex = 0;
+  if (!pattern.test(pane)) return false;
+  const lines = pane.split(/\r?\n/).map(line => line.trimEnd());
+  let end = lines.length - 1;
+  while (end >= 0 && !lines[end].trim()) end--;
+  if (end < 0) return false;
+  const footer = lines[end].trim();
+  const wantQuestion = legend === "question" || legend === "either";
+  const wantScrollback = legend === "scrollback" || legend === "either";
+  if (!((wantQuestion && GROK_LEGEND_QUESTION.test(footer)) || (wantScrollback && GROK_LEGEND_SCROLLBACK.test(footer)))) return false;
+
+  const text = (line: string) => line.replace(/^\s*┃\s?/, "").trim();
+  const first = Math.max(0, end - 14);
+  const current = lines.slice(first, end + 1);
+  const find = (predicate: (line: string) => boolean, from = 0) => {
+    for (let i = from; i < current.length; i++) if (predicate(text(current[i]))) return i;
+    return -1;
+  };
+  const title = find(line => line === "You hit your weekly limit.");
+  const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), title + 1);
+  if (title < 0 || submit < 0) return false;
+  // The WHOLE option list between the title and the footer, in order: exactly 1 Upgrade, 2 Credits and optionally
+  // 3 Try Again. Any other numbered row anywhere (a new paid choice, a duplicate) makes it a modal we do not know.
+  const options = current.slice(title + 1, submit).map((line, i) => ({ i: title + 1 + i, t: text(line) })).filter(r => /^\d+ \(/.test(r.t));
+  const known = [grokOption(1, "Upgrade tier", "Upgrade to a higher tier for more usage"),
+    grokOption(2, "Buy more credits", "Purchase credits to keep using Grok Build"),
+    grokOption(3, "Try Again", "Resubmit the last prompt once you have usage again")];
+  if (options.length < 2 || options.length > 3 || !options.every((r, k) => known[k](r.t))) return false;
+  const upgrade = options[0].i, credits = options[1].i;
+  if (![title, upgrade, credits, submit].every(index => /^\s*┃/.test(current[index]))) return false;
+  // The Grok keyboard legend must immediately follow the choice footer;
+  // another composer or screen below the modal makes the old text stale.
+  const between = current.slice(submit + 1).map(text).filter(Boolean);
+  if (between.length !== 1) return false;
+  if (legend === "question") return GROK_LEGEND_QUESTION.test(between[0]!);
+  if (legend === "scrollback") return GROK_LEGEND_SCROLLBACK.test(between[0]!);
+  return GROK_LEGEND_QUESTION.test(between[0]!) || GROK_LEGEND_SCROLLBACK.test(between[0]!);
+}
+
 function grokWeeklyLimitDialog(): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
   return {
@@ -56,40 +99,24 @@ function grokWeeklyLimitDialog(): RuntimeDialog {
     answeredByAgend: true,
     // The user's wording (hmsg-0687db4d): one line, no name, no action suffix.
     dismissIncident: { type: "quota", action: "pause", message: "Grok weekly limit used up — paused", notice: quotaPausedLine("Grok", "weekly") },
-    isActive(pane) {
-      pattern.lastIndex = 0;
-      if (!pattern.test(pane)) return false;
-      const lines = pane.split(/\r?\n/).map(line => line.trimEnd());
-      let end = lines.length - 1;
-      while (end >= 0 && !lines[end].trim()) end--;
-      if (end < 0) return false;
-      const legend = lines[end].trim();
-      if (!GROK_LEGEND_QUESTION.test(legend) && !GROK_LEGEND_SCROLLBACK.test(legend)) return false;
+    isActive: pane => grokWeeklyLimitActive(pane, "question"),
+  };
+}
 
-      const text = (line: string) => line.replace(/^\s*┃\s?/, "").trim();
-      const first = Math.max(0, end - 14);
-      const current = lines.slice(first, end + 1);
-      const find = (predicate: (line: string) => boolean, from = 0) => {
-        for (let i = from; i < current.length; i++) if (predicate(text(current[i]))) return i;
-        return -1;
-      };
-      const title = find(line => line === "You hit your weekly limit.");
-      const submit = find(line => /^↑\/↓ navigate · y copy\s+Enter:submit$/.test(line), title + 1);
-      if (title < 0 || submit < 0) return false;
-      // The WHOLE option list between the title and the footer, in order: exactly 1 Upgrade, 2 Credits and optionally
-      // 3 Try Again. Any other numbered row anywhere (a new paid choice, a duplicate) makes it a modal we do not know.
-      const options = current.slice(title + 1, submit).map((line, i) => ({ i: title + 1 + i, t: text(line) })).filter(r => /^\d+ \(/.test(r.t));
-      const known = [grokOption(1, "Upgrade tier", "Upgrade to a higher tier for more usage"),
-        grokOption(2, "Buy more credits", "Purchase credits to keep using Grok Build"),
-        grokOption(3, "Try Again", "Resubmit the last prompt once you have usage again")];
-      if (options.length < 2 || options.length > 3 || !options.every((r, k) => known[k](r.t))) return false;
-      const upgrade = options[0].i, credits = options[1].i;
-      if (![title, upgrade, credits, submit].every(index => /^\s*┃/.test(current[index]))) return false;
-      // The Grok keyboard legend must immediately follow the choice footer;
-      // another composer or screen below the modal makes the old text stale.
-      const between = current.slice(submit + 1).map(text).filter(Boolean);
-      return between.length === 1 && (GROK_LEGEND_QUESTION.test(between[0]) || GROK_LEGEND_SCROLLBACK.test(between[0]));
-    },
+/** 1.0.77: Esc:scrollback unbinds Shift+x; Space (the legend's Tab/Space:question) restores the picker. */
+function grokWeeklyLimitScrollbackDialog(): RuntimeDialog {
+  const pattern = /You hit your weekly limit\./;
+  return {
+    pattern,
+    keys: [" "],
+    literalKeys: true,
+    description: "Grok Build weekly limit scrollback (Grok 週限) — Space returns to the picker so Shift+x can dismiss",
+    blocksDelivery: true,
+    inputBlocked: true,
+    verifyAfterKeys: true,
+    autoResolutionKey: "grok-weekly-limit-scrollback",
+    answeredByAgend: true,
+    isActive: pane => grokWeeklyLimitActive(pane, "scrollback"),
   };
 }
 
@@ -116,6 +143,111 @@ export function parseGrokModelsOutput(output: string): import("./types.js").Mode
     models.push({ id, label: id });
   }
   return models;
+}
+
+/** Rows Grok paints under the live box: the keyboard legend, a version/login line. */
+const GROK_BOX_FOOTER_MAX_ROWS = 4;
+/** Rows a box may hold before the reader stops believing it is one. */
+const GROK_BOX_MAX_ROWS = 40;
+
+/**
+ * #3199: Grok Build's live input box, read as a region — the same kind of evidence
+ * Claude Code's `readClaudeInputBox` (#1200) gives the daemon.
+ *
+ * The live box is a bottom-anchored `╭─…╮` / `│ ❯ … │` / `╰─…╯` triple whose
+ * corners line up. Transcript echoes (`     ❯ <text>  <time>` above the box) are
+ * never input. Trust, weekly-limit and approval cards use `┃` or no frame, so
+ * they return null: `finishHumanReceipt` still refuses output-edge / unverified
+ * proof, and forwards still require `delivered`.
+ *
+ * Captured from grok 1.0.52–1.0.70 audit panes (`tests/fixtures/grok-1.0.*-audit`)
+ * and the watcher fixtures. A live draft is `06-after-cancel` (`│ ❯ stall forever b`).
+ *
+ * Borders are located by terminal column (`displayWidth`: CJK 2, combining `\p{M}` 0,
+ * box-drawing 1). UTF-16 indexes are not columns: a CJK inner shifts the closer
+ * left in the string, and a combining inner can put an extra `│` at the top `╮`'s
+ * UTF-16 offset while the real closer (and an unsent id) sit further right.
+ */
+export function readGrokInputBox(pane: string): InputBox | null {
+  const rows = pane.replace(/\r/g, "").split("\n").map(row => row.trimEnd());
+  let bottom = -1;
+  for (let i = rows.length - 1, footer = 0; i >= 0; i--) {
+    const row = rows[i]!;
+    const left = row.indexOf("╰");
+    const right = row.lastIndexOf("╯");
+    if (left >= 0 && right > left) { bottom = i; break; }
+    if (row.trim() !== "" && ++footer > GROK_BOX_FOOTER_MAX_ROWS) return null;
+  }
+  if (bottom < 1) return null;
+  const leftIdx = rows[bottom]!.indexOf("╰");
+  if (leftIdx < 0) return null;
+  const leftCol = displayWidth(rows[bottom]!.slice(0, leftIdx));
+
+  let top = -1;
+  for (let i = bottom - 1; i >= 0 && bottom - i <= GROK_BOX_MAX_ROWS + 1; i--) {
+    const row = rows[i]!;
+    const atLeft = indexAtDisplayCol(row, leftCol);
+    if (atLeft >= 0 && row[atLeft] === "╭" && row.lastIndexOf("╮") > atLeft) { top = i; break; }
+    if (atLeft < 0 || row[atLeft] !== "│") return null;
+  }
+  if (top < 0 || bottom - top < 2) return null;
+  // Inner `│` and the top `╮` line up in terminal columns. The bottom `╯` may sit
+  // further right: a long model label (`Grok 4.5 (high) · always-approve`) grows
+  // that row past the top rule (tests/fixtures/grok-watcher-idle.pane.txt).
+  const rightIdx = rows[top]!.lastIndexOf("╮");
+  const rightCol = displayWidth(rows[top]!.slice(0, rightIdx));
+  const bottomRightCol = displayWidth(rows[bottom]!.slice(0, rows[bottom]!.lastIndexOf("╯")));
+  if (rightCol <= leftCol || bottomRightCol < rightCol) return null;
+  if (!frameAt(rows[top]!, leftCol, rightCol, "╭", "╮")) return null;
+
+  const lines: string[] = [];
+  for (let i = top + 1; i < bottom; i++) {
+    const sides = frameAt(rows[i]!, leftCol, rightCol, "│", "│");
+    if (!sides) return null;
+    const content = rows[i]!.slice(sides.left + 1, sides.right);
+    if (lines.length === 0) {
+      const prompt = /^ ❯ ?(.*)$/.exec(content);
+      if (!prompt) return null;
+      lines.push(prompt[1]!.trimEnd());
+    } else {
+      if (!content.startsWith(" ")) return null;
+      lines.push(content.slice(1).trimEnd());
+    }
+  }
+  if (lines.length === 0) return null;
+  return { text: lines.join("\n").trimEnd(), collapsedPastes: 0 };
+}
+
+/** UTF-16 index of the first positive-width character whose display column starts at `col`. */
+function indexAtDisplayCol(s: string, col: number): number {
+  let display = 0;
+  let i = 0;
+  for (const ch of s) {
+    const w = displayWidth(ch);
+    if (w > 0) {
+      if (display === col) return i;
+      if (display > col) return -1;
+      display += w;
+    }
+    i += ch.length;
+  }
+  return -1;
+}
+
+/** Cell-aligned `leftCh`/`rightCh` at `leftCol`/`rightCol`; leftover outside the frame is not a box. */
+function frameAt(
+  row: string,
+  leftCol: number,
+  rightCol: number,
+  leftCh: string,
+  rightCh: string,
+): { left: number; right: number } | null {
+  const left = indexAtDisplayCol(row, leftCol);
+  const right = indexAtDisplayCol(row, rightCol);
+  if (left < 0 || right <= left) return null;
+  if (row[left] !== leftCh || row[right] !== rightCh) return null;
+  if (row.slice(0, left).trim() !== "" || row.slice(right + 1).trim() !== "") return null;
+  return { left, right };
 }
 
 /**
@@ -335,6 +467,15 @@ export class GrokBackend implements CliBackend {
     return /^[ \t]*[\u2800-\u28FF]\s+\S[^\n]*…[^\n]*\[stop\]/mu;
   }
 
+  /**
+   * #3199: the live input box, read structurally (`readGrokInputBox`). Same role as
+   * Claude Code's `readInputRow` (#1200): a unique-id echo is only a human-receipt
+   * proof when this reader can still see the boxed `❯`. Dialogs have no box.
+   */
+  readInputRow(pane: string): InputBox | null {
+    return readGrokInputBox(pane);
+  }
+
   getErrorPatterns(): ErrorPattern[] {
     // NOTE: "Turn cancelled by user" is NORMAL behaviour (user interrupt), not an
     // error — none of the patterns below match it, and none should be added that do.
@@ -412,7 +553,8 @@ export class GrokBackend implements CliBackend {
       // tier, buy credits, or submit the menu automatically.
       // #2872: hold-only here: the startup scan does not verify a dismissal, so it could not raise the pause; the
       // runtime scanner (which does) answers it once the scan is over.
-      { ...grokWeeklyLimitDialog(), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined },
+      { ...grokWeeklyLimitDialog(), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined,
+        isActive: pane => grokWeeklyLimitActive(pane, "either") },
       // Animated intro logo (spinning braille X). It redraws continuously, so
       // AgEnD's idle detector (2s of silence) never fires and messages queue
       // forever. User-confirmed fix: one Enter skips to the ready prompt.
@@ -491,6 +633,7 @@ export class GrokBackend implements CliBackend {
       // This is a modal rather than a quota log line. Hold delivery until an
       // operator resolves it; all available choices can incur paid usage.
       grokWeeklyLimitDialog(),
+      grokWeeklyLimitScrollbackDialog(),
       // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
       // option 1 so the fleet runs unattended. Primary mechanism is
       // --always-approve at launch; this is the net if that flag is absent/ignored.

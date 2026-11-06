@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { RuntimeClient } from "../src/runtime-client.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator, type RuntimeCoordinatorOptions } from "../src/runtime-coordinator.js";
+import { PaneMcpRelay } from "../src/runtime-pane-mcp-relay.js";
 import { RuntimePaneLink } from "../src/runtime-pane-link.js";
 import { RuntimePaneHost, type RuntimePaneHostOptions } from "../src/runtime-pane-host.js";
 import { startPaneService } from "../src/runtime-pane-service.js";
@@ -62,4 +63,25 @@ it('rejects origin, query, malformed UTF-8 and extra shell fields before any dis
  const body=Buffer.from(JSON.stringify({op:'pane-mcp',method:'tools/list',params:{},owner:f.owner,helperId:randomUUID()}));
  expect(await post('',body,{Origin:'https://foreign.invalid'})).toBe(403);expect(await post('?x=1',body)).toBe(404);expect(await post('',Buffer.from([0xff]))).toBe(403);
  expect(await post('',Buffer.from(JSON.stringify({...JSON.parse(body.toString()),shell:'whoami'})))).toBe(403);expect(handler).not.toHaveBeenCalled();
+});
+it.each(['finish','close'] as const)('retains physical HTTP ownership until a held response reaches %s',async outcome=>{
+ let entered!:()=>void,flush!:()=>void,destroy!:()=>void,settled=false;
+ const answering=new Promise<void>(done=>{entered=done;});
+ const relay=new PaneMcpRelay({secret:'a'.repeat(64),endpoint:()=>'',owned:()=>false,forward:vi.fn()});
+ const server=createServer((req,res)=>{
+  const end=res.end.bind(res);
+  vi.spyOn(res,'end').mockImplementation((...args:any[])=>{flush=()=>{(end as any)(...args);};destroy=()=>res.destroy();entered();return res;});
+  void relay.handle(req,res).then(()=>{settled=true;});
+ });
+ clean.push(()=>new Promise<void>(done=>server.close(()=>done())));
+ server.listen(0,'127.0.0.1');await once(server,'listening');
+ const response=new Promise<number>(done=>{
+  const req=request(`http://127.0.0.1:${(server.address()as any).port}/agent`,{method:'POST',headers:{'X-Agend-Native-Token':'b'.repeat(64)}},res=>{res.resume();res.on('end',()=>done(res.statusCode!));res.on('error',()=>done(0));});
+  req.on('error',()=>done(0));req.end('{}');
+ });
+ await answering;
+ try{expect(relay.pendingCount).toBe(1);expect(settled).toBe(false);}
+ finally{if(outcome==='finish')flush();else destroy();}
+ expect(await response).toBe(outcome==='finish'?403:0);
+ await vi.waitFor(()=>{expect(relay.pendingCount).toBe(0);expect(settled).toBe(true);});
 });

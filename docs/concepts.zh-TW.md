@@ -85,12 +85,12 @@ ClassicBot 跑單一 agent 的私聊或群組，由 `classicBot.yaml` 管理—�
 
 ## host owner / operator（主機擁有者／操作者）
 
-AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上跑 `agend web --code` 的那個 session（`HOST_OPERATOR`）：它確認自己的授權、回答自己的提問。
+AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上跑 `agend web --code` 的那個 session（`HOST_OPERATOR`）：它確認自己的授權、回答自己的提問。從外面用驗證器 App 的 TOTP 碼登入的瀏覽器（見「connections from outside」）同樣是已驗證的擁有者，授權相同，每次請求都會重新檢查。
 
-- 能做什麼：確認網頁授權、登入、批准指名要主機操作者的事。
-- 不能做什麼：不能從別台電腦冒充操作者；session 被撤銷或過期後也不行。
+- 能做什麼：確認網頁授權、登入、批准指名要主機操作者的事。在純網頁艦隊裡，已驗證的擁有者——在這台電腦上，或從外面用驗證器登入——還可以核准新裝置（裝置代碼登入）、登出其他裝置。
+- 不能做什麼：不能從別台電腦冒充操作者，但從外面用驗證器登入的擁有者除外；session 被撤銷或過期後也不行。設定、重新綁定或移除驗證器只能在這台電腦上進行。
 - 程式碼：`src/authority/web-authority.ts`（`HOST_OPERATOR`）；`src/fleet-manager.ts:2056-2060`；`src/locale.ts:1505-1506`。
-- 相關決議與議題：28c2d3a3。
+- 相關決議與議題：28c2d3a3、#3165。
 
 ## fleet admin（`admin_users`）
 
@@ -191,7 +191,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面捷徑用 `agend shortcuts` 建）。以下皆為 alpha（`origin/release/2.3.5-alpha`，改寫外部 #2934 而來——決議 72353fdf）。
 
 - 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個艦隊名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
-- 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁下載的 ZIP，永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
+- 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁用一行 PowerShell 指令安裝、指令會先檢查腳本的 SHA-256，或改用 ZIP；永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
 - General 可以跑在 Windows 窗格：「Run General on」把 General 搬到一台已批准、上線的配對 PC，coordinator——以及聊天與管理員權限——留在主機（#3007）。
 - 人的 pairing（`agend access pair`）是另一套較舊的機制：按 instance 發的存取碼，跟配對 PC 無關。
 - 程式碼（alpha 分支）：`docs/remote-runtime.md`、`docs/windows-cli-preview.md`、`docs/windows-general.md`；`src/runtime-bundle.ts`。
@@ -208,21 +208,23 @@ AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面�
 
 ## connections from outside（開放外部連線，僅 alpha）
 
-`origin/release/2.3.5-alpha`：純網頁艦隊可以對網際網路打開自己——「Allow connections from outside」——外面瀏覽器用驗證器 App 的 TOTP 碼登入（#3008；fleet decision 0471da59）。
+`origin/release/2.3.5-alpha`：純網頁艦隊可以對網際網路打開自己——「Allow connections from outside」——外面瀏覽器用驗證器 App 的 TOTP 碼登入（#3008；fleet decision 0471da59）。只要這個開關開著、而且「Only this computer can authorize」關著，這樣登入的瀏覽器就是已驗證的擁有者，與主機操作者相同。
 
-- 能做什麼（alpha）：不用操作者自己架通道，也能從外面打開儀表板；用驗證器 App 的碼登入。
-- 不能做什麼：main 上今天不能用——僅 alpha。
-- 程式碼（alpha 分支）：`src/auth-api.ts`（`/auth/totp`）；`src/authority/web-authority.ts`。
-- 相關決議與議題：#3008、fleet decision 0471da59。
+- 能做什麼（alpha）：不用操作者自己架通道，也能從外面打開儀表板；用驗證器 App 的碼登入，並以已驗證擁有者的身分核准新裝置、登出其他裝置（維護者裁定，#3165）。
+- 不能做什麼：main 上今天不能用——僅 alpha；設定、重新綁定或移除驗證器（只能在這台電腦上進行）。
+- 程式碼（alpha 分支）：`src/auth-api.ts`（`/auth/totp`）；`src/authority/web-authority.ts`；`src/fleet-manager.ts`（`deviceApprovalOwner`）。
+- 相關決議與議題：#3008、#3165、fleet decision 0471da59。
 
 ## web session 與 verified web go-ahead（已驗證的網頁授權）
 
 web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt-in 的連結）。session 要帶上帳號的授權——訊息顯示為 `via web (verified)`——必須該帳號先在 Discord 或 Telegram 上確認過（#1939）；訪客 session 永遠沒資格。Agent 檢查 `web-verified` 收據，跟 Discord、Telegram 訊息一樣。go-ahead 動作（破壞性、不可逆、花錢、授權類）要有 Discord／Telegram 收據或 `web (verified)` 收據——瀏覽器開著本身什麼都證明不了。
 
-- 能做什麼：驗證過後，跟聊天訊息一樣為同樣的行為背書。
-- 不能做什麼：沒驗證就什麼都授權不了；普通的 `via web` 與訪客永遠不帶授權。
-- 程式碼：`src/authority/web-authority.ts`；`src/config-validator.ts:517-522`（`web.verified_authority`）。
-- 相關決議與議題：#1939。
+裝置代碼登入（alpha 實驗功能）：在開啟網頁授權的純網頁艦隊上，新裝置會顯示 8 碼代碼，由已驗證的擁有者在已登入的裝置上核准。核准後得到的是一般工作階段——普通的 `via web`，永遠不會帶有核准者的擁有者授權。在純網頁艦隊上，只有已驗證的擁有者可以結束別的工作階段。
+
+- 能做什麼：驗證過後，跟聊天訊息一樣為同樣的行為背書；登出自己。已驗證的擁有者還可以核准新裝置、結束別的工作階段。
+- 不能做什麼：沒驗證就什麼都授權不了；普通的 `via web` 與訪客永遠不帶授權。裝置核准建立的工作階段（或任何其他非擁有者的工作階段）不能核准裝置，也不能結束別人的工作階段，只能登出自己。有連接聊天平台的艦隊，或網頁授權關閉時，不提供裝置代碼登入。
+- 程式碼：`src/authority/web-authority.ts`；`src/config-validator.ts:517-522`（`web.verified_authority`）；`src/fleet-manager.ts`（`deviceApprovalOwner`、`mayEndOtherSessions`）。
+- 相關決議與議題：#1939、#3165。
 
 ## 不一致之處
 

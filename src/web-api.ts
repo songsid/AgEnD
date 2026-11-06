@@ -64,7 +64,7 @@ import { getAgendHome } from "./paths.js";
 import { workspaceChanges, workspaceFile, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { resolveToolSet } from "./tool-permissions.js";
-import type { WebSessionStore, SessionRecord } from "./web-session.js";
+import type { WebSessionStore, SessionRecord, WebDeviceRow } from "./web-session.js";
 import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
 import { commitTeamCreate, commitTeamUpdate } from "./outbound-handlers.js";
@@ -365,6 +365,8 @@ export interface WebApiContext {
   createNativePaneInstance?(profile:Record<string,unknown>,channelId:string|undefined,authorized:()=>boolean,execution:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
   updateNativePaneConfig?(name:string,patch:Partial<import("./fleet-windows-runtime.js").NativeRuntimePatch>,authorized:()=>boolean,execution?:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
   runtimeCoordinator?(): RuntimeCoordinator;
+  /** The static installer files (script and bundle) and the hash of the script the dashboard shows. */
+  runtimeInstaller?(): import("./runtime-install.js").RuntimeInstallService;
   readonly webToken: string | null;
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
@@ -400,6 +402,8 @@ export interface WebApiContext {
   /** #1666: the cancel/progress bubble a platform inbound starts, posted in the instance's topic. */
   startWebChatProgress?(name: string): Promise<void>;
   readonly daemons: Map<string, unknown>;
+  /** #3212: the Accounts view (accounts-view.ts), for the local admin session only. */
+  accountsView?(): Promise<unknown>;
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
@@ -543,6 +547,11 @@ export interface WebApiContext {
   webOutsideConfirmEnrollment?(req: IncomingMessage, code: string): "ok" | "wrong" | "expired" | "unsaved" | "not_here";
   webOutsideRemove?(req: IncomingMessage): "ok" | "unsaved" | "not_here";
   webOutsideSwitch?(req: IncomingMessage, on: boolean): "ok" | "not_enrolled" | "not_here" | "not_allowed" | "unsaved";
+  /** Refs #3061 (P2a): a web-only fleet's new-device approval — may this session approve (the verified owner), and the decision itself. */
+  webDevicesStatus?(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority?: boolean; devices?: WebDeviceRow[] };
+  webDeviceLoginAct?(req: IncomingMessage, op: "lookup" | "approve" | "deny", code: string): { status: number; body: Record<string, unknown> };
+  /** Refs #3061 (P2b): the owner ends another signed-in device (the settings list's button). */
+  webDeviceSignOut?(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> };
   /** #2910 D2: a web-only fleet's Notices (web-notices.ts); null on a fleet whose General says them. */
   webNoticesFeed?(): { view(): { items: unknown[]; seen: number; unread: number }; markSeen(id: number): number; unread(): number } | null;
   /** Answer one of them, exactly as a click on its platform button would. */
@@ -1947,6 +1956,28 @@ export function handleWebRequest(
     return true;
   }
 
+  // ── #3212 PR 1: Settings → Agents → Accounts (read-only) ─────────────────────────────────
+  // Each CLI's default sign-in and credential profiles, who uses them and their weekly usage. Names, states, the masked
+  // identity and the host login command (which, as in the sign-in list, names the profile's folder) — no credential or
+  // full e-mail: only for the fleet's local admin session — never the public link, a guest, a token or the gateway (the
+  // same rule as the sign-in list it extends).
+  if (method === "GET" && path === "/ui/accounts") {
+    res.setHeader("Cache-Control", "private, no-store");
+    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    const localAdmin = () => {
+      const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+    };
+    const who = localAdmin();
+    if (!who) { json(res, 403, { error: "accounts_need_a_local_admin" }); return true; }
+    if (typeof ctx.accountsView !== "function") { json(res, 404, { error: "not_found" }); return true; }
+    void ctx.accountsView().then(view => {
+      if (localAdmin()?.handle !== who.handle) { json(res, 403, { error: "accounts_need_a_local_admin" }); return; }
+      json(res, 200, view);
+    }, err => { ctx.logger.error({ err: (err as Error).message }, "Accounts view failed"); json(res, 500, { error: "could not read the accounts" }); });
+    return true;
+  }
+
   // ── #3153 P1: an agent's Files / Changes (read-only) ─────────────────────────────────
   // The fleet's local admin session only: never the public link, a guest, a token or a connection from outside. One
   // agent's own working directory (agent-workspace.ts confines and filters every path); not General or a coordinator
@@ -2544,6 +2575,61 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Outside connections change failed");
       try { json(res, 500, { error: "outside_failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // ── Refs #3061 (P2a): signing a new device in with its 8-character code (a web-only fleet) ──
+  // GET /ui/devices: whether this is such a fleet and whether THIS session may approve (it is the verified owner — this
+  // computer's admin here, or signed in from outside with the authenticator's code). POST /ui/devices/lookup {code}: the
+  // request that code names, for the confirm screen; POST /ui/devices/approve {code} and /ui/devices/deny {code}. Every
+  // one asks the live session again in the fleet (webDeviceLoginAct) and answers 403 `owner_required` to anyone else —
+  // a guest, a LAN or device-approved session, the CLI's header token. Over the public link only for the owner who
+  // signed in from outside. A decision hands the new device nothing: its session is made by its own next poll.
+  if (method === "GET" && path === "/ui/devices") {
+    res.setHeader("Cache-Control", "no-store");
+    json(res, 200, ctx.webDevicesStatus?.(req) ?? { webOnly: false, owner: false, devices: [] });
+    return true;
+  }
+  // Refs #3061 (P2b): POST /ui/devices/signout {handle} — the verified owner ends another signed-in device. The same
+  // authority as approving one, asked of the live session in the fleet after the body is in (webDeviceSignOut answers
+  // 403 `owner_required` to anyone else before it looks the handle up). Over the public link only for the owner signed in
+  // from outside, like approving.
+  if (method === "POST" && path === "/ui/devices/signout") {
+    const act = ctx.webDeviceSignOut?.bind(ctx);
+    if (!act) { json(res, 404, { error: "not_found" }); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const handle = body && typeof body === "object" ? body.handle : undefined;
+      if (typeof handle !== "string" || !/^[0-9a-f]{16}$/.test(handle)) { json(res, 400, { error: "handle required" }); return; }
+      res.setHeader("Cache-Control", "no-store");
+      const r = act(req, handle);
+      json(res, r.status, r.body);
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Device sign-out failed");
+      try { json(res, 500, { error: "devices_failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+  if (method === "POST" && (path === "/ui/devices/lookup" || path === "/ui/devices/approve" || path === "/ui/devices/deny")) {
+    const act = ctx.webDeviceLoginAct?.bind(ctx);
+    if (!act) { json(res, 404, { error: "not_found" }); return true; }
+    const op = path === "/ui/devices/lookup" ? "lookup" : path === "/ui/devices/approve" ? "approve" : "deny";
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const code = body && typeof body === "object" ? body.code : undefined;
+      if (typeof code !== "string" || code.length > 32) { json(res, 400, { error: "code required" }); return; }
+      res.setHeader("Cache-Control", "no-store");
+      const r = act(req, op, code);
+      if (typeof r.body.retryAfterMs === "number") res.setHeader("Retry-After", String(Math.ceil(r.body.retryAfterMs / 1000)));
+      json(res, r.status, r.body);
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "New device approval failed");
+      try { json(res, 500, { error: "devices_failed" }); } catch { /* already answered */ }
     });
     return true;
   }

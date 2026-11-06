@@ -1,0 +1,13 @@
+# Hub health scoring
+
+Decision: the existing daemon `/health` describes availability of the workload running in this process. A dedicated Hub means the Hub server switch is boolean true, with no configured agents and no registered channel adapters. Its host memory pressure is advisory: elevated/critical pressure remains visible in `hostMemory` and `warnings`, but does not alone change HTTP 200 to 503. A Hub with agents or channel adapters, an ordinary fleet and a member-only fleet retain the existing pressure scoring.
+
+The response adds a bounded `hub.server` state while the server switch is on: `starting`, `ready`, `unavailable` or `stopped`. Readiness requires a settled runtime apply, a matching captured config digest and the existing live server mount flag. That flag alone is insufficient because it is set before the factory and start await. Reading health performs no file, network or directory probe. In-place edits of a caller-owned config object cannot change the captured applied digest.
+
+A dedicated Hub without a ready server is down/503. Incomplete fleet startup remains a problem/503 even with a ready Hub. For an enabled Hub, failed factories/starts, unconfirmed cleanup and synchronous shutdown fencing cannot look healthy. Ordinary adapter and crashed-agent scoring remains unchanged; a failed Hub adds a problem to a mixed fleet rather than hiding the fleet's other problems. With both Hub switches off no Hub runtime import is added.
+
+This is local mount readiness, not an end-to-end directory sign-in, database query, member-link/model availability or remote reachability probe. Existing holds/Needs-you and ordinary endpoint errors retain their roles. Host memory admission, process memory diagnostics, systemd notify/watchdog and lifecycle policy are unchanged.
+
+The installer already accepts `/health` JSON with `startupComplete:true`, including HTTP 503, while launchd readiness also verifies the manager PID against fleet.pid and observes restarts. Systemd readiness uses its existing manager/notify checks. Therefore the pilot's pressure-only 503 did not establish a forced-update-rollback bug; the accepted native #3210 forward update confirmed this without an observer injection. This slice changes no update predicate or grace period: a component failure can report 503 while the existing updater still accepts completed fleet startup.
+
+Tests use explicit held factory/start gates, fake post-verification mounts, the real health HTTP callback and private FleetManager homes. Existing real loopback HTTPS composition checks also assert readiness. No live pilot, real directory account or native service manager is used.

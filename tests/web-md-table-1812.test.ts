@@ -45,7 +45,7 @@ describe("#1812: table cells keep words whole; a wide table scrolls in its wrapp
 });
 
 interface Render { renderMarkdown(text: unknown): string }
-const SRC = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
+const SRC = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-render.js"), "utf8");
 const md = (() => { const c = vm.createContext({}); vm.runInContext(SRC, c); return (c as unknown as { AgendChatRender: Render }).AgendChatRender.renderMarkdown; })();
 
 describe("#1812: a path in a table cell may wrap after its separators", () => {

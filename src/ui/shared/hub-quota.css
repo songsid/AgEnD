@@ -1,0 +1,8 @@
+/* The lazy quota components own these additions, including on a retained shell stylesheet. */
+.hub-quota-card .u-row { flex-wrap: wrap; gap: var(--s-2); }
+.hub-quota-chip { max-width: 100%; white-space: normal; }
+.hub-quota-banner { overflow-wrap: anywhere; }
+.hub-quota-visibility > h3 { margin: 0 0 var(--s-3); }
+.hub-quota-setting { display: flex; align-items: center; justify-content: space-between; gap: var(--s-4); }
+.hub-quota-setting > span { min-width: 0; }
+.hub-quota-setting .note { display: block; margin: var(--s-1) 0 0; }

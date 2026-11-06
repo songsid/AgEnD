@@ -345,7 +345,7 @@ describe("#1723: the page while the preview starts, and the device's opt-in", ()
       setTimeout: () => { throw new Error("preview.js set a timer"); }, performance: { now: () => 0 }, addEventListener() {},
       module: { exports: {} as any },
     };
-    vm.runInNewContext(readFileSync(join(process.cwd(), "src", "ui", "preview.js"), "utf8"), sandbox);
+    vm.runInNewContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "preview.js"), "utf8"), sandbox);
     const PV = sandbox.module.exports;
     const poll = () => pollPublicPreview(PV, {
       fetch: async (url: string) => { fetchCalls.push(url); return { ok: true, json: async () => opts.status() }; },

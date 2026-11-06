@@ -4,7 +4,7 @@ import { t } from "/assets/app-i18n.js";
 import { guestPage } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 export function NativePaneRecovery({ name, inst, lease }) {
   const [dialog, setDialog] = useState(false), [checked, setChecked] = useState(false), [busy, setBusy] = useState(false);
   const confirmation = useRef(null), inFlight = useRef(false), recovery = inst.native_recovery;
