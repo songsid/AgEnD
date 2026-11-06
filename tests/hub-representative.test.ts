@@ -19,7 +19,6 @@ import type { HubAttachmentRef, HubAuthorizationRequest, HubQuestion } from "../
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
 import { buttonsDigest } from "../src/hub/buttons-model.js";
-import { messageContentDigest } from "../src/hub/identity.js";
 
 const dbs: Database.Database[] = [];
 const reps: HubRepresentativeExecution[] = [];
