@@ -20,7 +20,7 @@
  *    take the owner's authority — and the approval — away at once; a rotated token or `/dashboard revoke` withdraws requests.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { request, type Server } from "node:http";
+import { Agent, request, type Server } from "node:http";
 import { PassThrough, Readable } from "node:stream";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -50,7 +50,13 @@ beforeEach(() => setLocale("en"));
 interface Res { status: number; headers: Record<string, string | string[] | undefined>; body: string }
 function raw(port: number, method: string, path: string, headers: Record<string, string> = {}, body?: string): Promise<Res> {
   return new Promise((resolve, reject) => {
-    const r = request({ host: "127.0.0.1", port, method, path, headers }, res => {
+    // A body is always framed. Node's client frames one itself only for POST/PUT/PATCH: written to a GET, HEAD or DELETE with no
+    // Content-Length, the bytes are not part of that request, they sit in front of the NEXT request on the keep-alive socket and
+    // the server drops it ("socket hang up" on Node 22.22.2, which then shows up on whichever request came next — here the
+    // no-Origin POST after a GET). Stating the length makes "a GET with a JSON body" a well-formed request, so a refusal that
+    // does not read the body (405, 403, 415) is what is tested, not a client that corrupts the connection.
+    const framed = body !== undefined && !Object.keys(headers).some(h => /^(content-length|transfer-encoding)$/i.test(h)) ? { ...headers, "content-length": String(Buffer.byteLength(body)) } : headers;
+    const r = request({ host: "127.0.0.1", port, method, path, headers: framed }, res => {
       let text = ""; res.on("data", (c: Buffer) => { text += c.toString(); });
       res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text }));
     });
@@ -372,6 +378,31 @@ describe("#3061 P2a: who may approve — only this web-only fleet's verified own
       expect((await raw(h.port, "POST", `/auth/device-login${path}`, { origin: h.origin, "content-type": "text/plain" }, "{}")).status).toBe(415);
     }
     expect(h.any.webDeviceLogins.size).toBe(0);
+  }, 20_000);
+
+  // Review of #3165: a refusal that answers before the body is read (405 for the method, 403 for no Origin, 415 for the type) must not
+  // cost the connection — a browser reuses it for the next call. Over ONE keep-alive socket, with a framed body on every request.
+  it("refusals that never read the body (405, 403, 415) leave the keep-alive connection usable for the next call", async () => {
+    const h = await startFleet();
+    const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+    const send = (method: string, headers: Record<string, string>) => new Promise<{ status: number; reused: boolean }>((resolve, reject) => {
+      const body = "{}";
+      const r = request({ host: "127.0.0.1", port: h.port, method, path: "/auth/device-login", agent, headers: { ...headers, "content-length": String(Buffer.byteLength(body)) } },
+        res => { res.resume(); res.on("end", () => resolve({ status: res.statusCode ?? 0, reused: r.reusedSocket })); });
+      r.on("error", reject); r.end(body);
+    });
+    const json = { "content-type": "application/json" };
+    try {
+      const seen = [
+        await send("GET", { origin: h.origin, ...json }),                                   // 405: not POST
+        await send("POST", json),                                                          // 403: no Origin
+        await send("POST", { origin: h.origin, "content-type": "text/plain" }),            // 415: not JSON
+        await send("DELETE", { origin: h.origin, ...json }),                               // 405
+        await send("POST", { origin: h.origin, ...json, "user-agent": ANDROID }),          // a real request, on the same socket
+      ];
+      expect(seen.map(r => r.status)).toEqual([405, 403, 415, 405, 200]);
+      expect(seen.slice(1).map(r => r.reused)).toEqual([true, true, true, true]);          // one socket the whole time
+    } finally { agent.destroy(); }
   }, 20_000);
 });
 

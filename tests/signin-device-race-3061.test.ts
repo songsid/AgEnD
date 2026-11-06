@@ -23,7 +23,7 @@ import { join } from "node:path";
 import { runInContext, createContext } from "node:vm";
 import { handleAuthRequest } from "../src/auth-api.js";
 import { tokenEpoch, WebSessionStore } from "../src/web-session.js";
-import { DeviceLoginRequests } from "../src/web-device-login.js";
+import { DeviceLoginRequests, DEVICE_LOGIN_TTL_MS } from "../src/web-device-login.js";
 
 const SRC = readFileSync(process.env.SIGNIN_SRC ?? join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8");
 const HTML = readFileSync(join(process.cwd(), "src", "ui", "signin.html"), "utf8");
@@ -36,7 +36,8 @@ const micro = async (n = 30) => { for (let i = 0; i < n; i++) await Promise.reso
 const servers: Server[] = [];
 afterEach(async () => { for (const s of servers.splice(0)) await new Promise<void>(r => { s.closeAllConnections?.(); s.close(() => r()); }); });
 async function startServer() {
-  const logins = new DeviceLoginRequests();
+  const skew = { ms: 0 };                                                              // the server's clock, movable: a request can really run out
+  const logins = new DeviceLoginRequests({ now: () => Date.now() + skew.ms });
   const quiet = { info() {}, warn() {}, debug() {}, error() {}, trace() {}, fatal() {}, child() { return quiet; } };
   const ctx = { webToken: TOKEN, webSessions: new WebSessionStore(), webLoginCodes: null, webDeviceLogins: logins, deviceLoginAvailable: () => true,
     isWebOnlyFleet: () => true, logger: quiet } as never;
@@ -46,7 +47,7 @@ async function startServer() {
   servers.push(server);
   await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
   const port = (server.address() as AddressInfo).port;
-  return { logins, port, origin: `http://127.0.0.1:${port}` };
+  return { logins, port, origin: `http://127.0.0.1:${port}`, serverClockForward: (ms: number) => { skew.ms += ms; } };
 }
 
 // ── The browser's network: a cookie jar that applies Set-Cookie when an answer arrives, and calls that can be held ──
@@ -240,22 +241,53 @@ describe("#3061 P2a review: a stale sign-in call cannot change the cookie of the
     expect(await signsIn(p)).toBe(true);
   });
 
-  it("a POLL answer that finds the old request gone (denied) arrives after the new attempt: it cannot clear the new cookie", async () => {
+  // The poll is the third call that carries a Set-Cookie: when it finds its request over — denied, or out of time / gone, which the
+  // server answers "expired" — it clears the cookie. Held on the wire while Back and a new attempt happen, its late answer must not
+  // reach the cookie of the new code.
+  for (const over of ["denied", "expired"] as const) {
+    it(`a POLL answer that finds the old request ${over} arrives after the new attempt: it cannot clear the new cookie`, async () => {
+      const p = await startPage();
+      await p.click("another");
+      const a = p.text("devCode");
+      if (over === "denied") expect(p.logins.decide(a, "denied", "owner-session-handle", EPOCH).kind).toBe("ok");
+      else p.serverClockForward(DEVICE_LOGIN_TTL_MS + 1000);                          // the request ran out on the server
+      p.net.holdNext("/auth/device-login/poll", { response: true });                  // the poll finds it over (Set-Cookie: gone); the answer is slow
+      await p.advance(2000);
+      const poll = p.net.device().find(c => c.phase === "held-response")!;
+      expect(poll.path).toBe("/auth/device-login/poll");
+      await p.click("devBack");
+      await p.click("another");
+      expect(creates(p).length).toBe(1);                                              // B is not asked for while the stale poll is still on the wire
+      poll.releaseResponse();
+      await p.net.idle();
+      expect(creates(p).length).toBe(2);
+      expect(cookieOfAttempt(p)).toMatch(/^[0-9a-f]{64}$/);
+      approve(p);
+      expect(await signsIn(p)).toBe(true);
+    });
+  }
+
+  it("a stale POLL given up on after 15 s: its answer, arriving after the new attempt was asked for, is dropped and the new cookie stands", async () => {
     const p = await startPage();
     await p.click("another");
     const a = p.text("devCode");
+    const cookieA = cookieOfAttempt(p);
     expect(p.logins.decide(a, "denied", "owner-session-handle", EPOCH).kind).toBe("ok");
-    p.net.holdNext("/auth/device-login/poll", { response: true });                  // the poll finds it denied (Set-Cookie: gone); the answer is slow
+    p.net.holdNext("/auth/device-login/poll", { response: true });                    // the stale poll's answer (Set-Cookie: gone) never comes in time
     await p.advance(2000);
     const poll = p.net.device().find(c => c.phase === "held-response")!;
-    expect(poll.path).toBe("/auth/device-login/poll");
     await p.click("devBack");
     await p.click("another");
     expect(creates(p).length).toBe(1);
-    poll.releaseResponse();
+    await p.advance(15_000);                                                          // the page gives the poll up (abort); the queue moves on
+    expect(poll.aborted).toBe(true);
+    expect(creates(p).length).toBe(2);                                                // B was asked for BEFORE the stale answer arrives…
+    const cookieB = cookieOfAttempt(p);
+    expect(cookieB).toMatch(/^[0-9a-f]{64}$/);
+    expect(cookieB).not.toBe(cookieA);
+    poll.releaseResponse();                                                           // …and now it does: an aborted call's answer is never applied
     await p.net.idle();
-    expect(creates(p).length).toBe(2);
-    expect(cookieOfAttempt(p)).toMatch(/^[0-9a-f]{64}$/);
+    expect(cookieOfAttempt(p)).toBe(cookieB);
     approve(p);
     expect(await signsIn(p)).toBe(true);
   });
