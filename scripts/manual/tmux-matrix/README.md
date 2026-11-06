@@ -26,4 +26,4 @@ script that offers these verbs:
 | `r '<cmd>'` / `x '<cmd>'` | Run a command as the fleet user / as root. The fleet user's environment points Claude Code at the mock API. |
 | `send <topic> <text>` | Post a user message to a topic through the mock Telegram. |
 | `calls` | The mock Telegram's recorded calls, as JSON `{ result: [{ method, params }] }`. |
-| `wait-fresh` | Wait until every agent has a window newer than the last `agend fleet stop`. |
+| `wait-fresh` | Wait until every agent has a window newer than the last `agend fleet stop`; exit non-zero on timeout. |

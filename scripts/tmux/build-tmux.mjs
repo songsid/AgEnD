@@ -8,6 +8,7 @@
 //   glibc or musl distro. macOS: libevent, ncurses, utf8proc and jemalloc linked statically, libSystem dynamic (Apple
 //   has no static libc), MACOSX_DEPLOYMENT_TARGET=11.0.
 // - No sixel/images (CVE-2026-11623's area), no utempter.
+// - The toolchain is locked too (scripts/tmux/toolchain.mjs): the build refuses to run on any other, and records it.
 // - Reproducible: SOURCE_DATE_EPOCH from the pin file, fixed flags, build paths mapped out of the binary
 //   (-ffile-prefix-map), and the compiled-in terminfo directory is the system one, never the build directory. The
 //   workflow builds twice in different directories and compares the binary's sha256.
@@ -19,6 +20,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, s
 import { cpus, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { toolchainEnv, toolchainIdentity } from "./toolchain.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const SOURCES_FILE = join(ROOT, "scripts/release/tmux-sources.json");
@@ -84,6 +86,7 @@ async function main(argv) {
   if (!TARGETS.includes(target ?? "")) throw new Error(`--target must be one of ${TARGETS.join(", ")}`);
   if (target !== hostTarget()) throw new Error(`this host builds ${hostTarget()}, not ${target} (no cross builds: each target builds and smoke-runs on its own runner)`);
   const sources = readSources();
+  const toolchain = toolchainIdentity(target, sources);
   const work = resolve(arg("--work") ?? join(tmpdir(), `agend-tmux-${process.pid}`));
   const cache = resolve(arg("--cache") ?? join(work, "src"));
   const darwin = target.startsWith("darwin");
@@ -102,6 +105,7 @@ async function main(argv) {
     LDFLAGS: `-L${deps}/lib`,
     PKG_CONFIG_PATH: join(deps, "lib/pkgconfig"),
     ...(darwin ? { MACOSX_DEPLOYMENT_TARGET: "11.0" } : {}),
+    ...toolchainEnv(target, sources),
   };
   const parts = partsFor(sources, target);
   if (parts.includes("musl")) {
@@ -173,6 +177,7 @@ async function main(argv) {
   const info = {
     target, tmux: sources.tmux.version, sha256: binSha, size: statSync(bin).size,
     sources: Object.fromEntries(parts.map((k) => [k, { version: sources[k].version, sha256: sources[k].sha256 }])),
+    toolchain,
   };
   writeFileSync(join(dest, "build-info.json"), JSON.stringify(info, null, 2) + "\n");
   console.log(`built ${dest}: tmux ${sources.tmux.version} ${target}, ${info.size} bytes, sha256 ${binSha}`);

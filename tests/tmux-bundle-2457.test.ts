@@ -9,13 +9,15 @@
  */
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRequire } from "node:module";
 import { afterAll, describe, expect, it } from "vitest";
 import { partsFor, readSources, srcDirName, TARGETS } from "../scripts/tmux/build-tmux.mjs";
 import { tmuxManifest, tmuxSemver } from "../scripts/tmux/build-tmux-packages.mjs";
+import { lockMismatches, parseApkInfo } from "../scripts/tmux/toolchain.mjs";
 
 const require = createRequire(import.meta.url);
 const LAUNCHER = join(process.cwd(), "launcher");
@@ -41,6 +43,25 @@ describe("tmux-sources.json and the package manifest", () => {
     // The terminfo subset holds what panes and attaching terminals need, and the alias names a listed entry.
     for (const t of ["tmux-256color", "xterm-256color", "screen-256color", "kitty"]) expect(s.terminfo).toContain(t);
     expect(s.terminfoAliases?.["xterm-kitty"]).toBe("kitty");
+  });
+
+  it("the toolchain is locked: the Alpine image by digest with exact package versions, and an explicit Xcode", () => {
+    const s = readSources();
+    expect(s.toolchain.alpine.image).toMatch(/^alpine:3\.20@sha256:[0-9a-f]{64}$/);
+    expect(s.toolchain.alpine.release).toMatch(/^3\.20\.\d+$/);
+    for (const name of ["gcc", "binutils", "musl", "musl-dev", "make", "linux-headers"]) expect(s.toolchain.alpine.packages[name], name).toMatch(/-r\d+$/);
+    // The licence pin and the linked libc agree.
+    expect(s.toolchain.alpine.packages.musl.startsWith(`${s.musl.version}-`)).toBe(true);
+    expect(s.toolchain.darwin.developerDir).toBe(`/Applications/Xcode_${s.toolchain.darwin.xcode}.app/Contents/Developer`);
+    expect(s.toolchain.darwin.xcodeBuild).toMatch(/^\w+$/);
+  });
+
+  it("a toolchain that drifted from the lock is named, version by version", () => {
+    const installed = parseApkInfo("gcc-13.2.1_git20240309-r1\nmusl-1.2.5-r5\nlibstdc++-dev-13.2.1_git20240309-r1\nbusybox-1.36.1-r31\n");
+    expect(installed["libstdc++-dev"]).toBe("13.2.1_git20240309-r1");
+    expect(lockMismatches({ gcc: "13.2.1_git20240309-r1" }, installed)).toEqual([]);
+    expect(lockMismatches({ gcc: "13.2.1_git20240309-r1", musl: "1.2.5-r4", make: "4.4.1-r2" }, installed))
+      .toEqual(["musl: want 1.2.5-r4, have 1.2.5-r5", "make: want 4.4.1-r2, have none"]);
   });
 
   it("refuses a pin file with a source that has no sha256", () => {
@@ -77,9 +98,14 @@ describe("tmux-sources.json and the package manifest", () => {
 });
 
 /**
- * A stand-in tmux that refuses any call without `-L` (as the test guard does): `-V` prints $FAKE_V (default "tmux 3.8"); with `-L <sock>` it keeps the server as a file in
- * $FAKE_STATE, and like tmux leaves its socket file ($FAKE_STATE.dir/<sock>) behind after kill-server.
- * FAKE_FAIL=<command> makes that command fail; FAKE_STICKY=1 leaves the server up after kill-server.
+ * A stand-in tmux that refuses any call without `-L` (as the test guard does). With `-L <sock>`:
+ *  - new-session requires the pane program in argv form (`/bin/sh -c …`: tmux execs it directly, no login shell), starts a
+ *    real background "server" process (its pid in $FAKE_STATE.<sock>.pid) and, like tmux, a socket file
+ *    $FAKE_STATE.dir/<sock> that stays behind after kill-server;
+ *  - display-message prints "<pid> <socket path>"; capture-pane prints the pane program's mark; has-session answers
+ *    while the server process lives; kill-server ends it.
+ * FAKE_V: the -V answer. FAKE_FAIL=<command> fails that command. FAKE_STICKY=1: kill-server leaves the server running.
+ * FAKE_NOMARK=1: the pane shows nothing.
  */
 const FAKE_TMUX = `#!/bin/sh
 [ "$1" = "-L" ] || { echo "no -L" >&2; exit 9; }
@@ -87,14 +113,21 @@ sock=$2; shift 2
 if [ "$1" = "-V" ]; then echo "\${FAKE_V:-tmux 3.8}"; exit 0; fi
 [ "$1" = "-f" ] && shift 2
 cmd=$1
-echo "$sock $cmd" >> "$FAKE_STATE.log"
+printf '%s\\n' "$sock $*" >> "$FAKE_STATE.log"
 [ "\${FAKE_FAIL:-}" = "$cmd" ] && { echo "$cmd: failed on purpose" >&2; exit 1; }
+pidf="$FAKE_STATE.$sock.pid"
+alive() { [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; }
 case "$cmd" in
-  new-session) touch "$FAKE_STATE.$sock"; mkdir -p "$FAKE_STATE.dir"
+  new-session)
+    case "$*" in *" /bin/sh -c "*) ;; *) echo "no pane program in argv form: $*" >&2; exit 7 ;; esac
+    sleep 300 </dev/null >/dev/null 2>&1 &
+    echo $! > "$pidf"
+    mkdir -p "$FAKE_STATE.dir"
     node -e 'require("net").createServer().listen(process.argv[1], () => process.exit(0))' "$FAKE_STATE.dir/$sock" ;;
-  display-message) echo "$FAKE_STATE.dir/$sock" ;;
-  has-session|capture-pane) [ -f "$FAKE_STATE.$sock" ] || { echo "no server running" >&2; exit 1; } ;;
-  kill-server) [ -f "$FAKE_STATE.$sock" ] || exit 1; [ -n "\${FAKE_STICKY:-}" ] || rm -f "$FAKE_STATE.$sock" ;;
+  display-message) echo "$(cat "$pidf") $FAKE_STATE.dir/$sock" ;;
+  capture-pane) alive || { echo "no server running" >&2; exit 1; }; [ -n "\${FAKE_NOMARK:-}" ] || echo "agend-verify-ok" ;;
+  has-session) alive || { echo "no server running on $sock" >&2; exit 1; } ;;
+  kill-server) alive || exit 1; [ -n "\${FAKE_STICKY:-}" ] || kill "$(cat "$pidf")" ;;
 esac
 exit 0
 `;
@@ -131,16 +164,25 @@ function fixture(opts: { pin?: string | null; tmux?: "ok" | "none" | "tampered" 
 let sockN = 0;
 /** Postinstall in a child. The throwaway socket is named for the test guard (agend-test-*); production's is checked below. */
 function postinstall(f: ReturnType<typeof fixture>, env: Record<string, string> = {}) {
-  const tmuxDeps = { socket: `agend-test-verify-${process.pid}-${++sockN}` };
+  const tmuxDeps = { socket: `agend-test-verify-${process.pid}-${++sockN}`, exitWaitMs: 1500 };
   const driver = `process.exit(require(${JSON.stringify(join(f.pkg, "launcher", "postinstall.cjs"))}).main({ launcherDir: ${JSON.stringify(join(f.pkg, "launcher"))}, host: ${JSON.stringify(HOST)}, versions: { node: "22.20.0", napi: 10 }, tmuxDeps: ${JSON.stringify(tmuxDeps)} }) || 0)`;
   return spawnSync(process.execPath, ["-e", driver], { encoding: "utf8", timeout: 60_000,
     env: { ...process.env, AGEND_HOME: f.root, AGEND_UPDATE_KEEPS_PREVIOUS: "", npm_command: "", FAKE_STATE: f.state, TMUX: "", ...env } });
 }
 const receipt = (f: ReturnType<typeof fixture>) => join(f.pkg, bundle.RECEIPT);
-const sockets = (f: ReturnType<typeof fixture>) => existsSync(`${f.state}.log`) ? readFileSync(`${f.state}.log`, "utf8").trim().split("\n").map((l) => l.split(" ")[0]) : [];
+const calls = (f: ReturnType<typeof fixture>) => existsSync(`${f.state}.log`) ? readFileSync(`${f.state}.log`, "utf8").trim().split("\n") : [];
+const sockets = (f: ReturnType<typeof fixture>) => calls(f).map((l) => l.split(" ")[0]);
+const serverPid = (f: ReturnType<typeof fixture>, sock: string) => Number(readFileSync(`${f.state}.${sock}.pid`, "utf8"));
+const pidAlive = (pid: number) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+afterAll(() => {
+  // Any stand-in server a refused proof left running (FAKE_STICKY) goes with the fixtures.
+  for (const r of roots) for (const f of existsSync(r) ? readdirSync(r) : []) {
+    if (f.endsWith(".pid")) try { process.kill(Number(readFileSync(join(r, f), "utf8")), "SIGKILL"); } catch { /* gone */ }
+  }
+});
 
 describe("postinstall proves the bundled tmux before the install is accepted", () => {
-  it("a good package: verified on a private socket, killed, and the receipt written", () => {
+  it("a good package: verified on a private socket, the server positively gone, its socket file removed, the receipt written", () => {
     const f = fixture();
     const r = postinstall(f);
     expect(r.status, r.stderr).toBe(0);
@@ -151,11 +193,28 @@ describe("postinstall proves the bundled tmux before the install is accepted", (
     // Only its own throwaway socket — never "default", never AgEnD's "agend" — and nothing left running.
     const used = new Set(sockets(f));
     expect(used.size, [...used].join(",")).toBe(1);
-    expect([...used][0]).toMatch(/^agend-test-verify-/);
-    expect(existsSync(`${f.state}.${[...used][0]}`)).toBe(false);
-    // The socket file tmux leaves behind is removed too, once nothing answers on it.
-    expect(existsSync(join(`${f.state}.dir`, [...used][0]))).toBe(false);
+    const sock = [...used][0];
+    expect(sock).toMatch(/^agend-test-verify-/);
+    expect(pidAlive(serverPid(f, sock))).toBe(false);
+    expect(existsSync(join(`${f.state}.dir`, sock))).toBe(false);
     expect(bundle.readReceipt(f.pkg, { version: PIN })).not.toBeNull();
+  });
+
+  it("the pane runs a fixed program in argv form, never the installing user's (login) shell", () => {
+    const f = fixture();
+    // A hostile account setup: $SHELL that exits at once and startup files a shell would read.
+    const marker = join(f.root, "PROFILE-RAN");
+    writeFileSync(join(f.root, "rc"), `touch ${marker}; exit 1\n`);
+    const r = postinstall(f, { SHELL: "/bin/false", ENV: join(f.root, "rc"), BASH_ENV: join(f.root, "rc") });
+    expect(r.status, r.stderr).toBe(0);
+    const ns = calls(f).find((l) => / new-session /.test(l))!;
+    expect(ns).toMatch(/ -- | \/bin\/sh -c printf/);
+    expect(existsSync(marker)).toBe(false);
+    expect(bundle.PANE_ARGV.slice(0, 2)).toEqual(["/bin/sh", "-c"]);
+    const env = bundle.tmuxEnv({ terminfo: "/x" }, { SHELL: "/bin/zsh", ENV: "/a", BASH_ENV: "/b" });
+    expect(env.SHELL).toBe("/bin/sh");
+    expect(env.ENV).toBeUndefined();
+    expect(env.BASH_ENV).toBeUndefined();
   });
 
   it.each([
@@ -163,7 +222,9 @@ describe("postinstall proves the bundled tmux before the install is accepted", (
     ["the package is not the pinned one", { tmux: "wrong-name" as const }, {}, /is not @songsid\/agend-tmux-linux-x64@3\.8\.0/],
     ["-V names another release", {}, { FAKE_V: "tmux 3.7b" }, /says 'tmux 3\.7b', not 'tmux 3\.8'/],
     ["the server does not start", {}, { FAKE_FAIL: "new-session" }, /new-session failed/],
+    ["the server does not say who it is", {}, { FAKE_FAIL: "display-message" }, /display-message failed/],
     ["the server does not answer", {}, { FAKE_FAIL: "capture-pane" }, /capture-pane failed/],
+    ["the pane program's output never shows", {}, { FAKE_NOMARK: "1" }, /never showed the pane program's output/],
     ["the server survives kill-server", {}, { FAKE_STICKY: "1" }, /still running after kill-server/],
   ])("refused when %s: exit 1, no receipt (npm keeps the previous version)", (_why, opts, env, reason) => {
     const f = fixture(opts);
@@ -174,19 +235,22 @@ describe("postinstall proves the bundled tmux before the install is accepted", (
     expect(existsSync(receipt(f))).toBe(false);
   });
 
-  it("a failed check still kills its throwaway server", () => {
+  it("a failed check still asks its throwaway server to go, but removes nothing it has not seen exit", () => {
     const f = fixture();
     postinstall(f, { FAKE_FAIL: "capture-pane" });
     const sock = sockets(f)[0];
-    expect(sockets(f).filter((s) => s === sock).length).toBeGreaterThan(2);
-    expect(existsSync(`${f.state}.${sock}`)).toBe(false);
-    expect(existsSync(join(`${f.state}.dir`, sock))).toBe(false);
+    expect(calls(f).filter((l) => l === `${sock} kill-server`).length).toBe(1);
+    expect(pidAlive(serverPid(f, sock))).toBe(false);
+    expect(existsSync(join(`${f.state}.dir`, sock))).toBe(true);
   });
 
-  it("a server that survives kill-server keeps its socket file (nothing is removed while it may answer)", () => {
+  it("a server that survives kill-server keeps its socket file, and the refusal names it", () => {
     const f = fixture();
-    postinstall(f, { FAKE_STICKY: "1" });
-    expect(existsSync(join(`${f.state}.dir`, sockets(f)[0]))).toBe(true);
+    const r = postinstall(f, { FAKE_STICKY: "1" });
+    const sock = sockets(f)[0];
+    expect(existsSync(join(`${f.state}.dir`, sock))).toBe(true);
+    expect(r.stderr).toContain(`server pid ${serverPid(f, sock)}`);
+    expect(r.stderr).toContain(`socket ${join(`${f.state}.dir`, sock)} left in place`);
   });
 
   it("pinned but not installed (--omit=optional): the install goes on with a warning, no receipt", () => {
@@ -223,42 +287,6 @@ describe("postinstall proves the bundled tmux before the install is accepted", (
     expect(bundle.readReceipt(f.pkg, { version: PIN })).toBeNull();
   });
 
-  it("in production every call names its own throwaway socket agend-verify-<pid>, -V included", () => {
-    const f = fixture();
-    const calls: string[][] = [];
-    const proved = bundle.verifyTmux(bundle.tmuxCandidate(f.pkg, { name: `@songsid/agend-tmux-${HOST.id}`, version: PIN }), { name: `@songsid/agend-tmux-${HOST.id}`, version: PIN }, {
-      pid: 4242,
-      spawnSync: (_file: string, args: string[]) => {
-        calls.push(args);
-        if (args[2] === "-V") return { status: 0, stdout: "tmux 3.8\n", stderr: "" };
-        return { status: args.includes("has-session") && calls.some((c) => c.includes("kill-server")) ? 1 : 0, stdout: "", stderr: "" };
-      },
-    });
-    expect(proved.ok, proved.reason).toBe(true);
-    expect(calls.length).toBe(7);
-    for (const c of calls) expect(c.slice(0, 2)).toEqual(["-L", "agend-verify-4242"]);
-  });
-
-  it("removes only its own socket file: a reported path with another name is left alone", () => {
-    const f = fixture();
-    const other = join(f.root, "default");
-    spawnSync(process.execPath, ["-e", "require('net').createServer().listen(process.argv[1], () => process.exit(0))", other]);
-    expect(existsSync(other)).toBe(true);
-    const pin = { name: `@songsid/agend-tmux-${HOST.id}`, version: PIN };
-    let killed = false;
-    const proved = bundle.verifyTmux(bundle.tmuxCandidate(f.pkg, pin), pin, {
-      pid: 7,
-      spawnSync: (_file: string, args: string[]) => {
-        if (args[2] === "-V") return { status: 0, stdout: "tmux 3.8\n", stderr: "" };
-        if (args[2] === "display-message") return { status: 0, stdout: other + "\n", stderr: "" };
-        if (args[2] === "kill-server") killed = true;
-        return { status: args[2] === "has-session" && killed ? 1 : 0, stdout: "", stderr: "" };
-      },
-    });
-    expect(proved.ok, proved.reason).toBe(true);
-    expect(existsSync(other)).toBe(true);
-  });
-
   it("pinnedTmux accepts only an exact version", () => {
     expect(bundle.pinnedTmux({ optionalDependencies: { "@songsid/agend-tmux-linux-x64": "3.8.0" } }, HOST)).toEqual({ name: "@songsid/agend-tmux-linux-x64", version: "3.8.0" });
     expect(bundle.pinnedTmux({ optionalDependencies: { "@songsid/agend-tmux-linux-x64": "^3.8.0" } }, HOST)).toBeNull();
@@ -272,5 +300,96 @@ describe("postinstall proves the bundled tmux before the install is accepted", (
     expect(env.TMUX_PANE).toBeUndefined();
     expect(env.TERMINFO_DIRS.split(":")[0]).toBe("/x/share/terminfo");
     expect(env.LC_CTYPE).toBe("C.UTF-8");
+  });
+});
+
+/**
+ * The proof's end-of-server rule, against a REAL socket that stays open (an owned listener in this process) and a
+ * scripted tmux: an unknown observation never counts as "gone" and never unlinks; only the passing control does.
+ */
+describe("verifyTmux: an unknown observation is never taken for the server's exit", () => {
+  type R = { status: number | null; stdout: string; stderr: string; error?: { code: string }; signal?: string };
+  const PINV = { name: `@songsid/agend-tmux-${HOST.id}`, version: PIN };
+  async function scenario(opts: { afterKill?: Partial<R>; gone?: (pid: number) => boolean; idPath?: (dir: string, sock: string) => string; swapAfterKill?: boolean }) {
+    const f = fixture();
+    const sock = "agend-verify-4242";
+    const dir = mkdtempSync(join(tmpdir(), "agend-sock-")); roots.push(dir);
+    const path = join(dir, sock);
+    const server = createServer().listen(path);
+    await new Promise((res) => server.once("listening", res));
+    const seen: string[][] = [];
+    let killed = false;
+    const proved = bundle.verifyTmux(bundle.tmuxCandidate(f.pkg, PINV), PINV, {
+      pid: 4242, exitWaitMs: 200,
+      processGone: opts.gone ?? (() => killed),
+      spawnSync: (_file: string, args: string[]): R => {
+        seen.push(args);
+        const c = args[2];
+        if (c === "-V") return { status: 0, stdout: "tmux 3.8\n", stderr: "" };
+        if (c === "display-message") return { status: 0, stdout: `4321 ${(opts.idPath ?? (() => path))(dir, sock)}\n`, stderr: "" };
+        if (c === "capture-pane") return { status: 0, stdout: "agend-verify-ok\n", stderr: "" };
+        if (c === "kill-server") {
+          killed = true;
+          // Someone else's socket now sits at that path (a new inode): it is not the one this proof saw exit.
+          if (opts.swapAfterKill) { rmSync(path); spawnSync(process.execPath, ["-e", "require('net').createServer().listen(process.argv[1], () => process.exit(0))", path]); }
+          return { status: 0, stdout: "", stderr: "" };
+        }
+        if (c === "has-session" && killed) return { status: 1, stdout: "", stderr: "no server running", ...opts.afterKill };
+        return { status: 0, stdout: "", stderr: "" };
+      },
+    });
+    const left = existsSync(path);
+    const answers = await new Promise<boolean>((res) => { const c = connect(path); c.once("connect", () => { c.destroy(); res(true); }); c.once("error", () => res(false)); });
+    await new Promise((res) => server.close(res));
+    return { proved, left, answers, seen };
+  }
+
+  it("passing control: the pid gone and a clean 'no server' — accepted, its own socket file removed", async () => {
+    const r = await scenario({});
+    expect(r.proved.ok, r.proved.reason).toBe(true);
+    expect(r.left).toBe(false);
+    // Every call names the throwaway socket agend-verify-<pid>, -V included; the pane program is argv-form.
+    for (const c of r.seen) expect(c.slice(0, 2)).toEqual(["-L", "agend-verify-4242"]);
+    expect(r.seen.find((c) => c.includes("new-session"))!.slice(-3)).toEqual(bundle.PANE_ARGV);
+  });
+
+  it.each([
+    ["has-session timed out", { status: null, error: { code: "ETIMEDOUT" } }, /could not be confirmed \(has-session: ETIMEDOUT\)/],
+    ["has-session was killed by a signal", { status: null, signal: "SIGKILL" }, /could not be confirmed \(has-session: signal SIGKILL\)/],
+    ["has-session could not run", { status: null, error: { code: "EACCES" } }, /could not be confirmed \(has-session: EACCES\)/],
+    ["the socket still answers", { status: 0 }, /still answering after kill-server/],
+  ])("refused when %s — and the still-open socket is left in place", async (_why, afterKill, reason) => {
+    const r = await scenario({ afterKill });
+    expect(r.proved.ok).toBe(false);
+    expect(r.proved.reason).toMatch(reason);
+    expect(r.proved.reason).toMatch(/server pid 4321, socket .* left in place/);
+    expect(r.left).toBe(true);
+    expect(r.answers).toBe(true);
+  });
+
+  it("refused when the recorded server pid never exits — nothing unlinked", async () => {
+    const r = await scenario({ gone: () => false });
+    expect(r.proved.ok).toBe(false);
+    expect(r.proved.reason).toMatch(/server \(pid 4321\) was still running after kill-server/);
+    expect(r.left).toBe(true);
+  });
+
+  it("refused when the server names a socket that is not this run's — nothing unlinked", async () => {
+    const r = await scenario({ idPath: (dir) => join(dir, "default") });
+    expect(r.proved.ok).toBe(false);
+    expect(r.proved.reason).toMatch(/did not say which process and socket it is/);
+    expect(r.left).toBe(true);
+  });
+
+  it("accepted, but a socket file that is not the one it created (another inode at that path) is left alone", async () => {
+    const r = await scenario({ swapAfterKill: true });
+    expect(r.proved.ok, r.proved.reason).toBe(true);
+    expect(r.left).toBe(true);
+  });
+
+  it("processGone: this process is not gone; a reaped child is", () => {
+    expect(bundle.processGone(process.pid)).toBe(false);
+    const child = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+    expect(bundle.processGone(Number(child.stdout))).toBe(true);
   });
 });

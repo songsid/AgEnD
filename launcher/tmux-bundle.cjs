@@ -46,24 +46,56 @@ function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
-/** The environment the bundled tmux runs with: its own terminfo first, a UTF-8 locale, and never a caller's $TMUX. */
+/**
+ * The environment the bundled tmux runs with: its own terminfo first, a UTF-8 locale, never a caller's $TMUX, and no
+ * shell startup hooks (the proof's pane runs /bin/sh directly; ENV/BASH_ENV would still make a shell read a file).
+ */
 function tmuxEnv(candidate, base) {
   var env = {};
   var from = base || process.env;
-  Object.keys(from).forEach(function (k) { if (k !== "TMUX" && k !== "TMUX_PANE") env[k] = from[k]; });
+  Object.keys(from).forEach(function (k) { if (k !== "TMUX" && k !== "TMUX_PANE" && k !== "ENV" && k !== "BASH_ENV") env[k] = from[k]; });
+  env.SHELL = "/bin/sh";
   env.TERMINFO_DIRS = candidate.terminfo + (from.TERMINFO_DIRS ? ":" + from.TERMINFO_DIRS : ":/usr/share/terminfo:/lib/terminfo:/usr/lib/terminfo");
   if (!/UTF-?8/i.test(String(from.LC_ALL || from.LC_CTYPE || from.LANG || ""))) env.LC_CTYPE = "C.UTF-8";
   return env;
 }
 
+/** The proof's pane program: tmux execs this argv directly (more than one argument: no shell, no login shell). */
+var PANE_MARK = "agend-verify-ok";
+var PANE_ARGV = ["/bin/sh", "-c", "printf '%s\\n' " + PANE_MARK + "; exec sleep 60"];
+
+function sleepMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Has process `pid` exited? true only on positive evidence: no such process (ESRCH), or a zombie (it has exited and
+ * waits for a parent that may never reap it, e.g. a container whose PID 1 is not an init). Anything else is false.
+ */
+function processGone(pid, platform) {
+  try { process.kill(pid, 0); } catch (e) { return !!e && e.code === "ESRCH"; }
+  try {
+    if ((platform || process.platform) === "linux") {
+      var stat = fs.readFileSync("/proc/" + pid + "/stat", "utf8");
+      return stat.slice(stat.lastIndexOf(")") + 2, stat.lastIndexOf(")") + 3) === "Z";
+    }
+    var ps = childProcess.spawnSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 });
+    return ps.status === 0 && /^\s*Z/.test(String(ps.stdout));
+  } catch (e) { return false; }
+}
+
 /**
  * Prove the bundled tmux. Returns { ok: true, tmux, sha256, size, mtime, real } or { ok: false, reason }.
- * deps.spawnSync / deps.pid / deps.socket are seams for tests; the smoke socket is unique to this process and always
- * killed.
+ * The private-socket proof records the server it creates (pid, socket path and inode) and accepts its end only on
+ * positive evidence: that pid gone and a clean "no server" answer on the socket. An unknown observation (a timeout, a
+ * signal, an error) fails the proof, and then nothing is unlinked: the reason names what may still be running.
+ * Seams for tests: deps.spawnSync, deps.pid, deps.socket, deps.processGone, deps.exitWaitMs.
  */
 function verifyTmux(candidate, pin, deps) {
   var d = deps || {};
   var spawn = d.spawnSync || childProcess.spawnSync;
+  var gone = d.processGone || processGone;
+  var exitWaitMs = d.exitWaitMs || 5000;
   var m = candidate.manifest;
   if (!m || m.name !== pin.name || m.version !== pin.version) return { ok: false, reason: "the bundled tmux package is not " + pin.name + "@" + pin.version };
   var want = m.agendTmux;
@@ -81,57 +113,83 @@ function verifyTmux(candidate, pin, deps) {
     var r = spawn(candidate.tmux, args, { encoding: "utf8", timeout: SMOKE_TIMEOUT_MS, env: env, stdio: ["ignore", "pipe", "pipe"] });
     return { status: r.status, stdout: String(r.stdout || ""), stderr: String(r.stderr || ""), error: r.error || null, signal: r.signal || null };
   };
-  var why = function (r) { return r.error ? String(r.error.message || r.error) : r.signal ? "signal " + r.signal : "exit " + r.status + (r.stderr.trim() ? ": " + r.stderr.trim().split("\n").pop() : ""); };
+  var clean = function (r) { return !r.error && !r.signal && typeof r.status === "number"; };
+  var why = function (r) { return r.error ? String(r.error.code || r.error.message || r.error) : r.signal ? "signal " + r.signal : "exit " + r.status + (r.stderr.trim() ? ": " + r.stderr.trim().split("\n").pop() : ""); };
   // Every call names the throwaway socket, -V included: nothing here can reach the default or AgEnD's server.
   var sock = d.socket || "agend-verify-" + (d.pid || process.pid);
   var v = run(["-L", sock, "-V"]);
-  if (v.status !== 0) return { ok: false, reason: "the bundled tmux did not run (" + why(v) + ")" };
+  if (!clean(v) || v.status !== 0) return { ok: false, reason: "the bundled tmux did not run (" + why(v) + ")" };
   if (v.stdout.trim() !== "tmux " + want.tmux) return { ok: false, reason: "the bundled tmux says '" + v.stdout.trim() + "', not 'tmux " + want.tmux + "'" };
+
   // A throwaway server on that socket of its own: never the default socket, never AgEnD's `agend` socket.
   var failed = null;
-  var socketPath = "";
+  var server = null;      // { pid, path, ino } once known
+  var step = function (label, args) {
+    var r = run(args);
+    if (!clean(r) || r.status !== 0) failed = label + " failed (" + why(r) + ")";
+    return r;
+  };
   try {
-    var steps = [
-      ["new-session", ["-L", sock, "-f", "/dev/null", "new-session", "-d", "-s", "verify", "-x", "80", "-y", "10"]],
-      ["has-session", ["-L", sock, "has-session", "-t", "verify"]],
-      ["capture-pane", ["-L", sock, "capture-pane", "-p", "-t", "verify"]],
-      ["kill-server", ["-L", sock, "kill-server"]],
-    ];
-    for (var i = 0; i < steps.length && !failed; i++) {
-      var r = run(steps[i][1]);
-      if (r.status !== 0) failed = steps[i][0] + " failed (" + why(r) + ")";
-      // Where the server put its socket, asked while it is up: tmux leaves the file behind after kill-server.
-      if (i === 0 && !failed) {
-        var sp = run(["-L", sock, "display-message", "-p", "-t", "verify", "#{socket_path}"]);
-        if (sp.status === 0) socketPath = sp.stdout.trim();
+    step("new-session", ["-L", sock, "-f", "/dev/null", "new-session", "-d", "-s", "verify", "-x", "80", "-y", "10"].concat(PANE_ARGV));
+    if (!failed) {
+      var idr = step("display-message", ["-L", sock, "display-message", "-p", "-t", "verify", "#{pid} #{socket_path}"]);
+      var mm = failed ? null : /^(\d+) (\/.+)$/.exec(idr.stdout.trim());
+      if (!failed && (!mm || path.basename(mm[2]) !== sock)) failed = "the server did not say which process and socket it is ('" + idr.stdout.trim() + "')";
+      if (!failed) {
+        var sst = null;
+        try { sst = fs.lstatSync(mm[2]); } catch (e) { sst = null; }
+        if (!sst || !sst.isSocket()) failed = "the server's socket " + mm[2] + " is not a socket";
+        else server = { pid: Number(mm[1]), path: mm[2], ino: sst.ino };
       }
     }
+    if (!failed) step("has-session", ["-L", sock, "has-session", "-t", "verify"]);
     if (!failed) {
-      // Gone, positively: has-session must now fail.
-      var after = run(["-L", sock, "has-session"]);
-      if (after.status === 0) failed = "its server was still running after kill-server";
+      // The pane program ran: its mark is on the screen (it may take a moment to paint).
+      var seen = false;
+      for (var k = 0; k < 20 && !failed && !seen; k++) {
+        var cap = step("capture-pane", ["-L", sock, "capture-pane", "-p", "-t", "verify"]);
+        seen = !failed && cap.stdout.indexOf(PANE_MARK) >= 0;
+        if (!seen && !failed) sleepMs(100);
+      }
+      if (!failed && !seen) failed = "capture-pane never showed the pane program's output";
+    }
+    if (!failed) step("kill-server", ["-L", sock, "kill-server"]);
+    if (!failed) {
+      // Gone, positively: the recorded pid has exited, and the socket answers a clean "no server".
+      var deadline = Date.now() + exitWaitMs;
+      while (!gone(server.pid) && Date.now() < deadline) sleepMs(50);
+      if (!gone(server.pid)) failed = "its server (pid " + server.pid + ") was still running after kill-server";
+      else {
+        var after = run(["-L", sock, "has-session"]);
+        if (!clean(after)) failed = "whether its server ended could not be confirmed (has-session: " + why(after) + ")";
+        else if (after.status === 0) failed = "its server was still answering after kill-server";
+      }
     }
   } finally {
+    // Cleanup that needs no proof: ask the server to go. Unlinking needs the proof above.
     if (failed) run(["-L", sock, "kill-server"]);
-    removeStaleSocket(socketPath, sock, run);
   }
-  if (failed) return { ok: false, reason: "the bundled tmux's private-socket check failed: " + failed };
+  if (failed) {
+    var left = server ? " (server pid " + server.pid + ", socket " + server.path + " left in place)" : " (socket -L " + sock + ")";
+    return { ok: false, reason: "the bundled tmux's private-socket check failed: " + failed + left };
+  }
+  // Reached only with the server's exit proved above.
+  removeStaleSocket(server);
   var real = fs.realpathSync(candidate.tmux);
   var fin = fs.statSync(real);
   return { ok: true, tmux: want.tmux, sha256: sum, size: fin.size, mtime: Math.floor(fin.mtimeMs / 1000), real: real };
 }
 
 /**
- * Remove the throwaway socket file, and only that: its name is this run's socket name, it is a socket, and no server
- * answers on it any more. Anything else stays where it is.
+ * Remove the socket file tmux leaves behind after kill-server — only the one this proof created and saw exit: the same
+ * path, still a socket, the same inode. Anything else stays where it is.
  */
-function removeStaleSocket(socketPath, sock, run) {
-  if (!socketPath || path.basename(socketPath) !== sock) return;
+function removeStaleSocket(server) {
   try {
-    if (!fs.lstatSync(socketPath).isSocket()) return;
-    if (run(["-L", sock, "has-session"]).status === 0) return;
-    fs.unlinkSync(socketPath);
-  } catch (e) { /* already gone, or not ours to remove */ }
+    var now = fs.lstatSync(server.path);
+    if (!now.isSocket() || now.ino !== server.ino) return;
+    fs.unlinkSync(server.path);
+  } catch (e) { /* already gone */ }
 }
 
 function receiptText(r) {
@@ -174,5 +232,5 @@ function readReceipt(pkgDir, pin) {
 module.exports = {
   RECEIPT: RECEIPT, RECEIPT_KEYS: RECEIPT_KEYS, SEMVER: SEMVER,
   packageName: packageName, pinnedTmux: pinnedTmux, tmuxCandidate: tmuxCandidate, tmuxEnv: tmuxEnv,
-  verifyTmux: verifyTmux, writeReceipt: writeReceipt, readReceipt: readReceipt, receiptShapeOk: receiptShapeOk, receiptText: receiptText,
+  verifyTmux: verifyTmux, processGone: processGone, PANE_ARGV: PANE_ARGV, writeReceipt: writeReceipt, readReceipt: readReceipt, receiptShapeOk: receiptShapeOk, receiptText: receiptText,
 };

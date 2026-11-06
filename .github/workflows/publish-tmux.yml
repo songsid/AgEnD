@@ -33,10 +33,6 @@ concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && 'npm-publish-tmux' || format('tmux-build-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
-env:
-  # Alpine 3.20 (musl 1.2.5, the musl tmux-sources.json pins for its licence), by index digest: x64 and arm64.
-  ALPINE: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
-
 jobs:
   build:
     name: build ${{ matrix.target }}
@@ -56,8 +52,11 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: |
+          # The image by digest and the toolchain at exact package versions, both from tmux-sources.json (toolchain.alpine).
+          ALPINE=$(node -p 'require("./scripts/release/tmux-sources.json").toolchain.alpine.image')
           docker run --rm -v "$GITHUB_WORKSPACE:/repo" -w /repo -e TARGET "$ALPINE" sh -ec '
-            apk add --no-cache build-base bison pkgconf linux-headers perl nodejs tar >/dev/null
+            apk add --no-cache nodejs tar >/dev/null
+            node scripts/tmux/toolchain.mjs install-alpine
             node scripts/tmux/build-tmux.mjs --target "$TARGET" --out /repo/tmux-build --work /tmp/first --cache /tmp/src
             node scripts/tmux/build-tmux.mjs --target "$TARGET" --out /tmp/again --work /var/tmp/second-build --cache /tmp/src
             cmp "/repo/tmux-build/tmux-$TARGET/bin/tmux" "/tmp/again/tmux-$TARGET/bin/tmux"
@@ -70,7 +69,7 @@ jobs:
         if: startsWith(matrix.target, 'linux-')
         run: |
           file "tmux-build/tmux-${{ matrix.target }}/bin/tmux" | tee /dev/stderr | grep -q "statically linked"
-      - name: Build twice on macOS (static libevent/ncurses/utf8proc/jemalloc, macOS 11+) and compare
+      - name: Build twice on macOS (the locked Xcode; static libevent/ncurses/utf8proc/jemalloc; macOS 11+) and compare
         if: startsWith(matrix.target, 'darwin-')
         env:
           TARGET: ${{ matrix.target }}

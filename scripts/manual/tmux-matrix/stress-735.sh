@@ -2,7 +2,10 @@
 # M-2457 §2 matrix, #735 leg: W windows emitting random bytes and escape sequences at once for N seconds while every
 # pane is captured; the server must still be alive at the end. `tmux` = the build under test on PATH. Private socket.
 # Not reproducing #735 does not prove a build fixed it (the note says so); a crash here is a finding.
-N=${N:-600}; W=${W:-24}; S=stress-735-$$
+# Exits non-zero unless the server started (numeric pid), every window was created, captures ran, and it survived.
+set -uo pipefail
+N=${N:-600}; W=${W:-24}; S=stress-735-$$; EVERY=${CAPTURE_EVERY:-5}
+die() { echo "[stress] $*" >&2; exit 1; }
 GEN='import os,random,sys,time
 seqs=[b"\x1b[%dm",b"\x1b[%d;%dH",b"\x1b]0;t%d\x07",b"\x1b]2;%d\x1b\\",b"\x1bP%dq\x1b\\",b"\x1b_%d\x1b\\",b"\x1b[?%dh",b"\x1b[?%dl",b"\x1b[%dX",b"\x1b[%d@",b"\xe4\xb8\xad\xe6\x96\x87",b"\xf0\x9f\x98\x80",b"\x1b[%d;%d;%dr"]
 o=sys.stdout.buffer
@@ -14,14 +17,19 @@ while True:
         else:
             s=random.choice(seqs); k=s.count(b"%d"); buf+=s % tuple(random.randint(0,9999) for _ in range(k))
     o.write(bytes(buf)); o.flush(); time.sleep(random.random()*0.02)'
-trap 'tmux -L "$S" kill-server 2>/dev/null' EXIT
-tmux -L "$S" -f /dev/null new-session -d -s f -x 200 -y 50 "python3 -c '$GEN'"
-for i in $(seq 2 "$W"); do tmux -L "$S" new-window -t f "python3 -c '$GEN'"; done
-P=$(tmux -L "$S" display -p '#{pid}'); echo "[stress] $(tmux -V) server $P, $W windows, ${N}s"
-end=$((SECONDS+N)); alive=1
+trap 'rc=$?; tmux -L "$S" kill-server 2>/dev/null; exit $rc' EXIT
+tmux -L "$S" -f /dev/null new-session -d -s f -x 200 -y 50 "python3 -c '$GEN'" || die "new-session failed"
+for i in $(seq 2 "$W"); do tmux -L "$S" new-window -t f "python3 -c '$GEN'" || die "new-window $i failed"; done
+P=$(tmux -L "$S" display -p '#{pid}') || die "display failed"
+case "$P" in ''|*[!0-9]*) die "the server did not say its pid ('$P')" ;; esac
+echo "[stress] $(tmux -V) server $P, $W windows, ${N}s"
+end=$((SECONDS+N)); captures=0
 while [ $SECONDS -lt $end ]; do
-  for w in $(seq 0 $((W-1))); do tmux -L "$S" capture-pane -p -t "f:$w" >/dev/null 2>&1; done; sleep 5
-  kill -0 "$P" 2>/dev/null || { alive=0; echo "[stress] SERVER DIED at t=$((N-(end-SECONDS)))s"; break; }
+  for w in $(seq 0 $((W-1))); do tmux -L "$S" capture-pane -p -t "f:$w" >/dev/null 2>&1 && captures=$((captures+1)); done
+  kill -0 "$P" 2>/dev/null || die "SERVER DIED at t=$((N-(end-SECONDS)))s"
+  sleep "$EVERY"
 done
-[ $alive = 1 ] && echo "[stress] server alive after ${N}s, RSS $(awk '/VmRSS/{print $2}' /proc/$P/status) kB"
-[ $alive = 1 ]
+kill -0 "$P" 2>/dev/null || die "SERVER DIED at the end"
+[ "$captures" -gt 0 ] || die "no capture ever succeeded"
+rss=$(awk '/VmRSS/{print $2}' "/proc/$P/status" 2>/dev/null)
+echo "[stress] server alive after ${N}s, $captures captures, RSS ${rss:-?} kB"

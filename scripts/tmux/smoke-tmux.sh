@@ -1,40 +1,55 @@
 #!/bin/sh
 # Smoke-run one built bundled tmux on its own runner (M-2457 §3): the version, a private-socket server that starts,
-# answers, captures a CJK + emoji line at the widths the CLIs assume, and is killed. Never the default socket.
+# answers, captures a CJK + emoji line at the widths the CLIs assume, and is killed — its end proved, not assumed.
+# Never the default socket. The panes run fixed programs in argv form (tmux execs them directly: no login shell, no
+# startup files), with SHELL=/bin/sh and no ENV/BASH_ENV.
 #   scripts/tmux/smoke-tmux.sh <dir holding bin/tmux and share/terminfo> <expected version, e.g. 3.8>
 set -eu
 DIR=${1:?bundle dir}; WANT=${2:?expected tmux version}
 T="$DIR/bin/tmux"
 # A UTF-8 locale the host has: macOS names it en_US.UTF-8, Linux (glibc and musl) C.UTF-8.
 case "$(uname -s)" in Darwin) LOC=en_US.UTF-8 ;; *) LOC=C.UTF-8 ;; esac
-export TERMINFO_DIRS="$DIR/share/terminfo" LANG=$LOC LC_ALL=$LOC
+export TERMINFO_DIRS="$DIR/share/terminfo" LANG=$LOC LC_ALL=$LOC SHELL=/bin/sh
+unset ENV BASH_ENV TMUX TMUX_PANE 2>/dev/null || true
 SOCK="agend-smoke-$$"
-fail() { echo "smoke: $*" >&2; "$T" -L "$SOCK" kill-server >/dev/null 2>&1 || true; exit 1; }
-trap '"$T" -L "$SOCK" kill-server >/dev/null 2>&1 || true' EXIT
+SERVER_PID=""
+fail() {
+  echo "smoke: $*" >&2
+  "$T" -L "$SOCK" kill-server >/dev/null 2>&1 || true
+  [ -z "$SERVER_PID" ] || echo "smoke: server pid $SERVER_PID, socket -L $SOCK left in place" >&2
+  exit 1
+}
+# Positive evidence that a process has exited: no such process, or a zombie (exited, not reaped yet).
+gone() { ! kill -0 "$1" 2>/dev/null || ps -o stat= -p "$1" 2>/dev/null | grep -q '^ *Z'; }
 
-got=$("$T" -V) || fail "tmux -V failed"
+got=$("$T" -L "$SOCK" -V) || fail "tmux -V failed"
 [ "$got" = "tmux $WANT" ] || fail "tmux -V says '$got', not 'tmux $WANT'"
 
-"$T" -L "$SOCK" -f /dev/null new-session -d -s s -x 40 -y 5 \; set -g default-terminal tmux-256color \
-  || fail "the server did not start on a private socket"
-"$T" -L "$SOCK" has-session -t s || fail "has-session"
-
 # 中文 = 2 + 2 cells, then 🫨 (Unicode 15) = 2 — utf8proc's tables; musl's wcwidth says 1 — then "ok": column 8.
-"$T" -L "$SOCK" respawn-pane -k -t s "printf '中文🫨ok'; sleep 30"
+"$T" -L "$SOCK" -f /dev/null new-session -d -s s -x 40 -y 5 /bin/sh -c "printf '中文🫨ok'; exec sleep 60" \
+  || fail "the server did not start on a private socket"
+SERVER_PID=$("$T" -L "$SOCK" display-message -p -t s '#{pid}') || fail "display-message"
+SOCKET_PATH=$("$T" -L "$SOCK" display-message -p -t s '#{socket_path}') || fail "display-message socket_path"
+case "$SERVER_PID" in ''|*[!0-9]*) fail "the server did not say its pid ('$SERVER_PID')" ;; esac
+"$T" -L "$SOCK" has-session -t s || fail "has-session"
 i=0; line=""
 while [ $i -lt 50 ]; do
-  line=$("$T" -L "$SOCK" capture-pane -p -t s | head -n 1)
+  line=$("$T" -L "$SOCK" capture-pane -p -t s | head -n 1) || fail "capture-pane"
   case "$line" in *ok*) break ;; esac
   i=$((i + 1)); sleep 0.1
 done
 case "$line" in 中文🫨ok*) ;; *) fail "capture-pane read '$line'" ;; esac
-x=$("$T" -L "$SOCK" display-message -p -t s '#{cursor_x}')
+x=$("$T" -L "$SOCK" display-message -p -t s '#{cursor_x}') || fail "display-message cursor_x"
 [ "$x" = "8" ] || fail "the line is $x cells wide, not 8 (CJK/emoji width)"
 
 "$T" -L "$SOCK" kill-server || fail "kill-server"
 i=0
-while "$T" -L "$SOCK" has-session >/dev/null 2>&1; do
-  i=$((i + 1)); [ $i -lt 50 ] || fail "the server is still up after kill-server"; sleep 0.1
+until gone "$SERVER_PID"; do
+  i=$((i + 1)); [ $i -lt 100 ] || fail "the server (pid $SERVER_PID) is still running after kill-server"; sleep 0.05
 done
-trap - EXIT
-echo "smoke ok: tmux $WANT, private socket, CJK/emoji width 8, killed"
+# The socket answers a clean "no server" (exit 1); anything else (a hang, a signal, another code) is not proof.
+set +e; "$T" -L "$SOCK" has-session >/dev/null 2>&1; rc=$?; set -e
+[ "$rc" = 1 ] || fail "whether the server ended could not be confirmed (has-session exit $rc)"
+# tmux leaves its socket file behind: remove this run's, now that its server is proved gone.
+[ "$(basename "$SOCKET_PATH")" = "$SOCK" ] && [ -S "$SOCKET_PATH" ] && rm -f "$SOCKET_PATH"
+echo "smoke ok: tmux $WANT, private socket, CJK/emoji width 8, server pid $SERVER_PID gone"

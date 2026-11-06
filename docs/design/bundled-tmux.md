@@ -105,7 +105,12 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
   match what the CLIs assume. The §2 matrix builds did **not** include utf8proc yet; PR A's first build reruns the
   matrix and adds the CJK/emoji width check with it.
 - **Hardening:** `-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2`, static-pie where the toolchain allows, `strip`.
-- **Reproducible:** `SOURCE_DATE_EPOCH` = the pin's release date, fixed flags, and pinned toolchain images. CI builds twice
+- **Toolchain, locked** (`tmux-sources.json` `toolchain`, `scripts/tmux/toolchain.mjs`): Linux builds in the Alpine image
+  pinned by digest with every toolchain package at its exact version (checked after install; a version the repository
+  no longer carries fails the build until the lock is updated in a reviewed change); macOS selects the locked Xcode
+  (`DEVELOPER_DIR`) and checks its build and SDK. The toolchain's identity (versions, and the sha256 of the compiler,
+  assembler, linker and libc) is recorded in each package's `build-info.json`.
+- **Reproducible:** `SOURCE_DATE_EPOCH` = the pin's release date, fixed flags, and the locked toolchain. CI builds twice
   and compares the binary's sha256. A difference fails the dry run.
 - **Pipeline:** reuse #1450's. A new `publish-tmux.yml` (`workflow_dispatch`; inputs `tmux_version`, `dry_run` =
   **true by default**):

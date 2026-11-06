@@ -4,6 +4,10 @@ export type TmuxSources = {
   sourceDateEpoch: number;
   tmux: TmuxSource; libevent: TmuxSource; ncurses: TmuxSource; utf8proc: TmuxSource; jemalloc: TmuxSource; musl: TmuxSource;
   terminfo: string[];
+  toolchain: {
+    alpine: { image: string; release: string; packages: Record<string, string> };
+    darwin: { xcode: string; xcodeBuild: string; sdk: string; developerDir: string };
+  };
   terminfoAliases?: Record<string, string>;
   [part: string]: unknown;
 };
