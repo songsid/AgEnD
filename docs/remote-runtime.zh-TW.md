@@ -42,7 +42,7 @@ agend-runtime connect --server "https://your-agend-host"
 ### 安裝腳本做什麼
 
 1. 檢查 Node.js 是否為 22.14 以上（22.14+、23.6+ 或 24+）。沒有時會停下來，只提示 `winget install OpenJS.NodeJS.LTS` 或 nodejs.org，**不會替你安裝軟體**。
-2. 從 `$agend` 下載 Runtime 壓縮檔（單次、有上限、不跟隨轉址，最大 8 MiB）。
+2. 從 `$agend` 下載 Runtime 壓縮檔（單次、有上限、不跟隨轉址，最大 16 MiB）。
 3. 自己計算壓縮檔的 SHA-256，與**寫在安裝腳本裡**的校驗碼比對；不符就在解壓縮之前停止。
 4. 解壓縮到 `%LOCALAPPDATA%\agend-runtime\<版本>+<build>`，放在既有版本**旁邊**。`<build>` 是壓縮檔 SHA-256 的前 8 個字元，因為同一個版本號可能對應不只一個 build。
 5. 讓 `agend-runtime` 指向它（見下），並把 `%LOCALAPPDATA%\agend-runtime\bin` 加進**你的使用者 PATH**。
