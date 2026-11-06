@@ -210,7 +210,34 @@
   // Never a GET: asking and polling both change state, and a preview must not.
   const DEV_POLL_MS = 2000;
   let dev = null;
-  const devPost = (path) => fetch(`/auth/device-login${path}`, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: "{}" });
+  // One call at a time, in the order they were asked for. Every one of the three answers may carry a Set-Cookie for the
+  // request's cookie (asking sets it, cancelling and a poll that finds it spent clear it), and the browser applies a cookie when
+  // the answer ARRIVES, not when this page chose to ask. So a stale call's late answer would replace or expire the cookie of the
+  // attempt that came after it (Back, then a new attempt, while the first attempt's create or cancel was still on the wire):
+  // the new attempt would poll with the wrong request, or none, and read "expired" after its owner had approved it. Each call
+  // therefore starts only when the one before it has finished: answered, or given up on after DEV_CALL_MS by aborting it. A response
+  // that has not arrived when its call is aborted is dropped by the browser, its Set-Cookie never processed; one whose headers had
+  // already arrived has applied its cookie before the next call is sent. Either way a call carries, and leaves behind, what the last
+  // one left. (An aborted request may still have been handled by the server; at worst that leaves an unused request that expires on
+  // its own.) `mine`: the attempt a create or poll belongs to; one that was stopped before its turn comes is not sent at all.
+  const DEV_CALL_MS = 15000;
+  let devTurn = Promise.resolve();
+  function devCall(path, mine) {
+    const run = async () => {
+      if (mine && mine.stopped) return null;
+      const ctl = typeof AbortController === "function" ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), DEV_CALL_MS) : 0;
+      try {
+        const r = await fetch(`/auth/device-login${path}`, { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json" }, body: "{}", ...(ctl ? { signal: ctl.signal } : {}) });
+        let body = null;
+        try { body = await r.json(); } catch { /* no body, or not JSON */ }
+        return { r, body };
+      } finally { clearTimeout(timer); }
+    };
+    const call = devTurn.then(run);
+    devTurn = call.then(() => undefined, () => undefined);
+    return call;
+  }
   const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
   function devStop() {
     hideQr();
@@ -265,13 +292,14 @@
     devSay("", false, true);
     const mine = { stopped: false, poll: 0, tick: 0, deadline: 0, lost: 0 };
     dev = mine;
-    let r, body = null;
-    try { r = await devPost(""); body = r.ok ? await r.json() : null; } catch { if (!mine.stopped) devEnded(t("dev_failed"), true); return; }
-    if (mine.stopped) return;
+    let made;
+    try { made = await devCall("", mine); } catch { if (!mine.stopped) devEnded(t("dev_failed"), true); return; }
+    if (mine.stopped || !made) return;
+    const { r, body } = made;
     if (!r.ok || !body || typeof body.code !== "string") {
       if (r.status === 429) {
         let wait = Number(r.headers.get("Retry-After")) * 1000;
-        try { const b = await r.json(); if (Number.isFinite(b && b.retryAfterMs)) wait = b.retryAfterMs; } catch { /* the header's */ }
+        if (Number.isFinite(body && body.retryAfterMs)) wait = body.retryAfterMs;
         devEnded(t("dev_limited").replace("{duration}", duration(Number.isFinite(wait) && wait > 0 ? wait : 60000)), true);
       } else devEnded(r.status === 503 ? t("dev_busy") : r.status === 404 ? t("dev_unavailable") : t("dev_failed"), true);
       return;
@@ -287,9 +315,10 @@
     mine.tick = setInterval(() => { if (!mine.stopped && !mine.approved) waiting(); }, 1000);
     const again = () => { if (!mine.stopped) mine.poll = setTimeout(ask, DEV_POLL_MS); };
     const ask = async () => {
-      let p, state = null, parsed = null;
-      try { p = await devPost("/poll"); parsed = await p.json(); state = parsed && parsed.state; } catch { /* below */ }
+      let asked = null;
+      try { asked = await devCall("/poll", mine); } catch { /* below */ }
       if (mine.stopped) return;
+      const p = asked && asked.r, state = asked && asked.body && asked.body.state;
       if (state === "approved" && p && p.ok) {
         mine.approved = true;
         devSay(t("dev_approved"), false, false);
@@ -312,8 +341,10 @@
     const mine = dev;
     devStop();
     $("device").hidden = true; $("form").hidden = false;
-    if (mine && !mine.approved) { try { await devPost("/cancel"); } catch { /* it expires by itself */ } }
     $("code").focus();
+    // Queued behind a create or poll of this attempt that is still on the wire (it needs the cookie that call sets), and ahead of
+    // whatever the person asks for next: a new attempt never starts while this one's cancel is still out.
+    if (mine && !mine.approved) { try { await devCall("/cancel"); } catch { /* it expires by itself */ } }
   }
   if (deviceLogin) {
     $("another").addEventListener("click", () => { devStart(); });
