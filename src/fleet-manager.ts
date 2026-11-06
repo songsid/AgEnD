@@ -453,7 +453,8 @@ type ReconcileObserver = (
 import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
-import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
+import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, type ClassicProfile } from "./classic-bindings.js";
+import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -19704,6 +19705,57 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (results.some(Boolean)) broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));   // read the list again: it knows more now
     });
   }
+  /**
+   * #3212 PR 1: the Accounts view (accounts-view.ts) — every CLI's default sign-in and named profiles (used or only on
+   * disk), who uses each and its weekly usage. Host rows only; a paired computer's rows come with #3190 Part 3c. Its
+   * usage is the usage panel's cached read (never forced), given at most `usageWaitMs` before the view is sent without it.
+   */
+  async accountsView(usageWaitMs = 1500): Promise<AccountsView> {
+    const fleet = this.fleetConfig;
+    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
+    this.refreshSignInIdentities();
+    const targets = this.backendSignInTargets();
+    const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>();
+    for (const backend of PROFILE_CLIS) {
+      const rows = [];
+      for (const profile of profilesOnDisk(this.dataDir, backend)) {
+        let login: ReturnType<typeof credentialProfileLogin>["state"] = "unknown";
+        try { login = credentialProfileLogin(this.dataDir, backend, profile).state; } catch { /* unknown */ }
+        const signIn = dashboardSignInSupported(backend, profile);
+        const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
+        const identity = this.signInIdentity(backend, profile);
+        rows.push({ profile, state: (login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown") as SignInTarget["state"], signIn,
+          ...(hostCommand ? { hostCommand } : {}), ...(identity ? { identity } : {}) });
+      }
+      diskProfiles.set(backend, rows);
+    }
+    // Host agents only: an agent on a paired Windows computer runs on that computer's accounts (its own scope, later).
+    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
+      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
+    const classic = readClassicBindings(this.dataDir).map(b => {
+      const backend = b.backend ?? defaultBackend;
+      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
+    });
+    const fleetDefaults = new Map<string, string>();
+    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    // Weekly usage, from the usage panel's own (cached, never forced) read.
+    const usage = new Map<string, AccountUsage>();
+    const ids = new Map<string, string>();                                   // provider id → backend\0profile
+    for (const backend of ACCOUNT_CLIS) {
+      const pid = usageProviderIdForBackend(backend); if (!pid) continue;
+      ids.set(pid, `${backend}\0`);
+      for (const p of new Set([...(diskProfiles.get(backend) ?? []).map(d => d.profile), ...targets.filter(t => t.backend === backend && t.profile).map(t => t.profile!)])) ids.set(`${pid}:${p}`, `${backend}\0${p}`);
+    }
+    try {
+      const payload = await Promise.race([getUsageSnapshot(false, undefined, { allowStale: true }), new Promise<null>(r => { const tm = setTimeout(() => r(null), usageWaitMs); tm.unref?.(); })]);
+      for (const provider of payload?.providers ?? []) {
+        const at = ids.get(provider.id); const w = at ? weeklyUsage(provider as never) : undefined;
+        if (at && w) usage.set(at, w);
+      }
+    } catch { /* the view without usage */ }
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage });
+  }
+
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
     for (const row of this.backendAvailabilityRows()) {

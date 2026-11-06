@@ -75,6 +75,7 @@ function HubRetentionSlot() {
 }
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
+import { AccountsView } from "./accounts-view.js";   // #3212: SignInList stays exported for a page that still imports it
 import { ProviderMark } from "./provider-marks.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { SettingsPageHead, SettingsTabs, SettingsTabPanel, useSettingsTabs, revealSettingsTarget, layoutText } from "./settings-layout.js";
@@ -412,7 +413,10 @@ export function SettingsPanel({ route, navKey }) {
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
         <div class="s-auth-scope"><${Icon} name="view" size=${18} /><div><strong>${layoutText("aiHostScope")}</strong><p>${layoutText("aiAccountsHint")}</p><a href=${settingsPath("runtimes")}>${layoutText("aiWindowsLink")}<span aria-hidden="true">→</span></a></div></div>
-        <${SignInList} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
+        <${AccountsView} instances=${ctx.fleet.instances || {}} stageAgent=${ctx.stageAgent}
+          stageDefault=${(backend, profile) => ctx.stage(`defaults:account:${backend}`, { label: tn("updateDefaults"), count: 1,
+            impact: defaultsImpact(ctx.schema, "backend_options"),
+            request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { backend_options: { [backend]: { credential_profile: profile } } } } })} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
       </div></details>`
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
     : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>

@@ -111,8 +111,11 @@ restarted for you** and the reply says `restarted: true`. A paused or stopped on
 is not started: the reply says `restarted: false`, and the switch applies at its
 next start.
 
-Set `credential_profile` with `update_instance_config` or web Settings. Never
-hand-edit `fleet.yaml`.
+Set `credential_profile` with `update_instance_config` or web Settings: the
+agent's **Account** field, or **Settings → Agents → AI sign-ins and API keys →
+Accounts** (**Move agents here…**, and each CLI's **Fleet default**). Settings
+refuses a signed-out profile and names its login command.
+Never hand-edit `fleet.yaml`.
 
 **What to do / what not to do, per backend**
 

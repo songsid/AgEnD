@@ -4,6 +4,7 @@ import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
+import { credentialProfileLogin, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -1257,6 +1258,30 @@ export function handleSettingsRequest(
       const restored = restoreRedactedSecrets(body, cfg.defaults);
       if ("path" in restored) return json(res, 400, { error: `redacted value has no stored credential: defaults.${restored.path}` });
       const merged = { ...cfg.defaults, ...officeInputPatch(restored.value) };
+      // #3212: backend_options merge per backend and key (null removes a key), as an agent's do (M-2446): setting the
+      // fleet default's credential profile for one CLI never drops another CLI's default options.
+      if (body.backend_options !== undefined) {
+        const sent = body.backend_options;
+        if (!sent || typeof sent !== "object" || Array.isArray(sent) || !Object.values(sent).every(o => o && typeof o === "object" && !Array.isArray(o)))
+          return json(res, 400, { error: "unsupported_backend_options" });
+        const out: Record<string, Record<string, unknown>> = {};
+        const prev = cfg.defaults?.backend_options as Record<string, Record<string, unknown>> | undefined;
+        if (prev && typeof prev === "object") for (const [b, o] of Object.entries(prev)) if (o && typeof o === "object") out[b] = { ...o };
+        for (const [b, o] of Object.entries(sent as Record<string, Record<string, unknown>>)) {
+          const next = { ...(out[b] ?? {}) };
+          for (const [k, v] of Object.entries(o)) { if (v === null) delete next[k]; else next[k] = v; }
+          if (Object.keys(next).length) out[b] = next; else delete out[b];
+        }
+        if (Object.keys(out).length) (merged as Record<string, unknown>).backend_options = out; else delete (merged as Record<string, unknown>).backend_options;
+        // A fleet default moved onto a signed-out profile would leave every agent that follows it at a sign-in prompt.
+        for (const b of Object.keys(sent as object)) {
+          const after = instanceCredentialProfile(undefined, merged as never, b), before = instanceCredentialProfile(undefined, cfg.defaults as never, b);
+          if (!after || after === before) continue;
+          let login: ReturnType<typeof credentialProfileLogin> | null = null;
+          try { login = credentialProfileLogin(ctx.dataDir, b, after); } catch { login = null; }
+          if (login?.state === "signed-out") return json(res, 409, { error: "credential_profile_signed_out", backend: b, profile: after, loginCommand: login.loginCommand });
+        }
+      }
       // #1310: locale:null means "clear the key" (user chose Auto). Mirrors
       // how the instance save handles model ("" → delete) and nullable overrides.
       if (body.locale === null || body.locale === "") delete (merged as Record<string, unknown>).locale;
@@ -1651,6 +1676,18 @@ export function handleSettingsRequest(
     const before = validateFleet(cfg!);
     const after = validateFleet({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
+    // #3212: moving an agent onto a named credential profile that is signed out is refused, as update_instance_config
+    // refuses it — the agent would wait at a sign-in prompt instead of working. Unknown (cannot tell) is let through.
+    if (!(mergedInst as { machine_id?: unknown }).machine_id && mergedInst.runtime !== "windows") {
+      const backendAfter = String(mergedInst.backend ?? cfg!.defaults?.backend ?? "claude-code");
+      const profileAfter = instanceCredentialProfile(mergedInst, cfg!.defaults, backendAfter);
+      const profileBefore = exists ? instanceCredentialProfile(base as never, cfg!.defaults, String((base as { backend?: unknown }).backend ?? cfg!.defaults?.backend ?? "claude-code")) : null;
+      if (profileAfter && profileAfter !== profileBefore) {
+        let login: ReturnType<typeof credentialProfileLogin> | null = null;
+        try { login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter); } catch { login = null; }
+        if (login?.state === "signed-out") { json(res, 409, { error: "credential_profile_signed_out", backend: backendAfter, profile: profileAfter, loginCommand: login.loginCommand }); return; }
+      }
+    }
     // #3055 review r2: a topic whose agent is being deleted is going away on the platform now — binding it here would
     // lose it. Asked at commit, by physical destination; try again once the deletion is over.
     if (ctx.topicBindingInFlight?.(mergedInst)) { json(res, 409, { error: "topic_deletion_in_flight" }); return; }

@@ -171,6 +171,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
+  // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
+  "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
   // The task board's list, filters, card menu and Insights (#3169-#3171): linked by fleet-task-view.js (an older app.css lacks it).
   "task-board.css": { file: join("shared", "task-board.css"), type: "text/css; charset=utf-8" },
   // Claude history in the View: the renderer's own stylesheet (linked by it, so an older app.css never lacks its rules).
