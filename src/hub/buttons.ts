@@ -161,7 +161,8 @@ export class HubButtonsService {
       if (row.revision !== first.buttonRevision) throw new HubProtocolError("conflict"); // a delayed vote cannot overwrite a newer ballot
       let receipt: HubReceipt;
       if (!b.poll) {
-        receipt = this.queue.insert(db, tx, { roomId, asker, idempotencyKey: key, requestId: ctx.requestId,
+        // A public click key belongs to the button-operation namespace, not a previous typed question.
+        receipt = this.queue.insert(db, tx, { roomId, asker, idempotencyKey: row.result_key, requestId: ctx.requestId,
           text: replyButtonClickText({ label: b.labels[picked[0]!]!, value: b.values?.[picked[0]!] ?? b.labels[picked[0]!]! }), actor: auditActor });
         db.prepare("UPDATE hub_answer_buttons SET state='chosen',chosen_index=?,closed_at=?,revision=revision+1 WHERE id=? AND state='open'").run(picked[0], this.core.now(), row.id);
         this.audit(tx, msg, "buttons.chosen", "completed", ctx.requestId, auditActor);

@@ -238,6 +238,16 @@ describe("Hub buttons use ordinary durable question delivery", () => {
     expect((r!.contents.get(ref) as any).pollBallot.options).toEqual([1]);
     spy.mockRestore();
   });
+  it("a click cannot reuse a typed question's key as its own source receipt", async () => {
+    const w = await world(), b = wire(); await w.answer(b);
+    const key = randomUUID();
+    const typed = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.roomId}/messages`, { idempotencyKey: key, text: "[button] Yes (value: yes)" });
+    expect(typed.status).toBe(200);
+    const choice = await w.click(b, { index: 0, idempotencyKey: key }); expect(choice.status).toBe(200);
+    expect(choice.json.receipt.messageId).not.toBe(typed.json.receipt.messageId);
+    expect(w.questions()).toEqual(["[button] Yes (value: yes)", "[button] Yes (value: yes)"]);
+    expect((await w.click(b, { index: 0, idempotencyKey: key })).json.receipt).toEqual(choice.json.receipt);
+  });
   it("an idempotency key cannot choose another answer's set", async () => {
     const w = await world(), a = wire(); await w.answer(a);
     const key = randomUUID(); expect((await w.click(a, { index: 0, idempotencyKey: key })).status).toBe(200);
