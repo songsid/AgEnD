@@ -79,7 +79,7 @@ import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
-import { PreviewPanel, claimPanel, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
+import { PreviewPanel, claimPanel, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
@@ -339,6 +339,10 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     running && supportsInstanceFeature(inst,"lifecycle") ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
     running && supportsInstanceFeature(inst,"lifecycle") ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
     // #1958: its identity colour and where it shows (the public link too, as profile edits).
+    // #3153 P1: the folder it works in, read-only — this computer's admin only (never over the public link), and not an
+    // agent on another machine (the server also refuses General and coordinators: their folder is the fleet's own).
+    document.body.dataset.publicLink === "1" || inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
+      : { key: "workspace", label: t("chat.wsOpen"), icon: "file", onSelect: () => openWorkspace({ key: `ws:${name}`, instance: name }) },
     colorMenuItem(name, inst),
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
     ...themeMenuItems(name),
