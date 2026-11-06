@@ -112,6 +112,19 @@ describe("reconcileServer: the actions", () => {
     expect(reused.calls).toEqual([]);
   });
 
+  it("a positive exit needs BOTH the pid gone and the socket refusing (a socket still answering holds)", async () => {
+    const { waitServerGone } = await import("../src/tmux-server.js");
+    const { p } = fakes({ proc: null });                 // the pid is gone at once...
+    expect(await waitServerGone(p, 4242, "/x", 1000)).toBe(false);   // ...but the socket keeps answering
+  });
+
+  it("the pid fallback needs the recorded start time too: a reused pid running the same binary is not ours", async () => {
+    const { h, rec, next } = home({ client: "changed" });
+    const reused = fakes({ proc: { start: REC.serverStart + 60, exe: rec.binary } });
+    expect(await reconcileServer({ agendHome: h, socket: "agend", current: next, probes: reused.p })).toMatch(/can't be verified/);
+    expect(reused.calls).toEqual([]);
+  });
+
   it("no record at all: held, nothing run or killed", async () => {
     const { h, next } = home({ record: false });
     const { p, calls } = fakes();

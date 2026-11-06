@@ -48,7 +48,7 @@ describe("treeRuns", () => {
 });
 
 /** A default server with `windows`; `closes` = kill-window removes the window and its pane exits. */
-function fakes(o: { tmux?: string | null; windows?: Array<[string, string, string, number]>; server?: string | Error; closes?: boolean;
+function fakes(o: { tmux?: string | null; windows?: Array<[string, string, string, number]>; server?: string | Error; closes?: boolean; paneLingers?: boolean;
   procs?: Map<number, { ppid: number; args: string }> } = {}) {
   const calls: string[] = [];
   let windows = [...(o.windows ?? [["agend", "@7", "dev", 4000]])];
@@ -60,7 +60,7 @@ function fakes(o: { tmux?: string | null; windows?: Array<[string, string, strin
       if (o.server instanceof Error) throw o.server;
       if (args[0] === "display-message") return o.server ?? "77 1700000000";
       if (args[0] === "kill-window") {
-        if (o.closes !== false) { const w = windows.find(x => x[1] === args[2]); windows = windows.filter(x => x[1] !== args[2]); if (w) dead.add(w[3]); }
+        if (o.closes !== false) { const w = windows.find(x => x[1] === args[2]); windows = windows.filter(x => x[1] !== args[2]); if (w && !o.paneLingers) dead.add(w[3]); }
         return "";
       }
       if (args.includes("#{window_id}")) return windows.map(w => w[1]).join("\n");
@@ -94,6 +94,7 @@ describe("migrateLegacyWindow", () => {
     ["no system tmux to ask", { tmux: null }, /no system tmux to ask/],
     ["a default server that answers but can't be queried", { server: new Error("protocol version mismatch (client 8, server 9)") }, /can't be queried \(protocol version mismatch/],
     ["a window that does not close", { closes: false }, /did not close/],
+    ["a window gone from the list whose agent process still runs", { paneLingers: true }, /did not close/],
   ])("held (only this instance), nothing else killed: %s", async (_why, o, msg) => {
     const x = inst("@7");
     const { p, calls } = fakes(o);
@@ -102,7 +103,7 @@ describe("migrateLegacyWindow", () => {
     expect(err.message).toMatch(msg);
     expect(err.message).toMatch(/agend tmux-migrate --release dev/);
     expect(calls.some(c => c.startsWith("kill-server"))).toBe(false);
-    if (o?.closes !== false) expect(calls.some(c => c.startsWith("kill-window"))).toBe(false);
+    if (o?.closes !== false && !o?.paneLingers) expect(calls.some(c => c.startsWith("kill-window"))).toBe(false);
   });
 
   it("no default server, or no such window: nothing to do; the stale id is dropped (it means nothing on the new server)", async () => {
