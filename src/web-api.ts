@@ -61,6 +61,9 @@ import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEvent
 import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
+import { workspaceChanges, workspaceFile, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
+import { isGeneralInstance } from "./general-instance.js";
+import { resolveToolSet } from "./tool-permissions.js";
 import type { WebSessionStore, SessionRecord } from "./web-session.js";
 import { OPERATOR, isOwnerEffectKey, type WebPrefsStore } from "./web-prefs.js";
 import { WEB_NAME_FALLBACK, type WebAccount, webPersonKey } from "./web-profile.js";
@@ -1931,6 +1934,55 @@ export function handleWebRequest(
     // said, so its empty chat is explained rather than blank. Only that there are some — never how many, or what.
     const allHidden = !!guest && messages.length === 0 && (ctx.webChatHistory?.list(instance, 1).length ?? 0) > 0;
     json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0, ...(allHidden ? { allHidden: true } : {}) });
+    return true;
+  }
+
+  // ── #3153 P1: an agent's Files / Changes (read-only) ─────────────────────────────────
+  // The fleet's local admin session only: never the public link, a guest, a token or a connection from outside. One
+  // agent's own working directory (agent-workspace.ts confines and filters every path); not General or a coordinator
+  // (they work in the fleet's own directory), not an agent on another machine.
+  if (method === "GET" && path === "/ui/workspace") {
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    const localAdmin = () => {
+      const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+    };
+    const who = localAdmin();
+    if (!who) { json(res, 403, { error: "workspace_needs_a_local_admin" }); return true; }
+    const p = url.searchParams, instance = p.get("instance") ?? "", op = p.get("op") ?? "";
+    const cfg = ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, instance) ? ctx.fleetConfig.instances[instance] : undefined;
+    if (!cfg) { json(res, 404, { error: "not_found" }); return true; }
+    const offered = !isGeneralInstance(ctx.fleetConfig as never, instance) && resolveToolSet(cfg as never, instance) !== "coordinator"
+      && cfg.runtime !== "windows" && !(cfg as { machine_id?: unknown }).machine_id;
+    if (!offered) { json(res, 404, { error: "workspace_not_offered" }); return true; }
+    if (!["changes", "list", "file", "image"].includes(op)) { json(res, 400, { error: "op: changes | list | file | image" }); return true; }
+    const workDir = String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+    void (async () => {
+      try {
+        const ws = await workspaceRoot(workDir, getAgendHome());
+        // The session must still be the same one when the answer goes out (it may have ended while git ran).
+        const answer = async () => {
+          if (op === "changes") return { kind: "json" as const, body: await workspaceChanges(ws) };
+          if (op === "list") return { kind: "json" as const, body: await workspaceList(ws, p.get("path") ?? "") };
+          if (op === "file") return { kind: "json" as const, body: await workspaceFile(ws, p.get("path")) };
+          return { kind: "image" as const, body: await workspaceImage(ws, p.get("path")) };
+        };
+        const out = await answer();
+        if (localAdmin()?.handle !== who.handle) { json(res, 403, { error: "workspace_needs_a_local_admin" }); return; }
+        if (out.kind === "image") {
+          res.writeHead(200, { "Content-Type": out.body.mime, "Content-Length": String(out.body.bytes.length), "Content-Security-Policy": "default-src 'none'; sandbox" });
+          res.end(out.body.bytes);
+          return;
+        }
+        json(res, 200, out.body);
+      } catch (err) {
+        if (err instanceof WorkspaceError) { json(res, err.code === "not_found" || err.code === "not_a_directory" ? 404 : 403, { error: err.code }); return; }
+        ctx.logger.error({ err: (err as Error).message, instance }, "Workspace read failed");
+        json(res, 500, { error: "could not read the folder" });
+      }
+    })();
     return true;
   }
 

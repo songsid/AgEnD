@@ -20,6 +20,7 @@ import { chatTime, onDayChange } from "./chat-time.js";
 import { PanelActions } from "./preview-panel-actions.js";
 import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./preview-versions.js";
 import { pagesOf, pageIdOf } from "./preview-pages.js";
+import { WorkspacePanel } from "./workspace-panel.js";
 
 export { htmlTitle };
 
@@ -56,6 +57,12 @@ export function openPanel(spec, { run = false } = {}) {
   const old = state.open;
   set({ open: { ...spec, kind: "html" }, run: run ? ++runs : 0 });
   retire(old); // State changes first: cleanup reentry cannot close a newer panel.
+}
+/** #3153 P1: an agent's Files / Changes in the panel — `spec`: { key, instance } (read-only; nothing runs). */
+export function openWorkspace(spec) {
+  const old = state.open;
+  set({ open: { ...spec, kind: "workspace" }, run: 0 });
+  retire(old);
 }
 /** Close publishes the empty slot before old-owner callbacks can reenter. */
 export function closePanel() {
@@ -372,6 +379,9 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   };
 
   if (!open) return null;
+  if (open.kind === "workspace") return html`<div data-trust="preview" class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
+      aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>
+    <${WorkspacePanel} open=${open} name=${name} panel=${panel} fs=${fs} enterFs=${enterFs} leaveFs=${leaveFs} onKey=${onPanelKey} subscribe=${subscribe} close=${closePanel} />`;
   const going = run.state === "starting" || run.state === "running";
   const a = P().availability();
   // #1554: a device that has not allowed previews is offered the same "Allow previews" here (the same confirm). Allowing
