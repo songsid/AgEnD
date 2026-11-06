@@ -162,6 +162,14 @@ describe("dialogs: before the reset Shift+x; after it Try Again", () => {
     expect(weekly(b, MODAL).map(d => d.keys)).toEqual([["X"]]);
   });
 
+  it("consumed Try Again on a past clock survives a new backend (restart/respawn)", () => {
+    const dir = tmp();
+    writeGrokWeeklyReset(dir, { pausedAt: 1_700_000_000_000, resetAt: 1_700_000_001_000, tryAgainConsumed: true });
+    const b = new GrokBackend(dir);
+    expect(weekly(b, STILL).map(d => d.keys)).toEqual([["X"]]);
+    expect(weekly(b, STILL, "startup").map(d => [d.holdOnly, d.keys])).toEqual([[true, []]]);
+  });
+
   it("scrollback after reset: Space first, not Try Again", () => {
     const b = new GrokBackend(dueDir(true));
     expect(weekly(b, SCROLLBACK).map(d => d.keys)).toEqual([[" "]]);
