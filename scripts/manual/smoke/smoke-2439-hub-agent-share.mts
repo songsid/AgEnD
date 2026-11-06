@@ -70,6 +70,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phon
   const { ctx, page, errors, posts } = await open(c);
   const lead = await page.locator(".hub-exposures > .note").first().textContent();
   const legacyWhy = await page.locator(".hub-exposure-republish").textContent().catch(() => "");
+  await page.locator(".hub-exposure-republish").scrollIntoViewIfNeeded().catch(() => {});
   await page.screenshot({ path: shotPath(SMOKE, c, "list") });
   await shareFirst(page);
   await page.waitForFunction(() => document.querySelectorAll(".hub-exposure.is-shared").length === 2, null, { timeout: 5000 }).catch(() => {});
@@ -117,6 +118,7 @@ if (S && existsSync(S)) {
     const { ctx, page, errors, posts } = await open(c, js("ui/js", ["settings-hub.js", "hub-client.js", "hub-strings.js"]));
     await shareFirst(page);
     await page.waitForSelector(".hub-exposure-pick", { timeout: 5000 }).catch(() => {});
+    await page.locator(".hub-exposure-pick").scrollIntoViewIfNeeded().catch(() => {});
     const picker = await page.locator(".hub-exposure-pick").count();
     const shareDisabled = await page.locator(".hub-exposure-pick .btn-primary").isDisabled().catch(() => false);
     await page.locator(".hub-exposure-pick .btn-primary").click({ force: true, timeout: 2000 }).catch(() => {});
