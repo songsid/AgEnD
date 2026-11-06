@@ -38,6 +38,7 @@
 
 import { claudeLoginScreenActive } from "./backend/claude-code.js";
 import { agyLoginScreenActive } from "./backend/antigravity.js";
+import { parseClaudeAuthStatus } from "./claude-auth-status.js";
 
 export interface AuthCheck {
   /** argv of a cheap, LLM-token-free status probe (5s timeout). */
@@ -47,6 +48,11 @@ export interface AuthCheck {
    * either way and reports {"loggedIn": true|false} — verified live.
    */
   validPattern?: RegExp;
+  /**
+   * A reader that decides from the output instead of a pattern. `claude auth status` is read by the one shared parser
+   * (claude-auth-status.ts), the same one the Windows Runtime and the sign-in list use, so they cannot drift.
+   */
+  valid?: (output: string) => boolean;
 }
 
 export interface LoginFlow {
@@ -257,7 +263,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     tunnelOk: true,
     backend: "claude-code",
     command: "claude auth login",
-    authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },
+    authCheck: { argv: ["claude", "auth", "status"], valid: output => parseClaudeAuthStatus(output).loggedIn === true },
     loginScreenPattern: /Select login method:|Sign in (?:to|with) your Anthropic account|Paste code here if prompted >/,
     loginScreenActive: claudeLoginScreenActive,
     loginScreenBeforeReady: true,
@@ -378,6 +384,7 @@ export async function checkAuthStatus(check: AuthCheck, env?: Record<string, str
     if (code === null) return "unknown";
     if (code !== 0) return "invalid";
     if (check.validPattern && !check.validPattern.test(output)) return "invalid";
+    if (check.valid && !check.valid(output)) return "invalid";
     return "valid";
   } catch {
     return "unknown";

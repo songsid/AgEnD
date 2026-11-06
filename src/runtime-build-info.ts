@@ -9,7 +9,7 @@ import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js"
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
   "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "runtime-protocol.js", "runtime-build-info.js", "runtime-connection.js", "windows-cli.js", "windows-cli-worker.js",
-  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", "runtime-switches.js", "runtime-credential-profiles.js", ...RUNTIME_PANE_MODULES,
+  "windows-cli-providers.js", "child-process.js", "windows-native-mcp.js", "model-catalog-defaults.js", "atomic-write.js", "runtime-switches.js", "runtime-credential-profiles.js", "claude-auth-status.js", ...RUNTIME_PANE_MODULES,
 ]);
 function boundedFile(path: string, limit: number): Buffer {
   const fd = openSync(path, "r");
