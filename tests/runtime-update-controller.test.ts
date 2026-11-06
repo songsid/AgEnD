@@ -14,6 +14,8 @@ import { RuntimeUpdateController, type RuntimeUpdateControllerOptions } from "..
 import { RuntimeUpdateJournal } from "../src/runtime-update-journal.js";
 import { RuntimeUpdateIpc, type RuntimeUpdateIpcMessage } from "../src/runtime-update-ipc.js";
 import { acquireRuntimeInstallLock, type RuntimeProcessObservation, type RuntimeProcessProof } from "../src/runtime-update-lock.js";
+import * as RuntimeLocks from "../src/runtime-update-lock.js";
+import * as RuntimeOwners from "../src/runtime-update-owners.js";
 import { RUNTIME_INSTALL_RECEIPT, readRuntimeSelectedProgram, stageRuntimeUpdate } from "../src/runtime-update-install.js";
 import { readRuntimeInstallOwner } from "../src/runtime-update-owners.js";
 import { runtimeBundleFixture } from "./support/runtime-bundle-fixture.js";
@@ -23,6 +25,11 @@ const metadata = (b: RuntimeBundle) => ({ version: b.version, sha256: b.sha256, 
 let sa: ReturnType<typeof runtimeBundleFixture>, sb: ReturnType<typeof runtimeBundleFixture>, sc: ReturnType<typeof runtimeBundleFixture>;
 let a: RuntimeBundle, b: RuntimeBundle, c: RuntimeBundle;
 const cleanup: Array<() => Promise<void>> = [];
+function barrier() {
+  let release!: () => void;
+  const promise = new Promise<void>(done => { release = done; });
+  return { promise, release };
+}
 beforeAll(() => {
   sa = runtimeBundleFixture("2.3.5-fixture.1"); sb = runtimeBundleFixture("2.3.5-fixture.2"); sc = runtimeBundleFixture("2.3.5-fixture.1");
   writeFileSync(join(sc.moduleDirectory, "runtime-cli.js"), "// another same-version code fixture\nexport {};\n");
@@ -208,7 +215,7 @@ it("a wrong candidate build rolls back before activation and arms only the verif
     [join(f.root, f.program.folder, "dist", "runtime-cli.js"), "--internal-update"], expect.anything());
 });
 
-it("keeps selection and activation intent on an unknown ACK and close waits for the owned RPC", async () => {
+it.each([false, true])("close waits for the owned activation RPC (%s), preserving its intent without continuing", async acknowledged => {
   const f = await fixture(), h = await handoff(f), controller = await RuntimeUpdateController.resume(h.options, h.init, h.channel); f.own(controller);
   let finish!: (value: boolean) => void;
   h.options.makeClient = opts => { const value = new InertClient(opts, h.next); f.clients.push(value);
@@ -216,9 +223,115 @@ it("keeps selection and activation intent on an unknown ACK and close waits for 
   const trial = controller.startTrial(h.id); await vi.waitFor(() => expect(f.clients[0]?.activate).toHaveBeenCalledOnce());
   expect(f.journal().read().attempt?.phase).toBe("activating"); expect(f.selected()).toEqual(h.next);
   let closed = false; const closing = controller.close().then(() => { closed = true; });
-  await Promise.resolve(); await Promise.resolve(); expect(closed).toBe(false); finish(false);
+  await Promise.resolve(); await Promise.resolve(); expect(closed).toBe(false); finish(acknowledged);
   await trial; await closing;
   expect(f.selected()).toEqual(h.next); expect(f.children).toEqual([]); expect(f.journal().read().attempt?.phase).toBe("activating");
+  expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([]);
+});
+
+it.each((["lock", "exclusive"] as const).flatMap(phase => [true, false].map(cancel => ({ phase, cancel }))))(
+  "trial paused at $phase (close=$cancel) preserves cancellation and the normal activation control", async ({ phase, cancel }) => {
+  const f = await fixture(), h = await handoff(f), controller = await RuntimeUpdateController.resume(h.options, h.init, h.channel); f.own(controller);
+  const entered = barrier(), held = barrier();
+  const acquire = RuntimeLocks.acquireRuntimeInstallLock, exclusive = RuntimeOwners.assertRuntimeInstallExclusive;
+  const spy = phase === "lock"
+    ? vi.spyOn(RuntimeLocks, "acquireRuntimeInstallLock").mockImplementationOnce(async (...args) => { entered.release(); await held.promise; return acquire(...args); })
+    : vi.spyOn(RuntimeOwners, "assertRuntimeInstallExclusive").mockImplementationOnce(async (...args) => { entered.release(); await held.promise; return exclusive(...args); });
+  try {
+    const trial = controller.startTrial(h.id); await entered.promise;
+    let closed = false; const closing = cancel ? controller.close().then(() => { closed = true; }) : undefined;
+    await Promise.resolve(); expect(closed).toBe(false);
+    expect(readRuntimeInstallOwner(f.root, h.ownerId).parent).toEqual(self);
+    held.release(); await trial; await closing;
+    expect(f.clients[0].starts).toBe(cancel ? 0 : 1);
+    expect(f.clients[0].activate).toHaveBeenCalledTimes(cancel ? 0 : 1);
+    expect(f.selected()).toEqual(cancel ? f.program : h.next);
+    expect(f.journal().read().attempt?.phase).toBe(cancel ? "handoff" : undefined);
+    expect(f.children).toEqual([]);
+    if (!cancel) await controller.close();
+    expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([]);
+  } finally { held.release(); spy.mockRestore(); }
+});
+
+it.each((["stop", "child-proof", "child-register", "arm"] as const).flatMap(phase => [true, false].map(cancel => ({ phase, cancel }))))(
+  "rollback paused at $phase (close=$cancel) preserves cancellation and the normal handoff control", async ({ phase, cancel }) => {
+  const f = await fixture(), h = await handoff(f), entered = barrier(), held = barrier();
+  const observe = h.options.observe!, spawn = h.options.spawn!;
+  let observations = 0;
+  if (phase === "child-proof" || phase === "child-register") h.options.observe = async pid => {
+    if (f.children.some(child => child.pid === pid) && ++observations === (phase === "child-proof" ? 1 : 2)) { entered.release(); await held.promise; }
+    return observe(pid);
+  };
+  if (phase === "arm") h.options.spawn = ((...args: Parameters<typeof spawn>) => {
+    const child = spawn(...args) as unknown as InertChild, send = child.send.bind(child);
+    child.send = (message, callback) => { entered.release(); void held.promise.then(() => send(message, callback)); return true; };
+    return child as unknown as ChildProcess;
+  }) as typeof spawn;
+  const controller = await RuntimeUpdateController.resume(h.options, h.init, h.channel); f.own(controller);
+  h.options.makeClient = opts => {
+    const value = new InertClient(opts, { ...h.next, buildId: "f".repeat(64) }); f.clients.push(value);
+    if (phase === "stop") {
+      const stop = value.stop.bind(value);
+      value.stop = async () => { entered.release(); await held.promise; await stop(); };
+    }
+    return value as unknown as RuntimeClient;
+  };
+  const trial = controller.startTrial(h.id); await entered.promise;
+  let closed = false; const closing = cancel ? controller.close().then(() => { closed = true; }) : undefined;
+  await Promise.resolve(); expect(closed).toBe(false);
+  expect(readRuntimeInstallOwner(f.root, h.ownerId).parent).toEqual(self);
+  held.release(); await trial; await closing;
+  expect(f.clients[0].starts).toBe(1); expect(f.clients[0].activate).not.toHaveBeenCalled();
+  expect(f.children).toHaveLength(cancel && phase === "stop" ? 0 : 1);
+  if (cancel) {
+    for (const child of f.children) { expect(child.kill).toHaveBeenCalledOnce(); expect(child.gone).toBe(true); expect(child.unref).not.toHaveBeenCalled(); }
+    expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([]);
+    expect(f.journal().read().attempt?.phase).toBe(phase === "stop" ? "trial" : "rollback");
+    expect(f.selected()).toEqual(phase === "stop" ? h.next : f.program);
+  } else {
+    expect(f.children[0].kill).not.toHaveBeenCalled(); expect(f.children[0].unref).toHaveBeenCalledOnce();
+    expect(readRuntimeInstallOwner(f.root, h.ownerId).child).toEqual(f.children[0].proof);
+    expect(f.journal().read().attempt?.phase).toBe("rollback"); expect(f.selected()).toEqual(f.program);
+    await controller.close(); expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([`${h.ownerId}.json`]);
+  }
+});
+
+it("shutdown keeps the owner row until an armed rollback helper has physically exited", async () => {
+  const f = await fixture(), h = await handoff(f), entered = barrier(), held = barrier(), killed = barrier();
+  const spawn = h.options.spawn!;
+  h.options.spawn = ((...args: Parameters<typeof spawn>) => {
+    const child = spawn(...args) as unknown as InertChild, send = child.send.bind(child);
+    child.send = (message, callback) => { entered.release(); void held.promise.then(() => send(message, callback)); return true; };
+    child.kill.mockImplementation(() => { child.signalCode = "SIGTERM"; killed.release(); return true; });
+    return child as unknown as ChildProcess;
+  }) as typeof spawn;
+  const controller = await RuntimeUpdateController.resume(h.options, h.init, h.channel); f.own(controller);
+  h.options.makeClient = opts => { const value = new InertClient(opts, { ...h.next, buildId: "f".repeat(64) }); f.clients.push(value); return value as unknown as RuntimeClient; };
+  const trial = controller.startTrial(h.id); await entered.promise;
+  let closed = false, closeError: unknown;
+  const closing = controller.close().then(() => { closed = true; }, error => { closed = true; closeError = error; });
+  held.release();
+  const first = await Promise.race([killed.promise.then(() => "killed"), closing.then(() => "closed")]);
+  try {
+    expect(first).toBe("killed");
+    await new Promise<void>(done => setImmediate(done)); expect(closed).toBe(false); expect(closeError).toBeUndefined();
+    expect(readRuntimeInstallOwner(f.root, h.ownerId).child).toEqual(f.children[0].proof);
+    expect(f.children[0].unref).not.toHaveBeenCalled();
+  } finally { f.children[0].gone = true; f.children[0].emit("close", null, "SIGTERM"); }
+  await trial; await closing;
+  expect(closeError).toBeUndefined();
+  expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([]);
+});
+
+it("a rollback report callback that closes the controller cannot hand off its armed helper", async () => {
+  const f = await fixture(), h = await handoff(f); let closing: Promise<void> | undefined;
+  h.options.report = message => { if (message.startsWith("Runtime update failed.")) closing = controller.close(); };
+  const controller = await RuntimeUpdateController.resume(h.options, h.init, h.channel); f.own(controller);
+  h.options.makeClient = opts => { const value = new InertClient(opts, { ...h.next, buildId: "f".repeat(64) }); f.clients.push(value); return value as unknown as RuntimeClient; };
+  await controller.startTrial(h.id); expect(closing).toBeDefined(); await closing;
+  expect(f.children[0].kill).toHaveBeenCalledOnce(); expect(f.children[0].gone).toBe(true);
+  expect(f.children[0].unref).not.toHaveBeenCalled();
+  expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([]);
 });
 it("an interrupted download is retryable and cannot mark the server build as failed", async () => {
   const f = await fixture(); f.interrupt(true); const controller = (await f.open())!; await controller.start();
