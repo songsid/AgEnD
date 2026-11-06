@@ -161,6 +161,12 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "settings-width.js",
     // The computer's display name, in a module of its own so a tab opened before an upgrade loads it fresh (Chat imports it).
     "machine-name.js",
+    // Hub PR A (#3226): the chat's drawing, shared by the fleet's chat and the Hub's (static code; messages are read
+    // behind each listener's own gate): the thread, its Markdown renderer and previews, times, the composer and WorkBar,
+    // the right-hand rail's frame and a page head. Their old /ui/js/ paths re-export them for tabs opened before.
+    "chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-composer.js", "side-rail.js", "page-head.js",
+    // …and the chat's words (static tables), so the Hub draws the same thread in the same words.
+    "chat-strings.js", "chat-md-strings.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
     // #3008: the QR code of an authenticator's setup (qrcode-generator 2.0.4, MIT; shared/vendor/vendor.json, byte-checked).
     // Static code, no data — the secret is drawn by Settings behind the gate; loaded only when an app is being set up.

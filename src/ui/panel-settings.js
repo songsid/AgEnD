@@ -49,7 +49,7 @@ import { takeAgentRequest } from "./settings-request.js";
 // #1604: This device — the preview opt-in (one path: the app's confirm, then preview.js) and the tour, from the chat.
 import { setPreviewOptIn } from "./panel-chat.js";
 import { startTour } from "./chat-tour.js";
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
 import { OfficeSharesCard } from "./office-share-dialog.js";

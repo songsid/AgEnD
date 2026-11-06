@@ -7,7 +7,7 @@
 //
 // Requests and #1374: the history of an instance is read once per page, when a person first opens its chat (a
 // navigation — it counts as use, as the old click did). Coming back to it reads nothing; the stream keeps it current.
-import "./chat-render.js";
+import "/assets/chat-render.js";
 import { createLiveAgentReplies } from "./chat-live-replies.js";
 /** A message's identity on this page (ids restart with each fleet process; the boot makes them unique). */
 const msgKeyOf = (m) => `${m.boot}-${m.id}`;

@@ -159,7 +159,7 @@ describe("#1770: the thread labels every line — message, person and status lin
 
   it("the preview panel labels its source and newer-version lines the same way, and nothing formats a chat time on its own", () => {
     const panel = readFileSync(join(process.cwd(), "src", "ui", "preview-panel.js"), "utf8");
-    const thread = readFileSync(join(process.cwd(), "src", "ui", "chat-thread.js"), "utf8");
+    const thread = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-thread.js"), "utf8");
     expect(panel).toMatch(/const timeOf = \(ts\) => \(ts \? chatTime\(ts, \{ yesterday: \(hm\) => t\("chat\.yesterdayAt", hm\) \}\) : ""\);/);
     for (const src of [panel, thread]) expect(src).not.toMatch(/toLocaleTimeString/);
   });

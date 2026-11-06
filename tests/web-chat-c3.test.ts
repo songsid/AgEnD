@@ -328,7 +328,7 @@ describe("POST /ui/cancel through the real gate", () => {
 
 // ── the page ────────────────────────────────────────────────────────────────────────────────────────────────
 
-const RENDER = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
+const RENDER = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-render.js"), "utf8");
 function renderApi() {
   const c = vm.createContext({}); vm.runInContext(RENDER, c);
   return (c as any).AgendChatRender;

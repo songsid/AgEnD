@@ -7,7 +7,7 @@ import { sectionPath } from "/assets/app-route.js";
 import { navigate } from "/assets/app-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // search shows these labels from outside Settings (dailyTips, hangEnabled, crossInstanceVisibility)
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 import { GUESTS_SETTINGS } from "./settings-guests.js";
 
 const L = (en, zh) => ({ en, "zh-TW": zh });

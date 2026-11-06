@@ -1,7 +1,7 @@
 // #2911 (1): the versions of a page in the preview panel, and the changes from one to the next. Pure functions: the
 // panel (preview-panel.js) draws them. Nothing here runs a preview — a version is shown as any block is, waiting for
 // Preview (#1481 §14).
-import "./chat-render.js";
+import "/assets/chat-render.js";
 
 const R = () => globalThis.AgendChatRender;
 

@@ -1,6 +1,0 @@
-# Fingerprint-pinned findings in the history of PR #3215 (commit:file:rule:line). Each one is a fake test value ("sentinel-secret-...") that
-# earlier commits of that PR carried and that no later commit can remove from the per-commit scan. None is a real credential; the current
-# tree contains none of these values.
-d92588f0176c3d25ec74abbe739f7eb845231c45:tests/runtime-install.test.ts:generic-api-key:252
-6567137a443a76e0591acf5f9e7b7a63a9d12082:tests/gitleaks-config.test.ts:generic-api-key:136
-6567137a443a76e0591acf5f9e7b7a63a9d12082:tests/gitleaks-config.test.ts:generic-api-key:146
