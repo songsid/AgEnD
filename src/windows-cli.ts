@@ -97,6 +97,7 @@ export class WindowsCliBridge {
   private pendingProbe: Promise<WindowsCliProbe> | null = null;
   private workerGeneration = 0;
   private readonly pendingWorkers = new Map<ChildProcess, () => void>();
+  private readonly physicalWorkers = new Set<ChildProcess>();
   private cachedProbe: WindowsCliProbe | null;
   /**
    * `inventoryFile`: where the last detection is kept (absent: memory only). `admit` (M-2255, #2955 review): asked
@@ -110,6 +111,8 @@ export class WindowsCliBridge {
 
   list(): WindowsCliTask[] { return [...this.tasks.values()].map(v => visible(v.task)).reverse(); }
   hasActiveTask(): boolean { return this.active !== null; }
+  /** A terminal snapshot or rejected request alone is not proof that its worker has physically closed. */
+  idleForUpdate(): boolean { return this.active === null && !this.pendingProbe && this.pendingWorkers.size === 0 && this.physicalWorkers.size === 0; }
   get(id: string): WindowsCliTask | null { const task = this.tasks.get(id)?.task; return task ? visible(task) : null; }
   /**
    * M-2239 P1-2: the last detection, as it was — starting nothing. Only `force` (an administrator's explicit "Detect
@@ -151,6 +154,7 @@ export class WindowsCliBridge {
     this.admit?.();                                  // no await between this and spawn
     return new Promise((resolve, reject) => {
       const child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
+      this.physicalWorkers.add(child); child.once("close", () => this.physicalWorkers.delete(child));
       let text = "", settled = false;
       const timer = setTimeout(() => { child.kill(); finish(new Error(`Windows CLI ${request.op} timed out`)); }, timeoutMs);
       const finish = (error?: Error, value?: Record<string, unknown>): void => {
@@ -235,6 +239,7 @@ export class WindowsCliBridge {
       this.admit?.();                                // no await between this and spawn (the executor runs at once)
       await new Promise<void>((resolve) => {
         const child = this.child = spawn(transport.executable, transport.args, { stdio: ["pipe", "pipe", "pipe"] });
+        this.physicalWorkers.add(child); child.once("close", () => this.physicalWorkers.delete(child));
         let wire = "", provider = "", stderr = "", received = 0, finished = false, turnCompleted = false;
         const fail = (message: string): void => { task.error = message.slice(0,8192); if (task.status !== "cancelling") task.status = "failed"; };
         const append = (text: string): void => { task.output = (task.output + text + (input.cli === "grok" ? "" : "\n")).slice(-TEXT_LIMIT); };

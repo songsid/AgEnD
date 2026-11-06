@@ -3,10 +3,12 @@ import WebSocket from "ws";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { lstatSync } from "node:fs";
 import { spawn } from "./child-process.js";
 import { readPaneSystemBootId } from "./runtime-pane-boot.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
+import { RuntimePaneStore } from "./runtime-pane-store.js";
 import { protectPaneDirectory, readPaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type {} from "./runtime-pane-service.js";
@@ -32,6 +34,7 @@ export class RuntimePaneLink {
   private timer: ReturnType<typeof setInterval> | undefined;
   private closed = false;
   private cleanupOnly=false;
+  private idleShutdown = false;
   private readonly clientEpoch = randomUUID();
   private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">) {}
   static async open(options: PaneLinkOptions): Promise<RuntimePaneLink> {
@@ -65,6 +68,50 @@ export class RuntimePaneLink {
     // A live descriptor which cannot authenticate is held, never replaced by another host.
     return this.attach(descriptor, options);
   }
+  /** Attach-only discovery under the foreground profile lock. Never starts or recovers a host to manufacture idle. */
+  static async drainExistingForUpdate(options: PaneLinkOptions, current: () => boolean, existing?: RuntimePaneLink): Promise<void> {
+    const directory = join(options.directory, "pane-host"), scope = runtimeJobDigest({ server: options.server, machineId: options.machineId });
+    const stat = (path: string) => {
+      try { return lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+    };
+    const checkDirectory = (path: string): boolean => {
+      const entry = stat(path); if (!entry) return false;
+      if (!entry.isDirectory() || entry.isSymbolicLink() || process.getuid && entry.uid !== process.getuid()) throw Error("Pane host directory is unconfirmed");
+      return true;
+    };
+    if (!current()) throw Error("Runtime update fence expired");
+    if (!checkDirectory(directory)) {
+      if (existing?.connected()) throw Error("Connected pane host discovery is unconfirmed");
+      return;
+    }
+    const descriptor = readPaneHostDescriptor(directory, scope);
+    if (!descriptor) {
+      if (existing?.connected()) throw Error("Connected pane host discovery is unconfirmed");
+      // Descriptor absence alone also occurs during host startup and shutdown.
+      if (stat(join(directory, "runtime.lock"))) throw Error("Pane host shutdown is unconfirmed");
+      if (checkDirectory(join(directory, "state")) && new RuntimePaneStore(join(directory, "state")).list().some(row => row.snapshot.state !== "exited")) throw Error("Pane reservations remain unconfirmed");
+      if (!current()) throw Error("Runtime update fence expired");
+      return;
+    }
+    // Attaching replaces the host's current client. Reuse our live link so a busy refusal
+    // preserves its output and MCP transport; discovery is only for a detached Runtime.
+    if (existing?.connected() && existing.hostBootId !== descriptor.hostBootId) throw Error("Connected pane host boot changed");
+    const retained = existing?.connected() ? existing : undefined;
+    const link = retained ?? await this.attach(descriptor, options);
+    try {
+      if (!current()) throw Error("Runtime update fence expired");
+      await link.drainForUpdate();
+      const deadline = performance.now() + 10_000;
+      for (;;) {
+        if (!current()) throw Error("Runtime update fence expired");
+        let gone = false;
+        try { process.kill(descriptor.pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") gone = true; }
+        if (gone && !stat(join(directory, "host.json")) && !stat(join(directory, "runtime.lock"))) return;
+        if (performance.now() >= deadline) throw Error("Pane host physical shutdown is unconfirmed");
+        await new Promise(done => setTimeout(done, 25));
+      }
+    } finally { if (!retained) await link.stop(); }
+  }
   /** Authenticated discovery seam; fixtures bind only private loopback services. */
   static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">): Promise<RuntimePaneLink> {
     return new Promise((resolve, reject) => {
@@ -81,6 +128,7 @@ export class RuntimePaneLink {
           const value = JSON.parse(bytes.toString());
           if (!ready) {
             if (value?.type !== "hello" || value.hostBootId !== descriptor.hostBootId) throw Error("Pane host boot changed");
+            link.idleShutdown = value.idleShutdown === 1;
             ready = true; clearTimeout(deadline); link.lease(); link.timer = setInterval(() => link.lease(), 5000); link.timer.unref(); resolve(link); return;
           }
           if (value?.type === "mcp.request") {
@@ -139,6 +187,15 @@ export class RuntimePaneLink {
     });
   }
   connected(): boolean { return !this.closed && this.socket.readyState === WebSocket.OPEN; }
+  /** Never closes a live pane: the host must also atomically prove its queues, MCP and reservations empty. */
+  async drainForUpdate(): Promise<void> {
+    if (!this.idleShutdown || this.pending.size || this.mcpPending || this.socket.bufferedAmount) throw Error("Pane host update-idle proof is unavailable");
+    const inventory = await this.request({ action: "list" }) as { hostBootId?: unknown; panes?: unknown };
+    if (inventory?.hostBootId !== this.hostBootId || !Array.isArray(inventory.panes) || inventory.panes.length > 4096
+      || inventory.panes.map(validateRuntimePaneSnapshot).some(pane => pane.state !== "exited")
+      || this.pending.size || this.mcpPending) throw Error("Pane host is busy or unconfirmed");
+    validateRuntimePaneShutdown(await this.request({ action: "shutdown", hostBootId: this.hostBootId }), this.hostBootId);
+  }
   private closePending(): void {
     if (this.closed) return;
     this.closed = true; clearInterval(this.timer);

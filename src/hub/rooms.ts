@@ -30,6 +30,27 @@ const RANK: Record<string, number> = { queued: 1, delivered: 2, consumed: 3, ans
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
 interface RoomRow { id: string; asker: string; exposure_id: string; owner_at_creation: string; grant_id: string; state: HubRoom["state"]; created_at: number }
+/** A room as the conversation list shows it (#3226 B). */
+export interface HubRoomListItem extends HubRoom {
+  exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
+  grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
+}
+type RoomViewRow = RoomRow & { fleet_id: string; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number;
+  owner_name: string | null; grant_expires_at: number | null; last_at: number; waiting: number };
+const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,
+  p.display_name AS owner_name, g.expires_at AS grant_expires_at,
+  COALESCE((SELECT MAX(m.stage_at) FROM hub_messages m WHERE m.room_id = r.id), r.created_at) AS last_at,
+  EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id = r.id AND m.stage IN ('queued','delivered','consumed')) AS waiting
+  FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id LEFT JOIN hub_people p ON p.person = e.owner LEFT JOIN hub_grants g ON g.id = r.grant_id`;
+function roomListItem(r: RoomViewRow, features: readonly string[]): HubRoomListItem {
+  // A closed room says which chat it was (its agent, its owner) and when it last moved (the list's order) — nothing of
+  // its grant, its link or whether a question waited (#3246 review).
+  if (r.state !== "active") return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
+    grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
+  return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
+    exposureState: r.frozen_through >= r.exposure_revision && r.exposure_state === "published" ? "frozen" : r.exposure_state,
+    grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features };
+}
 const roomOf = (r: RoomRow): HubRoom => ({ id: r.id, asker: personFromString(r.asker), exposureId: r.exposure_id, ownerAtCreation: personFromString(r.owner_at_creation), grantId: r.grant_id, state: r.state });
 const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDigest: m.content_digest, stage: m.stage as HubReceipt["stage"],
   sequence: m.member_sequence, at: m.stage_at, ...(m.reason_code ? { reasonCode: m.reason_code } : {}) });
@@ -37,7 +58,7 @@ const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDige
 /** A file as the asker's browser sees it: always fetched through the room's own route. */
 export interface HubFileView { id: string; name: string; size: number; mime: string; url: string }
 const fileView = (roomId: string, r: HubAttachmentRef): HubFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
-export interface HubRoomEntryView extends HubRoomEntry { expired?: boolean; files?: { question?: HubFileView[]; answer?: HubFileView[] } }
+export interface HubRoomEntryView extends HubRoomEntry { expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
 const FILES = "attachments-v1";
 const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); if (b.toString("base64") !== data) throw new HubProtocolError("invalid"); return b; };
 
@@ -146,13 +167,33 @@ export class HubRoomsService {
     });
   }
 
-  /** This person's rooms that are still open, newest first, with the exposure's name. */
-  async list(ctx: HubRequestContext): Promise<readonly (HubRoom & { exposureName: string; features: readonly string[] })[]> {
+  /**
+   * This person's rooms, the most recently active first, as the chat's conversation list draws them (#3226 B): the
+   * exposure's name and state, who it represents (the owner's display name), the grant's end, when the room last moved
+   * and whether a question there still waits for its answer, and what its fleet link negotiated (`features`). A closed room (its grant revoked, its agent withdrawn) is
+   * listed too, as closed: the person keeps knowing which chat it was (its history is not readable any more). `features`: what the room's fleet link
+   * has negotiated (D's link.features; none until then).
+   */
+  async list(ctx: HubRequestContext): Promise<readonly HubRoomListItem[]> {
     const me = personKeyString(await ctx.requirePerson());
-    return this.core.atomic((db) => (db.prepare(`SELECT r.*, e.display_name AS exposure_name, e.fleet_id AS fleet_id FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id
-      WHERE r.asker=? AND r.state='active' ORDER BY r.created_at DESC LIMIT 100`).all(me) as (RoomRow & { exposure_name: string; fleet_id: string })[])
-      // features: what the fleet's current link takes (e.g. attachments-v1), so the page never offers a dead control.
-      .map((r) => ({ ...roomOf(r), exposureName: r.exposure_name, features: this.features(r.fleet_id) })));
+    return this.core.atomic((db) => (db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, last_at DESC LIMIT 100`).all(me) as RoomViewRow[])
+      .map((r) => roomListItem(r, this.featuresOf(r.fleet_id))));
+  }
+
+  /**
+   * One room as `list` draws it — its asker only, else not-found (checked here, not left to the caller: the messages
+   * route asks it after its own read, but this answers alone). The messages answer carries it, fresh each poll.
+   */
+  async view(ctx: HubRequestContext, roomId: string): Promise<HubRoomListItem> {
+    const me = personKeyString(await ctx.requirePerson());
+    const row = this.core.atomic((db) => db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined);
+    if (!row) throw new HubProtocolError("not-found");
+    return roomListItem(row, this.featuresOf(row.fleet_id));
+  }
+
+  /** What the room's fleet link negotiated (D's link.features, #3241): none while it has no current link. */
+  private featuresOf(fleetId: string): readonly string[] {
+    return [...this.features(fleetId)].sort();
   }
 
   /** Ask in a room: committed with its audit before "queued" is reported; then sent if the member is on. */
@@ -225,10 +266,11 @@ export class HubRoomsService {
     return rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
+      // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, as B maps them.
       const f = files?.get(m.id), qf = f?.question.map(r => fileView(roomId, r)) ?? [], af = f?.answer.map(r => fileView(roomId, r)) ?? [];
-      return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m),
+      return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m), askedAt: m.created_at,
         ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
-        ...(qf.length || af.length ? { files: { ...(qf.length ? { question: qf } : {}), ...(af.length ? { answer: af } : {}) } } : {}) };
+        ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}) };
     });
   }
 

@@ -19,7 +19,8 @@ describe("owner-requested browser certificate generation", () => {
     expect(checkBrowserTls(certPem, keyPem, origin)).toMatchObject({ ok: true, selfSigned: true });
     expect(checkBrowserTls(certPem, keyPem, "https://other.example.test").problems).toContain("host-not-covered");
     expect(cert.ca).toBe(false); expect(cert.checkPrivateKey(createPrivateKey(keyPem))).toBe(true);
-    expect(Date.parse(cert.validTo) - Date.parse(cert.validFrom)).toBe(30 * 24 * 60 * 60 * 1000);
+    // OpenSSL may sample the two second-resolution endpoints on opposite sides of a second boundary.
+    expect(Math.abs(Date.parse(cert.validTo) - Date.parse(cert.validFrom) - 30 * 24 * 60 * 60 * 1000)).toBeLessThanOrEqual(1000);
     expect(statSync(dirname(material.certFile)).mode & 0o777).toBe(0o700);
     for (const name of ["cert.pem", "key.pem", "material.json"]) expect(statSync(join(dirname(material.certFile), name)).mode & 0o777).toBe(0o600);
     expect(readdirSync(root)).toHaveLength(1); expect(existsSync(join(root, "hub"))).toBe(false);

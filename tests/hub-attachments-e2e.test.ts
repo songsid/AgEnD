@@ -161,19 +161,19 @@ it("both directions end to end: upload → signed question with files → member
   await vi.waitFor(() => expect(w.db.prepare("SELECT stage FROM hub_messages").get()).toEqual({ stage: "answered" }), { timeout: 10_000 });
   const read = await w.alex("GET", `/hub/v1/rooms/${w.room.id}/messages`);
   const entry = read.json.entries[0];
-  expect(entry.files.question).toEqual([expect.objectContaining({ id: png.json.file.id, name: "chart.png", mime: "image/png" })]);
-  expect(entry.files.answer).toEqual([expect.objectContaining({ name: "q3-by-region.csv", size: CSV.length, mime: "text/csv" })]);
+  expect(entry.questionFiles).toEqual([expect.objectContaining({ id: png.json.file.id, name: "chart.png", mime: "image/png" })]);
+  expect(entry.answerFiles).toEqual([expect.objectContaining({ name: "q3-by-region.csv", size: CSV.length, mime: "text/csv" })]);
 
-  const dl = await w.alex("GET", entry.files.answer[0].url);
+  const dl = await w.alex("GET", entry.answerFiles[0].url);
   expect(dl.status).toBe(200); expect(dl.buf.equals(CSV)).toBe(true);
   expect(dl.headers.get("content-disposition")).toBe("attachment; filename*=UTF-8''q3-by-region.csv");
   expect(dl.headers.get("x-content-type-options")).toBe("nosniff");
   expect(dl.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
   // Inline only for a magic-checked image, and only when asked.
-  expect((await w.alex("GET", `${entry.files.answer[0].url}?inline=1`)).headers.get("content-disposition")).toMatch(/^attachment;/);
-  expect((await w.alex("GET", `${entry.files.question[0].url}?inline=1`)).headers.get("content-disposition")).toMatch(/^inline;/);
+  expect((await w.alex("GET", `${entry.answerFiles[0].url}?inline=1`)).headers.get("content-disposition")).toMatch(/^attachment;/);
+  expect((await w.alex("GET", `${entry.questionFiles[0].url}?inline=1`)).headers.get("content-disposition")).toMatch(/^inline;/);
   // Someone else (the owner) cannot read the asker's room's files.
-  expect((await w.olivia("GET", entry.files.answer[0].url)).status).toBe(404);
+  expect((await w.olivia("GET", entry.answerFiles[0].url)).status).toBe(404);
 
   const actions = w.audits.map(a => a.action);
   expect(actions.filter(a => a === "file.upload")).toHaveLength(1);
