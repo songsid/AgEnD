@@ -1,0 +1,15 @@
+/* #3212: Settings → Agents → Accounts — linked by accounts-view.js (a page holding an older app.css still draws it). */
+.s-accounts { display: grid; gap: var(--s-3); }
+.s-account-card { border: 1px solid var(--border); border-radius: var(--r-md); padding: var(--s-3); display: grid; gap: var(--s-2); background: var(--surface); }
+.s-account-head { display: flex; align-items: center; gap: var(--s-2); }
+.s-account-rows { display: grid; gap: var(--s-1); }
+.s-account-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.s-account-who { flex: 1 1 16em; min-width: 0; display: grid; gap: 2px; }
+.s-account-who small { color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.s-account-usage.is-stale { color: var(--text-3); }
+.s-account-row .s-actions { display: flex; flex-wrap: wrap; gap: var(--s-1); }
+.s-account-row details { flex-basis: 100%; }
+.s-account-default { margin: var(--s-1) 0 0; }
+.s-account-machine { border-top: 1px dashed var(--border); padding-top: var(--s-2); }
+.s-account-move { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-1); }
+.s-account-move .check small { margin-left: var(--s-2); }

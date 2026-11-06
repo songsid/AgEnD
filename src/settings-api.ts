@@ -4,6 +4,7 @@ import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { PUBLIC_TUNNEL_SECRET_ID, PUBLIC_TUNNEL_TOKEN_HINT } from "./public-tunnel-config.js";
 import { withSpawnHoldReply } from "./spawn-hold-reply.js";
 import { normalizeSettingsInstancePatch, removesInstanceOverride } from "./settings-instance-patch.js";
+import { credentialProfileLogin, instanceCredentialProfile } from "./backend/credential-profile.js";
 import { isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestLocalAdminCurrent, settingsWrite } from "./settings-request-capability.js";
 import { noteSettingsWrite, settingsUndo, undoSettingsPaths, type SettingsExecution } from "./settings-transaction.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -1257,6 +1258,19 @@ export function handleSettingsRequest(
       const restored = restoreRedactedSecrets(body, cfg.defaults);
       if ("path" in restored) return json(res, 400, { error: `redacted value has no stored credential: defaults.${restored.path}` });
       const merged = { ...cfg.defaults, ...officeInputPatch(restored.value) };
+      // #3212: backend_options is replaced whole, like every nested map in this write (the top-level keys merge): Settings
+      // → Accounts sends the whole map, and so does the Advanced editor, where leaving a key out removes it.
+      if (body.backend_options !== undefined && body.backend_options && typeof body.backend_options === "object" && !Array.isArray(body.backend_options)) {
+        const sent = body.backend_options;
+        // A fleet default moved onto a signed-out profile would leave every agent that follows it at a sign-in prompt.
+        for (const b of Object.keys(sent as object)) {
+          const after = instanceCredentialProfile(undefined, merged as never, b), before = instanceCredentialProfile(undefined, cfg.defaults as never, b);
+          if (!after || after === before) continue;
+          let login: ReturnType<typeof credentialProfileLogin> | null = null;
+          try { login = credentialProfileLogin(ctx.dataDir, b, after); } catch { login = null; }
+          if (login?.state === "signed-out") return json(res, 409, { error: "credential_profile_signed_out", backend: b, profile: after, loginCommand: login.loginCommand });
+        }
+      }
       // #1310: locale:null means "clear the key" (user chose Auto). Mirrors
       // how the instance save handles model ("" → delete) and nullable overrides.
       if (body.locale === null || body.locale === "") delete (merged as Record<string, unknown>).locale;
@@ -1651,6 +1665,18 @@ export function handleSettingsRequest(
     const before = validateFleet(cfg!);
     const after = validateFleet({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
+    // #3212: moving an agent onto a named credential profile that is signed out is refused, as update_instance_config
+    // refuses it — the agent would wait at a sign-in prompt instead of working. Unknown (cannot tell) is let through.
+    if (!(mergedInst as { machine_id?: unknown }).machine_id && mergedInst.runtime !== "windows") {
+      const backendAfter = String(mergedInst.backend ?? cfg!.defaults?.backend ?? "claude-code");
+      const profileAfter = instanceCredentialProfile(mergedInst, cfg!.defaults, backendAfter);
+      const profileBefore = exists ? instanceCredentialProfile(base as never, cfg!.defaults, String((base as { backend?: unknown }).backend ?? cfg!.defaults?.backend ?? "claude-code")) : null;
+      if (profileAfter && profileAfter !== profileBefore) {
+        let login: ReturnType<typeof credentialProfileLogin> | null = null;
+        try { login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter); } catch { login = null; }
+        if (login?.state === "signed-out") { json(res, 409, { error: "credential_profile_signed_out", backend: backendAfter, profile: profileAfter, loginCommand: login.loginCommand }); return; }
+      }
+    }
     // #3055 review r2: a topic whose agent is being deleted is going away on the platform now — binding it here would
     // lose it. Asked at commit, by physical destination; try again once the deletion is over.
     if (ctx.topicBindingInFlight?.(mergedInst)) { json(res, 409, { error: "topic_deletion_in_flight" }); return; }
