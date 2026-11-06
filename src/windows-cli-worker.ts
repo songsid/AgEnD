@@ -165,6 +165,10 @@ const NPM_NATIVE_TARGETS: Partial<Record<NativeCliId, { shim: string; packages: 
 };
 /** `npm i --ignore-scripts` leaves a ~500 byte placeholder at bin\claude.exe; the real binary is tens of MB. */
 const NPM_NATIVE_MIN_BYTES = 1024 * 1024;
+/** Claude Code's real binary is tens of MB; anything smaller is a placeholder that must never be executed. */
+export function isUsableNativeBinarySize(id: NativeCliId, size: number): boolean {
+  return !NPM_NATIVE_TARGETS[id] || size >= NPM_NATIVE_MIN_BYTES;
+}
 export function npmNativeShimTarget(id: NativeCliId, source: string): string | null {
   const native = NPM_NATIVE_TARGETS[id];
   if (!native || source.length > 32 * 1024) return null;
@@ -185,7 +189,7 @@ export function npmNativeExecutable(id: NativeCliId, shimDir: string, exists: (p
     candidates.push(win32.join(packageRoot, "node_modules", ...parts, native.exe), win32.join(root, ...parts, native.exe));
   }
   candidates.push(win32.join(shimDir, ...native.shim.split("/")));
-  return candidates.find(path => exists(path) && sizeOf(path) >= NPM_NATIVE_MIN_BYTES) ?? null;
+  return candidates.find(path => exists(path) && isUsableNativeBinarySize(id, sizeOf(path))) ?? null;
 }
 function isNativeFile(path: string): boolean {
   if (!validWindowsDirectory(path)) return false;
@@ -217,7 +221,10 @@ export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | nu
   for (const candidate of candidates) {
     const p = candidate.trim();
     if (!isNativeFile(p)) continue;
-    if (provider.binaryNames.some(name => win32.basename(p).toLowerCase() === name.toLowerCase())) return { path: p, command: p, args: [] };
+    if (provider.binaryNames.some(name => win32.basename(p).toLowerCase() === name.toLowerCase())) {
+      if (!isUsableNativeBinarySize(id, statSync(p).size)) continue;
+      return { path: p, command: p, args: [] };
+    }
     if (/\.cmd$/i.test(p) && NPM_CLI_TARGETS[id]) {
       try {
         if (statSync(p).size > 32 * 1024) continue;
