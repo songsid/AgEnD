@@ -62,7 +62,7 @@ import { createHubMemberHandshake, HUB_HANDSHAKE_LIMITS } from "../src/hub/membe
 import type { HubMemberLink } from "../src/hub/client.js";
 import type { HubMemberFrame, HubServerFrame } from "../src/hub/types.js";
 function fakeLink(respond?: (frame: HubMemberFrame) => Promise<HubServerFrame>): HubMemberLink {
-  return { linkEpoch: 1, revocationVersion: 0, profile: {} as HubMemberLink["profile"], current: () => true,
+  return { linkEpoch: 1, revocationVersion: 0, profile: {} as HubMemberLink["profile"], features: new Set<string>(), current: () => true,
     send: async () => {}, exchange: respond ?? (async frame => {
       if (frame.type === "reconcile") return { ...frame, payload: { receipts: [], nextReceiptSequence: frame.payload.afterReceiptSequence, more: false } };
       if (frame.type === "receipt") return frame;
