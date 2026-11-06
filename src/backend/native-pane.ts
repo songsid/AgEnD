@@ -11,10 +11,10 @@ export interface NativePaneBackendState {
   resumes: boolean;
   cwd?: string;
 }
-export function createNativePaneBackend(provider: "codex" | "claude-code", snapshot: () => NativePaneBackendState): CliBackend {
+export function createNativePaneBackend(provider: "codex" | "claude-code", snapshot: () => NativePaneBackendState, admission: { contextlessResume?: boolean } = {}): CliBackend {
   const forbidden = (): never => { throw Error("Native pane launch preparation must run on its owned Windows host"); };
   const detectors = provider === "codex"
-    ? new CodexPaneDetectors({ statusLineItems: () => snapshot().statusLineItems, launchMayResume: () => snapshot().resumes, windowsConpty: true })
+    ? new CodexPaneDetectors({ statusLineItems: () => snapshot().statusLineItems, launchMayResume: () => snapshot().resumes, windowsConpty: true, contextlessResume: admission.contextlessResume === true })
     : new ClaudePaneDetectors();
   const originalStartup = detectors.getStartupDialogs.bind(detectors);
   const originalRuntime = detectors.getRuntimeDialogs.bind(detectors);

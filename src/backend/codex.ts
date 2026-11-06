@@ -995,7 +995,7 @@ export const CODEX_RESUME_LARGE_BYTES = 20 * 1024 * 1024;
 
 /** Pane-only detectors: construction performs no provider, config or session discovery. */
 export class CodexPaneDetectors {
-  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean }) {}
+  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean; contextlessResume?: boolean }) {}
   protected readConfiguredStatusLineItems(): string[] | null { return this.paneDetectorContext?.statusLineItems()?.slice() ?? null; }
   protected trustPaneFields(pane: string): Record<string, unknown> { const state = codexTrustPromptState(pane); return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote }; }
   protected trustHoldReason(pane: string): Record<string, unknown> { return { ...this.trustPaneFields(pane), reason: "Folder permission needs confirmation on this execution machine" }; }
@@ -1077,7 +1077,7 @@ export class CodexPaneDetectors {
   // empty-composer/passive-footer layout, only for a resumed launch with our context-only status configuration.
   // Other layouts retain their existing guard; this is not native's unknown-layout stability fallback.
   private nativeContextlessPattern(): RegExp | null {
-    if (!this.paneDetectorContext?.windowsConpty || !this.paneDetectorContext.launchMayResume()) return null;
+    if (!this.paneDetectorContext?.windowsConpty || this.paneDetectorContext.contextlessResume !== true) return null;
     const items = this.readConfiguredStatusLineItems();
     return items?.length === 1 && items[0] === "context-remaining" ? CODEX_EMPTY_PASSIVE_COMPOSER : null;
   }

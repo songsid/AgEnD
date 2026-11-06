@@ -123,3 +123,9 @@ it('contextless fixed-status readiness still needs its native owned-composer pro
  vi.spyOn(native.backend,'ownsComposerRows').mockReturnValue(false);
  expect((native as unknown as {ready(text:string,fixed?:boolean):boolean}).ready(screen,true)).toBe(false);await native.release('detach');
 });
+
+it('a fresh native launch does not gain contextless admission after its UUID is pinned',async()=>{
+ const f=await fixture(),native=f.make();await native.acquire(()=>{});expect(native.backend.getSessionId()).toBe(f.actual);
+ const screen='› Ask Codex to do anything\n\n  ? for shortcuts    ⚠ 2 warnings · f2 to view';
+ expect(native.backend.getReadyPattern().test(screen)).toBe(false);expect(native.backend.isDeliveryInputReadyPane!(screen)).toBe(false);expect(native.backend.ownsComposerRows!(screen)).toBe(false);await native.release('detach');
+});

@@ -68,7 +68,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.host = new RuntimePaneHostPort(this.port, options.endpoint);
     this.observation = new RuntimePaneObservation(options.endpoint, () => this.port.ownedSnapshot());
     this.backend = createNativePaneBackend(options.launch.cli, () => ({ sessionId: this.port.ownedSnapshot()?.sessionId ?? null,
-      cwd: options.launch.cwd, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }));
+      cwd: options.launch.cwd, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }), { contextlessResume: !!options.launch.sessionId });
   }
   bindDaemon(daemon: import("./daemon.js").Daemon): void {
     this.port.setInputRefusalLogger(details => daemon.logNativeInputRefusal(details));

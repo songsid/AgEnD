@@ -5,10 +5,10 @@ import {CodexPaneDetectors} from '../src/backend/codex.js';
 import {createNativePaneBackend} from '../src/backend/native-pane.js';
 const native=readFileSync(new URL('./fixtures/codex-0165-native-limit-only-resume.pane.txt',import.meta.url),'utf8');
 const linux=readFileSync(new URL('./fixtures/codex-0165-linux-limit-only-resume.pane.txt',import.meta.url),'utf8');
-const backend=(resumes=true,items:readonly string[]=['context-remaining'])=>createNativePaneBackend('codex',()=>({sessionId:'owned',contextPercentage:null,statusLineItems:items,resumes}));
+const backend=(resumes=true,items:readonly string[]=['context-remaining'])=>createNativePaneBackend('codex',()=>({sessionId:'owned',contextPercentage:null,statusLineItems:items,resumes}),{contextlessResume:resumes});
 it.each([native,linux])('known empty contextless composer is ready only for the native resumed launch',pane=>{
  const b=backend();expect(b.getReadyPattern().test(pane)).toBe(true);expect(b.isDeliveryInputReadyPane!(pane)).toBe(true);expect(b.isPeriodicRedrawIdlePane!(pane)).toBe(true);expect(b.ownsComposerRows!(pane)).toBe(true);
- const host=new CodexPaneDetectors({statusLineItems:()=>['context-remaining'],launchMayResume:()=>true});expect(host.getReadyPattern().test(pane)).toBe(false);expect(host.isDeliveryInputReadyPane(pane)).toBe(false);
+ const host=new CodexPaneDetectors({statusLineItems:()=>['context-remaining'],launchMayResume:()=>true,contextlessResume:true});expect(host.getReadyPattern().test(pane)).toBe(false);expect(host.isDeliveryInputReadyPane(pane)).toBe(false);
 });
 it('fresh or differently configured launches get no new contextless proof',()=>{
  for(const b of [backend(false),backend(true,['run-state']),backend(true,['model-name','context-remaining'])]){expect(b.getReadyPattern().test(native)).toBe(false);expect(b.isDeliveryInputReadyPane!(native)).toBe(false);expect(b.ownsComposerRows!(native)).toBe(false);}
@@ -39,4 +39,9 @@ it('a known selection dialog remains held without contextless readiness',()=>{
 it('a currently active delivery-blocking dialog outranks the known contextless tail',()=>{
  const b=backend(),pane='MENU ACTIVE\n'+native;vi.spyOn(b,'getRuntimeDialogs').mockReturnValue([{pattern:/MENU ACTIVE/,keys:[],holdOnly:true,description:'active current fixture',isActive:()=>true}]);
  expect(b.isDeliveryInputReadyPane!(pane)).toBe(false);expect(b.isPeriodicRedrawIdlePane!(pane)).toBe(false);
+});
+
+it('discovering a UUID after a fresh launch does not grant contextless resume admission',()=>{
+ let resumes=false;const b=createNativePaneBackend('codex',()=>({sessionId:'discovered',contextPercentage:null,statusLineItems:['context-remaining'],resumes}),{contextlessResume:false});resumes=true;
+ expect(b.getReadyPattern().test(native)).toBe(false);expect(b.isDeliveryInputReadyPane!(native)).toBe(false);expect(b.ownsComposerRows!(native)).toBe(false);
 });
