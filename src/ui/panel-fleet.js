@@ -154,7 +154,8 @@ export function measureTabsFit(root) {
   const others = [...head.children].filter(el => el !== title && el !== nav && w(el) > 0);   // tools, sidebar buttons
   return tabsFit({
     room: w(head) - px(hs.paddingLeft) - px(hs.paddingRight),
-    title: sum(parts, natural) + px(getComputedStyle(title).columnGap) * Math.max(0, parts.length - 1),
+    // The warning is deliberately capped; its hidden process text must not keep the tabs on a separate row.
+    title: sum(parts, el => el.querySelector?.(".host-mem") ? w(el) : natural(el)) + px(getComputedStyle(title).columnGap) * Math.max(0, parts.length - 1),
     tabs: sum(items, w) + px(getComputedStyle(nav).columnGap) * Math.max(0, items.length - 1),
     tools: sum(others, w),
     gaps: px(hs.columnGap) * (others.length + 1),
@@ -164,7 +165,18 @@ function useTabsInHeader(rootRef) {
   const mq = () => (typeof matchMedia === "function" ? matchMedia(NARROW) : null);
   const [inHeader, setInHeader] = useState(() => !(mq()?.matches ?? false));
   const check = () => setInHeader(!(mq()?.matches ?? false) && measureTabsFit(rootRef.current));
-  useLayoutEffect(check);   // every render: the title's warning can come and go
+  useLayoutEffect(() => {
+    check();   // every render: the title's warning can come and go
+    // A lazy panel can meet app.css cached before this fix. Re-link once, using the existing same-origin policy.
+    const warning = rootRef.current?.querySelector(".host-mem");
+    if (!warning || typeof getComputedStyle !== "function" || !document.head || document.getElementById("fleet-memory-css")) return;
+    const rev = getComputedStyle(warning).getPropertyValue?.("--fleet-memory-header");
+    if (rev === undefined || rev.trim() === "1") return;
+    const link = document.createElement("link"); link.id = "fleet-memory-css"; link.rel = "stylesheet";
+    link.href = "/assets/app.css?fleet-memory=1";
+    link.addEventListener("load", () => { if (rootRef.current) check(); }, { once: true });
+    document.head.appendChild(link);
+  });
   useEffect(() => {
     const m = mq();
     m?.addEventListener?.("change", check);
@@ -186,7 +198,7 @@ export function FleetPanel({ route, navKey }) {
   const { hostMemory, hostMemoryTop } = useStore(appStore);
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
   const top = hostMemory && hostMemoryTop?.length ? t("fleet.hostMemory_top", hostMemoryTop.map(memoryHogText).join(" · ")) : "";
-  const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}${top ? html`<span class="host-mem-top">${top}</span>` : null}</span>` : null;
+  const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}${top ? html`<span class="host-mem-top" title=${top}>${top}</span>` : null}</span>` : null;
   const root = useRef(null);
   const wide = useTabsInHeader(root);
   const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
