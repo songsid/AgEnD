@@ -17,6 +17,12 @@ export interface TaskBoardWakerDeps {
   deliver(instance: string, message: string, key: string): boolean;
   /** Whether the board may wake this name: a fleet instance (an assignee can be any name). */
   isInstance(name: string): boolean;
+  /**
+   * Whether this instance has the task board switched off (`dashboard.task_board: false`), asked as its news goes out:
+   * it has no `task` tool to act on a notice with, so none is sent. The cards keep the news; switching the board back
+   * on tells it to start with `task mine`. Absent: no one has it off.
+   */
+  boardOff?(name: string): boolean;
   /** What of a wake still stands now (TaskBoard.wakeHolds), and the card, to say what it lacks. */
   holds(wake: Wake): Wake | null;
   card(uuid: string): Card | undefined;
@@ -208,6 +214,7 @@ export class TaskBoardWaker {
     const batch = this.gathering.get(instance);
     this.gathering.delete(instance);
     if (!batch || this.stopped) return;
+    if (this.deps.boardOff?.(instance)) { this.deps.log("info", "Task board news not sent: the instance has the task board switched off", { instance }); return; }
     // #2785 (c), #2801: news an instance made is told by its own message; the board waits for it, then drops its line.
     const told = this.foldToldNews(instance, batch);
     // Only what still holds as it goes out: not finished meanwhile, still theirs, still waiting on them.
