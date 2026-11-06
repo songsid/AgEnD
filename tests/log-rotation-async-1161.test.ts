@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, appendFileSync, promises as fsp } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, appendFileSync, constants, promises as fsp } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rotateLogIfNeeded, rotateLogIfNeededAsync } from "../src/logger.js";
@@ -12,6 +12,11 @@ let dir: string;
 let log: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "agend-rotate-async-")); log = join(dir, "output.log"); });
 afterEach(() => { vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
+
+/** O_RDONLY is 0; a read-mode open is one with neither O_WRONLY nor O_RDWR. The truncate fd is O_WRONLY. */
+function isReadOnlyOpen(flags: unknown): boolean {
+  return typeof flags === "number" && (flags & constants.O_WRONLY) === 0 && (flags & constants.O_RDWR) === 0;
+}
 
 describe("rotateLogIfNeededAsync: same result as the sync rotation", () => {
   it("copies to .1, truncates the live file in place (same inode), shifts .1 → .2 → .3 and drops the oldest", async () => {
@@ -52,7 +57,8 @@ describe("rotateLogIfNeededAsync: same result as the sync rotation", () => {
     writeFileSync(log, "A".repeat(100));
     const open = vi.spyOn(fsp, "open");
     await rotateLogIfNeededAsync(log, 50, 3);
-    expect(open).not.toHaveBeenCalled();
+    // Truncate opens O_WRONLY|O_NOFOLLOW; pin that the live file is not re-read (O_RDONLY).
+    expect(open.mock.calls.filter(([, flags]) => isReadOnlyOpen(flags))).toEqual([]);
   });
 
   it("a ballooned log is dropped in place without a copy, rotated files removed", async () => {
@@ -163,9 +169,17 @@ describe("rotateLogIfNeededAsync: the writer keeps appending while the copy runs
     writeFileSync(log, "A".repeat(100));
     const order: string[] = [];
     const realCopy = fsp.copyFile.bind(fsp);
-    const realTruncate = fsp.truncate.bind(fsp);
+    const realOpen = fsp.open.bind(fsp);
     vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => { await realCopy(src, dst, mode); order.push("copied"); });
-    vi.spyOn(fsp, "truncate").mockImplementation(async (path, len) => { order.push("truncated"); return realTruncate(path, len); });
+    vi.spyOn(fsp, "open").mockImplementation((async (...args: Parameters<typeof fsp.open>) => {
+      const handle = await realOpen(...args);
+      const orig = handle.truncate.bind(handle);
+      (handle as unknown as { truncate: typeof handle.truncate }).truncate = async (len?: number) => {
+        order.push("truncated");
+        return orig(len);
+      };
+      return handle;
+    }) as never);
     await rotateLogIfNeededAsync(log, 50, 3);
     expect(order).toEqual(["copied", "truncated"]);
   });
