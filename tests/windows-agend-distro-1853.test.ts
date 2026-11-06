@@ -224,7 +224,7 @@ Write-Output ("OK=" + (Install-AgendDistro 'AgEnD' '${join(scratch("agend-1853di
     expect(out).toContain("OK=False");
     expect(out).toContain(said);
     expect(calls(bin)).not.toMatch(/--import/);
-    if (stub.badHash) expect(out).not.toContain('trying Ubuntu-24.04');
+    if ('badHash' in stub && stub.badHash) expect(out).not.toContain('trying Ubuntu-24.04');
   });
 
   it("the default image and both architectures use 26.04 with the official hash", async () => {
