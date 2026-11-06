@@ -43,7 +43,7 @@ export interface HubButtonsQueue {
   insert(db: Database.Database, tx: HubTx, input: HubButtonQuestion): HubReceipt;
   flush(fleetId: string): void;
 }
-const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDigest: m.content_digest, stage: m.stage as HubReceipt["stage"], sequence: m.member_sequence, at: m.stage_at });
+const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDigest: m.content_digest, stage: m.stage as HubReceipt["stage"], sequence: Math.max(1, m.member_sequence), at: m.stage_at });
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const RETRY_MS = 30_000;
 const BATCH = 32;
@@ -52,6 +52,8 @@ export class HubButtonsService {
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
   private draining: Promise<void> | null = null;
+  private deadlineBackoffUntil = 0;
+  private resultsBackoffUntil = 0;
   constructor(private readonly core: HubCore, private readonly queue: HubButtonsQueue) {}
   private row(db: Database.Database, id: string): Row | undefined { return db.prepare("SELECT * FROM hub_answer_buttons WHERE id=?").get(id) as Row | undefined; }
   private check(): void { if (this.stopped) throw new HubProtocolError("unavailable"); this.core.check(); }
@@ -127,7 +129,7 @@ export class HubButtonsService {
     this.check();
     const first = this.core.atomic(db => {
       const row = this.row(db, setId); if (!row || row.room_id !== roomId) throw new HubProtocolError("not-found");
-      const data = this.source(db, row); if (data.msg.asker !== me) throw new HubProtocolError("denied"); return data.msg;
+      const data = this.source(db, row); if (data.msg.asker !== me) throw new HubProtocolError("denied"); return { ...data.msg, buttonRevision: row.revision };
     });
     if (!(await this.core.eligible(personFromString(first.owner)))) throw new HubProtocolError("revoked");
     const actor = await ctx.current();
@@ -152,6 +154,7 @@ export class HubButtonsService {
       const dup = db.prepare("SELECT * FROM hub_button_operations WHERE room_id=? AND idempotency_key=?").get(roomId, key) as { set_id: string; digest: string; receipt: string } | undefined;
       if (dup) { if (dup.set_id !== setId || dup.digest !== digest) throw new HubProtocolError("conflict"); return { receipt: JSON.parse(dup.receipt) as HubReceipt, fleetId: null }; }
       if (row.state !== "open" || this.core.now() >= row.expires_at) throw new HubProtocolError("expired");
+      if (row.revision !== first.buttonRevision) throw new HubProtocolError("conflict"); // a delayed vote cannot overwrite a newer ballot
       let receipt: HubReceipt;
       if (!b.poll) {
         receipt = this.queue.insert(db, tx, { roomId, asker, idempotencyKey: key, requestId: ctx.requestId,
@@ -202,7 +205,7 @@ export class HubButtonsService {
   /** Synchronous closure/arming is independent of LDAP, delivery and every previous poll's pending result. */
   async sweep(): Promise<void> {
     this.check();
-    this.core.atomic((db, tx) => {
+    try { this.core.atomic((db, tx) => {
       const due = db.prepare("SELECT * FROM hub_answer_buttons WHERE state='open' AND expires_at<=? ORDER BY expires_at,id LIMIT ?").all(this.core.now(), BATCH) as Row[];
       for (const row of due) {
         const msg = readMessage(db, row.message_id);
@@ -213,13 +216,15 @@ export class HubButtonsService {
           this.audit(tx, msg, "buttons.expired", "completed", randomUUID(), { kind: "local-host" });
         } else this.closeRow(db, tx, row, msg, this.core.now());
       }
-    });
+    }); this.deadlineBackoffUntil = 0; }
+    catch (err) { this.deadlineBackoffUntil = this.core.now() + RETRY_MS; this.arm(); throw err; }
     this.arm();
     if (this.draining) return this.draining;
     const run = this.drainResults(); this.draining = run;
     try { await run; } finally { if (this.draining === run) this.draining = null; if (!this.stopped && this.core.live()) this.arm(); }
   }
   private async drainResults(): Promise<void> {
+    if (this.core.now() < this.resultsBackoffUntil) return;
     const rows = this.core.atomic(db => db.prepare("SELECT * FROM hub_answer_buttons WHERE result_state IN ('owed','held') AND retry_at<=? ORDER BY closed_at,id LIMIT ?").all(this.core.now(), BATCH) as Row[]);
     for (const first of rows) {
       this.check();
@@ -236,13 +241,17 @@ export class HubButtonsService {
       } catch (err) {
         this.check();
         const code = err instanceof HubProtocolError ? err.code : "unavailable";
-        this.core.atomic((db, tx) => {
+        try { this.core.atomic((db, tx) => {
           const row = this.row(db, first.id); if (!row || !["owed", "held"].includes(row.result_state)) return;
           const cancelled = ["expired", "revoked", "stale", "denied", "not-found"].includes(code);
           const msg = readMessage(db, row.message_id); if (!msg) throw new HubProtocolError("uncertain");
           if (cancelled || row.result_state !== "held") this.audit(tx, msg, "poll.results", "held", randomUUID(), { kind: "local-host" });
           db.prepare("UPDATE hub_answer_buttons SET result_state=?,retry_at=? WHERE id=?").run(cancelled ? "cancelled" : "held", this.core.now() + RETRY_MS, row.id);
-        });
+        }); } catch {
+          // Even the hold audit can fail with a full disk. Keep results owed, back off in memory, never spin or
+          // claim admission. Deadlines for other polls still have their independent schedule.
+          this.resultsBackoffUntil = this.core.now() + RETRY_MS; break;
+        }
       }
     }
   }
@@ -250,17 +259,21 @@ export class HubButtonsService {
   arm(): void {
     if (this.stopped || !this.core.live()) return;
     if (this.timer) clearTimeout(this.timer);
-    const next = this.core.atomic(db => db.prepare(`SELECT MIN(at) AS at FROM (
-      SELECT MIN(expires_at) AS at FROM hub_answer_buttons WHERE state='open'
-      UNION ALL SELECT MIN(retry_at) FROM hub_answer_buttons WHERE result_state IN ('owed','held') AND ?=0)`).get(this.draining ? 1 : 0) as { at: number | null });
-    this.timer = next.at === null ? null : setTimeout(() => {
+    let at: number | null;
+    try {
+      const next = this.core.atomic(db => db.prepare(`SELECT
+        (SELECT MIN(expires_at) FROM hub_answer_buttons WHERE state='open') AS deadline,
+        (SELECT MIN(retry_at) FROM hub_answer_buttons WHERE result_state IN ('owed','held')) AS results`).get() as { deadline: number | null; results: number | null });
+      const times = [next.deadline === null ? null : Math.max(next.deadline, this.deadlineBackoffUntil),
+        this.draining || next.results === null ? null : Math.max(next.results, this.resultsBackoffUntil)].filter((v): v is number => v !== null);
+      at = times.length ? Math.min(...times) : null;
+    } catch { at = this.core.now() + RETRY_MS; }
+    this.timer = at === null ? null : setTimeout(() => {
       this.timer = null;
-      void this.sweep().catch(() => {
-        if (!this.stopped && this.core.live()) this.timer = setTimeout(() => { this.timer = null; void this.sweep().catch(() => {}); }, RETRY_MS);
-      });
-    }, Math.min(2_147_483_647, Math.max(1, next.at - this.core.now())));
+      void this.sweep().catch(() => { if (!this.stopped && this.core.live()) this.arm(); });
+    }, Math.min(2_147_483_647, Math.max(1, at - this.core.now())));
     this.timer?.unref();
   }
   start(): void { this.arm(); void this.sweep().catch(() => {}); }
-  async close(): Promise<void> { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = null; await this.draining; }
+  async close(): Promise<void> { this.stopped = true; if (this.timer) clearTimeout(this.timer); this.timer = null; await this.draining?.catch(() => {}); }
 }

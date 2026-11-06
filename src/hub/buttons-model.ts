@@ -3,7 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { parseReplyButtons, type ReplyButton } from "../reply-buttons.js";
 import { parsePoll, type PollConfig } from "../reply-polls.js";
 import type { HubAnswerButtons } from "./types.js";
-import { scalarString } from "./validation.js";
+import { HubProtocolError, scalarString } from "./validation.js";
 
 /** The wire uses normalized reply models. Reject noncanonical fields rather than silently changing signed bytes. */
 export function validHubAnswerButtons(b: HubAnswerButtons): boolean {
@@ -32,6 +32,6 @@ export function prepareHubAnswerButtons(buttons: readonly ReplyButton[] | undefi
   if (!buttons?.length) return undefined;
   const b: HubAnswerButtons = { id: randomBytes(16).toString("hex"), labels: Object.freeze(buttons.map(v => v.label)),
     values: Object.freeze(buttons.map(v => v.value)), ...(poll ? { poll: Object.freeze({ ...poll }) } : {}) };
-  if (!validHubAnswerButtons(b)) throw new Error("Invalid Hub answer buttons");
+  if (!validHubAnswerButtons(b)) throw new HubProtocolError("invalid");
   return Object.freeze(b);
 }

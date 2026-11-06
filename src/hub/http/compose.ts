@@ -167,6 +167,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       throw new HttpError(405, "method");
     }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/buttons$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body();
+      return send(res, 200, { receipt: await guard(() => rooms.buttons.click(ctx, uuid(r![1]), b)) });
+    }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/messages$/))) {
       const roomId = uuid(r[1]);
       if (method === "GET") {
@@ -337,8 +342,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     t.unref?.();
   }
 
+  rooms.buttons.start();
   return {
     handle, receive,
-    async close() { closed = true; rooms.forget(); },
+    async close() { closed = true; await rooms.buttons.close(); rooms.forget(); },
   };
 }

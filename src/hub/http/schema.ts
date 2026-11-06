@@ -6,8 +6,9 @@
  * secrets are kept only as SHA-256 digests.
  */
 import type Database from "better-sqlite3";
+import { HUB_BUTTONS_MIGRATION } from "../buttons.js";
 
-export interface HubHttpMigration { readonly component: "s3-http"; readonly version: number; up(db: Database.Database): void }
+export interface HubHttpMigration { readonly component: string; readonly version: number; up(db: Database.Database): void }
 
 const V1 = `
 CREATE TABLE hub_people (
@@ -83,4 +84,5 @@ CREATE INDEX hub_leases_message ON hub_leases(message_id);
 
 export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   Object.freeze({ component: "s3-http" as const, version: 1, up: (db: Database.Database) => { db.exec(V1); } }),
+  HUB_BUTTONS_MIGRATION,
 ]);
