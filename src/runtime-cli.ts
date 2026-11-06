@@ -108,8 +108,10 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     if (what === "status" && positional.length === 1 && flags["--for"] === undefined) { process.stdout.write(`${describeRemoteSwitches(readRemoteSwitches(store.directory))}\n`); return; }
     if (positional.length !== 2 || !isRemoteSwitchName(what) || (state !== "on" && state !== "off") || (flags["--for"] !== undefined && state !== "on")) throw new Error(usage);
     const forMs = flags["--for"] === undefined ? undefined : parseSwitchDuration(flags["--for"]);
-    // Recorded first: a switch change whose record cannot be kept is not made.
-    appendAudit(store.directory, { actor: "local", action: "switch", outcome: "ok", detail: state });
+    // Turning a switch ON is recorded first: a change whose record cannot be kept is not made. Turning it OFF must always work (fail open): the
+    // record is then best-effort, and the person is told when it was not written.
+    try { appendAudit(store.directory, { actor: "local", action: "switch", outcome: "ok", detail: state }); }
+    catch { if (state === "on") throw new Error("The audit log (audit.jsonl in this profile folder) cannot be written, so the switch was not turned on. Fix that file or folder and run this again."); process.stderr.write("Note: the audit log (audit.jsonl in this profile folder) could not be written, so this change is not recorded there. The switch is being turned off anyway.\n"); }
     const result = setRemoteSwitch(store.directory, what, state === "on", forMs);
     process.stdout.write(`${what}: ${result.on ? "on" : "off"}${result.until !== undefined ? `, turns off by itself at ${new Date(result.until).toLocaleString()}` : ""}\n`);
     if (result.on) process.stdout.write(what === "accounts"

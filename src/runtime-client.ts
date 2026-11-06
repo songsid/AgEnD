@@ -17,6 +17,7 @@ import { readRuntimeInfo } from "./runtime-build-info.js";
 import { RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
+import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
 import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
 import { spawn as childSpawn } from "./child-process.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
@@ -323,7 +324,7 @@ export class RuntimeClient {
     if (!this.paneOpening) {
       const output: RuntimePaneHostOptions["output"] = snapshot => { if (this.online()) this.send({ v: 1, type: "pane.output", snapshot }); };
       if (this.options.createPaneHost) this.paneOpening = import("./runtime-pane-store.js").then(({ RuntimePaneStore }) => {
-        const store = new RuntimePaneStore(join(this.options.store.directory, "panes")); store.recoverInterrupted();
+        const store = new RuntimePaneStore(join(this.options.store.directory, PANE_IN_PROCESS_DIRECTORY)); store.recoverInterrupted();
         return this.paneHost = this.options.createPaneHost!({ store, bootId: this.bootId, online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, output });
       });
       else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => (this.options.openPaneLink ?? RuntimePaneLink.open.bind(RuntimePaneLink))({
@@ -410,17 +411,25 @@ export class RuntimeClient {
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
     return credentialProfileReport(root, name);
   }
-  /** Whether a task or terminal is running under this profile (case-insensitively: on Windows `Work` and `work` are one folder). */
+  /**
+   * Whether a task or terminal is running under this profile (case-insensitively: on Windows `Work` and `work` are one folder). Terminals come from
+   * the pane ledgers (`paneLedgerFiles`: the pane host's own state folder in production, the in-process folder in tests; a missing one is "none",
+   * an unreadable one is "in use"). A Claude Code terminal that names no profile runs under this pairing's default, which the ledger does not hold.
+   */
   private profileInUse(name: string): "task" | "pane" | undefined {
-    for (const used of this.activeProfiles.values()) if (used.toLowerCase() === name.toLowerCase()) return "task";
-    try {
-      const raw: unknown = JSON.parse(readFileSync(join(this.options.store.directory, "panes", "panes.json"), "utf8"));
-      const panes = object(raw) && object(raw.panes) ? Object.values(raw.panes) : [];
-      for (const row of panes) {
-        const launch = object(row) && object(row.launch) ? row.launch : undefined, snapshot = object(row) && object(row.snapshot) ? row.snapshot : undefined;
-        if (typeof launch?.credentialProfile === "string" && launch.credentialProfile.toLowerCase() === name.toLowerCase() && snapshot?.state !== "exited") return "pane";
-      }
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "pane"; /* an unreadable ledger cannot show it is free */ }
+    const same = (other: unknown): boolean => typeof other === "string" && other.toLowerCase() === name.toLowerCase();
+    for (const used of this.activeProfiles.values()) if (same(used)) return "task";
+    let fallback: string | undefined; try { fallback = this.options.store.credentialDefault(); } catch { /* an unreadable default cannot show a pane is free */ fallback = name; }
+    for (const file of paneLedgerFiles(this.options.store.directory)) {
+      try {
+        const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
+        for (const row of object(raw) && object(raw.panes) ? Object.values(raw.panes) : []) {
+          const launch = object(row) && object(row.launch) ? row.launch : undefined, snapshot = object(row) && object(row.snapshot) ? row.snapshot : undefined;
+          if (!launch || snapshot?.state === "exited") continue;
+          if (same(launch.credentialProfile) || launch.credentialProfile === undefined && launch.cli === "claude-code" && same(fallback)) return "pane";
+        }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "pane"; }
+    }
     return undefined;
   }
   /** #3190 Part 3a: the remote account operations (switches, sign-in, sign-out, remove, install), built on first use. */
@@ -578,6 +587,8 @@ export class RuntimeClient {
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }
     // A cancelled start may still finish its durable credential write. Do not release the profile to another writer.
     await this.startupRotation?.catch(() => {});
+    // A sign-in that is open ends with the connection (its child is killed), and the folded counts of the audit log are written.
+    await this.remoteAccounts?.stop().catch(() => {});
     await this.paneOpening?.then(async host=>{
       try{if(options.retirePanes&&"retireOwned" in host)await host.retireOwned();}
       finally{await host.stop();}

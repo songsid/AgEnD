@@ -13,6 +13,7 @@ import { RuntimeClient, type RuntimeBridge } from "../src/runtime-client.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { credentialProfilesRoot } from "../src/runtime-credential-profiles.js";
 import { createRuntimeProfile } from "../src/runtime-profile-ownership.js";
+import { PANE_HOST_DIRECTORY, PANE_HOST_STATE_DIRECTORY, PANE_IN_PROCESS_DIRECTORY, PANE_LEDGER_FILE, paneLedgerFiles } from "../src/runtime-pane-store.js";
 import { AUDIT_FILE, setRemoteSwitch } from "../src/runtime-remote-setup.js";
 import { readRuntimeInfo } from "../src/runtime-build-info.js";
 import type { WindowsCliProbe, WindowsCliTask } from "../src/windows-cli.js";
@@ -39,7 +40,7 @@ async function fixture(clientOptions: Partial<ConstructorParameters<typeof Runti
   store.saveCredentials({ server: `http://127.0.0.1:${address.port}`, machineId, credential: "a".repeat(64), name: "Remote fixture" });
   const children: FakeChild[] = [];
   const client = new RuntimeClient({ store, bridge, reconnectMs: 25, pollMs: 10, credentialProfilesRoot: root, credentialLogin: async () => false,
-    remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }),
+    remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0,
       signIn: { scratchRoot: scratch(), spawn: () => { const child = new FakeChild(); children.push(child); return child as unknown as ChildProcess; } } }, ...clientOptions });
   clients.push(client); await client.start(); await welcomed; await vi.waitFor(() => expect(client.online()).toBe(true));
   const send = (frame: unknown): void => socket!.send(JSON.stringify(frame));
@@ -94,22 +95,45 @@ describe("account frames", () => {
   });
 });
 
-describe("remove and sign-out wait for what runs under the profile", () => {
-  it("a pane that is not exited, or a ledger that cannot be read, keeps the profile; an exited one does not", async () => {
-    const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
-    const panes = join(f.home, "panes"); mkdirSync(panes, { recursive: true });
-    const ledger = (state: string) => JSON.stringify({ version: 1, panes: { p1: { launch: { credentialProfile: "WORK" }, snapshot: { state } } } });
-    writeFileSync(join(panes, "panes.json"), ledger("running"));
-    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error).toMatch(/running terminal/);
-    writeFileSync(join(panes, "panes.json"), "{ not json");
-    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error).toMatch(/running terminal/);
-    writeFileSync(join(panes, "panes.json"), ledger("exited"));
-    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" })).ok).toBe(true);
+describe("remove and sign-out refuse while something runs under the profile", () => {
+  const ledger = (launch: Record<string, unknown>, state: string) => JSON.stringify({ version: 1, panes: { p1: { launch, snapshot: { state } } } });
+  const remove = (f: Awaited<ReturnType<typeof fixture>>) => f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" });
+  const write = (file: string, text: string) => { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, text); };
+  it("reads the pane ledgers from the one place the pane store defines (the production pane host's folder and the in-process one)", () => {
+    expect(paneLedgerFiles("R")).toEqual([join("R", "pane-host", "state", "panes.json"), join("R", "panes", "panes.json")]);
+    expect(PANE_HOST_DIRECTORY).toBe("pane-host"); expect(PANE_HOST_STATE_DIRECTORY).toBe("state"); expect(PANE_IN_PROCESS_DIRECTORY).toBe("panes"); expect(PANE_LEDGER_FILE).toBe("panes.json");
+  });
+  it("a running terminal in the PRODUCTION pane host's ledger keeps the profile; an exited one does not", async () => {
+    const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work"); const [production] = paneLedgerFiles(f.home);
+    write(production!, ledger({ cli: "claude-code", credentialProfile: "WORK" }, "running"));
+    expect((await remove(f)).error).toMatch(/running terminal/);
+    write(production!, "{ not json"); expect((await remove(f)).error).toMatch(/running terminal/);            // an unreadable ledger cannot show it is free
+    write(production!, ledger({ cli: "claude-code", credentialProfile: "work" }, "exited")); expect((await remove(f)).ok).toBe(true);
     expect(existsSync(join(f.root, "claude-code", "work"))).toBe(false);
+  });
+  it("also reads the in-process host's ledger", async () => {
+    const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    write(paneLedgerFiles(f.home)[1]!, ledger({ cli: "claude-code", credentialProfile: "work" }, "running")); expect((await remove(f)).error).toMatch(/running terminal/);
+  });
+  it("a Claude Code terminal that names no profile runs under the pairing's default, so it keeps the default profile (and only that one)", async () => {
+    const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work"); createRuntimeProfile(f.root, "claude-code", "other");
+    write(paneLedgerFiles(f.home)[0]!, ledger({ cli: "claude-code" }, "running"));
+    f.store.setCredentialDefault("other");
+    expect((await remove(f)).ok).toBe(true);                                                    // "work" is not the default: free; ("other" is the default, and is in use)
+    createRuntimeProfile(f.root, "claude-code", "work");
+    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "other", actor: "admin:u1" })).error).toMatch(/running terminal/);
+    f.store.setCredentialDefault(undefined);
+    expect((await f.call("accounts.signout", { cli: "claude-code", profile: "other", actor: "admin:u1" })).error ?? "").not.toMatch(/running terminal/);
+  });
+  it("a Codex terminal with no profile, or an exited default-profile terminal, keeps nothing", async () => {
+    const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work"); f.store.setCredentialDefault("work");
+    write(paneLedgerFiles(f.home)[0]!, JSON.stringify({ version: 1, panes: { a: { launch: { cli: "codex" }, snapshot: { state: "running" } }, b: { launch: { cli: "claude-code" }, snapshot: { state: "exited" } } } }));
+    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error).toMatch(/default for agents/);   // refused for the default, not for a terminal
+    f.store.setCredentialDefault(undefined); expect((await remove(f)).ok).toBe(true);
   });
   it("the pairing's default profile keeps it (only this computer knows)", async () => {
     const f = await fixture(); setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work"); f.store.setCredentialDefault("work");
-    expect((await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" })).error).toMatch(/default for agents/);
+    expect((await remove(f)).error).toMatch(/default for agents/);
     expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
   });
 });

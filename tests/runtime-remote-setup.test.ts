@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, sym
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AUDIT_FILE, REMOTE_SETUP_FILE, RemoteSetupRefusal, appendAudit, describeRemoteSwitches, formatAuditLine, parseSwitchDuration, readRemoteSwitches, remoteSwitchOn, requireRemoteSwitch, setRemoteSwitch } from "../src/runtime-remote-setup.js";
+import { AUDIT_FILE, AUDIT_FOLD_MS, AUDIT_KEEP, AuditLog, MAX_SWITCH_MS, REMOTE_SETUP_FILE, RemoteSetupRefusal, appendAudit, describeRemoteSwitches, formatAuditLine, parseSwitchDuration, readRemoteSwitches, remoteSwitchOn, requireRemoteSwitch, setRemoteSwitch } from "../src/runtime-remote-setup.js";
 
 const directories: string[] = [];
 const home = (): string => { const path = mkdtempSync(join(tmpdir(), "agend-remote-setup-")); directories.push(path); return path; };
@@ -97,5 +97,63 @@ describe("the audit log", () => {
     expect(() => appendAudit(blocked, { actor: "local", action: "switch", outcome: "ok", detail: "on" })).toThrow();
     mkdirSync(join(dir, AUDIT_FILE));
     expect(() => appendAudit(dir, { actor: "local", action: "switch", outcome: "ok", detail: "on" })).toThrow();
+  });
+});
+
+describe("a clock that moved, and values nobody can set (review item 9)", () => {
+  it("a timed switch is off when its end is further away than the longest allowed time, so a clock moved back cannot revive it", () => {
+    const dir = home(), now = 1_700_000_000_000;
+    setRemoteSwitch(dir, "accounts", true, parseSwitchDuration("1h"), now);
+    expect(remoteSwitchOn(dir, "accounts", now + 1000)).toBe(true);
+    expect(remoteSwitchOn(dir, "accounts", now - 6 * 24 * 3_600_000)).toBe(true);        // within the allowed span of the end: still a plausible 1h..7d switch
+    expect(remoteSwitchOn(dir, "accounts", now - 8 * 24 * 3_600_000)).toBe(false);       // the clock was moved back more than a week: off
+    expect(remoteSwitchOn(dir, "accounts", now + 3_600_000)).toBe(false);
+    for (const until of [1e15, Number.MAX_SAFE_INTEGER, now + MAX_SWITCH_MS + 1000, 1e308]) {
+      writeFileSync(join(dir, REMOTE_SETUP_FILE), JSON.stringify({ version: 1, accounts: { on: true, until } })); expect(remoteSwitchOn(dir, "accounts", now), String(until)).toBe(false);
+    }
+    writeFileSync(join(dir, REMOTE_SETUP_FILE), JSON.stringify({ version: 1, accounts: { on: true, until: now + MAX_SWITCH_MS } })); expect(remoteSwitchOn(dir, "accounts", now)).toBe(true);
+  });
+});
+
+describe("the audit log cannot be flooded (review item 6)", () => {
+  const rows = (dir: string): Array<Record<string, unknown>> => readFileSync(join(dir, AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const refused = (actor: string, extra: Record<string, unknown> = {}) => ({ actor, action: "signin" as const, outcome: "refused" as const, reason: "switch_off" as const, ...extra });
+  it("writes the first refusal of a kind, counts the rest of that minute, and states the count on the next line; the actor, profile and CLI are not part of the key", () => {
+    const dir = home(); let now = 1_700_000_000_000; const log = new AuditLog(dir, () => now);
+    for (let i = 0; i < 500; i++) log.append(refused(`attacker-${i}`, { profile: `p${i}`, cli: "claude-code" }));      // every request names someone else and something else
+    expect(rows(dir)).toHaveLength(1); expect(rows(dir)[0]).toMatchObject({ actor: "attacker-0", reason: "switch_off" }); expect(rows(dir)[0]).not.toHaveProperty("repeated");
+    now += AUDIT_FOLD_MS - 1; log.append(refused("late")); expect(rows(dir)).toHaveLength(1);
+    now += 2; log.append(refused("next-minute")); const all = rows(dir);
+    expect(all).toHaveLength(2); expect(all[1]).toMatchObject({ actor: "next-minute", repeated: 501 });
+  });
+  it("keeps a separate line per kind (action and reason), so one kind cannot hide another", () => {
+    const dir = home(); const log = new AuditLog(dir, () => 1_700_000_000_000);
+    log.append(refused("a")); log.append({ ...refused("a"), reason: "busy" }); log.append({ ...refused("a"), action: "profile.remove" }); log.append(refused("b"));
+    expect(rows(dir).map(row => `${row.action}:${row.reason}`)).toEqual(["signin:switch_off", "signin:busy", "profile.remove:switch_off"]);
+  });
+  it("never folds a switch change, a started, ok or failed entry: a refusal flood cannot push them out or hide them", () => {
+    const dir = home(); const log = new AuditLog(dir, () => 1_700_000_000_000);
+    for (let i = 0; i < 100; i++) log.append(refused("x"));
+    log.append({ actor: "local", action: "switch", outcome: "ok", detail: "off" });
+    log.append({ actor: "admin:u1", action: "profile.remove", outcome: "started", cli: "claude-code", profile: "work" }); log.append({ actor: "admin:u1", action: "profile.remove", outcome: "ok", cli: "claude-code", profile: "work" });
+    log.append({ actor: "admin:u1", action: "profile.remove", outcome: "failed", reason: "failed" }); log.append({ actor: "admin:u1", action: "profile.remove", outcome: "failed", reason: "failed" });
+    const all = rows(dir);
+    expect(all.map(row => `${row.action}:${row.outcome}`)).toEqual(["signin:refused", "signin:refused", "switch:ok", "profile.remove:started", "profile.remove:ok", "profile.remove:failed", "profile.remove:failed"]);
+    expect(all[1]).toMatchObject({ repeated: 99 });                                           // the folded count is written before the next real entry
+  });
+  it("flush writes the folded count when a process ends", () => {
+    const dir = home(); const log = new AuditLog(dir, () => 1_700_000_000_000); for (let i = 0; i < 10; i++) log.append(refused("x"));
+    log.flush(); expect(rows(dir)).toHaveLength(2); expect(rows(dir)[1]).toMatchObject({ repeated: 9 }); log.flush(); expect(rows(dir)).toHaveLength(2);
+  });
+  it("keeps five rotated copies, newest first, and drops the oldest", () => {
+    const dir = home(), path = join(dir, AUDIT_FILE); expect(AUDIT_KEEP).toBe(5);
+    for (let round = 1; round <= 7; round++) { writeFileSync(path, `${JSON.stringify({ marker: round })}\n${"x".repeat(1024 * 1024 + 10)}\n`); appendAudit(dir, { actor: "local", action: "switch", outcome: "ok", detail: "on" }); }
+    expect(existsSync(`${path}.5`)).toBe(true); expect(existsSync(`${path}.6`)).toBe(false);
+    for (let copy = 1; copy <= 5; copy++) expect(JSON.parse(readFileSync(`${path}.${copy}`, "utf8").split("\n")[0]!).marker, `.${copy}`).toBe(8 - copy);     // .1 is round 7 ... .5 is round 3
+  });
+  it("accepts signin.write and a repeat count in the closed form, and refuses a count that is not one", () => {
+    expect(() => formatAuditLine({ actor: "a", action: "signin.write", outcome: "ok", cli: "claude-code", profile: "work" })).not.toThrow();
+    expect(formatAuditLine({ actor: "a", action: "signin", outcome: "refused", reason: "busy", repeated: 5 })).toMatch(/"repeated":5/);
+    for (const repeated of [0, 1, -3, 1.5, 1e12, NaN]) expect(() => formatAuditLine({ actor: "a", action: "signin", outcome: "refused", repeated })).toThrow(/closed form/);
   });
 });
