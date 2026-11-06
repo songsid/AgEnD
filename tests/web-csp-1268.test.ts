@@ -37,7 +37,7 @@ describe("no inline event handler, anywhere a panel could write one", () => {
   });
 
   it("the shared scripts a panel loads write none either", () => {
-    for (const f of ["shared/agend-auth.js", "shared/app-session.js", "chat-render.js"]) {
+    for (const f of ["shared/agend-auth.js", "shared/app-session.js", "shared/chat-render.js"]) {
       expect(readFileSync(join(UI, f), "utf8").match(/\son[a-z]+\s*=\s*["'`]/gi) ?? [], f).toEqual([]);
     }
   });
@@ -161,11 +161,11 @@ const unescape = (v: string) => v.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 // as htm props, so no value can end an attribute.
 
 describe("the app builds its markup from templates and props; the thread's string template is escaped and allow-listed (#1303)", () => {
-  const THREAD = readFileSync(join(UI, "chat-thread.js"), "utf8");
+  const THREAD = readFileSync(join(UI, "shared", "chat-thread.js"), "utf8");
   // The one innerHTML write a module may make besides the thread: the View pane's frame, which ansiToHtml builds from
   // escaped pane text and its own spans only (#1408 step 2). Pinned by content, so a second write fails here.
   const ANSI_FRAME = "pre.current.innerHTML = ansiToHtml(text);";
-  it.each(MODULES.filter(f => f !== join("chat-thread.js")))("%s: no innerHTML write, insertAdjacentHTML, document.write, eval or new Function", (file) => {
+  it.each(MODULES.filter(f => f !== join("shared", "chat-thread.js")))("%s: no innerHTML write, insertAdjacentHTML, document.write, eval or new Function", (file) => {
     const src = readFileSync(join(UI, file), "utf8");
     if (file === join("shared", "panel-view.js")) {
       expect(src.match(/\.innerHTML\s*=/g) ?? [], file).toHaveLength(1);

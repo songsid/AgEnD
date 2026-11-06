@@ -145,7 +145,7 @@ describe("#2911 the parent records a preview's errors, and passes nothing on", (
 
   it("preview.js still references no composer, store or API (the design §4.2 rule)", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync(new URL("../src/ui/preview.js", import.meta.url), "utf8");
+    const src = readFileSync(new URL("../src/ui/shared/preview.js", import.meta.url), "utf8");
     for (const word of ["msgIn", "drafts", "addToDraft", "startReply", "sendMsg", "fetch("]) expect(src.includes(word), word).toBe(false);
   });
 });

@@ -54,7 +54,7 @@ const put = (p: string, text = "hello") => { mkdirSync(join(p, ".."), { recursiv
 const shape = (ms: WebChatMessage[]) => ms.map(m => `${m.boot}-${m.id}:${m.text}`);
 
 // The page's own merge (chat-render.js), as served.
-const R = (() => { const c = vm.createContext({}); vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8"), c); return (c as any).AgendChatRender; })();
+const R = (() => { const c = vm.createContext({}); vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-render.js"), "utf8"), c); return (c as any).AgendChatRender; })();
 
 describe("the history survives a restart", () => {
   it("a new process restores each instance's messages, in order, with the boot and id they had", async () => {
