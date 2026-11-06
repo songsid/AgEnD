@@ -36,8 +36,9 @@ const weekly = (b: GrokBackend, pane: string, which: "runtime" | "startup" = "ru
 
 function dueDir(past = true) {
   const dir = tmp();
-  const now = Date.now();
-  writeGrokWeeklyReset(dir, { pausedAt: now - 86_400_000, resetAt: past ? now - 1_000 : now + 86_400_000 });
+  // Wall-clock stamps, not Date.now(): fake timers may pin now at 0, and resetAt<=0 is rejected.
+  const pausedAt = 1_700_000_000_000;
+  writeGrokWeeklyReset(dir, { pausedAt, resetAt: past ? pausedAt + 1_000 : 4_000_000_000_000 });
   return dir;
 }
 
@@ -171,7 +172,7 @@ function makeDaemon(dir: string, initial: string) {
 
 describe("in the real Daemon", () => {
   it("before the reset: X typed once, one quota pause, never Down/Enter", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
     const { daemon, tmux, errors, parked } = makeDaemon(tmp(), MODAL);
     daemon.startErrorMonitor();
     await vi.advanceTimersByTimeAsync(120_000);
@@ -184,7 +185,7 @@ describe("in the real Daemon", () => {
   });
 
   it("after the reset: Down, Down, Enter; no pause; composer is back", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
     const dir = dueDir(true);
     const { daemon, tmux, errors, parked } = makeDaemon(dir, MODAL);
     daemon.startErrorMonitor();
@@ -199,7 +200,7 @@ describe("in the real Daemon", () => {
   });
 
   it("Try Again while still limited: one Down×2+Enter, then Shift+x pauses", async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
     const dir = dueDir(true);
     const { daemon, tmux, state, errors } = makeDaemon(dir, MODAL);
     tmux.sendSpecialKey.mockImplementation(async () => true); // picker stays
