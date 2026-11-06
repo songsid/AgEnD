@@ -1,7 +1,8 @@
 /**
  * After grok's weekly-limit picker is recorded and the reset time has passed, AgEnD selects Try Again
- * (Down×2 then Enter from the captured default on option 1). Before the reset it Shift+x-pauses and
- * never auto-answers. Fixtures: tests/fixtures/grok-1.0.77-weekly-reset/ (1.0.77, isolated mock 402→ok).
+ * (Down×2 then Enter). The list does not wrap, so that is start-independent. Before the reset it
+ * Shift+x-pauses and never auto-answers. Fixtures: tests/fixtures/grok-1.0.77-weekly-reset/
+ * (1.0.77, isolated mock 402→ok).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -61,6 +62,13 @@ describe("1.0.77 offline capture: the three-option picker", () => {
     expect(sgr(fx("digit3.esc.txt"))).toBe("1");
     expect(sgr(fx("modal-run2.esc.txt"))).toBe("1");
     expect(sgr(fx("enter-still-402.esc.txt"))).toBe("1");
+  });
+
+  it("list does not wrap: Down on option 3 stays on 3; Down×2 from option 2 still lands on Try Again", () => {
+    const sgr = (s: string) => /\x1b\[7m(\d) \(○\)/.exec(s)?.[1];
+    expect(sgr(fx("down3.esc.txt"))).toBe("3");
+    expect(sgr(fx("from2.esc.txt"))).toBe("2");
+    expect(sgr(fx("from2-downx2.esc.txt"))).toBe("3");
   });
 
   it("retry while still limited re-shows the picker; success leaves the composer", () => {

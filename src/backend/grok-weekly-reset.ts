@@ -32,7 +32,12 @@ export function clearGrokWeeklyReset(instanceDir: string): void {
   try { unlinkSync(join(instanceDir, GROK_WEEKLY_RESET_FILE)); } catch { /* absent */ }
 }
 
-/** Last grok weekly `resetsAt` from quota-history, else a week from `now`. Never a time that has already passed. */
+/**
+ * Last grok weekly `resetsAt` from fleet-wide `usage-quota-history.jsonl`, else a week from `now`.
+ * Never a time that has already passed. The file is host-wide: if more than one grok account or credential
+ * has written a Weekly-limit row, this can belong to another account. An early Try Again re-shows the
+ * picker and then Shift+x pauses, so the cost is bounded.
+ */
 export function inferGrokWeeklyResetAt(now: number): number {
   let best: number | null = null;
   try {
