@@ -27,7 +27,7 @@ import { agentPolicyDigest, isAgentDescriptor } from "../src/hub/member/agent-mo
 const dbs: Database.Database[] = [], caps: SettingsExecution[] = [];
 afterEach(() => { dbs.splice(0).forEach((d) => d.close()); caps.splice(0).forEach((c) => c.close()); });
 
-function member(opts: { agents?: () => Array<{ name: string; display: string }> } = {}) {
+function member(opts: { agents?: () => Array<{ name: string; display: string }>; readinessCandidate?: (c: HubLocalExposure) => HubExecutionReadiness } = {}) {
   const db = new Database(":memory:"); dbs.push(db);
   applyHubMigrations(db, [HUB_AUDIT_MIGRATION, HUB_EXPOSURE_MIGRATION]);
   let floor = 0;
@@ -38,7 +38,8 @@ function member(opts: { agents?: () => Array<{ name: string; display: string }> 
     binding: () => ({ owner, fleetId }) });
   store.initialize();
   const afterCommit = vi.fn(async () => "pending");
-  const api = createHubMemberExposureApi({ store, agents: opts.agents ?? (() => [{ name: "atlas", display: "Atlas" }]), afterCommit, pending: (a) => (a === "atlas" ? null : null) });
+  const api = createHubMemberExposureApi({ store, agents: opts.agents ?? (() => [{ name: "atlas", display: "Atlas" }]), afterCommit, pending: (a) => (a === "atlas" ? null : null),
+    ...(opts.readinessCandidate ? { readinessCandidate: opts.readinessCandidate } : {}) });
   /** A mapping from before P1's change: S4's restricted container over an approved view (the store still holds it). */
   const legacy = () => publishExposure(store, { agent: "atlas", providerId: "claude", displayName: "Atlas", dataViewId: "notes", allowedTools: ["documents.read"], expectedRevision: 0 },
     (c: HubLocalExposure): HubExecutionReadiness => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision }));
@@ -84,6 +85,23 @@ describe("the member's exposure API", () => {
     const m = member({ agents: () => (++calls <= 2 ? [{ name: "atlas", display: "Atlas" }] : []) });
     expect(() => m.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
     expect(m.store.list()).toEqual([]); expect(m.afterCommit).not.toHaveBeenCalled();
+  });
+  it("S5's readinessCandidate: asked before the stage and again inside the atomic publish; its refusal refuses and drops the candidate", () => {
+    const seen: Array<{ inTx: boolean; consentId: string; digest: string }> = [];
+    let db!: Database.Database;
+    const ok = vi.fn((c: HubLocalExposure): HubExecutionReadiness => {
+      seen.push({ inTx: db.inTransaction, consentId: c.consentId, digest: c.exposure.policyDigest });
+      return { ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision };
+    });
+    const m = member({ readinessCandidate: ok }); db = m.store.database;
+    const v = m.api.publish({ ...AGENT, expectedRevision: 0 });
+    expect(seen.map((x) => x.inTx)).toEqual([false, true]);
+    expect(new Set(seen.map((x) => x.consentId)).size).toBe(1);
+    expect(seen[0]!.digest).toBe(agentPolicyDigest("atlas"));
+    expect(m.store.localExposure(v.exposureId!)!.consentId).toBe(seen[1]!.consentId);
+    const no = member({ readinessCandidate: () => ({ ok: false, reasonCode: "stale" }) });
+    expect(() => no.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
+    expect(no.store.list()).toEqual([]); expect(no.afterCommit).not.toHaveBeenCalled();
   });
   it("a legacy container mapping: durable, shown as republish_required (never as shared), withdrawable; never converted silently", async () => {
     const m = member(), old = m.legacy();

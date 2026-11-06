@@ -54,12 +54,20 @@ export function createHubMemberExposureApi(deps: {
   afterCommit(): Promise<unknown>;
   /** The confirmation layer's pending publish for an agent, if any. */
   pending?(agent: string): { expiresAt: number } | null;
+  /**
+   * S5's representative adapter (optional): asked after this API's own check passes, before the stage and again INSIDE
+   * the atomic publish transaction (where it may record the agent's lifecycle against candidate.consentId). Its refusal
+   * refuses the publish (not_enforceable) and drops the candidate.
+   */
+  readinessCandidate?(candidate: HubLocalExposure): HubExecutionReadiness;
 }): HubMemberExposureApi {
   const agentOf = (name: string) => deps.agents().find((a) => a.name === name) ?? null;
   /** Publish readiness (asked again inside the atomic publish): the exact descriptor of a still-configured agent. */
-  const readiness = (c: HubLocalExposure): HubExecutionReadiness => isAgentDescriptor(c) && agentOf(c.agent)
-    ? { ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision }
-    : { ok: false, reasonCode: "provider-unavailable" };
+  const readiness = (c: HubLocalExposure): HubExecutionReadiness => {
+    if (!isAgentDescriptor(c)) return { ok: false, reasonCode: "policy-unavailable" };
+    if (!agentOf(c.agent)) return { ok: false, reasonCode: "provider-unavailable" };
+    return deps.readinessCandidate ? deps.readinessCandidate(c) : { ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision };
+  };
   const viewOf = (a: HubMemberAgent): HubExposureView => {
     const row = deps.store.list().find((r) => r.agent === a.name), c = row?.committed ?? null, e = c?.exposure ?? null;
     const legacy = !!c && !!e && e.state !== "withdrawn" && !isAgentDescriptor(c);
