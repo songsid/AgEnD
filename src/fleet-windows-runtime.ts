@@ -114,6 +114,8 @@ export class FleetWindowsRuntime {
       return true;
       }catch{revoked=true;return false;}
     };
+    // The profile checks say what to do next (sign in there, update the Runtime); the generic race check below would swallow them.
+    if(target.credentialProfile&&target.machineId)this.host.validateMachine?.(target.machineId,target.backend,target.sandbox,target.credentialProfile);
     const validate=()=>{if(!current()||!targetCurrent())throw Error("Selected Runtime is unavailable or changed during the operation");};validate();
     if(!target.machineId){
       const inventory=await this.bridge.probe({force:false});validate();

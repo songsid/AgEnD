@@ -62,9 +62,10 @@ function realDirectory(path: string, what: string): void {
  */
 export function requireCredentialProfile(root: string, cli: unknown, name: unknown): string {
   const checked = assertCredentialProfileName(name), directory = credentialProfileDirectory(root, cli, checked);
-  realDirectory(join(root, assertCredentialProfileCli(cli)), "The credential profile folder");
-  try { realDirectory(directory, `Credential profile "${checked}"`); }
-  catch { throw new Error(`Credential profile "${checked}" does not exist on this computer. Create and sign in to it here: agend-runtime login ${String(cli)} ${checked}`); }
+  const missing = new Error(`Credential profile "${checked}" does not exist on this computer. Create and sign in to it here: agend-runtime login ${String(cli)} ${checked}`);
+  // Neither "no profile folder at all" nor "no such name" says anything else: both mean "create it here", with the exact command.
+  try { realDirectory(join(root, assertCredentialProfileCli(cli)), "The credential profile folder"); realDirectory(directory, `Credential profile "${checked}"`); }
+  catch (error) { if (error instanceof Error && /real folder, not a link/.test(error.message)) throw error; throw missing; }
   return directory;
 }
 /** Creates (or confirms) a profile folder, private to this Windows user. Names that differ only by case are the same folder on Windows, so they are refused. */
