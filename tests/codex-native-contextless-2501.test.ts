@@ -45,3 +45,18 @@ it('discovering a UUID after a fresh launch does not grant contextless resume ad
  let resumes=false;const b=createNativePaneBackend('codex',()=>({sessionId:'discovered',contextPercentage:null,statusLineItems:['context-remaining'],resumes}),{contextlessResume:false});resumes=true;
  expect(b.getReadyPattern().test(native)).toBe(false);expect(b.isDeliveryInputReadyPane!(native)).toBe(false);expect(b.ownsComposerRows!(native)).toBe(false);
 });
+
+const autocomplete=readFileSync(new URL('./fixtures/codex-0165-native-contextless-status-autocomplete.pane.txt',import.meta.url),'utf8');
+it('the retained real status autocomplete is owned only as the exact command, never new-paste readiness',()=>{
+ const b=backend();expect(b.isDeliveryInputReadyPane!(autocomplete)).toBe(false);expect(b.isPeriodicRedrawIdlePane!(autocomplete)).toBe(false);expect(b.ownsComposerRows!(autocomplete)).toBe(true);
+ for(const other of [backend(false),backend(true,['run-state'])])expect(other.ownsComposerRows!(autocomplete)).toBe(false);
+});
+it.each(['other-menu','wrong-description','different-text','second-menu','second-sibling','duplicate-menu'])('a %s cannot borrow the exact status autocomplete proof',kind=>{
+ const pane=kind==='other-menu'?autocomplete.replace('› /status      ','› /model       ')
+ :kind==='wrong-description'?autocomplete.replace('show current session configuration and token usage','choose a model')
+ :kind==='second-menu'?'› /help       show help\n'+autocomplete
+ :kind==='second-sibling'?'  /statusline  configure which items appear in the status line\n'+autocomplete
+ :kind==='different-text'?autocomplete.replace(/› \/status\s*$/m,'› /status extra')
+ :autocomplete+'\n'+autocomplete;
+ const b=backend();expect(b.isDeliveryInputReadyPane!(pane)).toBe(false);expect(b.ownsComposerRows!(pane)).toBe(false);
+});

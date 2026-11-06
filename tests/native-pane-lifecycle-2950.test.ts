@@ -1,11 +1,11 @@
 /** Private inert runner + real terminal/parser/receipt paths. No installed provider or user home is read. */
-import{afterEach,expect,it,vi}from'vitest';import{randomUUID}from'node:crypto';import{mkdtempSync,rmSync}from'node:fs';import{tmpdir}from'node:os';import{join}from'node:path';
+import{afterEach,expect,it,vi}from'vitest';import{randomUUID}from'node:crypto';import{mkdtempSync,rmSync,readFileSync}from'node:fs';import{tmpdir}from'node:os';import{join}from'node:path';
 import{RuntimeNativePaneLifecycle,type NativePaneLifecycleOptions}from'../src/native-pane-lifecycle.js';import{RuntimePaneHost}from'../src/runtime-pane-host.js';import{RuntimePaneStore}from'../src/runtime-pane-store.js';import type{RuntimePaneLaunch}from'../src/runtime-pane-protocol.js';
 const clean:Array<()=>unknown>=[];afterEach(async()=>{for(const f of clean.splice(0).reverse())await f();vi.restoreAllMocks();});
-async function fixture(cli:'codex'|'claude-code'='codex',expected?:string,contextless=false){
- const root=mkdtempSync(join(tmpdir(),'agend-native-lifecycle-'));clean.push(()=>rmSync(root,{recursive:true,force:true}));const actual=randomUUID(),launch:RuntimePaneLaunch={paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:'native-agent',cli,cwd:'C:\\scratch',sandbox:'read-only',columns:100,rows:30,...(expected?{sessionId:expected}:{})};
+async function fixture(cli:'codex'|'claude-code'='codex',expected?:string,contextless=false,autocomplete=false){
+ const root=mkdtempSync(join(tmpdir(),'agend-native-lifecycle-'));clean.push(()=>rmSync(root,{recursive:true,force:true}));const actual=randomUUID(),launch:RuntimePaneLaunch={paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:'native-agent',cli,cwd:'C:\\scratch',sandbox:'read-only',columns:autocomplete?120:100,rows:autocomplete?45:30,...(expected?{sessionId:expected}:{})};
  let output:(text:string)=>void=()=>{},exit:(value:{exitCode:number})=>void=()=>{};const idle=contextless?'› Ask Codex to do anything\r\n\r\n  ? for shortcuts    ⚠ 2 warnings · f2 to view\r\n':'› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n';
- const write=vi.fn((text:string)=>{if(text==='/status')output('\x1b[2J\x1b[H'+idle.replace('Ask Codex to do anything','/status'));if(text==='\r')output(`\x1b[2J\x1b[HSession: ${actual}\r\n${idle}`);});
+ const write=vi.fn((text:string)=>{if(text==='/status')output('\x1b[2J\x1b[H'+(autocomplete?readFileSync(new URL('./fixtures/codex-0165-native-contextless-status-autocomplete.pane.txt',import.meta.url),'utf8').replace(/\r?\n/g,'\r\n'):idle.replace('Ask Codex to do anything','/status')));if(text==='\r')output(`\x1b[2J\x1b[HSession: ${actual}\r\n${idle}`);});
  const process={pid:12345,write,resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(fn:typeof output)=>{output=fn;setTimeout(()=>output(cli==='codex'?idle:'Accessing workspace:\r\nC:\\scratch\r\nYes, I trust this folder\r\n❯ No, exit\r\n'),0);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
  const spawn=vi.fn(async()=>process),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:'pending' as const,cursor,data:'',lines:[],complete:false,gap:false};},close:async()=>{}})});clean.push(()=>host.stop());
  const options:NativePaneLifecycleOptions={endpoint:{machineId:randomUUID(),online:()=>true,call:request=>host.request(request),subscribe:()=>()=>{}},receiptFile:join(root,'receipt.json'),launch,admit:vi.fn(),reserve:vi.fn(),pin:vi.fn(),exited:vi.fn(),mcpProof:()=> 'unknown',releaseAuthority:vi.fn()};const make=()=>new RuntimeNativePaneLifecycle(options);
@@ -128,4 +128,28 @@ it('a fresh native launch does not gain contextless admission after its UUID is 
  const f=await fixture(),native=f.make();await native.acquire(()=>{});expect(native.backend.getSessionId()).toBe(f.actual);
  const screen='› Ask Codex to do anything\n\n  ? for shortcuts    ⚠ 2 warnings · f2 to view';
  expect(native.backend.getReadyPattern().test(screen)).toBe(false);expect(native.backend.isDeliveryInputReadyPane!(screen)).toBe(false);expect(native.backend.ownsComposerRows!(screen)).toBe(false);await native.release('detach');
+});
+
+it('the real contextless status autocomplete completes only the retained once-typed session verification',async()=>{
+ const f=await fixture('codex',undefined,true,true);f.launch.sessionId=f.actual;const native=f.make();let retired=false,result:unknown;
+ const pending=native.acquire(()=>{if(retired)throw Error('test admission retired');});void pending.then(value=>{result=value;},()=>{});
+ try{await vi.waitFor(()=>expect(result).toBeDefined(),{timeout:8000});expect(result).toMatchObject({disposition:'resumed'});expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);expect(native.backend.getSessionId()).toBe(f.actual);}
+ finally{retired=true;await native.release('close');await pending.catch(()=>{});}
+});
+it('an exact status autocomplete capture that became stale cannot take Enter',async()=>{
+ const f=await fixture('codex',undefined,true,true);f.launch.sessionId=f.actual;const native=f.make();await native.acquire(()=>{});
+ const screen=readFileSync(new URL('./fixtures/codex-0165-native-contextless-status-autocomplete.pane.txt',import.meta.url),'utf8');f.output('\x1b[2J\x1b[H'+screen.replace(/\r?\n/g,'\r\n'));
+ let captured='';await vi.waitFor(async()=>{captured=await native.port.capturePane();expect(native.backend.ownsComposerRows!(captured)).toBe(true);});const before=f.write.mock.calls.length,owner=native.snapshot()!;
+ f.output('\x1b[2J\x1b[H› /model  choose a model\r\n  other option\r\n');await vi.waitFor(async()=>{const changed=await f.host.request({action:'snapshot',paneId:owner.paneId,launchId:owner.launchId});expect((changed as {seq:number}).seq).toBeGreaterThan(owner.seq);});
+ expect(await native.port.sendSpecialKey('Enter',undefined,{kind:'composer',screen:captured})).toBe(false);expect(f.write.mock.calls).toHaveLength(before);expect(native.port.lastInputWasNotSent()).toBe(true);expect(native.port.getLastSendSpecialKeyError()).toBe('Pane changed after observation; input was not sent');await native.release('close');
+});
+
+it('fixed status autocomplete retains live work, disconnect and every active-dialog veto',async()=>{
+ const f=await fixture('codex',undefined,true,true);f.launch.sessionId=f.actual;const native=f.make();
+ const ready=(screen:string,fixed=true)=>(native as unknown as {ready(text:string,fixed?:boolean):boolean}).ready(screen,fixed);
+ const screen=readFileSync(new URL('./fixtures/codex-0165-native-contextless-status-autocomplete.pane.txt',import.meta.url),'utf8');
+ expect(ready(screen)).toBe(true);expect(ready(screen,false)).toBe(false);
+ expect(ready('• Working (1s • esc to interrupt)\n'+screen)).toBe(false);expect(ready(screen.replace(/(\n› \/status[ \t]*\n)/,'\n• Reconnecting to app-server… (8s)\n$1'))).toBe(false);
+ vi.spyOn(native.backend,'getRuntimeDialogs').mockReturnValue([{pattern:/MENU ACTIVE/,keys:[],holdOnly:true,description:'active runtime fixture',isActive:()=>true}]);expect(ready('MENU ACTIVE\n'+screen)).toBe(false);
+ vi.spyOn(native.backend,'getStartupDialogs').mockReturnValue([{pattern:/STARTUP ACTIVE/,keys:[],description:'active startup fixture',isActive:()=>true}]);expect(ready('STARTUP ACTIVE\n'+screen)).toBe(false);await native.release('detach');
 });

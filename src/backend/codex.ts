@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
-import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER } from "./codex-footer-hints.js";
+import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER, isCodexStatusAutocompleteComposer } from "./codex-footer-hints.js";
 import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -1091,6 +1091,7 @@ export class CodexPaneDetectors {
     if (!this.nativeContextlessPattern() || codexAppServerDisconnected(pane)) return null;
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows.at(-1)!.trim()) rows.pop();
+    if (isCodexStatusAutocompleteComposer(pane)) return rows;
     const before = rows.length; stripCodexPassiveHintRow(rows);
     if (rows.length === before) return null;
     const remaining = [...rows]; stripCodexPassiveHintRow(remaining);
