@@ -449,3 +449,35 @@ describe("the darwin build links jemalloc the way tmux's configure finds it", ()
     expect(src).toMatch(/darwin \? \{ MACOSX_DEPLOYMENT_TARGET: "11\.0", ZERO_AR_DATE: "1" \}/);
   });
 });
+
+describe("verifyTmux: the wait for the server's exit runs on a monotonic clock (alpha CI run 42287645555)", () => {
+  it("a wall clock that steps forward mid-wait does not cut the wait short: a server that takes a few checks to go passes", () => {
+    const f = fixture();
+    const PINV = { name: `@songsid/agend-tmux-${HOST.id}`, version: PIN };
+    const dir = mkdtempSync(join(tmpdir(), "agend-sock-")); roots.push(dir);
+    const sock = "agend-verify-4343";
+    const path = join(dir, sock);
+    // A socket file for the identity check (no server needs to listen: the proof only stats it).
+    spawnSync(process.execPath, ["-e", "require('net').createServer().listen(process.argv[1], () => process.exit(0))", path]);
+    let killed = false, checks = 0, t = Date.now();
+    const realNow = Date.now;
+    Date.now = () => (t += 60_000);          // every read of the wall clock is a minute later
+    try {
+      const proved = bundle.verifyTmux(bundle.tmuxCandidate(f.pkg, PINV), PINV, {
+        pid: 4343, exitWaitMs: 2000,
+        processGone: () => killed && ++checks > 3,   // gone only on the fourth look after kill-server
+        spawnSync: (_file: string, args: string[]) => {
+          const c = args[2];
+          if (c === "-V") return { status: 0, stdout: "tmux 3.8\n", stderr: "" };
+          if (c === "display-message") return { status: 0, stdout: `4321 ${path}\n`, stderr: "" };
+          if (c === "capture-pane") return { status: 0, stdout: "agend-verify-ok\n", stderr: "" };
+          if (c === "kill-server") { killed = true; return { status: 0, stdout: "", stderr: "" }; }
+          if (c === "has-session" && killed) return { status: 1, stdout: "", stderr: "no server running" };
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      });
+      expect(proved).toMatchObject({ ok: true });
+      expect(checks).toBeGreaterThanOrEqual(4);   // the loop looked until it was gone, then confirmed once more
+    } finally { Date.now = realNow; }
+  });
+});
