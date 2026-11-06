@@ -15,6 +15,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { goToSetting, searchSettings, settingLabel } from "./settings-registry.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // the "where" of a result is settings.sec_<section>; sec_agent-defaults is one of these words
+import "./settings-access-strings.js";   // a result shows its label: settings.webLoginQr is one of these words (#3061)
 
 register("search", {
   en: {

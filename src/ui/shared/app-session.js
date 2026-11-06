@@ -19,6 +19,9 @@ const ago = (ms) => { const m = Math.round((Date.now() - ms) / 60000); return m 
 export function SessionMenu() {
   const [me, setMe] = useState(undefined);         // undefined: not read yet; null: signed out
   const [sessions, setSessions] = useState(null);
+  // #3061 (P2b): on a web-only fleet only the verified owner ends the OTHER devices (the server says so with the list and
+  // refuses anyone else regardless); a session that is not one still sees them and can sign itself out.
+  const [mayEndOthers, setMayEndOthers] = useState(true);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState(false);
   const btn = useRef(null), pop = useRef(null);
@@ -27,6 +30,7 @@ export function SessionMenu() {
     setMe(m);
     const s = m ? await getJson("/auth/sessions") : null;
     setSessions(s && s.sessions ? s.sessions : null);
+    setMayEndOthers(!(s && s.canEndOthers === false));
   }
   useEffect(() => { refresh(); }, []);
   useEffect(() => {
@@ -57,10 +61,10 @@ export function SessionMenu() {
         <${AuthorizeChip} />
         ${rows.length > 1 ? html`<h3>${t("app.devices")}</h3><ul class="devices">${rows.map(s => html`<li key=${s.handle}>
           <span class="grow"><span class="name">${s.label}${s.current ? ` · ${t("app.thisDevice")}` : ""}</span><span class="when">${t("app.lastActive", ago(s.lastSeen))}</span></span>
-          ${s.current ? null : html`<button type="button" class="btn btn-sm danger" onClick=${() => act("DELETE", `/auth/sessions/${encodeURIComponent(s.handle)}`, refresh)}>${t("app.signOut")}</button>`}</li>`)}</ul>` : null}
+          ${s.current || !mayEndOthers ? null : html`<button type="button" class="btn btn-sm danger" onClick=${() => act("DELETE", `/auth/sessions/${encodeURIComponent(s.handle)}`, refresh)}>${t("app.signOut")}</button>`}</li>`)}</ul>` : null}
         <div class="row">
           <button type="button" class="btn" onClick=${() => act("POST", "/auth/logout", () => { location.href = "/signin"; })}><${Icon} name="user" size=${16} />${t("app.signOut")}</button>
-          ${rows.length > 1 ? html`<button type="button" class="btn danger" onClick=${() => act("DELETE", "/auth/sessions", () => { location.href = "/signin"; })}>${t("app.signOutAll")}</button>` : null}
+          ${rows.length > 1 && mayEndOthers ? html`<button type="button" class="btn danger" onClick=${() => act("DELETE", "/auth/sessions", () => { location.href = "/signin"; })}>${t("app.signOutAll")}</button>` : null}
         </div>`}
       ${error ? html`<p class="err" role="alert">${t("app.failed")}</p>` : null}
     </div>` : null}
