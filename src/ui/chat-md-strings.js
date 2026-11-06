@@ -1,9 +1,3 @@
-// M-2448 (Prism on #3155): the Markdown side panel's own words, registered by the panel's module (preview-panel.js). A
-// page that opened Log or Details before an upgrade may hold an older chat-strings.js without them; these keep the
-// panel saying what it shows, never a raw key.
-import { register } from "/assets/app-i18n.js";
-
-register("chat", {
-  en: { pvMdPanel: "Markdown preview", pvMdRendered: "Formatted", pvMdSource: "Source" },
-  "zh-TW": { pvMdPanel: "Markdown 預覽", pvMdRendered: "排版", pvMdSource: "原始內容" },
-});
+// Hub PR A (#3226): these words moved to /assets/chat-md-strings.js (src/ui/shared/), shared by the fleet and the Hub. A tab opened
+// before the move still imports them from here for their effect (they register themselves): the same module, once.
+import "/assets/chat-md-strings.js";

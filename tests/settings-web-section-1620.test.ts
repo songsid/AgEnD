@@ -127,6 +127,16 @@ describe("Settings → Web, as rendered", () => {
     expect(w.webWrites().map(s => s.body)).toEqual([{ preview_cdn: true }]);
   });
 
+  it("Refs #3061 (P2b): the QR code on the new-device sign-in page — in Sign-in sessions, off by default; ticking it stages exactly that key; it says what the code holds", async () => {
+    const w = await open({}, "access");
+    expect(w.$("webLoginQr").checked).toBe(false);
+    expect(w.text()).toContain("Show a QR code when a new device signs in with another device");
+    expect(w.text()).toContain("It holds only that page's address and the code, never a credential, and approving still takes a device signed in as the owner.");
+    await w.check(w.$("webLoginQr"), true);
+    await w.review(); await w.apply();
+    expect(w.webWrites().map(s => s.body)).toEqual([{ login_qr: true }]);
+  });
+
   it("emptying a set value — or turning the terminal back on — puts it back to its default (null)", async () => {
     const w = await open({ web: { session: { local: { absolute_hours: 48, idle_hours: 6 } } }, web_terminal: { enabled: false, ttl_minutes: 15 } });
     expect([w.$("webSessionAbsolute").value, w.$("webSessionIdle").value, w.$("webTerminalTtl").value, w.$("webTerminalEnabled").checked]).toEqual(["48", "6", "15", false]);

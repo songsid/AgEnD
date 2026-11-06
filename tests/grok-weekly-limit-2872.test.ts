@@ -31,8 +31,13 @@ const runtimeHit = (pane: string) => new GrokBackend(tmp()).getRuntimeDialogs().
   .find(d => /Grok 週限/.test(d.description));
 
 describe("the modal is matched by its rows, both builds, both focus states", () => {
-  it.each([["1.0.70 (three options)", () => MODAL], ["the earlier build (two options)", () => OLD_MODAL], ["focus moved to the scrollback (Esc)", () => SCROLLBACK]])(
+  it.each([["1.0.70 (three options)", () => MODAL], ["the earlier build (two options)", () => OLD_MODAL]])(
     "%s → the Shift+x spec", (_, pane) => { expect(runtimeHit(pane())).toMatchObject({ keys: ["X"], literalKeys: true, verifyAfterKeys: true }); });
+
+  it("focus moved to the scrollback (Esc) → Space restores the picker (1.0.77 unbinds Shift+x there)", () => {
+    expect(runtimeHit(SCROLLBACK)).toMatchObject({ keys: [" "], literalKeys: true, verifyAfterKeys: true, autoResolutionKey: "grok-weekly-limit-scrollback" });
+    expect(runtimeHit(SCROLLBACK)!.dismissIncident).toBeUndefined();
+  });
 
   it("anything else is not it: after the dismissal, another option, a reworded footer, the modal quoted above the composer", () => {
     for (const pane of [AFTER, AFTER_ESC,
@@ -63,7 +68,11 @@ function makeDaemon(initial: string) {
   const state = { pane: initial };
   const tmux = {
     capturePane: vi.fn(async () => state.pane), isWindowAlive: vi.fn(async () => true),
-    sendSpecialKey: vi.fn(async () => true), sendKeys: vi.fn(async (k: string) => { if (k === "X") state.pane = AFTER; return true; }),
+    sendSpecialKey: vi.fn(async () => true), sendKeys: vi.fn(async (k: string) => {
+      if (k === " " && /Tab\/Space:question/.test(state.pane)) { state.pane = MODAL; return true; }
+      if (k === "X") { state.pane = AFTER; return true; }
+      return true;
+    }),
     pasteText: vi.fn(async () => true), pasteBuffer: vi.fn(async () => true),
     getWindowId: () => "@9", getLastPasteError: () => null, isLastPasteFailureRecoverable: () => true, getLastSendSpecialKeyError: () => null,
   };
@@ -83,6 +92,20 @@ describe("in the real Daemon", () => {
     daemon.startErrorMonitor();
     await vi.advanceTimersByTimeAsync(120_000);
     expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual(["X"]);
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(tmux.pasteText).not.toHaveBeenCalled();
+    expect(parked).toEqual([]);
+    expect(errors).toEqual([expect.objectContaining({ type: "quota", action: "pause", skipUsageVerify: true })]);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("scrollback focus (1.0.77): Space restores the picker, then X dismisses with one quota pause", async () => {
+    vi.useFakeTimers();
+    const { daemon, tmux, errors, parked } = makeDaemon(SCROLLBACK);
+    expect(daemon.interactionEvidence(SCROLLBACK, daemon.runtimeDialogs())).toBeNull();
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual([" ", "X"]);
     expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
     expect(tmux.pasteText).not.toHaveBeenCalled();
     expect(parked).toEqual([]);

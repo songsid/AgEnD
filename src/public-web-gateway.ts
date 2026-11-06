@@ -26,6 +26,11 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   // Notices, and the outside status (read-only: enrolling, the switch and removal are refused off this computer).
   if (method === "POST" && path === "/auth/totp") return true;
   if (method === "GET" && (path === "/ui/agent-proposals" || path === "/ui/notices/list" || path === "/ui/outside")) return true;
+  // Refs #3061 (P2a): approving a new device's code, for the owner signed in from outside (the handlers ask the authority
+  // each time and answer 403 to anyone else). The new device's own `/auth/device-login*` is never here: its sign-in over
+  // the link is the authenticator's code.
+  if (method === "GET" && path === "/ui/devices") return true;
+  if (method === "POST" && /^\/ui\/devices\/(?:lookup|approve|deny|signout)$/.test(path)) return true;
   if (method === "POST" && (/^\/ui\/agent-proposals\/[0-9a-f]{32}$/.test(path) || path === "/ui/notices/seen")) return true;
   // #1939 §0.2 / §0.3: "Authorize this browser" over the link — this browser's state (GET) and the ask for its Confirm
   // card (POST, a session write: CSRF and §3 in the handler). The server answers why not while the link's option is off.

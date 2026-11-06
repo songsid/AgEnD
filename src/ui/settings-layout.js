@@ -1,6 +1,7 @@
 // Shared presentation for Settings. Tab panels stay mounted so switching views never drops a form's draft.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
+import { PageHead } from "/assets/page-head.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // SettingsPageHead prints settings.sec_<section>; sec_agent-defaults is one of these words (#3087)
 
@@ -89,7 +90,7 @@ register("settingsLayout", {
 
 export function SettingsPageHead({ section, children }) {
   const scope = section === "preferences" ? "account" : section === "look" ? "personal" : "fleet";
-  return html`<header class="s-page-head"><div><div class="s-page-title"><h2>${t(`settings.sec_${section}`)}</h2><span class="s-scope">${layoutText(scope)}</span></div><p class="s-page-lead">${layoutText(`lead_${section}`)}</p></div>${children ? html`<div class="s-page-actions">${children}</div>` : null}</header>`;
+  return html`<${PageHead} title=${t(`settings.sec_${section}`)} scope=${layoutText(scope)} lead=${layoutText(`lead_${section}`)}>${children}</${PageHead}>`;
 }
 
 // Settings search, validation links and legacy anchors reveal their owning tab before focusing a control.

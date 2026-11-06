@@ -146,7 +146,7 @@ describe("Files & changes (#3153 P1)", () => {
 
   it("its words come from its own module: an older chat-strings.js (cached by Log or Details) never leaves a raw key", async () => {
     const { readFileSync } = await import("node:fs");
-    expect(readFileSync("src/ui/chat-strings.js", "utf8")).not.toMatch(/\bws[A-Z]/);
+    expect(readFileSync("src/ui/shared/chat-strings.js", "utf8")).not.toMatch(/\bws[A-Z]/);
     expect(readFileSync("src/ui/workspace-panel.js", "utf8")).toContain('import "./workspace-strings.js";');
     serve();
     const doc = await chat();

@@ -37,7 +37,7 @@ function pageLoad(local: ReturnType<typeof storage>, session: ReturnType<typeof 
   const ctx: any = { localStorage: local.api, sessionStorage: session.api, performance, setTimeout, clearTimeout };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
-  vm.runInContext(SRC("preview.js"), ctx);
+  vm.runInContext(SRC("shared/preview.js"), ctx);
   return ctx.AgendPreview;
 }
 

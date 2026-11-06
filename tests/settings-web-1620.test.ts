@@ -21,6 +21,8 @@ import { noteSettingsWrite } from "../src/settings-transaction.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { parseWebSettingsBody } from "../src/web-settings-patch.js";
+import { validateFleetConfig } from "../src/config-validator.js";
 
 // The real FleetManager's loader and saver below: nothing may log to a file or start a process.
 vi.mock("../src/logger.js", () => ({
@@ -296,6 +298,33 @@ describe("#2911 (7): CDN libraries in HTML previews — one switch in Settings �
   it("never over the public link itself", async () => {
     const h = harness();
     const r = await h.request({ preview_cdn: true }, { publicLink: true });
+    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+  });
+});
+
+describe("Refs #3061 (P2b): the QR code on the new-device sign-in page — one switch in Settings → Sign-in & authorization (web.login_qr)", () => {
+  it("a boolean; applies at once either way (it encodes the page's own address and the code already on screen — nothing that signs anyone in)", () => {
+    expect(judge({ login_qr: true })).toBeNull();
+    expect(judge({ login_qr: false }, { web: { login_qr: true } })).toBeNull();
+    expect(() => prepareSettingsEffect("PUT", WEB, { login_qr: "yes" }, { config: { defaults: {}, instances: {} } as any, classic: {} })).toThrow("invalid_web_settings");
+    expect(parseWebSettingsBody({ login_qr: true })).toMatchObject({ loginQr: true });
+    expect(parseWebSettingsBody({ login_qr: 1 })).toEqual({ error: "login_qr must be a boolean" });
+  });
+  it("the validator: a boolean (anything else is an error on web.login_qr), and the key is known", () => {
+    expect(validateFleetConfig({ instances: {}, web: { login_qr: true } } as any).errors).toEqual([]);
+    expect(validateFleetConfig({ instances: {}, web: { login_qr: "yes" } } as any).errors.map((e: any) => e.path)).toContain("web.login_qr");
+  });
+  it("through the gate and the real handler: on written to fleet.yaml and the live config; off again the same way", async () => {
+    const h = harness();
+    const on = await h.request({ login_qr: true });
+    expect(on.status).toBe(200);
+    expect([h.raw().web.login_qr, h.config.web.login_qr]).toEqual([true, true]);
+    expect((await h.request({ login_qr: false }, { key: "k-2" })).status).toBe(200);
+    expect(h.config.web.login_qr).toBe(false);
+  });
+  it("never over the public link itself", async () => {
+    const h = harness();
+    const r = await h.request({ login_qr: true }, { publicLink: true });
     expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
   });
 });
