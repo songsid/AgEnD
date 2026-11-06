@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { randomBytes } from "node:crypto";
 import { nativeUpdateGuard, boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeMcpServerConfig, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeMcpConnection, validateNativeModel, type NativeMcpLaunch, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
+import { isCredentialProfileCli, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 
 const exec = promisify(execFile);
 export const NATIVE_CLI_IDS = NATIVE_PROVIDER_IDS;
@@ -122,9 +123,9 @@ export function nativeCliEnvironment(source: NodeJS.ProcessEnv = process.env): N
   env.MUSE_UPDATE_INTERVAL_SECONDS = "31536000";
   return env;
 }
-async function output(file: string, args: string[], timeout = 5000): Promise<NativeCommandOutput> {
+async function output(file: string, args: string[], timeout = 5000, env: NodeJS.ProcessEnv = nativeCliEnvironment()): Promise<NativeCommandOutput> {
   try {
-    const r = await exec(file, args, { env: nativeCliEnvironment(), encoding: "utf8", timeout, maxBuffer: 64 * 1024, windowsHide: true, shell: false });
+    const r = await exec(file, args, { env, encoding: "utf8", timeout, maxBuffer: 64 * 1024, windowsHide: true, shell: false });
     return { ok: true, text: `${r.stdout}\n${r.stderr}`.trim() };
   } catch (error) {
     const e = error as { stdout?: string; stderr?: string };
@@ -192,6 +193,19 @@ export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | nu
     }
   }
   return null;
+}
+/**
+ * Is a credential profile's directory signed in? Runs the CLI's own status command with that directory as its config home (never a login,
+ * never a model request). true/false = the CLI answered; null = it could not be asked or did not say.
+ */
+export async function probeCredentialProfileLogin(cli: CredentialProfileCli, directory: string, find: (id: NativeCliId) => Promise<NativeCliExecutable | null> = findCli,
+  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env)): Promise<boolean | null> {
+  const provider = nativeProvider(cli);
+  if (!provider.authProbe || !isCredentialProfileCli(cli)) return null;
+  const executable = await find(cli);
+  if (!executable) return null;
+  const result = await run(executable, [...nativeUpdateGuard(cli), ...provider.authProbe], withCredentialProfile(nativeCliEnvironment(), cli, directory));
+  return parseNativeAuthResult(cli, result.ok, result.text);
 }
 const HELP_PROBES: Record<NativeCliId, { args: string[]; required: string[] }> = {
   codex: { args: ["exec", "--help"], required: ["--json", "--sandbox"] },
@@ -330,6 +344,13 @@ async function workerMain(): Promise<void> {
       if (request.op !== "run") throw new Error("Unknown Windows worker operation");
       const input = validateNativeTask(request.task);
       const mcp = request.mcp === undefined ? undefined : validateNativeMcpConnection(request.mcp);
+      // Set only by this computer's own Runtime after it turned a profile NAME into a folder under its profile root; AgEnD never sends it.
+      let credentialHome: string | undefined;
+      if (request.credentialHome !== undefined) {
+        if (input.cli !== "claude-code" || !validWindowsDirectory(request.credentialHome)) throw new Error("Invalid credential profile folder");
+        if (!existsSync(request.credentialHome) || !statSync(request.credentialHome).isDirectory()) throw new Error("The credential profile folder does not exist on this computer");
+        credentialHome = request.credentialHome;
+      }
       if (request.context !== undefined && (typeof request.context !== "string" || request.context.length > 2000 || request.context.includes("\0"))) throw new Error("Invalid native task context");
       if (!existsSync(input.cwd) || !statSync(input.cwd).isDirectory()) throw new Error("Windows working directory does not exist");
       // M-2239 P1-2: a task starts no probe (no --version, --help, sign-in or model listing): AgEnD's bridge already
@@ -359,7 +380,8 @@ async function workerMain(): Promise<void> {
           createdFiles.push(mcpConfigFile);
         }
         const invocation = buildNativeInvocation({...input,prompt}, { resumeSessionId: request.resumeSessionId, promptFile,mcp:launch });
-        child = spawn(executable.command, [...executable.args, ...invocation.args], { cwd: input.cwd, env: { ...nativeCliEnvironment(), ...invocation.env }, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+        const baseEnvironment = credentialHome ? withCredentialProfile(nativeCliEnvironment(), input.cli, credentialHome) : nativeCliEnvironment();
+        child = spawn(executable.command, [...executable.args, ...invocation.args], { cwd: input.cwd, env: { ...baseEnvironment, ...invocation.env }, shell: false, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
         child.stdin!.on("error", () => stop());
         child.stdout!.on("error", () => stop());
         child.stderr!.on("error", () => stop());

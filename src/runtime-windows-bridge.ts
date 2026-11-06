@@ -3,11 +3,12 @@ import { windowsBridgeFor, type WindowsCliExecutor, type WindowsCliProbe, type W
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { nativeMcpHttp, type NativeMcpRequest } from "./windows-native-mcp.js";
 import type { NativeMcpConnection } from "./windows-cli-providers.js";
-import type { RuntimeOperation } from "./runtime-protocol.js";
+import type { RuntimeInfo, RuntimeOperation } from "./runtime-protocol.js";
+import { RUNTIME_CREDENTIAL_CAPABILITY, assertCredentialProfileCli, assertCredentialProfileName } from "./runtime-credential-profiles.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 
 export interface RuntimeExecutionCoordinator {
-  machine(id: string): {status: string; platform: string; inventory?: WindowsCliProbe} | null;
+  machine(id: string): {status: string; platform: string; inventory?: WindowsCliProbe; runtimeInfo?: RuntimeInfo} | null;
   call(machineId: string, operation: RuntimeOperation, payload: unknown): Promise<unknown>;
   task(id: string): WindowsCliTask | null;
   hasActiveTask(machineId: string): boolean;
@@ -69,6 +70,12 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
     if (!options.machineId) return this.local.start(value,authorized,options);
     const input=validateNativeTask(value), machineId=options.machineId, remote=this.machine(machineId);
     if (!authorized()) throw new Error("Authorization expired before remote execution");
+    if (options.credentialHome!==undefined) throw new Error("A credential profile folder is never sent to a Runtime; send the profile name");
+    if (options.credentialProfile!==undefined) {
+      // Fail closed: a Runtime that does not report the capability would ignore the field and run the default account.
+      assertCredentialProfileName(options.credentialProfile);assertCredentialProfileCli(input.cli);
+      if (!remote.machine(machineId)?.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY)) throw new Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
+    }
     const existing=remote.task(input.requestId) ?? this.pending.get(input.requestId)?.task;
     // The coordinator journal validates the complete payload digest as well as task identity.
     if (existing) throw new Error("This remote task was already admitted; reconcile its saved result before retrying");
@@ -80,7 +87,7 @@ export class RuntimeWindowsBridge implements WindowsCliExecutor {
     },360_000);
     timer.unref?.();this.pending.set(task.id,{machineId,task,settle:options.onSettled,timer});
     if(options.mcp)this.scopes.set(task.id,{machineId,connection:options.mcp});
-    const payload={task:input,...(options.resumeSessionId?{resumeSessionId:options.resumeSessionId}:{}),...(options.context?{context:options.context}:{}),...(options.mcp?{mcp:{tools:options.mcp.tools}}:{})};
+    const payload={task:input,...(options.resumeSessionId?{resumeSessionId:options.resumeSessionId}:{}),...(options.context?{context:options.context}:{}),...(options.mcp?{mcp:{tools:options.mcp.tools}}:{}),...(options.credentialProfile?{credentialProfile:options.credentialProfile}:{})};
     void remote.call(machineId,"run",payload).then(result=>{
       const accepted=result as WindowsCliTask;
       if(!accepted || accepted.id!==task.id)throw new Error("Invalid remote execution acceptance");

@@ -6,8 +6,10 @@ import { hostname } from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
-import { validateNativeTask, validWindowsAgentId, type NativeTaskInput } from "./windows-cli-worker.js";
+import { probeCredentialProfileLogin, validateNativeTask, validWindowsAgentId, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
+import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfileReport, isCredentialProfileCli, listCredentialProfileNames, rememberCredentialLogin, requireCredentialProfile,
+  assertCredentialProfileName, assertCredentialProfileCli, type CredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
@@ -56,22 +58,31 @@ export interface RuntimeClientOptions {
   /** Offline transport acceptance supplies its own process factory, never a public configuration field. */
   openPaneLink?: (options: PaneLinkOptions) => Promise<RuntimePaneLink>;
   createPaneHost?: (options: RuntimePaneHostOptions) => RuntimePaneHost;
+  /**
+   * This Runtime's credential profile root (<runtime home>\credential-profiles). Absent: the Runtime does not offer profiles, says so in its
+   * capabilities, and refuses any run or terminal that names one.
+   */
+  credentialProfilesRoot?: string;
+  /** Test seam; production asks the CLI itself (`claude auth status` under that profile's folder). */
+  credentialLogin?: (cli: CredentialProfileCli, directory: string) => Promise<boolean | null>;
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
 function object(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
 function message(error: unknown): string { return error instanceof Error ? error.message.slice(0, 1000) : "Runtime operation failed"; }
-interface CheckedRun { task: NativeTaskInput; resumeSessionId?: string; context?: string; mcp?: { tools: string[] } }
+interface CheckedRun { task: NativeTaskInput; resumeSessionId?: string; context?: string; mcp?: { tools: string[] }; credentialProfile?: string }
 function checkedRun(value: unknown): CheckedRun {
-  if (!object(value) || Object.keys(value).some(key => !["task", "resumeSessionId", "context", "mcp"].includes(key))) throw new Error("Invalid runtime run payload");
+  if (!object(value) || Object.keys(value).some(key => !["task", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(key))) throw new Error("Invalid runtime run payload");
   const task = validateNativeTask(value.task);
+  // A name and nothing else: a path, a drive letter or a control byte is not a profile name and is refused here, not "cleaned".
+  if (value.credentialProfile !== undefined) { assertCredentialProfileName(value.credentialProfile); assertCredentialProfileCli(task.cli); }
   if (value.resumeSessionId !== undefined && !validNativeSessionId(task.cli, value.resumeSessionId)) throw new Error("Invalid native conversation ID");
   if (value.context !== undefined && (typeof value.context !== "string" || value.context.length > 2000 || value.context.includes("\0"))) throw new Error("Invalid native context");
   if (value.mcp !== undefined && (!object(value.mcp) || Object.keys(value.mcp).some(key => key !== "tools")
     || !Array.isArray(value.mcp.tools) || !value.mcp.tools.length || value.mcp.tools.length > 64
     || value.mcp.tools.some(tool => typeof tool !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(tool)))) throw new Error("Invalid scoped MCP request");
   return { task, resumeSessionId: value.resumeSessionId as string | undefined, context: value.context as string | undefined,
-    mcp: value.mcp as { tools: string[] } | undefined };
+    mcp: value.mcp as { tools: string[] } | undefined, ...(value.credentialProfile !== undefined ? { credentialProfile: value.credentialProfile as string } : {}) };
 }
 function jsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((accept, reject) => {
@@ -117,7 +128,9 @@ export class RuntimeClient {
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
-    this.runtimeInfo = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
+    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
+    // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
+    this.runtimeInfo = options.credentialProfilesRoot ? info : { ...info, capabilities: info.capabilities.filter(name => name !== RUNTIME_CREDENTIAL_CAPABILITY) };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -248,7 +261,10 @@ export class RuntimeClient {
       const epoch = this.paneEpoch;
       try {
         const host = await this.panes();
-        const result = await host.request(request, () => epoch === this.paneEpoch && this.online());
+        // A terminal for an agent with no profile of its own starts under this pairing's default profile, when there is one.
+        const named = request.action === "open" ? this.credentialProfileFor(request.launch.cli, request.launch.credentialProfile) : undefined;
+        const forHost = request.action === "open" && named !== undefined && named !== request.launch.credentialProfile ? { ...request, launch: { ...request.launch, credentialProfile: named } } : request;
+        const result = await host.request(forHost, () => epoch === this.paneEpoch && this.online());
         if(request.action==="shutdown"){
           validateRuntimePaneShutdown(result,request.hostBootId);
           // Explicit coordinator disable, not a disconnect: the next enabled request discovers a new host boot.
@@ -277,6 +293,7 @@ export class RuntimeClient {
       });
       else this.paneOpening = import("./runtime-pane-link.js").then(({ RuntimePaneLink }) => (this.options.openPaneLink ?? RuntimePaneLink.open.bind(RuntimePaneLink))({
         directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
+        ...(this.options.credentialProfilesRoot ? { credentialRoot: this.options.credentialProfilesRoot } : {}),
         online: () => !this.stopped && this.online(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, output, mcp: (body, current) => this.paneMcp(body, current),
       })).then(host => this.paneHost = host);
       const opening = this.paneOpening;
@@ -310,8 +327,35 @@ export class RuntimeClient {
     }
   }
   private poll(): void { for (const id of this.active) { const task = this.bridge.get(id); if (task) this.update(task); } }
+  /** Which profile a run uses: the one the agent named, else this pairing's default (Claude Code only), else none (the Runtime's own environment). */
+  private credentialProfileFor(cli: string, named: string | undefined): string | undefined {
+    if (named !== undefined) return named;
+    return cli === "claude-code" && this.options.credentialProfilesRoot ? this.options.store.credentialDefault() : undefined;
+  }
+  /** The folder of a profile that exists AND is signed in on this computer; anything else refuses, never the default account. */
+  private async credentialHome(cli: string, name: string): Promise<string> {
+    const root = this.options.credentialProfilesRoot;
+    if (!root) throw new Error("This Runtime has no credential profile folder, so it cannot select an account. Update or restart the Runtime.");
+    if (!isCredentialProfileCli(cli)) throw new Error("Credential profiles on a Windows Runtime support Claude Code only");
+    const directory = requireCredentialProfile(root, cli, name);
+    const loggedIn = await (this.options.credentialLogin ?? probeCredentialProfileLogin)(cli, directory);
+    rememberCredentialLogin(root, cli, name, loggedIn);
+    if (loggedIn !== true) throw credentialLoginRequired(cli, name, loggedIn);
+    return directory;
+  }
+  /** Names and signed-in yes/no only. `force` (an explicit "Detect again") asks each profile's CLI; otherwise the last known answer is reported. */
+  private async credentialReport(force: boolean): Promise<CredentialProfileReport | undefined> {
+    const root = this.options.credentialProfilesRoot; if (!root) return undefined;
+    if (force) for (const name of listCredentialProfileNames(root, "claude-code")) {
+      try { rememberCredentialLogin(root, "claude-code", name, await (this.options.credentialLogin ?? probeCredentialProfileLogin)("claude-code", requireCredentialProfile(root, "claude-code", name))); }
+      catch { rememberCredentialLogin(root, "claude-code", name, null); }
+    }
+    let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
+    return credentialProfileReport(root, name);
+  }
   private async refreshInventory(force = false): Promise<WindowsCliProbe> {
-    const inventory = await this.bridge.probe({ force });
+    const probed = await this.bridge.probe({ force }), credentialProfiles = await this.credentialReport(force);
+    const inventory = credentialProfiles ? { ...probed, credentialProfiles } : probed;
     this.inventory = inventory;
     if (this.online()) this.send({ v: 1, type: "inventory", inventory });
     return inventory;
@@ -367,12 +411,15 @@ export class RuntimeClient {
     if (accepted.duplicate) return accepted.job.task;
     this.publish(accepted.job);
     try {
+      // Fail closed, and as a confirmed failed turn: an unknown, unsigned or unusable profile never falls back to another account.
+      const profile = this.credentialProfileFor(task.cli, run.credentialProfile);
+      const credentialHome = profile ? await this.credentialHome(task.cli, profile) : undefined;
       const mcp = payload.mcp ? await this.openMcp(task.requestId, (payload.mcp as { tools: string[] }).tools) : undefined;
       if (this.stopped || !this.online()) throw new Error("Runtime disconnected before native execution started");
       this.active.add(task.requestId);
       const initial = this.bridge.start(task, () => !this.stopped && this.online(), {
         ...(payload.resumeSessionId ? { resumeSessionId: payload.resumeSessionId as string } : {}),
-        ...(payload.context ? { context: payload.context as string } : {}), ...(mcp ? { mcp } : {}),
+        ...(payload.context ? { context: payload.context as string } : {}), ...(mcp ? { mcp } : {}), ...(credentialHome ? { credentialHome } : {}),
         onSettled: settled => this.update(settled),
       });
       this.update(initial); return this.options.store.get(task.requestId)!.task;

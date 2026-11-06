@@ -8,11 +8,16 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { dirname, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validWindowsAgentId, validWindowsDirectory, validateNativeTask, type NativeCliRow, type NativeTaskInput } from "./windows-cli-worker.js";
+import type { CredentialProfileReport } from "./runtime-credential-profiles.js";
 import { parseNativeProviderEvent, validateNativeMcpConnection, type NativeMcpConnection, type NativeProviderId } from "./windows-cli-providers.js";
 
 const exec = promisify(execFile);
 /** `probedAt`: when an administrator last ran detection (ms), null when it never ran — then `clis` is empty. */
-export interface WindowsCliProbe { clis: NativeCliRow[]; home: string; probedAt: number | null; hostname?: string }
+export interface WindowsCliProbe {
+  clis: NativeCliRow[]; home: string; probedAt: number | null; hostname?: string;
+  /** Named CLI sign-ins kept on that computer: names and a signed-in yes/no only. Reported by a Runtime; absent for an older one. */
+  credentialProfiles?: CredentialProfileReport;
+}
 /**
  * alpha.2 (#3004, dev-claude's rig): whether a runner's CLI inventory is a real report. A just-paired runner's hello
  * carries a placeholder — `{ clis: [], home: "", probedAt: null }` — that says nothing about what is installed: it is
@@ -27,7 +32,13 @@ export interface WindowsCliTask {
   startedAt: number; finishedAt?: number; output: string; error?: string;
   threadId?: string; outcomeConfirmed?: boolean;
 }
-export interface WindowsRunOptions { resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; machineId?: string }
+export interface WindowsRunOptions {
+  resumeSessionId?: string; onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; machineId?: string;
+  /** A credential profile NAME for a paired Runtime computer. It is only a name: that computer's Runtime turns it into its own folder. */
+  credentialProfile?: string;
+  /** Set only by a Runtime's own bridge, after it resolved `credentialProfile` under its profile root. Never an AgEnD-side or network value. */
+  credentialHome?: string;
+}
 /** The conversation store uses this port for both the existing local worker and paired runtimes. */
 export interface WindowsCliExecutor {
   probe(options?: {force?: boolean; machineId?: string}): Promise<WindowsCliProbe>;
@@ -168,6 +179,7 @@ export class WindowsCliBridge {
     const input = validateNativeTask(value);
     if (options.mcp) options = {...options,mcp:validateNativeMcpConnection(options.mcp)};
     if (options.context !== undefined && (typeof options.context !== "string" || options.context.length > 2000 || options.context.includes("\0"))) throw new Error("Invalid native task context");
+    if (options.credentialHome !== undefined && (input.cli !== "claude-code" || !validWindowsDirectory(options.credentialHome))) throw new Error("Invalid credential profile folder");
     const old = this.tasks.get(input.requestId);
     if (old) {
       if (JSON.stringify(old.input) !== JSON.stringify(input)) throw new Error("requestId already belongs to another task");
@@ -279,7 +291,7 @@ export class WindowsCliBridge {
           if (finished) this.active = null;
           resolve();
         });
-        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}) })}\n`);
+        child.stdin!.write(`${JSON.stringify({ op: "run", task: input, ...(options.resumeSessionId ? { resumeSessionId: options.resumeSessionId } : {}),...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),...(options.credentialHome ? {credentialHome:options.credentialHome} : {}) })}\n`);
       });
     } catch (e) { task.error = e instanceof Error ? e.message : "Windows CLI launch failed"; task.status = "failed"; task.outcomeConfirmed = true; task.finishedAt = Date.now(); this.active = null; }
     finally { try { options.onSettled?.({ ...task }); } catch (e) { task.error = `Could not save Windows conversation: ${e instanceof Error ? e.message : e}`; task.status = "failed"; } }

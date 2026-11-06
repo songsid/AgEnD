@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { WindowsCliTask } from "./windows-cli.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { assertCredentialProfileName, validCredentialProfileName } from "./runtime-credential-profiles.js";
 
 const MAX_JOBS = 128;
 /**
@@ -214,7 +215,26 @@ export class RuntimeClientStore {
       || value.pendingCredential !== undefined && (!/^[a-f0-9]{64}$/.test(value.pendingCredential) || value.pendingCredential === value.credential)) throw new Error("Invalid runtime credential");
     atomic(join(this.directory, "connection.json"), value);
   }
-  forgetCredentials(): void { const file = join(this.directory, "connection.json"); if (existsSync(file)) unlinkSync(file); }
+  /**
+   * The credential profile NAME this pairing uses for every agent that does not name its own (`connect --credential-profile`). A name only:
+   * the folder is resolved by this Runtime under its own profile root, and nothing here leaves this computer.
+   */
+  credentialDefault(): string | undefined {
+    const file = join(this.directory, "credential-default.json"); if (!existsSync(file)) return undefined;
+    const raw = readPrivate(file);
+    if (!object(raw) || raw.version !== 1 || Object.keys(raw).some(key => key !== "version" && key !== "profile") || !validCredentialProfileName(raw.profile)) throw new Error("Invalid credential profile default; run connect with --credential-profile again, or delete credential-default.json in the profile folder");
+    return raw.profile;
+  }
+  setCredentialDefault(name: string | undefined): void {
+    const file = join(this.directory, "credential-default.json");
+    if (name === undefined) { if (existsSync(file)) unlinkSync(file); return; }
+    atomic(file, { version: 1, profile: assertCredentialProfileName(name) });
+  }
+  /** Forgets the pairing and, with it, this pairing's default credential profile name (the profile folders and their sign-ins stay). */
+  forgetCredentials(): void {
+    const file = join(this.directory, "connection.json"); if (existsSync(file)) unlinkSync(file);
+    this.setCredentialDefault(undefined);
+  }
   /** PID recorded in the profile lock, if any; the lock is neither created nor removed. */
   lockHolder(): number | undefined {
     try { const lock = readPrivate(join(this.directory, "runtime.lock")); return object(lock) && Number.isSafeInteger(lock.pid) && (lock.pid as number) > 0 ? lock.pid as number : undefined; }

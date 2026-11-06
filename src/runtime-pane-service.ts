@@ -11,9 +11,15 @@ import { RuntimeClientStore } from "./runtime-client-store.js";
 import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
 import { validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { PaneMcpRelay } from "./runtime-pane-mcp-relay.js";
+import { rememberCredentialLogin, requireCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { probeCredentialProfileLogin, validWindowsDirectory } from "./windows-cli-worker.js";
 export interface PaneServiceOptions {
   directory: string;
   scope: string;
+  /** This Runtime's credential profile root (given by the Runtime that starts this host). Absent: the host refuses every launch that names a profile. */
+  credentialRoot?: string;
+  /** Test seam for the sign-in check; production asks the CLI itself. */
+  probeLogin?(cli: CredentialProfileCli, home: string): Promise<boolean | null>;
   createHost?(options: RuntimePaneHostOptions): RuntimePaneHost;
 }
 const MAX_FRAME = 256 * 1024;
@@ -28,7 +34,15 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   const output = new Map<string, RuntimePaneSnapshot>();
   let relay!: PaneMcpRelay;
   const hostOptions: RuntimePaneHostOptions = { store, bootId, ...(systemBootId ? { systemBootId } : {}), online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,
-    maxAgents: () => limit, mcpConnection: (owner, tools) => relay.connection(owner, tools), output: snapshot => { output.set(snapshot.paneId, snapshot); } };
+    maxAgents: () => limit, mcpConnection: (owner, tools) => relay.connection(owner, tools), output: snapshot => { output.set(snapshot.paneId, snapshot); },
+    ...(options.credentialRoot ? {
+      credentialHome: (cli: string, name: string) => requireCredentialProfile(options.credentialRoot!, cli, name),
+      credentialLogin: async (cli: string, home: string, name: string) => {
+        const loggedIn = await (options.probeLogin ?? probeCredentialProfileLogin)(cli as CredentialProfileCli, home);
+        rememberCredentialLogin(options.credentialRoot!, cli as CredentialProfileCli, name, loggedIn);
+        return loggedIn;
+      },
+    } : {}) };
   const host = options.createHost?.(hostOptions) ?? new RuntimePaneHost(hostOptions);
   const mcpPending = new Map<string, { epoch: string; socket: WebSocket; accept(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   const cancelMcp = (): void => { for (const row of mcpPending.values()) { clearTimeout(row.timer); row.reject(Error("Pane MCP connection changed")); } mcpPending.clear(); };
@@ -130,8 +144,9 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   } catch (error) { clearInterval(flush); server.close(); wss.close(); unlock(); throw error; }
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  if (process.platform !== "win32" || process.argv.length !== 4) process.exitCode = 1;
-  else void startPaneService({ directory: process.argv[2], scope: process.argv[3] }).then(service => {
+  const root = process.argv[4];
+  if (process.platform !== "win32" || process.argv.length < 4 || process.argv.length > 5 || root !== undefined && !validWindowsDirectory(root)) process.exitCode = 1;
+  else void startPaneService({ directory: process.argv[2], scope: process.argv[3], ...(root ? { credentialRoot: root } : {}) }).then(service => {
     const stop = (): void => { void service.close().catch(() => { process.exitCode = 1; }); };
     process.once("SIGINT", stop); process.once("SIGTERM", stop);
   }).catch(() => { process.exitCode = 1; });

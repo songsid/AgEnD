@@ -250,12 +250,13 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
+import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
-import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
@@ -1306,11 +1307,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       machineAvailable:id=>remoteRuntimeEnabled() && this.runtimeCoordinator().machine(id)?.status==="online",
       machineGeneration:id=>this.runtimeCoordinator().machine(id)?.bootId??null,
       paneAvailable:id=>this.runtimeCoordinator().machine(id)?.paneProtocol===1,
-      validateMachine:(id,cli,sandbox)=>{
+      validateMachine:(id,cli,sandbox,credentialProfile)=>{
         const machine=this.runtimeCoordinator().machine(id);
         const provider=machine?.inventory?.clis.find(row=>row.id===cli && row.runnable && row.supports.resume);
         if(!machine || machine.status!=="online" || machine.platform!=="win32" || !provider)throw new Error("Choose an online runtime and an available CLI");
         if(sandbox==="read-only" && !provider.readOnlySupport)throw new Error("This runtime CLI cannot enforce read-only execution");
+        if(credentialProfile!==undefined){
+          // Fail closed at selection time, not at the first message: an old Runtime would ignore the name and run another account.
+          if(!machine.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY))throw new Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
+          const row=machine.inventory?.credentialProfiles?.profiles.find(profile=>profile.name===credentialProfile);
+          if(!row)throw new Error(`This computer has not reported a credential profile named "${credentialProfile}". On that computer run: agend-runtime login claude-code ${credentialProfile}, then press Refresh in Settings → Runtime.`);
+          if(row.loggedIn===false)throw new Error(`Credential profile "${credentialProfile}" is not signed in on that computer. Sign in there: agend-runtime login claude-code ${credentialProfile}`);
+        }
       },
       emit:(event,data)=>{
         this.emitSseEvent(event,event === "status" ? this.getUiStatus() : data);
@@ -1493,8 +1501,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.shuttingDown || !isNativePaneInstance(now) || now?.native_agent_id !== config.native_agent_id
           || now?.machine_id !== config.machine_id || now?.working_directory !== config.working_directory || now?.backend !== config.backend
           || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow
-          || now?.general_topic !== config.general_topic || now?.native_general_binding !== config.native_general_binding)
+          || now?.general_topic !== config.general_topic || now?.native_general_binding !== config.native_general_binding
+          || nativeCredentialProfile(now) !== nativeCredentialProfile(config))
           throw Error("Native pane configuration or lifetime changed");
+        // Fail closed: a Runtime that does not report the capability would start the terminal on the computer's own account.
+        if (nativeCredentialProfile(config) && !this.runtimeCoordinator().machine(config.machine_id!)?.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY))
+          throw Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
         if (config.machine_id ? this.remotePaneDrain || !remoteRuntimeEnabled() : this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
       },
       endpoint: async (agent,cleanup=false) => {

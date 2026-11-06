@@ -15,6 +15,8 @@ export interface PaneLinkOptions {
   directory: string;
   server: string;
   machineId: string;
+  /** This Runtime's credential profile root, handed to a NEW pane host so it can map a profile name to a folder under it. */
+  credentialRoot?: string;
   online(): boolean;
   maxAgents(): number;
   epoch?(): string;
@@ -45,7 +47,7 @@ export class RuntimePaneLink {
       try { process.kill(descriptor.pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") live = false; }
     }
     if (!live) {
-      const child = spawn(process.execPath, [fileURLToPath(new URL("./runtime-pane-service.js", import.meta.url)), directory, scope], {
+      const child = spawn(process.execPath, [fileURLToPath(new URL("./runtime-pane-service.js", import.meta.url)), directory, scope, ...(options.credentialRoot ? [options.credentialRoot] : [])], {
         detached: true, windowsHide: true, stdio: "ignore", shell: false, env: nativeCliEnvironment(),
       });
       let failed = false; child.on("error", () => { failed = true; }); child.unref();

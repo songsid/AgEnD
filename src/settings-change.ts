@@ -9,6 +9,7 @@ import { LOCAL_SESSION_HOURS, localSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
 import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, featureConfigKey, separateAccessValue, type DashboardFeature } from "./dashboard-permissions.js";
 import { isCodexSpeed } from "./backend/codex-speed.js";
+import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 
 export const SETTINGS_DIFF_RECORDS = 32;
 export const SETTINGS_DIFF_UNITS = 4096;
@@ -417,8 +418,9 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
     const key = path.at(-1) ?? "configuration", label = settingsDisplay(path.join("."));
     // Native creation projects a strictly validated request at this exact root. These fields affect where code
     // runs and what it can write, so display and confirm them rather than making them globally public/immediate.
-    if (path.length === 2 && path[0] === "new_instance" && ["runtime", "sandbox", "machineId", "tags", "native_adapter"].includes(key)) {
+    if (path.length === 2 && path[0] === "new_instance" && ["runtime", "sandbox", "machineId", "tags", "native_adapter", "credentialProfile"].includes(key)) {
       const valid = (value: unknown) => value === undefined || (key === "runtime" ? value === "windows"
+        : key === "credentialProfile" ? typeof value === "string" && validCredentialProfileName(value)
         : key === "sandbox" ? value === "read-only" || value === "workspace-write"
         : key === "native_adapter" ? value === "exec" || value === "pane"
         : key === "tags" ? Array.isArray(value) && value.length <= 32 && value.every(tag => typeof tag === "string" && tag.length > 0 && tag.length <= 64)

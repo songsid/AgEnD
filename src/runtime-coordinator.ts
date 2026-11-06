@@ -10,6 +10,7 @@ import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask, type NativeTaskInput } from "./windows-cli-worker.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
+import { assertCredentialProfileCli, assertCredentialProfileName, parseCredentialProfileReport } from "./runtime-credential-profiles.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION,
@@ -54,7 +55,11 @@ function inventory(value: unknown): WindowsCliProbe {
     seen.add(row.id);
   }
   if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw new RuntimeProtocolError("Runtime inventory is too large");
-  return structuredClone(value) as unknown as WindowsCliProbe;
+  const probe = structuredClone(value) as unknown as WindowsCliProbe;
+  if (value.credentialProfiles !== undefined) {
+    try { probe.credentialProfiles = parseCredentialProfileReport(value.credentialProfiles); } catch { throw new RuntimeProtocolError("Invalid runtime credential profiles"); }
+  }
+  return probe;
 }
 function machineView(machine: RuntimeMachine): RuntimeMachine {
   return { ...structuredClone(machine), runtimeCompatibility: machine.runtimeInfo
@@ -559,8 +564,9 @@ export class RuntimeCoordinator {
     if (machine.status !== "online" || !connection?.ready || !this.current(connection)) throw Error("Runtime machine is offline");
     let id = randomUUID(), normalized = payload;
     if (operation === "run") {
-      if (!record(payload) || Object.keys(payload).some(k => !["task", "resumeSessionId", "context", "mcp"].includes(k))) throw Error("Invalid runtime run payload");
+      if (!record(payload) || Object.keys(payload).some(k => !["task", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
       const task = validateNativeTask(payload.task);
+      if (payload.credentialProfile !== undefined) { assertCredentialProfileName(payload.credentialProfile); assertCredentialProfileCli(task.cli); }
       if (payload.resumeSessionId !== undefined && !text(payload.resumeSessionId, 256) || payload.context !== undefined && (typeof payload.context !== "string" || payload.context.length > 2000 || payload.context.includes("\0"))) throw Error("Invalid runtime turn context");
       if (payload.mcp !== undefined && (!record(payload.mcp) || Object.keys(payload.mcp).some(k => k !== "tools") || !Array.isArray(payload.mcp.tools) || !payload.mcp.tools.length || payload.mcp.tools.length > 128 || payload.mcp.tools.some(v => typeof v !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(v)))) throw Error("Invalid runtime tool scope");
       normalized = { ...payload, task } satisfies RuntimeRunPayload; id = task.requestId as typeof id;
