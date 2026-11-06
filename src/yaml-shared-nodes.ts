@@ -147,9 +147,14 @@ export function changedOutside(before: Json, after: Json, written: ReadonlyArray
     }
     return null;
   }
-  if (isPlain(before) && isPlain(after)) {
-    for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
-      const found = changedOutside(before[key], after[key], written, [...at, key]);
+  // A map created (or removed) only to hold what is written under it: walk it as an empty one, so anything else in it
+  // — content no write leads to, such as an aliased default's — is still reported (#3212: an agent's backend_options,
+  // written under a fleet default that has backend_options of its own, was refused as a whole).
+  const b = before === undefined && isPlain(after) ? {} : before;
+  const a = after === undefined && isPlain(before) ? {} : after;
+  if (isPlain(b) && isPlain(a)) {
+    for (const key of new Set([...Object.keys(b), ...Object.keys(a)])) {
+      const found = changedOutside(b[key], a[key], written, [...at, key]);
       if (found) return found;
     }
     return null;

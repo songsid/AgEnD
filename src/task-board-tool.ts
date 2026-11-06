@@ -2,7 +2,8 @@
  * The `task` tool's board actions (step 2, docs/design/task-board.md), for both of the tool's doors — the MCP tool
  * over IPC (FleetManager.handleTaskCrud) and `agend-agent task` over HTTP (handleTaskCrudHttp):
  *
- * - `mine` — the caller's work; `projects` — the board's projects;
+ * - `mine` — the caller's work; `projects` — the board's projects; `create_project`; `move_project` — main tasks to a
+ *   project (or out of one), each card on its own (#3195);
  * - `move` — a card to another status, with the reason, result or comment the move needs;
  * - `create` or `update` naming a board field (a project, a parent, a checklist, state, a log line, a comment…);
  * - `get` of a card on the board — the card as text, with the comments new to its assignee.
@@ -17,7 +18,7 @@ import { cardLine, cardText, myWorkText, projectsText, writeText } from "./sched
 /** A `create` naming one of these opens a board card; without them it is the tool's plain task. */
 const BOARD_CREATE = ["project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"] as const;
 /** An `update` naming one of these edits the card on the board's terms; without them it is the tool's plain update. */
-const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acceptance", "check", "uncheck", "log", "comment", "needs_review", "size", "depends_on", "version", "dispatcher"] as const;
+const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acceptance", "check", "uncheck", "log", "comment", "needs_review", "size", "depends_on", "version", "dispatcher", "project"] as const;
 /**
  * The fields each action reads, through either door (this file and the plain task in fleet-manager.ts). Anything else
  * is refused by name before anything is written (#3195): a field the tool would ignore must never look like a saved
@@ -25,7 +26,7 @@ const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acce
  */
 export const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = {
   create: ["title", "description", "priority", "assignee", "depends_on", "project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"],
-  update: ["id", "title", "description", "priority", "assignee", "depends_on", "result", "status", "scope", "acceptance", "check", "uncheck", "context", "state", "log", "comment", "needs_review", "size", "dispatcher", "version"],
+  update: ["id", "title", "description", "priority", "assignee", "depends_on", "result", "status", "scope", "acceptance", "check", "uncheck", "context", "state", "log", "comment", "needs_review", "size", "dispatcher", "version", "project"],
   move: ["id", "to", "status", "reason", "result", "comment", "version"],
   claim: ["id"],
   done: ["id", "result"],
@@ -33,10 +34,11 @@ export const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = {
   list: ["filter_assignee", "filter_status", "verbose", "project", "parent"],
   mine: [],
   projects: [],
+  create_project: ["name", "description"],
+  move_project: ["ids", "project"],
 };
 /** What to do instead, for the fields agents reach for most. */
 const INSTEAD: Readonly<Record<string, string>> = {
-  "update.project": "a main task's project is changed by a person on the dashboard (Fleet › Tasks)",
   "update.parent": "a card's parent cannot be changed",
   "update.to": "use action \"move\" to change a card's status",
   "update.reason": "use action \"move\", which takes the reason with the status",
@@ -66,8 +68,8 @@ const strs = (v: unknown): string[] | undefined => (Array.isArray(v) && v.every(
 const nums = (v: unknown): number[] | undefined => (Array.isArray(v) && v.every((x) => typeof x === "number") ? (v as number[]) : undefined);
 const int = (v: unknown): number | undefined => (typeof v === "number" && Number.isInteger(v) ? v : undefined);
 const bool = (v: unknown): boolean | undefined => (typeof v === "boolean" ? v : undefined);
-// A dispatcher of null is a value (nobody), not an absent field.
-const has = (args: Record<string, unknown>, keys: readonly string[]) => keys.some((k) => args[k] !== undefined && (args[k] !== null || k === "dispatcher"));
+// A dispatcher or project of null is a value (nobody / no project), not an absent field.
+const has = (args: Record<string, unknown>, keys: readonly string[]) => keys.some((k) => args[k] !== undefined && (args[k] !== null || k === "dispatcher" || k === "project"));
 
 function status(v: unknown, param = "to"): CardStatus {
   const s = typeof v === "string" ? v.trim().toLowerCase() : "";
@@ -83,6 +85,17 @@ const dispatcher = (v: unknown): DispatcherInput | undefined => {
   return !name || name.toLowerCase() === "none" ? null : { kind: "instance", name };
 };
 const size = (v: unknown): CardSize | null | undefined => (v === null || v === "" ? null : (CARD_SIZES as readonly unknown[]).includes(v) ? (v as CardSize) : undefined);
+/**
+ * A main task's project, as `update` and `move_project` take it: the project's canonical id (the number `projects`
+ * lists, or those digits as text), or null / "" / "none" for no project. A name is not taken: it can be renamed.
+ */
+function projectRef(v: unknown): number | null {
+  if (v === null || v === "" || (typeof v === "string" && v.trim().toLowerCase() === "none")) return null;
+  if (typeof v === "number" && Number.isInteger(v) && v > 0) return v;
+  if (typeof v === "string" && /^\d+$/.test(v.trim()) && Number(v.trim()) > 0) return Number(v.trim());
+  throw new TaskBoardError("invalid", `"project" takes a project's id (the number "projects" lists), or null / "none" to take the main task out of its project; got ${JSON.stringify(v)}. Nothing was changed.`);
+}
+
 function need(v: unknown, what: string): string {
   const s = str(v)?.trim();
   if (!s) throw new TaskBoardError("invalid", `${what} is required`);
@@ -100,6 +113,36 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
       return myWorkText(board, instance, board.myWork(instance));
     case "projects":
       return projectsText(board.listProjects(true), board.projectStats());
+    case "create_project": {
+      // #3195 (9af8d799): an agent creates a project; changing or archiving it stays a person's (the dashboard).
+      const p = board.createProject(actor, { name: need(args.name, "name"), description: str(args.description) });
+      return `ok project ${p.id} ${p.name}`;
+    }
+    case "move_project": {
+      // Each main task on its own write, by the same rule as update's project: a refusal moves nothing of that card
+      // and does not stop the others. One line per card, in the order given.
+      const ids = strs(args.ids)?.map((x) => x.trim()).filter(Boolean);
+      if (!ids?.length) throw new TaskBoardError("invalid", "ids lists the main tasks to move (e.g. [\"M-3\", \"M-4\"])");
+      if (ids.length > 50) throw new TaskBoardError("invalid", "at most 50 cards in one move_project");
+      if (args.project === undefined) throw new TaskBoardError("invalid", "project is the project's id, or null / \"none\" for no project");
+      const projectId = projectRef(args.project);
+      const target = projectId === null ? "no project" : `project ${projectId} ${board.getProject(projectId).name}`;
+      let moved = 0;
+      const lines = ids.map((id) => {
+        try {
+          const before = board.getCard(id);
+          if (before.projectId === projectId) return `${before.code}: already in ${target}`;
+          const { card } = board.updateCard(actor, id, { projectId });
+          moved++;
+          return `ok ${card.code} → ${target} (v${card.version})`;
+        } catch (e) {
+          if (!(e instanceof TaskBoardError)) throw e;
+          return `${id}: not moved — ${e.message}`;
+        }
+      });
+      const notes = board.takeNotes().filter((n) => n !== "no change");
+      return [`moved ${moved} of ${ids.length} to ${target}`, ...lines, ...notes].join("\n");
+    }
     case "move": {
       const id = need(args.id, "id");
       let to = status(args.to ?? args.status);
@@ -151,6 +194,8 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
         priority: priority(args.priority),
         dependsOn: strs(args.depends_on),
         ...(args.assignee !== undefined ? { assignee: str(args.assignee) ?? null } : {}),
+        // #3195: a main task's project, by its canonical id (null / "none": out of its project); sub tasks follow.
+        ...(args.project !== undefined ? { projectId: projectRef(args.project) } : {}),
       };
       if (args.status === undefined) {
         const { card, notes } = board.updateCard(actor, need(args.id, "id"), patch);
@@ -169,7 +214,7 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
     case "list": {
       if (!has(args, ["project", "parent"])) return undefined;
       const filterStatus = args.filter_status === undefined ? undefined : (Array.isArray(args.filter_status) ? args.filter_status : [args.filter_status]).map((v) => status(v, "filter_status"));
-      const project = args.project === "" || args.project === "none" ? null : (str(args.project) ?? (typeof args.project === "number" ? args.project : undefined));
+      const project = args.project === "" || args.project === "none" || args.project === null ? null : (str(args.project) ?? (typeof args.project === "number" ? args.project : undefined));
       const { cards, total } = board.listCards({ project, parent: str(args.parent), assignee: str(args.filter_assignee) || undefined, status: filterStatus });
       if (!cards.length) return "No cards match.";
       return [...cards.map((c) => cardLine(c)), ...(total > cards.length ? [`… ${total - cards.length} more: narrow with filter_status or filter_assignee`] : [])].join("\n");
@@ -187,6 +232,8 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
 export function boardActivity(args: Record<string, unknown>): string | null {
   const id = typeof args.id === "string" ? args.id : "";
   if (args.action === "create" && has(args, BOARD_CREATE) && typeof args.title === "string") return `created task: ${args.title}`;
+  if (args.action === "create_project" && typeof args.name === "string") return `created project: ${args.name}`;
+  if (args.action === "move_project" && Array.isArray(args.ids)) return `moved to a project: ${args.ids.join(", ")}`;
   if (args.action !== "move") return null;
   const to = typeof args.to === "string" ? args.to : typeof args.status === "string" ? args.status : "";
   return { claimed: `claimed: ${id}`, done: `completed: ${id}`, review: `submitted for review: ${id}`, blocked: `blocked: ${id}`, cancelled: `cancelled: ${id}`, open: `put back: ${id}` }[STATUS_ALIAS[to] ?? to] ?? null;

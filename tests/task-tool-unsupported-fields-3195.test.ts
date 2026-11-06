@@ -54,19 +54,10 @@ function seeded() {
 
 describe("#3195: unsupported fields are refused, and nothing changes", () => {
   for (const door of ["http", "ipc"] as const) {
-    it(`${door}: update with only a project (once a silent "success") — refused by name, the card unchanged`, async () => {
+    it(`${door}: update with a field it does not take next to board fields — refused, the board fields not written either`, async () => {
       const f = seeded();
-      const r = await f[door]("dev-a", { action: "update", id: "M-1", project: "Other" }) as { error: string };
-      expect(r.error).toMatch(/^update does not take "project" \(a main task's project is changed by a person on the dashboard \(Fleet › Tasks\)\)\. Nothing was changed\. update takes: id, /);
-      const after = f.db.board.getCard("M-1");
-      expect(after.projectId).toBe(f.before.projectId);
-      expect(after.version).toBe(f.before.version);
-    });
-
-    it(`${door}: update with a project next to board fields — refused, the board fields not written either`, async () => {
-      const f = seeded();
-      const r = await f[door]("dev-a", { action: "update", id: "M-1", state: "next: x", log: "l", project: 2 }) as { error: string };
-      expect(r.error).toMatch(/^update does not take "project"/);
+      const r = await f[door]("dev-a", { action: "update", id: "M-1", state: "next: x", log: "l", parent: "M-2" }) as { error: string };
+      expect(r.error).toMatch(/^update does not take "parent"/);
       const after = f.db.board.getCard("M-1");
       expect(after.state).toBe("");
       expect(after.version).toBe(f.before.version);
@@ -90,8 +81,8 @@ describe("#3195: unsupported fields are refused, and nothing changes", () => {
     expect([after.status, after.assignee, after.projectId, after.version]).toEqual([f.before.status, f.before.assignee, f.before.projectId, f.before.version]);
   });
 
-  it("a null counts as a value: { project: null } on an update is refused, not read as 'no project'", () => {
-    expect(unsupportedFields({ action: "update", id: "M-1", project: null })).toMatch(/update does not take "project"/);
+  it("a null counts as a value: { parent: null } on an update is refused, not read as absent", () => {
+    expect(unsupportedFields({ action: "update", id: "M-1", parent: null })).toMatch(/update does not take "parent"/);
     // …while an absent (undefined) field is just absent, as the CLI sends them.
     expect(unsupportedFields({ action: "update", id: "M-1", status: "done", priority: undefined })).toBeNull();
   });
@@ -132,5 +123,12 @@ describe("#3195: what the tool does take is unchanged", () => {
       const s = await f[door]("dev-a", { action: "update", id: ack.id, status: "cancelled" }) as Record<string, unknown>;
       expect(Object.keys(s).sort()).toEqual(["id", "status", "updated_at"]);
     }
+  });
+
+  it("the answer is what was SAVED, not what was asked: a priority the tool does not apply shows the stored one (Fable #3218 P3)", async () => {
+    const f = fleet();
+    const ack = await f.http("dev-a", { action: "create", title: "Plain", priority: "low" }) as { id: string };
+    const r = await f.http("dev-a", { action: "update", id: ack.id, priority: "HIGHEST" }) as Record<string, unknown>;
+    expect(r.priority).toBe("low");
   });
 });
