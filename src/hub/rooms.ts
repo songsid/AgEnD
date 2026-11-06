@@ -181,6 +181,24 @@ export class HubRoomsService {
   }
 
   /**
+   * #3226 C (the user's choice): who asked one of the owner's agents, when, and how it went — never what was asked or
+   * answered. The owner only (another person: not-found); the latest 20; the read is audited like any metadata read.
+   */
+  async activity(ctx: HubRequestContext, exposureId: string): Promise<readonly { askerName: string; askedAt: number; stage: HubReceipt["stage"] }[]> {
+    const person = await ctx.requirePerson(), me = personKeyString(person);
+    await ctx.current();
+    return this.core.atomic((db, tx) => {
+      const e = readExposure(db, exposureId);
+      if (!e || e.owner !== me) throw new HubProtocolError("not-found");
+      const rows = db.prepare(`SELECT m.created_at, m.stage, p.display_name FROM hub_messages m LEFT JOIN hub_people p ON p.person = m.asker
+        WHERE m.exposure_id=? ORDER BY m.created_at DESC LIMIT 20`).all(exposureId) as { created_at: number; stage: HubReceipt["stage"]; display_name: string | null }[];
+      this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person }, action: "exposure.activity-read", result: "completed",
+        fleetId: e.fleet_id, exposureId, ownerAtEvent: person });
+      return rows.map((r) => ({ askerName: r.display_name ?? "", askedAt: r.created_at, stage: r.stage }));
+    });
+  }
+
+  /**
    * One room as `list` draws it — its asker only, else not-found (checked here, not left to the caller: the messages
    * route asks it after its own read, but this answers alone). The messages answer carries it, fresh each poll.
    */
