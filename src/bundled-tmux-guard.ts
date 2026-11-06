@@ -12,7 +12,7 @@
  *  - another home: its hashed socket is this version's own too, so only the server server.json recorded (same pid), or
  *    one this version's tmux cannot talk to (another protocol: the bundled tmux).
  */
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { existsSync, readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
