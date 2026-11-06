@@ -260,7 +260,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     process.stdout.write(`Credential profile for agents that do not choose one: ${flags["--credential-profile"]}${before && before !== flags["--credential-profile"] ? ` (was ${before})` : ""}\n`);
   }
   if (await runRuntimeWithUpdates({ store, report: text => process.stdout.write(`${text}\n`) })) return;
-  const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, report: text => process.stdout.write(`${text}\n`) });
+  const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, updateStatus: { state: "manual", reason: "unmanaged" }, report: text => process.stdout.write(`${text}\n`) });
   const stop = (): void => {
     void client.stop().catch(error => {
       // An account process was not confirmed ended: the Runtime keeps its lock, so say so and let the next Ctrl+C try again.

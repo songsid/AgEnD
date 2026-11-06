@@ -26,7 +26,7 @@ describe("the installer's long steps and console guards (static)", () => {
     // Both Windows features are enabled by one watched DISM call per missing feature (#2650 item 7).
     for (const step of [/Invoke-Watched -Label \$label[^\n]*-File "dism\.exe" -Arguments @\("\/online", "\/enable-feature", "\/featurename:\$n"/,
       /Invoke-Watched -Label "更新 WSL 核心元件"[^\n]*"--update"\)/, /Invoke-Watched -Label "從 GitHub 更新 WSL"[^\n]*"--update", "--web-download"/,
-      /Invoke-Watched -Label "安裝 WSL"[^\n]*msiexec\.exe/, /Invoke-Watched -Label "下載並安裝 \$UBUNTU_DISTRO"[^\n]*"--install"/,
+      /Invoke-Watched -Label "安裝 WSL"[^\n]*msiexec\.exe/, /Invoke-Watched -Label "下載並安裝 \$candidate（\$target）"[^\n]*"--install"/,
       /Invoke-WslStep -Label "安裝必要套件"/, /Invoke-WslStep -Label \("安裝 \{0\}" -f \$b\.Name\)[^\n]*-Script \$cmd/,
       /Invoke-WslStep -Label "安裝 tmux"/, /Invoke-WslStep -Label "安裝 AgEnD 與 Node\.js"/]) expect(code).toMatch(step);
     expect(code).not.toMatch(/wsl --update 2>&1 \| Out-String/);
@@ -46,7 +46,7 @@ describe("the installer's long steps and console guards (static)", () => {
   });
   it("each step reads its output in the encoding it is known to use", () => {
     expect(code.match(/-Encoding oem -File "dism\.exe"/g)).toHaveLength(1);       // one call, once per missing feature (#2650 item 7)
-    expect(code.match(/-Encoding utf16 -File "wsl\.exe"/g)).toHaveLength(5);    // wsl.exe's own commands, WSL_UTF8 removed (update ×2, install, the AgEnD distro's install and import)
+    expect(code.match(/-Encoding utf16 -File "wsl\.exe"/g)).toHaveLength(4);    // wsl.exe's own commands: update ×2, shared distro install, image import.
     expect(code).not.toMatch(/Get-WslOutputEncoding/);                          // no probe of which wsl.exe (#2228 review)
   });
   it("a plain notice at the start, and again at the login and quickstart steps", () => {

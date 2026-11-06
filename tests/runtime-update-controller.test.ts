@@ -39,6 +39,7 @@ afterAll(() => { sa?.cleanup(); sb?.cleanup(); sc?.cleanup(); });
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 
 class InertClient {
+  readonly setUpdateStatus = vi.fn();
   readonly bootId = randomUUID(); readonly prepare = vi.fn(async (_id: string) => { if (this.busy) return false; await this.stop(); return true; });
   private stopped = false; private done!: () => void; private readonly completion = new Promise<void>(resolve => { this.done = resolve; });
   busy = true; starts = 0; stops = 0; stopReason = undefined;
@@ -69,10 +70,10 @@ class InertChild extends EventEmitter {
 
 async function fixture(options: { shared?: boolean; unmanaged?: boolean; failChild?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-controller-")), requests: string[] = [], children: InertChild[] = [], clients: InertClient[] = [], reports: string[] = [];
-  let target = b, archive: Buffer | undefined, interrupted = false, onArchive: (() => void) | undefined;
+  let target = b, archive: Buffer | undefined, interrupted = false, onArchive: (() => void) | undefined, onMetadata: (() => void) | undefined;
   const server = createServer((req, res) => {
     requests.push(req.url!); const value = metadata(target); res.setHeader("ETag", `"${value.version}-${value.sha256}"`);
-    if (req.url === "/runtime/v1/bundle/windows.json") { res.end(JSON.stringify(value)); return; }
+    if (req.url === "/runtime/v1/bundle/windows.json") { onMetadata?.(); res.end(JSON.stringify(value)); return; }
     if (req.url !== "/runtime/v1/bundle/windows.zip") { res.writeHead(404).end(); return; }
     const bytes = archive ?? target.bytes; res.setHeader("Content-Length", bytes.length);
     onArchive?.();
@@ -119,6 +120,7 @@ async function fixture(options: { shared?: boolean; unmanaged?: boolean; failChi
     setTarget(value: RuntimeBundle) { target = value; }, corrupt() { archive = Buffer.from(target.bytes); archive[100] ^= 1; },
     interrupt(value: boolean) { interrupted = value; },
     beforeArchive(callback: () => void) { onArchive = callback; },
+    beforeMetadata(callback: () => void) { onMetadata = callback; },
     async open() { return controller = await RuntimeUpdateController.open(controllerOptions); },
     own(value: RuntimeUpdateController) { controller = value; },
     selected() { return readRuntimeSelectedProgram(root); },
@@ -139,6 +141,7 @@ it("downloads only the paired fixed endpoints, stages verified code and leaves a
   expect(f.clients[0].prepare).toHaveBeenCalledOnce(); expect(f.clients[0].stops).toBe(0); expect(f.clients[0].online()).toBe(true);
   expect(f.selected()).toEqual(f.program); expect(f.children).toEqual([]); expect(f.journal().read().attempt).toBeUndefined();
   expect(f.reports.join(" ")).toMatch(/pending.*Waiting for idle/);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenCalledWith({ state: "pending", target: { version: b.version, bundleSha256: b.sha256 } });
   expect(readFileSync(join(f.store.directory, "connection.json"), "utf8")).toBe(f.credentials);
 });
 it("starts the exact verified child only after a positive idle stop and records its proof before arming", async () => {
@@ -157,6 +160,7 @@ it("remembers a checksum failure, never stops a client or retries that hash", as
   expect(f.journal().read().failed).toEqual({ version: b.version, sha256: b.sha256 }); expect(f.clients[0].prepare).not.toHaveBeenCalled();
   expect(f.children).toEqual([]); await controller.checkNow(); expect(f.requests.filter(p => p.endsWith(".zip"))).toHaveLength(1);
   expect(f.selected()).toEqual(f.program); expect(f.clients[0].online()).toBe(true);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenLastCalledWith({ state: "failed", target: { version: b.version, bundleSha256: b.sha256 } });
 });
 
 async function handoff(f: Awaited<ReturnType<typeof fixture>>) {
@@ -202,7 +206,15 @@ it("selects and connects a gated trial, persists activation intent before its ex
   await controller.startTrial(h.id);
   expect(f.clients[0].options.managedUpdate?.trialId).toBe(h.id); expect(f.clients[0].activate).toHaveBeenCalledOnce();
   expect(f.journal().read().attempt).toBeUndefined(); expect(f.journal().read().failed).toBeUndefined(); expect(f.selected()).toEqual(h.next);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenLastCalledWith({ state: "current" });
   expect(readFileSync(join(f.store.directory, "connection.json"), "utf8")).toBe(f.credentials);
+});
+it("the verified rollback controller reports the failed target through its normal new connection", async () => {
+  const f = await fixture(), h = await handoff(f); f.journal().advance(h.id, "rollback", () => {});
+  const options = { ...f.controllerOptions }, init = { ...h.init, role: "rollback" as const };
+  const controller = await RuntimeUpdateController.resume(options, init, h.channel); f.own(controller); await controller.start();
+  expect(f.clients[0].options.updateStatus).toEqual({ state: "failed", target: { version: b.version, bundleSha256: b.sha256 } });
+  expect(f.selected()).toEqual(f.program); expect(f.clients[0].online()).toBe(true);
 });
 
 it("a wrong candidate build rolls back before activation and arms only the verified old controller", async () => {
@@ -348,6 +360,7 @@ it("refuses a downgrade before downloading or stopping, while aligning a differe
 it("a shared managed root stays connected but never downloads or prepares an update", async () => {
   const f = await fixture({ shared: true }), controller = (await f.open())!; await controller.start();
   await expect(controller.checkNow()).rejects.toThrow(/shared/); expect(f.requests).toEqual([]);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenLastCalledWith({ state: "manual", reason: "shared" });
   expect(f.clients[0].online()).toBe(true); expect(f.clients[0].prepare).not.toHaveBeenCalled(); expect(f.children).toEqual([]);
 });
 it("a helper startup refusal is positively stopped before restarting the old Runtime, with pairing and selection kept", async () => {
@@ -441,4 +454,13 @@ it("rechecks a lockless manual selection made during download before stopping th
   const controller = (await f.open())!; await controller.start(); await controller.checkNow();
   expect(f.selected()).toEqual(third); expect(f.clients[0].prepare).not.toHaveBeenCalled(); expect(f.clients[0].online()).toBe(true);
   expect(f.children).toEqual([]); expect(f.journal().read().attempt).toBeUndefined();
+});
+
+it("metadata started under an older connection cannot confirm current after reconnect", async () => {
+  const f = await fixture(); f.setTarget(a); let changed = false;
+  f.beforeMetadata(() => { if (!changed) { changed = true; f.clients[0].options.managedUpdate!.authenticated!({ bootId: f.clients[0].bootId, generation: 2, updateProtocol: 1, runtimeInfo: { version: a.version, buildId: f.program.buildId, protocolVersions: [1], capabilities: ["exec"] } }); } });
+  const controller = (await f.open())!; await controller.start(); await controller.checkNow();
+  expect(changed).toBe(true); expect(f.clients[0].setUpdateStatus).not.toHaveBeenCalledWith({ state: "current" });
+  f.beforeMetadata(() => {}); await controller.checkNow();
+  expect(f.clients[0].setUpdateStatus).toHaveBeenCalledWith({ state: "current" });
 });

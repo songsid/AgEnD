@@ -41,6 +41,7 @@ import type { TranscriptTurnEvent } from "./transcript-turns.js";
 import { LINE_MAX_BYTES, LONG_HEAD_BYTES, LOOKS_PER_POLL, READ_MAX_BYTES, lastLineBoundary, readNewLines, readWholeLine, resolveLongLines, type ReadNewLinesResult } from "./transcript-jsonl.js";
 import { museSessionCwd, readFileHeadSync } from "./backend/muse.js";
 import { performance } from "node:perf_hooks";
+import { codexFollowRecords } from "./workspace-follow-records.js";
 
 export interface ToolUseEvent { name: string; input: unknown }
 
@@ -446,6 +447,7 @@ export class CodexRolloutSource implements TranscriptSource {
       try { entry = JSON.parse(line); } catch { continue; }
       const p = entry.payload as Record<string, unknown> | undefined;
       if (!p) continue;
+      for (const observation of codexFollowRecords(entry)) (events.records ??= []).push(["workspace_follow", observation]);
       if (this.turnRecord(entry, turns)) continue;
       if (entry.type !== "response_item") continue;
       codexToolRecord(entry, events);

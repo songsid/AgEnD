@@ -17,9 +17,11 @@ import ts from "typescript";
 
 export const SURFACES = ["dialog", "approval", "trust", "onboarding", "resume", "error", "idle-busy", "input-box", "exit", "other"] as const;
 export type Surface = typeof SURFACES[number];
-export interface ManifestLiteral { text: string; kind: "string" | "template" | "regex"; surface: Surface; file: string; line: number; symbol: string }
+/** retiredAfter: the last upstream release that had this text (sources.json `retired`): AgEnD keeps it for hosts still on
+ * an older release, and precheck lists it as expected-missing instead of a hard finding. */
+export interface ManifestLiteral { text: string; kind: "string" | "template" | "regex"; surface: Surface; file: string; line: number; symbol: string; retiredAfter?: string }
 export interface Manifest { format: 1; source: string; backends: Record<string, { literals: ManifestLiteral[] }> }
-interface SourceEntry { file: string; symbols?: string[]; exclude?: string[]; surfaces?: Record<string, Surface> }
+interface SourceEntry { file: string; symbols?: string[]; exclude?: string[]; surfaces?: Record<string, Surface>; retired?: Record<string, string> }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(HERE, "..", "..", "..");
@@ -182,7 +184,8 @@ export function literalsOf(entry: SourceEntry, source?: string): ManifestLiteral
   collect(sf);
   const add = (t: string, kind: ManifestLiteral["kind"], at: ts.Node, names: string[]) => {
     const line = sf.getLineAndCharacterOfPosition(at.getStart(sf)).line + 1;
-    out.push({ text: t, kind, surface: surfaceOf(names, entry.surfaces), file: entry.file, line, symbol: names.join(".") || "(top level)" });
+    const retired = names[0] !== undefined && entry.retired && Object.hasOwn(entry.retired, names[0]) ? entry.retired[names[0]] : undefined;
+    out.push({ text: t, kind, surface: surfaceOf(names, entry.surfaces), file: entry.file, line, symbol: names.join(".") || "(top level)", ...(retired ? { retiredAfter: retired } : {}) });
   };
   const isStringRaw = (n: ts.Node): n is ts.TaggedTemplateExpression =>
     ts.isTaggedTemplateExpression(n) && ts.isPropertyAccessExpression(n.tag) && ts.isIdentifier(n.tag.expression) && n.tag.expression.text === "String" && n.tag.name.text === "raw";
@@ -242,14 +245,31 @@ export function literalsOf(entry: SourceEntry, source?: string): ManifestLiteral
   return out;
 }
 
+const versionParts = (v: string): number[] => v.split(/[.-]/).map(x => (/^\d+$/.test(x) ? Number(x) : -1));
+const newer = (a: string, b: string): string => {
+  const x = versionParts(a), y = versionParts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0) ? a : b;
+  return a;
+};
+/** One entry per text, at its first place in the source. Shared text is retired only when EVERY declaration that has it
+ * is retired (then up to the newest release named): a detector still in use somewhere keeps it a real finding. */
+export function dedupeLiterals(all: readonly ManifestLiteral[]): ManifestLiteral[] {
+  const seen = new Map<string, ManifestLiteral>(), live = new Set<string>(), last = new Map<string, string>();
+  for (const l of all) {
+    if (!seen.has(l.text)) { const { retiredAfter: _r, ...first } = l; seen.set(l.text, first); }
+    if (l.retiredAfter === undefined) live.add(l.text);
+    else last.set(l.text, last.has(l.text) ? newer(last.get(l.text)!, l.retiredAfter) : l.retiredAfter);
+  }
+  return [...seen.values()].map(l => (!live.has(l.text) && last.has(l.text) ? { ...l, retiredAfter: last.get(l.text)! } : l))
+    .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line) || (a.text < b.text ? -1 : 1));
+}
+
 /** The manifest the sources produce now: one entry per (backend, text), at its first place in the source. */
 export function buildManifest(): Manifest {
   const sources = JSON.parse(readFileSync(join(HERE, "sources.json"), "utf8")) as { backends: Record<string, SourceEntry[]> };
   const backends: Manifest["backends"] = {};
   for (const [backend, entries] of Object.entries(sources.backends)) {
-    const seen = new Map<string, ManifestLiteral>();
-    for (const e of entries) for (const l of literalsOf(e)) if (!seen.has(l.text)) seen.set(l.text, l);
-    backends[backend] = { literals: [...seen.values()].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line) || (a.text < b.text ? -1 : 1)) };
+    backends[backend] = { literals: dedupeLiterals(entries.flatMap(e => literalsOf(e))) };
   }
   return { format: 1, source: relative(ROOT, join(HERE, "sources.json")), backends };
 }
@@ -262,7 +282,7 @@ export function manifestJson(m: Manifest): string { return JSON.stringify(m, nul
  */
 export function manifestKeys(m: Manifest): string[] {
   const out: string[] = [];
-  for (const [b, { literals }] of Object.entries(m.backends)) for (const l of literals) out.push(JSON.stringify([b, l.text, l.kind, l.surface, l.file, l.symbol]));
+  for (const [b, { literals }] of Object.entries(m.backends)) for (const l of literals) out.push(JSON.stringify([b, l.text, l.kind, l.surface, l.file, l.symbol, l.retiredAfter ?? null]));
   return out.sort();
 }
 

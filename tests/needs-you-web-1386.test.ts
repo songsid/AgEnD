@@ -117,6 +117,19 @@ describe("POST /ui/needs/ack", () => {
 });
 
 describe("the public link (#1367): exactly this route, under its own session and exposure", () => {
+  it("withholds Runtime update diagnostics from the public link while retaining the local owner view", () => {
+    const store = new WebSessionStore(), update = { id: "runtime-update:fake:hash", type: "runtime", instance: "", reason: "dialog", detail: "PRIVATE-RUNTIME-BUILD", since: 1, runtimeUpdate: true };
+    const context = ctx(store, { needsYouItems: () => [...ITEMS, update] });
+    const owner = store.create({ tier: "admin", surface: "local", label: "owner", tokenEpoch: tokenEpoch(token) });
+    const localRequest = request("/ui/poll", "GET", { cookie: `agend_session=${owner.sessionId}` });
+    handleWebRequest(localRequest.req as never, localRequest.res as never, new URL(localRequest.req.url, local), context);
+    expect(localRequest.json().needs).toEqual([...ITEMS, update]);
+    const remote = store.create({ tier: "admin", surface: "gateway", exposureId, label: "remote", tokenEpoch: tokenEpoch(token) });
+    const h = request("/ui/poll", "GET", { cookie: `__Host-agend_session=${remote.sessionId}` }, "sample.trycloudflare.com");
+    bindGatewayRequest(h.req, { surface: "gateway", exposureId, expectedOrigin: pub, isCurrent: () => true });
+    handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, pub), context);
+    expect(h.json().needs).toEqual(ITEMS); expect(h.body()).not.toContain("PRIVATE-RUNTIME-BUILD");
+  });
   it("withholds member-local Hub proposals from the public link while preserving the local owner view", () => {
     const store = new WebSessionStore(), proposal = { id: "hub:proposal", type: "hub", instance: "alpha", reason: "hub_proposal", detail: "", since: 1,
       hubProposal: { action: "delete", arguments: "PRIVATE-ARGUMENTS", argumentsDigest: "digest", consequences: "PRIVATE-CONSEQUENCES" } };

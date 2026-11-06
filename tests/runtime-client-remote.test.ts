@@ -287,3 +287,44 @@ describe("stop and restart do not discard a login process that was not confirmed
     ended.resolve(); await vi.waitFor(async () => { await expect(f.client.stop()).resolves.toBeUndefined(); });
   }, 30_000);
 });
+
+describe("P2: a stop that asked for the terminals to be retired keeps that request across a stop that failed", () => {
+  // A pane host as far as stop() uses it: retireOwned() ends the durable terminals, stop() lets go of the link. The order and the state of the lock are written down.
+  const paneHost = (client: RuntimeClient, order: string[]) => {
+    const host = { retireOwned: vi.fn(async () => { order.push(`retire(lock ${(client as any).unlock === null ? "released" : "held"})`); }), stop: vi.fn(async () => { order.push(`host.stop(lock ${(client as any).unlock === null ? "released" : "held"})`); }) };
+    (client as any).paneOpening = Promise.resolve(host); (client as any).paneHost = host; return host;
+  };
+  const withHeldChild = async (closeWaitMs: number) => {
+    const spawned: FakeChild[] = [];
+    const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0,
+      signIn: { scratchRoot: scratch(), closeWaitMs, kill: () => { /* the kill is requested; the child does not close */ }, spawn: () => { const child = new FakeChild(); spawned.push(child); return child as unknown as ChildProcess; } } } });
+    setRemoteSwitch(f.home, "accounts", true);
+    expect((await f.call("signin.start", startFrame("held-1", "held").payload)).ok).toBe(true);
+    return { f, spawned, ends: () => { spawned[0]!.exitCode = 1; spawned[0]!.emit("close", 1); } };
+  };
+  it("a revocation stop (retirePanes) fails on a login process that has not closed; the plain stop that completes it afterwards (Ctrl+C) still retires the terminals, once, before the host stops and before the lock is released", async () => {
+    const { f, ends } = await withHeldChild(50); const order: string[] = []; const host = paneHost(f.client, order);
+    await expect(f.client.stop({ retirePanes: true })).rejects.toThrow(/not confirmed/);
+    expect(host.retireOwned).not.toHaveBeenCalled(); expect((f.client as any).unlock).not.toBeNull();            // it failed before the terminals; everything is still held
+    await expect(f.client.stop()).rejects.toThrow(/not confirmed/); expect(host.retireOwned).not.toHaveBeenCalled();     // a plain retry that fails again loses nothing either
+    ends();
+    await expect(f.client.stop()).resolves.toBeUndefined();
+    expect(host.retireOwned).toHaveBeenCalledTimes(1); expect(host.stop).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["retire(lock held)", "host.stop(lock held)"]); expect((f.client as any).unlock).toBeNull();
+  }, 30_000);
+  it("a plain stop that is already running when the retire request arrives picks it up: the terminals are retired", async () => {
+    const { f, ends } = await withHeldChild(5_000); const order: string[] = []; const host = paneHost(f.client, order);
+    const plain = f.client.stop(); await new Promise(done => setTimeout(done, 30));                          // in flight, waiting for the login process to close
+    const upgraded = f.client.stop({ retirePanes: true }); expect(upgraded).toBe(plain);
+    expect(host.retireOwned).not.toHaveBeenCalled();
+    ends(); await plain;
+    expect(host.retireOwned).toHaveBeenCalledTimes(1); expect(host.stop).toHaveBeenCalledTimes(1); expect(order).toEqual(["retire(lock held)", "host.stop(lock held)"]);
+  }, 30_000);
+  it("the request does not outlive the stop that completed it: after a restart a plain stop retires nothing", async () => {
+    const f = await fixture(); const first: string[] = []; const one = paneHost(f.client, first);
+    await f.client.stop({ retirePanes: true }); expect(one.retireOwned).toHaveBeenCalledTimes(1);
+    await f.client.stop({ retirePanes: true }); await f.client.start(); await vi.waitFor(() => expect(f.client.online()).toBe(true));          // a retire request on a client that is already stopped is forgotten by the next start
+    const second: string[] = []; const two = paneHost(f.client, second);
+    await f.client.stop(); expect(two.retireOwned).not.toHaveBeenCalled(); expect(two.stop).toHaveBeenCalledTimes(1);
+  }, 30_000);
+});

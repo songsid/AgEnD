@@ -5,7 +5,7 @@
 //
 // - Every source comes from scripts/release/tmux-sources.json and must match its sha256 (a mismatch stops the build).
 // - Linux (run on Alpine/musl): fully static — libevent, ncurses, utf8proc and musl linked in, so one binary runs on any
-//   glibc or musl distro. macOS: libevent, ncurses, utf8proc and jemalloc linked statically, libSystem dynamic (Apple
+//   glibc or musl distro. macOS: libevent, ncurses, utf8proc and (darwin-arm64 only, §3) jemalloc linked statically, libSystem dynamic (Apple
 //   has no static libc), MACOSX_DEPLOYMENT_TARGET=11.0.
 // - No sixel/images (CVE-2026-11623's area), no utempter.
 // - The toolchain is locked too (scripts/tmux/toolchain.mjs): the build refuses to run on any other, and records it.
@@ -45,10 +45,10 @@ export function readSources(file = SOURCES_FILE) {
   return s;
 }
 
-/** The parts a target links: jemalloc only where its `platforms` say (darwin, as upstream does since 3.7c). */
+/** The parts a target links: `platforms` names an OS (linux) or a whole target (darwin-arm64: jemalloc, §3). */
 export function partsFor(sources, target) {
   const os = target.split("-")[0];
-  return PARTS.filter((k) => !sources[k].platforms || sources[k].platforms.includes(os));
+  return PARTS.filter((k) => !sources[k].platforms || sources[k].platforms.includes(os) || sources[k].platforms.includes(target));
 }
 
 /** The archive's top directory: <name>-<version> for every pinned source (utf8proc's tag archive included). */
@@ -116,9 +116,12 @@ async function main(argv) {
     // Paths of this build never reach the binary: the second build, in another directory, must be byte-identical.
     CFLAGS: `-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${work}=. -I${deps}/include -I${deps}/include/ncursesw`,
     CPPFLAGS: `-I${deps}/include -I${deps}/include/ncursesw`,
-    LDFLAGS: `-L${deps}/lib`,
+    // macOS: ld64 records each object file's absolute path in the debug map (N_OSO) and hashes the output into LC_UUID,
+    // which strip keeps — so the paths must be relative (-oso_prefix) and ar must write no member dates (ZERO_AR_DATE),
+    // else the second build differs (the first macOS dry run with jemalloc fixed, run 42266564411: "differ: char 1705").
+    LDFLAGS: `-L${deps}/lib${darwin ? ` -Wl,-oso_prefix,${work}/` : ""}`,
     PKG_CONFIG_PATH: join(deps, "lib/pkgconfig"),
-    ...(darwin ? { MACOSX_DEPLOYMENT_TARGET: "11.0" } : {}),
+    ...(darwin ? { MACOSX_DEPLOYMENT_TARGET: "11.0", ZERO_AR_DATE: "1" } : {}),
     ...toolchainEnv(target, sources),
   };
   const parts = partsFor(sources, target);
@@ -161,12 +164,17 @@ async function main(argv) {
 
   if (parts.includes("jemalloc")) {
     cfg("jemalloc", [`--prefix=${deps}`, "--disable-shared", "--enable-static", "--disable-cxx", "--disable-stats", "--disable-doc"]);
-    sh("make", ["install_lib_static", "install_include"], { cwd: dirs.jemalloc, env });
+    // jemalloc.pc too: tmux's configure finds jemalloc only through pkg-config (PKG_CHECK_MODULES), and with
+    // --enable-jemalloc stops with "jemalloc not found" without it (the first macOS dry run, run 42265015287).
+    sh("make", ["install_lib_static", "install_lib_pc", "install_include"], { cwd: dirs.jemalloc, env });
   }
 
   const tmuxArgs = [`--prefix=/opt/agend-tmux`, "--enable-utf8proc", "--disable-utempter"];
-  if (darwin) tmuxArgs.push("--enable-jemalloc");
-  else tmuxArgs.push("--enable-static");
+  // jemalloc where the sources pin it (darwin-arm64); elsewhere on macOS explicitly off — tmux's configure would
+  // otherwise look for one on its own (a runner's Homebrew copy would be linked dynamically).
+  if (parts.includes("jemalloc")) tmuxArgs.push("--enable-jemalloc");
+  else if (darwin) tmuxArgs.push("--disable-jemalloc");
+  if (!darwin) tmuxArgs.push("--enable-static");
   // musl has forkpty in libc; without this seed tmux's configure picks its own compat forkpty and the link collides.
   sh("./configure", tmuxArgs, { cwd: dirs.tmux, env: { ...env, ...(darwin ? {} : { ac_cv_search_forkpty: "none required" }) } });
   sh("make", ["-j", jobs], { cwd: dirs.tmux, env });

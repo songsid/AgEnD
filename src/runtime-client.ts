@@ -25,6 +25,7 @@ import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
 import { spawn as childSpawn } from "./child-process.js";
 import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
 import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateClientPhase, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
+import { parseRuntimeUpdateStatus, RUNTIME_UPDATE_STATUS_CAPABILITY, type RuntimeUpdateStatus } from "./runtime-update-status.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
@@ -69,6 +70,8 @@ export interface RuntimeClientOptions {
   reconnectMs?: number;
   disconnectGraceMs?: number;
   pollMs?: number;
+  /** Bounded diagnostics only; old servers must positively negotiate before any report is sent. */
+  updateStatus?: RuntimeUpdateStatus;
   /** Tests may use an isolated fake worker. Production always uses the Windows bridge. */
   socketFactory?: (url: string, credential: string) => WebSocket;
   /** Offline transport acceptance supplies its own process factory, never a public configuration field. */
@@ -192,8 +195,12 @@ export class RuntimeClient {
   private stopPromise: Promise<void> | undefined;
   /** A stop that could not finish (an account process was not confirmed gone): everything is still held, and stop() may be called again. */
   private stopIncomplete = false;
+  /** A stop asked for the durable panes to be retired (a revocation does): that stays true across a stop that failed and is called again, a plain one included (Ctrl+C), until a stop has completed. */
+  private retirePanesRequested = false;
   private generation = 0;
   private updateProtocol = false;
+  private updateStatusProtocol = false;
+  private updateStatus: RuntimeUpdateStatus | undefined;
   private preparingUpdate = false;
   private trialFence: RuntimeUpdateFence | undefined;
   private activatedTrialId: string | undefined;
@@ -204,10 +211,11 @@ export class RuntimeClient {
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
     this.managed = nativeInstallSupported() ? managedInstaller({ root: managedCliRoot(options.store.directory), ...(options.installRoot ? { installRoot: options.installRoot } : {}) }, () => this.installAbort.signal) : null;
+    this.updateStatus = options.updateStatus === undefined ? undefined : parseRuntimeUpdateStatus(options.updateStatus);
     const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.installer || nativeInstallSupported() });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     if (options.managedUpdate?.trialId !== undefined && !validRuntimeUpdateId(options.managedUpdate.trialId)) throw Error("Invalid Runtime update trial");
-    this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : [])] };
+    this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : []), ...(this.updateStatus ? [RUNTIME_UPDATE_STATUS_CAPABILITY] : [])] };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
     this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => name === REMOTE_SIGNIN_CAPABILITY ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
@@ -215,6 +223,11 @@ export class RuntimeClient {
   }
   private report(text: string): void { this.options.report?.(text); }
   online(): boolean { return !this.trialFence && this.welcomed && this.socket?.readyState === WebSocket.OPEN; }
+  setUpdateStatus(value: RuntimeUpdateStatus): void { this.updateStatus = parseRuntimeUpdateStatus(value); this.publishUpdateStatus(); }
+  private publishUpdateStatus(): void {
+    if (this.updateStatus && this.updateStatusProtocol && this.online() && this.runtimeInfo.capabilities.includes(RUNTIME_UPDATE_STATUS_CAPABILITY))
+      this.send({ v: 1, type: "update.status", bootId: this.bootId, generation: this.generation, status: this.updateStatus });
+  }
   waitUntilStopped(): Promise<void> { return this.stopPromise ?? (this.stopped && this.closed ? Promise.resolve() : new Promise(done => this.stoppedListeners.add(done))); }
   async start(): Promise<void> {
     if (!this.stopped) return;
@@ -222,6 +235,7 @@ export class RuntimeClient {
     // A previous stop that was not completed still owns a pairing lock and possibly a sign-in or logout process that was not confirmed ended: nothing starts
     // over it, and its account module is never replaced while it holds anything.
     if (this.stopIncomplete || this.unlock !== null || (this.remoteAccounts && !this.remoteAccounts.idle())) throw new Error("The previous stop was not completed (an account process was not confirmed ended). Call stop() again, or inspect processes, before starting");
+    this.retirePanesRequested = false;                                    // fully closed: whatever an earlier stop asked for is over
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
     this.stopped = false; this.closed = false; this.stopReason = undefined; this.activatedTrialId = undefined;
@@ -254,12 +268,14 @@ export class RuntimeClient {
   }
   private connect(): void {
     if (this.stopped || !this.credentials) return;
+    // A previous connection's positive check cannot vouch for this server generation.
+    if (this.updateStatus?.state === "current") this.updateStatus = { state: "unknown" };
     const url = validateRuntimeServer(this.credentials.server); url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     url.pathname = "/runtime/v1/connect";
     const socket = this.socket = this.options.socketFactory?.(url.href, this.credentials.credential)
       ?? new WebSocket(url.href, { headers: { Authorization: `Bearer ${this.credentials.credential}` }, followRedirects: false,
         maxPayload: MAX_FRAME, handshakeTimeout: 15_000, perMessageDeflate: false });
-    this.welcomed = false; this.updateProtocol = false; this.paneEpoch = randomUUID();
+    this.welcomed = false; this.updateProtocol = false; this.updateStatusProtocol = false; this.paneEpoch = randomUUID();
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform, runtimeInfo: this.runtimeInfo,
@@ -323,10 +339,12 @@ export class RuntimeClient {
       if (value.machineId !== this.credentials?.machineId || !Number.isSafeInteger(value.generation)) throw new Error("Runtime machine identity mismatch");
       this.welcomed = true;
       this.generation = value.generation as number; this.updateProtocol = value.updateProtocol === 1;
+      this.updateStatusProtocol = value.updateStatusProtocol === 1;
       this.reconnectAttempt = 0;
       if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
       this.report("Connected to AgEnD.");
       if (!this.trialFence) for (const job of this.options.store.list()) this.publish(job);
+      this.publishUpdateStatus();
       this.options.managedUpdate?.authenticated?.({ bootId: this.bootId, generation: this.generation, ...(this.updateProtocol ? { updateProtocol: 1 } : {}), runtimeInfo: this.runtimeInfo });
       return;
     }
@@ -779,6 +797,9 @@ export class RuntimeClient {
     this.pendingPaneTools.clear();
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
   stop(options:{retirePanes?:boolean}={}): Promise<void> {
+    // The request is remembered before anything else: a stop already running (it may be a plain one) picks it up when it reaches the panes, and a stop that fails
+    // before the panes (an account process not confirmed ended) keeps it for the plain stop() that tries again.
+    if (options.retirePanes) this.retirePanesRequested = true;
     if (this.stopPromise) return this.stopPromise;
     if (this.stopped && !this.stopIncomplete) return Promise.resolve();
     this.stopped = true; this.welcomed = false; this.stopIncomplete = false;
@@ -805,7 +826,7 @@ export class RuntimeClient {
     // is not confirmed gone fails the stop HERE, before the pairing's lock is let go, so no other client can start over a process that may still be writing.
     if (this.remoteAccounts) { await this.remoteAccounts.stop(); if (!this.remoteAccounts.idle()) throw new Error("Account process shutdown was not confirmed; inspect processes before stopping or restarting"); }
     await this.paneOpening?.then(async host=>{
-      try{if(options.retirePanes&&"retireOwned" in host)await host.retireOwned();}
+      try{if((options.retirePanes||this.retirePanesRequested)&&"retireOwned" in host)await host.retireOwned();}
       finally{await host.stop();}
     }).catch(() => this.report("Pane cleanup is unconfirmed; its durable reservations remain held."));
     // Keep the profile lock until cancellation is confirmed or the journal is explicitly marked uncertain.
@@ -822,7 +843,7 @@ export class RuntimeClient {
     }
     if (this.mcpServer) { const server = this.mcpServer; this.mcpServer = null; server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
     this.unlock?.(); this.unlock = null;
-    this.closed = true;
+    this.closed = true; this.retirePanesRequested = false;
     for (const done of this.stoppedListeners) done(); this.stoppedListeners.clear();
   }
 }
