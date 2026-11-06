@@ -33,4 +33,8 @@ regexes = [
   # #1519: the NAME of the env var that holds a bot token (bot_token_env / token_env in fleet.yaml and its fixtures),
   # never the token — matched only as an UPPER_SNAKE name with at least one underscore (keys such as AWS's have none).
   '''token_env["'\x60]?\s*[:=]\s*["'\x60]?[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+["'\x60;\s]?$''',
+  # #3215: the injected test sentinel of tests/runtime-install.test.ts (a made-up marker proving that no secret reaches a rendered script; it
+  # is written to a scratch token file and looked for, never a credential) — matched only as the `secret` key followed by exactly
+  # "sentinel-secret-" and 8 hex characters, so a real-looking value on the same key is still reported.
+  '''(?i)secret["'\x60]?\s*[:=]\s*["'\x60]?sentinel-secret-[0-9a-f]{8}["'\x60]?[;,\s]*$''',
 ]
