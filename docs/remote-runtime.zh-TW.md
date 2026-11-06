@@ -17,7 +17,7 @@
 頁面會帶入你確認過的位址。在另一台 Windows 電腦的 PowerShell 執行第一行；不需要系統管理員權限。
 
 ```powershell
-$agend = 'https://your-agend-host'; $s = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; if (-not $s -or (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })) -ne '<頁面上顯示的 SHA-256>') { throw 'install.ps1 could not be verified against the hash on the AgEnD page; reload the page and copy the command again' }; iex $s
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; $agend = 'https://your-agend-host'; $s = $null; $h = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; $h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); if ($s -and $h -eq '<頁面上顯示的 SHA-256>') { iex $s } else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }
 ```
 
 頁面會填入你的位址與 `install.ps1` 的 SHA-256。指令先下載腳本、計算收到的位元組的雜湊，與頁面上的雜湊比對，**相符才執行**。它只安裝，**不會連線、不會配對**，最後印出下一行要執行的指令：
@@ -33,21 +33,22 @@ agend-runtime connect --server "https://your-agend-host"
 腳本與 Runtime 壓縮檔來自同一台伺服器、同一條 TLS 連線，所以寫在腳本裡的雜湊只能證明「壓縮檔和腳本相符」，**防不了被改過的腳本**，而那才是執行下載腳本真正的風險。管理員正在看的這個頁面才是信任起點：腳本的 SHA-256 顯示在頁面上、放進指令，並且在**腳本的任何內容執行之前**就先檢查。因此，執行內容的完整性不依賴對 TLS 連線的信任決定。腳本接著再用寫在它裡面的雜湊檢查壓縮檔（第二道、獨立的檢查）。
 
 - 頁面上的雜湊，是已登入的本機管理員向 AgEnD 讀取的，不是從腳本自己的回應取得。伺服器把腳本只組一次、以位元組保存，之後每次都送出完全相同的位元組（不改換行、不壓縮、不依請求而變），所以頁面上的雜湊就是實際送出內容的雜湊。傳輸中被改過的腳本、被轉換的換行、多出的位元組順序標記、或另一台伺服器的腳本，都會過不了檢查。過期的頁面也一樣：AgEnD 更新後，請重新整理頁面再複製指令。
+- **任何失敗都不會走到 `iex`。** 在 PowerShell 裡，失敗的 .NET 方法呼叫只是「該敘述終止」：那一句被略過，下一句照跑。所以寫成 `if (<雜湊檢查>) { throw }; iex $s` 的檢查，在雜湊算不出來時（例如受限語言模式下 `[Security.Cryptography.SHA256]::Create()` 被拒絕）會直接執行未驗證的腳本。因此指令是反過來寫的：先清空 `$s` 與 `$h`，雜湊在獨立的一句算進 `$h`，條件只有 `$s -and $h -eq '<雜湊>'`（裡面沒有會丟例外的東西），而 `iex` 只放在條件通過的分支裡。不論哪一步失敗（下載、雜湊、TLS 那一句），`$h` 都會維持空值，條件為假，走到另一個分支：說明原因並 throw，永遠不會到 `iex`。第一句只是替這個 PowerShell 工作階段加上 TLS 1.2（Windows PowerShell 5.1 預設可能沒有）；它失敗時，檢查所依賴的東西都沒有改變，檢查照樣拒絕。（訊息先用 `Write-Host` 印出再 `throw`，因為使用者自己設的 `$ErrorActionPreference = 'SilentlyContinue'` 會吞掉單獨的 `throw`。）這個形狀和 `if (-not $s -or <雜湊> -ne …) { throw }; iex $s` 不同，後者會 fail-open，這是唯一的差異原因。
 - 若頁面拿不到雜湊（例如這台 AgEnD 沒有建置 Runtime 檔案），就**完全不顯示安裝指令**並指向 ZIP；沒有未固定雜湊的備援做法。
 - **若 PowerShell 顯示憑證錯誤**（例如自簽憑證：Windows PowerShell 5.1 會拒絕），請讓那台電腦信任這台 AgEnD 伺服器的憑證、改用受信任的 HTTPS 位址（例如 Tailscale Serve），或改用 ZIP。**絕對不要以任何開關、回呼或政策關閉憑證驗證**：本文件不會這樣建議，指令也不會這樣做。雜湊檢查不能取代 TLS，它只是讓腳本的完整性不必依賴對連線的信任。
 - 位址**只**取自 `$agend`，也就是你在步驟 1 確認的、審核過的 remote runtime 位址。腳本不會從其他地方取得位址：不看送出它的 `Host` 標頭、不看轉址、不看網路。含帳密、路徑、查詢、片段或引號的位址不會產生指令；純 `http` 只接受 `localhost`（SSH 轉發）。
-- 在**受限語言模式（Constrained Language Mode）或 AppLocker** 下，`iex` 執行下載的腳本會被拒絕，請改用 ZIP。對字串執行 `iex` 不受執行原則限制，而且指令不會變更你的執行原則（電腦、使用者或處理序）。
+- 在**受限語言模式（Constrained Language Mode）或 AppLocker** 下，指令會**停下來、什麼都不執行**：那裡算不出雜湊，所以腳本不會被信任（這類政策本來也會拒絕 `iex` 執行下載的腳本）。請改用 ZIP。對字串執行 `iex` 不受執行原則限制，而且指令不會變更你的執行原則（電腦、使用者或處理序）。
 
 ### 安裝腳本做什麼
 
 1. 檢查 Node.js 是否為 22.14 以上（22.14+、23.6+ 或 24+）。沒有時會停下來，只提示 `winget install OpenJS.NodeJS.LTS` 或 nodejs.org，**不會替你安裝軟體**。
 2. 從 `$agend` 下載 Runtime 壓縮檔（單次、有上限、不跟隨轉址，最大 16 MiB）。
 3. 自己計算壓縮檔的 SHA-256，與**寫在安裝腳本裡**的校驗碼比對；不符就在解壓縮之前停止。
-4. 解壓縮到 `%LOCALAPPDATA%\agend-runtime\<版本>`，放在既有版本**旁邊**。
+4. 解壓縮到 `%LOCALAPPDATA%\agend-runtime\<版本>+<build>`，放在既有版本**旁邊**。`<build>` 是壓縮檔 SHA-256 的前 8 個字元，因為同一個版本號可能對應不只一個 build。
 5. 讓 `agend-runtime` 指向它（見下），並把 `%LOCALAPPDATA%\agend-runtime\bin` 加進**你的使用者 PATH**。
 6. 印出連線指令。
 
-**版本並存。** 既有的版本資料夾永遠不會被刪除或取代，因為它可能就是正在執行的 Runtime（執行中的 Windows 程式會鎖住它的檔案）。安裝較新 AgEnD 的 Runtime 只會多一個新的 `<版本>` 資料夾。`bin\agend-runtime.cmd` 只寫一次、之後不再改變：它啟動單行檔 `bin\current.txt` 所記的版本，安裝在新版本**完整就位之後**，才用原子取代把這個檔案換掉。所以 `agend-runtime` 啟動的不是舊版就是新版，不會是裝到一半的版本，正在執行的批次檔也不會被改寫。已經在執行的 Runtime 會維持自己的版本，直到你以 Ctrl+C 停止、再用 `agend-runtime run` 啟動。若在切換之前失敗，`current.txt` 仍指向可用的版本。舊版本資料夾會保留，直到你自己刪除。若這個版本的資料夾已存在，但不是這台 AgEnD 的建置（或不完整），腳本會停下來，請你關閉任何 Runtime 視窗並自己刪除該資料夾，它不會替你移除。
+**版本並存。** 既有的資料夾永遠不會被刪除或取代，因為它可能就是正在執行的 Runtime（執行中的 Windows 程式會鎖住它的檔案）。安裝資料夾叫 `<版本>+<build>`，所以較新 AgEnD 的 Runtime，以及同一個版本號的不同 build，都只會在舊資料夾旁邊多一個新資料夾；再執行同一個 build 的指令會找到它自己的資料夾，只重新指向 `agend-runtime`。更新時不需要任何人手動刪資料夾。`bin\agend-runtime.cmd` 只寫一次、之後不再改變：它啟動單行檔 `bin\current.txt` 所記的版本，安裝在新版本**完整就位之後**，才用原子取代把這個檔案換掉。所以 `agend-runtime` 啟動的不是舊版就是新版，不會是裝到一半的版本，正在執行的批次檔也不會被改寫。已經在執行的 Runtime 會維持自己的版本，直到你以 Ctrl+C 停止、再用 `agend-runtime run` 啟動。若在切換之前失敗，`current.txt` 仍指向可用的版本。**這個安裝程式不會移除舊資料夾**（其中一個可能正在執行）；清理舊版本留到之後的更新與解除安裝指令。在那之前它們會留著，等沒有 Runtime 使用時你可以自己刪除。腳本唯一會拒絕的情況，是已經有一個資料夾剛好叫這個 build 的名字、內容卻不是它：只有被手動改過或沒裝完才會發生，它會被原樣保留，腳本也會說明。
 
 **PATH。** `bin` 資料夾是寫進**使用者** PATH：直接寫登錄檔，並保留原本的值型別，所以含 `%VARIABLES%` 的 PATH 仍然可展開。寫入不使用 `[Environment]::SetEnvironmentVariable('Path', …, 'User')`，因為它會把 `REG_EXPAND_SZ` 的 PATH 變成純字串（已在 Windows PowerShell 5.1 與 PowerShell 7 實測）；也絕不使用 `setx`，因為它會在 1024 字元截斷。已經存在的項目（寫成完整路徑或含 `%VARIABLES%`）不會重複加入，PATH 的其他部分也不動。已開啟的終端機看不到變更，請開新的，或使用腳本印出的完整路徑。
 
@@ -83,7 +84,7 @@ AgEnD 需要說得出自己支援的協定（目前是協定 1）、並提供 `e
 
 兩者在同一個伺服器版本內都是**靜態**的：通用 bundle 每個伺服器行程只產生一次並保留，所以校驗碼固定；腳本就是這份 bundle 的版本與 SHA-256 填進固定範本。回應內容與請求無關，不看 Host 標頭、查詢參數（帶查詢會被拒絕）、cookie 或呼叫者。兩者都不含 token、密鑰、配對碼、設定檔、使用者資料或伺服器位址，位址來自指令裡的 `$agend`。腳本不會被快取（`Cache-Control: no-store`）；壓縮檔帶 `Cache-Control: no-cache` 與由伺服器版本和 SHA-256 組成的 `ETag`，符合的 `If-None-Match` 會回 `304`、不帶內容。腳本仍會驗證壓縮檔固定的 SHA-256，所以快取的副本不會被單獨信任。下載安裝程式**不授予任何權限**：配對（一次性碼、十分鐘期限、指紋、本機管理員核准）完全不變，未核准的電腦什麼都做不了。
 
-請求會依來源位址限速並允許小量連續請求（連續下載幾次之後降為穩定速率；兩條路由各有自己的額度），也有總量上限，因為反向代理會讓所有用戶端看起來像同一個位址。被限制的請求會得到 `429` 與 `Retry-After`。壓縮檔不會超過 bundle 本身的 8 MiB 上限。
+請求會依來源位址限速並允許小量連續請求（連續下載幾次之後降為穩定速率；兩條路由各有自己的額度），也有總量上限，因為反向代理會讓所有用戶端看起來像同一個位址。會先問該用戶端位址自己的額度：被它自己的額度拒絕的請求不會扣共用的總量，所以一個位址高頻猛打某條路由時，只會被它自己的限制擋住，不會用掉其他人共用的額度。被限制的請求會得到 `429` 與 `Retry-After`。壓縮檔不會超過 bundle 本身的 8 MiB 上限。
 
 ### 移除
 

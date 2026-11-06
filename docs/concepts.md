@@ -310,10 +310,11 @@ shortcuts from `agend shortcuts`). The rest is alpha only
   discovers native Windows CLIs and runs Windows agents in the same fleet
   registry as Linux agents (`runtimes.windows_cli`, off by default).
 - A paired PC is another Windows computer connected over HTTPS: it runs the
-  small `agend-runtime` runner (a ZIP from Settings, never a fleet), connects
-  outbound with a one-time pairing code, and joins only after its pairing
-  fingerprint is approved in Settings (#2936). Agents pinned to it keep their
-  working directories on that PC.
+  small `agend-runtime` runner (installed from Settings with a one-line
+  PowerShell command that checks the script's SHA-256 first, or from a ZIP;
+  never a fleet), connects outbound with a one-time pairing code, and joins
+  only after its pairing fingerprint is approved in Settings (#2936). Agents
+  pinned to it keep their working directories on that PC.
 - General can run on a Windows pane: "Run General on" moves General to an
   approved, online paired PC while the coordinator — and chat and
   administrator authority — stay on the host (#3007).

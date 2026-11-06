@@ -191,7 +191,7 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 AgEnD 今天跑在 Linux 與 macOS 上（Windows 上是跑在 WSL 裡，桌面捷徑用 `agend shortcuts` 建）。以下皆為 alpha（`origin/release/2.3.5-alpha`，改寫外部 #2934 而來——決議 72353fdf）。
 
 - 原生 Windows agent 用的是這台 PC 的 Windows 側 CLI：跑在 WSL 的 AgEnD 會找到原生 Windows CLI，在同一個艦隊名冊裡跑 Windows agent，跟 Linux agent 並列（`runtimes.windows_cli`，預設關）。
-- 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁下載的 ZIP，永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
+- 已配對 PC 是另一台用 HTTPS 連上來的 Windows 電腦：它跑小小的 `agend-runtime` runner（從設定頁用一行 PowerShell 指令安裝、指令會先檢查腳本的 SHA-256，或改用 ZIP；永遠不是艦隊本體），用一次性配對碼對外連線，在設定頁比對配對指紋並批准後才加入（#2936）。釘在它身上的 agent，工作目錄就在那台 PC 上。
 - General 可以跑在 Windows 窗格：「Run General on」把 General 搬到一台已批准、上線的配對 PC，coordinator——以及聊天與管理員權限——留在主機（#3007）。
 - 人的 pairing（`agend access pair`）是另一套較舊的機制：按 instance 發的存取碼，跟配對 PC 無關。
 - 程式碼（alpha 分支）：`docs/remote-runtime.md`、`docs/windows-cli-preview.md`、`docs/windows-general.md`；`src/runtime-bundle.ts`。
