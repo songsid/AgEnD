@@ -39,7 +39,9 @@ const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 /** Names whose contents never leave the machine through this view (fixed in P1, #3153). Lowercase compare. */
 const HIDDEN_DIRS = new Set([".git", ".ssh", ".aws", ".gnupg", ".kube", ".docker", ".azure", ".config", ".agend", ".claude", ".codex", ".kiro"]);
 const HIDDEN_FILES = new Set([".npmrc", ".netrc", ".pypirc", ".git-credentials", ".pgpass", "credentials", "credentials.json", "auth.json", "secrets.json",
-  "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "known_hosts", "authorized_keys", ".htpasswd"]);
+  "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519", "known_hosts", "authorized_keys", ".htpasswd",
+  // Fable on #3158: tool credentials and shell histories (a history holds whatever was typed, tokens included).
+  ".envrc", ".vault-token", ".s3cfg", ".boto", "kubeconfig", ".kubeconfig", "terraform.tfstate", "terraform.tfstate.backup"]);
 /** Whether a path (relative, `/`-separated) is hidden: any part a hidden directory, or its name a secret-looking file. */
 export function isHiddenPath(rel: string): boolean {
   const parts = rel.split("/").filter(Boolean);
@@ -47,7 +49,8 @@ export function isHiddenPath(rel: string): boolean {
   const name = (parts[parts.length - 1] ?? "").toLowerCase();
   if (HIDDEN_DIRS.has(name) || HIDDEN_FILES.has(name)) return true;
   if (/^\.env(?:$|[.-])/.test(name) || /^id_(?:rsa|dsa|ecdsa|ed25519)/.test(name)) return true;
-  if (/\.(?:pem|key|p12|pfx|jks|keystore|kdbx|asc|gpg|ppk|token)$/.test(name)) return true;
+  if (/\.(?:pem|key|p12|p8|pfx|jks|keystore|kdbx|asc|gpg|ppk|token|env|tfvars|tfstate)$/.test(name) || /\.tfstate\./.test(name)) return true;
+  if (/^service[-_]?account.*\.json$/.test(name) || /^\.[a-z0-9]*_?history$/.test(name) || /^\.?kubeconfig(?:[.-]|$)/.test(name)) return true;
   if (/(?:^|[._-])(?:secret|secrets|credential|credentials|password|passwords|private[-_]?key)(?:[._-]|$)/.test(name)) return true;
   return false;
 }

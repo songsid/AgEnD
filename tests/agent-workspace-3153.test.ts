@@ -133,10 +133,14 @@ describe("Files (#3153 P1)", () => {
 
 describe("the fixed deny-list (#3153: not configurable in P1)", () => {
   it.each([".env", ".env.production", "config/.env.local", "id_rsa", "id_ed25519.pub", "keys/server.pem", "cert.p12", "app.key", ".npmrc", ".netrc",
-    "credentials.json", "aws_credentials", "db-password.txt", "my-secret.yaml", ".git/config", ".ssh/known_hosts", ".aws/credentials", "auth.json", "api.token"])("%s is hidden", (p) => {
+    "credentials.json", "aws_credentials", "db-password.txt", "my-secret.yaml", ".git/config", ".ssh/known_hosts", ".aws/credentials", "auth.json", "api.token",
+    // Fable on #3158
+    ".envrc", "prod.env", "infra/prod.tfvars", "terraform.tfstate", "terraform.tfstate.backup", "state/x.tfstate", ".vault-token", ".s3cfg", ".boto",
+    "kubeconfig", ".kube/config", "kubeconfig.yaml", "service-account.json", "service_account-prod.json", "AuthKey_ABC.p8",
+    ".bash_history", ".zsh_history", ".psql_history", ".mysql_history", ".python_history"])("%s is hidden", (p) => {
     expect(isHiddenPath(p)).toBe(true);
   });
-  it.each(["app.js", "README.md", "src/env.ts", "docs/secrets-handling.md.txt2", "keyboard.ts", "tokens.css", "package.json"])("%s is shown", (p) => {
+  it.each(["app.js", "README.md", "src/env.ts", "docs/secrets-handling.md.txt2", "keyboard.ts", "tokens.css", "package.json", "server.crt", "environment.ts", "history.md"])("%s is shown", (p) => {
     expect(isHiddenPath(p)).toBe(p === "docs/secrets-handling.md.txt2");
   });
 });

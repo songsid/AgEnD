@@ -11,7 +11,7 @@ vi.mock("../src/logger.js", async original => {
 });
 import { request } from "node:http";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -92,6 +92,37 @@ describe("GET /ui/workspace (#3153 P1)", () => {
     const r = await raw(port, "/ui/workspace?instance=dev&op=changes", { "x-agend-token": fm.getDashboardAccess().token });
     expect(r.status).toBe(403);
     expect(r.body.toString("utf8")).not.toContain("a.txt");
+  });
+
+  it("an agent on Windows or on a paired PC: not offered (its folder is on another machine)", async () => {
+    const sid = session("admin");
+    const base = fm.fleetConfig.instances.dev;
+    fm.fleetConfig.instances.win = { ...base, runtime: "windows" };
+    fm.fleetConfig.instances.remote = { ...base, machine_id: "11111111-2222-4333-8444-555555555555" };
+    try {
+      for (const inst of ["win", "remote"]) {
+        const r = await get(sid, `instance=${inst}&op=changes`);
+        expect([r.status, json(r).error], inst).toEqual([404, "workspace_not_offered"]);
+      }
+    } finally { delete fm.fleetConfig.instances.win; delete fm.fleetConfig.instances.remote; }
+  });
+
+  it("a session that ends while the folder is being read gets no answer (checked again before it goes out)", async () => {
+    // A slow git (a wrapper first on PATH) holds the read open while the session is revoked.
+    const bin = join(dir, "slow-bin"); mkdirSync(bin, { recursive: true });
+    const real = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+    writeFileSync(join(bin, "git"), `#!/bin/sh\nsleep 0.6\nexec "${real}" "$@"\n`); chmodSync(join(bin, "git"), 0o755);
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path}`;
+    try {
+      const created = fm.webSessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!) });
+      const pending = get(created.sessionId as string, "instance=dev&op=changes");
+      await new Promise((r) => setTimeout(r, 250));
+      fm.webSessions.revokeById(created.sessionId);
+      const r = await pending;
+      expect(r.status).toBe(403);
+      expect(r.body.toString("utf8")).not.toContain("a.txt");
+    } finally { process.env.PATH = path; }
   });
 
   it("not General, not a coordinator, not an unknown agent; a bad op is refused", async () => {
