@@ -11,6 +11,7 @@ import { getAgendHome } from "../../paths.js";
 import { createHubDirectory } from "../directory/index.js";
 import { realFleetProbe } from "./existing-fleet.js";
 import { hubIdentityProvider } from "./identity.js";
+import { createBrowserCertificate, recoverBrowserCertificate } from "./browser-certificate.js";
 import { createHubInitializer } from "./initializer.js";
 import { terminalIO } from "./prompt.js";
 import type { HubIdentityProvider } from "./types.js";
@@ -57,6 +58,8 @@ export async function runHubInitCommand(identity: HubIdentityProvider = hubIdent
     initializer,
     createDirectory: createHubDirectory,
     readFile: (path) => readFileSync(path, "utf8"),
+    createBrowserCertificate: origin => createBrowserCertificate(home, origin),
+    recoverBrowserCertificate: plan => recoverBrowserCertificate(home, plan.webOrigin, plan.webTls),
     service,
   });
   if (outcome === "refused") process.exitCode = 1;

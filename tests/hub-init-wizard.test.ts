@@ -4,13 +4,16 @@
  * The directory sign-in against the real S2 module and the fake LDAP rig is in hub-init-rig.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { verify } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { verify, X509Certificate } from "node:crypto";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { runHubInitWizard, type HubServiceControl } from "../src/hub/init/wizard.js";
+import { createBrowserCertificate, recoverBrowserCertificate, type HubBrowserMaterial } from "../src/hub/init/browser-certificate.js";
+import type { HubInitPlan } from "../src/hub/init/types.js";
+import { ht } from "../src/hub/init/text.js";
 import { setLocale } from "../src/locale.js";
 import { quickstartMachine } from "../src/quickstart.js";
 import { ADMIN, FakeIdentity, fakeDirectory, makeTestCerts, scriptedIO, tempDir, type TestCerts } from "./support/hub-init-fixtures.js";
@@ -38,7 +41,7 @@ function service(installed = false) {
   return { s, control };
 }
 
-function setup(opts: { home?: string; directory?: Parameters<typeof fakeDirectory>[0]; serviceInstalled?: boolean } = {}) {
+function setup(opts: { home?: string; directory?: Parameters<typeof fakeDirectory>[0]; serviceInstalled?: boolean; generate?: boolean } = {}) {
   const home = opts.home ?? tempDir("agend-hubinit-home-");
   const identity = new FakeIdentity();
   const dir = fakeDirectory(opts.directory ?? { [`alice:${USER_PW}`]: { ok: true, person: ADMIN } });
@@ -46,7 +49,10 @@ function setup(opts: { home?: string; directory?: Parameters<typeof fakeDirector
   const initializer = createHubInitializer({ home, identity, probe: { pidAlive: () => false } });
   const run = (answers: Parameters<typeof scriptedIO>[0]) => {
     const io = scriptedIO(answers);
-    return runHubInitWizard({ io: io.io, home, initializer, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control }).then((outcome) => ({ outcome, io }));
+    return runHubInitWizard({ io: io.io, home, initializer, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control,
+      ...(opts.generate ? { createBrowserCertificate: (origin: string) => createBrowserCertificate(home, origin),
+        recoverBrowserCertificate: (plan: HubInitPlan) => recoverBrowserCertificate(home, plan.webOrigin, plan.webTls) } : {}),
+    }).then((outcome) => ({ outcome, io }));
   };
   return { home, identity, dir, svc, run };
 }
@@ -343,5 +349,85 @@ describe("quickstart's first question", () => {
     expect(quickstartMachine("1")).toBe("fleet");
     expect(quickstartMachine("hub")).toBe("fleet");
     expect(quickstartMachine(" 2 ")).toBe("hub");
+  });
+});
+
+// Explicit generation owns its staging files; importing the owner's PEM paths retains their ownership.
+describe("browser certificate generation in init", () => {
+  it.each(["en", "zh-TW"] as const)("confirms the fingerprint, commits a private copy, then removes generated staging (%s)", async locale => {
+    setLocale(locale);
+    try {
+      const t = setup({ generate: true, serviceInstalled: true });
+      const r = await t.run([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize"]);
+      expect(r.outcome).toBe("initialized"); expect(r.io.remaining()).toBe(0);
+      expect(readdirSync(t.home).some(name => name.startsWith(".hub-browser-"))).toBe(false);
+      const pem = readFileSync(join(t.home, "hub/web-tls/cert.pem"), "utf8");
+      const cert = new X509Certificate(pem);
+      expect(cert.checkHost("hub.example.test")).toBe("hub.example.test"); expect(r.io.text()).toContain(cert.fingerprint256);
+      expect(r.io.text()).not.toContain("BEGIN PRIVATE KEY"); expect(t.identity.provisions).toBe(1);
+      expect(statSync(join(t.home, "hub/web-tls/key.pem")).mode & 0o777).toBe(0o600);
+    } finally { setLocale("en"); }
+  });
+  it("removes generated material if its warning or the later administrator confirmation is declined", async () => {
+    for (const answers of [[...addresses, "generate", "n", ""], [...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "n"]]) {
+      const t = setup({ generate: true });
+      expect((await t.run(answers)).outcome).toBe("cancelled");
+      expect(readdirSync(t.home)).toEqual([]); expect(t.identity.provisions).toBe(0);
+    }
+  });
+  it("keeps the existing import path when generation is unavailable and never deletes imported files", async () => {
+    const before = readFileSync(certs.cert), key = readFileSync(certs.key), t = setup();
+    const r = await t.run([...addresses, "generate", ...tls(), ...directoryAnswers(), ...signIn(), "n"]);
+    expect(r.outcome).toBe("cancelled"); expect(r.io.text()).toContain("generation is unavailable");
+    expect(readdirSync(t.home)).toEqual([]); expect(readFileSync(certs.cert)).toEqual(before); expect(readFileSync(certs.key)).toEqual(key);
+  });
+  it("reports a bounded generation failure without installing anything or echoing the underlying error", async () => {
+    const t = setup(), io = scriptedIO([...addresses, "generate"]);
+    const initializer = createHubInitializer({ home: t.home, identity: t.identity, probe: { pidAlive: () => false } });
+    const outcome = await runHubInitWizard({ io: io.io, home: t.home, initializer, createDirectory: t.dir.create,
+      readFile: path => readFileSync(path, "utf8"), service: t.svc.control,
+      createBrowserCertificate: async () => { throw Error("SENSITIVE-SENTINEL"); } });
+    expect(outcome).toBe("cancelled"); expect(io.text()).toContain("Could not generate"); expect(io.text()).not.toContain("SENSITIVE-SENTINEL");
+    expect(readdirSync(t.home)).toEqual([]); expect(t.identity.provisions).toBe(0); expect(t.dir.calls).toEqual([]);
+  });
+  it("keeps generated material and the wizard outcome when final inspection is uncertain", async () => {
+    const t = setup(), generated: HubBrowserMaterial[] = [];
+    try {
+      const initializer = createHubInitializer({ home: t.home, identity: t.identity, probe: { pidAlive: () => false } });
+      const io = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "n"]);
+      const outcome = runHubInitWizard({ io: io.io, home: t.home,
+        initializer: { ...initializer, inspect: async () => {
+          if (generated.length) throw Error("inspection unavailable");
+          return initializer.inspect();
+        } }, createDirectory: t.dir.create, readFile: path => readFileSync(path, "utf8"), service: t.svc.control,
+        createBrowserCertificate: async origin => {
+          const material = await createBrowserCertificate(t.home, origin); generated.push(material); return material;
+        } });
+      await expect(outcome).resolves.toBe("cancelled"); expect(generated).toHaveLength(1);
+      const material = generated[0]!;
+      expect(existsSync(material.certFile)).toBe(true); expect(existsSync(material.keyFile)).toBe(true);
+      expect(io.text()).toContain(ht("tls_stage_kept", material.certFile));
+      expect(existsSync(join(t.home, "fleet.yaml"))).toBe(false); expect(t.identity.provisions).toBe(0);
+    } finally { rmSync(t.home, { recursive: true, force: true }); }
+  });
+  it("retains exact generated files after interruption and cleans them only after the same plan resumes", async () => {
+    const home = tempDir("agend-hubinit-generated-cut-"), identity = new FakeIdentity(), svc = service();
+    const dir = fakeDirectory({ [`alice:${USER_PW}`]: { ok: true, person: ADMIN } });
+    const cut = createHubInitializer({ home, identity, probe: { pidAlive: () => false }, afterStage: stage => { if (stage === "secret") throw Error("cut"); } });
+    const first = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize"]);
+    const deps = { home, createDirectory: dir.create, readFile: (path: string) => readFileSync(path, "utf8"), service: svc.control,
+      createBrowserCertificate: (origin: string) => createBrowserCertificate(home, origin),
+      recoverBrowserCertificate: (plan: HubInitPlan) => recoverBrowserCertificate(home, plan.webOrigin, plan.webTls) };
+    expect(await runHubInitWizard({ ...deps, initializer: cut, io: first.io })).toBe("refused");
+    const plan = (await cut.inspect()).incomplete!.plan, cert = readFileSync(plan.webTls.certFile), key = readFileSync(plan.webTls.keyFile);
+    expect(plan.webTls.generated).toBe(true); expect(first.text()).toContain(plan.webTls.certFile);
+    const initializer = createHubInitializer({ home, identity, probe: { pidAlive: () => false } });
+    const declined = scriptedIO(["n"]);
+    expect(await runHubInitWizard({ ...deps, initializer, io: declined.io })).toBe("cancelled");
+    expect(readFileSync(plan.webTls.keyFile)).toEqual(key);
+    const resumed = scriptedIO(["y", { hidden: BIND_PW }, "initialize", "no"]);
+    expect(await runHubInitWizard({ ...deps, initializer, io: resumed.io, createBrowserCertificate: async () => { throw Error("must not regenerate"); } })).toBe("initialized");
+    expect(readFileSync(join(home, "hub/web-tls/cert.pem"))).toEqual(cert); expect(readFileSync(join(home, "hub/web-tls/key.pem"))).toEqual(key);
+    expect(existsSync(plan.webTls.certFile)).toBe(false); expect(identity.provisions).toBe(1);
   });
 });
