@@ -37,9 +37,18 @@ it("commits only public parent identity before child startup and requires its ex
 it("a second origin permanently disables exclusivity even after its owner exits", async () => {
   const f = await fixture();
   try {
-    const second = registerRuntimeInstallOwner(f.root, "https://other.example.test", f.lock);
+    const second = registerRuntimeInstallOwner(f.root, "https://z-other.example.test", f.lock);
     await releaseRuntimeInstallOwner(f.root, second, f.lock, gone);
     expect(readRuntimeInstallReceipt(f.root)?.shared).toBe(true);
+    expect(readRuntimeInstallReceipt(f.root)?.origins[0]).toBe(origin);
+    await expect(assertRuntimeInstallExclusive(f.root, f.owner, f.lock, gone)).rejects.toThrow(/shared/);
+  } finally { f.lock.release(); }
+});
+it("a remembered shared receipt stays unavailable even when its bounded origin list has one entry", async () => {
+  const f = await fixture();
+  try {
+    const receipt = readRuntimeInstallReceipt(f.root)!;
+    writeFileSync(join(f.root, RUNTIME_INSTALL_RECEIPT), JSON.stringify({ ...receipt, revision: receipt.revision + 1, shared: true }));
     await expect(assertRuntimeInstallExclusive(f.root, f.owner, f.lock, gone)).rejects.toThrow(/shared/);
   } finally { f.lock.release(); }
 });
