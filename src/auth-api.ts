@@ -383,9 +383,12 @@ export function handleAuthRequest(
   // with a chat connection the route does not exist either (its codes come from the chat). Nothing here is an input to
   // authority: the session it makes is an ordinary admin session, owner authority not verified (SessionRecord.via).
   if (path === "/auth/device-login" || path === "/auth/device-login/poll" || path === "/auth/device-login/cancel") {
-    if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
+    // Whether the route exists comes first, whatever the method: where it is absent (a chat connection, web authorization off, the
+    // public link) a GET or HEAD must read 404 as the public gateway's own refusal does, not 405 — a 405 would say "this path is
+    // here, with another method". The 405 is for a feature that is available.
     const token = ctx.webToken, logins = ctx.webDeviceLogins, sessions = ctx.webSessions;
     if (gatewayRequestContext(req) || !token || !logins || !sessions || ctx.deviceLoginAvailable?.() !== true) { json(res, 404, { error: "not_found" }); return true; }
+    if (method !== "POST") { json(res, 405, { error: "method not allowed" }); return true; }
     // As the one-time code's own exchange: Origin required, from this very site, JSON.
     if (!req.headers.origin || !isSameOriginRequest(gateReq)) { json(res, 403, { error: "Cross-site request rejected" }); return true; }
     if (!isJsonRequest(req)) { json(res, 415, { error: "expected application/json" }); return true; }

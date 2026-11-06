@@ -375,6 +375,46 @@ describe("#3061 P2a: who may approve — only this web-only fleet's verified own
   }, 20_000);
 });
 
+describe("#3061 P2a review: the route is absent (404) before its method is judged (405)", () => {
+  const METHODS = ["GET", "HEAD", "PUT", "DELETE"] as const;
+  const PATHS = ["", "/poll", "/cancel"] as const;
+  it("a chat-connected fleet: GET, HEAD and every other method on the three routes read 404, never 405", async () => {
+    const h = await startFleet({ chat: true });
+    for (const path of PATHS) for (const method of [...METHODS, "POST" as const]) expect([method, path, (await h.device(path, { method })).status]).toEqual([method, path, 404]);
+    expect(h.any.webDeviceLogins.size).toBe(0);
+  }, 20_000);
+
+  it("web authorization off: GET, HEAD and every other method read 404, never 405", async () => {
+    const h = await startFleet({ web: { verified_authority: { enabled: false } } });
+    for (const path of PATHS) for (const method of [...METHODS, "POST" as const]) expect([method, path, (await h.device(path, { method })).status]).toEqual([method, path, 404]);
+    expect(h.any.webDeviceLogins.size).toBe(0);
+  }, 20_000);
+
+  it("through the public link (the gateway's own provenance): 404 for every method — and the handler itself, handed the gateway, answers 404 to GET and HEAD too", async () => {
+    const h = await startFleet();
+    const owner = await h.hostSignIn();
+    await h.outsideOwner(owner);
+    for (const path of PATHS) for (const method of [...METHODS, "POST" as const]) expect([method, path, (await h.outside(method, `/auth/device-login${path}`, { body: {} })).status]).toEqual([method, path, 404]);
+    // Were a route to slip into the manifest, the handler refuses the gateway before it judges the method.
+    const { bindGatewayRequest } = await import("../src/web-request-context.js");
+    for (const method of [...METHODS, "POST" as const]) {
+      const req: any = { method, url: "/auth/device-login", headers: { host: HOST, origin: `https://${HOST}`, "content-type": "application/json" }, socket: { remoteAddress: "127.0.0.1" } };
+      bindGatewayRequest(req, { surface: "gateway", named: false, exposureId: h.any.publicWebLink.exposureId, expectedOrigin: `https://${HOST}`, isCurrent: () => true });
+      let status = 0;
+      const res: any = { writeHead(code: number) { status = code; return res; }, end() {}, setHeader() {}, getHeader() { return undefined; } };
+      expect(handleAuthRequest(req, res, new URL("https://x/auth/device-login"), h.any)).toBe(true);
+      expect([method, status]).toEqual([method, 404]);
+    }
+    expect(h.any.webDeviceLogins.size).toBe(0);
+  }, 30_000);
+
+  it("an available feature: a method other than POST is 405 on the three routes (HEAD too), and creates nothing", async () => {
+    const h = await startFleet();
+    for (const path of PATHS) for (const method of METHODS) expect([method, path, (await h.device(path, { method })).status]).toEqual([method, path, 405]);
+    expect(h.any.webDeviceLogins.size).toBe(0);
+  }, 20_000);
+});
+
 describe("#3061 P2a: guessing and flooding", () => {
   it(`wrong codes at the approving side count toward one breaker: ${DEVICE_APPROVE_THRESHOLD} → 429 + Retry-After, and a right code waits too`, async () => {
     const h = await startFleet();
