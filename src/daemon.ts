@@ -37,6 +37,8 @@ import { resolveToolSet, toolsFor } from "./tool-permissions.js";
 import { TOOLS } from "./channel/mcp-tools.js";
 import { dashboardAccessProblem, dashboardFeaturesOff, withoutFeatures } from "./dashboard-permissions.js";
 import { getAgendHome } from "./paths.js";
+import { bundledTmuxEnabled, tmuxSocket } from "./tmux-binary.js";
+import { migrateLegacyWindow, tagWindowId } from "./tmux-legacy.js";
 import { scopedFleetConfigEnvironment } from "./web-experimental.js";
 import { readAgentFile } from "./agent-file-read.js";
 import { ASSET_UPLOAD_MAX_BYTES, receivePreview, sendAssetInParts, writePreview } from "./web-asset-parts.js";
@@ -3201,6 +3203,16 @@ export class Daemon extends EventEmitter {
       resolveTmuxLogicalSize(this.config.terminal),
       this.controlClient,
     );
+
+    // M-2457 §6 rule 3 (bundled tmux only): a window-id 2.3 wrote names a window of the SYSTEM tmux's default server.
+    // That window is proven ours, checkpointed and closed (or this instance is held) — and the id is dropped, as it
+    // means nothing on AgEnD's own server — before the fresh-start below can look at it.
+    if (bundledTmuxEnabled()) {
+      await migrateLegacyWindow({ agendHome: getAgendHome(), instance: this.name, instanceDir: this.instanceDir, session: this.tmuxSessionName,
+        backendBinary: this.backend?.binaryName ?? "", checkpoint: () => this.checkpointSessionId(),
+        log: (msg, data) => this.logger.info(data ?? {}, msg) });
+      this.startupAdmission?.();
+    }
 
     // Strategy A: always start fresh Claude window (MCP server has no reconnection)
     // Kill any existing window from previous run
@@ -11618,7 +11630,7 @@ export class Daemon extends EventEmitter {
         this.controlClient,
       );
       const recoveredTmux = this.tmux;
-      writeFileSync(join(this.instanceDir, "window-id"), match.id);
+      this.writeWindowId(match.id);
       // The window we were talking to is gone; leaving it registered means the
       // control client re-resolves a dead id — one bounded read — on every
       // reconnect, for the life of the fleet process.
@@ -13446,7 +13458,7 @@ export class Daemon extends EventEmitter {
       if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
     this.startupAdmission?.();
-    writeFileSync(join(this.instanceDir, "window-id"), windowId);
+    this.writeWindowId(windowId);
 
     // Enable remain-on-exit to capture exit codes on crash
     await this.tmux!.setRemainOnExit().catch(err => {
@@ -13841,6 +13853,12 @@ export class Daemon extends EventEmitter {
    * lookup is the backend's own single-flight one: an idle observation already running it is joined,
    * not repeated. Never rejects.
    */
+  /** The window-id file, and (bundled tmux on) its socket tag: a window-id without it is 2.3's (tmux-legacy.ts). */
+  private writeWindowId(windowId: string): void {
+    writeFileSync(join(this.instanceDir, "window-id"), windowId);
+    if (bundledTmuxEnabled()) tagWindowId(this.instanceDir, tmuxSocket() ?? "default", windowId);
+  }
+
   private checkpointSessionId(): Promise<void> | void {
     const refresh = this.backend?.refreshSessionId;
     if (this.skipResume || !refresh) { this.saveSessionId(); return; }

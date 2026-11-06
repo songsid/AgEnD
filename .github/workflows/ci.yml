@@ -571,3 +571,12 @@ jobs:
         env:
           BASELINE_TGZ: ${{ steps.baseline-tarball.outputs.tarball }}
         run: bash scripts/ci/previous-release-rollback.sh "$BASELINE_TGZ" "./$TGZ" "$ROLLBACK_VERSION"
+      # M-2457 §7: with the bundled tmux on, `agend rollback` closes AgEnD's own tmux server (confirmed) before installing
+      # the previous release, and stops before npm when the close can't be confirmed (scripts/ci/tmux-rollback-proof.sh).
+      - name: agend rollback with AgEnD's own tmux server running (closed and confirmed first; a failed close stops it)
+        if: needs.detect-changes.outputs.packaging == 'true'
+        env:
+          BASELINE_TGZ: ${{ steps.baseline-tarball.outputs.tarball }}
+        run: |
+          command -v tmux >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq tmux; }
+          bash scripts/ci/tmux-rollback-proof.sh "$BASELINE_TGZ" "./$TGZ" "$ROLLBACK_VERSION"

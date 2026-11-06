@@ -188,6 +188,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // behind each listener's own gate): the thread, its Markdown renderer and previews, times, the composer and WorkBar,
     // the right-hand rail's frame and a page head. Their old /ui/js/ paths re-export them for tabs opened before.
     "chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-composer.js", "side-rail.js", "page-head.js",
+    // Hub E (#3226): the HTML side panel (versions, pages, Point at it). The fleet-only Files & changes and Share register
+    // with it from the fleet's /ui/js/preview-panel.js; the Hub never loads those.
+    "preview-panel.js", "preview-panel-actions.js", "preview-versions.js", "preview-pages.js",
     // …and the chat's words (static tables), so the Hub draws the same thread in the same words.
     "chat-strings.js", "chat-md-strings.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",

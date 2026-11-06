@@ -134,6 +134,23 @@ export const NATIVE_CHECK_SCRIPT = [
   "w.on('error', () => process.exit(5));",
 ].join(" ");
 
+/**
+ * M-2457 §6 rule 1: the installed package's own word on its bundled tmux, read through its own launcher. Prints
+ * `none` (no tmux pinned for this host, or a package without the bundle), `ok <tmux version>` (its postinstall verified
+ * it and wrote the receipt), or `missing <package>` (pinned but not installed or not verified: it would not start).
+ * `$1` is the package directory.
+ */
+export const TMUX_RECEIPT_SCRIPT = [
+  "const fs = require('node:fs'), path = require('node:path');",
+  "const dir = process.argv[1], lib = path.join(dir, 'launcher', 'tmux-bundle.cjs');",
+  "if (!fs.existsSync(lib)) { process.stdout.write('none'); process.exit(0); }",
+  "const b = require(lib), host = require(path.join(dir, 'launcher', 'runtime-platform.cjs')).hostPlatform();",
+  "const pin = b.pinnedTmux(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')), host);",
+  "if (!pin) { process.stdout.write('none'); process.exit(0); }",
+  "const r = b.readReceipt(dir, pin);",
+  "process.stdout.write(r ? 'ok ' + r.tmux : 'missing ' + pin.name + '@' + pin.version);",
+].join(" ");
+
 /** What a launcher-era package's own selection says (`agend --agend-select-json`, launcher/launch.cjs). */
 interface Selection { node?: string; pkgDir?: string; entry?: string; source?: string; error?: string; recovery?: string }
 
@@ -200,6 +217,13 @@ export function verifyInstalledPackage(plan: UpdateInstallPlan, runner: CommandR
     const proof = runner.run(chosen.node, ["-e", NATIVE_CHECK_SCRIPT, identity.dir], { timeoutMs: 30_000 });
     if (proof.status !== 0 || out(proof) !== "native-ok") {
       return fail(`  ✗ Verification failed: the installed package cannot open a database on the Node it selected, ${chosen.node} (${proof.signal ?? `exit ${proof.status}`}). ${proof.stderr.trim().split("\n").pop() ?? ""}`.trimEnd());
+    }
+    // M-2457 §6 rule 1: verify before stopping — a package whose bundled tmux is pinned here but not verified would not
+    // start the fleet. The failure puts the previous package back (runUpdateInstall), and nothing is restarted.
+    const tmux = runner.run(chosen.node, ["-e", TMUX_RECEIPT_SCRIPT, identity.dir], { timeoutMs: 15_000 });
+    if (tmux.status !== 0 || !/^(none|ok \S+)$/.test(out(tmux))) {
+      const what = out(tmux).startsWith("missing ") ? out(tmux).slice("missing ".length) : `exit ${tmux.status ?? tmux.signal}`;
+      return fail(`  ✗ Verification failed: the new version's tmux failed its check (${what}: not installed or not verified). Still on the previous version.`);
     }
     return { ok: true, agendPath, version, dir: identity.dir, bin: identity.bin, entry: identity.entry, node: chosen.node };
   }
