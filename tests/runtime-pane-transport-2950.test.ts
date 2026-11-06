@@ -13,6 +13,7 @@ import { RuntimePaneHost, type RuntimePaneProcess, type RuntimePaneHostOptions }
 import type { RuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
 import { NativePaneTranscriptReader } from "../src/runtime-pane-transcript.js";
 import { PANE_TRANSCRIPT_EMPTY_ANCHOR, validatePaneTranscriptWireBatch } from "../src/runtime-pane-transcript-protocol.js";
+import { prepareNativePaneQuotaHistory } from "../src/runtime-pane-quota-history.js";
 import { RuntimePanePort } from "../src/runtime-pane-port.js";
 import { RuntimeTranscriptSource } from "../src/runtime-transcript-source.js";
 import { RuntimeTranscriptDeltaReader } from "../src/runtime-transcript-delta-reader.js";
@@ -188,4 +189,27 @@ it("a rejected paired host attachment cannot poison later independent discoverie
  const open=client.options.openPaneLink=vi.fn().mockRejectedValueOnce(Error('attachment failed')).mockResolvedValueOnce({connected:()=>true,request,stop:async()=>{}});
  await expect(f.hub().callPane(f.machineId,{action:'list'})).rejects.toThrow('attachment failed');expect(request).not.toHaveBeenCalled();
  expect(await f.hub().callPane(f.machineId,{action:'list'})).toMatchObject({hostBootId:boot});expect(open).toHaveBeenCalledTimes(2);expect(request).toHaveBeenCalledOnce();
+});
+
+it("paired-PC capture carries only its frozen quota proof; append and reconnect never create another baseline", async () => {
+  const root = directory(), codex = join(root, "codex"), folder = join(codex, "sessions"), id = randomUUID(), message = "You've hit your usage limit. Old reset.";
+  mkdirSync(folder, { recursive: true }); const path = join(folder, `rollout-test-${id}.jsonl`);
+  writeFileSync(path, JSON.stringify({ type: "session_meta", payload: { id, cwd: "C:\\fixture", source: "cli" } }) + "\n"
+    + JSON.stringify({ timestamp: "2026-01-01T00:00:00Z", type: "event_msg", payload: { type: "task_complete", turn_id: "old", error: { message, codex_error_info: "usage_limit_exceeded" } } }) + "\n");
+  const spawned: ReturnType<typeof fakeProcess>[] = [], spawn = vi.fn(async (launch: import("../src/runtime-pane-protocol.js").RuntimePaneLaunch) => {
+    const quotaReplay = await prepareNativePaneQuotaHistory(launch, () => new NativePaneTranscriptReader("codex", launch.cwd, id, { codex, claude: join(root, "unused") }));
+    const process = Object.assign(fakeProcess(), { ...(quotaReplay ? { quotaReplay } : {}) }); spawned.push(process); return process;
+  });
+  const f = await fixture({ spawn }), launch = { ...f.launch(), sessionId: id };
+  const port = new RuntimePanePort({ machineId: f.machineId, online: () => f.hub().machine(f.machineId)?.status === "online",
+    call: request => f.hub().callPane(f.machineId, request), subscribe: listener => f.hub().subscribe(listener) }, join(f.home, "quota-pane.json"), launch);
+  await port.open(); spawned[0].emit(`■ ${message}\r\n› Ask Codex to do anything\r\n  Context 100% left`);
+  expect(await port.capturePane()).toContain(message); const proof = port.quotaReplayHistory();
+  expect(proof?.messages).toEqual([message]); expect(proof?.current()).toBe(true); expect(JSON.stringify(proof)).not.toContain(path);
+  spawned[0].emit("\r\nnew output"); await port.getPaneStatus(); expect(proof?.current()).toBe(false);
+  await port.capturePane(); expect(port.quotaReplayHistory()?.current()).toBe(true);
+  appendFileSync(path, '{"type":"event_msg"}\n'); await port.capturePane();
+  expect(proof?.current()).toBe(false); expect(port.quotaReplayHistory()).toBeNull();
+  expect((await port.open()).reattached).toBe(true); await port.capturePane(); expect(port.quotaReplayHistory()).toBeNull();
+  expect(spawn).toHaveBeenCalledOnce(); expect(spawned[0].write).not.toHaveBeenCalled();
 });
