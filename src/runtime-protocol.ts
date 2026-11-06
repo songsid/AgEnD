@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import type { PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import type { RuntimePaneRequest, RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type { RuntimeUpdateControl, RuntimeUpdateClientPhase, RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
+import type { RuntimeUpdateReport, RuntimeUpdateStatusFrame } from "./runtime-update-status.js";
 
 export const RUNTIME_PROTOCOL_VERSION = 1;
 export const RUNTIME_CONNECT_PATH = "/runtime/v1/connect";
@@ -132,13 +133,14 @@ export interface RuntimeMachine {
   pairingFingerprint?: string;
   paneProtocol?: 1;
   runtimeInfo?: RuntimeInfo;
+  updateReport?: RuntimeUpdateReport;
   runtimeCompatibility?: "compatible" | "legacy" | "incompatible" | "unknown";
 }
 export interface RuntimePairing { pairingId: string; code: string; expiresAt: number }
 export interface RuntimePairResult { machineId: string; claimSecret: string; status: "pending"; expiresAt: number }
 export type RuntimeClaimResult = { status: "pending" } | { status: "approved"; machineId: string; credential: string };
 export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1; runtimeInfo?: RuntimeInfo; updateTrialId?: string }
-export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number; updateProtocol?: 1 }
+export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number; updateProtocol?: 1; updateStatusProtocol?: 1 }
 export interface RuntimeRequest { v: 1; type: "request"; id: string; operation: RuntimeOperation; payload: unknown }
 export interface RuntimeResponse { v: 1; type: "response"; id: string; ok: boolean; result?: unknown; error?: string }
 export interface RuntimeTaskEvent { v: 1; type: "task"; seq: number; task: WindowsCliTask }
@@ -153,4 +155,4 @@ export interface RuntimePaneToolResult { v: 1; type: "pane.tool.result"; id: str
 export interface RuntimeAccountCall { v: 1; type: "account.request"; id: string; operation: RuntimeRemoteOperation; payload: unknown }
 export interface RuntimeAccountReply { v: 1; type: "account.response"; id: string; ok: boolean; result?: unknown; error?: string }
 export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall | RuntimePaneToolResult | RuntimeAccountCall | RuntimeUpdateControl<RuntimeUpdateServerPhase>;
-export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeAccountReply | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput | RuntimePaneToolCall | RuntimeUpdateControl<RuntimeUpdateClientPhase>;
+export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeAccountReply | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput | RuntimePaneToolCall | RuntimeUpdateControl<RuntimeUpdateClientPhase> | RuntimeUpdateStatusFrame;

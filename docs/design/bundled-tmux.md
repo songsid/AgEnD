@@ -53,7 +53,7 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 | UTF-8 / CJK width | 3.8: no infinite loop on a `WCHAR_MAX` width (5602); redraw fixes around wide characters | CJK width test in PR B |
 | terminfo | 3.8: keep the existing Ss/Se; `@` disables a terminal feature; a `utf8` feature | none |
 | Memory | 3.8: "Various memory leak fixes" | the leak leg (matrix) |
-| macOS | 3.7c: "Build with jemalloc on macOS to avoid … a bug in calloc (5385)" | the darwin build links jemalloc (§3) |
+| macOS | 3.7c: "Build with jemalloc on macOS to avoid … a bug in calloc (5385)" | darwin-arm64 links jemalloc; darwin-x64 does not (its server died with it, §3) |
 | Security | CVE-2026-11623 (use-after-free in `image_free`, sixel builds, ≤3.6a; fixed in 3.7) | we build **without** images/sixel (§10) |
 
 **Matrix.** Static builds (§3 recipe: musl, libevent 2.1.12, ncurses 6.5), each tested in a private container with
@@ -90,7 +90,7 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 
 - **Sources:** tmux 3.8 (the pin, in `tmux-sources.json`), libevent 2.1.12-stable, ncurses 6.5, utf8proc 2.12.0
   (tag archive sha256 `f564011d38b2888d583d510b08e69ffa15aa117155db1b9b49ef1dfe1fa25111`). jemalloc 5.3 is added on
-  darwin, as upstream does since 3.7c.
+  darwin-arm64, as upstream does on macOS since 3.7c (not on darwin-x64: §3).
   Each source is fetched by URL and checked against a **sha256 committed in the repo**
   (`scripts/release/tmux-sources.json`). A mismatch fails the build.
 - **linux-x64, linux-arm64:** built on Alpine (musl), **fully static** (`--enable-static`, everything linked in).
@@ -98,8 +98,18 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
     whose packages are glibc-only).
   - Recipe notes from the prototype: seed `ac_cv_search_forkpty="none required"` (musl has `forkpty` in libc); link
     the wide-char ncurses (`libncursesw.a`, aliased as `libncurses.a`); configure libevent without its regress suite.
-- **darwin-arm64, darwin-x64:** built on macOS runners. libevent, ncurses and jemalloc are linked **statically**, and
-  libSystem stays dynamic (Apple supports no fully static binary). `MACOSX_DEPLOYMENT_TARGET=11.0`.
+- **darwin-arm64, darwin-x64:** built on macOS runners. libevent, ncurses (and on darwin-arm64 jemalloc) are linked
+  **statically**, and libSystem stays dynamic (Apple supports no fully static binary). `MACOSX_DEPLOYMENT_TARGET=11.0`.
+  - **jemalloc on darwin-arm64 only.** On darwin-x64 (`macos-15-intel`) the statically linked jemalloc 5.3.0 tmux
+    server died at once after its first client left: `new-session -d` returned, and the next `display-message` found no
+    server (dry runs 42268291999 and 42273319563). Its `-vv` server log ends at `lost client` / `remove peer` with no
+    orderly exit, and no crash report was written. Built with the system allocator (`--disable-jemalloc`) the same
+    smoke passes on darwin-x64 (dry run 42280510117), so the cause is jemalloc on x86_64, not the build. The cost:
+    darwin-x64 keeps macOS's own `calloc`, which upstream works around with jemalloc (tmux #5385). Pinned in
+    `tmux-sources.json` (`platforms: ["darwin-arm64"]`) and by `tests/tmux-bundle-2457.test.ts`.
+  - **Reproducible link:** ld64 records each object's absolute path in the debug map and hashes the output into
+    `LC_UUID` (which `strip` keeps), so the darwin link gets `-Wl,-oso_prefix,<work>/` and `ZERO_AR_DATE=1`.
+  - jemalloc's `jemalloc.pc` is installed with it: tmux's configure finds jemalloc only through pkg-config.
 - **Options:** `--disable-utempter`, and **no** `--enable-sixel`/`--enable-images`. `--enable-utf8proc`, statically, so
   that all four platforms use the same Unicode width tables. musl's own `wcwidth` lags, and CJK and emoji widths must
   match what the CLIs assume. The §2 matrix builds did **not** include utf8proc yet; PR A's first build reruns the
@@ -321,6 +331,7 @@ Measured on the prototype (linux-x64, musl static, stripped):
 | 3.7b | 1.51 MB | 1.22 MB | |
 | **3.8** | **1.71 MB** | 1.30 MB | **1.79 MB unpacked, 0.79 MB packed** (subset 70 KB) |
 | **3.8, PR A's build** (utf8proc 2.12.0 linked) | **2.05 MB** | | **the npm package: 2.15 MB unpacked, 0.89 MB packed** (licences and both terminfo directory spellings included) |
+| **3.8, all four packages** (dry run 42280510117) | linux-x64 2.05 MB · linux-arm64 2.05 MB · darwin-arm64 2.10 MB · darwin-x64 1.84 MB | | packed / unpacked: linux-x64 0.89 / 2.15 MB · linux-arm64 0.89 / 2.15 MB · darwin-arm64 0.87 / 2.20 MB · darwin-x64 0.78 / 1.93 MB |
 
 The full ncurses terminfo is 7.4 MB unpacked, so the package ships only the §4 subset. Budget per platform package: **≤ 3 MB unpacked, ≤ 1.5 MB
 packed**, terminfo subset included. The Node runtime is ~45 MB packed, so this adds under 4% to an install.

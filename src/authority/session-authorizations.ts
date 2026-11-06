@@ -51,6 +51,8 @@ function valid(v: unknown): v is SessionAuthorization {
 export class SessionAuthorizations {
   private byHandle: Map<string, SessionAuthorization> | null = null;
   private warned = false;
+  /** The "could not be removed" warning was given in this failure streak (#3082 review: once, not every retry). */
+  private unremovableWarned = false;
   /** The handles the file holds as far as this process knows (what a restart would read back). */
   private persisted = new Set<string>();
   /** A write is owed to the disk (the last one failed): retried by the next change, or a read after `retryAt`. */
@@ -92,6 +94,7 @@ export class SessionAuthorizations {
       this.persisted = new Set(map.keys());
       this.dirty = false;
       this.warned = false;
+      this.unremovableWarned = false;
       return { written: true, safe: true };
     } catch (err) {
       this.dirty = true;
@@ -108,7 +111,9 @@ export class SessionAuthorizations {
         this.io.unlink(this.path);
       } catch (e) {
         if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
-          this.log.warn({ err: message, path: this.path }, "Web session authorizations could not be saved and the old file could not be removed: a restart may bring back an authorization that ended. Fix the permissions on web-authorizations.json");
+          // Retried every SESSION_AUTHORIZATIONS_RETRY_MS while it lasts: said once per streak, again after a write lands.
+          if (!this.unremovableWarned) this.log.warn({ err: message, path: this.path }, "Web session authorizations could not be saved and the old file could not be removed: a restart may bring back an authorization that ended. Fix the permissions on web-authorizations.json");
+          this.unremovableWarned = true;
           return { written: false, safe: false };
         }
       }

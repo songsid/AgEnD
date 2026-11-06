@@ -95,7 +95,7 @@ const unixLineRaw = 'curl -fsSL https://raw.githubusercontent.com/songsid/AgEnD/
     </p>
     <div class="mb-14 rounded-xl border border-border bg-surface p-6">
       <ol class="space-y-3 text-sm text-text-secondary">
-        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 安裝 Ubuntu-24.04。如果有兩個以上可用空間至少 5 GB 的本機磁碟，會列出可用空間並讓你選擇安裝位置，標示建議的預設值（系統碟有至少 20 GB 時用系統碟，否則選空間最大的磁碟）；直接按 Enter 就採用預設。只有一個符合條件的磁碟時不會詢問。安裝前會記住位置，重試與重新開機接續都沿用；如果你已移除上次安裝的 Linux，會清掉舊位置並讓你重新選擇。如果電腦裡已經有 Ubuntu，會讓你選：另外安裝一個 AgEnD 專用的 Ubuntu，名稱是 <code class="font-mono text-accent">AgEnD</code>（建議，你原本的完全不動）；或用原本的那個（會修改它的設定，並說明改什麼）；直接按 Enter 就結束、不動任何東西。之後再執行時會沿用這個 AgEnD 專用的 Linux，不會再裝第三個。已經是 2 以上的 WSL 不會再更新；較舊的會先透過 Microsoft Store 更新，GitHub 只是備案（很多人共用同一個對外網路時，GitHub 可能暫時拒絕下載；安裝程式會說明狀況，現有的 WSL 能用時就繼續）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
+        <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 新安裝優先使用 Ubuntu-26.04；版本無法取得或安裝失敗時，嘗試 Ubuntu-24.04，並說明實際使用的版本。既有安裝與已儲存計畫保留原來的 Linux（包含 Ubuntu-22.04），不會遷移。如果有兩個以上可用空間至少 5 GB 的本機磁碟，會列出可用空間並讓你選擇安裝位置，標示建議的預設值（系統碟有至少 20 GB 時用系統碟，否則選空間最大的磁碟）；直接按 Enter 就採用預設。只有一個符合條件的磁碟時不會詢問。安裝前會記住位置，重試與重新開機接續都沿用；如果你已移除上次安裝的 Linux，會清掉舊位置並讓你重新選擇。如果電腦裡已經有 Ubuntu，會讓你選：另外安裝一個 AgEnD 專用的 Ubuntu，名稱是 <code class="font-mono text-accent">AgEnD</code>（建議，你原本的完全不動）；或用原本的那個（會修改它的設定，並說明改什麼）；直接按 Enter 就結束、不動任何東西。之後再執行時會沿用這個 AgEnD 專用的 Linux，不會再裝第三個。已經是 2 以上的 WSL 不會再更新；較舊的會先透過 Microsoft Store 更新，GitHub 只是備案（很多人共用同一個對外網路時，GitHub 可能暫時拒絕下載；安裝程式會說明狀況，現有的 WSL 能用時就繼續）。可能需要重開機一次；重新登入後會自動從中斷處繼續。</li>
         <li><b class="text-text-primary">[2/5] 安裝 AI 後端（可多選）</b> —— 用逗號分隔選擇一個以上（直接 Enter 只裝 Kiro CLI；接續安裝時會列出上次的選擇，按 Enter 沿用）。已經安裝、而且能回應 <code class="font-mono text-accent">--version</code> 的後端會保留並顯示版本，不會再跑它的安裝程式：
           <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
             <li>Kiro CLI（免費，需 AWS Builder ID / GitHub / Google）</li>
@@ -236,8 +236,11 @@ exit                                         # 離開 WSL</pre>
 
     <!-- Uninstall -->
     <h2 class="text-2xl font-bold text-text-primary mb-5">完全移除方法</h2>
-    <p class="text-sm text-text-secondary mb-4">在 PowerShell 中依序執行：</p>
-    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister Ubuntu-24.04
+    <p class="text-sm text-text-secondary mb-4">先讀取 AgEnD 記錄的 Linux 名稱與使用者，再把名稱與 WSL 清單、AgEnD 桌面捷徑實際開啟的 Linux 核對。如果紀錄不存在、已過期或對不上，先停下來；不要用 Ubuntu 版本號猜測。</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD\install.json') -Raw | ConvertFrom-Json | Select-Object distro, user
+wsl --list --quiet</pre>
+    <p class="text-sm text-text-secondary mb-4"><b class="text-text-primary">取消註冊會刪除所選 Linux 發行版及其中所有檔案，不只是 AgEnD。</b> 如果安裝時沿用了原本的 Ubuntu，你原有的其他檔案與軟體也會一起刪除。要保留這個 Linux 或其中資料，就不要執行取消註冊指令。確認目標後，才把下方的 <code class="font-mono text-accent">EXACT-VERIFIED-DISTRO-NAME</code> 換成核對過的完整名稱（可能是自訂的 AgEnD 名稱，也可能是較舊的 Ubuntu），再執行：</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister "EXACT-VERIFIED-DISTRO-NAME"
 Remove-Item "$env:USERPROFILE\.agend-install-progress" -ErrorAction SilentlyContinue
 Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs" -ErrorAction SilentlyContinue</pre>
     <p class="text-sm text-text-secondary mb-4">安裝程式在你的 <code class="font-mono text-accent">%USERPROFILE%\.wslconfig</code> 合併了兩個設定（<code class="font-mono text-accent">[wsl2] vmIdleTimeout=-1</code> 與 <code class="font-mono text-accent">[general] instanceIdleTimeout=-1</code>），保留你原有的其他設定，並在旁邊留了備份（<code class="font-mono text-accent">.wslconfig.agend-backup-…</code>）。請只刪掉這兩行，或還原備份；檔案裡有你自己的設定時，不要整個刪掉。</p>

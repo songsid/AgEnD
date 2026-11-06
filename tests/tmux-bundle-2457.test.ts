@@ -421,3 +421,63 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     expect(bundle.processGone(Number(child.stdout))).toBe(true);
   });
 });
+
+describe("the darwin build links jemalloc the way tmux's configure finds it", () => {
+  // tmux 3.8's configure: --enable-jemalloc → PKG_CHECK_MODULES(JEMALLOC, jemalloc, …), else "jemalloc not found".
+  // The first macOS dry run (run 42265015287) failed there on both Macs: only the static library and headers were
+  // installed, not jemalloc.pc.
+  it("installs jemalloc's pkg-config file beside its static library, where PKG_CONFIG_PATH points", () => {
+    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
+    const install = /sh\("make", \[([^\]]*)\], \{ cwd: dirs\.jemalloc/.exec(src)?.[1] ?? "";
+    expect(install.split(",").map(s => s.trim().replace(/"/g, ""))).toEqual(["install_lib_static", "install_lib_pc", "install_include"]);
+    expect(src).toMatch(/PKG_CONFIG_PATH: join\(deps, "lib\/pkgconfig"\)/);
+    expect(partsFor(readSources(), "darwin-arm64")).toContain("jemalloc");
+  });
+
+  it("jemalloc per target: darwin-arm64 links it, darwin-x64 and Linux do not (§3: x86_64's server died with it)", () => {
+    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
+    expect(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"].map(t => partsFor(readSources(), t).includes("jemalloc"))).toEqual([true, false, false, false]);
+    // configure gets --enable-jemalloc only where it is linked, and an explicit --disable-jemalloc on the other Mac
+    // (tmux's configure would otherwise look for one itself and could link a Homebrew dylib).
+    expect(src).toContain('if (parts.includes("jemalloc")) tmuxArgs.push("--enable-jemalloc");\n  else if (darwin) tmuxArgs.push("--disable-jemalloc");');
+  });
+
+  it("a darwin build is reproducible: object paths relative in the debug map, ar member dates zeroed", () => {
+    // ld64 hashes the output (debug map included) into LC_UUID, which strip keeps; the second build runs elsewhere.
+    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
+    expect(src).toContain("LDFLAGS: `-L${deps}/lib${darwin ? ` -Wl,-oso_prefix,${work}/` : \"\"}`");
+    expect(src).toMatch(/darwin \? \{ MACOSX_DEPLOYMENT_TARGET: "11\.0", ZERO_AR_DATE: "1" \}/);
+  });
+});
+
+describe("verifyTmux: the wait for the server's exit runs on a monotonic clock (alpha CI run 42287645555)", () => {
+  it("a wall clock that steps forward mid-wait does not cut the wait short: a server that takes a few checks to go passes", () => {
+    const f = fixture();
+    const PINV = { name: `@songsid/agend-tmux-${HOST.id}`, version: PIN };
+    const dir = mkdtempSync(join(tmpdir(), "agend-sock-")); roots.push(dir);
+    const sock = "agend-verify-4343";
+    const path = join(dir, sock);
+    // A socket file for the identity check (no server needs to listen: the proof only stats it).
+    spawnSync(process.execPath, ["-e", "require('net').createServer().listen(process.argv[1], () => process.exit(0))", path]);
+    let killed = false, checks = 0, t = Date.now();
+    const realNow = Date.now;
+    Date.now = () => (t += 60_000);          // every read of the wall clock is a minute later
+    try {
+      const proved = bundle.verifyTmux(bundle.tmuxCandidate(f.pkg, PINV), PINV, {
+        pid: 4343, exitWaitMs: 2000,
+        processGone: () => killed && ++checks > 3,   // gone only on the fourth look after kill-server
+        spawnSync: (_file: string, args: string[]) => {
+          const c = args[2];
+          if (c === "-V") return { status: 0, stdout: "tmux 3.8\n", stderr: "" };
+          if (c === "display-message") return { status: 0, stdout: `4321 ${path}\n`, stderr: "" };
+          if (c === "capture-pane") return { status: 0, stdout: "agend-verify-ok\n", stderr: "" };
+          if (c === "kill-server") { killed = true; return { status: 0, stdout: "", stderr: "" }; }
+          if (c === "has-session" && killed) return { status: 1, stdout: "", stderr: "no server running" };
+          return { status: 0, stdout: "", stderr: "" };
+        },
+      });
+      expect(proved).toMatchObject({ ok: true });
+      expect(checks).toBeGreaterThanOrEqual(4);   // the loop looked until it was gone, then confirmed once more
+    } finally { Date.now = realNow; }
+  });
+});

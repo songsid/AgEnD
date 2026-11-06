@@ -267,6 +267,7 @@ import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitc
 import { RuntimeInstallService } from "./runtime-install.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
+import { runtimeUpdateAttention } from "./runtime-update-attention.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
@@ -1286,12 +1287,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       handlePaneMcp:async(machineId,body,current)=>(await this.nativePanes()).handle(machineId,body,current),
       warn:(fields,message)=>this.logger.warn(fields,message),
       changed:event=>{
+        if (event?.type === "machine") this.needsYou?.poke();
         if(event?.type==="machine" && this.runtimeHub?.machine(event.machineId)?.status!=="online") {
           for(const [name,config] of Object.entries(this.fleetConfig?.instances ?? {}))if(config.machine_id===event.machineId) {
             this.nativeMcpStore?.closeInstance(name);
             if (config.general_topic) { this.cancelPendingDeliveries(name); this.holdGeneralOldDeliveries(name); }
           }
-          this.needsYou?.poke();
         }
         if(this.runtimeStatusScheduled || this.shuttingDown)return;
         this.runtimeStatusScheduled=true;
@@ -17176,6 +17177,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
+      runtimeUpdates: () => remoteRuntimeEnabled() ? runtimeUpdateAttention(this.runtimeHub?.listMachines() ?? [], t, this.worlds.keys().next().value) : [],
       hubHolds: () => this.hubHolds.map(h => {
         // A provider hold carries a bounded setup reason; its guidance (S4b's copy) when present, else the code's text.
         const guidance = h.reason ? t(`hub.provider.${h.reason}`) : "";

@@ -468,7 +468,10 @@ def main(argv):
             print("  note (%s): %s" % (side, x))
 
     present = [i for i, n in enumerate(c_old) if n]
-    missing = [i for i in present if not c_new[i]]
+    # A literal sources.json marks retired upstream (kept by AgEnD for hosts on older releases) is expected to go.
+    gone = [i for i in present if not c_new[i]]
+    retired = [i for i in gone if literals[i].get("retiredAfter")]
+    missing = [i for i in gone if not literals[i].get("retiredAfter")]
     changed = [i for i in present if c_new[i] and c_new[i] != c_old[i]]
     appeared = [i for i, n in enumerate(c_old) if not n and c_new[i]]
     print("\nliterals in the old artifact: %d of %d (the rest are AgEnD's own text, or this CLI never had them)" % (len(present), len(literals)))
@@ -480,6 +483,11 @@ def main(argv):
             print("  [%s] %d -> %d  %s   (%s)" % (l["surface"], c_old[i], c_new[i], json.dumps(l["text"][:100], ensure_ascii=False), where(l)))
 
     show("MISSING (in old, not in new)", missing)
+    if retired:
+        print("\nRETIRED UPSTREAM (expected: kept for releases up to the version named, not a finding): %d" % len(retired))
+        for i in retired:
+            l = literals[i]
+            print("  [%s] %d -> 0  %s   (%s; last in %s)" % (l["surface"], c_old[i], json.dumps(l["text"][:100], ensure_ascii=False), where(l), l["retiredAfter"]))
     show("COUNT CHANGED", changed)
     show("APPEARED (not in old, in new)", appeared)
 

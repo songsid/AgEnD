@@ -11,6 +11,7 @@ import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { WindowsCliPanel } from "./panel-windows-cli.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { runtimeConnectCommand, runtimeInstallCommand, runtimeWindowsConnectCommand } from "./runtime-commands.js";
+import { RuntimeUpdateNotice, runtimeUpdateText, runtimeFreshInstallCommand } from "./runtime-update-status.js";
 import { credentialProfileView, credentialProfileState } from "./credential-profile-select.js";
 import { identityText } from "./account-identity.js";
 import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
@@ -156,7 +157,7 @@ function paneVerificationTag(cli, text) {
   return key ? html`<span class="tag" title=${text(`${key}Hint`)}>${text(key)}</span>` : null;
 }
 export function machineTime(value) { const date=new Date(value); return value && Number.isFinite(date.getTime()) ? date.toLocaleString() : machineText("unknown"); }
-function MachineCard({ machine, busy, action, openDiagnostics, probe }) {
+function MachineCard({ machine, busy, action, openDiagnostics, probe, repairUpdate }) {
   const [editing,setEditing] = useState(false), [name,setName] = useState(machine.name), [info,setInfo] = useState(false);
   const detection = useWindowsCliCatalogSnapshot(machine.isLocal ? "" : machine.id);
   const probing = machine.probing || detection.loading;
@@ -169,6 +170,7 @@ function MachineCard({ machine, busy, action, openDiagnostics, probe }) {
   return html`<article class=${`runtime-machine${local ? " runtime-native-local" : ""}${revoked ? " is-revoked" : ""}`} data-machine-id=${local ? "local" : machine.id}>
     <header><span class="runtime-machine-icon"><${Icon} name="fleet" size=${22} /></span><div><h3>${machine.name}${revoked ? null : html`<span class="runtime-kind">${machineText(local ? "localBadge" : "pairedBadge")}</span>`}</h3><p>${machine.platform === "win32" ? "Windows" : machine.platform || machineText("unknown")}${machine.hostname && machine.hostname !== machine.name ? ` · ${machine.hostname}` : ""} · ${machineText("cliCount",clis.length)}</p></div><span class=${`runtime-status is-${status}`}><span class="windows-cli-dot"></span>${machineText(["available","online","offline","pending","revoked"].includes(status) ? status : "unknown")}</span></header>
     ${!local && !revoked && machine.runtimeCompatibility === "incompatible" ? html`<p class="runtime-reinstall" role="alert">${machineText("needsReinstall")}</p>` : null}
+    ${!local && !revoked && status !== "pending" ? html`<${RuntimeUpdateNotice} machine=${machine} onRepair=${() => repairUpdate(machine)} />` : null}
     ${revoked ? null : html`<p class="runtime-inventory-time note">${machine.inventoryUpdatedAt ? machineText("inventoryAt",machineTime(machine.inventoryUpdatedAt)) : machineText("neverDetected")}</p>`}
     ${status === "pending" ? html`<div class="runtime-approval"><p>${machineText("fingerprintLabel")}<code class="runtime-pairing-fingerprint">${machine.pairingFingerprint || machineText("unknown")}</code></p><p class="note">${machineText("approvalHint")}</p></div>` : null}
     ${revoked ? html`<p class="note runtime-revoked-note" role="status">${machineText("revokedNote")}</p>` : clis.length ? html`<table class="runtime-cli-table" aria-label=${machineText("cli")}><thead><tr><th>${machineText("cli")}</th><th>${machineText("versionColumn")}</th><th>${machineText("signInColumn")}</th></tr></thead><tbody>${clis.map(cli=>html`<tr key=${cli.id}><td><span class="runtime-cli-product"><${CliProductMark} id=${cli.id} size=${21} /><strong>${cliLabel(cli.id)}</strong></span>${cli.supports?.execution === false ? html`<small>${machineText("detectionOnly")}</small>` : null}</td><td><span class="runtime-cli-version" title=${cli.version || ""}>${cli.version || "—"}</span>${paneVerificationTag(cli,machineText)}</td><td><span class=${`runtime-cli-auth ${cli.authenticated === true ? "is-signed-in" : ""}`}><span class="windows-cli-dot"></span>${machineText(cli.authenticated === true ? "signedIn" : cli.authenticated === false ? "signedOut" : "authShort")}</span>${cli.authenticated === true && identityText(cli.identity) ? html`<small class="runtime-account" data-account="default">${identityText(cli.identity)}</small>` : null}</td></tr>`)}</tbody></table>` : html`<p class="note runtime-no-clis">${machineText(local ? "noLocalClis" : "noClis")}</p>`}
@@ -295,6 +297,7 @@ export function RuntimesPanel({navKey}) {
   const [tab,setTab]=useState("windows"), [copiedCommand,setCopiedCommand]=useState(""), [installCopied,setInstallCopied]=useState(false);
   // The administrator-only report of install.ps1's SHA-256 (what the server sends); the install command pins it.
   const [installer,setInstaller]=useState({status:"idle",sha:"",version:""});
+  const [repairMachine,setRepairMachine]=useState(null);
   const [diagnosticMachineId,setDiagnosticMachineId]=useState(null);
   // Computers revoked on this page stay on screen as revoked until the page is left or reloaded; the server keeps the record.
   const [revokedHere,setRevokedHere]=useState(() => new Map());
@@ -316,7 +319,7 @@ export function RuntimesPanel({navKey}) {
       else setInstaller({status:"error",sha:"",version:""});
     } catch { if(lease.current())setInstaller({status:"error",sha:"",version:""}); }
   };
-  useEffect(() => { if (pairing && installer.status === "idle") void loadInstaller(); },[pairing,installer.status]);
+  useEffect(() => { if ((pairing || repairMachine) && installer.status === "idle") void loadInstaller(); },[pairing,repairMachine,installer.status]);
   const post=async(path,body={}) => {
     const response=await lease.fetch(path,{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
     const value=await response.json();
@@ -406,7 +409,13 @@ export function RuntimesPanel({navKey}) {
       ${approveStep}`;
 
   const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><span class="note">${machineText("machineCount",allMachines.length)}</span></div>
-    <section class="runtime-machines" aria-label=${machineText("machines")}>${allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} />`)}</section>
+    <section class="runtime-machines" aria-label=${machineText("machines")}>${allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} repairUpdate=${setRepairMachine} />`)}</section>
+    ${repairMachine ? html`<${Dialog} title=${runtimeUpdateText("repairTitle")} onClose=${() => setRepairMachine(null)}>
+      <p>${runtimeUpdateText("repairHint")}</p>
+      ${installer.status === "idle" || installer.status === "loading" ? html`<p role="status">${machineText("installerLoading")}</p>` : null}
+      ${installer.status === "error" ? html`<p role="alert">${machineText("installerUnavailable")} <button class="btn btn-sm" onClick=${() => void loadInstaller()}>${machineText("installerRetry")}</button></p>` : null}
+      ${installer.status === "ready" ? commandCard("update-repair",machineText("installCommand"),runtimeFreshInstallCommand(typeof location === "undefined" ? "" : location.origin,installer.sha)) : null}
+    </${Dialog}>` : null}
     ${state.data && !allMachines.some(machine=>!machine.isLocal) ? html`<p class="note runtime-empty-remotes">${machineText("empty")}</p>` : null}
     <article class="runtime-host-note"><${Icon} name="info" size=${18} /><span>${machineText("hostLocationNote")}</span></article></section>`;
 
