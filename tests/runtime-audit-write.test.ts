@@ -6,13 +6,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 let mode: "real" | "short" | "zero" | "shortThenZero" = "real"; let calls = 0; let truncateFails = false;
 vi.mock("node:fs", async importOriginal => {
   const original = await importOriginal<typeof import("node:fs")>();
-  return { ...original, writeSync: ((fd: number, buffer: any, offset?: number, length?: number) => {
+  // What Windows does (libuv): a handle opened for append has no right to truncate. The same rule is applied here so that a design that truncates through its append handle fails on any system.
+  const flagsOf = new Map<number, number>();
+  return { ...original, openSync: ((path: any, flags?: any, mode?: any) => { const fd = (original.openSync as any)(path, flags, mode); if (typeof flags === "number") flagsOf.set(fd, flags); return fd; }) as typeof original.openSync, closeSync: ((fd: number) => { flagsOf.delete(fd); return original.closeSync(fd); }) as typeof original.closeSync, writeSync: ((fd: number, buffer: any, offset?: number, length?: number) => {
     if (typeof buffer === "string" || mode === "real" || fd < 0) return (original.writeSync as any)(fd, buffer, offset, length);
     calls++;
     if (mode === "zero" || (mode === "shortThenZero" && calls > 2)) return 0;
     const part = Math.min(3, length ?? buffer.byteLength);                              // a short write: only three bytes go out
     return (original.writeSync as any)(fd, buffer, offset, part);
-  }) as typeof original.writeSync, ftruncateSync: ((fd: number, length?: number) => { if (truncateFails) throw Object.assign(new Error("EPERM simulated"), { code: "EPERM" }); return original.ftruncateSync(fd, length); }) as typeof original.ftruncateSync };
+  }) as typeof original.writeSync, ftruncateSync: ((fd: number, length?: number) => { if ((flagsOf.get(fd) ?? 0) & original.constants.O_APPEND) throw Object.assign(new Error("EPERM: an append-only handle cannot truncate (Windows)"), { code: "EPERM" }); if (truncateFails) throw Object.assign(new Error("EPERM simulated"), { code: "EPERM" }); return original.ftruncateSync(fd, length); }) as typeof original.ftruncateSync };
 });
 const { appendAudit, AUDIT_FILE } = await import("../src/runtime-remote-setup.js");
 const directories: string[] = [];

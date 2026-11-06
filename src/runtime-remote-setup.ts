@@ -161,27 +161,32 @@ export function appendAudit(directory: string, entry: AuditEntry, now = Date.now
       renameSync(path, `${path}.1`);
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  // Read and write: the end of the file is looked at before anything is added. Appends stay appends (O_APPEND), so a second process writing at the same
-  // moment (the Runtime and `agend-runtime remote-setup`) is never overwritten.
-  const fd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_APPEND, 0o600);
+  // Two handles on the one file. `rw` (read and write, no append flag) looks at the end of the file and repairs or cuts it: on Windows a handle opened for
+  // append has no right to truncate. `app` (append only) writes the record: appends stay appends, so a second process writing at the same moment (the Runtime
+  // and `agend-runtime remote-setup`) is never overwritten.
+  const rw = openSync(path, constants.O_RDWR | constants.O_CREAT, 0o600);
   try {
-    if (!fstatSync(fd).isFile()) throw new Error("Audit log must be a regular file");
-    const valid = repairedEnd(fd);
-    // A record is whole or it is an error: a partial write (a full disk, an interrupted call) is never accepted as written, and what was written of it is taken back.
-    const bytes = Buffer.from(line, "utf8");
-    let done = 0;
+    const app = openSync(path, constants.O_WRONLY | constants.O_APPEND, 0o600);
     try {
-      while (done < bytes.byteLength) {
-        const wrote = writeSync(fd, bytes, done, bytes.byteLength - done);
-        if (!(wrote > 0)) throw new Error("Audit log write was incomplete");
-        done += wrote;
+      const one = fstatSync(rw), two = fstatSync(app);
+      if (!one.isFile() || !two.isFile() || one.dev !== two.dev || one.ino !== two.ino) throw new Error("Audit log must be a regular file");
+      const valid = repairedEnd(rw);
+      // A record is whole or it is an error: a partial write (a full disk, an interrupted call) is never accepted as written, and what was written of it is taken back.
+      const bytes = Buffer.from(line, "utf8");
+      let done = 0;
+      try {
+        while (done < bytes.byteLength) {
+          const wrote = writeSync(app, bytes, done, bytes.byteLength - done);
+          if (!(wrote > 0)) throw new Error("Audit log write was incomplete");
+          done += wrote;
+        }
+      } catch (error) {
+        // Cut back to the last whole record, but only if nobody else has added anything after our part (then the size is exactly what we wrote).
+        try { if (done > 0 && fstatSync(rw).size === valid + done) ftruncateSync(rw, valid); } catch { /* the next append finds the incomplete tail and repairs it, or refuses */ }
+        throw error;
       }
-    } catch (error) {
-      // Cut back to the last whole record, but only if nobody else has added anything after our part (then the size is exactly what we wrote).
-      try { if (done > 0 && fstatSync(fd).size === valid + done) ftruncateSync(fd, valid); } catch { /* the next append finds the incomplete tail and repairs it, or refuses */ }
-      throw error;
-    }
-  } finally { closeSync(fd); }
+    } finally { closeSync(app); }
+  } finally { closeSync(rw); }
 }
 const AUDIT_PREFIX = '{"at":"';
 /**
