@@ -124,6 +124,8 @@ export interface LegacyProbes {
 }
 
 const NO_SERVER = /no server running|error connecting|No such file or directory|server exited/i;
+/** An answer AgEnD could not read. Typed, so its text (window names, the user's own) is never matched as NO_SERVER. */
+class UnreadableAnswer extends Error {}
 /** A field separator tmux prints as is: without a UTF-8 locale tmux prints a TAB in -F output as `_` (Fable #3276). */
 const SEP = "|||";
 const WINDOW_LINE = /^(.*)\|\|\|(@\d+)\|\|\|(.*)\|\|\|(\d+)$/;
@@ -158,7 +160,7 @@ export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tag
   let windows: LegacyWindow[];
   try {
     const [pid, start] = (await p.tmux(bin, ["display-message", "-p", "#{pid} #{start_time}"])).trim().split(/\s+/).map(Number);
-    if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(start)) throw new Error("unexpected answer");
+    if (!Number.isSafeInteger(pid) || !Number.isSafeInteger(start)) throw new UnreadableAnswer("unexpected answer");
     incarnation = { pid: pid!, start: start! };
     const out = await p.tmux(bin, ["list-windows", "-a", "-F", ["#{session_name}", "#{window_id}", "#{window_name}", "#{pane_pid}"].join(SEP)]);
     windows = [];
@@ -166,12 +168,13 @@ export async function migrateLegacyWindow(a: MigrateArgs): Promise<"none" | "tag
       // An answer AgEnD can't read is never taken for "the window is gone": that would drop the id while the 2.3 window
       // still runs its agent. Only a well-formed list without the id (or no server at all) may.
       const m = WINDOW_LINE.exec(line);
-      if (!m) throw new Error(`unexpected list-windows answer "${line.slice(0, 80)}"`);
+      if (!m) throw new UnreadableAnswer(`unexpected list-windows answer "${line.slice(0, 80)}"`);
       windows.push({ session: m[1]!, id: m[2]!, name: m[3]!, panePid: Number(m[4]) });
     }
   } catch (e) {
     const msg = String((e as Error).message ?? e);
-    if (NO_SERVER.test(msg)) { dropWindowId(a.instanceDir); return "stale"; }   // no default server: the window is gone
+    // Only tmux's own failure (its stderr) may say "no server"; an answer AgEnD couldn't read never does (Fable #3276).
+    if (!(e instanceof UnreadableAnswer) && NO_SERVER.test(msg)) { dropWindowId(a.instanceDir); return "stale"; }   // no default server: the window is gone
     throw hold(`the default tmux server answers but can't be queried (${msg.split("\n")[0]!.slice(0, 160)})`);
   }
 
