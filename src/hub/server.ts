@@ -6,14 +6,15 @@ import type { AddressInfo, Socket } from "node:net";
 import { randomUUID } from "node:crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import type { HubMemberFrame, HubServerFrame, PersonKey } from "./types.js";
-import { HUB_CAPABILITIES, HUB_LIMITS, HUB_PATHS, parseMemberFrame, encodeServerFrame } from "./protocol.js";
+import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, parseMemberFrame, encodeServerFrame } from "./protocol.js";
 import { HubSocket, type HubLinkCloseCode } from "./socket.js";
 import { HubProtocolError, parseStrictJson } from "./validation.js";
 import { HubPairingService } from "./pairing.js";
 import { readPrivateFile } from "./private-files.js";
 import { readHubIdentity } from "./tls.js";
 import { personKeyString } from "./identity.js";
-export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean }
+/** `features`: the optional features both ends listed (the member's hello ∩ this Hub's), set once at hello. */
+export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout }
 export interface HubServerOptions {
   home: string; hubId: string; memberOrigin: string; listen: { host: string; port: number }; pairing: HubPairingService;
@@ -21,6 +22,8 @@ export interface HubServerOptions {
   /** S3/S5 authorize and atomically audit before returning a reply. Throwing never falls through to fleet tools. */
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, context: HubLinkContext): Promise<HubServerFrame | void>;
   hold(fleetId: string | null, code: HubLinkCloseCode): void;
+  /** The optional features this Hub offers (tests use a smaller list to stand in for an older Hub). */
+  capabilities?: readonly string[];
 }
 export class HubServer {
   private server: Server | null = null;
@@ -82,7 +85,7 @@ export class HubServer {
       this.fenceFleet(binding.fleetId);
       this.wss!.handleUpgrade(req, socket, head, ws => {
         let connection!: Connection;
-        const context: HubLinkContext = { fleetId: binding.fleetId, owner: binding.owner, linkEpoch: binding.linkEpoch,
+        const context: HubLinkContext = { fleetId: binding.fleetId, owner: binding.owner, linkEpoch: binding.linkEpoch, features: new Set<string>(),
           current: () => this.current() && this.connections.get(binding.fleetId) === connection && this.options.pairing.bindingCurrent(binding.fleetId, binding.generation) };
         const link = new HubSocket(ws, { current: context.current, parse: parseMemberFrame, encode: encodeServerFrame,
           receive: frame => this.receive(frame, connection, binding.revocationVersion), closed: code => {
@@ -99,8 +102,12 @@ export class HubServer {
     if (!connection.hello) {
       if (frame.type !== "hello" || frame.linkEpoch !== 0 || !frame.payload.supportedVersions.includes(1) || HUB_CAPABILITIES.some(c => !frame.payload.capabilities.includes(c))) throw new HubProtocolError("incompatible");
       connection.hello = true; clearTimeout(connection.timer);
+      const offered = this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES, features = context.features as Set<string>;
+      for (const c of offered) if (frame.payload.capabilities.includes(c)) features.add(c);
       await link.send({ v: 1, type: "welcome", requestId: frame.requestId, linkEpoch: context.linkEpoch,
-        payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion } }); return;
+        payload: { selectedVersion: 1, hubId: this.options.hubId, fleetId: context.fleetId, linkEpoch: context.linkEpoch, revocationVersion,
+          // Only to a member that asked: an older member's strict welcome schema refuses the field.
+          ...(features.has("welcome-caps-v1") ? { capabilities: [...offered] } : {}) } }); return;
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
@@ -118,6 +125,11 @@ export class HubServer {
     if (!connection?.ready || !connection.context.current() || frame.linkEpoch !== connection.context.linkEpoch
       || frame.type === "welcome" || frame.type === "question" && (frame.payload.identity.destinationFleetId !== fleetId || frame.payload.identity.issuer !== this.options.hubId)) throw new HubProtocolError("unavailable");
     await connection.link.send(frame);
+  }
+  /** The enabled optional features of a fleet's ready link, or null while it has none. */
+  features(fleetId: string): ReadonlySet<string> | null {
+    const connection = this.connections.get(fleetId);
+    return connection?.ready && connection.context.current() ? connection.context.features : null;
   }
   fenceFleet(fleetId: string, reason: "replaced" | "revoked" = "replaced"): void { this.connections.get(fleetId)?.link.retire(reason); }
   fence(): void { this.stopped = true; for (const connection of [...this.connections.values()]) connection.link.end(); for (const socket of this.sockets) socket.destroy(); }

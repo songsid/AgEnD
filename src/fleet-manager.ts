@@ -391,8 +391,9 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
+import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
@@ -3193,6 +3194,130 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.liveOwner(req, { hostOnly: false });
   }
 
+  /**
+   * Refs #3061 (P2a): the new-device approval's one authority — the same one that decides an agent's request: this web-only
+   * fleet's owner, asked of the LIVE session each time (a sign-out, an expiry, a revocation, the authority switch or
+   * "Only this computer can authorize" turning a session into a non-owner is seen at once). A LAN session that signed in
+   * with a one-time code, a session a device approval made, a guest, a chat fleet's admin and the CLI's header token are
+   * none of them this: they are told so, and learn nothing about any request.
+   */
+  private deviceApprovalOwner(req: IncomingMessage): { label: string; handle: string; current(): boolean } | null {
+    return this.liveOwner(req, { hostOnly: false });
+  }
+
+  /**
+   * Refs #3061 (auth-api): device-code sign-in is offered — a web-only fleet with web authorization on. With
+   * `web.verified_authority.enabled: false` no one is an owner (liveOwner → null), so no one could approve: the three
+   * `/auth/device-login*` routes answer 404 and the sign-in page shows no button. "Only this computer can authorize"
+   * does not close it: this computer's own session can still approve.
+   */
+  deviceLoginAvailable(): boolean {
+    return this.isWebOnlyFleet() && this.webAuthorityState().enabled;
+  }
+
+  /** Refs #3061 (P2b): `web.login_qr` (default off), read per page served — the sign-in page then draws the approve link's QR code. */
+  loginQrEnabled(): boolean {
+    return this.fleetConfig?.web?.login_qr === true;
+  }
+
+  /**
+   * GET /ui/devices: is this a web-only fleet, may THIS session approve a new device and end another (is it the verified
+   * owner), and — to an admin session, never to a guest or the CLI's header token — the signed-in devices (Refs #3061, P2b).
+   * `authority`: web authorization is on. With it off nobody is an owner (liveOwner → null), so nobody may add a device or
+   * sign another out; the page says why and points to `agend web-token rotate` on this computer instead of "use the AgEnD
+   * computer", which would not help.
+   */
+  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority: boolean; devices: WebDeviceRow[] } {
+    const webOnly = this.isWebOnlyFleet();
+    const owner = webOnly && !!this.deviceApprovalOwner(req);
+    return { webOnly, owner, authority: webOnly && this.webAuthorityState().enabled, devices: webOnly ? this.webDeviceRows(req) : [] };
+  }
+
+  /**
+   * Refs #3061 (P2b): the device list — this fleet's admin sessions, newest activity first (a guest's sessions are the
+   * Guests page's, and a read-only tier has none): how each was approved, whether it carries owner authority, and which
+   * one is the reader's own. The same people may read this as may read `GET /auth/sessions` (any admin session).
+   *
+   * `ownerVerified` is the §3 verdict for the session as it would be used from where it signs in (a host session from
+   * this computer, a session from outside over the link): one that signed in with a one-time code or a device approval is
+   * not an owner until the authenticator vouches for it. Display only — the checks that act on it run again at each use.
+   */
+  private webDeviceRows(req: IncomingMessage): WebDeviceRow[] {
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || auth.session.tier !== "admin" || !this.webSessions) return [];
+    const authorizations = this.sessionAuthorizationStore();
+    return this.webSessions.list(auth.session.idHash, r => r.tier === "admin").map(summary => {
+      const record = this.webSessions!.findByHandle(summary.handle);
+      const gateway = summary.surface === "gateway";
+      const peer: WebPeer = gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : "lan";
+      return { handle: summary.handle, label: summary.label, via: summary.via, current: summary.current, surface: summary.surface,
+        created: summary.created, lastSeen: summary.lastSeen, expiresAt: Math.min(summary.absoluteExpiry, summary.idleExpiry),
+        ownerVerified: !!record && !this.webAuthority({ session: record, gateway, peer }).refusal };
+    });
+  }
+
+  /**
+   * Refs #3061 (P2b): may this request's session end ANOTHER session — one signed in elsewhere, or all of them (auth-api
+   * `DELETE /auth/sessions…`, which an admin session could always do). On a web-only fleet that is the verified owner's:
+   * a session a code or a device approval made is signed in but not an owner, and could otherwise sign out the owner's
+   * own. A fleet with a chat connection is as it was (its admins are the chat's). Ending one's OWN session is never this.
+   */
+  mayEndOtherSessions(req: IncomingMessage): boolean {
+    return !this.isWebOnlyFleet() || !!this.deviceApprovalOwner(req);
+  }
+
+  /**
+   * Refs #3061 (P2b): POST /ui/devices/signout {handle} — the owner ends another signed-in device (the settings list's
+   * button). Only the verified owner, asked of the LIVE session each time (a non-owner learns nothing about any handle:
+   * 403 before anything is looked up); only an admin session of this fleet (a guest's is the Guests page's; an unknown
+   * handle and a guest's are the same 404); never the owner's own session here (Sign out is /auth/logout). The device's
+   * authorization goes with it, so a copy of its cookie is nobody's.
+   */
+  webDeviceSignOut(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> } {
+    if (!this.isWebOnlyFleet() || !this.webSessions) return { status: 404, body: { error: "not_found" } };
+    const owner = this.deviceApprovalOwner(req);
+    if (!owner) return { status: 403, body: { error: "owner_required" } };
+    if (handle === owner.handle) return { status: 400, body: { error: "this_device" } };
+    const target = this.webSessions.findByHandle(handle);
+    if (!target || target.tier !== "admin") return { status: 404, body: { error: "not_found" } };
+    const { found, durable } = this.webSessions.revokeByHandle(handle, r => r.tier === "admin");
+    if (!found) return { status: 404, body: { error: "not_found" } };
+    this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+    this.logger.info({ by: owner.handle.slice(0, 8), handle, label: target.label, via: sessionVia(target), durable }, "Device signed out by the owner");
+    if (!durable) return { status: 500, body: { ok: false, durable: false, error: "not_durable" } };
+    return { status: 200, body: { ok: true } };
+  }
+
+  /**
+   * Refs #3061 (P2a): look a new device's code up (for the confirm screen), approve it, or deny it — the verified owner's,
+   * on a web-only fleet. The answer is the request as it now stands. Approving only marks the request approved: the new
+   * browser makes its own session when it next asks (auth-api POST /auth/device-login/poll), so no credential passes from
+   * here to there — not in the answer, not through the fleet. A wrong code counts against one fleet-wide breaker; while
+   * it is open every code (a right one too) waits.
+   */
+  webDeviceLoginAct(req: IncomingMessage, op: "lookup" | "approve" | "deny", code: string): { status: number; body: Record<string, unknown> } {
+    const owner = this.deviceApprovalOwner(req);
+    if (!owner) return { status: 403, body: { error: "owner_required" } };
+    const logins = this.webDeviceLogins, token = this.webToken;
+    if (!logins || !token) return { status: 404, body: { error: "not_found" } };
+    const epoch = tokenEpoch(token);
+    const shown = (v: { code: string; label: string; peer: string; address: string; expiresAt: number; state: string }) =>
+      ({ code: v.code, label: v.label, peer: v.peer, address: v.address, expiresAt: v.expiresAt, state: v.state });
+    if (op === "lookup") {
+      const r = logins.lookup(code, epoch);
+      if (r.kind === "ok") return { status: 200, body: { request: shown(r.view) } };
+      return r.kind === "paused" ? { status: 429, body: { error: "paused", retryAfterMs: r.retryAfterMs } } : { status: 404, body: { error: "not_found" } };
+    }
+    // (The owner above was asked of the live session just now, after the body was read; nothing is awaited since.)
+    const r = logins.decide(code, op === "approve" ? "approved" : "denied", owner.handle, epoch);
+    if (r.kind === "ok") {
+      this.logger.info({ approvedBy: owner.handle.slice(0, 8), label: r.view.label, peer: r.view.peer, decision: r.view.state }, op === "approve" ? "New device sign-in approved" : "New device sign-in denied");
+      return { status: 200, body: { request: shown(r.view) } };
+    }
+    if (r.kind === "decided") return { status: 409, body: { error: "already_decided", state: r.state } };
+    return r.kind === "paused" ? { status: 429, body: { error: "paused", retryAfterMs: r.retryAfterMs } } : { status: 404, body: { error: "not_found" } };
+  }
+
   /** alpha.2: the agents' requests waiting for this web-only fleet's owner, or null when the reader is not that owner. */
   webAgentProposals(req: IncomingMessage): SettingsPendingView[] | null {
     if (!this.agentProposalOwner(req)) return null;
@@ -3660,6 +3785,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
   private webLoginCodes: WebLoginCodes | null = null;
+  /** Refs #3061 (P2a): device-code sign-in requests (in memory; web-device-login.ts). Read by auth-api as `webDeviceLogins`. */
+  private webDeviceLogins: DeviceLoginRequests | null = null;
   /**
    * #1920 step 4: guests' codes, apart from the admins' — one per account, so no guest's `/web` withdraws another's or
    * an admin's code (#2093 review), at most 32 at once. Local sign-in only for now (audience "local").
@@ -8256,6 +8383,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         },
       });
     }
+    if (!this.webDeviceLogins) {
+      this.webDeviceLogins = new DeviceLoginRequests({
+        onEvent: event => { if (event === "breaker-open") this.logger.warn("Device sign-in approval paused: too many wrong codes"); },
+      });
+    }
     if (!this.webGuestLoginCodes) {
       this.webGuestLoginCodes = new GuestLoginCodes({
         onEvent: event => {
@@ -8788,6 +8920,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     void this.publicWebLink?.close("dashboard revoke");
     this.forgetPublicLinkOwner();
     this.webLoginCodes!.revoke();
+    this.webDeviceLogins?.revokeAll();                // …and every new device still waiting to be approved (#3061)
     this.webGuestLoginCodes!.revokeAll();
     this.guestRevokes++;                              // and every guest /web still on its way
     // #1570: no browser may ask the sign-in page for a code any more.
@@ -17887,6 +18020,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true; quick?: true }>;
     /** #2453 (§0.2): the admin's named-tunnel hostname, while one is configured (the named-link row shows only then). */
     namedHost: string | null;
+    /** A fleet with no chat connection: the page words the card for the authenticator, not for Discord / Telegram. */
+    webOnly: boolean;
   } {
     const configured = this.fleetConfig?.web?.verified_authority ?? {};
     const lanHosts = (this.fleetConfig?.web?.allowed_hosts ?? []).filter(h => { const name = hostnameOf(String(h)); return name !== null && !LOOPBACK_HOST_NAMES.includes(name); });
@@ -17902,7 +18037,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
         ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
     const host = this.fleetConfig?.web?.public_link?.hostname;
-    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null };
+    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet() };
   }
 
   private authorizationRequests: SessionAuthorizationRequests | null = null;
@@ -26230,7 +26365,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId) });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
             return;
           }
           res.writeHead(decision.status);

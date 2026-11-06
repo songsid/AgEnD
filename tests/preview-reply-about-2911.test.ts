@@ -136,7 +136,7 @@ describe("#2911 Reply about this page", () => {
 
   it("every pvFb key has English and zh-TW words", async () => {
     const { readFileSync } = await import("node:fs");
-    const src = readFileSync(new URL("../src/ui/chat-strings.js", import.meta.url), "utf8");
+    const src = readFileSync(new URL("../src/ui/shared/chat-strings.js", import.meta.url), "utf8");
     const zhAt = src.indexOf('"zh-TW": {');
     const keys = (part: string) => [...part.matchAll(/\b(pvFb\w+):/g)].map((m) => m[1]).sort();
     expect(keys(src.slice(0, zhAt))).toEqual(expect.arrayContaining(["pvFbAboutNamed", "pvFbAboutThis", "pvFbReply", "pvFbReplyTitle"]));

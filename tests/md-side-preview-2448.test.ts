@@ -149,7 +149,7 @@ describe("a Markdown file in the side panel (M-2448)", () => {
     // @ts-expect-error — a JS module of the app, with no types
     const strings = await import("../src/ui/chat-strings.js");
     void strings;
-    expect(readFileSync("src/ui/chat-strings.js", "utf8")).not.toMatch(/pvMdPanel|pvMdRendered|pvMdSource/);
+    expect(readFileSync("src/ui/shared/chat-strings.js", "utf8")).not.toMatch(/pvMdPanel|pvMdRendered|pvMdSource/);
     serve({ [ID(3)]: "# T" });
     const doc = await chat([att(3, "notes.md")]);
     await click(doc.querySelector(".text-card .tc-panel"));
@@ -171,7 +171,7 @@ describe("a Markdown file in the side panel (M-2448)", () => {
   it("the panel writes no HTML itself: rendered Markdown comes only through chat-thread's drawMarkdown", () => {
     const src = readFileSync("src/ui/preview-panel.js", "utf8");
     expect(src).not.toMatch(/innerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/);
-    expect(src).toContain('import { drawMarkdown, TEXT_CARD_MAX } from "./chat-thread.js";');
-    expect(src).toContain('import "./chat-md-strings.js";');
+    expect(src).toContain('import { drawMarkdown, TEXT_CARD_MAX } from "/assets/chat-thread.js";');
+    expect(src).toContain('import "/assets/chat-md-strings.js";');
   });
 });

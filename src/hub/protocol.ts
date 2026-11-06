@@ -5,6 +5,10 @@ import type { HubMemberFrame, HubServerFrame, HubAuthorizationRequest, HubAskerE
 export const HUB_VERSION = 1;
 export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect: "/hub/v1/connect" } as const;
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
+/** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
+ * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
+ * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1"];
 export const HUB_LIMITS = { frame: 256 * 1024, question: 64 * 1024, answer: 128 * 1024, pending: 32, sendQueue: 1024 * 1024, heartbeat: 15_000, rpcTimeout: 5_000 } as const;
 export const askerSchema = z.strictObject({
   v: z.literal(1), issuer: uuid, issuerKeyId: identifier, messageId: uuid, asker: person, owner: person,
@@ -37,7 +41,9 @@ export const revocationSchema = z.strictObject({ revocationVersion: epoch, reaso
 const errorSchema = z.strictObject({ code: reason, retryable: z.boolean() });
 const frame = <T extends string, P extends z.ZodType>(type: T, payload: P) => z.strictObject({ v: z.literal(1), type: z.literal(type), requestId: uuid, linkEpoch: epoch, payload });
 const hello = z.strictObject({ supportedVersions: z.array(epoch.min(1)).min(1).max(8), capabilities: z.array(identifier).max(16), memberBootId: uuid });
-const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch });
+const welcome = z.strictObject({ selectedVersion: z.literal(1), hubId: uuid, fleetId: uuid, linkEpoch: epoch.min(1), revocationVersion: epoch,
+  /** Sent only when the hello offered welcome-caps-v1: the Hub's own optional features. */
+  capabilities: z.array(identifier).max(16).optional() });
 const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.array(z.strictObject({ messageId: uuid, contentDigest: hash })).max(128) });
 export const memberFrameSchema = z.union([
   frame("hello", hello), frame("exposure.snapshot", z.strictObject({ revision: epoch, exposures: z.array(exposureSchema).max(64) })),

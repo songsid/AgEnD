@@ -38,7 +38,7 @@ for (const c of [{ device: "desk", width: 1366, height: 900 }, { device: "phone"
         const broken = await page.locator(".p-settings .error-state, .p-settings [role=alert].error").count();
         if (broken) failed.push(`${s}: an error state`);
         if (s === "agent-defaults" && !(await page.locator(".p-settings").textContent())?.length) failed.push("agent-defaults: empty");
-        if (s === "access" && (await page.locator("#outsideCard").count()) !== 1) failed.push("access: no Connections from outside card in the Login tab");
+        if (s === "access" && (await page.locator("#outsideCard").count()) !== 1) failed.push("access: no Owner verification card in the Login tab");
         await page.screenshot({ path: shotPath(SMOKE, name, s), fullPage: true });
       }
       if (errors.length) failed.push(`page errors: ${errors.slice(0, 3).join(" | ")}`);
