@@ -119,15 +119,18 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
         assert.notEqual(await conflict.finished, 0); lease.assert(); assert.equal(pointer(), folderA);
       } finally { lease.release(); }
       holdArchive = true;
-      const powershell = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], env, log);
-      await until(() => !!heldArchive, 'PowerShell-held download');
-      const lockFile = join(install, '.agend-runtime-install.lock/owner.json'), proof = JSON.parse(readFileSync(lockFile, 'utf8'));
+      // A reinstall of an already selected tree skips downloading. Use a fresh owned probe root so the real download holds the lease.
+      const probeRoot = join(root, 'lock-probe'), powershell = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'),
+        ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], { ...env, AGEND_RUNTIME_INSTALL_DIR: probeRoot }, log);
+      let probeEnded = false; void powershell.finished.then(() => { probeEnded = true; });
+      await until(() => { if (probeEnded && !heldArchive) throw Error('PowerShell probe ended before holding the download'); return !!heldArchive; }, 'PowerShell-held download');
+      const lockFile = join(probeRoot, '.agend-runtime-install.lock/owner.json'), proof = JSON.parse(readFileSync(lockFile, 'utf8'));
       assert.equal(matches(proof, await observe(proof.pid)), true);
-      await assert.rejects(acquire(install, { type: 'supervisor' }), error => error.reason === 'held');
+      await assert.rejects(acquire(probeRoot, { type: 'supervisor' }), error => error.reason === 'held');
       holdArchive = false; heldArchive.end(a.archive); assert.equal(await powershell.finished, 0);
       // A positively ended PowerShell writer may be reclaimed by Node with the exact original proof.
-      const lockDir = join(install, '.agend-runtime-install.lock'); mkdirSync(lockDir); writeFileSync(join(lockDir, 'owner.json'), JSON.stringify(proof));
-      const stale = await acquire(install, { type: 'supervisor' }); stale.release();
+      const lockDir = join(probeRoot, '.agend-runtime-install.lock'); mkdirSync(lockDir); writeFileSync(join(lockDir, 'owner.json'), JSON.stringify(proof));
+      const stale = await acquire(probeRoot, { type: 'supervisor' }); stale.release();
       console.log(JSON.stringify({ leg: mode, step: 'native-shared-lock-controls-pass' }));
     }
     store = new imported.RuntimeClientStore(profile); store.saveCredentials({ server: origin, machineId, credential: 'b'.repeat(64), name: 'Fake rehearsal Runtime' });
