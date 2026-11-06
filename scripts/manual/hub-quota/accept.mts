@@ -1,6 +1,6 @@
 /**
  * G's B/C component-contract acceptance, before the B chat shell is available. Real Hub HTTP/auth and production
- * quota components in a small host using the existing usage-rail classes; this is NOT B's end-to-end chat shell.
+ * quota components in a small host using A's shared rail and composer; this is NOT B's end-to-end chat shell.
  * Before PNGs use an old room DTO (quota absent); after PNGs use the current exhausted DTO. No fleet, tmux or CLI.
  * PW_DIR=$PWD/.artifacts/quota-browser PLAYWRIGHT_BROWSERS_PATH=$PWD/.artifacts/quota-browser/browsers \
  *   npx tsx scripts/manual/hub-quota/accept.mts
@@ -36,6 +36,8 @@ const update = async (band: string) => {
 const fixtureJs = `
 import { html, render } from "/assets/app-html.js";
 import { setLang } from "/assets/app-i18n.js";
+import { RailFrame } from "/assets/side-rail.js";
+import { ComposerInput } from "/assets/chat-composer.js";
 import { hubClient } from "/ui/js/hub-client.js";
 import { QuotaCard, QuotaChip, QuotaBanner, QuotaVisibilityRow } from "/ui/js/hub-quota.js";
 const args = new URL(location.href).searchParams, zh = args.get("lang") === "zh-TW", owner = args.get("owner") === "1";
@@ -52,14 +54,15 @@ window.refreshQuota = async function(before = false) {
       <div class="accept-thread"><\${QuotaBanner} room=\${room} />
         <div class="msg"><div class="meta">Alex · 10:00</div><div class="body">\${zh ? "可以幫我整理本週重點嗎？" : "Could you summarise this week's priorities?"}</div></div>
       </div>
-      <form class="accept-composer"><textarea placeholder=\${zh ? "輸入問題…" : "Ask a question…"}></textarea><button class="btn btn-primary" type="button">\${zh ? "傳送" : "Send"}</button></form>
+      <div class="accept-composer"><\${ComposerInput} value="" onValue=\${() => {}} placeholder=\${zh ? "輸入問題…" : "Ask a question…"}
+        stop=\${{ hidden: true }} send=\${{ hidden: false, disabled: false, label: zh ? "傳送" : "Send", onClick: () => {} }} /></div>
       \${owner ? html\`<div class="p-settings accept-owner"><\${QuotaVisibilityRow} exposure=\${exposure} onSaved=\${() => window.refreshQuota()} /></div>\` : null}
-    </main><aside class="u-rail accept-rail"><div class="u-rail-head"><h2>\${zh ? "對話資訊" : "Conversation context"}</h2></div>
-      <div class="u-rail-body"><section class="u-provider"><div class="u-head"><strong>Atlas</strong></div><div class="u-sub">\${zh ? "代表 Olivia" : "Represents Olivia"}</div></section>
+    </main><\${RailFrame} label="Context" title=\${zh ? "對話資訊" : "Conversation context"} closeLabel="Close" onClose=\${() => {}}>
+      <section class="u-provider"><div class="u-head"><strong>Atlas</strong></div><div class="u-sub">\${zh ? "代表 Olivia" : "Represents Olivia"}</div></section>
         <\${QuotaCard} room=\${room} />
         <section class="u-provider"><div class="u-head"><strong>\${zh ? "來源" : "Source"}</strong></div><div class="u-sub">Olivia's fleet</div></section>
         <section class="u-provider"><div class="u-head"><strong>\${zh ? "可見範圍" : "Who can see this"}</strong></div><div class="u-sub">\${zh ? "這個房間只有你能閱讀；Agent 端的對話由所有提問者共用。" : "Only you can read this room. The agent's conversation is shared with everyone who asks it."}</div></section>
-      </div></aside></div>\`, document.querySelector("#fixture"));
+      </\${RailFrame}></div>\`, document.querySelector("#fixture"));
 };
 await window.refreshQuota(args.get("before") === "1");
 window.quotaReady = true;
@@ -69,9 +72,9 @@ body{margin:0;padding:24px;background:var(--bg);color:var(--text);font-family:va
 .accept-label{font-size:12px;color:var(--text-3);margin-bottom:16px}.accept-layout{display:flex;min-height:620px;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)}
 .accept-chat{display:flex;flex:1;min-width:0;flex-direction:column}.accept-header{display:flex;align-items:center;gap:16px;min-height:64px;padding:16px 24px;border-bottom:1px solid var(--border)}
 .accept-thread{flex:1;padding:24px;display:flex;flex-direction:column;gap:20px}.accept-thread .msg{max-width:100%;align-self:stretch}.accept-thread .meta{font-size:12px;color:var(--text-3);margin-bottom:8px}
-.accept-composer{display:flex;gap:12px;border-top:1px solid var(--border);padding:20px}.accept-composer textarea{flex:1;min-width:0;resize:none;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text)}
-.accept-owner{padding:24px;border-top:1px solid var(--border)}.accept-rail{display:flex;padding-top:8px}
-@media(max-width:700px){body{padding:12px}.accept-layout{flex-direction:column;min-height:780px}.accept-header{padding:16px;flex-wrap:wrap}.accept-thread{padding:16px;min-height:140px}.accept-composer{padding:16px}.accept-rail{display:flex;width:100%;border-left:0;border-top:1px solid var(--border)}.accept-owner{padding:16px}}
+.accept-composer{border-top:1px solid var(--border);padding:20px}.accept-composer .composer{width:100%}
+.accept-owner{padding:24px;border-top:1px solid var(--border)}.accept-layout > .u-rail{display:flex;padding-top:8px}
+@media(max-width:700px){body{padding:12px}.accept-layout{flex-direction:column;min-height:780px}.accept-header{padding:16px;flex-wrap:wrap}.accept-thread{padding:16px;min-height:140px}.accept-composer{padding:16px}.accept-layout > .u-rail{display:flex;width:100%;border-left:0;border-top:1px solid var(--border)}.accept-owner{padding:16px}}
 `;
 const html = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/assets/tokens.css"><link rel="stylesheet" href="/assets/app.css"><link rel="stylesheet" href="/fixture.css"></head><body><div id="fixture"></div><script type="module" src="/fixture.js"></script></body></html>';
 const results: unknown[] = [];
@@ -105,7 +108,7 @@ try {
         assert.equal(await p.locator(".hub-quota-banner").count(), band === "exhausted" ? 1 : 0);
         assert(!(await p.locator("#fixture").innerText()).includes("%"));
       }
-      assert.equal(await p.locator(".accept-composer button").isEnabled(), true);
+      assert.equal(await p.locator("#sendBtn").isEnabled(), true);
       assert(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       assert.equal(await p.locator(".hub-quota-card [style], .hub-quota-banner [style], .hub-quota-chip[style]").count(), 0);
       await p.screenshot({ path: join(out, `${device}-${lang}-after.png`), fullPage: true });
