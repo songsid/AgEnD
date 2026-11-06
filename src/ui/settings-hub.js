@@ -183,7 +183,7 @@ function HubExposures({ client }) {
       </label>
       ${row.pending ? html`<small class="hub-exposure-why hub-exposure-pending">${hw("waitingConfirm")}</small>`
         : row.state === "frozen" ? html`<small class="hub-exposure-why">${hw("frozen")}</small>`
-        : !row.enforceable && row.state !== "published" ? html`<small class="hub-exposure-why">${hw("agentNotShareable")}</small>`
+        : !row.enforceable && row.state !== "published" ? html`<small class="hub-exposure-why">${hw(row.reason === "delivery_unavailable" ? "agentDeliveryUnavailable" : "agentNotShareable")}</small>`
         : row.reason === "republish_required" ? html`<small class="hub-exposure-why hub-exposure-republish">${hw("republishRequired")}
             <button type="button" class="btn btn-sm" disabled=${busy !== null} onClick=${() => toggle(row, true)}>${hw("shareAgain")}</button></small>`
         : row.policy && row.policy.dataView === AGENT_CHOICE.dataViewId ? html`<small class="hub-exposure-why">${hw("agentShared")}</small>`

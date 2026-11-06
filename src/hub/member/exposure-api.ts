@@ -55,9 +55,10 @@ export function createHubMemberExposureApi(deps: {
   /** The confirmation layer's pending publish for an agent, if any. */
   pending?(agent: string): { expiresAt: number } | null;
   /**
-   * S5's representative adapter (optional): asked after this API's own check passes, before the stage and again INSIDE
-   * the atomic publish transaction (where it may record the agent's lifecycle against candidate.consentId). Its refusal
-   * refuses the publish (not_enforceable) and drops the candidate.
+   * S5's representative adapter: asked after this API's own check passes, before the stage and again INSIDE the atomic
+   * publish transaction (where it may record the agent's lifecycle against candidate.consentId). Its refusal refuses
+   * the publish (not_enforceable) and drops the candidate. Absent (no delivery path composed yet): nothing is
+   * shareable — every row is enforceable:false, reason "delivery_unavailable", and publish is refused (#3146 r1).
    */
   readinessCandidate?(candidate: HubLocalExposure): HubExecutionReadiness;
 }): HubMemberExposureApi {
@@ -66,14 +67,15 @@ export function createHubMemberExposureApi(deps: {
   const readiness = (c: HubLocalExposure): HubExecutionReadiness => {
     if (!isAgentDescriptor(c)) return { ok: false, reasonCode: "policy-unavailable" };
     if (!agentOf(c.agent)) return { ok: false, reasonCode: "provider-unavailable" };
-    return deps.readinessCandidate ? deps.readinessCandidate(c) : { ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision };
+    return deps.readinessCandidate ? deps.readinessCandidate(c) : { ok: false, reasonCode: "provider-unavailable" };
   };
   const viewOf = (a: HubMemberAgent): HubExposureView => {
     const row = deps.store.list().find((r) => r.agent === a.name), c = row?.committed ?? null, e = c?.exposure ?? null;
     const legacy = !!c && !!e && e.state !== "withdrawn" && !isAgentDescriptor(c);
+    const reason = legacy ? "republish_required" : !deps.readinessCandidate ? "delivery_unavailable" : null;
     return { agent: a.name, display: a.display, exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
       policy: e && e.state !== "withdrawn" ? { dataView: e.dataViewId, tools: [...e.allowedTools] } : null,
-      enforceable: !legacy, ...(legacy ? { reason: "republish_required" } : {}),
+      enforceable: !reason, ...(reason ? { reason } : {}),
       choices: { dataViews: [{ id: HUB_AGENT_MODE, label: a.display }], tools: [] }, pending: deps.pending?.(a.name) ?? null };
   };
   const checked = (raw: unknown) => {

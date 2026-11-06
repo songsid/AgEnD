@@ -111,6 +111,11 @@ describe("the card's agent share and pending rows", () => {
       expect(setExposed).toHaveBeenCalledWith("atlas", true, 3, { dataViewId: "agent", tools: [] });
     } finally { i18n.setLang("en", { store: false }); }
   });
+  it("#3146 r1: no delivery path yet — the switch is disabled and the row says why", async () => {
+    const pg = await cardWith(fakeClient([{ ...ROW, enforceable: false, reason: "delivery_unavailable" }]));
+    expect((pg.root.querySelector(".hub-exposure input") as any).disabled).toBe(true);
+    expect(pg.root.querySelector(".hub-exposure-why")!.textContent).toBe("Sharing isn't available on this fleet yet: Hub questions can't reach an agent here.");
+  });
   it("a pending row says so and its switch waits", async () => {
     const pg = await cardWith(fakeClient([{ ...ROW, pending: { expiresAt: 9 } }]));
     expect(pg.root.querySelector(".hub-exposure-pending")!.textContent).toBe("Waiting for your confirmation");

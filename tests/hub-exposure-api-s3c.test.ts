@@ -27,7 +27,7 @@ import { agentPolicyDigest, isAgentDescriptor } from "../src/hub/member/agent-mo
 const dbs: Database.Database[] = [], caps: SettingsExecution[] = [];
 afterEach(() => { dbs.splice(0).forEach((d) => d.close()); caps.splice(0).forEach((c) => c.close()); });
 
-function member(opts: { agents?: () => Array<{ name: string; display: string }>; readinessCandidate?: (c: HubLocalExposure) => HubExecutionReadiness } = {}) {
+function member(opts: { agents?: () => Array<{ name: string; display: string }>; readinessCandidate?: ((c: HubLocalExposure) => HubExecutionReadiness) | null } = {}) {
   const db = new Database(":memory:"); dbs.push(db);
   applyHubMigrations(db, [HUB_AUDIT_MIGRATION, HUB_EXPOSURE_MIGRATION]);
   let floor = 0;
@@ -38,8 +38,11 @@ function member(opts: { agents?: () => Array<{ name: string; display: string }>;
     binding: () => ({ owner, fleetId }) });
   store.initialize();
   const afterCommit = vi.fn(async () => "pending");
+  // S5's seam: a stub that accepts the candidate (opts.readinessCandidate: null leaves it out — no delivery path composed).
+  const seam = opts.readinessCandidate === undefined ? (c: HubLocalExposure): HubExecutionReadiness => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision })
+    : opts.readinessCandidate;
   const api = createHubMemberExposureApi({ store, agents: opts.agents ?? (() => [{ name: "atlas", display: "Atlas" }]), afterCommit, pending: (a) => (a === "atlas" ? null : null),
-    ...(opts.readinessCandidate ? { readinessCandidate: opts.readinessCandidate } : {}) });
+    ...(seam ? { readinessCandidate: seam } : {}) });
   /** A mapping from before P1's change: S4's restricted container over an approved view (the store still holds it). */
   const legacy = () => publishExposure(store, { agent: "atlas", providerId: "claude", displayName: "Atlas", dataViewId: "notes", allowedTools: ["documents.read"], expectedRevision: 0 },
     (c: HubLocalExposure): HubExecutionReadiness => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision }));
@@ -102,6 +105,14 @@ describe("the member's exposure API", () => {
     const no = member({ readinessCandidate: () => ({ ok: false, reasonCode: "stale" }) });
     expect(() => no.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
     expect(no.store.list()).toEqual([]); expect(no.afterCommit).not.toHaveBeenCalled();
+  });
+  it("#3146 r1: no S5 seam composed (no delivery path): every row unshareable (delivery_unavailable) and publish refused", () => {
+    const m = member({ readinessCandidate: null });
+    expect(m.api.list()[0]).toMatchObject({ state: "withdrawn", enforceable: false, reason: "delivery_unavailable" });
+    expect(() => m.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
+    expect(m.store.list()).toEqual([]); expect(m.afterCommit).not.toHaveBeenCalled();
+    m.legacy();                                                                           // a legacy row still says why it is refused
+    expect(m.api.list()[0]).toMatchObject({ state: "published", enforceable: false, reason: "republish_required" });
   });
   it("a legacy container mapping: durable, shown as republish_required (never as shared), withdrawable; never converted silently", async () => {
     const m = member(), old = m.legacy();
