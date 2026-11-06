@@ -53,6 +53,9 @@ const enMessages = {
 
     "setup.admin.cancelled": "Setup cancelled; no admin selected.",
     "setup.discord_admin.connecting": "Connecting to Discord to detect your account…",
+    "setup.platform_general.ask": "Also create a General for {0}, named \"{1}\"? It answers messages there that are outside an agent's topic. It is a second always-on agent: it uses tokens and a terminal of its own. [Y/n]:",
+    "setup.platform_general.created": "Added {0}, the General of the new platform. It starts with the fleet.",
+    "setup.platform_general.skipped": "No General for the new platform. Messages there outside an agent's topic will reach no one; add one later by running quickstart → Add another platform again.",
     "setup.discord_admin.wait": "Send a message in server {0}, or DM @{1}. Waiting up to 30 seconds…",
     "setup.discord_admin.found": "Found @{0} (user ID: {1}).",
     "setup.discord_admin.confirm": "Is this your account? Type yes to confirm [y/N]:",
@@ -1639,6 +1642,9 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
 
     "setup.admin.cancelled": "設定已取消，未選取管理員。",
     "setup.discord_admin.connecting": "正在連線到 Discord，以偵測你的帳號…",
+    "setup.platform_general.ask": "也替 {0} 建立 General「{1}」嗎？它會接收那裡不在任何 agent 主題裡的訊息。它是第二個一直在執行的 agent，會用掉 token，也有自己的終端機。[Y/n]：",
+    "setup.platform_general.created": "已加入新平台的 General：{0}，會隨 fleet 一起啟動。",
+    "setup.platform_general.skipped": "新平台沒有 General，那裡不在任何 agent 主題裡的訊息不會有人接收；之後可以再執行 quickstart → Add another platform 補上。",
     "setup.discord_admin.wait": "請在伺服器 {0} 發一則訊息，或私訊 @{1}。最多等待 30 秒…",
     "setup.discord_admin.found": "找到 @{0}（使用者 ID：{1}）。",
     "setup.discord_admin.confirm": "這是你的帳號嗎？輸入 yes 確認 [y/N]：",
