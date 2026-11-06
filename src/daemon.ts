@@ -30,6 +30,7 @@ import { clearPausedMarker, writePausedMarker, type PauseReason } from "./pause-
 import { writeBackgroundWorkEndedMarker } from "./background-work-ended.js";
 import { resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
+import { FollowLog } from "./workspace-follow.js";
 import { createTranscriptSource, type TranscriptSource } from "./transcript-sources.js";
 import { TranscriptTurnLedger, type TranscriptTurnEvent } from "./transcript-turns.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
@@ -6764,6 +6765,10 @@ export class Daemon extends EventEmitter {
       || this.backend?.binaryName === "claude";
   }
 
+  /** #3160: this agent's file steps in its current turn (the CLI's own record), for the Files & changes panel. */
+  private readonly followLog = new FollowLog();
+  workspaceFollow(after = 0, turn?: number) { return this.followLog.snapshot(after, turn); }
+
   /**
    * This launch's transcript monitor. #1510: its turn boundaries feed the reply guard's ledger, which starts empty
    * with it — a new monitor re-baselines at the transcript's end, so nothing the old one read can be attributed.
@@ -6774,9 +6779,16 @@ export class Daemon extends EventEmitter {
     this.transcriptActivityAt = 0;
     // Monotonic: a wall-clock correction must neither end nor extend the open-turn hold (#1641 R1).
     const touch = () => { this.transcriptActivityAt = performance.now(); };
-    monitor.on("turns", (turns: TranscriptTurnEvent[]) => { this.transcriptTurns.observe(turns, performance.now()); touch(); });
+    monitor.on("turns", (turns: TranscriptTurnEvent[]) => {
+      this.transcriptTurns.observe(turns, performance.now()); touch();
+      if (turns.some((t) => t.kind === "start")) this.followLog.newTurn();             // #3160: codex's turn boundary
+    });
+    // #3160: the files this turn reads, edits and searches, for the Files & changes panel's Follow (a few string checks;
+    // nothing is read from disk until someone asks). Claude's turn boundary is its next prompt.
+    monitor.on("tool_use", (tool: string, input: unknown) => this.followLog.record(tool, input));
+    monitor.on("user_prompt", () => this.followLog.newTurn());
     // #1641 R2: a re-baselined source starts over, and so does what it said (an open turn read before is withdrawn).
-    monitor.on("reset", () => { if (this.transcriptMonitor === monitor) { this.transcriptTurns.reset(); this.transcriptActivityAt = 0; } });
+    monitor.on("reset", () => { if (this.transcriptMonitor === monitor) { this.transcriptTurns.reset(); this.transcriptActivityAt = 0; this.followLog.newTurn(); } });
     for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
     return monitor;
   }
