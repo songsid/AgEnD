@@ -32,8 +32,9 @@ describe("optional link features (welcome-caps-v1)", () => {
     const hello = sent.find(f => f.type === "hello"), welcome = sent.find(f => f.type === "welcome");
     expect(hello.payload.capabilities).toEqual([...HUB_CAPABILITIES, ...HUB_OPTIONAL_CAPABILITIES]);
     expect(welcome.payload.capabilities).toEqual([...HUB_OPTIONAL_CAPABILITIES]);
-    expect([...c.state.link!.features]).toEqual(["welcome-caps-v1"]);
-    expect([...r.server.features(profile.fleetId)!]).toEqual(["welcome-caps-v1"]);
+    // Every optional feature this build offers is on when both ends are this build (each feature PR adds its flag).
+    expect([...c.state.link!.features]).toEqual([...HUB_OPTIONAL_CAPABILITIES]);
+    expect([...r.server.features(profile.fleetId)!]).toEqual([...HUB_OPTIONAL_CAPABILITIES]);
     await lease(c);
   });
 
