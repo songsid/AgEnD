@@ -15,9 +15,10 @@ import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfi
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
-import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
+import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps, type RemoteInstaller } from "./runtime-remote-accounts.js";
 import { killTree } from "./runtime-signin.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { managedCliRoot, managedInstaller, nativeInstallSupported } from "./runtime-cli-install.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
 import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
@@ -49,7 +50,8 @@ export function describeRuntimeStop(reason: RuntimeStopReason): string {
 }
 
 export interface RuntimeBridge {
-  probe(options?: { force?: boolean }): Promise<WindowsCliProbe>;
+  /** `authorized` (the requester's live check) is asked again before the Windows worker starts: authority revoked meanwhile starts nothing. */
+  probe(options?: { force?: boolean }, authorized?: () => boolean): Promise<WindowsCliProbe>;
   prepareWorkspace(agentId: string): Promise<string>;
   start(value: unknown, authorized?: () => boolean, options?: WindowsRunOptions): WindowsCliTask;
   get(id: string): WindowsCliTask | null;
@@ -83,7 +85,7 @@ export interface RuntimeClientOptions {
   /** Test seam; production asks the CLI itself (`claude auth status` under that profile's folder). */
   credentialLogin?: (cli: CredentialProfileCli, directory: string) => Promise<boolean | null>;
   /** Test seam for the same check with the account in it (masked e-mail, plan). Wins over `credentialLogin`. */
-  credentialStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
+  credentialStatus?: (cli: CredentialProfileCli, directory: string, authorized?: () => boolean) => Promise<CredentialProfileAnswer>;
   /** How often to look for a sign-in made by `agend-runtime login` in another window (default 5 s). */
   credentialWatchMs?: number;
   /**
@@ -91,6 +93,8 @@ export interface RuntimeClientOptions {
    * operations: the CLI lookup, the logout run, the CLI installer (its presence is what makes this Runtime report `cli-install`), the sign-in
    * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
    */
+  /** The Runtime's installation root, where the shared install lock is taken for a CLI install. Default: the managed install root this code runs from, else the CLI folder. */
+  installRoot?: string;
   remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
   /** Internal supervisor seam, never a server-supplied configuration option. */
   managedUpdate?: { trialId?: string; authenticated?(value: { bootId: string; generation: number; updateProtocol?: 1; runtimeInfo: ReturnType<typeof readRuntimeInfo> }): void };
@@ -174,6 +178,10 @@ export class RuntimeClient {
   /** Terminals being opened right now, by profile (lower-case): they are not in the pane ledger until the host has answered. */
   private readonly openingPanes = new Map<string, number>();
   private remoteAccounts: RemoteAccounts | null = null;
+  /** Ends a CLI install that is still running when this Runtime stops (the install's child process is the exact one it started). */
+  private readonly installAbort = new AbortController();
+  /** The Runtime's own installer (native Windows only): its closed table, its pinned versions and one install at a time. */
+  private readonly managed: RemoteInstaller | null;
   private readonly snapshots = new Map<string, string>();
   private readonly pendingPaneTools = new Map<string, PendingTool>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -202,14 +210,15 @@ export class RuntimeClient {
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
+    this.managed = nativeInstallSupported() ? managedInstaller({ root: managedCliRoot(options.store.directory), ...(options.installRoot ? { installRoot: options.installRoot } : {}) }, () => this.installAbort.signal) : null;
     this.updateStatus = options.updateStatus === undefined ? undefined : parseRuntimeUpdateStatus(options.updateStatus);
-    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
+    const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.installer || nativeInstallSupported() });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     if (options.managedUpdate?.trialId !== undefined && !validRuntimeUpdateId(options.managedUpdate.trialId)) throw Error("Invalid Runtime update trial");
     this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : []), ...(this.updateStatus ? [RUNTIME_UPDATE_STATUS_CAPABILITY] : [])] };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
-    this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities.filter(name => name !== REMOTE_SIGNIN_CAPABILITY || remote), ...(remote && options.remoteAccounts?.installer ? [CLI_INSTALL_CAPABILITY] : [])] };
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: this.runtimeInfo.capabilities.filter(name => name === REMOTE_SIGNIN_CAPABILITY ? remote : name === CLI_INSTALL_CAPABILITY ? remote && !!(options.remoteAccounts?.installer || nativeInstallSupported()) : true) };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -501,10 +510,12 @@ export class RuntimeClient {
     }, this.options.credentialWatchMs ?? 5000);
     this.credentialWatch.unref?.();
   }
-  private statusOf(cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> {
-    if (this.options.credentialStatus) return this.options.credentialStatus(cli, directory);
+  private statusOf(cli: CredentialProfileCli, directory: string, authorized?: () => boolean): Promise<CredentialProfileAnswer> {
+    if (this.options.credentialStatus) return authorized ? this.options.credentialStatus(cli, directory, authorized) : this.options.credentialStatus(cli, directory);
     if (this.options.credentialLogin) return this.options.credentialLogin(cli, directory).then(loggedIn => ({ loggedIn }));
-    return probeCredentialProfileStatus(cli, directory);
+    // The lookup of the CLI is the Runtime's own (a test or the install work may supply one); production leaves it to `findCli`.
+    const find = this.options.remoteAccounts?.find;
+    return probeCredentialProfileStatus(cli, directory, find ? id => find(id as CredentialProfileCli) : undefined, undefined, authorized);
   }
   private remember(root: string, cli: CredentialProfileCli, name: string, answer: CredentialProfileAnswer): void {
     rememberCredentialStatus(root, cli, name, answer); this.credentialStamp = this.stamp();   // our own write is not "another window"
@@ -521,11 +532,14 @@ export class RuntimeClient {
     return directory;
   }
   /** Names and signed-in yes/no only. `force` (an explicit "Detect again") asks each profile's CLI; otherwise the last known answer is reported. */
-  private async credentialReport(force: boolean): Promise<CredentialProfileReport | undefined> {
+  private async credentialReport(force: boolean, authorized?: () => boolean): Promise<CredentialProfileReport | undefined> {
     const root = this.options.credentialProfilesRoot; if (!root) return undefined;
+    // `authorized` (an install's live consent and connection check) is asked before each profile's status is started and again before its answer is written to the cache.
+    const still = (): void => { if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery"); };
     if (force) for (const name of listCredentialProfileNames(root, "claude-code")) {
-      try { this.remember(root, "claude-code", name, await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name))); }
-      catch { this.remember(root, "claude-code", name, { loggedIn: null }); }
+      still();
+      try { const answer = await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name), authorized); still(); this.remember(root, "claude-code", name, answer); }
+      catch { still(); this.remember(root, "claude-code", name, { loggedIn: null }); }
     }
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
     return credentialProfileReport(root, name);
@@ -580,7 +594,11 @@ export class RuntimeClient {
       defaultProfile: () => this.options.store.credentialDefault(),
       enter: () => this.activity.enter(),
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
-      ...(extra?.installer ? { installer: extra.installer } : {}), ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
+      // A CLI was just installed: the cached list is stale, so detect for real and send it (this request already holds a share of the Runtime's activity).
+      installed: async authorized => { await this.readInventory(true, authorized); },
+      // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
+      ...(extra?.installer ? { installer: extra.installer } : this.managed ? { installer: this.managed } : {}),
+      ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
       ...(extra?.now ? { now: extra.now } : {}),
     });
   }
@@ -589,8 +607,11 @@ export class RuntimeClient {
     this.watchCredentialCache();
   }
   private refreshInventory(force = false): Promise<WindowsCliProbe> { return this.activity.run(() => this.readInventory(force)); }
-  private async readInventory(force: boolean): Promise<WindowsCliProbe> {
-    const probed = await this.bridge.probe({ force }), credentialProfiles = await this.credentialReport(force);
+  private async readInventory(force: boolean, authorized?: () => boolean): Promise<WindowsCliProbe> {
+    const still = (when: string): void => { if (authorized && !authorized()) throw new Error(`Authorization expired ${when} CLI discovery`); };
+    still("before");
+    const probed = await (authorized ? this.bridge.probe({ force }, authorized) : this.bridge.probe({ force })); still("during");
+    const credentialProfiles = await this.credentialReport(force, authorized); still("during");
     const inventory = credentialProfiles ? { ...probed, credentialProfiles } : probed;
     this.inventory = inventory;
     if (this.online()) this.send({ v: 1, type: "inventory", inventory });
@@ -782,6 +803,7 @@ export class RuntimeClient {
     if (this.stopPromise) return this.stopPromise;
     if (this.stopped && !this.stopIncomplete) return Promise.resolve();
     this.stopped = true; this.welcomed = false; this.stopIncomplete = false;
+    this.installAbort.abort();
     this.activity.close();
     // Own cleanup before callbacks (bridge.close, pane cleanup) can re-enter stop(). A stop that fails leaves the lock and the account module held and can be
     // called again.

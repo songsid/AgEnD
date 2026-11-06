@@ -10,12 +10,13 @@
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
 import { existsSync } from "node:fs";
+import { CliInstallError } from "./runtime-cli-install.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
 import { CredentialProfileRefusal, credentialProfileCaseClash, credentialProfileDirectory, isCredentialProfileCli, rememberCredentialStatus, withCredentialProfile,
   type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, removeOwnedProfile, requireOwnedProfile, withIsolatedOwnedProfile, type OwnedProfileOptions } from "./runtime-profile-ownership.js";
 import { AuditLog, RemoteSetupRefusal, readRemoteSwitches, requireRemoteSwitch, validAuditActor, type AuditAction, type AuditEntry, type AuditReason, type RemoteSwitchName } from "./runtime-remote-setup.js";
-import { RuntimeSignIn, RuntimeSignInSlot, SignInRefusal, type SignInDeps, type SignInMethod } from "./runtime-signin.js";
+import { ProcessNotConfirmedEnded, RuntimeSignIn, RuntimeSignInSlot, SignInRefusal, type SignInDeps, type SignInMethod } from "./runtime-signin.js";
 import { isRuntimeRemoteOperation, parseRuntimeRemotePayload, type RuntimeRemoteOperation, type RuntimeRemotePayloads, type RuntimeSwitchStates } from "./runtime-protocol.js";
 
 /** What a CLI the server may name stands for here: the CLI's program, its sign-in, and its environment variable. */
@@ -27,7 +28,13 @@ export interface RemoteStatusAnswer { loggedIn: boolean | null; identity?: Accou
  */
 export interface RemoteInstaller {
   knows(cli: string): boolean;
-  install(cli: string): Promise<{ version: string }>;
+  /** The CLI is already at the version this Runtime installs: a request for it would do nothing, so it is refused before anything is recorded as started. */
+  installed?(cli: string): boolean;
+  /**
+   * `gate` throws when the local install switch is off or out of time, or the request's connection is no longer the live one: the installer calls it before every new
+   * process and in the step that activates. `ended` in the answer settles when something the install still holds (the lock's release) has finished.
+   */
+  install(cli: string, gate?: () => void): Promise<{ version: string; ended?: Promise<unknown> }>;
 }
 export interface RemoteAccountsDeps {
   /** This pairing's folder: the switches, the audit log and the credential profiles all live in it. */
@@ -51,6 +58,8 @@ export interface RemoteAccountsDeps {
   enter?: () => () => void;
   /** A cached answer was written or forgotten: the caller re-reports the computer's inventory. */
   changed(): void;
+  /** A CLI was installed: the caller detects again for real (not from its cache) and sends that inventory before this resolves. */
+  installed?(authorized?: () => boolean): void | Promise<void>;
   /** Installs a CLI from the closed table and returns the version that landed. Absent: this Runtime cannot install (and does not claim to). */
   installer?: RemoteInstaller;
   /** A line for the person at this computer (the Runtime window). Never sent to AgEnD. */
@@ -60,21 +69,24 @@ export interface RemoteAccountsDeps {
   /** How often a sign-in that is under way looks at its switch (default 3 s), so turning the switch off or letting it expire ends the sign-in. */
   switchWatchMs?: number;
 }
-/** A process that was told to stop and was not confirmed gone: `ended` settles when it really has. Whoever owns the profile keeps it busy until then. */
-export class ProcessNotConfirmedEnded extends Error { constructor(readonly ended: Promise<unknown>) { super("The process could not be confirmed ended"); this.name = "ProcessNotConfirmedEnded"; } }
+// Defined next to `killTree` (the installer needs it too, and this module imports the installer's error): re-exported here for the existing importers.
+export { ProcessNotConfirmedEnded };
 /** What an operation knows about its own request: still the live connection of a Runtime that is not stopping. */
 interface Ctx { alive(): boolean }
+/** The key under which an install that could not be confirmed ended keeps the Runtime busy (no profile name can be this: it holds a NUL). */
+const INSTALL_KEY = "\0cli-install";
 const NOT_AVAILABLE = "This computer's Runtime is stopping or its connection changed, so nothing was done";
 /** At most this many `accounts.check` at a time on the computer: each one can start PowerShell and the CLI. */
 export const MAX_CONCURRENT_CHECKS = 2;
 const GENERIC = "The operation could not be completed on this computer. Check that computer's Runtime window.";
 /** Text that may leave this computer: only our own refusals. Everything else (a filesystem error carries a path) becomes one fixed sentence. */
 export function safeRemoteMessage(error: unknown): string {
-  if (error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal || error instanceof CredentialProfileRefusal) return error.message;
+  if (error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal || error instanceof CredentialProfileRefusal || error instanceof CliInstallError) return error.message;
   return GENERIC;
 }
 function reasonOf(error: unknown): AuditReason {
   if (error instanceof RemoteSetupRefusal || error instanceof SignInRefusal || error instanceof ProfileOwnershipRefusal) return error.reason;
+  if (error instanceof CliInstallError) return error.reason === "timed-out" ? "timeout" : error.reason === "busy" ? "busy" : "failed";
   return "failed";
 }
 const NEEDS_ACCOUNTS: readonly RuntimeRemoteOperation[] = ["signin.start", "signin.capture", "signin.status", "signin.write", "accounts.check", "accounts.signout", "accounts.remove"];
@@ -176,7 +188,9 @@ export class RemoteAccounts {
     steps: { check?: () => void | Promise<void>; run: () => Promise<T>; /** The operation goes on after `run` (a sign-in): its own end is recorded later, so no `ok` here. */ openEnded?: boolean;
       /** Only one operation of this kind at a time on the computer, taken in the same synchronous step as the switch and profile checks (before any await). */ exclusive?: "signin-start" | "install" }): Promise<T> {
     const base = { actor, action, ...(subject.cli ? { cli: subject.cli } : {}), ...(subject.profile ? { profile: subject.profile } : {}) };
-    const refuse = (error: unknown): never => { this.record({ ...base, outcome: error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal ? "refused" : "failed", reason: reasonOf(error) }, false); throw error; };
+    // A failure in `check` changed nothing, so it is a refusal whatever threw (a `find` or `knows` that throws too): it joins the folded refusals instead of
+    // writing one unmergeable `failed` line per request. Only a failure of `run` is `failed`.
+    const refuse = (error: unknown, inCheck = false): never => { this.record({ ...base, outcome: inCheck || error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal ? "refused" : "failed", reason: reasonOf(error) }, false); throw error; };
     const key = subject.profile?.toLowerCase();
     try { requireRemoteSwitch(this.deps.pairingDirectory, switchName, this.now()); } catch (error) { return refuse(error); }
     if (key !== undefined) { if (this.busy.has(key) || this.retained.has(key)) return refuse(new SignInRefusal(`Another operation on "${subject.profile}" is in progress; try again in a moment`, "busy")); this.busy.add(key); }
@@ -188,7 +202,7 @@ export class RemoteAccounts {
     try {
       // The switch and the connection are looked at again after the checks, which can wait a long time (PowerShell, a CLI lookup): a switch turned off or
       // run out meanwhile, or a connection that has gone, stops the operation here, before anything is recorded as started.
-      try { await steps.check?.(); this.gate(ctx, switchName); } catch (error) { return refuse(error); }
+      try { await steps.check?.(); this.gate(ctx, switchName); } catch (error) { return refuse(error, true); }
       this.record({ ...base, outcome: "started" }, true);
       try {
         const result = await steps.run();
@@ -243,8 +257,43 @@ export class RemoteAccounts {
         check: () => {
           if (!this.deps.installer) throw new ProfileOwnershipRefusal("This Runtime cannot install CLIs", "unsupported");
           if (!this.deps.installer.knows(input.cli)) throw new ProfileOwnershipRefusal("That CLI is not in this Runtime's install list", "unsupported");
+          // An install whose child process could not be confirmed ended is still the Runtime's work: nothing else starts until it really ends.
+          if (this.retained.has(INSTALL_KEY)) throw new SignInRefusal("A CLI install on this computer has not finished ending; try again in a moment", "busy");
+          // Nothing to do, or done a moment ago: refused here, before `started`, so that a coordinator that keeps asking can only add one folded `refused` line per minute to
+          // the audit log, and cannot push real operations out of it. (The dashboard offers no button for a CLI that is already at this version.)
+          if (this.deps.installer.installed?.(input.cli)) throw new SignInRefusal("That CLI is already installed at the version this Runtime installs", "rate_limited");
+          const last = this.lastChange.get(`${INSTALL_KEY}${input.cli}`);
+          if (last !== undefined && this.now() - last < PROFILE_OP_MIN_GAP_MS) throw new SignInRefusal("An install of that CLI was just tried; wait a few seconds", "rate_limited");
+          this.lastChange.set(`${INSTALL_KEY}${input.cli}`, this.now());
         },
-        run: async () => { this.gate(ctx, "install"); return { version: (await this.deps.installer!.install(input.cli)).version }; },
+        run: async () => {
+          this.gate(ctx, "install");
+          // What the install still holds when it ends (a lock whose release has to be retried, a program that could not be confirmed ended) keeps the Runtime busy, and the
+          // update fence held, until that has finished, whatever the connection does or the server's own deadline says.
+          const holdUntil = (until: Promise<unknown>): void => {
+            this.retainBusy(INSTALL_KEY, until);
+            let leave: (() => void) | undefined;
+            try { leave = this.deps.enter?.(); } catch { /* the Runtime is stopping: its stop waits for idle() */ }
+            if (leave) { const release = leave; until.then(() => release(), () => release()); }
+          };
+          let result: { version: string; ended?: Promise<unknown> };
+          try { result = await this.deps.installer!.install(input.cli, () => this.gate(ctx, "install")); }
+          catch (error) {
+            const ended = (error as { ended?: unknown } | null)?.ended;
+            if (error instanceof ProcessNotConfirmedEnded) holdUntil(error.ended);
+            else if (ended instanceof Promise) holdUntil(ended);
+            throw error;
+          }
+          if (result.ended) holdUntil(result.ended);
+          // The computer's CLI list changes now. A fresh detection is made and sent BEFORE the answer, so that the dashboard sees the new CLI when the install reports done,
+          // without a "Detect again" (the ordinary cache change below only re-reads what is cached). A failed detection does not undo a finished install.
+          // That detection starts programs and writes the cache, so it is the same kind of effect as the install: it is asked, before each of its steps, whether the
+          // switch is still on and the request's connection still the live one. A revoked consent stops it; the finished install is still answered.
+          const authorized = (): boolean => { try { this.gate(ctx, "install"); return true; } catch { return false; } };
+          this.deps.changed();
+          if (authorized()) { try { await this.deps.installed?.(authorized); } catch { /* the next detection shows it */ } }
+          return { version: result.version };
+        },
       });
     }
     // Everything below is "accounts". A sign-in that is still open when its switch is off ends, whichever request finds it first (the watch also does).

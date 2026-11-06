@@ -1,6 +1,6 @@
 /** Shared installer/supervisor lock. Process observation never sends a termination signal. */
 import { randomUUID } from "node:crypto";
-import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, rmdirSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
+import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, rmdirSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { execFile } from "./child-process.js";
@@ -85,7 +85,14 @@ export async function acquireRuntimeInstallLock(root: string, options: {
   ownProof?: RuntimeProcessProof;
   observe?: (pid: number) => Promise<RuntimeProcessObservation>;
 } = {}): Promise<RuntimeInstallLock> {
-  assertRuntimeInstallDirectory(root);
+  // The root is looked at once here and again after each wait for a process observation (which can be long): a root that was swapped for a link or another folder
+  // meanwhile stops the acquisition before anything is created or written through it.
+  const rootStat = assertRuntimeInstallDirectory(root), rootReal = realpathSync(root);
+  const sameRoot = (): void => {
+    let same = false;
+    try { same = sameFile(assertRuntimeInstallDirectory(root), rootStat) && realpathSync(root) === rootReal; } catch { /* a root that is now a link or cannot be looked at is not the one that was looked at */ }
+    if (!same) throw new RuntimeInstallLockError("changed");
+  };
   const type = options.type ?? "supervisor";
   if (type !== "installer" && type !== "supervisor") throw new RuntimeInstallLockError("unsafe");
   const observe = options.observe ?? observeRuntimeProcess;
@@ -93,11 +100,13 @@ export async function acquireRuntimeInstallLock(root: string, options: {
   if (own.state !== "alive" || !proof(own.proof) || own.proof.pid !== process.pid) throw new RuntimeInstallLockError("unknown");
   const path = join(root, RUNTIME_INSTALL_LOCK);
   let created = false;
+  sameRoot();
   try { mkdirSync(path, { mode: 0o700 }); created = true; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; }
   if (!created) {
     const before = snapshot(path), match = runtimeProcessMatches(before.record, await observe(before.record.pid));
     if (match !== false) throw new RuntimeInstallLockError(match ? "held" : "unknown");
+    sameRoot();
     const reclaim = join(path, "reclaim");
     try { mkdirSync(reclaim, { mode: 0o700 }); } catch { throw new RuntimeInstallLockError("held"); }
     const guard = lstatSync(reclaim);
@@ -110,10 +119,11 @@ export async function acquireRuntimeInstallLock(root: string, options: {
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
     // Another acquirer may win after the stale directory is removed. Never remove or overwrite its new owner.
+    sameRoot();
     try { mkdirSync(path, { mode: 0o700 }); created = true; } catch { throw new RuntimeInstallLockError("held"); }
   }
   const record: RuntimeInstallLockRecord = { version: 1, type, nonce: randomUUID(), pid: own.proof.pid, birth: own.proof.birth, boot: own.proof.boot };
-  try { writeFileSync(join(path, "owner.json"), JSON.stringify(record), { flag: "wx", mode: 0o600 }); }
+  try { sameRoot(); writeFileSync(join(path, "owner.json"), JSON.stringify(record), { flag: "wx", mode: 0o600 }); }
   catch (error) { try { rmdirSync(path); } catch {} throw error; }
   let owned = snapshot(path), released = false;
   const assert = () => { if (released || !current(path, owned)) throw new RuntimeInstallLockError("changed"); };

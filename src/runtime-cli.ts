@@ -14,6 +14,7 @@ import { assertCredentialProfileCli, assertCredentialProfileName, credentialLogi
 import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type CredentialProfileAnswer, type NativeCliExecutable } from "./windows-cli-worker.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
+import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
 import { createRuntimeProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
 import { appendAudit, describeRemoteSwitches, type AuditEntry, type RemoteSwitchState, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 import { runRuntimeWithUpdates, runtimeUpdateInternalMain } from "./runtime-update-controller.js";
@@ -102,6 +103,8 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   const store = new RuntimeClientStore(resolve(explicitProfile || choice!.directory));
   // A pairing's profiles live in that pairing's own folder: approving a pairing lets that fleet use the profiles signed in here, and no other fleet.
   const credentialRoot = credentialProfilesRoot(store.directory);
+  // CLIs this Runtime installed from the dashboard live in this pairing's folder; `findCli` (here and in the helpers this starts) looks there first.
+  if (process.platform === "win32") process.env[MANAGED_CLI_ROOT_ENV] = managedCliRoot(store.directory);
   const probeStatus = (cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> => options.probeStatus ? options.probeStatus(cli, directory)
     : options.probeLogin ? options.probeLogin(cli, directory).then(loggedIn => ({ loggedIn })) : probeCredentialProfileStatus(cli, directory);
   /**
