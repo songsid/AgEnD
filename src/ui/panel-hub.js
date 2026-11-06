@@ -297,7 +297,8 @@ function HubRoomView({ room: given }) {
       was = waiting;
     });
   }, [store]);
-  const room = { ...given, ...store.room() };
+  // The store's room starts as the list's and is the server's latest after each read (its quota included or withdrawn).
+  const room = store.room();
   const [rail, setRail] = useState(railOpen);
   const [sheet, setSheet] = useState(false);
   const [draft, setDraft] = useState("");
