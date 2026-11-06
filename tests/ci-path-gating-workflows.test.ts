@@ -21,7 +21,7 @@ describe("CI path-gating workflow contracts", () => {
     const ci = load(".github/workflows/ci.yml");
     for (const id of [
       "detect-changes", "changelog", "actions-pinned", "setup", "test-shard",
-      "test-integration", "hub-directory", "docs-tests", "install-smoke", "node20-rollback-smoke",
+      "test-integration", "test-pwsh", "hub-directory", "docs-tests", "install-smoke", "node20-rollback-smoke",
     ]) {
       expect(ci.jobs[id].if, id).toBeUndefined();
     }

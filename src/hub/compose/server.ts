@@ -33,6 +33,7 @@ import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../store.js";
 import { readHubIdentity } from "../tls.js";
 import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
 import { HubFileVersionFloor } from "../version-floor.js";
+import { browserCertificateMigration, createHubBrowserCertificateControl, type HubBrowserCertificateControl } from "../browser-certificate.js";
 import { createHubRetentionControl, retentionMigration, type HubRetentionControl } from "../retention.js";
 
 export const SERVER_SET: HubStateSet = Object.freeze({
@@ -86,6 +87,7 @@ export interface HubServerFactoryOptions {
   retentionEveryMs?: number;
   /** Host Settings only; the disposer removes this exact generation's control. */
   retentionReady?(control: HubRetentionControl): () => void;
+  browserCertificateReady?(control: HubBrowserCertificateControl): () => void;
 }
 
 interface ServerSettings {
@@ -223,7 +225,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
-        retentionMigration(settings.hubId, settings.retention)]);
+        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId)]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -291,6 +293,12 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       // 5. The Hub web listener: every request goes to S3's handler (it serves /hub/v1/*, the Hub-only shell and its
       //    assets without fleet cookies); anything it declines is 404. The personal fleet listener is untouched.
       let web: Server | null = null;
+      const browserCertificate = createHubBrowserCertificateControl({ db, home: options.home, hubId: settings.hubId, origin: settings.webOrigin,
+        initial: settings.webTls, audit, current: live, now, activate: material => {
+          if (!web || !live()) throw Error("unavailable");
+          web.setSecureContext({ ...material, minVersion: "TLSv1.2" });
+        } });
+      teardown.add("browser certificate preparation", () => browserCertificate.close());
       let retentionTimer: NodeJS.Timeout | null = null;
       const serveWeb = (req: IncomingMessage, res: ServerResponse) => {
         if (!live()) {
@@ -307,7 +315,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           try {
             await memberServer!.start();
             const server = createHttpsServer(
-              { key: readPrivateFile(options.home, settings.webTls.keyFile), cert: readPrivateFile(options.home, settings.webTls.certificateFile), minVersion: "TLSv1.2" },
+              { ...browserCertificate.material(), minVersion: "TLSv1.2" },
               serveWeb,
             );
             teardown.add("the Hub web listener", () => {
@@ -323,6 +331,9 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
                 resolve();
               });
             });
+            browserCertificate.activate();
+            const detachCertificate = options.browserCertificateReady?.(browserCertificate);
+            if (detachCertificate) teardown.add("the host browser certificate Settings", detachCertificate);
             retentionTimer = setInterval(() => {
               if (!live()) return;
               try {

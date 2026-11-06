@@ -15,6 +15,7 @@ import { BIND_PASSWORD_REF } from "./layout.js";
 import { WizardCancelled, type WizardIO } from "./prompt.js";
 import { ht } from "./text.js";
 import { HubInitError, type HubCoexistence, type HubInitializer, type HubInitPlan, type HubListen } from "./types.js";
+import { directoryCaInfo, sameDirectoryFingerprint, type DirectoryCertificateProbe, type DirectoryCaBundle } from "./directory-certificate.js";
 import type { HubBrowserMaterial } from "./browser-certificate.js";
 
 export interface HubServiceControl {
@@ -33,6 +34,10 @@ export interface HubWizardDeps {
   now?: () => number;
   createBrowserCertificate?(origin: string): Promise<HubBrowserMaterial>;
   recoverBrowserCertificate?(plan: HubInitPlan): HubBrowserMaterial | null;
+  directoryCertificates?: {
+    inspect(url: string): Promise<DirectoryCertificateProbe>;
+    fetch(probe: DirectoryCertificateProbe, pin: string, credentials?: { bindDn: string; password: string }): Promise<DirectoryCaBundle>;
+  };
 }
 
 export type HubWizardOutcome = "initialized" | "cancelled" | "refused";
@@ -294,20 +299,48 @@ async function askDirectoryAndSignIn(
   }
 }
 
+async function confirmDirectoryCa(io: WizardIO, pem: string): Promise<boolean> {
+  const bundle = directoryCaInfo(pem);
+  io.say(ht("dir_ca_compare"));
+  for (const c of bundle.certificates) io.say(ht("dir_ca_details", c.subject, c.fingerprint256, c.validTo));
+  return yes(await io.ask(ht("dir_ca_confirm_q")));
+}
+
 async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: HubDirectoryConfig; bindPassword: string } | undefined> {
   const { io } = deps;
   for (;;) {
     const realm = (await io.ask(ht("dir_realm_q"))).trim();
     const url = (await io.ask(ht("dir_url_q"))).trim();
     const caFile = (await io.ask(ht("dir_ca_q"))).trim();
-    let caPem: string | undefined;
-    if (caFile) {
+    let caPem: string | undefined, pending: { probe: DirectoryCertificateProbe; pin: string } | undefined;
+    if (caFile.toLowerCase() === "fetch") {
+      try {
+        if (!deps.directoryCertificates) throw Error("directory_ca_unsupported");
+        const probe = await deps.directoryCertificates.inspect(url);
+        io.say(ht("dir_leaf_unverified"));
+        io.say(ht("dir_ca_details", probe.certificate.subject, probe.certificate.fingerprint256, probe.certificate.validTo));
+        const pin = await io.ask(ht("dir_leaf_confirm_q"));
+        if (!sameDirectoryFingerprint(probe.certificate.fingerprint256, pin)) { io.say(ht("dir_leaf_refused")); return undefined; }
+        try {
+          const bundle = await deps.directoryCertificates.fetch(probe, pin);
+          if (!await confirmDirectoryCa(io, bundle.pem)) return undefined;
+          caPem = bundle.pem;
+        } catch (err) {
+          if (err instanceof Error && err.message === "directory_ca_auth_required") pending = { probe, pin };
+          else throw err;
+        }
+      } catch (err) {
+        if (err instanceof WizardCancelled) throw err;
+        io.say(ht("dir_ca_fetch_failed"));
+        if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
+        continue;
+      }
+    } else if (caFile) {
       try {
         caPem = deps.readFile(caFile);
-      } catch {
-        caPem = undefined;
-      }
-      if (!caPem || pemCertificates(caPem).length === 0) {
+        if (!await confirmDirectoryCa(io, caPem)) return undefined;
+      } catch (err) {
+        if (err instanceof WizardCancelled) throw err;
         io.say(ht("dir_ca_unreadable"));
         if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
         continue;
@@ -316,18 +349,28 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
     const profile = (await io.ask(ht("dir_profile_q"))).trim() === "2" ? "openldap" : "ad";
     const baseDn = (await io.ask(ht("dir_base_q"))).trim();
     const bindDn = (await io.ask(ht("dir_bind_q"))).trim();
-    const directory: HubDirectoryConfig = { realm, url, ...(caPem ? { caPem } : {}), baseDn, bindDn, profile };
-    try {
-      resolveDirectoryConfig(directory);
-    } catch (err) {
+    let directory: HubDirectoryConfig = { realm, url, ...(caPem ? { caPem } : {}), baseDn, bindDn, profile };
+    try { resolveDirectoryConfig(directory); }
+    catch (err) {
       io.say(ht("dir_invalid", err instanceof HubDirectoryConfigError ? err.message : String(err)));
       if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
       continue;
     }
+    if (pending) io.say(ht("dir_ca_bind_needed"));
     const bindPassword = await io.askHidden(ht("dir_bind_pw_q"));
-    if (!bindPassword) {
-      io.say(ht("signin_bad_input"));
-      continue;
+    if (!bindPassword) { io.say(ht("signin_bad_input")); continue; }
+    if (pending) {
+      try {
+        const bundle = await deps.directoryCertificates!.fetch(pending.probe, pending.pin, { bindDn, password: bindPassword });
+        if (!await confirmDirectoryCa(io, bundle.pem)) return undefined;
+        directory = { ...directory, caPem: bundle.pem };
+        resolveDirectoryConfig(directory);
+      } catch (err) {
+        if (err instanceof WizardCancelled) throw err;
+        io.say(ht("dir_ca_fetch_failed"));
+        if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
+        continue;
+      }
     }
     return { directory, bindPassword };
   }

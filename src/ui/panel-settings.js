@@ -64,6 +64,11 @@ function HubCardSlot() {
   useEffect(() => { let live = true; import("./settings-hub.js").then((m) => { if (live) setCard(() => m.HubConnectCard); }, () => {}); return () => { live = false; }; }, []);
   return Card ? html`<${Card} />` : null;
 }
+function HubBrowserCertificateSlot() {
+  const [Card, setCard] = useState(null);
+  useEffect(() => { let live = true; import("./settings-hub-browser-certificate.js").then(m => { if (live) setCard(() => m.HubBrowserCertificateSettings); }, () => {}); return () => { live = false; }; }, []);
+  return Card ? html`<${Card} />` : null;
+}
 function HubRetentionSlot() {
   const [Card, setCard] = useState(null);
   useEffect(() => { let live = true; import("./settings-hub-retention.js").then(m => { if (live) setCard(() => m.HubRetentionSettings); }, () => {}); return () => { live = false; }; }, []);
@@ -1389,7 +1394,7 @@ function WebSection({ ctx, staged, part = "all" }) {
           <${OutsideCard} />
           ${/* AgEnD Hub P1: Connect to a Hub, on a member fleet only (the page's mark): nothing loads while hub_member is off. */ ""}
           ${hubMemberPage() ? html`<${HubCardSlot} />` : null}
-          ${!overPublicLink && ctx.fleet.hub?.hubId ? html`<${HubRetentionSlot} />` : null}
+          ${!overPublicLink && ctx.fleet.hub?.hubId ? html`<${HubRetentionSlot} /><${HubBrowserCertificateSlot} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>

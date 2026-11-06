@@ -77,7 +77,7 @@ function fakeHttp() {
 
 function get(port: number, path: string, ca: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    const req = request({ host: "127.0.0.1", port, path, servername: "hub.example.test", ca, method: "GET" }, (res) => {
+    const req = request({ host: "127.0.0.1", port, path, servername: "hub.example.test", ca, method: "GET", agent: false }, (res) => {
       let body = "";
       res.on("data", (d) => (body += d));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
@@ -95,7 +95,7 @@ function refused(port: number): Promise<boolean> {
   });
 }
 
-function factory(home: string, http?: HubHttpEntry, extra: Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs"> = {}) {
+function factory(home: string, http?: HubHttpEntry, extra: Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady"> = {}) {
   const reports: { code: string; detail: string }[] = [];
   const directories: { bindPassword: string }[] = [];
   const create = createHubServerFactory({
@@ -133,7 +133,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["s1-transport", "s3-http", "s5-audit", "s5-instance", "s5-retention"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["s1-transport", "s3-http", "s5-audit", "s5-browser-tls", "s5-instance", "s5-retention"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 
@@ -472,11 +472,50 @@ describe.skipIf(process.platform === "win32")("Hub retention composition", () =>
       createDirectory: () => ({ realm: "corp", signIn: async () => ({ ok: false, reason: "unavailable" }),
         checkEligibility: async () => ({ eligible: false, reason: "unavailable" }), close: async () => {} }) });
     expect(runtime.retentionSettings()).toBeNull();
+    expect(runtime.browserCertificateSettings()).toBeNull();
     try {
       await runtime.apply(hub.config);
       const control = runtime.retentionSettings()!; expect(control.read().revision).toBe(1);
+      expect(runtime.browserCertificateSettings()!.read().selected.fingerprint256).toMatch(/:/);
       runtime.fence(); expect(() => control.read()).toThrow("unavailable");
     } finally { await runtime.close(); }
     expect(runtime.retentionSettings()).toBeNull();
+    expect(runtime.browserCertificateSettings()).toBeNull();
+  });
+});
+
+
+describe.skipIf(process.platform === "win32")("browser certificate composition", () => {
+  it("changes the real HTTPS certificate, preserves the member identity and init seal, and reopens the selected pair", async () => {
+    const hub = await initializedHub(), http = fakeHttp();
+    const seal = readFileSync(join(hub.home, "hub/init-manifest.json"), "utf8");
+    const memberKey = readFileSync(join(hub.home, "hub/keys/issuer-key.pem"), "utf8");
+    const memberTls = readFileSync(join(hub.home, "hub/keys/tls-cert.pem"), "utf8"), memberIdentity = readFileSync(join(hub.home, "hub/keys/identity.json"), "utf8");
+    let control: import("../src/hub/browser-certificate.js").HubBrowserCertificateControl | null = null;
+    const f = factory(hub.home, http.entry, { browserCertificateReady(c) { control = c; return () => { control = null; }; } });
+    const first = await f.create(hub.config.hub, () => true);
+    let fingerprint = "", selectedPem = "";
+    try {
+      await first.start();
+      const c = control!, before = c.read(); expect(before.restartRequired).toBe(false);
+      const p = await c.prepare({ mode: "generate", revision: before.revision }, "owner", () => true);
+      fingerprint = p.certificate.fingerprint256;
+      const after = c.apply({ reference: p.reference, revision: p.revision }, "owner", () => true);
+      expect(after).toMatchObject({ activeFingerprint256: fingerprint, restartRequired: false });
+      selectedPem = JSON.parse(readFileSync(join(hub.home, "hub/web-tls/versions", p.reference, "material.json"), "utf8")).cert;
+      // Verification stays enabled; the new certificate itself is this scratch client's explicit trust anchor.
+      expect((await get(hub.webPort, "/hub/v1/ping", selectedPem)).status).toBe(200);
+      await expect(get(hub.webPort, "/hub/v1/ping", hub.caPem)).rejects.toThrow();
+      expect(readFileSync(join(hub.home, "hub/init-manifest.json"), "utf8")).toBe(seal);
+      expect(readFileSync(join(hub.home, "hub/keys/issuer-key.pem"), "utf8")).toBe(memberKey);
+      expect(readFileSync(join(hub.home, "hub/keys/tls-cert.pem"), "utf8")).toBe(memberTls);
+      expect(readFileSync(join(hub.home, "hub/keys/identity.json"), "utf8")).toBe(memberIdentity);
+    } finally { await first.close(); }
+    expect(control).toBeNull();
+    const second = await f.create(hub.config.hub, () => true);
+    try {
+      await second.start(); expect(control!.read()).toMatchObject({ activeFingerprint256: fingerprint, restartRequired: false });
+      expect((await get(hub.webPort, "/hub/v1/ping", selectedPem)).status).toBe(200);
+    } finally { await second.close(); }
   });
 });
