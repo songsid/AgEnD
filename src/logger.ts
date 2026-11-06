@@ -31,7 +31,8 @@ export function getStdoutPrettyOptions(destinationIsFile = stdoutIsRegularFile()
 const PRIVATE_LOG_MODE = 0o600;
 
 const OPEN_LOG = constants.O_WRONLY | constants.O_APPEND | constants.O_NOFOLLOW | constants.O_NONBLOCK;
-const OPEN_READ = constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK;
+/** Live log: read the copy/delta and truncate the same inode. */
+const OPEN_LIVE = constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK;
 
 /** Copy through this path so a swapped directory entry cannot redirect the held fd. */
 function heldFdPath(fd: number): string {
@@ -91,22 +92,29 @@ function unlinkIfNotDir(path: string): void {
   try { if (!lstatSync(path).isDirectory()) unlinkSync(path); } catch { /* missing */ }
 }
 
-function copyOwnedLog(src: string, dst: string): void {
-  if (process.platform === "win32") {
-    if (!lstatRegular(src)) return;
-    try { copyFileSync(src, dst); } catch { /* best effort */ }
-    return;
-  }
-  let srcFd: number | undefined;
+function openLiveLog(path: string): number | undefined {
+  if (process.platform === "win32" || typeof process.getuid !== "function") return undefined;
+  let fd: number;
+  try { fd = openSync(path, OPEN_LIVE); } catch { return undefined; }
   try {
-    srcFd = openSync(src, OPEN_READ);
-    const info = fstatSync(srcFd);
-    if (!info.isFile() || (typeof process.getuid === "function" && info.uid !== process.getuid())) return;
+    const info = fstatSync(fd);
+    if (!info.isFile() || info.uid !== process.getuid()) {
+      closeSync(fd);
+      return undefined;
+    }
+    return fd;
+  } catch {
+    closeSync(fd);
+    return undefined;
+  }
+}
+
+function copyFromFd(srcFd: number, dst: string): boolean {
+  try {
     unlinkIfNotDir(dst);
     copyFileSync(heldFdPath(srcFd), dst, constants.COPYFILE_EXCL);
-  } catch { /* best effort */ } finally {
-    if (srcFd !== undefined) closeSync(srcFd);
-  }
+    return true;
+  } catch { return false; }
 }
 
 function shiftRotated(src: string, dst: string): void {
@@ -170,9 +178,19 @@ export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFi
       if (i === maxFiles) unlinkIfExists(dst);
       shiftRotated(src, dst);
     }
-    copyOwnedLog(logPath, `${logPath}.1`);
-    ensurePrivateLogFile(`${logPath}.1`, false);         // a copy is as private as the log, whatever the source's mode
-    truncateOwnedLog(logPath);
+    const rotated = `${logPath}.1`;
+    const srcFd = openLiveLog(logPath);
+    if (srcFd === undefined) {
+      if (process.platform === "win32") {
+        try { copyFileSync(logPath, rotated); truncateSync(logPath, 0); } catch { /* best effort */ }
+      }
+      return;
+    }
+    try {
+      if (!copyFromFd(srcFd, rotated)) return;
+      ensurePrivateLogFile(rotated, false);              // a copy is as private as the log, whatever the source's mode
+      ftruncateSync(srcFd, 0);
+    } finally { closeSync(srcFd); }
   } catch { /* best effort */ }
 }
 
@@ -248,21 +266,24 @@ async function unlinkIfNotDirAsync(path: string): Promise<void> {
   try { if (!(await fsp.lstat(path)).isDirectory()) await fsp.unlink(path); } catch { /* missing */ }
 }
 
-async function copyOwnedLogAsync(src: string, dst: string): Promise<boolean> {
-  if (process.platform === "win32") {
-    if (!(await lstatRegularAsync(src))) return false;
-    await fsp.copyFile(src, dst);
-    return true;
-  }
-  let handle: Awaited<ReturnType<typeof fsp.open>> | undefined;
+async function copyFromHandle(src: Awaited<ReturnType<typeof fsp.open>>, dst: string): Promise<boolean> {
   try {
-    handle = await fsp.open(src, OPEN_READ);
-    const info = await handle.stat();
+    const info = await src.stat();
     if (!info.isFile() || (typeof process.getuid === "function" && info.uid !== process.getuid())) return false;
     await unlinkIfNotDirAsync(dst);
-    await fsp.copyFile(heldFdPath(handle.fd), dst, constants.COPYFILE_EXCL);
+    await fsp.copyFile(heldFdPath(src.fd), dst, constants.COPYFILE_EXCL);
     return true;
-  } catch { return false; } finally { await handle?.close().catch(() => {}); }
+  } catch { return false; }
+}
+
+async function writeAll(handle: Awaited<ReturnType<typeof fsp.open>>, buf: Buffer): Promise<boolean> {
+  let off = 0;
+  while (off < buf.length) {
+    const { bytesWritten } = await handle.write(buf.subarray(off));
+    if (bytesWritten === 0) return false;
+    off += bytesWritten;
+  }
+  return true;
 }
 
 async function rotateAsync(logPath: string, size: number, maxSize: number, maxFiles: number): Promise<void> {
@@ -282,38 +303,45 @@ async function rotateAsync(logPath: string, size: number, maxSize: number, maxFi
     }
   }
   const rotated = `${logPath}.1`;
-  if (!(await lstatRegularAsync(logPath))) return;
-  if (!(await copyOwnedLogAsync(logPath, rotated))) return;
-  ensurePrivateLogFile(rotated, false);                // a copy is as private as the log, whatever the source's mode
-  // The writer kept appending while we copied: carry what it added, then truncate.
-  // In fixed-size chunks (the delta is whatever the writer managed during the copy, not
-  // something to allocate in one piece), and a short read is not "done": keep reading
-  // until the range is in. No progress (a zero read, the file shrank under us) → give up
-  // this rotation WITHOUT truncating: the live log keeps everything it has.
-  const dest = await fsp.open(rotated, OPEN_LOG).catch(() => undefined);
-  if (!dest) return;
+  if (process.platform === "win32") {
+    if (!(await lstatRegularAsync(logPath))) return;
+    try { await fsp.copyFile(logPath, rotated); } catch { return; }
+    ensurePrivateLogFile(rotated, false);
+    await truncateOwnedLogAsync(logPath);
+    return;
+  }
+  const src = await fsp.open(logPath, OPEN_LIVE).catch(() => undefined);
+  if (!src) return;
   try {
-    let copied = (await dest.stat()).size;
-    const chunk = Buffer.allocUnsafe(DELTA_CHUNK_BYTES);
-    for (let pass = 0; pass < MAX_DELTA_PASSES; pass++) {
-      const live = (await lstatRegularAsync(logPath))?.size ?? 0;
-      if (live <= copied) break;
-      const handle = await fsp.open(logPath, OPEN_READ);
-      try {
+    if (!(await copyFromHandle(src, rotated))) return;
+    ensurePrivateLogFile(rotated, false);              // a copy is as private as the log, whatever the source's mode
+    // The writer kept appending while we copied: carry what it added, then truncate.
+    // In fixed-size chunks (the delta is whatever the writer managed during the copy, not
+    // something to allocate in one piece), and a short read is not "done": keep reading
+    // until the range is in. No progress (a zero read, the file shrank under us) → give up
+    // this rotation WITHOUT truncating: the live log keeps everything it has.
+    const dest = await fsp.open(rotated, OPEN_LOG).catch(() => undefined);
+    if (!dest) return;
+    try {
+      let copied = (await dest.stat()).size;
+      const chunk = Buffer.allocUnsafe(DELTA_CHUNK_BYTES);
+      for (let pass = 0; pass < MAX_DELTA_PASSES; pass++) {
+        const live = (await src.stat()).size;
+        if (live <= copied) break;
         while (copied < live) {
-          const { bytesRead } = await handle.read(chunk, 0, Math.min(chunk.length, live - copied), copied);
+          const { bytesRead } = await src.read(chunk, 0, Math.min(chunk.length, live - copied), copied);
           if (bytesRead === 0) return;
-          await dest.write(chunk.subarray(0, bytesRead));
+          if (!(await writeAll(dest, chunk.subarray(0, bytesRead)))) return;
           copied += bytesRead;
         }
-      } finally {
-        await handle.close();
       }
+      await src.truncate(0);
+    } finally {
+      await dest.close().catch(() => {});
     }
   } finally {
-    await dest.close().catch(() => {});
+    await src.close().catch(() => {});
   }
-  await truncateOwnedLogAsync(logPath);
 }
 
 /**
