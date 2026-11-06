@@ -19635,8 +19635,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
-      // The accounts are forgotten only when a sign-in ENDS (it may be a different account now): a running one raises this at every step.
-      changed: phase => { if (phase === "ended") this.forgetSignInIdentities(); broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
+      // The accounts are forgotten when ANY sign-in ends, even one a later one replaced (it may be a different account now), and not at every step of a
+      // running one: `changed` only tells the pages to read again.
+      changed: () => { broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
+      loginEnded: () => this.forgetSignInIdentities(),
     });
     return this.webBackendLoginsInstance;
   }

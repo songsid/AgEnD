@@ -126,11 +126,11 @@ describe("the host's own sign-in list: which account is each Claude Code sign-in
     while (f.fm.signInIdentityReads.size) { gates.splice(0).forEach(open => open()); await new Promise(r => setTimeout(r, 5)); }
     expect(f.fm.backendSignInTargets().find((target: any) => target.backend === "claude-code" && !target.profile).identity).toEqual({ maskedEmail: "bo***@example.org", plan: "team" });
   });
-  it("the accounts are forgotten when a sign-in ENDS, not at every step of one that is running", async () => {
+  it("the accounts are forgotten when a sign-in ENDS (any one), not at every step of one that is running", async () => {
     const f = makeFleet(); await read(f.fm); const first = f.calls.length;
-    const changed = (f.fm.webBackendLogins as any).deps.changed as (phase?: string) => void;
-    changed("running"); changed(undefined); await read(f.fm); expect(f.calls).toHaveLength(first);              // nothing was forgotten, nothing is read again
-    changed("ended"); await read(f.fm); expect(f.calls.length).toBe(first * 2);
+    const deps = (f.fm.webBackendLogins as any).deps as { changed: (phase?: string) => void; loginEnded: () => void };
+    deps.changed("running"); deps.changed(undefined); deps.changed("ended"); await read(f.fm); expect(f.calls).toHaveLength(first);   // telling the pages to read again forgets nothing
+    deps.loginEnded(); await read(f.fm); expect(f.calls.length).toBe(first * 2);
     f.fm.webBackendLogins.dispose();
   });
 });

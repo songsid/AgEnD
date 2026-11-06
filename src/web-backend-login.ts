@@ -75,6 +75,11 @@ export interface WebBackendLoginDeps {
   notice(info: { shown: string; label: string; handle: string }): void;
   /** The current sign-in started, changed phase or went: the pages are told to read it again (no details in the event). */
   changed?(phase?: "running" | "ended"): void;
+  /**
+   * Any sign-in this registry started has ended (success, failure or cancel), including one that a later one replaced or that ended before it was ever
+   * published as the current one. It says nothing about what the pages show: what is known about the accounts may be out of date, that is all.
+   */
+  loginEnded?(): void;
   now?(): number;
 }
 
@@ -191,6 +196,9 @@ export class WebBackendLogins {
         run.phase = "ended"; run.ok = result.ok; run.endedAt = this.now();
         this.live.delete(run);
         if (!this.live.size) this.stopWatch();
+        // Every end forgets the accounts, whichever sign-in it was: the account behind a login may have changed. Only the sign-in the pages are
+        // showing tells them it ended; one that was replaced (or never published) must not make them show the current one as over.
+        this.loginEnded();
         if (this.run === run) this.changed("ended");
       },
     };
@@ -246,6 +254,7 @@ export class WebBackendLogins {
     };
   }
 
+  private loginEnded(): void { try { this.deps.loginEnded?.(); } catch { /* a cache of what is known about accounts never stops a sign-in */ } }
   private changed(phase?: "running" | "ended"): void { try { this.deps.changed?.(phase); } catch { /* the pages read it on their own next time */ } }
 
   private chatFor(who: WebLoginRequester, sink: WebLoginSink, lines: string[]): LoginChat {
