@@ -8,6 +8,7 @@ import { join, resolve, sep } from "node:path";
 import { WebSocket } from "ws";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
+import { RUNTIME_REINSTALL_CLOSE_REASON } from "../src/runtime-protocol.js";
 import type { WindowsCliTask } from "../src/windows-cli.js";
 
 const homes: string[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [], clients: WebSocket[] = [];
@@ -24,6 +25,13 @@ async function listen(h: RuntimeCoordinator) {
 async function connect(base: string, credential: string, bootId = "boot-1", runtimeInfo?: unknown) {
   const ws = new WebSocket(base.replace("http:", "ws:") + "/runtime/v1/connect", { headers: { Authorization: `Bearer ${credential}` } }); clients.push(ws);
   await once(ws, "open"); const welcome = once(ws, "message"); ws.send(JSON.stringify({ v: 1, type: "hello", bootId, ...(runtimeInfo === undefined ? {} : {runtimeInfo}), inventory: { home: "C:\\Users\\test", clis: [] } })); await welcome; return ws;
+}
+/** A hello the AgEnD refuses: resolves with the close code and reason, and with every frame it received before that (a welcome would be one). */
+async function refused(base: string, credential: string, runtimeInfo: unknown, bootId = "boot-refused", messages: string[] = []) {
+  const ws = new WebSocket(base.replace("http:", "ws:") + "/runtime/v1/connect", { headers: { Authorization: `Bearer ${credential}` } }); clients.push(ws);
+  await once(ws, "open"); ws.on("message", data => messages.push(data.toString())); const closed = once(ws, "close");
+  ws.send(JSON.stringify({ v: 1, type: "hello", bootId, runtimeInfo, inventory: { home: "C:\\Users\\test", clis: [] } }));
+  const [code, reason] = await closed; return { code: code as number, reason: (reason as Buffer).toString() };
 }
 function responseTask(payload: unknown): WindowsCliTask { const task = (payload as { task: typeof taskInput }).task; return { id: task.requestId, cli: "codex", cwd: task.cwd, sandbox: "read-only", status: "running", output: "", startedAt: 1 }; }
 afterEach(async () => {
@@ -68,7 +76,41 @@ describe("runtime pairing durable identity", () => {
     const nextBase=await listen(next);await connect(nextBase,identity.credential,"legacy-boot");
     expect(next.machine(identity.machineId)).toMatchObject({status:"online",runtimeCompatibility:"legacy"});expect(next.machine(identity.machineId)?.runtimeInfo).toBeUndefined();
     clients[clients.length-1].terminate();await vi.waitFor(()=>expect(next.machine(identity.machineId)?.status).toBe("offline"));
-    await connect(nextBase,identity.credential,"other-protocol",{...info,protocolVersions:[2]});expect(next.machine(identity.machineId)?.runtimeCompatibility).toBe("incompatible");
+    // An incompatible report is no longer just a label: it is refused (see the version-skew tests below).
+    const refusal=await refused(nextBase,identity.credential,{...info,protocolVersions:[2]});
+    expect(refusal.code).toBe(1008);expect(next.machine(identity.machineId)).toMatchObject({status:"offline",runtimeCompatibility:"incompatible"});
+  });
+  describe("version skew fails clearly",()=>{
+    const info={version:"2.3.5-alpha",buildId:"a".repeat(64),protocolVersions:[1],capabilities:["exec","mcp","panes"]};
+    it.each([["no protocol this AgEnD speaks",{...info,protocolVersions:[2]}],["only newer protocols",{...info,protocolVersions:[2,3]}],["no exec capability",{...info,capabilities:["mcp","panes"]}],["no capabilities at all",{...info,capabilities:[]}]])("refuses a Runtime with %s: no welcome, 1008, a reason that says to run the install command again, and it is never sent work",async(_why,report)=>{
+      const h=hub(),identity=pair(h),base=await listen(h),messages:string[]=[];
+      const refusal=await refused(base,identity.credential,report,"skew-boot",messages);
+      expect(refusal.code).toBe(1008);expect(refusal.reason).toMatch(/re-run the install command/i);expect(Buffer.byteLength(refusal.reason)).toBeLessThanOrEqual(123);
+      expect(refusal.reason).toBe(RUNTIME_REINSTALL_CLOSE_REASON);expect(messages).toEqual([]);   // never welcomed
+      expect(h.machine(identity.machineId)).toMatchObject({status:"offline",runtimeCompatibility:"incompatible",runtimeInfo:{version:"2.3.5-alpha"}});
+      await expect(h.call(identity.machineId,"probe",{force:true})).rejects.toThrow();
+      // its report is kept for the dashboard, and the pairing is not touched: nothing was revoked or forgotten
+      expect(h.listMachines().find(machine=>machine.id===identity.machineId)).toMatchObject({runtimeCompatibility:"incompatible"});
+    });
+    it("lets the same pairing connect once a compatible Runtime is installed, and keeps saying what was wrong until then",async()=>{
+      const h=hub(),identity=pair(h),base=await listen(h);
+      await refused(base,identity.credential,{...info,protocolVersions:[2]});expect(h.machine(identity.machineId)?.runtimeCompatibility).toBe("incompatible");
+      await connect(base,identity.credential,"reinstalled",info);
+      expect(h.machine(identity.machineId)).toMatchObject({status:"online",runtimeCompatibility:"compatible",runtimeInfo:{protocolVersions:[1]}});
+      h.close();const restarted=new RuntimeCoordinator(homes[0]);hubs.push(restarted);expect(restarted.machine(identity.machineId)?.runtimeCompatibility).toBe("compatible");
+    });
+    it("keeps an incompatible report across a restart, still offline, so Settings can say which Runtime needs reinstalling",async()=>{
+      const h=hub(),identity=pair(h),base=await listen(h);await refused(base,identity.credential,{...info,protocolVersions:[2]});
+      h.close();const restarted=new RuntimeCoordinator(homes[0]);hubs.push(restarted);
+      expect(restarted.machine(identity.machineId)).toMatchObject({status:"offline",runtimeCompatibility:"incompatible",runtimeInfo:{version:"2.3.5-alpha",protocolVersions:[2]}});
+    });
+    it("still lets an older Runtime that reports nothing (legacy) and a Runtime that reports more than is needed connect",async()=>{
+      const h=hub(),identity=pair(h),base=await listen(h);
+      await connect(base,identity.credential,"legacy-boot");expect(h.machine(identity.machineId)).toMatchObject({status:"online",runtimeCompatibility:"legacy"});
+      clients[clients.length-1].terminate();await vi.waitFor(()=>expect(h.machine(identity.machineId)?.status).toBe("offline"));
+      await connect(base,identity.credential,"newer-boot",{...info,protocolVersions:[1,2,3],capabilities:["exec","mcp","panes","future-thing"]});
+      expect(h.machine(identity.machineId)).toMatchObject({status:"online",runtimeCompatibility:"compatible"});
+    });
   });
   it("rejects malformed version metadata before making the connection ready",async()=>{
     const h=hub(),identity=pair(h),base=await listen(h);

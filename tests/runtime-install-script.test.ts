@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -20,11 +20,12 @@ beforeEach(() => vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"));
 afterEach(() => vi.unstubAllEnvs());
 
 describe("install.ps1 template", () => {
-  it("is safe for `irm | iex`: ASCII only, no param block, no exit, one wrapping script block", () => {
+  it("is safe for `iex` of the downloaded text: ASCII only, no param block, no exit, one wrapping script block", () => {
     expect([...template].every(ch => ch.charCodeAt(0) < 0x80)).toBe(true);
     expect(template).not.toContain("﻿");
     expect(code).not.toMatch(/\bparam\s*\(/i);
-    expect(code).not.toMatch(/\bexit\b/i);
+    // (the shim's own batch lines say `exit /b`; that is text for cmd.exe inside a string, not a PowerShell exit)
+    expect(code.replace(/\$shimText = \([\s\S]*?\) -join "`r`n"/, "")).not.toMatch(/\bexit\b/i);
     expect(code.trimStart().startsWith("& {")).toBe(true);
     expect(code.trimEnd().endsWith("}")).toBe(true);
     expect(Buffer.byteLength(template)).toBeLessThan(RUNTIME_INSTALL_MAX_SCRIPT_BYTES);
@@ -81,20 +82,79 @@ describe("install.ps1 template", () => {
     expect(code).toContain("DoNotExpandEnvironmentNames");
     expect(code).toContain("AGEND_RUNTIME_NO_PATH");
   });
-  it("installs under a version folder and points one shim at it, so a later version replaces only the shim", () => {
+  it("changes the user PATH carefully: never setx, never rewrites the value kind, de-duplicates, and never touches the execution policy", () => {
+    expect(code).not.toMatch(/\bsetx\b/i);
+    // [Environment]::SetEnvironmentVariable turns a REG_EXPAND_SZ PATH into REG_SZ (measured on Windows PowerShell 5.1 and 7), so the
+    // registry value is written back with the kind it had; SetEnvironmentVariable is used only for the throwaway refresh variable.
+    expect(code).not.toMatch(/SetEnvironmentVariable\('Path'/i);
+    expect(code).toContain("$key.SetValue('Path', $next, $kind)"); expect(code).toContain("$kind = $key.GetValueKind('Path')");
+    expect(code).toMatch(/\$e -ieq \$want -or \[Environment\]::ExpandEnvironmentVariables\(\$e\)\.TrimEnd\('\\'\) -ieq \$want\) \{ return \$false \}/);
+    expect(code).not.toMatch(/Set-ExecutionPolicy|-ExecutionPolicy|ExecutionPolicy\b/);
+  });
+  it("never skips or replaces certificate validation, in any form", () => {
+    expect(code).not.toMatch(/SkipCertificateCheck|ServerCertificateValidationCallback|CertificatePolicy|ICertificatePolicy|TrustAllCertsPolicy|-k\b|--insecure/i);
+    expect(code).toContain("AllowAutoRedirect = $false");
+  });
+  it("installs under a version folder beside the others, with a shim that never changes and a current.txt that is swapped atomically", () => {
     expect(code).toContain("Join-Path $env:LOCALAPPDATA 'agend-runtime'");
     expect(code).toContain("$target = Join-Path $root $pinnedVersion");
     expect(code).toContain("$bin = Join-Path $root 'bin'");
-    expect(code).toContain('node.exe `"%~dp0..\\" + $pinnedVersion + "\\dist\\runtime-cli.js`" %*');
     expect(code).toContain("AGEND_RUNTIME_INSTALL_DIR");
+    // the shim text holds no version, so replacing a version cannot change a batch file that is running
+    const shim = /\$shimText = \(([\s\S]*?)\) -join/.exec(code)![1];
+    expect(shim).not.toMatch(/\$pinnedVersion|\d+\.\d+\.\d+/); expect(shim).toContain('set /p AGEND_RT_VERSION=<"%~dp0current.txt"');
+    // a missing current.txt is answered by our message, not by cmd.exe's own (localised) "cannot find the file"
+    expect(shim.indexOf('if not exist "%~dp0current.txt" goto :agend_rt_missing')).toBeGreaterThan(-1); expect(shim.indexOf('if not exist "%~dp0current.txt"')).toBeLessThan(shim.indexOf("set /p"));
+    expect(shim).toContain('node.exe "%~dp0..\\%AGEND_RT_VERSION%\\dist\\runtime-cli.js" %*'); expect(shim).toContain("exit /b %errorlevel%");
+    // the switch: a sibling written whole, then File.Replace (a rename when there is nothing to replace); only the changed file is touched
+    expect(code).toContain("[IO.File]::Replace($new, $Path, [NullString]::Value)"); expect(code).toContain("[IO.File]::Move($new, $Path)");
+    expect(code).toMatch(/Set-AgendFile \$shim \$shimText\s+Set-AgendFile \$current \$pinnedVersion/);
+    expect(code.indexOf("Set-AgendFile $current $pinnedVersion")).toBeGreaterThan(code.indexOf("Move-Item -LiteralPath $unpacked -Destination $target"));   // switched only after the new version is whole
   });
-  it("fails loudly and leaves earlier installs alone: it never deletes anything but its own staging folder and the same version", () => {
+  it("fails loudly and leaves earlier installs alone: it deletes only its own staging folder, a temporary sibling and a root it created empty", () => {
     expect(code).toContain("$global:LASTEXITCODE = 1");
     const removals = [...code.matchAll(/Remove-Item -LiteralPath (\$\w+)/g)].map(match => match[1]);
-    expect(new Set(removals)).toEqual(new Set(["$OutFile", "$target", "$tmp", "$root"]));
+    expect(new Set(removals)).toEqual(new Set(["$OutFile", "$new", "$tmp", "$root"]));
+    // an existing version folder is NEVER deleted or replaced, whoever might be running it
+    expect(code).not.toMatch(/Remove-Item[^\n]*\$target|Remove-Item[^\n]*\$existing|Remove-Item[^\n]*\$others|Rename-Item|\[IO\.Directory\]::(Delete|Move)/);
+    expect(code).toContain("It was left untouched because it may be running");
     // $root only when this run created it and it is still empty; never recursive.
     expect(code).toMatch(/\$createdRoot -and \$root -and \(Test-Path -LiteralPath \$root\) -and -not \(Get-ChildItem -LiteralPath \$root -Force \| Select-Object -First 1\)\) \{ Remove-Item -LiteralPath \$root -Force -ErrorAction/);
     expect(code).toMatch(/\.install-' \+ \[Guid\]::NewGuid/);
+  });
+});
+
+describe("what the documentation, the page and the changelog promise", () => {
+  const read = (file: string): string => readFileSync(file, "utf8");
+  const en = read("docs/remote-runtime.md"), zh = read("docs/remote-runtime.zh-TW.md");
+  const everything = ["docs/remote-runtime.md", "docs/remote-runtime.zh-TW.md", "src/ui/panel-runtimes.js", "src/ui/runtime-commands.js", "templates/runtime-install/install.ps1",
+    "changes/3190-runtime-install-command.md", "changes/3190-runtime-install-command.zh-TW.md"];
+  it("never names a way to turn certificate validation off, in the docs, the page, the command, the script or the changelog", () => {
+    for (const file of everything) expect(read(file), file).not.toMatch(/SkipCertificateCheck|ServerCertificateValidationCallback|CertificatePolicy|TrustAllCerts|NODE_TLS_REJECT_UNAUTHORIZED|strict-ssl|--insecure|curl[^\n]* -k\b/i);
+  });
+  it("tells the administrator what to do on a TLS failure, under Constrained Language Mode or AppLocker, and says the execution policy is never changed", () => {
+    expect(en).toMatch(/certificate error[\s\S]*trust the AgEnD server's certificate[\s\S]*or use the ZIP/); expect(en).toMatch(/Never turn certificate validation off/);
+    expect(en).toMatch(/Constrained Language Mode or AppLocker[\s\S]*Use the ZIP instead/); expect(en).toMatch(/never changes your execution policy/);
+    expect(zh).toMatch(/憑證錯誤[\s\S]*信任這台 AgEnD 伺服器的憑證[\s\S]*改用 ZIP/); expect(zh).toMatch(/絕對不要以任何開關、回呼或政策關閉憑證驗證/);
+    expect(zh).toMatch(/受限語言模式[\s\S]*AppLocker[\s\S]*改用 ZIP/); expect(zh).toMatch(/不會變更你的執行原則/);
+  });
+  it("says the address comes only from $agend, the reviewed remote-runtime address, and why the command pins the script", () => {
+    expect(en).toMatch(/taken \*\*only\*\* from `\$agend`[\s\S]*reviewed remote-runtime address[\s\S]*not the `Host` header/); expect(zh).toMatch(/\*\*只\*\*取自 `\$agend`[\s\S]*審核過的 remote runtime 位址[\s\S]*`Host` 標頭/);
+    expect(en).toMatch(/can only prove that the archive matches the script/); expect(en).toMatch(/sends exactly those bytes every time/);
+    expect(zh).toMatch(/只能證明「壓縮檔和腳本相符」/); expect(zh).toMatch(/完全相同的位元組/);
+  });
+  it("explains the PATH choice (never setx; why not SetEnvironmentVariable), side-by-side versions and the version-skew refusal, in both languages", () => {
+    for (const text of [en, zh]) { expect(text).toContain("setx"); expect(text).toContain("current.txt"); expect(text).toContain("REG_EXPAND_SZ"); expect(text).toContain("1024"); }
+    expect(en).toMatch(/never deleted or replaced, because it may be the Runtime that is running/); expect(en).toMatch(/refuses it clearly/); expect(en).toMatch(/re-run the install command/i);
+    expect(zh).toMatch(/永遠不會被刪除或取代/); expect(zh).toMatch(/明確拒絕/); expect(zh).toMatch(/重新執行安裝指令/);
+    expect(en).not.toMatch(/Protocol compatibility is diagnostic metadata/);
+  });
+  it("documents the caching and burst behaviour of the installer routes", () => {
+    for (const text of [en, zh]) { expect(text).toContain("ETag"); expect(text).toContain("If-None-Match"); expect(text).toContain("no-store"); expect(text).toContain("429"); }
+  });
+  it("names the changelog fragments after the upstream design issue, a pair in both languages", () => {
+    expect(existsSync("changes/3190-runtime-install-command.md")).toBe(true); expect(existsSync("changes/3190-runtime-install-command.zh-TW.md")).toBe(true);
+    expect(existsSync("changes/15-runtime-install-command.md")).toBe(false); expect(existsSync("changes/15-runtime-install-command.zh-TW.md")).toBe(false);
   });
 });
 

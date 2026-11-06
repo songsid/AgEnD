@@ -9,7 +9,7 @@ import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, t
 import { validateNativeTask, validWindowsAgentId, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
-import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
+import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
@@ -19,13 +19,14 @@ import type { RuntimePaneHost } from "./runtime-pane-host.js";
 import type { RuntimePaneHostOptions } from "./runtime-pane-host.js";
 export { RUNTIME_PANE_MODULES } from "./runtime-pane-assets.js";
 
-export type RuntimeStopKind = "refused" | "revoked" | "replaced" | "rejected" | "incompatible";
+export type RuntimeStopKind = "refused" | "revoked" | "replaced" | "rejected" | "incompatible" | "reinstall";
 export interface RuntimeStopReason { kind: RuntimeStopKind; /** The close reason AgEnD gave, when it gave one. */ detail?: string }
 const REPAIR = "run .\\agend-runtime.cmd disconnect in this folder (add the same --profile if you used one), then double-click connect-agend.bat and enter a new pairing code.";
 /** Plain-language cause and next step for a stop AgEnD caused. AgEnD answers an unknown and a revoked credential with the same bare 401, so "refused" covers both. */
 export function describeRuntimeStop(reason: RuntimeStopReason): string {
   switch (reason.kind) {
     case "refused": return `${reason.detail === "HTTP 403" ? "The connection was refused with HTTP 403. If AgEnD's address goes through a proxy, check the proxy's settings too. " : ""}AgEnD did not accept this computer's saved connection, so the Runtime stopped. Open AgEnD Settings -> Runtime: if this computer is missing or revoked, or AgEnD's data was reset, it must be paired again; ${REPAIR} If the pairing was made against a different AgEnD address than this folder's, use the download that matches it.`;
+    case "reinstall": return "AgEnD refused this Runtime because its version is not compatible with this AgEnD (it was installed from a different AgEnD release). Your pairing is kept. Re-run the install command shown in AgEnD Settings -> Runtime -> Connect a computer (Windows PowerShell tab) on this computer; it installs the matching Runtime next to this one and never deletes the version that is running. Then start it again with agend-runtime run (add the same --profile if you used one). If you installed from the ZIP, download the ZIP from the same page and double-click connect-agend.bat.";
     case "revoked": return `This computer was revoked in AgEnD Settings -> Runtime, so the Runtime stopped. To connect it again, ${REPAIR}`;
     case "replaced": return "This computer connected to AgEnD again from somewhere else, so AgEnD closed this connection. A pairing allows one live connection. Close the other Runtime window (or the other computer that uses a copy of this profile), then double-click connect-agend.bat again. Each computer needs its own pairing code.";
     case "incompatible": return "This Runtime could not understand a message from AgEnD, so it stopped. This usually means the Runtime and AgEnD are different versions, or the address points at something that is not this AgEnD. Download the Windows Runtime again from AgEnD Settings -> Runtime, extract it, and double-click connect-agend.bat.";
@@ -187,7 +188,7 @@ export class RuntimeClient {
       if (code === 1008) {
         const why = reason.toString().replace(/[^ -~]/g, "?").slice(0, 120);
         this.report(this.selfClosed === socket ? "This Runtime could not read a message from AgEnD and closed the connection." : `AgEnD closed the connection (code 1008${why ? `: ${why}` : ""}).`);
-        this.stopReason = this.selfClosed === socket ? { kind: "incompatible" } : { kind: why === "Machine revoked" ? "revoked" : why === "Connection replaced" ? "replaced" : "rejected", ...(why ? { detail: why } : {}) };
+        this.stopReason = this.selfClosed === socket ? { kind: "incompatible" } : { kind: why === "Machine revoked" ? "revoked" : why === "Connection replaced" ? "replaced" : why.startsWith(RUNTIME_REINSTALL_CLOSE_PREFIX) ? "reinstall" : "rejected", ...(why ? { detail: why } : {}) };
         void this.stop({retirePanes:why==="Machine revoked"}); return;
       }
       this.report("Disconnected. Existing execution is not replayed; reconnecting…");
