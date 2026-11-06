@@ -84,7 +84,9 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 
 ## 3. Build: static, pinned, reproducible, in CI
 
-- **Sources:** tmux 3.8 (the pin, in `tmux-sources.json`), libevent 2.1.12-stable, ncurses 6.5. jemalloc 5.3 is added on darwin, as upstream does since 3.7c.
+- **Sources:** tmux 3.8 (the pin, in `tmux-sources.json`), libevent 2.1.12-stable, ncurses 6.5, utf8proc 2.12.0
+  (tag archive sha256 `f564011d38b2888d583d510b08e69ffa15aa117155db1b9b49ef1dfe1fa25111`). jemalloc 5.3 is added on
+  darwin, as upstream does since 3.7c.
   Each source is fetched by URL and checked against a **sha256 committed in the repo**
   (`scripts/release/tmux-sources.json`). A mismatch fails the build.
 - **linux-x64, linux-arm64:** built on Alpine (musl), **fully static** (`--enable-static`, everything linked in).
@@ -96,14 +98,16 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
   libSystem stays dynamic (Apple supports no fully static binary). `MACOSX_DEPLOYMENT_TARGET=11.0`.
 - **Options:** `--disable-utempter`, and **no** `--enable-sixel`/`--enable-images`. `--enable-utf8proc`, statically, so
   that all four platforms use the same Unicode width tables. musl's own `wcwidth` lags, and CJK and emoji widths must
-  match what the CLIs assume.
+  match what the CLIs assume. The §2 matrix builds did **not** include utf8proc yet; PR A's first build reruns the
+  matrix and adds the CJK/emoji width check with it.
 - **Hardening:** `-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2`, static-pie where the toolchain allows, `strip`.
 - **Reproducible:** `SOURCE_DATE_EPOCH` = the pin's release date, fixed flags, and pinned toolchain images. CI builds twice
   and compares the binary's sha256. A difference fails the dry run.
 - **Pipeline:** reuse #1450's. A new `publish-tmux.yml` (`workflow_dispatch`; inputs `tmux_version`, `dry_run` =
   **true by default**):
   - builds the four targets (Linux on `ubuntu-24.04` and `ubuntu-24.04-arm` runners in an Alpine container; darwin on
-    `macos-14` and `macos-13`);
+    the explicit labels `macos-15` (arm64) and `macos-15-intel` (x64); `macos-13` is retired. Each darwin binary's
+    `LC_BUILD_VERSION` minos is checked to be 11.0, and the real Mac (test-host rules) runs the arm64 one);
   - smoke-runs each on its own runner (`-V`, a private-socket start/kill, a `capture-pane` of a CJK line);
   - writes packages `@songsid/agend-tmux-{linux-x64,linux-arm64,darwin-x64,darwin-arm64}`;
   - publishes with `--provenance`, reusing the token fallback for the first publish of a new name.
@@ -157,8 +161,8 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
     use `agend attach`."
   - The upgrade notes say the same.
 - **Mixing versions on one socket:** a client and server of different tmux versions can't talk on a shared socket. A
-  private socket served only by the bundled binary avoids that by construction, and `agend tmux` always uses the same
-  binary.
+  private socket served only by the bundled binary avoids that within one pin, and `agend tmux` always uses the binary
+  `server.json` names. Across a pin change the old server is reached only through its own recorded client (§6 rule 2).
 
 ## 6. Updates: how an update never strands the fleet (the user's question)
 
@@ -181,27 +185,47 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
      lifecycle failure keeps the old version). `agend update` restarts nothing and says why ("the new version's tmux
      failed its check: <reason>; still on <old>").
    - `agend update` also re-checks the receipt before it stops the service.
-2. **The version change is a server change.** The private socket is served only by the version that owns the receipt.
-   - On start, AgEnD compares `#{version}` of a server already on its socket with its own pin. If they differ (a
-     2.4.x→2.4.y pin change on a host where the server survived: launchd or foreground), it **hands over**. Each daemon
-     checkpoints its session id (as Strategy A does today, `daemon.ts:3079-3094`), the old server is ended with
-     `kill-server` (it is ours: the private socket is AgEnD's by construction), and the new server starts and resumes
-     every conversation.
-   - Two CLIs never resume one conversation: the old window is gone before the new one starts.
-3. **The 2.3.x → 2.4.0 hop** (the old server on the **default** socket, run by the system tmux):
+2. **The version change is a server change, and the old server is ended by its own client.**
+   - **The server's binary lives outside the replaceable package.** Postinstall copies the verified binary to
+     `~/.agend/tmux/<version>-<sha256-prefix>/tmux` (with its terminfo), and AgEnD starts the server from that copy. On
+     start it writes `~/.agend/tmux/server.json`: `{ socket, binary, version, sha256, serverPid, serverStart }`
+     (`#{pid}` and `#{start_time}` read back from the server). The current and the previous copy are kept; older ones
+     are pruned only when no `server.json` names them.
+   - On start, AgEnD looks for a server on its socket. **The handover always uses the client that `server.json`
+     names**, never the new one: tmux client and server must share a wire protocol (upstream `proc.c`), and a future
+     pin may change it. With that client it reads `#{version}`, `#{pid}` and `#{start_time}`; if they match the record and
+     differ from the new pin (a pin change on a host where the server survived: launchd or foreground), it hands over:
+     each daemon checkpoints its session id (as Strategy A does today, `daemon.ts:3079-3094`), the recorded client
+     sends `kill-server`, and AgEnD waits for **positive exit** (the recorded pid gone and the socket refusing
+     connections) before the new server starts and resumes every conversation.
+   - **Unknown or incompatible** (the recorded binary missing or its sha256 changed, the record not matching the server,
+     the query failing, or a "protocol version mismatch"): no instance starts on the new version. The one fallback is
+     the recorded pid: if `serverPid` is alive with the recorded start time and executable, it is ours and gets
+     SIGTERM, then the same positive-exit wait. Anything else holds the fleet with a Needs-you line ("AgEnD's previous
+     tmux server is still running and can't be verified: <reason>"), and nothing is killed.
+   - Two CLIs never resume one conversation: the old window is gone, positively, before the new one starts.
+3. **The 2.3.x → 2.4 hop** (the old server on the **default** socket, run by the system tmux):
    - On systemd/WSL, the old service's stop ends it.
-   - On launchd and in the foreground it may still run. Before any instance starts, 2.4.0 runs a **one-time migration**
-     with the **system** tmux on the **default** socket:
-     - find session `agend` (or `AGEND_TMUX_SESSION`);
-     - **prove** each window ours: its `#{window_id}` equals `instances/<name>/window-id`, its name equals that
-       instance's, and its pane's process tree runs that instance's backend binary;
-     - checkpoint each proven window's session id, then `kill-window` it. **Never `kill-server` the default server**: it
-       can hold the user's own sessions. It exits by itself once empty.
-     - A window that matches an instance name but can't be proven holds **that instance**. It doesn't start, and
-       Needs-you says: "An old tmux window for <name> is still running (system tmux). Close it, or run
-       `agend tmux-migrate --release <name>`." The rest of the fleet starts.
-     - The result is recorded in `~/.agend/tmux-migration.json` (once per host).
-   - The window-id files are rewritten by the new spawns (new ids on the new server).
+   - On launchd and in the foreground it may still run. **Every 2.4 start, before any instance starts**, runs the legacy
+     check with the **system** tmux on the **default** socket. It is not a once-per-host step: a rollback to 2.3 and a
+     second upgrade create new legacy windows, and they are found the same way.
+     - **The trigger is per instance:** 2.4 writes `instances/<name>/window-id` with a socket tag (`agend:@12`); a file
+       without the tag was written by 2.3 and names a window on the default server. Any untagged file, or a default
+       server with session `agend` (or `AGEND_TMUX_SESSION`), means the check runs.
+     - **Prove** each window ours: its `#{window_id}` equals the untagged window-id file, its name equals that
+       instance's, and its pane's process tree runs that instance's backend binary.
+     - Checkpoint each proven window's session id, `kill-window` it, and confirm it gone (and its pane pid exited)
+       before that instance starts. **Never `kill-server` the default server**: it can hold the user's own sessions. It
+       exits by itself once empty.
+     - A window that can't be proven, an untagged file with no system tmux to ask, or a default socket that answers but
+       can't be queried, holds **that instance**: it doesn't start, and Needs-you says "An old tmux window for <name>
+       may still be running (system tmux). Close it, or run `agend tmux-migrate --release <name>`." The rest of the fleet
+       starts.
+     - `~/.agend/tmux-migration.json` is a **journal**, not a skip flag: it names the default server incarnation
+       (`#{pid}` + `#{start_time}`) and each window's step (checkpointed, killed, confirmed). It lets an interrupted
+       migration resume on the **same** server without checkpointing twice; a different incarnation, or a new untagged
+       file, starts a fresh pass.
+   - The window-id files are rewritten (tagged) by the new spawns.
 4. **Later 2.4.x → 2.4.y with a new pin:** rule 2. The receipt names the pin and the server reports `#{version}`, so a
    mismatch can't outlive an update even where the server survives.
 5. **Rollback 2.4 → 2.3.x:** §7.
@@ -209,16 +233,29 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 ## 7. Downgrade to 2.3.x
 
 - 2.3.x runs the **system** tmux on the **default** socket and knows nothing of the private one.
-- The 2.4 service's stop ends the private server on systemd. On launchd/foreground, 2.4's own `stop` / `update` /
-  `uninstall` paths `kill-server` the private socket (ours by construction) **before** handing over. A 2.3.x start
-  therefore resumes each conversation in a new window on the default server, and never next to a 2.4 window still
-  running it.
+- **The supported rollback is `agend rollback 2.3.x`**, run by the outgoing 2.4 (npm has no uninstall hook that would
+  let 2.4 clean up after a plain package swap). In order, and each step must succeed before the next:
+  1. Stop the fleet, checkpointing every session id (as an update does).
+  2. End the private server with the client `server.json` names (§6 rule 2), and **positively confirm** it: the
+     recorded server pid gone, the socket refusing connections, and every instance's recorded backend pid exited.
+  3. Write `~/.agend/rollback.json` (`{ from, to, closedAt }`): the checkpoint 2.3.x will resume from.
+  4. Only then `npm install -g @songsid/agend@2.3.x` and restart the service on it.
+  - A failed or unknown close (step 2) **stops the rollback**: nothing is installed, 2.4 stays, and the message says
+    what is still running. A failed npm install (step 4) leaves 2.4 installed with the fleet stopped; `agend start`
+    brings 2.4 back.
+- **A raw `npm install -g @songsid/agend@2.3.x`** skips steps 1–3:
+  - On systemd/WSL it is still safe: the service restart kills the unit's cgroup, private server included.
+  - On launchd or a foreground fleet the private server can survive, and 2.3.x can't see it. **That path is
+    unsupported**, and the docs and the 2.4 upgrade notes say so. The last 2.3.x patch (an alpha/beta of the 2.3 line)
+    adds a guard: if the `-L agend` socket accepts a connection, 2.3.x refuses to start instances and points at
+    `agend rollback` (from 2.4) or closing that server.
 - **The system tmux must still exist.** The 2.4 installers keep ensuring it (`install.sh` and the Windows one-click
   still `apt`/`brew install tmux`), and nothing removes it.
   - It costs a few MB and is unused by 2.4. It is documented as "kept for rollback to 2.3.x".
   - Dropping it is a later decision, after 2.3.x is out of support.
 - **Rollback-proof CI:** a job (like `node20-rollback-smoke`) installs the 2.4 candidate and starts a fleet (mock CLI,
-  private socket), then installs the latest 2.3.x. It checks:
+  private socket, run in the foreground so the server would survive), then runs **`agend rollback` to the latest
+  2.3.x**. It checks:
   - the fleet starts on the system tmux, default socket;
   - every instance resumes;
   - no server is left on `-L agend`;
@@ -286,24 +323,39 @@ packed**, terminfo subset included. The Node runtime is ~45 MB packed, so this a
   kills only AgEnD's windows. A user session on the default server survives, and an unprovable window holds only its
   instance.
 - **M:** the real Mac (launchd) upgrade, then rollback (the test-host rules).
-- **R:** rollback 2.4 → 2.3.x on systemd and on Mac: no `-L agend` server left, all agents resume on the system tmux,
-  none twice.
+- **L4:** 2.3 → 2.4 → 2.3 → 2.4 on a foreground fleet (the default server survives each hop): the second upgrade finds
+  the windows 2.3 created after the rollback and migrates them; no conversation runs twice. Plus an **interrupted
+  migration**: the 2.4 start killed after one window's checkpoint+kill, then started again; the journal resumes on the
+  same server without checkpointing twice, and every instance starts once.
+- **R:** `agend rollback` 2.4 → 2.3.x on systemd, foreground and the Mac: no `-L agend` server left, all agents resume on
+  the system tmux, none twice. Plus a **failed close** (a private server that won't exit, faked with a
+  `SIGSTOP`ped server): the rollback stops before npm runs and 2.4 stays. Plus the raw-npm
+  downgrade on systemd (safe) and, on foreground, the 2.3.x guard refusing to start.
 - **F1:** an update where npm fails: still on the old version, the service untouched, a clear message.
 - **F2:** an update where the new package's tmux fails its check (a corrupted binary in the rehearsal registry):
   postinstall fails, npm keeps the old package, no restart.
-- **P:** a pin change 2.4.x → 2.4.y on a surviving server (launchd/foreground). The version mismatch is detected and the
-  server handed over once, with no conversation resumed twice.
+- **P:** a pin change 2.4.x → 2.4.y on a surviving server (launchd/foreground). The version mismatch is detected, the
+  old server ended by its recorded client with positive exit, and no conversation resumed twice. Plus an
+  **incompatible client**: a rehearsal build with a bumped tmux protocol version as the new pin; the new client's
+  refusal is detected, the handover still goes through the recorded old client, and with the old binary removed the
+  pid fallback or the Needs-you hold applies (nothing killed unproven).
 
 ## 13. Delivery plan (alpha)
 
 1. **PR A (build):** `publish-tmux.yml` (dry run), `scripts/release/tmux-sources.json`, the four packages, the reproducibility
-   check, `THIRD_PARTY_NOTICES.md`, postinstall verify and receipt, and the §2 matrix scripts (`scripts/manual/tmux-matrix/`:
-   the leak, #735 stress, AgEnD delivery and raw #309 legs) so a pin change reruns them. No runtime change yet.
-2. **PR B (use):** `tmuxBinary()`, every call site and the exec helper, `-L agend` plus `-f agend-tmux.conf`, TERMINFO_DIRS,
-   COLORTERM, `agend tmux`, the `agend attach` fix, doctor, docs and skills, the CJK width test.
-3. **PR C (transitions):** the 2.3→2.4 migration (proven windows only), the server-version handover, update
-   verify-before-stop, the downgrade's own `kill-server`, installers keeping the system tmux, and the rollback-proof CI job.
-4. Each PR carries its rehearsal legs (§12). The real Mac goes through the test-host rules.
+   check, `THIRD_PARTY_NOTICES.md`, postinstall verify, the copy to `~/.agend/tmux/` and the receipt, and the §2 matrix
+   scripts (`scripts/manual/tmux-matrix/`: the leak, #735 stress, AgEnD delivery and raw #309 legs) so a pin change
+   reruns them. **No runtime change:** AgEnD still runs the system tmux. Legs: F2, the install smokes on every platform
+   (the package installs, verifies and is ignored), and the matrix rerun with utf8proc.
+2. **PR B (use, dark):** `tmuxBinary()`, every call site and the exec helper, `-L agend` plus `-f agend-tmux.conf`,
+   TERMINFO_DIRS, COLORTERM, `agend tmux`, the `agend attach` fix, doctor, docs and skills, the CJK width test. All of it
+   behind an internal switch that is **off** in every build B ships in: B on its own changes nothing for a user, and its
+   legs are the switch-off regression (the default socket as today) plus the switch-on suite in containers only.
+3. **PR C (transitions + activation):** the legacy check and journal, `server.json` and the handover, update
+   verify-before-stop, `agend rollback`, the installers keeping the system tmux, the rollback-proof CI job, and **turning
+   the switch on**. C is the first commit that runs the private socket for anyone, so it carries L1–L4, M, R, F1, F2
+   and P. The 2.3.x guard (§7) lands on the 2.3 line before C ships.
+4. The real Mac goes through the test-host rules.
 
 Never touched while building any of this: the live tmux server. Tests use private sockets (`TmuxManager` with a
 `socketName`) or throwaway containers.
