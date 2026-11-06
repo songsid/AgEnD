@@ -37,7 +37,7 @@ function factory(home: string, hubId: string | null, components: HubMemberCompon
     home,
     components,
     boundHub: () => hubId,
-    agents: () => [{ name: "general", display: "General", providerId }],
+    agents: () => [{ name: "general", display: "General" }],
     attachExposures: (api) => { attached.exposures = api; },
     attachAttention: (read) => { attached.attention = read; },
     pokeAttention: () => {},
@@ -62,9 +62,9 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     expect((db.prepare("SELECT component FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component))
       .toEqual(["s1-member-journal", "s3c-exposures", "s4-execution", "s5-audit", "s5-instance"]);
     db.close();
-    // Attached to the fleet: the exposure API (empty registry: nothing to choose, not enforceable) and attention.
+    // Attached to the fleet: the exposure API (P1 representative agent: the agent itself is the one choice) and attention.
     const api = f.attached.exposures as { list(): Array<{ agent: string; choices: { dataViews: unknown[] }; enforceable: boolean }> };
-    expect(api.list()).toMatchObject([{ agent: "general", choices: { dataViews: [] }, enforceable: false }]);
+    expect(api.list()).toMatchObject([{ agent: "general", choices: { dataViews: [{ id: "agent", label: "General" }], tools: [] }, enforceable: true }]);
     expect(typeof f.attached.attention).toBe("function");
     // The handshake ran on the real link: the Hub saw the member's snapshot.
     for (let i = 0; i < 50 && !rig.received.some((x) => x.type === "exposure.snapshot"); i += 1) await new Promise((r) => setTimeout(r, 50));
@@ -157,8 +157,9 @@ describe.skipIf(process.platform === "win32")("provider setup is non-fatal (agre
       expect((service as unknown as { providerReason(id: string): unknown }).providerReason("claude"), label).toBe(reason);
       expect(f.reports, label).toEqual([]); // not fatal
       const api = f.attached.exposures as { list(): Array<{ enforceable: boolean; reason?: string }> };
-      // The owner page shows S4's bounded reason for the agent's provider, and the agent cannot be shared.
-      expect(api.list(), label).toMatchObject([{ enforceable: false, reason }]);
+      // P1 representative agent: the container provider's state no longer gates the owner's share (the hold stays S5's).
+      expect(api.list(), label).toMatchObject([{ enforceable: true }]);
+      expect(api.list()[0]!.reason, label).toBeUndefined();
       await service.close();
     }
   });

@@ -474,13 +474,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
 
       const api = exposureMods.api.createHubMemberExposureApi({
         store: exposures,
-        readinessCandidate: (candidate) => service.readinessCandidate(candidate),
-        readiness: (id, revision) => service.readiness(id, revision),
+        // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
         agents: options.agents,
-        views: registry,
         afterCommit: () => sender.afterCommit(),
-        // The owner page's provider guidance (S4's presentation metadata; readiness stays authoritative).
-        providerReason: (agent) => service.providerReason(agent.providerId),
       });
 
       return {

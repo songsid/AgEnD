@@ -190,7 +190,7 @@ describe("Settings → Connect to a Hub", () => {
     c.control.ownerConfirmed(); await settle(5);
     expect([...pg.root.querySelectorAll(".hub-steps li")].map((li: any) => li.className)).toEqual(["is-done", ""]);
   });
-  it("paired: the Hub key's fingerprint, Open the Hub (its web origin), the shared agents — each private, unsharable until restricted mode exists", async () => {
+  it("paired: the Hub key's fingerprint, Open the Hub (its web origin), the shared agents — each private, unsharable while the stub says so", async () => {
     const c = stub();
     await c.connect({ address: "https://hub-transport.example.test", code: "ABCD-EFGH" }); c.control.approve({ name: "Team Hub", webOrigin: "https://hub.example.test" });
     const pg = await mountCard();
@@ -200,7 +200,7 @@ describe("Settings → Connect to a Hub", () => {
     expect((pg.root.querySelector(".hub-paired a.btn") as any).getAttribute("href")).toBe("https://hub.example.test");
     const boxes = [...pg.root.querySelectorAll(".hub-exposure input")] as any[];
     expect(boxes.map((b) => [b.checked, b.disabled])).toEqual([[false, true], [false, true]]);
-    expect(pg.root.querySelector(".hub-exposure-why")!.textContent).toContain("restricted mode isn't available");
+    expect(pg.root.querySelector(".hub-exposure-why")!.textContent).toBe("This agent can't be shared right now. Reload the page and try again.");
   });
   it("key changed: both keys, labelled; no Open the Hub; on hold: why, in words", async () => {
     const c = stub();
@@ -356,13 +356,7 @@ describe("Settings → Connect to a Hub: a conflict reloads the list (Fable on #
     const before = reads;
     const box = pg.root.querySelector(".hub-exposure input") as any;
     box.checked = true; fire(box, "change");
-    // S3c: switching on opens the picker (its one data view preselected); a tool is picked, then Share sends it.
-    await until(() => pg.root.querySelector(".hub-exposure-pick"));
-    expect((pg.root.querySelector(".hub-exposure-pick select") as any).value).toBe("summary");
-    const tool = pg.root.querySelector(".hub-exposure-tools input") as any;
-    tool.checked = true; fire(tool, "change");
-    await until(() => !(pg.root.querySelector(".hub-exposure-pick .btn-primary") as any).disabled);
-    (pg.root.querySelector(".hub-exposure-pick .btn-primary") as any).click();
+    // P1 representative agent: switching on shares the agent itself at once (no picker; the owner confirms after).
     await until(() => pg.root.querySelector(".hub-exposures .err"));
     expect(pg.root.querySelector(".hub-exposures .err")!.textContent).toBe("This list changed in another tab. It has been reloaded; try again.");
     expect(reads).toBe(before + 1);

@@ -22,6 +22,7 @@ import { executionPolicyDigest, type HubDocumentView } from "../execution/views.
 import type { HubExecutionReadiness, HubLocalExposure } from "../execution/service.js";
 import type { HubMigration } from "../db.js";
 import type { HubMemberLink } from "../client.js";
+import { HUB_AGENT_MODE, agentPolicyDigest } from "./agent-mode.js";
 
 /** P1: at most this many published exposures a member (protocol: the snapshot's 64). */
 export const HUB_EXPOSURE_MAX = 64;
@@ -60,6 +61,19 @@ export interface HubExposureRow { agent: string; committed: HubLocalExposure | n
 type Row = { id: string; agent: string; committed: string | null; staged: string | null };
 const parse = (s: string | null): HubLocalExposure | null => (s ? JSON.parse(s) as HubLocalExposure : null);
 const same = (a: unknown, b: unknown) => canonicalArguments([a]) === canonicalArguments([b]);
+/**
+ * An exposure's policy digest. P1's representative agent (agent-mode.ts): exactly providerId "agent", dataViewId
+ * "agent" and no tools, else refused. Any other descriptor is a legacy approved-view mapping, judged as before.
+ */
+function policyDigestOf(views: ReadonlyMap<string, HubDocumentView>, d: { agent: string; providerId: string; dataViewId: string; allowedTools: readonly string[] }): string {
+  if (d.providerId === HUB_AGENT_MODE || d.dataViewId === HUB_AGENT_MODE) {
+    if (d.providerId !== HUB_AGENT_MODE || d.dataViewId !== HUB_AGENT_MODE || d.allowedTools.length !== 0) throw new HubExposureRefusal("not_enforceable");
+    return agentPolicyDigest(d.agent);
+  }
+  const view = views.get(d.dataViewId);
+  if (!view) throw new HubExposureRefusal("unknown_view");
+  try { return executionPolicyDigest(view, d.allowedTools); } catch { throw new HubExposureRefusal("not_enforceable"); }
+}
 
 export class HubExposureStore {
   private failed = false;
@@ -128,16 +142,13 @@ export class HubExposureStore {
   // ── The owner's changes ──
   /**
    * Stage the next revision of `agent`'s exposure (or its first): a candidate S4 can judge (readinessCandidate) and
-   * nobody can admit (state "withdrawn" until publish). Refused: not paired, an unknown view or tools S4 would deny,
-   * a committed revision other than the one the owner saw (conflict), more than HUB_EXPOSURE_MAX published.
+   * nobody can admit (state "withdrawn" until publish). Refused: not paired, a descriptor that is neither the exact
+   * representative agent nor an approved view (agent-mode.ts), a committed revision other than the one the owner saw (conflict), more than HUB_EXPOSURE_MAX published.
    */
   stage(input: HubExposureInput): HubLocalExposure {
     const binding = this.options.binding();
     if (!binding) throw new HubExposureRefusal("not_paired");
-    const view = this.options.views.get(input.dataViewId);
-    if (!view) throw new HubExposureRefusal("unknown_view");
-    let policyDigest: string;
-    try { policyDigest = executionPolicyDigest(view, input.allowedTools); } catch { throw new HubExposureRefusal("not_enforceable"); }
+    const policyDigest = policyDigestOf(this.options.views, input);
     const before = this.rowOf(input.agent), id = before?.id ?? randomUUID();
     return this.change("exposure.staged", id, () => {
       const row = this.rowOf(input.agent), committed = parse(row?.committed ?? null);
@@ -164,9 +175,8 @@ export class HubExposureStore {
       const row = this.rowById(id), committed = parse(row?.committed ?? null), binding = this.options.binding();
       if (!row || !same(parse(row.staged), candidate) || (committed?.exposure.revision ?? 0) !== candidate.exposure.revision - 1) throw new HubExposureRefusal("conflict");
       if (!binding || !same(binding.owner, candidate.exposure.owner) || binding.fleetId !== candidate.exposure.fleetId) throw new HubExposureRefusal("conflict");
-      const view = this.options.views.get(candidate.exposure.dataViewId);
       let digest = "";
-      try { digest = view ? executionPolicyDigest(view, candidate.exposure.allowedTools) : ""; } catch { digest = ""; }
+      try { digest = policyDigestOf(this.options.views, { agent: candidate.agent, providerId: candidate.providerId, dataViewId: candidate.exposure.dataViewId, allowedTools: candidate.exposure.allowedTools }); } catch { digest = ""; }
       if (digest !== candidate.exposure.policyDigest) throw new HubExposureRefusal("not_enforceable");
       const r = ready(candidate);
       if (!r.ok || r.policyDigest !== candidate.exposure.policyDigest || r.exposureRevision !== candidate.exposure.revision) throw new HubExposureRefusal("not_enforceable");

@@ -2,8 +2,9 @@
  * S3c (S-55): the member card's exposures on the real endpoints (createMemberClient) and the owner's picker.
  * - The member client: the list; publish with the picked view and tools (a 202 is "waiting for your confirmation":
  *   pending + settled); withdraw by the row's exposureId (remote "pending"); an older host's 404 is "unavailable".
- * - The card: switching on opens the picker under that row (one choice preselected), Share sends the pick; a row with a
- *   pending confirmation says so and its switch waits; the refusals' words (limit, not available).
+ * - The card (P1 representative agent, docs/design/hub-representative-agent.md): switching on shares the agent itself
+ *   ({ dataViewId: "agent", tools: [] }) for confirmation; a legacy row says republish_required and offers Share again;
+ *   a row with a pending confirmation says so and its switch waits; the refusals' words (limit, not available).
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
@@ -24,7 +25,7 @@ beforeAll(async () => {
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); });
 
 const ROW = { agent: "atlas", display: "Atlas", exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: true,
-  choices: { dataViews: [{ id: "notes", label: "notes" }], tools: [{ name: "documents.read", label: "Read documents" }] }, pending: null };
+  choices: { dataViews: [{ id: "agent", label: "Atlas" }], tools: [] }, pending: null };
 function confirmFake(answers: Record<string, (opts: any) => { ok: boolean; status: number; body: any }>) {
   const calls: Array<[string, any]> = [];
   return { calls, confirm: {
@@ -38,10 +39,10 @@ describe("the member client", () => {
     const f = confirmFake({ "GET /api/hub/member/exposures": () => ({ ok: true, status: 200, body: { ok: true, exposures: [ROW] } }),
       "POST /api/hub/member/exposures": () => ({ ok: false, status: 202, body: { ok: true, result: "pending_confirmation", pending_change: { id: "p".repeat(32), expires_at: 123 } } }) });
     const c = client.createMemberClient({ confirm: f.confirm });
-    const r = await c.setExposed("atlas", true, 0, { dataViewId: "notes", tools: ["documents.read"] });
+    const r = await c.setExposed("atlas", true, 0, { dataViewId: "agent", tools: [] });
     expect(r).toMatchObject({ ok: true, pending: { expiresAt: 123 }, view: { agent: "atlas", pending: { expiresAt: 123 } } });
     expect(await r.settled).toEqual({ state: "applied" });
-    expect(JSON.parse(f.calls[1]![1].body)).toEqual({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 });
+    expect(JSON.parse(f.calls[1]![1].body)).toEqual({ agent: "atlas", dataViewId: "agent", tools: [], expectedRevision: 0 });
     expect(f.calls[1]![1].headers).toMatchObject({ "Idempotency-Key": "k1" });
     expect(await c.setExposed("atlas", true, 0)).toEqual({ ok: false, error: "not_enforceable" });       // no pick: never sent
     expect(await c.setExposed("ghost", true, 0, { dataViewId: "notes", tools: [] })).toEqual({ ok: false, error: "unknown_agent" });
@@ -60,7 +61,7 @@ describe("the member client", () => {
   });
 });
 
-describe("the card's picker and pending rows", () => {
+describe("the card's agent share and pending rows", () => {
   async function cardWith(c: any) {
     client.setHubClient(c);
     const pg = page({ url: "http://127.0.0.1:19280/settings/access", storage: { agend_tour_done: "1" } }); mounted.push(pg);
@@ -72,41 +73,54 @@ describe("the card's picker and pending rows", () => {
   const fakeClient = (rows: any[], setExposed: any = vi.fn(async () => ({ ok: true, view: rows[0] }))) => ({
     stub: false, pairing: async () => ({ state: "paired", hub: { hubId: "h", name: "Team", memberOrigin: "https://hub.test", webOrigin: "https://hub.test", fingerprint: { kind: "hub-key", digest: "a".repeat(64) } }, link: "online" }),
     subscribe: () => () => {}, exposures: async () => rows, setExposed });
-  it("switching on opens the picker (one choice preselected); Share sends the pick; a 202 says it waits for confirmation", async () => {
+  it("switching on shares the agent itself (no picker, no Hub tools); a 202 says it waits for confirmation; the lead says what sharing means", async () => {
     const setExposed = vi.fn(async () => ({ ok: true, pending: { expiresAt: 9 }, view: { ...ROW, pending: { expiresAt: 9 } }, settled: new Promise(() => {}) }));
     const pg = await cardWith(fakeClient([ROW], setExposed));
+    expect(pg.root.querySelector(".hub-exposures .note")!.textContent).toContain("answers Hub questions in its own conversation");
     const box = pg.root.querySelector(".hub-exposure input") as any;
     box.checked = true; fire(box, "change");
-    await until(() => pg.root.querySelector(".hub-exposure-pick"));
-    expect((pg.root.querySelector(".hub-exposure-pick select") as any).value).toBe("notes");
-    expect((pg.root.querySelector(".hub-exposure-tools input") as any).checked).toBe(true);
-    (pg.root.querySelector(".hub-exposure-pick .btn-primary") as any).click();
     await until(() => setExposed.mock.calls.length > 0 && pg.root.querySelector(".hub-exposures .note[role=status]"));
-    expect(setExposed).toHaveBeenCalledWith("atlas", true, 0, { dataViewId: "notes", tools: ["documents.read"] });
+    expect(setExposed).toHaveBeenCalledWith("atlas", true, 0, { dataViewId: "agent", tools: [] });
+    expect(pg.root.querySelector(".hub-exposure-pick")).toBeNull();
     expect(pg.root.querySelector(".hub-exposures [role=status]")!.textContent).toContain("Sent for confirmation");
+  });
+  it("a shared agent says where questions go; switching off withdraws", async () => {
+    const shared = { ...ROW, exposureId: "e1", revision: 1, state: "published", policy: { dataView: "agent", tools: [] } };
+    const setExposed = vi.fn(async () => ({ ok: true, remote: "pending" }));
+    const pg = await cardWith(fakeClient([shared], setExposed));
+    expect(pg.root.querySelector(".hub-exposure-why")!.textContent).toBe("Shared: Hub questions go to this agent's own conversation.");
+    const box = pg.root.querySelector(".hub-exposure input") as any;
+    box.checked = false; fire(box, "change");
+    await until(() => setExposed.mock.calls.length > 0);
+    expect(setExposed).toHaveBeenCalledWith("atlas", false, 1, null);
+  });
+  it.each(["en", "zh-TW"])("a legacy row (%s): says republish_required, its switch still withdraws, Share again sends the agent at its revision", async (lang) => {
+    const i18n = await import("/assets/app-i18n.js");
+    i18n.setLang(lang, { store: false });
+    try {
+      const legacy = { ...ROW, exposureId: "e1", revision: 3, state: "published", policy: { dataView: "notes", tools: ["documents.read"] }, enforceable: false, reason: "republish_required" };
+      const setExposed = vi.fn(async () => ({ ok: true, pending: { expiresAt: 9 }, view: legacy, settled: new Promise(() => {}) }));
+      const pg = await cardWith(fakeClient([legacy], setExposed));
+      const why = pg.root.querySelector(".hub-exposure-republish")!;
+      expect(why.textContent).toContain(lang === "en" ? "Hub questions are refused until you share this agent again" : "重新公開這個 Agent 之前");
+      expect((pg.root.querySelector(".hub-exposure input") as any).disabled).toBe(false);          // withdraw stays possible
+      const again = why.querySelector("button") as any;
+      expect(again.textContent).toBe(lang === "en" ? "Share again" : "重新公開");
+      again.click();
+      await until(() => setExposed.mock.calls.length > 0);
+      expect(setExposed).toHaveBeenCalledWith("atlas", true, 3, { dataViewId: "agent", tools: [] });
+    } finally { i18n.setLang("en", { store: false }); }
   });
   it("a pending row says so and its switch waits", async () => {
     const pg = await cardWith(fakeClient([{ ...ROW, pending: { expiresAt: 9 } }]));
     expect(pg.root.querySelector(".hub-exposure-pending")!.textContent).toBe("Waiting for your confirmation");
     expect((pg.root.querySelector(".hub-exposure input") as any).disabled).toBe(true);
   });
-  it.each([["limit", "At most 64 agents can be shared."], ["unavailable", "Not available on this AgEnD version."]])("a refusal %s has its words", async (error, words) => {
+  it.each([["limit", "At most 64 agents can be shared."], ["unavailable", "Not available on this AgEnD version."], ["unknown_view", "This agent can't be shared right now. Reload the page and try again."], ["not_enforceable", "This agent can't be shared right now. Reload the page and try again."]])("a refusal %s has its words", async (error, words) => {
     const pg = await cardWith(fakeClient([ROW], vi.fn(async () => ({ ok: false, error }))));
     const box = pg.root.querySelector(".hub-exposure input") as any; box.checked = true; fire(box, "change");
-    await until(() => pg.root.querySelector(".hub-exposure-pick .btn-primary"));
-    (pg.root.querySelector(".hub-exposure-pick .btn-primary") as any).click();
     await until(() => pg.root.querySelector(".hub-exposures .err"));
     expect(pg.root.querySelector(".hub-exposures .err")!.textContent).toBe(words);
-  });
-  it("Cancel closes the picker; nothing sent", async () => {
-    const setExposed = vi.fn();
-    const pg = await cardWith(fakeClient([ROW], setExposed));
-    const box = pg.root.querySelector(".hub-exposure input") as any; box.checked = true; fire(box, "change");
-    await until(() => pg.root.querySelector(".hub-exposure-pick"));
-    (pg.root.querySelectorAll(".hub-exposure-pick .btn")[1] as any).click();
-    await until(() => !pg.root.querySelector(".hub-exposure-pick"));
-    expect(pg.root.querySelector(".hub-exposure-pick")).toBeNull();
-    expect(setExposed).not.toHaveBeenCalled();
   });
 });
 
