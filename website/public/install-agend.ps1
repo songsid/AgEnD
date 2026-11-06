@@ -702,11 +702,13 @@ function Get-UbuntuWslImage([string]$version = 'Ubuntu-26.04') {
     if (-not $image -or -not $image.Url -or -not $image.Sha256) { return $null }
     return @{ Url = [string]$image.Url; Sha256 = (([string]$image.Sha256) -replace '^0x', '').ToUpperInvariant() }
 }
-# 新安裝依序試 26.04、24.04、22.04；專用 Linux 保留 $name，普通新安裝用實際版本名稱。
+# 新安裝依序試 26.04、24.04；專用 Linux 保留 $name，普通新安裝用實際版本名稱。
 # 只有確認沒有建立目標時才換版本；逾時、不明結果與 SHA256 不符都停止。$InstalledName 供接續與捷徑記下實際名稱。
 function Install-AgendDistro([string]$name, [string]$location, [switch]$UseVersionName, [ref]$InstalledName) {
     $version = Get-InstalledWslVersion
-    $candidates = @('Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04')
+    $candidates = @('Ubuntu-26.04', 'Ubuntu-24.04')
+    # Only an existing saved 22.04 plan may request 22.04; it is never a new-install fallback.
+    if ($UseVersionName -and $name -eq 'Ubuntu-22.04') { $candidates = @($name) }
     # A previously saved, not-yet-installed version keeps its plan and location.
     if ($UseVersionName -and $candidates -contains $name) {
         $candidates = @($candidates | Select-Object -Skip ([array]::IndexOf($candidates, $name)))
@@ -756,7 +758,7 @@ function Install-AgendDistro([string]$name, [string]$location, [switch]$UseVersi
             Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
         }
     }
-    Write-Err "Ubuntu 26.04、24.04、22.04 都沒有安裝成功；請確認網路與 WSL 狀態後重試。 / Ubuntu 26.04, 24.04 and 22.04 could not be installed; check the network and WSL, then retry."
+    Write-Err "$($candidates -join '、') 都沒有安裝成功；請確認網路與 WSL 狀態後重試。 / Ubuntu installation failed for $($candidates -join ', '); check the network and WSL, then retry."
     return $false
 }
 
@@ -2501,7 +2503,7 @@ Save-WslDrive $AgendWslDrive
 $TOTAL = 5
 
 # ═══════════════════════════════════════════════════════════
-# 階段 1: 安裝 WSL + Ubuntu 26.04（失敗時依序嘗試 24.04、22.04）
+# 階段 1: 安裝 WSL + Ubuntu 26.04（失敗時嘗試 24.04）
 # ═══════════════════════════════════════════════════════════
 
 Write-Step 1 $TOTAL "安裝 WSL ($UBUNTU_DISTRO)"

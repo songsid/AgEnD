@@ -216,7 +216,7 @@ Write-Output ("OK=" + (Install-AgendDistro 'AgEnD-2' '${join(scratch("agend-1853
     expect(calls(bin)).toMatch(/^--import AgEnD-2 /m);
   });
   it.each([["a download whose SHA256 is not the official one", { badHash: true }, "下載的 Ubuntu 和官方的檢查碼不符，沒有安裝。"],
-    ["no distribution list (offline)", { noList: true }, "Ubuntu 26.04、24.04、22.04 都沒有安裝成功"]])("%s: nothing imported, said plainly", async (_n, stub, said) => {
+    ["no distribution list (offline)", { noList: true }, "Ubuntu-26.04、Ubuntu-24.04 都沒有安裝成功"]])("%s: nothing imported, said plainly", async (_n, stub, said) => {
     const bin = fakeWsl([]);
     const { out } = (await withHelpers(`${imageStubs(stub)}
 function Get-InstalledWslVersion { return [version]'2.3.26.0' }
@@ -267,12 +267,14 @@ Write-Output ('DOWNLOADS='+($script:downloads -join ','))
     expect(out).toContain('IMAGES=Ubuntu-26.04');
     expect(out).not.toContain('--install Ubuntu-22.04');
   });
-  it('failed 26.04 download and unavailable 24.04 reach 22.04 in order', async () => {
+  it('failed 26.04 download and unavailable 24.04 stop without trying 22.04', async () => {
     const { out } = await withHelpers(fallbackHarness({images:"$version -eq 'Ubuntu-26.04'",downloadFails:'Ubuntu-26.04',direct:"$Arguments[1] -eq 'Ubuntu-22.04'"}), fakeWsl([]));
-    expect(out).toContain('OK=True SELECTED=Ubuntu-22.04');
+    expect(out).toContain('OK=False SELECTED=Ubuntu-26.04');
+    expect(out).not.toContain('--install Ubuntu-22.04');
     expect(out).toContain('IMAGES=Ubuntu-26.04,Ubuntu-24.04');
     expect(out).toContain('DOWNLOADS=Ubuntu-26.04');
-    expect(out).toMatch(/OPS=--install Ubuntu-26\.04 .*\|--install Ubuntu-24\.04 .*\|--install Ubuntu-22\.04 /);
+    expect(out).toMatch(/OPS=--install Ubuntu-26\.04 .*\|--install Ubuntu-24\.04 /);
+    expect(out).toContain('Ubuntu-26.04、Ubuntu-24.04 都沒有安裝成功');
   });
   it.each(['Ubuntu-24.04','Ubuntu-22.04'])('a saved %s plan starts at that version instead of being upgraded', async version => {
     const bin=fakeWsl([]);
