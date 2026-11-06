@@ -136,9 +136,11 @@ describe("quota history at the actual resume admission boundary", () => {
     const f = setup("codex", ""); f.saved(); await f.spawn();
     const frames = ["", fixture("codex-0159-resume-loading.pane.txt"), OLD, OLD];
     // Charge one startup tick per capture so scheduler load cannot exhaust the budget between fixture frames.
-    let clock = Date.now(); const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    let clock = performance.now(); const now = vi.spyOn(performance, "now").mockImplementation(() => clock);
     f.tmux.capturePane.mockImplementation(async () => { clock++; return frames.shift() ?? OLD; });
-    await f.admit(); now.mockRestore(); f.scan(OLD); expect(f.quota()).toEqual([]);
+    await f.admit(); now.mockRestore();
+    expect(frames).toEqual([]); expect(f.tmux.capturePane).toHaveBeenCalledTimes(4);
+    f.scan(OLD); expect(f.quota()).toEqual([]);
   });
   it.each(["dialog", "transient"])("exhausting startup on an unresolved %s never absorbs quota history", async kind => {
     const f = setup("codex", OLD + "\nfixture unresolved phase"); f.saved(); await f.spawn();
