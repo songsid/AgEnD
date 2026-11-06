@@ -937,7 +937,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 259,
+     "line": 265,
      "symbol": "LOGIN_FLOWS.claude-code.command"
     },
     {
@@ -945,7 +945,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 261,
+     "line": 267,
      "symbol": "LOGIN_FLOWS.claude-code.loginScreenPattern"
     },
     {
@@ -953,7 +953,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 261,
+     "line": 267,
      "symbol": "LOGIN_FLOWS.claude-code.loginScreenPattern"
     },
     {
@@ -961,7 +961,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 264,
+     "line": 270,
      "symbol": "LOGIN_FLOWS.claude-code.successPattern"
     },
     {
@@ -969,7 +969,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 264,
+     "line": 270,
      "symbol": "LOGIN_FLOWS.claude-code.successPattern"
     },
     {
@@ -977,7 +977,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 271,
+     "line": 277,
      "symbol": "LOGIN_FLOWS.claude-code.failures.pattern"
     }
    ]
@@ -2029,7 +2029,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 195,
+     "line": 201,
      "symbol": "LOGIN_FLOWS.codex.command"
     },
     {
@@ -2037,7 +2037,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 201,
+     "line": 207,
      "symbol": "LOGIN_FLOWS.codex.successPattern"
     }
    ]
@@ -3681,7 +3681,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 181,
+     "line": 187,
      "symbol": "KIRO_EXPIRED_LOGIN_SCREEN"
     },
     {
@@ -3689,7 +3689,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 181,
+     "line": 187,
      "symbol": "KIRO_EXPIRED_LOGIN_SCREEN"
     },
     {
@@ -3697,7 +3697,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 184,
+     "line": 190,
      "symbol": "KIRO_LOGIN_REQUIRED_SCREEN"
     },
     {
@@ -3705,7 +3705,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 187,
+     "line": 193,
      "symbol": "KIRO_LOGIN_SCREEN"
     },
     {
@@ -3713,7 +3713,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 222,
+     "line": 228,
      "symbol": "LOGIN_FLOWS.kiro-cli.command"
     },
     {
@@ -3721,7 +3721,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 241,
+     "line": 247,
      "symbol": "LOGIN_FLOWS.kiro-cli.successPattern"
     },
     {
@@ -3729,7 +3729,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 241,
+     "line": 247,
      "symbol": "LOGIN_FLOWS.kiro-cli.successPattern"
     },
     {
@@ -3737,7 +3737,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 241,
+     "line": 247,
      "symbol": "LOGIN_FLOWS.kiro-cli.successPattern"
     },
     {
@@ -3745,7 +3745,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 247,
+     "line": 253,
      "symbol": "LOGIN_FLOWS.kiro-cli.preCommand.command"
     },
     {
@@ -3753,7 +3753,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 249,
+     "line": 255,
      "symbol": "LOGIN_FLOWS.kiro-cli.failures.pattern"
     },
     {
@@ -3761,7 +3761,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 250,
+     "line": 256,
      "symbol": "LOGIN_FLOWS.kiro-cli.failures.pattern"
     }
    ]
@@ -3773,7 +3773,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/grok.ts",
-     "line": 33,
+     "line": 35,
      "symbol": "GROK_LEGEND_QUESTION"
     },
     {
@@ -3781,7 +3781,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/grok.ts",
-     "line": 34,
+     "line": 36,
      "symbol": "GROK_LEGEND_SCROLLBACK"
     },
     {
@@ -3789,31 +3789,31 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 46,
-     "symbol": "grokWeeklyLimitDialog.pattern"
+     "line": 48,
+     "symbol": "grokWeeklyLimitActive.pattern"
     },
     {
      "text": "You hit your weekly limit.",
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 76,
-     "symbol": "grokWeeklyLimitDialog.isActive.title"
+     "line": 67,
+     "symbol": "grokWeeklyLimitActive.title"
     },
     {
      "text": "navigate · y copy Enter:submit",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 77,
-     "symbol": "grokWeeklyLimitDialog.isActive.submit"
+     "line": 68,
+     "symbol": "grokWeeklyLimitActive.submit"
     },
     {
      "text": "Logged in",
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/grok.ts",
-     "line": 278,
+     "line": 410,
      "symbol": "GrokBackend.isDeliveryComposerPane"
     },
     {
@@ -3821,7 +3821,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/grok.ts",
-     "line": 294,
+     "line": 426,
      "symbol": "GrokBackend.getReadyPattern"
     },
     {
@@ -3829,7 +3829,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 373,
+     "line": 514,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3837,7 +3837,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 373,
+     "line": 514,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3845,7 +3845,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 373,
+     "line": 514,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3853,7 +3853,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 373,
+     "line": 514,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3861,7 +3861,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 374,
+     "line": 515,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3869,7 +3869,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 381,
+     "line": 522,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3877,7 +3877,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 385,
+     "line": 526,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3885,7 +3885,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 385,
+     "line": 526,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3893,7 +3893,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 385,
+     "line": 526,
      "symbol": "GrokBackend.getErrorPatterns.notice"
     },
     {
@@ -3901,7 +3901,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 394,
+     "line": 535,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3909,7 +3909,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 394,
+     "line": 535,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3917,7 +3917,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 394,
+     "line": 535,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3925,7 +3925,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 394,
+     "line": 535,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3933,7 +3933,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 395,
+     "line": 536,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3941,7 +3941,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 428,
+     "line": 570,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3949,7 +3949,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 434,
+     "line": 576,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3957,7 +3957,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 434,
+     "line": 576,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3989,7 +3989,7 @@
      "kind": "string",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 207,
+     "line": 213,
      "symbol": "LOGIN_FLOWS.grok.command"
     },
     {
@@ -3997,7 +3997,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 209,
+     "line": 215,
      "symbol": "LOGIN_FLOWS.grok.loginScreenPattern"
     },
     {
@@ -4005,7 +4005,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 215,
+     "line": 221,
      "symbol": "LOGIN_FLOWS.grok.successPattern"
     },
     {
@@ -4013,7 +4013,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 215,
+     "line": 221,
      "symbol": "LOGIN_FLOWS.grok.successPattern"
     }
    ]
@@ -4177,7 +4177,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/login-flows.ts",
-     "line": 289,
+     "line": 295,
      "symbol": "LOGIN_FLOWS.antigravity.loginScreenPattern"
     }
    ]
