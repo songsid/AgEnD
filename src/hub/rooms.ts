@@ -14,7 +14,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { HubProtocolError, scalarString } from "./validation.js";
 import { messageContentDigest, personKeyString } from "./identity.js";
 import { HUB_LIMITS } from "./protocol.js";
-import type { HubAttachmentRef } from "./types.js";
+import type { HubAttachmentChunk, HubAttachmentRef } from "./types.js";
 import type { HubAttachmentStore } from "./attachments/store.js";
 import { isInlineImage } from "./attachments/limits.js";
 import type { HubAnswer, HubExposure, HubReceipt, HubReconcile, HubReconcileReply, HubRequestContext, HubRoom, HubRoomEntry, HubServerFrame } from "./types.js";
@@ -138,15 +138,17 @@ export class HubRoomsService {
   }
 
   /** This person's rooms that are still open, newest first, with the exposure's name. */
-  async list(ctx: HubRequestContext): Promise<readonly (HubRoom & { exposureName: string })[]> {
+  async list(ctx: HubRequestContext): Promise<readonly (HubRoom & { exposureName: string; features: readonly string[] })[]> {
     const me = personKeyString(await ctx.requirePerson());
-    return this.core.atomic((db) => (db.prepare(`SELECT r.*, e.display_name AS exposure_name FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id
-      WHERE r.asker=? AND r.state='active' ORDER BY r.created_at DESC LIMIT 100`).all(me) as (RoomRow & { exposure_name: string })[])
-      .map((r) => ({ ...roomOf(r), exposureName: r.exposure_name })));
+    return this.core.atomic((db) => (db.prepare(`SELECT r.*, e.display_name AS exposure_name, e.fleet_id AS fleet_id FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id
+      WHERE r.asker=? AND r.state='active' ORDER BY r.created_at DESC LIMIT 100`).all(me) as (RoomRow & { exposure_name: string; fleet_id: string })[])
+      // features: what the fleet's current link takes (e.g. attachments-v1), so the page never offers a dead control.
+      .map((r) => ({ ...roomOf(r), exposureName: r.exposure_name, features: this.features(r.fleet_id) })));
   }
 
   /** Ask in a room: committed with its audit before "queued" is reported; then sent if the member is on. */
-  async ask(ctx: HubRequestContext, roomId: string, idempotencyKey: string, text: string): Promise<HubReceipt> {
+  async ask(ctx: HubRequestContext, roomId: string, idempotencyKey: string, text: string, fileIds: readonly string[] = []): Promise<HubReceipt> {
+    if (fileIds.length) this.store();
     if (typeof text !== "string" || !text.trim() || Buffer.byteLength(text, "utf8") > HUB_LIMITS.question || !scalarString(text)) throw new HubProtocolError("invalid");
     if (!/^[a-f0-9-]{36}$/.test(idempotencyKey)) throw new HubProtocolError("invalid");
     const asker = await ctx.requirePerson(), me = personKeyString(asker);
@@ -155,11 +157,12 @@ export class HubRoomsService {
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
-    const digest = sha(text), now = this.core.now();
+    const now = this.core.now(), store = this.core.deps.attachments;
     const out = this.core.atomic((db, tx) => {
       const dup = db.prepare("SELECT * FROM hub_messages WHERE room_id=? AND idempotency_key=?").get(roomId, idempotencyKey) as MessageRow | undefined;
       if (dup) {
-        if (dup.content_digest !== digest) throw new HubProtocolError("conflict");
+        const bound = store?.forMessage(db, dup.id, "question") ?? [];
+        if (dup.content_digest !== messageContentDigest("question", text, { attachments: bound }) || bound.map(f => f.id).join() !== fileIds.join()) throw new HubProtocolError("conflict");
         return { receipt: receiptOf(dup), fleet: null as string | null };
       }
       const r = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow;
@@ -168,8 +171,12 @@ export class HubRoomsService {
       if (!e || !g) throw new HubProtocolError("revoked");
       const exposure = exposureOf(e), grant = grantOf(g);
       if (exposure.state !== "published" || !grantApplies(grant, exposure, asker, now)) throw new HubProtocolError("revoked");
+      // Files: the asker's own pending uploads in this room, sent only over a link that takes them.
+      const files = fileIds.length ? (this.requireFiles(exposure.fleetId), store!.pending(db, roomId, me, fileIds)) : [];
+      const digest = messageContentDigest("question", text, { attachments: files });
       const sequence = ((db.prepare("SELECT MAX(sequence) AS n FROM hub_messages WHERE room_id=?").get(roomId) as { n: number | null }).n ?? 0) + 1;
       const id = randomUUID(), ref = this.core.deps.content.put(tx, { question: text });
+      if (files.length) store!.bindQuestion(db, files, id, exposure.fleetId);
       db.prepare(`INSERT INTO hub_messages(id, room_id, idempotency_key, sequence, fleet_id, exposure_id, exposure_revision, grant_id, grant_revision, asker, owner,
         content_digest, question_ref, stage, stage_at, created_at, expires_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?)`)
         .run(id, roomId, idempotencyKey, sequence, exposure.fleetId, exposure.id, exposure.revision, grant.id, grant.revision, me, e.owner, digest, ref, now, now, now + QUESTION_LIFETIME_MS);
@@ -204,11 +211,15 @@ export class HubRoomsService {
         || exposure.state === "withdrawn") throw new HubProtocolError("revoked");
       return db.prepare("SELECT * FROM hub_messages WHERE room_id=? AND sequence>? ORDER BY sequence LIMIT 100").all(roomId, after) as MessageRow[];
     });
+    const store = this.core.deps.attachments;
+    const files = store ? this.core.atomic((db) => new Map(rows.map(m => [m.id, { question: store.forMessage(db, m.id, "question"), answer: store.forMessage(db, m.id, "answer") }]))) : null;
     return rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
+      const f = files?.get(m.id), qf = f?.question.map(r => fileView(roomId, r)) ?? [], af = f?.answer.map(r => fileView(roomId, r)) ?? [];
       return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m),
-        ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}) };
+        ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
+        ...(qf.length || af.length ? { files: { ...(qf.length ? { question: qf } : {}), ...(af.length ? { answer: af } : {}) } } : {}) };
     });
   }
 
@@ -242,12 +253,20 @@ export class HubRoomsService {
             return null;
           }
           const text = this.core.deps.content.get(msg.question_ref)?.question;
-          if (text === undefined || sha(text) !== msg.content_digest) throw new HubProtocolError("uncertain");
+          const files = this.core.deps.attachments?.forMessage(db, msg.id, "question") ?? [];
+          if (files.length && !link.features.has(FILES)) {
+            // The fleet's link no longer takes files (an older member reconnected): fail it visibly, never send it without them.
+            db.prepare("UPDATE hub_messages SET stage='failed', reason_code='incompatible', stage_at=? WHERE id=?").run(now, msg.id);
+            this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "local-host" }, action: "question.failed", result: "held", reasonCode: "incompatible",
+              messageId: msg.id, roomId: msg.room_id, fleetId, exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner), grantId: msg.grant_id, grantRevision: msg.grant_revision });
+            return null;
+          }
+          if (text === undefined || messageContentDigest("question", text, { attachments: files }) !== msg.content_digest) throw new HubProtocolError("uncertain");
           const identity = this.core.deps.issuer.sign({ v: 1, issuer: this.core.deps.config.hubId, issuerKeyId: this.core.deps.issuer.keyId, messageId: msg.id,
             asker: personFromString(msg.asker), owner: personFromString(msg.owner), destinationFleetId: fleetId, exposureId: msg.exposure_id, roomId: msg.room_id,
             grantId: msg.grant_id, grantRevision: msg.grant_revision, exposureRevision: msg.exposure_revision, revocationVersion: this.core.revocationVersion(),
             contentDigest: msg.content_digest, issuedAt: now, expiresAt: now + ENVELOPE_MS, nonce: randomBytes(32).toString("hex") });
-          return { v: 1, type: "question", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { text, identity } };
+          return { v: 1, type: "question", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { text, identity, ...(files.length ? { attachments: files } : {}) } };
         });
         if (!frame) continue;
         const transport = this.core.deps.transport();
@@ -312,6 +331,13 @@ export class HubRoomsService {
         const facts = messageFacts(db, msg, now);
         if (!facts.ok) throw new HubProtocolError(facts.reason);
         const ref = this.core.deps.content.put(tx, { answer: a.text });
+        if (a.attachments?.length) {
+          if (!link.features.has(FILES)) throw new HubProtocolError("incompatible");
+          this.store().bindAnswer(db, a.attachments, msg.id, msg.room_id, link.fleetId);
+          for (const f of a.attachments) this.core.audit(tx, { requestId: a.releaseLease.decisionId, actor: { kind: "member", fleetId: link.fleetId }, action: "file.transfer", result: "completed",
+            reasonCode: `answer:${f.size}:${f.mime}:${f.sha256}`, contentRef: this.core.deps.content.put(tx, { answer: f.name }), messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId,
+            exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner), grantId: msg.grant_id, grantRevision: msg.grant_revision });
+        }
         db.prepare("UPDATE hub_messages SET answer_id=?, answer_digest=?, answer_ref=?, stage='answered', stage_at=? WHERE id=?").run(a.answerId, a.contentDigest, ref, now, msg.id);
         this.core.audit(tx, { requestId: a.releaseLease.decisionId, actor: { kind: "member", fleetId: link.fleetId }, action: "answer.accepted", result: "completed",
           messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId, exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner),
@@ -320,6 +346,28 @@ export class HubRoomsService {
       const done = readMessage(db, a.messageId)!;
       return { messageId: done.id, contentDigest: done.content_digest, stage: "answered" as const, sequence: Math.max(1, done.member_sequence), at: done.stage_at };
     });
+  }
+
+  /** attachments-v1: the member pulls one chunk of a file of a question sent to its fleet (in order, one in flight). */
+  attachmentGet(input: { id: string; offset: number }, link: HubLinkContext): HubAttachmentChunk {
+    if (!link.features.has(FILES)) throw new HubProtocolError("incompatible");
+    const store = this.store(), now = this.core.now();
+    return this.core.atomic((db, tx) => {
+      const row = store.row(db, input.id), msg = row?.message_id ? readMessage(db, row.message_id) : undefined;
+      if (!row || row.direction !== "question" || row.state !== "bound" || !msg || msg.fleet_id !== link.fleetId || TERMINAL.has(msg.stage) || msg.expires_at <= now) throw new HubProtocolError("not-found");
+      const chunk = store.chunk(db, row.sha256, input.offset);
+      if (input.offset === 0) this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: "file.transfer", result: "allowed",
+        reasonCode: `question:${row.size}:${row.mime}:${row.sha256}`, messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId, exposureId: msg.exposure_id,
+        ownerAtEvent: personFromString(msg.owner), grantId: msg.grant_id, grantRevision: msg.grant_revision });
+      return { id: row.id, offset: input.offset, total: chunk.total, sha256: row.sha256, data: chunk.data.toString("base64") };
+    });
+  }
+  /** attachments-v1: one chunk of an answer's file from the member, before the answer that names it. */
+  attachmentPut(input: HubAttachmentChunk, link: HubLinkContext): { id: string; offset: number } {
+    if (!link.features.has(FILES)) throw new HubProtocolError("incompatible");
+    const store = this.store(), data = b64(input.data);
+    this.core.atomic((db) => { store.stage(db, link.fleetId, { id: input.id, offset: input.offset, total: input.total, sha256: input.sha256, data }); });
+    return { id: input.id, offset: input.offset };
   }
 
   /** The member's reconcile page: the retained receipts after its cursor (the Hub's ACKs), at most 128 per page. */
