@@ -31,10 +31,11 @@ const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
  * first). Never Enter, never a digit, never `y` — digit 3 does not move grok's highlight, and Enter on the default
  * (option 1, Upgrade) is a paid action. The modal leaves no error row, so the quota pause comes from dismissIncident.
  *
- * After the recorded reset: two Downs then Enter, from the captured default highlight on option 1, lands on Try Again.
- * Daemon `capture-pane -p` has no reverse-video, so the cursor cannot be re-read; the sequence is the verified path
- * (fixtures `tests/fixtures/grok-1.0.77-weekly-reset/`). A failed Enter while still limited re-shows the picker on
- * option 1; the next scan Shift+x-pauses again.
+ * After the recorded reset: two Downs then Enter lands on Try Again. The list does not wrap (1.0.77 offline:
+ * Down on option 3 stays on 3; Down×2 from option 2 is 2→3→3), so Down×2 from any start ends on option 3.
+ * Daemon `capture-pane -p` has no reverse-video, so the cursor cannot be re-read; the sequence is the verified
+ * start-independent path (fixtures `tests/fixtures/grok-1.0.77-weekly-reset/`). A failed Enter while still limited
+ * re-shows the picker on option 1; the next scan Shift+x-pauses again.
  */
 const GROK_LEGEND_QUESTION = /^Tab:next answer\s+│\s+Esc:scrollback\s+│\s+Shift\+x:dismiss$/;
 const GROK_LEGEND_SCROLLBACK = /^Tab\/Space:question\s+│\s+Ctrl\+e:collapse thinking\s+│\s+Ctrl\+x:shortcuts$/;
@@ -113,8 +114,18 @@ function grokWeeklyLimitDialog(instanceDir: string): RuntimeDialog {
 }
 
 /**
- * After the recorded reset: Down×2 from the captured default (option 1, reverse-video) then Enter on Try Again.
+ * After the recorded reset: Down×2 then Enter on Try Again.
  * Unique autoResolutionKey so a still-limited re-show falls through to Shift+x on the next scan.
+ *
+ * The list does not wrap (1.0.77 offline: Down on option 3 stays on 3, `down3.esc.txt`; Down×2 from option 2 is
+ * 2→3→3, `from2-downx2.esc.txt`). Down×2 from any start therefore ends on Try Again (1→3, 2→3 clamped, 3→3), so
+ * the sequence is start-independent. Daemon `capture-pane -p` has no SGR 7. A non-default start is reachable
+ * (View/terminal arrows before the reset; a mid-sequence abort after one Down; a later auto-resolved dialog
+ * overwriting the one-slot runtime claim so Try Again can run again in that spawn).
+ *
+ * isActive has a side effect: when the modal is gone and pending is set it clears the reset file. The daemon
+ * calls isActive from every probe and scan. A future "pure matcher" refactor must keep that clear — alpha
+ * re-reads the pane before each key, so the clock cannot be dropped in answerDetail.
  */
 function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: { value: boolean }): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
