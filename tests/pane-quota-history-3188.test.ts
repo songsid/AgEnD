@@ -8,7 +8,7 @@ import { CodexBackend } from "../src/backend/codex.js";
 import { GrokBackend } from "../src/backend/grok.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import { snapshotCodexQuotaHistory } from "../src/backend/codex-quota-history.js";
-import { quotaHistoryCount } from "../src/pane-quota-history.js";
+import { quotaHistoryCount, quotaAfterInput } from "../src/pane-quota-history.js";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 const OLD = fixture("codex-0166-resumed-quota.pane.txt");
@@ -200,6 +200,74 @@ describe("quota history at the actual resume admission boundary", () => {
 });
 
 describe("pre-input observation is committed only for this input's owner", () => {
+
+  it("a new real Codex error after acknowledged input replaces the old row without increasing the viewport count", async () => {
+    // Retained Codex0.165 Windows/mock captures: the old error scrolls out while an identical new error is painted.
+    const before = fixture("codex-0165-same-count-before.pane.txt"), after = fixture("codex-0165-same-count-after.pane.txt");
+    const f = setup("codex", before);
+    const pattern = f.backend.getErrorPatterns!().find(ep => (Daemon as any).isCodexUsageLimitPause(ep))!.pattern;
+    expect((Daemon as any).countOccurrences(pattern, before)).toBe(1);
+    expect((Daemon as any).countOccurrences(pattern, after)).toBe(1);
+    f.d.sendDeliveryEnter = vi.fn(async () => true); f.d.confirmSubmitted = vi.fn(async () => "submitted");
+    vi.useFakeTimers(); const input = f.d.submitSystemPaste("Q-NEW-LIMIT-d702cfa6", "same-count");
+    await vi.advanceTimersByTimeAsync(1000); await expect(input).resolves.toBe(true);
+    expect(f.tmux.pasteBuffer).toHaveBeenCalledTimes(1); expect(f.d.sendDeliveryEnter).toHaveBeenCalledOnce();
+    f.scan(); expect(f.quota()).toEqual([]);
+    f.state.pane = after; f.d.startErrorMonitor(); await vi.advanceTimersByTimeAsync(6000);
+    expect(f.quota()).toEqual([expect.objectContaining({ action: "pause" })]);
+  });
+
+
+  it.each(["missing", "ambiguous", "already-visible", "before-marker"])("a %s marker cannot promote an old same-count quota", async kind => {
+    const before = fixture("codex-0165-same-count-before.pane.txt"), after = fixture("codex-0165-same-count-after.pane.txt");
+    const marker = "Q-NEW-LIMIT-d702cfa6", f = setup("codex", kind === "already-visible" ? marker + "\n" + before : before);
+    const evidence = await f.d.capturePaneEvidence({ value: marker, unique: false }); f.d.commitPreInputQuotaHistory(evidence);
+    const screen = kind === "missing" ? after.replace(marker, "other request")
+      : kind === "ambiguous" ? marker + "\n" + after
+      : kind === "before-marker" ? before.replace("› Ask Codex to do anything", "› " + marker + "\n\n› Ask Codex to do anything") : after;
+    f.scan(screen); expect(f.quota()).toEqual([]);
+  });
+  it.each(["spawnGeneration", "launchFenceEpoch", "launchAttempt", "tmux", "window"])("a changed %s revokes a committed same-count input boundary", async field => {
+    const f = setup("codex", fixture("codex-0165-same-count-before.pane.txt"));
+    f.d.commitPreInputQuotaHistory(await f.d.capturePaneEvidence({ value: "Q-NEW-LIMIT-d702cfa6", unique: false }));
+    if (field === "tmux") f.d.tmux = { ...f.tmux };
+    else if (field === "window") f.tmux.getWindowId = () => "@replacement";
+    else f.d[field]++;
+    f.scan(fixture("codex-0165-same-count-after.pane.txt")); expect(f.quota()).toEqual([]);
+  });
+  it("a handled reserve incident cannot swallow a new quota after the acknowledged marker", async () => {
+    const f = setup("codex", fixture("codex-0165-same-count-before.pane.txt"));
+    f.d.commitPreInputQuotaHistory(await f.d.capturePaneEvidence({ value: "Q-NEW-LIMIT-d702cfa6", unique: false }));
+    f.d.codexReserveAck = { generation: f.d.spawnGeneration, count: 1 };
+    f.scan(fixture("codex-0165-same-count-after.pane.txt")); expect(f.quota()).toHaveLength(1);
+    f.scan(fixture("codex-0165-same-count-after.pane.txt")); expect(f.quota()).toHaveLength(1);
+  });
+  it("stopping retires a committed same-count input boundary", async () => {
+    const f = setup("codex", fixture("codex-0165-same-count-before.pane.txt"));
+    f.d.commitPreInputQuotaHistory(await f.d.capturePaneEvidence({ value: "Q-NEW-LIMIT-d702cfa6", unique: false }));
+    f.d.deliveryWritesStopping = true;
+    f.scan(fixture("codex-0165-same-count-after.pane.txt")); expect(f.quota()).toEqual([]);
+  });
+
+  it("the same post-input quota stays consumed beyond the notification cooldown", async () => {
+    const f = setup("codex", fixture("codex-0165-same-count-before.pane.txt"));
+    f.d.commitPreInputQuotaHistory(await f.d.capturePaneEvidence({ value: "Q-NEW-LIMIT-d702cfa6", unique: false }));
+    const after = fixture("codex-0165-same-count-after.pane.txt");
+    f.scan(after); expect(f.quota()).toHaveLength(1);
+    f.d.clearErrorRecoveryGate();
+    f.d.evaluateErrorPatterns(after, f.backend.getErrorPatterns(), f.backend.getReadyPattern(), Date.now() + 900_000);
+    expect(f.quota()).toHaveLength(1);
+  });
+
+  it("Grok also counts a new identical quota below its acknowledged input", async () => {
+    const f = setup("grok", GROK);
+    f.d.commitPreInputQuotaHistory(await f.d.capturePaneEvidence({ value: "next-request", unique: false }));
+    const after = "│ ❯ next-request │\n┃ out of credits\n│ ❯ │";
+    const ep = f.backend.getErrorPatterns!().find(ep => ep.type === "quota")!;
+    expect((Daemon as any).countOccurrences(ep.pattern, GROK)).toBe(1); expect((Daemon as any).countOccurrences(ep.pattern, after)).toBe(1);
+    f.scan(after); f.scan(after); expect(f.quota()).toHaveLength(1);
+  });
+
   it.each(["ordinary", "system"])("the real %s paste path absorbs only the captured old rows", async path => {
     const f = setup("grok", GROK);
     f.d.paneInTmuxMode = vi.fn(async () => false);
@@ -276,5 +344,16 @@ describe("bounded, immutable Codex rollout evidence", () => {
     expect(quotaHistoryCount(OLD, pattern, [MESSAGE])).toBe(1);
     expect(quotaHistoryCount(HIT, pattern, [MESSAGE])).toBe(0);
     expect(quotaHistoryCount(OLD, pattern, [MESSAGE, MESSAGE])).toBe(1);
+  });
+});
+
+
+describe("quota input marker placement", () => {
+  it("follows wrapped Unicode markers while retaining raw error text", () => {
+    expect(quotaAfterInput("› 前文 abc\n  def\n■ quota text", "abcdef")).toBe("\n■ quota text");
+    expect(quotaAfterInput("› 前文 🐈\n marker\n■ quota text", "🐈marker")).toBe("\n■ quota text");
+  });
+  it.each(["", "missing", "twice"])("a %s marker has no unambiguous position", kind => {
+    expect(quotaAfterInput("twice twice", kind)).toBeNull();
   });
 });

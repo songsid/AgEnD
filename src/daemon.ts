@@ -1,4 +1,4 @@
-import { quotaHistoryCount } from "./pane-quota-history.js";
+import { quotaHistoryCount, quotaAfterInput } from "./pane-quota-history.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
@@ -619,7 +619,7 @@ type SubmitProof = "submitted" | "stranded" | "unproven" | "unverifiable";
 interface PaneEvidence {
   /** Metadata from this pre-input picture; committed only after a successful, still-owned input submission. */
   quotaHistory?: { spawn: number; fence: number; attempt: number; tmux: TmuxManager | null; window: string | undefined;
-    counts: Array<{ key: string; count: number }> };
+    counts: Array<{ key: string; count: number }>; marker: string; occurrences: number };
 
   /** Rows carrying the backend's queued-input marker. */
   queued: number;
@@ -2103,13 +2103,26 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  // Submission makes captured rows history even when no monitor reported them yet. This relies on a still-limited CLI
-  // printing a NEW quota row for this input, which remains eligible; the absorbed row alone cannot prove its failure.
+  // Submission makes captured rows history even when no monitor reported them yet. Keep this acknowledged input's
+  // marker as well: a new error can replace an old row in the viewport without increasing the total match count.
+  private quotaInput: { history: NonNullable<PaneEvidence["quotaHistory"]>; reported: Map<string, number> } | null = null;
   private commitPreInputQuotaHistory(evidence: PaneEvidence | null): void {
     const history = evidence?.quotaHistory;
     if (!history || history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch || history.attempt !== this.launchAttempt
       || history.tmux !== this.tmux || history.window !== this.tmux?.getWindowId?.() || this.deliveryWritesStopping) return;
     for (const row of history.counts) this.lastErrorCount.set(row.key, row.count);
+    this.quotaInput = history.marker && history.occurrences === 0 ? { history, reported: new Map() } : null;
+  }
+
+  private quotaOccurrencesAfterInput(pane: string, ep: ErrorPattern): { input: NonNullable<Daemon["quotaInput"]>; count: number } | null {
+    if (!(this.backend?.binaryName === "codex" && Daemon.isCodexUsageLimitPause(ep)
+      || this.backend?.binaryName === "grok" && ep.type === "quota")) return null;
+    const input = this.quotaInput, history = input?.history;
+    if (!input || !history || history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch
+      || history.attempt !== this.launchAttempt || history.tmux !== this.tmux || history.window !== this.tmux?.getWindowId?.()
+      || this.deliveryWritesStopping) return null;
+    const suffix = quotaAfterInput(pane, history.marker);
+    return suffix === null ? null : { input, count: Daemon.countOccurrences(ep.pattern, suffix) };
   }
 
   private lastDetectedErrorType: string | null = null;
@@ -4584,7 +4597,12 @@ export class Daemon extends EventEmitter {
     for (const ep of patterns) {
       const key = Daemon.errorPatternKey(ep);
       const count = countMatches(ep.pattern);
-      const seen = this.lastErrorCount.get(key) ?? 0;
+      let seen = this.lastErrorCount.get(key) ?? 0;
+      const afterInput = this.quotaOccurrencesAfterInput(pane, ep);
+      // Only a new echo of our acknowledged input can re-arm a same-count replacement. Old rows before that echo,
+      // an ambiguous/missing marker or a superseded input owner retain the ordinary count-based decision.
+      const newQuotaAfterInput = !!afterInput && afterInput.count > (afterInput.input.reported.get(key) ?? 0);
+      if (newQuotaAfterInput) seen = Math.min(seen, count - 1);
 
       // #2282: a resumed exhausted429 row is history, not even a new
       // notification/failover incident; so is a resumed codex workspace-limit row
@@ -4607,7 +4625,7 @@ export class Daemon extends EventEmitter {
       // the lifecycle, whose usage probe decides (available / reserve / exhausted).
       if (Daemon.isCodexUsageLimitPause(ep)) {
         const ack = this.codexReserveAck;
-        if (ack && ack.generation === this.spawnGeneration && count <= ack.count) {
+        if (ack && ack.generation === this.spawnGeneration && count <= ack.count && !newQuotaAfterInput) {
           // The handled incident's lines can scroll out of the capture buffer as
           // the reserve session talks on. Lower the proof (and the occurrence
           // baseline) with them: otherwise `count <= ack.count` would keep
@@ -4652,6 +4670,7 @@ export class Daemon extends EventEmitter {
       }
 
       this.lastErrorCount.set(key, count);
+      if (afterInput) afterInput.input.reported.set(key, Math.max(afterInput.input.reported.get(key) ?? 0, afterInput.count));
 
       // Kiro's `auto` model picks a concrete model per turn and reroutes around
       // a temporarily unavailable one on its own — telling the user to run
@@ -11006,7 +11025,7 @@ export class Daemon extends EventEmitter {
         const evidence = this.paneEvidence(pane, signature);
         if (owner === this.tmux && window === owner.getWindowId?.() && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && launch === this.launchAttempt) {
           const counts = this.paneQuotaPatterns().map(ep => ({ key: Daemon.errorPatternKey(ep), count: Daemon.countOccurrences(ep.pattern, pane) }));
-          if (counts.length) evidence.quotaHistory = { spawn, fence, attempt: launch, tmux: owner, window, counts };
+          if (counts.length) evidence.quotaHistory = { spawn, fence, attempt: launch, tmux: owner, window, counts, marker: signature.value, occurrences: evidence.payload };
         }
         const input = this.inputRegion(pane);
         if (input && agendMessageInInput(input.text)) {
@@ -11916,6 +11935,7 @@ export class Daemon extends EventEmitter {
     this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.lastErrorEpisode = null;
     this.quotaReplay = null;
+    this.quotaInput = null;
     this.nudgeBaselines = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
