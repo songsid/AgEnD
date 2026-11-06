@@ -108,7 +108,7 @@ describe("createHubChatStore", () => {
   });
   it("a full page reads on from its last entry: an old settled-for-good (uncertain) or still-open entry never pins the read (#3246 review)", async () => {
     const page = (from: number, n: number, stage = "answered") => Array.from({ length: n }, (_, i) => ({ messageId: `m${from + i}`, sequence: from + i, receipt: { stage: from + i === 1 ? stage : "answered", at: 1 }, question: "q", answer: "a" }));
-    for (const [first, expected] of [["uncertain", [0, 100, 150]], ["queued", [0, 100, 0]]] as const) {
+    for (const [first, expected] of [["uncertain", [0, 100, 150]], ["queued", [0, 100, 50]]] as const) {   // queued: the tail page (150 - PAGE)
       const t = fakeTimers(), afters: number[] = [];
       const answers = [{ ok: true, entries: page(1, 100, first) }, { ok: true, entries: page(101, 50) }, { ok: true, entries: [] }];
       const c = { read: async (_id: string, after: number) => { afters.push(after); return answers.shift() ?? { ok: true, entries: [] }; } };
@@ -118,6 +118,45 @@ describe("createHubChatStore", () => {
       expect(Math.max(...s.entries().map((e: any) => e.sequence))).toBe(150);
       s.stop();
     }
+  });
+  it("an open entry older than a page never holds back the tail: the tail page is read each time, the far one every FAR_EVERY-th read", async () => {
+    const t = fakeTimers(), afters: number[] = [];
+    const entry = (n: number, stage: string) => ({ messageId: `m${n}`, sequence: n, receipt: { stage, at: 1 }, question: "q", ...(stage === "answered" ? { answer: "a" } : {}) });
+    const all = Array.from({ length: 250 }, (_, i) => entry(i + 1, i === 0 || i === 248 ? "queued" : "answered"));
+    let settled249 = false;
+    const c = { read: async (_id: string, after: number) => {
+      afters.push(after);
+      const rows = all.filter((e) => e.sequence > after).slice(0, 100).map((e) => (e.sequence === 249 && settled249 ? entry(249, "answered") : e));
+      return { ok: true, entries: rows };
+    } };
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    for (let i = 0; i < 3; i++) { t.run(); await flush(); }                      // 0, 100, 200: all 250 loaded
+    settled249 = true;
+    t.run(); await flush();
+    expect([afters, s.entries().find((e: any) => e.sequence === 249).receipt.stage]).toEqual([afters, "answered"]);   // the tail page, not the far anchor
+    for (let i = 0; i < 6; i++) { t.run(); await flush(); }
+    expect(afters.slice(0, 3)).toEqual([0, 100, 200]);
+    expect(afters.slice(3).filter((a) => a === 0).length, "the far open entry still read now and then").toBeGreaterThanOrEqual(1);
+    expect(afters.slice(3).filter((a) => a === 150).length).toBeGreaterThanOrEqual(4);
+    s.stop();
+  });
+  it("two old unsettled entries in different pages are each read again in turn (#3261 review)", async () => {
+    const t = fakeTimers(), afters: number[] = [];
+    const entry = (n: number, stage: string) => ({ messageId: `m${n}`, sequence: n, receipt: { stage, at: 1 }, question: "q", ...(stage === "answered" ? { answer: "a" } : {}) });
+    const all = Array.from({ length: 250 }, (_, i) => entry(i + 1, i === 0 || i === 119 ? "queued" : "answered"));
+    let settled120 = false;
+    const c = { read: async (_id: string, after: number) => {
+      afters.push(after);
+      return { ok: true, entries: all.filter((e) => e.sequence > after).slice(0, 100).map((e) => (e.sequence === 120 && settled120 ? entry(120, "answered") : e)) };
+    } };
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    for (let i = 0; i < 3; i++) { t.run(); await flush(); }
+    settled120 = true;
+    for (let i = 0; i < 2 * 6 + 2; i++) { t.run(); await flush(); }
+    expect(s.entries().find((e: any) => e.sequence === 120).receipt.stage).toBe("answered");
+    expect(afters).toContain(119);                                                    // #120's own turn came
+    expect(s.entries().find((e: any) => e.sequence === 1).receipt.stage).toBe("queued");   // #1 still open, still visited
+    s.stop();
   });
   it("one read at a time: a refresh while a read is out starts no second one", async () => {
     let release!: (v: unknown) => void, reads = 0;
