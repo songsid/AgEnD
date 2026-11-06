@@ -47,7 +47,7 @@ describe("Hub attachment store", () => {
 
   it("a complete upload whose bytes do not match its digest is discarded", () => {
     const r = rig(), id = randomUUID(), data = Buffer.from("hello");
-    expect(() => r.tx(() => r.store.stage(r.db, randomUUID(), { id, offset: 0, total: data.length, sha256: "0".repeat(64), data }))).toThrow();
+    expect(r.tx(() => r.store.stage(r.db, randomUUID(), { id, offset: 0, total: data.length, sha256: "0".repeat(64), data }))).toEqual({ complete: false, discarded: true });
     expect(r.db.prepare("SELECT COUNT(*) AS n FROM hub_attachment_staging").get()).toEqual({ n: 0 });
     expect(r.db.prepare("SELECT COUNT(*) AS n FROM hub_attachments").get()).toEqual({ n: 0 });
   });
@@ -75,5 +75,46 @@ describe("Hub attachment store", () => {
     expect(classifyAttachment("a.gif", Buffer.from("GIF89a...."))).toEqual({ mime: "image/gif", image: true });
     expect(classifyAttachment("a.html", Buffer.from("<html>"))).toEqual({ mime: "text/html", image: false });
     expect(() => rig().store.createUpload(new Database(":memory:"), { roomId: "r", uploader: "u", name: "x.exe", bytes: Buffer.from("MZ") })).toThrow(HubAttachmentRefused);
+  });
+});
+
+describe("Prism R1 on #3247: pending budgets, discarded transfers, expiry at bind", () => {
+  it("waiting files are budgeted per uploader, per fleet and in all — a full budget refuses before anything is stored", () => {
+    const db = new Database(":memory:"); HUB_ATTACHMENTS_MIGRATION.up(db);
+    const s = new HubAttachmentStore({ contentKey: randomBytes(32), budget: { files: 2, bytes: 10, totalBytes: 14 } }), tx = <T>(f: () => T) => db.transaction(f).immediate();
+    const up = (who: string, text: string) => tx(() => s.createUpload(db, { roomId: randomUUID(), uploader: who, name: "a.txt", bytes: Buffer.from(text) }));
+    up("corp/a", "1234"); up("corp/a", "5678");
+    expect(() => up("corp/a", "9")).toThrow(/backpressure/);                      // count
+    up("corp/b", "123456");
+    expect(() => up("corp/b", "12345")).toThrow(/backpressure/);                  // this uploader's bytes (6 + 5 > 10)
+    expect(() => up("corp/c", "12345")).toThrow(/backpressure/);                  // all waiting bytes (14 + 5 > 14)
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hub_attachments").get()).toEqual({ n: 3 });
+    // A fleet's answer files: the same budget, counted when a new file's first chunk arrives.
+    const fleet = randomUUID();
+    const s2 = new HubAttachmentStore({ contentKey: randomBytes(32), budget: { files: 2 } });
+    const db2 = new Database(":memory:"); HUB_ATTACHMENTS_MIGRATION.up(db2);
+    const stage2 = (n: number) => { const data = Buffer.from(`f${n}`); return db2.transaction(() => s2.stage(db2, fleet, { id: randomUUID(), offset: 0, total: data.length, sha256: sha(data), data })).immediate(); };
+    stage2(1); stage2(2); expect(() => stage2(3)).toThrow(/backpressure/);
+  });
+
+  it("a complete transfer that fails its digest is discarded in the caller's committed transaction (no chunk left behind)", () => {
+    const r = rig(), id = randomUUID(), fleet = randomUUID(), data = randomBytes(HUB_ATTACHMENT_CHUNK + 10), wrong = "0".repeat(64);
+    r.tx(() => r.store.stage(r.db, fleet, { id, offset: 0, total: data.length, sha256: wrong, data: data.subarray(0, HUB_ATTACHMENT_CHUNK) }));
+    expect(r.tx(() => r.store.stage(r.db, fleet, { id, offset: HUB_ATTACHMENT_CHUNK, total: data.length, sha256: wrong, data: data.subarray(HUB_ATTACHMENT_CHUNK) }))).toEqual({ complete: false, discarded: true });
+    expect(r.db.prepare("SELECT COUNT(*) AS n FROM hub_attachment_staging").get()).toEqual({ n: 0 });
+    expect(r.db.prepare("SELECT COUNT(*) AS n FROM hub_attachments").get()).toEqual({ n: 0 });
+  });
+
+  it("a staged answer file binds only before its expiry (exact boundary); an identical bound retry still answers", () => {
+    const r = rig(1_000_000), id = randomUUID(), fleet = randomUUID(), data = Buffer.from("a,b\n"), digest = sha(data);
+    r.tx(() => r.store.stage(r.db, fleet, { id, offset: 0, total: data.length, sha256: digest, data }));
+    const expires = (r.db.prepare("SELECT expires_at FROM hub_attachments WHERE id=?").get(id) as { expires_at: number }).expires_at;
+    const ref = { id, name: "t.csv", size: data.length, mime: "text/csv", sha256: digest }, msg = randomUUID(), room = randomUUID();
+    r.at(expires);
+    expect(() => r.tx(() => r.store.bindAnswer(r.db, [ref], msg, room, fleet))).toThrow(/expired/);
+    r.at(expires - 1);
+    r.tx(() => r.store.bindAnswer(r.db, [ref], msg, room, fleet));
+    r.at(expires + 10);
+    expect(() => r.tx(() => r.store.bindAnswer(r.db, [ref], msg, room, fleet))).not.toThrow();       // the same bind again
   });
 });

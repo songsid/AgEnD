@@ -437,12 +437,27 @@ describe("Hub representative files (attachments-v1, #3226 D)", () => {
     const q = f.question("See attached", [png, txt]);
     await f.admission.admit(q);
     await vi.waitFor(() => expect(f.deliveries).toHaveLength(1));
-    const text = f.deliveries[0]!.text, id8 = q.identity.messageId.slice(0, 8);
-    const pngPath = join(fs.inbox, `hub-${id8}-1-chart.png`), txtPath = join(fs.inbox, `hub-${id8}-2-notes.txt`);
+    const text = f.deliveries[0]!.text, id = q.identity.messageId;
+    const pngPath = join(fs.inbox, `hub-${id}-1.png`), txtPath = join(fs.inbox, `hub-${id}-2.txt`);
     expect(readFileSync(pngPath).equals(PNG)).toBe(true); expect(readFileSync(txtPath).equals(TXT)).toBe(true);
     expect(text).toContain(`[📷 Image: ${pngPath}]`); expect(text).toContain(`[📎 File: notes.txt → ${txtPath}]`);
     expect(text).toContain("report_result's files");
     expect(f.frames.filter(x => x.type === "attachment.get").map(x => x.payload.offset)).toEqual([0, HUB_ATTACHMENT_CHUNK, 0]);
+  });
+
+  it("stored names are opaque and bounded: two messages sharing an 8-character id prefix never collide; a 255-byte display name is fine; a retry rewrites its own file", async () => {
+    const fs = files(), long = "a".repeat(251) + ".txt";
+    const fetch = (bytes: Buffer) => async (id: string, offset: number) => ({ id, offset, total: bytes.length, sha256: sha256(bytes), data: bytes.subarray(offset, offset + HUB_ATTACHMENT_CHUNK).toString("base64") });
+    const A = Buffer.from("first message\n"), B = Buffer.from("second message!\n");
+    const a = await fs.service.receive("rep", "12345678-1111-4111-8111-111111111111", [ref("notes.txt", A, "text/plain")], fetch(A));
+    const b = await fs.service.receive("rep", "12345678-2222-4222-8222-222222222222", [ref("notes.txt", B, "text/plain")], fetch(B));
+    const path = (line: string) => line.slice(line.lastIndexOf("→ ") + 2, -1);
+    expect(path(a[0]!)).not.toBe(path(b[0]!));
+    expect(readFileSync(path(a[0]!)).equals(A)).toBe(true); expect(readFileSync(path(b[0]!)).equals(B)).toBe(true);
+    const l = await fs.service.receive("rep", randomUUID(), [ref(long, A, "text/plain")], fetch(A));
+    expect(l[0]).toContain(`[📎 File: ${long} → `); expect(readFileSync(path(l[0]!)).equals(A)).toBe(true);
+    const again = await fs.service.receive("rep", "12345678-1111-4111-8111-111111111111", [ref("notes.txt", A, "text/plain")], fetch(A));
+    expect(again).toEqual(a);
   });
 
   it.each([["the link does not take files", { features: [] as string[] }], ["a chunk does not match its digest", { corrupt: true }]] as const)(

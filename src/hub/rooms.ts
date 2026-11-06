@@ -111,6 +111,15 @@ export class HubRoomsService {
     return { asker, room };
   }
 
+  /** Before any upload body is read: the asker, their room and grant, a link that takes files, and room in their budget. */
+  async uploadAdmit(ctx: HubRequestContext, roomId: string, declaredBytes: number): Promise<void> {
+    const store = this.store(), { asker } = await this.ownerEligible(ctx, roomId), now = this.core.now();
+    this.core.atomic((db) => {
+      const { exposure } = this.askerRoom(db, roomId, asker, now, "ask");
+      this.requireFiles(exposure.fleetId);
+      store.admit(db, { uploader: personKeyString(asker) }, declaredBytes);
+    });
+  }
   /** The asker's file for a later question in this room: only while the fleet's link takes files. Pending one hour. */
   async upload(ctx: HubRequestContext, roomId: string, name: string, bytes: Buffer): Promise<HubFileView> {
     const store = this.store(), { asker } = await this.ownerEligible(ctx, roomId), now = this.core.now();
@@ -398,25 +407,37 @@ export class HubRoomsService {
     return receipt;
   }
 
-  /** attachments-v1: the member pulls one chunk of a file of a question sent to its fleet (in order, one in flight). */
-  attachmentGet(input: { id: string; offset: number }, link: HubLinkContext): HubAttachmentChunk {
+  /** attachments-v1: the member pulls one chunk of a file of a question sent to its fleet (in order, one in flight).
+   * Every chunk is a disclosure: both people eligible now, the current link, and the message's room/grant/exposure facts
+   * (messageFacts, as for sending) re-checked at the moment the bytes are read — a revoked grant stops the next chunk. */
+  async attachmentGet(input: { id: string; offset: number }, link: HubLinkContext): Promise<HubAttachmentChunk> {
     if (!link.features.has(FILES)) throw new HubProtocolError("incompatible");
-    const store = this.store(), now = this.core.now();
+    const store = this.store();
+    const located = this.core.atomic((db) => { const row = store.row(db, input.id); return { row, msg: row?.message_id ? readMessage(db, row.message_id) : undefined }; });
+    const ours = (row: typeof located.row, msg: typeof located.msg) => !!row && row.direction === "question" && row.state === "bound" && !!msg && msg.fleet_id === link.fleetId;
+    if (!ours(located.row, located.msg)) throw new HubProtocolError("not-found");
+    if (!(await this.policy.peopleEligible(located.msg!))) throw new HubProtocolError("revoked");
+    if (!link.current()) throw new HubProtocolError("stale");
+    const now = this.core.now();
     return this.core.atomic((db, tx) => {
       const row = store.row(db, input.id), msg = row?.message_id ? readMessage(db, row.message_id) : undefined;
-      if (!row || row.direction !== "question" || row.state !== "bound" || !msg || msg.fleet_id !== link.fleetId || TERMINAL.has(msg.stage) || msg.expires_at <= now) throw new HubProtocolError("not-found");
-      const chunk = store.chunk(db, row.sha256, input.offset);
+      if (!ours(row, msg) || row!.message_id !== located.msg!.id) throw new HubProtocolError("not-found");
+      const facts = messageFacts(db, msg!, now);
+      if (!facts.ok) throw new HubProtocolError(facts.reason);
+      if (!link.current()) throw new HubProtocolError("stale");
+      const chunk = store.chunk(db, row!.sha256, input.offset);
       if (input.offset === 0) this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: "file.transfer", result: "allowed",
-        reasonCode: `question:${row.size}:${row.mime}:${row.sha256}`, messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId, exposureId: msg.exposure_id,
-        ownerAtEvent: personFromString(msg.owner), grantId: msg.grant_id, grantRevision: msg.grant_revision });
-      return { id: row.id, offset: input.offset, total: chunk.total, sha256: row.sha256, data: chunk.data.toString("base64") };
+        reasonCode: `question:${row!.size}:${row!.mime}:${row!.sha256}`, messageId: msg!.id, roomId: msg!.room_id, fleetId: link.fleetId, exposureId: msg!.exposure_id,
+        ownerAtEvent: personFromString(msg!.owner), grantId: msg!.grant_id, grantRevision: msg!.grant_revision });
+      return { id: row!.id, offset: input.offset, total: chunk.total, sha256: row!.sha256, data: chunk.data.toString("base64") };
     });
   }
   /** attachments-v1: one chunk of an answer's file from the member, before the answer that names it. */
   attachmentPut(input: HubAttachmentChunk, link: HubLinkContext): { id: string; offset: number } {
     if (!link.features.has(FILES)) throw new HubProtocolError("incompatible");
     const store = this.store(), data = b64(input.data);
-    this.core.atomic((db) => { store.stage(db, link.fleetId, { id: input.id, offset: input.offset, total: input.total, sha256: input.sha256, data }); });
+    const staged = this.core.atomic((db) => store.stage(db, link.fleetId, { id: input.id, offset: input.offset, total: input.total, sha256: input.sha256, data }));
+    if (staged.discarded) throw new HubProtocolError("invalid");             // after its own commit dropped the chunks
     return { id: input.id, offset: input.offset };
   }
 
