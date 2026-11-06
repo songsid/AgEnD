@@ -1,0 +1,15 @@
+/** Types for `build-tmux.mjs`. Node16 resolves a `.mjs` import to `.d.mts`. */
+export type TmuxSource = { version: string; url: string; sha256: string; license: string; licenseFile: string; platforms?: string[]; licenseOnly?: boolean };
+export type TmuxSources = {
+  sourceDateEpoch: number;
+  tmux: TmuxSource; libevent: TmuxSource; ncurses: TmuxSource; utf8proc: TmuxSource; jemalloc: TmuxSource; musl: TmuxSource;
+  terminfo: string[];
+  terminfoAliases?: Record<string, string>;
+  [part: string]: unknown;
+};
+export const SOURCES_FILE: string;
+export const TARGETS: string[];
+export function readSources(file?: string): TmuxSources & Record<string, TmuxSource>;
+export function partsFor(sources: TmuxSources, target: string): string[];
+export function srcDirName(part: string, version: string): string;
+export function hostTarget(platform?: string, arch?: string): string | null;

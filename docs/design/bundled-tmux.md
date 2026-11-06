@@ -186,7 +186,8 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
      failed its check: <reason>; still on <old>").
    - `agend update` also re-checks the receipt before it stops the service.
 2. **The version change is a server change, and the old server is ended by its own client.**
-   - **The server's binary lives outside the replaceable package.** Postinstall copies the verified binary to
+   - **The server's binary lives outside the replaceable package.** AgEnD copies the receipt-verified binary (at
+     start, where `AGEND_HOME` is known; postinstall can run under another HOME, e.g. `sudo npm`) to
      `~/.agend/tmux/<version>-<sha256-prefix>/tmux` (with its terminfo), and AgEnD starts the server from that copy. On
      start it writes `~/.agend/tmux/server.json`: `{ socket, binary, version, sha256, serverPid, serverStart }`
      (`#{pid}` and `#{start_time}` read back from the server). The current and the previous copy are kept; older ones
@@ -310,6 +311,7 @@ Measured on the prototype (linux-x64, musl static, stripped):
 | 3.6a | 1.44 MB | 1.19 MB | |
 | 3.7b | 1.51 MB | 1.22 MB | |
 | **3.8** | **1.71 MB** | 1.30 MB | **1.79 MB unpacked, 0.79 MB packed** (subset 70 KB) |
+| **3.8, PR A's build** (utf8proc 2.12.0 linked) | **2.05 MB** | | **the npm package: 2.15 MB unpacked, 0.89 MB packed** (licences and both terminfo directory spellings included) |
 
 The full ncurses terminfo is 7.4 MB unpacked, so the package ships only the §4 subset. Budget per platform package: **≤ 3 MB unpacked, ≤ 1.5 MB
 packed**, terminfo subset included. The Node runtime is ~45 MB packed, so this adds under 4% to an install.
@@ -343,7 +345,7 @@ packed**, terminfo subset included. The Node runtime is ~45 MB packed, so this a
 ## 13. Delivery plan (alpha)
 
 1. **PR A (build):** `publish-tmux.yml` (dry run), `scripts/release/tmux-sources.json`, the four packages, the reproducibility
-   check, `THIRD_PARTY_NOTICES.md`, postinstall verify, the copy to `~/.agend/tmux/` and the receipt, and the §2 matrix
+   check, `THIRD_PARTY_NOTICES.md`, postinstall verify and the receipt, and the §2 matrix
    scripts (`scripts/manual/tmux-matrix/`: the leak, #735 stress, AgEnD delivery and raw #309 legs) so a pin change
    reruns them. **No runtime change:** AgEnD still runs the system tmux. Legs: F2, the install smokes on every platform
    (the package installs, verifies and is ignored), and the matrix rerun with utf8proc.

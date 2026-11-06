@@ -128,3 +128,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Bundled tmux (`@songsid/agend-tmux-<os>-<cpu>`)
+
+AgEnD runs its own statically built tmux on a private socket (docs/design/bundled-tmux.md). Each platform package is
+built from the pinned sources in `scripts/release/tmux-sources.json` (sha256-checked), unmodified, and carries every
+component's full licence text in its `LICENSES/` directory:
+
+| Component | Version | Licence | In the build |
+|---|---|---|---|
+| tmux, https://github.com/tmux/tmux | 3.8 | ISC | the program |
+| libevent, https://libevent.org | 2.1.12-stable | BSD-3-Clause | linked statically |
+| ncurses, https://invisible-island.net/ncurses/ | 6.5 | X11 (MIT-style) | linked statically; the terminfo subset is compiled from its `misc/terminfo.src` |
+| utf8proc, https://github.com/JuliaStrings/utf8proc | 2.12.0 | MIT, and the Unicode License v3 for its data tables | linked statically |
+| jemalloc, https://jemalloc.net | 5.3.0 | BSD-2-Clause | linked statically, macOS builds only |
+| musl libc, https://musl.libc.org | 1.2.5 (the Alpine build image's, checked at build time) | MIT | linked statically, Linux builds only |
