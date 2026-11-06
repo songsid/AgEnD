@@ -122,6 +122,16 @@ describe.skipIf(process.platform === "win32")("confirmed browser certificate rep
     await expect(s.control.prepare(input, "owner", () => false)).rejects.toThrow("unavailable");
     s.fence(); await expect(s.control.prepare(input, "owner", () => true)).rejects.toThrow("unavailable");
   });
+  it("rejects a malformed later chain certificate before selecting or activating any material", async () => {
+    const s = setup(); s.control.activate(); const before = s.control.read();
+    writeFileSync(join(s.home, "broken-chain.pem"), cert + "\n-----BEGIN CERTIFICATE-----\nnot-base64!\n-----END CERTIFICATE-----\n", { mode: 0o600 });
+    s.activate.mockClear();
+    await expect(s.control.prepare({ mode: "import", revision: before.revision, certificateFile: "broken-chain.pem", keyFile: "key.pem" }, "owner", () => true))
+      .rejects.toThrow("invalid_browser_certificate");
+    expect(s.control.read()).toEqual(before); expect(s.audit.appendInTransaction).not.toHaveBeenCalled(); expect(s.activate).not.toHaveBeenCalled();
+    expect(s.db.prepare("SELECT material_id, revision FROM hub_browser_tls").get()).toEqual({ material_id: null, revision: 1 });
+    expect(existsSync(join(s.home, "hub/web-tls/versions"))).toBe(false);
+  });
   it("refuses changed committed material instead of loading a different pair or resetting the selection", async () => {
     const s = setup(), p = await s.imported(); s.control.apply({ reference: p.reference, revision: p.revision }, "owner", () => true);
     const file = join(s.home, "hub/web-tls/versions", p.reference, "material.json"), original = readFileSync(file, "utf8");

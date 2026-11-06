@@ -296,7 +296,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const browserCertificate = createHubBrowserCertificateControl({ db, home: options.home, hubId: settings.hubId, origin: settings.webOrigin,
         initial: settings.webTls, audit, current: live, now, activate: material => {
           if (!web || !live()) throw Error("unavailable");
-          web.setSecureContext(material);
+          web.setSecureContext({ ...material, minVersion: "TLSv1.2" });
         } });
       teardown.add("browser certificate preparation", () => browserCertificate.close());
       let retentionTimer: NodeJS.Timeout | null = null;

@@ -47,7 +47,7 @@ export function createHubBrowserCertificateControl(options: {
   };
   const validate = (material: BrowserCertificateMaterial) => {
     if (!checkBrowserTls(material.cert, material.key, options.origin, options.now()).ok) throw Error("invalid_browser_certificate");
-    createSecureContext(material); // Check the entire PEM chain, not just the first leaf.
+    try { createSecureContext(material); } catch { throw Error("invalid_browser_certificate"); } // Check the entire PEM chain, not just the first leaf.
     return material;
   };
   const row = (): Row => {

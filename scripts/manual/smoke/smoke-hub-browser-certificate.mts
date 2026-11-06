@@ -13,6 +13,7 @@ try {
       const { ctx, page } = await fx.page(c);
       const errors: string[] = [], writes: any[] = [], oldLoads: string[] = []; let reads = 0;
       page.on("pageerror", (e: any) => errors.push(String(e)));
+      page.on("console", (m: any) => { if (m.type() === "error" && /Content Security Policy|Refused to (?:apply|load|execute)/i.test(m.text())) errors.push(m.text()); });
       const files = skew === "stale-shell" ? ["app.js", "app-shell.js", "app-store.js", "app-i18n.js", "app.css", "instance-nav.js"]
         : skew === "retained-strings" ? ["settings-strings.js"] : skew === "old-panel" ? ["panel-settings.js", "settings-strings.js"] : [];
       for (const file of files) await page.route(`**/${file}*`, (r: any) => {

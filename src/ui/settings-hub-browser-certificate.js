@@ -56,7 +56,7 @@ export function HubBrowserCertificateSettings() {
       else fail(r);
     } catch { fail(); } finally { setBusy(false); }
   };
-  const details = info => html`<dl><dt>${copy("fingerprint")}</dt><dd style="overflow-wrap:anywhere">${info.fingerprint256}</dd><dt>${copy("expires")}</dt><dd>${info.validTo}</dd></dl>`;
+  const details = info => html`<dl class="s-web-ro"><dt>${copy("fingerprint")}</dt><dd>${info.fingerprint256}</dd><dt>${copy("expires")}</dt><dd>${info.validTo}</dd></dl>`;
   return html`<section class="card hub-browser-certificate"><h3>${copy("title")}</h3><p class="note">${copy("boundary")}</p>
     ${view ? html`${details(view.selected)}${view.restartRequired ? html`<p role="status">${copy("restart")}</p>` : null}
       <form class="form" onSubmit=${prepare}><label class="field"><select aria-label=${copy("title")} value=${mode} disabled=${busy} onChange=${e => { setMode(e.target.value); setProposal(null); }}>
