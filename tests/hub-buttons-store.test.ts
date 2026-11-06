@@ -26,6 +26,24 @@ describe("Hub chat store wires F's shared controls", () => {
     expect(f.client.read.mock.calls.at(-1)).toEqual([room.id, 3]);
     f.store.stop();
   });
+  it("keeps B's full-page progress while refreshing an old answered button set", async () => {
+    const pending = new Map<number, () => void>(); let next = 0;
+    const timers = { setTimeout: (fn: () => void) => { pending.set(++next, fn); return next; }, clearTimeout: (n: number) => pending.delete(n) };
+    const rows = (from: number, count: number, state = "open") => Array.from({ length: count }, (_, i) => ({
+      messageId: `m${from + i}`, sequence: from + i, question: "Q", answer: "A", receipt: { stage: "answered", at: 1 },
+      ...(from + i === 1 ? { buttons: { ...entry.buttons, state, ...(state === "chosen" ? { chosen: 0 } : {}) } } : {}),
+    }));
+    const pages = [rows(1, 100), rows(101, 50), rows(1, 100, "chosen"), rows(151, 1)];
+    const afters: number[] = [], client = { read: async (_room: string, after: number) => {
+      afters.push(after); return { ok: true, entries: pages.shift() ?? [], room };
+    } };
+    const store = createHubChatStore(room, { client, timers, doc: null }); await flush();
+    for (let i = 0; i < 3; i++) { const [n, fn] = pending.entries().next().value!; pending.delete(n); fn(); await flush(); }
+    expect(afters).toEqual([0, 100, 0, 150]);
+    expect(store.entries().at(-1).sequence).toBe(151);
+    expect(store.messages().find((m: any) => m.buttons)?.buttons).toMatchObject({ state: "chosen", chosen: 0 });
+    store.stop();
+  });
   it("takes current capability changes from the room poll, without replacing the action helper", async () => {
     const f = fixture(); await flush();
     f.client.read.mockResolvedValue({ ok: true, entries: [entry], room: { features: [] } }); await f.tick();

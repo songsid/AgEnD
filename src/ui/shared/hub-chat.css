@@ -80,3 +80,6 @@
 
 /* the session's menu sits at the sidebar's foot: it always opens upward */
 .hub-session .hub-menu .menu-list { top: auto; bottom: calc(100% + 6px); right: 0; left: auto; }
+
+/* An HTML block's Download needs the preview (#3226 E): not offered in the Hub's thread until then. */
+.hub-scroller .pv-dl { display: none; }

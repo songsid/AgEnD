@@ -47,6 +47,10 @@ const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exp
   EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id = r.id AND m.stage IN ('queued','delivered','consumed')) AS waiting
   FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id LEFT JOIN hub_people p ON p.person = e.owner LEFT JOIN hub_grants g ON g.id = r.grant_id`;
 function roomListItem(r: RoomViewRow, features: readonly string[]): HubRoomListItem {
+  // A closed room says which chat it was (its agent, its owner) and when it last moved (the list's order) — nothing of
+  // its grant, its link or whether a question waited (#3246 review).
+  if (r.state !== "active") return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
+    grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
   return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
     exposureState: r.frozen_through >= r.exposure_revision && r.exposure_state === "published" ? "frozen" : r.exposure_state,
     grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features };
@@ -58,7 +62,7 @@ const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDige
 /** A file as the asker's browser sees it: always fetched through the room's own route. */
 export interface HubFileView { id: string; name: string; size: number; mime: string; url: string }
 const fileView = (roomId: string, r: HubAttachmentRef): HubFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
-export interface HubRoomEntryView extends HubRoomEntry { buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; expired?: boolean; files?: { question?: HubFileView[]; answer?: HubFileView[] } }
+export interface HubRoomEntryView extends HubRoomEntry { buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
 const FILES = "attachments-v1";
 const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); if (b.toString("base64") !== data) throw new HubProtocolError("invalid"); return b; };
 
@@ -186,7 +190,10 @@ export class HubRoomsService {
       .map((r) => roomListItem(r, this.featuresOf(r.fleet_id))));
   }
 
-  /** One room as `list` draws it — its asker only, else not-found (the messages answer carries it, fresh each poll). */
+  /**
+   * One room as `list` draws it — its asker only, else not-found (checked here, not left to the caller: the messages
+   * route asks it after its own read, but this answers alone). The messages answer carries it, fresh each poll.
+   */
   async view(ctx: HubRequestContext, roomId: string): Promise<HubRoomListItem> {
     const me = personKeyString(await ctx.requirePerson());
     const row = this.core.atomic((db) => db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined);
@@ -194,6 +201,7 @@ export class HubRoomsService {
     return roomListItem(row, this.featuresOf(row.fleet_id));
   }
 
+  /** What the room's fleet link negotiated (D's link.features, #3241): none while it has no current link. */
   private featuresOf(fleetId: string): readonly string[] {
     return [...this.features(fleetId)].sort();
   }
@@ -270,10 +278,11 @@ export class HubRoomsService {
     return rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
+      // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, as B maps them.
       const f = files?.get(m.id), qf = f?.question.map(r => fileView(roomId, r)) ?? [], af = f?.answer.map(r => fileView(roomId, r)) ?? [];
       return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m), askedAt: m.created_at, ...(views.get(m.id) ? { buttons: views.get(m.id) } : {}),
         ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
-        ...(qf.length || af.length ? { files: { ...(qf.length ? { question: qf } : {}), ...(af.length ? { answer: af } : {}) } } : {}) };
+        ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}) };
     });
   }
 

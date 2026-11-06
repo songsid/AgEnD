@@ -15,7 +15,7 @@ import { credentialProfileView, credentialProfileState } from "./credential-prof
 import { identityText } from "./account-identity.js";
 import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
 
-/** The install tabs' and command cards' stylesheet, linked once by this lazy page (a tab opened before an upgrade has an app.css without these rules). */
+/** The install tabs', command cards' and account list's stylesheet, linked once by this lazy page (a tab opened before an upgrade has an app.css without these rules). */
 export function linkRuntimeInstallCss(doc = typeof document !== "undefined" ? document : null) {
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-runtime-install-css="1"]')) return;

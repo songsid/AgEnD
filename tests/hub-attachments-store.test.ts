@@ -61,7 +61,9 @@ describe("Hub attachment store", () => {
     r.tx(() => r.store.createUpload(r.db, { roomId: room, uploader: "corp/a", name: "unused.txt", bytes: Buffer.from("unused") }));
     r.at(1_000_000 + 2 * 3_600_000);
     const fresh = r.tx(() => r.store.createUpload(r.db, { roomId: room, uploader: "corp/a", name: "new.txt", bytes: Buffer.from("new") }));
-    expect(r.tx(() => r.store.purge(r.db, 1_000_000 + 1))).toEqual({ files: 2, blobs: 2 });
+    // The expired upload is already gone: admitting new.txt deleted it (R2). The purge takes the old bound one.
+    expect(r.db.prepare("SELECT COUNT(*) AS n FROM hub_attachments WHERE name='unused.txt'").get()).toEqual({ n: 0 });
+    expect(r.tx(() => r.store.purge(r.db, 1_000_000 + 1))).toEqual({ files: 1, blobs: 1 });
     expect((r.db.prepare("SELECT id FROM hub_attachments").all() as { id: string }[]).map(x => x.id)).toEqual([fresh.id]);
   });
 
@@ -116,5 +118,54 @@ describe("Prism R1 on #3247: pending budgets, discarded transfers, expiry at bin
     r.tx(() => r.store.bindAnswer(r.db, [ref], msg, room, fleet));
     r.at(expires + 10);
     expect(() => r.tx(() => r.store.bindAnswer(r.db, [ref], msg, room, fleet))).not.toThrow();       // the same bind again
+  });
+});
+
+describe("Prism R2 on #3247: an expired waiting file gives its budget back only once its bytes are gone", () => {
+  const stored = (db: Database.Database) => (db.prepare("SELECT COALESCE(SUM(LENGTH(ciphertext)) - 16 * COUNT(*), 0) AS b FROM hub_attachment_segments").get() as { b: number }).b;
+  it.each(["upload", "staged answer"] as const)("%s: six 4-byte files across expiry under a 4-byte cap, no retention run — at most 4 bytes are ever stored", (kind) => {
+    const db = new Database(":memory:"); HUB_ATTACHMENTS_MIGRATION.up(db);
+    let now = 1_000_000; const s = new HubAttachmentStore({ contentKey: randomBytes(32), now: () => now, budget: { totalBytes: 4 } });
+    const tx = <T>(f: () => T) => db.transaction(f).immediate(), fleet = randomUUID();
+    const add = (n: number) => { const data = Buffer.from(`f00${n}`);
+      return kind === "upload" ? tx(() => s.createUpload(db, { roomId: randomUUID(), uploader: "corp/a", name: "a.txt", bytes: data }))
+        : tx(() => s.stage(db, fleet, { id: randomUUID(), offset: 0, total: data.length, sha256: sha(data), data })); };
+    add(0);
+    expect(() => add(1)).toThrow(/backpressure/);                                   // still waiting: no room
+    for (let n = 1; n <= 5; n++) {
+      now += 2 * 3_600_000;                                                          // the previous one expires
+      add(n);                                                                        // admitted: the old bytes are deleted first
+      expect(stored(db)).toBeLessThanOrEqual(4);
+      expect(db.prepare("SELECT COUNT(*) AS n FROM hub_attachment_blobs").get()).toEqual({ n: 1 });
+    }
+  });
+  it("a stale, never-finished staging transfer is deleted before its capacity returns", () => {
+    const db = new Database(":memory:"); HUB_ATTACHMENTS_MIGRATION.up(db);
+    let now = 1_000_000; const s = new HubAttachmentStore({ contentKey: randomBytes(32), now: () => now, budget: { totalBytes: HUB_ATTACHMENT_CHUNK + 10 } });
+    const fleet = randomUUID(), big = randomBytes(HUB_ATTACHMENT_CHUNK + 10);
+    db.transaction(() => s.stage(db, fleet, { id: randomUUID(), offset: 0, total: big.length, sha256: sha(big), data: big.subarray(0, HUB_ATTACHMENT_CHUNK) })).immediate();
+    const small = Buffer.from("x");
+    expect(() => db.transaction(() => s.stage(db, fleet, { id: randomUUID(), offset: 0, total: 1, sha256: sha(small), data: small })).immediate()).toThrow(/backpressure/);
+    now += 2 * 3_600_000;
+    db.transaction(() => s.stage(db, fleet, { id: randomUUID(), offset: 0, total: 1, sha256: sha(small), data: small })).immediate();
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hub_attachment_staging").get()).toEqual({ n: 0 });
+  });
+});
+
+describe("Prism R3 on #3247: one clock edge between the sweep and the count", () => {
+  it.each(["upload", "staged answer"] as const)("%s: the clock reads expiry-1 at the sweep and expiry at the count — the old file stays charged", (kind) => {
+    const db = new Database(":memory:"); HUB_ATTACHMENTS_MIGRATION.up(db);
+    let now = 1_000_000, step = 0; const s = new HubAttachmentStore({ contentKey: randomBytes(32), now: () => now + step, budget: { totalBytes: 4 } });
+    const tx = <T>(f: () => T) => db.transaction(f).immediate(), fleet = randomUUID();
+    const add = (n: number) => { const data = Buffer.from(`f00${n}`);
+      return kind === "upload" ? tx(() => s.createUpload(db, { roomId: randomUUID(), uploader: "corp/a", name: "a.txt", bytes: data }))
+        : tx(() => s.stage(db, fleet, { id: randomUUID(), offset: 0, total: data.length, sha256: sha(data), data })); };
+    add(0);
+    const expires = (db.prepare("SELECT expires_at FROM hub_attachments").get() as { expires_at: number }).expires_at;
+    // An advancing clock: every read is one millisecond later, starting just before the old file's expiry.
+    now = expires - 1; let reads = 0; (s as unknown as { options: { now: () => number } }).options.now = () => now + reads++;
+    expect(() => add(1)).toThrow(/backpressure/);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hub_attachment_blobs").get()).toEqual({ n: 1 });
+    void step;
   });
 });

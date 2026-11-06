@@ -361,6 +361,7 @@ export class HubRepresentativeExecution {
       // The agent's own report is the evidence that the question reached it and was taken up.
       journal.recordEvidence(row.message_id, "delivered");
       journal.recordEvidence(row.message_id, "consumed");
+      // F: buttons/poll join here (their payload field and buttonsDigest into messageContentDigest).
       // Freeze the answer's id, bytes and digest before asking for the release lease for exactly them.
       const answerId = randomUUID(), contentDigest = messageContentDigest("answer", text, { attachments, buttonsDigest: buttonsDigest(buttons) });
       this.options.db.prepare("UPDATE hub_representative_questions SET answer=? WHERE id=?").run(JSON.stringify({ answerId, contentDigest }), row.id);

@@ -10,7 +10,10 @@ import { hubClient } from "./hub-client.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 
 export const POLL_MS = 10_000;
-const FINAL = new Set(["answered", "rejected", "cancelled", "failed"]);
+/** The server's page: at most this many entries per read, the oldest first (rooms.read LIMIT 100). */
+export const PAGE = 100;
+/** Settled for paging: nothing about them changes on a later read ("uncertain" stays so: it is held, never resolved here). */
+const SETTLED = new Set(["answered", "rejected", "cancelled", "failed", "uncertain"]);
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
 
 /** A question's stage as the thread's delivery mark: waiting (◷), at the fleet (✓), answered (✓✓), refused (!). */
@@ -45,17 +48,17 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
 /**
  * The store of one room: `subscribe(fn)` (fn() on any change) → unsubscribe; `messages()`, `room()`, `working()` (the
  * question being worked on, if any: { since }), `closed()`; `refresh()` (a read now); `send(text, extras)`;
- * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)`; `stop()`.
+ * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)` ; `stop()`.
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   const subs = new Set();
-  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, error: null, pending: [] };
+  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, error: null, pending: [], full: false };
   const emit = () => { for (const fn of subs) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const merge = (got) => {
     const byId = new Map(st.entries.map((e) => [e.messageId, e]));
     for (const e of got) {
       const next = { ...byId.get(e.messageId), ...e };
-      // A returned entry is a complete projection: removed/retained-away controls must not survive in old cache.
+      // A returned entry is complete: removed/retained-away controls must not survive in the cache.
       if (!e.buttons) delete next.buttons;
       byId.set(e.messageId, next);
     }
@@ -66,15 +69,18 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     if (!st.live || st.inflight || st.closed) return;
     if (doc && doc.hidden) { schedule(POLL_MS); return; }
     st.inflight = true;
-    // Answered rows with open controls still change at a choice/deadline; keep reading them until closed.
-    const open = st.entries.find((e) => !FINAL.has(e.receipt && e.receipt.stage) || e.buttons?.state === "open");
-    const after = open ? open.sequence - 1 : st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
+    // Unsettled entries are read again (from just before the oldest one) — but a full page means there is more after
+    // it: read on from the last one first, so an old open entry can never pin the read to the same page (#3246 review).
+    const last = st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
+    const open = st.full ? null : st.entries.find((e) => !SETTLED.has(e.receipt && e.receipt.stage) || e.buttons?.state === "open");
+    const after = open ? open.sequence - 1 : last;
     let r;
     try { r = await client.read(st.room.id, after); } catch { r = { ok: false, code: "unreachable" }; }
     st.inflight = false;
     if (!st.live) return;
     if (r.ok) {
       merge(r.entries || []);
+      st.full = (r.entries || []).length >= PAGE;
       // The room as the server says it now. Its quota is the server's to give: absent means withdrawn (the owner hid it,
       // the grant is gone), never "unchanged" — a band once shown must not outlive that. An answer with no room at all
       // (an older Hub) keeps what is known.
