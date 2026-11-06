@@ -23,15 +23,22 @@ export interface GuardDeps {
   /** This version's socket name (null: tmux's default socket, the real home). */
   socket: string | null;
   accepts(label: string): Promise<boolean>;
-  /** The server's pid as this version's (system) tmux reads it, or an error (e.g. a protocol version mismatch). */
-  serverPid(label: string): Promise<number | Error>;
+  /** The server's pid as this version's (system) tmux reads it; an error (e.g. a protocol version mismatch); or
+   *  "timeout" when tmux did not answer in time (a loaded host: unconfirmed, not "another protocol"). */
+  serverPid(label: string): Promise<number | Error | "timeout">;
 }
 
-export const guardMessage = (label: string): string =>
-  `AgEnD 2.4's own tmux server is still running (socket ${label}), and its agents may still be running in it. ` +
-  `Starting this version beside it would run each conversation twice, so no agent was started. ` +
+export interface GuardHit { socket: string; confirmed: boolean }
+
+export const guardMessage = (hit: GuardHit | string): string => {
+  const h = typeof hit === "string" ? { socket: hit, confirmed: true } : hit;
+  return (h.confirmed
+    ? `AgEnD 2.4's own tmux server is still running (socket ${h.socket}), and its agents may still be running in it. `
+    : `A tmux server on socket ${h.socket}, where AgEnD 2.4 recorded its own, did not answer in time, so it could not be confirmed as this version's. `) +
+  `Starting this version beside it could run each conversation twice, so no agent was started. ` +
   `Go back with \`agend rollback\` from 2.4, or close that server with the tmux that started it ` +
-  `(agend tmux kill-server, from 2.4), then start AgEnD again.`;
+  `(agend tmux kill-server, from 2.4), then start AgEnD again. Run as a service, AgEnD keeps retrying the start until it is closed.`;
+};
 
 function recordedPid(agendHome: string): number | null {
   try {
@@ -40,14 +47,15 @@ function recordedPid(agendHome: string): number | null {
   } catch { return null; }
 }
 
-/** The socket of a 2.4 server still running for this home, or null (go ahead). */
-export async function newerTmuxServer(d: GuardDeps): Promise<string | null> {
-  if (d.realHome) return (await d.accepts("agend")) ? "agend" : null;
+/** A 2.4 server still there for this home (confirmed, or unconfirmed: it did not answer in time), or null (go ahead). */
+export async function newerTmuxServer(d: GuardDeps): Promise<GuardHit | null> {
+  if (d.realHome) return (await d.accepts("agend")) ? { socket: "agend", confirmed: true } : null;
   if (!d.socket || !existsSync(join(d.agendHome, "tmux", "server.json"))) return null;
   if (!(await d.accepts(d.socket))) return null;
   const pid = await d.serverPid(d.socket);
-  if (pid instanceof Error) return d.socket;            // not a server this version's tmux can talk to
-  return pid === recordedPid(d.agendHome) ? d.socket : null;
+  if (pid === "timeout") return { socket: d.socket, confirmed: false };   // fail closed, but say what is known
+  if (pid instanceof Error) return { socket: d.socket, confirmed: true };   // not a server this version's tmux can talk to
+  return pid === recordedPid(d.agendHome) ? { socket: d.socket, confirmed: true } : null;
 }
 
 export function socketFile(label: string, env: NodeJS.ProcessEnv = process.env, uid: number = process.getuid?.() ?? 0): string {
@@ -70,6 +78,7 @@ export const realGuardDeps = (agendHome: string, realHome: boolean, socket: stri
   serverPid: (label) => new Promise(resolve => {
     const env = { ...process.env }; delete env.TMUX; delete env.TMUX_PANE;
     execFile("tmux", ["-L", label, "display-message", "-p", "#{pid}"], { timeout: 5000, encoding: "utf8", env }, (err, stdout, stderr) => {
+      if (err && (err as { killed?: boolean }).killed) { resolve("timeout"); return; }
       const pid = Number(stdout.trim());
       resolve(err || !Number.isSafeInteger(pid) ? new Error((stderr || err?.message || "no pid").trim()) : pid);
     });
