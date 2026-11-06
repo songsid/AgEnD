@@ -25,6 +25,7 @@ import { HubSessions, hubClearCookie, hubSetCookie } from "../sessions.js";
 import { HubCatalogService } from "../catalog.js";
 import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
+import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubCore, personByLogin } from "./core.js";
 import { HUB_HTTP_MIGRATIONS } from "./schema.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
@@ -72,6 +73,27 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   const value = parseStrictJson(Buffer.concat(chunks), BODY_LIMIT);
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new HubProtocolError("invalid");
   return value as Record<string, unknown>;
+}
+/** The upload's name: X-File-Name, percent-encoded UTF-8, one path segment. */
+function fileName(v: unknown): string {
+  let name: string;
+  try { name = typeof v === "string" && v.length <= 1024 ? decodeURIComponent(v) : ""; } catch { name = ""; }
+  if (!name || Buffer.byteLength(name, "utf8") > 255 || /[\\/\u0000-\u001f\u007f]/.test(name) || name.startsWith(".") || name.trim() !== name) throw new HubProtocolError("invalid");
+  return name;
+}
+/** A raw request body, never decoded, cut off past `limit` bytes. */
+async function readRaw(req: IncomingMessage, limit: number): Promise<Buffer> {
+  if (req.headers["content-encoding"] !== undefined) throw new HttpError(415, "invalid");
+  const declared = req.headers["content-length"];
+  if (declared !== undefined && (!/^\d{1,10}$/.test(declared) || Number(declared) > limit)) { req.resume(); throw new HttpError(413, "too-large"); }
+  const chunks: Buffer[] = []; let bytes = 0;
+  for await (const part of req) {
+    const b = Buffer.from(part as Buffer); bytes += b.length;
+    if (bytes > limit) { req.destroy(); throw new HttpError(413, "too-large"); }
+    chunks.push(b);
+  }
+  if (bytes === 0) throw new HubProtocolError("invalid");
+  return Buffer.concat(chunks);
 }
 const str = (v: unknown, max = 256): string => { if (typeof v !== "string" || !v || v.length > max) throw new HubProtocolError("invalid"); return v; };
 const uuid = (v: unknown): string => { if (typeof v !== "string" || !UUID.test(v)) throw new HubProtocolError("invalid"); return v; };
@@ -141,7 +163,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method === "POST") {
         csrf(); const b = await body();
         const room = await guard(() => rooms.open(ctx, uuid(b.exposureId), uuid(b.grantId)));
-        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName } });
+        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId) } });
       }
       throw new HttpError(405, "method");
     }
@@ -153,9 +175,30 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       }
       if (method === "POST") {
         csrf(); const b = await body();
-        return send(res, 200, { receipt: await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "")) });
+        const files = b.files === undefined ? [] : Array.isArray(b.files) && b.files.length <= 10 ? b.files.map(uuid) : (() => { throw new HubProtocolError("invalid"); })();
+        return send(res, 200, { receipt: await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "", files)) });
       }
       throw new HttpError(405, "method");
+    }
+    // attachments-v1: the asker's upload (raw body, streamed under the file limit) and the room's files.
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      const roomId = uuid(r[1]); csrf();
+      const store = deps.attachments; if (!store) throw new HubProtocolError("incompatible");
+      const name = fileName(req.headers["x-file-name"]);
+      const bytes = await readRaw(req, store.limits.fileBytes); if (!live()) throw new HubProtocolError("unavailable");
+      return send(res, 200, { file: await guard(() => rooms.upload(ctx, roomId, name, bytes)) });
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files\/([^/]+)$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      const roomId = uuid(r[1]), fileId = uuid(r[2]); signedIn();
+      const file = await guard(() => rooms.download(ctx, roomId, fileId));
+      // Never executed or sniffed: a download, in a sandbox; only a magic-checked image may show inline when asked.
+      const inline = query.get("inline") === "1" && file.image;
+      res.writeHead(200, { "Content-Type": file.mime, "Content-Length": String(file.bytes.length), "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "Cross-Origin-Resource-Policy": "same-origin",
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}` });
+      res.end(file.bytes); return;
     }
     if (path === "/hub/v1/audit") {
       if (method !== "GET") throw new HttpError(405, "method");
@@ -229,6 +272,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   function fail(res: ServerResponse, e: unknown): void {
     if (e instanceof SignedOut) return send(res, 401, { code: "signed-out" });
     if (e instanceof HttpError) return send(res, e.status, { code: e.code });
+    if (e instanceof HubAttachmentRefused) return send(res, 415, { code: e.refusal });
     if (e instanceof HubProtocolError) {
       const status = STATUS[e.code] ?? 400;
       return send(res, status, { code: e.code }, status === 429 ? { "Retry-After": "10" } : {});
@@ -280,6 +324,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (!page.more) flushSoon(link);
         return { ...reply, type: "reconcile", payload: page };
       }
+      case "attachment.get": return { ...reply, type: "attachment.chunk", payload: rooms.attachmentGet(frame.payload, link) };
+      case "attachment.put": return { ...reply, type: "attachment.ack", payload: rooms.attachmentPut(frame.payload, link) };
       case "error": return;
     }
   }
