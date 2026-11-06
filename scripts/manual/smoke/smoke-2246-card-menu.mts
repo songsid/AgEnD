@@ -84,15 +84,15 @@ for (const [theme, lang] of [["dark", "en"], ["light", "zh-TW"]] as const) {
   await report(p, `desk ${theme} ${lang} waiting row menu:`);
   await p.ctx.close();
 }
-// A phone: the dialog's steps in the sheet's header.
-{
-  const id = seed("zh-TW");
-  const p = await open({ device: "phone", theme: "light", lang: "zh-TW" } as unknown as MatrixCase, id);
+// A phone: the dialog's steps in the sheet's header (light zh-TW, dark en).
+for (const [theme, lang] of [["light", "zh-TW"], ["dark", "en"]] as const) {
+  const id = seed(lang);
+  const p = await open({ device: "phone", theme, lang } as unknown as MatrixCase, id);
   await p.page.locator(".tb-tile-title").first().click();
   await p.page.waitForSelector("dialog[open] .tc-steps");
   await p.page.waitForTimeout(400);
-  await p.page.screenshot({ path: shot("phone-light-zh-TW-dialog-steps") });
-  await report(p, "phone light zh-TW dialog:");
+  await p.page.screenshot({ path: shot(`phone-${theme}-${lang}-dialog-steps`) });
+  await report(p, `phone ${theme} ${lang} dialog:`);
   await p.ctx.close();
 }
 await fx.close(); process.exit(0);

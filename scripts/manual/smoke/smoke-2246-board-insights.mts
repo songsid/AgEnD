@@ -38,7 +38,7 @@ const NUMBERS = `(() => ({ csp: (window.__csp || []).length, sideScroll: documen
   sum: (document.querySelector("dialog[open] .ts-sum") || {}).textContent || null, rows: document.querySelectorAll("dialog[open] .ts-table tbody tr").length,
   wide: (function () { var t = document.querySelector("dialog[open] .ts-table"), b = document.querySelector("dialog[open] .dlg-body"); return t && b ? t.scrollWidth > b.clientWidth + 1 : null; })() }))()`;
 async function report(p: any, label: string) { console.log(label, JSON.stringify(await p.page.evaluate(NUMBERS)), "errors:", p.errors.length ? p.errors : "none"); }
-for (const [device, theme, lang] of [["desk", "dark", "en"], ["desk", "light", "zh-TW"], ["phone", "light", "zh-TW"]] as const) {
+for (const [device, theme, lang] of [["desk", "dark", "en"], ["desk", "light", "zh-TW"], ["phone", "light", "zh-TW"], ["phone", "dark", "en"]] as const) {
   const id = seed(lang);
   const p = await freshPage(fx, { device, theme, lang } as unknown as MatrixCase, { beforeNavigate: (ctx: any) => ctx.addInitScript({ content: `localStorage.setItem("agend_tasks_project", "${id}");` }) });
   await mounted(p.page);

@@ -104,14 +104,14 @@ for (const [theme, lang] of [["dark", "en"], ["light", "zh-TW"]] as const) {
   await report(p, `desk ${theme} ${lang} list by assignee, sub tasks as rows:`);
   await p.ctx.close();
 }
-// A phone's list (zh-TW, light) and its filter chips.
-{
-  const id = seed("zh-TW");
-  const p = await openBoard({ device: "phone", theme: "light", lang: "zh-TW" } as unknown as MatrixCase, id,
+// A phone's list and its filter chips: light zh-TW, dark en.
+for (const [theme, lang] of [["light", "zh-TW"], ["dark", "en"]] as const) {
+  const id = seed(lang);
+  const p = await openBoard({ device: "phone", theme, lang } as unknown as MatrixCase, id,
     { agend_tasks_display: JSON.stringify({ view: "list", group: "assignee", subs: true }), agend_tasks_filters: "priority!:low" });
   await p.page.waitForSelector(".tb-row");
-  await p.page.screenshot({ path: shot("phone-light-zh-TW-list"), fullPage: true });
-  await report(p, "phone light zh-TW list:");
+  await p.page.screenshot({ path: shot(`phone-${theme}-${lang}-list`), fullPage: true });
+  await report(p, `phone ${theme} ${lang} list:`);
   await p.ctx.close();
 }
 await fx.close(); process.exit(0);
