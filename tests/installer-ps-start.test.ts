@@ -22,7 +22,7 @@ describe("PowerShell START reservations", () => {
     const code = `import {InstallerPsStartGate} from ${JSON.stringify(new URL("./support/installer-ps-start.ts", import.meta.url).href)};
       const ticket=new InstallerPsStartGate(${JSON.stringify(r)},1).tryAcquire();
       console.log(ticket?'acquired':'blocked');ticket?.release();`;
-    const run = () => execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", code], { encoding: "utf8" }).trim();
+    const run = () => execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval", code], { encoding: "utf8", timeout: 4_000 }).trim();
     expect(run()).toBe("blocked"); held.release(); expect(run()).toBe("acquired");
   });
   it("allows the configured capacity and admits a waiter only after a release", async () => {
