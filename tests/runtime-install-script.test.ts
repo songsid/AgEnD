@@ -154,6 +154,9 @@ describe("what the documentation, the page and the changelog promise", () => {
     expect(en).toMatch(/certificate error[\s\S]*trust the AgEnD server's certificate[\s\S]*or use the ZIP/); expect(en).toMatch(/Never turn certificate validation off/);
     // the claim "the command stops under Constrained Language Mode" is true only because no failure reaches iex (B1), and is tested under a real pwsh
     expect(en).toMatch(/Constrained Language Mode or AppLocker\*\* the command \*\*stops without running anything\*\*[\s\S]*Use the ZIP instead/); expect(en).toMatch(/never changes your execution policy/);
+    // not claimed: that such policies refuse `iex` themselves. Under ConstrainedLanguage `iex` runs a string in the restricted mode instead (measured), so the only reason the command stops is that the hash cannot be computed.
+    for (const text of [en, zh, template, read("src/ui/panel-runtimes.js")]) expect(text).not.toMatch(/iex[^\n]{0,60}(is|are) refused|refused by such policies|這類政策本來也會拒絕|iex. of a downloaded script is refused/i);
+    expect(en).toMatch(/the hash cannot be computed there, so the script is never trusted\. Use the ZIP instead/); expect(zh).toMatch(/那裡算不出雜湊，所以腳本不會被信任。請改用 ZIP/);
     expect(en).toMatch(/No failure reaches `iex`/); expect(zh).toMatch(/任何失敗都不會走到 `iex`/);
     expect(zh).toMatch(/憑證錯誤[\s\S]*信任這台 AgEnD 伺服器的憑證[\s\S]*改用 ZIP/); expect(zh).toMatch(/絕對不要以任何開關、回呼或政策關閉憑證驗證/);
     expect(zh).toMatch(/受限語言模式[\s\S]*AppLocker[\s\S]*停下來、什麼都不執行[\s\S]*改用 ZIP/); expect(zh).toMatch(/不會變更你的執行原則/);

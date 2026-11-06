@@ -10,7 +10,7 @@
 # It is run by the page's command (`iex` of the downloaded text), so it is kept safe for that: ASCII only (Windows
 # PowerShell 5.1 may decode a download as the wrong code page), no param block, and no `exit` (under iex it would close the
 # window). Windows PowerShell 5.1 and PowerShell 7 both run it. It needs no administrator rights and never changes your
-# execution policy. Under Constrained Language Mode or AppLocker `iex` is refused: use the ZIP from the same page instead.
+# execution policy. Under Constrained Language Mode or AppLocker the page's command stops before this script is ever run (it cannot compute the hash there): use the ZIP from the same page instead.
 #
 # What it does, in order:
 #   1. Checks that Node.js 22.14 or newer is installed (it never installs software for you).

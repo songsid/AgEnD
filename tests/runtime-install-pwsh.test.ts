@@ -211,6 +211,25 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       const honest = scratch(), h = await run(honest, { T_PRESET: "$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'" }, "paste");
       expect(existsSync(honest.install), h.out).toBe(false); expect(h.out).toContain("could not be verified"); expect(h.out).not.toContain("installed version");
     });
+    it("in the FULL language mode, a person's own $ErrorActionPreference never lets a tampered script run: under SilentlyContinue a bare throw is swallowed, so iex must not come after it", async () => {
+      // The previous command was `if (<bad>) { throw }; iex $s`. Under $ErrorActionPreference = 'SilentlyContinue' that throw is swallowed and the script goes on to `iex $s`: the second
+      // way that command failed open (the first was ConstrainedLanguage). The command now has iex only inside the branch the check admits; this pins it against going back.
+      for (const preference of ["SilentlyContinue", "Continue", "Stop"]) {
+        const s = scratch(); behaviour = serveScript(Buffer.concat([realScript(), sentinel(s.marker)]));
+        const r = await run(s, { T_PRESET: `$ErrorActionPreference = '${preference}'; "LanguageMode=" + $ExecutionContext.SessionState.LanguageMode` }, "paste");
+        expect(r.out, `full language mode (${preference})`).toContain("LanguageMode=FullLanguage");
+        expect(existsSync(s.marker), `the tampered script must not run (${preference})\n${r.out}`).toBe(false);
+        expect(existsSync(s.install), `nothing installed (${preference})`).toBe(false); expect(readdirSync(s.local)).toEqual([]);
+        expect(seen, `no archive was requested (${preference})`).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);
+        // the reason is shown whatever the preference swallows
+        expect(r.out, `the reason is shown (${preference})`).toContain("could not be verified"); expect(r.out).not.toContain("installed version");
+        if (preference !== "SilentlyContinue") expect(r.status, `ends in an error (${preference})`).not.toBe(0);
+      }
+      // and the preference does not stop an honest script from installing (the server must send the honest script again: `behaviour` still holds the tampered one)
+      behaviour = () => false;
+      const honest = scratch(), h = await run(honest, { T_PRESET: "$ErrorActionPreference = 'SilentlyContinue'" }, "paste");
+      expect(h.out).toContain("installed version"); expect(existsSync(join(honest.install, "bin", "current.txt")), h.out).toBe(true);
+    });
     it("accepts the script when the hash matches, byte for byte, and then still checks the archive's own pinned hash", async () => {
       const s = scratch(); expect(sha(realScript())).toBe(serviceA.installer().scriptSha256);
       const r = await run(s); expect(r.code, r.out).toBe(0); expect(r.verifyFailed).toBe(false);
