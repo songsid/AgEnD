@@ -1079,13 +1079,17 @@ describe("Daemon error monitor recovery", () => {
     expect(errors).toEqual([]);
   });
 
-  it("each later usage-pause record is a new occurrence (again / re-armed), other notes are not", () => {
+  it("one notice per pause: its later records (again / re-armed) collapse into it until Claude says the limit reset; other notes are not", () => {
+    // Was: each "again" record was a new notice — the repeats of one pause, and (replayed) the 14-notice spam of 2026-11-06.
     const messages: string[] = [];
     daemon.on("pty_error", ({ message }) => messages.push(message));
     (daemon as any).noteClaudeInformational(USAGE_PAUSE_NOTE);
     (daemon as any).noteClaudeInformational("Usage limit reached again · continuing automatically at 6:53pm · esc to cancel");
     (daemon as any).noteClaudeInformational("Automatic continue cancelled · /rate-limit-options to re-arm");
     (daemon as any).noteClaudeInformational("Usage limit reached · continuing automatically at 1:50pm");   // not the whole note
+    expect(messages).toEqual(["Claude Code usage limit reached — paused; continuing automatically at 1:50pm"]);
+    (daemon as any).noteClaudeInformational("Usage limit reset · continuing automatically");
+    (daemon as any).noteClaudeInformational("Usage limit reached again · continuing automatically at 6:53pm · esc to cancel");
     expect(messages).toEqual([
       "Claude Code usage limit reached — paused; continuing automatically at 1:50pm",
       "Claude Code usage limit reached — paused; continuing automatically at 6:53pm",

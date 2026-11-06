@@ -28,6 +28,40 @@ export function claudeResetTime(when: string): QuotaReset {
   return m ? (m[1]!.toLowerCase() === "in" ? { in: m[2]! } : { at: m[2]! }) : { at: when.trim() };
 }
 
+/**
+ * When Claude's words for its reset ("at 7:10pm", "at 2pm", "in 3h", "in 2h 30m") come true, judged from `from` — the
+ * moment Claude wrote them (its record's timestamp): "at" is the first such local clock time after it, "in" is added to
+ * it. null when the words are anything else (a date, a form not known): such a reset is never judged stale.
+ * The clock time is read in this process's time zone — the CLI's, as both run on the same host with the same TZ.
+ */
+export function claudeResetInstant(when: string, from: number): number | null {
+  const text = when.trim().replace(/\s*\([^)]*\)\s*$/, "");                     // a trailing "(Asia/Taipei)" note
+  const at = /^at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i.exec(text);
+  if (at) {
+    let hour = Number(at[1]); const minute = at[2] ? Number(at[2]) : 0; const half = at[3]?.toLowerCase();
+    if (minute > 59 || (half ? hour < 1 || hour > 12 : hour > 23)) return null;
+    if (half === "pm" && hour !== 12) hour += 12;
+    if (half === "am" && hour === 12) hour = 0;
+    const d = new Date(from);
+    d.setHours(hour, minute, 0, 0);
+    if (d.getTime() < from) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+  const rel = /^in\s+(.+)$/i.exec(text);
+  if (rel) {
+    const units: Record<string, number> = { d: 86_400_000, h: 3_600_000, m: 60_000, s: 1_000 };
+    let total = 0, rest = rel[1]!.trim();
+    while (rest) {
+      const part = /^(\d+)\s*(d|days?|h|hrs?|hours?|m|mins?|minutes?|s|secs?|seconds?)\b\s*/i.exec(rest);
+      if (!part) return null;
+      total += Number(part[1]) * units[part[2]![0]!.toLowerCase()]!;
+      rest = rest.slice(part[0].length);
+    }
+    return total > 0 ? from + total : null;
+  }
+  return null;
+}
+
 /** Codex's "less than N% of your <period> limit" warning. */
 export function quotaLowLine(period: string, percent: string): string {
   const key = `inst.quota_period.${period.toLowerCase()}`;
