@@ -56,6 +56,7 @@ function processPeer(value: ChildProcess): RuntimeUpdateIpcPeer {
     send: (message, callback) => value.send(message, callback) };
 }
 interface Child { process: ChildProcess; channel: RuntimeUpdateIpc; exited: Promise<void>; proof?: RuntimeProcessProof }
+class RuntimeUpdateCancelled extends Error { constructor() { super("Runtime update controller closed"); } }
 
 export class RuntimeUpdateController {
   private readonly observe: Observe;
@@ -147,6 +148,10 @@ export class RuntimeUpdateController {
     lock.assert(); this.bindingCurrent();
     if (!same(readRuntimeInstallOwner(this.install.root, this.owner.id), this.owner) || runtimeProcessMatches(this.owner.parent, { state: "alive", proof: this.self }) !== true) throw Error("Runtime update ownership changed");
   }
+  private running(lock: RuntimeInstallLock): void {
+    if (this.closed) throw new RuntimeUpdateCancelled();
+    this.current(lock);
+  }
   private async locked<T>(job: (lock: RuntimeInstallLock) => Promise<T>): Promise<T> {
     const lock = this.retainedLease ?? await acquireRuntimeInstallLock(this.install.root, { ownProof: this.self, observe: this.observe });
     this.retainedLease = lock;
@@ -180,12 +185,15 @@ export class RuntimeUpdateController {
     try {
       if (this.closed) return;
       await this.locked(async lock => {
+        this.running(lock);
         const attempt = this.journal.read().attempt;
         if (!attempt || attempt.id !== id || attempt.ownerId !== this.owner.id || attempt.phase !== "handoff") throw Error("Runtime trial binding changed");
         await assertRuntimeInstallExclusive(this.install.root, this.owner, lock, this.observe);
-        this.journal.advance(id, "trial", () => this.current(lock));
+        this.running(lock);
+        this.journal.advance(id, "trial", () => this.running(lock));
         selectRuntimeProgram(this.install.root, attempt.old, attempt.next, lock);
       });
+      if (this.closed) return;
       await this.client.start();
       const deadline = Date.now() + 30_000;
       while (!this.authentication && !this.closed && !this.client.stopReason) {
@@ -198,22 +206,29 @@ export class RuntimeUpdateController {
         || auth.runtimeInfo.version !== program.version || auth.runtimeInfo.buildId !== program.buildId) throw Error("Runtime trial identity or health failed");
       // Set before the durable write: a write error can have an unknown committed outcome.
       activationIntent = true;
-      await this.locked(async lock => { this.journal.advance(id, "activating", () => this.current(lock)); });
+      await this.locked(async lock => { this.journal.advance(id, "activating", () => this.running(lock)); });
       while (!this.closed && !this.client.stopReason) {
         try {
-          if (await this.client.activateTrial(id)) {
+          const activated = await this.client.activateTrial(id);
+          if (this.closed) return;
+          if (activated) {
             await this.locked(async lock => {
+              this.running(lock);
               const state = this.journal.read();
-              if (state.attempt?.phase === "activating") this.journal.advance(id, "active", () => this.current(lock));
-              if (this.journal.read().attempt) this.journal.complete(id, () => this.current(lock));
+              if (state.attempt?.phase === "activating") this.journal.advance(id, "active", () => this.running(lock));
+              if (this.journal.read().attempt) this.journal.complete(id, () => this.running(lock));
             });
+            if (this.closed) return;
             this.trialPending = false; this.say("Runtime update connected and activated.");
+            if (this.closed) return;
             this.timer = setInterval(() => this.checkSoon(), this.options.pollMs ?? 5 * 60_000); this.timer.unref(); this.checkSoon(); return;
           }
         } catch { /* Exact-ID retry; a lost acknowledgement never grants rollback. */ }
+        if (this.closed) return;
         this.say("Runtime activation is unconfirmed. Keeping the selected build and retrying the same attempt."); await sleep(1000);
       }
     } catch (error) {
+      if (error instanceof RuntimeUpdateCancelled && this.closed) return;
       if (!activationIntent && !this.closed) { await this.rollback(id); return; }
       throw error;
     }
@@ -221,21 +236,34 @@ export class RuntimeUpdateController {
   private async rollback(id: string): Promise<void> {
     // This method is reachable only while the candidate is still gated, before any activation intent.
     await this.client?.stop();
-    let child: Child | undefined;
-    await this.locked(async lock => {
-      const attempt = this.journal.read().attempt;
-      if (!attempt || attempt.id !== id || !["prepared", "handoff", "trial"].includes(attempt.phase)) throw Error("Runtime rollback is unconfirmed");
-      this.journal.advance(id, "rollback", () => this.current(lock));
-      const selected = readRuntimeSelectedProgram(this.install.root);
-      if (same(selected, attempt.next)) selectRuntimeProgram(this.install.root, attempt.next, attempt.old, lock);
-      // A lockless manual installer wins. Never overwrite a third selection while returning to the verified old code.
-      child = await this.spawnChild(attempt.old, id, lock);
-    });
-    if (!child) throw Error("Runtime rollback did not start");
-    try { await this.arm(child, { v: 1, id, type: "init", role: "rollback", ownerId: this.owner.id, profile: this.options.store.directory }); }
-    catch (error) { await this.stopUnadmitted(child); throw error; }
-    this.say("Runtime update failed. Returning to the previous verified build; pairing and task records are kept.");
-    this.handedOff = true; child.channel.close(); if (child.process.connected) child.process.disconnect(); child.process.unref();
+    if (this.closed) return;
+    let child: Child | undefined, transferred = false;
+    try {
+      await this.locked(async lock => {
+        this.running(lock);
+        const attempt = this.journal.read().attempt;
+        if (!attempt || attempt.id !== id || !["prepared", "handoff", "trial"].includes(attempt.phase)) throw Error("Runtime rollback is unconfirmed");
+        this.journal.advance(id, "rollback", () => this.running(lock));
+        const selected = readRuntimeSelectedProgram(this.install.root);
+        if (same(selected, attempt.next)) selectRuntimeProgram(this.install.root, attempt.next, attempt.old, lock);
+        // A lockless manual installer wins. Never overwrite a third selection while returning to the verified old code.
+        child = await this.spawnChild(attempt.old, id, lock);
+      });
+      if (this.closed) return;
+      if (!child) throw Error("Runtime rollback did not start");
+      await this.arm(child, { v: 1, id, type: "init", role: "rollback", ownerId: this.owner.id, profile: this.options.store.directory });
+      if (this.closed) return;
+      this.say("Runtime update failed. Returning to the previous verified build; pairing and task records are kept.");
+      if (this.closed) return;
+      this.handedOff = true; transferred = true;
+      child.channel.close(); if (child.process.connected) child.process.disconnect(); child.process.unref();
+    } catch (error) {
+      if (!(error instanceof RuntimeUpdateCancelled && this.closed)) throw error;
+    } finally {
+      // A helper cannot admit while this parent lives. Shutdown must positively stop it,
+      // never leave it armed to adopt the row when this parent exits.
+      if (child && !transferred) await this.stopUnadmitted(child);
+    }
   }
   private checkSoon(): void {
     if (this.closed || this.work || this.handedOff || Date.now() < this.intervalAt) return;
@@ -287,9 +315,10 @@ export class RuntimeUpdateController {
         retired = true;
         if (this.closed) return;
         this.current(lock); await assertRuntimeInstallExclusive(this.install.root, this.owner, lock, this.observe);
-        this.journal.begin(id, this.owner.id, program, next, () => this.current(lock));
+        this.running(lock);
+        this.journal.begin(id, this.owner.id, program, next, () => this.running(lock));
         child = await this.spawnChild(next, id, lock);
-        this.journal.advance(id, "handoff", () => this.current(lock));
+        this.journal.advance(id, "handoff", () => this.running(lock));
       });
     } catch (error) {
       if (child) await this.stopUnadmitted(child);
@@ -316,10 +345,10 @@ export class RuntimeUpdateController {
       if (attempt) this.journal.fail(id, () => this.current(lock));
       else this.journal.rememberFailure(target, () => this.current(lock));
     });
-    if (!this.closed) { this.client = this.newClient(); await this.client.start(); }
+    if (!this.closed) { this.client = this.newClient(); if (!this.closed) await this.client.start(); }
   }
   private async spawnChild(program: RuntimeInstalledProgram, id: string, lock: RuntimeInstallLock): Promise<Child> {
-    this.current(lock);
+    this.running(lock);
     if (!same(readRuntimeInstalledProgram(this.install.root, program.folder), program)) throw Error("Runtime target changed");
     const child = (this.options.spawn ?? spawn)(process.execPath, [join(this.install.root, program.folder, "dist", "runtime-cli.js"), "--internal-update"],
       // On Windows an attached console child can die with the outgoing cmd/console owner.
@@ -335,7 +364,9 @@ export class RuntimeUpdateController {
       if (!child.pid) throw Error("Runtime update child did not start");
       const observed = await this.observe(child.pid);
       if (observed.state !== "alive" || observed.proof.pid !== child.pid || runtimeProcessMatches(observed.proof, observed) !== true) throw Error("Runtime update child ownership is unconfirmed");
-      result.proof = { ...observed.proof }; this.owner = await attachRuntimeInstallChild(this.install.root, this.owner, result.proof, lock, this.observe);
+      result.proof = { ...observed.proof }; this.running(lock);
+      this.owner = await attachRuntimeInstallChild(this.install.root, this.owner, result.proof, lock, this.observe);
+      this.running(lock);
       return result;
     } catch (error) {
       if (result) await this.stopUnadmitted(result);
