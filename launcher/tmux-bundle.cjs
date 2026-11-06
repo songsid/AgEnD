@@ -64,6 +64,12 @@ function tmuxEnv(candidate, base) {
 var PANE_MARK = "agend-verify-ok";
 var PANE_ARGV = ["/bin/sh", "-c", "printf '%s\\n' " + PANE_MARK + "; exec sleep 60"];
 
+/** Milliseconds on a monotonic clock: a wall-clock step (NTP, a VM resume) must not end a wait early or stretch it. */
+function monotonicMs() {
+  var t = process.hrtime();
+  return t[0] * 1e3 + t[1] / 1e6;
+}
+
 function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -155,8 +161,10 @@ function verifyTmux(candidate, pin, deps) {
     if (!failed) step("kill-server", ["-L", sock, "kill-server"]);
     if (!failed) {
       // Gone, positively: the recorded pid has exited, and the socket answers a clean "no server".
-      var deadline = Date.now() + exitWaitMs;
-      while (!gone(server.pid) && Date.now() < deadline) sleepMs(50);
+      // Monotonic (alpha CI run 42287645555: the wall clock stepped mid-wait, the deadline was already past at the first
+      // check, and a server killed a moment earlier was refused as "still running" in 151 ms of a 1.5 s budget).
+      var deadline = monotonicMs() + exitWaitMs;
+      while (!gone(server.pid) && monotonicMs() < deadline) sleepMs(50);
       if (!gone(server.pid)) failed = "its server (pid " + server.pid + ") was still running after kill-server";
       else {
         var after = run(["-L", sock, "has-session"]);
