@@ -33,8 +33,8 @@ export class HubMemberAdmissionAdapter implements HubMemberAdmission {
     try {
       const identity = verifyAsker(question.identity, question.text, { hubId: b.profile.hub.hubId, issuerKeyId: b.profile.issuerKeyId,
         issuerPublicKey: createPublicKey(b.profile.hub.issuerPublicKey), fleetId: b.profile.fleetId, owner: b.profile.owner,
-        revocationVersion: b.revocationVersion, now: this.options.now?.() ?? Date.now() });
-      const q = { text: question.text, identity };
+        revocationVersion: b.revocationVersion, now: this.options.now?.() ?? Date.now() }, question.attachments);
+      const q = { text: question.text, identity, ...(question.attachments?.length ? { attachments: question.attachments } : {}) };
       if (!this.owns(q, b)) throw new HubProtocolError("denied");
       const prepared = this.options.journal.prepare(q);
       if (prepared.receipt) return prepared.receipt; // exact durable duplicate; never enqueues or executes again

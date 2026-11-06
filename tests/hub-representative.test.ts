@@ -5,12 +5,17 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { generateKeyPairSync, randomBytes, randomUUID } from "node:crypto";
 import { HubMemberJournal, migrateHubMemberJournal } from "../src/hub/member-journal.js";
 import { HubMemberAdmissionAdapter } from "../src/hub/admission.js";
-import { signAsker, sha256, issuerKeyId, operationDigest } from "../src/hub/identity.js";
+import { signAsker, sha256, issuerKeyId, operationDigest, messageContentDigest } from "../src/hub/identity.js";
+import { HubMemberFiles } from "../src/hub/member/attachments.js";
+import { HUB_ATTACHMENT_CHUNK } from "../src/hub/protocol.js";
 import { HubRepresentativeExecution, HUB_REPORT_TARGET, agentPolicyDigest, isAgentTuple, migrateHubRepresentative, type HubRepresentativeDelivery } from "../src/hub/representative.js";
-import type { HubAuthorizationRequest, HubQuestion } from "../src/hub/types.js";
+import type { HubAttachmentRef, HubAuthorizationRequest, HubQuestion } from "../src/hub/types.js";
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
 
@@ -26,7 +31,8 @@ async function until(check: () => boolean, label: string): Promise<void> {
   expect(check(), label).toBe(true);
 }
 
-function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
+/** files/features/hubFiles: attachments-v1 (D) — the member's files service, the link's features, the Hub's stored files by id. */
+function fixture(opts: { legacy?: boolean; handOff?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
   const db = new Database(":memory:");
   dbs.push(db);
   migrateHubMemberJournal(db);
@@ -40,15 +46,25 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
     ? { agent: "rep", providerId: "claude", consentId: randomUUID(), generation: 1, exposure: { id: randomUUID(), fleetId: profile.fleetId, owner, displayName: "Rep", revision: 1, state: "published", dataViewId: "handbook", allowedTools: ["documents.read"], policyDigest: sha256("view") } }
     : { agent: "rep", providerId: "agent", consentId: randomUUID(), generation: 1, exposure: { id: randomUUID(), fleetId: profile.fleetId, owner, displayName: "Rep", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: agentPolicyDigest("rep") } };
   let current: HubLocalExposure | null = local;
-  const question = (text = "What is in the folder?"): HubQuestion => ({ text, identity: signAsker({ v: 1, issuer: profile.hub.hubId, issuerKeyId: profile.issuerKeyId, messageId: randomUUID(), asker: { realm: "directory", objectId: randomUUID() }, owner, destinationFleetId: profile.fleetId, exposureId: local.exposure.id, roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1, exposureRevision: 1, revocationVersion: 1, contentDigest: sha256(text), issuedAt: now, expiresAt: now + 120_000, nonce: randomBytes(32).toString("hex") }, keys.privateKey) });
+  const question = (text = "What is in the folder?", attachments?: HubAttachmentRef[]): HubQuestion => ({ text, ...(attachments ? { attachments } : {}), identity: signAsker({ v: 1, issuer: profile.hub.hubId, issuerKeyId: profile.issuerKeyId, messageId: randomUUID(), asker: { realm: "directory", objectId: randomUUID() }, owner, destinationFleetId: profile.fleetId, exposureId: local.exposure.id, roomId: randomUUID(), grantId: randomUUID(), grantRevision: 1, exposureRevision: 1, revocationVersion: 1, contentDigest: messageContentDigest("question", text, { attachments }), issuedAt: now, expiresAt: now + 120_000, nonce: randomBytes(32).toString("hex") }, keys.privateKey) });
   const lease = (request: HubAuthorizationRequest) => ({ decisionId: randomUUID(), messageId: request.messageId, operationId: request.operationId, phase: request.phase, operationDigest: operationDigest(request), exposureRevision: request.exposureRevision, revocationVersion: 1, linkEpoch: 1, expiresAt: now + 5_000 });
   const authorize = vi.fn(async (r: HubAuthorizationRequest) => lease(r));
   const frames: any[] = [];
+  const puts = new Map<string, Buffer[]>();
   const link = {
     linkEpoch: 1,
     current: () => true,
+    features: new Set(opts.features ?? []),
     exchange: vi.fn(async (frame: any) => {
       frames.push(frame);
+      if (frame.type === "attachment.get") {
+        const bytes = opts.hubFiles?.get(frame.payload.id); if (!bytes) throw new Error("not-found");
+        return { v: 1, type: "attachment.chunk", requestId: frame.requestId, linkEpoch: 1, payload: { id: frame.payload.id, offset: frame.payload.offset, total: bytes.length, sha256: opts.claimedSha?.get(frame.payload.id) ?? sha256(bytes), data: bytes.subarray(frame.payload.offset, frame.payload.offset + HUB_ATTACHMENT_CHUNK).toString("base64") } };
+      }
+      if (frame.type === "attachment.put") {
+        const list = puts.get(frame.payload.id) ?? []; list.push(Buffer.from(frame.payload.data, "base64")); puts.set(frame.payload.id, list);
+        return { v: 1, type: "attachment.ack", requestId: frame.requestId, linkEpoch: 1, payload: { id: frame.payload.id, offset: frame.payload.offset } };
+      }
       if (frame.type === "answer" && exchangeMode === "reject") throw new Error("link dropped");
       if (frame.type === "answer" && exchangeMode === "bad-ack") return { v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: 1, payload: { messageId: frame.payload.messageId, contentDigest: "x".repeat(64), stage: "consumed", sequence: 1, at: now } };
       if (frame.type === "answer") return { v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: 1, payload: { messageId: frame.payload.messageId, contentDigest: "x".repeat(64), stage: "answered", sequence: 1, at: now } };
@@ -71,6 +87,7 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
     agentToken: () => token,
     authorize,
     link: () => online,
+    ...(opts.files ? { files: opts.files } : {}),
     deliver: async (input) => {
       deliveries.push(input);
       onDeliver?.(); // e.g. something changes while the question waits for the agent's idle gate
@@ -97,7 +114,7 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
   const publish = () => db.transaction(() => rep.readinessCandidate({ ...local, exposure: { ...local.exposure, state: "withdrawn" } })).immediate();
   const stage = (id: string) => (JSON.parse((db.prepare("SELECT value FROM hub_member_messages WHERE message_id=?").get(id) as { value: string }).value) as { stage: string }).stage;
   const state = (id: string) => (db.prepare("SELECT state, reason FROM hub_representative_questions WHERE message_id=?").get(id) as { state: string; reason: string | null } | undefined);
-  return { db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local,
+  return { puts, db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local,
     setToken: (t: string | null) => { token = t; }, withdraw: () => { current = null; }, stop: () => { live = false; }, offline: () => { online = null; }, online: () => { online = link; },
     setHandOff: (v: boolean) => { handOff = v; }, whileWaiting: (fn: () => void) => { onDeliver = fn; },
     failAuditOf: (action: string | null) => { failAudit = action; }, exchange: (mode: "ok" | "reject" | "bad-ack") => { exchangeMode = mode; } };
@@ -342,4 +359,80 @@ describe("Hub representative adapter (#3145)", () => {
     await until(() => f.handed.length === 65, "all 65 handed");
     expect(new Set(f.deliveries.map((d) => d.correlationId)).size).toBe(65);
   });
+});
+
+describe("Hub representative files (attachments-v1, #3226 D)", () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  function files() {
+    const root = mkdtempSync(join(tmpdir(), "hub-rep-files-")); dirs.push(root);
+    const state = join(root, "agend"), outside = join(root, "agent-work"); mkdirSync(state); mkdirSync(outside);
+    const service = new HubMemberFiles({ stateDir: state, inboxDir: (a) => join(state, "workspaces", a, "inbox"), scratchDir: (a) => join(state, "workspaces", a, "hub-files") });
+    return { service, state, outside, inbox: join(state, "workspaces", "rep", "inbox") };
+  }
+  const ref = (name: string, bytes: Buffer, mime: string): HubAttachmentRef => ({ id: randomUUID(), name, size: bytes.length, mime, sha256: sha256(bytes) });
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(HUB_ATTACHMENT_CHUNK + 99)]);
+  const TXT = Buffer.from("hello from the asker\n");
+
+  it("a question's files land whole in the agent's inbox and are named in its text, as fleet chat uploads are", async () => {
+    const fs = files(), png = ref("chart.png", PNG, "image/png"), txt = ref("notes.txt", TXT, "text/plain");
+    const f = fixture({ files: fs.service, features: ["attachments-v1"], hubFiles: new Map([[png.id, PNG], [txt.id, TXT]]) });
+    f.publish();
+    const q = f.question("See attached", [png, txt]);
+    await f.admission.admit(q);
+    await vi.waitFor(() => expect(f.deliveries).toHaveLength(1));
+    const text = f.deliveries[0]!.text, id8 = q.identity.messageId.slice(0, 8);
+    const pngPath = join(fs.inbox, `hub-${id8}-1-chart.png`), txtPath = join(fs.inbox, `hub-${id8}-2-notes.txt`);
+    expect(readFileSync(pngPath).equals(PNG)).toBe(true); expect(readFileSync(txtPath).equals(TXT)).toBe(true);
+    expect(text).toContain(`[📷 Image: ${pngPath}]`); expect(text).toContain(`[📎 File: notes.txt → ${txtPath}]`);
+    expect(text).toContain("report_result's files");
+    expect(f.frames.filter(x => x.type === "attachment.get").map(x => x.payload.offset)).toEqual([0, HUB_ATTACHMENT_CHUNK, 0]);
+  });
+
+  it.each([["the link does not take files", { features: [] as string[] }], ["a chunk does not match its digest", { corrupt: true }]] as const)(
+    "%s: the question is held (Needs you), never handed over without its files", async (_why, how) => {
+      const fs = files(), txt = ref("notes.txt", TXT, "text/plain");
+      // A corrupt chunk claims the ref's own digest: only the member's whole-file check can catch it.
+      const f = fixture({ files: fs.service, features: "features" in how ? how.features : ["attachments-v1"], hubFiles: new Map([[txt.id, "corrupt" in how ? Buffer.from("x".repeat(TXT.length)) : TXT]]),
+        claimedSha: new Map([[txt.id, txt.sha256]]) });
+      f.publish();
+      const q = f.question("See attached", [txt]);
+      await f.admission.admit(q);
+      await vi.waitFor(() => expect(f.state(q.identity.messageId)?.state).toBe("held"));
+      expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "files-unavailable" });
+      expect(f.deliveries).toHaveLength(0);
+    });
+
+  it("report_result files: copied under the reply rule, pushed in chunks BEFORE the answer, bound in its digest and lease", async () => {
+    const fs = files(), f = fixture({ files: fs.service, features: ["attachments-v1"] });
+    const csv = join(fs.outside, "by-region.csv"), bytes = Buffer.from("region,sales\n" + "north,42\n".repeat(25_000)); writeFileSync(csv, bytes);
+    f.publish(); const q = f.question(); await f.admission.admit(q);
+    await vi.waitFor(() => expect(f.deliveries).toHaveLength(1));
+    const outcome = await f.rep.report({ correlationId: f.deliveries[0]!.correlationId, caller: "rep", text: "Attached.", extras: { files: [csv] } })!;
+    expect(outcome.ok).toBe(true);
+    const order = f.frames.map(x => x.type).filter(t => t === "attachment.put" || t === "answer");
+    expect(order).toEqual(["attachment.put", "attachment.put", "answer"]);
+    const answer = f.frames.find(x => x.type === "answer")!.payload, sent = answer.attachments;
+    expect(sent).toEqual([{ id: expect.any(String), name: "by-region.csv", size: bytes.length, mime: "text/csv", sha256: sha256(bytes) }]);
+    expect(Buffer.concat(f.puts.get(sent[0].id)!).equals(bytes)).toBe(true);
+    expect(answer.contentDigest).toBe(messageContentDigest("answer", "Attached.", { attachments: sent }));
+    expect(f.authorize.mock.calls.map(([r]) => r).find(r => r.phase === "release-answer")).toMatchObject({ answer: { contentDigest: answer.contentDigest } });
+  });
+
+  it.each([["a state-dir file", "state"], ["an SVG", "svg"], ["a symlink", "link"], ["a Hub that can't take files", "nolink"]] as const)(
+    "report_result with %s is refused with a fixable reason; the question stays open, nothing is sent", async (_what, kind) => {
+      const fs = files(), f = fixture({ files: fs.service, features: kind === "nolink" ? [] : ["attachments-v1"] });
+      let path = join(fs.outside, "ok.txt"); writeFileSync(path, "ok");
+      if (kind === "state") { path = join(fs.state, "secret.txt"); writeFileSync(path, "token"); }
+      if (kind === "svg") { path = join(fs.outside, "x.svg"); writeFileSync(path, "<svg/>"); }
+      if (kind === "link") { const target = join(fs.outside, "real.txt"); writeFileSync(target, "x"); path = join(fs.outside, "alias.txt"); symlinkSync(target, path); }
+      f.publish(); const q = f.question(); await f.admission.admit(q);
+      await vi.waitFor(() => expect(f.deliveries).toHaveLength(1));
+      const cid = f.deliveries[0]!.correlationId;
+      const outcome = await f.rep.report({ correlationId: cid, caller: "rep", text: "Here.", extras: { files: [path] } })!;
+      expect(outcome.ok).toBe(false); expect(outcome.message).toMatch(/^Not sent: .+ Report again with the same correlation_id\.$/);
+      expect(f.frames.some(x => x.type === "attachment.put" || x.type === "answer")).toBe(false);
+      expect(f.state(q.identity.messageId)!.state).toBe("delivered");
+      expect((await f.rep.report({ correlationId: cid, caller: "rep", text: "Text only then." })!).ok).toBe(true);
+    });
 });

@@ -35,6 +35,7 @@ import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFra
 import { HubFileVersionFloor } from "../version-floor.js";
 import { browserCertificateMigration, createHubBrowserCertificateControl, type HubBrowserCertificateControl } from "../browser-certificate.js";
 import { createHubRetentionControl, retentionMigration, type HubRetentionControl } from "../retention.js";
+import { HUB_ATTACHMENTS_MIGRATION, HubAttachmentStore } from "../attachments/store.js";
 
 export const SERVER_SET: HubStateSet = Object.freeze({
   database: "hub/hub.sqlite",
@@ -47,6 +48,8 @@ export interface HubHttpDeps {
   uow: HubUnitOfWork;
   audit: HubAuditStore;
   content: HubContentStore;
+  /** attachments-v1 files under the content key (absent: the Hub offers no upload). */
+  attachments?: HubAttachmentStore;
   directory: HubDirectory;
   pairing: HubPairingService;
   store: HubTransportStore;
@@ -225,11 +228,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
-        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId)]);
+        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
-      const audit = createHubAudit({ db, contentKey: readKeyFile(options.home, SERVER_SET.keys[0]!), now });
+      const contentKey = readKeyFile(options.home, SERVER_SET.keys[0]!);
+      const audit = createHubAudit({ db, contentKey, now });
+      // attachments-v1 files, under the same content key as audit content.
+      const attachments = new HubAttachmentStore({ contentKey, now });
       const uow = createHubUnitOfWork(db);
       const store = new HubTransportStore(db, { floor, appendAudit: (record, database) => audit.appendInTransaction(record, database) });
       if (state === "new") store.initialize();
@@ -268,6 +274,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         uow,
         audit,
         content: audit.content,
+        attachments,
         directory,
         pairing,
         store,
@@ -337,7 +344,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             retentionTimer = setInterval(() => {
               if (!live()) return;
               try {
-                audit.purge(retention.read());
+                const policy = retention.read();
+                audit.purge(policy);
+                // Files follow the content policy; expired uploads and unfinished transfers go too.
+                db.transaction(() => attachments.purge(db, now() - policy.contentDays * 86_400_000)).immediate();
               } catch (err) {
                 options.log("warn", "Hub retention could not run", { err: (err as Error).message });
               }

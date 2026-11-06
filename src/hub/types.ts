@@ -24,6 +24,9 @@ export interface HubWelcome {
   linkEpoch: Epoch; revocationVersion: Epoch;
   capabilities?: readonly string[]; // only when the hello offered welcome-caps-v1
 }
+/** attachments-v1: a file carried with a question (Hub → member) or an answer (member → Hub). */
+export interface HubAttachmentRef { id: string; name: string; size: number; mime: string; sha256: Sha256 }
+export interface HubAttachmentChunk { id: string; offset: number; total: number; sha256: Sha256; data: string }
 export interface HubExposureSnapshot {
   revision: Epoch; exposures: readonly HubExposure[];
 }
@@ -35,6 +38,7 @@ export interface HubQuota {
 export interface HubExposureQuota { exposureId: ExposureId; quota: HubQuota }
 export interface HubQuestion {
   text: string; identity: HubAskerEnvelope;
+  attachments?: readonly HubAttachmentRef[]; // attachments-v1 links only
 }
 export type HubReceiptStage =
   | "queued" | "delivered" | "consumed" | "answered"
@@ -47,6 +51,7 @@ export interface HubReceipt {
 export interface HubAnswer {
   messageId: MessageId; answerId: string; text: string; contentDigest: Sha256;
   releaseLease: HubAuthorizationLease; // binds this exact answer, not another answer in the room
+  attachments?: readonly HubAttachmentRef[]; // attachments-v1 links only; bound through contentDigest
 }
 export interface HubReconcile {
   afterReceiptSequence: Epoch;
@@ -92,7 +97,9 @@ export type HubMemberFrame =
   | HubFrame<"reconcile", HubReconcile>
   | HubFrame<"authorize.request", HubAuthorizationRequest>
   | HubFrame<"error", HubProtocolError>
-  | HubFrame<"exposure.quota", HubExposureQuota>;
+  | HubFrame<"exposure.quota", HubExposureQuota>
+  | HubFrame<"attachment.get", { id: string; offset: number }>
+  | HubFrame<"attachment.put", HubAttachmentChunk>;
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
@@ -100,7 +107,9 @@ export type HubServerFrame =
   | HubFrame<"reconcile", HubReconcileReply>
   | HubFrame<"authorize.result", HubAuthorizationResult>
   | HubFrame<"revoke", HubRevocation>
-  | HubFrame<"error", HubProtocolError>;
+  | HubFrame<"error", HubProtocolError>
+  | HubFrame<"attachment.chunk", HubAttachmentChunk>
+  | HubFrame<"attachment.ack", { id: string; offset: number }>;
 export interface HubServerTransport {
   start(): Promise<void>;
   send(fleetId: FleetId, frame: HubServerFrame): Promise<void>;
