@@ -1962,59 +1962,92 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubAgentToken(agent: string): string | null {
     const instances = this.fleetConfig?.instances ?? {};
     if (!Object.prototype.hasOwnProperty.call(instances, agent)) return null;
-    const id = this.hubAgentIncarnation(agent, instances[agent]!, true);
+    if (this.hubIncarnationsBroken) return null;
+    let id: string | null;
+    try { id = this.hubAgentIncarnation(agent, instances[agent]!, true); }
+    catch (err) { this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be saved; the agent is not a deliverable representative"); return null; }
     return id ? createHash("sha256").update(JSON.stringify(["agend-hub-agent-v2", agent, id])).digest("hex") : null;
   }
   private hubIncarnationsPath(): string { return join(this.dataDir, "hub-member", "agent-incarnations.json"); }
+  /**
+   * #3147 r2: set when an invalidation could not be made durable in any way (neither the atomic write nor removing the
+   * file worked). From then on this process hands out no representative token at all, and the transitions the fleet
+   * controls (a config save, a removal) are refused instead of applied.
+   */
+  private hubIncarnationsBroken = false;
   private readHubIncarnations(): Record<string, { id: string; fp: string }> {
     try {
       const value = JSON.parse(readFileSync(this.hubIncarnationsPath(), "utf8")) as unknown;
       return value && typeof value === "object" && !Array.isArray(value) ? Object.assign(Object.create(null), value) : Object.create(null);
     } catch { return Object.create(null); }
   }
-  private writeHubIncarnations(map: Record<string, { id: string; fp: string }>): void {
+  /**
+   * Persist the incarnation map: "written", or — when the atomic write fails — "cleared": the whole file is removed, which
+   * durably invalidates EVERY earlier incarnation (all consent then needs a republish; never a revival). Throws (and
+   * marks the process broken) only when neither is possible.
+   */
+  private writeHubIncarnations(map: Record<string, { id: string; fp: string }>): "written" | "cleared" {
     const path = this.hubIncarnationsPath(), tmp = `${path}.${process.pid}.tmp`;
-    mkdirSync(join(this.dataDir, "hub-member"), { recursive: true, mode: 0o700 });
-    writeFileSync(tmp, JSON.stringify(map), { mode: 0o600 });
-    renameSync(tmp, path);
+    try {
+      mkdirSync(join(this.dataDir, "hub-member"), { recursive: true, mode: 0o700 });
+      writeFileSync(tmp, JSON.stringify(map), { mode: 0o600 });
+      renameSync(tmp, path);
+      return "written";
+    } catch (err) {
+      try { rmSync(tmp, { recursive: false, force: true }); } catch { /* a directory planted there: left alone */ }
+      try {
+        unlinkSync(path);
+      } catch (gone) {
+        if ((gone as NodeJS.ErrnoException)?.code !== "ENOENT") { this.hubIncarnationsBroken = true; throw err; }
+      }
+      this.logger.warn({ err: (err as Error)?.message }, "Hub agent incarnations could not be saved; every earlier Hub consent is invalidated (republish needed)");
+      return "cleared";
+    }
   }
   /** The agent's durable incarnation id (create: make one if none; else null). A changed fingerprint rotates it. */
   private hubAgentIncarnation(agent: string, cfg: { backend?: string; working_directory: string; runtime?: string; machine_id?: string }, create: boolean): string | null {
     const fp = createHash("sha256").update(JSON.stringify([cfg.backend ?? "claude-code", cfg.working_directory, cfg.runtime ?? "", cfg.machine_id ?? ""])).digest("hex");
-    try {
-      const map = this.readHubIncarnations(), entry = Object.prototype.hasOwnProperty.call(map, agent) ? map[agent] : undefined;
-      if (entry && entry.fp === fp && typeof entry.id === "string") return entry.id;
-      if (!entry && !create) return null;
-      map[agent] = { id: randomUUID(), fp };
-      this.writeHubIncarnations(map);
-      return map[agent]!.id;
-    } catch (err) {
-      this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be saved; the agent is not a deliverable representative");
-      return null;
-    }
+    const map = this.readHubIncarnations(), entry = Object.prototype.hasOwnProperty.call(map, agent) ? map[agent] : undefined;
+    if (entry && entry.fp === fp && typeof entry.id === "string") return entry.id;
+    if (!entry && !create) return null;
+    map[agent] = { id: randomUUID(), fp };
+    // A rotation that could only clear the file still invalidated the old id durably; the new one is made next time.
+    return this.writeHubIncarnations(map) === "written" ? map[agent]!.id : null;
   }
-  /** On every configuration in force: rotate a recorded agent's incarnation when its backend/folder/runtime changed; drop removed ones. */
-  private observeHubAgentIncarnations(): void {
-    // Only against a loaded configuration: never forget every agent because none is loaded yet. Never throws: a config
-    // save/reload must not fail on it (a failed rotation leaves the old token, which then mismatches nothing new).
+  /**
+   * Every configuration in force: rotate a recorded agent's incarnation when its backend/folder/runtime changed; drop
+   * removed ones. strict (a config save the fleet is about to write): a failure to make that durable throws, so the save
+   * is refused instead of applied. Otherwise (a load or reload of a hand-edited file) a failure is logged — the
+   * invalidation then is the cleared file, or, if nothing could be written, this process hands out no token at all.
+   */
+  private observeHubAgentIncarnations(strict = false): void {
+    // Only against a loaded configuration: never forget every agent because none is loaded yet.
+    if (!this.dataDir || !this.fleetConfig?.instances) return;
     try {
-      if (!this.dataDir || !this.fleetConfig?.instances || !existsSync(this.hubIncarnationsPath())) return;
+      if (!existsSync(this.hubIncarnationsPath())) return;
       const instances = this.fleetConfig.instances;
       for (const agent of Object.keys(this.readHubIncarnations())) {
         // Gone from the configuration in force (removed by hand in fleet.yaml, too): forgotten, never revived by a re-add.
         if (Object.prototype.hasOwnProperty.call(instances, agent)) this.hubAgentIncarnation(agent, instances[agent]!, false);
-        else this.forgetHubAgentIncarnation(agent);
+        else this.forgetHubAgentIncarnation(agent, true);
       }
-    } catch (err) { this.logger?.warn({ err: (err as Error)?.message }, "Hub agent incarnations could not be checked"); }
+    } catch (err) {
+      this.logger?.warn({ err: (err as Error)?.message }, "Hub agent incarnations could not be checked");
+      if (strict) throw new Error(`Hub consent for a changed agent could not be invalidated durably; the change is not saved (${(err as Error)?.message})`);
+    }
   }
-  /** A removed instance's incarnation goes with it: a later instance of the same name is a new one. */
-  private forgetHubAgentIncarnation(agent: string): void {
+  /** A removed instance's incarnation goes with it (a later instance of the same name is a new one). strict: throw if not durable. */
+  private forgetHubAgentIncarnation(agent: string, strict = false): void {
     try {
+      if (!this.dataDir || !existsSync(this.hubIncarnationsPath())) return;
       const map = this.readHubIncarnations();
       if (!Object.prototype.hasOwnProperty.call(map, agent)) return;
       delete map[agent];
       this.writeHubIncarnations(map);
-    } catch (err) { this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be dropped"); }
+    } catch (err) {
+      this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be dropped");
+      if (strict) throw new Error(`Hub consent for ${agent} could not be invalidated durably; refusing the change (${(err as Error)?.message})`);
+    }
   }
 
   /**
@@ -14139,6 +14172,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.observeWebAuthority();                      // #2453 review: so is a web-authority switch (off is always seen)
     if (!this.fleetConfig || !this.configPath) return;
 
+    // #3147 r2: a changed or removed Hub representative's consent is invalidated durably BEFORE the change is written.
+    this.observeHubAgentIncarnations(true);
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     normalizeNoticeDelivery(this.fleetConfig);
     normalizeOfficeStorage(this.fleetConfig);
@@ -14537,7 +14572,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instanceDirToClean = this.getInstanceDir(name);
     // #1774: replies sent from here on are a later instance's (a replacement registered while this one goes); the ones
     // sent before wait for the outcome before they are shown.
-    this.forgetHubAgentIncarnation(name); // #3147: a re-added instance of this name never inherits Hub consent
+    this.forgetHubAgentIncarnation(name, true); // #3147: a re-added instance never inherits Hub consent; not durable → refused
     const removedBelow = this.webChatGeneration(name) + 1, removedDaemon = this.daemons.get(name);
     this.webChatGenerations.set(name, removedBelow);
     let settleRemoval!: () => void;

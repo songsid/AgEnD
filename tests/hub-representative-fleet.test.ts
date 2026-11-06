@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { HUB_REPORT_TARGET } from "../src/hub-report-target.js";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -164,6 +164,70 @@ describe("beforeInput in the delivery facade", () => {
       expect((fm4 as any).hubAgentToken("worker")).toBe(after);
       for (const fm of made) fm.stormWindow.shutdown();
     } finally { rmSync(home, { recursive: true, force: true }); }
+  });
+});
+
+describe("#3147 r2: a failed incarnation write never revives old consent", () => {
+  function home() { return mkdtempSync(join(tmpdir(), "agend-hub-inc-")); }
+  const a = { working_directory: "/tmp/w", backend: "claude-code" };
+  const make = (dir: string, instances: Record<string, unknown>) => { const fm = new FleetManager(dir); (fm as any).fleetConfig = { instances }; return fm; };
+  const block = (dir: string) => mkdirSync(join(dir, "hub-member", `agent-incarnations.json.${process.pid}.tmp`), { recursive: true });
+  const unblock = (dir: string) => rmSync(join(dir, "hub-member", `agent-incarnations.json.${process.pid}.tmp`), { recursive: true, force: true });
+
+  it("A → B → A with the write failing: the original token never returns (same process, and after a restart)", () => {
+    const dir = home();
+    try {
+      const fm = make(dir, { worker: { ...a } });
+      const original = (fm as any).hubAgentToken("worker");
+      expect(original).toMatch(/^[0-9a-f]{64}$/);
+      block(dir);
+      (fm as any).fleetConfig = { instances: { worker: { ...a, working_directory: "/tmp/b" } } };
+      (fm as any).observeHubAgentIncarnations();
+      expect((fm as any).hubAgentToken("worker")).toBeNull();
+      (fm as any).fleetConfig = { instances: { worker: { ...a } } };
+      (fm as any).observeHubAgentIncarnations();
+      expect((fm as any).hubAgentToken("worker")).not.toBe(original);
+      expect((make(dir, { worker: { ...a } }) as any).hubAgentToken("worker")).not.toBe(original); // restart, still blocked
+      unblock(dir);
+      const after = (make(dir, { worker: { ...a } }) as any).hubAgentToken("worker"); // restart, writable again
+      expect(after).toMatch(/^[0-9a-f]{64}$/);
+      expect(after).not.toBe(original);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("removal with the write failing, then the same name and config re-added after a restart: a new token", () => {
+    const dir = home();
+    try {
+      const fm = make(dir, { worker: { ...a } });
+      const original = (fm as any).hubAgentToken("worker");
+      block(dir);
+      (fm as any).fleetConfig = { instances: {} };
+      (fm as any).observeHubAgentIncarnations();
+      unblock(dir);
+      const readded = (make(dir, { worker: { ...a } }) as any).hubAgentToken("worker");
+      expect(readded).toMatch(/^[0-9a-f]{64}$/);
+      expect(readded).not.toBe(original);
+      // remove_instance's own path: the same, strict.
+      const fm2 = make(dir, { worker: { ...a } });
+      block(dir);
+      expect(() => (fm2 as any).forgetHubAgentIncarnation("worker", true)).not.toThrow(); // cleared: durable
+      unblock(dir);
+      expect((make(dir, { worker: { ...a } }) as any).hubAgentToken("worker")).not.toBe(readded);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.getuid?.() === 0)("nothing writable at all: a save/removal is refused, and this process hands out no token", () => {
+    const dir = home();
+    try {
+      const fm = make(dir, { worker: { ...a } });
+      expect((fm as any).hubAgentToken("worker")).toMatch(/^[0-9a-f]{64}$/);
+      chmodSync(join(dir, "hub-member"), 0o500); // neither the write nor removing the file can happen
+      (fm as any).fleetConfig = { instances: { worker: { ...a, working_directory: "/tmp/b" } } };
+      expect(() => (fm as any).observeHubAgentIncarnations(true)).toThrow(/not saved/);   // saveFleetConfig's fence
+      expect(() => (fm as any).forgetHubAgentIncarnation("worker", true)).toThrow(/refusing/); // removeInstance's
+      (fm as any).fleetConfig = { instances: { worker: { ...a } } };
+      expect((fm as any).hubAgentToken("worker")).toBeNull(); // the old id is still on disk: never handed out again here
+    } finally { chmodSync(join(dir, "hub-member"), 0o700); rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
