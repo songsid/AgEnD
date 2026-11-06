@@ -150,7 +150,11 @@ export class GrokBackend implements CliBackend {
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
 
+  private launchResumes = false;
+  resumesPreservedQuotaHistory(): boolean { return this.launchResumes; }
+
   buildCommand(config: CliBackendConfig): string {
+    this.launchResumes = false;
     this.workingDirectory = config.workingDirectory;
     // Flags: -m/--model, --always-approve, -r/--resume <ID>, -p/--single, --no-auto-update.
     // --no-auto-update: an auto-update prompt on launch would corrupt ready detection.
@@ -164,7 +168,7 @@ export class GrokBackend implements CliBackend {
     // from getSessionId(); skip on crash recovery (skipResume) for a clean start.
     if (!config.skipResume) {
       const sid = this.storedSessionId();
-      if (sid) cmd += ` --resume ${sid}`;
+      if (sid) { cmd += ` --resume ${sid}`; this.launchResumes = true; }
     }
     if (config.model) {
       const model = validateModel(config.model);

@@ -1,3 +1,4 @@
+import { quotaHistoryCount } from "./pane-quota-history.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
 import { readActiveKiroModel } from "./backend/kiro.js";
 import { dashboardAccessOf } from "./dashboard-permissions.js";
@@ -616,6 +617,10 @@ type SubmitProof = "submitted" | "stranded" | "unproven" | "unverifiable";
  * a redraw swallowed.
  */
 interface PaneEvidence {
+  /** Metadata from this pre-input picture; committed only after a successful, still-owned input submission. */
+  quotaHistory?: { spawn: number; fence: number; attempt: number; tmux: TmuxManager | null; window: string | undefined;
+    counts: Array<{ key: string; count: number }> };
+
   /** Rows carrying the backend's queued-input marker. */
   queued: number;
   /** Occurrences of this message's identifying signature. */
@@ -2055,6 +2060,58 @@ export class Daemon extends EventEmitter {
   // still booting. Its new tmux window starts empty before resume restores the
   // old transcript, so pre-ready scans must not lower this seeded baseline.
   private seededErrorCountBaselines = new Map<string, number>();
+  private quotaReplay: { spawn: number; fence: number; attempt: number; messages: readonly string[]; current(): boolean } | null = null;
+
+  private paneQuotaPatterns(): ErrorPattern[] {
+    if (!["codex", "grok"].includes(this.backend?.binaryName ?? "")) return [];
+    const patterns = this.backend?.getErrorPatterns?.() ?? [];
+    return this.backend?.binaryName === "codex" ? patterns.filter(ep => Daemon.isCodexUsageLimitPause(ep)) : patterns.filter(ep => ep.type === "quota");
+  }
+
+  private async prepareQuotaReplayHistory(reuseWindow: boolean): Promise<void> {
+    this.quotaReplay = null;
+    const backend = this.backend, owner = this.tmux, window = owner?.getWindowId?.();
+    const spawn = this.spawnGeneration, fence = this.launchFenceEpoch, attempt = this.launchAttempt;
+    const current = () => backend === this.backend && owner === this.tmux && window === owner?.getWindowId?.()
+      && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && attempt === this.launchAttempt;
+    const replay = backend?.quotaReplayHistory?.();
+    if (replay) this.quotaReplay = { ...replay, spawn, fence, attempt };
+    // A Grok wake keeps its exited pane. The replacement's first ready pane is not history proof.
+    if (reuseWindow && backend?.resumesPreservedQuotaHistory?.()) {
+      let oldPane: string;
+      try { oldPane = await owner!.capturePane(); } catch { return; }
+      this.startupAdmission?.();
+      if (!current()) return;
+      const patterns = this.paneQuotaPatterns();
+      const messages = oldPane.split(/\r?\n/).filter(row => patterns.some(ep => ep.pattern.test(row)));
+      this.quotaReplay = { messages, current: () => true, spawn, fence, attempt };
+    }
+  }
+
+  /** Before admission, this launch may absorb ONLY rows positively known before its resume. */
+  private takeQuotaReplayBaseline(pane: string): void {
+    const history = this.quotaReplay;
+    if (!history) return;
+    this.quotaReplay = null;
+    if (history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch || history.attempt !== this.launchAttempt || !history.current()) return;
+    for (const ep of this.paneQuotaPatterns()) {
+      const count = Math.min(Daemon.countOccurrences(ep.pattern, pane), quotaHistoryCount(pane, ep.pattern, history.messages));
+      if (!count) continue;
+      const key = Daemon.errorPatternKey(ep);
+      this.lastErrorCount.set(key, Math.max(this.lastErrorCount.get(key) ?? 0, count));
+      this.logger.debug({ backend: this.backend?.binaryName, count, evidence: "before-resume" }, "Quota rows restored from history — not a new incident");
+    }
+  }
+
+  // Submission makes captured rows history even when no monitor reported them yet. This relies on a still-limited CLI
+  // printing a NEW quota row for this input, which remains eligible; the absorbed row alone cannot prove its failure.
+  private commitPreInputQuotaHistory(evidence: PaneEvidence | null): void {
+    const history = evidence?.quotaHistory;
+    if (!history || history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch || history.attempt !== this.launchAttempt
+      || history.tmux !== this.tmux || history.window !== this.tmux?.getWindowId?.() || this.deliveryWritesStopping) return;
+    for (const row of history.counts) this.lastErrorCount.set(row.key, row.count);
+  }
+
   private lastDetectedErrorType: string | null = null;
   /**
    * #2822: Claude's per-model usage limit (`You've reached your <model> limit.`), known only from Claude's own record of
@@ -10238,6 +10295,7 @@ export class Daemon extends EventEmitter {
         if (steerComposerProof && performance.now() > steerEnterDeadline) return this.failDelivery(verdict, status, "submit-enter", "pre-enter-deadline");
         return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
       }
+      this.commitPreInputQuotaHistory(pasteBaseline);
       // The proof's whole budget, from the Enter: every capture and dialog probe inside it, a late answer dropped.
       const steerProofDeadline = performance.now() + NATIVE_QUEUE_PASTE_VERIFY_MS + POST_ENTER_PROOF_WINDOW_MS;
 
@@ -10939,12 +10997,17 @@ export class Daemon extends EventEmitter {
    */
   private async capturePaneEvidence(signature: SubmissionSignature): Promise<PaneEvidence | null> {
     if (!this.tmux) return null;
+    const owner = this.tmux, window = owner.getWindowId?.(), spawn = this.spawnGeneration, fence = this.launchFenceEpoch, launch = this.launchAttempt;
     // Bounded re-probe: a capture that fails here costs the delivery its only
     // "before" picture, and a momentary failure should not decide anything.
     for (let attempt = 1; attempt <= BASELINE_CAPTURE_ATTEMPTS; attempt++) {
       try {
-        const pane = await this.tmux.capturePane();
+        const pane = await this.tmux!.capturePane();
         const evidence = this.paneEvidence(pane, signature);
+        if (owner === this.tmux && window === owner.getWindowId?.() && spawn === this.spawnGeneration && fence === this.launchFenceEpoch && launch === this.launchAttempt) {
+          const counts = this.paneQuotaPatterns().map(ep => ({ key: Daemon.errorPatternKey(ep), count: Daemon.countOccurrences(ep.pattern, pane) }));
+          if (counts.length) evidence.quotaHistory = { spawn, fence, attempt: launch, tmux: owner, window, counts };
+        }
         const input = this.inputRegion(pane);
         if (input && agendMessageInInput(input.text)) {
           // Whatever we paste now lands after it, and one Enter submits both as
@@ -11068,6 +11131,7 @@ export class Daemon extends EventEmitter {
     this.rememberPaste(text, pasteGeneration);
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
     if (!(await this.sendDeliveryEnter(label, current))) return false;
+    this.commitPreInputQuotaHistory(baseline);
 
     let proof = await this.confirmSubmitted(signature, baseline);
     if (current && !current()) return false;
@@ -11851,6 +11915,7 @@ export class Daemon extends EventEmitter {
     if (this.parkedNoticeOut) { this.parkedNoticeOut = null; this.dialogParkedReported = false; this.emit("dialog_unparked", { name: this.name }); }
     this.cancelCapacityNudge("the instance was stopped, paused or respawned");
     this.lastErrorEpisode = null;
+    this.quotaReplay = null;
     this.nudgeBaselines = null;
     // A relaunch settles any outstanding quit watch: the CLI came back.
     this.clearQuitRelaunchWatch();
@@ -12889,6 +12954,7 @@ export class Daemon extends EventEmitter {
     // Every launched command re-arms the passive-transient check, including a
     // retry inside the same spawn: its load is a new one.
     this.launchAttempt++;
+    await this.prepareQuotaReplayHistory(reuseWindow); this.startupAdmission?.();
     this.interactionObservation.reset(this.interactionOwner());
     this.clearInteractionConfirmation();
     // A launch that cannot paint a passive transient (Codex: a fresh start
@@ -13043,6 +13109,7 @@ export class Daemon extends EventEmitter {
     let lastDialog: StartupDialog | null = null;
     let lastTransient: InputUnavailableTransient | null = null;
     let captureFailures = 0;
+    let lastPane: string | null = null;
     let attempts = 0;
     // A safety-critical startup choice is one-shot. If the CLI has not
     // repainted after Enter, let the following hold-only entry report it
@@ -13065,10 +13132,12 @@ export class Daemon extends EventEmitter {
       let pane: string;
       try {
         pane = await this.tmux!.capturePane(); this.startupAdmission?.();
+        lastPane = pane;
       } catch (err) {
         this.startupAdmission?.();
         // Transient tmux trouble is not evidence about the CLI. Returning false
         // here would clear the session; retry within the budget instead.
+        lastPane = null;
         captureFailures++;
         this.logger.debug({ err, captureFailures }, "capture-pane failed during the startup dialog scan — retrying");
         // Only a POSITIVE dead pane ends the scan; an unanswerable liveness
@@ -13227,6 +13296,7 @@ export class Daemon extends EventEmitter {
             // matched above, before this check) means the fatal screen is gone,
             // e.g. the user fixed the config and the instance respawned.
             this.fatalStartupBlocked = false;
+            if (owned()) this.takeQuotaReplayBaseline(pane);
             return true;
           }
           await sleep();
@@ -13264,6 +13334,7 @@ export class Daemon extends EventEmitter {
         "Startup scan exhausted without a ready prompt or a known dialog — assuming ready (unknown CLI screen)");
     }
     this.startupAdmission?.();
+    if (owned() && lastPane !== null && !lastDialog && !lastTransient) this.takeQuotaReplayBaseline(lastPane);
     return true;
   }
 
