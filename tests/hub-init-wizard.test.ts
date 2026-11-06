@@ -304,12 +304,12 @@ describe("browser HTTPS certificate", () => {
 });
 
 describe("addresses, listeners and retention", () => {
-  it("refuses http:// addresses, wildcard listeners and a missing retention answer (there is no default)", async () => {
+  it("refuses http:// addresses, wildcard listeners and invalid retention overrides", async () => {
     const t = setup();
     const { outcome, io } = await t.run([
       "Team Hub", "http://hub.example.test", "https://hub.example.test:8443", "https://hub.example.test:8443", "",
       "0.0.0.0:8443", "192.0.2.10:8443", "192.0.2.10:8443", "192.0.2.10:9443",
-      ...tls(), ...directoryAnswers(), ...signIn(), "y", "", "0", "thirty", "30", "180", "initialize", "no",
+      ...tls(), ...directoryAnswers(), ...signIn(), "y", "0", "3651", "thirty", "30", "180", "initialize", "no",
     ]);
     expect(outcome).toBe("initialized");
     const text = io.text();
@@ -318,6 +318,20 @@ describe("addresses, listeners and retention", () => {
     expect(text).toContain("a wildcard would listen on every network");
     expect(text).toContain("the two listeners must differ");
     expect(text.match(/Enter a whole number of days/g)).toHaveLength(3);
+  });
+
+  it.each(["en", "zh-TW"] as const)("presents suggestions in %s and binds accepted defaults to the confirmed plan", async locale => {
+    setLocale(locale);
+    try {
+      const t = setup();
+      const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "y", "", "", "initialize", "no"]);
+      expect(outcome).toBe("initialized");
+      expect(io.remaining()).toBe(0);
+      expect(io.text()).toContain("[7]"); expect(io.text()).toContain("[30]");
+      expect(io.text()).toContain("content 7 days, event records 30 days");
+      const cfg = yaml.load(readFileSync(join(t.home, "fleet.yaml"), "utf8")) as any;
+      expect(cfg.hub.retention).toEqual({ contentDays: 7, eventDays: 30 });
+    } finally { setLocale("en"); }
   });
 
   it("a loopback address on a dedicated Hub needs an explicit yes", async () => {

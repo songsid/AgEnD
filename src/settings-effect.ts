@@ -29,6 +29,8 @@ import { parseNativeInstanceCreate, nativePaneTopicTarget } from "./native-insta
 import { parseRuntimesSettingsBody } from "./runtime-switches.js";
 import { parseGeneralSwitchInput } from "./general-binding.js";
 import { settingsFingerprint } from "./settings-transaction.js";
+import { parseHubRetention } from "./hub-retention-policy.js";
+import { t } from "./locale.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -45,6 +47,7 @@ export interface SettingsEffectContext {
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "PUT" && path === "/api/settings/hub/retention") return true;
   if (method === "POST" && path === "/api/settings/general-location") return true;
   if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
   if (method === "POST" && /^\/api\/hub\/member\/pairing\/(?:connect|confirm|disconnect)$/.test(path)) return true;   // S3c PR B
@@ -63,6 +66,15 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  if (path === "/api/settings/hub/retention") {
+    if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
+    let policy;
+    try { policy = parseHubRetention(body); } catch { throw new SettingsConfirmationError(400, "invalid_retention"); }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, policy]),
+      summary: [t("hub.retention.content", policy.contentDays), t("hub.retention.events", policy.eventDays), t("hub.retention.purge")],
+      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } };
+  }
   // #2453 (§0.2): the trusted effect — the named-link option off before, on after — makes the change one its asker can't
   // confirm (#2170 self-confirmation).
   // §0.3: likewise the quick-link option, on its value as in force (explicit, else the release default) before and after.

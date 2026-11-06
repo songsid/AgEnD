@@ -6,6 +6,7 @@
  * No Hub is installed before final confirmation. Explicit certificate generation uses private temporary staging.
  */
 import { isIP } from "node:net";
+import { HUB_RETENTION_DEFAULTS } from "../../hub-retention-policy.js";
 import type { createHubDirectory as CreateHubDirectory, DirectoryPerson, HubDirectoryConfig, HubDirectoryDiagnostic } from "../directory/index.js";
 import { HubDirectoryConfigError, resolveDirectoryConfig } from "../directory/index.js";
 import { checkBrowserTls, pemCertificates } from "./browser-tls.js";
@@ -153,7 +154,7 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
     return "cancelled";
   }
 
-  // 5. Retention: explicit, no default.
+  // 5. Suggested retention is still included in the exact plan the owner confirms.
   io.say();
   io.say(ht("retention_title"));
   const contentDays = await askDays(io, "retention_content_q");
@@ -334,7 +335,9 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
 
 async function askDays(io: WizardIO, key: "retention_content_q" | "retention_event_q"): Promise<number> {
   for (;;) {
-    const text = (await io.ask(ht(key))).trim();
+    const suggested = key === "retention_content_q" ? HUB_RETENTION_DEFAULTS.contentDays : HUB_RETENTION_DEFAULTS.eventDays;
+    const text = (await io.ask(ht(key, suggested))).trim();
+    if (!text) return suggested;
     if (/^\d{1,4}$/.test(text) && Number(text) >= 1 && Number(text) <= 3650) return Number(text);
     io.say(ht("retention_need"));
   }
