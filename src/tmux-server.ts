@@ -236,6 +236,8 @@ export const realProbes: ServerProbes = {
   run: execFileText,
   async proc(pid) {
     try { process.kill(pid, 0); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ESRCH") return null; }
+    // macOS: `ps -o comm=` names the executable; when it is not an absolute path, sameFile fails and the pid fallback
+    // becomes a hold (fail closed).
     if (process.platform === "linux") {
       let exe: string | null = null;
       try { exe = readlinkSync(`/proc/${pid}/exe`); } catch { /* unknown */ }

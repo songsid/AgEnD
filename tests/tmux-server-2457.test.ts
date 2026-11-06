@@ -125,6 +125,13 @@ describe("reconcileServer: the actions", () => {
     expect(reused.calls).toEqual([]);
   });
 
+  it("the pid fallback needs the recorded binary too: the recorded pid and start time running another program is not ours", async () => {
+    const { h, next } = home({ client: "changed" });
+    const other = fakes({ proc: { start: REC.serverStart, exe: "/usr/bin/something-else" } });
+    expect(await reconcileServer({ agendHome: h, socket: "agend", current: next, probes: other.p })).toMatch(/can't be verified/);
+    expect(other.calls).toEqual([]);
+  });
+
   it("no record at all: held, nothing run or killed", async () => {
     const { h, next } = home({ record: false });
     const { p, calls } = fakes();

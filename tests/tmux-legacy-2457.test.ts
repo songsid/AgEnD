@@ -48,7 +48,7 @@ describe("treeRuns", () => {
 });
 
 /** A default server with `windows`; `closes` = kill-window removes the window and its pane exits. */
-function fakes(o: { tmux?: string | null; windows?: Array<[string, string, string, number]>; server?: string | Error; closes?: boolean; paneLingers?: boolean;
+function fakes(o: { tmux?: string | null; windows?: Array<[string, string, string, number]>; server?: string | Error; closes?: boolean; paneLingers?: boolean; raw?: string;
   procs?: Map<number, { ppid: number; args: string }> } = {}) {
   const calls: string[] = [];
   let windows = [...(o.windows ?? [["agend", "@7", "dev", 4000]])];
@@ -64,7 +64,8 @@ function fakes(o: { tmux?: string | null; windows?: Array<[string, string, strin
         return "";
       }
       if (args.includes("#{window_id}")) return windows.map(w => w[1]).join("\n");
-      return windows.map(w => w.join("\t")).join("\n");
+      if (o.raw !== undefined) return o.raw;
+      return windows.map(w => w.join("|||")).join("\n");
     },
     async processes() { return o.procs ?? new Map([[4000, { ppid: 1, args: "claude --resume abc" }]]); },
     alive: (pid) => !dead.has(pid),
@@ -95,6 +96,8 @@ describe("migrateLegacyWindow", () => {
     ["a default server that answers but can't be queried", { server: new Error("protocol version mismatch (client 8, server 9)") }, /can't be queried \(protocol version mismatch/],
     ["a window that does not close", { closes: false }, /did not close/],
     ["a window gone from the list whose agent process still runs", { paneLingers: true }, /did not close/],
+    // Fable #3276: without a UTF-8 locale tmux prints a TAB in -F output as "_"; an answer that does not parse is a hold.
+    ["a list-windows answer AgEnD can't read", { raw: "agend_@7_dev_4000\nmine_@1_sleep_4001" }, /can't be queried \(unexpected list-windows answer "agend_@7_dev_4000"\)/],
   ])("held (only this instance), nothing else killed: %s", async (_why, o, msg) => {
     const x = inst("@7");
     const { p, calls } = fakes(o);
@@ -112,6 +115,11 @@ describe("migrateLegacyWindow", () => {
       expect(await migrateLegacyWindow(args(x, fakes(o).p))).toBe("stale");
       expect(existsSync(join(x.dir, "window-id"))).toBe(false);
     }
+  });
+
+  it("a window the user moved to another session is still found by its id, proven and closed", async () => {
+    const x = inst("@7");
+    expect(await migrateLegacyWindow(args(x, fakes({ windows: [["work", "@7", "dev", 4000]] }).p))).toBe("migrated");
   });
 
   it("tagged (written with the bundled tmux on) or no file: not looked at", async () => {
@@ -160,6 +168,15 @@ describe.skipIf(!TMUX)("a real legacy window on a private socket", () => {
       const x = inst(id);
       const p: LegacyProbes = { ...realLegacyProbes, systemTmux: async () => TMUX, tmux: (bin, a) => realLegacyProbes.tmux(bin, ["-L", socket, ...a]) };
       expect(await migrateLegacyWindow({ ...args(x, p), backendBinary: "agend-mock-cli" })).toBe("migrated");
+      expect(t(["list-sessions", "-F", "#{session_name}"]).split("\n").filter(Boolean)).toEqual(["mine"]);
+      // Fable #3276: the same with no locale at all (a launchd/systemd daemon's environment): still read, still closed.
+      t(["new-session", "-d", "-s", "agend", "-n", "dev", mock]);
+      const id2 = t(["list-windows", "-t", "agend", "-F", "#{window_id}"]).trim();
+      const y = inst(id2);
+      const bare = { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: tmpdir() };
+      const noLocale: LegacyProbes = { ...p, tmux: (_bin, a) => Promise.resolve(execFileSync(TMUX!, ["-L", socket, ...a], { encoding: "utf8", env: bare })) };
+      expect(execFileSync(TMUX!, ["-L", socket, "list-windows", "-a", "-F", "#{session_name}\t#{window_id}"], { encoding: "utf8", env: bare })).toMatch(/_@/);   // the hazard is real here
+      expect(await migrateLegacyWindow({ ...args(y, noLocale), backendBinary: "agend-mock-cli" })).toBe("migrated");
       expect(t(["list-sessions", "-F", "#{session_name}"]).split("\n").filter(Boolean)).toEqual(["mine"]);
     } finally { try { execFileSync(TMUX!, ["-L", socket, "kill-server"], { stdio: "ignore" }); } catch { /* gone */ } }
   });

@@ -98,3 +98,20 @@ describe("agend rollback", () => {
     expect(w.steps).toEqual([]);
   });
 });
+
+describe("agend rollback stays hidden and refused until the bundled tmux is on (Fable #3276: dark release)", () => {
+  it("refuses with the plain npm way back, and runs nothing (no stop, no npm)", async () => {
+    const { execFile } = await import("node:child_process");
+    const home = mkdtempSync(join(tmpdir(), "agend-rollback-cli-")); roots.push(home);
+    const bin = join(home, "bin"); mkdirSync(bin);
+    for (const tool of ["npm", "systemctl", "launchctl", "sudo"]) {
+      writeFileSync(join(bin, tool), `#!/bin/sh\necho "${tool} $*" >> "${join(home, "calls")}"\nexit 1\n`); chmodSync(join(bin, tool), 0o755);
+    }
+    const r = await new Promise<{ code: number | null; err: string }>(resolve => execFile(process.execPath, ["--import", "tsx", join(process.cwd(), "src", "cli.ts"), "rollback", "2.3.4", "--yes"],
+      { env: { HOME: home, AGEND_HOME: join(home, "agend"), PATH: `${bin}:/usr/bin:/bin`, TZ: "UTC" }, timeout: 60_000 },
+      (e, _o, err) => resolve({ code: e ? (typeof e.code === "number" ? e.code : null) : 0, err })));
+    expect(r.code).toBe(1);
+    expect(r.err).toContain("agend rollback is for AgEnD's bundled tmux, which is not on here. To go back: npm install -g @songsid/agend@2.3.4");
+    expect(existsSync(join(home, "calls"))).toBe(false);
+  });
+});

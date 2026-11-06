@@ -3735,7 +3735,9 @@ program
   });
 
 program
-  .command("rollback")
+  // M-2457: hidden and refused until the bundled tmux is turned on (C-4); before that a plain npm install -g is the
+  // way back, and nothing private needs closing.
+  .command("rollback", { hidden: true })
   .description("Go back to an older AgEnD (2.3.x): stop the fleet, close AgEnD's own tmux server and confirm it, then install that version and start it. Stops before installing anything if the close can't be confirmed.")
   .argument("<version>", "the version to go back to, e.g. 2.3.4")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
@@ -3743,6 +3745,10 @@ program
   .addOption(new Option("--no-start", "install only; do not start the older version (CI)").hideHelp())
   .action(async (version: string, opts: { yes?: boolean; package?: string; start?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "rollback", { yes: opts.yes, target: version })) process.exit(1);
+    if (!(await import("./tmux-binary.js")).bundledTmuxEnabled()) {
+      console.error(`agend rollback is for AgEnD's bundled tmux, which is not on here. To go back: npm install -g @songsid/agend@${version}`);
+      process.exit(1);
+    }
     const { rollback } = await import("./tmux-rollback.js");
     const { readServerRecord } = await import("./tmux-server.js");
     const { bundledTmuxEnabled, tmuxSocket } = await import("./tmux-binary.js");
@@ -3773,10 +3779,12 @@ program
   });
 
 program
-  .command("tmux-migrate")
+  .command("tmux-migrate", { hidden: true })   // M-2457: until the bundled tmux is on (C-4), nothing is ever held
   .description("After an upgrade from AgEnD 2.3: release an instance held because an old tmux window (system tmux, default socket) may still run it. You then own that window; the instance starts on its next start.")
   .requiredOption("--release <name>", "the held instance")
   .action(async (opts: { release: string }) => {
+    const { instanceNameInvalid } = await import("./quickstart-api.js");
+    if (instanceNameInvalid(opts.release)) { console.error(`"${opts.release}" is not an instance name.`); process.exit(1); }
     const { releaseLegacyWindow } = await import("./tmux-legacy.js");
     const dir = join(DATA_DIR, "instances", opts.release);
     const id = releaseLegacyWindow(DATA_DIR, opts.release, dir);
