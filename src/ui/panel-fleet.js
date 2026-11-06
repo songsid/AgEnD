@@ -132,14 +132,15 @@ function useLoad(lease, path, version) {
   return state;
 }
 
-/** M-2542: whether the viewport is a desktop's (900 px and wider, app.css's breakpoint), following resizes. */
-const WIDE = "(min-width: 900px)";
+/** M-2542: whether the viewport is a desktop's (not app.css's phone breakpoint — the query app-shell's narrow() asks),
+ *  following resizes. */
+const NARROW = "(max-width: 899px)";
 function useWide() {
-  const mq = () => (typeof matchMedia === "function" ? matchMedia(WIDE) : null);
-  const [wide, setWide] = useState(() => mq()?.matches ?? true);
+  const mq = () => (typeof matchMedia === "function" ? matchMedia(NARROW) : null);
+  const [wide, setWide] = useState(() => !(mq()?.matches ?? false));
   useEffect(() => {
     const m = mq(); if (!m || !m.addEventListener) return undefined;
-    const on = () => setWide(m.matches);
+    const on = () => setWide(!m.matches);
     on(); m.addEventListener("change", on);
     return () => m.removeEventListener("change", on);
   }, []);
