@@ -7,9 +7,9 @@ import { createInterface } from "node:readline";
 import { afterAll, beforeAll } from "vitest";
 
 export const hasPwsh = spawnSync(process.platform === "win32" ? "where.exe" : "which", ["pwsh"]).status === 0;
-// Leave headroom inside Vitest's unchanged 10 s hook limit. Startup and a case
-// are different operations; cold pwsh must not spend the first case's budget.
-const STARTUP_MS = 30_000; // DIAGNOSTIC observation window; draft, not final budget.
+// Startup keeps the old 10 s request allowance, independently of each case.
+// Only the START hook's outer watchdog gets cleanup/reporting headroom.
+const STARTUP_MS = 10_000;
 export class InstallerPsBatch {
   private child?: ChildProcessWithoutNullStreams;
   private dir?: string;
@@ -24,8 +24,8 @@ export class InstallerPsBatch {
   private consoleOutput = "";
   constructor(private templates: Record<string, string>, warmInSetup = true) {
     // Lazy until fixture setup; every consumer (including adapters) gets a warm
-    // worker before its first case, without enlarging either Vitest timeout.
-    if (warmInSetup) beforeAll(async () => { if (hasPwsh) await this.ready(); }, 31_000); // DIAGNOSTIC START hook only
+    // worker before its first case. Inert lifecycle probes can drive ready() themselves.
+    if (warmInSetup) beforeAll(async () => { if (hasPwsh) await this.ready(); }, 12_000); // START only: helper fails/kills at 10 s before this watchdog.
     afterAll(async () => {
       if (this.child) {
         if (this.child.exitCode === null && this.child.signalCode === null) {
@@ -44,7 +44,7 @@ export class InstallerPsBatch {
       this.readyResolve = resolve; this.readyReject = reject;
     });
     this.startupTimer = setTimeout(() => {
-      this.fail(new Error("pwsh startup readiness exceeded 30 s"));
+      this.fail(new Error("pwsh startup readiness exceeded 10 s"));
       this.child?.kill();
     }, STARTUP_MS);
     try { this.start(); } catch (e) { this.fail(e instanceof Error ? e : new Error(String(e))); }
@@ -106,7 +106,11 @@ while($null -ne ($line=[Console]::ReadLine())) {
   [Console]::WriteLine(('__AGEND_BATCH__'+(@{id=$request.id;out=($output -join [char]10)+[char]10;status=$status;error=$errorText} | ConvertTo-Json -Compress)))
 }
 `);
-    this.child = spawn("pwsh", ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", driver, templates]);
+    this.child = spawn("pwsh", ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", driver, templates], {
+      // Linux pwsh's JIT profile and module analysis cache otherwise race with
+      // every parallel fixture using the runner's shared home cache.
+      env: { ...process.env, XDG_CACHE_HOME: join(this.dir, "cache"), PSModuleAnalysisCachePath: join(this.dir, "module-analysis") },
+    });
     this.child.stdin.on("error", e => this.fail(e));
     this.child.stderr.on("data", (b: Buffer) => { this.stderr += b; });
     createInterface({ input: this.child.stdout }).on("line", line => {

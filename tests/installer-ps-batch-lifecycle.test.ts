@@ -76,9 +76,9 @@ describe("PowerShell readiness boundary", () => {
   it("bounds startup independently, kills once, and retains its cause after close/late READY", async () => {
     vi.useFakeTimers(); const batch = startups[1]!;
     const first = batch.run("helpers", "F").catch(e => e as Error); const child = childNow();
-    await vi.advanceTimersByTimeAsync(29_999); expect(child.kill).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(9_999); expect(child.kill).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
-    const failure = await first; expect((failure as Error).message).toContain("startup readiness exceeded 30 s");
+    const failure = await first; expect((failure as Error).message).toContain("startup readiness exceeded 10 s");
     expect(child.kill).toHaveBeenCalledTimes(1); expect(child.stdin!.write).not.toHaveBeenCalled();
     signalReady(child);
     await expect(batch.ready()).rejects.toBe(failure);
