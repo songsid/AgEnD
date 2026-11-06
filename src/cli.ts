@@ -3722,11 +3722,10 @@ program
   .argument("[args...]", "tmux's own command and arguments")
   .allowUnknownOption(true)
   .helpOption(false)
-  .action(async () => {
-    // Everything after the word `tmux` goes to tmux as typed (its own options included), with this fleet's -L socket
-    // (and, with AgEnD's bundled tmux, its binary and -f config) in front: M-2457 §5.
-    const at = process.argv.indexOf("tmux");
-    const rest = at >= 0 ? process.argv.slice(at + 1) : [];
+  .action(async (rest: string[] = []) => {
+    // Everything after the command goes to tmux as typed (its own options and a `--` included: commander keeps them in
+    // order, with allowUnknownOption), with this fleet's -L socket (and, with AgEnD's bundled tmux, its binary and -f
+    // config) in front: M-2457 §5.
     let bin: string;
     try { bin = tmuxBin(); } catch (e) { console.error((e as Error).message); process.exit(1); }
     const { spawnSync } = await import("node:child_process");

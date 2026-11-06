@@ -8,7 +8,7 @@
  * Isolation: temp dirs; no tmux runs.
  */
 import { createHash } from "node:crypto";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,7 +70,7 @@ describe("on: AGEND_TMUX_BIN", () => {
 });
 
 /** A package dir with this repo's launcher/, pinning a tmux package for linux-x64, and (opts) that package + its receipt. */
-function pkg(opts: { pin?: boolean; installed?: boolean; receipt?: boolean } = {}) {
+function pkg(opts: { pin?: boolean; installed?: boolean; receipt?: boolean; receiptSha?: string } = {}) {
   const root = scratch();
   const dir = join(root, "pkg");
   mkdirSync(dir, { recursive: true });
@@ -87,7 +87,7 @@ function pkg(opts: { pin?: boolean; installed?: boolean; receipt?: boolean } = {
     if (opts.receipt !== false) {
       const bundle = require(join(dir, "launcher", "tmux-bundle.cjs"));
       const st = statSync(bin);
-      bundle.writeReceipt(dir, { version: "3.8.0" }, { real: bin, tmux: "3.8", sha256: createHash("sha256").update(readFileSync(bin)).digest("hex"), size: st.size, mtime: Math.floor(st.mtimeMs / 1000) }, { platform: "linux", arch: "x64" });
+      bundle.writeReceipt(dir, { version: "3.8.0" }, { real: bin, tmux: "3.8", sha256: opts.receiptSha ?? createHash("sha256").update(readFileSync(bin)).digest("hex"), size: st.size, mtime: Math.floor(st.mtimeMs / 1000) }, { platform: "linux", arch: "x64" });
     }
   }
   return { dir, bin, agendHome: join(root, "home") };
@@ -122,6 +122,17 @@ describe("on: the bundled tmux", () => {
     const p = pkg(opts);
     expect(() => resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome })).toThrow(reason);
     expect(existsSync(join(p.agendHome, "tmux"))).toBe(false);
+  });
+
+  it("is refused when the copied bytes are not the receipt's (changed while copied): no copy is left to be trusted", () => {
+    // The receipt is checked by size + mtime before the copy; its sha256 is checked on the copy. A receipt sha that the
+    // file does not have stands for a file that changed between the two.
+    const p = pkg({ receiptSha: "0".repeat(64) });
+    expect(() => resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome }))
+      .toThrow(/changed while it was being copied/);
+    expect(() => resolveTmux({ env: ON, packageDir: p.dir, hostId: "linux-x64", agendHome: p.agendHome })).toThrow(TmuxUnavailableError);
+    const dir = join(p.agendHome, "tmux");
+    expect(existsSync(dir) ? readdirSync(dir) : []).toEqual([]);   // neither the destination nor a .tmp
   });
 });
 
