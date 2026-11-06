@@ -11,8 +11,8 @@ import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { GrokBackend } from "../src/backend/grok.js";
 import {
-  clearGrokWeeklyReset, grokWeeklyResetDue, inferGrokWeeklyResetAt, noteGrokWeeklyLimitSeen,
-  readGrokWeeklyReset, writeGrokWeeklyReset,
+  clearGrokWeeklyReset, grokWeeklyResetDue, inferGrokWeeklyResetAt, markGrokWeeklyTryAgainConsumed,
+  noteGrokWeeklyLimitSeen, readGrokWeeklyReset, writeGrokWeeklyReset,
 } from "../src/backend/grok-weekly-reset.js";
 import { unrecognisedPromptShape } from "../src/unrecognised-prompt.js";
 import { getAgendHome } from "../src/paths.js";
@@ -104,6 +104,18 @@ describe("reset clock", () => {
     expect(readGrokWeeklyReset(dir)).toEqual({ pausedAt: now, resetAt: now + 7 * 86_400_000 });
   });
 
+  it("a consumed Try Again is kept until Shift+x starts a new pause episode", () => {
+    const dir = dueDir(true);
+    const first = readGrokWeeklyReset(dir)!;
+    markGrokWeeklyTryAgainConsumed(dir);
+    expect(readGrokWeeklyReset(dir)).toEqual({ ...first, tryAgainConsumed: true });
+    noteGrokWeeklyLimitSeen(dir, first.pausedAt);
+    expect(readGrokWeeklyReset(dir)).toEqual({ ...first, tryAgainConsumed: true });
+    const now = 1_800_000_000_000;
+    noteGrokWeeklyLimitSeen(dir, now);
+    expect(readGrokWeeklyReset(dir)).toEqual({ pausedAt: now, resetAt: now + 7 * 86_400_000 });
+  });
+
   it("uses quota-history's grok weekly resetsAt when that time is still ahead", () => {
     const now = Date.now();
     const ahead = new Date(now + 3_600_000).toISOString();
@@ -137,6 +149,25 @@ describe("dialogs: before the reset Shift+x; after it Try Again", () => {
     expect(weekly(b, STILL)[0]?.keys).toEqual(["Down", "Down", "Enter"]);
     expect(weekly(b, MODAL, "startup")[0]?.keys).toEqual(["Down", "Down", "Enter"]);
     expect(weekly(b, MODAL, "startup")[0]?.holdOnly).toBeFalsy();
+  });
+
+  it("after Try Again is consumed, the same picker is Shift+x only", () => {
+    const dir = dueDir(true);
+    const b = new GrokBackend(dir);
+    const tryAgain = weekly(b, MODAL)[0]!;
+    expect(tryAgain.keys).toEqual(["Down", "Down", "Enter"]);
+    tryAgain.answerDetail?.(MODAL);
+    expect(weekly(b, MODAL).map(d => d.keys)).toEqual([["Down", "Down", "Enter"], ["X"]]);
+    weekly(b, MODAL).find(d => d.keys[0] === "X")?.answerDetail?.(MODAL);
+    expect(weekly(b, MODAL).map(d => d.keys)).toEqual([["X"]]);
+  });
+
+  it("consumed Try Again on a past clock survives a new backend (restart/respawn)", () => {
+    const dir = tmp();
+    writeGrokWeeklyReset(dir, { pausedAt: 1_700_000_000_000, resetAt: 1_700_000_001_000, tryAgainConsumed: true });
+    const b = new GrokBackend(dir);
+    expect(weekly(b, STILL).map(d => d.keys)).toEqual([["X"]]);
+    expect(weekly(b, STILL, "startup").map(d => [d.holdOnly, d.keys])).toEqual([[true, []]]);
   });
 
   it("scrollback after reset: Space first, not Try Again", () => {
@@ -218,6 +249,19 @@ describe("in the real Daemon", () => {
     expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual(["X"]);
     expect(errors).toEqual([expect.objectContaining({ type: "quota", action: "pause" })]);
     expect(state.pane).toBe(AFTER_X);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("ignored X after a still-limited Enter does not send Try Again again", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    const dir = dueDir(true);
+    const { daemon, tmux } = makeDaemon(dir, MODAL);
+    tmux.sendSpecialKey.mockImplementation(async () => true);
+    tmux.sendKeys.mockImplementation(async () => true);
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(tmux.sendSpecialKey.mock.calls.map((c: any[]) => c[0])).toEqual(["Down", "Down", "Enter"]);
+    expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual(["X"]);
     daemon.freezeRuntimeMonitors();
   });
 });
