@@ -345,6 +345,10 @@ describe("Daemon backend-native input queue delivery", () => {
     writeFileSync(join(instanceDir, "window-id"), "@queued");
 
     const backend: CliBackend = backendName === "kiro-cli" ? new KiroBackend(instanceDir, TEST_KIRO_COMPAT) : createBackend(backendName, instanceDir);
+    // #3199: grok now reads its boxed prompt. These cases pin the no-native-queue /
+    // readerless output-edge ladder (muse still takes it); the working reader is
+    // grok-input-box-3199.test.ts.
+    if (backendName === "grok") Object.assign(backend, { readInputRow: undefined });
     const control = {
       isIdle: vi.fn(() => idle),
       // Resolves true = the pane reached idle. It returns a boolean now so a wedged
@@ -571,7 +575,8 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("keeps the idle gate and confirmation path for backends without a native queue", async () => {
-    // A backend with neither a native queue nor an input reader (grok; claude-code before #1200).
+    // A backend with neither a native queue nor an input reader (grok here strips
+    // the #3199 box reader; claude-code before #1200).
     const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", false);
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
@@ -751,8 +756,8 @@ describe("Daemon backend-native input queue delivery", () => {
   it("reports a failure when both Enters are swallowed instead of claiming success", async () => {
     // The message is sitting UNSUBMITTED in the CLI's input box. This used to
     // return true, leaving the reaction at 👀 forever while the next delivery
-    // pasted on top — submitting two messages as one. (The output-edge ladder of a readerless backend: grok; claude-code
-    // reads its input box since #1200 and is covered in claude-input-box-1200.test.ts.)
+    // pasted on top — submitting two messages as one. (The output-edge ladder of a readerless backend: grok here strips
+    // the #3199 box reader; claude-code reads its input box since #1200 and is covered in claude-input-box-1200.test.ts.)
     const { daemon, instanceDir, tmux } = makeDeliveryDaemon("grok", true);
     (daemon as any).confirmBusyAfterEnter = vi.fn().mockResolvedValue(false);
     const failed = vi.fn();
@@ -1211,6 +1216,9 @@ describe("Daemon /steer delivery", () => {
     writeFileSync(join(instanceDir, "window-id"), "@steer");
 
     const backend = createBackend(backendName, instanceDir);
+    // #3199: grok now reads its boxed prompt. Steer cases here pin the readerless
+    // no-queue path (muse still takes it); the working reader is grok-input-box-3199.test.ts.
+    if (backendName === "grok") Object.assign(backend, { readInputRow: undefined });
     const control = {
       isIdle: vi.fn(() => idle),
       waitUntilIdle: vi.fn().mockResolvedValue(true),
@@ -1273,7 +1281,8 @@ describe("Daemon /steer delivery", () => {
   it("falls back to the idle-gated queue when the busy TUI swallows the paste", async () => {
     // kiro-style swallow: the pasted text never shows up in the pane. The steer
     // must degrade to "next message after this turn", not vanish silently.
-    // A readerless CLI (grok; claude-code before #1200, which now reads its box: claude-input-box-1200.test.ts).
+    // A readerless CLI (grok here strips the #3199 box reader; claude-code before #1200,
+    // which now reads its box: claude-input-box-1200.test.ts).
     const { control, daemon, tmux } = makeSteerDaemon("grok", false, "✻ thinking… nothing else");
     const confirmed = vi.fn();
     daemon.on("message_confirmed", confirmed);
