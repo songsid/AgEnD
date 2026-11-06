@@ -40,6 +40,10 @@ const ROOM_VIEW_SQL = `SELECT r.*, e.fleet_id AS fleet_id, e.display_name AS exp
   EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id = r.id AND m.stage IN ('queued','delivered','consumed')) AS waiting
   FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id LEFT JOIN hub_people p ON p.person = e.owner LEFT JOIN hub_grants g ON g.id = r.grant_id`;
 function roomListItem(r: RoomViewRow, features: readonly string[]): HubRoomListItem {
+  // A closed room says which chat it was (its agent, its owner) and when it last moved (the list's order) — nothing of
+  // its grant, its link or whether a question waited (#3246 review).
+  if (r.state !== "active") return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
+    grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
   return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
     exposureState: r.frozen_through >= r.exposure_revision && r.exposure_state === "published" ? "frozen" : r.exposure_state,
     grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features };
@@ -101,7 +105,10 @@ export class HubRoomsService {
       .map((r) => roomListItem(r, this.featuresOf(r.fleet_id))));
   }
 
-  /** One room as `list` draws it — its asker only, else not-found (the messages answer carries it, fresh each poll). */
+  /**
+   * One room as `list` draws it — its asker only, else not-found (checked here, not left to the caller: the messages
+   * route asks it after its own read, but this answers alone). The messages answer carries it, fresh each poll.
+   */
   async view(ctx: HubRequestContext, roomId: string): Promise<HubRoomListItem> {
     const me = personKeyString(await ctx.requirePerson());
     const row = this.core.atomic((db) => db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined);

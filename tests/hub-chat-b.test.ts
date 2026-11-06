@@ -106,6 +106,29 @@ describe("createHubChatStore", () => {
     expect([c2.calls.length, t2.pending()]).toEqual([0, [S.POLL_MS]]);
     h.stop();
   });
+  it("a full page reads on from its last entry: an old settled-for-good (uncertain) or still-open entry never pins the read (#3246 review)", async () => {
+    const page = (from: number, n: number, stage = "answered") => Array.from({ length: n }, (_, i) => ({ messageId: `m${from + i}`, sequence: from + i, receipt: { stage: from + i === 1 ? stage : "answered", at: 1 }, question: "q", answer: "a" }));
+    for (const [first, expected] of [["uncertain", [0, 100, 150]], ["queued", [0, 100, 0]]] as const) {
+      const t = fakeTimers(), afters: number[] = [];
+      const answers = [{ ok: true, entries: page(1, 100, first) }, { ok: true, entries: page(101, 50) }, { ok: true, entries: [] }];
+      const c = { read: async (_id: string, after: number) => { afters.push(after); return answers.shift() ?? { ok: true, entries: [] }; } };
+      const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+      t.run(); await flush(); t.run(); await flush();
+      expect([first, afters], "the reads' `after`").toEqual([first, expected]);
+      expect(Math.max(...s.entries().map((e: any) => e.sequence))).toBe(150);
+      s.stop();
+    }
+  });
+  it("one read at a time: a refresh while a read is out starts no second one", async () => {
+    let release!: (v: unknown) => void, reads = 0;
+    const c = { read: () => { reads++; return new Promise((r) => { release = r; }); } };
+    const t = { setTimeout: (fn: () => void) => { queueMicrotask(fn); return 1; }, clearTimeout: () => {} };
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null });
+    s.refresh(); s.refresh(); await flush();
+    expect(reads).toBe(1);
+    release({ ok: true, entries: [] }); await flush();
+    s.stop();
+  });
   it("F's hooks are stubs until F: nothing is clicked", async () => {
     const s = S.createHubChatStore(room, { client: client([]), timers: fakeTimers(), doc: null });
     expect([await s.clickButton("x", 0), s.busy("x"), s.mine("x")]).toEqual([{ ok: false, code: "unsupported" }, false, []]);
@@ -128,6 +151,10 @@ describe("the Hub's rooms for the chat (the real listener)", () => {
     R1 = (await rig.call(alex, "POST", "/hub/v1/rooms", { exposureId, grantId: g.id })).json.room.id;
   });
   afterAll(async () => { await rig?.close(); });
+  it("each person lists only their own rooms", async () => {
+    expect((await rig.call(ben, "GET", "/hub/v1/rooms")).json.rooms).toEqual([]);
+    expect((await rig.call(alex, "GET", "/hub/v1/rooms")).json.rooms.map((r: any) => r.id)).toEqual([R1]);
+  });
   it("the list: who it answers for, the grant's end, a waiting question, when it last moved", async () => {
     const before = (await rig.call(alex, "GET", "/hub/v1/rooms")).json.rooms;
     expect(before.map((r: any) => [r.id, r.exposureName, r.ownerName, r.waiting, r.exposureState, typeof r.grantExpiresAt, r.features])).toEqual([[R1, "Sales numbers", "Olivia Chen", false, "published", "number", []]]);
@@ -162,7 +189,7 @@ describe("the Hub's rooms for the chat (the real listener)", () => {
     const g = (await rig.call(o, "GET", "/hub/v1/exposures")).json.mine[0].grants[0];
     expect((await rig.call(o, "DELETE", `/hub/v1/grants/${g.id}?revision=${g.revision}`)).status).toBe(200);
     const listed = (await rig.call(alex, "GET", "/hub/v1/rooms")).json.rooms;
-    expect(listed.map((r: any) => [r.id, r.state, r.exposureName, r.ownerName])).toEqual([[R1, "closed", "Sales numbers", "Olivia Chen"]]);
+    expect(listed.map((r: any) => [r.id, r.state, r.exposureName, r.ownerName, r.grantExpiresAt, r.waiting, r.features])).toEqual([[R1, "closed", "Sales numbers", "Olivia Chen", 0, false, []]]);
     const fresh = await rig.signIn("alex");          // a session of its own: the room's reads are paced per session
     expect((await rig.call(fresh, "GET", `/hub/v1/rooms/${R1}/messages?after=0`)).status).toBe(403);
   });
