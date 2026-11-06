@@ -278,11 +278,15 @@ export class ReplyButtonsController {
    */
   async sweep(): Promise<void> {
     const now = this.deps.now();
-    for (const set of this.deps.store.unsettled(now)) await this.settle(set);
-    for (const set of this.deps.store.undeliveredClaims()) if (!this.inFlight.has(set.id)) await this.settle(set, true);
-    await this.sweepPolls();
+    const edits: Promise<void>[] = [];
+    for (const set of this.deps.store.unsettled(now)) edits.push(this.settle(set));
+    for (const set of this.deps.store.undeliveredClaims()) if (!this.inFlight.has(set.id)) edits.push(this.settle(set, true));
+    edits.push(this.sweepPolls());
     this.deps.store.prune(now - KEEP_SETTLED_MS);
+    // #3197: closing/admitting results and scheduling the next deadline must precede every platform await.
+    // An earlier poll's open edit, final tally or voters post may remain in flight past another poll's deadline.
     this.arm();
+    await Promise.all(edits);
   }
 
   /**
@@ -303,12 +307,13 @@ export class ReplyButtonsController {
       if (admitted) this.deps.store.markResults(set.id, this.deps.now());
       else owed = true;
     }
-    for (const set of this.deps.store.pollsUnsettled()) await this.settlePoll(set);
+    const edits = this.deps.store.pollsUnsettled().map(set => this.settlePoll(set));
     // Drawn again once per process (after a restart its countdown is stale), then paced by its own ticks.
     for (const set of this.deps.store.openPolls()) if (!this.pace.has(set.id)) this.requestRedraw(set);
     if (owed && this.resultsRetry === null && !this.stopped) {
       this.resultsRetry = this.deps.setTimer(() => { this.resultsRetry = null; void this.sweep(); }, RESULTS_RETRY_MS);
     }
+    await Promise.all(edits);
   }
 
   /**
@@ -333,8 +338,8 @@ export class ReplyButtonsController {
     this.deps.store.markSettled(fresh.id, this.deps.now());               // first: a concurrent settle does nothing
     const pace = this.pace.get(fresh.id);
     this.dropPace(fresh.id);                                                 // a redraw waiting to go now stands down
-    while (pace?.inflight) await pace.inflight;                              // the one going lands before the closed one
     this.deps.publish(fresh.instance, this.view(fresh));
+    while (pace?.inflight) await pace.inflight;                              // the one going lands before the closed one
     const adapter = this.deps.adapterFor(fresh.adapterId);
     if (!adapter?.renderPoll) return;
     try { await adapter.renderPoll(fresh.chatId, fresh.messageId, fresh.threadId || undefined, this.pollRenderOf(fresh, true)); }
