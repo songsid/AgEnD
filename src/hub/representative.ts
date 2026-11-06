@@ -18,23 +18,14 @@ import type { HubAnswer, HubAuthorizationLease, HubAuthorizationRequest, HubQues
 import type { HubLocalExposure, HubExecutionReadiness } from "./execution/service.js";
 import type { HubExecutionAttentionInput } from "../needs-you.js";
 
-/** The S3 agent tuple's member-local provider id and data view id (wire shape unchanged). */
-export const HUB_AGENT_PROVIDER = "agent";
+/** The S3 agent tuple (one copy, S3c's): routing, readiness and the store can never disagree. */
+export { HUB_AGENT_MODE as HUB_AGENT_PROVIDER, agentPolicyDigest, isAgentDescriptor as isAgentTuple } from "./member/agent-mode.js";
+import { isAgentDescriptor as isAgentTuple } from "./member/agent-mode.js";
 /** The reserved report_result target for Hub answers. Only a live Hub-issued correlation id from its agent matches. */
 export { HUB_REPORT_TARGET, type HubReportOutcome } from "../hub-report-target.js";
 import { HUB_REPORT_TARGET, type HubReportOutcome } from "../hub-report-target.js";
 export const HUB_ANSWER_MAX = 128 * 1024;
 const HELD_MAX = 256;
-
-export function agentPolicyDigest(agent: string): string {
-  return sha256(canonicalArguments({ mode: "agent", agent }));
-}
-/** All four fields of the agent tuple (S3's seam, agreed for #3145). Anything else is a legacy/non-agent row. */
-export function isAgentTuple(local: Pick<HubLocalExposure, "agent" | "providerId" | "exposure">): boolean {
-  const e = local.exposure;
-  return local.providerId === HUB_AGENT_PROVIDER && e.dataViewId === HUB_AGENT_PROVIDER && Array.isArray(e.allowedTools)
-    && e.allowedTools.length === 0 && e.policyDigest === agentPolicyDigest(local.agent);
-}
 
 export function migrateHubRepresentative(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS hub_representative_questions(

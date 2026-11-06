@@ -460,13 +460,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
 
       const api = exposureMods.api.createHubMemberExposureApi({
         store: exposures,
-        readinessCandidate: (candidate) => service.readinessCandidate(candidate),
-        readiness: (id, revision) => service.readiness(id, revision),
+        // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
         agents: options.agents,
-        views: registry,
         afterCommit: () => sender.afterCommit(),
-        // No provider in P1: no provider guidance (readiness stays authoritative).
-        providerReason: () => service.providerReason(),
+        // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
+        readinessCandidate: (candidate) => service.readinessCandidate(candidate),
       });
 
       return {

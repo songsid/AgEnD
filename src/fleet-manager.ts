@@ -1944,10 +1944,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await withdrawMemberExposuresOffline(this.dataDir, hubId);
   }
 
-  /** The local owner's agents a Hub exposure could map to; providerId is the configured isolated provider, if any. */
-  /** The owner's agents for the Hub picker: every configured instance, as a representative agent (P1). */
+  /**
+   * The Hub exposure picker's agents (docs/design/hub-representative-agent.md): every configured instance normal
+   * delivery addresses, General included, shown by its display name. The dedicated Hub daemon is not a fleet instance.
+   */
   private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
-    return Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({ name, display: cfg.display_name || name, providerId: "agent" }));
+    return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: this.shownInstanceName(name) }));
   }
 
   /**

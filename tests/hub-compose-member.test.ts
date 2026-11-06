@@ -30,14 +30,14 @@ async function paired() {
   return rig;
 }
 
-function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS, providerId: string | null = "agent") {
+function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS) {
   const reports: { code: string; detail: string }[] = [];
   const attached: { exposures: unknown; attention: unknown; reports: unknown; link: string[]; notices: { code: string; reason: string }[]; logs: string[] } = { exposures: null, attention: null, reports: null, link: [], notices: [], logs: [] };
   const create = createHubMemberFactory({
     home,
     components,
     boundHub: () => hubId,
-    agents: () => [{ name: "general", display: "General", providerId }],
+    agents: () => [{ name: "general", display: "General" }],
     representative: {
       deliver: async () => false,
       agentToken: (agent) => (agent === "general" ? "t".repeat(64) : null),
@@ -67,9 +67,9 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     expect((db.prepare("SELECT component FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component))
       .toEqual(["s1-member-journal", "s3c-exposures", "s4-execution", "s5-audit", "s5-instance", "s5-representative"]);
     db.close();
-    // Attached to the fleet: the exposure API (empty registry: nothing to choose, not enforceable) and attention.
+    // Attached to the fleet: the exposure API (P1 representative agent: the agent itself is the one choice) and attention.
     const api = f.attached.exposures as { list(): Array<{ agent: string; choices: { dataViews: unknown[] }; enforceable: boolean }> };
-    expect(api.list()).toMatchObject([{ agent: "general", choices: { dataViews: [] }, enforceable: false }]);
+    expect(api.list()).toMatchObject([{ agent: "general", choices: { dataViews: [{ id: "agent", label: "General" }], tools: [] }, enforceable: true }]);
     expect(typeof f.attached.attention).toBe("function");
     expect(typeof f.attached.reports).toBe("function"); // the report_result hook for Hub answers
     // The handshake ran on the real link: the Hub saw the member's snapshot.

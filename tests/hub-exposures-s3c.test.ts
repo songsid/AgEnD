@@ -21,6 +21,7 @@ import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { applyHubMigrations } from "../src/hub/db.js";
 import { HUB_EXPOSURE_MAX, HUB_EXPOSURE_MIGRATION, HubExposureRefusal, HubExposureStore, publishExposure } from "../src/hub/member/exposures.js";
 import type { HubAuthorizationLease, HubAuthorizationRequest, HubQuestion } from "../src/hub/types.js";
+import { agentPolicyDigest, isAgentDescriptor } from "../src/hub/member/agent-mode.js";
 import type { HubMemberProfile } from "../src/hub/profile.js";
 
 const databases: Database.Database[] = [];
@@ -222,5 +223,50 @@ describe("S3c: the snapshot to the Hub", () => {
     await expect(fwd.publishSnapshot(c.link as any)).rejects.toThrow(/stale/);
     await back.publishSnapshot(c.link as any);
     expect(c.sent.map((x: any) => x.payload.revision)).toEqual([5, 1]);
+  });
+});
+
+describe("P1 representative agent (docs/design/hub-representative-agent.md): the store's agent descriptor", () => {
+  const agentReady = (c: HubLocalExposure): HubExecutionReadiness => (isAgentDescriptor(c)
+    ? { ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision } : { ok: false, reasonCode: "provider-unavailable" });
+  const agentInput = (over: Record<string, unknown> = {}) => ({ agent: "atlas", providerId: "agent", displayName: "Atlas", dataViewId: "agent", allowedTools: [] as string[], expectedRevision: 0, ...over });
+  it("publishes the exact tuple with no approved view; S1's reader sees it at its revision; withdrawn: fenced", () => {
+    const f = rig();
+    f.views.clear();                                                                    // P1: no views at all
+    const pub = publishExposure(f.store, agentInput(), agentReady);
+    expect(pub).toMatchObject({ agent: "atlas", providerId: "agent", exposure: { revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: agentPolicyDigest("atlas") } });
+    expect(isAgentDescriptor(pub)).toBe(true);
+    expect(f.store.snapshot().exposures).toEqual([pub.exposure]);
+    // S1 admission reads this (store.exposure); delivery to the agent is S5's representative adapter, not S4's outbox.
+    expect(f.store.exposure(pub.exposure.id)).toEqual(pub.exposure);
+    expect(f.store.localExposure(pub.exposure.id)).toEqual(pub);
+    f.store.withdraw(pub.exposure.id, 1);
+    expect(f.store.exposure(pub.exposure.id)).toMatchObject({ state: "withdrawn", revision: 2 });
+    expect(f.store.localExposure(pub.exposure.id)).toBeNull();
+  });
+  it("a mixed or widened tuple is refused before anything is staged", () => {
+    const f = rig();
+    for (const over of [{ dataViewId: "approved" }, { providerId: "claude" }, { allowedTools: ["documents.read"] }, { providerId: "inert", allowedTools: TOOLS }]) {
+      expect(() => f.store.stage(agentInput(over))).toThrow(expect.objectContaining({ code: "not_enforceable" }));
+    }
+    expect(f.store.list()).toEqual([]);
+  });
+  it("the digest is the agent's own: another agent's descriptor is not this one's", () => {
+    expect(agentPolicyDigest("atlas")).not.toBe(agentPolicyDigest("borealis"));
+    const f = rig(), pub = publishExposure(f.store, agentInput(), agentReady);
+    expect(isAgentDescriptor({ ...pub, agent: "borealis" })).toBe(false);
+    expect(isAgentDescriptor({ ...pub, providerId: "claude" })).toBe(false);
+    expect(isAgentDescriptor({ ...pub, exposure: { ...pub.exposure, allowedTools: ["documents.read"] } })).toBe(false);
+    expect(isAgentDescriptor({ ...pub, exposure: { ...pub.exposure, dataViewId: "approved" } })).toBe(false);
+  });
+  it("a legacy (view) mapping republished as the agent: the next revision through the same CAS; the Hub mirror sees the new tuple", () => {
+    const f = rig();
+    const old = publishExposure(f.store, f.input(), f.readiness);
+    expect(isAgentDescriptor(old)).toBe(false);
+    expect(() => publishExposure(f.store, agentInput(), agentReady)).toThrow(expect.objectContaining({ code: "conflict" }));
+    const now = publishExposure(f.store, agentInput({ expectedRevision: 1 }), agentReady);
+    expect(now.exposure).toMatchObject({ id: old.exposure.id, revision: 2, dataViewId: "agent", allowedTools: [] });
+    expect(now.consentId).not.toBe(old.consentId);
+    expect(f.store.snapshot().exposures).toEqual([now.exposure]);
   });
 });
