@@ -47,9 +47,10 @@ export async function hubRig(options: { serverCapabilities?: readonly string[]; 
     await claimHubPairing({ home: memberHome, hubId: identity.hubId, approvedFingerprint: pending.fingerprint, expectedProfileDigest: null, current: () => enabled });
     return new HubMemberProfileStore(memberHome, identity.hubId).readProfile();
   };
-  const client = (onFrame: (frame: any, link: HubMemberLink) => Promise<void> = async () => {}, reconcileGate?: () => Promise<void>) => {
+  /** `capabilities`: the optional features this member offers ([] stands in for an older member). */
+  const client = (onFrame: (frame: any, link: HubMemberLink) => Promise<void> = async () => {}, reconcileGate?: () => Promise<void>, capabilities?: readonly string[]) => {
     const state: { link: HubMemberLink | null; holds: string[]; syncs: number } = { link: null, holds: [], syncs: 0 };
-    const value = new HubMemberClient({ home: memberHome, hubId: identity.hubId, memberOrigin, current: () => enabled, capabilities: options.clientCapabilities,
+    const value = new HubMemberClient({ home: memberHome, hubId: identity.hubId, memberOrigin, current: () => enabled, capabilities: capabilities ?? options.clientCapabilities,
       reconcile: async link => { state.link = link; state.syncs++; await link.exchange({ v: 1, type: "reconcile", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { afterReceiptSequence: 0, messages: [] } }, "reconcile"); await reconcileGate?.(); }, receive: onFrame,
       hold: code => state.holds.push(code), random: () => 0 }); clients.push(value); return { value, state };
   };

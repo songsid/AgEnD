@@ -8,7 +8,7 @@ export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
 /** Optional link features this build offers (never required: an old peer that lacks one keeps working without it).
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. */
-export const HUB_OPTIONAL_CAPABILITIES = ["welcome-caps-v1", "attachments-v1", "buttons-v1"] as const;
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
