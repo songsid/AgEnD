@@ -8302,8 +8302,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    const { getTmuxSocketName: getSocket } = await import("./paths.js");
+    const { getTmuxSocketName: getSocket, isDefaultAgendHome } = await import("./paths.js");
     TmuxManager.setSocketName(getSocket());
+
+    // M-2457 §7: after a raw downgrade from 2.4, its own tmux server may still run the agents — start none beside it.
+    // main / the 2.3 line ONLY: on the 2.4 line (release/2.3.5-alpha) AgEnD's own server IS the one on `agend` — a
+    // main → alpha sync must keep alpha's side of this block, never both.
+    {
+      const { newerTmuxServer, realGuardDeps, guardMessage } = await import("./bundled-tmux-guard.js");
+      const hit = await newerTmuxServer(realGuardDeps(getAgendHome(), isDefaultAgendHome(), getSocket()));
+      if (hit) {
+        const message = guardMessage(hit);
+        this.logger.error({ socket: hit.socket, confirmed: hit.confirmed }, message);
+        throw new Error(message);
+      }
+    }
 
     await TmuxManager.ensureSession(getTmuxSession());
     this.tmuxSessionEnsured = true;
