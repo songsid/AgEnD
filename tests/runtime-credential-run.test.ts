@@ -167,6 +167,17 @@ describe("names that are also Object properties, and a default that is signed ou
   });
 });
 
+describe("the pairing default changed by `agend-runtime profile default` in another window", () => {
+  it("is used by the very next run of the running Runtime (read fresh, no restart)", async () => {
+    const f = await fixture(), work = ensureCredentialProfile(f.root, "claude-code", "work"), home = ensureCredentialProfile(f.root, "claude-code", "home");
+    const other = new RuntimeClientStore(f.store.directory);             // the CLI process: a second handle on the same folder, no lock
+    other.setCredentialDefault("work"); const a = claudeTask(); await f.hub.call(f.machineId, "run", { task: a }); await finish(f, a.requestId);
+    other.setCredentialDefault("home"); const b = claudeTask(); await f.hub.call(f.machineId, "run", { task: b }); await finish(f, b.requestId);
+    other.setCredentialDefault(undefined); const c = claudeTask(); await f.hub.call(f.machineId, "run", { task: c }); await finish(f, c.requestId);
+    expect([a, b, c].map(task => f.bridge.options.get(task.requestId)?.credentialHome)).toEqual([work, home, undefined]);
+  });
+});
+
 describe("what a Runtime tells AgEnD about its profiles", () => {
   it("is the `credential-profiles` capability plus names and signed-in yes/no from an explicit detection; no path, e-mail or token", async () => {
     const f = await fixture(); ensureCredentialProfile(f.root, "claude-code", "work"); ensureCredentialProfile(f.root, "claude-code", "home");

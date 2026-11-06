@@ -123,16 +123,15 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   if (command === "profile") {
     // Only `default` is left here; `list` returned above. It changes which sign-in this pairing uses for agents that do not choose one.
     if (positional[0] !== "default" || positional.length > 2 || Object.keys(flags).some(key => key !== "--profile" && key !== "--clear") || (flags["--clear"] !== undefined) === (positional.length === 2)) throw new Error("Usage: agend-runtime profile list | profile default (NAME | --clear)");
-    const unlock = await lockProfile(store, "profile");
-    try {
-      if (flags["--clear"]) { store.setCredentialDefault(undefined); process.stdout.write("This pairing no longer has a default credential profile. Agents that choose none use this Runtime's own Claude sign-in again.\n"); return; }
-      const name = assertCredentialProfileName(positional[1]), directory = requireCredentialProfile(credentialRoot, "claude-code", name);
-      const answer = await probeStatus("claude-code", directory);
-      rememberCredentialStatus(credentialRoot, "claude-code", name, answer);
-      if (answer.loggedIn !== true) throw credentialLoginRequired("claude-code", name, answer.loggedIn);
-      const before = store.credentialDefault(); store.setCredentialDefault(name);
-      process.stdout.write(`Default credential profile for this pairing: ${name}.${before && before !== name ? ` (was ${before}; a conversation started under another account cannot be resumed under this one.)` : ""}\nRestart the Runtime for agents already running to pick it up.\n`);
-    } finally { unlock(); }
+    // No profile lock: the default is one atomic file, the Runtime reads it fresh for every run and terminal (and watches it), so this works while
+    // the Runtime is running and takes effect there at once. A terminal that is already open keeps the profile it started with.
+    if (flags["--clear"]) { store.setCredentialDefault(undefined); process.stdout.write("This pairing no longer has a default credential profile. Agents that choose none use this Runtime's own Claude sign-in again.\n"); return; }
+    const name = assertCredentialProfileName(positional[1]), directory = requireCredentialProfile(credentialRoot, "claude-code", name);
+    const answer = await probeStatus("claude-code", directory);
+    rememberCredentialStatus(credentialRoot, "claude-code", name, answer);
+    if (answer.loggedIn !== true) throw credentialLoginRequired("claude-code", name, answer.loggedIn);
+    const before = store.credentialDefault(); store.setCredentialDefault(name);
+    process.stdout.write(`Default credential profile for this pairing: ${name}.${before && before !== name ? ` (was ${before}; a conversation started under another account cannot be resumed under this one.)` : ""}\nA running Runtime uses it from the next run or new terminal; a terminal that is already open keeps the profile it started with.\n`);
     return;
   }
   if (command === "status") {

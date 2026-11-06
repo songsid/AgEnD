@@ -133,3 +133,20 @@ describe("the account behind a profile, in agend-runtime's own output (masked, a
     await f.run(["profile", "list"]); expect(cachedCredentialStatus(f.root, "claude-code", "work")).toEqual({ loggedIn: true });
   });
 });
+
+describe("profile default while the Runtime is running", () => {
+  it("works with the Runtime's profile lock held (no need to stop it), and the Runtime reads the new default", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work"); ensureCredentialProfile(f.root, "claude-code", "home");
+    const running = new RuntimeClientStore(f.runtimeHome), unlock = running.lock("a-running-runtime");   // what `run` holds for as long as it is connected
+    try {
+      await f.run(["profile", "default", "work"]); expect(running.credentialDefault()).toBe("work");
+      await f.run(["profile", "default", "home"]); expect(running.credentialDefault()).toBe("home");
+      expect(f.text()).toMatch(/A running Runtime uses it from the next run or new terminal/); expect(f.text()).not.toMatch(/Restart the Runtime/);
+      await f.run(["profile", "default", "--clear"]); expect(running.credentialDefault()).toBeUndefined();
+    } finally { unlock(); }
+  });
+  it("still refuses what it always refused with the lock held: the commands that rewrite the connection", async () => {
+    const f = setup(), running = new RuntimeClientStore(f.runtimeHome), unlock = running.lock("a-running-runtime");
+    try { await expect(f.run(["disconnect"])).rejects.toThrow(/Another runtime already uses this profile/); } finally { unlock(); }
+  });
+});
