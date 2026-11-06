@@ -23,7 +23,7 @@ export { HUB_AGENT_MODE as HUB_AGENT_PROVIDER, agentPolicyDigest, isAgentDescrip
 import { isAgentDescriptor as isAgentTuple } from "./member/agent-mode.js";
 /** The reserved report_result target for Hub answers. Only a live Hub-issued correlation id from its agent matches. */
 export { HUB_REPORT_TARGET, type HubReportOutcome } from "../hub-report-target.js";
-import { HUB_REPORT_TARGET, type HubReportOutcome } from "../hub-report-target.js";
+import { HUB_REPORT_TARGET, type HubReportExtras, type HubReportOutcome } from "../hub-report-target.js";
 export const HUB_ANSWER_MAX = 128 * 1024;
 const HELD_MAX = 256;
 
@@ -293,17 +293,17 @@ export class HubRepresentativeExecution {
    * issued to this caller (the call then takes its ordinary route); otherwise consumes it once and releases the answer.
    * callerCurrent: the reporting daemon generation is still the agent's current one (asked again before every release step).
    */
-  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean }): Promise<HubReportOutcome> | null {
+  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-")) return null;
     const row = this.row("cid", input.correlationId);
     if (!row || row.agent !== input.caller) return null;
     const was = row.state;
     // Consume once, synchronously: a second report on the same id finds it no longer live.
     if (!this.setState(row, "answering", ["input", "delivered"])) return null;
-    return this.release(row, was, input.text, input.callerCurrent ?? (() => true));
+    return this.release(row, was, input.text, input.callerCurrent ?? (() => true), input.extras ?? {});
   }
 
-  private async release(row: Row, was: State, raw: string, callerCurrent: () => boolean): Promise<HubReportOutcome> {
+  private async release(row: Row, was: State, raw: string, callerCurrent: () => boolean, extras: HubReportExtras): Promise<HubReportOutcome> {
     let saved = false, evidenced = false, disclosed = false;
     const live = () => {
       if (!callerCurrent() || this.refresh(row) !== (saved ? "answered" : "answering") || !this.currentFor(row)) throw new HubProtocolError("stale");
