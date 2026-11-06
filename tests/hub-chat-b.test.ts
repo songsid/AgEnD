@@ -139,7 +139,7 @@ describe("createHubChatStore", () => {
 describe("the Hub's rooms for the chat (the real listener)", () => {
   let rig: any, alex: any, ben: any, olivia: any, link: any, R1 = "", exposureId = "";
   beforeAll(async () => {
-    rig = await s3bRig();
+    rig = await s3bRig({ attachments: true });                         // D: a Hub that stores files offers attachments-v1
     olivia = rig.addPerson("olivia", "Olivia Chen"); rig.addPerson("alex", "Alex Lin"); rig.addPerson("ben", "Ben");
     const fleetId = randomUUID(); link = rig.link(fleetId, olivia); exposureId = randomUUID();
     await rig.http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [{ id: exposureId, fleetId, owner: olivia, displayName: "Sales numbers", revision: 1,

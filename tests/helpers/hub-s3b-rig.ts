@@ -13,17 +13,20 @@ import { HubTransportStore, migrateHubTransportStore } from "../../src/hub/store
 import { HubPairingService } from "../../src/hub/pairing.js";
 import { signAsker, issuerKeyId, personKeyString } from "../../src/hub/identity.js";
 import { createHubHttp, HUB_HTTP_MIGRATIONS } from "../../src/hub/http/compose.js";
+import { HUB_ATTACHMENTS_MIGRATION, HubAttachmentStore } from "../../src/hub/attachments/store.js";
 import type { HubAuditRecord, HubDirectory, HubServerFrame, HubTx, PersonKey } from "../../src/hub/types.js";
 import type { HubLinkContext } from "../../src/hub/server.js";
 
 export const WEB_ORIGIN = "https://hub.example.test";
 export const person = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
 
-export async function s3bRig(opts: { now?: () => number; webOrigin?: string; administrator?: PersonKey } = {}) {
+export async function s3bRig(opts: { now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean } = {}) {
   const webOrigin = opts.webOrigin ?? WEB_ORIGIN;
   const db = new Database(":memory:");
   migrateHubTransportStore(db);
   for (const m of HUB_HTTP_MIGRATIONS) m.up(db);
+  if (opts.attachments) HUB_ATTACHMENTS_MIGRATION.up(db);
+  const attachments = opts.attachments ? new HubAttachmentStore({ contentKey: randomBytes(32), ...(opts.now ? { now: opts.now } : {}) }) : undefined;
   db.exec("CREATE TABLE audit_rows (value TEXT NOT NULL)");
   const live = new WeakMap<HubTx, Database.Database>();
   let auditFails = false;
@@ -91,7 +94,7 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string; adm
     identity: { hubId, memberOrigin: "https://127.0.0.1:9", webOrigin, spkiSha256: "a".repeat(64), issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() },
     fenceFleet: () => {}, now: opts.now });
   const config = Object.freeze({ hubId, name: "Team Hub", webOrigin, administrator: admin });
-  const http = createHubHttp({ uow, audit, directory, pairing, store, config, issuer, content,
+  const http = createHubHttp({ uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}),
     transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now }, sql);
 
   const server: Server = createServer((req, res) => { if (!http.handle(req, res)) { res.writeHead(404); res.end("fleet-404"); } });
@@ -116,8 +119,9 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string; adm
   };
   /** An authenticated member link as S1 would hand it over. */
   const fleets = new Map<string, HubLinkContext & { alive: boolean }>();
-  const link = (fleetId: string, owner: PersonKey, linkEpoch = 1) => {
-    const l = { fleetId, owner, linkEpoch, features: new Set<string>(), alive: true, current: () => l.alive && enabled } as HubLinkContext & { alive: boolean };
+  /** `features`: the link's enabled optional features (none by default, as for an older member). */
+  const link = (fleetId: string, owner: PersonKey, linkEpoch = 1, features: readonly string[] = []) => {
+    const l = { fleetId, owner, linkEpoch, alive: true, features: new Set(features), current: () => l.alive && enabled } as HubLinkContext & { alive: boolean };
     fleets.set(fleetId, l); return l;
   };
   const frame = <T extends string, P>(type: T, payload: P, l: HubLinkContext) => ({ v: 1 as const, type, requestId: randomUUID(), linkEpoch: l.linkEpoch, payload });
