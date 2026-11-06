@@ -40,7 +40,7 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
     }
   });
   it("the Hub's own module list holds only Hub modules: it reaches the shared ones through /assets/", () => {
-    expect([...HUB_UI_MODULES]).toEqual(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js"]);
+    expect([...HUB_UI_MODULES]).toEqual(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js"]);
   });
 });
 

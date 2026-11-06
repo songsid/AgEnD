@@ -140,6 +140,24 @@ describe("createHubChatStore", () => {
     expect(afters.slice(3).filter((a) => a === 150).length).toBeGreaterThanOrEqual(4);
     s.stop();
   });
+  it("two old unsettled entries in different pages are each read again in turn (#3261 review)", async () => {
+    const t = fakeTimers(), afters: number[] = [];
+    const entry = (n: number, stage: string) => ({ messageId: `m${n}`, sequence: n, receipt: { stage, at: 1 }, question: "q", ...(stage === "answered" ? { answer: "a" } : {}) });
+    const all = Array.from({ length: 250 }, (_, i) => entry(i + 1, i === 0 || i === 119 ? "queued" : "answered"));
+    let settled120 = false;
+    const c = { read: async (_id: string, after: number) => {
+      afters.push(after);
+      return { ok: true, entries: all.filter((e) => e.sequence > after).slice(0, 100).map((e) => (e.sequence === 120 && settled120 ? entry(120, "answered") : e)) };
+    } };
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    for (let i = 0; i < 3; i++) { t.run(); await flush(); }
+    settled120 = true;
+    for (let i = 0; i < 2 * 6 + 2; i++) { t.run(); await flush(); }
+    expect(s.entries().find((e: any) => e.sequence === 120).receipt.stage).toBe("answered");
+    expect(afters).toContain(119);                                                    // #120's own turn came
+    expect(s.entries().find((e: any) => e.sequence === 1).receipt.stage).toBe("queued");   // #1 still open, still visited
+    s.stop();
+  });
   it("one read at a time: a refresh while a read is out starts no second one", async () => {
     let release!: (v: unknown) => void, reads = 0;
     const c = { read: () => { reads++; return new Promise((r) => { release = r; }); } };

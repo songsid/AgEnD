@@ -352,6 +352,42 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     expect(calls.some((x) => x.path.startsWith("/hub/v1/admin/"))).toBe(false);
   });
 
+  it("switching ?agent= is another page: B's activity is read, A's rows go, a late answer for A lands nowhere; a client from before C reads activity itself (#3261 review)", async () => {
+    const A = "aaaaaaaa-1111-4222-8333-444444444444", B = "bbbbbbbb-1111-4222-8333-444444444444";
+    const ex = (id: string, name: string) => ({ id, displayName: name, revision: 1, state: "published", dataViewId: "agent", allowedTools: [], grants: [] });
+    let releaseA!: () => void;
+    const heldA = new Promise<void>((r) => { releaseA = r; });
+    const { calls } = hubApi({
+      "GET /hub/v1/session": () => [200, SIGNED],
+      "GET /hub/v1/exposures": () => [200, { mine: [ex(A, "Agent A"), ex(B, "Agent B")], askable: [] }],
+      "GET /hub/v1/pairings": () => [200, { pairings: [] }],
+      [`GET /hub/v1/exposures/${B}/activity`]: () => [200, { activity: [{ askerName: "Bea", askedAt: 1_700_000_000_000, stage: "answered" }] }],
+    });
+    // A's read is held: answered only after the page has moved to B.
+    const c = client.hubClient(), realActivity = c.activity.bind(c);
+    c.activity = async (id: string) => { if (id === A) { await heldA; return { ok: true, activity: [{ askerName: "Alex", askedAt: 1, stage: "answered" }] }; } return realActivity(id); };
+    const pg = await pageWith("hub", `/ui/hub/exposures?agent=${A}`, "Team Hub");
+    router.startRouter(pg.window);
+    await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "exposures" }, navKey: "hub:exposures|1|en" }));
+    await until(() => pg.root.querySelector(".s-page-head h2")?.textContent === "Agent A");
+    router.navigate(`/ui/hub/exposures?agent=${B}`); await settle(10);
+    await until(() => pg.root.querySelector(".s-page-head h2")?.textContent === "Agent B");
+    await until(() => [...pg.root.querySelectorAll(".card .hub-row strong")].some((x: any) => x.textContent === "Bea"));
+    releaseA(); await settle(10);
+    const names = [...pg.root.querySelectorAll(".card .hub-row strong")].map((x: any) => x.textContent);
+    expect([names.includes("Bea"), names.includes("Alex")]).toEqual([true, false]);
+    expect(calls.some((x) => x.path === `/hub/v1/exposures/${B}/activity`)).toBe(true);
+    // A client from before C (no activity method): the page makes the same GET itself.
+    delete (c as any).activity;
+    const g = globalThis as any, realFetch = g.fetch, fetched: string[] = [];
+    g.fetch = async (url: string) => { fetched.push(String(url)); return { ok: true, status: 200, json: async () => ({ activity: [{ askerName: "Cy", askedAt: 1, stage: "queued" }] }) }; };
+    try {
+      router.navigate(`/ui/hub/exposures?agent=${A}`); await settle(10);
+      await until(() => [...pg.root.querySelectorAll(".card .hub-row strong")].some((x: any) => x.textContent === "Cy"));
+      expect(fetched).toContain(`/hub/v1/exposures/${A}/activity`);
+    } finally { g.fetch = realFetch; }
+  });
+
   it("an agent's page (#3226 C): who may ask, Allow against the revision shown (a conflict reloads), who asked lately", async () => {
     const mine = [{ id: "aaaaaaaa-1111-4222-8333-444444444444", displayName: "Sales numbers", revision: 3, state: "published", dataViewId: "agent", allowedTools: [],
       grants: [{ id: "g1", revision: 1, subjectName: "Alex", subjectLogin: "alex", expiresAt: 2_000_000_000_000 }] }];

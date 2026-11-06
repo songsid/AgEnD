@@ -7,12 +7,15 @@
 // - Hub-only boot, no page error, no CSP report; desk light/en and phone dark/zh-TW; screenshots under OUT/hub-owner-admin-c.
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf npx --prefix <checkout> tsx scripts/manual/smoke/smoke-hub-owner-admin-c.mts
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
 import { createServer } from "node:https";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 const REPO = process.env.REPO!, OUT = process.env.OUT!, PW = process.env.PW_DIR!;
+const OLD_REF = process.env.OLD_REF ?? "songsid/release/2.3.5-alpha";   // B, before C
+const old = (path: string): string | null => { try { return execFileSync("git", ["-C", REPO, "show", `${OLD_REF}:src/ui/${path}`], { encoding: "utf8", maxBuffer: 16 << 20 }); } catch { return null; } };
 const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
 const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
 const r: Record<string, unknown> = {};
@@ -38,8 +41,8 @@ await http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [exp
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const CASES = [{ device: "desk", lang: "en", theme: "light", viewport: { width: 1366, height: 860 } }, { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } }] as const;
-const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota)\.js|ui\/hub|favicon)/;
-async function open(c: (typeof CASES)[number], path: string) {
+const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-owner-strings)\.js|ui\/hub|favicon)/;
+async function open(c: (typeof CASES)[number], path: string, route?: (page: any) => Promise<void>) {
   const ctx = await browser.newContext({ viewport: c.viewport, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
     isMobile: c.device === "phone", hasTouch: c.device === "phone", deviceScaleFactor: 2 });
   await ctx.addInitScript({ content: `try { localStorage.setItem("agend_lang", ${JSON.stringify(c.lang)}); localStorage.setItem("agend_tour_done", "1"); } catch {}
@@ -48,6 +51,7 @@ async function open(c: (typeof CASES)[number], path: string) {
   const errs: string[] = [], foreign: string[] = [];
   page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
   page.on("request", (q: any) => { const u = new URL(q.url()); if (u.origin === origin && !ALLOWED.test(u.pathname)) foreign.push(u.pathname); });
+  if (route) await route(page);
   await page.goto(origin + path); await page.waitForTimeout(1000);
   return { ctx, page, errs, foreign, csp: () => page.evaluate("window.__csp || []") as Promise<string[]> };
 }
@@ -117,6 +121,34 @@ try {
     check(`${tag}-admin`, /^[a-f0-9]{12}$/.test(admin.code) && admin.steps === 3 && admin.pending >= 1 && d.errs.length === 0 && d.foreign.length === 0 && (await d.csp()).length === 0,
       { admin, errs: d.errs, foreign: d.foreign });
     await d.ctx.close();
+  }
+  // ── SKEW (#3261 review): a tab that holds B's own modules (its client without activity(), its words, its stylesheet)
+  // when this panel loads; and the control, B's panel against this server. EN and zh-TW. ──
+  const serveOld = (files: string[]) => async (page: any) => page.route((u: URL) => files.some((f) => u.pathname === `/ui/js/${f}` || u.pathname === `/assets/${f}`), (route: any) => {
+    const p = new URL(route.request().url()).pathname, f = p.replace(/^\/(ui\/js|assets)\//, "");
+    const body = p.startsWith("/assets/") ? old(`shared/${f}`) : old(f);
+    return body === null ? route.continue() : route.fulfill({ status: 200, contentType: f.endsWith(".css") ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8", body });
+  });
+  for (const c of CASES) {
+    const tag = `skew-${c.device}-${c.lang}`;
+    const k = await open(c, `/ui/hub/exposures?agent=${sales}`, serveOld(["hub-client.js", "hub-chat-strings.js", "hub-chat.css"]));
+    await signIn(k.page, "olivia");
+    await k.page.waitForSelector(".hub-owner .hub-card-head", { timeout: 10000 });
+    let recent: string[] = [];
+    for (let i = 0; i < 40 && !recent.length; i++) { await k.page.waitForTimeout(250); recent = await k.page.evaluate(`[...([...document.querySelectorAll(".card")].find((x) => /Recent questions|最近的提問/.test(x.querySelector("h3")?.textContent || ""))?.querySelectorAll(".hub-row strong") || [])].map((x) => x.textContent)`); }
+    const facts = await k.page.evaluate(`({ raw: /\\bhub(Owner|Chat)\\.[a-zA-Z]+/.test(document.body.innerText), owned: !!document.querySelector('link[data-hub-owner-css="1"]'),
+      rowFlex: getComputedStyle(document.querySelector(".hub-rows .hub-row")).display })`);
+    await k.page.screenshot({ path: shot(`${tag}-retained-b-modules`), fullPage: true });
+    check(`${tag}-retained-b-modules`, recent.includes("Alex Lin") && !facts.raw && facts.owned && facts.rowFlex === "flex" && k.errs.length === 0, { recent, facts, errs: k.errs });
+    await k.ctx.close();
+  }
+  {
+    const k = await open(CASES[0], "/ui/hub/exposures", serveOld(["panel-hub.js"]));
+    await signIn(k.page, "olivia");
+    const ok = await k.page.waitForSelector(".hub-exposure-card, .hub-shared", { timeout: 10000 }).then(() => true, () => false);
+    await k.page.screenshot({ path: shot("skew-old-panel-new-server"), fullPage: true });
+    check("skew-old-panel-new-server", ok && k.errs.length === 0, { ok, errs: k.errs });
+    await k.ctx.close();
   }
 } catch (e) {
   fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500);

@@ -24,6 +24,7 @@ import "/assets/chat-strings.js";
 import { compareGroups, hubClient } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
 import { hc, linkHubChatCss } from "./hub-chat-strings.js";
+import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
 import { createHubChatStore } from "./hub-chat-store.js";
 import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quota.js";
 import { PageHead } from "/assets/page-head.js";
@@ -424,17 +425,28 @@ function HubRoomInfo({ room, closed = false }) {
 // ── My shared agents and Administration (#3226 C): Settings' page layout (PageHead, .s-section-layout cards, .s-row
 // rows), a destructive step behind a row's menu and a confirmation ──
 const DAYS_LEFT = (ms) => daysLeft(ms);
-const stateTag = (state) => state === "published" ? html`<span class="tag ok">${hc("stateShared")}</span>`
-  : state === "frozen" ? html`<span class="tag warn">${hc("statePaused")}</span>` : html`<span class="tag">${hc("stateWithdrawn")}</span>`;
-const mayAsk = (n) => (n === 0 ? hc("mayAskNone") : n === 1 ? hc("mayAskOne") : hc("mayAsk", n));
+const stateTag = (state) => state === "published" ? html`<span class="tag ok">${ho("stateShared")}</span>`
+  : state === "frozen" ? html`<span class="tag warn">${ho("statePaused")}</span>` : html`<span class="tag">${ho("stateWithdrawn")}</span>`;
+const mayAsk = (n) => (n === 0 ? ho("mayAskNone") : n === 1 ? ho("mayAskOne") : ho("mayAsk", n));
 const agentParam = () => { try { const v = new URLSearchParams(location.search).get("agent"); return v && /^[a-f0-9-]{36}$/.test(v) ? v : null; } catch { return null; } };
 
+/**
+ * The owner's recent questions for one agent. Through the client's own method when it has one; a tab that loaded B's
+ * hub-client.js before C has none, so the same GET is made here (same origin, the Hub's cookie; #3261 review).
+ */
+function readActivity(exposureId) {
+  const c = hubClient();
+  if (typeof c.activity === "function") return c.activity(exposureId);
+  return fetch(`/hub/v1/exposures/${encodeURIComponent(exposureId)}/activity`, { credentials: "same-origin", cache: "no-store", headers: { Accept: "application/json" } })
+    .then(async (r) => { let j = null; try { j = await r.json(); } catch { /* not JSON */ } return r.ok && j ? { ok: true, ...j } : { ok: false, status: r.status, code: (j && j.code) || "failed" }; },
+      () => ({ ok: false, code: "unreachable" }));
+}
 function HubMine() {
   useStore(navStore);                                 // ?agent= changes without a new route
   const [cat, reload] = useRead(() => hubClient().catalog());
   const [pairings, reloadPairings] = useRead(() => hubClient().pairings());
   const [msg, setMsg] = useState(null);
-  useEffect(() => { linkHubChatCss(); }, []);
+  useEffect(() => { linkHubChatCss(); linkHubOwnerCss(); }, []);
   const act = async (fn, after = reload) => {
     setMsg(null);
     const r = await fn();
@@ -449,18 +461,20 @@ function HubMine() {
   const pend = pairings && pairings.pairings ? pairings.pairings : [];
   const mine = cat && cat.mine ? cat.mine : [];
   const id = agentParam(), x = id ? mine.find((e) => e.id === id) : null;
-  if (x) return html`<${HubAgentPage} x=${x} act=${act} msg=${msg} />`;
-  return html`<div class="col hub-owner"><${PageHead} title=${hc("mine")} scope=${hc("scopeYou")} lead=${hc("mineLead")} />
+  // Keyed by the agent: another ?agent= is another page (its reads, its dialog), and a late answer for the previous one
+  // lands nowhere (useRead's own liveness ends with that page).
+  if (x) return html`<${HubAgentPage} key=${x.id} x=${x} act=${act} msg=${msg} />`;
+  return html`<div class="col hub-owner"><${PageHead} title=${hc("mine")} scope=${ho("scopeYou")} lead=${ho("mineLead")} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-      ${pend.length ? html`<section class="card hub-pairings"><h3>${hc("pendingPairings")}</h3><p class="note">${hc("pendingLead")}</p>
+      ${pend.length ? html`<section class="card hub-pairings"><h3>${ho("pendingPairings")}</h3><p class="note">${ho("pendingLead")}</p>
         <div class="hub-rows">${pend.map((p) => html`<div key=${p.id} class="s-row hub-row">
           <span class="hub-row-text"><code class="hub-fp-groups">${compareGroups(p.fingerprint)}</code><small class="note">${hw("expires", when(p.expiresAt))}</small></span>
           ${p.ownerConfirmed ? html`<span class="tag ok">${hw("confirmed")}</span>` : html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => confirmPairing(p)}>${hw("confirmPairing")}</button>`}
         </div>`)}</div></section>` : null}
       ${cat && cat.error ? html`<p class="err" role="alert">${cat.error}</p>` : null}
       ${cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
-      ${mine.length ? html`<section class="card hub-shared"><h3>${hc("sharedCount", mine.length)}</h3>
+      ${mine.length ? html`<section class="card hub-shared"><h3>${ho("sharedCount", mine.length)}</h3>
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
           <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong><small class="note">${mayAsk((e.grants || []).length)}</small></span>
           ${stateTag(e.state)}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
@@ -470,7 +484,7 @@ function HubMine() {
 /** One shared agent: who may ask (allow, revoke), whether askers see its quota (G), who asked lately, pause. */
 function HubAgentPage({ x, act, msg }) {
   const [allowing, setAllowing] = useState(false);
-  const [activity, reloadActivity] = useRead(() => hubClient().activity(x.id));
+  const [activity, reloadActivity] = useRead(() => readActivity(x.id));
   const revoke = async (g) => {
     if (!(await confirmDialog({ message: hw("revokeAsk", g.subjectName || g.subjectLogin), confirmLabel: hw("revoke"), danger: true }))) return;
     await act(() => hubClient().revokeGrant(g.id, g.revision));
@@ -480,32 +494,32 @@ function HubAgentPage({ x, act, msg }) {
     await act(() => hubClient().freeze(x.id, x.revision));
   };
   const grants = x.grants || [], shared = x.state === "published";
-  const stageWord = (s) => (s === "answered" ? html`<span class="tag ok">${hc("stageAnswered")}</span>`
-    : ["queued", "delivered", "consumed"].includes(s) ? html`<span class="tag warn">${hc("stageWaiting")}</span>` : html`<span class="tag danger">${hc("stageNot")}</span>`);
+  const stageWord = (s) => (s === "answered" ? html`<span class="tag ok">${ho("stageAnswered")}</span>`
+    : ["queued", "delivered", "consumed"].includes(s) ? html`<span class="tag warn">${ho("stageWaiting")}</span>` : html`<span class="tag danger">${ho("stageNot")}</span>`);
   const acts = activity && activity.activity ? activity.activity : [];
   return html`<div class="col hub-owner">
-    <a class="hub-crumb" href="/ui/hub/exposures"><${Icon} name="back" size=${14} />${hc("backToMine")}</a>
+    <a class="hub-crumb" href="/ui/hub/exposures"><${Icon} name="back" size=${14} />${ho("backToMine")}</a>
     <${PageHead} title=${x.displayName} scope=${stateTag(x.state)} lead=${mayAsk(grants.length)} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-      <section class="card"><div class="hub-card-head"><h3>${hc("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${hc("allow")}</button>` : null}</div>
+      <section class="card"><div class="hub-card-head"><h3>${ho("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${ho("allow")}</button>` : null}</div>
         ${grants.length ? html`<div class="hub-rows">${grants.map((g) => html`<div key=${g.id} class="s-row hub-row">
           <${Avatar} name=${g.subjectName || g.subjectLogin} size="sm" />
-          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${hc("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small></span>
-          <${Menu} label=${hc("rowMenu", g.subjectName || g.subjectLogin)} items=${[{ key: "revoke", label: hc("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(g) }]} />
+          <span class="hub-row-text"><strong>${g.subjectName || g.subjectLogin}</strong><small class="note">${g.subjectLogin ? html`<code>${g.subjectLogin}</code> · ` : null}${ho("untilLeft", dateOnly(g.expiresAt), DAYS_LEFT(g.expiresAt))}</small></span>
+          <${Menu} label=${ho("rowMenu", g.subjectName || g.subjectLogin)} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(g) }]} />
         </div>`)}</div>` : html`<p class="note">${hw("noGrants")}</p>`}
       </section>
       <${QuotaVisibilityRow} exposure=${x} onSaved=${() => act(async () => ({ ok: true }))} />
-      <section class="card"><h3>${hc("recent")}</h3><p class="note">${hc("recentLead")}</p>
+      <section class="card"><h3>${ho("recent")}</h3><p class="note">${ho("recentLead")}</p>
         ${activity && activity.error ? html`<p class="err" role="alert">${activity.error}</p>` : null}
-        ${activity && !activity.error && !acts.length ? html`<p class="note">${hc("recentNone")}</p>` : null}
+        ${activity && !activity.error && !acts.length ? html`<p class="note">${ho("recentNone")}</p>` : null}
         ${acts.length ? html`<div class="hub-rows">${acts.map((a, i) => html`<div key=${i} class="s-row hub-row">
           <${Avatar} name=${a.askerName || "?"} size="sm" /><span class="hub-row-text"><strong>${a.askerName || "—"}</strong><small class="note">${when(a.askedAt)}</small></span>${stageWord(a.stage)}
         </div>`)}</div>` : null}
-        <div class="field-row"><button type="button" class="btn btn-sm btn-ghost" onClick=${reloadActivity}>${hc("refresh")}</button></div>
+        <div class="field-row"><button type="button" class="btn btn-sm btn-ghost" onClick=${reloadActivity}>${ho("refresh")}</button></div>
       </section>
-      ${shared ? html`<section class="card hub-danger"><h3>${hc("pauseTitle")}</h3><p class="note">${hc("pauseLead")}</p>
-        <div class="field-row"><button type="button" class="btn btn-sm btn-danger" onClick=${freeze}>${hc("pauseGo")}</button></div></section>` : null}
+      ${shared ? html`<section class="card hub-danger"><h3>${ho("pauseTitle")}</h3><p class="note">${ho("pauseLead")}</p>
+        <div class="field-row"><button type="button" class="btn btn-sm btn-danger" onClick=${freeze}>${ho("pauseGo")}</button></div></section>` : null}
     </div>
     ${allowing ? html`<${AllowDialog} x=${x} act=${act} onClose=${() => setAllowing(false)} />` : null}
   </div>`;
@@ -522,12 +536,12 @@ function AllowDialog({ x, act, onClose }) {
     setBusy(false);
     if (r && r.ok) onClose();
   };
-  return html`<${Dialog} title=${hc("allowTitle", x.displayName)} onClose=${onClose}
-    actions=${html`<button type="button" class="btn" onClick=${onClose}>${hw("pickCancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !form.login.trim()} onClick=${submit}>${hc("allowGo")}</button>`}>
+  return html`<${Dialog} title=${ho("allowTitle", x.displayName)} onClose=${onClose}
+    actions=${html`<button type="button" class="btn" onClick=${onClose}>${hw("pickCancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !form.login.trim()} onClick=${submit}>${ho("allowGo")}</button>`}>
     <form class="form hub-grant" onSubmit=${submit}>
-      <label class="field"><span>${hc("allowLogin")}</span><input autocomplete="off" spellcheck=${false} autocapitalize="none" value=${form.login}
-        onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} /><small class="note">${hc("allowLoginHint")}</small></label>
-      <label class="field"><span>${hc("allowDays")}</span><select value=${String(form.days)} onChange=${(e) => { const v = Number(e.target.value); setForm((f) => ({ ...f, days: v })); }}>
+      <label class="field"><span>${ho("allowLogin")}</span><input autocomplete="off" spellcheck=${false} autocapitalize="none" value=${form.login}
+        onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} /><small class="note">${ho("allowLoginHint")}</small></label>
+      <label class="field"><span>${ho("allowDays")}</span><select value=${String(form.days)} onChange=${(e) => { const v = Number(e.target.value); setForm((f) => ({ ...f, days: v })); }}>
         ${DAYS.map((d) => html`<option value=${String(d)}>${hw("days", d)}</option>`)}</select></label>
     </form>
   </${Dialog}>`;
@@ -543,7 +557,7 @@ function HubAdminPage() {
   const [login, setLogin] = useState("");
   const [offer, setOffer] = useState(null);
   const [msg, setMsg] = useState(null);
-  useEffect(() => { linkHubChatCss(); }, []);
+  useEffect(() => { linkHubChatCss(); linkHubOwnerCss(); }, []);
   const create = async (e) => {
     e.preventDefault();
     if (!login.trim()) return;
@@ -567,34 +581,34 @@ function HubAdminPage() {
     reload();
   };
   const fleets = view && view.fleets ? view.fleets : [], pairings = view && view.pairings ? view.pairings : [];
-  return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${hc("scopeHub")} lead=${hc("adminLead")} />
+  return html`<div class="col hub-owner hub-admin"><${PageHead} title=${hc("admin")} scope=${ho("scopeHub")} lead=${ho("adminLead")} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-      <section class="card"><h3>${hc("pairSteps")}</h3>
+      <section class="card"><h3>${ho("pairSteps")}</h3>
         <ol class="hub-steps">
-          <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${hc("stepCode")}</b><small class="note">${hc("stepCodeHint")}</small></span>
-            <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${hc("ownerLogin")}</span><input placeholder=${hc("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
-              <button type="submit" class="btn btn-sm" disabled=${!login.trim()}>${hc("makeCode")}</button></form>
-            ${offer ? html`<div class="hub-offer" role="status"><small class="note">${hc("codeFor", offer.login)}</small><code class="hub-code">${offer.code}</code><small class="note">${hw("expires", when(offer.expiresAt))}</small></div>` : null}</div></li>
-          <li class=${pairings.some((p) => p.ownerConfirmed) ? "done" : pairings.length ? "now" : ""}><div class="hub-step-body"><span><b>${hc("stepOwner")}</b><small class="note">${hc("stepOwnerHint")}</small></span></div></li>
-          <li class=${pairings.some((p) => p.ownerConfirmed && !p.adminApproved) ? "now" : ""}><div class="hub-step-body"><span><b>${hc("stepApprove")}</b><small class="note">${hc("stepApproveHint")}</small></span></div></li>
+          <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
+            <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
+              <button type="submit" class="btn btn-sm" disabled=${!login.trim()}>${ho("makeCode")}</button></form>
+            ${offer ? html`<div class="hub-offer" role="status"><small class="note">${ho("codeFor", offer.login)}</small><code class="hub-code">${offer.code}</code><small class="note">${hw("expires", when(offer.expiresAt))}</small></div>` : null}</div></li>
+          <li class=${pairings.some((p) => p.ownerConfirmed) ? "done" : pairings.length ? "now" : ""}><div class="hub-step-body"><span><b>${ho("stepOwner")}</b><small class="note">${ho("stepOwnerHint")}</small></span></div></li>
+          <li class=${pairings.some((p) => p.ownerConfirmed && !p.adminApproved) ? "now" : ""}><div class="hub-step-body"><span><b>${ho("stepApprove")}</b><small class="note">${ho("stepApproveHint")}</small></span></div></li>
         </ol>
         ${pairings.length ? html`<div class="hub-rows">${pairings.map((p) => html`<div key=${p.id} class="s-row hub-row">
           <${Avatar} name=${p.owner ? p.owner.name : "?"} size="sm" />
           <span class="hub-row-text"><strong>${p.owner ? p.owner.name : "—"}</strong>
-            ${p.fingerprint ? html`<code class="hub-fp-groups">${compareGroups(p.fingerprint)}</code>` : html`<small class="note">${hc("codeUnusedYet")}</small>`}</span>
-          ${p.adminApproved ? html`<span class="tag ok">${hc("approvedTag")}</span>`
-            : p.ownerConfirmed ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!p.fingerprint} onClick=${() => approve(p)}>${hc("approveGo")}</button>`
-            : html`<span class="tag warn">${hc("waitingOwner")}</span>`}
+            ${p.fingerprint ? html`<code class="hub-fp-groups">${compareGroups(p.fingerprint)}</code>` : html`<small class="note">${ho("codeUnusedYet")}</small>`}</span>
+          ${p.adminApproved ? html`<span class="tag ok">${ho("approvedTag")}</span>`
+            : p.ownerConfirmed ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!p.fingerprint} onClick=${() => approve(p)}>${ho("approveGo")}</button>`
+            : html`<span class="tag warn">${ho("waitingOwner")}</span>`}
         </div>`)}</div>` : null}
       </section>
-      <section class="card"><h3>${hc("pairedFleets", fleets.length)}</h3>
+      <section class="card"><h3>${ho("pairedFleets", fleets.length)}</h3>
         ${fleets.length ? html`<div class="hub-rows">${fleets.map((f) => html`<div key=${f.id} class="s-row hub-row">
           <${Avatar} name=${f.owner ? f.owner.name : "?"} size="sm" />
-          <span class="hub-row-text"><strong>${hc("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note"><code>${f.owner.login}</code></small>` : null}</span>
-          ${f.status === "active" ? html`<span class="tag ok">${hc("active")}</span><${Menu} label=${hc("rowMenu", f.owner ? f.owner.name : f.id)} items=${[{ key: "revoke", label: hc("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
-            : html`<span class="tag">${hc("revokedTag")}</span>`}
-        </div>`)}</div>` : html`<p class="note">${hc("noFleets")}</p>`}
+          <span class="hub-row-text"><strong>${ho("fleetOf", f.owner ? f.owner.name : "—")}</strong>${f.owner ? html`<small class="note"><code>${f.owner.login}</code></small>` : null}</span>
+          ${f.status === "active" ? html`<span class="tag ok">${ho("active")}</span><${Menu} label=${ho("rowMenu", f.owner ? f.owner.name : f.id)} items=${[{ key: "revoke", label: ho("revokeItem"), icon: "trash", danger: true, onSelect: () => revoke(f) }]} />`
+            : html`<span class="tag">${ho("revokedTag")}</span>`}
+        </div>`)}</div>` : html`<p class="note">${ho("noFleets")}</p>`}
       </section>
     </div></div>`;
 }

@@ -1,0 +1,33 @@
+/* #3226 C: My shared agents and Administration as Settings-like pages (linked by hub-owner-strings.js; an older
+   hub-chat.css lacks these rules). Tokens only; no style= anywhere (#1300). */
+/* ── My shared agents and Administration (#3226 C): Settings' page layout ── */
+.hub-page-body { padding: var(--s-4) max(var(--s-5), env(safe-area-inset-right)) var(--s-6) max(var(--s-5), env(safe-area-inset-left)); }
+.hub-owner { width: 100%; max-width: 860px; min-width: 0; margin: 0 auto; display: flex; flex-direction: column; gap: var(--s-3); }
+.hub-crumb { display: inline-flex; align-items: center; gap: var(--s-1); color: var(--text-2); font-size: var(--fs-sm); text-decoration: none; width: fit-content; }
+.hub-rows { display: flex; flex-direction: column; gap: var(--s-2); margin-top: var(--s-2); }
+.hub-rows .s-row.hub-row { display: flex; align-items: center; gap: var(--s-3); flex-wrap: nowrap; background: var(--surface-2); }
+.hub-row > :not(.hub-row-text) { flex: none; }
+.hub-row-link { color: var(--text); text-decoration: none; }
+.hub-row-link:hover { background: var(--surface-2); }
+.hub-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-row-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-row-text .note { overflow-wrap: anywhere; }
+.hub-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.hub-card-head h3 { margin: 0; color: var(--text); font-size: var(--fs-lg); text-transform: none; letter-spacing: 0; }
+.hub-grant { display: flex; flex-direction: column; gap: var(--s-3); }
+.hub-grant .field { margin: 0; }
+.hub-danger h3 { color: var(--danger); }
+.hub-steps { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); counter-reset: hub-step; }
+.hub-steps > li { display: flex; align-items: flex-start; gap: var(--s-3); counter-increment: hub-step; }
+.hub-steps > li::before { content: counter(hub-step); flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600;
+  background: var(--surface-2); color: var(--text-2); }
+.hub-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: var(--s-2); text-align: start; }
+.hub-steps > li.done::before { content: "✓"; background: var(--ok-bg, var(--surface)); color: var(--ok); }
+.hub-steps > li.now::before { background: var(--text); color: var(--bg); }
+.hub-step-body > span { display: flex; flex-direction: column; gap: 2px; }
+.hub-step-form { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; width: 100%; }
+.hub-step-form .field { margin: 0; flex: 1; min-width: 12em; }
+.hub-steps .hub-offer { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; margin: 0; padding: 0; }
+.hub-steps > li::before { align-self: flex-start; margin-top: 1px; }
+.hub-steps .hub-offer > * { text-align: start; align-self: flex-start; justify-self: start; }
+@media (max-width: 899px) { .hub-page-body { padding: var(--s-3) var(--s-4) var(--s-6); } }
