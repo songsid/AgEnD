@@ -123,6 +123,32 @@ Only installed, execution-compatible CLIs are selectable. Each CLI retains its n
 - AgEnD MCP authority is checked centrally for each execution and tool. A disconnected or revoked execution does not gain a new MCP grant simply because it reconnects.
 - Each runtime currently has one execution slot and retains the existing native worker's five-minute execution limit. The journal retains 128 recent snapshots and 4,096 used execution identities; old identities cannot be silently reused after snapshots expire.
 
+## More than one Claude account on one computer
+
+A Windows computer can keep several named Claude Code sign-ins ("credential profiles") and each agent can use one. The names work like the Linux/WSL `credential_profile`, but everything stays on that computer.
+
+On the Windows computer, in the Runtime folder and under the Windows user whose Claude Code you use:
+
+```powershell
+.\agend-runtime.cmd login claude-code work       # creates the sign-in and runs `claude auth login` for it, here
+.\agend-runtime.cmd login claude-code home
+.\agend-runtime.cmd profile list                 # name and signed in / not signed in
+.\agend-runtime.cmd profile default work         # optional: used by agents that choose none, for this pairing
+.\agend-runtime.cmd connect --credential-profile work   # the same default, set while connecting
+```
+
+Then press **Refresh CLI inventory** for the computer in Settings → Runtime: the card lists the profile names and whether each is signed in, and the agent settings (new Windows agent, **Change runtime / CLI**) offer a **Claude account** choice. Changing the account of an existing agent starts a new conversation, like any runtime change, because a conversation lives in one account's folder.
+
+How it is kept safe:
+
+- **AgEnD only sends a name.** The Runtime turns it into `<this pairing's profile folder>\credential-profiles\claude-code\<name>` on that computer and sets `CLAUDE_CONFIG_DIR` for that one run or terminal, replacing any ambient value. A name resolves only through that fixed folder; anything that would leave it is refused. AgEnD never accepts, stores or sends a folder.
+- **Consent.** The profiles live in the pairing's own folder, and only the computer's local administrator creates and signs one in. Approving the pairing lets that fleet use every profile signed in there, and no other fleet that pairs with the same computer. The fleet admin can choose which profile an agent uses from the ones the computer reports; they cannot create a profile, set the pairing's default, read a credential or point at a path. The pairing's default profile is set only on the computer (`connect --credential-profile` or `profile default`).
+- **Names** follow the Linux rule (letters, digits, `.`, `-`, `_`; start with a letter or digit; at most 64) and also exclude Windows device names (`con`, `nul`, `com1`…, also with an extension such as `nul.txt`) and trailing dots, which Windows would alias to another folder. Names are unique without regard to letter case when creating, listing and resolving: `work` is refused when `Work` exists, and two folders that differ only by case are neither listed nor usable.
+- **Sign-ins never leave the computer.** Only the names and a signed-in yes/no are reported to AgEnD; no path, e-mail or token.
+- **It fails closed.** An unknown, signed-out or unconfirmed profile, a malformed name, or a Runtime that is too old to report the `credential-profiles` capability stops the run or terminal with a message that says what to do. It is never replaced by the computer's own account. AgEnD refuses to send a profile to an older Runtime for the same reason.
+- **Terminals** (persistent panes) take the profile per terminal, so one long-lived host never carries another account's environment. A terminal host that is already running from before an upgrade keeps refusing profiles until its panes are closed and a new host starts.
+- **Limits.** Claude Code only. A sign-in made with a Console login that creates no API key is stored outside the config folder and cannot be separated by profile. `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` are still not passed to a Windows Runtime's Claude Code. AgEnD shows no usage or quota for accounts on a Windows computer. Changing a pairing's default account makes conversations that were started under the old account impossible to resume under the new one.
+
 ## Private state and removal
 
 The default local profile is `%USERPROFILE%\.agend-runtime`; `--profile DIRECTORY` or `AGEND_RUNTIME_HOME` selects another private profile. `connection.json` contains the permanent machine credential, and `jobs.json` contains bounded result snapshots and argument hashes. The runtime does not save a separate input-prompt field or provider login credentials in that journal. A CLI result can quote its input, so treat result snapshots as private too. The CLI itself may retain its ordinary local conversation history.
