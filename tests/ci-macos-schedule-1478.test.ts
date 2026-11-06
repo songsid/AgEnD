@@ -31,14 +31,14 @@ describe.each(workflows)("%s deferred macOS runner selection", (file, jobId) => 
   const workflow = load(file);
   const job = workflow.jobs[jobId];
   it.each([
-    ["pull_request", "refs/pull/42/merge", ["ubuntu-latest"]],
-    ["push", "refs/heads/main", ["ubuntu-latest"]],
-    ["push", "refs/heads/release/2.1", ["ubuntu-latest"]],
-    ["push", "refs/tags/v2.2.0", ["ubuntu-latest", "macos-latest"]],
-    ["push", "refs/tags/v2.2.0-beta.1", ["ubuntu-latest", "macos-latest"]],
-    ["push", "refs/tags/not-a-release", ["ubuntu-latest"]],
-    ["workflow_dispatch", "refs/heads/main", ["ubuntu-latest", "macos-latest"]],
-    ["schedule", "refs/heads/main", ["ubuntu-latest", "macos-latest"]],
+    ["pull_request", "refs/pull/42/merge", ["ubuntu-24.04"]],
+    ["push", "refs/heads/main", ["ubuntu-24.04"]],
+    ["push", "refs/heads/release/2.1", ["ubuntu-24.04"]],
+    ["push", "refs/tags/v2.2.0", ["ubuntu-24.04", "ubuntu-26.04", "macos-latest"]],
+    ["push", "refs/tags/v2.2.0-beta.1", ["ubuntu-24.04", "ubuntu-26.04", "macos-latest"]],
+    ["push", "refs/tags/not-a-release", ["ubuntu-24.04"]],
+    ["workflow_dispatch", "refs/heads/main", ["ubuntu-24.04", "ubuntu-26.04", "macos-latest"]],
+    ["schedule", "refs/heads/main", ["ubuntu-24.04", "ubuntu-26.04", "macos-latest"]],
   ])("%s / %s creates exactly the intended OS cells", (event, ref, expected) => {
     expect(evaluate(job.strategy!.matrix.os, event as string, ref as string)).toEqual(expected);
     expect(job.if).toBeUndefined(); // optional Mac cells are absent, not skipped
@@ -68,11 +68,11 @@ describe("CI admission and cancellation", () => {
     }
   });
   it("keeps data-downgrade Linux-only", () => {
-    expect(Object.values(load("data-downgrade.yml").jobs).every(job => job["runs-on"] === "ubuntu-latest")).toBe(true);
+    expect(Object.values(load("data-downgrade.yml").jobs).every(job => job["runs-on"] === "ubuntu-24.04")).toBe(true);
   });
   it("retains every claimed Node/npm smoke cell", () => {
     expect(load("ci.yml").jobs["install-smoke"].strategy!.matrix.node).toEqual(["22.14.0", "22", "24", "26"]);
-    expect(load("npm-rollback-proof.yml").jobs.rollback.strategy!.matrix.npm).toEqual(["9.9.4", "10.8.2", "11.6.2"]);
+    expect(load("npm-rollback-proof.yml").jobs.rollback.strategy!.matrix.npm).toEqual(["10.9.9", "11.6.2"]);
   });
   const ci = load("ci.yml");
   const aggregate = ci.jobs.build.steps.find(step => step.name === "Check all jobs succeeded")!;
@@ -95,5 +95,44 @@ describe("CI admission and cancellation", () => {
   });
   it("a failed SHA-pin guard cannot make build green, even for docs-only", () => {
     expect(() => runAggregate("success", { DOCS_ONLY: "true", ACTIONS_PINNED: "failure" })).toThrow();
+  });
+});
+
+// The Linux release matrix uses exactly the same event boundary as deferred Mac cells.
+describe.each(["test-shard", "test-integration"])("%s supported Ubuntu matrix", jobId => {
+  const job = load("ci.yml").jobs[jobId];
+  it.each([
+    ["pull_request", "refs/pull/42/merge", ["ubuntu-24.04"]],
+    ["push", "refs/heads/main", ["ubuntu-24.04"]],
+    ["push", "refs/heads/release/2.3.5-alpha", ["ubuntu-24.04"]],
+    ["push", "refs/tags/v2.3.4", ["ubuntu-24.04", "ubuntu-26.04"]],
+    ["workflow_dispatch", "refs/heads/test", ["ubuntu-24.04", "ubuntu-26.04"]],
+    ["schedule", "refs/heads/main", ["ubuntu-24.04", "ubuntu-26.04"]],
+  ])("%s uses only the supported Ubuntu cells", (event, ref, expected) => {
+    expect(evaluate(job.strategy!.matrix.os, event as string, ref as string)).toEqual(expected);
+    expect(job["runs-on"]).toBe("${{ matrix.os }}");
+    expect(job.if).toBeUndefined();
+  });
+});
+
+// Workflow titles and explicit aggregate verdicts remain stable for protection rules.
+describe.each([
+  ['data-downgrade.yml', 'Data downgrade compatibility', 'data-downgrade'],
+  ['npm-rollback-proof.yml', 'npm rollback proof', 'rollback'],
+])('%s required verdict', (file, name, dependency) => {
+  const wf = load(file) as Workflow & {name: string};
+  const job = wf.jobs.verdict as Job & {name: string};
+  it('retains the public check name and always evaluates the entire proof', () => {
+    expect(wf.name).toBe(name);
+    expect(job.name).toBe(name);
+    expect(job.needs).toEqual([dependency]);
+    expect(job.if).toBe('always()');
+  });
+  it.each(['success', 'failure', 'cancelled', 'skipped', ''])('reports %s truthfully', result => {
+    const execute = () => execFileSync('/bin/bash', ['-eo', 'pipefail', '-c', job.steps[0].run!], {
+      env: {PATH: process.env.PATH, RESULT: result}, stdio: 'pipe',
+    });
+    if (result === 'success') expect(execute).not.toThrow();
+    else expect(execute).toThrow();
   });
 });

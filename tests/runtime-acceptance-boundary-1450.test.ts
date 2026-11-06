@@ -337,3 +337,62 @@ describe("#1460 r5: the boundary judges the command WITH its effective environme
     expect(r.stdout).toContain("boundary.cjs");
   });
 });
+
+
+describe('previous-release system-Node preflight', () => {
+  const probe = `command -v node >/dev/null 2>&1 || exit 127; exec node -p "process.versions.node + ' ' + process.execPath"`;
+  it.each(['/bin/sh', '/bin/bash', '/usr/bin/env'])('executes only the fixed read-only probe with the preload intact: %s', shell => {
+    const w = world();
+    const args = shell === '/usr/bin/env' ? ['--', '/bin/bash', '-c', probe] : ['-c', probe];
+    const r = w.run(`const out=require('child_process').execFileSync(${JSON.stringify(shell)},${JSON.stringify(args)},{encoding:'utf8'});process.stdout.write(out);`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe(process.versions.node+' '+process.execPath);
+    expect(w.logged()).toBe('');
+    expect(existsSync(w.mark)).toBe(false);
+  });
+  it.each(['BASH_FUNC_exec%%', 'BASH_FUNC_node%%', 'BASH_FUNC_fixture%%'].flatMap(key => ['child-env', 'env-wrapper', 'env-wrapper--', 'env-wrapper-unset--'].map(route => [key, route])))('refuses imported Bash functions before the unchanged probe: %s via %s', (key, route) => {
+    const w = world();
+    const manager = join(w.root, 'systemctl');
+    // Inert private manager: a marker is the entire effect, never a real service call.
+    writeFileSync(manager, `#!/bin/sh\nprintf called >> '${w.mark}'\n`);
+    chmodSync(manager, 0o755);
+    registerExecutableFixture(manager);
+    const imported = `() { '${manager}'; }`;
+    const args = ['--noprofile', '--norc', '-c', probe];
+    const script = route === 'child-env'
+      ? `require('child_process').execFileSync('/bin/bash',${JSON.stringify(args)},{env:{...process.env,[${JSON.stringify(key)}]:${JSON.stringify(imported)}}});`
+      : `require('child_process').execFileSync('/usr/bin/env',${JSON.stringify([...(route === 'env-wrapper--' ? ['--'] : route === 'env-wrapper-unset--' ? ['-u', 'HARMLESS', '--'] : []), key+'='+imported, '/bin/bash', ...args])});`;
+    const r = w.run(script);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('[runtime-acceptance boundary]');
+    expect(w.logged()).toContain('BASH_FUNC_');
+    expect(existsSync(w.mark)).toBe(false);
+  });
+  it.each([
+    probe+'; agend fleet start',
+    probe.replace('>/dev/null','>/tmp/other'),
+    probe.replace('process.execPath', 'process.exit(0)'),
+    'PATH=/tmp/private '+probe,
+  ])('refuses a modified probe: %s', modified => {
+    const w = world();
+    const r = w.run(`require('child_process').execFileSync('/bin/sh',['-c',${JSON.stringify(modified)}]);`);
+    expect(r.status).not.toBe(0);
+    expect(w.logged()).not.toBe('');
+    expect(existsSync(w.mark)).toBe(false);
+  });
+});
+
+
+describe('previous-release hop completion', () => {
+  const script = readFileSync(join(process.cwd(), 'scripts/ci/runtime-acceptance/hop.sh'), 'utf8');
+  const start = script.indexOf('check_installed # installed identity');
+  const end = script.indexOf('check_boundary old-updater', start);
+  const verdict = script.slice(start, end);
+  it.each([[0,true], [1,true], [7,true], [130,true], [0,false]])('exit %s, valid identity %s', (code, valid) => {
+    expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
+    const r = spawnSync('/bin/bash', ['--noprofile','--norc','-eo','pipefail','-c',
+      `fail(){ exit 1; };check_installed(){ echo verified-identity;return ${valid?0:1}; };rc=${code};CAND=fixture;\n`+verdict], {encoding:'utf8'});
+    expect(r.status, r.stderr).toBe(code===0 && valid?0:1);
+    expect(r.stdout).toContain('verified-identity');
+  });
+});
