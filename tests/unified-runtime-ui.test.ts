@@ -106,7 +106,7 @@ describe("one fleet UI across runtimes",()=>{
   });
   it("labels a native agent whose CLI version AgEnD has not audited (cc3ce4fe), and nothing for a verified one",async()=>{
     const unverified={...nativeRow(),machine_id:nativeId,machine_name:"Build desktop",machine_status:"online",native_cli_version:"0.199.0",native_cli_verification:"unverified"};
-    let status={instances:[linuxRow,unverified],windows_cli:true};app.applyStatus(status);emit("status",status);
+    let status:any={instances:[linuxRow,unverified],windows_cli:true};app.applyStatus(status);emit("status",status);
     await mountNative();const tag=p.root.querySelector(".native-cli-unverified");expect(tag.textContent).toBe("Not yet verified");expect(tag.getAttribute("title")).toBe("Codex 0.199.0: AgEnD has not tested this version in Windows panes yet. It still runs; any screen AgEnD does not recognise stops and waits for you in Needs you.");
     status={instances:[linuxRow,{...unverified,native_cli_version:"0.165.0",native_cli_verification:"verified"}],windows_cli:true};app.applyStatus(status);emit("status",status);await settle();
     expect(p.root.querySelector(".native-cli-unverified")).toBeNull();

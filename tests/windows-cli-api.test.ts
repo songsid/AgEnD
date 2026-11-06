@@ -111,6 +111,14 @@ describe("Windows CLI discovery refresh API", () => {
     await vi.waitFor(() => expect(res.status).toBe(200));
     expect(probe).toHaveBeenCalledWith(body, expect.any(Function)); expect(JSON.parse(res.body)).toEqual(value);
   });
+  it("labels the local machine's persistent-pane CLIs by version (cc3ce4fe), replacing any label in the cached inventory", async () => {
+    const row = (id: string, version: string, extra: Record<string, unknown> = {}) => ({ id, version, path: "C:\\x.exe", runnable: true, ...extra });
+    const req = request("POST",{}), res = response(req), bridge = new WindowsCliBridge(noWindows); req.url = probeUrl.pathname;
+    vi.spyOn(bridge,"probe").mockResolvedValue({ ...value, clis: [row("codex","codex-cli 0.199.0",{paneVerification:"verified"}), row("claude-code","2.1.316"), row("grok","1.0.70",{paneVerification:"verified"})] } as never);
+    handleWindowsCliRequest(req,res,probeUrl,{webToken:token},bridge);
+    await vi.waitFor(() => expect(res.status).toBe(200));
+    expect(JSON.parse(res.body).clis.map((cli: { paneVerification?: string }) => cli.paneVerification ?? null)).toEqual(["unverified","verified",null]);
+  });
   it("#2937 review: hands discovery the request's live authorization check", async () => {
     const req = request("POST",{force:true}), res = response(req), ctx: WindowsCliApiContext = {webToken:token}; req.url = probeUrl.pathname;
     const bridge = new WindowsCliBridge(noWindows); let check!: () => boolean;
