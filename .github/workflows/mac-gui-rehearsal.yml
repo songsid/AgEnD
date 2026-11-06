@@ -1,5 +1,5 @@
 # #1450 rehearsal in launchd's GUI domain (gui/<uid>), which an SSH session on a real Mac cannot reach: a GitHub-hosted
-# macOS runner has a logged-in Aqua session. The published 2.1.12 on Node 20.19 is installed as a launchd service and
+# macOS runner has a logged-in Aqua session. The published 2.3.3 on supported Node 22 is installed as a launchd service and
 # updated by its own `agend update` to a candidate built here (signed official Node runtime packages, local registry,
 # nothing published). scripts/ci/runtime-acceptance/gui-rehearsal.sh. Mac-only, so never on pull requests (fleet
 # decision c553fd23): on demand, and before a release.
@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -32,7 +32,7 @@ jobs:
       - name: Runtime packages from the signed official Node ${{ env.PIN }}
         run: node scripts/runtime/build-runtime-packages.mjs --node "$PIN" --out "$RUNNER_TEMP/runtime"
       - name: The candidate, pinning them
-        run: node scripts/ci/runtime-acceptance/prepare-candidate.mjs "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/packages" "$PIN" "2.2.0-acceptance.${{ github.run_id }}"
+        run: node scripts/ci/runtime-acceptance/prepare-candidate.mjs "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/packages" "$PIN" "2.3.4-acceptance.${{ github.run_id }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: gui-rehearsal-packages
@@ -54,19 +54,17 @@ jobs:
           node-version: '22'
       - name: Local registry with the candidate
         run: bash scripts/ci/runtime-acceptance/registry.sh "$RUNNER_TEMP/packages" "$RUNNER_TEMP/registry"
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 20.19.0
       - name: tmux for the fleet
         run: command -v tmux || brew install tmux
-      # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per leg.
-      - name: Published 2.1.12 tarball (cached, integrity-checked)
+      # #1819: the published 2.3.3 from one cached, integrity-checked tarball, not a registry download per leg.
+      - name: Published 2.3.3 tarball (cached, integrity-checked)
         id: old-tarball
         uses: ./.github/actions/published-agend-tarball
         with:
-          version: 2.1.12
-      - name: 2.1.12 → candidate in the GUI domain, through the old updater
+          version: 2.3.3
+      - name: 2.3.3 → candidate in the GUI domain, through the old updater
         env:
+          AGEND_OLD_VERSION: '2.3.3'
           AGEND_OLD_TARBALL: ${{ steps.old-tarball.outputs.tarball }}
         run: bash scripts/ci/runtime-acceptance/gui-rehearsal.sh "$RUNNER_TEMP/packages"
       - name: Diagnostics on failure
