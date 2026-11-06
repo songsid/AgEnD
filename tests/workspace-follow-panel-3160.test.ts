@@ -145,6 +145,25 @@ describe("Follow agent (#3160)", () => {
     expect(followBtn(doc).textContent, "scrolling the file is your own move too").toBe("Paused · Resume");
   });
 
+  it("follows the newest completion without duplicating or reordering concurrent calls, including Resume", async () => {
+    serve();
+    const frame = (a: number, b: number) => ({ supported: true, running: true, turn: 1, steps: [
+      step(a, "read", [P("src/a.ts")], { id: "call-a", phase: "done" }),
+      step(b, "read", [P("src/b.ts")], { id: "call-b", phase: "done" }),
+    ] });
+    follow = [frame(1, 2)];
+    const doc = await chat(); await openWs(); followBtn(doc).click(); await wait();
+    expect(doc.querySelector(".ws-viewer-head .ws-path").textContent).toBe("src/b.ts");
+    follow = [frame(4, 3)]; await wait();
+    expect(doc.querySelector(".ws-viewer-head .ws-path").textContent).toBe("src/a.ts");
+    const chips = doc.querySelectorAll(".ws-history .ws-step");
+    expect([...chips].map((c: any) => c.textContent)).toEqual(["Reada.ts", "Readb.ts"]);
+    chips[1].click(); await settleAll();
+    expect(doc.querySelector(".ws-viewer-head .ws-path").textContent).toBe("src/b.ts");
+    followBtn(doc).click(); await wait();
+    expect(doc.querySelector(".ws-viewer-head .ws-path").textContent).toBe("src/a.ts");
+  });
+
   it("a new turn replaces the strip; closing the panel stops asking", async () => {
     serve();
     follow = [{ supported: true, running: true, turn: 1, steps: [step(1, "read", [P("src/a.ts")])] }, { supported: true, running: true, turn: 2, steps: [step(2, "read", [P("src/b.ts")])] }];

@@ -77,6 +77,8 @@ const parentOf = (p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "");
 const baseOf = (p) => (p ? p.slice(p.lastIndexOf("/") + 1) : ".");
 /** #3160: how often an open panel with Follow on asks, and how often it may move. */
 export const FOLLOW_TIMING = { pollMs: 1000, applyMs: 600, changesMs: 2500, historyMax: 40 };
+// The strip keeps call order; concurrent completions can update an earlier call with the newest sequence.
+const newestStep = (steps) => steps.reduce((latest, step) => !latest || step.seq > latest.seq ? step : latest, null);
 
 export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey, subscribe, close }) {
   const [tab, setTab] = useState("changes");
@@ -212,7 +214,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
         for (const s of b.steps) merged.set(s.id || s.seq, s);
         return [...merged.values()].slice(-FOLLOW_TIMING.historyMax);
       });
-      if (b.steps.length) pending.current = b.steps[b.steps.length - 1];
+      if (b.steps.length) pending.current = newestStep(b.steps);
       apply();
     };
     const apply = () => {
@@ -231,7 +233,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   const toggleFollow = () => {
     if (follow === "on") { pause(); followRef.current = "off"; setFollow("off"); setHistory([]); setCurrent(null); pos.current = { scope: null, turn: null, last: 0 }; pending.current = null; return; }
     // Turning it on (or resuming) shows the newest step at once.
-    if (follow === "paused" && history.length) pending.current = history[history.length - 1];
+    if (follow === "paused" && history.length) pending.current = newestStep(history);
     lastApply.current = 0;
     followRef.current = "on";
     setFollow("on");

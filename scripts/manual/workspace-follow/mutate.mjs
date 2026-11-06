@@ -19,6 +19,7 @@ const cases = [
   ["unproven-copy", "src/transcript-monitor.ts", 'if (event[0] === "workspace_follow" && this.historyBefore > 0 && !Number.isFinite(at)) return;', '/* unproven copied file activity accepted */', stream],
   ["search-pattern-sentinel", "src/workspace-follow-parse.ts", 'const explicitPattern = ["-e", "-f", "--regexp", "--file"].some(flag => options.has(flag));', 'const explicitPattern = args.some(w => w.startsWith("-e") || w.startsWith("--regexp"));', unit],
   ["search-files-sentinel", "src/workspace-follow-parse.ts", 'const filesOnly = options.has("--files");', 'const filesOnly = args.includes("--files");', unit],
+  ["completion-order", "src/ui/workspace-panel.js", 'const newestStep = (steps) => steps.reduce((latest, step) => !latest || step.seq > latest.seq ? step : latest, null);', 'const newestStep = (steps) => steps[steps.length - 1];', ui],
 ];
 const out = ".artifacts/workspace-follow-mutations"; mkdirSync(out, { recursive: true });
 const selected = process.argv.length > 2 ? cases.filter(([name]) => process.argv.slice(2).includes(name)) : cases;
