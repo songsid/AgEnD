@@ -341,12 +341,26 @@ describe("#1460 r5: the boundary judges the command WITH its effective environme
 
 describe('previous-release system-Node preflight', () => {
   const probe = `command -v node >/dev/null 2>&1 || exit 127; exec node -p "process.versions.node + ' ' + process.execPath"`;
-  it('executes only the fixed read-only probe with the preload intact', () => {
+  it.each(['/bin/sh', '/bin/bash'])('executes only the fixed read-only probe with the preload intact: %s', shell => {
     const w = world();
-    const r = w.run(`const out=require('child_process').execFileSync('/bin/sh',['-c',${JSON.stringify(probe)}],{encoding:'utf8'});process.stdout.write(out);`);
+    const r = w.run(`const out=require('child_process').execFileSync(${JSON.stringify(shell)},['-c',${JSON.stringify(probe)}],{encoding:'utf8'});process.stdout.write(out);`);
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout.trim()).toBe(process.versions.node+' '+process.execPath);
     expect(w.logged()).toBe('');
+    expect(existsSync(w.mark)).toBe(false);
+  });
+  it.each(['BASH_FUNC_exec%%', 'BASH_FUNC_node%%', 'BASH_FUNC_fixture%%'])('refuses imported Bash functions before the unchanged probe: %s', key => {
+    const w = world();
+    const manager = join(w.root, 'systemctl');
+    // Inert private manager: a marker is the entire effect, never a real service call.
+    writeFileSync(manager, `#!/bin/sh\nprintf called >> '${w.mark}'\n`);
+    chmodSync(manager, 0o755);
+    registerExecutableFixture(manager);
+    const imported = `() { '${manager}'; }`;
+    const r = w.run(`require('child_process').execFileSync('/bin/bash',['--noprofile','--norc','-c',${JSON.stringify(probe)}],{env:{...process.env,[${JSON.stringify(key)}]:${JSON.stringify(imported)}}});`);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain('[runtime-acceptance boundary]');
+    expect(w.logged()).toContain('BASH_FUNC_');
     expect(existsSync(w.mark)).toBe(false);
   });
   it.each([

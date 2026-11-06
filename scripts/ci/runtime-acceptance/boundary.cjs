@@ -160,6 +160,8 @@ function envViolation(env) {
   if (env.NODE_OPTIONS !== undefined && env.NODE_OPTIONS !== "" && env.NODE_OPTIONS !== TRUSTED.nodeOptions) return "a NODE_OPTIONS the hop did not start with (" + env.NODE_OPTIONS + ")";
   var keys = Object.keys(env);
   for (var i = 0; i < keys.length; i++) {
+    // Imported shell functions can replace the fixed probe's command/exec/node meanings.
+    if (/^BASH_FUNC_/.test(keys[i])) return "an imported Bash function in the environment (" + keys[i] + ")";
     if (/^(LD_|DYLD_)/.test(keys[i]) && env[keys[i]] !== TRUSTED.loader[keys[i]]) return "a loader variable the hop did not start with (" + keys[i] + ")";
   }
   return null;
