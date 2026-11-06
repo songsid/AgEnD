@@ -79,18 +79,27 @@ export class RuntimeInstallService {
   private readonly buckets = new Map<string, { tokens: number; at: number; burst: number; perMs: number }>();
   private files: RuntimeInstallFiles | undefined;
   constructor(private readonly options: RuntimeInstallOptions = {}) {}
+  /** Tokens a bucket holds right now. One nobody has used holds its whole burst, and holds no table row. */
+  private tokens(key: string, limit: { burst: number }, now: number): number {
+    const row = this.buckets.get(key);
+    return row ? Math.min(row.burst, row.tokens + Math.max(0, now - row.at) * row.perMs) : limit.burst;
+  }
+  private spend(key: string, limit: { burst: number; perMinute: number }, now: number): void {
+    const perMs = limit.perMinute / 60_000, row = this.buckets.get(key) ?? { tokens: limit.burst, at: now, burst: limit.burst, perMs };
+    row.tokens = Math.min(row.burst, row.tokens + Math.max(0, now - row.at) * row.perMs) - 1; row.at = now;
+    this.buckets.set(key, row);
+  }
   /**
-   * The total is taken first, so a new per-address bucket exists only for a request the total admitted, and a bucket that has
-   * refilled to full is forgotten: the table stays small without a cap.
+   * The address's own bucket is asked first. A request it refuses costs the total nothing, so one address that hammers a route is held by
+   * its own bucket and cannot drain what everyone else shares. Only a request that bucket admits is charged to the total, and only then are
+   * both spent. A bucket that has refilled to full is forgotten, and a row is only created by an admitted request, so the table stays small
+   * without a cap.
    */
-  private take(key: string, limit: { burst: number; perMinute: number }): boolean {
+  private admit(peerKey: string, peerLimit: { burst: number; perMinute: number }): boolean {
     const now = (this.options.now ?? Date.now)();
     for (const [id, row] of this.buckets) if (row.tokens + (now - row.at) * row.perMs >= row.burst) this.buckets.delete(id);
-    const perMs = limit.perMinute / 60_000, row = this.buckets.get(key) ?? { tokens: limit.burst, at: now, burst: limit.burst, perMs };
-    row.tokens = Math.min(row.burst, row.tokens + Math.max(0, now - row.at) * row.perMs); row.at = now;
-    this.buckets.set(key, row);
-    if (row.tokens < 1) return false;
-    row.tokens -= 1;
+    if (this.tokens(peerKey, peerLimit, now) < 1 || this.tokens("total", LIMITS.total, now) < 1) return false;
+    this.spend("total", LIMITS.total, now); this.spend(peerKey, peerLimit, now);
     return true;
   }
   /**
@@ -122,7 +131,7 @@ export class RuntimeInstallService {
     if (url.search) { answer(res, 400, { error: "Runtime installer files do not accept options" }); return true; }
     if (!protectedTransport(req)) { answer(res, 403, { error: "The Runtime installer is served only over HTTPS or localhost" }); return true; }
     const peer = req.socket.remoteAddress ?? "unknown", kind = isScript ? "script" : "bundle";
-    if (!this.take("total", LIMITS.total) || !this.take(`${kind}:${peer}`, LIMITS[kind])) {
+    if (!this.admit(`${kind}:${peer}`, LIMITS[kind])) {
       answer(res, 429, { error: "Too many Runtime installer requests. Wait a minute and try again." }, { "Retry-After": "30" }); return true;
     }
     try {

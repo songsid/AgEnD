@@ -144,6 +144,17 @@ describe("runtime installer routes", () => {
     // a long pause restores the whole burst, and no more than the burst
     clock += 120_000; for (let i = 0; i < 4; i++) expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200); expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
   });
+  it("an address that hammers one route is held by its own bucket and costs the total nothing, so everyone else can still download (N1)", () => {
+    const service = make(), total = () => (service as unknown as { buckets: Map<string, { tokens: number }> }).buckets.get("total")?.tokens;
+    let served = 0, refused = 0;
+    for (let i = 0; i < 300; i++) { const status = get(service, RUNTIME_BUNDLE_PATH, { remote: "203.0.113.9", encrypted: true }).res.status; if (status === 200) served++; else if (status === 429) refused++; }
+    expect(served).toBe(4); expect(refused).toBe(296);
+    // 4 admitted requests took 4 from the total (burst 60); the 296 refused ones took nothing
+    expect(total()).toBeCloseTo(56, 5);
+    // twenty other addresses, a script and an archive each, are all served while the first is still being held
+    for (let i = 0; i < 20; i++) for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) expect(get(service, path, { remote: `198.51.100.${i + 1}`, encrypted: true }).res.status, `other address ${i} ${path}`).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_PATH, { remote: "203.0.113.9", encrypted: true }).res.status).toBe(429);   // the hammering address is still held
+  });
   it("lets a person run the installer a few times in a row: the script and the archive twice over", () => {
     const service = make();
     for (let i = 0; i < 2; i++) { expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(200); expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200); }
