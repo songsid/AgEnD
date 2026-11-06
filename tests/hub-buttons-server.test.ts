@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { buttonsDigest } from "../src/hub/buttons-model.js";
+import { HubButtonsService } from "../src/hub/buttons.js";
 import { messageContentDigest } from "../src/hub/identity.js";
-import type { HubAnswerButtons, HubAuthorizationLease, HubExposure } from "../src/hub/types.js";
+import type { HubAnswerButtons, HubAuthorizationLease, HubExposure, HubRequestContext } from "../src/hub/types.js";
 
 type Rig = Awaited<ReturnType<typeof s3bRig>>;
 let r: Rig | undefined;
@@ -42,6 +43,15 @@ async function world(options: { features?: string[]; askerAdmin?: boolean } = {}
   const questions = () => (r!.db.prepare("SELECT question_ref FROM hub_messages WHERE room_id=? AND id<>? ORDER BY sequence").all(roomId, messageId) as { question_ref: string }[])
     .map(q => r!.contents.get(q.question_ref)?.question);
   return { a, o, admin, asker, owner, link, roomId, grant: grant.json.grant, exposure, messageId, answer, click, questions };
+}
+
+async function observedWorld() {
+  let buttons!: HubButtonsService;
+  const start = HubButtonsService.prototype.start;
+  const spy = vi.spyOn(HubButtonsService.prototype, "start").mockImplementation(function(this: HubButtonsService) {
+    buttons = this; start.call(this);
+  });
+  try { const w = await world(); return { ...w, buttons }; } finally { spy.mockRestore(); }
 }
 
 describe("Hub buttons use ordinary durable question delivery", () => {
@@ -100,6 +110,54 @@ describe("Hub buttons use ordinary durable question delivery", () => {
     r!.db.prepare("UPDATE hub_grants SET revision=revision+1 WHERE id=?").run(w.grant.id);
     expect((await w.click(b, { index: 0 })).status).toBe(409);
     expect(w.questions()).toEqual([]);
+  });
+  it.each(["revoked", "expired"])("a multi-poll ballot needs its current grant (%s, same revision)", async state => {
+    const w = await world(), b = wire({ multi: true }); await w.answer(b);
+    expect((await w.click(b, { options: [0] })).status).toBe(200);
+    const before = r!.db.prepare("SELECT ballot_ref FROM hub_answer_buttons WHERE id=?").get(b.id);
+    if (state === "revoked") r!.db.prepare("UPDATE hub_grants SET state='revoked' WHERE id=?").run(w.grant.id);
+    else r!.db.prepare("UPDATE hub_grants SET expires_at=? WHERE id=?").run(Date.now() - 1, w.grant.id);
+    expect((await w.click(b, { options: [1] })).status).toBe(403);
+    expect(r!.db.prepare("SELECT ballot_ref FROM hub_answer_buttons WHERE id=?").get(b.id)).toEqual(before);
+    expect(r!.audits.filter(a => a.action === "poll.voted")).toHaveLength(1);
+    expect(w.questions()).toEqual([]);
+  });
+  it("a non-directory current actor cannot consume the directory asker's choice", async () => {
+    const w = await observedWorld(), b = wire(); await w.answer(b);
+    const ctx: HubRequestContext = { requestId: randomUUID(), requirePerson: async () => w.asker,
+      requireAdmin: async () => { throw new Error("not used"); },
+      // Deliberately retain a person property to pin the actor kind, rather than rely on a later TypeError.
+      current: async () => ({ kind: "local-host", person: w.asker, sessionId: randomUUID() } as any) };
+    await expect(w.buttons.click(ctx, w.roomId, { setId: b.id, index: 0, idempotencyKey: randomUUID() })).rejects.toMatchObject({ code: "denied" });
+    expect(w.questions()).toEqual([]);
+    expect(r!.db.prepare("SELECT state FROM hub_answer_buttons WHERE id=?").get(b.id)).toEqual({ state: "open" });
+  });
+  it("retained choice content must still match the answer's recorded digest", async () => {
+    const w = await world(), b = wire(); await w.answer(b);
+    const row = r!.db.prepare("SELECT answer_ref FROM hub_messages WHERE id=?").get(w.messageId) as { answer_ref: string };
+    const saved = r!.contents.get(row.answer_ref)!;
+    r!.contents.set(row.answer_ref, { ...saved, buttons: { ...b, values: ["different", "no"] } } as any);
+    const refused = await w.click(b, { index: 0 });
+    expect(refused.status).toBe(503); expect(refused.json.code).toBe("uncertain");
+    expect(w.questions()).toEqual([]);
+  });
+  it("duplicate multi-poll options are invalid before any ballot write", async () => {
+    const w = await world(), b = wire({ multi: true }); await w.answer(b);
+    expect((await w.click(b, { options: [0, 0] })).status).toBe(400);
+    expect(r!.db.prepare("SELECT ballot_ref FROM hub_answer_buttons WHERE id=?").get(b.id)).toEqual({ ballot_ref: null });
+    expect(r!.audits.filter(a => a.action === "poll.voted")).toHaveLength(0);
+  });
+  it("a results call on an already queued row refuses without another question or audit", async () => {
+    const w = await observedWorld(), b = wire({}); await w.answer(b);
+    expect((await w.click(b, { options: [0] })).status).toBe(200);
+    // queueResults is the final state guard for both click and deadline callers; drainResults' guard avoids
+    // entering it for a snapshot that became stale during directory I/O. Test its queued-row refusal directly.
+    const service = w.buttons as any;
+    expect(() => service.core.atomic((db: any, tx: any) => service.queueResults(db, tx,
+      db.prepare("SELECT * FROM hub_answer_buttons WHERE id=?").get(b.id), randomUUID()))).toThrow(/conflict/);
+    await w.buttons.sweep();
+    expect(w.questions()).toHaveLength(1);
+    expect(r!.audits.filter(a => a.action === "poll.results")).toHaveLength(1);
   });
   it("rejects metadata without negotiation or with a changed exact release digest", async () => {
     const w = await world({ features: [] }), b = wire();
