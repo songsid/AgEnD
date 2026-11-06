@@ -114,18 +114,21 @@ Optional variables, set in the same PowerShell window before the command:
 
 ### What the server serves
 
-Two read-only GET routes, next to the pairing endpoints, need no sign-in:
+Three read-only GET routes, next to the pairing endpoints, need no sign-in:
 
 | Route | Content |
 |---|---|
 | `/runtime/install.ps1` | The installer script, with this server's runtime version and the archive's SHA-256 written into it. |
 | `/runtime/v1/bundle/windows.zip` | The generic Runtime archive: the same `createRuntimeBundle()` output Settings downloads, without `agend-server.json`. |
+| `/runtime/v1/bundle/windows.json` | Exactly `{version, sha256, bytes}` for that same cached archive. No download URL or pairing data. |
 
-They are served only while **Allow other Windows PCs to pair** is on (otherwise both answer `404`, exactly like an unknown route), never through a public gateway link (`404` there too: the gateway does not list them), and only over HTTPS or loopback (plain HTTP from anywhere else is refused with `403`). The usual Host allow-list still applies.
+They are served only while **Allow other Windows PCs to pair** is on (otherwise all answer `404`, exactly like an unknown route), never through a public gateway link (`404` there too: the gateway does not list them), and only over HTTPS or loopback (plain HTTP from anywhere else is refused with `403`). The usual Host allow-list still applies.
 
 Both are **static for a server version**: the generic bundle is built once per server process and kept, so its hash is stable, and the script is that bundle's version and SHA-256 inside a fixed template. Nothing in a response depends on the request: not the Host header, a query (a query is refused), a cookie or the caller. Neither carries a token, secret, pairing code, profile, user data or server address; the address comes from `$agend` in the command. The script is never cached (`Cache-Control: no-store`). The archive carries `Cache-Control: no-cache` and an `ETag` made from the server version and its SHA-256; a matching `If-None-Match` is answered `304` without the body. The script still verifies the archive's pinned SHA-256, so a cached copy is never trusted on its own. Downloading the installer grants no authority: pairing (one-time code, ten-minute expiry, fingerprint, local administrator approval) is unchanged, and an unapproved computer can do nothing.
 
-Requests are rate limited per client address with a small burst (a few downloads in a row, then a steady rate; each route has its own allowance), and in total, because a reverse proxy makes every client look like one address. A client address is asked first: a request its own allowance refuses costs the shared total nothing, so one address that hammers a route is held by its own limit and cannot use up what everyone else shares. A held request gets `429` with `Retry-After`. The archive can never exceed the bundle's 8 MiB cap.
+The metadata comes from that same cached bundle, so its hash and byte count describe the ZIP actually served. ZIP and metadata use the same `ETag` (`"<version>-<sha256>"`), `Cache-Control: no-cache` and conditional `304` behavior. `HEAD` returns their headers without a body. This metadata endpoint prepares the server contract for automatic updates; it does not switch a running Runtime by itself.
+
+Requests are rate limited per client address with a small burst (a few downloads in a row, then a steady rate; ZIP and metadata share one allowance, and the script has its own), and in total, because a reverse proxy makes every client look like one address. Conditional requests and `HEAD` also count. A client address is asked first: a request its own allowance refuses costs the shared total nothing, so one address that hammers a route is held by its own limit and cannot use up what everyone else shares. A held request gets `429` with `Retry-After`. The archive can never exceed the bundle's 16 MiB cap.
 
 ### Remove it
 
