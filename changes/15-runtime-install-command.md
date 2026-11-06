@@ -1,0 +1,5 @@
+---
+section: Added
+---
+- Settings → Runtime → Connect a computer opens on two install methods. **Windows (PowerShell)** shows a copyable install command and connect command with the confirmed AgEnD address filled in; **Other install methods (ZIP)** keeps the existing download and `connect-agend.bat` flow unchanged. The install command (`irm "$agend/runtime/install.ps1" | iex`) checks Node.js 22.14+, downloads this AgEnD's Runtime, verifies its pinned SHA-256 before unpacking, installs under `%LOCALAPPDATA%\agend-runtime` and adds `agend-runtime` to your user PATH. It needs no administrator rights and does not connect or pair; the one-time code is still typed in the terminal and the computer still needs your approval.
+- The AgEnD server now serves `/runtime/install.ps1` and `/runtime/v1/bundle/windows.zip` as read-only, static, rate-limited downloads that need no sign-in. They exist only while Allow other Windows PCs to pair is on (otherwise they answer 404), never through a public gateway link, and only over HTTPS or loopback. They carry no token, secret, pairing code or server address, and grant no access.
