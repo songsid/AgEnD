@@ -7,7 +7,7 @@ import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RUNTIME_MAX_ARCHIVE_BYTES, createRuntimeBundle, type RuntimeBundle } from "../src/runtime-bundle.js";
 import { runtimeBundleFixture, unzipStored } from "./support/runtime-bundle-fixture.js";
-import { RUNTIME_BUNDLE_PATH, RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_INSTALL_SHA256_TOKEN, RUNTIME_INSTALL_VERSION_TOKEN,
+import { RUNTIME_BUNDLE_PATH, RUNTIME_BUNDLE_METADATA_PATH, RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_INSTALL_SHA256_TOKEN, RUNTIME_INSTALL_VERSION_TOKEN,
   RuntimeInstallService, renderRuntimeInstallScript } from "../src/runtime-install.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -15,6 +15,7 @@ import { createPublicWebGateway, isPublicWebRoute } from "../src/public-web-gate
 import { EventEmitter } from "node:events";
 import { WebSessionStore } from "../src/web-session.js";
 
+const INSTALL_ROUTES = [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH, RUNTIME_BUNDLE_METADATA_PATH];
 const TEMPLATE = `# fixture installer\n$version = '${RUNTIME_INSTALL_VERSION_TOKEN}'\n$sha256 = '${RUNTIME_INSTALL_SHA256_TOKEN}'\n`;
 function fixtureBundle(version = "2.3.5-alpha.7", size = 4096): RuntimeBundle {
   const bytes = Buffer.alloc(size, 7);
@@ -45,9 +46,9 @@ const cleanups: Array<() => void> = [];
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0)) cleanup(); });
 
 describe("runtime installer routes", () => {
-  it("answers 404 for both routes, whatever the method, and builds nothing, while remote runtimes are off", () => {
+  it("answers 404 for all installer routes, whatever the method, and builds nothing, while remote runtimes are off", () => {
     vi.stubEnv("AGEND_REMOTE_RUNTIME", ""); const bundle = vi.fn(() => fixtureBundle()), template = vi.fn(() => TEMPLATE), service = make({ bundle, template });
-    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) for (const method of ["GET", "HEAD", "POST", "PUT"]) {
+    for (const path of INSTALL_ROUTES) for (const method of ["GET", "HEAD", "POST", "PUT"]) {
       const { res, handled } = get(service, path, { method }); expect(handled, `${method} ${path}`).toBe(true); expect(res.status, `${method} ${path}`).toBe(404);
       expect(res.body).toBe(JSON.stringify({ error: "Not found" })); expect(res.sentHeaders["Content-Type"]).toBe("application/json; charset=utf-8");
     }
@@ -61,9 +62,9 @@ describe("runtime installer routes", () => {
     vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"); expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200);
     vi.stubEnv("AGEND_REMOTE_RUNTIME", "0"); expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(404);
   });
-  it("does not exist on a public gateway link: 404 for both routes, and nothing is built", () => {
+  it("does not exist on a public gateway link: 404 for all installer routes, and nothing is built", () => {
     const bundle = vi.fn(() => fixtureBundle()), service = make({ bundle });
-    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) {
+    for (const path of INSTALL_ROUTES) {
       const { res, handled } = get(service, path, {}, req => bindGatewayRequest(req, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true }));
       expect(handled).toBe(true); expect(res.status).toBe(404); expect(res.body).toBe(JSON.stringify({ error: "Not found" }));
     }
@@ -76,10 +77,12 @@ describe("runtime installer routes", () => {
   });
   it("is read-only, takes no options, and refuses plain HTTP from anywhere but loopback", () => {
     const bundle = vi.fn(() => fixtureBundle()), service = make({ bundle });
-    for (const method of ["POST", "PUT", "DELETE", "PATCH"]) { const { res } = get(service, RUNTIME_BUNDLE_PATH, { method }); expect(res.status).toBe(405); expect(res.sentHeaders.Allow).toBe("GET, HEAD"); }
-    for (const query of ["?code=secret", "?x=1"]) { const { res } = get(service, RUNTIME_INSTALL_SCRIPT_PATH + query); expect(res.status).toBe(400); }
-    for (const remote of ["192.0.2.5", "10.0.0.8", "::ffff:192.0.2.5", "fe80::1"]) {
-      const { res, handled } = get(service, RUNTIME_INSTALL_SCRIPT_PATH, { remote }); expect(handled).toBe(true); expect(res.status).toBe(403);
+    for (const path of INSTALL_ROUTES) {
+      for (const method of ["POST", "PUT", "DELETE", "PATCH"]) { const { res } = get(service, path, { method }); expect(res.status).toBe(405); expect(res.sentHeaders.Allow).toBe("GET, HEAD"); }
+      for (const query of ["?code=secret", "?x=1"]) { const { res } = get(service, path + query); expect(res.status).toBe(400); }
+      for (const remote of ["192.0.2.5", "10.0.0.8", "::ffff:192.0.2.5", "fe80::1"]) {
+        const { res, handled } = get(service, path, { remote }); expect(handled).toBe(true); expect(res.status).toBe(403);
+      }
     }
     expect(bundle).not.toHaveBeenCalled();
     for (const remote of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH, { remote }).res.status).toBe(200);
@@ -104,7 +107,7 @@ describe("runtime installer routes", () => {
   });
   it("answers HEAD with the headers and no body", () => {
     const service = make();
-    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) { const { res } = get(service, path, { method: "HEAD" }); expect(res.status).toBe(200); expect(res.bytes.length).toBe(0); expect(Number(res.sentHeaders["Content-Length"])).toBeGreaterThan(0); }
+    for (const path of INSTALL_ROUTES) { const { res } = get(service, path, { method: "HEAD" }); expect(res.status).toBe(200); expect(res.bytes.length).toBe(0); expect(Number(res.sentHeaders["Content-Length"])).toBeGreaterThan(0); }
   });
   it("never lets the request shape what is served: the same bytes for any Host, cookie, origin, peer or header", () => {
     const service = make(), plain = get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.bytes;
@@ -205,18 +208,98 @@ describe("runtime installer routes", () => {
   });
 });
 
+describe("runtime update bundle metadata", () => {
+  it("describes the exact cached real ZIP and its installer pin even when the source changes after the first read", () => {
+    const f = runtimeBundleFixture(); cleanups.push(f.cleanup);
+    const first = createRuntimeBundle(f), later = fixtureBundle("2.3.6"), bundle = vi.fn().mockReturnValueOnce(first).mockReturnValue(later);
+    const service = make({ bundle }), metadata = get(service, RUNTIME_BUNDLE_METADATA_PATH).res;
+    expect(metadata.status).toBe(200);
+    expect(metadata.sentHeaders["Content-Type"]).toBe("application/json; charset=utf-8");
+    expect(metadata.sentHeaders["X-Content-Type-Options"]).toBe("nosniff");
+    expect(metadata.sentHeaders["Content-Disposition"]).toBeUndefined();
+    expect(metadata.bytes.length).toBeLessThan(256);
+    expect(metadata.sentHeaders["Content-Length"]).toBe(metadata.bytes.length);
+    const info = JSON.parse(metadata.body), zip = get(service, RUNTIME_BUNDLE_PATH).res;
+    expect(info).toEqual({ version: first.version, sha256: createHash("sha256").update(zip.bytes).digest("hex"), bytes: zip.bytes.length });
+    expect(zip.bytes.equals(first.bytes)).toBe(true);
+    expect(metadata.sentHeaders.ETag).toBe(zip.sentHeaders.ETag);
+    expect(metadata.sentHeaders.ETag).toBe(`"${info.version}-${info.sha256}"`);
+    expect(metadata.sentHeaders["Cache-Control"]).toBe("no-cache");
+    expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.body).toContain(`$sha256 = '${info.sha256}'`);
+    expect(service.installer().bundleSha256).toBe(info.sha256);
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH).res.bytes.equals(metadata.bytes)).toBe(true);
+    expect(bundle).toHaveBeenCalledTimes(1);
+  });
+  it("keeps metadata fixed across request identities and accepts direct TLS and each loopback representation", () => {
+    const expected = get(make(), RUNTIME_BUNDLE_METADATA_PATH).res.bytes;
+    for (const remote of ["127.0.0.1", "::1", "::ffff:127.0.0.1", "192.0.2.5"]) {
+      const res = get(make(), RUNTIME_BUNDLE_METADATA_PATH, { remote, encrypted: remote === "192.0.2.5", headers: {
+        host: "other.example.test", origin: "https://other.example.test", cookie: "sentinel-cookie", authorization: "Bearer sentinel-token",
+        "x-forwarded-host": "untrusted.example.test", "x-forwarded-proto": "http"
+      } }).res;
+      expect(res.status, remote).toBe(200); expect(res.bytes.equals(expected), remote).toBe(true);
+    }
+    expect(expected.toString()).not.toMatch(/sentinel|other\.example|untrusted/);
+    expect(get(make(), RUNTIME_BUNDLE_METADATA_PATH, { remote: "192.0.2.5", headers: { "x-forwarded-proto": "https" } }).res.status).toBe(403);
+  });
+  it("uses the same GET and HEAD identity and answers conditional metadata with 304 without a body", () => {
+    const service = make(), first = get(service, RUNTIME_BUNDLE_METADATA_PATH).res, etag = String(first.sentHeaders.ETag);
+    const head = get(service, RUNTIME_BUNDLE_METADATA_PATH, { method: "HEAD" }).res;
+    expect(head.status).toBe(200); expect(head.bytes.length).toBe(0); expect(head.sentHeaders).toEqual(first.sentHeaders);
+    for (const method of ["GET", "HEAD"]) {
+      const res = get(service, RUNTIME_BUNDLE_METADATA_PATH, { method, headers: { "if-none-match": `"old", ${etag}` } }).res;
+      expect(res.status).toBe(304); expect(res.bytes.length).toBe(0); expect(res.sentHeaders.ETag).toBe(etag);
+    }
+    clock += 10_000;
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { headers: { "if-none-match": '"different"' } }).res.bytes.equals(first.bytes)).toBe(true);
+  });
+  it("shares the ZIP rate bucket, charges HEAD and 304, and refills without letting metadata bypass the download limit", () => {
+    const service = make(), etag = `"${fixtureBundle().version}-${fixtureBundle().sha256}"`;
+    expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH).res.status).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { method: "HEAD" }).res.status).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { headers: { "if-none-match": etag } }).res.status).toBe(304);
+    for (const path of [RUNTIME_BUNDLE_METADATA_PATH, RUNTIME_BUNDLE_PATH]) {
+      const held = get(service, path).res; expect(held.status).toBe(429); expect(held.sentHeaders["Retry-After"]).toBe("30");
+    }
+    expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { remote: "::1" }).res.status).toBe(200);
+    clock += 5_001;
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH).res.status).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
+  });
+  it("applies the global download bound to metadata from many peers", () => {
+    const service = make();
+    for (let i = 0; i < 60; i++) expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { remote: `192.0.2.${i + 1}`, encrypted: true }).res.status).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { remote: "198.51.100.1", encrypted: true }).res.status).toBe(429);
+    expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
+  });
+  it("withholds metadata for empty, overlarge or unavailable artifacts and retries a later successful build", () => {
+    for (const bytes of [0, RUNTIME_MAX_ARCHIVE_BYTES + 1]) {
+      const service = make({ bundle: () => fixtureBundle("2.3.5", bytes) }), res = get(service, RUNTIME_BUNDLE_METADATA_PATH).res;
+      expect(res.status, String(bytes)).toBe(503); expect(res.sentHeaders.ETag).toBeUndefined();
+      expect(res.body).not.toContain('"sha256"');
+    }
+    const bundle = vi.fn().mockImplementationOnce(() => { throw Error("private fixture path"); }).mockReturnValue(fixtureBundle());
+    const service = make({ bundle }), failed = get(service, RUNTIME_BUNDLE_METADATA_PATH).res;
+    expect(failed.status).toBe(503); expect(failed.body).not.toContain("private fixture path");
+    expect(get(service, RUNTIME_BUNDLE_METADATA_PATH).res.status).toBe(200);
+    expect(bundle).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("the public gateway link never carries the installer", () => {
-  it("does not list either route among the public routes, for any method", () => {
-    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH, "/runtime/v1/pair", "/runtime/v1/claim", "/ui/runtimes/installer"])
+  it("does not list any installer route among the public routes, for any method", () => {
+    for (const path of [...INSTALL_ROUTES, "/runtime/v1/pair", "/runtime/v1/claim", "/ui/runtimes/installer"])
       for (const method of ["GET", "HEAD", "POST", "PUT", "DELETE"]) expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(false);
   });
-  it("refuses both routes at the gateway with a 404 before anything is dispatched, while remote runtimes are on", () => {
+  it("refuses all installer routes at the gateway with a 404 before anything is dispatched, while remote runtimes are on", () => {
     let callback!: (req: IncomingMessage, res: ServerResponse) => void;
     const server = Object.assign(new EventEmitter(), { close: vi.fn(), closeAllConnections: vi.fn(), setTimeout: vi.fn() }), dispatch = vi.fn();
     const gateway = createPublicWebGateway({ exposureId: "e".repeat(32), isCurrent: () => true, isOpen: () => true, dispatch,
       create: ((handler: typeof callback) => { callback = handler; return server; }) as never });
     gateway.setHost("gateway-fixture.trycloudflare.com");
-    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) for (const method of ["GET", "HEAD"]) {
+    for (const path of INSTALL_ROUTES) for (const method of ["GET", "HEAD"]) {
       const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "gateway-fixture.trycloudflare.com" }, socket: { remoteAddress: "198.51.100.7", encrypted: true } });
       let status = 0; const res = { headersSent: false, destroyed: false, writableEnded: false, setHeader: vi.fn(), writeHead: (code: number) => { status = code; }, end: vi.fn(), destroy: vi.fn() };
       callback(req as unknown as IncomingMessage, res as unknown as ServerResponse);
@@ -323,25 +406,28 @@ describe("runtime installer routes inside the web dispatcher", () => {
       return { status, headers: out, body };
     };
   }
-  it("serves both files with no sign-in, ahead of the web gate, while remote runtimes are on", () => {
-    const dispatch = dispatcher(), script = dispatch(RUNTIME_INSTALL_SCRIPT_PATH), zip = dispatch(RUNTIME_BUNDLE_PATH);
+  it("serves the installer files and metadata with no sign-in, ahead of the web gate, while remote runtimes are on", () => {
+    const dispatch = dispatcher(), script = dispatch(RUNTIME_INSTALL_SCRIPT_PATH), zip = dispatch(RUNTIME_BUNDLE_PATH), metadata = dispatch(RUNTIME_BUNDLE_METADATA_PATH);
     expect(script.status).toBe(200); expect(script.body.toString()).toContain(fixtureBundle().sha256);
     expect(zip.status).toBe(200); expect(zip.body.equals(fixtureBundle().bytes)).toBe(true);
+    expect(metadata.status).toBe(200); expect(JSON.parse(metadata.body.toString())).toEqual({ version: fixtureBundle().version, sha256: createHash("sha256").update(zip.body).digest("hex"), bytes: zip.body.length });
   });
   it("is still behind the Host allow-list, so a rebinding page gets nothing", () => {
-    const { status, body } = dispatcher()(RUNTIME_INSTALL_SCRIPT_PATH, { headers: { host: "evil.example" } });
-    expect(status).toBe(403); expect(body.toString()).not.toContain("sha256");
+    for (const path of INSTALL_ROUTES) {
+      const { status, body } = dispatcher()(path, { headers: { host: "evil.example" } });
+      expect(status).toBe(403); expect(body.toString()).not.toContain("sha256");
+    }
   });
-  it("answers 404 for both routes when remote runtimes are off, with no sign-in prompt, and on a public gateway link", () => {
+  it("answers 404 for all installer routes when remote runtimes are off, with no sign-in prompt, and on a public gateway link", () => {
     vi.stubEnv("AGEND_REMOTE_RUNTIME", "");
-    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) { const off = dispatcher()(path); expect(off.status, path).toBe(404); expect(off.body.toString()).toContain("Not found"); }
+    for (const path of INSTALL_ROUTES) { const off = dispatcher()(path); expect(off.status, path).toBe(404); expect(off.body.toString()).toContain("Not found"); }
     vi.stubEnv("AGEND_REMOTE_RUNTIME", "1");
-    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) {
+    for (const path of INSTALL_ROUTES) {
       const gateway = dispatcher()(path, {}, req => bindGatewayRequest(req, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true }));
       expect(gateway.status, path).toBe(404); expect(gateway.body.equals(fixtureBundle().bytes)).toBe(false);
     }
   });
-  it("leaves every other path to the sign-in gate, so only these two routes are public", () => {
+  it("leaves every other path to the sign-in gate, so only these three routes are public", () => {
     expect(dispatcher()("/runtime/install.sh").status).toBe(401); expect(dispatcher()("/runtime/v1/bundle/linux.zip").status).toBe(401);
     vi.stubEnv("AGEND_REMOTE_RUNTIME", ""); expect(dispatcher()("/runtime/install.ps1.bak").status).toBe(401);
   });
