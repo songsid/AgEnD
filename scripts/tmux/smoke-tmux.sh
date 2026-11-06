@@ -13,8 +13,22 @@ export TERMINFO_DIRS="$DIR/share/terminfo" LANG=$LOC LC_ALL=$LOC SHELL=/bin/sh
 unset ENV BASH_ENV TMUX TMUX_PANE 2>/dev/null || true
 SOCK="agend-smoke-$$"
 SERVER_PID=""
+# SMOKE_VERBOSE=1 (CI): the server logs (-vv: tmux-server-<pid>.log in a scratch dir), shown on a failure with any
+# macOS crash report — a server that dies at once says why (darwin-x64, run 42268291999).
+V=""; LOGDIR=""
+if [ "${SMOKE_VERBOSE:-}" = 1 ]; then V="-vv"; LOGDIR=$(mktemp -d "${TMPDIR:-/tmp}/tmux-smoke-log.XXXXXX"); fi
+diagnose() {
+  [ -n "$LOGDIR" ] || return 0
+  for f in "$LOGDIR"/tmux-*.log; do [ -f "$f" ] && { echo "smoke: --- $f (last 60 lines)" >&2; tail -n 60 "$f" >&2; }; done
+  if [ "$(uname -s)" = Darwin ]; then
+    for f in $(ls -t "$HOME/Library/Logs/DiagnosticReports"/tmux* 2>/dev/null | head -n 1); do
+      echo "smoke: --- crash report $f" >&2; head -n 80 "$f" >&2
+    done
+  fi
+}
 fail() {
   echo "smoke: $*" >&2
+  diagnose
   "$T" -L "$SOCK" kill-server >/dev/null 2>&1 || true
   [ -z "$SERVER_PID" ] || echo "smoke: server pid $SERVER_PID, socket -L $SOCK left in place" >&2
   exit 1
@@ -26,8 +40,13 @@ got=$("$T" -L "$SOCK" -V) || fail "tmux -V failed"
 [ "$got" = "tmux $WANT" ] || fail "tmux -V says '$got', not 'tmux $WANT'"
 
 # 中文 = 2 + 2 cells, then 🫨 (Unicode 15) = 2 — utf8proc's tables; musl's wcwidth says 1 — then "ok": column 8.
-"$T" -L "$SOCK" -f /dev/null new-session -d -s s -x 40 -y 5 /bin/sh -c "printf '中文🫨ok'; exec sleep 60" \
-  || fail "the server did not start on a private socket"
+if [ -n "$LOGDIR" ]; then
+  (cd "$LOGDIR" && "$T" -L "$SOCK" $V -f /dev/null new-session -d -s s -x 40 -y 5 /bin/sh -c "printf '中文🫨ok'; exec sleep 60") \
+    || fail "the server did not start on a private socket"
+else
+  "$T" -L "$SOCK" -f /dev/null new-session -d -s s -x 40 -y 5 /bin/sh -c "printf '中文🫨ok'; exec sleep 60" \
+    || fail "the server did not start on a private socket"
+fi
 SERVER_PID=$("$T" -L "$SOCK" display-message -p -t s '#{pid}') || fail "display-message"
 SOCKET_PATH=$("$T" -L "$SOCK" display-message -p -t s '#{socket_path}') || fail "display-message socket_path"
 # The socket's identity while its server is up: only this inode is removed after the proved exit.
