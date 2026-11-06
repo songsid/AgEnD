@@ -1,0 +1,142 @@
+# M-2457 (docs/design/bundled-tmux.md §3): AgEnD's bundled tmux, @songsid/agend-tmux-<os>-<cpu>, built from the pinned
+# sources in scripts/release/tmux-sources.json (each sha256-checked) on the platform's own runner, built TWICE in
+# different directories and required to be byte-identical, smoke-run on that runner (-V, a private-socket server,
+# CJK/emoji width, kill), packaged, and held to the size budget (§11).
+#   - pull requests touching the build: the two Linux targets, then the packages packed (nothing published);
+#   - workflow_dispatch: all four targets, then `npm publish --dry-run` by default. A real publish (dry_run: false)
+#     goes through the leader, as for the runtime packages (#1450); the first publish of a new package name needs the
+#     short-lived NPM_TOKEN secret, then trusted publishing (docs/development.md).
+# macOS runners only on dispatch (user decision 2026-10-09: Mac runners queue long; the real Mac covers a release).
+name: Bundled tmux
+
+on:
+  pull_request:
+    paths:
+      - scripts/tmux/**
+      - scripts/release/tmux-sources.json
+      - .github/workflows/publish-tmux.yml
+  workflow_dispatch:
+    inputs:
+      repack:
+        description: "Repack number for the same tmux (empty for the first package of this tmux version)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Build and `npm publish --dry-run` only"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'workflow_dispatch' && 'npm-publish-tmux' || format('tmux-build-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(github.event_name == 'pull_request' && '[{"target":"linux-x64","runner":"ubuntu-24.04"},{"target":"linux-arm64","runner":"ubuntu-24.04-arm"}]' || '[{"target":"linux-x64","runner":"ubuntu-24.04"},{"target":"linux-arm64","runner":"ubuntu-24.04-arm"},{"target":"darwin-arm64","runner":"macos-15"},{"target":"darwin-x64","runner":"macos-15-intel"}]') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Build twice on Alpine (musl, fully static) and compare
+        if: startsWith(matrix.target, 'linux-')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          # The image by digest and the toolchain at exact package versions, both from tmux-sources.json (toolchain.alpine).
+          ALPINE=$(node -p 'require("./scripts/release/tmux-sources.json").toolchain.alpine.image')
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo" -w /repo -e TARGET "$ALPINE" sh -ec '
+            apk add --no-cache nodejs tar >/dev/null
+            node scripts/tmux/toolchain.mjs install-alpine
+            node scripts/tmux/build-tmux.mjs --target "$TARGET" --out /repo/tmux-build --work /tmp/first --cache /tmp/src
+            node scripts/tmux/build-tmux.mjs --target "$TARGET" --out /tmp/again --work /var/tmp/second-build --cache /tmp/src
+            cmp "/repo/tmux-build/tmux-$TARGET/bin/tmux" "/tmp/again/tmux-$TARGET/bin/tmux"
+            (cd "/repo/tmux-build/tmux-$TARGET" && find . -type f | sort | xargs sha256sum) > /tmp/a.sum
+            (cd "/tmp/again/tmux-$TARGET" && find . -type f | sort | xargs sha256sum) > /tmp/b.sum
+            diff /tmp/a.sum /tmp/b.sum
+            echo "reproducible: two builds in different directories are byte-identical"
+            chown -R '"$(id -u):$(id -g)"' /repo/tmux-build'
+      - name: Linux binary is static
+        if: startsWith(matrix.target, 'linux-')
+        run: |
+          file "tmux-build/tmux-${{ matrix.target }}/bin/tmux" | tee /dev/stderr | grep -q "statically linked"
+      - name: Build twice on macOS (the locked Xcode; static libevent/ncurses/utf8proc/jemalloc; macOS 11+) and compare
+        if: startsWith(matrix.target, 'darwin-')
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          node scripts/tmux/build-tmux.mjs --target "$TARGET" --out tmux-build --work "$RUNNER_TEMP/first" --cache "$RUNNER_TEMP/src"
+          node scripts/tmux/build-tmux.mjs --target "$TARGET" --out "$RUNNER_TEMP/again" --work "$RUNNER_TEMP/second-build" --cache "$RUNNER_TEMP/src"
+          cmp "tmux-build/tmux-$TARGET/bin/tmux" "$RUNNER_TEMP/again/tmux-$TARGET/bin/tmux"
+          echo "reproducible: two builds in different directories are byte-identical"
+          # Only the system's libraries are linked dynamically, and the binary runs on macOS 11.
+          otool -L "tmux-build/tmux-$TARGET/bin/tmux"
+          bad=$(otool -L "tmux-build/tmux-$TARGET/bin/tmux" | tail -n +2 | awk '{print $1}' | grep -vE '^/usr/lib/' || true)
+          [ -z "$bad" ] || { echo "::error::non-system dynamic libraries are linked: $bad"; exit 1; }
+          otool -l "tmux-build/tmux-$TARGET/bin/tmux" | grep -A4 LC_BUILD_VERSION | grep -qE '^[[:space:]]*minos 11\.0$' || { echo "::error::the binary does not target macOS 11.0"; exit 1; }
+      - name: Smoke-run on this runner (private socket only)
+        run: sh scripts/tmux/smoke-tmux.sh "tmux-build/tmux-${{ matrix.target }}" "$(node -p 'require("./scripts/release/tmux-sources.json").tmux.version')"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tmux-${{ matrix.target }}
+          path: tmux-build/tmux-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Inputs are versions, nothing else
+        env:
+          REPACK: ${{ inputs.repack }}
+        run: |
+          [[ -z "$REPACK" || "$REPACK" =~ ^[1-9][0-9]*$ ]] || { echo "::error::repack must be a positive integer"; exit 1; }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: tmux-*
+          path: tmux-build
+      - name: Package
+        env:
+          REPACK: ${{ inputs.repack }}
+          TARGETS: ${{ github.event_name == 'pull_request' && 'linux-x64,linux-arm64' || '' }}
+        run: node scripts/tmux/build-tmux-packages.mjs --in tmux-build --out tmux-packages ${REPACK:+--repack "$REPACK"} ${TARGETS:+--targets "$TARGETS"}
+      - name: Size budget (§11) — ≤ 3 MB unpacked, ≤ 1.5 MB packed per package
+        run: |
+          for pkg in tmux-packages/*/; do
+            (cd "$pkg" && npm pack --dry-run --json) | node -e '
+              const p = JSON.parse(require("fs").readFileSync(0, "utf8"))[0];
+              console.log(`${p.name}@${p.version}: ${p.size} bytes packed, ${p.unpackedSize} unpacked, ${p.entryCount} files`);
+              const bin = p.files.find((f) => f.path === "bin/tmux");
+              if (!bin || (bin.mode & 0o111) === 0) { console.error("::error::bin/tmux is missing or not executable"); process.exit(1); }
+              if (p.unpackedSize > 3e6 || p.size > 1.5e6) { console.error("::error::over the size budget"); process.exit(1); }'
+          done
+      - name: Use OIDC-capable npm
+        if: github.event_name == 'workflow_dispatch'
+        run: npm install --global npm@11
+      - name: Publish (or dry run)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
+          # Empty unless the NPM_TOKEN secret exists: then npm falls back to it where OIDC cannot publish (a new name).
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -n "${NODE_AUTH_TOKEN:-}" ]; then echo "auth: OIDC, falling back to the NPM_TOKEN secret (first publish of a package name)"; else echo "auth: OIDC (trusted publishing)"; fi
+          bash scripts/runtime/publish-runtime-packages.sh tmux-packages "$DRY_RUN"
