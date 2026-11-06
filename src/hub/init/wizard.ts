@@ -3,7 +3,7 @@
  *   same-account check → name and addresses → browser HTTPS certificate → directory (LDAPS) and the operator's test
  *   sign-in → bind the local host owner as Hub administrator → retention → confirm → commit (enabled last)
  *   → optional service install (explicit) → member pairing instructions.
- * Nothing is written before the final confirmation; opening the wizard installs nothing.
+ * No Hub is installed before final confirmation. Explicit certificate generation uses private temporary staging.
  */
 import { isIP } from "node:net";
 import type { createHubDirectory as CreateHubDirectory, DirectoryPerson, HubDirectoryConfig, HubDirectoryDiagnostic } from "../directory/index.js";
@@ -14,6 +14,7 @@ import { BIND_PASSWORD_REF } from "./layout.js";
 import { WizardCancelled, type WizardIO } from "./prompt.js";
 import { ht } from "./text.js";
 import { HubInitError, type HubCoexistence, type HubInitializer, type HubInitPlan, type HubListen } from "./types.js";
+import type { HubBrowserMaterial } from "./browser-certificate.js";
 
 export interface HubServiceControl {
   installed(): boolean;
@@ -29,6 +30,8 @@ export interface HubWizardDeps {
   readFile(path: string): string;
   service: HubServiceControl;
   now?: () => number;
+  createBrowserCertificate?(origin: string): Promise<HubBrowserMaterial>;
+  recoverBrowserCertificate?(plan: HubInitPlan): HubBrowserMaterial | null;
 }
 
 export type HubWizardOutcome = "initialized" | "cancelled" | "refused";
@@ -57,8 +60,13 @@ function defaultListen(origin: string): string {
 
 export async function runHubInitWizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
   const { io } = deps;
+  const generated: HubBrowserMaterial[] = [];
   try {
-    return await wizard(deps);
+    return await wizard({ ...deps, ...(deps.createBrowserCertificate ? { createBrowserCertificate: async (origin: string) => {
+      const material = await deps.createBrowserCertificate!(origin); generated.push(material); return material;
+    } } : {}), ...(deps.recoverBrowserCertificate ? { recoverBrowserCertificate: (plan: HubInitPlan) => {
+      const material = deps.recoverBrowserCertificate!(plan); if (material) generated.push(material); return material;
+    } } : {}) });
   } catch (err) {
     if (err instanceof WizardCancelled) {
       io.say();
@@ -66,6 +74,16 @@ export async function runHubInitWizard(deps: HubWizardDeps): Promise<HubWizardOu
       return "cancelled";
     }
     throw err;
+  } finally {
+    if (generated.length) {
+      let pending: string | undefined, uncertain = false;
+      try { pending = (await deps.initializer.inspect()).incomplete?.plan.webTls.certFile; } catch { uncertain = true; }
+      for (const material of generated) {
+        // Interrupted initialization must retain its exact material for the existing same-plan resume.
+        if (uncertain || pending === material.certFile) io.say(ht("tls_stage_kept", material.certFile));
+        else try { material.cleanup(); } catch { io.say(ht("tls_stage_kept", material.certFile)); }
+      }
+    }
   }
 }
 
@@ -87,6 +105,8 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
       io.say(ht("restart_how", `${deps.home}/hub`));
       return "cancelled";
     }
+    try { deps.recoverBrowserCertificate?.(inspection.incomplete.plan); }
+    catch { io.say(ht("tls_stage_kept", inspection.incomplete.plan.webTls.certFile)); }
     const bindPassword = await io.askHidden(ht("dir_bind_pw_q"));
     return confirmAndCommit(deps, inspection.incomplete.plan, bindPassword);
   }
@@ -191,12 +211,19 @@ async function askListen(io: WizardIO, key: "web_listen_q" | "member_listen_q", 
 async function askBrowserTls(deps: HubWizardDeps, webOrigin: string): Promise<HubInitPlan["webTls"] | undefined> {
   const { io } = deps;
   for (;;) {
-    const certFile = (await io.ask(ht("tls_cert_q"))).trim();
+    let certFile = (await io.ask(ht("tls_cert_q"))).trim();
     if (!certFile) {
       io.say(ht("tls_needed", webOrigin, new URL(webOrigin).hostname));
       return undefined;
     }
-    const keyFile = (await io.ask(ht("tls_key_q"))).trim();
+    let keyFile: string, generated = false;
+    if (certFile.toLowerCase() === "generate") {
+      if (!deps.createBrowserCertificate) { io.say(ht("tls_generate_unavailable")); continue; }
+      try {
+        const material = await deps.createBrowserCertificate(webOrigin);
+        certFile = material.certFile; keyFile = material.keyFile; generated = true;
+      } catch { io.say(ht("tls_generate_failed")); return undefined; }
+    } else keyFile = (await io.ask(ht("tls_key_q"))).trim();
     let certPem = "";
     let keyPem = "";
     try {
@@ -214,9 +241,12 @@ async function askBrowserTls(deps: HubWizardDeps, webOrigin: string): Promise<Hu
       if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
       continue;
     }
-    if (check.selfSigned && !yes(await io.ask(ht("tls_self_signed")))) continue;
+    io.say(ht("tls_fingerprint", check.fingerprint256 ?? ""));
     io.say(ht("tls_ok", new URL(webOrigin).hostname, check.validTo ?? ""));
-    return { certFile, keyFile };
+    if (check.selfSigned) {
+      if (!yes(await io.ask(ht("tls_self_signed")))) continue;
+    }
+    return { certFile, keyFile, ...(generated ? { generated: true as const } : {}) };
   }
 }
 
