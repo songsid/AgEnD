@@ -8,6 +8,12 @@ import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } f
 import { LOOKS_PER_POLL, isClaudeAssistantHead, lastLineBoundary, readNewLines, resolveLongLines } from "./transcript-jsonl.js";
 
 /**
+ * How far before this monitor's attach boundary a record read from a file's start may still be this run's own: the CLI
+ * can be spawned a moment before the monitor is built. A copied conversation's records are minutes to weeks older.
+ */
+export const HISTORY_SKEW_MS = 5_000;
+
+/**
  * Emits tool_use / tool_result / assistant_text events off the CLI's own
  * conversation record.
  *
@@ -35,6 +41,15 @@ export class TranscriptMonitor extends EventEmitter {
    * re-baseline (resetOffset) — a file born before that is history, already seen or not ours to replay (#2835 review).
    */
   private attachBoundary: number;
+  /**
+   * The quota spam after a profile switch: a file read from its START (a replaced transcript, or one created after the
+   * attach boundary) can carry history — a resume or a profile switch writes a NEW file holding the whole conversation
+   * so far. Claude's alarm records in it (its usage-limit pauses, its failed API calls) are not news: an alarm record
+   * whose own timestamp is not after this is history and is not told. 0: nothing read from a start (no filter).
+   */
+  private historyBefore = 0;
+  /** The newest record timestamp read from any transcript (what a replacement's copy of it already was). */
+  private seenThrough = 0;
 
   constructor(
     private instanceDir: string,
@@ -183,7 +198,10 @@ export class TranscriptMonitor extends EventEmitter {
       this.transcriptPath = current;
       if (replacedKnownTranscript) {
         // Work resumed during our own startup must be observable → read the
-        // replacement from the top.
+        // replacement from the top — but what it carries over is history for the alarms (historyBefore). One gap,
+        // accepted: records the old file got after our last poll and before the switch are newer than seenThrough and
+        // are told once from the copy (at most a poll interval's worth).
+        this.historyBefore = Math.max(this.attachBoundary, this.seenThrough);
         this.byteOffset = 0;
         this.skipping = false;
         this.pendingLong = null;
@@ -196,7 +214,12 @@ export class TranscriptMonitor extends EventEmitter {
         // this run's new session, whose first records (a failed first call, e.g. an exhausted credit balance) must
         // not be skipped: read it from the start. A filesystem without a creation time keeps the EOF baseline.
         try {
-          this.byteOffset = this.createdThisRun(current) ? 0 : await lastLineBoundary(current);
+          const fromStart = this.createdThisRun(current);
+          this.byteOffset = fromStart ? 0 : await lastLineBoundary(current);
+          // A file created after the boundary can still be a COPY of an older conversation (a profile switch copies it
+          // into the new profile): its records from before the boundary are history for the alarms. A new session's own
+          // first records are written after the CLI started, which is after this monitor began (less a little skew).
+          if (fromStart) this.historyBefore = Math.max(this.attachBoundary - HISTORY_SKEW_MS, this.seenThrough);
           this.skipping = false;
           this.pendingLong = null;
         } catch {
@@ -248,8 +271,27 @@ export class TranscriptMonitor extends EventEmitter {
     claudeTranscriptLongHead(head, (...event) => { this.emit(event[0], ...event.slice(1)); });
   }
 
+  /**
+   * An alarm record (a usage-limit note, a failed API call): history when its own timestamp is not after `historyBefore`.
+   * Claude stamps every record; one without a readable timestamp is judged as before (told) — `historyBefore` stays set
+   * for the monitor's life, so treating it as history would silence every later live alarm of such a CLI.
+   */
+  private isHistoryAlarm(at: number): boolean {
+    return this.historyBefore > 0 && Number.isFinite(at) && at <= this.historyBefore;
+  }
+
   private processEntry(entry: any): void {
-    claudeTranscriptRecord(entry, (...event) => { this.emit(event[0], ...event.slice(1)); });
+    const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+    const history = this.isHistoryAlarm(at);
+    if (Number.isFinite(at) && at > this.seenThrough) this.seenThrough = at;
+    claudeTranscriptRecord(entry, (...event) => {
+      // Claude's alarm records (its status notes, its failed API calls) read from a start: history is not told again.
+      if (history && (event[0] === "system_informational" || event[0] === "api_error")) {
+        this.logger.debug({ at: entry.timestamp, event: event[0] }, "Transcript history: an old alarm record is not told again");
+        return;
+      }
+      this.emit(event[0], ...event.slice(1));
+    });
   }
 
   startPolling(intervalMs = 2000): void {
@@ -296,6 +338,8 @@ export class TranscriptMonitor extends EventEmitter {
   resetOffset(): void {
     this.generation++;
     this.attachBoundary = Date.now();
+    // Read from the top again: what is there was written before this re-baseline.
+    this.historyBefore = Math.max(this.attachBoundary - HISTORY_SKEW_MS, this.seenThrough);
     this.byteOffset = 0;
     this.skipping = false;
     this.pendingLong = null;

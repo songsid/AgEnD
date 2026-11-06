@@ -9,6 +9,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { AssigneeOption, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, errorText, followsSubs, moveCard, notesForPeople, relTime, wrapUpText } from "./fleet-task-common.js";
+import { StepButtons } from "./fleet-task-menu.js";
 
 register("taskcard", {
   en: {
@@ -83,9 +84,10 @@ const fieldName = (k) => { const key = `taskcard.f${k[0].toUpperCase()}${k.slice
 
 /**
  * `writable`: false over the public link (the card is shown, nothing on it changes). `place`: up and down in its column,
- * for touch and keyboard (null when it cannot move).
+ * for touch and keyboard (null when it cannot move). `steps`: the previous and next card the page showed, and where
+ * this one is among them (null: nowhere to step).
  */
-export function CardDialog({ id, tick, projects, boardOff = [], writable = true, place = null, onClose, onOpen, reloadBoard }) {
+export function CardDialog({ id, tick, projects, boardOff = [], writable = true, place = null, steps = null, onClose, onOpen, reloadBoard }) {
   const { instances } = useStore(appStore);
   const [detail, setDetail] = useState(null);
   const [missing, setMissing] = useState(false);
@@ -131,8 +133,10 @@ export function CardDialog({ id, tick, projects, boardOff = [], writable = true,
     finally { moving.current = false; setBusy(false); }
   }
 
+  // Previous / Next: the page's cards (fleet-task-menu.js), in the header from the first frame (no jump once it loads).
+  const tools = steps ? html`<${StepButtons} steps=${steps} onOpen=${onOpen} />` : null;
   if (missing || !detail) {
-    return html`<${Dialog} title=${id} onClose=${onClose} wide drawer><p class="muted">${missing ? t("taskcard.missing", id) : t("taskcard.loading")}</p></${Dialog}>`;
+    return html`<${Dialog} title=${id} onClose=${onClose} wide drawer tools=${tools}><p class="muted">${missing ? t("taskcard.missing", id) : t("taskcard.loading")}</p></${Dialog}>`;
   }
 
   const { card, parent, children } = detail;
@@ -166,7 +170,7 @@ export function CardDialog({ id, tick, projects, boardOff = [], writable = true,
     } catch { /* no clipboard */ }
   }
 
-  return html`<${Dialog} title=${`${card.id} · ${t(`tasks.${card.kind}`)}`} onClose=${onClose} wide drawer label=${`${card.id} ${card.title}`}>
+  return html`<${Dialog} title=${`${card.id} · ${t(`tasks.${card.kind}`)}`} onClose=${onClose} wide drawer label=${`${card.id} ${card.title}`} tools=${tools}>
     <div class="tc">
       <div class="tc-head">
         ${writable ? html`<${InlineTitle} value=${card.title} version=${card.version} onSave=${(title, base) => save({ title }, base)} />` : html`<h3 class="tc-title">${card.title}</h3>`}

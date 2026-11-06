@@ -380,6 +380,8 @@ export interface IncidentEventSource {
   requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean; reason?: PauseReason }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
   isCodexLivePane?(): Promise<boolean>;
+  /** #3186 review: a usage-pause notice the second opinion dropped was not told — its repeats must reach it again. */
+  clearUsagePauseNotice?(): void;
   /** Existing occurrence count used to preserve Codex capacity history on restart. */
   getErrorPatternOccurrenceCount?(type: "model_error", pattern: RegExp): number;
   /** #2648: kiro only — what a model error on its current launch should do (restart once, say once, or nothing). */
@@ -1526,6 +1528,9 @@ export class InstanceLifecycle {
         if (verdict === "available") {
           this.ctx.logger.debug({ name, backend: "claude-code" },
             "quota pattern ignored — live usage has capacity (stale pane history)");
+          // Not told: the daemon's one-notice-per-pause mark must not hold back the next repeat (the usage API can lag
+          // the CLI right as the limit hits; the next "reached again" is verified again).
+          if (data.verifyQuota) daemon.clearUsagePauseNotice?.();
           return;
         }
         if (verdict === "unknown") {
