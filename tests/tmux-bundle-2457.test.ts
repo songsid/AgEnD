@@ -421,3 +421,16 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     expect(bundle.processGone(Number(child.stdout))).toBe(true);
   });
 });
+
+describe("the darwin build links jemalloc the way tmux's configure finds it", () => {
+  // tmux 3.8's configure: --enable-jemalloc → PKG_CHECK_MODULES(JEMALLOC, jemalloc, …), else "jemalloc not found".
+  // The first macOS dry run (run 42265015287) failed there on both Macs: only the static library and headers were
+  // installed, not jemalloc.pc.
+  it("installs jemalloc's pkg-config file beside its static library, where PKG_CONFIG_PATH points", () => {
+    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
+    const install = /sh\("make", \[([^\]]*)\], \{ cwd: dirs\.jemalloc/.exec(src)?.[1] ?? "";
+    expect(install.split(",").map(s => s.trim().replace(/"/g, ""))).toEqual(["install_lib_static", "install_lib_pc", "install_include"]);
+    expect(src).toMatch(/PKG_CONFIG_PATH: join\(deps, "lib\/pkgconfig"\)/);
+    expect(partsFor(readSources(), "darwin-arm64")).toContain("jemalloc");
+  });
+});

@@ -161,7 +161,9 @@ async function main(argv) {
 
   if (parts.includes("jemalloc")) {
     cfg("jemalloc", [`--prefix=${deps}`, "--disable-shared", "--enable-static", "--disable-cxx", "--disable-stats", "--disable-doc"]);
-    sh("make", ["install_lib_static", "install_include"], { cwd: dirs.jemalloc, env });
+    // jemalloc.pc too: tmux's configure finds jemalloc only through pkg-config (PKG_CHECK_MODULES), and with
+    // --enable-jemalloc stops with "jemalloc not found" without it (the first macOS dry run, run 42265015287).
+    sh("make", ["install_lib_static", "install_lib_pc", "install_include"], { cwd: dirs.jemalloc, env });
   }
 
   const tmuxArgs = [`--prefix=/opt/agend-tmux`, "--enable-utf8proc", "--disable-utempter"];
