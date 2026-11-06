@@ -3,15 +3,14 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, wri
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { describe, expect, it } from "vitest";
+import { compilePortableRuntime } from "./support/runtime-portable-compile.js";
 
 describe("standalone Windows runtime bundle", () => {
   it("loads outside the AgEnD dependency tree without loading Windows native bindings for help/status", () => {
     const directory = mkdtempSync(join(tmpdir(), "agend-runtime-bundle-"));
     try {
       const compiled = join(directory, "compiled"), bundle = join(directory, "bundle");
-      execFileSync(process.execPath, [resolve("node_modules/@typescript/native/bin/tsc"), "--ignoreConfig", "--target", "ES2022", "--module", "Node16",
-        "--moduleResolution", "Node16", "--strict", "--esModuleInterop", "--skipLibCheck", "--outDir", compiled,
-        "src/runtime-cli.ts", "src/windows-native-mcp.ts", "src/runtime-update-artifact.ts"], { cwd: process.cwd(), stdio: "pipe", timeout: 30_000 });
+      compilePortableRuntime(compiled);
       // Match postbuild: the portable builder consumes the built program assets too.
       cpSync(resolve("src/general-knowledge"), join(compiled, "general-knowledge"), { recursive: true });
       execFileSync(process.execPath, [resolve("scripts/build-runtime.mjs"), bundle, compiled, "https://fleet.example.test:10443"], { cwd: process.cwd(), stdio: "pipe", timeout: 10_000 });
