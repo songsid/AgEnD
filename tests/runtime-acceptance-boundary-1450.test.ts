@@ -362,3 +362,18 @@ describe('previous-release system-Node preflight', () => {
     expect(existsSync(w.mark)).toBe(false);
   });
 });
+
+
+describe('previous-release hop completion', () => {
+  const script = readFileSync(join(process.cwd(), 'scripts/ci/runtime-acceptance/hop.sh'), 'utf8');
+  const start = script.indexOf('check_installed # installed identity');
+  const end = script.indexOf('check_boundary old-updater', start);
+  const verdict = script.slice(start, end);
+  it.each([[0,true], [1,true], [7,true], [130,true], [0,false]])('exit %s, valid identity %s', (code, valid) => {
+    expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
+    const r = spawnSync('/bin/bash', ['--noprofile','--norc','-eo','pipefail','-c',
+      `fail(){ exit 1; };check_installed(){ echo verified-identity;return ${valid?0:1}; };rc=${code};CAND=fixture;\n`+verdict], {encoding:'utf8'});
+    expect(r.status, r.stderr).toBe(code===0 && valid?0:1);
+    expect(r.stdout).toContain('verified-identity');
+  });
+});

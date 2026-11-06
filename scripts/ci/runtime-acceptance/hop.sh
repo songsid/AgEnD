@@ -75,11 +75,11 @@ set +e
 agend update --version "$CAND" --yes 2>&1 | tee "$WORK/update.out"
 rc=${PIPESTATUS[0]}
 set -e
-# Expected: the install and its verification succeed, then the final restart has no fleet and no reachable service
-# manager (stubs) to restart, so the old updater reports a failed restart: exit 1 — nothing else.
+# With no fleet config/service installed, 2.3.3's installer completes without restarting anything.
+# Require real installation evidence AND exit 0; a failure is never accepted as a successful hop.
 check_installed # installed identity/runtime/receipt/SQLite, not a historical output string
-[ "$rc" = 1 ] || fail "the old updater exited $rc; expected 1 (installed, then a restart with nothing to restart)"
-echo "  the old updater exited 1 after installing $CAND, as expected (no fleet or service to restart)"
+[ "$rc" = 0 ] || fail "the previous-release updater exited $rc; expected a successful install with no service to restart"
+echo "  the previous-release updater exited 0 after installing $CAND (no fleet or service to restart)"
 check_boundary old-updater
 fresh npm-install
 step "[npm-install] npm install -g @songsid/agend@$CAND over $OLD"
