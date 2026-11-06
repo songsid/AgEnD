@@ -19,27 +19,27 @@ register("hubRetention", {
 const copy = key => t(`hubRetention.${key}`);
 export function HubRetentionSettings() {
   const [policy, setPolicy] = useState(null), [content, setContent] = useState(""), [events, setEvents] = useState("");
-  const [busy, setBusy] = useState(false), [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false), [messageKey, setMessageKey] = useState("");
   useEffect(() => {
     let live = true;
     api("/api/settings/hub/retention").then(r => {
       if (!live) return;
       if (r.ok && r.body?.policy) { setPolicy(r.body.policy); setContent(String(r.body.policy.contentDays)); setEvents(String(r.body.policy.eventDays)); }
-      else setMessage("unavailable");
-    }, () => { if (live) setMessage("unavailable"); });
+      else setMessageKey("unavailable");
+    }, () => { if (live) setMessageKey("unavailable"); });
     return () => { live = false; };
   }, []);
   const valid = value => /^\d{1,4}$/.test(value) && Number(value) >= 1 && Number(value) <= 3650;
   const save = async e => {
     e.preventDefault();
     if (!policy || busy || !valid(content) || !valid(events)) return;
-    setBusy(true); setMessage("");
+    setBusy(true); setMessageKey("");
     try {
       const r = await confirmedWrite("/api/settings/hub/retention", { method: "PUT", label: copy("title"),
         body: { contentDays: Number(content), eventDays: Number(events), revision: policy.revision } });
-      if (r.ok && r.body?.policy) { setPolicy(r.body.policy); setMessage("saved"); }
-      else setMessage(r.body?.error === "conflict" ? "conflict" : "failed");
-    } catch { setMessage("failed"); } finally { setBusy(false); }
+      if (r.ok && r.body?.policy) { setPolicy(r.body.policy); setMessageKey("saved"); }
+      else setMessageKey(r.body?.error === "conflict" ? "conflict" : "failed");
+    } catch { setMessageKey("failed"); } finally { setBusy(false); }
   };
   return html`<section class="card hub-retention"><h3>${copy("title")}</h3>
     <p class="note">${copy("hint")}</p>
@@ -47,6 +47,6 @@ export function HubRetentionSettings() {
       <label class="field">${copy("content")}<input type="number" min="1" max="3650" step="1" value=${content} disabled=${busy} onInput=${e => setContent(e.target.value)} /></label>
       <label class="field">${copy("events")}<input type="number" min="1" max="3650" step="1" value=${events} disabled=${busy} onInput=${e => setEvents(e.target.value)} /></label>
     </div><button class="btn" type="submit" disabled=${busy || !valid(content) || !valid(events)}>${copy("save")}</button></form>` : null}
-    ${message ? html`<p role="status">${copy(message)}</p>` : null}
+    ${messageKey ? html`<p role="status">${copy(messageKey)}</p>` : null}
   </section>`;
 }
