@@ -1995,14 +1995,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** On every configuration in force: rotate a recorded agent's incarnation when its backend/folder/runtime changed; drop removed ones. */
   private observeHubAgentIncarnations(): void {
-    // Only against a loaded configuration: never forget every agent because none is loaded yet.
-    if (!this.fleetConfig?.instances || !existsSync(this.hubIncarnationsPath())) return;
-    const instances = this.fleetConfig.instances;
-    for (const agent of Object.keys(this.readHubIncarnations())) {
-      // Gone from the configuration in force (removed by hand in fleet.yaml, too): forgotten, never revived by a re-add.
-      if (Object.prototype.hasOwnProperty.call(instances, agent)) this.hubAgentIncarnation(agent, instances[agent]!, false);
-      else this.forgetHubAgentIncarnation(agent);
-    }
+    // Only against a loaded configuration: never forget every agent because none is loaded yet. Never throws: a config
+    // save/reload must not fail on it (a failed rotation leaves the old token, which then mismatches nothing new).
+    try {
+      if (!this.dataDir || !this.fleetConfig?.instances || !existsSync(this.hubIncarnationsPath())) return;
+      const instances = this.fleetConfig.instances;
+      for (const agent of Object.keys(this.readHubIncarnations())) {
+        // Gone from the configuration in force (removed by hand in fleet.yaml, too): forgotten, never revived by a re-add.
+        if (Object.prototype.hasOwnProperty.call(instances, agent)) this.hubAgentIncarnation(agent, instances[agent]!, false);
+        else this.forgetHubAgentIncarnation(agent);
+      }
+    } catch (err) { this.logger?.warn({ err: (err as Error)?.message }, "Hub agent incarnations could not be checked"); }
   }
   /** A removed instance's incarnation goes with it: a later instance of the same name is a new one. */
   private forgetHubAgentIncarnation(agent: string): void {
