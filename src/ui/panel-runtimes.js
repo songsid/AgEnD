@@ -15,6 +15,17 @@ import { credentialProfileView, credentialProfileState } from "./credential-prof
 import { identityText } from "./account-identity.js";
 import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
 
+/** The install tabs' and command cards' stylesheet, linked once by this lazy page (a tab opened before an upgrade has an app.css without these rules). */
+export function linkRuntimeInstallCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-runtime-install-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/runtime-install.css"); link.setAttribute("data-runtime-install-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* the page still works, only plainer, without it */ }
+}
+linkRuntimeInstallCss();
+
 register("machines", {
   en: {
     title:"Runtime", lead:"Connect computers to run agents with each computer's own CLIs, sign-ins and files.",

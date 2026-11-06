@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
@@ -202,6 +203,26 @@ describe("remote machine UI",()=>{
     expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Download the Runtime");
     expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("Waiting for the computer to connect");
     expect(p.root.querySelector(".runtime-pair-card .expires, .runtime-pair-card .note").textContent).toContain("Expires");
+  });
+  describe("the install page's stylesheet follows the lazy page",()=>{
+    const read=(file:string)=>readFileSync(file,"utf8");
+    const selectors=read("src/ui/shared/runtime-install.css").match(/\.runtime-[a-z-]+/g)!;
+    it("keeps every install rule in runtime-install.css, which the page links itself, and none in app.css",()=>{
+      const own=[".runtime-install",".runtime-install-tabs",".runtime-install-panel",".runtime-command-card",".runtime-command-label",".runtime-command-row",".runtime-command-text",".runtime-installer-hash",".runtime-installer-error",".runtime-reinstall"];
+      for(const selector of own){expect(selectors,selector).toContain(selector);expect(read("src/ui/shared/app.css"),`${selector} must not be in app.css: a tab with an older app.css never gets it`).not.toMatch(new RegExp(`(^|[\\s,}])${selector.replace(".","\\.")}(?![a-z-])`,"m"));}
+      // the page links it, the server serves it, and the long command wraps and scrolls inside it (the phone layout is its media rule)
+      expect(read("src/ui/panel-runtimes.js")).toContain('href", "/assets/runtime-install.css"');
+      expect(read("src/auth-api.ts")).toContain('"runtime-install.css": { file: join("shared", "runtime-install.css")');
+      expect(read("src/ui/shared/runtime-install.css")).toMatch(/\.runtime-command-text \{[^}]*white-space: pre-wrap[^}]*overflow-x: auto/);
+      expect(read("src/ui/shared/runtime-install.css")).toMatch(/@media \(max-width: 600px\) \{ \.runtime-command-row \{ flex-direction: column/);
+      expect(read("src/ui/shared/runtime-install.css")).not.toMatch(/style\s*=|@import|url\(/);
+    });
+    it("links the stylesheet once, when the page module loads, so an old shell gets it too",async()=>{
+      const links=()=>[...document.head.querySelectorAll('link[data-runtime-install-css="1"]')];
+      expect(links()).toHaveLength(1);expect(links()[0].getAttribute("href")).toBe("/assets/runtime-install.css");expect(links()[0].getAttribute("rel")).toBe("stylesheet");
+      const {linkRuntimeInstallCss}=await import("/ui/js/panel-runtimes.js");linkRuntimeInstallCss();linkRuntimeInstallCss();expect(links()).toHaveLength(1);
+      linkRuntimeInstallCss(null as any);   // no document: nothing happens, nothing throws
+    });
   });
   describe("install method tabs (Windows one-line install)",()=>{
     const tabs=()=>p.root.querySelectorAll('.runtime-install-tabs [role="tab"]');
