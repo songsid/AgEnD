@@ -17,7 +17,7 @@ const roots: string[] = [], listeners: Array<Awaited<ReturnType<typeof directory
 const BIND = "Dummy-service-fixture-only", USER = "Dummy-person-fixture-only";
 beforeAll(() => { web = makeTestCerts(); directory = directoryCertificates(); });
 afterEach(async () => { for (const f of listeners.splice(0)) await f.close(); for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true }); setLocale("en"); });
-afterAll(() => { directory.cleanup(); rmSync(web.dir, { recursive: true, force: true }); });
+afterAll(() => { directory?.cleanup(); if (web) rmSync(web.dir, { recursive: true, force: true }); });
 const start = () => ["Example Hub", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443", web.cert, web.key];
 const reader = () => ["2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test", { hidden: BIND }];
 const finish = () => ["alice", { hidden: USER }, "y", "7", "30", "initialize", "no"];

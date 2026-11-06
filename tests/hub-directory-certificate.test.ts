@@ -7,7 +7,7 @@ let certs: ReturnType<typeof directoryCertificates>;
 const fixtures: Array<Awaited<ReturnType<typeof directoryCaFixture>>> = [];
 beforeAll(() => { certs = directoryCertificates(); });
 afterEach(async () => { for (const fixture of fixtures.splice(0)) await fixture.close(); });
-afterAll(() => certs.cleanup());
+afterAll(() => certs?.cleanup());
 async function fixture(pair = certs.leaf, mode: Parameters<typeof directoryCaFixture>[2] = {}) {
   const f = await directoryCaFixture(pair, certs.ca, mode); fixtures.push(f); return f;
 }
@@ -18,6 +18,7 @@ describe("initializer-only directory CA bootstrap over real loopback LDAPS", () 
     expect(p.certificate.fingerprint256).toBe(new X509Certificate(certs.leaf.cert).fingerprint256);
     expect(f.applicationBytes()).toBe(0); expect(f.binds).toEqual([]); expect(f.searches).toEqual([]);
     await expect(inspectDirectoryCertificate(f.url.replace("ldaps:", "ldap:"))).rejects.toThrow();
+    expect(Date.parse(new X509Certificate(certs.expired.cert).validTo)).toBeLessThanOrEqual(Date.now());
     for (const pair of [certs.wrongHost, certs.expired]) await expect(inspectDirectoryCertificate((await fixture(pair)).url)).rejects.toThrow();
   });
   it("requires the exact owner-confirmed fingerprint before credentials or a second connection", async () => {
