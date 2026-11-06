@@ -1,7 +1,10 @@
 /**
  * The reserved report_result target for Hub representative answers (docs/design/hub-representative-agent.md). Kept
- * dependency-free so the outbound handlers can name it without loading any Hub code.
+ * on the shared reply models so outbound handlers never need to load the Hub runtime to validate a report.
  */
+import { parseReplyButtons } from "./reply-buttons.js";
+import { parsePoll } from "./reply-polls.js";
+
 export const HUB_REPORT_TARGET = "agend-hub";
 export type HubReportOutcome = { ok: true; message: string } | { ok: false; message: string };
 
@@ -18,7 +21,7 @@ export interface HubReportExtras {
 export type HubReportExtrasResult = { ok: true; extras: HubReportExtras } | { ok: false; message: string };
 const HUB_ONLY = ["files", "buttons", "poll"] as const;
 /** Validate report_result's Hub-only fields for `target`. Another target carrying any of them is refused, never ignored. */
-export function parseHubReportExtras(target: string, args: { files?: unknown; buttons?: unknown; poll?: unknown }): HubReportExtrasResult {
+export function parseHubReportExtras(target: string, args: { summary?: unknown; files?: unknown; buttons?: unknown; poll?: unknown }): HubReportExtrasResult {
   const present = HUB_ONLY.filter(key => args[key] !== undefined);
   if (target !== HUB_REPORT_TARGET) {
     return present.length ? { ok: false, message: `report_result ${present.join("/")} are only for target_instance "${HUB_REPORT_TARGET}" (a Hub answer). Use the reply tool for files or buttons in a chat.` } : { ok: true, extras: {} };
@@ -28,7 +31,11 @@ export function parseHubReportExtras(target: string, args: { files?: unknown; bu
     if (!Array.isArray(args.files) || args.files.length < 1 || args.files.length > 10 || args.files.some(f => typeof f !== "string" || !f)) return { ok: false, message: "files: 1–10 file paths" };
     extras.files = [...args.files as string[]];
   }
-  // Until F (#3226) lands: buttons and polls on a Hub answer are not supported yet.
-  if (args.buttons !== undefined || args.poll !== undefined) return { ok: false, message: "Buttons and polls on a Hub answer are not supported yet. Send the answer as text." };
+  const buttons = parseReplyButtons(args.buttons, { text: args.summary });
+  if (buttons && "error" in buttons) return { ok: false, message: buttons.error };
+  const poll = parsePoll(args.poll, buttons?.buttons ?? null, args.summary);
+  if (poll && "error" in poll) return { ok: false, message: poll.error };
+  if (buttons) extras.buttons = buttons.buttons;
+  if (poll) extras.poll = poll.poll;
   return { ok: true, extras };
 }

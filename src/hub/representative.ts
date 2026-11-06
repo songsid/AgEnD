@@ -14,6 +14,7 @@ import { canonicalArguments, messageContentDigest, personKeyString, sha256 } fro
 import { HubFileRefusal, type HubMemberFiles } from "./member/attachments.js";
 import { questionContextDigest, type HubMemberJournal, type HubRestrictedOutbox } from "./member-journal.js";
 import { answerSchema, questionSchema } from "./protocol.js";
+import { buttonsDigest, prepareHubAnswerButtons } from "./buttons-model.js";
 import { HubProtocolError, plain, validated } from "./validation.js";
 import type { HubAnswer, HubAuthorizationLease, HubAuthorizationRequest, HubQuestion, HubReceipt, HubServerFrame, HubMemberFrame } from "./types.js";
 import type { HubLocalExposure, HubExecutionReadiness } from "./execution/service.js";
@@ -27,6 +28,7 @@ export { HUB_REPORT_TARGET, type HubReportOutcome } from "../hub-report-target.j
 import { HUB_REPORT_TARGET, type HubReportExtras, type HubReportOutcome } from "../hub-report-target.js";
 export const HUB_ANSWER_MAX = 128 * 1024;
 const HELD_MAX = 256;
+class HubButtonRefusal extends Error {}
 
 export function migrateHubRepresentative(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS hub_representative_questions(
@@ -335,6 +337,10 @@ export class HubRepresentativeExecution {
       const text = validated(plain(HUB_ANSWER_MAX), raw);
       if (!text.trim()) throw new HubProtocolError("invalid");
       live();
+      // Snapshot choices before any file or authorization await. They are part of the exact released answer.
+      const buttons = prepareHubAnswerButtons(extras.buttons, extras.poll);
+      const buttonLink = buttons ? this.options.link() : null;
+      if (buttons && (!buttonLink?.current() || !buttonLink.features?.has("buttons-v1"))) throw new HubButtonRefusal();
       // The agent's files (D): copied under the reply tool's rule, then pushed to the Hub before the answer names them.
       let attachments: HubAnswer["attachments"];
       if (extras.files?.length) {
@@ -349,6 +355,7 @@ export class HubRepresentativeExecution {
         attachments = prepared.map(f => f.ref);
         live();
       }
+      if (buttons && (!buttonLink?.current() || this.options.link() !== buttonLink || !buttonLink.features?.has("buttons-v1"))) throw new HubProtocolError("stale");
       evidenced = true;
       const journal = this.options.journal;
       // The agent's own report is the evidence that the question reached it and was taken up.
@@ -356,13 +363,15 @@ export class HubRepresentativeExecution {
       journal.recordEvidence(row.message_id, "consumed");
       // F: buttons/poll join here (their payload field and buttonsDigest into messageContentDigest).
       // Freeze the answer's id, bytes and digest before asking for the release lease for exactly them.
-      const answerId = randomUUID(), contentDigest = messageContentDigest("answer", text, { attachments });
+      const answerId = randomUUID(), contentDigest = messageContentDigest("answer", text, { attachments, buttonsDigest: buttonsDigest(buttons) });
       this.options.db.prepare("UPDATE hub_representative_questions SET answer=? WHERE id=?").run(JSON.stringify({ answerId, contentDigest }), row.id);
       live();
       const request: HubAuthorizationRequest = { messageId: row.message_id, operationId: randomUUID(), exposureRevision: row.revision, phase: "release-answer", answer: { answerId, contentDigest } };
       const releaseLease = await this.options.authorize(request);
       live();
-      const answer: HubAnswer = validated(answerSchema, { messageId: row.message_id, answerId, text, contentDigest, releaseLease, ...(attachments?.length ? { attachments } : {}) });
+      if (buttons && (!buttonLink?.current() || this.options.link() !== buttonLink || !buttonLink.features?.has("buttons-v1"))) throw new HubProtocolError("stale");
+      const answer: HubAnswer = validated(answerSchema, { messageId: row.message_id, answerId, text, contentDigest, releaseLease,
+        ...(attachments?.length ? { attachments } : {}), ...(buttons ? { buttons } : {}) });
       // Required audit BEFORE anything is saved or disclosed: its failure stops the release (held, nothing sent).
       this.auditRequired(row, "representative.release", "completed");
       journal.saveAnswer(answer, request, this.fenceOf(row));
@@ -383,6 +392,10 @@ export class HubRepresentativeExecution {
       return { ok: true, message: "Delivered to the Hub asker." };
     } catch (err) {
       const code = err instanceof HubProtocolError ? err.code : "uncertain";
+      if (!saved && !evidenced && err instanceof HubButtonRefusal) {
+        this.setState(row, was === "input" ? "delivered" : was, ["answering"]);
+        return { ok: false, message: "Not sent: this Hub can't send buttons yet. Report text only with the same correlation_id." };
+      }
       if (!saved && !evidenced && err instanceof HubFileRefusal) {
         // A file the agent can fix (a state-dir path, a refused type, too large): the question stays open on the same id.
         this.setState(row, was === "input" ? "delivered" : was, ["answering"]);

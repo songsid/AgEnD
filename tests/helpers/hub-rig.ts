@@ -16,8 +16,7 @@ export async function freeHubPort(): Promise<number> {
   const server = netServer(); await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const port = (server.address() as { port: number }).port; await new Promise<void>(resolve => server.close(() => resolve())); return port;
 }
-/** `serverCapabilities`: the optional features the Hub offers ([] stands in for an older Hub). */
-export async function hubRig(options: { serverCapabilities?: readonly string[] } = {}) {
+export async function hubRig(options: { serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[] } = {}) {
   mkdirSync(".artifacts", { recursive: true }); const root = mkdtempSync(join(process.cwd(), ".artifacts/hub-net-test-")); chmodSync(root, 0o700);
   const memberHome = join(root, "member"); mkdirSync(memberHome, { mode: 0o700 }); const port = await freeHubPort();
   const memberOrigin = `https://127.0.0.1:${port}`, identity = await provisionHubIdentity({ home: root, memberOrigin });
@@ -31,8 +30,7 @@ export async function hubRig(options: { serverCapabilities?: readonly string[] }
   const pairing = new HubPairingService({ store, directory, identity: { ...identity, memberOrigin, webOrigin: `https://127.0.0.1:${port + 1}` }, enabled: () => enabled, fenceFleet: (id, reason) => server?.fenceFleet(id, reason) });
   let serverGate: (() => Promise<void>) | undefined;
   let receiver: HubServerOptions["receive"] | undefined;
-  server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing,
-    ...(options.serverCapabilities ? { capabilities: options.serverCapabilities } : {}),
+  server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing, capabilities: options.serverCapabilities,
     current: () => enabled, hold: (fleet, code) => holds.push({ fleet, code }), receive: async (frame, link) => {
       received.push(frame); await serverGate?.(); if (!link.current()) return;
       if (receiver) return receiver(frame, link);
@@ -52,7 +50,7 @@ export async function hubRig(options: { serverCapabilities?: readonly string[] }
   /** `capabilities`: the optional features this member offers ([] stands in for an older member). */
   const client = (onFrame: (frame: any, link: HubMemberLink) => Promise<void> = async () => {}, reconcileGate?: () => Promise<void>, capabilities?: readonly string[]) => {
     const state: { link: HubMemberLink | null; holds: string[]; syncs: number } = { link: null, holds: [], syncs: 0 };
-    const value = new HubMemberClient({ home: memberHome, hubId: identity.hubId, memberOrigin, current: () => enabled, ...(capabilities ? { capabilities } : {}),
+    const value = new HubMemberClient({ home: memberHome, hubId: identity.hubId, memberOrigin, current: () => enabled, capabilities: capabilities ?? options.clientCapabilities,
       reconcile: async link => { state.link = link; state.syncs++; await link.exchange({ v: 1, type: "reconcile", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { afterReceiptSequence: 0, messages: [] } }, "reconcile"); await reconcileGate?.(); }, receive: onFrame,
       hold: code => state.holds.push(code), random: () => 0 }); clients.push(value); return { value, state };
   };
