@@ -91,7 +91,9 @@ function grokWeeklyLimitActive(pane: string, legend: "question" | "scrollback" |
   return GROK_LEGEND_QUESTION.test(between[0]!) || GROK_LEGEND_SCROLLBACK.test(between[0]!);
 }
 
-function grokWeeklyLimitDialog(instanceDir: string, pending: { value: boolean }): RuntimeDialog {
+type GrokTryAgainGate = { value: boolean; claimFailed: boolean };
+
+function grokWeeklyLimitDialog(instanceDir: string, pending: GrokTryAgainGate): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
   return {
     pattern,
@@ -128,17 +130,21 @@ function grokWeeklyLimitDialog(instanceDir: string, pending: { value: boolean })
  *
  * Try Again is consumed on the reset file (`tryAgainConsumed`) independently of that one-slot claim, so an
  * ignored Shift+x cannot re-arm Enter against the same still-limited screen. Re-arm only for a new pause
- * episode (Shift+x after a consumed Try Again rewrites the clock).
+ * episode (Shift+x after a consumed Try Again rewrites the clock). If that durable write fails, fail closed:
+ * do not send Enter (claimFailed); Shift+x still matches.
  *
  * isActive has a side effect: when the modal is gone and pending is set it clears the reset file. The daemon
  * calls isActive from every probe and scan. A future "pure matcher" refactor must keep that clear — alpha
  * re-reads the pane before each key, so the clock cannot be dropped in answerDetail.
  */
-function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: { value: boolean }): RuntimeDialog {
+function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: GrokTryAgainGate): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
+  // Same array the daemon iterates after answerDetail. Main does not rematch before the first
+  // key; emptying it on a failed durable claim is the fail-closed gate before Enter.
+  const keys = ["Down", "Down", "Enter"];
   return {
     pattern,
-    keys: ["Down", "Down", "Enter"],
+    keys,
     description: "Grok Build weekly-limit reset (Grok 週限) — Try Again after the recorded reset",
     blocksDelivery: true,
     inputBlocked: true,
@@ -156,16 +162,24 @@ function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: { value: bo
           pending.value = false;
           clearGrokWeeklyReset(instanceDir);
         }
+        pending.claimFailed = false;
         return false;
       }
       if (pending.value) return true;
+      if (pending.claimFailed) return false;
       const rec = readGrokWeeklyReset(instanceDir);
       return rec !== null && Date.now() >= rec.resetAt && rec.tryAgainConsumed !== true;
     },
     answerDetail: () => {
+      if (!markGrokWeeklyTryAgainConsumed(instanceDir)) {
+        pending.claimFailed = true;
+        pending.value = false;
+        keys.length = 0;
+        return { tryAgainConsumed: false };
+      }
       pending.value = true;
-      markGrokWeeklyTryAgainConsumed(instanceDir);
-      return null;
+      pending.claimFailed = false;
+      return { tryAgainConsumed: true };
     },
   };
 }
@@ -342,7 +356,7 @@ export class GrokBackend implements CliBackend {
   // can scope to grok's per-cwd session directory.
   private workingDirectory?: string;
   /** Try-again keys are in flight: keep matching until the modal leaves (see grokWeeklyLimitTryAgainDialog). */
-  private readonly grokWeeklyTryAgainPending = { value: false };
+  private readonly grokWeeklyTryAgainPending: GrokTryAgainGate = { value: false, claimFailed: false };
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("grok");

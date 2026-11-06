@@ -5,7 +5,7 @@
  * (1.0.77, isolated mock 402→ok).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
@@ -116,6 +116,13 @@ describe("reset clock", () => {
     expect(readGrokWeeklyReset(dir)).toEqual({ pausedAt: now, resetAt: now + 7 * 86_400_000 });
   });
 
+  it("markGrokWeeklyTryAgainConsumed returns false when the reset file is not writable", () => {
+    const dir = dueDir(true);
+    chmodSync(join(dir, "grok-weekly-reset"), 0o444);
+    expect(markGrokWeeklyTryAgainConsumed(dir)).toBe(false);
+    expect(readGrokWeeklyReset(dir)?.tryAgainConsumed).toBeUndefined();
+  });
+
   it("uses quota-history's grok weekly resetsAt when that time is still ahead", () => {
     const now = Date.now();
     const ahead = new Date(now + 3_600_000).toISOString();
@@ -166,6 +173,18 @@ describe("dialogs: before the reset Shift+x; after it Try Again", () => {
     const dir = tmp();
     writeGrokWeeklyReset(dir, { pausedAt: 1_700_000_000_000, resetAt: 1_700_000_001_000, tryAgainConsumed: true });
     const b = new GrokBackend(dir);
+    expect(weekly(b, STILL).map(d => d.keys)).toEqual([["X"]]);
+    expect(weekly(b, STILL, "startup").map(d => [d.holdOnly, d.keys])).toEqual([[true, []]]);
+  });
+
+  it("failed consume write fails closed: no Try Again, Shift+x only", () => {
+    const dir = dueDir(true);
+    chmodSync(join(dir, "grok-weekly-reset"), 0o444);
+    const b = new GrokBackend(dir);
+    const tryAgain = weekly(b, STILL).find(d => d.keys[0] === "Down");
+    expect(tryAgain?.keys).toEqual(["Down", "Down", "Enter"]);
+    expect(tryAgain?.answerDetail?.(STILL)).toEqual({ tryAgainConsumed: false });
+    expect(tryAgain?.keys).toEqual([]);
     expect(weekly(b, STILL).map(d => d.keys)).toEqual([["X"]]);
     expect(weekly(b, STILL, "startup").map(d => [d.holdOnly, d.keys])).toEqual([[true, []]]);
   });
@@ -261,6 +280,20 @@ describe("in the real Daemon", () => {
     daemon.startErrorMonitor();
     await vi.advanceTimersByTimeAsync(45_000);
     expect(tmux.sendSpecialKey.mock.calls.map((c: any[]) => c[0])).toEqual(["Down", "Down", "Enter"]);
+    expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual(["X"]);
+    daemon.freezeRuntimeMonitors();
+  });
+
+  it("denied consume write: no Enter, one X (fail closed)", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"] });
+    const dir = dueDir(true);
+    chmodSync(join(dir, "grok-weekly-reset"), 0o444);
+    const { daemon, tmux } = makeDaemon(dir, MODAL);
+    tmux.sendSpecialKey.mockImplementation(async () => true);
+    tmux.sendKeys.mockImplementation(async () => true);
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
     expect(tmux.sendKeys.mock.calls.map((c: any[]) => c[0])).toEqual(["X"]);
     daemon.freezeRuntimeMonitors();
   });

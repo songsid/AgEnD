@@ -67,11 +67,18 @@ export function noteGrokWeeklyLimitSeen(instanceDir: string, now = Date.now()): 
   } catch { /* matcher-only tests pass a path that may not exist */ }
 }
 
-/** This reset episode has already sent Try Again. Survives the daemon's one-slot autoResolvedDialogKey. */
-export function markGrokWeeklyTryAgainConsumed(instanceDir: string): void {
+/**
+ * This reset episode has already sent Try Again. Survives the daemon's one-slot autoResolvedDialogKey.
+ * Returns false when the durable claim cannot be written — callers must fail closed (no Enter).
+ */
+export function markGrokWeeklyTryAgainConsumed(instanceDir: string): boolean {
   const rec = readGrokWeeklyReset(instanceDir);
-  if (!rec || rec.tryAgainConsumed) return;
+  if (!rec) return false;
+  if (rec.tryAgainConsumed) return true;
   try {
     writeGrokWeeklyReset(instanceDir, { ...rec, tryAgainConsumed: true });
-  } catch { /* matcher-only tests pass a path that may not exist */ }
+    return true;
+  } catch {
+    return false;
+  }
 }
