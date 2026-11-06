@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { hostname, tmpdir, userInfo } from "node:os";
+import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
@@ -245,8 +245,23 @@ describe("what is served carries no token, pairing code or host-specific address
     expect(named).not.toMatch(/\.ts\.net|trycloudflare|localhost|127\.0\.0\.1/i);
     const hosts = [...script.matchAll(/https?:\/\/([^\s'"\/)]+)/g)].map(match => match[1]);
     expect(hosts.every(host => ["your-agend-host", "nodejs.org"].includes(host))).toBe(true);
-    // rendering leaves no host or user of this machine in it either
-    expect(script).not.toContain(hostname()); expect(script).not.toContain(userInfo().username);
+  });
+  it("rendering puts nothing of the machine it runs on into the script: injected identity and secret sentinels never reach it, and the check does catch a real interpolation", () => {
+    // Distinctive values that appear nowhere in the template (a real user or host name, such as a CI account called "runner", can: it is not evidence of anything). They are
+    // injected where a careless render could pick them up (the environment, the AgEnD home, a token file) and must not come out.
+    const sentinels = { user: "sentinel-user-7f3c9a1e", host: "sentinel-host-b52d08c4", secret: "sentinel-secret-e19a64d7", home: "sentinel-home-3c8e5b20" };
+    const home = mkdtempSync(join(tmpdir(), `agend-${sentinels.home}-`)); cleanups.push(() => { if (!resolve(home).startsWith(resolve(tmpdir()) + sep)) throw Error("Unsafe cleanup"); rmSync(home, { recursive: true, force: true }); });
+    writeFileSync(join(home, "web.token"), sentinels.secret);
+    for (const name of ["USER", "USERNAME", "LOGNAME"]) vi.stubEnv(name, sentinels.user);
+    for (const name of ["HOSTNAME", "COMPUTERNAME"]) vi.stubEnv(name, sentinels.host);
+    vi.stubEnv("AGEND_HOME", home); vi.stubEnv("AGEND_WEB_TOKEN", sentinels.secret); vi.stubEnv("HOME", home); vi.stubEnv("USERPROFILE", home);
+    const leaks = (text: string): string[] => Object.values(sentinels).filter(value => text.includes(value));
+    const bundle = fixtureBundle(), rendered = renderRuntimeInstallScript(template, bundle);
+    expect(leaks(rendered)).toEqual([]);
+    expect(leaks(get(make({ template: () => template }), RUNTIME_INSTALL_SCRIPT_PATH).res.body)).toEqual([]);
+    // control: the check is not blind. The one value a render does interpolate is the version, so a sentinel carried there must be found (a valid version, so it is accepted).
+    const interpolated = renderRuntimeInstallScript(template, { ...bundle, version: `2.3.5-${sentinels.user}` });
+    expect(leaks(interpolated)).toEqual([sentinels.user]);
   });
   it("the generic archive the route sends has no server address, no token and no pairing code in what AgEnD wrote", () => {
     // what the route serves is createRuntimeBundle()'s output without a server origin; its own files are scanned, not third-party licences
@@ -255,7 +270,16 @@ describe("what is served carries no token, pairing code or host-specific address
     const f = runtimeBundleFixture(); cleanups.push(f.cleanup);
     const bundle = createRuntimeBundle(f), served = get(make({ bundle: () => bundle }), RUNTIME_BUNDLE_PATH).res.bytes;
     expect(served.equals(bundle.bytes)).toBe(true);
-    expect(served.includes(Buffer.from(token))).toBe(false); expect(served.includes(Buffer.from(hostname()))).toBe(false);
+    expect(served.includes(Buffer.from(token))).toBe(false);
+    // injected identity sentinels (a real host or user name, such as a CI account called "runner", can legitimately occur in text and proves nothing)
+    const user = "sentinel-user-5a1c88f3", host = "sentinel-host-d04b7e92";
+    for (const name of ["USER", "USERNAME", "LOGNAME"]) vi.stubEnv(name, user);
+    for (const name of ["HOSTNAME", "COMPUTERNAME"]) vi.stubEnv(name, host);
+    const again = createRuntimeBundle(f), sent = get(make({ bundle: () => again }), RUNTIME_BUNDLE_PATH).res.bytes;
+    for (const value of [user, host]) expect(sent.includes(Buffer.from(value)), value).toBe(false);
+    // control: a bundle that is given a server address (the one thing a download may carry) does contain it, so the scan can see an interpolated value
+    const withOrigin = createRuntimeBundle({ ...f, serverOrigin: `https://${host}.example.test` });
+    expect(withOrigin.bytes.includes(Buffer.from(host))).toBe(true);
     const files = unzipStored(served);
     expect(files.has("agend-runtime/agend-server.json")).toBe(false);
     for (const name of ["README.txt", "connect-agend.bat", "agend-runtime.cmd", "package.json", "bundle-manifest.json"]) {
