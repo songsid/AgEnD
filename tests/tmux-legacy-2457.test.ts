@@ -98,6 +98,9 @@ describe("migrateLegacyWindow", () => {
     ["a window gone from the list whose agent process still runs", { paneLingers: true }, /did not close/],
     // Fable #3276: without a UTF-8 locale tmux prints a TAB in -F output as "_"; an answer that does not parse is a hold.
     ["a list-windows answer AgEnD can't read", { raw: "agend_@7_dev_4000\nmine_@1_sleep_4001" }, /can't be queried \(unexpected list-windows answer "agend_@7_dev_4000"\)/],
+    // Fable #3276 follow-up: an unreadable line that happens to read like tmux's "no server" (a user's window name) is
+    // still unreadable, never "the window is gone".
+    ["an unreadable answer whose text reads like tmux's no-server error", { raw: "mine_@1_server exited_4001" }, /can't be queried \(unexpected list-windows answer "mine_@1_server exited_4001"\)/],
   ])("held (only this instance), nothing else killed: %s", async (_why, o, msg) => {
     const x = inst("@7");
     const { p, calls } = fakes(o);
