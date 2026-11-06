@@ -42,7 +42,7 @@ export const refOf = (r: Row): HubAttachmentRef => ({ id: r.id, name: r.name, si
 
 export interface HubAttachmentStoreOptions { contentKey: Buffer; now?: () => number; limits?: Partial<HubAttachmentLimits> | null;
   /** Tests only: a smaller pending budget. */
-  budget?: Partial<typeof HUB_PENDING_BUDGET> }
+  budget?: Partial<{ files: number; bytes: number; totalBytes: number }> }
 export class HubAttachmentStore {
   private readonly key: Buffer;
   readonly limits: HubAttachmentLimits;
