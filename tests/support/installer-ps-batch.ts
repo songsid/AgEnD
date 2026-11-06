@@ -28,10 +28,13 @@ export class InstallerPsBatch {
     });
   }
   private start() {
+    const started = performance.now();
     this.dir = mkdtempSync(join(tmpdir(), "agend-ps-batch-"));
     const templates = join(this.dir, "templates.json"), driver = join(this.dir, "driver.ps1");
     writeFileSync(templates, JSON.stringify(this.templates));
     writeFileSync(driver, String.raw`
+[Console]::WriteLine('__AGEND_START__')
+$bootClock=[Diagnostics.Stopwatch]::StartNew()
 $ErrorActionPreference = 'Stop'
 class BatchExit : System.Exception { [int]$Code; BatchExit([int]$code) : base('batch exit') { $this.Code = $code } }
 # Parse only the already-sliced helper template, once. Exit becomes a typed unwind so a
@@ -46,8 +49,10 @@ function Compile-Batch([string]$text) {
   }
   return [scriptblock]::Create($text)
 }
+[Console]::WriteLine('__AGEND_PHASE__definitions')
 $templates=@{}
 (Get-Content -Raw -LiteralPath $args[0] | ConvertFrom-Json -AsHashtable).GetEnumerator() | ForEach-Object { $templates[$_.Key]=Compile-Batch $_.Value }
+[Console]::WriteLine(('__AGEND_READY__'+$bootClock.ElapsedMilliseconds))
 while($null -ne ($line=[Console]::ReadLine())) {
   $request=$line | ConvertFrom-Json -AsHashtable
   $saved=@{}; Get-ChildItem Env: | ForEach-Object { $saved[$_.Name]=$_.Value }
@@ -83,6 +88,7 @@ while($null -ne ($line=[Console]::ReadLine())) {
     this.child.stderr.on("data", (b: Buffer) => { this.stderr += b; });
     createInterface({ input: this.child.stdout }).on("line", line => {
       try {
+        if (line.startsWith("__AGEND_START__") || line.startsWith("__AGEND_PHASE__") || line.startsWith("__AGEND_READY__")) { process.stderr.write(`[pwsh-startup] ${JSON.stringify({phase:line,elapsedMs:performance.now()-started,bytes:Object.values(this.templates).reduce((n,s)=>n+s.length,0)})}\n`); return; }
         const marker = line.indexOf("__AGEND_BATCH__");
         if (marker < 0) { this.consoleOutput += line + "\n"; return; }
         this.consoleOutput += line.slice(0, marker);
