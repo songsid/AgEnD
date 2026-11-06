@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { WebSocketServer } from './ws/wrapper.mjs';
 import { runtimeInstallCommand } from './runtime-commands.mjs';
@@ -21,13 +21,15 @@ async function until(check, label, timeout = 90_000) {
   for (;;) { if (await check()) return; if (Date.now() > deadline) throw Error(`Timed out: ${label}`); await sleep(150); }
 }
 function execute(executable, args, env, log) {
-  const child = spawn(executable, args, { shell: false, cwd: scope, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  const child = spawn(executable, args, { shell: false, cwd: scope, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+    windowsVerbatimArguments: basename(executable).toLowerCase() === 'cmd.exe' });
   const finished = new Promise((done, fail) => { child.once('error', fail); child.once('close', code => done(code)); });
   child.stdout.on('data', bytes => log.push(bytes.toString())); child.stderr.on('data', bytes => log.push(bytes.toString()));
   return { child, finished };
 }
 const results = [];
 for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
+  console.log(JSON.stringify({ leg: mode, step: 'start' }));
   const root = join(scope, mode); mkdirSync(root, { mode: 0o700 });
   const install = join(root, 'install'), profile = join(root, 'profile'), user = join(root, 'user');
   mkdirSync(user); mkdirSync(join(user, 'AppData', 'Local'), { recursive: true }); mkdirSync(join(user, 'AppData', 'Roaming'));
@@ -35,7 +37,8 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
   const env = { ...process.env, USERPROFILE: user, HOME: user, LOCALAPPDATA: join(user, 'AppData', 'Local'), APPDATA: join(user, 'AppData', 'Roaming'),
     PATH: `${dirname(process.execPath)};${join(systemRoot, 'System32')}`, AGEND_RUNTIME_NO_PATH: '1', AGEND_RUNTIME_INSTALL_DIR: install };
   const log = [], events = [], requests = [], proofs = new Map(), machineId = randomUUID();
-  let target = a, generations = 0, normal = 0, trial = 0, busy = 0, activations = 0, activates = [], runner, observe, matches, store, scan, failure;
+  let target = a, generations = 0, normal = 0, trial = 0, busy = 0, activations = 0, activates = [], runner, observe, matches, store, scan, failure, runnerFailure;
+  const waitFor = (check, label) => until(() => { if (runnerFailure) throw runnerFailure; return check(); }, label);
   const server = createServer((req, res) => {
     requests.push(req.url);
     if (req.url === '/runtime/install.ps1') {
@@ -105,11 +108,12 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
     store = new imported.RuntimeClientStore(profile); store.saveCredentials({ server: origin, machineId, credential: 'b'.repeat(64), name: 'Fake rehearsal Runtime' });
     const credentials = readFileSync(join(profile, 'connection.json'), 'utf8');
     runner = execute(join(systemRoot, 'System32/cmd.exe'), ['/d', '/s', '/c', `""${join(install, 'bin/agend-runtime.cmd')}" run --profile "${profile}""`], env, log);
+    void runner.finished.then(code => { if (code !== 0) runnerFailure = Error(`Scratch shim exited with ${code}`); });
     scan = setInterval(recordProofs, 100);
-    if (mode === 'busy') { await until(() => busy > 0, 'busy defer'); assert.equal(pointer(), folderA); assert.equal(trial, 0); assert.equal(normal, 1); }
-    else if (mode === 'sha') { await until(() => state()?.failed?.sha256 === b.sha256, 'SHA refusal'); assert.equal(pointer(), folderA); assert.equal(trial, 0); }
-    else if (mode === 'rollback') { await until(() => normal >= 2 && state()?.failed?.sha256 === b.sha256, 'automatic rollback'); assert.equal(pointer(), folderA); assert.equal(trial, 1); assert.equal(activations, 0); }
-    else { await until(() => activations === 1 && state()?.attempt === undefined && pointer() === folderB, 'positive activation'); assert.equal(trial, 1); assert.equal(normal, 1);
+    if (mode === 'busy') { await waitFor(() => busy > 0, 'busy defer'); assert.equal(pointer(), folderA); assert.equal(trial, 0); assert.equal(normal, 1); }
+    else if (mode === 'sha') { await waitFor(() => state()?.failed?.sha256 === b.sha256, 'SHA refusal'); assert.equal(pointer(), folderA); assert.equal(trial, 0); }
+    else if (mode === 'rollback') { await waitFor(() => normal >= 2 && state()?.failed?.sha256 === b.sha256, 'automatic rollback'); assert.equal(pointer(), folderA); assert.equal(trial, 1); assert.equal(activations, 0); }
+    else { await waitFor(() => activations === 1 && state()?.attempt === undefined && pointer() === folderB, 'positive activation'); assert.equal(trial, 1); assert.equal(normal, 1);
       if (mode === 'lost-ack') { assert.equal(activates.length, 2); assert.equal(activates[0], activates[1]); } }
     assert.equal(readFileSync(join(profile, 'connection.json'), 'utf8'), credentials);
     assert.ok(requests.every(path => ['/runtime/install.ps1', '/runtime/v1/bundle/windows.json', '/runtime/v1/bundle/windows.zip'].includes(path)));
@@ -127,6 +131,7 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
     if (!failure) rmSync(root, { recursive: true, force: true });
   }
   if (failure) throw failure;
+  console.log(JSON.stringify({ leg: mode, step: 'pass-and-cleaned' }));
 }
 writeFileSync(join(scope, 'receipt.json'), JSON.stringify({ version: 1, node: process.version, inputs: identities, results, cleanup: { ownedProcessesGone: true, legDirectoriesRemoved: true } }, null, 2));
 console.log(JSON.stringify({ passed: results.length, cleanup: true }));
