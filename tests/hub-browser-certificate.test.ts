@@ -1,7 +1,7 @@
 /** Real local OpenSSL/HTTPS, private temporary homes; no service, directory, trust-store or network configuration. */
 import { afterEach, describe, expect, it } from "vitest";
 import { X509Certificate, createPrivateKey } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createServer, get } from "node:https";
 import { createBrowserCertificate, recoverBrowserCertificate } from "../src/hub/init/browser-certificate.js";
@@ -27,7 +27,8 @@ describe("owner-requested browser certificate generation", () => {
   });
   it("refuses unsafe/noncanonical origins and a nonprivate home before writing", async () => {
     const root = home();
-    for (const origin of ["http://hub.example.test", "https://user:pw@hub.example.test", "https://hub.example.test/path", "https://hub.example.test?a=1", "https://hub.example.test#x", "https://hub.example.test,%0ADNS:other.test", "https://HUB.example.test"]) {
+    for (const origin of ["http://hub.example.test", "https://user:pw@hub.example.test", "https://hub.example.test/path", "https://hub.example.test?a=1", "https://hub.example.test#x", "https://hub.example.test,%0ADNS:other.test", "https://HUB.example.test",
+      "https://*.example.test", "https://a_b.example.test", "https://a.test,b.test"]) {
       await expect(createBrowserCertificate(root, origin)).rejects.toThrow(); expect(readdirSync(root)).toEqual([]);
     }
     chmodSync(root, 0o755);
@@ -66,5 +67,20 @@ describe("owner-requested browser certificate generation", () => {
     renameSync(dir, `${dir}-original`); mkdirSync(dir, { mode: 0o700 }); writeFileSync(join(dir, "keep"), "owner data");
     expect(() => material.cleanup()).toThrow("browser_certificate_staging_changed");
     expect(readFileSync(join(dir, "keep"), "utf8")).toBe("owner data");
+  });
+  it("refuses a generated plan pointing to another private directory with valid copied material", async () => {
+    const root = home(), origin = "https://hub.example.test", material = await createBrowserCertificate(root, origin);
+    const other = join(root, "other-dir");
+    cpSync(dirname(material.certFile), other, { recursive: true });
+    chmodSync(other, 0o700);
+    for (const name of ["cert.pem", "key.pem", "material.json"]) chmodSync(join(other, name), 0o600);
+    writeFileSync(join(other, "keep"), "owner data", { mode: 0o600 });
+    expect(statSync(other).mode & 0o777).toBe(0o700);
+    const files = { certFile: join(other, "cert.pem"), keyFile: join(other, "key.pem"), generated: true as const };
+    expect(() => recoverBrowserCertificate(root, origin, files)).toThrow("browser_certificate_staging_changed");
+    expect(readdirSync(other).sort()).toEqual(["cert.pem", "keep", "key.pem", "material.json"]);
+    expect(readFileSync(join(other, "keep"), "utf8")).toBe("owner data");
+    expect(readFileSync(files.certFile)).toEqual(readFileSync(material.certFile));
+    expect(readFileSync(files.keyFile)).toEqual(readFileSync(material.keyFile));
   });
 });

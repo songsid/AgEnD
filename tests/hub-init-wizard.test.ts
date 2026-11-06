@@ -5,14 +5,15 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { verify, X509Certificate } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubPlanDigest } from "../src/hub/init/plan-digest.js";
 import { runHubInitWizard, type HubServiceControl } from "../src/hub/init/wizard.js";
-import { createBrowserCertificate, recoverBrowserCertificate } from "../src/hub/init/browser-certificate.js";
+import { createBrowserCertificate, recoverBrowserCertificate, type HubBrowserMaterial } from "../src/hub/init/browser-certificate.js";
 import type { HubInitPlan } from "../src/hub/init/types.js";
+import { ht } from "../src/hub/init/text.js";
 import { setLocale } from "../src/locale.js";
 import { quickstartMachine } from "../src/quickstart.js";
 import { ADMIN, FakeIdentity, fakeDirectory, makeTestCerts, scriptedIO, tempDir, type TestCerts } from "./support/hub-init-fixtures.js";
@@ -388,6 +389,26 @@ describe("browser certificate generation in init", () => {
       createBrowserCertificate: async () => { throw Error("SENSITIVE-SENTINEL"); } });
     expect(outcome).toBe("cancelled"); expect(io.text()).toContain("Could not generate"); expect(io.text()).not.toContain("SENSITIVE-SENTINEL");
     expect(readdirSync(t.home)).toEqual([]); expect(t.identity.provisions).toBe(0); expect(t.dir.calls).toEqual([]);
+  });
+  it("keeps generated material and the wizard outcome when final inspection is uncertain", async () => {
+    const t = setup(), generated: HubBrowserMaterial[] = [];
+    try {
+      const initializer = createHubInitializer({ home: t.home, identity: t.identity, probe: { pidAlive: () => false } });
+      const io = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "n"]);
+      const outcome = runHubInitWizard({ io: io.io, home: t.home,
+        initializer: { ...initializer, inspect: async () => {
+          if (generated.length) throw Error("inspection unavailable");
+          return initializer.inspect();
+        } }, createDirectory: t.dir.create, readFile: path => readFileSync(path, "utf8"), service: t.svc.control,
+        createBrowserCertificate: async origin => {
+          const material = await createBrowserCertificate(t.home, origin); generated.push(material); return material;
+        } });
+      await expect(outcome).resolves.toBe("cancelled"); expect(generated).toHaveLength(1);
+      const material = generated[0]!;
+      expect(existsSync(material.certFile)).toBe(true); expect(existsSync(material.keyFile)).toBe(true);
+      expect(io.text()).toContain(ht("tls_stage_kept", material.certFile));
+      expect(existsSync(join(t.home, "fleet.yaml"))).toBe(false); expect(t.identity.provisions).toBe(0);
+    } finally { rmSync(t.home, { recursive: true, force: true }); }
   });
   it("retains exact generated files after interruption and cleans them only after the same plan resumes", async () => {
     const home = tempDir("agend-hubinit-generated-cut-"), identity = new FakeIdentity(), svc = service();
