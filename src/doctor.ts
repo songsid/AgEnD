@@ -7,7 +7,8 @@ import { loadRawFleetConfig } from "./config.js";
 import { validateFleetConfig } from "./config-validator.js";
 import { readClassicRoomNames } from "./classic-channel-manager.js";
 import { hasPausedMarker } from "./pause-marker.js";
-import { getTmuxSessionName, getTmuxSocketName } from "./paths.js";
+import { getTmuxSessionName } from "./paths.js";
+import { resolveTmux, TMUX_BIN_ENV, tmuxArgs as tmuxArgsFor, tmuxSocket } from "./tmux-binary.js";
 import { BACKENDS } from "./setup-wizard.js";
 import { getSystemServicePath, serviceLeftovers } from "./service-installer.js";
 import { homedir, userInfo } from "node:os";
@@ -91,10 +92,8 @@ const defaultDeps: DoctorDeps = {
   },
 };
 
-function tmuxArgs(args: string[]): string[] {
-  const socket = getTmuxSocketName();
-  return socket ? ["-L", socket, ...args] : args;
-}
+/** This fleet's tmux socket (and, with the bundled tmux, its config) in front of `args` (tmux-binary.ts). */
+const tmuxArgs = (args: string[]): string[] => tmuxArgsFor(args);
 
 function readPid(path: string): number | null {
   try {
@@ -187,13 +186,21 @@ export async function collectDoctorReport(
     for (const problem of report?.problems ?? []) add("Prerequisites", "error", t("doctor.codex_package"), codexPackageProblemMessage(report!.root, problem));
   }
 
-  const tmuxVersion = deps.run("tmux", ["-V"]);
-  const tmuxAvailable = !tmuxVersion.error && tmuxVersion.status === 0;
+  // M-2457: the tmux AgEnD runs — PATH's while the bundled tmux is off; else the bundle (or AGEND_TMUX_BIN), named
+  // with its socket, and a clear reason when it cannot be used (there is no fallback to PATH).
+  let tmuxBin = "tmux", tmuxWhich = "", tmuxRefused: string | null = null;
+  try {
+    const r = resolveTmux({ env: deps.env });
+    tmuxBin = r.binary;
+    if (r.source !== "system") tmuxWhich = ` — ${r.source === "bundled" ? "AgEnD's bundled tmux" : TMUX_BIN_ENV} ${r.binary}, socket ${tmuxSocket(deps.env)}: use \`agend attach\``;
+  } catch (e) { tmuxRefused = (e as Error).message; }
+  const tmuxVersion = tmuxRefused === null ? deps.run(tmuxBin, ["-V"]) : null;
+  const tmuxAvailable = !!tmuxVersion && !tmuxVersion.error && tmuxVersion.status === 0;
   add(
     "Prerequisites",
     tmuxAvailable ? "ok" : "error",
     "tmux",
-    tmuxAvailable ? String(tmuxVersion.stdout ?? "").trim() : t("doctor.not_found"),
+    tmuxAvailable ? String(tmuxVersion!.stdout ?? "").trim() + tmuxWhich : tmuxRefused ?? t("doctor.not_found"),
   );
   add(
     "Prerequisites",
@@ -315,7 +322,7 @@ export async function collectDoctorReport(
 
   const sessionName = getTmuxSessionName();
   const tmuxSession = tmuxAvailable
-    ? deps.run("tmux", tmuxArgs(["has-session", "-t", sessionName]))
+    ? deps.run(tmuxBin, tmuxArgs(["has-session", "-t", sessionName]))
     : null;
   const sessionAlive = !!tmuxSession && !tmuxSession.error && tmuxSession.status === 0;
   add(

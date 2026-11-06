@@ -26,22 +26,62 @@ describe("Hub chat store wires F's shared controls", () => {
     expect(f.client.read.mock.calls.at(-1)).toEqual([room.id, 3]);
     f.store.stop();
   });
-  it("keeps B's full-page progress while refreshing an old answered button set", async () => {
+  it.each(["queued", "poll"])("new messages after a full tail are discovered while an old %s remains open", async kind => {
     const pending = new Map<number, () => void>(); let next = 0;
     const timers = { setTimeout: (fn: () => void) => { pending.set(++next, fn); return next; }, clearTimeout: (n: number) => pending.delete(n) };
-    const rows = (from: number, count: number, state = "open") => Array.from({ length: count }, (_, i) => ({
-      messageId: `m${from + i}`, sequence: from + i, question: "Q", answer: "A", receipt: { stage: "answered", at: 1 },
-      ...(from + i === 1 ? { buttons: { ...entry.buttons, state, ...(state === "chosen" ? { chosen: 0 } : {}) } } : {}),
+    const all = Array.from({ length: 250 }, (_, i) => ({ messageId: `m${i + 1}`, sequence: i + 1, question: "Q", answer: "A",
+      receipt: { stage: i === 0 && kind === "queued" ? "queued" : "answered", at: 1 },
+      ...(i === 0 && kind === "poll" ? { buttons: { ...entry.buttons, poll: { deadline: 600000, answered: 0, multi: true, reveal: "close", rev: 1 } } } : {}),
     }));
-    const pages = [rows(1, 100), rows(101, 50), rows(1, 100, "chosen"), rows(151, 1)];
     const afters: number[] = [], client = { read: async (_room: string, after: number) => {
-      afters.push(after); return { ok: true, entries: pages.shift() ?? [], room };
+      afters.push(after); return { ok: true, entries: structuredClone(all.filter(e => e.sequence > after).slice(0, 100)), room };
     } };
     const store = createHubChatStore(room, { client, timers, doc: null }); await flush();
-    for (let i = 0; i < 3; i++) { const [n, fn] = pending.entries().next().value!; pending.delete(n); fn(); await flush(); }
-    expect(afters).toEqual([0, 100, 0, 150]);
-    expect(store.entries().at(-1).sequence).toBe(151);
-    expect(store.messages().find((m: any) => m.buttons)?.buttons).toMatchObject({ state: "chosen", chosen: 0 });
+    const tick = async () => { const [n, fn] = pending.entries().next().value!; pending.delete(n); fn(); await flush(); };
+    await tick(); await tick(); expect(store.entries().at(-1).sequence).toBe(250);
+    all.push({ messageId: "m251", sequence: 251, question: "new", answer: "new answer", receipt: { stage: "answered", at: 2 } });
+    await tick(); await tick();
+    expect(store.entries().at(-1).sequence, JSON.stringify(afters)).toBe(251);
+    expect(afters.slice(0, 3)).toEqual([0, 100, 200]);
+    store.stop();
+  });
+  it("C's far reads rotate across answered open controls without marking an old full page as forward progress", async () => {
+    const pending = new Map<number, () => void>(); let next = 0;
+    const timers = { setTimeout: (fn: () => void) => { pending.set(++next, fn); return next; }, clearTimeout: (n: number) => pending.delete(n) };
+    const all = Array.from({ length: 250 }, (_, i) => ({ messageId: `m${i + 1}`, sequence: i + 1, question: "Q", answer: "A", receipt: { stage: "answered", at: 1 },
+      ...([1, 120].includes(i + 1) ? { buttons: { ...entry.buttons, id: (i === 0 ? "d" : "e").repeat(32), poll: { deadline: 600000, answered: 0, multi: true, reveal: "close", rev: 1 } } } : {}),
+    }));
+    const afters: number[] = [], client = { read: async (_room: string, after: number) => {
+      afters.push(after); return { ok: true, entries: structuredClone(all.filter(e => e.sequence > after).slice(0, 100)), room };
+    } };
+    const store = createHubChatStore(room, { client, timers, doc: null }); await flush();
+    const tick = async () => { const [n, fn] = pending.entries().next().value!; pending.delete(n); fn(); await flush(); };
+    await tick(); await tick();
+    all[119].buttons!.state = "closed";
+    for (let n = 0; n < 10; n++) await tick();
+    expect(afters[5]).toBe(0); expect(afters[11]).toBe(119);
+    expect(afters[6]).toBeGreaterThanOrEqual(150); // the old page did not become a forward-pagination request after 250
+    expect(afters[6]).toBeLessThan(250);
+    expect(store.entries().find((e: any) => e.sequence === 120).buttons.state).toBe("closed");
+    expect(store.entries().find((e: any) => e.sequence === 1).buttons.state).toBe("open");
+    store.stop();
+  });
+  it("the control displaced by the unseen-row slot still gets a far refresh", async () => {
+    const pending = new Map<number, () => void>(); let next = 0;
+    const timers = { setTimeout: (fn: () => void) => { pending.set(++next, fn); return next; }, clearTimeout: (n: number) => pending.delete(n) };
+    const all = Array.from({ length: 250 }, (_, i) => ({ messageId: `m${i + 1}`, sequence: i + 1, question: "Q", answer: "A", receipt: { stage: "answered", at: 1 },
+      ...(i === 150 ? { buttons: structuredClone(entry.buttons) } : {}),
+    }));
+    const afters: number[] = [], client = { read: async (_room: string, after: number) => {
+      afters.push(after); return { ok: true, entries: structuredClone(all.filter(e => e.sequence > after).slice(0, 100)), room };
+    } };
+    const store = createHubChatStore(room, { client, timers, doc: null }); await flush();
+    const tick = async () => { const [n, fn] = pending.entries().next().value!; pending.delete(n); fn(); await flush(); };
+    await tick(); await tick();
+    all[150].buttons!.state = "chosen";
+    await tick(); await tick(); await tick();
+    expect(afters.slice(3)).toEqual([151, 151, 150]);
+    expect(store.entries().find((e: any) => e.sequence === 151).buttons.state).toBe("chosen");
     store.stop();
   });
   it("takes current capability changes from the room poll, without replacing the action helper", async () => {

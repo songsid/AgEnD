@@ -56,7 +56,7 @@ void alex;
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const CASES = [{ device: "desk", lang: "en", theme: "light", viewport: { width: 1366, height: 860 } }, { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } }] as const;
-const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-button-actions)\.js|ui\/hub|favicon)/;
+const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-owner-strings|hub-button-actions)\.js|ui\/hub|favicon)/;
 
 async function open(c: (typeof CASES)[number], path: string, route?: (page: any) => Promise<void>) {
   const ctx = await browser.newContext({ viewport: c.viewport, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,

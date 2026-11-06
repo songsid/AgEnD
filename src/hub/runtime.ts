@@ -10,6 +10,7 @@
  */
 import { createHubDirectory, type HubDirectory, type HubDirectoryConfig } from "./directory/index.js";
 import { hubPlanDigest } from "./init/plan-digest.js";
+import { hubPreviewReloadKey } from "./preview.js";
 import { HubMount, type HubMountedService } from "./mount.js";
 import { createHubServerFactory, type HubHttpEntry, type HubServerComponents } from "./compose/server.js";
 import { createHubMemberFactory, type HubMemberComponents, type HubMemberFactoryOptions } from "./compose/member.js";
@@ -79,12 +80,13 @@ export function hubSwitchesOn(raw: HubConfigView | null | undefined): boolean {
   return obj(raw?.hub)?.enabled === true || obj(raw?.hub_member)?.enabled === true;
 }
 
-/** What a reload compares: switches, the sealed settings' digest, and the member section as written. */
+/** What a reload compares: switches, sealed settings, local preview opt-in, and the member section as written. */
 export function effectiveHubView(raw: HubConfigView | null | undefined): string {
   const hub = obj(raw?.hub);
   const member = obj(raw?.hub_member);
   return JSON.stringify({
     server: hub?.enabled === true ? hubPlanDigest(hub) : null,
+    preview: hub?.enabled === true ? hubPreviewReloadKey(hub.web) : null,
     member: member?.enabled === true ? JSON.stringify(member) : null,
   });
 }
@@ -200,7 +202,8 @@ export class HubRuntime {
     if (this.view === null) return "unavailable";
     try {
       // Compare the captured immutable view, not lastConfig's caller-owned object, which can change in place.
-      if (hubPlanDigest(server) !== JSON.parse(this.view).server) return "starting";
+      const view = JSON.parse(this.view);
+      if (hubPlanDigest(server) !== view.server || hubPreviewReloadKey(server.web) !== view.preview) return "starting";
     } catch { return "unavailable"; }
     return this.mount.serverEnabled() ? "ready" : "unavailable";
   }

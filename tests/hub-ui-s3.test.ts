@@ -332,30 +332,87 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     expect(hubPanel.POLL_MS).toBe(10_000);
   });
 
-  it("My exposures: grants against the revision shown, a pending pairing to confirm; Administration only for the administrator", async () => {
+  it("My shared agents (#3226 C): the agents and a pairing to confirm; Administration only for the administrator", async () => {
     const mine = [{ id: "e1", displayName: "Sales numbers", revision: 3, state: "published", dataViewId: "agent", allowedTools: [],
       grants: [{ id: "g1", revision: 1, subjectName: "Alex", subjectLogin: "alex", expiresAt: 2_000_000_000_000 }] }];
     const { calls } = hubApi({
       "GET /hub/v1/session": () => [200, SIGNED],
       "GET /hub/v1/exposures": () => [200, { mine, askable: [] }],
       "GET /hub/v1/pairings": () => [200, { pairings: [{ id: "p1", fingerprint: "a".repeat(64), expiresAt: 2_000_000_000_000, ownerConfirmed: false, adminApproved: false }] }],
-      "POST /hub/v1/grants": () => [409, { code: "conflict" }],
     });
     const pg = await mountTab("exposures");
-    await until(() => pg.root.querySelector(".hub-exposure-card"));
-    expect(pg.root.querySelector(".hub-exposure-card h3")!.textContent).toContain("Shared");
-    expect(pg.root.querySelector(".hub-exposure-card .note")!.textContent).toContain("Shared as a representative agent");
+    await until(() => pg.root.querySelector(".hub-shared .hub-row-link"));
+    const row = pg.root.querySelector(".hub-shared .hub-row-link")!;
+    expect([row.getAttribute("href"), row.querySelector("strong")!.textContent, row.querySelector(".note")!.textContent, row.querySelector(".tag")!.textContent])
+      .toEqual(["/ui/hub/exposures?agent=e1", "Sales numbers", "1 may ask", "Shared"]);
     expect(pg.root.querySelector(".hub-pairings .hub-fp-groups")!.textContent!.split(" ")).toHaveLength(8);
-    input(pg, ".hub-grant input", "bea"); await settle(5);
-    fire(pg.root.querySelector(".hub-grant")!, "submit");
-    await until(() => pg.root.querySelector(".hub-mine > .err"));
-    expect(calls.find((x) => x.method === "POST")!.body).toEqual({ exposureId: "e1", exposureRevision: 3, login: "bea", days: 7 });
-    expect(pg.root.querySelector(".hub-mine > .err")!.textContent).toContain("reloaded");
-    expect(calls.filter((x) => x.path === "/hub/v1/exposures").length).toBe(2);      // the conflict reloaded the list
     await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "admin" }, navKey: "hub:admin|1|en" }));
     await until(() => pg.root.querySelector(".hub-empty"));
     expect(pg.root.querySelector(".hub-empty")!.textContent).toContain("Only the Hub administrator");
     expect(calls.some((x) => x.path.startsWith("/hub/v1/admin/"))).toBe(false);
+  });
+
+  it("switching ?agent= is another page: B's activity is read, A's rows go, a late answer for A lands nowhere; a client from before C reads activity itself (#3261 review)", async () => {
+    const A = "aaaaaaaa-1111-4222-8333-444444444444", B = "bbbbbbbb-1111-4222-8333-444444444444";
+    const ex = (id: string, name: string) => ({ id, displayName: name, revision: 1, state: "published", dataViewId: "agent", allowedTools: [], grants: [] });
+    let releaseA!: () => void;
+    const heldA = new Promise<void>((r) => { releaseA = r; });
+    const { calls } = hubApi({
+      "GET /hub/v1/session": () => [200, SIGNED],
+      "GET /hub/v1/exposures": () => [200, { mine: [ex(A, "Agent A"), ex(B, "Agent B")], askable: [] }],
+      "GET /hub/v1/pairings": () => [200, { pairings: [] }],
+      [`GET /hub/v1/exposures/${B}/activity`]: () => [200, { activity: [{ askerName: "Bea", askedAt: 1_700_000_000_000, stage: "answered" }] }],
+    });
+    // A's read is held: answered only after the page has moved to B.
+    const c = client.hubClient(), realActivity = c.activity.bind(c);
+    c.activity = async (id: string) => { if (id === A) { await heldA; return { ok: true, activity: [{ askerName: "Alex", askedAt: 1, stage: "answered" }] }; } return realActivity(id); };
+    const pg = await pageWith("hub", `/ui/hub/exposures?agent=${A}`, "Team Hub");
+    router.startRouter(pg.window);
+    await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "exposures" }, navKey: "hub:exposures|1|en" }));
+    await until(() => pg.root.querySelector(".s-page-head h2")?.textContent === "Agent A");
+    router.navigate(`/ui/hub/exposures?agent=${B}`); await settle(10);
+    await until(() => pg.root.querySelector(".s-page-head h2")?.textContent === "Agent B");
+    await until(() => [...pg.root.querySelectorAll(".card .hub-row strong")].some((x: any) => x.textContent === "Bea"));
+    releaseA(); await settle(10);
+    const names = [...pg.root.querySelectorAll(".card .hub-row strong")].map((x: any) => x.textContent);
+    expect([names.includes("Bea"), names.includes("Alex")]).toEqual([true, false]);
+    expect(calls.some((x) => x.path === `/hub/v1/exposures/${B}/activity`)).toBe(true);
+    // A client from before C (no activity method): the page makes the same GET itself.
+    delete (c as any).activity;
+    const g = globalThis as any, realFetch = g.fetch, fetched: string[] = [];
+    g.fetch = async (url: string) => { fetched.push(String(url)); return { ok: true, status: 200, json: async () => ({ activity: [{ askerName: "Cy", askedAt: 1, stage: "queued" }] }) }; };
+    try {
+      router.navigate(`/ui/hub/exposures?agent=${A}`); await settle(10);
+      await until(() => [...pg.root.querySelectorAll(".card .hub-row strong")].some((x: any) => x.textContent === "Cy"));
+      expect(fetched).toContain(`/hub/v1/exposures/${A}/activity`);
+    } finally { g.fetch = realFetch; }
+  });
+
+  it("an agent's page (#3226 C): who may ask, Allow against the revision shown (a conflict reloads), who asked lately", async () => {
+    const mine = [{ id: "aaaaaaaa-1111-4222-8333-444444444444", displayName: "Sales numbers", revision: 3, state: "published", dataViewId: "agent", allowedTools: [],
+      grants: [{ id: "g1", revision: 1, subjectName: "Alex", subjectLogin: "alex", expiresAt: 2_000_000_000_000 }] }];
+    const { calls } = hubApi({
+      "GET /hub/v1/session": () => [200, SIGNED],
+      "GET /hub/v1/exposures": () => [200, { mine, askable: [] }],
+      "GET /hub/v1/pairings": () => [200, { pairings: [] }],
+      "GET /hub/v1/exposures/aaaaaaaa-1111-4222-8333-444444444444/activity": () => [200, { activity: [{ askerName: "Alex", askedAt: 1_700_000_000_000, stage: "answered" }] }],
+      "POST /hub/v1/grants": () => [409, { code: "conflict" }],
+    });
+    const ag = await pageWith("hub", "/ui/hub/exposures?agent=aaaaaaaa-1111-4222-8333-444444444444", "Team Hub");
+    await ag.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "exposures" }, navKey: "hub:exposures|2|en" }));
+    await until(() => ag.root.querySelector(".hub-owner .hub-card-head button"));
+    expect(ag.root.querySelector(".s-page-head h2")!.textContent).toBe("Sales numbers");
+    expect(ag.root.querySelector(".hub-row strong")!.textContent).toBe("Alex");
+    await until(() => [...ag.root.querySelectorAll(".hub-row strong")].length >= 2);
+    const recent = [...ag.root.querySelectorAll(".card")].find((c: any) => c.querySelector("h3")?.textContent === "Recent questions")!;
+    expect([recent.querySelector(".hub-row strong")!.textContent, recent.querySelector(".tag")!.textContent]).toEqual(["Alex", "Answered"]);
+    (ag.root.querySelector(".hub-owner .hub-card-head button") as any).click(); await settle(5);
+    input(ag, ".hub-grant input", "bea"); await settle(5);
+    fire(ag.root.querySelector(".hub-grant")!, "submit");
+    await until(() => ag.root.querySelector(".hub-owner .err"));
+    expect(calls.find((x) => x.method === "POST")!.body).toEqual({ exposureId: "aaaaaaaa-1111-4222-8333-444444444444", exposureRevision: 3, login: "bea", days: 7 });
+    expect(ag.root.querySelector(".hub-owner .err")!.textContent).toContain("reloaded");
+    expect(calls.filter((x) => x.path === "/hub/v1/exposures").length).toBe(2);      // the conflict reloaded the list
   });
 
   it("the sidebar's session row is the Hub's (never /auth/session), and a 401 anywhere signs the page out", async () => {

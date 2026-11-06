@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import { tmuxBinary, tmuxConfArgs, tmuxEnvOption } from "./tmux-binary.js";
 import { execFile } from "./child-process.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 
@@ -194,9 +195,9 @@ export class TmuxReadLane {
     let spawnReturned = false;
     let callbackError: unknown;
     try {
-      const args = this.socket ? ["-L", this.socket, ...job.args] : job.args;
-      const child = measureSyncWork("tmux.spawn", () => execFile("tmux", args, {
-        timeout: Math.max(1, Math.floor(job.deadline - performance.now())), maxBuffer: TMUX_READ_MAX_BYTES,
+      const args = [...(this.socket ? ["-L", this.socket] : []), ...tmuxConfArgs(), ...job.args];
+      const child = measureSyncWork("tmux.spawn", () => execFile(tmuxBinary(), args, {
+        timeout: Math.max(1, Math.floor(job.deadline - performance.now())), maxBuffer: TMUX_READ_MAX_BYTES, ...tmuxEnvOption(),
       }, (error, stdout) => {
         // Node can invoke this callback on error before a live child exits
         // (e.g. kill EPERM). It settles the read, not physical ownership.

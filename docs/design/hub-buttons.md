@@ -22,7 +22,7 @@ Migration `s8-buttons/1` stores source identities, revisions, state and operatio
 
 Messages retain string `question` and `answer` fields. A sibling `buttons` uses the fleet's `ReplyButtonsView`, so the shared `createThread` draws unchanged markup. B's `hubEntryToMessages` passes it through. `createHubButtonActions(room, {client, entries, refresh, changed})` supplies B's `clickButton`, `vote`, `busy` and `mine` bodies; `stop()` fences late replies. `client.chooseButtons` uses the existing CSRF-aware Hub client. Unknown network outcomes retain the same operation key and exact payload in memory and room-scoped session storage; a different intent is refused until that outcome is resolved. The browser never supplies the asker or grant.
 
-B's existing store delegates its four control methods and stop to this helper. Its cursor keeps answered rows with open controls in the paced read set, and removes controls omitted by a later complete projection. The panel uses one refresh path; this adds no second store, panel or renderer. The integration builds on B (#3246) and D (#3247).
+B's existing store delegates its four control methods and stop to this helper. Its cursor keeps answered rows with open controls in the paced read set, and removes controls omitted by a later complete projection. Tail refreshes leave one response slot for a new message. Older open controls are refreshed in rotation every sixth read, and a full page advances only when it extends known history. This keeps new questions moving while old poll tallies still refresh. The panel uses one refresh path; this adds no second store, panel or renderer. The integration builds on B (#3246) and D (#3247).
 
 ## Authority and proof boundaries
 

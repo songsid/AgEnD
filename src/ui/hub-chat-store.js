@@ -12,6 +12,8 @@ import { createHubButtonActions } from "./hub-button-actions.js";
 export const POLL_MS = 10_000;
 /** The server's page: at most this many entries per read, the oldest first (rooms.read LIMIT 100). */
 export const PAGE = 100;
+/** How often (every n-th read) an open entry older than the tail page is read from its own place (each in turn). */
+export const FAR_EVERY = 6;
 /** Settled for paging: nothing about them changes on a later read ("uncertain" stays so: it is held, never resolved here). */
 const SETTLED = new Set(["answered", "rejected", "cancelled", "failed", "uncertain"]);
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
@@ -48,11 +50,11 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
 /**
  * The store of one room: `subscribe(fn)` (fn() on any change) → unsubscribe; `messages()`, `room()`, `working()` (the
  * question being worked on, if any: { since }), `closed()`; `refresh()` (a read now); `send(text, extras)`;
- * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)` ; `stop()`.
+ * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)`; `stop()`.
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   const subs = new Set();
-  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, error: null, pending: [], full: false };
+  const st = { live: true, timer: 0, inflight: false, entries: [], room: { ...room }, closed: false, error: null, pending: [], full: false, reads: 0, farTurn: 0 };
   const emit = () => { for (const fn of subs) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const merge = (got) => {
     const byId = new Map(st.entries.map((e) => [e.messageId, e]));
@@ -72,15 +74,26 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     // Unsettled entries are read again (from just before the oldest one) — but a full page means there is more after
     // it: read on from the last one first, so an old open entry can never pin the read to the same page (#3246 review).
     const last = st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
+    // Keep one response slot for an unseen entry: PAGE known rows would hide every newer row behind LIMIT PAGE.
+    const tail = Math.max(0, last - PAGE + 1);
     const open = st.full ? null : st.entries.find((e) => !SETTLED.has(e.receipt && e.receipt.stage) || e.buttons?.state === "open");
-    const after = open ? open.sequence - 1 : last;
+    // The tail page is always read again (the newest entries' stages move); an open entry older than that is read from
+    // its own place only every FAR_EVERY-th read, so it never holds back the newer ones (#3246 review, residual).
+    // Every FAR_EVERY-th read goes back to one of them, in turn (#3261 review: each old unsettled entry, not only the oldest).
+    st.reads += 1;
+    const old = st.full ? [] : st.entries.filter((e) => e.sequence - 1 < tail && (!SETTLED.has(e.receipt && e.receipt.stage) || e.buttons?.state === "open"));
+    const far = old.length > 0 && st.reads % FAR_EVERY === 0 ? old[(st.farTurn++) % old.length] : null;
+    const after = far ? far.sequence - 1 : open ? Math.max(open.sequence - 1, tail) : last;
     let r;
     try { r = await client.read(st.room.id, after); } catch { r = { ok: false, code: "unreachable" }; }
     st.inflight = false;
     if (!st.live) return;
     if (r.ok) {
-      merge(r.entries || []);
-      st.full = (r.entries || []).length >= PAGE;
+      const got = r.entries || [], known = st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
+      merge(got);
+      // More may follow only when a page came back full AND reached past what was known (a re-read tail page of exactly
+      // PAGE rows is not "more").
+      st.full = got.length >= PAGE && got[got.length - 1].sequence > known;
       // The room as the server says it now. Its quota is the server's to give: absent means withdrawn (the owner hid it,
       // the grant is gone), never "unchanged" — a band once shown must not outlive that. An answer with no room at all
       // (an older Hub) keeps what is known.

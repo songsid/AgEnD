@@ -20,7 +20,8 @@ import { discordGeneralChannelId } from "./discord-general.js";
 import { formatCents } from "./cost-guard.js";
 import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
-import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
+import { getTmuxSessionName } from "./paths.js";
+import { tmuxArgs as tmuxArgsFor, tmuxBinary, tmuxEnvOption } from "./tmux-binary.js";
 import { t, getLocale } from "./locale.js";
 import { commandSpec, decideCommand, telegramMenu, type TelegramMenu } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
@@ -294,7 +295,7 @@ let cachedTmuxVersion: string | null = null;
 function tmuxVersion(): string {
   if (cachedTmuxVersion === null) {
     try {
-      cachedTmuxVersion = measureSyncWork("topic.tmuxVersion", () => execFileSync("tmux", ["-V"], { encoding: "utf-8", timeout: 3000 }).trim());
+      cachedTmuxVersion = measureSyncWork("topic.tmuxVersion", () => execFileSync(tmuxBinary(), ["-V"], { encoding: "utf-8", timeout: 3000, ...tmuxEnvOption() }).trim());
     } catch {
       cachedTmuxVersion = "not found";
     }
@@ -476,11 +477,11 @@ export function scrapePaneContext(
   backend: string,
 ): { context: number | null; tokenRatio: TokenContextRatio | null } {
   try {
-    const socketName = getTmuxSocketName();
     // Scrollback (-S -60) so a recent footer/statusline is kept even mid-output.
     const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
-    const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
-    const pane = measureSyncWork("topic.scrapePaneContext", () => execFileSync("tmux", tmuxArgs, {
+    const tmuxArgs = tmuxArgsFor(baseArgs);
+    const pane = measureSyncWork("topic.scrapePaneContext", () => execFileSync(tmuxBinary(), tmuxArgs, {
+      ...tmuxEnvOption(),
       encoding: "utf-8",
       timeout: 2000,
       stdio: ["pipe", "pipe", "pipe"],
