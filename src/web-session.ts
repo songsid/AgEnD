@@ -145,6 +145,13 @@ export interface SessionRecord {
    * admin too (authority/web-authority.ts). Always an admin session over the link, with no owner.
    */
   readonly remote?: "totp";
+  /**
+   * Refs #3061 (P2a): how the session was approved, for display only — never an input to a decision. "device": signed
+   * in by a code a signed-in, owner-verified device approved (web-device-login.ts). Such a session is an ordinary admin
+   * session on the local surface: no `host`, no `remote`, no owner — so it carries no owner authority until that is
+   * separately verified (authority/web-authority.ts reads none of this field).
+   */
+  readonly via?: "device";
 }
 
 export interface SessionSummary {
@@ -157,6 +164,36 @@ export interface SessionSummary {
   readonly surface: SessionSurface;
   readonly label: string;
   readonly current: boolean;
+  /** Refs #3061 (P2b): how it was approved — display only, never an input to a decision (sessionVia). */
+  readonly via: SessionVia;
+}
+
+/**
+ * Refs #3061 (P2b): how a session came to be, for the device list. "host": the code this computer's shell asked for
+ * (`agend web --code`). "device": a code a signed-in owner approved on another device (web-device-login.ts). "totp": the
+ * authenticator app's code, from outside. "code": any other one-time code (a chat's `/web`, for a fleet that has one).
+ * Derived from what the record already carries, so a session from before this field is described too. Display only:
+ * authority/web-authority.ts never reads it.
+ */
+export type SessionVia = "code" | "host" | "device" | "totp";
+/** Refs #3061 (P2b): one row of Settings → Devices & sign-in (fleet-manager webDeviceRows). Nothing here signs anyone in. */
+export interface WebDeviceRow {
+  /** Opaque, what a sign-out names; not the session id and not its hash. */
+  readonly handle: string;
+  readonly label: string;
+  readonly via: SessionVia;
+  /** The §3 verdict for it as it would be used from where it signs in. Display only. */
+  readonly ownerVerified: boolean;
+  /** The reader's own session. */
+  readonly current: boolean;
+  readonly surface: SessionSurface;
+  readonly created: number;
+  readonly lastSeen: number;
+  /** The sooner of its two ends (the cap from creation, the idle window). */
+  readonly expiresAt: number;
+}
+export function sessionVia(record: Pick<SessionRecord, "host" | "remote" | "via">): SessionVia {
+  return record.via === "device" ? "device" : record.host === true ? "host" : record.remote === "totp" ? "totp" : "code";
 }
 
 export function sessionIdHash(sessionId: string): string {
@@ -264,6 +301,7 @@ function isRecord(value: unknown): value is SessionRecord {
     && (v.owner === undefined || isOwner(v.owner))
     && (v.host === undefined || (v.host === true && v.tier === "admin" && v.owner === undefined && v.surface === "local"))
     && (v.remote === undefined || (v.remote === "totp" && v.tier === "admin" && v.owner === undefined && v.host === undefined && v.surface === "gateway" && typeof v.exposureId === "string"))
+    && (v.via === undefined || (v.via === "device" && v.tier === "admin" && v.owner === undefined && v.host === undefined && v.remote === undefined && v.surface === "local"))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
     && typeof v.tokenEpoch === "string" && HASH_PATTERN.test(v.tokenEpoch);
 }
@@ -342,7 +380,7 @@ export class WebSessionStore {
    * Make a session. The id is returned once and never stored; the caller puts it
    * in a cookie and forgets it.
    */
-  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true; remote?: "totp" }): { sessionId: string; record: SessionRecord } {
+  create(input: { tier: SessionTier; surface: SessionSurface; label: string; tokenEpoch: string; exposureId?: string; pending?: boolean; owner?: { adapterId: string; userId: string }; host?: true; remote?: "totp"; via?: "device" }): { sessionId: string; record: SessionRecord } {
     // #1920: a guest is always someone's own account; never a guest of nobody.
     if (input.tier === "guest" && !input.owner) throw new Error("a guest session needs its owner");
     const now = this.now();
@@ -366,6 +404,8 @@ export class WebSessionStore {
       ...(input.owner ? { owner: { adapterId: input.owner.adapterId, userId: input.owner.userId } } : {}),
       ...(input.host === true && input.tier === "admin" && !input.owner && input.surface === "local" ? { host: true as const } : {}),
       ...(input.remote === "totp" && input.tier === "admin" && !input.owner && input.host !== true && input.surface === "gateway" && input.exposureId ? { remote: "totp" as const } : {}),
+      // Refs #3061: only ever on a local admin session with nothing else that carries authority (see SessionRecord.via).
+      ...(input.via === "device" && input.tier === "admin" && !input.owner && input.host !== true && !input.remote && input.surface === "local" ? { via: "device" as const } : {}),
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);
@@ -453,6 +493,7 @@ export class WebSessionStore {
         surface: r.surface,
         label: r.label,
         current: r.idHash === currentIdHash,
+        via: sessionVia(r),
       }));
   }
 
