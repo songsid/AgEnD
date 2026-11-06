@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
+import { extractPsFunction } from "./support/installer-ps-extract.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeBundle } from "../src/runtime-bundle.js";
 import { RUNTIME_INSTALL_MAX_SCRIPT_BYTES, RUNTIME_INSTALL_SHA256_TOKEN, RUNTIME_INSTALL_VERSION_TOKEN, RuntimeInstallService, renderRuntimeInstallScript } from "../src/runtime-install.js";
@@ -141,7 +142,9 @@ describe("install.ps1 template", () => {
     const removals = [...code.matchAll(/Remove-Item -LiteralPath (\$\w+)/g)].map(match => match[1]);
     expect(new Set(removals)).toEqual(new Set(["$OutFile", "$new", "$tmp", "$root"]));
     // an existing version folder is NEVER deleted or replaced, whoever might be running it
-    expect(code).not.toMatch(/Remove-Item[^\n]*\$target|Remove-Item[^\n]*\$existing|Remove-Item[^\n]*\$others|Rename-Item|\[IO\.Directory\]::(Delete|Move)/);
+    // Only the exact lock helpers use .NET directory move/delete; their process/nonce/unknown-state proofs run in the pwsh fixture.
+    const installOnly = ["Remove-AgendLock", "Enter-AgendInstallLock"].reduce((source, name) => source.replace(extractPsFunction(template, name), ""), template);
+    expect(installOnly.split("\n").filter(line => !/^\s*#/.test(line)).join("\n")).not.toMatch(/Remove-Item[^\n]*\$target|Remove-Item[^\n]*\$existing|Remove-Item[^\n]*\$others|Rename-Item|\[IO\.Directory\]::(Delete|Move)/);
     expect(code).toContain("It was left untouched because it may be running");
     // $root only when this run created it and it is still empty; never recursive.
     expect(code).toMatch(/\$createdRoot -and \$root -and \(Test-Path -LiteralPath \$root\) -and -not \(Get-ChildItem -LiteralPath \$root -Force \| Select-Object -First 1\)\) \{ Remove-Item -LiteralPath \$root -Force -ErrorAction/);
