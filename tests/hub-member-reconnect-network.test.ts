@@ -57,7 +57,7 @@ it("reconnects nonempty history after a committed receipt loses its ACK, converg
     const a = queued(), begin = { messageId: a.q.identity.messageId, operationId: randomUUID(), exposureRevision: 1, phase: "begin" as const };
     journal.markInputIntent(a.q.identity.messageId, begin, lease(begin), fence); journal.recordEvidence(a.q.identity.messageId, "delivered");
     const consumed = journal.recordEvidence(a.q.identity.messageId, "consumed"), b = queued();
-    const initial = { fleetId: profile.fleetId, owner: r.owner, linkEpoch: 1, current: () => true };
+    const initial = { fleetId: profile.fleetId, owner: r.owner, linkEpoch: 1, current: () => true, features: new Set<string>() };
     rooms.receipt(a.receipt, initial); rooms.receipt(b.receipt, initial);
     let lost = false, syncs = 0, ready = 0, duplicate = 0, currentLink!: HubMemberLink;
     const receiptAttempts: HubReceipt[] = [];

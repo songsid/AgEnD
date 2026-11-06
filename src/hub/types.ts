@@ -22,6 +22,7 @@ export interface HubHello {
 export interface HubWelcome {
   selectedVersion: 1; hubId: HubId; fleetId: FleetId;
   linkEpoch: Epoch; revocationVersion: Epoch;
+  capabilities?: readonly string[]; // only when the hello offered welcome-caps-v1
 }
 export interface HubExposureSnapshot {
   revision: Epoch; exposures: readonly HubExposure[];
