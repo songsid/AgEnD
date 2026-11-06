@@ -12,18 +12,28 @@ register("hubfiles", {
     failed: "{0} wasn't attached: {1}", tooMany: "At most {0} files per question.", tooLarge: "it is over 20 MB",
     typeNotAllowed: "this type isn't allowed (PNG, JPEG, GIF, WebP, PDF, text, Markdown, CSV, JSON, Word, Excel, PowerPoint, HTML)",
     imageMismatch: "it isn't the image its name says", empty: "it is empty", busy: "too many files are waiting; send or remove some first",
-    unavailable: "the agent can't receive files right now", other: "the Hub refused it ({0})", waitUpload: "Wait until the files are uploaded." },
+    unavailable: "the agent can't receive files right now", other: "the Hub refused it ({0})", waitUpload: "Wait until the files are uploaded.",
+    held: "This agent can't receive files right now. Send again when it can, or remove the files to send only the text.",
+    reload: "Reload the page to attach files." },
   "zh-TW": { attach: "附加檔案", off: "這個代理目前還不能接收檔案。", uploading: "上傳中…", remove: "移除 {0}",
     failed: "{0} 沒有附加：{1}", tooMany: "每個問題最多 {0} 個檔案。", tooLarge: "超過 20 MB",
     typeNotAllowed: "不支援這種類型（PNG、JPEG、GIF、WebP、PDF、純文字、Markdown、CSV、JSON、Word、Excel、PowerPoint、HTML）",
     imageMismatch: "內容不是檔名所說的圖片", empty: "檔案是空的", busy: "等待中的檔案太多，請先送出或移除一些",
-    unavailable: "代理目前無法接收檔案", other: "Hub 拒絕了這個檔案（{0}）", waitUpload: "請等檔案上傳完成。" },
+    unavailable: "代理目前無法接收檔案", other: "Hub 拒絕了這個檔案（{0}）", waitUpload: "請等檔案上傳完成。",
+    held: "這個代理目前無法接收檔案。等它可以接收時再送出，或移除檔案只送出文字。",
+    reload: "重新載入頁面後才能附加檔案。" },
 });
 export const hf = (key, ...a) => t(`hubfiles.${key}`, ...a);
 export const FILES_FEATURE = "attachments-v1";
 export const MAX_FILES = 10;
 /** Whether this room's fleet link takes files now. */
 export const roomTakesFiles = (room) => Array.isArray(room && room.features) && room.features.includes(FILES_FEATURE);
+/**
+ * Whether this page's Hub client and room store carry files (D2 marks both). A tab that loaded an older hub-client.js or
+ * hub-chat-store.js before this module keeps those: its client has no upload and its ask drops the ids, so a question
+ * with files would go as text. Without both marks the page offers no Attach and asks for a reload instead.
+ */
+export const pageCarriesFiles = (client, store) => !!(client && client.filesV1 === true && typeof client.upload === "function" && store && store.filesV1 === true);
 
 /**
  * A Hub file ({ id: uuid, name, size, mime, url }) as the shared thread draws an attachment: its id as the 32 hex digits
@@ -47,16 +57,23 @@ export function uploadRefusal(r) {
 
 /**
  * Upload chosen files one at a time; `files` is the composer's list of { key, name, size, state: "uploading" | "ready",
- * id? }. Returns the refusals as one line each (the chips of refused files are removed).
+ * id? }. Every admitted file takes its place in the list at once, before the first upload, so choices that overlap
+ * never hold more than MAX_FILES between them (queued ones count). A file whose chip was removed before its turn is not
+ * sent, and nothing more starts once `alive()` is false (the room was left). Returns the refusals, one line each (the
+ * chips of refused files are removed).
  */
-export async function uploadChosen(client, roomId, fileList, { current, set }) {
+export async function uploadChosen(client, roomId, fileList, { current, set, alive = () => true }) {
   const chosen = [...(fileList || [])], refusals = [];
   const room = Math.max(0, MAX_FILES - current().length);
   if (chosen.length > room) refusals.push(hf("tooMany", MAX_FILES));
-  for (const file of chosen.slice(0, room)) {
-    const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    set([...current(), { key, name: file.name, size: file.size, state: "uploading" }]);
-    const r = await client.upload(roomId, file);
+  const admitted = chosen.slice(0, room).map((file) => ({ file, key: `${Date.now()}-${Math.random().toString(36).slice(2)}` }));
+  if (admitted.length) set([...current(), ...admitted.map(({ file, key }) => ({ key, name: file.name, size: file.size, state: "uploading" }))]);
+  for (const { file, key } of admitted) {
+    if (!alive()) break;
+    if (!current().some((f) => f.key === key)) continue;
+    let r;
+    try { r = await client.upload(roomId, file); } catch { r = { ok: false, status: 0, code: "unreachable" }; }
+    if (!alive()) break;
     if (r && r.ok && r.file) set(current().map((f) => (f.key === key ? { ...f, state: "ready", id: r.file.id, name: r.file.name, size: r.file.size } : f)));
     else { set(current().filter((f) => f.key !== key)); refusals.push(hf("failed", file.name, uploadRefusal(r))); }
   }

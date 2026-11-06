@@ -235,6 +235,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     quotaVisibility(exposureId, revision, visible) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/quota`, { revision, visible }); },
     rooms() { return call("GET", "/hub/v1/rooms"); },
     openRoom(exposureId, grantId) { return call("POST", "/hub/v1/rooms", { exposureId, grantId }); },
+    /** #3226 D2: this client carries files (ask sends `extras.files`; upload exists); hub-attachments checks the mark. */
+    filesV1: true,
     /** #3226 D: `extras.files` names the asker's own uploads in this room (only on a room whose features take files). */
     ask(roomId, idempotencyKey, text, extras = {}) {
       return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { idempotencyKey, text, ...(Array.isArray(extras.files) && extras.files.length ? { files: extras.files } : {}) });

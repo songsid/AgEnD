@@ -116,6 +116,8 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       return w ? { since: w.receipt.at } : null;
     },
     refresh() { schedule(0); },
+    /** #3226 D2: send passes `extras.files` to the client as given (hub-attachments checks the mark). */
+    filesV1: true,
     async send(text, extras = {}) {
       const q = String(text || "").trim();
       if (!q || st.closed) return { ok: false, code: "invalid" };
