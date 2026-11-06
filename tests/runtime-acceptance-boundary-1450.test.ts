@@ -349,7 +349,7 @@ describe('previous-release system-Node preflight', () => {
     expect(w.logged()).toBe('');
     expect(existsSync(w.mark)).toBe(false);
   });
-  it.each(['BASH_FUNC_exec%%', 'BASH_FUNC_node%%', 'BASH_FUNC_fixture%%'])('refuses imported Bash functions before the unchanged probe: %s', key => {
+  it.each(['BASH_FUNC_exec%%', 'BASH_FUNC_node%%', 'BASH_FUNC_fixture%%'].flatMap(key => ['child-env', 'env-wrapper'].map(route => [key, route])))('refuses imported Bash functions before the unchanged probe: %s via %s', (key, route) => {
     const w = world();
     const manager = join(w.root, 'systemctl');
     // Inert private manager: a marker is the entire effect, never a real service call.
@@ -357,7 +357,11 @@ describe('previous-release system-Node preflight', () => {
     chmodSync(manager, 0o755);
     registerExecutableFixture(manager);
     const imported = `() { '${manager}'; }`;
-    const r = w.run(`require('child_process').execFileSync('/bin/bash',['--noprofile','--norc','-c',${JSON.stringify(probe)}],{env:{...process.env,[${JSON.stringify(key)}]:${JSON.stringify(imported)}}});`);
+    const args = ['--noprofile', '--norc', '-c', probe];
+    const script = route === 'child-env'
+      ? `require('child_process').execFileSync('/bin/bash',${JSON.stringify(args)},{env:{...process.env,[${JSON.stringify(key)}]:${JSON.stringify(imported)}}});`
+      : `require('child_process').execFileSync('/usr/bin/env',${JSON.stringify([key+'='+imported, '/bin/bash', ...args])});`;
+    const r = w.run(script);
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain('[runtime-acceptance boundary]');
     expect(w.logged()).toContain('BASH_FUNC_');
