@@ -28,7 +28,7 @@ async function fixture() {
   const baseline = vi.fn(async (cursor: any) => ({ state: "pending" as const, cursor, complete: false, turnKnown: false, openTurn: null }));
   const spawn = vi.fn(async (_launch: unknown, _owner: unknown) => {
     let onExit = (_event: { exitCode: number }) => {};
-    return { pid: 10101, write: vi.fn(), resize() {}, pause() {}, resume() {},
+    return { pid: 10101, version: "2.1.316", write: vi.fn(), resize() {}, pause() {}, resume() {},
       kill: () => onExit({ exitCode: 1 }), onData: () => ({ dispose() {} }),
       onExit: (callback: typeof onExit) => { onExit = callback; return { dispose() {} }; } };
   });

@@ -1484,11 +1484,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** The local machine's inventory as last used to open its pane relay (status only; never a launch decision). */
   private localPaneInventory: import("./windows-cli.js").WindowsCliProbe | null = null;
-  private nativeCliStatus(cli: string | undefined, machineId: string | undefined): { native_cli_version?: string; native_cli_verification?: string } {
+  private nativeCliStatus(cli: string | undefined, machineId: string | undefined, daemon?: Daemon): { native_cli_version?: string; native_cli_verification?: string } {
+    if (cli !== "codex" && cli !== "claude-code") return {};
+    // The version the running pane actually launched; only without one, the machine's last inventory.
+    let running: string | undefined;
+    try { running = daemon?.usesNativePane?.() ? daemon.nativePaneCliVersion() : undefined; } catch { running = undefined; }
     const inventory = machineId ? this.runtimeHub?.machine(machineId)?.inventory : this.localPaneInventory;
-    const row = inventory?.clis?.find(item => item.id === cli && item.runnable);
-    if (!row || (cli !== "codex" && cli !== "claude-code")) return {};
-    const result = nativeCliVersionState(cli, row.version);
+    const version = running ?? inventory?.clis?.find(item => item.id === cli && item.runnable)?.version;
+    if (version === undefined || version === null) return {};
+    const result = nativeCliVersionState(cli, version);
     return { ...(result.version ? { native_cli_version: result.version } : {}), native_cli_verification: result.state };
   }
   private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
@@ -26858,7 +26862,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:true,
             commands:true,effort:false,log:true,details:true,channels:false,terminal:false,attachments:false,usage:false,send_while_busy:true},
           // cc3ce4fe: the version this machine's inventory reports for the agent's CLI, and whether AgEnD has audited it.
-          ...this.nativeCliStatus(nativeConfig.backend, nativeConfig.machine_id),
+          ...this.nativeCliStatus(nativeConfig.backend, nativeConfig.machine_id, this.daemons.get(name)),
           ...(nativeConfig.machine_id ? { machine_id: nativeConfig.machine_id, machine_name: this.runtimeHub?.machine(nativeConfig.machine_id)?.name,
             machine_status: this.runtimeHub?.machine(nativeConfig.machine_id)?.status ?? "offline" } : {}) } : {}),
         display_name: identity.display_name || undefined,

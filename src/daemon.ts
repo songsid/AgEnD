@@ -2351,6 +2351,8 @@ export class Daemon extends EventEmitter {
   private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+  /** cc3ce4fe: the CLI version this pane's launch actually ran, as its helper recorded it (undefined: not known). */
+  nativePaneCliVersion(): string | undefined { try { return this.nativePaneLifecycle?.snapshot?.()?.cliVersion; } catch { return undefined; } }
   logNativeInputRefusal(details: import("./pane-port.js").PaneInputDiagnostic): void {
     this.logger.warn({ component: "runtime-pane-host", reason: "expected_seq_changed", ...details }, "Native pane input refused before write");
   }

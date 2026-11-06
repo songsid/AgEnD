@@ -22,10 +22,12 @@ describe("the version rule", () => {
   it("audited → verified; any other readable version → unverified; a denylisted one → denied with its reason; anything unreadable → invalid", () => {
     expect(nativeCliVersionState("codex", "codex-cli 0.165.0")).toEqual({ state: "verified", version: "0.165.0" });
     expect(nativeCliVersionState("claude-code", "2.1.316 (Claude Code)")).toEqual({ state: "verified", version: "2.1.316" });
-    for (const line of ["codex-cli 0.167.0", "codex-cli 1.0.0", "codex-cli 0.165.1-beta.2", "codex-cli 0.165.0+build"]) expect(nativeCliVersionState("codex", line).state).toBe("unverified");
+    for (const line of ["codex-cli 0.167.0", "codex-cli 1.0.0", "codex-cli 0.165.1-beta.2", "codex-cli 0.165.0+build", "codex-cli 0.165.0+build.5", "codex-cli 1.0.0-rc.1+sha.abc", "(0.166.1)"]) expect(nativeCliVersionState("codex", line).state, line).toBe("unverified");
     const denied = { codex: { "0.170.0": "its composer never paints" }, "claude-code": {} };
     expect(nativeCliVersionState("codex", "codex-cli 0.170.0", denied)).toEqual({ state: "denied", version: "0.170.0", reason: "its composer never paints" });
-    for (const line of [null, undefined, "", "unknown", "codex-cli 0.165", "0.165.0 0.166.0", "codex-cli 1.2.1.316", "v0.165.0.1", "x".repeat(4097) + " 0.165.0"])
+    for (const line of [null, undefined, "", "unknown", "codex-cli 0.165", "0.165.0 0.166.0", "codex-cli 1.2.1.316", "v0.165.0.1", "x".repeat(4097) + " 0.165.0",
+      // Prism R1 (#3243): a malformed suffix never yields an audited prefix.
+      "codex-cli 0.165.0+", "codex-cli 0.165.0++oops", "codex-cli 0.165.0+build+tail", "codex-cli 0.165.0-", "codex-cli 0.165.0-beta..1", "codex-cli 0.165.0.", "codex-cli -0.165.0"])
       expect(nativeCliVersionState("codex", line as string).state).toBe("invalid");
     expect(nativeCliVersionState("kiro-cli", "1.0.0").state).toBe("invalid");
     // Own keys only: an inherited name is never a denylisted version.
@@ -47,7 +49,8 @@ afterEach(async () => { for (const f of clean.splice(0).reverse()) await f(); se
 const CODEX_IDLE = "› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n";
 /** A future layout AgEnD has never seen: no composer, no status row, no recognised dialog. */
 const UNKNOWN = "\x1b[2J\x1b[H◆ Codex Next  ·  what should we build?\r\n  ▸ \r\n";
-async function fixture(provider: "codex" | "claude-code", version: string, screen?: string) {
+/** `launched`: the version the pane helper reports it actually ran (default: the inventory's; null: an older helper, none). */
+async function fixture(provider: "codex" | "claude-code", version: string, screen?: string, launched?: string | null) {
   const root = mkdtempSync(join(tmpdir(), "agend-native-forward-")); clean.push(() => rmSync(root, { recursive: true, force: true })); setConfiguredRuntimeSwitches({ remote_runtime: true });
   const fleet: any = new FleetManager(root), machineId = randomUUID();
   const store = windowsAgentsFor(fleet, { start: () => { throw Error("No per-turn exec"); }, get: () => null, prepareWorkspace: async () => "C:\\scratch" } as never);
@@ -55,7 +58,8 @@ async function fixture(provider: "codex" | "claude-code", version: string, scree
   const config = { ...nativeInstanceConfig(agent), native_adapter: "pane", log_level: "silent" }; fleet.fleetConfig = { defaults: {}, runtimes: { remote_runtime: true }, instances: { native: config } };
   let actual = randomUUID(), output = (_text: string) => {}, exit = (_value: any) => {}, proof: "saved" | "absent" = "saved";
   const known = provider === "codex" ? CODEX_IDLE : "─".repeat(40) + "\r\n❯ \r\n" + "─".repeat(40) + "\r\n";
-  const cli = { pid: 12345, write: vi.fn((text: string) => {
+  // The version the pane helper verified for this launch (the real helper reports it with "ready").
+  const cli = { pid: 12345, ...(launched === null ? {} : { version: launched ?? /\d+\.\d+\.\d+/.exec(version)![0] }), write: vi.fn((text: string) => {
       if (provider !== "codex" || screen) return;
       if (text === "/status") output("\x1b[2J\x1b[H› /status\r\n\r\n  Context 100% left\r\n");
       if (text === "\r") output(`\x1b[2J\x1b[HSession: ${actual}\r\n${CODEX_IDLE}`);
@@ -67,7 +71,8 @@ async function fixture(provider: "codex" | "claude-code", version: string, scree
     mcpConnection: (value, tools) => ({ endpoint: "http://127.0.0.1:1/agent", token: "a".repeat(64), owner: value, tools }),
     transcript: () => ({ read: async cursor => { if (!cursor) throw Error("Fixture requires a transcript cursor"); return { state: "pending" as const, cursor, data: "", lines: [], complete: false, gap: false }; }, close: async () => {} }) });
   clean.push(() => host.stop());
-  const hub = { machine: () => ({ status: "online", platform: "win32", inventory: { clis: [{ id: provider, runnable: true, version }] } }), callPane: vi.fn((_id: string, request: any) => host.request(request)),
+  let inventoryVersion = version;
+  const hub = { machine: () => ({ status: "online", platform: "win32", inventory: { clis: [{ id: provider, runnable: true, version: inventoryVersion }] } }), callPane: vi.fn((_id: string, request: any) => host.request(request)),
     subscribe: () => () => {}, paneTransportEpoch: () => "private-epoch", task: () => null, tasks: () => [], hasActiveTask: () => false };
   fleet.runtimeHub = hub;
   if (fleet.memoryPressure) vi.spyOn(fleet.memoryPressure, "start").mockImplementation(() => {});
@@ -76,7 +81,7 @@ async function fixture(provider: "codex" | "claude-code", version: string, scree
   clean.push(async () => { for (const daemon of fleet.daemons.values()) await daemon.abortStartup(); for (const channel of fleet.instanceIpcClients.values()) await channel.close(); fleet.memoryPressure?.stop(); });
   // The web status resolves presentation models itself; the start path above must not.
   const status = () => (models.mockRestore(), fleet.getUiStatus() as { instances: Array<Record<string, unknown>> }).instances.find(row => row.name === "native")!;
-  return { fleet, config, store, agent, spawn, cli, status, setProof: (value: typeof proof) => { proof = value; } };
+  return { fleet, config, store, agent, spawn, cli, status, setProof: (value: typeof proof) => { proof = value; }, setInventory: (value: string) => { inventoryVersion = value; } };
 }
 
 describe("a newer, unaudited CLI with an unchanged screen runs and is labelled", () => {
@@ -130,5 +135,42 @@ describe("an unaudited store layout never proves 'never saved' by itself", () =>
       await expect(f.fleet.startInstance("native", f.config, true)).rejects.toThrow("saved conversation could not be checked");
       expect(f.spawn).toHaveBeenCalledOnce(); expect(notice).not.toHaveBeenCalled(); expect(f.store.get(f.agent.id).paneRecovery?.kind).toBe("session-unconfirmed");
     }
+  });
+});
+
+describe("Prism R1 (#3243): verification follows the version the launch actually ran, never a cached inventory", () => {
+  it.each([
+    ["the inventory still says audited 2.1.316, but the helper launched 2.1.399", "2.1.316 (Claude Code)", "2.1.399", "unverified"],
+    ["an older helper that reports no launched version", "2.1.316 (Claude Code)", null, null],
+  ] as const)("%s: a runner-proved absence is held for the administrator, never an automatic fresh", async (_why, inventory, launched, label) => {
+    const f = await fixture("claude-code", inventory, undefined, launched);
+    await f.fleet.startInstance("native", f.config, true);
+    if (label) expect(f.status()).toMatchObject({ native_cli_version: launched, native_cli_verification: label });
+    await f.fleet.stopInstance("native");
+    f.setProof("absent"); const notice = vi.spyOn(f.fleet, "notifyInstanceTopic").mockResolvedValue(undefined);
+    await expect(f.fleet.startInstance("native", f.config, true)).rejects.toThrow("saved conversation could not be checked");
+    expect(f.spawn).toHaveBeenCalledOnce(); expect(notice).not.toHaveBeenCalled();
+  });
+  it("control: the inventory and the launch agree on audited 2.1.316 — automatic fresh, labelled verified", async () => {
+    const f = await fixture("claude-code", "2.1.316 (Claude Code)", undefined, "2.1.316");
+    await f.fleet.startInstance("native", f.config, true);
+    expect(f.status()).toMatchObject({ native_cli_version: "2.1.316", native_cli_verification: "verified" });
+    await f.fleet.stopInstance("native");
+    f.setProof("absent"); vi.spyOn(f.fleet, "notifyInstanceTopic").mockResolvedValue(undefined);
+    await f.fleet.startInstance("native", f.config, true); expect(f.spawn).toHaveBeenCalledTimes(2); await f.fleet.stopInstance("native");
+  });
+  it("an unverified launch stays unverified when the inventory later says audited (the retained launch decides)", async () => {
+    const f = await fixture("claude-code", "2.1.399 (Claude Code)", undefined, "2.1.399");
+    await f.fleet.startInstance("native", f.config, true); await f.fleet.stopInstance("native");
+    f.setInventory("2.1.316 (Claude Code)");
+    f.setProof("absent"); vi.spyOn(f.fleet, "notifyInstanceTopic").mockResolvedValue(undefined);
+    await expect(f.fleet.startInstance("native", f.config, true)).rejects.toThrow("saved conversation could not be checked");
+    expect(f.spawn).toHaveBeenCalledOnce();
+  });
+  it("a snapshot's recorded version is validated as one whole token", async () => {
+    const { validateRuntimePaneSnapshot } = await import("../src/runtime-pane-protocol.js");
+    const base = { hostBootId: randomUUID(), paneId: randomUUID(), agentId: randomUUID(), instance: "native", launchId: randomUUID(), state: "running", seq: 0, outputAt: 0, commandSequence: 0, columns: 80, rows: 24 };
+    expect(validateRuntimePaneSnapshot({ ...base, cliVersion: "2.1.316" }).cliVersion).toBe("2.1.316");
+    for (const bad of ["0.165.0+", "2.1.316 (Claude Code)", "x", 5]) expect(() => validateRuntimePaneSnapshot({ ...base, cliVersion: bad })).toThrow();
   });
 });

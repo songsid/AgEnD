@@ -21,7 +21,11 @@ export const NATIVE_CLI_DENIED: Readonly<Record<NativePaneCli, Record<string, st
   "claude-code": {},
 };
 const NATIVE_CLI_LABEL: Readonly<Record<NativePaneCli, string>> = Object.freeze({ codex: "Codex", "claude-code": "Claude Code" });
-const SEMVER = /(?<![\w.-])\d{1,6}\.\d{1,6}\.\d{1,6}(?:[-+][0-9A-Za-z.-]{1,64})?(?![\w.-])/g;
+/** One whole version token: x.y.z, an optional -prerelease and +build of dot-separated identifiers, and nothing glued to
+ * either end (`1.2.1.316`, `0.165.0+`, `0.165.0++x` and `0.165.0+a+b` are not versions). */
+const SEMVER = /(?<![\w.+-])\d{1,6}\.\d{1,6}\.\d{1,6}(?:-[0-9A-Za-z-]{1,32}(?:\.[0-9A-Za-z-]{1,32}){0,7})?(?:\+[0-9A-Za-z-]{1,32}(?:\.[0-9A-Za-z-]{1,32}){0,7})?(?![\w.+-])/g;
+/** The exact token a pane snapshot may record as the version it actually launched. */
+export const NATIVE_CLI_VERSION_TOKEN = new RegExp(`^${SEMVER.source}$`);
 export type NativeCliVersionState = "verified" | "unverified" | "denied" | "invalid";
 /** Strict reading of a `--version` line: a supported CLI and exactly one version number, or "invalid". */
 export function nativeCliVersionState(provider: string, line: string | null | undefined, denylist: Readonly<Record<NativePaneCli, Readonly<Record<string, string>>>> = NATIVE_CLI_DENIED): { state: NativeCliVersionState; version?: string; reason?: string } {
@@ -54,7 +58,7 @@ export interface NativePaneOwner { directory: string; launchId: string; mcp?: Pa
 export type NativePaneCommand = { type: "start"; launch: RuntimePaneLaunch; owner: NativePaneOwner }
   | { type: "input"; data: string } | { type: "resize"; columns: number; rows: number }
   | { type: "pause" | "resume" | "close" };
-export type NativePaneFrame = { type: "ready"; pid: number } | { type: "output"; data: string }
+export type NativePaneFrame = { type: "ready"; pid: number; version?: string } | { type: "output"; data: string }
   | { type: "exit" | "tree.exit"; code: number } | { type: "error"; message: string };
 /** JSON's basic-string escapes are valid TOML; DEL needs an explicit escape and invalid Unicode is refused. */
 export function nativeDeveloperInstructions(text: string): string {

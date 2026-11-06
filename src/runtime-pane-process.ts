@@ -7,7 +7,7 @@ import { prepareNativePaneQuotaHistory } from "./runtime-pane-quota-history.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import type { RuntimePaneProcess } from "./runtime-pane-host.js";
-import type { NativePaneCommand, NativePaneFrame, NativePaneOwner } from "./runtime-pane-native.js";
+import { NATIVE_CLI_VERSION_TOKEN, type NativePaneCommand, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
 // Include the worker in standalone TypeScript build closures without loading it in the runner.
 import type {} from "./runtime-pane-worker.js";
 import type {} from "./runtime-pane-job-owner.js";
@@ -26,7 +26,7 @@ export async function spawnNativePane(launch: RuntimePaneLaunch, owner: NativePa
     });
     const events = new EventEmitter();
     const decoder = new StringDecoder("utf8");
-    let pending = "", ready = false, exited = false, failed = false, confirmedCode: number | undefined;
+    let pending = "", ready = false, exited = false, failed = false, confirmedCode: number | undefined, launchedVersion: string | undefined;
     const buffered: string[] = [];
     const fail = (): void => { failed = true; events.emit("failure"); if (!ready) reject(Error("ConPTY helper startup was not confirmed")); };
     const send = (value: NativePaneCommand): void => {
@@ -36,6 +36,7 @@ export async function spawnNativePane(launch: RuntimePaneLaunch, owner: NativePa
     const proxy: RuntimePaneProcess = {
       ...(quotaReplay ? { quotaReplay } : {}),
       get pid() { return child.pid ?? 0; },
+      get version() { return launchedVersion; },
       write: data => send({ type: "input", data: typeof data === "string" ? data : data.toString("utf8") }), resize: (columns, rows) => send({ type: "resize", columns, rows }),
       kill: () => send({ type: "close" }), pause: () => send({ type: "pause" }), resume: () => send({ type: "resume" }),
       onData: listener => { events.on("output", listener); for (const data of buffered.splice(0)) listener(data); return { dispose: () => { events.removeListener("output", listener); } }; },
@@ -56,6 +57,8 @@ export async function spawnNativePane(launch: RuntimePaneLaunch, owner: NativePa
         try {
           const frame = JSON.parse(line) as NativePaneFrame;
           if (frame.type === "ready" && !ready && Number.isSafeInteger(frame.pid) && frame.pid > 0) {
+            // The version the helper verified for this launch; anything else is no version (verification then holds).
+            if (typeof frame.version === "string" && NATIVE_CLI_VERSION_TOKEN.test(frame.version)) launchedVersion = frame.version;
             clearTimeout(timer); ready = true; resolve(proxy);
           } else if (frame.type === "output" && typeof frame.data === "string" && Buffer.byteLength(frame.data) <= 64 * 1024) {
             if (events.listenerCount("output")) events.emit("output", frame.data);

@@ -115,9 +115,10 @@ export class NativePaneManager {
   if(!previous.sessionId)return "unknown"; // A positive process exit is independent of a provider conversation pin.
   if(!supported)throw new NativePaneRecoveryError({kind:"host-upgrade",launchId:previous.launchId}); // Use the existing host-upgrade recovery, never a conversation decision.
   const raw=await endpoint.call({action:"session-proof",paneId:previous.paneId,launchId:previous.launchId});
-  // cc3ce4fe: a positive absence relies on the provider's audited store layout (Claude's project key, Codex's index),
-  // so on a CLI version AgEnD has not audited it is only "unknown": an administrator decides, never an automatic fresh.
-  const audited=nativeCliVersionState(cli,endpoint.version(cli)).state==="verified";
+  // cc3ce4fe: a positive absence relies on the provider's audited store layout (Claude's project key, Codex's index), so
+  // it counts only for the version that exited launch actually ran, recorded by its own helper (never a cached inventory,
+  // which an update can outdate). Unverified, or no recorded version (an older host): "unknown" — an administrator decides.
+  const audited=previous.cliVersion!==undefined&&nativeCliVersionState(cli,previous.cliVersion).state==="verified";
   try{const proof=validateRuntimePaneSessionProof(raw);if(runtimeJobDigest(proof.snapshot)===runtimeJobDigest(previous))return proof.state==="absent"&&!audited?"unknown":proof.state;}
   catch{/* A reachable malformed result cannot prove absence. */}
   return "unknown";
