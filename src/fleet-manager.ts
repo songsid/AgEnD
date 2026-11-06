@@ -1969,12 +1969,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!Object.prototype.hasOwnProperty.call(instances, agent)) return null;
     if (this.hubIncarnationsBroken) return null;
     let id: string | null;
-    try { id = this.hubAgentIncarnation(agent, instances[agent]!, true); }
+    try { this.settleHubIncarnations(); id = this.hubIncarnationsBroken ? null : this.hubAgentIncarnation(agent, instances[agent]!, true); }
     catch (err) { this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be saved; the agent is not a deliverable representative"); return null; }
     return id ? createHash("sha256").update(JSON.stringify(["agend-hub-agent-v2", agent, id])).digest("hex") : null;
   }
   private hubIncarnationsPath(): string { return join(this.dataDir, "hub-member", "agent-incarnations.json"); }
   /**
+   * M-2451 (#3147 residual): written beside hub-member/, in the data directory itself, when an invalidation could not be
+   * made durable in hub-member/. A later process that finds it invalidates every incarnation before handing out any
+   * token, so a restart never revives consent the earlier process had to withdraw (A→B→A, or a removal, while hub-member/
+   * was unwritable).
+   */
+  private hubIncarnationsMarkerPath(): string { return join(this.dataDir, "hub-member-invalidate.pending"); }
+  /** Whether this process has settled the incarnations on disk (the marker handled, the file proven writable). */
+  private hubIncarnationsSettled = false;
+  /**
+   * Once per process, before the first token: an invalidation an earlier process could not persist (the marker) clears
+   * every incarnation; and an existing file must be rewritable here, else this process is broken (no token at all) —
+   * an incarnation this process could not rotate must never be handed out. Fails closed: any doubt marks it broken.
+   */
+  private settleHubIncarnations(): void {
+    if (this.hubIncarnationsSettled || this.hubIncarnationsBroken || !this.dataDir) return;
+    const path = this.hubIncarnationsPath(), marker = this.hubIncarnationsMarkerPath();
+    if (existsSync(marker)) {
+      try { unlinkSync(path); } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          this.hubIncarnationsBroken = true;
+          this.logger.warn({ err: (err as Error)?.message }, "An earlier Hub consent invalidation is still pending and cannot be applied; no Hub representative token is handed out");
+          return;
+        }
+      }
+      // The clear is durable; a marker that cannot be removed only clears again next time (over-invalidation, never revival).
+      try { unlinkSync(marker); } catch { /* left: harmless */ }
+      this.logger.warn("An earlier Hub consent invalidation was applied: every Hub representative needs a republish");
+    }
+    if (existsSync(path)) this.writeHubIncarnations(this.readHubIncarnations());   // throws (broken) when hub-member/ is not writable
+    this.hubIncarnationsSettled = true;
+  }  /**
    * #3147 r2: set when an invalidation could not be made durable in any way (neither the atomic write nor removing the
    * file worked). From then on this process hands out no representative token at all, and the transitions the fleet
    * controls (a config save, a removal) are refused instead of applied.
@@ -2003,7 +2034,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         unlinkSync(path);
       } catch (gone) {
-        if ((gone as NodeJS.ErrnoException)?.code !== "ENOENT") { this.hubIncarnationsBroken = true; throw err; }
+        if ((gone as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          this.hubIncarnationsBroken = true;
+          // M-2451: record the withdrawal outside hub-member/, so a restart does not revive what this process withdrew.
+          try { writeFileSync(this.hubIncarnationsMarkerPath(), "", { mode: 0o600 }); } catch { /* the data directory too: nothing durable is left */ }
+          throw err;
+        }
       }
       this.logger.warn({ err: (err as Error)?.message }, "Hub agent incarnations could not be saved; every earlier Hub consent is invalidated (republish needed)");
       return "cleared";
@@ -2029,6 +2065,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Only against a loaded configuration: never forget every agent because none is loaded yet.
     if (!this.dataDir || !this.fleetConfig?.instances) return;
     try {
+      this.settleHubIncarnations();
+      if (this.hubIncarnationsBroken) throw new Error("Hub agent incarnations cannot be written here");
       if (!existsSync(this.hubIncarnationsPath())) return;
       const instances = this.fleetConfig.instances;
       for (const agent of Object.keys(this.readHubIncarnations())) {
