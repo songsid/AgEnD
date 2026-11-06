@@ -49,7 +49,8 @@ export function describeRuntimeStop(reason: RuntimeStopReason): string {
 }
 
 export interface RuntimeBridge {
-  probe(options?: { force?: boolean }): Promise<WindowsCliProbe>;
+  /** `authorized` (the requester's live check) is asked again before the Windows worker starts: authority revoked meanwhile starts nothing. */
+  probe(options?: { force?: boolean }, authorized?: () => boolean): Promise<WindowsCliProbe>;
   prepareWorkspace(agentId: string): Promise<string>;
   start(value: unknown, authorized?: () => boolean, options?: WindowsRunOptions): WindowsCliTask;
   get(id: string): WindowsCliTask | null;
@@ -504,11 +505,14 @@ export class RuntimeClient {
     return directory;
   }
   /** Names and signed-in yes/no only. `force` (an explicit "Detect again") asks each profile's CLI; otherwise the last known answer is reported. */
-  private async credentialReport(force: boolean): Promise<CredentialProfileReport | undefined> {
+  private async credentialReport(force: boolean, authorized?: () => boolean): Promise<CredentialProfileReport | undefined> {
     const root = this.options.credentialProfilesRoot; if (!root) return undefined;
+    // `authorized` (an install's live consent and connection check) is asked before each profile's status is started and again before its answer is written to the cache.
+    const still = (): void => { if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery"); };
     if (force) for (const name of listCredentialProfileNames(root, "claude-code")) {
-      try { this.remember(root, "claude-code", name, await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name))); }
-      catch { this.remember(root, "claude-code", name, { loggedIn: null }); }
+      still();
+      try { const answer = await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name)); still(); this.remember(root, "claude-code", name, answer); }
+      catch { still(); this.remember(root, "claude-code", name, { loggedIn: null }); }
     }
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
     return credentialProfileReport(root, name);
@@ -564,7 +568,7 @@ export class RuntimeClient {
       enter: () => this.activity.enter(),
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
       // A CLI was just installed: the cached list is stale, so detect for real and send it (this request already holds a share of the Runtime's activity).
-      installed: async () => { await this.readInventory(true); },
+      installed: async authorized => { await this.readInventory(true, authorized); },
       // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
       ...(extra?.installer ? { installer: extra.installer } : this.managed ? { installer: this.managed } : {}),
       ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
@@ -576,8 +580,11 @@ export class RuntimeClient {
     this.watchCredentialCache();
   }
   private refreshInventory(force = false): Promise<WindowsCliProbe> { return this.activity.run(() => this.readInventory(force)); }
-  private async readInventory(force: boolean): Promise<WindowsCliProbe> {
-    const probed = await this.bridge.probe({ force }), credentialProfiles = await this.credentialReport(force);
+  private async readInventory(force: boolean, authorized?: () => boolean): Promise<WindowsCliProbe> {
+    const still = (when: string): void => { if (authorized && !authorized()) throw new Error(`Authorization expired ${when} CLI discovery`); };
+    still("before");
+    const probed = await (authorized ? this.bridge.probe({ force }, authorized) : this.bridge.probe({ force })); still("during");
+    const credentialProfiles = await this.credentialReport(force, authorized); still("during");
     const inventory = credentialProfiles ? { ...probed, credentialProfiles } : probed;
     this.inventory = inventory;
     if (this.online()) this.send({ v: 1, type: "inventory", inventory });

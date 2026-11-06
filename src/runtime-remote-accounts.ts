@@ -59,7 +59,7 @@ export interface RemoteAccountsDeps {
   /** A cached answer was written or forgotten: the caller re-reports the computer's inventory. */
   changed(): void;
   /** A CLI was installed: the caller detects again for real (not from its cache) and sends that inventory before this resolves. */
-  installed?(): void | Promise<void>;
+  installed?(authorized?: () => boolean): void | Promise<void>;
   /** Installs a CLI from the closed table and returns the version that landed. Absent: this Runtime cannot install (and does not claim to). */
   installer?: RemoteInstaller;
   /** A line for the person at this computer (the Runtime window). Never sent to AgEnD. */
@@ -281,8 +281,11 @@ export class RemoteAccounts {
           if (result.ended) holdUntil(result.ended);
           // The computer's CLI list changes now. A fresh detection is made and sent BEFORE the answer, so that the dashboard sees the new CLI when the install reports done,
           // without a "Detect again" (the ordinary cache change below only re-reads what is cached). A failed detection does not undo a finished install.
+          // That detection starts programs and writes the cache, so it is the same kind of effect as the install: it is asked, before each of its steps, whether the
+          // switch is still on and the request's connection still the live one. A revoked consent stops it; the finished install is still answered.
+          const authorized = (): boolean => { try { this.gate(ctx, "install"); return true; } catch { return false; } };
           this.deps.changed();
-          try { await this.deps.installed?.(); } catch { /* the next detection shows it */ }
+          if (authorized()) { try { await this.deps.installed?.(authorized); } catch { /* the next detection shows it */ } }
           return { version: result.version };
         },
       });

@@ -295,54 +295,15 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   const npmCli = join(dirname(node), "node_modules", "npm", "bin", "npm-cli.js");
   if (!existsSync(npmCli)) fail("npm-missing", "npm was not found next to this computer's Node.js, so nothing was installed");
   mkdirSync(deps.root, { recursive: true, mode: 0o700 });
-  // The shared install lock (#3258): the same `.agend-runtime-install.lock` that `install.ps1` and the update supervisor take, so a CLI install, a manual reinstall and
-  // an automatic switch cannot run at once. It is kept until the install's last child process has really ended, not only until this call returns.
-  const lockRoot = deps.installRoot ?? managedInstallRoot() ?? deps.root;
-  if (lockRoot === deps.root && process.platform !== "win32") { try { chmodSync(deps.root, 0o700); } catch { /* the lock module refuses a folder it cannot trust */ } }
-  const locks = await lockModule();
-  let lock: RuntimeInstallLock;
-  try { lock = await locks.acquireRuntimeInstallLock(lockRoot, { type: "installer", ...(deps.lockOptions ?? (process.platform !== "win32" ? localLockOptions() : {})) }); }
-  catch (error) {
-    if (error instanceof locks.RuntimeInstallLockError && error.reason === "held") fail("busy", "A CLI install or Runtime update is already running on this computer; wait for it to end");
-    return fail("install-failed", "This computer could not lock its Runtime install folder, so nothing was installed");
-  }
-  // While the lock holds this marker nothing may reclaim it, even if this process is gone: a Runtime that dies with a child still running leaves the marker behind, so a
-  // later owner sees uncertainty (a lock with anything beside its owner record stays held) instead of a free lock.
-  const inflight = join(lockRoot, locks.RUNTIME_INSTALL_LOCK, "inflight");
-  let marked = false;
-  /**
-   * Gives the lock back (marker first). A release that fails keeps the lease, never counts as released, and is tried again until it works: the promise it returns
-   * (undefined when the first try worked) is what the caller keeps the Runtime busy on. Only a lock that is no longer ours has nothing left to give back.
-   */
-  const letGo = (): Promise<void> | undefined => {
-    const attempt = (): boolean => {
-      try { lock.assert(); } catch { return true; }
-      try { if (marked && existsSync(inflight)) unlinkSync(inflight); lock.release(); return true; } catch { return false; }
-    };
-    if (attempt()) return undefined;
-    return new Promise<void>(done => { const again = (): void => { if (attempt()) done(); else setTimeout(again, deps.releaseRetryMs ?? 1000).unref?.(); }; setTimeout(again, deps.releaseRetryMs ?? 1000).unref?.(); });
-  };
-  const written = (): never => { throw new CliInstallError("install-failed", "This computer could not lock its Runtime install folder, so nothing was installed"); };
-  try { writeFileSync(inflight, JSON.stringify({ cli: id, version: cli.version }), { flag: "wx", mode: 0o600 }); marked = true; }
-  catch { void letGo(); return written(); }
-  // One deadline for all of it; the Runtime's own stop is a separate reason and is checked first.
-  const deadline = AbortSignal.timeout(deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS);
-  const signal = deps.signal ? AbortSignal.any([deps.signal, deadline]) : deadline;
-  const stopped = (): void => {
-    if (deps.signal?.aborted) fail("cancelled", "The install was cancelled");
-    if (deadline.aborted) fail("timed-out", "The install did not finish in time and was stopped");
-  };
-  // The Runtime's own refusal (switch turned off or run out, connection replaced) is thrown as it is, so the caller records the right reason.
-  let refusal: unknown;
-  const admit = (): void => { try { deps.gate?.(); } catch (error) { refusal = error; throw error; } };
+  const idDir = join(deps.root, id);
+  const changed = (): CliInstallError => new CliInstallError("install-failed", "The Runtime's CLI folder was changed during the install, so it was stopped");
 
   // Containment: the CLI folder, the id folder and the staging folder are the ones admitted at the start, until the end. Their identity and where they resolve to are
   // looked at again after every await and before every write, rename, removal and the pointer; a folder that was swapped for a link or another folder stops the install,
-  // and nothing is written, renamed or deleted through it.
+  // and nothing is written, renamed or deleted through it. The baseline is taken BEFORE the wait for the lock (which can be long), and looked at again straight after it.
   const identity = new Map<string, { id: bigint; dev: bigint }>();
   let resolvedRoot = "";
-  const idDir = join(deps.root, id);
-  const plain = (path: string): BigIntStats => { const stat = lstatSync(path, { bigint: true }); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new CliInstallError("install-failed", "The Runtime's CLI folder was changed during the install, so it was stopped"); return stat; };
+  const plain = (path: string): BigIntStats => { const stat = lstatSync(path, { bigint: true }); if (!stat.isDirectory() || stat.isSymbolicLink()) throw changed(); return stat; };
   const admitFolders = (paths: string[]): void => {
     resolvedRoot = realpathSync(deps.root);
     for (const path of paths) { const stat = plain(path); identity.set(path, { id: stat.ino, dev: stat.dev }); }
@@ -356,8 +317,61 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
         const real = realpathSync(path);
         if (real !== resolvedRoot && !inside(resolvedRoot, real)) throw new Error("outside");
       }
-    } catch (error) { if (error instanceof CliInstallError) throw error; throw new CliInstallError("install-failed", "The Runtime's CLI folder was changed during the install, so it was stopped"); }
+    } catch (error) { if (error instanceof CliInstallError) throw error; throw changed(); }
   };
+  const hadIdDirBeforeLock = existsSync(idDir);
+  admitFolders(hadIdDirBeforeLock ? [deps.root, idDir] : [deps.root]);
+
+  // The shared install lock (#3258): the same `.agend-runtime-install.lock` that `install.ps1` and the update supervisor take, so a CLI install, a manual reinstall and
+  // an automatic switch cannot run at once. It is kept until the install's last child process has really ended, not only until this call returns.
+  const lockRoot = deps.installRoot ?? managedInstallRoot() ?? deps.root;
+  if (lockRoot === deps.root && process.platform !== "win32") { try { chmodSync(deps.root, 0o700); } catch { /* the lock module refuses a folder it cannot trust */ } }
+  const locks = await lockModule();
+  let lock: RuntimeInstallLock;
+  try { lock = await locks.acquireRuntimeInstallLock(lockRoot, { type: "installer", ...(deps.lockOptions ?? (process.platform !== "win32" ? localLockOptions() : {})) }); }
+  catch (error) {
+    if (error instanceof locks.RuntimeInstallLockError && error.reason === "held") fail("busy", "A CLI install or Runtime update is already running on this computer; wait for it to end");
+    return fail("install-failed", "This computer could not lock its Runtime install folder, so nothing was installed");
+  }
+  // While the lock holds this marker nothing may reclaim it, even if this process is gone: a Runtime that dies with a child still running leaves the marker behind, so a
+  // later owner sees uncertainty (a lock with anything beside its owner record stays held) instead of a free lock.
+  const lockDir = join(lockRoot, locks.RUNTIME_INSTALL_LOCK), inflight = join(lockDir, "inflight");
+  /** The lock is positively not ours any more: its folder is gone (and the root is there), or another owner's record is in it. Anything unreadable or unclear is NOT that. */
+  const notOursAnymore = (): boolean => {
+    try { lstatSync(lockRoot); } catch { return false; }
+    try { lstatSync(lockDir); } catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
+    try { const nonce = (JSON.parse(readFileSync(join(lockDir, "owner.json"), "utf8")) as { nonce?: unknown } | null)?.nonce; return typeof nonce === "string" && nonce !== lock.record.nonce; }
+    catch { return false; }
+  };
+  /**
+   * Gives the lock back (marker first). A release that fails, or a lock that cannot be looked at, keeps the lease, never counts as released, and is tried again until it
+   * works: the promise it returns (undefined when the first try worked) is what the caller keeps the Runtime busy on. Only positive evidence that the lock is no longer ours
+   * ends the wait without a release.
+   */
+  const letGo = (): Promise<void> | undefined => {
+    const attempt = (): boolean => {
+      try { lock.assert(); } catch { return notOursAnymore(); }
+      try { if (existsSync(inflight)) unlinkSync(inflight); lock.release(); return true; } catch { return false; }
+    };
+    if (attempt()) return undefined;
+    return new Promise<void>(done => { const again = (): void => { if (attempt()) done(); else setTimeout(again, deps.releaseRetryMs ?? 1000).unref?.(); }; setTimeout(again, deps.releaseRetryMs ?? 1000).unref?.(); });
+  };
+  try { writeFileSync(inflight, JSON.stringify({ cli: id, version: cli.version }), { flag: "wx", mode: 0o600 }); }
+  catch {
+    const retry = letGo();
+    throw new CliInstallError("install-failed", "This computer could not lock its Runtime install folder, so nothing was installed", retry ? { ended: retry } : {});
+  }
+  // One deadline for all of it; the Runtime's own stop is a separate reason and is checked first.
+  const deadline = AbortSignal.timeout(deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS);
+  const signal = deps.signal ? AbortSignal.any([deps.signal, deadline]) : deadline;
+  const stopped = (): void => {
+    if (deps.signal?.aborted) fail("cancelled", "The install was cancelled");
+    if (deadline.aborted) fail("timed-out", "The install did not finish in time and was stopped");
+  };
+  // The Runtime's own refusal (switch turned off or run out, connection replaced) is thrown as it is, so the caller records the right reason.
+  let refusal: unknown;
+  const admit = (): void => { try { deps.gate?.(); } catch (error) { refusal = error; throw error; } };
+
   const safeRemove = (path: string): void => { try { contained(); bestEffortRemove(path); } catch { /* a folder that is no longer ours is not touched */ } };
   const guardedRename = (from: string, to: string): void => { contained(); rename(from, to); };
   // Every boundary of the install: the stop signal and the deadline, the lock, the folders, and the Runtime's live admission.
@@ -366,9 +380,13 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   let staged = false;
   try {
     stopped(); admit();
+    // Straight after the wait for the lock, before anything is written: the folders are still the ones that were looked at before it, and an id folder that did not exist
+    // then has not appeared since (it would have been planted while we waited).
+    contained();
+    if (!hadIdDirBeforeLock && existsSync(idDir)) throw changed();
     mkdirSync(idDir, { recursive: true, mode: 0o700 });
-    admitFolders([deps.root, idDir]);
-    contained(); bestEffortRemove(staging); mkdirSync(staging, { recursive: true, mode: 0o700 }); staged = true;
+    admitFolders([deps.root, idDir]); contained();
+    bestEffortRemove(staging); mkdirSync(staging, { recursive: true, mode: 0o700 }); staged = true;
     admitFolders([deps.root, idDir, staging]);
     const config: NpmConfigFiles = { user: join(staging, "agend-user.npmrc"), global: join(staging, "agend-global.npmrc") };
     writeFileSync(config.user, NPMRC_TEXT, { mode: 0o600 }); writeFileSync(config.global, NPMRC_TEXT, { mode: 0o600 });

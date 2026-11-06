@@ -122,7 +122,7 @@ describe("the lock is asserted at every step and at the swap", () => {
   it("a lock that changes between the new folder landing and the pointer write rolls the folder back", async () => {
     mkdirSync(join(cliRoot, "codex", "0.0.1"), { recursive: true }); writeFileSync(join(cliRoot, "codex", "current.json"), JSON.stringify({ version: "0.0.1" }));
     let renames = 0;
-    const error = await installManagedCli("codex", deps({ rename: (from, to) => { renames++; renameSync(from, to); if (renames === 1) writeFileSync(join(lockDir(), "owner.json"), "{}"); } })).catch((e: unknown) => e) as CliInstallError;
+    const error = await installManagedCli("codex", deps({ rename: (from, to) => { renames++; renameSync(from, to); if (renames === 1) writeFileSync(join(lockDir(), "owner.json"), JSON.stringify({ version: 1, type: "installer", nonce: randomUUID(), pid: process.pid, birth: "1".repeat(18), boot: "e".repeat(64) })); } })).catch((e: unknown) => e) as CliInstallError;
     expect(error).toBeInstanceOf(CliInstallError);
     expect(JSON.parse(readFileSync(join(cliRoot, "codex", "current.json"), "utf8"))).toEqual({ version: "0.0.1" }); expect(existsSync(join(cliRoot, "codex", codex.version))).toBe(false);
   });

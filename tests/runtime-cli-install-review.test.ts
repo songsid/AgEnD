@@ -12,12 +12,18 @@ import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CliInstallError, INSTALLABLE_CLIS, installEnvironment, installManagedCli, managedCliExecutable, managedInstaller, windowsSignerOf, type InstallDeps } from "../src/runtime-cli-install.js";
 import { RUNTIME_INSTALL_LOCK } from "../src/runtime-update-lock.js";
+import { createRuntimeProfile } from "../src/runtime-profile-ownership.js";
 import { RuntimeClient, type RuntimeBridge, type RuntimeClientOptions } from "../src/runtime-client.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { credentialProfilesRoot } from "../src/runtime-credential-profiles.js";
 import { setRemoteSwitch } from "../src/runtime-remote-setup.js";
 
+const hooks = vi.hoisted(() => ({ write: undefined as undefined | ((path: string) => void) }));
+vi.mock("node:fs", async original => {
+  const fs = await original<typeof import("node:fs")>();
+  return { ...fs, writeFileSync: ((path: unknown, ...rest: unknown[]) => { hooks.write?.(String(path)); return (fs.writeFileSync as (...args: unknown[]) => void)(path, ...rest); }) as typeof fs.writeFileSync };
+});
 const codex = INSTALLABLE_CLIS.codex;
 const signedByOpenAI = async () => ({ status: "Valid", subject: 'CN="OpenAI OpCo, LLC", O="OpenAI OpCo, LLC"' });
 const roots: string[] = [];
@@ -65,11 +71,11 @@ async function fixture(extra: Partial<RuntimeClientOptions> = {}, bridgeOverride
     ...extra, managedUpdate: { ...extra.managedUpdate, authenticated: () => welcomed.resolve() } });
   clients.push(client); await client.start(); await welcomed.promise;
   await vi.waitFor(() => expect(hub.machine(identity.machineId)?.status).toBe("online"));
-  const answers: any[] = [], realSend = (client as any).send.bind(client);
-  if (!options.realAnswers) vi.spyOn(client as any, "send").mockImplementation((frame: any) => { if (frame.type === "account.response") answers.push(frame); else realSend(frame); });
+  const answers: any[] = [], sent: any[] = [], realSend = (client as any).send.bind(client);
+  vi.spyOn(client as any, "send").mockImplementation((frame: any) => { if (frame.type === "account.response" && !options.realAnswers) answers.push(frame); else { if (frame.type !== "account.response") sent.push(frame); realSend(frame); } });
   const ask = async (operation: string, payload: unknown): Promise<any> => { const id = `acct-${randomUUID()}`; await (client as any).receive(JSON.stringify({ v: 1, type: "account.request", id, operation, payload })); return answers.find(frame => frame.id === id); };
   const audit = (): any[] => { try { return readFileSync(join(store.directory, "audit.jsonl"), "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line)); } catch { return []; } };
-  return { hub, client, store, bridge, ask, audit, machineId: identity.machineId };
+  return { hub, client, store, bridge, ask, audit, sent, machineId: identity.machineId };
 }
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -322,5 +328,173 @@ describe("P7: the publisher check must end cleanly before its answer is read", (
       await expect(installManagedCli("claude-code", { root: cliRoot, nodePath: node, run })).rejects.toMatchObject({ reason: "publisher-mismatch" });
       expect(existsSync(join(cliRoot, "claude-code", "current.json"))).toBe(false);
     }
+  });
+});
+
+describe("P2-1 (follow-up): the folders are looked at before the wait for the lock and again straight after it, before anything is written", () => {
+  const ownProof = { pid: process.pid, birth: "638980000000000000", boot: "a".repeat(64) };
+  /** An observer that stops the lock's acquisition (its first await) until the test lets it go, and says when it got there. */
+  const pausedLock = () => { const gate = held<void>(), reached = held<void>(); return { reached, gate, lockOptions: { observe: async (pid: number) => { reached.resolve(); await gate.promise; return pid === process.pid ? { state: "alive" as const, proof: ownProof } : { state: "gone" as const }; } } }; };
+  const canaryFolder = (): string => { const canary = join(home, "canary"); mkdirSync(canary); writeFileSync(join(canary, "keep.txt"), "keep"); return canary; };
+  const run = async (change: ((canary: string) => void) | null, extra: Partial<InstallDeps> = {}) => {
+    const canary = canaryFolder(), installRoot = join(home, "agend-runtime"); mkdirSync(installRoot, { mode: 0o700 }); chmodSync(installRoot, 0o700);
+    const lock = pausedLock();
+    const install = installManagedCli("codex", { root: cliRoot, nodePath: node, installRoot, run: fakeNpm(), signerOf: signedByOpenAI, lockOptions: lock.lockOptions, ...extra }).then(value => value as unknown, (error: unknown) => error);
+    await lock.reached.promise;
+    change?.(canary); lock.gate.resolve();
+    return { outcome: await install, canary, installRoot };
+  };
+  const refused = (outcome: unknown): void => { expect(outcome).toBeInstanceOf(CliInstallError); expect((outcome as CliInstallError).reason).toBe("install-failed"); expect((outcome as CliInstallError).message).toMatch(/CLI folder was changed during the install/); };
+  it("the CLI root replaced by a link to an outside folder while the lock is awaited: refused, and nothing is created in the outside folder", async () => {
+    const { outcome, canary, installRoot } = await run(c => { renameSync(cliRoot, `${cliRoot}.moved`); symlinkSync(c, cliRoot, "dir"); });
+    refused(outcome); expect(readdirSync(canary)).toEqual(["keep.txt"]); expect(existsSync(lockDir(installRoot))).toBe(false);
+  });
+  it("an id folder that existed, replaced by a link to an outside folder while the lock is awaited: refused, the outside folder untouched", async () => {
+    mkdirSync(join(cliRoot, "codex"), { recursive: true });
+    const { outcome, canary } = await run(c => { renameSync(join(cliRoot, "codex"), join(cliRoot, "codex.moved")); symlinkSync(c, join(cliRoot, "codex"), "dir"); });
+    refused(outcome); expect(readdirSync(canary)).toEqual(["keep.txt"]);
+  });
+  it("an id folder that did not exist and appeared while the lock was awaited is not adopted: refused, and what appeared is left alone", async () => {
+    mkdirSync(cliRoot, { recursive: true });
+    const { outcome } = await run(() => { mkdirSync(join(cliRoot, "codex")); writeFileSync(join(cliRoot, "codex", "planted.txt"), "x"); });
+    refused(outcome); expect(readdirSync(join(cliRoot, "codex"))).toEqual(["planted.txt"]);
+  });
+  it("the CLI root replaced by ANOTHER plain folder at the same path is refused too (a different folder is not taken as the baseline), and gets nothing written", async () => {
+    const { outcome } = await run(() => { renameSync(cliRoot, `${cliRoot}.moved`); mkdirSync(cliRoot); });
+    refused(outcome); expect(readdirSync(cliRoot)).toEqual([]);
+  });
+  it("an existing id folder replaced by another plain folder is refused as well", async () => {
+    mkdirSync(join(cliRoot, "codex"), { recursive: true });
+    const { outcome } = await run(() => { renameSync(join(cliRoot, "codex"), join(cliRoot, "codex.moved")); mkdirSync(join(cliRoot, "codex")); });
+    refused(outcome); expect(readdirSync(join(cliRoot, "codex"))).toEqual([]);
+  });
+  it("control: nothing replaced while the lock is awaited, and the install completes", async () => {
+    const { outcome, installRoot } = await run(null);
+    expect((outcome as { version: string }).version).toBe(codex.version); expect(existsSync(lockDir(installRoot))).toBe(false);
+    expect(managedCliExecutable(cliRoot, "codex")).not.toBeNull();
+  });
+});
+
+describe("P2-2 (follow-up): a lock that cannot be looked at, or a marker that fails to be written, is never taken for released", () => {
+  const notRoot = process.getuid?.() !== 0;
+  it.skipIf(!notRoot)("an owner record that cannot be read at release (a passing I/O or permission failure) keeps the lease, the busy state and the update fence until it can be", async () => {
+    const owner = (): string => join(lockDir(), "owner.json");
+    const installer = managedInstaller({ root: cliRoot, nodePath: node, releaseRetryMs: 20, run: fakeNpm(), signerOf: signedByOpenAI,
+      rename: (from, to) => { renameSync(from, to); if (to.endsWith("current.json")) chmodSync(owner(), 0); } });
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer } });
+    setRemoteSwitch(f.store.directory, "install", true);
+    const reply = await f.ask("cli.install", asked); expect(reply.ok).toBe(true);
+    await new Promise(done => setTimeout(done, 100));                                // several retries go by while it is unreadable
+    expect(existsSync(lockDir())).toBe(true); expect(existsSync(join(lockDir(), "inflight"))).toBe(true);     // not treated as released: nothing was unlinked
+    expect(installer.running()).toBe(true); expect((f.client as any).remoteAccounts.idle()).toBe(false); expect((f.client as any).locallyIdle()).toBe(false);
+    expect(await f.client.prepareUpdate(randomUUID())).toBe(false);
+    chmodSync(owner(), 0o600);
+    await vi.waitFor(() => expect(existsSync(lockDir())).toBe(false));
+    await vi.waitFor(() => expect((f.client as any).remoteAccounts.idle()).toBe(true)); expect(installer.running()).toBe(false);
+    expect((f.client as any).locallyIdle()).toBe(true); expect(await f.client.prepareUpdate(randomUUID())).toBe(true);
+  });
+  it("only positive evidence ends the wait without a release: another owner's record, or the lock folder gone with its root present", async () => {
+    for (const how of ["another owner", "folder gone"] as const) {
+      rmSync(cliRoot, { recursive: true, force: true });
+      const result = await installManagedCli("codex", { root: cliRoot, nodePath: node, releaseRetryMs: 20, run: fakeNpm(), signerOf: signedByOpenAI,
+        rename: (from, to) => { renameSync(from, to); if (to.endsWith("current.json")) { if (how === "another owner") writeFileSync(join(lockDir(), "owner.json"), JSON.stringify({ version: 1, type: "installer", nonce: randomUUID(), pid: process.pid, birth: "1".repeat(18), boot: "e".repeat(64) })); else rmSync(lockDir(), { recursive: true, force: true }); } } });
+      expect(result.version).toBe(codex.version); expect(result.ended).toBeUndefined();     // nothing left to give back: no wait
+    }
+  });
+  it("an unreadable (malformed) owner record is NOT evidence: the wait goes on", async () => {
+    const result = await installManagedCli("codex", { root: cliRoot, nodePath: node, releaseRetryMs: 20, run: fakeNpm(), signerOf: signedByOpenAI,
+      rename: (from, to) => { renameSync(from, to); if (to.endsWith("current.json")) writeFileSync(join(lockDir(), "owner.json"), "{ not json"); } });
+    expect(result.ended).toBeInstanceOf(Promise);
+    let done = false; void result.ended!.then(() => { done = true; });
+    await new Promise(wait => setTimeout(wait, 100)); expect(done).toBe(false);
+    rmSync(lockDir(), { recursive: true, force: true });            // an operator clears it: now the root is there and the folder is gone
+    await vi.waitFor(() => expect(done).toBe(true));
+  });
+  it("a marker that fails to be written (even one that landed half-way) throws with `ended`, keeps the lock while it cannot be released, and clears everything once it can", async () => {
+    const fs = await vi.importActual<typeof import("node:fs")>("node:fs");
+    hooks.write = path => {
+      if (!path.endsWith("inflight")) return;
+      hooks.write = undefined;
+      fs.writeFileSync(path, "partial"); fs.writeFileSync(join(lockDir(), "stuck"), "x");      // the marker is on disk, and the first release cannot work
+      throw new Error("disk full");
+    };
+    const error = await installManagedCli("codex", { root: cliRoot, nodePath: node, releaseRetryMs: 20, run: fakeNpm(), signerOf: signedByOpenAI }).catch((e: unknown) => e) as CliInstallError;
+    expect(error).toBeInstanceOf(CliInstallError); expect(error.reason).toBe("install-failed"); expect(error.message).toBe("This computer could not lock its Runtime install folder, so nothing was installed");
+    expect(error.ended).toBeInstanceOf(Promise);
+    expect(existsSync(join(lockDir(), "owner.json"))).toBe(true); expect(existsSync(join(cliRoot, "codex"))).toBe(false);
+    rmSync(join(lockDir(), "stuck")); await error.ended;
+    expect(existsSync(lockDir())).toBe(false);
+    expect((await installManagedCli("codex", { root: cliRoot, nodePath: node, run: fakeNpm(), signerOf: signedByOpenAI })).version).toBe(codex.version);
+  });
+  it("a marker that fails to be written but whose lock releases at once has no `ended` to wait for", async () => {
+    hooks.write = path => { if (path.endsWith("inflight")) { hooks.write = undefined; throw new Error("disk full"); } };
+    const error = await installManagedCli("codex", { root: cliRoot, nodePath: node, run: fakeNpm(), signerOf: signedByOpenAI }).catch((e: unknown) => e) as CliInstallError;
+    expect(error).toBeInstanceOf(CliInstallError); expect(error.ended).toBeUndefined(); expect(existsSync(lockDir())).toBe(false);
+  });
+});
+
+describe("P2-3 (follow-up): the detection that follows an install is asked about consent and the connection at each of its steps", () => {
+  type F = Awaited<ReturnType<typeof fixture>>;
+  const makeProfiles = (f: F, names: string[]): string => { const root = credentialProfilesRoot(f.store.directory); for (const name of names) createRuntimeProfile(root, "claude-code", name); return root; };
+  const clis = (version: string) => [{ id: "codex", path: "C:\\x\\codex.exe", version, authenticated: true, runnable: true, readOnlySupport: true, supports: { execution: true, resume: true, model: true, mcp: true }, permissionNote: "fixture", models: [] }];
+  const changes: Record<string, (f: F, skew: { ms: number }) => void> = {
+    "the switch is turned off": f => setRemoteSwitch(f.store.directory, "install", false),
+    "the switch's time runs out": (_f, skew) => { skew.ms = 61_000; },
+    "the connection is replaced": f => { (f.client as any).socket.terminate(); },
+  };
+  /** Holds either the bridge's forced probe or the first profile's status; `change` happens while it is held. */
+  async function after(holdAt: "probe" | "status", change: string | null) {
+    const gate = held<void>(), reached = held<void>(), skew = { ms: 0 };
+    let installedNow = false;
+    const probe = vi.fn(async (options?: { force?: boolean }) => {
+      if (options?.force && holdAt === "probe") { reached.resolve(); await gate.promise; }
+      return { home: "C:\\fixture", clis: clis(options?.force && installedNow ? "codex-cli 0.165.0" : "codex-cli 0.161.0") as any, probedAt: 1_793_000_000_000 };
+    });
+    const credentialStatus = vi.fn(async () => { if (holdAt === "status" && credentialStatus.mock.calls.length === 1) { reached.resolve(); await gate.promise; } return { loggedIn: true as boolean | null }; });
+    const installer = { knows: () => true, install: async () => { installedNow = true; return { version: codex.version }; } };
+    const f = await fixture({ credentialStatus, remoteAccounts: { find: async () => null, environment: () => ({}), installer, now: () => Date.now() + skew.ms } }, { probe });
+    const root = makeProfiles(f, ["alpha", "beta"]);
+    setRemoteSwitch(f.store.directory, "install", true, 60_000);
+    const fresh = (): number => f.sent.filter(frame => frame.type === "inventory" && frame.inventory?.clis?.[0]?.version === "codex-cli 0.165.0").length;     // the forced detection's own report (the cached re-report of an ordinary change shows the old version)
+    const before = { frames: fresh(), status: credentialStatus.mock.calls.length };
+    const asked2 = f.ask("cli.install", asked);
+    await reached.promise;
+    if (change) changes[change](f, skew);
+    gate.resolve();
+    const reply = await asked2;
+    await new Promise(done => setTimeout(done, 50));
+    return { f, root, probe, credentialStatus, reply, before, inventoryFrames: fresh() - before.frames, statusCalls: credentialStatus.mock.calls.length - before.status };
+  }
+  for (const holdAt of ["probe", "status"] as const) {
+    for (const change of Object.keys(changes)) {
+      it(`${change} while the detection's ${holdAt === "probe" ? "CLI probe" : "first profile status"} is held: the install is still answered, and no further probe, status or inventory follows`, async () => {
+        const { f, root, reply, inventoryFrames, statusCalls } = await after(holdAt, change);
+        if (change !== "the connection is replaced") expect(reply.result).toEqual({ version: codex.version });
+        else expect(f.audit().filter(line => line.action === "cli.install").map(line => line.outcome)).toEqual(["started", "ok"]);      // done, though the answer had nowhere to go
+        expect(inventoryFrames).toBe(0);
+        expect(statusCalls).toBe(holdAt === "probe" ? 0 : 1);                                  // the profile that was already running is the only one; the next never starts
+        const cache = (() => { try { return readFileSync(join(root, "status.json"), "utf8"); } catch { return ""; } })();
+        expect(cache).not.toContain("beta");                                                    // and nothing is written for a profile after consent was withdrawn
+        if (holdAt === "status") expect(cache).not.toContain("alpha");                          // not even for the one whose answer arrived after
+      });
+    }
+    it(`control: consent unchanged while the detection's ${holdAt === "probe" ? "CLI probe" : "first profile status"} is held: it runs to the end and sends the new inventory`, async () => {
+      const { f, reply, credentialStatus, inventoryFrames } = await after(holdAt, null);
+      expect(reply.result).toEqual({ version: codex.version });
+      expect(credentialStatus).toHaveBeenCalledTimes(2); expect(inventoryFrames).toBeGreaterThanOrEqual(1);
+      const last = f.sent.filter(frame => frame.type === "inventory").at(-1);
+      expect(last.inventory.clis[0].version).toBe("codex-cli 0.165.0");
+    });
+  }
+  it("consent already gone when the install ends: the detection does not even start, and the install is answered", async () => {
+    const probe = vi.fn(async () => ({ home: "C:\\fixture", clis: [], probedAt: 1 }));
+    const gate = held<void>();
+    const installer = { knows: () => true, install: async () => { setRemoteSwitch(dirOf(f), "install", false); gate.resolve(); return { version: codex.version }; } };
+    const dirOf = (x: F): string => x.store.directory;
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer } }, { probe });
+    setRemoteSwitch(f.store.directory, "install", true);
+    const forced = (): number => (probe.mock.calls as unknown as Array<[{ force?: boolean } | undefined]>).filter(([options]) => options?.force).length;
+    expect((await f.ask("cli.install", asked)).result).toEqual({ version: codex.version });
+    expect(forced()).toBe(0);                                                                 // no forced probe was started
   });
 });
