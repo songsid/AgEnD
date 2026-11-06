@@ -67,6 +67,26 @@ describe("M-2542: Fleet's tab row", () => {
     expect(pg.root.querySelector(".p-fleet .panel-head nav")).toBeNull();
   });
 
+  it("re-measures on every render: a host memory warning that no longer fits moves the row under the header, and back", async () => {
+    // Fable #3266 r2: the warning does not resize the panel (no ResizeObserver/media/fonts event) — only the re-render
+    // re-checks. A stubbed layout: the header is 1000 px; the warning's text is 2000 px; everything else 0 px.
+    const pg = await shell();
+    const proto = Object.getPrototypeOf(pg.root.querySelector(".p-fleet"));
+    const realRect = proto.getBoundingClientRect, realCS = (globalThis as any).getComputedStyle;
+    proto.getBoundingClientRect = function (this: any) {
+      const width = this.className.split(/\s+/).includes("panel-head") ? 1000 : this.className.split(/\s+/).includes("panel-sub") ? 2000 : 0;
+      return { top: 0, left: 0, right: width, bottom: 0, width, height: 0 };
+    };
+    (globalThis as any).getComputedStyle = () => ({});
+    try {
+      const { appStore } = await import("/assets/app-store.js");
+      const seen = [placement(pg)];
+      appStore.set({ hostMemory: "critical", hostMemoryTop: [] }); await settle(4); seen.push(placement(pg));
+      appStore.set({ hostMemory: null, hostMemoryTop: [] }); await settle(4); seen.push(placement(pg));
+      expect(seen).toEqual([[TABS, []], [[], TABS], [TABS, []]]);
+    } finally { proto.getBoundingClientRect = realRect; (globalThis as any).getComputedStyle = realCS; }
+  });
+
   it("follows the viewport: desktop → phone → desktop moves the row across and back", async () => {
     const media = liveMedia(false);
     const pg = await shell({ media });
