@@ -221,7 +221,7 @@ describe("remote machine UI",()=>{
     it("shows the install and connect commands with the confirmed address, no code, no ZIP step, and no account option",async()=>{
       await open("runtime-windows-commands");
       expect(stepTitles()).toEqual(["AgEnD address","Install the Runtime","Connect that computer","Return here to approve"]);
-      expect(commands()).toEqual([`$agend = 'http://localhost'; $s = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; if (-not $s -or (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })) -ne '${SCRIPT_SHA}') { throw 'install.ps1 could not be verified against the hash on the AgEnD page; reload the page and copy the command again' }; iex $s`,'agend-runtime connect --server "http://localhost"']);
+      expect(commands()).toEqual([`[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; $agend = 'http://localhost'; $s = $null; $h = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; $h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); if ($s -and $h -eq '${SCRIPT_SHA}') { iex $s } else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }`,'agend-runtime connect --server "http://localhost"']);
       // The hash the command checks is on the page, and it came from the administrator-only endpoint, not from the script's own response.
       expect(p.root.querySelector(".runtime-installer-hash code").textContent).toBe(SCRIPT_SHA);
       expect(requests.filter(item=>item.path==="/ui/runtimes/installer")).toHaveLength(1);
@@ -236,7 +236,7 @@ describe("remote machine UI",()=>{
       await open("runtime-windows-address");
       await setServer("https://fleet.example.test:10443");
       expect(commands()).toEqual([installCommand("https://fleet.example.test:10443",SCRIPT_SHA),'agend-runtime connect --server "https://fleet.example.test:10443"']);
-      expect(commands()[0]).toContain("$agend = 'https://fleet.example.test:10443'");expect(commands()[0]).toContain(`-ne '${SCRIPT_SHA}'`);
+      expect(commands()[0]).toContain("$agend = 'https://fleet.example.test:10443'");expect(commands()[0]).toContain(`$h -eq '${SCRIPT_SHA}'`);
       for(const bad of ["http://192.168.1.20:19280","https://user:password@fleet.example.test","https://fleet.example.test/path","https://fleet.example.test/?x=1","https://fleet.example.test'; calc; '"]){
         await setServer(bad);expect(commands(),bad).toEqual([]);expect(p.root.querySelector('.runtime-pairing [role="alert"]').textContent).toContain("Enter an HTTPS origin");
       }
@@ -410,7 +410,7 @@ describe("machine snapshot boundary",()=>{
     expect(connectCommand("http://localhost:19280")).toContain('"http://localhost:19280"');
     for(const bad of ["http://192.168.1.2:19280","https://user:password@example.com","https://example.com/?x=$(calc)","https://$(calc)","https://example.com/path","https://example.com;calc"])expect(connectCommand(bad)).toBe("");
     // The Windows one-line commands carry the same origin and nothing else: no pairing code, no token, no flag the page did not choose.
-    expect(installCommand("https://runtime.example.com:443",SCRIPT_SHA)).toContain("$agend = 'https://runtime.example.com'; $s = $null; $s = (iwr \"$agend/runtime/install.ps1\" -UseBasicParsing).Content;");
+    expect(installCommand("https://runtime.example.com:443",SCRIPT_SHA)).toContain("$agend = 'https://runtime.example.com'; $s = $null; $h = $null; $s = (iwr \"$agend/runtime/install.ps1\" -UseBasicParsing).Content;");
     expect(installCommand("http://localhost:19280",SCRIPT_SHA)).toContain("$agend = 'http://localhost:19280';");
     expect(windowsConnectCommand("https://runtime.example.com:443")).toBe('agend-runtime connect --server "https://runtime.example.com"');
     for(const bad of ["http://192.168.1.2:19280","https://user:password@example.com","https://example.com/?x=$(calc)","https://$(calc)","https://example.com/path","https://example.com;calc","https://exa'mple.com","https://example.com/'; calc; '","",undefined as any]){
@@ -418,7 +418,10 @@ describe("machine snapshot boundary",()=>{
     }
     for(const good of ["https://runtime.example.com","https://[fd7a:115c::1]:8445","http://127.0.0.1:19280"]){
       const text=installCommand(good,SCRIPT_SHA);
-      expect(text).toMatch(/^\$agend = '[^']*'; \$s = \$null; \$s = \(iwr "\$agend\/runtime\/install\.ps1" -UseBasicParsing\)\.Content; if \(-not \$s -or /);expect(text).toMatch(/\{ throw '[^']*' \}; iex \$s$/);
+      expect(text).toMatch(/^\[Net\.ServicePointManager\]::SecurityProtocol = \[Net\.ServicePointManager\]::SecurityProtocol -bor 3072; \$agend = '[^']*'; \$s = \$null; \$h = \$null; \$s = \(iwr "\$agend\/runtime\/install\.ps1" -UseBasicParsing\)\.Content; \$h = \(-join /);
+      // the rule: nothing that can fail sits in the condition, and iex is only inside the branch the condition admits
+      expect(text).toMatch(/if \(\$s -and \$h -eq '[a-f0-9]{64}'\) \{ iex \$s \} else \{ Write-Host '[^']*' -ForegroundColor Red; throw '[^']*' \}$/); expect(text.match(/\biex\b/g)).toHaveLength(1);
+      expect(text.slice(0, text.indexOf("if ($s -and"))).not.toMatch(/\biex\b/);
       // one line; no certificate bypass, no execution-policy change, no setx, no pairing code
       expect(text).not.toMatch(/\n|SkipCertificateCheck|ServerCertificateValidationCallback|Set-ExecutionPolicy|-ExecutionPolicy|setx|\|\s*iex/i);
     }
