@@ -29,7 +29,7 @@ async function fixture(extra: Partial<RuntimeClientOptions> = {}, now = () => Da
     start: () => { throw Error("No native fixture run"); }, get: () => null, cancel: vi.fn(), close: vi.fn(), releaseUnknown: vi.fn(), idleForUpdate: () => true };
   const client = new RuntimeClient({ store, bridge, updateStatus: { state: "unknown" }, reconnectMs: 60_000, ...extra }); clients.push(client);
   await client.start(); await vi.waitFor(() => expect((client as any).welcomed).toBe(true));
-  return { hub, client, home, bridge, machineId: identity.machineId };
+  return { hub, client, home, store, bridge, machineId: identity.machineId };
 }
 afterEach(async () => {
   for (const client of clients.splice(0)) await client.stop();
@@ -68,9 +68,10 @@ it("negotiates reports, records the exact boot/generation, and returns independe
 it.each(["boot", "generation", "extra"] as const)("refuses a report with an invalid %s without changing the last report", async field => {
   const f = await fixture(); await vi.waitFor(() => expect(f.hub.machine(f.machineId)?.updateReport?.status.state).toBe("unknown"));
   const machine = f.hub.machine(f.machineId)!, socket = (f.client as any).socket as WebSocket, closed = once(socket, "close");
+  let off = () => {}; const changed = new Promise<string>(done => { off = f.hub.subscribe(event => { if (event.type === "machine" && f.hub.machine(f.machineId)?.updateReport?.status.state === "failed") done("accepted"); }); });
   socket.send(JSON.stringify({ v: 1, type: "update.status", bootId: field === "boot" ? randomUUID() : machine.bootId,
     generation: machine.generation + (field === "generation" ? 1 : 0), status: { state: "failed", target }, ...(field === "extra" ? { command: "no" } : {}) }));
-  await closed;
+  try { expect(await Promise.race([closed.then(() => "closed"), changed])).toBe("closed"); } finally { off(); }
   expect(f.hub.machine(f.machineId)?.updateReport?.status).toEqual({ state: "unknown" });
 });
 it("a trial sends no diagnostic before activation and cannot turn a status into admission", async () => {
@@ -85,9 +86,11 @@ it("a trial sends no diagnostic before activation and cannot turn a status into 
 });
 it("a trial that bypasses the local diagnostic fence is refused by the coordinator", async () => {
   const f = await fixture({ managedUpdate: { trialId: randomUUID() } }), socket = (f.client as any).socket as WebSocket;
-  const closed = once(socket, "close");
+  const closed = once(socket, "close"); let off = () => {};
+  const changed = new Promise<string>(done => { off = f.hub.subscribe(event => { if (event.type === "machine" && f.hub.machine(f.machineId)?.updateReport) done("accepted"); }); });
   socket.send(JSON.stringify({ v: 1, type: "update.status", bootId: f.client.bootId, generation: (f.client as any).generation, status: { state: "current" } }));
-  await closed; expect(f.hub.machine(f.machineId)?.status).toBe("offline"); expect(f.hub.machine(f.machineId)?.updateReport).toBeUndefined();
+  try { expect(await Promise.race([closed.then(() => "closed"), changed])).toBe("closed"); } finally { off(); }
+  expect(f.hub.machine(f.machineId)?.status).toBe("offline"); expect(f.hub.machine(f.machineId)?.updateReport).toBeUndefined();
   expect(f.bridge.probe).not.toHaveBeenCalled();
 });
 it("bounds changed-report writes without stopping ordinary operations", async () => {
@@ -123,4 +126,14 @@ it("does not send the new diagnostic to an older peer without a positive welcome
   client.setUpdateStatus({ state: "pending", target }); await new Promise<void>(done => setImmediate(done));
   expect(frames[0].runtimeInfo.capabilities).toContain(RUNTIME_UPDATE_STATUS_CAPABILITY);
   expect(frames.map(frame => frame.type)).not.toContain("update.status");
+});
+
+it("a replacement connection cannot inherit a previous boot's current report", async () => {
+  const f = await fixture({ updateStatus: { state: "current" } });
+  await vi.waitFor(() => expect(f.hub.machine(f.machineId)?.updateReport?.status.state).toBe("current"));
+  const oldBoot = f.hub.machine(f.machineId)!.bootId; await f.client.stop();
+  const replacement = new RuntimeClient({ store: f.store, bridge: f.bridge, reconnectMs: 60_000 }); clients.push(replacement);
+  await replacement.start(); await vi.waitFor(() => expect(replacement.online()).toBe(true));
+  expect(f.hub.machine(f.machineId)?.bootId).not.toBe(oldBoot);
+  expect(f.hub.machine(f.machineId)?.updateReport).toBeUndefined();
 });

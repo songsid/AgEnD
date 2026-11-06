@@ -38,8 +38,9 @@ for(const device of ["desk","phone"] as const)for(const lang of ["en","zh-TW"] a
     const page=p.page;
     if(!await mounted(page,30000))throw Error("App bootstrap did not mount before navigation");
     await page.evaluate(async()=>{await import("/ui/js/runtime-commands.js");});
-    // Keep the real older module instances, then fetch the current lazy panel in the same document.
-    if(mode==="retained"){await p.ctx.unroute("**/assets/app-i18n.js*");await p.ctx.unroute("**/ui/js/runtime-commands.js*");}
+    // Wait for the initial chat/stream boot before navigating, as a page retained across an upgrade would.
+    // Keep the two old-module routes installed: removing routes can interrupt an in-flight import.
+    await page.waitForFunction(async()=>{const {appStore}=await import("/assets/app-store.js");return appStore.get().ready;});
     const navigate=async(path:string)=>{await page.evaluate((next:string)=>{history.pushState({},"",next);dispatchEvent(new PopStateEvent("popstate"));},path);};
     await navigate("/settings/runtimes");await page.waitForSelector(".runtime-machine");
     if(mode!=="old-panel")await page.waitForSelector(".runtime-update-notice");
