@@ -95,7 +95,7 @@ function refused(port: number): Promise<boolean> {
   });
 }
 
-function factory(home: string, http?: HubHttpEntry) {
+function factory(home: string, http?: HubHttpEntry, extra: Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs"> = {}) {
   const reports: { code: string; detail: string }[] = [];
   const directories: { bindPassword: string }[] = [];
   const create = createHubServerFactory({
@@ -107,6 +107,7 @@ function factory(home: string, http?: HubHttpEntry) {
     },
     report: (code, detail) => reports.push({ code, detail }),
     log: () => {},
+    ...extra,
   });
   return { create, reports, directories };
 }
@@ -132,7 +133,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["s1-transport", "s3-http", "s5-audit", "s5-instance"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["s1-transport", "s3-http", "s5-audit", "s5-instance", "s5-retention"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 
@@ -431,5 +432,51 @@ describe.skipIf(process.platform === "win32")("S5b PR 2: the real Hub web servic
     expect(unknown.status).toBe(404);
     await runtime.close();
     expect(await refused(hub.webPort)).toBe(true);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("Hub retention composition", () => {
+  it("uses the saved policy at the next purge without changing the sealed initialization, then preserves it on reopen", async () => {
+    const hub = await initializedHub(), http = fakeHttp();
+    const originalSeal = readFileSync(join(hub.home, "hub/init-manifest.json"), "utf8");
+    const registered: { control?: import("../src/hub/retention.js").HubRetentionControl } = {};
+    const f = factory(hub.home, http.entry, { retentionEveryMs: 20, retentionReady(control) {
+      registered.control = control; return () => { delete registered.control; };
+    } });
+    const service = await f.create(hub.config.hub, () => true);
+    let db: Database.Database | undefined;
+    try {
+      await service.start();
+      const control = registered.control!;
+      expect(control.read()).toEqual({ contentDays: 30, eventDays: 180, revision: 1 });
+      const ref = await http.state.deps!.uow.atomic(tx => http.state.deps!.content.put(tx, { question: "old fixture content" }));
+      db = new Database(join(hub.home, "hub/hub.sqlite"));
+      db.prepare("UPDATE hub_audit_content SET created_at=? WHERE ref=?").run(Date.now() - 20 * 86_400_000, ref);
+      await new Promise(resolve => setTimeout(resolve, 55));
+      expect(db.prepare("SELECT count(*) n FROM hub_audit_content WHERE ref=?").get(ref)).toEqual({ n: 1 });
+      control.update({ contentDays: 7, eventDays: 30, revision: 1 }, () => true);
+      for (let i = 0; i < 50 && (db.prepare("SELECT count(*) n FROM hub_audit_content WHERE ref=?").get(ref) as any).n; i++)
+        await new Promise(resolve => setTimeout(resolve, 10));
+      expect(db.prepare("SELECT count(*) n FROM hub_audit_content WHERE ref=?").get(ref)).toEqual({ n: 0 });
+      expect(readFileSync(join(hub.home, "hub/init-manifest.json"), "utf8")).toBe(originalSeal);
+      service.fence(); expect(() => control.read()).toThrow("unavailable");
+    } finally { db?.close(); await service.close(); }
+    expect(registered.control).toBeUndefined();
+    const again = await f.create(hub.config.hub, () => true);
+    try { await again.start(); expect(registered.control!.read()).toEqual({ contentDays: 7, eventDays: 30, revision: 2 }); }
+    finally { await again.close(); }
+  });
+  it("exposes the composed policy only through the running host runtime and removes it on close", async () => {
+    const hub = await initializedHub(), http = fakeHttp();
+    const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => http.entry },
+      createDirectory: () => ({ realm: "corp", signIn: async () => ({ ok: false, reason: "unavailable" }),
+        checkEligibility: async () => ({ eligible: false, reason: "unavailable" }), close: async () => {} }) });
+    expect(runtime.retentionSettings()).toBeNull();
+    try {
+      await runtime.apply(hub.config);
+      const control = runtime.retentionSettings()!; expect(control.read().revision).toBe(1);
+      runtime.fence(); expect(() => control.read()).toThrow("unavailable");
+    } finally { await runtime.close(); }
+    expect(runtime.retentionSettings()).toBeNull();
   });
 });

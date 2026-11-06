@@ -94,6 +94,8 @@ const MOUNT_CODE: Record<"initialization" | "member-pairing" | "service-unavaila
 };
 
 export class HubRuntime {
+  private retentionControl: import("./retention.js").HubRetentionControl | null = null;
+  retentionSettings(): import("./retention.js").HubRetentionControl | null { return this.retentionControl; }
   private readonly mount: HubMount;
   private view: string | null = null;
   /** The newest configuration view asked for (admitted), which may still be waiting behind a running apply. */
@@ -121,6 +123,10 @@ export class HubRuntime {
           home: options.home,
           components: options.components ?? { http: S3B_HTTP_ENTRY },
           createDirectory: options.createDirectory ?? createHubDirectory,
+          retentionReady: control => {
+            this.retentionControl = control;
+            return () => { if (this.retentionControl === control) this.retentionControl = null; };
+          },
         report: (code, detail) => {
           this.reported = { side: "server", code, detail };
         },
