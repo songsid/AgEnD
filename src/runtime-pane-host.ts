@@ -129,8 +129,11 @@ export class RuntimePaneHost {
     return home ? nativePaneTranscriptRoots(withCredentialProfile(nativeCliEnvironment(), launch.cli, home)) : undefined;
   }
   private async open(request: Extract<RuntimePaneRequest, { action: "open" }>): Promise<RuntimePaneOpenResult> {
-    const { launch, operationId } = request;
-    const digest = RuntimePaneStore.digest(launch);
+    const { operationId } = request;
+    // The identity of an open is the launch AgEnD sent: a pairing default that is set, changed or cleared afterwards must not make a pane that is
+    // already here look like another launch. The default only decides which profile a NEW pane starts with, and the pane keeps it.
+    const digest = RuntimePaneStore.digest(request.launch);
+    const launch = request.defaultCredentialProfile !== undefined && request.launch.credentialProfile === undefined ? { ...request.launch, credentialProfile: request.defaultCredentialProfile } : request.launch;
     const existing = this.options.store.get(launch.paneId);
     if (existing) {
       if (existing.openOperationId !== operationId || existing.openDigest !== digest) throw Error("Pane id already belongs to another launch");

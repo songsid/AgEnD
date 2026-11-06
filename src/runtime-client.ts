@@ -268,9 +268,11 @@ export class RuntimeClient {
       const epoch = this.paneEpoch;
       try {
         const host = await this.panes();
-        // A terminal for an agent with no profile of its own starts under this pairing's default profile, when there is one.
-        const named = request.action === "open" ? this.credentialProfileFor(request.launch.cli, request.launch.credentialProfile) : undefined;
-        const forHost = request.action === "open" && named !== undefined && named !== request.launch.credentialProfile ? { ...request, launch: { ...request.launch, credentialProfile: named } } : request;
+        // A terminal for an agent with no profile of its own starts under this pairing's default profile, when there is one. The default is passed
+        // beside the launch, not inside it: the host decides with it only for a pane that is new, so a pane that is already running reattaches
+        // whatever the default has become since.
+        const fallback = request.action === "open" && request.launch.credentialProfile === undefined ? this.credentialProfileFor(request.launch.cli, undefined) : undefined;
+        const forHost = request.action === "open" && fallback !== undefined ? { ...request, defaultCredentialProfile: fallback } : request;
         const result = await host.request(forHost, () => epoch === this.paneEpoch && this.online());
         if(request.action==="shutdown"){
           validateRuntimePaneShutdown(result,request.hostBootId);

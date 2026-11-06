@@ -25,7 +25,7 @@ function setup(overrides: Partial<RuntimePaneHostOptions> = {}) {
   const login = vi.fn(async (_cli: string, _home: string, _name: string): Promise<boolean | null> => true);
   const host = new RuntimePaneHost({ store, bootId: randomUUID(), online: () => true, maxAgents: () => 4, spawn,
     credentialHome: (cli, name) => requireCredentialProfile(root, cli, name), credentialLogin: login, ...overrides });
-  const open = (config: RuntimePaneLaunch, operationId = randomUUID()) => host.request({ action: "open", launch: config, operationId }) as Promise<RuntimePaneSnapshot & { reattached: boolean }>;
+  const open = (config: RuntimePaneLaunch, operationId = randomUUID(), defaultCredentialProfile?: string) => host.request({ action: "open", launch: config, operationId, ...(defaultCredentialProfile !== undefined ? { defaultCredentialProfile } : {}) }) as Promise<RuntimePaneSnapshot & { reattached: boolean }>;
   return { directory, root, store, host, spawn, login, open };
 }
 
@@ -85,6 +85,48 @@ describe("a persistent terminal launch that names a credential profile", () => {
     const config = launch({ credentialProfile: "work" }), operationId = randomUUID();
     await f.open(config, operationId);
     await expect(f.open({ ...config, credentialProfile: "home" }, operationId)).rejects.toThrow(/already belongs to another launch/);
+  });
+});
+
+describe("a pairing default for a pane that names no profile", () => {
+  it("is passed beside the launch: validated as a name, and only for a Claude Code launch that names none", () => {
+    const base = { action: "open", operationId: randomUUID(), launch: launch() };
+    expect(validateRuntimePaneRequest({ ...base, defaultCredentialProfile: "work" })).toMatchObject({ defaultCredentialProfile: "work" });
+    for (const bad of ["C:\\Users\\me\\.claude", "../x", "", "con", 5]) expect(() => validateRuntimePaneRequest({ ...base, defaultCredentialProfile: bad }), String(bad)).toThrow();
+    expect(() => validateRuntimePaneRequest({ ...base, launch: launch({ credentialProfile: "home" }), defaultCredentialProfile: "work" })).toThrow(/names none/);
+    expect(() => validateRuntimePaneRequest({ ...base, launch: launch({ cli: "codex" }), defaultCredentialProfile: "work" })).toThrow(/Claude Code/);
+  });
+  it("starts a NEW pane under the default (admitted like any named profile), and the pane keeps it", async () => {
+    const f = setup(), work = ensureCredentialProfile(f.root, "claude-code", "work");
+    const snapshot = await f.open(launch(), randomUUID(), "work");
+    expect(snapshot.state).toBe("running"); expect((f.spawn.mock.calls[0] as unknown as [RuntimePaneLaunch, { credentialHome?: string }])[1].credentialHome).toBe(work);
+    expect(f.login).toHaveBeenCalledWith("claude-code", work, "work");
+    expect(f.store.get(snapshot.paneId)?.launch.credentialProfile).toBe("work");
+  });
+  it("a default that is unknown or signed out refuses the new pane, never the computer's own account", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "out"); f.login.mockResolvedValue(false);
+    await expect(f.open(launch(), randomUUID(), "ghost")).rejects.toThrow(/does not exist/);
+    await expect(f.open(launch(), randomUUID(), "out")).rejects.toThrow(/not signed in/);
+    expect(f.spawn).not.toHaveBeenCalled(); expect(f.store.list()).toEqual([]);
+  });
+  it.each([["changed", "home"], ["cleared", undefined], ["set to another and back", "work"]])("a running pane reattaches with the same operation id after the default is %s", async (_how, later) => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work"); ensureCredentialProfile(f.root, "claude-code", "home");
+    const config = launch(), operationId = randomUUID(), first = await f.open(config, operationId, "work");
+    f.login.mockClear(); f.login.mockResolvedValue(false);                           // and a later sign-out must not block the reattach either
+    const again = await f.open(config, operationId, later);
+    expect(again.reattached).toBe(true); expect(again.launchId).toBe(first.launchId); expect(f.spawn).toHaveBeenCalledTimes(1); expect(f.login).not.toHaveBeenCalled();
+    expect(f.store.get(first.paneId)?.launch.credentialProfile).toBe("work");         // it keeps the profile it started with
+  });
+  it("a pane that started with NO default reattaches after one is set", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work");
+    const config = launch(), operationId = randomUUID(); await f.open(config, operationId);
+    const again = await f.open(config, operationId, "work");
+    expect(again.reattached).toBe(true); expect(f.spawn).toHaveBeenCalledTimes(1); expect(f.store.get(config.paneId)?.launch.credentialProfile).toBeUndefined();
+  });
+  it("a different launch under the same pane id is still another launch (the default is not part of identity, the launch is)", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work");
+    const config = launch(), operationId = randomUUID(); await f.open(config, operationId, "work");
+    await expect(f.open({ ...config, cwd: "C:\\elsewhere" }, operationId, "work")).rejects.toThrow(/already belongs to another launch/);
   });
 });
 

@@ -56,7 +56,8 @@ export type RuntimePaneRequest =
   | { action: "list" }
   | { action: "shutdown"; hostBootId: string }
   | { action: "recover"; paneId: string; launchId: string; hostBootId: string; confirmedStopped: true }
-  | { action: "open"; operationId: string; launch: RuntimePaneLaunch }
+  /** `defaultCredentialProfile`: this pairing's default, offered only to a launch that names no profile of its own. It is not part of the launch's identity: a pane keeps the profile it started with when the default later changes. */
+  | { action: "open"; operationId: string; launch: RuntimePaneLaunch; defaultCredentialProfile?: string }
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
   | { action: "snapshot"; paneId: string; launchId: string }
   | { action: "session-proof"; paneId: string; launchId: string }
@@ -106,7 +107,15 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
     case "general-workspace": return validateGeneralWorkspaceRequest(value);
     case "list": closed(value, ["action"]); break;
     case "shutdown": closed(value, ["action", "hostBootId"]); id(value.hostBootId); return value as unknown as RuntimePaneRequest;
-    case "open": closed(value, ["action", "operationId", "launch"]); id(value.operationId); return { action: "open", operationId: value.operationId, launch: validateRuntimePaneLaunch(value.launch) };
+    case "open": {
+      closed(value, ["action", "operationId", "launch", "defaultCredentialProfile"]); id(value.operationId);
+      const launch = validateRuntimePaneLaunch(value.launch);
+      if (value.defaultCredentialProfile !== undefined) {
+        assertCredentialProfileName(value.defaultCredentialProfile);
+        if (launch.cli !== "claude-code" || launch.credentialProfile !== undefined) throw Error("A default credential profile applies only to a Claude Code launch that names none");
+      }
+      return { action: "open", operationId: value.operationId, launch, ...(value.defaultCredentialProfile !== undefined ? { defaultCredentialProfile: value.defaultCredentialProfile as string } : {}) };
+    }
     case "session-proof": closed(value, ["action", "paneId", "launchId"]); break;
     case "capture":
       closed(value, ["action", "paneId", "launchId", "history", "joined", "ansi"]);

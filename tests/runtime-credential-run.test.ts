@@ -161,7 +161,9 @@ describe("names that are also Object properties, and a default that is signed ou
     await f.hub.callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: launch() } as never).catch(() => {});
     await f.hub.callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: launch({ credentialProfile: "home" }) } as never).catch(() => {});
     await f.hub.callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: launch({ cli: "codex" }) } as never).catch(() => {});
-    expect(seen.map(request => request.launch.credentialProfile)).toEqual(["work", "home", undefined]);
+    // The default rides beside the launch (never inside it) and only for a launch that names none, on Claude Code.
+    expect(seen.map(request => request.launch.credentialProfile)).toEqual([undefined, "home", undefined]);
+    expect(seen.map(request => request.defaultCredentialProfile)).toEqual(["work", undefined, undefined]);
   });
 });
 
