@@ -1,0 +1,19 @@
+/* #3160: Follow agent in the Files & changes panel — its own stylesheet, linked by workspace-panel.js (a page holding
+   an older workspace.css or app.css still draws it). */
+.ws-follow.on { color: var(--accent); }
+.ws-follow.paused { color: var(--warn); }
+.ws-history { display: flex; align-items: center; gap: var(--s-1); padding: 0 var(--s-3) var(--s-2); overflow-x: auto; scrollbar-width: thin; }
+.ws-history-label { flex: none; font-size: var(--fs-xs); color: var(--text-3); }
+.ws-step { flex: none; display: inline-flex; align-items: center; gap: 4px; max-width: 16em; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.ws-step:hover { background: var(--surface-2); }
+.ws-step.is-current { border-color: var(--accent); }
+.ws-step.is-hidden { color: var(--text-3); cursor: default; }
+.ws-step .ws-step-kind { color: var(--text-3); }
+.ws-step .ws-step-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
+.ws-follow-note { margin: 0 var(--s-3) var(--s-2); font-size: var(--fs-xs); color: var(--text-3); }
+.ws-text .ws-line { display: block; }
+.ws-text .ws-line.hl-read { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.ws-text .ws-line.hl-edit { background: color-mix(in srgb, var(--ok) 18%, transparent); }
+.ws-entry.hl .ws-entry-btn { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (prefers-reduced-motion: no-preference) { .ws-text .ws-line.hl-edit, .ws-text .ws-line.hl-read { transition: background 0.4s; } }

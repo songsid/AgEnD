@@ -172,13 +172,16 @@ it("both directions end to end: upload → signed question with files → member
   // Inline only for a magic-checked image, and only when asked.
   expect((await w.alex("GET", `${entry.answerFiles[0].url}?inline=1`)).headers.get("content-disposition")).toMatch(/^attachment;/);
   expect((await w.alex("GET", `${entry.questionFiles[0].url}?inline=1`)).headers.get("content-disposition")).toMatch(/^inline;/);
+  // The same as a plain path (the shared thread's renderer takes no query): images only.
+  expect((await w.alex("GET", `${entry.questionFiles[0].url}/inline`)).headers.get("content-disposition")).toMatch(/^inline;/);
+  expect((await w.alex("GET", `${entry.answerFiles[0].url}/inline`)).headers.get("content-disposition")).toMatch(/^attachment;/);
   // Someone else (the owner) cannot read the asker's room's files.
   expect((await w.olivia("GET", entry.answerFiles[0].url)).status).toBe(404);
 
   const actions = w.audits.map(a => a.action);
   expect(actions.filter(a => a === "file.upload")).toHaveLength(1);
   expect(actions.filter(a => a === "file.transfer")).toHaveLength(2);    // question → member, answer → Hub
-  expect(actions.filter(a => a === "file.read")).toHaveLength(3);
+  expect(actions.filter(a => a === "file.read")).toHaveLength(5);                // every read, the two /inline ones too
   // Stored encrypted: no plaintext bytes in the database.
   const segments = w.db.prepare("SELECT ciphertext FROM hub_attachment_segments").all() as { ciphertext: Buffer }[];
   expect(segments.length).toBeGreaterThanOrEqual(5);

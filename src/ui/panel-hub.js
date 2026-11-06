@@ -30,6 +30,7 @@ import { createHubChatStore } from "./hub-chat-store.js";
 import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quota.js";
 import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
+import { PendingFiles, hf, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
 
 const TITLES = { ask: "askTitle", exposures: "exposuresTitle", admin: "adminTitle" };
 /** P1 room polling: at most once per ten seconds, one request at a time, paused while the page is hidden (hub.md §5). */
@@ -310,6 +311,13 @@ function HubRoomView({ room: given }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
+  // #3226 D: files chosen for the next question (uploaded at once; Send names the uploaded ids).
+  const [files, setFilesState] = useState([]);
+  const filesRef = useRef([]);
+  const setFiles = (next) => { filesRef.current = next; setFilesState(next); };
+  // Uploads still queued when the room is left are not started.
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
   const input = useRef(null);
   useEffect(() => { setTitle(room.exposureName || hw("askTitle")); }, [room.exposureName]);
   // #3226 E: the side panel for this room's HTML pages (the fleet's panel). Its "Reply about this page" / Point at it
@@ -336,15 +344,31 @@ function HubRoomView({ room: given }) {
   const frozen = !closed && room.exposureState === "frozen";
   const working = store.working();
   const name = room.exposureName || "";
+  const client = hubClient();
+  const pageFiles = pageCarriesFiles(client, store);
+  const takesFiles = pageFiles && roomTakesFiles(room) && !closed && !frozen;
+  const uploading = files.some((f) => f.state === "uploading");
   const send = async () => {
     const q = draft.trim();
     if (!q || sending || closed || frozen) return;
+    if (uploading) { setMsg(hf("waitUpload")); return; }
+    // Chosen files are never dropped quietly: while the room can't take them, the question waits (or they are removed).
+    const chosen = filesRef.current.filter((f) => f.state === "ready");
+    if (chosen.length && !takesFiles) { setMsg(hf("held")); return; }
     setSending(true); setMsg(null);
-    const r = await store.send(q);
+    const r = await store.send(q, chosen.length ? { files: chosen.map((f) => f.id) } : {});
     setSending(false);
     if (!r.ok) { setMsg(errText(r)); return; }
-    setDraft(""); refreshRooms();
+    // Only the files this question carried; ones chosen while it was on its way stay for the next.
+    const sent = new Set(chosen.map((f) => f.key));
+    setDraft(""); setFiles(filesRef.current.filter((f) => !sent.has(f.key))); refreshRooms();
   };
+  const attach = takesFiles ? { title: hf("attach"), onFiles: async (list) => {
+    setMsg(null);
+    const refused = await uploadChosen(client, room.id, list, { current: () => filesRef.current, set: setFiles, alive: () => alive.current });
+    if (!alive.current) return;
+    if (refused.length) setMsg(refused.join(" "));
+  } } : null;
   const onKeyDown = (e) => { if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); send(); } };
   const toggleInfo = () => {
     if (!wide) { setSheet(true); return; }
@@ -371,11 +395,14 @@ function HubRoomView({ room: given }) {
         ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
         ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
         ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
+        ${!closed && !frozen && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf(pageFiles ? "off" : "reload")}</p>` : null}
         ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-        ${closed ? null : html`<div class="composer-box"><${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
-          onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${null}
+        ${closed ? null : html`<div class="composer-box"><${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
+          formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />
+          <${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
+          onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${attach}
           stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
-          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen, label: hc("send"), onClick: send }} /></div>`}
+          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || uploading, label: hc("send"), onClick: send }} /></div>`}
         ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
       </div></div>
     </section>

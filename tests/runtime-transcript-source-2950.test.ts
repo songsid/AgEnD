@@ -25,7 +25,7 @@ it('a checkpoint preserves pre-paste turn boundaries and ordered progress for th
 });
 it('Claude preserves prompt, API error and informational ordering without duplicate array events',async()=>{
  const f=rig('claude-code'),source=f.source();await source.initialize();f.add({type:'user',message:{role:'user',content:'question'}},{type:'assistant',isApiErrorMessage:true,message:{role:'assistant',content:'request failed'},apiErrorStatus:429},{type:'system',subtype:'informational',content:'retrying'},{type:'assistant',message:{role:'assistant',content:[{type:'tool_use',name:'Read',input:{path:'file'}}]}});
- const events=await source.poll();expect(events.records?.map(e=>e[0])).toEqual(['user_prompt','api_error','system_informational','tool_use']);expect(events.toolUses).toEqual([]);expect(events.assistantTexts).toEqual([]);
+ const events=await source.poll();expect(events.records?.map(e=>e[0])).toEqual(['workspace_follow','user_prompt','api_error','system_informational','tool_use']);expect(events.toolUses).toEqual([]);expect(events.assistantTexts).toEqual([]);
 });
 it('only a positively fresh deferred session can checkpoint before its first record exists',async()=>{
  const f=rig();f.absent();const fresh=f.source(true),resumed=f.source(false);await fresh.initialize();await resumed.initialize();
