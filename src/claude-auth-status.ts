@@ -87,20 +87,40 @@ export function identityOf(status: ClaudeAuthStatus): AccountIdentity | undefine
 }
 
 /**
- * Parse the output of `claude auth status` (stdout and stderr may be merged, so a JSON object inside other text is found).
+ * The JSON objects in a text, in order: a balanced `{ … }` (string-aware, so a brace inside a quoted value does not count) from each `{`. Stdout and
+ * stderr are merged by every caller, so other text, even text with braces in it, can sit around the answer. Bounded: a step budget, so a hostile
+ * or enormous output cannot make this quadratic.
+ */
+function* jsonObjectCandidates(text: string): Generator<string> {
+  let budget = 262_144;
+  for (let start = text.indexOf("{"); start >= 0 && budget > 0; start = text.indexOf("{", start + 1)) {
+    let depth = 0, inString = false, escaped = false;
+    for (let i = start; i < text.length && budget-- > 0; i++) {
+      const c = text[i];
+      if (inString) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') inString = false; continue; }
+      if (c === '"') inString = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) { yield text.slice(start, i + 1); start = i; break; }
+    }
+  }
+}
+/**
+ * Parse the output of `claude auth status` (stdout and stderr may be merged, so the JSON object is looked for among other text, braces included):
+ * the first balanced object that parses and has a boolean `loggedIn` is the answer.
  * `loggedIn`: the CLI's own boolean, null when there is no readable answer. Only a signed-in answer carries an identity: an account login
  * has a masked e-mail and a plan; an API key (`authMethod: "api_key"`) is marked as such and has neither.
  */
 export function parseClaudeAuthStatus(text: unknown): ClaudeAuthStatus {
   const unreadable: ClaudeAuthStatus = { loggedIn: null };
   if (typeof text !== "string" || text.length > 64 * 1024) return unreadable;
-  const start = text.indexOf("{"), end = text.lastIndexOf("}");
-  if (start < 0 || end <= start) return unreadable;
-  let value: unknown;
-  try { value = JSON.parse(text.slice(start, end + 1)); } catch { return unreadable; }
-  if (!value || typeof value !== "object" || Array.isArray(value)) return unreadable;
-  const row = value as Record<string, unknown>;
-  if (typeof row.loggedIn !== "boolean") return unreadable;
+  let row: Record<string, unknown> | undefined, tried = 0;
+  for (const candidate of jsonObjectCandidates(text)) {
+    if (++tried > 32) break;
+    let value: unknown;
+    try { value = JSON.parse(candidate); } catch { continue; }
+    if (value && typeof value === "object" && !Array.isArray(value) && typeof (value as Record<string, unknown>).loggedIn === "boolean") { row = value as Record<string, unknown>; break; }
+  }
+  if (!row) return unreadable;
   if (row.loggedIn !== true) return { loggedIn: false };
   if (row.authMethod === "api_key") return { loggedIn: true, apiKey: true };
   const maskedEmail = mask(row.email), plan = planOf(row.subscriptionType);

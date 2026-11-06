@@ -98,6 +98,27 @@ describe("parseClaudeAuthStatus: signed in or not, and which account", () => {
     expect(parseClaudeAuthStatus(`warning: something\n${status()}\nmore text`)).toEqual({ loggedIn: true, maskedEmail: "al***@example.com", plan: "team" });
     expect(parseClaudeAuthStatus(`${status({ loggedIn: false })}\n`)).toEqual({ loggedIn: false });
   });
+  it("finds the answer among other text that has braces in it (what the reviewer ran), and the older regex's cases still hold", () => {
+    const answer = { loggedIn: true, maskedEmail: "al***@example.com", plan: "team" as const };
+    expect(parseClaudeAuthStatus(`warning {x}\n${status()}`)).toEqual(answer);
+    expect(parseClaudeAuthStatus(`${status()}\nsee {docs}`)).toEqual(answer);
+    expect(parseClaudeAuthStatus(`warning {x}\n${status()}\nsee {docs} and {more}`)).toEqual(answer);
+    expect(parseClaudeAuthStatus(`unbalanced { warning\n${status()}`)).toEqual(answer);
+    expect(parseClaudeAuthStatus(`stray } brace and {\n${status()}`)).toEqual(answer);
+    expect(parseClaudeAuthStatus(`{"note":"not it"}\n{"other":{"loggedIn":"x"}}\n${status({ loggedIn: false })}`)).toEqual({ loggedIn: false });
+    expect(parseClaudeAuthStatus(`{"debug":{"loggedIn":"nested"}}\n${status()}`)).toEqual(answer);
+  });
+  it("is not fooled by braces inside the answer's own strings", () => {
+    expect(parseClaudeAuthStatus(status({ orgName: "Fixture {Org} } {" }))).toEqual({ loggedIn: true, maskedEmail: "al***@example.com", plan: "team" });
+    expect(parseClaudeAuthStatus(status({ orgName: 'quote " and } brace', email: "ab@example.com" }))).toEqual({ loggedIn: true, maskedEmail: "a***@example.com", plan: "team" });
+    expect(parseClaudeAuthStatus(`{"x":"}"}\n${status()}`)).toEqual({ loggedIn: true, maskedEmail: "al***@example.com", plan: "team" });
+  });
+  it("still says no readable answer when there is none, and does not grind on hostile input", () => {
+    for (const text of ["{x}", "{x} {y} {z}", "{{{{", "}}}}", '{"loggedIn": maybe}', "see {docs}\nnothing else"]) expect(parseClaudeAuthStatus(text), text).toEqual({ loggedIn: null });
+    for (const text of ["{".repeat(60_000), "{\"a\":".repeat(10_000), "{}".repeat(30_000), "{ ".repeat(30_000) + status()]) {
+      const started = Date.now(); parseClaudeAuthStatus(text); expect(Date.now() - started, text.slice(0, 12)).toBeLessThan(500);
+    }
+  });
   it("never lets the full address through, whatever else the answer carries", () => {
     const result = parseClaudeAuthStatus(status({ email: "alice.fixture@example.com", orgName: "alice.fixture@example.com", displayName: "alice.fixture@example.com" }));
     expect(JSON.stringify(result)).not.toContain("alice.fixture"); expect(Object.keys(result).sort()).toEqual(["loggedIn", "maskedEmail", "plan"]);
