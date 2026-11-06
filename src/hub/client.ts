@@ -1,7 +1,7 @@
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { HUB_CAPABILITIES, HUB_LIMITS, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
+import { HUB_CAPABILITIES, HUB_LIMITS, HUB_OPTIONAL_CAPABILITIES, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
 import { HubSocket } from "./socket.js";
 import { HubProtocolError } from "./validation.js";
 import { pinnedHubAgent, HubTlsIdentityError } from "./tls.js";
@@ -13,6 +13,8 @@ export class HubAuthorizationError extends Error {
 }
 export interface HubMemberLink {
   readonly linkEpoch: number; readonly revocationVersion: number; readonly profile: HubMemberProfile;
+  /** The optional features both ends listed: this member's offer ∩ the Hub's welcome (empty for an older Hub). */
+  readonly features: ReadonlySet<string>;
   current(): boolean;
   send(frame: HubMemberFrame): Promise<void>;
   exchange(frame: HubMemberFrame, responseType: HubServerFrame["type"]): Promise<HubServerFrame>;
@@ -25,6 +27,8 @@ export interface HubClientOptions {
   receive(frame: Exclude<HubServerFrame, { type: "welcome" }>, link: HubMemberLink): Promise<void>;
   hold(code: "unavailable" | "invalid" | "backpressure" | "replaced" | "revoked" | "key-changed"): void;
   now?: () => number; random?: () => number;
+  /** The optional features this member offers (tests use a smaller list to stand in for an older member). */
+  capabilities?: readonly string[];
 }
 export class HubMemberClient implements HubMemberTransport {
   private profile: HubMemberProfile | null = null;
@@ -88,7 +92,7 @@ export class HubMemberClient implements HubMemberTransport {
         } });
       this.link = link;
       void link.send({ v: 1, type: "hello", requestId: handshake, linkEpoch: 0,
-        payload: { supportedVersions: [1], capabilities: [...HUB_CAPABILITIES], memberBootId: this.bootId } }).catch(() => link.end());
+        payload: { supportedVersions: [1], capabilities: [...HUB_CAPABILITIES, ...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)], memberBootId: this.bootId } }).catch(() => link.end());
     });
   }
   private async receive(frame: HubServerFrame, link: HubSocket<HubServerFrame, HubMemberFrame>, handshake: string, timeout: NodeJS.Timeout): Promise<void> {
@@ -101,8 +105,9 @@ export class HubMemberClient implements HubMemberTransport {
         || frame.linkEpoch !== frame.payload.linkEpoch || frame.payload.revocationVersion < this.revocation) throw new HubProtocolError("stale");
       clearTimeout(timeout); this.epoch = frame.linkEpoch; this.revocation = frame.payload.revocationVersion;
       const profile = this.profile!, epoch = this.epoch;
-      const self = this;
-      const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, get revocationVersion() { return self.revocation; },
+      const self = this, offered = this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES;
+      const features: ReadonlySet<string> = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
+      const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, features, get revocationVersion() { return self.revocation; },
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
         send: value => { if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale")); return link.send(value); },
         exchange: (value, type) => this.exchange(value, type, view) };
