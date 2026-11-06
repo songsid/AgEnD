@@ -101,20 +101,29 @@ function restartedFixture(newRow: "$id" | "other") {
   copyFileSync(side, f.dbPath); copyFileSync(side + "-wal", f.dbPath + "-wal"); db.close();
   return f;
 }
-it("a restarted WAL with an older generation behind the newest commit is coherent and still read exactly", async () => {
+it("a restarted WAL (an older generation behind the newest commit) is not provably coherent: unknown, never absent", async () => {
   const absent = restartedFixture("other"), wal = readFileSync(absent.dbPath + "-wal");
   // The fixture really has the shape: current-generation first frame, an older generation's last frame.
   const lastFrame = wal.length - (24 + wal.readUInt32BE(8));
   expect(wal.readUInt32BE(32 + 8)).toBe(wal.readUInt32BE(16));
   expect(wal.readUInt32BE(lastFrame + 8)).not.toBe(wal.readUInt32BE(16));
-  expect(coherentSqliteWal(wal)).toBe(true);
-  expect(await absent.proof()).toBe("absent");
+  expect(coherentSqliteWal(wal)).toBe(false);
+  expect(await absent.proof()).toBe("unknown");
   expect(await restartedFixture("$id").proof()).toBe("unknown");
-  // The older generation is only acceptable behind a COMMITTED newest one: uncommit its last frame (re-signed).
-  const page = wal.readUInt32BE(8), frame = 24 + page;
-  let last = 32; while (last + frame < wal.length && wal.readUInt32BE(last + frame + 8) === wal.readUInt32BE(16)) last += frame;
-  const open = Buffer.from(wal); open.writeUInt32BE(0, last + 4);
-  expect(coherentSqliteWal(resign(open))).toBe(false);
+});
+
+// Prism R2 (#3219): checksums do not cover salts, so relabelling a current transaction as "older" (salt-1 = header-1)
+// would hide it from SQLite. Both a mixed tail (later current frames after it) and an all-tail relabel stay unknown.
+it.each(["mixed tail", "all tail"])("a %s relabelled as an older generation, hiding the requested ID, is unknown", async (kind) => {
+  const f = fixture([randomUUID(), "$id", ...(kind === "mixed tail" ? [randomUUID()] : [])]), path = f.dbPath + "-wal", wal = readFileSync(path);
+  const frame = 24 + wal.readUInt32BE(8), frames = (wal.length - 32) / frame;
+  const commits = [...Array(frames).keys()].filter((n) => wal.readUInt32BE(32 + n * frame + 4) !== 0);
+  expect(commits.length).toBeGreaterThanOrEqual(kind === "mixed tail" ? 3 : 2);
+  const from = commits[0]! + 1, to = kind === "mixed tail" ? commits[1]! : frames - 1;
+  for (let n = from; n <= to; n++) wal.writeUInt32BE((wal.readUInt32BE(16) - 1) >>> 0, 32 + n * frame + 8);
+  writeFileSync(path, wal);
+  expect(coherentSqliteWal(wal)).toBe(false);
+  expect(await f.proof()).toBe("unknown");
 });
 
 it("frame-level shapes SQLite would silently drop are not coherent, even with correct checksums", () => {

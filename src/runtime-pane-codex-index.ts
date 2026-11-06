@@ -42,12 +42,12 @@ function walChecksum(bytes: Buffer, start: number, end: number, bigEndian: boole
   return [s1, s2];
 }
 /** SQLite silently discards WAL content it cannot verify and then answers from the older main file, so a WAL counts
- * only when every frame SQLite would apply verifies AND nothing it would drop looks like lost data:
+ * only when SQLite would apply ALL of it:
  *  - a valid header (magic, version, page size, header checksum) and whole frames;
- *  - frames in the header's generation (same salts) chain their checksums; any mismatch there is unknown, never skipped;
- *  - the current generation ends on a commit frame (no torn or uncommitted transaction left behind);
- *  - frames after it may only be an older generation's leftovers (different salts) once at least one commit verified.
- * Anything else (a torn, flipped or foreign file) stays unknown instead of being read as "no rows". */
+ *  - every frame in the header's generation (same salts), chaining its checksum, page number ≠ 0;
+ *  - the last frame is a commit (no torn or uncommitted transaction).
+ * An older generation's leftover tail is not provably older, so it is unknown too (an administrator decides).
+ * Anything else (a torn, flipped, relabelled or foreign file) stays unknown instead of being read as "no rows". */
 export function coherentSqliteWal(bytes: Buffer): boolean {
   if (bytes.length < 32) return false;
   const magic = bytes.readUInt32BE(0), pageSize = bytes.readUInt32BE(8);
@@ -61,13 +61,9 @@ export function coherentSqliteWal(bytes: Buffer): boolean {
   const salt1 = bytes.readUInt32BE(16), salt2 = bytes.readUInt32BE(20);
   let frames = 0, lastCommit = false;
   for (let at = 32; at < bytes.length; at += 24 + size) {
-    const frameSalt1 = bytes.readUInt32BE(at + 8);
-    if (frameSalt1 !== salt1 || bytes.readUInt32BE(at + 12) !== salt2) {
-      // An older generation's tail is only plausible behind a verified, committed current generation, and SQLite
-      // bumps salt-1 on every restart, so an older frame's salt-1 is behind the header's (a same-salt-1 frame is damage).
-      const behind = (salt1 - frameSalt1) >>> 0;
-      return frames > 0 && lastCommit && behind > 0 && behind < 0x80000000;
-    }
+    // Another generation's frame cannot be proved older: its checksum chain began at a header SQLite has overwritten,
+    // and checksums do not cover salts, so a relabelled current frame looks the same. Never read it as "no rows".
+    if (bytes.readUInt32BE(at + 8) !== salt1 || bytes.readUInt32BE(at + 12) !== salt2) return false;
     if (bytes.readUInt32BE(at) === 0) return false;
     [s1, s2] = walChecksum(bytes, at, at + 8, bigEndian, s1, s2);
     [s1, s2] = walChecksum(bytes, at + 24, at + 24 + size, bigEndian, s1, s2);
