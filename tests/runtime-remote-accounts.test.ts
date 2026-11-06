@@ -767,3 +767,26 @@ describe("P2: accounts.check is bounded before it starts any child", () => {
     for (let i = 0; i < MAX_CONCURRENT_CHECKS * 3; i++) await expect(ask(f, "accounts.check", { cli: "claude-code", profile: "work" })).rejects.toThrow(/could not be completed/);
   });
 });
+
+
+describe("the default is read once more after the rename, before the delete (another process writes it)", () => {
+  const afterRename = async (flip: (f: F) => void) => {
+    const hold = holdInspect(3); const f = fixture({ ownership: { inspect: hold.inspect } }); f.on(); const directory = owned(f); writeFileSync(join(directory, ".credentials.json"), "secret");
+    const request = ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e); await vi.waitFor(() => expect(hold.calls()).toBe(3));
+    expect(existsSync(directory)).toBe(false);                                              // the folder has been taken away: the hold is after the rename
+    flip(f); hold.gate.resolve(); const error = await request as Error;
+    expect(readFileSync(join(directory, ".credentials.json"), "utf8")).toBe("secret"); expect(readdirSync(join(f.root, "claude-code"))).toEqual(["work"]); expect(isCreatedProfile(f.root, "claude-code", "work")).toBe(true);
+    return { f, error };
+  };
+  it("a default set in that gap puts the folder back and refuses", async () => { expect((await afterRename(f => f.defaultProfile.mockReturnValue("work"))).error.message).toMatch(/default for agents/); });
+  it("a default that cannot be read in that gap puts the folder back and answers `unconfirmed`", async () => {
+    const { f, error } = await afterRename(f => f.defaultProfile.mockImplementation(() => { throw new Error("EBUSY"); }));
+    expect(error.message).toMatch(/could not confirm which credential profile is the default/); expect(f.audit().some(row => row.reason === "unconfirmed")).toBe(true);
+  });
+  it("a task or terminal that appears in that gap does the same", async () => { expect((await afterRename(f => f.inUse.mockReturnValue("pane"))).error.message).toMatch(/running terminal/); });
+  it("with nothing changed the removal completes", async () => {
+    const hold = holdInspect(3); const f = fixture({ ownership: { inspect: hold.inspect } }); f.on(); const directory = owned(f);
+    const request = ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor }); await vi.waitFor(() => expect(hold.calls()).toBe(3)); hold.gate.resolve();
+    await expect(request).resolves.toEqual({ removed: true }); expect(existsSync(directory)).toBe(false); expect(readdirSync(join(f.root, "claude-code"))).toEqual([]);
+  });
+});

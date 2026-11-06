@@ -102,6 +102,19 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   const credentialRoot = credentialProfilesRoot(store.directory);
   const probeStatus = (cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> => options.probeStatus ? options.probeStatus(cli, directory)
     : options.probeLogin ? options.probeLogin(cli, directory).then(loggedIn => ({ loggedIn })) : probeCredentialProfileStatus(cli, directory);
+  /**
+   * Makes a profile this pairing's default, safely against a removal that AgEnD may be carrying out in the Runtime at the same moment (another process,
+   * so there is no lock to take). The folder is looked at again immediately before the write, and once more after it: a profile that was taken away in
+   * between (a removal renames the folder first) puts the default back as it was and says so. The Runtime's removal looks at the default again after its
+   * own rename, so one of the two always notices the other.
+   */
+  const setDefaultChecked = (name: string, before: string | undefined): void => {
+    assertCredentialProfileName(name);
+    requireCredentialProfile(credentialRoot, "claude-code", name);
+    store.setCredentialDefault(name);
+    try { requireCredentialProfile(credentialRoot, "claude-code", name); }
+    catch { try { store.setCredentialDefault(before); } catch { /* the error below is what matters */ } throw new Error(`Credential profile "${name}" is being removed or is gone, so it was not made the default. Check agend-runtime profile list.`); }
+  };
   if (command === "remote-setup") {
     const [what, state] = positional, usage = "Usage: agend-runtime remote-setup status | remote-setup (accounts | install) (on | off) [--for 2h] [--profile DIRECTORY]";
     if (Object.keys(flags).some(key => key !== "--profile" && key !== "--for")) throw new Error(usage);
@@ -179,7 +192,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     const answer = await probeStatus("claude-code", directory);
     rememberCredentialStatus(credentialRoot, "claude-code", name, answer);
     if (answer.loggedIn !== true) throw credentialLoginRequired("claude-code", name, answer.loggedIn);
-    const before = store.credentialDefault(); store.setCredentialDefault(name);
+    const before = store.credentialDefault(); setDefaultChecked(name, before);
     process.stdout.write(`Default credential profile for this pairing: ${name}.${before && before !== name ? ` (was ${before}; a conversation started under another account cannot be resumed under this one.)` : ""}\nA running Runtime uses it from the next run or new terminal; a terminal that is already open keeps the profile it started with.\n`);
     return;
   }
@@ -230,7 +243,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     }
   }
   if (command === "connect" && flags["--credential-profile"] !== undefined) {
-    const before = store.credentialDefault(); store.setCredentialDefault(flags["--credential-profile"]);
+    const before = store.credentialDefault(); setDefaultChecked(flags["--credential-profile"], before);
     process.stdout.write(`Credential profile for agents that do not choose one: ${flags["--credential-profile"]}${before && before !== flags["--credential-profile"] ? ` (was ${before})` : ""}\n`);
   }
   const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, report: text => process.stdout.write(`${text}\n`) });

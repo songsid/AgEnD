@@ -454,7 +454,7 @@ export class RemoteAccounts {
         this.gate(ctx, "accounts");
         // The protection (the default profile, tasks, terminals, the switch) is asked again, synchronously, immediately before the rename: `beforeCommit`.
         await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile,
-          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, true) });
+          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, true), beforeDelete: () => this.finalLook(ctx, input.profile, true) });
         this.deps.changed();
         return { removed: true as const };
       },
