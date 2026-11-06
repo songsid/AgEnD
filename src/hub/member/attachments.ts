@@ -49,8 +49,10 @@ export class HubMemberFiles {
       if (sha(bytes) !== f.sha256) throw new HubProtocolError("invalid");
       const kind = classifyAttachment(f.name, bytes.subarray(0, 64));
       if ("refused" in kind || kind.mime !== f.mime) throw new HubProtocolError("invalid");
-      // One file per message and position: a retried hand-off rewrites the same name, never piles up copies.
-      const path = join(inbox, `hub-${messageId.slice(0, 8)}-${i + 1}-${f.name}`);
+      // The stored name is opaque and bounded: the whole message id and the file's position (a retried hand-off rewrites the
+      // same file; another message never can), plus the plain extension. The display name stays in the line for the agent.
+      const ext = /\.([a-z0-9]{1,10})$/i.exec(f.name)?.[1]?.toLowerCase();
+      const path = join(inbox, `hub-${messageId}-${i + 1}${ext ? `.${ext}` : ""}`);
       const fh = await open(path, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | (constants.O_NOFOLLOW ?? 0), 0o600);
       try { await fh.writeFile(bytes); } finally { await fh.close(); }
       lines.push(isInlineImage(f.mime) ? `[📷 Image: ${path}]` : `[📎 File: ${f.name} → ${path}]`);

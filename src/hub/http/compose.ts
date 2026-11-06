@@ -40,6 +40,7 @@ export type { HubHttpDeps, HubTxDatabase };
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
 export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js"]);
 const BODY_LIMIT = 96 * 1024;
+const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const API_HEADERS = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
@@ -107,6 +108,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   let closed = false;
   const live = () => !closed && core.live();
+  /** Upload bodies being read now, per session and in all (each up to the file limit in memory). */
+  const uploading = new Map<string, number>(); let uploadingTotal = 0;
 
   /** One API request: method and path enumerated, mutations same-origin with the session's CSRF token. */
   async function api(req: IncomingMessage, res: ServerResponse, path: string, query: URLSearchParams): Promise<void> {
@@ -183,11 +186,25 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     // attachments-v1: the asker's upload (raw body, streamed under the file limit) and the room's files.
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
-      const roomId = uuid(r[1]); csrf();
+      // Nothing of the body is read until the request is admitted: a closed connection, never a buffer, for a refusal.
+      res.once("finish", () => { if (!req.readableEnded) req.destroy(); });
+      const roomId = uuid(r[1]); const s = csrf();
       const store = deps.attachments; if (!store) throw new HubProtocolError("incompatible");
       const name = fileName(req.headers["x-file-name"]);
-      const bytes = await readRaw(req, store.limits.fileBytes); if (!live()) throw new HubProtocolError("unavailable");
-      return send(res, 200, { file: await guard(() => rooms.upload(ctx, roomId, name, bytes)) });
+      const declared = req.headers["content-length"];
+      if (declared === undefined || !/^\d{1,10}$/.test(declared)) throw new HttpError(411, "length-required");
+      if (Number(declared) > store.limits.fileBytes) throw new HttpError(413, "too-large");
+      // At most UPLOADS_PER_SESSION bodies per session and UPLOADS_TOTAL in all are read at once.
+      if ((uploading.get(s.sessionId) ?? 0) >= UPLOADS_PER_SESSION || uploadingTotal >= UPLOADS_TOTAL) throw new HubProtocolError("backpressure");
+      uploading.set(s.sessionId, (uploading.get(s.sessionId) ?? 0) + 1); uploadingTotal++;
+      try {
+        await guard(() => rooms.uploadAdmit(ctx, roomId, Number(declared)));
+        const bytes = await readRaw(req, Number(declared)); if (!live()) throw new HubProtocolError("unavailable");
+        if (bytes.length !== Number(declared)) throw new HubProtocolError("invalid");
+        return send(res, 200, { file: await guard(() => rooms.upload(ctx, roomId, name, bytes)) });
+      } finally {
+        const n = (uploading.get(s.sessionId) ?? 1) - 1; if (n > 0) uploading.set(s.sessionId, n); else uploading.delete(s.sessionId); uploadingTotal--;
+      }
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files\/([^/]+)$/))) {
       if (method !== "GET") throw new HttpError(405, "method");
@@ -324,7 +341,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (!page.more) flushSoon(link);
         return { ...reply, type: "reconcile", payload: page };
       }
-      case "attachment.get": return { ...reply, type: "attachment.chunk", payload: rooms.attachmentGet(frame.payload, link) };
+      case "attachment.get": return { ...reply, type: "attachment.chunk", payload: await rooms.attachmentGet(frame.payload, link) };
       case "attachment.put": return { ...reply, type: "attachment.ack", payload: rooms.attachmentPut(frame.payload, link) };
       case "error": return;
     }

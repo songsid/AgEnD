@@ -16,6 +16,9 @@ import type { HubAttachmentRef } from "../types.js";
 import { attachmentLimits, classifyAttachment, type HubAttachmentLimits } from "./limits.js";
 
 export const UPLOAD_TTL_MS = 60 * 60 * 1000;
+/** Files waiting to be used (an asker's uploads; a fleet's staged answer files) are budgeted, not only aged: per owner of
+ * the wait, and in all. A full budget refuses (backpressure) before anything is stored. */
+export const HUB_PENDING_BUDGET = Object.freeze({ files: 20, bytes: 100 * 1024 * 1024, totalBytes: 1024 * 1024 * 1024 });
 const STAGING_TTL_MS = 60 * 60 * 1000;
 const sha = (b: Buffer): string => createHash("sha256").update(b).digest("hex");
 
@@ -37,7 +40,9 @@ interface Row { id: string; sha256: string; name: string; size: number; mime: st
 export type HubAttachmentRow = Readonly<Row>;
 export const refOf = (r: Row): HubAttachmentRef => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, sha256: r.sha256 });
 
-export interface HubAttachmentStoreOptions { contentKey: Buffer; now?: () => number; limits?: Partial<HubAttachmentLimits> | null }
+export interface HubAttachmentStoreOptions { contentKey: Buffer; now?: () => number; limits?: Partial<HubAttachmentLimits> | null;
+  /** Tests only: a smaller pending budget. */
+  budget?: Partial<typeof HUB_PENDING_BUDGET> }
 export class HubAttachmentStore {
   private readonly key: Buffer;
   readonly limits: HubAttachmentLimits;
@@ -46,6 +51,22 @@ export class HubAttachmentStore {
     this.key = Buffer.from(options.contentKey); this.limits = attachmentLimits(options.limits);
   }
   private now(): number { return this.options.now?.() ?? Date.now(); }
+  private budget() { return { ...HUB_PENDING_BUDGET, ...this.options.budget }; }
+  /** What is waiting now: unexpired uploads/staged files of one owner (uploader or fleet), staging in progress, and in all. */
+  private waiting(db: Database.Database, owner: { uploader?: string; fleetId?: string }): { files: number; bytes: number; total: number } {
+    const now = this.now();
+    const rows = (db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged') AND expires_at > ?
+      AND ${owner.uploader !== undefined ? "uploader=?" : "fleet_id=?"}`).get(now, owner.uploader ?? owner.fleetId) as { n: number; b: number });
+    const staging = owner.fleetId !== undefined ? db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(t),0) AS b FROM (SELECT MAX(total) AS t FROM hub_attachment_staging WHERE fleet_id=? GROUP BY id)").get(owner.fleetId) as { n: number; b: number } : { n: 0, b: 0 };
+    const all = (db.prepare("SELECT COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged') AND expires_at > ?").get(now) as { b: number }).b
+      + (db.prepare("SELECT COALESCE(SUM(t),0) AS b FROM (SELECT MAX(total) AS t FROM hub_attachment_staging GROUP BY id)").get() as { b: number }).b;
+    return { files: rows.n + staging.n, bytes: rows.b + staging.b, total: all };
+  }
+  /** Room for one more waiting file of `size` bytes for this owner (backpressure otherwise). */
+  admit(db: Database.Database, owner: { uploader?: string; fleetId?: string }, size: number): void {
+    const b = this.budget(), w = this.waiting(db, owner);
+    if (w.files + 1 > b.files || w.bytes + size > b.bytes || w.total + size > b.totalBytes) throw new HubProtocolError("backpressure");
+  }
   private seal(aad: string, plain: Buffer): { nonce: Buffer; body: Buffer } {
     const nonce = randomBytes(12), c = createCipheriv("aes-256-gcm", this.key, nonce); c.setAAD(Buffer.from(aad));
     return { nonce, body: Buffer.concat([c.update(plain), c.final(), c.getAuthTag()]) };
@@ -88,6 +109,7 @@ export class HubAttachmentStore {
     if (input.bytes.length > this.limits.fileBytes) throw new HubProtocolError("invalid");
     const kind = classifyAttachment(input.name, input.bytes.subarray(0, 64));
     if ("refused" in kind) throw new HubAttachmentRefused(kind.refused);
+    this.admit(db, { uploader: input.uploader }, input.bytes.length);
     const digest = this.storeBlob(db, input.bytes), now = this.now(), id = randomUUID();
     db.prepare(`INSERT INTO hub_attachments(id, sha256, name, size, mime, direction, state, room_id, uploader, created_at, expires_at)
       VALUES(?,?,?,?,?,'question','pending',?,?,?,?)`).run(id, digest, input.name, input.bytes.length, kind.mime, input.roomId, input.uploader, now, now + UPLOAD_TTL_MS);
@@ -113,7 +135,7 @@ export class HubAttachmentStore {
   row(db: Database.Database, id: string): HubAttachmentRow | undefined { return db.prepare("SELECT * FROM hub_attachments WHERE id=?").get(id) as Row | undefined; }
 
   /** One chunk of an answer's file from the member, in order. Returns the next offset; the last chunk checks the digest. */
-  stage(db: Database.Database, fleetId: string, c: { id: string; offset: number; total: number; sha256: string; data: Buffer }): { complete: boolean } {
+  stage(db: Database.Database, fleetId: string, c: { id: string; offset: number; total: number; sha256: string; data: Buffer }): { complete: boolean; discarded?: true } {
     if (c.total > this.limits.fileBytes || c.data.length === 0 || c.data.length > HUB_ATTACHMENT_CHUNK || c.offset % HUB_ATTACHMENT_CHUNK !== 0) throw new HubProtocolError("invalid");
     const done = db.prepare("SELECT * FROM hub_attachments WHERE id=?").get(c.id) as Row | undefined;
     if (done) {
@@ -127,6 +149,7 @@ export class HubAttachmentStore {
     const seen = db.prepare("SELECT 1 FROM hub_attachment_staging WHERE id=? AND idx=?").get(c.id, idx);
     if (!seen) {
       if (idx !== prior.n) throw new HubProtocolError("stale");          // one chunk in flight, in order
+      if (prior.n === 0) this.admit(db, { fleetId }, c.total);             // a new file: within the fleet's waiting budget
       const s = this.seal(`agend-hub-attachment-staging-v1\n${c.id}\n${idx}`, c.data);
       db.prepare("INSERT INTO hub_attachment_staging(id, idx, fleet_id, total, sha256, nonce, ciphertext, created_at) VALUES(?,?,?,?,?,?,?,?)")
         .run(c.id, idx, fleetId, c.total, c.sha256, s.nonce, s.body, this.now());
@@ -136,7 +159,8 @@ export class HubAttachmentStore {
       .map(p => this.open(`agend-hub-attachment-staging-v1\n${c.id}\n${p.idx}`, p.nonce, p.ciphertext));
     const bytes = Buffer.concat(parts);
     db.prepare("DELETE FROM hub_attachment_staging WHERE id=?").run(c.id);
-    if (bytes.length !== c.total || sha(bytes) !== c.sha256) throw new HubProtocolError("invalid");
+    // A file that does not match its digest is discarded — returned, not thrown, so the caller's transaction keeps the delete.
+    if (bytes.length !== c.total || sha(bytes) !== c.sha256) return { complete: false, discarded: true };
     this.storeBlob(db, bytes);
     // Name and type are unknown until the answer names this file: placeholders, checked and filled at bind.
     db.prepare(`INSERT INTO hub_attachments(id, sha256, name, size, mime, direction, state, fleet_id, created_at, expires_at)
@@ -151,6 +175,7 @@ export class HubAttachmentStore {
       const row = db.prepare("SELECT * FROM hub_attachments WHERE id=?").get(r.id) as Row | undefined;
       if (!row || row.direction !== "answer" || row.fleet_id !== fleetId || row.sha256 !== r.sha256 || row.size !== r.size) throw new HubProtocolError("not-found");
       if (row.state === "bound") { if (row.message_id !== messageId || row.position !== i || row.name !== r.name || row.mime !== r.mime) throw new HubProtocolError("conflict"); return; }
+      if ((row.expires_at ?? 0) <= this.now()) throw new HubProtocolError("expired");     // never resurrected by a late answer
       const kind = classifyAttachment(r.name, this.chunk(db, r.sha256, 0).data.subarray(0, 64));
       if ("refused" in kind || kind.mime !== r.mime) throw new HubProtocolError("invalid");
       db.prepare("UPDATE hub_attachments SET state='bound', name=?, mime=?, message_id=?, room_id=?, position=?, expires_at=NULL WHERE id=? AND state='staged'")
