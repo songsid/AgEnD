@@ -14,11 +14,11 @@ afterEach(() => { for (const home of homes.splice(0)) rmSync(home, { recursive: 
 afterAll(() => rmSync(certs.dir, { recursive: true, force: true }));
 const start = () => ["Example Hub", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443", certs.cert, certs.key,
   "corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test"];
-const finish = () => ["alice", { hidden: USER }, "y", "7", "30", "initialize", "no"];
+const finish = () => ["alice", "y", "7", "30", "initialize", "no"];
 function setup(allowHiddenService = false) {
   const home = realpathSync(tempDir("agend-secret-wizard-")), source = join(home, "owner-secret"); homes.push(home);
   writeFileSync(source, PASSWORD, { mode: 0o600 });
-  const identity = new FakeIdentity(), directory = fakeDirectory({ [`alice:${USER}`]: { ok: true, person: ADMIN } });
+  const identity = new FakeIdentity(), directory = fakeDirectory({ alice: { ok: true, person: ADMIN } });
   const initializer = createHubInitializer({ home, identity, probe: { pidAlive: () => false } });
   const execute = async (answers: Parameters<typeof scriptedIO>[0], selected = initializer) => {
     const io = scriptedIO(answers);

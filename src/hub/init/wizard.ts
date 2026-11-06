@@ -1,7 +1,7 @@
 /**
  * `agend hub init` (S-48 / S5a; #3095 "Installing a Hub" addendum, hub.md §5). Steps:
- *   same-account check → name and addresses → browser HTTPS certificate → directory (LDAPS) and the operator's test
- *   sign-in → bind the local host owner as Hub administrator → retention → confirm → commit (enabled last)
+ *   same-account check → name and addresses → browser HTTPS certificate → directory (LDAPS) and first-admin lookup
+ *   → local confirmation of that immutable identity → retention → confirm → commit (enabled last)
  *   → optional service install (explicit) → member pairing instructions.
  * No Hub is installed before final confirmation. Explicit certificate generation uses private temporary staging.
  */
@@ -48,7 +48,7 @@ export interface HubWizardDeps {
 
 export type HubWizardOutcome = "initialized" | "cancelled" | "refused";
 
-const MAX_SIGNIN_ATTEMPTS = 5;
+const MAX_LOOKUP_ATTEMPTS = 5;
 
 const yes = (answer: string) => /^(y|yes|是)$/i.test(answer.trim());
 
@@ -160,12 +160,12 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
   const webTls = await askBrowserTls(deps, webOrigin);
   if (!webTls) return "cancelled";
 
-  // 3. Directory and the operator's own test sign-in.
-  const signedIn = await askDirectoryAndSignIn(deps);
-  if (!signedIn) return "cancelled";
-  const { directory, bindPassword, person } = signedIn;
+  // 3. Service-account lookup only; the designated person signs in later in their own browser.
+  const selected = await askDirectoryAndAdministrator(deps);
+  if (!selected) return "cancelled";
+  const { directory, bindPassword, person } = selected;
 
-  // 4. The local host owner becomes the Hub administrator, bound to that tested identity.
+  // 4. The local host owner approves the exact directory identity, not a mutable login label.
   const label = person.displayName ?? person.login;
   if (!yes(await io.ask(ht("admin_q", label, `${person.key.realm}/${person.key.objectId}`)))) {
     io.say(ht("cancelled"));
@@ -269,7 +269,7 @@ async function askBrowserTls(deps: HubWizardDeps, webOrigin: string): Promise<Hu
   }
 }
 
-async function askDirectoryAndSignIn(
+async function askDirectoryAndAdministrator(
   deps: HubWizardDeps,
 ): Promise<{ directory: HubDirectoryConfig; bindPassword: string; person: DirectoryPerson } | undefined> {
   const { io } = deps;
@@ -284,12 +284,11 @@ async function askDirectoryAndSignIn(
     for (;;) {
       attempts += 1;
       const login = (await io.ask(ht("signin_login_q"))).trim();
-      const password = await io.askHidden(ht("signin_pw_q"));
       let diagnostic: HubDirectoryDiagnostic | undefined;
       const directory = deps.createDirectory(settings.directory, { bindPassword: settings.bindPassword }, { onDiagnostic: (d) => (diagnostic = d) });
       let result;
       try {
-        result = await directory.signIn(login, password);
+        result = await directory.lookupForInitialization?.(login) ?? { ok: false as const, reason: "unavailable" as const };
       } finally {
         await directory.close();
       }
@@ -297,11 +296,11 @@ async function askDirectoryAndSignIn(
         io.say(ht("signin_ok", result.person.displayName ?? result.person.login, result.person.login));
         return { directory: settings.directory, bindPassword: settings.bindPassword, person: result.person };
       }
-      if (result.reason === "invalid-credentials") io.say(ht("signin_invalid"));
+      if (result.reason === "not-found") io.say(ht("signin_invalid"));
       else if (result.reason === "not-eligible") io.say(ht("signin_not_eligible"));
       else if (result.reason === "bad-input") io.say(ht("signin_bad_input"));
       else io.say(ht("signin_unavailable", diagnostic?.error ?? "no answer"));
-      if (attempts >= MAX_SIGNIN_ATTEMPTS) {
+      if (attempts >= MAX_LOOKUP_ATTEMPTS) {
         io.say(ht("signin_too_many"));
         return undefined;
       }
@@ -389,7 +388,7 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
     if (pending) io.say(ht("dir_ca_bind_needed"));
     const bindPassword = await askBindSecret(deps);
     if (bindPassword === undefined) return undefined;
-    if (!bindPassword) { io.say(ht("signin_bad_input")); continue; }
+    if (!bindPassword) { io.say(ht("dir_bind_empty")); continue; }
     if (pending) {
       try {
         const bundle = await deps.directoryCertificates!.fetch(pending.probe, pending.pin, { bindDn, password: bindPassword });
@@ -442,6 +441,7 @@ async function confirmAndCommit(deps: HubWizardDeps, plan: HubInitPlan, bindPass
   }
   io.say();
   io.say(ht("done", result.hubId));
+  io.say(ht("admin_browser_next", plan.webOrigin));
 
   // Service: never implied by the setup itself; an exact word installs it.
   io.say();

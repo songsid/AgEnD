@@ -17,7 +17,7 @@ export interface HubInitPlan {
   memberOrigin: string;
   directory: HubDirectoryConfig;
   bindPasswordRef: string;
-  /** The directory identity the wizard's test sign-in returned for the local host owner. */
+  /** The immutable directory identity designated by the local owner; claimed on its first browser sign-in. */
   administrator: PersonKey;
   retention: { contentDays: number; eventDays: number };
   coexistence: HubCoexistence;

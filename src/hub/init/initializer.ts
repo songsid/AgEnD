@@ -224,7 +224,7 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
     if (plan.bindPasswordRef !== BIND_PASSWORD_REF) problems.push(`bindPasswordRef must be ${BIND_PASSWORD_REF}`);
     const admin = plan.administrator;
     if (!admin || admin.realm !== plan.directory?.realm || !isCanonicalObjectId(admin.objectId ?? "")) {
-      problems.push("administrator: must be the directory identity from the test sign-in (same realm, immutable object id)");
+      problems.push("administrator: must be the designated directory identity (same realm, immutable object id)");
     }
     for (const [key, value] of Object.entries(plan.retention ?? {})) {
       if (!Number.isInteger(value) || value < 1 || value > 3650) problems.push(`retention.${key}: a whole number of days from 1 to 3650`);
