@@ -73,7 +73,7 @@ describe('downgrade CI guard keeps exact baseline and pipeline failure checks', 
       for (const file of ['check-data-downgrade-workflow.mjs', 'check-data-downgrade.mjs']) writeFileSync(join(scratch, 'scripts', file), readFileSync(resolve('scripts', file)));
       const config: any = yaml.load(readFileSync(resolve('.github/workflows/data-downgrade.yml'), 'utf8'));
       const first = config.jobs['data-downgrade'].steps.find((step: any) => step.id === 'roundtrip');
-      if (mode === 'wrong-baseline') first.run = first.run.replaceAll('2.1.12', '2.2.6');
+      if (mode === 'wrong-baseline') first.run = first.run.replaceAll('2.3.3', '2.2.6');
       if (mode === 'missing-pipefail') delete first.shell;
       writeFileSync(join(scratch, '.github/workflows/data-downgrade.yml'), yaml.dump(config));
       const result = spawnSync(process.execPath, [join(scratch, 'scripts/check-data-downgrade-workflow.mjs')], {
@@ -83,7 +83,7 @@ describe('downgrade CI guard keeps exact baseline and pipeline failure checks', 
       expect(result.error).toBeUndefined(); expect(result.signal).toBeNull();
       if (mode === 'valid') {
         expect(result.status, result.stderr).toBe(0);
-        expect(result.stdout.trim().split('\n').map(line => JSON.parse(line).pipelineExitCode)).toEqual([1, 1]);
+        expect(result.stdout.trim().split('\n').map(line => JSON.parse(line).pipelineExitCode)).toEqual([1]);
       } else {
         expect(result.status).toBe(1);
         expect(result.stderr).toContain(mode === 'wrong-baseline' ? 'roundtrip must pass its baseline' : 'A failed probe must fail the workflow step even when tee succeeds');

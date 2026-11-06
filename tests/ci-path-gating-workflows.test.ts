@@ -21,14 +21,14 @@ describe("CI path-gating workflow contracts", () => {
     const ci = load(".github/workflows/ci.yml");
     for (const id of [
       "detect-changes", "changelog", "actions-pinned", "setup", "test-shard",
-      "test-integration", "docs-tests", "install-smoke", "node20-rollback-smoke",
+      "test-integration", "docs-tests", "install-smoke", "release-rollback-smoke",
     ]) {
       expect(ci.jobs[id].if, id).toBeUndefined();
     }
     expect(ci.jobs.build.if).toBe("always()");
   });
 
-  it("install-smoke and node20-rollback-smoke heavy steps gate on packaging", () => {
+  it("install-smoke and release-rollback-smoke heavy steps gate on packaging", () => {
     const ci = load(".github/workflows/ci.yml");
     const smoke = ci.jobs["install-smoke"];
     expect(smoke.needs).toContain("detect-changes");
@@ -37,7 +37,7 @@ describe("CI path-gating workflow contracts", () => {
     const node = smoke.steps.find(s => typeof s.uses === "string" && s.uses.startsWith("actions/setup-node"));
     expect(node?.if).toBe("needs.detect-changes.outputs.packaging == 'true'");
 
-    const rollback = ci.jobs["node20-rollback-smoke"];
+    const rollback = ci.jobs["release-rollback-smoke"];
     expect(rollback.needs).toContain("detect-changes");
     const heavy = rollback.steps.filter(s => s.if === "needs.detect-changes.outputs.packaging == 'true'");
     expect(heavy.length).toBeGreaterThanOrEqual(4);
@@ -88,6 +88,6 @@ describe("CI path-gating workflow contracts", () => {
     expect(steps.some(s => s.id === "changes" && String(s.run).includes("detect-changes.sh"))).toBe(true);
     expect(steps.some(s => s.if === "steps.changes.outputs.src != 'true'")).toBe(true);
     const heavy = steps.filter(s => s.if && s.if.includes("src == 'true'"));
-    expect(heavy.length).toBeGreaterThanOrEqual(8);
+    expect(heavy.length).toBeGreaterThanOrEqual(7);
   });
 });

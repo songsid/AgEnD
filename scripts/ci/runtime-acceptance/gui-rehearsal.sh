@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # #1450 rehearsal in launchd's GUI domain, on a GitHub-hosted macOS runner (its runner user has a logged-in Aqua
-# session, so gui/<uid> exists). Everything is the REAL thing — launchctl, the published 2.1.12 on Node 20.19 (its
+# session, so gui/<uid> exists). Everything is the REAL thing — launchctl, the published 2.3.3 on Node 22 (its
 # tarball, cached and checked against npmjs's dist.integrity, #1819), its own `agend update` — except that the candidate
 # and its runtime packages come from a local registry.
-#   1. 2.1.12 + Node 20: `agend install` loads com.agend.fleet into gui/<uid>; the fleet answers /health.
-#   2. 2.1.12's `agend update --version <candidate>` (npm, verification, service refresh, restart).
+#   1. 2.3.3 + Node 22: `agend install` loads com.agend.fleet into gui/<uid>; the fleet answers /health.
+#   2. 2.3.3's `agend update --version <candidate>` (npm, verification, service refresh, restart).
 #   3. After it: the planned activation was consumed, launchd runs <bundled node> <pkg>/dist/cli.js fleet start (a new
 #      pid, argv0 = the bundled Node), /health is 200, no bundled directory on the fleet's PATH, and an npm-installed
 #      `#!/usr/bin/env node` CLI there runs on the system Node.
 #   4. The restart guard: a plain `agend restart` is admitted (path 1); with AGEND_NODE in launchd's environment it is
 #      refused and the running fleet is not touched.
 # A runner without gui/<uid> fails this job — it never falls back to another domain or a stub.
-# Usage: gui-rehearsal.sh <packages dir>   (after registry.sh; Node 20.19 on PATH; ephemeral runner only)
+# Usage: gui-rehearsal.sh <packages dir>   (after registry.sh; Node 22 on PATH; ephemeral runner only)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PKGS="${1:?packages dir}"
 CAND="$(node -p 'require(process.argv[1]).version' "$PKGS/candidate.json")"
 PIN="$(node -p 'require(process.argv[1]).pin' "$PKGS/candidate.json")"
 SYS_NODE="$(command -v node)"; SYS_NODE_VERSION="$(node --version)"
-OLD_TGZ="${AGEND_OLD_TARBALL:?the published 2.1.12 tarball (.github/actions/published-agend-tarball)}"
+OLD_TGZ="${AGEND_OLD_TARBALL:?the published 2.3.3 tarball (.github/actions/published-agend-tarball)}"
 WORK="${RUNNER_TEMP:?}/gui"; PREFIX="$WORK/prefix"
 mkdir -p "$WORK" "$PREFIX"
 # shellcheck source=checks.sh
@@ -38,17 +38,17 @@ health() { curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/health
 wait_health() { for _ in $(seq 90); do [ "$(health)" = 200 ] && return 0; sleep 1; done; return 1; }
 show_job() { launchctl print "$TARGET" | grep -E '^[[:space:]]+(state|pid|program) =|^[[:space:]]+arguments = \{' -A4 | head -12 | sed 's/^/    /'; }
 
-step "2.1.12 on Node $SYS_NODE_VERSION (its published tarball), a fleet with no channels, \`agend install\` into $DOMAIN"
+step "2.3.3 on Node $SYS_NODE_VERSION (its published tarball), a fleet with no channels, \`agend install\` into $DOMAIN"
 bash "$HERE/../install-published-tarball.sh" @songsid/agend "$OLD_TGZ" --registry https://registry.npmjs.org/ >/dev/null
-[ "$(agend --version)" = 2.1.12 ] || fail "agend 2.1.12 did not install"
+[ "$(agend --version)" = 2.3.3 ] || fail "agend 2.3.3 did not install"
 mkdir -p "$HOME/.agend"
 printf 'health_port: %s\ninstances: {}\n' "$PORT" > "$HOME/.agend/fleet.yaml"
 agend install
-wait_health || { show_job || true; fail "the 2.1.12 service did not answer /health"; }
+wait_health || { show_job || true; fail "the 2.3.3 service did not answer /health"; }
 OLD_PID="$(job_pid)"
 echo "  loaded and running: pid $OLD_PID, program $(job_field program)"
 
-step "2.1.12's own \`agend update --version $CAND\` (candidate from the local registry)"
+step "2.3.3's own \`agend update --version $CAND\` (candidate from the local registry)"
 set +e
 npm_config_userconfig="$RUNNER_TEMP/registry/npmrc" agend update --version "$CAND" --yes 2>&1 | tee "$WORK/update.out"
 rc=${PIPESTATUS[0]}
@@ -56,12 +56,12 @@ set -e
 echo "  the old updater exited $rc"
 # The hop's verdict, before anything else touches the service: the old updater must have installed the candidate,
 # succeeded, and ACTIVATED it — its restart consumed the planned activation. Nothing here repairs a failed hop.
-grep -q "Installed: $CAND" "$WORK/update.out" || fail "the old updater did not install $CAND"
+[ "$("$PREFIX/bin/agend" --version)" = "$CAND" ] || fail "the previous-release updater did not install $CAND"
 [ "$rc" = 0 ] || fail "the old updater exited $rc: it installed $CAND but did not complete the update"
 [ ! -f "$HOME/.agend/service-plan.json" ] || fail "the old updater left the planned activation unconsumed: launchd was not switched to $CAND"
 echo "  hop verdict: the old updater installed $CAND, exited 0 and consumed the planned activation"
 
-check_installed
+check_installed # full runtime/receipt/SQLite proof before later service checks
 
 step "after the update: what launchd runs"
 wait_health || { show_job || true; fail "the fleet did not answer /health after the update"; }
