@@ -195,20 +195,18 @@ describe("stored ZIP code validation before any filesystem write", () => {
     expect(large.length).toBeLessThan(RUNTIME_UPDATE_MAX_BYTES);
     expect(() => validateRuntimeUpdateArchive(large, metadataFor(large))).toThrow(/archive/);
   });
-  it("refuses changed code, package version, manifest build identity or file inventory even with a newly verified archive hash", () => {
-    for (const variant of ["code", "document", "package", "build", "inventory", "module", "origin"]) {
-      const files = new Map(validateRuntimeUpdateArchive(bundle.bytes, metadataFor(bundle.bytes)).files), manifest = JSON.parse(files.get("bundle-manifest.json")!.toString());
-      if (variant === "code") files.set("dist/runtime-cli.js", Buffer.from("throw Error('changed')"));
-      if (variant === "document") files.set("README.txt", Buffer.from("changed non-module asset"));
-      if (variant === "package") files.set("package.json", Buffer.from(JSON.stringify({ ...JSON.parse(files.get("package.json")!.toString()), version: "0.0.1" })));
-      if (variant === "build") manifest.buildId = "f".repeat(64);
-      if (variant === "inventory") delete manifest.sha256["README.txt"];
-      if (variant === "module") manifest.modules.push("../outside.js");
-      if (variant === "origin") files.set("agend-server.json", Buffer.from('{"server":"https://other.example.test"}'));
-      // Package/origin controls retain internally correct per-file checksums, so their specific boundary is exercised.
-      if (variant === "package" || variant === "origin") for (const [name, bytes] of files) if (name !== "bundle-manifest.json") manifest.sha256[name] = createHash("sha256").update(bytes).digest("hex");
-      files.set("bundle-manifest.json", Buffer.from(JSON.stringify(manifest)));
-      const archive = repack([...files]); expect(() => validateRuntimeUpdateArchive(archive, metadataFor(archive)), variant).toThrow(/archive/);
-    }
+  it.each(["code", "document", "package", "build", "inventory", "module", "origin"])("refuses changed %s even with a newly verified archive hash", variant => {
+    const files = new Map(validateRuntimeUpdateArchive(bundle.bytes, metadataFor(bundle.bytes)).files), manifest = JSON.parse(files.get("bundle-manifest.json")!.toString());
+    if (variant === "code") files.set("dist/runtime-cli.js", Buffer.from("throw Error('changed')"));
+    if (variant === "document") files.set("README.txt", Buffer.from("changed non-module asset"));
+    if (variant === "package") files.set("package.json", Buffer.from(JSON.stringify({ ...JSON.parse(files.get("package.json")!.toString()), version: "0.0.1" })));
+    if (variant === "build") manifest.buildId = "f".repeat(64);
+    if (variant === "inventory") delete manifest.sha256["README.txt"];
+    if (variant === "module") manifest.modules.push("../outside.js");
+    if (variant === "origin") files.set("agend-server.json", Buffer.from('{"server":"https://other.example.test"}'));
+    // Package/origin controls retain internally correct per-file checksums, so their specific boundary is exercised.
+    if (variant === "package" || variant === "origin") for (const [name, bytes] of files) if (name !== "bundle-manifest.json") manifest.sha256[name] = createHash("sha256").update(bytes).digest("hex");
+    files.set("bundle-manifest.json", Buffer.from(JSON.stringify(manifest)));
+    const archive = repack([...files]); expect(() => validateRuntimeUpdateArchive(archive, metadataFor(archive)), variant).toThrow(/archive/);
   });
 });
