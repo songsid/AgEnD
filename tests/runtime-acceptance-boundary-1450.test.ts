@@ -341,15 +341,16 @@ describe("#1460 r5: the boundary judges the command WITH its effective environme
 
 describe('previous-release system-Node preflight', () => {
   const probe = `command -v node >/dev/null 2>&1 || exit 127; exec node -p "process.versions.node + ' ' + process.execPath"`;
-  it.each(['/bin/sh', '/bin/bash'])('executes only the fixed read-only probe with the preload intact: %s', shell => {
+  it.each(['/bin/sh', '/bin/bash', '/usr/bin/env'])('executes only the fixed read-only probe with the preload intact: %s', shell => {
     const w = world();
-    const r = w.run(`const out=require('child_process').execFileSync(${JSON.stringify(shell)},['-c',${JSON.stringify(probe)}],{encoding:'utf8'});process.stdout.write(out);`);
+    const args = shell === '/usr/bin/env' ? ['--', '/bin/bash', '-c', probe] : ['-c', probe];
+    const r = w.run(`const out=require('child_process').execFileSync(${JSON.stringify(shell)},${JSON.stringify(args)},{encoding:'utf8'});process.stdout.write(out);`);
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout.trim()).toBe(process.versions.node+' '+process.execPath);
     expect(w.logged()).toBe('');
     expect(existsSync(w.mark)).toBe(false);
   });
-  it.each(['BASH_FUNC_exec%%', 'BASH_FUNC_node%%', 'BASH_FUNC_fixture%%'].flatMap(key => ['child-env', 'env-wrapper'].map(route => [key, route])))('refuses imported Bash functions before the unchanged probe: %s via %s', (key, route) => {
+  it.each(['BASH_FUNC_exec%%', 'BASH_FUNC_node%%', 'BASH_FUNC_fixture%%'].flatMap(key => ['child-env', 'env-wrapper', 'env-wrapper--'].map(route => [key, route])))('refuses imported Bash functions before the unchanged probe: %s via %s', (key, route) => {
     const w = world();
     const manager = join(w.root, 'systemctl');
     // Inert private manager: a marker is the entire effect, never a real service call.
@@ -360,7 +361,7 @@ describe('previous-release system-Node preflight', () => {
     const args = ['--noprofile', '--norc', '-c', probe];
     const script = route === 'child-env'
       ? `require('child_process').execFileSync('/bin/bash',${JSON.stringify(args)},{env:{...process.env,[${JSON.stringify(key)}]:${JSON.stringify(imported)}}});`
-      : `require('child_process').execFileSync('/usr/bin/env',${JSON.stringify([key+'='+imported, '/bin/bash', ...args])});`;
+      : `require('child_process').execFileSync('/usr/bin/env',${JSON.stringify([...(route === 'env-wrapper--' ? ['--'] : []), key+'='+imported, '/bin/bash', ...args])});`;
     const r = w.run(script);
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain('[runtime-acceptance boundary]');

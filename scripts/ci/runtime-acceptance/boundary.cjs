@@ -186,13 +186,14 @@ function judgeWords(words, env, cwd, shell, depth, text) {
     var name = path.basename(word.text);
     var spec = !word.dyn && Object.prototype.hasOwnProperty.call(WRAPPERS, name) ? WRAPPERS[name] : null;
     if (!spec) break;
+    // Refuse imported functions anywhere in env's argv, including assignments after --.
+    if (spec.assignments && words.slice(i + 1).some(function (a) { return /^BASH_FUNC_[^=]*=/.test(a.text); })) return name + " setting an imported Bash function (BASH_FUNC_)";
     i++;
     var positional = spec.positional || 0;
     while (i < words.length) {
       var a = words[i];
       if (a.dyn) return "an expansion in " + name + "'s words: " + text;
       if (a.text === "--") { i++; break; }
-      if (spec.assignments && /^BASH_FUNC_[^=]*=/.test(a.text)) return name + " setting an imported Bash function: " + a.text;
       if (spec.assignments && /^[A-Za-z_][A-Za-z0-9_]*=/.test(a.text)) {
         if (GUARDED_VARS.test(a.text.slice(0, a.text.indexOf("=")))) return name + " setting " + a.text.split("=")[0] + ": " + text;
         i++;
