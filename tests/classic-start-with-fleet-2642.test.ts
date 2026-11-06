@@ -32,11 +32,13 @@ const { TmuxControlClient } = await import("../src/tmux-control.js");
 const { ClassicChannelManager } = await import("../src/classic-channel-manager.js");
 const { RestartProgress } = await import("../src/restart-progress.js");
 const { setUsageFetcherForTests } = await import("../src/usage/usage-api.js");
+const { SpawnGate } = await import("../src/spawn-gate.js");
 
-const fleets: Array<{ fm: any; dir: string; boot: Promise<void> }> = [];
+const fleets: Array<{ fm: any; dir: string; boot: Promise<void>; connect: () => void }> = [];
 const savedSignals = new Map(["SIGUSR1", "SIGUSR2"].map(s => [s, process.listeners(s as NodeJS.Signals)] as const));
 afterEach(async () => {
   for (const f of fleets.splice(0)) {
+    f.connect();                                                  // a test that failed early must not leave the boot waiting on it
     await f.boot.catch(() => {});
     await f.fm.stopAll();
     f.fm.memoryPressure.stop(); f.fm.spawnGate.shutdown(); f.fm.stormWindow.shutdown();
@@ -51,8 +53,11 @@ afterEach(async () => {
   expect(calls.children.splice(0)).toEqual([]);
 });
 
-/** A fleet with a main Discord bot carrying a ClassicBot channel, plus a second bot. `main` is the main bot's login. */
-function boot(main: () => Promise<void>) {
+/**
+ * A fleet with a main Discord bot carrying a ClassicBot channel, plus a second bot. The main bot's login stays pending
+ * until `connect()`; `classicStarted` settles when the room's start is called — the explicit signal, not a polling window.
+ */
+function boot() {
   const dir = mkdtempSync(join(tmpdir(), "startup-slow-chat-2642-"));
   vi.stubEnv("AGEND_HOME", dir); vi.stubEnv("HOME", dir);
   vi.stubEnv("MAIN_TOKEN", "t1"); vi.stubEnv("SECOND_TOKEN", "t2");
@@ -88,6 +93,11 @@ instances:
     topic_id: "333333333333333333"
 `);
   const fm: any = new FleetManager(dir);
+  // Admission ignores the HOST's memory pressure (the gate's lowMemoryBytes: 0 opt-out): a loaded CI runner at elevated
+  // PSI paces startup one at a time, 5 s apart — the room's start then came 5 s+ late. This test is about order.
+  fm.spawnGate.shutdown();
+  fm.spawnGate = new SpawnGate({ storm: fm.stormWindow, memoryPressure: fm.memoryPressure, lowMemoryBytes: 0,
+    concurrency: () => fm.spawnConcurrency(), staggerMs: () => fm.fleetConfig?.defaults?.startup?.stagger_delay_ms ?? 500 });
   vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
   vi.spyOn(TmuxManager, "listWindows").mockResolvedValue([]);
   vi.spyOn(TmuxControlClient.prototype, "start").mockImplementation(() => {});
@@ -100,7 +110,9 @@ instances:
     "notifyAdapterFailure", "scheduleAdapterRetry"]) {
     vi.spyOn(fm, name).mockImplementation(() => undefined);
   }
-  vi.spyOn(fm, "startSingleAdapter").mockImplementation(() => main());
+  let connect!: () => void;
+  const login = new Promise<void>(r => { connect = r; });
+  vi.spyOn(fm, "startSingleAdapter").mockImplementation(() => login);
   vi.spyOn(fm, "startAdditionalAdapter").mockResolvedValue(undefined);
   vi.spyOn(fm, "resolveKnowledgeWorkDir").mockImplementation((...args: unknown[]) => args[0]);
   vi.spyOn(fm, "connectIpcToInstance").mockResolvedValue(undefined);
@@ -117,24 +129,26 @@ instances:
     { channelId: "444444444444444444", adapterId: "main", instanceName: "classic-room", channelName: "room" } as any,
   ]);
   const classicStarts: string[] = [];
+  let classicCalled!: () => void;
+  const classicStarted = new Promise<void>(r => { classicCalled = r; });
   vi.spyOn(fm, "startClassicInstanceUnattended").mockImplementation(async (...args: unknown[]) => {
     const name = (args[0] as { instanceName: string }).instanceName;
-    classicStarts.push(name); order.push(`classic:${name}`);
+    classicStarts.push(name); order.push(`classic:${name}`); classicCalled();
     fm.daemons.set(name, { getProcessStatus: () => "running", getInteractionSnapshot: () => null });
     return true;
   });
   setUsageFetcherForTests(async () => ({ fetchedAt: new Date().toISOString(), providers: [] }));
   const booted = fm.startAll(config) as Promise<void>;
-  fleets.push({ fm, dir, boot: booted });
-  return { fm, booted, classicStarts, order };
+  fleets.push({ fm, dir, boot: booted, connect });
+  return { fm, booted, classicStarts, classicStarted, order, connect };
 }
 
 describe("#2642 follow-up: ClassicBot rooms start with the fleet", () => {
   it("a room starts after General, alongside the fleet, while the main chat connection is still logging in", async () => {
-    let connect!: () => void;
     const markReady = vi.spyOn(RestartProgress.prototype, "markReady");
-    const { fm, booted, classicStarts, order } = boot(() => new Promise<void>(r => { connect = r; }));
-    await vi.waitFor(() => expect(classicStarts).toEqual(["classic-room"]));
+    const { fm, booted, classicStarts, classicStarted, order, connect } = boot();
+    await classicStarted;                                         // the room's start was called, however slow the host
+    expect(classicStarts).toEqual(["classic-room"]);
     expect(order.indexOf("start:general")).toBeGreaterThanOrEqual(0);
     expect(order.indexOf("start:general")).toBeLessThan(order.indexOf("classic:classic-room"));
     expect(calls.notify).not.toContain("READY=1");               // the connection is still pending
