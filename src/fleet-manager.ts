@@ -17,6 +17,7 @@ import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecovery
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
+import { hubMembershipSettings } from "./hub-membership-settings.js";
 import { prepareSettingsEffect } from "./settings-effect.js";
 import { settingsDisplay } from "./settings-change.js";
 import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
@@ -2965,6 +2966,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const baselines = this.settingsBaselineReader = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       generalLocation: input => this.previewGeneralLocation(input),
+      hubMembership: raw => hubMembershipSettings(raw),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
       hubBrowserCertificate: (input: unknown, binding: string) => {
         const control = this.hubBrowserCertificate();

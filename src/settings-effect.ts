@@ -31,6 +31,7 @@ import { parseGeneralSwitchInput } from "./general-binding.js";
 import { settingsFingerprint } from "./settings-transaction.js";
 import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } from "./hub-browser-certificate-policy.js";
 import { parseHubRetention } from "./hub-retention-policy.js";
+import { parseHubMembership } from "./hub-membership-settings.js";
 import { t } from "./locale.js";
 
 export interface SettingsSecretProof {
@@ -44,11 +45,13 @@ export interface SettingsEffectContext {
   generalLocation?(input: unknown): { summary: string[]; connections: string[] };
   /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
   hubBrowserCertificate?(input: unknown, binding: string): HubBrowserCertificateProposal;
+  hubMembership?(): { enabled: boolean };
   hubExposure?(input: unknown): { summary: string[] };
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "PUT" && path === "/api/settings/hub/membership") return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
   if (method === "POST" && path === "/api/settings/general-location") return true;
@@ -89,6 +92,15 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, policy]),
       summary: [t("hub.retention.content", policy.contentDays), t("hub.retention.events", policy.eventDays), t("hub.retention.purge")],
       affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } };
+  }
+  if (path === "/api/settings/hub/membership") {
+    if (method !== "PUT" || !cfg || !context.hubMembership) throw new SettingsConfirmationError(503, "unavailable");
+    let next: { enabled: boolean }, previous: { enabled: boolean };
+    try { next = parseHubMembership(body); previous = context.hubMembership(); }
+    catch { throw new SettingsConfirmationError(400, "invalid_hub_membership"); }
+    const diff = settingsChangeDiff({ fleet: { hub_member: previous } }, { fleet: { hub_member: next } }, { operation });
+    return { diff: diff ? { ...diff, section: "access", summary: [t(next.enabled ? "hub.membership.enable" : "hub.membership.disable")],
+      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } : null };
   }
   // #2453 (§0.2): the trusted effect — the named-link option off before, on after — makes the change one its asker can't
   // confirm (#2170 self-confirmation).

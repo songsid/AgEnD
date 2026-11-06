@@ -12,6 +12,7 @@ import { applyAppearanceChanges, applyGuestsPatch, applyVerifiedAuthorityPatch, 
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS, effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { parseRuntimesSettingsBody, runtimeSettingsView } from "./runtime-switches.js";
+import { hubMembershipSettings, parseHubMembership } from "./hub-membership-settings.js";
 import { evaluateWebRequest } from "./web-auth.js";
 import { redactInlineSecrets, restoreRedactedSecrets } from "./settings-redaction.js";
 /**
@@ -749,8 +750,41 @@ export function handleSettingsRequest(
     return true;
   }
 
-  // Everything below mutates — needs an in-memory fleet config.
+  // Remaining fleet Settings routes use in-memory configuration when they mutate.
   const cfg = ctx.fleetConfig;
+
+  // This pure Settings surface remains available while membership is off; it imports no Hub runtime.
+  if (path === "/api/settings/hub/membership") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      try { json(res, 200, { ok: true, ...hubMembershipSettings(ctx.getRawFleetConfig()) }); }
+      catch { json(res, 409, { ok: false, error: "invalid_hub_membership" }); }
+      return true;
+    }
+    if (method !== "PUT") { json(res, 405, { error: "method_not_allowed" }); return true; }
+    const execution = settingsRequestExecution(req), configPath = ctx.configPath;
+    // Enabling is confirmed; disabling uses the same gate's immediate narrowing continuation.
+    let allowed = false; try { allowed = !!execution && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+    if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+    if (!cfg || !configPath) { json(res, 503, { ok: false, error: "unavailable" }); return true; }
+    readBody(req, 1024).then(bytes => {
+      try {
+        execution.assert();
+        if (!settingsRequestLocalAdmin(req) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath) throw Error("unavailable");
+        let input: { enabled: boolean };
+        try { input = parseHubMembership(JSON.parse(bytes.toString("utf8"))); }
+        catch { json(res, 400, { ok: false, error: "invalid_hub_membership" }); return; }
+        settingsWrite(req, () => {
+          if (!settingsRequestLocalAdmin(req) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath) throw Error("unavailable");
+          hubMembershipSettings(ctx.getRawFleetConfig());
+          ctx.saveFleetConfig([{ path: ["hub_member", "enabled"], value: input.enabled }]);
+        });
+        json(res, 200, { ok: true, ...hubMembershipSettings(ctx.getRawFleetConfig()) });
+      } catch { json(res, 503, { ok: false, error: "unavailable" }); }
+    }).catch(() => json(res, 400, { ok: false, error: "invalid_hub_membership" }));
+    return true;
+  }
 
   // ── Manual pause / wake ──
   const actionMatch = path.match(/^\/api\/settings\/instances\/([^/]+)\/(pause|wake)$/);
