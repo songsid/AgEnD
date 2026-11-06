@@ -37,7 +37,7 @@ export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
-export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js"]);
+export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
@@ -149,7 +149,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const roomId = uuid(r[1]);
       if (method === "GET") {
         const s = signedIn();
-        return send(res, 200, { entries: await guard(() => rooms.read(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId)) });
+        // #3226 B: the room comes with its entries, fresh each poll (its state, its grant's end, what its link negotiated).
+        const entries = await guard(() => rooms.read(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
+        return send(res, 200, { entries, room: await guard(() => rooms.view(ctx, roomId)) });
       }
       if (method === "POST") {
         csrf(); const b = await body();

@@ -27,6 +27,23 @@ const RANK: Record<string, number> = { queued: 1, delivered: 2, consumed: 3, ans
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 
 interface RoomRow { id: string; asker: string; exposure_id: string; owner_at_creation: string; grant_id: string; state: HubRoom["state"]; created_at: number }
+/** A room as the conversation list shows it (#3226 B). */
+export interface HubRoomListItem extends HubRoom {
+  exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
+  grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
+}
+type RoomViewRow = RoomRow & { exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number;
+  owner_name: string | null; grant_expires_at: number | null; last_at: number; waiting: number };
+const ROOM_VIEW_SQL = `SELECT r.*, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,
+  p.display_name AS owner_name, g.expires_at AS grant_expires_at,
+  COALESCE((SELECT MAX(m.stage_at) FROM hub_messages m WHERE m.room_id = r.id), r.created_at) AS last_at,
+  EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id = r.id AND m.stage IN ('queued','delivered','consumed')) AS waiting
+  FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id LEFT JOIN hub_people p ON p.person = e.owner LEFT JOIN hub_grants g ON g.id = r.grant_id`;
+function roomListItem(r: RoomViewRow): HubRoomListItem {
+  return { ...roomOf(r), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
+    exposureState: r.frozen_through >= r.exposure_revision && r.exposure_state === "published" ? "frozen" : r.exposure_state,
+    grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features: [] };
+}
 const roomOf = (r: RoomRow): HubRoom => ({ id: r.id, asker: personFromString(r.asker), exposureId: r.exposure_id, ownerAtCreation: personFromString(r.owner_at_creation), grantId: r.grant_id, state: r.state });
 const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDigest: m.content_digest, stage: m.stage as HubReceipt["stage"],
   sequence: m.member_sequence, at: m.stage_at, ...(m.reason_code ? { reasonCode: m.reason_code } : {}) });
@@ -71,12 +88,25 @@ export class HubRoomsService {
     });
   }
 
-  /** This person's rooms that are still open, newest first, with the exposure's name. */
-  async list(ctx: HubRequestContext): Promise<readonly (HubRoom & { exposureName: string })[]> {
+  /**
+   * This person's rooms, the most recently active first, as the chat's conversation list draws them (#3226 B): the
+   * exposure's name and state, who it represents (the owner's display name), the grant's end, when the room last moved
+   * and whether a question there still waits for its answer. A closed room (its grant revoked, its agent withdrawn) is
+   * listed too, as closed: the person keeps knowing which chat it was (its history is not readable any more). `features`: what the room's fleet link
+   * has negotiated (D's link.features; none until then).
+   */
+  async list(ctx: HubRequestContext): Promise<readonly HubRoomListItem[]> {
     const me = personKeyString(await ctx.requirePerson());
-    return this.core.atomic((db) => (db.prepare(`SELECT r.*, e.display_name AS exposure_name FROM hub_rooms r JOIN hub_exposures e ON e.id = r.exposure_id
-      WHERE r.asker=? AND r.state='active' ORDER BY r.created_at DESC LIMIT 100`).all(me) as (RoomRow & { exposure_name: string })[])
-      .map((r) => ({ ...roomOf(r), exposureName: r.exposure_name })));
+    return this.core.atomic((db) => (db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, last_at DESC LIMIT 100`).all(me) as RoomViewRow[])
+      .map(roomListItem));
+  }
+
+  /** One room as `list` draws it — its asker only, else not-found (the messages answer carries it, fresh each poll). */
+  async view(ctx: HubRequestContext, roomId: string): Promise<HubRoomListItem> {
+    const me = personKeyString(await ctx.requirePerson());
+    const row = this.core.atomic((db) => db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined);
+    if (!row) throw new HubProtocolError("not-found");
+    return roomListItem(row);
   }
 
   /** Ask in a room: committed with its audit before "queued" is reported; then sent if the member is on. */
@@ -141,7 +171,8 @@ export class HubRoomsService {
     return rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
-      return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m),
+      // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time.
+      return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m), askedAt: m.created_at,
         ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}) };
     });
   }

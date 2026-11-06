@@ -121,7 +121,7 @@ describe("the shell", () => {
     await until(() => !pg.root.querySelector(".hub-switch"));
     expect(pg.root.querySelector(".hub-switch")).toBeNull();
   });
-  it("a Hub workspace: AgEnD Hub · its name; Ask / My exposures / Administration; no fleet list; zh-TW", async () => {
+  it("a Hub workspace: AgEnD Hub · its name; signed out, no conversation list and no fleet list; signed in, the chats and the menu; zh-TW", async () => {
     const fetched: string[] = [];
     const realFetch = g.fetch;
     g.fetch = async (url: string) => { fetched.push(String(url)); return { ok: true, status: 200, json: async () => ({ signedIn: false }), text: async () => "", headers: { get: () => null } }; };
@@ -130,16 +130,39 @@ describe("the shell", () => {
     hubPanel.resetHubSession();
     const pg = await app("hub", "/ui/hub/exposures", "Team Hub");
     expect(pg.root.querySelector(".hub-brand")!.textContent).toBe("AgEnD Hub · Team Hub");
-    const rows = [...pg.root.querySelectorAll(".side-nav a.side-row")].map((a: any) => [a.textContent, a.getAttribute("href"), a.getAttribute("aria-current")]);
-    expect(rows).toEqual([["Ask", "/ui/hub", null], ["My exposures", "/ui/hub/exposures", "page"], ["Administration", "/ui/hub/admin", null]]);
+    // #3226 B: the sidebar is the Hub module's conversation list — nothing of it while signed out (the page is the sign-in).
+    await settle(10);
+    expect([pg.root.querySelector(".side-nav .hub-nav"), pg.root.querySelectorAll(".side-nav a.side-row").length]).toEqual([null, 0]);
     expect(pg.root.querySelector("#instanceList")).toBeNull();
     // S3b: none of the fleet's bottom tabs or rails; the session row is the Hub's own (never /auth/session).
     expect([pg.root.querySelector("nav.tabs"), pg.root.querySelector(".u-rail-body")]).toEqual([null, null]);
     await until(() => pg.root.querySelector(".hub-session"));
     expect(pg.root.querySelector(".side-foot .hub-session")).not.toBeNull();
     expect(fetched.filter((u) => !u.startsWith("/hub/v1/") && !u.startsWith("/assets/"))).toEqual([]);
-    i18n.setLang("zh-TW", { store: false }); await settle(5);
-    expect([...pg.root.querySelectorAll(".side-nav a.side-row")].map((a: any) => a.textContent)).toEqual(["提問", "我的公開 Agent", "管理"]);
+    } finally { g.fetch = realFetch; }
+  });
+  it("signed in: the sidebar is the chats (New chat, the rooms, waiting marked) and the session's menu holds My shared agents and Administration; zh-TW", async () => {
+    const realFetch = g.fetch;
+    const rooms = [{ id: "11111111-2222-4333-8444-555555555555", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", lastAt: 1, waiting: true, features: [] }];
+    g.fetch = async (url: string) => {
+      const u = String(url);
+      const body = u.startsWith("/hub/v1/session") ? { signedIn: true, displayName: "Alex", login: "alex", admin: false, csrf: "c".repeat(64) } : u.startsWith("/hub/v1/rooms") ? { rooms } : {};
+      return { ok: true, status: 200, json: async () => body, text: async () => "", headers: { get: () => null } };
+    };
+    try {
+      client.setHubClient(client.createHubWebClient());
+      hubPanel.resetHubSession();
+      const pg = await app("hub", "/ui/hub", "Team Hub");
+      await until(() => pg.root.querySelector(".side-nav .hub-room-row"));
+      const row = pg.root.querySelector(".side-nav .hub-room-row")!;
+      expect([row.getAttribute("href"), row.querySelector(".t")!.textContent, row.querySelector(".s")!.textContent, !!row.querySelector(".pulse")])
+        .toEqual(["/ui/hub?room=11111111-2222-4333-8444-555555555555", "Sales numbers", "Waiting for an answer", true]);
+      expect(pg.root.querySelector(".side-nav .hub-new")!.textContent).toBe("New chat");
+      await until(() => pg.root.querySelector(".side-foot .hub-session button"));
+      (pg.root.querySelector(".side-foot .hub-session button") as any).click(); await settle(5);
+      expect([...pg.root.querySelectorAll(".side-foot [role=menuitem]")].map((b: any) => b.textContent.trim())).toEqual(["My shared agents", "Administration", "Sign out"]);
+      i18n.setLang("zh-TW", { store: false }); await settle(5);
+      expect(pg.root.querySelector(".side-nav .hub-new")!.textContent).toBe("新對話");
     } finally { g.fetch = realFetch; }
   });
 });
@@ -262,42 +285,51 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     expect((pg.root.querySelector("#hubPassword") as any).value).toBe("");
     input(pg, "#hubPassword", "pw"); await settle(5);
     fire(pg.root.querySelector(".hub-signin form")!, "submit");
-    await until(() => pg.root.querySelector(".hub-empty"));
-    expect(pg.root.querySelector(".hub-empty")!.textContent).toContain("No agents you can ask yet");
+    await until(() => pg.root.querySelector(".hub-home"));
+    expect(pg.root.querySelector(".hub-home-pick")!.textContent).toContain("No chats yet");
     expect(calls.filter((x) => x.method === "POST").map((x) => x.body)).toEqual([{ login: "alex", password: "pw" }, { login: "alex", password: "pw" }]);
   });
 
-  it("Ask: what is granted, then a room — the question is sent with a fresh idempotency key and the CSRF token; its stage shows until answered", async () => {
+  it("Ask: New chat lists what is granted, Ask opens the room — the question is sent with a fresh idempotency key and the CSRF token; its stage shows; one read per poll", async () => {
     const e = { id: "e1", displayName: "Sales numbers", revision: 1 };
-    let answered = false;
+    const R1 = "11111111-2222-4333-8444-555555555555";
+    let opened = false;
+    const room = { id: R1, exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", exposureState: "published", grantExpiresAt: 2_000_000_000_000, lastAt: 1, waiting: false, features: [] };
     const { calls } = hubApi({
       "GET /hub/v1/session": () => [200, SIGNED],
       "GET /hub/v1/exposures": () => [200, { mine: [], askable: [{ exposure: e, grant: { id: "g1", expiresAt: 2_000_000_000_000 }, ownerName: "Olivia" }] }],
-      "GET /hub/v1/rooms": () => [200, { rooms: [] }],
-      "POST /hub/v1/rooms": () => [200, { room: { id: "r1", exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers" } }],
-      "POST /hub/v1/rooms/r1/messages": (b) => [200, { receipt: { messageId: "m1", contentDigest: "d", stage: "queued", sequence: 0, at: 1 }, echo: b }],
-      "GET /hub/v1/rooms/r1/messages": () => [200, { entries: answered ? [{ messageId: "m1", sequence: 1, receipt: { stage: "answered" }, question: "Q3?", answer: "42." }] : [] }],
+      "GET /hub/v1/rooms": () => [200, { rooms: opened ? [room] : [] }],
+      "POST /hub/v1/rooms": () => { opened = true; return [200, { room: { id: R1, exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers" } }]; },
+      [`POST /hub/v1/rooms/${R1}/messages`]: (b) => [200, { receipt: { messageId: "m1", contentDigest: "d", stage: "queued", sequence: 0, at: 1 }, echo: b }],
+      [`GET /hub/v1/rooms/${R1}/messages`]: () => [200, { entries: [], room }],
     });
-    const pg = await mountTab("ask");
-    await until(() => pg.root.querySelector(".hub-ask .hub-item"));
-    expect(pg.root.querySelector(".hub-ask .hub-item")!.textContent).toContain("Shared by Olivia");
-    (pg.root.querySelector(".hub-ask .hub-item button") as any).click();
-    await until(() => pg.root.querySelector(".hub-room"));
+    const pg = await pageWith("hub", "/ui/hub", "Team Hub");
+    router.startRouter(pg.window);
+    await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "ask" }, navKey: "hub:ask|1|en" }));
+    await until(() => pg.root.querySelector(".hub-home .hub-new"));
+    (pg.root.querySelector(".hub-home .hub-new") as any).click();
+    await until(() => pg.root.querySelector(".hub-pick-row"));
+    expect(pg.root.querySelector(".hub-pick-row .s")!.textContent).toContain("Answers for Olivia");
+    (pg.root.querySelector(".hub-pick-row button") as any).click();
+    await until(() => pg.root.querySelector(".hub-chat-main"));
+    expect(pg.window.location.search).toBe(`?room=${R1}`);
+    expect(pg.root.querySelector(".hub-chat-title strong")!.textContent).toBe("Sales numbers");
+    // #3145: every asker shares the representative agent's one conversation — said before anyone types; and who asks.
+    await until(() => pg.root.querySelector(".hub-room-empty"));
+    expect(pg.root.querySelector(".hub-room-empty")!.textContent).toContain("shares its one conversation");
     expect(pg.root.querySelector(".hub-identity")!.textContent).toContain("not any authority");
-    // #3145: every asker shares the representative agent's one conversation — said before anyone types.
-    expect(pg.root.querySelector(".hub-shared")!.textContent).toContain("shares its one conversation");
-    input(pg, "#hubQuestion", "Q3?"); await settle(5);
-    fire(pg.root.querySelector(".hub-compose")!, "submit");
-    await until(() => pg.root.querySelector(".hub-stage"));
-    expect(pg.root.querySelector(".hub-stage")!.textContent).toBe("Waiting for the owner's fleet");
-    const ask = calls.find((x) => x.method === "POST" && x.path === "/hub/v1/rooms/r1/messages")!;
+    const box = pg.root.querySelector("#msgIn") as any; box.value = "Q3?"; fire(box, "input"); await settle(5);
+    (pg.root.querySelector("#sendBtn") as any).click();
+    await until(() => pg.root.querySelector(".msg.user .tick"));
+    expect(pg.root.querySelector(".msg.user .body")!.textContent).toContain("Q3?");
+    expect(pg.root.querySelector(".msg.user .tick")!.getAttribute("aria-label")).toBe("Waiting for the owner's fleet");
+    const ask = calls.find((x) => x.method === "POST" && x.path === `/hub/v1/rooms/${R1}/messages`)!;
     expect(ask.body.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     expect(ask.body.text).toBe("Q3?");
     expect(ask.csrf).toBe("c".repeat(64));
     // A read is never faster than the pacing (one at mount; the next only after POLL_MS).
-    expect(calls.filter((x) => x.path.startsWith("/hub/v1/rooms/r1/messages") && x.method === "GET")).toHaveLength(1);
+    expect(calls.filter((x) => x.path.startsWith(`/hub/v1/rooms/${R1}/messages`) && x.method === "GET")).toHaveLength(1);
     expect(hubPanel.POLL_MS).toBe(10_000);
-    void answered;
   });
 
   it("My exposures: grants against the revision shown, a pending pairing to confirm; Administration only for the administrator", async () => {
@@ -327,17 +359,19 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
   });
 
   it("the sidebar's session row is the Hub's (never /auth/session), and a 401 anywhere signs the page out", async () => {
-    let signedIn = true;
+    let signedIn = true, ended = false;
     const { calls } = hubApi({
       "GET /hub/v1/session": () => [200, signedIn ? SIGNED : { signedIn: false }],
       "GET /hub/v1/exposures": () => [401, { code: "signed-out" }],
-      "GET /hub/v1/rooms": () => [401, { code: "signed-out" }],
+      // #3226 B: signing in reads the conversation list; it answers 401 only once the session has ended on the server.
+      "GET /hub/v1/rooms": () => (ended ? [401, { code: "signed-out" }] : [200, { rooms: [] }]),
     });
     const pg = await pageWith("hub", "/ui/hub", "Team Hub");
     await pg.mount(h(hubPanel.HubSessionMenu, {}));
-    await until(() => pg.root.querySelector(".hub-signout"));
+    await until(() => pg.root.querySelector(".hub-session .dot.ok"));
     expect(pg.root.querySelector(".hub-session")!.textContent).toContain("Alex");
-    await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "ask" }, navKey: "hub:ask|1|en" }));
+    ended = true;
+    await pg.mount(h(hubPanel.HubPanel, { route: { panel: "hub", tab: "exposures" }, navKey: "hub:exposures|1|en" }));
     await until(() => pg.root.querySelector(".hub-signin"));
     expect(calls.every((x) => x.path.startsWith("/hub/v1/"))).toBe(true);
     signedIn = false;
