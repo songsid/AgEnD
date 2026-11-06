@@ -112,7 +112,7 @@ export function myWorkText(board: TaskBoard, name: string, work: MyWork): string
 
 /** `task projects`: one line per project (archived ones last), with its main tasks and what waits. */
 export function projectsText(projects: Project[], stats: Record<string, ProjectStats>): string {
-  if (!projects.length) return "No projects yet: a person creates them on the dashboard (Fleet › Tasks). A main task can be opened without one.";
+  if (!projects.length) return "No projects yet: create one with create_project (or a person on the dashboard, Fleet › Tasks). A main task can be opened without one.";
   return projects.map((p) => {
     const st = stats[String(p.id)] ?? { mains: 0, percent: 0, waiting: 0, blocked: 0 };
     const counts = ` — ${st.mains} main tasks, ${st.percent}% done${st.waiting ? `, ${st.waiting} waiting for the person` : ""}${st.blocked ? `, ${st.blocked} blocked` : ""}`;
