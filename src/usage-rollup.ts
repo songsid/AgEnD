@@ -20,7 +20,7 @@
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { addSpeedInto, emptySpeed, type HourAgg, type HourTotals, type Ledger, type SpeedAgg } from "./cache-ledger.js";
+import { SPEED_METHOD, addSpeedInto, emptySpeed, type HourAgg, type HourTotals, type Ledger, type SpeedAgg } from "./cache-ledger.js";
 
 export const ROLLUP_KEEP_DAYS = 400;
 const HOUR = 3_600_000;
@@ -61,6 +61,8 @@ export function hourSources(hour: HourAgg): HourSource[] {
 }
 export interface UsageDays {
   v: 1;
+  /** M-2452: the speed method its speeds were measured with (cache-ledger.ts SPEED_METHOD); absent: before it. */
+  spv?: number;
   /** The last UTC hour (ms) held here; -1: none yet. */
   checkpoint: number;
   rows: DayRow[];
@@ -70,13 +72,14 @@ export interface UsageDays {
 
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 const add = (into: HourTotals, from: HourTotals): void => { for (let i = 0; i < 7; i++) into[i] = (into[i] ?? 0) + (from[i] ?? 0); };
-export const emptyDays = (): UsageDays => ({ v: 1, checkpoint: -1, rows: [], coverage: [] });
+export const emptyDays = (): UsageDays => ({ v: 1, checkpoint: -1, rows: [], coverage: [], spv: SPEED_METHOD });
 
 /** A rollup read back from disk; anything that is not one is empty. */
 export function reviveDays(raw: unknown): UsageDays {
   const d = emptyDays();
   if (!raw || typeof raw !== "object" || (raw as UsageDays).v !== 1) return d;
   const r = raw as UsageDays;
+  const currentSpeeds = r.spv === SPEED_METHOD;                         // M-2452 (read before the loop's own `r`)
   if (Number.isSafeInteger(r.checkpoint)) d.checkpoint = r.checkpoint;
   if (Array.isArray(r.rows)) for (const row of r.rows) {
     if (!row || typeof row.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(row.date) || typeof row.zone !== "string" || typeof row.be !== "string" || typeof row.pf !== "string") continue;
@@ -90,7 +93,8 @@ export function reviveDays(raw: unknown): UsageDays {
     const r = beside(row.r), c = beside(row.c);
     // #3066 §2: a model key's speed, whole and finite, beside a total that exists.
     const s = dict<SpeedAgg>();
-    for (const [k, a] of Object.entries((row.s && typeof row.s === "object" ? row.s : {}) as Record<string, unknown>)) {
+    // M-2452: a Claude row's speeds measured by the old method are dropped once (its tokens stay).
+    if (currentSpeeds || row.be !== "claude-code") for (const [k, a] of Object.entries((row.s && typeof row.s === "object" ? row.s : {}) as Record<string, unknown>)) {
       if (m[k] && Array.isArray(a) && a.length === emptySpeed().length && a.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) s[k] = a as SpeedAgg;
     }
     d.rows.push({ date: row.date, zone: row.zone, be: row.be, pf: row.pf, m, ...(Object.keys(r).length ? { r } : {}), ...(Object.keys(c).length ? { c } : {}), ...(Object.keys(s).length ? { s } : {}) });
