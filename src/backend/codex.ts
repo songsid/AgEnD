@@ -39,6 +39,7 @@ import { codexSpeed } from "./codex-speed.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { type CodexResumePlan, type ExactCwdSession, checkResumeId, codexSiblingState, codexStateDbAbsent, codexThreadRowExists, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestResumableRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
+import { snapshotCodexQuotaHistory, snapshotCodexSessionQuotaHistory } from "./codex-quota-history.js";
 import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
 import { selectionCard } from "../selection-card.js";
@@ -998,6 +999,8 @@ export class CodexBackend implements CliBackend {
   private launchWarning: string | null = null;
   /** Whether the last buildCommand launched a resume (`resume <id>` or `--last`). */
   private lastLaunchResumes = true;
+  private quotaReplay: ReturnType<typeof snapshotCodexQuotaHistory> = null;
+  quotaReplayHistory(): ReturnType<typeof snapshotCodexQuotaHistory> { return this.quotaReplay; }
   /** Set by writeConfig when the status_line could not be made verifiable (#931). */
   private statusLineWarning: string | null = null;
   /** #2357: set by buildCommand when the codex being launched lacks a package companion (codex-code-mode-host). */
@@ -1259,13 +1262,15 @@ export class CodexBackend implements CliBackend {
     let cmd: string;
     this.launchWarning = null;
     this.lastLaunchResumes = false;
+    this.quotaReplay = null;
     // #2357: read-only (codex is never run here); a launch is not held for it — the operator is told once per launch.
     this.packageWarning = codexPackageWarning(this.binaryPath);
     if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
-      const resumeBy = (id: string, why: string, bytes: number | null): string => {
+      const resumeBy = (id: string, why: string, bytes: number | null, path: string): string => {
         this.lastLaunchResumes = true;
+        this.quotaReplay = snapshotCodexQuotaHistory(path);
         this.writeResumeAttempt(id);
         const large = bytes !== null && bytes > CODEX_RESUME_LARGE_BYTES ? ` ${t("codex.resume_large", String(Math.round(bytes / (1024 * 1024))))}` : "";
         this.launchWarning = why + large;
@@ -1287,7 +1292,7 @@ export class CodexBackend implements CliBackend {
       } else if (oneShot) {
         // M-2266: validated when it was asked for (restart_instance); checked again now, as the rollout may have moved.
         const check = checkResumeId(sessionsDir, config.workingDirectory, oneShot);
-        if (check.ok) cmd = resumeBy(check.rollout.id, t("codex.resume_oneshot", config.workingDirectory, check.rollout.id), check.rollout.bytes);
+        if (check.ok) cmd = resumeBy(check.rollout.id, t("codex.resume_oneshot", config.workingDirectory, check.rollout.id), check.rollout.bytes, check.rollout.path);
         else {
           cmd = this.plannedCommand(config, approvalFlag, sessionsDir, resumeBy);
           this.launchWarning = [t("codex.resume_oneshot_invalid", config.workingDirectory, oneShot, check.reason), this.launchWarning].filter(Boolean).join("\n");
@@ -2382,10 +2387,13 @@ export class CodexBackend implements CliBackend {
 
   /** The launch as the database plans it — and, when it has no conversation for this directory, an auto-resume (M-2266). */
   private plannedCommand(config: CliBackendConfig, approvalFlag: string, sessionsDir: string,
-    resumeBy: (id: string, why: string, bytes: number | null) => string): string {
+    resumeBy: (id: string, why: string, bytes: number | null, path: string) => string): string {
     const plan = this.planResume(config);
     this.lastLaunchResumes = plan.mode === "resume" || plan.mode === "last";
-    if (plan.mode === "resume") return `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
+    if (plan.mode === "resume") {
+      this.quotaReplay = snapshotCodexSessionQuotaHistory(this.stateDbPath(), config.workingDirectory, plan.id);
+      return `${this.binaryPath} resume ${shellQuote(plan.id)} ${approvalFlag}`;
+    }
     if (plan.mode === "last") {
       this.launchWarning = t("codex.resume_db_unreadable_last", plan.cause);
       return `${this.binaryPath} resume --last ${approvalFlag}`;
@@ -2398,7 +2406,7 @@ export class CodexBackend implements CliBackend {
     // conversation for this directory, but its newest CLI rollout of exactly this directory, with a turn, is still
     // there — `codex resume <id>` reads it.
     const found = newestResumableRollout(sessionsDir, config.workingDirectory, undefined, this.failedResumes());
-    if (found) return resumeBy(found.id, t("codex.resume_auto", config.workingDirectory, found.id), found.bytes);
+    if (found) return resumeBy(found.id, t("codex.resume_auto", config.workingDirectory, found.id), found.bytes, found.path);
     return `${this.binaryPath} ${approvalFlag}`;
   }
 
