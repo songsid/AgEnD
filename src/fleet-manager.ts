@@ -19671,6 +19671,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.signInIdentitySlots++;
     try { return await task(); } finally { this.signInIdentitySlots--; this.signInIdentityWaiters.shift()?.(); }
   }
+  /** One `claude auth status` for a sign-in (the default one, or a credential profile's folder). */
+  private async readSignInIdentity(target: SignInTarget): Promise<AccountIdentity | undefined> {
+    let env: Record<string, string> | undefined;
+    if (target.profile) env = credentialProfileEnv(this.dataDir, target.backend, target.profile) ?? undefined;
+    return checkAuthIdentity(target.backend, env);
+  }
   /**
    * Start reading, in the background, the account of each Claude Code sign-in that is signed in (the default and every profile an agent uses) and
    * not read in the last five minutes. It never waits and never blocks a request: the list shows what is already known, and the pages are told to
@@ -19684,14 +19690,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const key = `${target.backend}\0${target.profile ?? ""}`;
       if (target.state !== "usable" || !authIdentitySupported(target.backend) || fresh(target) || this.signInIdentityReads.has(key)) continue;
       const generation = this.signInIdentityGeneration;
-      const read: Promise<boolean> = this.withSignInIdentitySlot(async () => {
-        let env: Record<string, string> | undefined;
-        if (target.profile) env = credentialProfileEnv(this.dataDir, target.backend, target.profile) ?? undefined;
-        return checkAuthIdentity(target.backend, env);
-      }).then(identity => {
+      const read: Promise<boolean> = this.withSignInIdentitySlot(() => this.readSignInIdentity(target)).then(identity => {
         if (generation !== this.signInIdentityGeneration) return false;            // forgotten while it ran: its answer may be the old account
         this.signInIdentities.set(key, { identity: identity ?? null, at: Date.now() }); return true;
-      }).catch(() => false).finally(() => { if (this.signInIdentityReads.get(key) === read) this.signInIdentityReads.delete(key); });
+      }).catch(() => {
+        // A read that threw is an answer too: remembered as "no account" for the same five minutes, so every GET does not try again.
+        if (generation === this.signInIdentityGeneration) this.signInIdentities.set(key, { identity: null, at: Date.now() });
+        return false;
+      }).finally(() => { if (this.signInIdentityReads.get(key) === read) this.signInIdentityReads.delete(key); });
       this.signInIdentityReads.set(key, read); started.push(read);
     }
     if (started.length) void Promise.all(started).then(results => {

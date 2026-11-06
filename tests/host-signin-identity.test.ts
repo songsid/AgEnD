@@ -133,6 +133,24 @@ describe("the host's own sign-in list: which account is each Claude Code sign-in
     deps.loginEnded(); await read(f.fm); expect(f.calls.length).toBe(first * 2);
     f.fm.webBackendLogins.dispose();
   });
+  it("a read that THROWS is remembered as no account for the same five minutes: the next requests do not try again", async () => {
+    const f = makeFleet(); const boom = vi.spyOn(f.fm, "readSignInIdentity").mockRejectedValue(new Error(`boom ${RAW}`));
+    await read(f.fm); const tried = boom.mock.calls.length; expect(tried).toBe(3);                         // default + work + constructor
+    for (const key of ["claude-code\0", "claude-code\0work", "claude-code\0constructor"]) expect(f.fm.signInIdentities.get(key)).toMatchObject({ identity: null, at: expect.any(Number) });
+    for (let request = 0; request < 5; request++) await read(f.fm);
+    expect(boom).toHaveBeenCalledTimes(tried); expect(f.calls).toHaveLength(0);
+    expect(f.fm.backendSignInTargets().some((target: any) => target.identity)).toBe(false); expect(text(f.logs)).not.toContain("alice.fixture");
+    f.fm.forgetSignInIdentities(); boom.mockRestore(); await read(f.fm);                                    // forgotten: it is read for real again
+    expect(f.fm.backendSignInTargets().some((target: any) => target.identity)).toBe(true);
+    f.fm.webBackendLogins.dispose();
+  });
+  it("a throwing read from before a forgetting does not leave a negative entry behind", async () => {
+    const f = makeFleet(); const fail: Array<(error: Error) => void> = [];
+    vi.spyOn(f.fm, "readSignInIdentity").mockImplementation(() => new Promise((_resolve, reject) => { fail.push(reject); }));
+    f.fm.refreshSignInIdentities(); await vi.waitFor(() => expect(f.fm.signInIdentitySlots).toBe(3));
+    f.fm.forgetSignInIdentities(); fail.forEach(reject => reject(new Error("late"))); await vi.waitFor(() => expect(f.fm.signInIdentitySlots).toBe(0));
+    expect(f.fm.signInIdentities.size).toBe(0);
+  });
 });
 
 describe("who is served the list with the accounts in it: a local administrator session only", () => {
