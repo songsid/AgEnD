@@ -33,6 +33,8 @@ import {
   type HubInitSecrets,
 } from "./types.js";
 
+import { hubInstallationInventory } from "./inventory.js";
+
 export const STAGES = ["started", "identity", "web-tls", "secret", "config", "manifest", "enabled"] as const;
 export type HubInitStage = (typeof STAGES)[number];
 
@@ -375,6 +377,9 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       }
 
       if (!r.done.includes("enabled")) {
+        // An unsigned, informational record alongside the sealed runtime manifest; enabled is still the last patch.
+        // Also creates the record when resuming a pre-inventory operation that already completed the manifest stage.
+        writePrivate(paths.inventory, `${JSON.stringify(hubInstallationInventory(plan, identity, new Date(now()).toISOString()), null, 2)}\n`, uid);
         applyFleetYamlPatches(paths.fleetYaml, [ENABLE_PATCH]);
         mark("enabled");
       }

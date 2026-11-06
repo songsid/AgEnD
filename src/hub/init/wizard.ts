@@ -5,6 +5,8 @@
  *   → optional service install (explicit) → member pairing instructions.
  * No Hub is installed before final confirmation. Explicit certificate generation uses private temporary staging.
  */
+import { hubHandoffLines } from "./handoff.js";
+import { readHubInstallationInventory } from "./inventory.js";
 import { isIP } from "node:net";
 import { HUB_RETENTION_DEFAULTS } from "../../hub-retention-policy.js";
 import type { createHubDirectory as CreateHubDirectory, DirectoryPerson, HubDirectoryConfig, HubDirectoryDiagnostic } from "../directory/index.js";
@@ -457,8 +459,13 @@ async function confirmAndCommit(deps: HubWizardDeps, plan: HubInitPlan, bindPass
   }
 
   io.say();
-  io.say(ht("pairing_title"));
-  io.say(ht("pairing_steps", plan.webOrigin, plan.memberOrigin, result.spkiSha256));
+  try { for (const line of hubHandoffLines(deps.home, readHubInstallationInventory(deps.home))) io.say(line); }
+  catch {
+    // A completed initialization remains committed if an informational record cannot be read/displayed.
+    io.say(ht("handoff_unavailable"));
+    io.say(ht("pairing_title"));
+    io.say(ht("pairing_steps", plan.webOrigin, plan.memberOrigin, result.spkiSha256));
+  }
   return "initialized";
 }
 
