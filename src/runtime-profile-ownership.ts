@@ -177,18 +177,30 @@ async function isolateOwnedProfile(pairingDirectory: string, root: string, cli: 
   const expectedBase = join(realpathSync(pairingDirectory), "credential-profiles", kind);
   options.beforeCommit?.();
   const moved = join(dirname(directory), `.${prefix}-${randomBytes(8).toString("hex")}`);
+  // The identity of the folder that is about to be taken (read in the same synchronous step as the rename): the renamed thing must be this very object.
+  const taken = lstatSync(directory), baseline = { dev: taken.dev, ino: taken.ino, birthtimeMs: taken.birthtimeMs };
   renameSync(directory, moved);
   const restore = (): boolean => {
     if (present(directory)) return false;                                   // something else took the name meanwhile: never replace it
     try { renameSync(moved, directory); return true; } catch { return !present(moved); }
   };
   const verify = async (): Promise<void> => {
-    // The folder above it, again, after the rename: a CLI folder swapped for a link in the meantime would have taken the rename elsewhere.
-    if (!same(realpathSync(dirname(moved)), expectedBase) || !same(realpathSync(moved), join(expectedBase, basename(moved)))) throw new ProfileOwnershipRefusal(`Credential profile "${checked}" is not inside this Runtime's profile folder`, "link");
-    notLink(moved, `Credential profile "${checked}"`);
+    // The renamed root itself, its parent and its identity. Run before the inspector is asked and again after it has answered and after the walk, because
+    // each of those awaits is a window in which the renamed folder could be replaced by a junction to somewhere else (an answer given about the real
+    // folder says nothing about what is at that path by the time it arrives): the real path of the folder above and of the folder itself, not a link,
+    // and the same file system object (device, index, creation time) as the one that was first looked at.
+    const rootLook = (): void => {
+      if (!same(realpathSync(dirname(moved)), expectedBase) || !same(realpathSync(moved), join(expectedBase, basename(moved)))) throw new ProfileOwnershipRefusal(`Credential profile "${checked}" is not inside this Runtime's profile folder`, "link");
+      notLink(moved, `Credential profile "${checked}"`);
+      const stat = lstatSync(moved);
+      if (stat.dev !== baseline.dev || stat.ino !== baseline.ino || stat.birthtimeMs !== baseline.birthtimeMs) throw new ProfileOwnershipRefusal(`Credential profile "${checked}" was replaced while it was being checked, so nothing is changed there`, "link");
+    };
+    rootLook();
     let flags: readonly boolean[]; try { flags = await (options.inspect ?? (process.platform === "win32" ? windowsReparseInspector : noReparseInspector))([moved]); } catch { throw new ProfileOwnershipRefusal(NOT_PROVEN, "link"); }
+    rootLook();
     if (flags.length !== 1 || flags[0]) throw new ProfileOwnershipRefusal("The profile folder is a link or junction, so nothing is changed there", "link");
     assertNoLinksInside(moved);
+    rootLook();
   };
   const isolated: Isolated = { directory, moved, verify, restore };
   try { await verify(); } catch (error) { failIsolated(isolated, options, error); }

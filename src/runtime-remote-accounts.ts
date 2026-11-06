@@ -120,9 +120,15 @@ export class RemoteAccounts {
   async stop(): Promise<void> {
     this.stopped = true; this.connectionEpoch++; this.stopWatching();
     await Promise.allSettled([...this.pending]);
-    if (this.meta && this.slot.current()) await this.endSignIn(this.meta.id, "closed").catch(() => {});
-    else await this.slot.recover().catch(() => {});
+    let failure: unknown;
+    try {
+      if (this.meta && this.slot.current()) await this.endSignIn(this.meta.id, "closed");
+      else if (this.slot.current()) await this.slot.recover();
+    } catch (error) { failure = error; }
     this.refreshHold(); this.audit.flush();
+    // A sign-in or logout process that was told to stop and is not confirmed gone is still this module's to own. Stopping is then NOT complete: the caller keeps
+    // everything it holds (the pairing's lock, this module), and calling stop() again tries again, which succeeds once the process has really ended.
+    if (failure !== undefined || this.slot.current() || this.retained.size > 0) throw new Error("Account process shutdown was not confirmed; inspect processes before stopping or restarting");
   }
   /** The connection to AgEnD changed: requests of the old one may not start anything more, and a sign-in that was opened over it is ended. */
   connectionChanged(): void {

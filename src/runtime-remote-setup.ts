@@ -11,7 +11,7 @@
  *
  * Built-ins only: part of the Runtime bundle.
  */
-import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, ftruncateSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 
@@ -161,17 +161,61 @@ export function appendAudit(directory: string, entry: AuditEntry, now = Date.now
       renameSync(path, `${path}.1`);
     }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  const fd = openSync(path, "a", 0o600);
+  // Read and write: the end of the file is looked at before anything is added. Appends stay appends (O_APPEND), so a second process writing at the same
+  // moment (the Runtime and `agend-runtime remote-setup`) is never overwritten.
+  const fd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_APPEND, 0o600);
   try {
     if (!fstatSync(fd).isFile()) throw new Error("Audit log must be a regular file");
-    // A record is whole or it is an error: a partial write (a full disk, an interrupted call) is never accepted as written.
+    const valid = repairedEnd(fd);
+    // A record is whole or it is an error: a partial write (a full disk, an interrupted call) is never accepted as written, and what was written of it is taken back.
     const bytes = Buffer.from(line, "utf8");
-    for (let done = 0; done < bytes.byteLength;) {
-      const wrote = writeSync(fd, bytes, done, bytes.byteLength - done);
-      if (!(wrote > 0)) throw new Error("Audit log write was incomplete");
-      done += wrote;
+    let done = 0;
+    try {
+      while (done < bytes.byteLength) {
+        const wrote = writeSync(fd, bytes, done, bytes.byteLength - done);
+        if (!(wrote > 0)) throw new Error("Audit log write was incomplete");
+        done += wrote;
+      }
+    } catch (error) {
+      // Cut back to the last whole record, but only if nobody else has added anything after our part (then the size is exactly what we wrote).
+      try { if (done > 0 && fstatSync(fd).size === valid + done) ftruncateSync(fd, valid); } catch { /* the next append finds the incomplete tail and repairs it, or refuses */ }
+      throw error;
     }
   } finally { closeSync(fd); }
+}
+const AUDIT_PREFIX = '{"at":"';
+/**
+ * The end of the last WHOLE record, after repairing what an interrupted write left: a tail without its newline is the front of a record that was never
+ * completed. If it is the front of one of ours (it begins the way every record begins, and stays unchanged for a moment, so a record another process is
+ * writing right now is not mistaken for it) it is cut off; anything else, or a last whole line that is not JSON, is damage this code does not guess about:
+ * it refuses (so no operation that needs its record goes ahead on an unreadable log).
+ */
+function repairedEnd(fd: number): number {
+  let size = fstatSync(fd).size;
+  if (size === 0) return 0;
+  const tailOf = (end: number): { text: string; start: number } => {
+    const start = Math.max(0, end - 16 * 1024), buffer = Buffer.alloc(end - start); readSync(fd, buffer, 0, buffer.length, start);
+    return { text: buffer.toString("utf8"), start };
+  };
+  let { text, start } = tailOf(size);
+  if (!text.endsWith("\n")) {
+    const lastNewline = text.lastIndexOf("\n"), cut = lastNewline < 0 ? start : start + Buffer.byteLength(text.slice(0, lastNewline + 1), "utf8");
+    if (lastNewline < 0 && start > 0) throw new Error("Audit log has an unreadable tail; repair or remove it on this computer");
+    const tail = text.slice(lastNewline + 1);
+    if (!(AUDIT_PREFIX.startsWith(tail) || tail.startsWith(AUDIT_PREFIX))) throw new Error("Audit log has an unreadable tail; repair or remove it on this computer");
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);       // a record being written by someone else would be whole by now
+    if (fstatSync(fd).size !== size) return repairedEnd(fd);
+    ftruncateSync(fd, cut); size = cut;
+    if (size === 0) return 0;
+    ({ text, start } = tailOf(size));
+  }
+  const lines = text.split("\n").filter(line => line.trim());
+  const last = lines[lines.length - 1];
+  if (last !== undefined && !(start > 0 && lines.length === 1)) {
+    let parsed: unknown; try { parsed = JSON.parse(last); } catch { throw new Error("Audit log has an unreadable last record; repair or remove it on this computer"); }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Audit log has an unreadable last record; repair or remove it on this computer");
+  }
+  return size;
 }
 
 /**

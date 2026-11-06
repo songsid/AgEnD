@@ -75,11 +75,12 @@ it("an open remote sign-in keeps the Runtime from being idle: an update is not p
   expect((f.client as any).locallyIdle()).toBe(true); expect(await f.client.prepareUpdate(randomUUID())).toBe(true);
 });
 it("a sign-in whose child could not be confirmed gone still holds the Runtime non-idle", async () => {
-  let kills = 0; const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0,
-    signIn: { scratchRoot: directory(), kill: () => { kills++; }, spawn: () => { const child = new FakeChild(); return child as unknown as ChildProcess; } } } });
+  let kills = 0; let stuck: FakeChild | undefined; const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0,
+    signIn: { scratchRoot: directory(), kill: () => { kills++; }, spawn: () => { stuck = new FakeChild(); return stuck as unknown as ChildProcess; } } } });
   setRemoteSwitch(f.store.directory, "accounts", true); const started = await f.ask("signin.start", start()); expect(started.ok).toBe(true);
   vi.useFakeTimers({ toFake: ["setTimeout"] }); const closing = f.ask("signin.close", { sessionId: started.result.sessionId }); await vi.advanceTimersByTimeAsync(6000); const closed = await closing; vi.useRealTimers();
   expect(closed.ok).toBe(false); expect(kills).toBeGreaterThan(0); expect((f.client as any).locallyIdle()).toBe(false); expect(await f.client.prepareUpdate(randomUUID())).toBe(false);
+  stuck!.exitCode = 1; stuck!.emit("close", 1);                                                                                  // the process really ends, so the Runtime can be stopped at the end of the test
 });
 it("a request in flight holds the activity too: an update cannot be prepared while a CLI lookup is still waiting", async () => {
   const lookup = held<{ path: string; command: string; args: string[] }>(); const f = await fixture({ remoteAccounts: { find: () => lookup.promise, environment: () => ({ PATH: "p" }), runLogout: async () => 0, signIn: { scratchRoot: directory(), spawn: () => new FakeChild() as unknown as ChildProcess } } });

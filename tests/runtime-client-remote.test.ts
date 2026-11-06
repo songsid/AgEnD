@@ -13,6 +13,7 @@ import { RuntimeClient, type RuntimeBridge } from "../src/runtime-client.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { credentialProfilesRoot } from "../src/runtime-credential-profiles.js";
 import { createRuntimeProfile } from "../src/runtime-profile-ownership.js";
+import { ProcessNotConfirmedEnded } from "../src/runtime-remote-accounts.js";
 import { PANE_HOST_DIRECTORY, PANE_HOST_STATE_DIRECTORY, PANE_IN_PROCESS_DIRECTORY, PANE_LEDGER_FILE, paneLedgerFiles } from "../src/runtime-pane-store.js";
 import { AUDIT_FILE, setRemoteSwitch } from "../src/runtime-remote-setup.js";
 import { readRuntimeInfo } from "../src/runtime-build-info.js";
@@ -246,4 +247,41 @@ describe("tasks and terminals meet the same reservation as a removal", () => {
     const refused = await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" }); expect(refused.ok).toBe(false); expect(refused.error).toMatch(/running terminal/); expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
     opening.promise.catch(() => {}); opening.reject(new Error("closed"));
   });
+});
+
+
+describe("stop and restart do not discard a login process that was not confirmed ended", () => {
+  it("stop fails while the child has not closed, keeps the pairing lock and the account module, refuses a restart and a second client; once the child really closes, stop completes and a restart works and takes a new sign-in", async () => {
+    const spawned: FakeChild[] = [];
+    const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0,
+      signIn: { scratchRoot: scratch(), closeWaitMs: 50, kill: () => { /* the kill is requested; the child does not close */ }, spawn: () => { const child = new FakeChild(); spawned.push(child); return child as unknown as ChildProcess; } } } });
+    setRemoteSwitch(f.home, "accounts", true);
+    const started = await f.call("signin.start", startFrame("held-1", "held").payload); expect(started.ok).toBe(true);
+    const manager = (f.client as any).remoteAccounts;
+
+    await expect(f.client.stop()).rejects.toThrow(/Account process shutdown was not confirmed/);
+    // everything is still held
+    const other = new RuntimeClient({ store: new RuntimeClientStore(f.home), bridge, credentialProfilesRoot: f.root, reconnectMs: 25, pollMs: 10 });
+    await expect(other.start()).rejects.toThrow();                                                   // the pairing's lock is still held by this Runtime
+    await expect(f.client.start()).rejects.toThrow(/previous stop was not completed/);                // and it will not start over its own unfinished stop
+    expect((f.client as any).remoteAccounts).toBe(manager); expect(manager.idle()).toBe(false);          // the account module was not thrown away
+    await expect(f.client.stop()).rejects.toThrow(/Account process shutdown was not confirmed/);        // a retry while it is still stuck fails the same way and loses nothing
+
+    spawned[0]!.exitCode = 1; spawned[0]!.emit("close", 1);                                           // the process really ends
+    await expect(f.client.stop()).resolves.toBeUndefined();
+    expect((f.client as any).unlock).toBeNull(); expect(manager.idle()).toBe(true);
+    await f.client.start(); await vi.waitFor(() => expect(f.client.online()).toBe(true));
+    const again = await f.call("signin.start", startFrame("held-2", "held2").payload); expect(again.ok).toBe(true);
+    spawned[1]!.exitCode = 1; spawned[1]!.emit("close", 1);                                           // so that the end of the test can stop the Runtime
+  }, 30_000);
+  it("a logout that cannot be confirmed ended is the same: stop is refused until it has ended", async () => {
+    const ended = held<void>();
+    const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }),
+      runLogout: async () => { throw new ProcessNotConfirmedEnded(ended.promise); }, ownership: { inspect: async paths => paths.map(() => false) } } });
+    setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    const answer = await f.call("accounts.signout", { cli: "claude-code", profile: "work", actor: "admin:u1" }); expect(answer.ok).toBe(false);
+    await expect(f.client.stop()).rejects.toThrow(/Account process shutdown was not confirmed/);
+    await expect(f.client.start()).rejects.toThrow(/previous stop was not completed/);
+    ended.resolve(); await vi.waitFor(async () => { await expect(f.client.stop()).resolves.toBeUndefined(); });
+  }, 30_000);
 });
