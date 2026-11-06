@@ -341,6 +341,12 @@ type CodexTrustPrompt = {
 };
 
 /** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
+/** A folder-trust prompt's cancel option, and the footer that must come with it. */
+const CODEX_TRUST_CANCEL_FOOTER: Readonly<Record<string, RegExp>> = {
+  "Quit": /^\s*enter continue\s*·\s*esc quit\s*$/i,
+  "Back to Agent Command Center": /^\s*enter continue\s*·\s*esc back\s*$/i,
+};
+
 function codexTrustPromptState(pane: string): CodexTrustPrompt {
   const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false, trustCursor: false };
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -376,21 +382,26 @@ function codexTrustPromptState(pane: string): CodexTrustPrompt {
   });
   // Unknown option orders, a moved cursor, a third option, or any different
   // footer are held for a human. Never guess where Enter would land.
+  // The cancel option and the footer come as a pair: "Quit" / "esc quit" (onboarding, and every codex before 0.167), or
+  // "Back to Agent Command Center" / "esc back" (0.167's startup trust screen, where Esc returns to the command center).
+  // Exactly one cancel option, and the footer that belongs to it.
+  const cancels = choices.filter(choice => Object.prototype.hasOwnProperty.call(CODEX_TRUST_CANCEL_FOOTER, choice.text));
+  const footerFits = cancels.length === 1 && CODEX_TRUST_CANCEL_FOOTER[cancels[0]!.text]!.test(rows[last]);
   const safeChoice = choices.length === 2
     && choices[0].row + 1 === choices[1].row
     && rows.slice(choices[1].row + 1, last).every(row => row.trim() === "")
     && choices[0].cursor === "›" && choices[0].number === "1" && choices[0].text === "Trust and continue"
-    && choices[1].cursor === "" && choices[1].number === "2" && choices[1].text === "Quit"
-    && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
-  const known = new Set(["Trust and continue", "Open restricted", "Quit"]);
-  // Exactly one selection marker, whichever form (› ❯ >), and it is on Trust; the footer is the one both 0.160 and 0.166
-  // show. Two markers, another footer mapping or an unknown option is held — never a guess where Enter lands (#2896 review).
+    && choices[1].cursor === "" && choices[1].number === "2" && cancels[0] === choices[1]
+    && footerFits;
+  const known = new Set(["Trust and continue", "Open restricted", ...Object.keys(CODEX_TRUST_CANCEL_FOOTER)]);
+  // Exactly one selection marker, whichever form (› ❯ >), and it is on Trust; the footer is the one its cancel option
+  // pairs with. Two markers, another footer mapping or an unknown option is held — never a guess where Enter lands (#2896 review).
   const atCursor = choices.filter(choice => choice.cursor !== "");
   const trustCursor = choices.length >= 2 && choices.every(choice => known.has(choice.text))
     && choices.every((choice, index) => index === 0 || choice.row === choices[index - 1]!.row + 1)
     && rows.slice(choices[choices.length - 1]!.row + 1, last).every(row => row.trim() === "")
     && atCursor.length === 1 && atCursor[0]!.cursor === "›" && atCursor[0]!.text === "Trust and continue"
-    && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
+    && footerFits;
   return { active: true, folder, root, rootNote, safeChoice, trustCursor };
 }
 
