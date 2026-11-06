@@ -2,9 +2,10 @@
  * #3190 Part 3b: a Windows Runtime installs a coding CLI when a fleet admin asks from the dashboard (and the computer's local administrator
  * turned the "install" switch on, see runtime-remote-setup.ts).
  *
- * The dashboard sends only a CLI id. Everything that runs is written here: the npm package and its EXACT version (the one the persistent-pane
- * acceptance audited, AUDITED_NATIVE_PANE_VERSIONS, so a CLI this installs is one a pane accepts), the registry address, the argv, and the
- * registry's own sha512 of every package that may land. Nothing from the server becomes a command, an address or a path.
+ * The dashboard sends only a CLI id. Everything that runs is written here: the npm package and its EXACT version, the registry address, the argv,
+ * and the registry's own sha512 of every package that may land. The version and its hashes are one entry of one table, so they can only change
+ * together. The version is deliberately NOT tied to the persistent-pane version list (runtime-pane-native.ts): the install pin exists for integrity,
+ * not for pane acceptance. Nothing from the server becomes a command, an address or a path.
  *
  * Why npm, and why this shape (measured on Windows 11, node 22.21):
  *   - per user, no administrator: it only writes under `<pairing folder>\cli\...`, which this Runtime owns (not %APPDATA%\npm, not PATH);
@@ -21,7 +22,6 @@
 import { execFile as nodeExecFile } from "./child-process.js";
 import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { AUDITED_NATIVE_PANE_VERSIONS } from "./runtime-pane-native.js";
 
 export const CLI_INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
 export const NPM_REGISTRY = "https://registry.npmjs.org/";
@@ -34,7 +34,7 @@ export const managedCliRoot = (pairingDirectory: string): string => join(pairing
 export type InstallableCliId = "claude-code" | "codex";
 export interface InstallableCli {
   id: InstallableCliId;
-  /** The package to install and the exact version. This is the audited version, never "latest". */
+  /** The package to install and the exact version, never "latest". Its hashes below belong to exactly this version. */
   spec: string; version: string;
   /** Registry sha512 of each package that lands, by node_modules path inside the install folder. */
   integrity: Readonly<Record<string, string>>;
@@ -43,7 +43,7 @@ export interface InstallableCli {
 }
 export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>> = Object.freeze({
   "claude-code": {
-    id: "claude-code", spec: "@anthropic-ai/claude-code", version: AUDITED_NATIVE_PANE_VERSIONS["claude-code"],
+    id: "claude-code", spec: "@anthropic-ai/claude-code", version: "2.1.316",
     integrity: {
       "node_modules/@anthropic-ai/claude-code": "sha512-i3BpzyDkcCPnsa0CSkWgxGPs7WMsyqDkxkqT0SDxyEC5XMIxEmcUmluWRHG9VSeBY8Vyv+l9X34JvJ/Bj54nBQ==",
       "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-qs/GOpsQmgWECHVTpqUfTg33BaWoaH7CNOZQlOSqXbBOYst6YL1OqdutE12JsXg096NqGaE7vb5eFa6ZynOIKw==",
@@ -51,7 +51,7 @@ export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: /CN="?Anthropic, PBC"?/ },
   },
   codex: {
-    id: "codex", spec: "@openai/codex", version: AUDITED_NATIVE_PANE_VERSIONS.codex,
+    id: "codex", spec: "@openai/codex", version: "0.165.0",
     integrity: {
       "node_modules/@openai/codex": "sha512-aiwtQVp2KBhJld966CuU5bVfQ46VNB4mNTl6giX3WGZdt4euI3tv2RUqJpnupPNA8DXHg2z+RoQ0Zfw87dy8Lw==",
       "node_modules/@openai/codex-win32-x64": "sha512-f5LMyugPSnAovnTnR1N+SNHSTfWZ+ym5A4H3zZHz/zhuMGMGZD8IxUdlSUlEbiENYyPXrJ8G3Jh+CLyzTfQB6Q==",

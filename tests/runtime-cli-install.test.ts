@@ -3,7 +3,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CliInstallError, INSTALLABLE_CLIS, installEnvironment, installManagedCli, managedCliExecutable, managedInstaller, windowsSignerOf, type InstallDeps } from "../src/runtime-cli-install.js";
-import { AUDITED_NATIVE_PANE_VERSIONS, assertAuditedNativePaneVersion } from "../src/runtime-pane-native.js";
 
 let home: string, node: string;
 beforeEach(() => { home = mkdtempSync(join(tmpdir(), "agend-cli-install-")); node = join(home, "nodejs", "node.exe"); mkdirSync(join(home, "nodejs", "node_modules", "npm", "bin"), { recursive: true }); writeFileSync(join(home, "nodejs", "node_modules", "npm", "bin", "npm-cli.js"), ""); });
@@ -27,12 +26,14 @@ function fakeRun(id: "claude-code" | "codex", options: { integrity?: Record<stri
 const signed = async () => ({ status: "Valid", subject: 'CN="Anthropic, PBC", O="Anthropic, PBC"' });
 
 describe("managed CLI install (#3190 3b)", () => {
-  it("pins exactly the versions that persistent panes accept, so a dashboard install can never land an unusable CLI", () => {
-    expect(() => assertAuditedNativePaneVersion("claude-code", `${INSTALLABLE_CLIS["claude-code"].version} (Claude Code)`)).not.toThrow();
-    expect(() => assertAuditedNativePaneVersion("codex", `codex-cli ${INSTALLABLE_CLIS.codex.version}`)).not.toThrow();
-    expect(INSTALLABLE_CLIS["claude-code"].version).toBe(AUDITED_NATIVE_PANE_VERSIONS["claude-code"]);
-    expect(INSTALLABLE_CLIS.codex.version).toBe(AUDITED_NATIVE_PANE_VERSIONS.codex);
-    for (const cli of Object.values(INSTALLABLE_CLIS)) for (const hash of Object.values(cli.integrity)) expect(hash).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/);
+  it("every entry of the table has an exact version and a registry sha512 for each package, so the two can only change together", () => {
+    for (const cli of Object.values(INSTALLABLE_CLIS)) {
+      expect(cli.version).toMatch(/^\d+\.\d+\.\d+$/);
+      expect(Object.keys(cli.integrity).length).toBeGreaterThanOrEqual(2);
+      for (const [path, hash] of Object.entries(cli.integrity)) { expect(path).toMatch(/^node_modules\/@[a-z-]+\/[a-z0-9-]+$/); expect(hash).toMatch(/^sha512-[A-Za-z0-9+/]{86}==$/); }
+      expect(cli.integrity[`node_modules/${cli.spec}`]).toBeDefined();
+      expect(cli.native.path.startsWith("node_modules/")).toBe(true);
+    }
   });
   it("installs with a fixed argv and no shell, checks integrity, signatures and publisher, then points current.json at it", async () => {
     const { run, calls } = fakeRun("claude-code"), steps: string[] = [];

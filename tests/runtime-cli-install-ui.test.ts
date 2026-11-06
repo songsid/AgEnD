@@ -45,8 +45,8 @@ afterAll(() => { p.restore(); globalThis.fetch = originalFetch; });
 describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("lists Claude Code and Codex with their state; a CLI at another version is offered the audited one", async () => {
     await p.mount(h(Panel, { navKey: "install-list" })); await settle(14);
-    expect(rowOf("claude-code").textContent).toContain("Installed 2.1.318 (not the version AgEnD audited)");
-    expect(installButton("claude-code").textContent).toBe("Install audited 2.1.316");
+    expect(rowOf("claude-code").textContent).toContain("Installed 2.1.318 (not the version AgEnD installs)");
+    expect(installButton("claude-code").textContent).toBe("Install pinned 2.1.316");
     expect(rowOf("codex").textContent).toContain("Not installed"); expect(installButton("codex").textContent).toBe("Install 0.165.0");
     expect(installButton("codex").disabled).toBe(false);
     expect(card().querySelector(".runtime-install-off")).toBeNull();

@@ -123,6 +123,17 @@ describe("callAccount: the server's way to an account or install operation", () 
     expect(lines.every(line => line.outcome === "refused" && line.reason === "failed")).toBe(true);
     expect(lines.map(line => line.outcome)).not.toContain("started");
   });
+  it("a `find` that throws makes 100 sign-in starts a few folded lines, not 100 (the same check-phase rule)", async () => {
+    const f = await fixture({ remoteAccounts: { find: async () => { throw new Error("C:\\Users\\secret\\boom"); }, environment: () => ({}) } });
+    setRemoteSwitch(f.dir, "accounts", true);
+    for (let i = 0; i < 100; i++) {
+      const error = await f.hub.callAccount(f.machineId, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor: ACTOR }).catch(e => e as Error);
+      expect(error.message).not.toMatch(/secret|boom/);
+    }
+    const lines = audit(f.dir).map(line => JSON.parse(line)).filter(line => line.action === "signin");
+    expect(lines.length).toBeLessThanOrEqual(5);
+    expect(lines.map(line => line.outcome)).not.toContain("failed");
+  });
   it("two installs asked at the same moment: one runs, the other is answered busy", async () => {
     let release = (): void => {}; const gate = new Promise<void>(done => { release = done; });
     const install = vi.fn(async () => { await gate; return { version: "0.165.0" }; });

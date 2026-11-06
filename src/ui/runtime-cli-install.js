@@ -8,17 +8,17 @@ import { confirmDialog } from "/assets/ui-confirm.js";
  * read the switch, never change it). Claude Code and Codex only; the other CLIs show their official command for the computer's owner to run.
  */
 register("runtimeInstall", {
-  en: { title: "Install a CLI", lead: "Installs the version AgEnD has audited, into this Runtime's own folder on that computer. No administrator, no PATH change, no vendor script.",
+  en: { title: "Install a CLI", lead: "Installs the fixed version AgEnD pins, into this Runtime's own folder on that computer. No administrator, no PATH change, no vendor script.",
     old: "Update the Runtime on that computer to install CLIs from here.", offline: "That computer is offline.", unreadable: "Could not read this computer's setting. Try again.",
     switchOff: "The owner of that computer has not turned this on. On that computer, run:", switchOn: "Allowed by that computer's owner.", switchUntil: "Allowed until {0}.",
-    installed: "Installed {0}", installedOther: "Installed {0} (not the version AgEnD audited)", notInstalled: "Not installed", install: "Install {0}", reinstall: "Install audited {0}", installing: "Installing… this can take a few minutes",
+    installed: "Installed {0}", installedOther: "Installed {0} (not the version AgEnD installs)", notInstalled: "Not installed", install: "Install {0}", reinstall: "Install pinned {0}", installing: "Installing… this can take a few minutes",
     ask: "Install {0} {1} on {2}? It comes from the official npm registry, is checked against AgEnD's pinned hashes, the registry signatures and the publisher's Windows signature, and is kept in this Runtime's folder on that computer. The install is recorded there.",
     confirm: "Install", done: "{0} {1} is installed.", failed: "The install did not finish: {2}", failedShort: "The install did not finish.", requestFailed: "Could not start the install: {0}",
     othersTitle: "Other CLIs", othersLead: "AgEnD does not install these. The computer's owner can run the vendor's own command in PowerShell on that computer.", needsAdmin: "needs an administrator" },
-  "zh-TW": { title: "安裝 CLI", lead: "安裝 AgEnD 已稽核的版本，裝在那台電腦上 Runtime 自己的資料夾。不需要系統管理員，不改 PATH，也不執行廠商腳本。",
+  "zh-TW": { title: "安裝 CLI", lead: "安裝 AgEnD 固定的版本，裝在那台電腦上 Runtime 自己的資料夾。不需要系統管理員，不改 PATH，也不執行廠商腳本。",
     old: "請更新那台電腦上的 Runtime，才能從這裡安裝 CLI。", offline: "那台電腦目前離線。", unreadable: "無法讀取那台電腦的設定，請再試一次。",
     switchOff: "那台電腦的主人還沒有開啟這個功能。請在那台電腦執行：", switchOn: "那台電腦的主人已允許。", switchUntil: "已允許，到 {0} 為止。",
-    installed: "已安裝 {0}", installedOther: "已安裝 {0}（不是 AgEnD 稽核過的版本）", notInstalled: "尚未安裝", install: "安裝 {0}", reinstall: "安裝稽核版本 {0}", installing: "安裝中…可能需要幾分鐘",
+    installed: "已安裝 {0}", installedOther: "已安裝 {0}（不是 AgEnD 會安裝的版本）", notInstalled: "尚未安裝", install: "安裝 {0}", reinstall: "安裝固定版本 {0}", installing: "安裝中…可能需要幾分鐘",
     ask: "要在 {2} 安裝 {0} {1} 嗎？它來自官方 npm registry，會比對 AgEnD 內建的雜湊、registry 簽章與發行者的 Windows 數位簽章，並放在那台電腦上 Runtime 自己的資料夾。那台電腦會留下安裝紀錄。",
     confirm: "安裝", done: "{0} {1} 已安裝。", failed: "安裝沒有完成：{2}", failedShort: "安裝沒有完成。", requestFailed: "無法開始安裝：{0}",
     othersTitle: "其他 CLI", othersLead: "AgEnD 不會安裝這些。電腦的主人可以在那台電腦的 PowerShell 執行廠商自己的指令。", needsAdmin: "需要系統管理員" },
