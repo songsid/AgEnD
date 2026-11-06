@@ -26,6 +26,7 @@ import { hw, linkHubCss } from "./hub-strings.js";
 import { hc, linkHubChatCss } from "./hub-chat-strings.js";
 import { createHubChatStore } from "./hub-chat-store.js";
 import { QuotaBanner, QuotaCard, QuotaChip } from "./hub-quota.js";
+import { PendingFiles, hf, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
 
 const TITLES = { ask: "askTitle", exposures: "exposuresTitle", admin: "adminTitle" };
 /** P1 room polling: at most once per ten seconds, one request at a time, paused while the page is hidden (hub.md §5). */
@@ -304,21 +305,34 @@ function HubRoomView({ room: given }) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState(null);
+  // #3226 D: files chosen for the next question (uploaded at once; Send names the uploaded ids).
+  const [files, setFilesState] = useState([]);
+  const filesRef = useRef([]);
+  const setFiles = (next) => { filesRef.current = next; setFilesState(next); };
   const input = useRef(null);
   useEffect(() => { setTitle(room.exposureName || hw("askTitle")); }, [room.exposureName]);
   const closed = store.closed() || room.state === "closed";
   const frozen = !closed && room.exposureState === "frozen";
   const working = store.working();
   const name = room.exposureName || "";
+  const takesFiles = roomTakesFiles(room) && !closed && !frozen;
+  const uploading = files.some((f) => f.state === "uploading");
   const send = async () => {
     const q = draft.trim();
     if (!q || sending || closed || frozen) return;
+    if (uploading) { setMsg(hf("waitUpload")); return; }
+    const ids = takesFiles ? files.filter((f) => f.state === "ready").map((f) => f.id) : [];
     setSending(true); setMsg(null);
-    const r = await store.send(q);
+    const r = await store.send(q, ids.length ? { files: ids } : {});
     setSending(false);
     if (!r.ok) { setMsg(errText(r)); return; }
-    setDraft(""); refreshRooms();
+    setDraft(""); setFiles([]); refreshRooms();
   };
+  const attach = takesFiles ? { title: hf("attach"), onFiles: async (list) => {
+    setMsg(null);
+    const refused = await uploadChosen(hubClient(), room.id, list, { current: () => filesRef.current, set: setFiles });
+    if (refused.length) setMsg(refused.join(" "));
+  } } : null;
   const onKeyDown = (e) => { if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); send(); } };
   const toggleInfo = () => { if (!wide) { setSheet(true); return; } setRail((v) => { setRailPref(!v); return !v; }); };
   const tag = closed ? html`<span class="tag danger">${hc("tagClosed")}</span>` : frozen ? html`<span class="tag warn">${hc("tagFrozen")}</span>`
@@ -339,11 +353,13 @@ function HubRoomView({ room: given }) {
         ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
         ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
         ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-        ${closed ? null : html`<div class="composer-box"><${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
-          onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${null}
+        ${closed ? null : html`<div class="composer-box"><${PendingFiles} files=${takesFiles ? files : []} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
+          formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />
+          <${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
+          onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${attach}
           stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
-          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen, label: hc("send"), onClick: send }} /></div>`}
-        ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
+          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || uploading, label: hc("send"), onClick: send }} /></div>`}
+        ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span>${!takesFiles && !frozen ? html`<span class="hint hub-files-off">${hf("off")}</span>` : null}</div>`}
       </div></div>
     </section>
     ${wide && rail ? html`<${RailFrame} trust="hub-context" label=${hc("infoLabel")} title=${hc("info")} closeLabel=${hc("hideInfo")}
