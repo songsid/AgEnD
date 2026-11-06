@@ -540,6 +540,10 @@ instances:
 
 聊天裡的 `/restart`（不加 `full`）會在執行中的 fleet 進程內重啟各 instance：它會等所有 instance 都進入閒置（對話紀錄 10 秒沒有活動），再逐一重啟。另有 5 分鐘的逾時，避免被卡住的 instance 拖住。CLI 的整個 fleet 重啟是 `agend restart`，會透過服務管理器執行（#2356）；`agend fleet restart` 現在只是改執行 `agend restart`，2.4 會移除。
 
+## 停止或重啟期間的 Telegram 訊息（2.3.4，#3100、#3114）
+
+AgEnD 正在停止、已停止或正在啟動時傳給 Telegram bot 的訊息不會再遺失。停止中的 fleet 會先停止接收，不確認還沒處理的訊息；重啟後照常收進來，每則只收一次。到那時已超過 2 小時的訊息不會交給 agent，而是放進**等你處理**，顯示誰、在哪、內容預覽和時間。
+
 ## Topic 圖示與閒置封存 (Topic icon + idle archive)
 
 執行中的 instance 在 Telegram 上會有圖示標示；instance 停止或當機時，圖示會跟著改變。閒置的 instance 會自動封存，對封存的 topic 傳訊息就會自動重新開啟。
@@ -599,7 +603,7 @@ defaults:
 ### 支援的功能
 
 - **Topic 模式**：每個 instance 對應「AgEnD Agents」分類（可用 `options.category_name` 改名）底下的一個文字頻道，另有一個 General 頻道。
-- **ClassicBot**：在任何文字頻道打 `/start`，它就變成 agent 頻道；`/stop` 則移除。`/start` 之後預設開啟 collab 模式，只有 @ 這個 bot 才會觸發 agent。
+- **ClassicBot**：在任何文字頻道打 `/start`，它就變成 agent 頻道；`/stop` 則移除。collab 模式下只有 @ 這個 bot 才會觸發 agent。Discord 的 `/start` 會開啟它；Telegram 一般的 `/start` 不會（見[指令一覽](command-surface.zh-TW.md)）。
 - **同一個伺服器放多個 bot**：每個 bot 是 `channels[]` 裡獨立的一項；bot 只回應提到自己的訊息，絕不替別的 bot 回答。
 - **斜線指令**：共 29 個名稱（28 個命令加上 `/web` 別名），包括 `/chat`、`/steer`、`/btw`、`/cancel`、`/ctx`、`/compact`、`/model`、`/backend`、`/effort`、`/web`、`/usage`、`/login`；需要管理員權限的會標上 🔒（這個標記和實際執行權限檢查的是同一張表產生的）。
 - **按鈕與選單**：權限核准（Allow / Always / Deny）、後端選單、取消，以及 hang / model / effort 選擇器。
@@ -736,6 +740,8 @@ kiro-cli 的 V3 引擎在 TUI 啟動前會問 **Trust this workspace?**：在尚
 搬移是單向的。instance 在 TUI 上執行過之後，AgEnD 就不會再用經典引擎啟動它（`engine_floor: "tui"`），因為那會接回凍結的經典副本，失去之後做的一切。TUI 啟動也不再使用 kiro 的單純 `--resume`：它會從任一引擎挑出資料夾裡最新的對話。沒有自己的對話紀錄時（較舊的 kiro-cli），TUI 啟動會開新對話並說明。
 
 如果 TUI instance 同時有原本帶入的對話和一個較新、有工作的對話，自動恢復會停住而不替你選；[處理中斷的 Kiro 對話帶入](kiro-reconciliation.zh-TW.md) 說明 `reconcile_kiro_instance`。
+
+**在 kiro-cli 3.x 上（2.3.4，#3050、#3051、#3092）。** kiro-cli 3.0 移除了 classic 介面。還在 classic（`kiro_ui: legacy`）的 kiro agent 不會在 kiro-cli 3 以上啟動：AgEnD 會在寫入或啟動任何東西之前拒絕，並在**等你處理**放一則說明怎麼做（留在 kiro-cli 2.x，或趁還在 2.x 時用 `migrate_kiro_instance` 遷移）。kiro 3.0 的 V2/V3 選單會被認出來，AgEnD 不會替你回答。`kiro_engine_status` 會列出哪些 instance（包含 General 和 ClassicBot 房間）還沒準備好升級 3.x。已經在 TUI 的 instance 在 3.0 上能接回原本的對話。kiro 2.x classic 的「登入過期」訊息會被認出來，走正常的重新登入流程（#3094）。
 
 **kiro 在 AgEnD 底下不會自行更新（#2598）。** AgEnD 啟動的每個 kiro 程序（instance，以及版本、help 與模型清單的檢查）都帶有 `KIRO_NO_AUTO_UPDATE=1`，所以不會自行更新到 kiro-cli 3.0、讓經典 instance 當場壞掉。若要讓 kiro-cli 本身也停止更新，請在 `~/.kiro/settings/cli.json` 把 `app.disableAutoupdates` 設為 `true`。
 
@@ -933,6 +939,24 @@ instances:
 
 instance 啟動時會帶上 `-c model_provider="glm"`。provider 本身（`[model_providers.glm]`、它的 base URL 和金鑰變數）定義在共用的 Codex `config.toml` 裡，每個 instance 的私有設定會複製過去。名稱只能包含英文字母、數字、`_` 和 `-`。`create_instance` 也接受同樣的 `backend_options.codex.provider`；`list_models` 帶 `instance_name` 時，會透過那個 instance 自己的設定讀取模型清單，因為自訂 provider 提供的模型可能和帳號的不同。
 
+## Codex 速度（`backend_options.codex.speed`，2.3.4，#3156）
+
+Codex agent 可以用 Codex 的 **Fast** 模式，或明確不用：
+
+```yaml
+instances:
+  quick-agent:
+    backend: codex
+    backend_options:
+      codex:
+        speed: fast        # 或 standard
+```
+
+- `fast` 會帶 `-c service_tier="fast"` 和 Codex 的 fast-mode 功能啟動，但只有在 Codex 自己的模型目錄裡這個模型提供 Fast 時才會；否則照常啟動，並在啟動訊息說明原因。快速模式會更快消耗方案額度（OpenAI 公布為標準的 2.5 倍）。
+- `standard` 會為這個 agent 明確關閉快速模式，即使 Codex 自己的設定（或存過的 `/fast`）開著也一樣。
+- 不設定就跟以前一樣，照 Codex 自己的設定。
+- 設定頁 Codex agent 的 Agent 對話框有 **速度**（Codex 預設／**標準**／**快速**）。變更後 agent 會重啟。儲存時會保留這個 agent 的其他後端設定（例如 credential profile）：設定頁現在和 `update_instance_config` 一樣，依後端合併 `backend_options`。其他後端會忽略這個選項。
+
 ## Codex 安裝檢查 (Codex install check)
 
 官方的 Codex 套件會在 `bin/codex` 旁附上輔助程式：standalone 安裝在 `releases/<版本>/`，npm 的平台套件在 `vendor/<target>/`。其中的 `bin/codex-code-mode-host` 負責執行 Codex 的 code mode 工具呼叫。只複製 codex 執行檔、少了這個檔案時，codex 仍能啟動，也照樣收得到訊息。但如果帳號只能透過 code mode 使用工具，每一次工具呼叫都會失敗，AgEnD 的 reply 也一樣。畫面上只看得到 Codex 的 `⚠ N warnings · f2 to view`，所以 instance 看起來就是沒有回應（#2357）。
@@ -1009,6 +1033,11 @@ fleet 指示以附加的方式注入，不會覆蓋 CLI 內建的系統提示。
 - 略過權限的確認
 
 每個後端都在 `getStartupDialogs()` 和 `getRuntimeDialogs()` 裡定義自己的對話框樣式和按鍵序列。
+
+**屬於你的問題，不會被送訊息的 Enter 回答掉（2.3.4）。**
+- **認得的確認框不按 Enter（#2957、#2990）。** AgEnD 送訊息按 Enter 前會再看一次畫面。只要畫面上是它認得的確認框——權限確認、危險指令確認，或 Claude Code 2.1.317 在連接器要附上本機檔案送出前的確認框（即使略過權限也會出現，預設「Yes」，#2992）——就不按 Enter，改放進**等你處理**。你自己在網頁或 Discord 按的按鈕不受影響。
+- **以完整指令確認（#2965、#2968）。** 權限確認卡顯示完整的指令與所有選項，回答只套用在完全相同的請求上。畫面被截斷或看不清楚時什麼都不按，請你到「檢視」確認。升級到 2.3.4 前還沒回答的確認卡需要重新回答。
+- **等待捲動模式中的視窗（#2971）。** 有人把 tmux 視窗停在捲動（copy）模式時，AgEnD 最多等 10 分鐘，送出前再確認一次輸入框。它不會替你退出捲動模式，也不會把這樣的訊息回報為已送出；這段時間 agent 若重啟，Enter 不會按到新的 agent 上。
 
 ## CLI 模式（`agent_mode`）
 
@@ -1336,7 +1365,9 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 - **Agent 發布外觀包**（#2692）：替某個 agent 打開 **辦公室外觀包** 後（`office_pack_access: true`，獨立的開關，沒設定就是關閉），它可以檢查、上傳、取代、刪除與還原辦公室的外觀包；每次變更都會記錄、在 General 通知管理者，而且預設要等管理者核准。見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)。
 - **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。2.2.5 起（#2010）會顯示 5 分鐘與 1 小時快取寫入的比例，並實際量測 5 分鐘快取能撐多久：計算每個 instance 過去 7 天內 5 到 60 分鐘的間隔，至少有 10 個時，若最多 10% 重寫了快取，就當作 1 小時來模擬；若至少一半重寫了，卡片會建議改用 `backend_options.claude-code.prompt_cache_ttl: "1h"` 而不是保溫（這個自選設定會在 instance 下次啟動時帶入 `CLAUDE_CODE_PROMPT_CACHE_TTL`；不設定時由 CLI 自己決定）。agent 可以用 `get_cache_report` 讀取同一份報告：General、coordinator 與 full 權限組合看得到所有 instance，其他 instance 只看得到自己那一列。
 - **Fleet → 用量**（`/ui/fleet/usage`，2.2.5，#2122）：每個 agent 的 token、請求數、已送達訊息數與依牌價換算的 API 等值（不是實際花費），可依 agent、backend、模型、憑證 profile 或 team 分組，期間可選今天、7 天、本月、全部或自訂日期；附每日趨勢、能分辨「沒有用量」與「未收集」的日曆熱度圖，以及同一份資料的 CSV。可量測 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity（Codex 與 Muse 的快取寫入顯示為「未回報」；Muse 未定價）；Kiro 不記錄 token 數，依文字長度估算並標示「估算」；其他 CLI 會列出原因。自 fleet 啟動起收集並保留 400 天；agent 以 `get_usage_report` 讀取。◔ 用量對話框有連到這裡的連結。
-  - **速度**（#3066）：每個模型本身生成時的每秒輸出 token 數（不含工具執行時間），以「速度」欄與「各模型速度」卡片呈現，並列出可計時的請求數；累積 30 個可計時的回應後，另顯示 p10–p90 範圍。`get_usage_report` 以 `speed` 回傳。Claude Code 的回應從第一個 token（以思考區塊開頭時，由其思考時間推得）計到最後一個區塊。Codex 的回應則以回應時窗計時，依 codex 0.147 之後寫入的項目時間：從第一個模型項目開始到最後一個結束，扣除伺服器端網頁搜尋的時間。rollout 不標記第一個 token，所以這個時窗可能含有一部分等待第一個 token 的時間。方法參考 [tokdash](https://github.com/JingbiaoMei/tokdash)（MIT，Jingbiao Mei；見 `THIRD_PARTY_NOTICES.md`）。
+  - **速度**（#3066）：每個模型本身生成時的每秒輸出 token 數（不含工具執行時間），以「速度」欄與「各模型速度」卡片呈現，並列出可計時的請求數；累積 30 個可計時的回應後，另顯示 p10–p90 範圍。`get_usage_report` 以 `speed` 回傳。Claude Code 與 Codex 都以整段回應計時（#3157）：從第一個模型項目開始到最後一個結束（Codex 依 codex 0.147 之後寫入的項目時間，並扣除伺服器端網頁搜尋的時間）。早期 beta 從 Claude 想完才開始算，數字偏高；2.3.4 第一次啟動時會清掉那些 Claude 速度紀錄一次（token 數不受影響）。
+  - **整週容量（2.3.4，#3073）：** 每條週（或更長）額度下方顯示「100% ≈ …」：依這個帳號自己的額度讀數，對照同一時段 fleet 記錄的 token，推算整週能用多少。要等同一個重置區間內百分比至少移動 10 點才會顯示，並註明同一帳號在 fleet 以外的用量會讓數字偏低。`get_usage` 也會帶這個值。
+  - **額度歷史（2.3.4，#3070）：** 每次成功讀到週（或更長）額度時，記進 `AGEND_HOME` 的 `usage-quota-history.jsonl`（保留 12 週，最多 2 MB），只有百分比或重置時間變了才記。沒有 Discord bot 在讀用量時，只要帳號有 agent 在跑，每 30 分鐘讀一次。Codex 每一輪記在當時的 credential profile 下（之前的顯示「未記錄 profile」）。方法參考 [tokdash](https://github.com/JingbiaoMei/tokdash)（MIT，Jingbiao Mei；見 `THIRD_PARTY_NOTICES.md`）。
 - **新增 agent**（2.2.5，#2074）：側欄清單最後的按鈕會打開新增 agent 對話框。側欄收合時，☰ 旁邊的 **+** 有同樣的作用；手機上它在選單抽屜裡。只有能新增 agent 的 session 看得到它。
 - **篩選側欄時**（2.2.5，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
 - **可以點開 instance 的名稱**（2.2.5，#1990）：聊天裡跨 instance 的狀態行中，對方的名稱會打開它的聊天；提示卡片裡的 instance 名稱會打開它的 View。agent 或人寫的訊息永遠不會有這種連結。

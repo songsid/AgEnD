@@ -408,6 +408,8 @@ agend install --no-activate     # Only write/update the service file
 agend uninstall                 # Remove system service
 agend export [path]             # Export config for device migration
 agend export --full [path]      # Export config + all instance data
+                                # (2.3.4) owner-only file (0600); the default name carries
+                                # the time, and an existing path is refused, never overwritten
 agend import <file>             # Import config from export file
 agend shortcuts                 # WSL: create or update the Windows desktop shortcuts
 ```

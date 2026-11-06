@@ -596,6 +596,8 @@ buffer 的近期訊息／活動交接，不搬移 CLI 對話庫。重啟成功�
 CODEX_HOME=~/.agend/credential-profiles/codex/work codex login
 ```
 
+Codex agent 也可以設定 `backend_options.codex.speed: fast | standard`（2.3.4）：見[功能說明](features.zh-TW.md)的 **Codex 速度**。
+
 Codex profile **只換 `auth.json` 的來源**。Instance 仍使用自己的 CODEX_HOME 與
 私有 `config.toml`；對話與 thread/state/memory 資料庫仍共用，因此切換不刻意開新對話，
 兩個帳號可見相同歷史。這與 Kiro 的檔案布局不同。
@@ -689,7 +691,7 @@ AgEnD 會以 `0700` 建立主目錄（預設 `~/.agend`，也可由 `AGEND_HOME`
 若既有目錄是目前使用者擁有的真實目錄，卻允許群組或其他人寫入，AgEnD 會將主目錄收緊為 `0700`，並記錄一行訊息；
 不會遞迴修改檔案，也不會改動本來就不允許群組或其他人寫入的主目錄。非目前使用者擁有的目錄，或路徑包含符號連結時，
 仍會拒絕：請使用執行 AgEnD 的帳號所擁有的真實目錄。本機操作端的目錄和 socket 仍各自檢查私有權限。
-網站的 shell／WSL 安裝指令也會先準備這個權限邊界，再執行舊版套件的設定流程。
+網站的 shell／WSL 安裝指令也會先準備這個權限邊界，再執行舊版套件的設定流程。從 2.3.4 起（#3083），`daemon.log` 與輪替檔以 `0600` 寫入，既有的主目錄會在更新後第一次啟動時收緊。
 
 `~/.agend/`：
 

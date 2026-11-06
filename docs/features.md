@@ -576,6 +576,10 @@ The daemon notifies you in Telegram when a failover occurs and switches back to 
 
 `/restart` in the chat (without `full`) restarts the instances inside the running fleet process: it waits for all instances to go idle (no transcript activity for 10s), then restarts them one by one. A 5-minute timeout prevents hanging on stuck instances. The CLI's whole-fleet restart is `agend restart`, which goes through the service manager (#2356); `agend fleet restart` only runs `agend restart` now and goes away in 2.4.
 
+## Telegram messages across a stop or restart (2.3.4, #3100, #3114)
+
+Messages sent to a Telegram bot while AgEnD is stopping, stopped or starting are no longer dropped. A stopping fleet stops taking updates and does not confirm the ones not yet handled; after the restart they come in as usual, each one once. One that is more than 2 hours old by then is not handed to the agent: it goes to **Needs you** with who sent it, where, a preview and when.
+
 ## Topic icon + idle archive
 
 Running instances get a visual icon indicator in Telegram. When an instance stops or crashes, the icon changes. Idle instances are automatically archived — sending a message to an archived topic re-opens it automatically.
@@ -635,7 +639,7 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
 ### What it supports
 
 - **Topic mode**: one text channel per instance under an "AgEnD Agents" category (rename with `options.category_name`), plus a General channel.
-- **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode (on by default after `/start`) triggers the agent only when the bot is @-mentioned.
+- **ClassicBot**: `/start` in any text channel turns it into an agent channel; `/stop` removes it. Collab mode triggers the agent only when the bot is @-mentioned. On Discord, `/start` turns it on; on Telegram a normal `/start` leaves it off (see [command surface](command-surface.md)).
 - **Several bots in one server**: each bot is its own `channels[]` entry; a bot answers only messages that mention it and never answers for another bot.
 - **Slash commands**: 28, including `/chat`, `/steer`, `/btw`, `/cancel`, `/ctx`, `/compact`, `/model`, `/backend`, `/effort`, `/web`, `/usage`, `/login`; the ones that need an admin are marked 🔒 (the mark is generated from the same table that enforces it).
 - **Buttons and menus**: permission approval (Allow / Always / Deny), backend picker, cancel, and hang / model / backend / effort pickers.
@@ -772,6 +776,8 @@ kiro-cli's V3 engine asks **Trust this workspace?** before its TUI starts: in a 
 The move is one-way. Once an instance has run on the TUI, AgEnD refuses to launch it on classic again (`engine_floor: "tui"`), because that would resume the frozen classic copy and lose everything done since. A TUI launch never uses kiro's plain `--resume`, which takes the directory's newest conversation from either engine. Without its own conversation on record (an older kiro-cli), a TUI launch starts fresh and says so.
 
 If a TUI instance ends up with its original carried conversation and a newer one with work, automatic recovery holds instead of choosing; [Reconcile an interrupted Kiro carry](kiro-reconciliation.md) explains `reconcile_kiro_instance`.
+
+**On kiro-cli 3.x (2.3.4, #3050, #3051, #3092).** kiro-cli 3.0 removed the classic interface. A kiro agent still on classic (`kiro_ui: legacy`) is not started on kiro-cli 3 or later: AgEnD refuses before writing or launching anything and puts one item in **Needs you**, with what to do (stay on kiro-cli 2.x, or move it with `migrate_kiro_instance` while still on 2.x). kiro 3.0's V2/V3 menu is recognised and never answered for you. `kiro_engine_status` lists which instances, General and ClassicBot rooms included, are not ready for 3.x. Instances already on the TUI resume their conversation on 3.0. kiro 2.x classic's "session expired" message is recognised and goes through the normal sign-in flow (#3094).
 
 **kiro never updates itself under AgEnD (#2598).** Every kiro process AgEnD starts (the instance, and the version, help and model-list checks) carries `KIRO_NO_AUTO_UPDATE=1`, so a self-update to kiro-cli 3.0 can't break classic instances in place. To stop kiro-cli's own updates as well, set `app.disableAutoupdates` to `true` in `~/.kiro/settings/cli.json`.
 
@@ -975,6 +981,24 @@ instances:
 
 The instance is launched with `-c model_provider="glm"`. The provider itself (`[model_providers.glm]`, its base URL and key variable) is defined in the shared Codex `config.toml`, which each instance's private config copies. The name may only contain letters, digits, `_` and `-`. `create_instance` takes the same `backend_options.codex.provider`, and `list_models` with `instance_name` reads the model list through that instance's own config, since a custom provider can offer a different set than the account.
 
+## Codex speed (`backend_options.codex.speed`, 2.3.4, #3156)
+
+An agent on Codex can run in Codex's **Fast** mode or explicitly not:
+
+```yaml
+instances:
+  quick-agent:
+    backend: codex
+    backend_options:
+      codex:
+        speed: fast        # or: standard
+```
+
+- `fast` launches with `-c service_tier="fast"` and Codex's fast-mode feature, but only when the model's entry in Codex's own model catalog offers Fast; otherwise the agent starts without it and the launch notes why. Fast mode uses the plan's limits faster (OpenAI states 2.5× the standard rate).
+- `standard` turns fast mode off for this agent even when Codex's own config (or a saved `/fast`) turns it on.
+- Unset keeps today's behaviour: whatever Codex's own config says.
+- In Settings, the Agent dialog of a Codex agent has **Speed** (Codex default / **Standard** / **Fast**). A change restarts the agent. Saving it keeps the agent's other backend options, such as its credential profile: Settings now merges `backend_options` per backend, as `update_instance_config` does. Other backends ignore the option.
+
 ## Codex install check
 
 The official Codex package (the standalone install's `releases/<version>/`, or npm's platform package `vendor/<target>/`) ships helpers next to `bin/codex`. One of them, `bin/codex-code-mode-host`, runs Codex's code-mode tool calls. A codex binary copied without it still starts and still takes messages. On an account where code mode is the only tool path, though, every tool call fails, AgEnD's reply included. The only thing on the pane is Codex's `⚠ N warnings · f2 to view`, so the instance looks silent (#2357).
@@ -1051,6 +1075,11 @@ Backend-defined startup and runtime dialogs are automatically dismissed without 
 - Permission bypass confirmations
 
 Each backend defines its own dialog patterns and key sequences in `getStartupDialogs()` and `getRuntimeDialogs()`.
+
+**Questions that are yours are never answered by a message's Enter (2.3.4).**
+- **No Enter on a recognised question (#2957, #2990).** Before AgEnD presses Enter to send a message, it looks at the screen once more. If a question it recognises is up — a permission question, a dangerous-command confirmation, or Claude Code 2.1.317's question before a connector sends a local file (asked even with permissions skipped, default "Yes", #2992) — it does not press Enter. The question goes to **Needs you** instead. The buttons you press yourself (on the web or Discord) work as before.
+- **Approved by the whole command (#2965, #2968).** A permission card shows the full command and every option, and an answer applies only to that exact request. If the screen is cut off or unclear, nothing is pressed, and you are pointed to View. Cards left unanswered across the update to 2.3.4 must be answered again.
+- **A pane in scroll mode is waited for (#2971).** If someone left the tmux window in copy (scroll) mode, AgEnD waits up to 10 minutes and checks the composer again before sending. It never takes the window out of scroll mode, and it never reports such a message as delivered. If the agent restarts meanwhile, the Enter is not pressed on the new one.
 
 ## CLI mode (agent_mode)
 
@@ -1411,7 +1440,9 @@ Since then:
     - where at least half did, the card recommends `backend_options.claude-code.prompt_cache_ttl: "1h"` instead of keep-warm. That opt-in passes `CLAUDE_CODE_PROMPT_CACHE_TTL` on the instance's next start; unset, the CLI chooses.
   - **`get_cache_report`:** agents read the same report. General, coordinators and full-profile instances see every instance; any other instance sees its own row.
 - **Fleet → Usage** (`/ui/fleet/usage`, 2.2.5, #2122): each agent's tokens, requests, delivered messages and API-equivalent at list price (not money spent), by agent, backend, model, credential profile or team, over today / 7 days / this month / all / custom days, with a daily trend, a calendar heatmap that tells idle days from days not collected, and a CSV of the same rows. Claude Code, Codex, Grok, Muse, OpenCode and Antigravity are measured (Codex's and Muse's cache writes read "not reported"; Muse is not priced); Kiro, which records no token counts, is estimated from text size and marked "estimated"; the other CLIs are listed with the reason. Collected from fleet start and kept 400 days; agents read it with `get_usage_report`. The ◔ usage dialog links to it.
-  - **Speed** (#3066): each model's output tokens per second of its own generation, tool time excluded, as a Speed column and a "Speed by model" card with how many requests were timed and, from 30 timed responses, the p10–p90 spread; `get_usage_report` gives it as `speed`. Claude Code responses are timed from their first token (when they open with a thinking block, whose duration marks it) to their last block. Codex responses are timed over their response window, from the item clocks codex 0.147 and later writes: the first model item's start to the last one's end, minus hosted web-search time. The rollout does not mark the first token, so this window may include some of the wait for it. The method follows [tokdash](https://github.com/JingbiaoMei/tokdash) (MIT, Jingbiao Mei; see `THIRD_PARTY_NOTICES.md`).
+  - **Speed** (#3066): each model's output tokens per second of its own generation, tool time excluded, as a Speed column and a "Speed by model" card with how many requests were timed and, from 30 timed responses, the p10–p90 spread; `get_usage_report` gives it as `speed`. Claude Code and Codex responses are both timed over the whole response (#3157): the first model item's start to the last one's end (for Codex, from the item clocks codex 0.147 and later writes, minus hosted web-search time). Earlier betas timed Claude from the end of its thinking, which read too high; the first start of 2.3.4 clears those recorded Claude speeds once (token counts are not touched).
+  - **Weekly capacity (2.3.4, #3073):** under each weekly (or longer) quota bar, "100% ≈ …": how much a full week of that account holds, measured from its own quota readings against the tokens the fleet recorded in the same window. It shows only once the percent has moved at least 10 points within one window, and says that use of the same account outside the fleet makes it read low. `get_usage` carries it too.
+  - **Quota history (2.3.4, #3070):** each successful usage read of a weekly or longer window is kept in `usage-quota-history.jsonl` in `AGEND_HOME` (12 weeks, at most 2 MB), recorded only when the percent or the reset time moved. Without a Discord bot reading usage, it is read every 30 minutes while an account has a running agent. Codex turns are counted under the credential profile in effect at the time (`profile not recorded` before that). The method follows [tokdash](https://github.com/JingbiaoMei/tokdash) (MIT, Jingbiao Mei; see `THIRD_PARTY_NOTICES.md`).
 - **New agent** (2.2.5, #2074): a button at the end of the sidebar's list opens the Create agent dialog. With the sidebar collapsed, a **+** beside ☰ does the same; on a phone it is in the menu drawer. Only a session that may create agents sees it.
 - **Filtering the sidebar** (2.2.5, #1936): the instance you have open stays on top under **Current**, matching or not.
 - **Names that open an instance** (2.2.5, #1990): in a chat's cross-instance status lines the other instance's name opens its chat, and in a prompt card the instance's name opens its View. An agent's or a person's message never gets such a link.

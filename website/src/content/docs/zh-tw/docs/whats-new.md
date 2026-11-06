@@ -8,7 +8,29 @@ description: "從 AgEnD 2.2.x 升級會注意到的變化：升級前要先做�
   <img class="light:sl-hidden" src="https://raw.githubusercontent.com/songsid/AgEnD/main/docs/assets/readme/hero-dark.webp" width="880" alt="AgEnD 的網頁儀表板（示範資料）：側欄有六個 agent 和各自的狀態；與 agent Pixel 的對話裡有一張 bundle 大小的表格、一段程式碼、已選的「Ship it」回覆按鈕、一份附件報告，以及列出五個 AI 服務的用量面板。旁邊是一支手機，顯示同一段對話，附 Discord 與 Telegram 的標誌。">
 </p>
 
-AgEnD 2.3 是正式版系列，目前的版本是 2.3.2。這一頁寫給從 2.2.x（尤其是 2.2.5 與 2.2.6）升級的人。先講升級時要做的事，再列指令的改名，最後依功能區分列出新功能。已經在用 2.3.1 或 2.3.2 beta？請從 [2.3.2 新增](#232-新增) 開始。2.2 新增了什麼，請看[2.2 更新重點](/AgEnD/zh-tw/docs/whats-new-2-2/)。
+AgEnD 2.3 是正式版系列，目前的版本是 2.3.4。這一頁寫給從 2.2.x（尤其是 2.2.5 與 2.2.6）升級的人。先講升級時要做的事，再列指令的改名，最後依功能區分列出新功能。已經在用 2.3.3 或 2.3.4 beta？請從 [2.3.4 新增](#234-新增) 開始。還在 2.3.1 或 2.3.2？也請看 [2.3.2 新增](#232-新增)；2.3.3 的變更在 [CHANGELOG](https://github.com/songsid/AgEnD/blob/main/docs/CHANGELOG.zh-TW.md)。2.2 新增了什麼，請看[2.2 更新重點](/AgEnD/zh-tw/docs/whats-new-2-2/)。
+
+## 2.3.4 新增
+
+2.3.4 收錄 2.3.4-beta.1 到 beta.11 的所有內容，完整清單見[發佈說明](https://github.com/songsid/AgEnD/releases)。
+
+**從 2.3.3 升級：**
+
+- 在 General 傳 `/update`，或在主機上執行 `agend update`。已經開著的儀表板分頁請重新整理（F5）。
+- **第一次啟動時：** `~/.agend` 收緊為只有你能讀（資料夾 `0700`、log `0600`）；主目錄是捷徑或屬於別的帳號時會拒絕啟動。beta 期間記錄的 Claude 速度會清掉一次（token 數保留）。
+- **升級前還沒回答的權限確認卡**需要重新回答：現在以完整指令比對。
+- **Kiro：** kiro-cli 3.0 移除了 classic 介面。還在 classic 的 kiro agent 在 kiro-cli 3.x 上會被擋下並附說明；請留在 2.x，或趁還在 2.x 時用 `migrate_kiro_instance` 遷移。`kiro_engine_status` 會列出哪些還沒準備好。
+- **Windows 一鍵安裝**（網站上的安裝腳本，已上線）：新安裝改用 Ubuntu 26.04（24.04 為備援）；網路擋 `*.github.io` 時會改從 GitHub 下載。
+
+**新功能：**
+
+- **只用網頁：** `agend quickstart` 預設「只用網頁」，不需要 bot token；沒接聊天平台時排程、任務板、agent 互傳照常運作；在 AgEnD 電腦上登入的瀏覽器就是 **這台電腦的管理者**；**通知** 頁保留原本 General 會說的內容；CLI 的問題變成聊天與 **等你處理** 裡的按鈕。
+- **用量頁：** 每條週額度顯示「100% ≈ …」（實測容量）；**速度** 欄與 **各模型速度**（整段回應計時）；每週額度歷史；Codex 依帳號分列；表格更精簡。
+- **檢視、預覽與聊天：** 檢視可以往上捲（Codex、Kiro、Muse 看較早輸出；Claude Code 從對話紀錄接上先前的對話）；HTML 預覽有 **回覆這個頁面**、**指出位置**、錯誤小標籤、版本與差異、手機／平板寬度與全螢幕、**頁面（N）**、可選的 CDN 函式庫與單頁 **分享頁面** 連結；Markdown 檔可在側邊面板開啟；agent 之間的訊息收合成兩行；Log 可看提示框當時的文字。
+- **Agent 與後端：** Codex 每個 agent 可選 **速度**（快速／標準）；Codex 會接回清單裡找不到的舊對話；`/login` 安裝 CLI 時進度直接串流到聊天；刪除 agent 會一起刪它的 topic；General 是 AgEnD 的管理員，有完整管理工具；Office 新增冒險者公會、學校風格。
+- **訊息不遺失：** 送給忙碌 agent 的訊息要等 CLI 接走才打 ✅，重啟後會補送或標記；AgEnD 停止或重啟期間傳到 Telegram 的訊息之後只收一次（超過 2 小時的放進 **等你處理**）。
+- **安全：** 送訊息時遇到權限、危險指令或附檔送出的確認框，絕不按 Enter（改放進 **等你處理**）；權限確認卡顯示並比對完整指令；停在捲動模式的視窗會等待；`agend export` 檔案只有自己能讀，不會覆蓋。
+- **其他：** 新增 [AgEnD 名詞與定義](https://github.com/songsid/AgEnD/blob/main/docs/concepts.zh-TW.md)（agent 也讀得到）；Claude Code 2.1.318 與 kiro-cli 3.0.0 盤點完成；多項穩定性修正（登入不再卡住 fleet、放了好幾小時的分頁能補上、Claude `/exit` 不算當機、Muse 1.4.14 閒置不再跳動）。
 
 ## 2.3.2 新增
 
