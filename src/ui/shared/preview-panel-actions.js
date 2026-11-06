@@ -20,6 +20,8 @@ const P = () => globalThis.AgendPreview;
  */
 let chat = null;
 export function setPanelFeedback(deps) { chat = deps || null; }
+/** Hub E (#3226): the deps in force, so a room that leaves clears only its own (#3278 review). */
+export const panelFeedback = () => chat;
 /**
  * Hub E (#3226): a page's Share (page-share-dialog.js) is the fleet's only. The fleet registers it (its
  * /ui/js/preview-panel.js); without it the bar has no Share.

@@ -5,8 +5,8 @@
 import { register, t } from "/assets/app-i18n.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import "/assets/preview.js";
-import { claimPanel, closePanel, openMarkdown, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "/assets/preview-panel.js";
-import { setPanelFeedback } from "/assets/preview-panel-actions.js";
+import { claimPanel, openMarkdown, openPanel, panelClaims, panelStore, panelVersion, shownKey } from "/assets/preview-panel.js";
+import { panelFeedback, setPanelFeedback } from "/assets/preview-panel-actions.js";
 
 register("hubPreview", {
   en: {
@@ -82,7 +82,9 @@ export const panelOpenFor = (key) => { const s = panelStore.get(); return !!(s &
 /**
  * The panel's "Reply about this page", "Point at it" and errors put their lines in this room's composer. The Hub has
  * no reply-to (one asker, one conversation), so only the lines are added — each once — for the person to edit and
- * send. deps: { findMsg(key), addLine(line), focus() }. Returns the release (called when the room leaves).
+ * send. deps: { findMsg(key), addLine(line), focus() }. Returns the release (called when the room leaves): it clears
+ * only its own deps — a room bound after it keeps its own. The room's page closes with the panel itself (PreviewPanel
+ * closes on unmount, as in the fleet: the room view is keyed by the room).
  */
 export function bindRoomFeedback(deps) {
   const mine = {
@@ -92,7 +94,7 @@ export function bindRoomFeedback(deps) {
     focus: () => deps.focus(),
   };
   setPanelFeedback(mine);
-  return () => { setPanelFeedback(null); if (shownKey() !== null) closePanel(); };
+  return () => { if (panelFeedback() === mine) setPanelFeedback(null); };
 }
 
 /** A line added to a draft, once: on its own line after what is there. */

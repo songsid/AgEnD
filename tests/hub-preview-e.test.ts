@@ -107,13 +107,16 @@ describe("a Hub room's HTML page in the side panel", () => {
   const PAGE = "<!doctype html><title>Q3 report</title><h1>Q3</h1>";
   const room = { id: R1, exposureId: "e1", grantId: "g1", state: "active", exposureName: "Sales numbers", ownerName: "Olivia", exposureState: "published",
     grantExpiresAt: 2_000_000_000_000, lastAt: 1, waiting: false, features: [] };
+  const R2 = "22222222-3333-4444-8555-666666666666";
+  const room2 = { ...room, id: R2, exposureId: "e2", grantId: "g2", exposureName: "Design guide" };
   function hubApi() {
     const fetchImpl = async (path: string, init: any = {}) => {
       const key = `${init.method || "GET"} ${path.split("?")[0]}`;
       const routes: Record<string, [number, unknown]> = {
         "GET /hub/v1/session": [200, SIGNED],
         "GET /hub/v1/exposures": [200, { mine: [], askable: [] }],
-        "GET /hub/v1/rooms": [200, { rooms: [room] }],
+        "GET /hub/v1/rooms": [200, { rooms: [room, room2] }],
+        [`GET /hub/v1/rooms/${R2}/messages`]: [200, { room: room2, entries: [] }],
         [`GET /hub/v1/rooms/${R1}/messages`]: [200, { room, entries: [{ messageId: "m1", sequence: 1, askedAt: 1, receipt: { stage: "answered", at: 2 },
           question: "The Q3 page?", answer: `Here it is.\n\n\`\`\`html\n${PAGE}\n\`\`\`` }] }],
       };
@@ -159,6 +162,45 @@ describe("a Hub room's HTML page in the side panel", () => {
     info.click();
     await until(() => $(pg, ".hub-chat > .u-rail"));
     expect([$(pg, ".pv-panel"), pp.shownKey(), info.getAttribute("aria-pressed")]).toEqual([null, null, "true"]);
+  });
+
+  it("another room (#3278 review): the page closes, and the composer the panel writes to is the new room's", async () => {
+    const actions = await import("/assets/preview-panel-actions.js");
+    const pg = await openRoom();
+    await press($(pg, ".msg.agent .pv-open"));
+    await until(() => $(pg, ".pv-panel"));
+    const first = actions.panelFeedback();
+    router.navigate(`/ui/hub?room=${R2}`);
+    await until(() => $(pg, ".hub-chat-title strong")?.textContent === "Design guide");
+    expect([pp.shownKey(), $(pg, ".pv-panel")]).toEqual([null, null]);
+    const now = actions.panelFeedback();
+    expect([!!now, now === first]).toEqual([true, false]);
+    // The new room's composer takes the line (its own deps, bound after the first room let go).
+    expect(actions.replyAboutPage({ key: "k", instance: `hub-room:${R2}`, msgKey: "hub-9", code: PAGE })).toBe(true);
+    await settle(10);
+    expect($(pg, "#msgIn").value).toBe(i18n.t("chat.pvFbAboutNamed", "Q3 report"));
+  });
+
+  it("a room that leaves clears only its own deps; the previews are set up once per page (#3278 review)", async () => {
+    const hp = await import("/ui/js/hub-preview.js"), actions = await import("/assets/preview-panel-actions.js");
+    const deps = (n: string) => ({ findMsg: () => null, addLine: () => {}, focus: () => {}, n });
+    const releaseA = hp.bindRoomFeedback(deps("a")), b = actions.panelFeedback();
+    const releaseB = hp.bindRoomFeedback(deps("b")), mineB = actions.panelFeedback();
+    expect(mineB).not.toBe(b);
+    releaseA();                                  // the earlier room's cleanup after the newer room's bind
+    expect(actions.panelFeedback()).toBe(mineB);
+    releaseB();
+    expect(actions.panelFeedback()).toBe(null);
+    const P = g.AgendPreview, init = P.init; let calls = 0;
+    P.init = (...a: unknown[]) => { calls++; return init.apply(P, a); };
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub" });
+    try {
+      hp.bootHubPreview(pg.document); hp.bootHubPreview(pg.document);
+      expect(calls).toBe(1);
+      const other = page({ url: "http://127.0.0.1:19280/ui/hub" });
+      try { hp.bootHubPreview(other.document); } finally { other.restore(); }
+      expect(calls).toBe(2);
+    } finally { P.init = init; pg.restore(); }
   });
 
   it("leaving the room closes its page and lets go of the composer", async () => {
