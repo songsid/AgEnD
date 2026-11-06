@@ -5,6 +5,7 @@ export const PWSH_CI_SUITES = [
   "tests/installer-ps-batch-lifecycle.test.ts",
   "tests/installer-ps-batch.test.ts",
   "tests/installer-ps-start.test.ts",
+  "tests/runtime-install-pwsh.test.ts",
   "tests/windows-agend-distro-1853.test.ts",
   "tests/windows-backend-probe-exec.test.ts",
   "tests/windows-browser-setup-1853.test.ts",
