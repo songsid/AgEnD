@@ -25,7 +25,11 @@ beforeAll(() => {
   writeFileSync(join(dir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]));
   mkdirSync(join(dir, "src"));
   writeFileSync(join(dir, "src", "util.ts"), "export const x = 1;\n");
+  writeFileSync(join(dir, "secrets.json"), "{}\n");                     // a TRACKED secret-looking file
+  writeFileSync(join(dir, "medium.txt"), "m\n");
   git("add", "."); git("commit", "-q", "-m", "init");
+  writeFileSync(join(dir, "secrets.json"), '{"token":"TRACKED-SECRET-NEW"}\n');
+  writeFileSync(join(dir, "medium.txt"), Array.from({ length: 30_000 }, (_, i) => `medium ${i}`).join("\n"));   // ~300 KB: over one file's share
   // The working state: modified, untracked, binary, big, secrets, a symlink out, ignored, AgEnD state.
   writeFileSync(join(dir, "app.js"), "const a = 2;\nconsole.log(a);\nconsole.log('more');\n");
   writeFileSync(join(dir, "notes.md"), "# New file\n\nhello\n");
@@ -59,7 +63,8 @@ describe("Changes (#3153 P1)", () => {
     expect(c.patch).toContain("+# New file");
     // Nothing of a secret, of AgEnD's state or of what a symlink points at is ever in the answer.
     const all = JSON.stringify(c);
-    for (const leak of ["sk-should-never-leave", "TOKEN=nope", "BEGIN PRIVATE KEY", "private", "TOP SECRET", "agend: private"]) expect(all, leak).not.toContain(leak);
+    for (const leak of ["sk-should-never-leave", "TOKEN=nope", "BEGIN PRIVATE KEY", "private", "TOP SECRET", "agend: private", "TRACKED-SECRET-NEW"]) expect(all, leak).not.toContain(leak);
+    expect(by["secrets.json"]).toMatchObject({ status: "modified", hidden: true });   // tracked and changed: listed, its diff never sent
     expect(c.files.some((f) => f.path.startsWith(".agend-state"))).toBe(false);
     expect(c.files.some((f) => f.path.startsWith("build/") || f.path === "debug.log")).toBe(false);   // gitignored
   });
@@ -68,6 +73,9 @@ describe("Changes (#3153 P1)", () => {
     const c = await workspaceChanges(await root());
     const big = c.files.find((f) => f.path === "big.txt")!;
     expect(big).toMatchObject({ status: "modified", tooLarge: true });
+    // One file over its own share is left out even when the whole would still fit.
+    expect(c.files.find((f) => f.path === "medium.txt")).toMatchObject({ status: "modified", tooLarge: true });
+    expect(c.patch).not.toContain("medium 1");
     expect(c.patch).not.toContain("line 1 yyyy");
     expect(c.patch).toContain("+console.log('more');");
     expect(Buffer.byteLength(c.patch)).toBeLessThanOrEqual(WORKSPACE_LIMITS.diffBytes);

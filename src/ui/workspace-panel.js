@@ -9,6 +9,15 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 
+/** This panel's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
+function linkWorkspaceCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-ws-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/workspace.css"); link.setAttribute("data-ws-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* the panel still works without it */ }
+}
 const api = (instance, op, path) => `/ui/workspace?instance=${encodeURIComponent(instance)}&op=${op}${path !== undefined ? `&path=${encodeURIComponent(path)}` : ""}`;
 async function read(instance, op, path) {
   let r;
@@ -75,6 +84,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
     setFile(r.ok ? { path, state: "ready", body: r.body } : { path, state: "failed", error: r.error });
   };
   const refresh = () => { if (tab === "changes") loadChanges(); else if (file) loadFile(file.path); else loadDir(dir); };
+  useEffect(() => { linkWorkspaceCss(); }, []);
   useEffect(() => { loadChanges(); }, [instance]);
   useEffect(() => { if (tab === "files" && !listing) loadDir(""); }, [tab]);
   // The end of the agent's turn: its reply arrives — read Changes again (once, shortly after), never while hidden.
@@ -158,7 +168,7 @@ function Listing({ listing, openDir, openFile }) {
       const usable = !e.hidden && (e.type === "dir" || e.type === "file");
       return html`<li key=${e.name} class=${`ws-entry t-${e.type}${e.hidden ? " is-hidden" : ""}`}>
         <button type="button" class="ws-entry-btn" disabled=${!usable} onClick=${() => (e.type === "dir" ? openDir(rel) : openFile(rel))}>
-          <${Icon} name=${e.type === "dir" ? "file" : e.type === "symlink" ? "external" : "file"} size=${14} />
+          <${Icon} name=${e.type === "dir" ? "inbox" : e.type === "symlink" ? "external" : "file"} size=${14} />
           <span class="ws-name">${e.name}${e.type === "dir" ? "/" : ""}</span>
           <span class="ws-meta">${e.hidden ? t("chat.wsHiddenFile") : e.type === "symlink" ? t("chat.wsLink") : e.type === "file" ? size(e.size) : ""}</span>
         </button></li>`;
@@ -174,5 +184,5 @@ function Viewer({ file, instance, back }) {
   if (f.kind !== "text") return html`<div>${head}<div class="pv-note">${t(f.kind === "binary" ? "chat.wsBinaryFile" : "chat.wsTooLargeFile", size(f.size))}</div></div>`;
   const lines = f.text.split("\n");
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
-  return html`<div>${head}<pre class="pv-code ws-text"><code>${lines.map((l, i) => html`<span class="ws-ln" aria-hidden="true">${String(i + 1).padStart(String(lines.length).length, " ")}</span>${l}\n`)}</code></pre></div>`;
+  return html`<div>${head}<pre class="pv-code ws-text"><code>${lines.map((l, i) => html`<span class="ws-ln" aria-hidden="true">${String(i + 1).padStart(String(lines.length).length, " ")}</span>${`${l}\n`}`)}</code></pre></div>`;
 }

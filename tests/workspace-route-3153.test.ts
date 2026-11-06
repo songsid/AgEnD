@@ -88,6 +88,12 @@ describe("GET /ui/workspace (#3153 P1)", () => {
     }
   });
 
+  it("the fleet's web token (the CLI's header) is not a session: refused", async () => {
+    const r = await raw(port, "/ui/workspace?instance=dev&op=changes", { "x-agend-token": fm.getDashboardAccess().token });
+    expect(r.status).toBe(403);
+    expect(r.body.toString("utf8")).not.toContain("a.txt");
+  });
+
   it("not General, not a coordinator, not an unknown agent; a bad op is refused", async () => {
     const sid = session("admin");
     for (const inst of ["general", "lead", "nobody", "__proto__"]) expect((await get(sid, `instance=${inst}&op=changes`)).status, inst).toBe(404);
