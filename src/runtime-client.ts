@@ -184,6 +184,8 @@ export class RuntimeClient {
   private stopPromise: Promise<void> | undefined;
   /** A stop that could not finish (an account process was not confirmed gone): everything is still held, and stop() may be called again. */
   private stopIncomplete = false;
+  /** A stop asked for the durable panes to be retired (a revocation does): that stays true across a stop that failed and is called again, a plain one included (Ctrl+C), until a stop has completed. */
+  private retirePanesRequested = false;
   private generation = 0;
   private updateProtocol = false;
   private preparingUpdate = false;
@@ -212,6 +214,7 @@ export class RuntimeClient {
     // A previous stop that was not completed still owns a pairing lock and possibly a sign-in or logout process that was not confirmed ended: nothing starts
     // over it, and its account module is never replaced while it holds anything.
     if (this.stopIncomplete || this.unlock !== null || (this.remoteAccounts && !this.remoteAccounts.idle())) throw new Error("The previous stop was not completed (an account process was not confirmed ended). Call stop() again, or inspect processes, before starting");
+    this.retirePanesRequested = false;                                    // fully closed: whatever an earlier stop asked for is over
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
     this.stopped = false; this.closed = false; this.stopReason = undefined;
@@ -754,6 +757,9 @@ export class RuntimeClient {
     this.pendingPaneTools.clear();
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
   stop(options:{retirePanes?:boolean}={}): Promise<void> {
+    // The request is remembered before anything else: a stop already running (it may be a plain one) picks it up when it reaches the panes, and a stop that fails
+    // before the panes (an account process not confirmed ended) keeps it for the plain stop() that tries again.
+    if (options.retirePanes) this.retirePanesRequested = true;
     if (this.stopPromise) return this.stopPromise;
     if (this.stopped && !this.stopIncomplete) return Promise.resolve();
     this.stopped = true; this.welcomed = false; this.stopIncomplete = false;
@@ -779,7 +785,7 @@ export class RuntimeClient {
     // is not confirmed gone fails the stop HERE, before the pairing's lock is let go, so no other client can start over a process that may still be writing.
     if (this.remoteAccounts) { await this.remoteAccounts.stop(); if (!this.remoteAccounts.idle()) throw new Error("Account process shutdown was not confirmed; inspect processes before stopping or restarting"); }
     await this.paneOpening?.then(async host=>{
-      try{if(options.retirePanes&&"retireOwned" in host)await host.retireOwned();}
+      try{if((options.retirePanes||this.retirePanesRequested)&&"retireOwned" in host)await host.retireOwned();}
       finally{await host.stop();}
     }).catch(() => this.report("Pane cleanup is unconfirmed; its durable reservations remain held."));
     // Keep the profile lock until cancellation is confirmed or the journal is explicitly marked uncertain.
@@ -796,7 +802,7 @@ export class RuntimeClient {
     }
     if (this.mcpServer) { const server = this.mcpServer; this.mcpServer = null; server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
     this.unlock?.(); this.unlock = null;
-    this.closed = true;
+    this.closed = true; this.retirePanesRequested = false;
     for (const done of this.stoppedListeners) done(); this.stoppedListeners.clear();
   }
 }
