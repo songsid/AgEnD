@@ -79,6 +79,10 @@ The candidate is **3.8** (2026-09-09), the latest stable. The leader's note: 3.7
 - **#735:** inconclusive (§1).
 - **No leg** shows 3.8 worse than an older version.
 
+**Rerun on PR A's build** (3.8 with utf8proc 2.12.0 linked, built by `scripts/tmux/build-tmux.mjs`, run with
+`scripts/manual/tmux-matrix/`): leak, control client 2204 → 2400 kB, CLI 2192 → 2348 kB (flat); #309 through AgEnD
+16/16 (each round in ≤ 5 s); #309 raw 10/10; #735 stress alive after 600 s (97 MB). Same result as the prototype.
+
 **Decision: pin 3.8.** It passes every leg and carries the 3.8 control-mode reply bound (5565) and the bracketed-paste fix
 (5622), both in paths we use. Every later pin change reruns this matrix (§10).
 
