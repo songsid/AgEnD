@@ -79,6 +79,18 @@ it("a valid WAL (control) verifies; the real, coherent one with no row for the p
   const f = fixture([randomUUID()]); expect(coherentSqliteWal(readFileSync(f.dbPath + "-wal"))).toBe(true); expect(await f.proof()).toBe("absent");
 });
 
+/** Re-sign every current-generation frame (an independent copy of SQLite's walChecksumBytes), so a test can make a shape
+ * whose checksums are right and only its meaning is wrong. */
+function resign(wal: Buffer): Buffer {
+  const be = (wal.readUInt32BE(0) & 1) === 1, page = wal.readUInt32BE(8), frame = 24 + page;
+  const sum = (from: number, to: number, a: number, b: number): [number, number] => { for (let i = from; i < to; i += 8) { const x0 = be ? wal.readUInt32BE(i) : wal.readUInt32LE(i), x1 = be ? wal.readUInt32BE(i + 4) : wal.readUInt32LE(i + 4); a = (a + x0 + b) >>> 0; b = (b + x1 + a) >>> 0; } return [a, b]; };
+  let [a, b] = sum(0, 24, 0, 0); wal.writeUInt32BE(a, 24); wal.writeUInt32BE(b, 28);
+  for (let at = 32; at < wal.length; at += frame) {
+    if (wal.readUInt32BE(at + 8) !== wal.readUInt32BE(16) || wal.readUInt32BE(at + 12) !== wal.readUInt32BE(20)) break;
+    [a, b] = sum(at, at + 8, a, b); [a, b] = sum(at + 24, at + frame, a, b); wal.writeUInt32BE(a, at + 16); wal.writeUInt32BE(b, at + 20);
+  }
+  return wal;
+}
 /** A WAL SQLite restarted after a checkpoint: a short new generation at the front, the old generation's frames behind it. */
 function restartedFixture(newRow: "$id" | "other") {
   const f = fixture([]), side = join(f.root, "side", "state_5.sqlite"), db = new DatabaseSync(side);
@@ -98,17 +110,28 @@ it("a restarted WAL with an older generation behind the newest commit is coheren
   expect(coherentSqliteWal(wal)).toBe(true);
   expect(await absent.proof()).toBe("absent");
   expect(await restartedFixture("$id").proof()).toBe("unknown");
+  // The older generation is only acceptable behind a COMMITTED newest one: uncommit its last frame (re-signed).
+  const page = wal.readUInt32BE(8), frame = 24 + page;
+  let last = 32; while (last + frame < wal.length && wal.readUInt32BE(last + frame + 8) === wal.readUInt32BE(16)) last += frame;
+  const open = Buffer.from(wal); open.writeUInt32BE(0, last + 4);
+  expect(coherentSqliteWal(resign(open))).toBe(false);
 });
 
-it("frame-level shapes SQLite would silently drop are not coherent", () => {
-  const f = fixture([randomUUID(), randomUUID()]), good = readFileSync(f.dbPath + "-wal"), page = good.readUInt32BE(8), frame = 24 + page;
+it("frame-level shapes SQLite would silently drop are not coherent, even with correct checksums", () => {
+  const f = fixture([randomUUID(), randomUUID(), randomUUID()]), good = readFileSync(f.dbPath + "-wal"), page = good.readUInt32BE(8), frame = 24 + page;
   expect(coherentSqliteWal(good)).toBe(true);
-  // An uncommitted (torn) last transaction: clear the commit marker of the final frame.
-  const torn = Buffer.from(good); torn.writeUInt32BE(0, good.length - frame + 4); expect(coherentSqliteWal(torn)).toBe(false);
-  // A later frame whose salt-2 alone changed (salt-1 equal): damage, not an older generation.
-  const late = Buffer.from(good); late[good.length - frame + 12] ^= 1; expect(coherentSqliteWal(late)).toBe(false);
-  // A frame of the current generation with page number 0.
-  const zero = Buffer.from(good); zero.writeUInt32BE(0, 32); expect(coherentSqliteWal(zero)).toBe(false);
+  expect(coherentSqliteWal(resign(Buffer.from(good)))).toBe(true);
+  const frames = (good.length - 32) / frame, commits = [...Array(frames).keys()].filter((n) => good.readUInt32BE(32 + n * frame + 4) !== 0);
+  expect(commits.at(-1)).toBe(frames - 1);
+  // An uncommitted (torn) last transaction: its commit marker cleared, checksums re-signed.
+  const torn = Buffer.from(good); torn.writeUInt32BE(0, 32 + (frames - 1) * frame + 4); expect(coherentSqliteWal(resign(torn))).toBe(false);
+  // A frame with page number 0, re-signed.
+  const zero = Buffer.from(good); zero.writeUInt32BE(0, 32); expect(coherentSqliteWal(resign(zero))).toBe(false);
+  // The frame right after a commit with salt-2 alone changed (salt-1 equal): damage, not an older generation.
+  const next = 32 + (commits[0]! + 1) * frame; expect(next).toBeLessThan(good.length);
+  const late = Buffer.from(good); late[next + 12] ^= 1; expect(coherentSqliteWal(late)).toBe(false);
+  // The same frame with salt-1 AHEAD of the header's: never an older generation.
+  const ahead = Buffer.from(good); ahead.writeUInt32BE((good.readUInt32BE(16) + 1) >>> 0, next + 8); expect(coherentSqliteWal(ahead)).toBe(false);
   // A not frame-aligned tail, a foreign magic/version/page size, too short.
   expect(coherentSqliteWal(good.subarray(0, good.length - 10))).toBe(false);
   for (const [at, value] of [[0, 0x12345678], [4, 3007001], [8, 3000]] as const) { const b = Buffer.from(good); b.writeUInt32BE(value, at); expect(coherentSqliteWal(b)).toBe(false); }
