@@ -11,8 +11,8 @@ import { RuntimeClientStore } from "./runtime-client-store.js";
 import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
 import { validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { PaneMcpRelay } from "./runtime-pane-mcp-relay.js";
-import { CredentialProfileRefusal, rememberCredentialLogin, requireCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
-import { probeCredentialProfileLogin, validWindowsDirectory } from "./windows-cli-worker.js";
+import { CredentialProfileRefusal, rememberCredentialStatus, requireCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { probeCredentialProfileStatus, validWindowsDirectory, type CredentialProfileAnswer } from "./windows-cli-worker.js";
 export interface PaneServiceOptions {
   directory: string;
   scope: string;
@@ -38,9 +38,9 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     ...(options.credentialRoot ? {
       credentialHome: (cli: string, name: string) => requireCredentialProfile(options.credentialRoot!, cli, name),
       credentialLogin: async (cli: string, home: string, name: string) => {
-        const loggedIn = await (options.probeLogin ?? probeCredentialProfileLogin)(cli as CredentialProfileCli, home);
-        rememberCredentialLogin(options.credentialRoot!, cli as CredentialProfileCli, name, loggedIn);
-        return loggedIn;
+        const answer: CredentialProfileAnswer = options.probeLogin ? { loggedIn: await options.probeLogin(cli as CredentialProfileCli, home) } : await probeCredentialProfileStatus(cli as CredentialProfileCli, home);
+        rememberCredentialStatus(options.credentialRoot!, cli as CredentialProfileCli, name, answer);
+        return answer.loggedIn;
       },
     } : {}) };
   const host = options.createHost?.(hostOptions) ?? new RuntimePaneHost(hostOptions);

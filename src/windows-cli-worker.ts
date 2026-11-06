@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { randomBytes } from "node:crypto";
 import { nativeUpdateGuard, boundNativeModelOptions, buildNativeInvocation, isNativeProviderId, nativeMcpServerConfig, nativeProvider, NATIVE_PROVIDER_IDS, parseNativeAuthResult, parseNativeModels, validateNativeMcpConnection, validateNativeModel, type NativeMcpLaunch, type NativeModelOption, type NativeProviderDescriptor, type NativeProviderId } from "./windows-cli-providers.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
+import { identityOf, parseClaudeAuthStatus, type AccountIdentity } from "./claude-auth-status.js";
 import { isCredentialProfileCli, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 
 const exec = promisify(execFile);
@@ -23,6 +24,8 @@ export interface NativeCliRow {
   supports: NativeProviderDescriptor["supports"]; readOnlySupport: boolean;
   permissionNote: string; models: NativeModelOption[]; reason?: string;
   modelsSource?: "cli-cache" | "official-catalog" | "cli-list" | "unavailable";
+  /** Claude Code only: the masked e-mail and plan of the default sign-in, taken from the same `auth status` answer as `authenticated`. */
+  identity?: AccountIdentity;
 }
 export interface NativeTaskInput { requestId: string; cli: NativeProviderId; cwd: string; prompt: string; sandbox: "read-only" | "workspace-write"; model?: string }
 
@@ -198,14 +201,20 @@ export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | nu
  * Is a credential profile's directory signed in? Runs the CLI's own status command with that directory as its config home (never a login,
  * never a model request). true/false = the CLI answered; null = it could not be asked or did not say.
  */
-export async function probeCredentialProfileLogin(cli: CredentialProfileCli, directory: string, find: (id: NativeCliId) => Promise<NativeCliExecutable | null> = findCli,
-  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env)): Promise<boolean | null> {
+export interface CredentialProfileAnswer { loggedIn: boolean | null; /** Masked e-mail and plan, when that answer has an account in it. */ identity?: AccountIdentity }
+export async function probeCredentialProfileStatus(cli: CredentialProfileCli, directory: string, find: (id: NativeCliId) => Promise<NativeCliExecutable | null> = findCli,
+  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env)): Promise<CredentialProfileAnswer> {
   const provider = nativeProvider(cli);
-  if (!provider.authProbe || !isCredentialProfileCli(cli)) return null;
+  if (!provider.authProbe || !isCredentialProfileCli(cli)) return { loggedIn: null };
   const executable = await find(cli);
-  if (!executable) return null;
+  if (!executable) return { loggedIn: null };
   const result = await run(executable, [...nativeUpdateGuard(cli), ...provider.authProbe], withCredentialProfile(nativeCliEnvironment(), cli, directory));
-  return parseNativeAuthResult(cli, result.ok, result.text);
+  const status = parseClaudeAuthStatus(result.text), identity = status.loggedIn === true && result.ok ? identityOf(status) : undefined;
+  return { loggedIn: status.loggedIn, ...(identity ? { identity } : {}) };
+}
+/** Signed in or not, nothing else (the launch gate). */
+export async function probeCredentialProfileLogin(cli: CredentialProfileCli, directory: string, find?: Parameters<typeof probeCredentialProfileStatus>[2], run?: Parameters<typeof probeCredentialProfileStatus>[3]): Promise<boolean | null> {
+  return (await probeCredentialProfileStatus(cli, directory, find, run)).loggedIn;
 }
 const HELP_PROBES: Record<NativeCliId, { args: string[]; required: string[] }> = {
   codex: { args: ["exec", "--help"], required: ["--json", "--sandbox"] },
@@ -288,6 +297,8 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
   const auth = provider.authProbe ? await nonempty([...provider.authProbe]) : null;
   const listing = includeModels && provider.modelProbe ? await nonempty([...provider.modelProbe]) : null;
   const authenticated = auth ? parseNativeAuthResult(id, auth.ok, auth.text) : null;
+  // The same answer says which account it is (Claude Code only; an API key or a signed-out answer has none). Masked here, before it is stored or sent.
+  const identity = id === "claude-code" && auth?.ok && authenticated === true ? identityOf(parseClaudeAuthStatus(auth.text)) : undefined;
   const compatible = help.ok && helpProbe.required.every(flag => help.text.includes(flag));
   const readOnlySupport = base.readOnlySupport && (id !== "claude-code" || ["--tools", "--strict-mcp-config", "--mcp-config"].every(flag => help.text.includes(flag)));
   const versionAvailable = version.ok && Boolean(version.text.trim());
@@ -300,6 +311,7 @@ async function probeNativeCli(id: NativeCliId, options: NativeProbeOptions, incl
     authenticated, readOnlySupport, supports: { ...base.supports, execution: base.supports.execution && compatible && versionAvailable,
       mcp:provider.supports.mcp === true && compatible && versionAvailable && (id === "codex" ? help.text.includes("--config") : ["--mcp-config","--strict-mcp-config","--allowedTools"].every(flag => help.text.includes(flag))) },
     models, modelsSource: models.length ? id === "codex" ? "cli-cache" : id === "claude-code" ? "official-catalog" : "cli-list" : "unavailable",
+    ...(identity ? { identity } : {}),
     runnable: versionAvailable && compatible && provider.supports.execution && authenticated !== false,
     ...(reason ? { reason } : {}),
   };

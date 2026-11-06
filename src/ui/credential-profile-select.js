@@ -1,5 +1,6 @@
 import { html } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
+import { identityText } from "./account-identity.js";
 
 /**
  * Claude accounts on a paired Windows computer ("credential profiles"). AgEnD only ever shows and sends a profile NAME; the sign-in itself
@@ -24,7 +25,10 @@ export function credentialProfileView(machine) {
   const capable = machine?.runtimeInfo?.capabilities?.includes("credential-profiles") === true;
   const report = machine?.inventory?.credentialProfiles;
   const profiles = Array.isArray(report?.profiles) ? report.profiles.filter(row => row && typeof row.name === "string") : [];
-  return { capable, profiles, defaultName: typeof report?.default === "string" ? report.default : "" };
+  // The default sign-in's own account (the computer's Claude Code, as its last detection saw it), for the "default sign-in" choice.
+  const claude = Array.isArray(machine?.inventory?.clis) ? machine.inventory.clis.find(cli => cli?.id === "claude-code") : undefined;
+  const defaultName = typeof report?.default === "string" ? report.default : "";
+  return { capable, profiles, defaultName, machineIdentity: identityText(profiles.find(row => row.name === defaultName)?.identity ?? claude?.identity) };
 }
 export const credentialProfileState = loggedIn => loggedIn === true ? "signedIn" : loggedIn === false ? "signedOut" : "unchecked";
 /** The choice exists only for Claude Code on a paired computer. */
@@ -40,8 +44,8 @@ export function ClaudeAccountSelect({ machine, backend, value, onChange, id, dis
   const locked = disabled || !view.capable;
   return html`<div class="claude-account-field"><label class="field"><span>${accountText("label")}</span>
     <select id=${id} value=${value || ""} disabled=${locked} onChange=${event => onChange(event.target.value)}>
-      <option value="">${accountText("none")}</option>
-      ${view.profiles.map(row => html`<option key=${row.name} value=${row.name} disabled=${row.loggedIn === false}>${row.name}${row.loggedIn === false ? ` · ${accountText("signedOut")}` : row.loggedIn === null ? ` · ${accountText("unchecked")}` : ""}${row.name === view.defaultName ? ` · ${accountText("default")}` : ""}</option>`)}
+      <option value="">${accountText("none")}${view.machineIdentity ? ` · ${view.machineIdentity}` : ""}</option>
+      ${view.profiles.map(row => html`<option key=${row.name} value=${row.name} disabled=${row.loggedIn === false}>${row.name}${row.identity ? ` · ${identityText(row.identity)}` : ""}${row.loggedIn === false ? ` · ${accountText("signedOut")}` : row.loggedIn === null ? ` · ${accountText("unchecked")}` : ""}${row.name === view.defaultName ? ` · ${accountText("default")}` : ""}</option>`)}
       ${value && !known ? html`<option key=${value} value=${value}>${value} · ${accountText("notReported")}</option>` : null}
     </select></label>
     ${!view.capable ? html`<p class="note claude-account-old" role="status">${accountText("old")}</p>`

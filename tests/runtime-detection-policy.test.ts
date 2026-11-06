@@ -50,7 +50,7 @@ describe("runtime detection admission", () => {
     await client.start(); sockets[0].open(machineId);
     expect(client.online()).toBe(true); expect(worker.probe).toHaveBeenCalledExactlyOnceWith({force:false});
     const report=sockets[0].frames.find(frame=>frame.type==="hello").runtimeInfo;
-    expect(report).toBeDefined();expect(report).toMatchObject({protocolVersions:[1],capabilities:["exec","mcp"]});expect(report.version).toMatch(/^\d+\.\d+\.\d+/);
+    expect(report).toBeDefined();expect(report).toMatchObject({protocolVersions:[1],capabilities:["exec","mcp","account-identity"]});expect(report.version).toMatch(/^\d+\.\d+\.\d+/);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(worker.probe).toHaveBeenCalledTimes(1);
     sockets[0].close(1006); await vi.advanceTimersByTimeAsync(25); sockets[1].open(machineId);

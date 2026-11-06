@@ -66,6 +66,54 @@ describe("Settings → Runtime: the computer card", () => {
   });
 });
 
+describe("account identity: the masked e-mail and plan of each sign-in", () => {
+  const identity = (maskedEmail: string, plan: string) => ({ maskedEmail, plan });
+  const withIdentity = (over: any = {}) => machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, identity: identity("de***@example.com", "pro") }], credentialProfiles: { default: "work", profiles: [
+    { name: "work", loggedIn: true, identity: identity("al***@example.com", "team") }, { name: "home", loggedIn: true, identity: identity("bo***@example.org", "max") },
+    { name: "key", loggedIn: true, identity: { apiKey: true } }, { name: "odd", loggedIn: true, identity: identity("ca***@example.net", "platinum") }, { name: "old", loggedIn: false }, { name: "none", loggedIn: true }] }, ...over } });
+  it("the computer card shows `name · e-mail · Plan` for each profile and the default sign-in's own account", async () => {
+    machines = [withIdentity()]; await p.mount(h(Panel, { navKey: "identity-card" })); await settle(12);
+    const card = p.root.querySelector(`[data-machine-id="${idA}"]`), rows = card.querySelectorAll(".runtime-profile-list li");
+    const accountOf = (name: string) => rows.find((row: any) => row.getAttribute("data-profile") === name).querySelector(".runtime-account")?.textContent ?? null;
+    expect(accountOf("work")).toBe("al***@example.com · Team"); expect(accountOf("home")).toBe("bo***@example.org · Max");
+    expect(accountOf("key")).toBe("No account email (API key)"); expect(accountOf("odd")).toBe("ca***@example.net · Unknown plan");
+    expect(accountOf("old")).toBeNull(); expect(accountOf("none")).toBeNull();
+    expect(card.querySelector('.runtime-cli-table [data-account="default"]').textContent).toBe("de***@example.com · Pro");
+  });
+  it("shows only what is masked: a value that is not in the masked form is not rendered, and no full address appears anywhere", async () => {
+    machines = [withIdentity({ credentialProfiles: { profiles: [{ name: "work", loggedIn: true, identity: { maskedEmail: "alice.fixture@example.com", plan: "team" } }, { name: "home", loggedIn: true, identity: { maskedEmail: "ab***@example.com", plan: "team", name: "Alice Fixture" } }] } })];
+    await p.mount(h(Panel, { navKey: "identity-hostile" })); await settle(12);
+    const rows = p.root.querySelectorAll(".runtime-profile-list li");
+    expect(rows[0].querySelector(".runtime-account").textContent).toBe("Team");
+    expect(rows[1].querySelector(".runtime-account").textContent).toBe("ab***@example.com · Team");
+    expect(p.root.textContent).not.toMatch(/alice\.fixture|Alice Fixture/);
+  });
+  it("shows nothing extra for a Runtime that sends no identity (an older one)", async () => {
+    await p.mount(h(Panel, { navKey: "identity-none" })); await settle(12);
+    expect(p.root.querySelectorAll(".runtime-account")).toHaveLength(0);
+  });
+  it("the Claude account select shows the same, for each profile and for the default choice", async () => {
+    machines = [withIdentity()]; await p.mount(h(Create, { onClose() {} })); await settle(8); await choose(idA);
+    const options = p.root.querySelectorAll("#native-create-claude-account option").map((node: any) => node.textContent.trim());
+    expect(options[0]).toBe("This computer's default sign-in · al***@example.com · Team");
+    expect(options).toContain("work · al***@example.com · Team · default"); expect(options).toContain("home · bo***@example.org · Max");
+    expect(options).toContain("key · No account email (API key)"); expect(options).toContain("old · not signed in");
+    expect(options.join("\n")).not.toMatch(/alice\.fixture/);
+  });
+  it("is in zh-TW too: plan names stay product names, the labels are translated", async () => {
+    i18n.setLang("zh-TW", { store: false });
+    machines = [withIdentity()]; await p.mount(h(Panel, { navKey: "identity-zh" })); await settle(12);
+    const rows = p.root.querySelectorAll(".runtime-profile-list li"), accountOf = (name: string) => rows.find((row: any) => row.getAttribute("data-profile") === name).querySelector(".runtime-account").textContent;
+    expect(accountOf("work")).toBe("al***@example.com · Team"); expect(accountOf("key")).toBe("沒有帳號 email（API key）"); expect(accountOf("odd")).toBe("ca***@example.net · 未知方案");
+    i18n.setLang("en", { store: false });
+  });
+  it("the UI's pattern is the contract in src/claude-auth-status.ts, character for character", async () => {
+    const source = (await import("node:fs")).readFileSync("src/claude-auth-status.ts", "utf8").match(/const MASKED_EMAIL = \/(.+)\/;/)![1];
+    const identityModule = await import("/ui/js/account-identity.js");
+    expect(identityModule.MASKED_EMAIL.source).toBe(new RegExp(source).source);
+  });
+});
+
 describe("names that are also Object properties", () => {
   const names = ["constructor", "toString", "hasOwnProperty"];
   it("the computer card lists them as ordinary accounts, in the reported order", async () => {

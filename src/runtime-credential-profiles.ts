@@ -10,6 +10,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, win32 } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
 
 /** Same shape as the Linux/WSL `credential_profile` (src/backend/credential-profile.ts), plus the Windows file-name hazards below. */
 export const CREDENTIAL_PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -28,7 +29,8 @@ const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|conin\$|conout\$|com[0-9¹²³]|lpt[
  * A pane host passes exactly this kind of message across its local link (anything else is flattened to a generic refusal).
  */
 export class CredentialProfileRefusal extends Error { constructor(message: string) { super(message); this.name = "CredentialProfileRefusal"; } }
-export interface CredentialProfileStatus { name: string; loggedIn: boolean | null }
+/** `identity` (masked e-mail and plan) only for a profile that is signed in as an account; never present otherwise. */
+export interface CredentialProfileStatus { name: string; loggedIn: boolean | null; identity?: AccountIdentity }
 export interface CredentialProfileReport { profiles: CredentialProfileStatus[]; default?: string }
 
 export function isCredentialProfileCli(value: unknown): value is CredentialProfileCli {
@@ -119,7 +121,7 @@ export function listCredentialProfileNames(root: string, cli: unknown): string[]
  * The last sign-in answer for each profile. A profile name is data, not a property: `constructor`, `toString` and `hasOwnProperty` are valid
  * names, so the maps are read and written with Object.hasOwn on null-prototype objects (and `__proto__` is not a valid name at all).
  */
-type StatusRow = { loggedIn: boolean | null; at: number };
+type StatusRow = { loggedIn: boolean | null; at: number; identity?: AccountIdentity };
 type StatusFile = { version: 1; checkedAt: Record<string, Record<string, StatusRow>> };
 const dictionary = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 function readStatusFile(root: string): StatusFile {
@@ -135,7 +137,11 @@ function readStatusFile(root: string): StatusFile {
       const copy = file.checkedAt[cli] = dictionary<StatusRow>();
       for (const name of Object.keys(rows)) {
         const row = (rows as Record<string, unknown>)[name] as Partial<StatusRow> | null;
-        if (validCredentialProfileName(name) && row && typeof row === "object" && (typeof row.loggedIn === "boolean" || row.loggedIn === null) && typeof row.at === "number") copy[name] = { loggedIn: row.loggedIn, at: row.at };
+        if (validCredentialProfileName(name) && row && typeof row === "object" && (typeof row.loggedIn === "boolean" || row.loggedIn === null) && typeof row.at === "number") {
+          // An identity that is not in its masked form (a hostile or hand-edited file) is dropped, never reported.
+          let identity: AccountIdentity | undefined; try { identity = row.identity === undefined ? undefined : parseAccountIdentity(row.identity); } catch { identity = undefined; }
+          copy[name] = { loggedIn: row.loggedIn, at: row.at, ...(identity && row.loggedIn === true ? { identity } : {}) };
+        }
       }
     }
   } catch { /* an unreadable cache is "unknown", never an error */ }
@@ -146,9 +152,20 @@ export function cachedCredentialLogin(root: string, cli: CredentialProfileCli, n
   const rows = readStatusFile(root).checkedAt[cli];
   return rows && Object.hasOwn(rows, name) ? rows[name].loggedIn : null;
 }
+/** The last answer with its account, for a profile checked before; null when it never was. */
+export function cachedCredentialStatus(root: string, cli: CredentialProfileCli, name: string): { loggedIn: boolean | null; identity?: AccountIdentity } | null {
+  const rows = readStatusFile(root).checkedAt[cli];
+  if (!rows || !Object.hasOwn(rows, name)) return null;
+  const { loggedIn, identity } = rows[name]; return { loggedIn, ...(identity ? { identity } : {}) };
+}
+/** A sign-in answer with no account in it (the launch gate's yes/no, a test seam): it also forgets any account remembered before. */
 export function rememberCredentialLogin(root: string, cli: CredentialProfileCli, name: string, loggedIn: boolean | null, now = Date.now()): void {
+  rememberCredentialStatus(root, cli, name, { loggedIn }, now);
+}
+export function rememberCredentialStatus(root: string, cli: CredentialProfileCli, name: string, answer: { loggedIn: boolean | null; identity?: AccountIdentity }, now = Date.now()): void {
   assertCredentialProfileName(name);
-  const file = readStatusFile(root); (file.checkedAt[cli] ??= dictionary<StatusRow>())[name] = { loggedIn, at: now };
+  const identity = answer.loggedIn === true && answer.identity ? parseAccountIdentity(answer.identity) : undefined;
+  const file = readStatusFile(root); (file.checkedAt[cli] ??= dictionary<StatusRow>())[name] = { loggedIn: answer.loggedIn, at: now, ...(identity ? { identity } : {}) };
   const plain: Record<string, Record<string, StatusRow>> = {};
   for (const kind of Object.keys(file.checkedAt)) plain[kind] = Object.fromEntries(Object.entries(file.checkedAt[kind]));
   try { mkdirSync(root, { recursive: true, mode: 0o700 }); atomicWriteFileSync(join(root, STATUS_FILE), JSON.stringify({ version: 1, checkedAt: plain }), { mode: 0o600 }); } catch { /* a cache; the next check writes it again */ }
@@ -156,23 +173,30 @@ export function rememberCredentialLogin(root: string, cli: CredentialProfileCli,
 /** What this computer tells AgEnD: names and a signed-in yes/no (null = not checked yet). No path, e-mail, account or token. */
 export function credentialProfileReport(root: string, defaultName?: string): CredentialProfileReport {
   const kind: CredentialProfileCli = "claude-code";
-  const profiles = listCredentialProfileNames(root, kind).map(name => ({ name, loggedIn: cachedCredentialLogin(root, kind, name) }));
+  const profiles = listCredentialProfileNames(root, kind).map(name => { const known = cachedCredentialStatus(root, kind, name); return { name, loggedIn: known?.loggedIn ?? null, ...(known?.identity ? { identity: known.identity } : {}) }; });
   return { profiles, ...(defaultName && profiles.some(row => row.name === defaultName) ? { default: defaultName } : {}) };
 }
 /** Bounded, closed parse of what a Runtime reports: only names and a signed-in yes/no. Anything else (a path, an e-mail) is a protocol error. */
 export function parseCredentialProfileReport(value: unknown): CredentialProfileReport {
-  const fail = (): never => { throw new Error("Invalid credential profile report"); };
+  // The field that was wrong, never its value: a rejected report may carry an unmasked e-mail, and an error must not repeat it.
+  const fail = (field = "report"): never => { throw new Error(`Invalid credential profile report: ${field}`); };
   if (!value || typeof value !== "object" || Array.isArray(value)) return fail();
   const input = value as Record<string, unknown>;
   if (Object.keys(input).some(key => key !== "profiles" && key !== "default") || !Array.isArray(input.profiles) || input.profiles.length > 64) return fail();
   const seen = new Set<string>(), profiles: CredentialProfileStatus[] = [];
   for (const row of input.profiles) {
-    if (!row || typeof row !== "object" || Array.isArray(row)) return fail();
+    if (!row || typeof row !== "object" || Array.isArray(row)) return fail("profile");
     const item = row as Record<string, unknown>;
-    if (Object.keys(item).some(key => key !== "name" && key !== "loggedIn") || !validCredentialProfileName(item.name) || ![true, false, null].includes(item.loggedIn as boolean | null) || seen.has(item.name.toLowerCase())) return fail();
-    seen.add(item.name.toLowerCase()); profiles.push({ name: item.name, loggedIn: item.loggedIn as boolean | null });
+    if (Object.keys(item).some(key => key !== "name" && key !== "loggedIn" && key !== "identity")) return fail("profile field");
+    if (!validCredentialProfileName(item.name) || ![true, false, null].includes(item.loggedIn as boolean | null) || seen.has(item.name.toLowerCase())) return fail("name or loggedIn");
+    // The account is only a masked e-mail and a plan, and only for a signed-in profile; an unmasked e-mail is a protocol error.
+    if (item.identity !== undefined && item.loggedIn !== true) return fail("identity");
+    let identity: AccountIdentity | undefined;
+    try { identity = item.identity === undefined ? undefined : parseAccountIdentity(item.identity); }
+    catch (error) { return fail(`identity ${/^Invalid account identity: (identity|unknown field|maskedEmail|plan|apiKey)$/.exec((error as Error).message)?.[1] ?? "invalid"}`); }
+    seen.add(item.name.toLowerCase()); profiles.push({ name: item.name, loggedIn: item.loggedIn as boolean | null, ...(identity ? { identity } : {}) });
   }
-  if (input.default !== undefined && (!validCredentialProfileName(input.default) || !profiles.some(row => row.name === input.default))) return fail();
+  if (input.default !== undefined && (!validCredentialProfileName(input.default) || !profiles.some(row => row.name === input.default))) return fail("default");
   return { profiles, ...(input.default !== undefined ? { default: input.default as string } : {}) };
 }
 /**
@@ -184,6 +208,14 @@ export function withCredentialProfile(env: NodeJS.ProcessEnv, cli: unknown, dire
   for (const [key, value] of Object.entries(env)) if (key.toUpperCase() !== variable) out[key] = value;
   out[variable] = directory;
   return out;
+}
+/**
+ * A cheap fingerprint of what `agend-runtime login` / `profile default` last wrote for this pairing (the sign-in cache and the default's file),
+ * so a running Runtime notices a sign-in made in another window and re-reports it without being asked.
+ */
+export function credentialCacheStamp(root: string, defaultFile?: string): string {
+  const one = (path: string): string => { try { const stat = lstatSync(path); return `${stat.mtimeMs}:${stat.size}`; } catch { return "-"; } };
+  return `${one(join(root, STATUS_FILE))}|${defaultFile ? one(defaultFile) : "-"}`;
 }
 export function credentialProfileExists(root: string, cli: CredentialProfileCli, name: string): boolean {
   try { return existsSync(requireCredentialProfile(root, cli, name)); } catch { return false; }

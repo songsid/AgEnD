@@ -6,9 +6,9 @@ import { hostname } from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
-import { probeCredentialProfileLogin, validateNativeTask, validWindowsAgentId, type NativeTaskInput } from "./windows-cli-worker.js";
+import { probeCredentialProfileStatus, validateNativeTask, validWindowsAgentId, type CredentialProfileAnswer, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
-import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfileReport, isCredentialProfileCli, listCredentialProfileNames, rememberCredentialLogin, requireCredentialProfile,
+import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfileReport, isCredentialProfileCli, listCredentialProfileNames, rememberCredentialStatus, requireCredentialProfile, credentialCacheStamp,
   assertCredentialProfileName, assertCredentialProfileCli, type CredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
@@ -65,6 +65,10 @@ export interface RuntimeClientOptions {
   credentialProfilesRoot?: string;
   /** Test seam; production asks the CLI itself (`claude auth status` under that profile's folder). */
   credentialLogin?: (cli: CredentialProfileCli, directory: string) => Promise<boolean | null>;
+  /** Test seam for the same check with the account in it (masked e-mail, plan). Wins over `credentialLogin`. */
+  credentialStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
+  /** How often to look for a sign-in made by `agend-runtime login` in another window (default 5 s). */
+  credentialWatchMs?: number;
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
@@ -107,6 +111,8 @@ export class RuntimeClient {
   private reconnectAttempt = 0;
   private graceTimer: ReturnType<typeof setTimeout> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
+  private credentialWatch: ReturnType<typeof setInterval> | null = null;
+  private credentialStamp = "";
   private credentials: RuntimeCredentials | null = null;
   private startupRotation: Promise<RuntimeCredentials> | null = null;
   private paneHost: RuntimePaneHost | RuntimePaneLink | null = null;
@@ -161,6 +167,7 @@ export class RuntimeClient {
       // timers do not keep Node running after the last socket closes; stop() owns and clears this liveness ref.
       this.pollTimer = setInterval(() => this.poll(), this.options.pollMs ?? 250);
       void this.refreshInventory().catch(() => this.report("CLI discovery failed; refresh it from AgEnD after checking the local installation."));
+      this.watchCredentialCache();
     } catch (error) { this.stopped = true; this.unlock?.(); this.unlock = null; throw error; }
   }
   private connect(): void {
@@ -332,23 +339,45 @@ export class RuntimeClient {
     if (named !== undefined) return named;
     return cli === "claude-code" && this.options.credentialProfilesRoot ? this.options.store.credentialDefault() : undefined;
   }
+  private stamp(): string { return credentialCacheStamp(this.options.credentialProfilesRoot!, join(this.options.store.directory, "credential-default.json")); }
+  /**
+   * Re-report on its own after `agend-runtime login` / `profile default` (run in another window) changed the sign-in cache: the account shown
+   * in AgEnD follows a profile that was signed in to another account, without an administrator pressing "Detect again". Reads the cache only.
+   */
+  private watchCredentialCache(): void {
+    if (!this.options.credentialProfilesRoot) return;
+    this.credentialStamp = this.stamp();
+    this.credentialWatch = setInterval(() => {
+      const now = this.stamp(); if (now === this.credentialStamp) return;
+      this.credentialStamp = now; void this.refreshInventory(false).catch(() => {});
+    }, this.options.credentialWatchMs ?? 5000);
+    this.credentialWatch.unref?.();
+  }
+  private statusOf(cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> {
+    if (this.options.credentialStatus) return this.options.credentialStatus(cli, directory);
+    if (this.options.credentialLogin) return this.options.credentialLogin(cli, directory).then(loggedIn => ({ loggedIn }));
+    return probeCredentialProfileStatus(cli, directory);
+  }
+  private remember(root: string, cli: CredentialProfileCli, name: string, answer: CredentialProfileAnswer): void {
+    rememberCredentialStatus(root, cli, name, answer); this.credentialStamp = this.stamp();   // our own write is not "another window"
+  }
   /** The folder of a profile that exists AND is signed in on this computer; anything else refuses, never the default account. */
   private async credentialHome(cli: string, name: string): Promise<string> {
     const root = this.options.credentialProfilesRoot;
     if (!root) throw new Error("This Runtime has no credential profile folder, so it cannot select an account. Update or restart the Runtime.");
     if (!isCredentialProfileCli(cli)) throw new Error("Credential profiles on a Windows Runtime support Claude Code only");
     const directory = requireCredentialProfile(root, cli, name);
-    const loggedIn = await (this.options.credentialLogin ?? probeCredentialProfileLogin)(cli, directory);
-    rememberCredentialLogin(root, cli, name, loggedIn);
-    if (loggedIn !== true) throw credentialLoginRequired(cli, name, loggedIn);
+    const answer = await this.statusOf(cli, directory);
+    this.remember(root, cli, name, answer);
+    if (answer.loggedIn !== true) throw credentialLoginRequired(cli, name, answer.loggedIn);
     return directory;
   }
   /** Names and signed-in yes/no only. `force` (an explicit "Detect again") asks each profile's CLI; otherwise the last known answer is reported. */
   private async credentialReport(force: boolean): Promise<CredentialProfileReport | undefined> {
     const root = this.options.credentialProfilesRoot; if (!root) return undefined;
     if (force) for (const name of listCredentialProfileNames(root, "claude-code")) {
-      try { rememberCredentialLogin(root, "claude-code", name, await (this.options.credentialLogin ?? probeCredentialProfileLogin)("claude-code", requireCredentialProfile(root, "claude-code", name))); }
-      catch { rememberCredentialLogin(root, "claude-code", name, null); }
+      try { this.remember(root, "claude-code", name, await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name))); }
+      catch { this.remember(root, "claude-code", name, { loggedIn: null }); }
     }
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
     return credentialProfileReport(root, name);
@@ -477,7 +506,8 @@ export class RuntimeClient {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.graceTimer) clearTimeout(this.graceTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
-    this.reconnectTimer = null; this.graceTimer = null; this.pollTimer = null;
+    if (this.credentialWatch) clearInterval(this.credentialWatch);
+    this.reconnectTimer = null; this.graceTimer = null; this.pollTimer = null; this.credentialWatch = null;
     this.rejectTools(); this.mcpTokens.clear(); this.bridge.close();
     const socket = this.socket; this.socket = null;
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }

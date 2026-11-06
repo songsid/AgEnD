@@ -115,7 +115,7 @@ describe("one parser, written once", () => {
       if (entry.isDirectory()) { if (!["node_modules", "vendor"].includes(entry.name)) walk(path); continue; }
       if (!/\.(ts|js)$/.test(entry.name)) continue;
       const text = readFileSync(path, "utf8"), name = path.replace(resolve("src") + "/", "");
-      if (/\*\*\*@/.test(text)) masks.push(name);
+      if (/\$\{[^}]*\}\*\*\*@|["'`]\*\*\*@/.test(text)) masks.push(name);   // a mask being BUILT (a template or a string ending in ***@), not a mention in a comment
       if (text.includes('"loggedIn":\\s')) loggedIn.push(name);   // a regular expression reading the CLI's answer, the thing this parser replaces
     } };
     walk(resolve("src"));

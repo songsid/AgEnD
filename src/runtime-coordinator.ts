@@ -11,6 +11,7 @@ import { validateNativeTask, type NativeTaskInput } from "./windows-cli-worker.j
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, parseCredentialProfileReport } from "./runtime-credential-profiles.js";
+import { parseAccountIdentity } from "./claude-auth-status.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION,
@@ -56,8 +57,16 @@ function inventory(value: unknown): WindowsCliProbe {
   }
   if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw new RuntimeProtocolError("Runtime inventory is too large");
   const probe = structuredClone(value) as unknown as WindowsCliProbe;
+  // Account identity (a masked e-mail and a plan) is accepted in its closed form only. A refusal names the field and the reason, never the
+  // rejected value: an unmasked e-mail must not reach a log, a close reason or an error message from here.
+  const field = (error: unknown): string => /^Invalid (?:credential profile report|account identity): [A-Za-z ,.]{1,48}$/.test(String((error as Error)?.message)) ? String((error as Error).message).replace(/^Invalid (?:credential profile report|account identity): /, "") : "invalid";
   if (value.credentialProfiles !== undefined) {
-    try { probe.credentialProfiles = parseCredentialProfileReport(value.credentialProfiles); } catch { throw new RuntimeProtocolError("Invalid runtime credential profiles"); }
+    try { probe.credentialProfiles = parseCredentialProfileReport(value.credentialProfiles); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime credential profiles (${field(error)})`); }
+  }
+  for (const row of probe.clis) {
+    if (row.identity === undefined) continue;
+    if (row.id !== "claude-code" || row.authenticated !== true) throw new RuntimeProtocolError("Invalid runtime CLI identity (only a signed-in Claude Code has one)");
+    try { row.identity = parseAccountIdentity(row.identity); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime CLI identity (${field(error)})`); }
   }
   return probe;
 }

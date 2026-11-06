@@ -4,7 +4,7 @@ import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runtimeMain } from "../src/runtime-cli.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
-import { cachedCredentialLogin, credentialProfilesRoot, ensureCredentialProfile } from "../src/runtime-credential-profiles.js";
+import { cachedCredentialLogin, cachedCredentialStatus, credentialProfilesRoot, ensureCredentialProfile } from "../src/runtime-credential-profiles.js";
 
 const directories: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const path of directories.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); } });
@@ -14,8 +14,10 @@ function setup() {
   const out: string[] = []; vi.spyOn(process.stdout, "write").mockImplementation((chunk: unknown) => { out.push(String(chunk)); return true; });
   const probeLogin = vi.fn(async (_cli: "claude-code", _directory: string): Promise<boolean | null> => true);
   const runLogin = vi.fn(async (_exe: unknown, _args: string[], _env: NodeJS.ProcessEnv): Promise<number> => 0);
+  const probeStatus = vi.fn(async (_cli: "claude-code", _directory: string): Promise<{ loggedIn: boolean | null; identity?: Record<string, unknown> }> => ({ loggedIn: true }));
   const run = (argv: string[], extra: Record<string, unknown> = {}) => runtimeMain(argv, { home, programDirectory: program, env: {}, probeLogin, runLogin, ...extra } as never);
-  return { home, runtimeHome, root, out, probeLogin, runLogin, run, text: () => out.join("") };
+  const runWithStatus = (argv: string[], extra: Record<string, unknown> = {}) => runtimeMain(argv, { home, programDirectory: program, env: {}, probeStatus, runLogin, ...extra } as never);
+  return { home, runtimeHome, root, out, probeLogin, probeStatus, runLogin, run, runWithStatus, text: () => out.join("") };
 }
 
 describe("agend-runtime login claude-code NAME", () => {
@@ -107,5 +109,27 @@ describe("arguments", () => {
     await expect(f.run(["run", "work"])).rejects.toThrow(/Pairing codes must be entered interactively/);
     await expect(f.run(["connect", "--credential-profile"])).rejects.toThrow(/Invalid runtime arguments/);
     const help = readFileSync(resolve("src/runtime-cli.ts"), "utf8"); expect(help).toContain("--credential-profile NAME");
+  });
+});
+
+describe("the account behind a profile, in agend-runtime's own output (masked, as AgEnD shows it)", () => {
+  it("login says which account was signed in, as a masked address and plan, and remembers it for the running Runtime to report", async () => {
+    const f = setup(); f.probeStatus.mockResolvedValue({ loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "team" } });
+    await f.runWithStatus(["login", "claude-code", "work"]);
+    expect(f.text()).toContain('Credential profile "work" is signed in (al***@example.com · team).');
+    expect(cachedCredentialStatus(f.root, "claude-code", "work")).toEqual({ loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "team" } });
+    expect(f.text()).not.toMatch(/alice|fixture/);
+  });
+  it("profile list adds the masked account, or API key, as a third column", async () => {
+    const f = setup(); for (const name of ["work", "key", "plain"]) ensureCredentialProfile(f.root, "claude-code", name);
+    f.probeStatus.mockImplementation(async (_cli, directory) => directory.endsWith("work") ? { loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "max" } } : directory.endsWith("key") ? { loggedIn: true, identity: { apiKey: true } } : { loggedIn: true });
+    await f.runWithStatus(["profile", "list"]);
+    expect(f.text().split("\n").filter(Boolean)).toEqual(["key\tsigned in\tAPI key", "plain\tsigned in", "work\tsigned in\tal***@example.com · max"]);
+  });
+  it("profile default and a boolean-only check keep nothing stale: the account is whatever the last answer said", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work");
+    f.probeStatus.mockResolvedValue({ loggedIn: true, identity: { maskedEmail: "al***@example.com", plan: "team" } });
+    await f.runWithStatus(["profile", "default", "work"]); expect(cachedCredentialStatus(f.root, "claude-code", "work")?.identity).toEqual({ maskedEmail: "al***@example.com", plan: "team" });
+    await f.run(["profile", "list"]); expect(cachedCredentialStatus(f.root, "claude-code", "work")).toEqual({ loggedIn: true });
   });
 });

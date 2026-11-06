@@ -10,8 +10,9 @@ import { readRuntimeInfo } from "./runtime-build-info.js";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
 import { chooseRuntimeProfile, readBundledRuntimeServer, resolveRuntimeServer, runtimeServerProfile } from "./runtime-connection.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, credentialLoginRequired, credentialProfilesRoot, credentialProfileReport, ensureCredentialProfile, listCredentialProfileNames,
-  rememberCredentialLogin, requireCredentialProfile, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
-import { findCli, nativeCliEnvironment, probeCredentialProfileLogin, type NativeCliExecutable } from "./windows-cli-worker.js";
+  rememberCredentialStatus, requireCredentialProfile, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type CredentialProfileAnswer, type NativeCliExecutable } from "./windows-cli-worker.js";
+import type { AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 
 const HELP = `AgEnD native Windows runtime
@@ -49,6 +50,8 @@ export interface RuntimeMainOptions {
   /** Folder holding agend-server.json; defaults to the extracted Runtime folder. */ programDirectory?: string; home?: string; env?: NodeJS.ProcessEnv;
   /** Test seams: whether a profile folder is signed in, and the interactive `claude auth login`. Production asks the Windows CLI itself. */
   probeLogin?: (cli: CredentialProfileCli, directory: string) => Promise<boolean | null>;
+  /** Test seam for the same check with the account in it. Wins over `probeLogin`. */
+  probeStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
   runLogin?: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<number>;
 }
 function interactiveLogin(executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
@@ -58,6 +61,8 @@ function interactiveLogin(executable: NativeCliExecutable, args: string[], env: 
   });
 }
 function signInLabel(loggedIn: boolean | null): string { return loggedIn === true ? "signed in" : loggedIn === false ? "not signed in" : "not checked"; }
+/** `ab***@example.com · team`, or `API key`: the same masked identity AgEnD shows; never the full address. */
+function identityLabel(identity: AccountIdentity | undefined): string { return !identity ? "" : identity.apiKey ? "API key" : [identity.maskedEmail, identity.plan].filter(Boolean).join(" · "); }
 export async function runtimeMain(argv = process.argv.slice(2), options: RuntimeMainOptions = {}): Promise<void> {
   const env = options.env ?? process.env, home = options.home ?? homedir();
   if (argv.length === 1 && argv[0] === "--version") { process.stdout.write(`${JSON.stringify(readRuntimeInfo(), null, 2)}\n`); return; }
@@ -85,7 +90,8 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   const store = new RuntimeClientStore(resolve(explicitProfile || choice!.directory));
   // A pairing's profiles live in that pairing's own folder: approving a pairing lets that fleet use the profiles signed in here, and no other fleet.
   const credentialRoot = credentialProfilesRoot(store.directory);
-  const probeLogin = options.probeLogin ?? probeCredentialProfileLogin;
+  const probeStatus = (cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> => options.probeStatus ? options.probeStatus(cli, directory)
+    : options.probeLogin ? options.probeLogin(cli, directory).then(loggedIn => ({ loggedIn })) : probeCredentialProfileStatus(cli, directory);
   if (command === "login") {
     if (process.platform !== "win32" && !options.runLogin) throw new Error("Signing in to a Claude account here needs native Windows Node, under the Windows user whose Claude Code this Runtime uses.");
     const [cli, name] = positional;
@@ -95,10 +101,11 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     if (!executable) throw new Error("Claude Code is not installed on this Windows computer. Install it, then run this again.");
     process.stdout.write(`Signing in "${name}". Claude Code opens its own sign-in; the result is kept only in\n  ${directory}\nand is never uploaded to AgEnD.\n`);
     const code = await (options.runLogin ?? interactiveLogin)(executable, ["auth", "login"], withCredentialProfile(nativeCliEnvironment(env), kind, directory));
-    const loggedIn = await probeLogin(kind, directory);
-    rememberCredentialLogin(credentialRoot, kind, name, loggedIn);
-    if (code !== 0 || loggedIn !== true) throw new Error(`Credential profile "${name}" is ${loggedIn === false ? "not signed in" : "not confirmed as signed in"} yet (claude auth login exited with ${code}). Run the same login command again.`);
-    process.stdout.write(`Credential profile "${name}" is signed in. Choose it for an agent in AgEnD Settings, or make it this pairing's default: agend-runtime profile default ${name}\n`);
+    const answer = await probeStatus(kind, directory);
+    // Remembered (account included) so a running Runtime reports the new account to AgEnD by itself within seconds.
+    rememberCredentialStatus(credentialRoot, kind, name, answer);
+    if (code !== 0 || answer.loggedIn !== true) throw new Error(`Credential profile "${name}" is ${answer.loggedIn === false ? "not signed in" : "not confirmed as signed in"} yet (claude auth login exited with ${code}). Run the same login command again.`);
+    process.stdout.write(`Credential profile "${name}" is signed in${answer.identity ? ` (${identityLabel(answer.identity)})` : ""}. Choose it for an agent in AgEnD Settings, or make it this pairing's default: agend-runtime profile default ${name}\n`);
     return;
   }
   if (command === "profile" && positional[0] === "list") {
@@ -106,10 +113,10 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     const names = listCredentialProfileNames(credentialRoot, "claude-code");
     if (!names.length) { process.stdout.write("No credential profiles yet. Create one: agend-runtime login claude-code NAME\n"); return; }
     for (const name of names) {
-      let loggedIn: boolean | null = null;
-      try { loggedIn = await probeLogin("claude-code", requireCredentialProfile(credentialRoot, "claude-code", name)); } catch { /* shown as not checked */ }
-      rememberCredentialLogin(credentialRoot, "claude-code", name, loggedIn);
-      process.stdout.write(`${name}\t${signInLabel(loggedIn)}\n`);
+      let answer: CredentialProfileAnswer = { loggedIn: null };
+      try { answer = await probeStatus("claude-code", requireCredentialProfile(credentialRoot, "claude-code", name)); } catch { /* shown as not checked */ }
+      rememberCredentialStatus(credentialRoot, "claude-code", name, answer);
+      process.stdout.write(`${name}\t${signInLabel(answer.loggedIn)}${answer.identity ? `\t${identityLabel(answer.identity)}` : ""}\n`);
     }
     return;
   }
@@ -120,9 +127,9 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     try {
       if (flags["--clear"]) { store.setCredentialDefault(undefined); process.stdout.write("This pairing no longer has a default credential profile. Agents that choose none use this Runtime's own Claude sign-in again.\n"); return; }
       const name = assertCredentialProfileName(positional[1]), directory = requireCredentialProfile(credentialRoot, "claude-code", name);
-      const loggedIn = await probeLogin("claude-code", directory);
-      rememberCredentialLogin(credentialRoot, "claude-code", name, loggedIn);
-      if (loggedIn !== true) throw credentialLoginRequired("claude-code", name, loggedIn);
+      const answer = await probeStatus("claude-code", directory);
+      rememberCredentialStatus(credentialRoot, "claude-code", name, answer);
+      if (answer.loggedIn !== true) throw credentialLoginRequired("claude-code", name, answer.loggedIn);
       const before = store.credentialDefault(); store.setCredentialDefault(name);
       process.stdout.write(`Default credential profile for this pairing: ${name}.${before && before !== name ? ` (was ${before}; a conversation started under another account cannot be resumed under this one.)` : ""}\nRestart the Runtime for agents already running to pick it up.\n`);
     } finally { unlock(); }
@@ -158,9 +165,9 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     const wantedProfile = flags["--credential-profile"];
     if (wantedProfile !== undefined) {
       const directory = requireCredentialProfile(credentialRoot, "claude-code", assertCredentialProfileName(wantedProfile));
-      const loggedIn = await probeLogin("claude-code", directory);
-      rememberCredentialLogin(credentialRoot, "claude-code", wantedProfile, loggedIn);
-      if (loggedIn !== true) throw credentialLoginRequired("claude-code", wantedProfile, loggedIn);
+      const answer = await probeStatus("claude-code", directory);
+      rememberCredentialStatus(credentialRoot, "claude-code", wantedProfile, answer);
+      if (answer.loggedIn !== true) throw credentialLoginRequired("claude-code", wantedProfile, answer.loggedIn);
     }
     if (choice?.separate) process.stdout.write(`This computer's default profile is paired with ${choice.defaultServer}; using a separate profile for this server:\n  ${store.directory}\nThe same connect-agend.bat reuses it. The existing pairing is untouched.\n`);
     if (!current) {
