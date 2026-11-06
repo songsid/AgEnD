@@ -33,6 +33,7 @@ import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../store.js";
 import { readHubIdentity } from "../tls.js";
 import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
 import { HubFileVersionFloor } from "../version-floor.js";
+import { createHubRetentionControl, retentionMigration, type HubRetentionControl } from "../retention.js";
 
 export const SERVER_SET: HubStateSet = Object.freeze({
   database: "hub/hub.sqlite",
@@ -83,6 +84,8 @@ export interface HubServerFactoryOptions {
   now?: () => number;
   /** Retention job interval; daily by default. */
   retentionEveryMs?: number;
+  /** Host Settings only; the disposer removes this exact generation's control. */
+  retentionReady?(control: HubRetentionControl): () => void;
 }
 
 interface ServerSettings {
@@ -219,7 +222,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         floor.initialize();
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
-      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations]);
+      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
+        retentionMigration(settings.hubId, settings.retention)]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -247,6 +251,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       let memberServer: HubServer | null = null;
       let fenced = false;
       const live = () => !fenced && current();
+      const retention = createHubRetentionControl({ db, hubId: settings.hubId, audit, current: live, now });
       const pairing = new HubPairingService({
         store,
         identity: { hubId: identity.hubId, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey },
@@ -321,7 +326,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             retentionTimer = setInterval(() => {
               if (!live()) return;
               try {
-                audit.purge(settings.retention);
+                audit.purge(retention.read());
               } catch (err) {
                 options.log("warn", "Hub retention could not run", { err: (err as Error).message });
               }
@@ -329,6 +334,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             retentionTimer.unref();
             const timer = retentionTimer;
             teardown.add("the retention timer", () => clearInterval(timer));
+            const detach = options.retentionReady?.(retention);
+            if (detach) teardown.add("the host retention Settings", detach);
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;

@@ -91,6 +91,8 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 }
 
 export interface SettingsApiContext extends AppShellContext {
+  /** The running Hub's host-owner retention policy; absent while off/unavailable. */
+  hubRetention?(): import("./hub/retention.js").HubRetentionControl | null;
   /** S3c (S-55): the member's exposures (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
   /** S3c PR B: the member's pairing (null: no Hub member composed here — the routes answer 404 "unavailable"). */
@@ -930,7 +932,37 @@ export function handleSettingsRequest(
     return true;
   }
 
-  // One hot web toggle; an unrelated Settings edit never materializes defaults.
+  if (path === "/api/settings/hub/retention") {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    const control = ctx.hubRetention?.() ?? null;
+    if (!control) { json(res, 404, { error: "unavailable" }); return true; }
+    const refused = (err: unknown) => {
+      const code = err instanceof Error && ["invalid_retention", "conflict", "unavailable", "retention_unavailable"].includes(err.message) ? err.message : "unsaved";
+      json(res, code === "invalid_retention" ? 400 : code === "conflict" ? 409 : 503, { ok: false, error: code });
+    };
+    if (method === "GET") {
+      if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+      try { json(res, 200, { ok: true, policy: control.read() }); } catch (err) { refused(err); }
+      return true;
+    }
+    if (method === "PUT") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      readBody(req, 4096).then(bytes => {
+        try {
+          execution.assert();
+          if (ctx.hubRetention?.() !== control) throw Error("unavailable");
+          const policy = settingsWrite(req, () => control.update(JSON.parse(bytes.toString("utf8")),
+            () => settingsRequestLocalAdmin(req) && ctx.hubRetention?.() === control));
+          json(res, 200, { ok: true, policy });
+        } catch (err) { refused(err); }
+      }).catch(refused);
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
   // ── M-2255: Settings → Runtime's switches — "Use this PC's Windows CLIs" (runtimes.windows_cli) and "Allow other
   // Windows computers to pair" (runtimes.remote_runtime). Off by default; the environment overrides them (said here).
   // Never over the public link. Switching one on is confirmed by a General admin (settings-change.ts); off applies at once.

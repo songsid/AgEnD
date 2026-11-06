@@ -2082,6 +2082,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   getHubHolds(): readonly import("./hub/runtime.js").HubHold[] {
     return this.hubHolds;
   }
+  hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
 
   private observeRuntimeSwitches(): void {
     setConfiguredRuntimeSwitches(this.fleetConfig?.runtimes);
