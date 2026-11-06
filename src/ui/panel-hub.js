@@ -352,6 +352,7 @@ function HubRoomView({ room: given }) {
         ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
         ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
         ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
+        ${!closed && !frozen && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf("off")}</p>` : null}
         ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
         ${closed ? null : html`<div class="composer-box"><${PendingFiles} files=${takesFiles ? files : []} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
           formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />
@@ -359,7 +360,7 @@ function HubRoomView({ room: given }) {
           onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${attach}
           stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
           send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || uploading, label: hc("send"), onClick: send }} /></div>`}
-        ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span>${!takesFiles && !frozen ? html`<span class="hint hub-files-off">${hf("off")}</span>` : null}</div>`}
+        ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
       </div></div>
     </section>
     ${wide && rail ? html`<${RailFrame} trust="hub-context" label=${hc("infoLabel")} title=${hc("info")} closeLabel=${hc("hideInfo")}

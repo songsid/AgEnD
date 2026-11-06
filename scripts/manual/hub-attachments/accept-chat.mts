@@ -29,8 +29,8 @@ const server = createServer({ key: readFileSync(join(keys, "hub/keys/tls-key.pem
 await new Promise<void>(done => server.listen(port, "127.0.0.1", done));
 const owner = r.addPerson("owner", "Olivia"); r.addPerson("asker", "Alex");
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
-// A small chart PNG (a real 2×2 image) and a CSV, as a person would attach them.
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEKmBiQAKYAAJEUAwHzzO3hAAAAAElFTkSuQmCC", "base64");
+// A 320×180 bar-chart PNG and a CSV, as a person would attach them.
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAUAAAAC0CAIAAABqhmJGAAAC9klEQVR42u3WQQ2AMBREwV5whAIs1AwG8IIIZHHrARTQCyFhm3lZBU0mv+WSFFvxBBLAkgCWBLAEsCSAJQEsCWAJYEkASwJYAlgSwJIAlgSwBLAkgCUBLAlgCWDpsXZMcQNYAhhgAQwwwAIYYAlggAUwwAALYIABFsAASwADLIABBlgAAywBDLAEMMACGGCABTDAEsAAC2CAARbAAAMsgAGWAAZYAAMMsAAGWAIYYAEMMMACGGCABTDAEsAAC2CAARbAAEsAA6x+817jBjDAAhhggAEGGGCAAQYYYAEMMMAAAwwwwAADDLAABhhgAQwwwAADDDDAAAMMsAAGGGABDDDAAAMMMMAAAwywAAYYYIABBhhggAEGWAADDLAABhhggAEGGGCAAQZYAAMMMMAAAwwwwAADDDDAAAMsgAEGGGCAAQYYYIABFsAAAyyAAQYYYIABBhhggAEWwAADDDDAAAMMMMAAowUwwAALYIABBhhggAEGGGCAv23ZzrgBDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMAAAwwwwAADDDDAAAMMMMCjAV4lvS7yAksK/kJLAlgCWBLAkgCWBLAEsCSAJQEsCWAJYEkASwJYAlgSwJIAlgSwBLCkX3YDxTN0Z27yuHsAAAAASUVORK5CYII=", "base64");
 const ASKER_CSV = Buffer.from("month,target\nJul,40\nAug,41\nSep,42\n"), AGENT_CSV = Buffer.from("region,sales\nnorth,18\nsouth,14\nwest,10\n");
 const tmp = mkdtempSync(join(out, ".files-")); writeFileSync(join(tmp, "q3-chart.png"), PNG); writeFileSync(join(tmp, "targets.csv"), ASKER_CSV);
 
@@ -78,6 +78,7 @@ try {
     const b = await open(old.room.id);
     assert.equal(await b.p.locator("#attachBtn").count(), 0);
     assert.equal((await b.p.locator(".hub-files-off").innerText()).trim(), zh ? "這個代理目前還不能接收檔案。" : "This agent can't receive files yet.");
+    assert(await b.p.locator(".hub-files-off").isVisible(), "the line shows on this device");
     await b.p.screenshot({ path: join(out, `${prefix}-before.png`), fullPage: true });
     assert.deepEqual([b.errors, b.foreign, b.csp], [[], [], []]); await b.context.close();
     // After: a fleet that takes files.
