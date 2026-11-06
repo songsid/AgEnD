@@ -200,6 +200,7 @@ export interface HubRooms {
 }
 export interface HubRoomEntry {
   messageId: MessageId; sequence: Epoch; receipt: HubReceipt;
+  askedAt?: Millis; // #3226 B: when the question was asked
   question?: string; answer?: string; // projected only for the currently permitted audience
 }
 export interface HubMemberAdmission {

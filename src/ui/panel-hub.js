@@ -1,27 +1,51 @@
-// AgEnD Hub P1, slice 3: the Hub workspace's pages — Ask, My exposures, Administration (/ui/hub, /ui/hub/exposures,
-// /ui/hub/admin) — and its session row. Served only by a Hub's own listener at its own origin, over the Hub's /hub/v1/*
+// AgEnD Hub P1, slice 3: the Hub workspace's pages — the chats (/ui/hub, a room at /ui/hub?room=<id>; #3226 B), My
+// exposures and Administration (/ui/hub/exposures, /ui/hub/admin; reached from the session row's menu) — and its session row. Served only by a Hub's own listener at its own origin, over the Hub's /hub/v1/*
 // API (hub-client.js createHubWebClient); nothing here reads or reaches a fleet. A lazy module: it imports only names
 // every shell has had since #1408, so a tab opened before an upgrade loads it as fresh as the rest.
 //
 // What people see is what the server says now: every list is read fresh, every change is checked again by the server
 // (who, the revision shown, the directory), and a conflict reloads the list instead of guessing.
-import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
+import { lang, t } from "/assets/app-i18n.js";
+import { createStore, useStore } from "/assets/app-store.js";
+import { navigate, navStore } from "/assets/app-nav.js";
 import { Empty } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { Dialog } from "/assets/ui-dialog.js";
+import { Menu } from "/assets/ui-menu.js";
+import { toast } from "/assets/ui-toast.js";
+// #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
+import { createThread } from "/assets/chat-thread.js";
+import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
+import { RailFrame } from "/assets/side-rail.js";
+import "/assets/chat-strings.js";
 import { compareGroups, hubClient } from "./hub-client.js";
 import { hw, linkHubCss } from "./hub-strings.js";
+import { hc, linkHubChatCss } from "./hub-chat-strings.js";
+import { createHubChatStore } from "./hub-chat-store.js";
+import { QuotaBanner, QuotaCard, QuotaChip } from "./hub-quota.js";
 
 const TITLES = { ask: "askTitle", exposures: "exposuresTitle", admin: "adminTitle" };
 /** P1 room polling: at most once per ten seconds, one request at a time, paused while the page is hidden (hub.md §5). */
 export const POLL_MS = 10_000;
 const DAYS = [1, 7, 30, 90];
 
+/** #3226 B: the person's open rooms, as the conversation list shows them: { loaded, rooms, error }. */
+const roomsStore = createStore({ loaded: false, rooms: [], error: null });
+let roomsReading = null;
 // The page's one view of the Hub session, shared by the panel and the sidebar's session row.
 let session;                                     // undefined: not read yet; null: signed out; else the session
 const sessionSubs = new Set();
-function setSession(next) { session = next; for (const fn of sessionSubs) { try { fn(next); } catch { /* a subscriber's own failure */ } } }
+function setSession(next) {
+  const was = session;
+  session = next;
+  // #3226 B: the conversation list is this person's: cleared when no one is signed in, read again when someone is.
+  if (!next) roomsStore.set({ loaded: false, rooms: [], error: null });
+  else if (!was || was.login !== next.login) void refreshRooms();
+  for (const fn of sessionSubs) { try { fn(next); } catch { /* a subscriber's own failure */ } }
+}
 let reading = null;
 function readSession() {
   const c = hubClient();
@@ -44,12 +68,6 @@ function useSession() {
 const when = (ms) => new Date(ms).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 const errText = (r) => hw(r.code === "conflict" || r.code === "stale" ? "errConflictHub" : r.code === "not-found" ? "errNotFound"
   : r.code === "backpressure" ? "errBusyHub" : r.code === "revoked" || r.code === "denied" ? "errDenied" : r.code === "unreachable" ? "errUnreachableHub" : "errFailed");
-function newKey() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  const b = new Uint8Array(16); crypto.getRandomValues(b); b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
-  const x = [...b].map((v) => v.toString(16).padStart(2, "0")).join("");
-  return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
-}
 
 export function HubPanel({ route }) {
   const tab = TITLES[route && route.tab] ? route.tab : "ask";
@@ -58,7 +76,9 @@ export function HubPanel({ route }) {
   useEffect(() => { setTitle(hw(TITLES[tab])); }, [tab]);
   let body = null;
   if (s === null) body = html`<${HubSignIn} />`;
-  else if (s) body = tab === "ask" ? html`<${HubAsk} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
+  else if (s) body = tab === "ask" ? html`<${HubChats} />` : tab === "exposures" ? html`<${HubMine} />` : html`<${HubAdmin} admin=${!!s.admin} />`;
+  // The chats draw their own header (the room's); the other pages keep the panel's.
+  if (s && tab === "ask") return html`<div data-effect-panel="hub" class="panel p-hub p-hub-ask"><div data-trust="panel-content" class="panel-body hub-chat-body">${body}</div></div>`;
   return html`<div data-effect-panel="hub" class=${`panel p-hub p-hub-${tab}`}>
     <${PanelHeader} title=${hw(TITLES[tab])} />
     <div data-trust="panel-content" class="panel-body hub-body">${body}</div>
@@ -71,9 +91,15 @@ export function HubSessionMenu() {
   const [busy, setBusy] = useState(false);
   if (!s) return html`<div class="session hub-session"><span class="side-row"><span class="dot" aria-hidden="true"></span><span class="grow">${hw("signedOutHub")}</span></span></div>`;
   const out = async () => { setBusy(true); await hubClient().signOut(); setBusy(false); setSession(null); };
+  // #3226 B: My shared agents and Administration are secondary — in this menu, not the main surface.
+  const items = [
+    { key: "mine", label: hc("mine"), icon: "globe", onSelect: () => navigate("/ui/hub/exposures") },
+    { key: "admin", label: hc("admin"), icon: "key", onSelect: () => navigate("/ui/hub/admin") },
+    { key: "out", label: hw("signOut"), icon: "user", onSelect: out, disabled: busy },
+  ];
   return html`<div class="session hub-session">
     <span class="side-row"><span class="dot ok" aria-hidden="true"></span><span class="grow">${s.displayName}</span></span>
-    <button type="button" class="btn btn-sm hub-signout" disabled=${busy} onClick=${out}>${hw("signOut")}</button>
+    <${Menu} items=${items} label=${hc("menu")} icon="settings" cls="hub-menu" />
   </div>`;
 }
 
@@ -114,102 +140,281 @@ function useRead(read) {
   return [data, reload];
 }
 
-// ── Ask ──
-function HubAsk() {
-  const [cat] = useRead(() => hubClient().catalog());
-  const [rooms, reloadRooms] = useRead(() => hubClient().rooms());
-  const [room, setRoom] = useState(null);
-  const [msg, setMsg] = useState(null);
-  const open = async (item) => {
-    setMsg(null);
-    const r = await hubClient().openRoom(item.exposure.id, item.grant.id);
-    if (!r.ok) { setMsg(errText(r)); return; }
-    setRoom(r.room); reloadRooms();
-  };
-  if (room) return html`<${HubRoom} room=${room} onBack=${() => { setRoom(null); reloadRooms(); }} />`;
-  if (!cat) return null;
-  if (cat.error) return html`<p class="err" role="alert">${cat.error}</p>`;
-  const askable = cat.askable || [], mine = rooms && rooms.rooms ? rooms.rooms : [];
-  if (!askable.length && !mine.length) return html`<div class="center hub-empty"><${Empty} icon="chat" title=${hw("askEmpty")} hint=${hw("askHint")} /></div>`;
-  return html`<div class="hub-ask">
-    ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
-    ${askable.length ? html`<section class="card"><h3>${hw("askableTitle")}</h3><ul class="hub-list">${askable.map((it) => html`<li key=${it.grant.id} class="hub-item">
-      <div class="grow"><strong>${it.exposure.displayName}</strong><small class="note">${hw("allowedBy", it.ownerName || "—", when(it.grant.expiresAt))}</small></div>
-      <button type="button" class="btn btn-sm" onClick=${() => open(it)}><${Icon} name="chat" size=${14} />${hw("ask")}</button>
-    </li>`)}</ul></section>` : null}
-    ${mine.length ? html`<section class="card"><h3>${hw("roomsTitle")}</h3><ul class="hub-list">${mine.map((r) => html`<li key=${r.id} class="hub-item">
-      <div class="grow"><strong>${r.exposureName}</strong></div>
-      <button type="button" class="btn btn-sm" onClick=${() => setRoom({ id: r.id, exposureName: r.exposureName })}>${hw("openRoom")}</button>
-    </li>`)}</ul></section>` : null}
+// ── Chats (#3226 B): the conversation list, one room's chat, and the right-hand panel ──
+// The list is the shell's sidebar (HubNav, below) on a wide screen and the page itself on a phone; a room is
+// /ui/hub?room=<id>. The thread, the composer row, the WorkBar and the rail frame are the fleet chat's own modules
+// (/assets/chat-thread.js, chat-composer.js, side-rail.js); the room's data is hub-chat-store.js's.
+
+/** The person's open rooms, as the list shows them: { loaded, rooms, error }; read on demand and every ROOMS_MS. */
+export const ROOMS_MS = 30_000;
+export function refreshRooms() {
+  return roomsReading ??= hubClient().rooms().then((r) => {
+    roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
+  }, () => roomsStore.set({ ...roomsStore.get(), loaded: true, error: hw("errFailed") })).finally(() => { roomsReading = null; });
+}
+/** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden). */
+function useRooms() {
+  const rs = useStore(roomsStore);
+  useEffect(() => {
+    if (!roomsStore.get().loaded && session) refreshRooms();
+    const tick = setInterval(() => { if (session && (typeof document === "undefined" || !document.hidden)) refreshRooms(); }, ROOMS_MS);
+    return () => clearInterval(tick);
+  }, []);
+  return rs;
+}
+const roomParam = () => { try { const v = new URLSearchParams(location.search).get("room"); return v && /^[a-f0-9-]{36}$/.test(v) ? v : null; } catch { return null; } };
+const roomPath = (id) => `/ui/hub?room=${encodeURIComponent(id)}`;
+const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
+const AV_TONES = 6;
+const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };
+function Avatar({ name, size = "" }) { return html`<span class=${`hub-av t${tone(name)} ${size}`} aria-hidden="true">${initial(name)}</span>`; }
+const listTime = (ms) => {
+  if (!ms) return "";
+  const d = new Date(ms), now = new Date();
+  return d.toDateString() === now.toDateString() ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { month: "numeric", day: "numeric" });
+};
+const dateOnly = (ms) => new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+function daysLeft(ms) {
+  const d = Math.ceil((ms - Date.now()) / 86_400_000);
+  return d <= 0 ? hc("endsToday") : d === 1 ? hc("dayLeft") : hc("daysLeft", d);
+}
+
+/** The conversation list: New chat, a filter, and one row per open room (the most recently active first). */
+export function HubNav({ onPick } = {}) {
+  const s = useSession();
+  const rs = useRooms();
+  const [q, setQ] = useState("");
+  const [picking, setPicking] = useState(false);
+  useEffect(() => { linkHubChatCss(); }, []);
+  if (!s) return null;
+  const current = roomParam();
+  const shown = rs.rooms.filter((r) => !q.trim() || `${r.exposureName} ${r.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const pick = (e, r) => { if (onPick) onPick(); if (e && (e.metaKey || e.ctrlKey)) return; e && e.preventDefault(); navigate(roomPath(r.id)); };
+  return html`<div class="hub-nav">
+    <button type="button" class="btn hub-new" onClick=${() => setPicking(true)}><${Icon} name="plus" size=${16} />${hc("newChat")}</button>
+    <label class="hub-search"><${Icon} name="search" size=${14} /><input type="search" placeholder=${hc("search")} aria-label=${hc("search")} value=${q}
+      onInput=${(e) => setQ(e.target.value)} /></label>
+    <div class="hub-sec">${hc("chats")}</div>
+    ${rs.error ? html`<p class="err hub-list-err" role="alert">${rs.error}</p>` : null}
+    ${rs.loaded && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
+    ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
+    <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
+      <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => pick(e, r)}>
+        <${Avatar} name=${r.exposureName} />
+        <span class="hub-room-text"><span class="t">${r.exposureName}</span><span class="s">${r.state === "closed" ? hc("tagClosed") : r.waiting ? hc("waiting") : r.ownerName ? hc("represents", r.ownerName) : ""}</span></span>
+        <span class="hub-room-side"><span class="time">${listTime(r.lastAt)}</span>${r.waiting ? html`<span class="pulse" title=${hc("waiting")}></span>` : null}</span>
+      </a></li>`)}</ul>
+    ${picking ? html`<${NewChatDialog} onClose=${() => setPicking(false)} />` : null}
   </div>`;
 }
 
-const STAGE = { queued: "stageQueued", delivered: "stageDelivered", consumed: "stageWorking", answered: "stageAnswered",
-  rejected: "stageNotAnswered", cancelled: "stageNotAnswered", failed: "stageNotAnswered", uncertain: "stageUncertain" };
-function HubRoom({ room, onBack }) {
-  const [entries, setEntries] = useState([]);
-  const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
+/** New chat: the agents someone allowed this person to ask; Ask opens (or reopens) its room. */
+function NewChatDialog({ onClose }) {
+  const [cat] = useRead(() => hubClient().catalog());
+  const rs = useStore(roomsStore);
+  const [q, setQ] = useState("");
   const [msg, setMsg] = useState(null);
-  const [closed, setClosed] = useState(false);
-  const state = useRef({ live: true, timer: 0, inflight: false, entries: [] });
-  const merge = (got) => {
-    const byId = new Map(state.current.entries.map((e) => [e.messageId, e]));
-    for (const e of got) byId.set(e.messageId, { ...byId.get(e.messageId), ...e });
-    state.current.entries = [...byId.values()].sort((a, b) => a.sequence - b.sequence);
-    setEntries(state.current.entries);
-  };
-  const poll = async () => {
-    const st = state.current;
-    if (!st.live || st.inflight) return;
-    if (typeof document !== "undefined" && document.hidden) { schedule(POLL_MS); return; }
-    st.inflight = true;
-    // Unanswered entries are read again (from just before the oldest open one); answered history is kept.
-    const open = st.entries.find((e) => !["answered", "rejected", "cancelled", "failed"].includes(e.receipt && e.receipt.stage));
-    const after = open ? open.sequence - 1 : st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
-    const r = await hubClient().read(room.id, after);
-    st.inflight = false;
-    if (!st.live) return;
-    if (r.ok) { merge(r.entries || []); schedule(POLL_MS); return; }
-    if (r.code === "revoked" || r.code === "not-found") { setClosed(true); return; }
-    schedule(r.code === "backpressure" ? Math.max(POLL_MS, (r.retryAfter || 10) * 1000) : POLL_MS);
-  };
-  const schedule = (ms) => { const st = state.current; clearTimeout(st.timer); if (st.live) st.timer = setTimeout(poll, ms); };
-  useEffect(() => {
-    state.current.live = true; poll();
-    const vis = () => { if (typeof document !== "undefined" && !document.hidden) schedule(0); };
-    if (typeof document !== "undefined") document.addEventListener("visibilitychange", vis);
-    return () => { state.current.live = false; clearTimeout(state.current.timer); if (typeof document !== "undefined") document.removeEventListener("visibilitychange", vis); };
-  }, [room.id]);
-  const send = async (e) => {
-    e.preventDefault();
-    const q = text.trim();
-    if (busy || !q) return;
+  const [busy, setBusy] = useState(false);
+  const open = async (it) => {
+    if (busy) return;
     setBusy(true); setMsg(null);
-    const r = await hubClient().ask(room.id, newKey(), q);
+    const r = await hubClient().openRoom(it.exposure.id, it.grant.id);
     setBusy(false);
-    if (!r.ok) { setMsg(errText(r)); if (r.code === "revoked") setClosed(true); return; }
-    setText("");
-    const seq = (state.current.entries.length ? state.current.entries[state.current.entries.length - 1].sequence : 0) + 1;
-    merge([{ messageId: r.receipt.messageId, sequence: seq, receipt: r.receipt, question: q }]);
+    if (!r.ok) { setMsg(errText(r)); return; }
+    onClose(); await refreshRooms(); navigate(roomPath(r.room.id));
   };
-  return html`<div class="hub-room">
-    <div class="hub-room-head"><button type="button" class="btn btn-sm" onClick=${onBack}><${Icon} name="back" size=${14} />${hw("back")}</button>
-      <h3>${room.exposureName || ""}</h3></div>
-    <p class="note hub-identity">${hw("roomNote")}</p>
-    <p class="note hub-shared" role="note">${hw("roomShared")}</p>
-    <ol class="hub-entries">${entries.map((e) => html`<li key=${e.messageId} class="hub-entry">
-      <div class="hub-q">${e.expired ? html`<em>${hw("expiredText")}</em>` : e.question ?? ""}</div>
-      ${e.answer !== undefined ? html`<div class="hub-a">${e.answer}</div>`
-        : html`<div class=${`hub-stage stage-${e.receipt ? e.receipt.stage : "queued"}`} role="status">${hw(STAGE[e.receipt && e.receipt.stage] || "stageQueued")}</div>`}
-    </li>`)}</ol>
-    ${closed ? html`<p class="err" role="alert">${hw("roomClosed")}</p>` : html`<form class="form hub-compose" onSubmit=${send}>
-      <label class="field"><span class="sr-only">${hw("question")}</span><textarea id="hubQuestion" rows="3" maxlength="65536" placeholder=${hw("questionPh")}
-        value=${text} onInput=${(e) => setText(e.target.value)}></textarea></label>
-      <div class="field-row"><button type="submit" class="btn btn-primary" disabled=${busy || !text.trim()}>${hw("send")}</button></div>
-    </form>`}
-    ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+  const all = cat && cat.askable ? cat.askable : [];
+  const shown = all.filter((it) => !q.trim() || `${it.exposure.displayName} ${it.ownerName}`.toLowerCase().includes(q.trim().toLowerCase()));
+  const hasRoom = (it) => rs.rooms.some((r) => r.exposureId === it.exposure.id && r.grantId === it.grant.id);
+  return html`<${Dialog} title=${hc("pickTitle")} onClose=${onClose}>
+    <div class="hub-pick">
+      <label class="field"><span class="sr-only">${hc("pickSearch")}</span><input type="search" placeholder=${hc("pickSearch")} value=${q} onInput=${(e) => setQ(e.target.value)} /></label>
+      ${cat && cat.error ? html`<p class="err" role="alert">${cat.error}</p>` : null}
+      ${cat && !cat.error && !all.length ? html`<${Empty} icon="chat" title=${hc("pickEmpty")} hint=${hw("askHint")} />` : null}
+      ${all.length && !shown.length ? html`<p class="note">${hc("pickNone")}</p>` : null}
+      <ul class="hub-pick-list" role="list">${shown.map((it) => html`<li key=${it.grant.id} class="hub-pick-row">
+        <${Avatar} name=${it.exposure.displayName} />
+        <span class="hub-room-text"><span class="t">${it.exposure.displayName}</span><span class="s">${hc("pickUntil", it.ownerName || "—", dateOnly(it.grant.expiresAt))}</span></span>
+        <button type="button" class=${`btn btn-sm${hasRoom(it) ? "" : " btn-primary"}`} disabled=${busy} onClick=${() => open(it)}>${hasRoom(it) ? hc("pickOpen") : hc("pickAsk")}</button>
+      </li>`)}</ul>
+      <p class="note">${hc("pickHint")}</p>
+      ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+    </div>
+  </${Dialog}>`;
+}
+
+/** The Ask tab: the chosen room, or (none chosen) the list on a phone and a "pick a chat" note beside it on a wide screen. */
+function HubChats() {
+  useStore(navStore);                               // ?room= changes without a new route
+  const rs = useRooms();
+  useEffect(() => { linkHubChatCss(); }, []);
+  const id = roomParam();
+  const room = id ? rs.rooms.find((r) => r.id === id) || (rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
+  if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
+  if (id) return null;
+  return html`<${PanelHeader} title=${hc("chats")} />
+  <div class="hub-home">
+    <div class="hub-home-list"><${HubNav} /></div>
+    <div class="hub-home-pick center">${rs.loaded && !rs.rooms.length
+      ? html`<${Empty} icon="chat" title=${hc("noChats")} hint=${hc("noChatsHint")} />`
+      : html`<${Empty} icon="chat" title=${hc("choose")} hint=${hc("chooseHint")} />`}</div>
   </div>`;
+}
+
+const RAIL_KEY = "agend_hub_context";
+const railOpen = () => { try { return localStorage.getItem(RAIL_KEY) !== "0"; } catch { return true; } };
+const setRailPref = (open) => { try { localStorage.setItem(RAIL_KEY, open ? "1" : "0"); } catch { /* not remembered */ } };
+const wideQuery = () => (typeof matchMedia === "function" ? matchMedia("(min-width: 1100px)") : null);
+function useWide() {
+  const [wide, setWide] = useState(() => !!wideQuery()?.matches);
+  useEffect(() => { const q = wideQuery(); if (!q) return undefined; const on = () => setWide(!!q.matches); q.addEventListener?.("change", on); return () => q.removeEventListener?.("change", on); }, []);
+  return wide;
+}
+/** The thread's words are the fleet chat's; its delivery marks say the Hub's stages. */
+const threadT = (key, ...a) => (key.startsWith("chat.tick_") ? hc(key.slice(5), ...a) : t(key, ...a));
+const REASONS = { expired: "reason_expired", revoked: "reason_revoked", frozen: "reason_frozen", withdrawn: "reason_withdrawn" };
+const reasonText = (code, stage) => (stage === "uncertain" ? hc("uncertain") : hc("notAnswered", hc(REASONS[code] || "reason_unknown")));
+async function copyText(text) { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } }
+
+/** One room: its header, the thread, what blocks asking, the working line and the composer; the panel beside it. */
+function HubRoomView({ room: given }) {
+  const s = useSession();
+  const wide = useWide();
+  const store = useMemo(() => createHubChatStore(given, { me: (s && s.displayName) || "", reason: reasonText }), [given.id]);
+  useEffect(() => () => store.stop(), [store]);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    // The list's "waiting" follows this room: read again when a question starts or stops waiting here.
+    let was = null;
+    return store.subscribe(() => {
+      tick((n) => n + 1);
+      const waiting = store.entries().some((e) => ["queued", "delivered", "consumed"].includes(e.receipt && e.receipt.stage));
+      if (was !== null && waiting !== was) {
+        // The row says so at once; the list is read again behind it.
+        roomsStore.set((rs) => ({ ...rs, rooms: rs.rooms.map((r) => (r.id === given.id ? { ...r, waiting } : r)) }));
+        void refreshRooms();
+      }
+      was = waiting;
+    });
+  }, [store]);
+  const room = { ...given, ...store.room() };
+  const [rail, setRail] = useState(railOpen);
+  const [sheet, setSheet] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [msg, setMsg] = useState(null);
+  const input = useRef(null);
+  useEffect(() => { setTitle(room.exposureName || hw("askTitle")); }, [room.exposureName]);
+  const closed = store.closed() || room.state === "closed";
+  const frozen = !closed && room.exposureState === "frozen";
+  const working = store.working();
+  const name = room.exposureName || "";
+  const send = async () => {
+    const q = draft.trim();
+    if (!q || sending || closed || frozen) return;
+    setSending(true); setMsg(null);
+    const r = await store.send(q);
+    setSending(false);
+    if (!r.ok) { setMsg(errText(r)); return; }
+    setDraft(""); refreshRooms();
+  };
+  const onKeyDown = (e) => { if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); send(); } };
+  const toggleInfo = () => { if (!wide) { setSheet(true); return; } setRail((v) => { setRailPref(!v); return !v; }); };
+  const tag = closed ? html`<span class="tag danger">${hc("tagClosed")}</span>` : frozen ? html`<span class="tag warn">${hc("tagFrozen")}</span>`
+    : html`<${QuotaChip} room=${room} fallback=${html`<span class="tag ok">${hc("tagCanAsk")}</span>`} />`;
+  const back = !wide ? html`<a class="icon-btn hub-back" href="/ui/hub" aria-label=${hc("back")} title=${hc("back")}><${Icon} name="back" /></a>` : null;
+  const info = html`<${HubRoomInfo} room=${room} closed=${closed} />`;
+  return html`<div class=${`hub-chat${wide && rail ? " with-rail" : ""}`}>
+    <section class="hub-chat-main" aria-label=${name}>
+      <header class="hub-chat-head" data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
+        <span class="hub-chat-title"><strong>${name}</strong><span class="s">${room.ownerName ? hc("answersFor", room.ownerName) : ""}</span></span>
+        ${tag}
+        <button type="button" class="icon-btn" aria-pressed=${wide ? String(rail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
+      </header>
+      <${HubThread} store=${store} name=${name} />
+      <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
+        ${closed ? html`<p class="hub-banner danger" role="status">${hc("closed")}</p>` : null}
+        ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
+        ${!closed ? html`<${QuotaBanner} room=${room} />` : null}
+        ${working ? html`<${HubWorkBar} name=${name} since=${working.since} />` : null}
+        ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
+        ${closed ? null : html`<div class="composer-box"><${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
+          onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${null}
+          stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
+          send=${{ hidden: false, disabled: !draft.trim() || sending || frozen, label: hc("send"), onClick: send }} /></div>`}
+        ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
+      </div></div>
+    </section>
+    ${wide && rail ? html`<${RailFrame} trust="hub-context" label=${hc("infoLabel")} title=${hc("info")} closeLabel=${hc("hideInfo")}
+      onClose=${() => { setRail(false); setRailPref(false); }}>${info}</${RailFrame}>` : null}
+    ${!wide && sheet ? html`<${Dialog} title=${hc("info")} label=${hc("infoLabel")} onClose=${() => setSheet(false)}><div class="hub-rail-sheet">${info}</div></${Dialog}>` : null}
+  </div>`;
+}
+
+function HubWorkBar({ name, since }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const h = setInterval(() => tick((n) => n + 1), 1000); return () => clearInterval(h); }, []);
+  const R = globalThis.AgendChatRender;
+  return html`<${WorkBarView} kind="working" label=${hc("working", name)} elapsed=${R && since ? R.formatElapsed(Math.max(0, Date.now() - since)) : ""} elapsedTitle=${hc("elapsed")} />`;
+}
+
+/** The thread: the fleet chat's own (createThread), fed by the room's store. */
+function HubThread({ store, name }) {
+  const scroller = useRef(null), host = useRef(null);
+  const [jump, setJump] = useState({ show: false, unseen: 0 });
+  const [empty, setEmpty] = useState(false);
+  const th = useRef(null);
+  useLayoutEffect(() => {
+    const doc = host.current.ownerDocument;
+    const list = doc.createElement("div");
+    list.className = "thread"; list.setAttribute("role", "log"); list.setAttribute("aria-live", "off"); list.setAttribute("aria-label", name);
+    const thread = createThread(list, doc.createElement("div"), {
+      t: threadT, tf: threadT, isUser: (x) => x.role === "user", onJump: setJump, onEmpty: setEmpty, canReply: () => false,
+      setPreviewOptIn: () => {}, copyText, download: () => {}, toggleWrap: () => {}, notice: (text) => toast(text, false),
+      clickReplyButton: (id, index) => { void store.clickButton(id, index).then(() => store.refresh()); },
+      replyButtonBusy: (id) => store.busy(id), pollMine: (id) => store.mine(id), serverNow: () => Date.now(),
+      retryOutgoing: () => {}, deleteOutgoing: () => {}, putBackOutgoing: () => {}, startReply: () => {}, findQuoted: () => null,
+      emojis: () => false, mentions: () => null,
+    });
+    th.current = thread;
+    host.current.append(list);
+    thread.attach(scroller.current);
+    thread.render(store.messages());
+    const off = store.subscribe(() => thread.render(store.messages()));
+    const sc = scroller.current;
+    const onScroll = () => thread.onScroll();
+    sc.addEventListener("scroll", onScroll, { passive: true });
+    list.addEventListener("click", thread.onClick);
+    return () => { off(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick); thread.dispose(true); list.remove(); th.current = null; };
+  }, [store]);
+  return html`<div class="scroller hub-scroller" ref=${scroller}>
+    <div class="thread-host" ref=${host}></div>
+    ${/* #3145: that every asker shares the agent's one conversation is said before anyone types. */ ""}
+    ${empty ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
+    <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
+      <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
+  </div>`;
+}
+
+/** The right-hand panel's cards (the usage rail's look): the agent, its quota (G), your access, who sees it, what is not here. */
+function HubRoomInfo({ room, closed = false }) {
+  const name = room.exposureName || "", owner = room.ownerName || "";
+  return html`<section class="u-provider hub-card hub-agent-card"><${Avatar} name=${name} size="lg" /><strong>${name}</strong>
+      ${owner ? html`<span class="note">${hc("answersFor", owner)}</span>` : null}</section>
+    <${QuotaCard} room=${room} />
+    ${room.grantExpiresAt && !closed ? html`<section class="u-provider hub-card"><div class="u-head"><strong>${hc("yourAccess")}</strong></div>
+      <dl class="hub-kv"><dt>${hc("canDo")}</dt><dd>${hc("canDoValue")}</dd><dt>${hc("until")}</dt><dd>${dateOnly(room.grantExpiresAt)} <span class="tag">${daysLeft(room.grantExpiresAt)}</span></dd></dl>
+    </section>` : null}
+    <section class="u-provider hub-card"><div class="u-head"><strong>${hc("whoSees")}</strong></div>
+      <ul class="hub-aud" role="list">
+        <li><${Icon} name="user" size=${16} /><span><b>${hc("you")}</b><br />${hc("youSee")}</span></li>
+        ${owner ? html`<li><${Icon} name="eye" size=${16} /><span><b>${owner}</b><br />${hc("ownerSees", owner)}</span></li>` : null}
+        <li><${Icon} name="chat" size=${16} /><span><b>${name}</b><br />${hc("agentShares")}</span></li>
+        <li><${Icon} name="key" size=${16} /><span><b>${hc("adminTitle")}</b><br />${hc("adminSees")}</span></li>
+      </ul></section>
+    <section class="u-provider hub-card"><div class="u-head"><strong>${hc("notHere")}</strong></div>
+      <p class="note">${hc("notHereText", name, owner || name)}</p></section>
+    <p class="note hub-p1">${hc("oneToOne")}</p>`;
 }
 
 // ── My exposures ──
@@ -338,4 +543,4 @@ function HubAdminPage() {
 }
 
 /** Tests only: forget the page's session view. */
-export function resetHubSession() { session = undefined; reading = null; watchingEnd = false; sessionSubs.clear(); }
+export function resetHubSession() { session = undefined; reading = null; watchingEnd = false; sessionSubs.clear(); roomsStore.set({ loaded: false, rooms: [], error: null }); roomsReading = null; }
