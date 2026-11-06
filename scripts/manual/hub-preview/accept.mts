@@ -86,9 +86,11 @@ try {
       assert.equal(await page.evaluate(() => (window as any).AgendPreview.running("wrong-boot")), false);
       await page.evaluate(() => {
         const pv = (window as any).AgendPreview; pv.init(document.body.dataset); pv.setOptIn(true);
+        const holder = document.querySelector("#proof-holder") as HTMLElement;
+        holder.style.height = "300px"; holder.style.flex = "none";
         pv.start("proof", document.querySelector("#proof-holder"), (window as any).proofHtml, { state: (state, reason) => {
           (window as any).proofStates.push(state); document.querySelector("#proof-state")!.textContent = (document.documentElement.lang === "zh-TW" ? ({ running: "隔離預覽執行中", starting: "正在啟動預覽" }[state] ?? state) : state) + (reason ? ": " + reason : "");
-        } });
+        } }, { fill: true });
       });
       await page.waitForFunction(() => !!(window as any).proofResult, null, { timeout: 15_000 });
       const proof = await page.evaluate(() => ({ result: (window as any).proofResult, origin: (window as any).proofOrigin,
