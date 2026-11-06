@@ -96,8 +96,15 @@ describe("install.ps1 template", () => {
     // If this fails you changed the shim. cmd.exe reads a running batch file a piece at a time, so Set-AgendFile replacing the agend-runtime.cmd of a
     // Runtime that is running can make its window misbehave when it ends. Change the shim only if a bug in it makes installs unusable; then update this
     // hash in the same commit, and say in the docs and the changelog that running Runtimes should be stopped before the install command is run again.
-    expect(createHash("sha256").update(text).digest("hex")).toBe("36fcf08973287924389695d1d0d22614812d107b59c2f3d7ca7c69713e8bbd66");
+    expect(createHash("sha256").update(text).digest("hex")).toBe("cb23218d49b7ccd4664ffe4d55fe649aa9853a130f59451006003821af910fda");
     expect(text).not.toMatch(/\d+\.\d+\.\d+/);   // it names no version
+    // delayed expansion is turned off before ANY line that expands a path or an argument: with cmd /V:ON an unmatched ! in the install folder is otherwise eaten out of %~dp0
+    // (checked by a real cmd.exe with scripts/manual/runtime-install-shim/cmd-shim-check.mjs: a test may not start a Windows program)
+    const rows = text.split("\r\n"), setlocal = rows.indexOf("setlocal DisableDelayedExpansion");
+    expect(setlocal).toBeGreaterThan(-1); expect(rows.filter(row => /^setlocal/i.test(row))).toEqual(["setlocal DisableDelayedExpansion"]);
+    expect(rows.findIndex(row => /[%!]/.test(row))).toBeGreaterThan(setlocal);   // nothing before it expands a variable, path or argument
+    expect(rows.slice(0, setlocal)).toEqual(["@echo off"]);
+    expect(template).toMatch(/`setlocal DisableDelayedExpansion` comes before any line that expands a path or an argument/);
     expect(template).toMatch(/# DO NOT CHANGE \$shimText unless a bug in it makes installs unusable\. cmd\.exe reads a batch file as it runs it/);
   });
   it("does not use an automatic variable as its own, and a failed PATH broadcast is a warning, never 'install failed' (N5)", () => {
@@ -171,6 +178,9 @@ describe("what the documentation, the page and the changelog promise", () => {
     expect(en).toMatch(/never deleted or replaced, because it may be the Runtime that is running/); expect(en).toMatch(/refuses it clearly/); expect(en).toMatch(/re-run the install command/i);
     expect(zh).toMatch(/永遠不會被刪除或取代/); expect(zh).toMatch(/明確拒絕/); expect(zh).toMatch(/重新執行安裝指令/);
     expect(en).not.toMatch(/Protocol compatibility is diagnostic metadata/);
+  });
+  it("documents that the shim turns delayed expansion off, in both languages", () => {
+    expect(en).toMatch(/setlocal DisableDelayedExpansion[\s\S]*`!` in the install folder/); expect(zh).toMatch(/setlocal DisableDelayedExpansion[\s\S]*安裝資料夾裡的 `!`/);
   });
   it("explains the build-named folders and that clearing old ones is for a later phase, never manual deleting to update (N3)", () => {
     expect(en).toContain("<version>+<build>"); expect(en).toMatch(/different build of the same version number[\s\S]*beside the old ones/); expect(en).toMatch(/Nobody has to delete a folder by hand to update/);

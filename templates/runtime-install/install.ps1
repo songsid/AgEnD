@@ -133,12 +133,15 @@
     }
     # The shim never changes from one version to the next, so replacing a version cannot disturb a batch file that is running.
     # It starts the version named in current.txt, next to it; that one small file is what an install swaps.
+    # `setlocal DisableDelayedExpansion` comes before any line that expands a path or an argument: with cmd /V:ON (or the DelayedExpansion registry setting)
+    # an unmatched `!` in the install folder, which an accepted AGEND_RUNTIME_INSTALL_DIR can hold, would otherwise be eaten out of %~dp0 and the shim would
+    # look in another folder and report an incomplete install. (Changed once for that reason: see the change notice below.)
     # DO NOT CHANGE $shimText unless a bug in it makes installs unusable. cmd.exe reads a batch file as it runs it, a piece at a time, not all at
     # once, so rewriting the agend-runtime.cmd of a Runtime that is running (Set-AgendFile does that whenever this text differs from what is on
     # disk) can make that Runtime's window misbehave when it ends. The text names no version for exactly that reason. If it must change, update the
     # pinned hash in tests/runtime-install-script.test.ts in the same commit, and say in the docs and the changelog that running Runtimes should be
     # stopped before the install command is run again.
-    $shimText = ('@echo off', 'setlocal', 'set "AGEND_RT_VERSION="', 'if not exist "%~dp0current.txt" goto :agend_rt_missing', 'set /p AGEND_RT_VERSION=<"%~dp0current.txt"', 'if not defined AGEND_RT_VERSION goto :agend_rt_missing',
+    $shimText = ('@echo off', 'setlocal DisableDelayedExpansion', 'set "AGEND_RT_VERSION="', 'if not exist "%~dp0current.txt" goto :agend_rt_missing', 'set /p AGEND_RT_VERSION=<"%~dp0current.txt"', 'if not defined AGEND_RT_VERSION goto :agend_rt_missing',
         'if not exist "%~dp0..\%AGEND_RT_VERSION%\dist\runtime-cli.js" goto :agend_rt_missing', 'node.exe "%~dp0..\%AGEND_RT_VERSION%\dist\runtime-cli.js" %*',
         'exit /b %errorlevel%', ':agend_rt_missing', 'echo AgEnD Runtime is not installed correctly. Run the install command shown in AgEnD Settings - Runtime - Connect a computer again.>&2',
         'exit /b 1', '') -join "`r`n"
