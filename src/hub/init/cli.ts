@@ -3,6 +3,8 @@
  * service installer. Hub key material comes from S1 (src/hub/tls.ts, hub-s48-init); until that ships, the command
  * stops before asking anything and changes nothing.
  */
+import { installedBuildLabel, readInstalledBuild } from "../../build-provenance.js";
+import { ht } from "./text.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureAgendHome } from "../../agend-home.js";
@@ -54,8 +56,12 @@ export async function runHubInitCommand(identity: HubIdentityProvider = hubIdent
   ensureAgendHome(home, { create: true, label: "AgEnD home" });
   const service = await realService(home);
   const initializer = createHubInitializer({ home, identity, probe: realFleetProbe() });
+  const io = terminalIO();
+  const build = readInstalledBuild();
+  io.say(ht("build_info", installedBuildLabel(build.version, build.source,
+    { source: ht("build_source"), modified: ht("build_modified"), unknown: ht("build_unknown") }), build.version));
   const outcome = await runHubInitWizard({
-    io: terminalIO(),
+    io,
     home,
     initializer,
     createDirectory: createHubDirectory,

@@ -2,6 +2,8 @@
 import { getLocale } from "../../locale.js";
 
 const en = {
+  build_info: "Installed build: {0} (package {1}). Run agend build-info --json for source details.",
+  build_source: "source", build_modified: "modified", build_unknown: "changes unknown",
   title: "═══ AgEnD Hub setup (experimental) ═══",
   intro:
     "A Hub lets colleagues sign in with your organisation's directory and ask agents that fleet owners choose to publish.\nThe Hub runs no agents and needs no AI CLI sign-in. Best placement: a dedicated, always-on machine or OS account with a stable intranet address.",
@@ -96,6 +98,8 @@ const en = {
 type Key = keyof typeof en;
 
 const zhTW: Record<Key, string> = {
+  build_info: "已安裝建置：{0}（套件 {1}）。可執行 agend build-info --json 查看原始碼資訊。",
+  build_source: "原始碼建置", build_modified: "含未提交變更", build_unknown: "變更狀態不明",
   title: "═══ AgEnD Hub 設定（實驗性）═══",
   intro:
     "Hub 讓同事用組織的目錄登入，向各機群主人選擇公開的 agent 提問。\nHub 本身不跑 agent，也不需要登入任何 AI CLI。建議放在一台專用、常開、有固定內網位址的機器或 OS 帳號上。",
