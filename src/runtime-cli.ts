@@ -9,11 +9,13 @@ import { RuntimeClientStore, validateRuntimeServer } from "./runtime-client-stor
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
 import { chooseRuntimeProfile, readBundledRuntimeServer, resolveRuntimeServer, runtimeServerProfile } from "./runtime-connection.js";
-import { assertCredentialProfileCli, assertCredentialProfileName, credentialLoginRequired, credentialProfilesRoot, credentialProfileReport, ensureCredentialProfile, listCredentialProfileNames,
+import { assertCredentialProfileCli, assertCredentialProfileName, credentialLoginRequired, credentialProfilesRoot, credentialProfileReport, listCredentialProfileNames,
   rememberCredentialStatus, requireCredentialProfile, withCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type CredentialProfileAnswer, type NativeCliExecutable } from "./windows-cli-worker.js";
 import type { AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
+import { createRuntimeProfile } from "./runtime-profile-ownership.js";
+import { appendAudit, describeRemoteSwitches, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 
 const HELP = `AgEnD native Windows runtime
 
@@ -26,6 +28,8 @@ const HELP = `AgEnD native Windows runtime
   agend-runtime login claude-code NAME [--profile DIRECTORY]
   agend-runtime profile list [--profile DIRECTORY]
   agend-runtime profile default (NAME | --clear) [--profile DIRECTORY]
+  agend-runtime remote-setup status [--profile DIRECTORY]
+  agend-runtime remote-setup (accounts | install) (on | off) [--for 2h] [--profile DIRECTORY]
 
 connect asks for a one-time pairing code, waits for approval in AgEnD, then runs in the foreground.
 Connection-ready downloads include the server address; double-click connect-agend.bat to connect or reconnect.
@@ -39,6 +43,12 @@ Several Claude accounts on one computer: login creates a named sign-in under <pr
 "claude auth login" for it, here, in this terminal. AgEnD only ever sends a profile NAME, never a folder; a name that does not exist or is
 not signed in is refused, never replaced by another account. connect --credential-profile NAME (or profile default NAME) makes NAME this
 pairing's default for agents that do not choose one in AgEnD. Only names and "signed in or not" are reported to AgEnD.
+
+Remote setup: two switches, both OFF, decide whether AgEnD's administrators may, from the dashboard, add and sign in Claude accounts here
+("accounts": sign in, sign out and remove profiles that this Runtime created) or install a CLI here ("install"). They are set only on this
+computer; AgEnD cannot change them. --for 2h turns a switch off by itself after that time. Each such request is recorded in audit.jsonl in this
+profile folder: who, when, which profile, the outcome, never a sign-in code, link, account address or output. Your own Claude sign-in
+(~\\.claude) and any profile this Runtime did not create are never changed from AgEnD.
 `;
 /** Same lock proof as run: a Windows restart's boot id and a reused PID must not leave a stale lock that blocks disconnect or rotate. */
 async function lockProfile(store: RuntimeClientStore, name: string): Promise<() => void> {
@@ -68,14 +78,14 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   if (argv.length === 1 && argv[0] === "--version") { process.stdout.write(`${JSON.stringify(readRuntimeInfo(), null, 2)}\n`); return; }
   if (!argv.length || argv.includes("--help") || argv[0] === "help") { process.stdout.write(HELP); return; }
   const [command, ...args] = argv;
-  if (!["connect", "run", "status", "disconnect", "rotate", "profile", "login"].includes(command)) throw new Error("Unknown runtime command. Use agend-runtime --help.");
-  const flags: Record<string, string> = {}, positional: string[] = [], takesNames = command === "profile" || command === "login";
+  if (!["connect", "run", "status", "disconnect", "rotate", "profile", "login", "remote-setup"].includes(command)) throw new Error("Unknown runtime command. Use agend-runtime --help.");
+  const flags: Record<string, string> = {}, positional: string[] = [], takesNames = command === "profile" || command === "login" || command === "remote-setup";
   for (let index = 0; index < args.length;) {
     const key = args[index];
     if (takesNames && key === "--clear" && flags[key] === undefined) { flags[key] = "true"; index++; continue; }
-    if (takesNames && !key.startsWith("--") && positional.length < 2) { positional.push(key); index++; continue; }
+    if (takesNames && !key.startsWith("--") && positional.length < (command === "remote-setup" ? 2 : 2)) { positional.push(key); index++; continue; }
     const value = args[index + 1];
-    if (!["--server", "--name", "--profile", "--credential-profile"].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
+    if (!["--server", "--name", "--profile", "--credential-profile", ...(command === "remote-setup" ? ["--for"] : [])].includes(key) || !value || value.startsWith("--") || flags[key] !== undefined) throw new Error("Invalid runtime arguments. Pairing codes must be entered interactively, never in command arguments.");
     flags[key] = value; index += 2;
   }
   if (command !== "connect" && (flags["--server"] || flags["--name"])) throw new Error("--server and --name are used only by connect");
@@ -92,11 +102,26 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   const credentialRoot = credentialProfilesRoot(store.directory);
   const probeStatus = (cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> => options.probeStatus ? options.probeStatus(cli, directory)
     : options.probeLogin ? options.probeLogin(cli, directory).then(loggedIn => ({ loggedIn })) : probeCredentialProfileStatus(cli, directory);
+  if (command === "remote-setup") {
+    const [what, state] = positional, usage = "Usage: agend-runtime remote-setup status | remote-setup (accounts | install) (on | off) [--for 2h] [--profile DIRECTORY]";
+    if (Object.keys(flags).some(key => key !== "--profile" && key !== "--for")) throw new Error(usage);
+    if (what === "status" && positional.length === 1 && flags["--for"] === undefined) { process.stdout.write(`${describeRemoteSwitches(readRemoteSwitches(store.directory))}\n`); return; }
+    if (positional.length !== 2 || !isRemoteSwitchName(what) || (state !== "on" && state !== "off") || (flags["--for"] !== undefined && state !== "on")) throw new Error(usage);
+    const forMs = flags["--for"] === undefined ? undefined : parseSwitchDuration(flags["--for"]);
+    // Recorded first: a switch change whose record cannot be kept is not made.
+    appendAudit(store.directory, { actor: "local", action: "switch", outcome: "ok", detail: state });
+    const result = setRemoteSwitch(store.directory, what, state === "on", forMs);
+    process.stdout.write(`${what}: ${result.on ? "on" : "off"}${result.until !== undefined ? `, turns off by itself at ${new Date(result.until).toLocaleString()}` : ""}\n`);
+    if (result.on) process.stdout.write(what === "accounts"
+      ? "AgEnD administrators can now add, sign in, sign out and remove Claude accounts that this Runtime creates on this computer. The sign-in stays on this computer, and anyone who can sign in to this Windows user can use it. Your own Claude sign-in is not touched.\n"
+      : "AgEnD administrators can now install the Claude Code and Codex versions that this Runtime's own list pins, into this Runtime's folder only.\n");
+    return;
+  }
   if (command === "login") {
     if (process.platform !== "win32" && !options.runLogin) throw new Error("Signing in to a Claude account here needs native Windows Node, under the Windows user whose Claude Code this Runtime uses.");
     const [cli, name] = positional;
     if (positional.length !== 2 || Object.keys(flags).some(key => key !== "--profile")) throw new Error("Usage: agend-runtime login claude-code NAME [--profile DIRECTORY]");
-    const kind = assertCredentialProfileCli(cli), directory = ensureCredentialProfile(credentialRoot, kind, assertCredentialProfileName(name));
+    const kind = assertCredentialProfileCli(cli), { directory } = createRuntimeProfile(credentialRoot, kind, assertCredentialProfileName(name));
     const executable = options.runLogin ? { path: "claude", command: "claude", args: [] } : await findCli(kind);
     if (!executable) throw new Error("Claude Code is not installed on this Windows computer. Install it, then run this again.");
     process.stdout.write(`Signing in "${name}". Claude Code opens its own sign-in; the result is kept only in\n  ${directory}\nand is never uploaded to AgEnD.\n`);

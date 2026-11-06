@@ -170,6 +170,15 @@ export function rememberCredentialStatus(root: string, cli: CredentialProfileCli
   for (const kind of Object.keys(file.checkedAt)) plain[kind] = Object.fromEntries(Object.entries(file.checkedAt[kind]));
   try { mkdirSync(root, { recursive: true, mode: 0o700 }); atomicWriteFileSync(join(root, STATUS_FILE), JSON.stringify({ version: 1, checkedAt: plain }), { mode: 0o600 }); } catch { /* a cache; the next check writes it again */ }
 }
+/** Forgets what was cached for a profile that no longer exists (its account included), so a removed name is never reported again. */
+export function forgetCredentialStatus(root: string, cli: CredentialProfileCli, name: string): void {
+  const file = readStatusFile(root), rows = file.checkedAt[cli];
+  if (!rows || !Object.hasOwn(rows, name)) return;
+  delete rows[name];
+  const plain: Record<string, Record<string, StatusRow>> = {};
+  for (const kind of Object.keys(file.checkedAt)) plain[kind] = Object.fromEntries(Object.entries(file.checkedAt[kind]));
+  try { atomicWriteFileSync(join(root, STATUS_FILE), JSON.stringify({ version: 1, checkedAt: plain }), { mode: 0o600 }); } catch { /* a cache; the next check writes it again */ }
+}
 /** What this computer tells AgEnD: names and a signed-in yes/no (null = not checked yet). No path, e-mail, account or token. */
 export function credentialProfileReport(root: string, defaultName?: string): CredentialProfileReport {
   const kind: CredentialProfileCli = "claude-code";

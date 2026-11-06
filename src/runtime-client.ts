@@ -5,6 +5,7 @@ import { createServer, type IncomingMessage, type Server } from "node:http";
 import { hostname } from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { WindowsCliBridge, nativeWindowsTransport, WINDOWS_CLI_INVENTORY_FILE, type WindowsCliProbe, type WindowsCliTask, type WindowsRunOptions } from "./windows-cli.js";
 import { probeCredentialProfileStatus, validateNativeTask, validWindowsAgentId, type CredentialProfileAnswer, type NativeTaskInput } from "./windows-cli-worker.js";
 import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-providers.js";
@@ -13,6 +14,11 @@ import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfi
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
+import { RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
+import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
+import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
+import { spawn as childSpawn } from "./child-process.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
@@ -69,6 +75,12 @@ export interface RuntimeClientOptions {
   credentialStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
   /** How often to look for a sign-in made by `agend-runtime login` in another window (default 5 s). */
   credentialWatchMs?: number;
+  /**
+   * #3190 Part 3a. Production leaves this out (native Windows only). A test, or the install work (3b), supplies pieces of the remote account
+   * operations: the CLI lookup, the logout run, the CLI installer (its presence is what makes this Runtime report `cli-install`), the sign-in
+   * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
+   */
+  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "install" | "signIn" | "ownership" | "environment" | "now">>;
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
@@ -100,7 +112,7 @@ function jsonBody(req: IncomingMessage): Promise<unknown> {
 }
 export class RuntimeClient {
   readonly bootId = randomUUID();
-  private readonly runtimeInfo;
+  private readonly runtimeInfo: ReturnType<typeof readRuntimeInfo>;
   private readonly bridge: RuntimeBridge;
   private socket: WebSocket | null = null;
   private welcomed = false;
@@ -120,6 +132,9 @@ export class RuntimeClient {
   private machinePaneLimit = 4;
   private paneEpoch = randomUUID();
   private readonly active = new Set<string>();
+  /** Run id -> the credential profile it runs under, so removing or signing out a profile waits for its runs. */
+  private readonly activeProfiles = new Map<string, string>();
+  private remoteAccounts: RemoteAccounts | null = null;
   private readonly snapshots = new Map<string, string>();
   private readonly pendingPaneTools = new Map<string, PendingTool>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -137,6 +152,9 @@ export class RuntimeClient {
     const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     this.runtimeInfo = options.credentialProfilesRoot ? info : { ...info, capabilities: info.capabilities.filter(name => name !== RUNTIME_CREDENTIAL_CAPABILITY) };
+    // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
+    const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities.filter(name => name !== REMOTE_SIGNIN_CAPABILITY || remote), ...(remote && options.remoteAccounts?.install ? [CLI_INSTALL_CAPABILITY] : [])] };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -284,6 +302,14 @@ export class RuntimeClient {
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
       return;
     }
+    if (value.type === "account.request") {
+      // Not journaled by AgEnD and not stored here: a sign-in's URL and code travel in these frames and nowhere else.
+      if (Object.keys(value).some(key => !["v", "type", "id", "operation", "payload"].includes(key)) || typeof value.id !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)
+        || !isRuntimeRemoteOperation(value.operation)) throw new Error("Invalid account request");
+      try { this.send({ v: 1, type: "account.response", id: value.id, ok: true, result: await this.remote().handle(value.operation, value.payload) }); }
+      catch (error) { this.send({ v: 1, type: "account.response", id: value.id, ok: false, error: message(error) }); }
+      return;
+    }
     if (value.type !== "request" || typeof value.id !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)
       || typeof value.operation !== "string" || !object(value.payload)) throw new Error("Invalid runtime request");
     const command = value as unknown as Command;
@@ -327,7 +353,7 @@ export class RuntimeClient {
     if (this.snapshots.get(task.id) === serialized) return;
     try {
       const job = this.options.store.update(task); this.snapshots.set(task.id, serialized); this.publish(job);
-      if (task.finishedAt) { this.active.delete(task.id); this.closeMcp(task.id); }
+      if (task.finishedAt) { this.active.delete(task.id); this.activeProfiles.delete(task.id); this.closeMcp(task.id); }
     } catch {
       // A process whose state could not be committed must not continue accepting commands.
       this.report("Runtime execution state could not be saved. Stop and inspect the private runtime profile.");
@@ -383,6 +409,42 @@ export class RuntimeClient {
     }
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
     return credentialProfileReport(root, name);
+  }
+  /** Whether a task or terminal is running under this profile (case-insensitively: on Windows `Work` and `work` are one folder). */
+  private profileInUse(name: string): "task" | "pane" | undefined {
+    for (const used of this.activeProfiles.values()) if (used.toLowerCase() === name.toLowerCase()) return "task";
+    try {
+      const raw: unknown = JSON.parse(readFileSync(join(this.options.store.directory, "panes", "panes.json"), "utf8"));
+      const panes = object(raw) && object(raw.panes) ? Object.values(raw.panes) : [];
+      for (const row of panes) {
+        const launch = object(row) && object(row.launch) ? row.launch : undefined, snapshot = object(row) && object(row.snapshot) ? row.snapshot : undefined;
+        if (typeof launch?.credentialProfile === "string" && launch.credentialProfile.toLowerCase() === name.toLowerCase() && snapshot?.state !== "exited") return "pane";
+      }
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "pane"; /* an unreadable ledger cannot show it is free */ }
+    return undefined;
+  }
+  /** #3190 Part 3a: the remote account operations (switches, sign-in, sign-out, remove, install), built on first use. */
+  private remote(): RemoteAccounts {
+    const root = this.options.credentialProfilesRoot, extra = this.options.remoteAccounts;
+    if (!root) throw new Error("This Runtime has no credential profile folder, so it cannot manage accounts. Update or restart the Runtime.");
+    if (process.platform !== "win32" && !extra) throw new Error("Managing accounts from AgEnD needs native Windows Node, under the Windows user whose Claude Code this Runtime uses.");
+    return this.remoteAccounts ??= new RemoteAccounts({
+      pairingDirectory: this.options.store.directory, credentialRoot: root,
+      status: (cli, directory) => this.statusOf(cli, directory),
+      find: extra?.find ?? ((cli) => findCli(cli)),
+      environment: extra?.environment ?? (() => nativeCliEnvironment()),
+      runLogout: extra?.runLogout ?? ((executable, args, env) => new Promise(done => {
+        // Output is not read, kept or logged: only whether the command ended well.
+        const child = childSpawn(executable.command, [...executable.args, ...args], { env, shell: false, stdio: "ignore", windowsHide: true });
+        const timer = setTimeout(() => { child.kill(); done(null); }, 30_000); timer.unref?.();
+        child.on("error", () => { clearTimeout(timer); done(null); }); child.on("close", code => { clearTimeout(timer); done(code); });
+      })),
+      inUse: name => this.profileInUse(name),
+      defaultProfile: () => { try { return this.options.store.credentialDefault(); } catch { return undefined; } },
+      changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
+      ...(extra?.install ? { install: extra.install } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
+      ...(extra?.now ? { now: extra.now } : {}),
+    });
   }
   private async refreshInventory(force = false): Promise<WindowsCliProbe> {
     const probed = await this.bridge.probe({ force }), credentialProfiles = await this.credentialReport(force);
@@ -444,6 +506,7 @@ export class RuntimeClient {
     try {
       // Fail closed, and as a confirmed failed turn: an unknown, unsigned or unusable profile never falls back to another account.
       const profile = this.credentialProfileFor(task.cli, run.credentialProfile);
+      if (profile) this.activeProfiles.set(task.requestId, profile);
       const credentialHome = profile ? await this.credentialHome(task.cli, profile) : undefined;
       const mcp = payload.mcp ? await this.openMcp(task.requestId, (payload.mcp as { tools: string[] }).tools) : undefined;
       if (this.stopped || !this.online()) throw new Error("Runtime disconnected before native execution started");
@@ -455,7 +518,7 @@ export class RuntimeClient {
       });
       this.update(initial); return this.options.store.get(task.requestId)!.task;
     } catch (error) {
-      this.active.delete(task.requestId); this.closeMcp(task.requestId);
+      this.active.delete(task.requestId); this.activeProfiles.delete(task.requestId); this.closeMcp(task.requestId);
       const failed = { ...accepted.job.task, status: "failed" as const, error: message(error), finishedAt: Date.now(), outcomeConfirmed: true };
       this.update(failed); return failed;
     }
