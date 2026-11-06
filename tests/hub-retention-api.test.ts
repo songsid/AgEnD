@@ -10,10 +10,10 @@ const path = "/api/settings/hub/retention", input = { contentDays: 7, eventDays:
 const caps: SettingsExecution[] = [];
 afterEach(() => { for (const cap of caps.splice(0)) cap.close(); });
 async function call(o: { method?: string; replay?: boolean; admin?: boolean; gateway?: boolean; absent?: boolean;
-  json?: unknown; meanwhile?: (ctx: any, cap: SettingsExecution) => void } = {}) {
+  json?: unknown; localAdmin?: () => boolean; meanwhile?: (ctx: any, cap: SettingsExecution) => void } = {}) {
   const body = Buffer.from(JSON.stringify(o.json ?? input)), method = o.method ?? "PUT";
   const cap = new SettingsExecution({ current: () => true, snapshot: () => null }); caps.push(cap);
-  const req = o.replay ? createSettingsReplay({ method, url: path, body, binding: "owner", localAdmin: () => o.admin !== false }, cap)
+  const req = o.replay ? createSettingsReplay({ method, url: path, body, binding: "owner", localAdmin: o.localAdmin ?? (() => o.admin !== false) }, cap)
     : Object.assign(new EventEmitter(), { method, url: path, headers: o.admin === false ? { cookie: "__Host-agend_hub_fake=not-a-host-session" } : { "x-agend-token": "tok" } }) as unknown as IncomingMessage;
   if (o.gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "scratch", expectedOrigin: "https://scratch.invalid", isCurrent: () => true });
   const control = { read: vi.fn(() => ({ contentDays: 30, eventDays: 180, revision: 1 })),
@@ -46,5 +46,12 @@ describe("host Hub retention Settings routes", () => {
     for (const meanwhile of [(ctx: any) => { ctx.hubRetention = () => null; }, (_ctx: any, cap: SettingsExecution) => cap.cancel()]) {
       const r = await call({ replay: true, meanwhile }); expect(r.status).toBe(503); expect(r.control.update).not.toHaveBeenCalled();
     }
+  });
+  it("rechecks local-admin authority at the policy commit", async () => {
+    const localAdmin = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    const r = await call({ replay: true, localAdmin });
+    expect(r).toMatchObject({ status: 503, body: { ok: false, error: "unavailable" } });
+    expect(r.control.update).toHaveBeenCalledOnce();
+    expect(localAdmin).toHaveBeenCalledTimes(2);
   });
 });

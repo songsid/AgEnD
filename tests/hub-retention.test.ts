@@ -47,6 +47,13 @@ describe("Hub retention policy", () => {
     expect(s.control.read()).toEqual({ contentDays: 30, eventDays: 180, revision: 1 });
     expect(s.db.prepare("SELECT count(*) n FROM audit").get()).toEqual({ n: 0 });
   });
+  it("preserves the revision and writes no audit when the policy is unchanged", () => {
+    const s = setup(), before = s.control.read();
+    expect(s.control.update(before, () => true)).toEqual(before);
+    expect(s.control.read()).toEqual(before);
+    expect(s.audit.appendInTransaction).not.toHaveBeenCalled();
+    expect(s.db.prepare("SELECT count(*) n FROM audit").get()).toEqual({ n: 0 });
+  });
   it("rejects asynchronous audit before committing a policy", () => {
     const s = setup();
     s.audit.appendInTransaction.mockImplementationOnce(() => Promise.resolve() as never);
