@@ -24,8 +24,8 @@ export function ensurePrivateDirectory(home: string, suffix: string): string {
   }
   return join(home, suffix);
 }
-export function readPrivateFile(home: string, suffix: string, maximum = 64 * 1024): string {
+export function readPrivateFile(home: string, suffix: string, maximum = 64 * 1024, options: { preserveBom?: boolean } = {}): string {
   const path = privatePath(home, suffix), s = lstatSync(path);
   if (s.size > maximum) throw Error("Hub private file is too large");
-  return new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(path));
+  return new TextDecoder("utf-8", { fatal: true, ignoreBOM: options.preserveBom === true }).decode(readFileSync(path));
 }

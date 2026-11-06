@@ -1624,6 +1624,14 @@ export function handleSettingsRequest(
         for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
           changes.push({ path: ["instances", name, key, nestedKey], value: nestedValue, remove: nestedValue === null });
         }
+      } else if (key === "backend_options" && value && typeof value === "object" && !Array.isArray(value)) {
+        // M-2446: per backend namespace and key, as normalizeSettingsInstancePatch merges it; null removes the key.
+        for (const [backend, options] of Object.entries(value as Record<string, unknown>)) {
+          if (!options || typeof options !== "object" || Array.isArray(options)) continue;
+          for (const [optionKey, optionValue] of Object.entries(options as Record<string, unknown>)) {
+            changes.push({ path: ["instances", name, key, backend, optionKey], value: optionValue, remove: optionValue === null });
+          }
+        }
       } else {
         changes.push({ path: ["instances", name, key], value, remove: removesInstanceOverride(key, value) });
       }

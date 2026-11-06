@@ -84,6 +84,19 @@ LIVE means the screen was captured on both versions, read identically by the pro
 | terminal-setup offer | BIN | did not appear in any onboarding run here (tmux, `TERM=xterm-256color`, no `TERM_PROGRAM`) on either version, so the trigger was not provoked; literal unchanged |
 | corrupt `claude.json` modal | BIN | not provoked; literal unchanged |
 
+## Every new version: Claude history in the View
+
+The web View draws a Claude agent's earlier conversation from its transcript in Claude's own Ctrl+O style, with the
+colours and glyphs sampled from the live screen (`src/ui/shared/view-history.js`; defaults: 2.1.318's own). On each new
+version, re-check the history layout:
+- capture a settled screen with a prompt, a reply, an edit (its diff) and a tool result on it
+  (`t capture-pane -p -e -t <pane> > cap.ansi`), then run
+  `npx tsx scripts/manual/claude-version-audit/view-history-sample.mts cap.ansi`; every value should read `sampled`. A
+  `NOT FOUND` means the version draws it differently (a new prompt glyph, a box, another bullet): update the sampler and
+  its fixture (`tests/fixtures/view-history-claude-*.ansi`, held by `tests/view-history-claude-ui.test.ts`);
+- compare Claude's Ctrl+O view with the View's history for the same turn (the tool words, `⎿` results, the fold), and
+  check the transcript still parses into the same steps (`tests/log-steps-1218.test.ts`; `tool_use` / `tool_result`).
+
 ## 2.1.294 → 2.1.295
 
 The audit was run as `AUDIT_DIR=… OLD=294 NEW=295 PORT=18295 bash pass1.sh` (then `extra.sh` and `extra2.sh`).

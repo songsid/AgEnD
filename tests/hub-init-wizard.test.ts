@@ -59,7 +59,7 @@ function setup(opts: { home?: string; directory?: Parameters<typeof fakeDirector
 
 const addresses = ["Team Hub", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443"];
 const tls = () => [certs.cert, certs.key];
-const directoryAnswers = () => ["corp", "ldaps://directory.example.test", certs.caCert, "2", "dc=example,dc=test", "cn=reader,dc=example,dc=test", { hidden: BIND_PW }];
+const directoryAnswers = () => ["corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "dc=example,dc=test", "cn=reader,dc=example,dc=test", { hidden: BIND_PW }];
 const signIn = (pw = USER_PW) => ["alice", { hidden: pw }];
 const tail = ["y", "30", "180", "initialize", "install"];
 

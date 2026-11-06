@@ -176,6 +176,11 @@ export function groupAgents(instances, live, filter, groupFor = (n) => groupOf(i
  * (the key is removed); the visibility baseline is what the picker showed, so a value it cannot show (a typo, read as
  * unset) is never rewritten by an unrelated edit (#1302).
  */
+/** The agent's own Codex speed, as the picker shows it ("" when unset or not one AgEnD knows). */
+export function codexSpeedOf(inst) {
+  const v = inst && inst.backend_options && inst.backend_options.codex && inst.backend_options.codex.speed;
+  return v === "fast" || v === "standard" ? v : "";
+}
 export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmojisBaseline) {
   const hang = inst.hang_detector || {};
   const next = {
@@ -199,7 +204,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     office_access: separateChoice(form.dashboard.office),
     office_pack_access: separateChoice(form.dashboard.office_packs),
   };
-  return changedFields(next, {
+  return Object.assign(changedFields(next, {
     backend: inst.backend || defaults.backend || "claude-code",
     model: (inst.model && inst.model.trim()) || null,
     working_directory: inst.working_directory || "",
@@ -223,7 +228,15 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     dashboard: dashboardPatchValue(dashboardForm(inst)),
     office_access: separateChoice(dashboardForm(inst).office),
     office_pack_access: separateChoice(dashboardForm(inst).office_packs),
-  });
+  }), codexSpeedPatch(form, inst));
+}
+/**
+ * M-2446: only the Codex speed key, merged per backend by the server (settings-instance-patch.ts), so the agent's other
+ * backend options are kept; back to "" removes it (null). Nothing when it did not change.
+ */
+function codexSpeedPatch(form, inst) {
+  const next = form.codex_speed || "";
+  return next === codexSpeedOf(inst) ? {} : { backend_options: { codex: { speed: next || null } } };
 }
 
 /** The agent form's starting values (an override shows the inherited value while "inherit" is on). */
@@ -254,6 +267,7 @@ export function agentForm(inst, defaults, name = "") {
     display_name: inst.display_name ?? defaults.display_name ?? "",
     status_emojis: inst.status_emojis || null,
     dashboard: dashboardForm(inst),
+    codex_speed: codexSpeedOf(inst),
     inherit: {
       auto_pause_after: inherit("auto_pause_after"), hang: !hasOwn(hang, "timeout_minutes"), agent_mode: inherit("agent_mode"),
       tool_set: inherit("tool_set"), tool_progress: inherit("tool_progress"), cross_instance_visibility: inherit("cross_instance_visibility"),
