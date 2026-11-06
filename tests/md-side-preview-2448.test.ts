@@ -74,6 +74,8 @@ describe("a Markdown file in the side panel (M-2448)", () => {
     const body = p.querySelector(".pv-md");
     expect([body.querySelector("script"), body.querySelector("img"), body.querySelector("h1,h2,h3,h4")?.textContent, body.querySelectorAll("li").length]).toEqual([null, null, "Title", 2]);
     expect(body.textContent).toContain("<script>alert(1)</script>");
+    // The chat's own Markdown container, so its look applies (lists, links, tables, code) — old stylesheets included.
+    expect(body.querySelector(".msg.pv-md-msg > .md")).not.toBeNull();
     expect([...body.querySelectorAll("a")].map((x: any) => x.getAttribute("href"))).toEqual(["https://example.com"]);
     // Nothing runs: no frame anywhere in the panel.
     expect(p.querySelector("iframe")).toBeNull();
@@ -95,6 +97,14 @@ describe("a Markdown file in the side panel (M-2448)", () => {
     expect(p.querySelector(".pv-md")).toBeNull();
     formatted.click(); await settleAll();
     expect(p.querySelector(".pv-md strong")?.textContent).toBe("bold");
+  });
+
+  it("a code block sits in the chat's code frame with its language", async () => {
+    serve({ [ID(3)]: "```js\nconst a = 1;\n```" });
+    const doc = await chat([att(3, "notes.md")]);
+    await click(doc.querySelector(".text-card .tc-panel"));
+    const box = doc.querySelector(".pv-md .codeblock");
+    expect([box?.querySelector(".cb-lang")?.textContent, box?.querySelector("pre")?.textContent?.trim()]).toEqual(["js", "const a = 1;"]);
   });
 
   it("over 1 MiB: not read — the card's own note says to download it", async () => {

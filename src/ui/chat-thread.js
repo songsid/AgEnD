@@ -66,10 +66,22 @@ export function drawMarkdown(el, src) {
     pre.className = "tc-pre"; code.textContent = String(src); pre.append(code); el.append(pre);
     return "plain";
   }
-  const md = doc.createElement("div");
+  // Inside the chat's own message container, so the chat's Markdown look applies as it is (lists, links, tables, code)
+  // — also with a stylesheet from before this panel existed.
+  const msg = doc.createElement("div"), md = doc.createElement("div");
+  msg.className = "msg pv-md-msg";
   md.className = "md";
   md.innerHTML = html;
-  el.append(md);
+  // Code blocks in the chat's frame, with their language (the thread's Wrap/Copy controls belong to the thread).
+  for (const pre of md.querySelectorAll("pre")) {
+    const box = doc.createElement("div"), head = doc.createElement("div"), lang = doc.createElement("span");
+    box.className = "codeblock"; head.className = "cb-head"; lang.className = "cb-lang";
+    lang.textContent = pre.dataset.lang || "text";
+    head.append(lang);
+    pre.replaceWith(box); box.append(head, pre);
+  }
+  msg.append(md);
+  el.append(msg);
   return "md";
 }
 /**
