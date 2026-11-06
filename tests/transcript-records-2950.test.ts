@@ -17,8 +17,8 @@ it('keeps Claude informational, prompt, error, tool and text events ordered thro
  const root=mkdtempSync(join(tmpdir(),'agend-transcript-records-'));roots.push(root);
  const source:TranscriptSource={poll:async()=>({toolUses:[],toolResults:[],assistantTexts:[],records}),reset(){}};
  const monitor=new TranscriptMonitor(root,pino({level:'silent'})as never,source),seen:unknown[]=[];
- for(const type of ['system_informational','user_prompt','api_error','tool_use','assistant_text'])monitor.on(type,(...args)=>seen.push([type,...args]));
- await monitor.pollIncrement();expect(seen).toEqual(records);expect(seen.map((e:any)=>e[0])).toEqual(['system_informational','user_prompt','api_error','tool_use','assistant_text']);monitor.stop();
+ for(const type of ['system_informational','workspace_follow','user_prompt','api_error','tool_use','assistant_text'])monitor.on(type,(...args)=>seen.push([type,...args]));
+ await monitor.pollIncrement();expect(seen).toEqual(records);expect(seen.map((e:any)=>e[0])).toEqual(['system_informational','workspace_follow','user_prompt','api_error','tool_use','assistant_text']);monitor.stop();
 });
 it('Codex boundary state keeps a steer in its open turn and leaves returned output out of assistant text',()=>{
  const state:CodexRecordState={openTurnId:'',openTurn:null,turnKnown:false},turns:any[]=[],events:TranscriptEvents={toolUses:[],toolResults:[],assistantTexts:[]};

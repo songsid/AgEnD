@@ -71,7 +71,7 @@ if grep -qE '^(website/)?package(-lock)?\.json$' "$_diff_f"; then
   packaging=true
 fi
 
-if grep -qE '^install\.sh$|^launcher/|^templates/|^website/public/install\.sh$|^scripts/preinstall-guard\.cjs$|^scripts/ci/(install-published-tarball|npm-rollback-proof|verify-published-tarball)\.|^src/(completion-install|install-lock|launchd-handoff|service-|update-|updater-caller)|^\.github/actions/published-agend-tarball/' "$_diff_f"; then
+if grep -qE '^install\.sh$|^launcher/|^templates/|^website/public/install\.sh$|^scripts/preinstall-guard\.cjs$|^scripts/ci/(install-published-tarball|npm-rollback-proof|verify-published-tarball)\.|^src/(completion-install|install-lock|launchd-handoff|service-|update-|updater-caller|tmux-(binary|server|legacy|rollback)\.)|^\.github/actions/published-agend-tarball/' "$_diff_f"; then
   packaging=true
 fi
 

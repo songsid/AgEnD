@@ -236,8 +236,28 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     quotaVisibility(exposureId, revision, visible) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/quota`, { revision, visible }); },
     rooms() { return call("GET", "/hub/v1/rooms"); },
     openRoom(exposureId, grantId) { return call("POST", "/hub/v1/rooms", { exposureId, grantId }); },
-    ask(roomId, idempotencyKey, text) { return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { idempotencyKey, text }); },
+    /** #3226 D2: this client carries files (ask sends `extras.files`; upload exists); hub-attachments checks the mark. */
+    filesV1: true,
+    /** #3226 D: `extras.files` names the asker's own uploads in this room (only on a room whose features take files). */
+    ask(roomId, idempotencyKey, text, extras = {}) {
+      return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { idempotencyKey, text, ...(Array.isArray(extras.files) && extras.files.length ? { files: extras.files } : {}) });
+    },
+    /** #3226 D: one file for a later question in this room, sent as is (the server types it by its name, images by
+     * their bytes). → { ok: true, file: { id, name, size, mime, url } } or { ok: false, status, code }. */
+    async upload(roomId, file) {
+      const headers = { Accept: "application/json", "Content-Type": "application/octet-stream", "X-File-Name": encodeURIComponent(String(file && file.name || "")) };
+      if (csrf) headers["X-AgEnD-Hub-CSRF"] = csrf;
+      let r;
+      try { r = await fetchImpl(`/hub/v1/rooms/${id(roomId)}/files`, { method: "POST", headers, credentials: "same-origin", cache: "no-store", body: file }); }
+      catch { return { ok: false, status: 0, code: "unreachable" }; }
+      let json = null;
+      try { json = await r.json(); } catch { json = null; }
+      if (r.status === 401) { csrf = null; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+      if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed" };
+      return { ok: true, ...(json && typeof json === "object" ? json : {}) };
+    },
     read(roomId, after = 0) { return call("GET", `/hub/v1/rooms/${id(roomId)}/messages?after=${id(after)}`); },
+    chooseButtons(roomId, input) { return call("POST", `/hub/v1/rooms/${id(roomId)}/buttons`, input); },
     pairings() { return call("GET", "/hub/v1/pairings"); },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },

@@ -188,6 +188,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // behind each listener's own gate): the thread, its Markdown renderer and previews, times, the composer and WorkBar,
     // the right-hand rail's frame and a page head. Their old /ui/js/ paths re-export them for tabs opened before.
     "chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-composer.js", "side-rail.js", "page-head.js",
+    // Hub E (#3226): the HTML side panel (versions, pages, Point at it). The fleet-only Files & changes and Share register
+    // with it from the fleet's /ui/js/preview-panel.js; the Hub never loads those.
+    "preview-panel.js", "preview-panel-actions.js", "preview-versions.js", "preview-pages.js",
     // …and the chat's words (static tables), so the Hub draws the same thread in the same words.
     "chat-strings.js", "chat-md-strings.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
@@ -207,6 +210,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
   "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
+  // #3160: Follow agent's stylesheet (linked by workspace-panel.js; an older workspace.css or app.css lacks it).
+  "workspace-follow.css": { file: join("shared", "workspace-follow.css"), type: "text/css; charset=utf-8" },
   // The task board's list, filters, card menu and Insights (#3169-#3171): linked by fleet-task-view.js (an older app.css lacks it).
   "task-board.css": { file: join("shared", "task-board.css"), type: "text/css; charset=utf-8" },
   // Settings -> Runtime: the install tabs, command cards, reinstall notice and the account list (credential profiles, which account each sign-in is), linked by panel-runtimes.js; an older app.css lacks it.

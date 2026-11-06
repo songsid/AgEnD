@@ -38,11 +38,13 @@ describe("hubEntryToMessages", () => {
     }
   });
   it("the strings stay strings; D/E/F's files, buttons and quote are taken from beside them", () => {
-    const files = [{ id: "a".repeat(32), name: "a.png", size: 1, mime: "image/png", url: `/hub/v1/rooms/r/files/${"a".repeat(32)}` }];
+    // D: a Hub file (uuid id, room URL) becomes the shared thread's attachment (32-hex id; an image a photo, shown inline).
+    const fid = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", files = [{ id: fid, name: "a.png", size: 1, mime: "image/png", url: `/hub/v1/rooms/r/files/${fid}` }];
+    const drawn = [{ id: fid.replace(/-/g, ""), name: "a.png", size: 1, mime: "image/png", url: `/hub/v1/rooms/r/files/${fid}/inline`, kind: "photo" }];
     const buttons = { id: "b".repeat(32), labels: ["Yes", "No"], state: "open" };
     const [q, a] = S.hubEntryToMessages({ messageId: "m", sequence: 1, receipt: { stage: "answered", at: 1 }, question: "Q", answer: "A",
       questionFiles: files, answerFiles: files, buttons, quote: { kind: "page", fileId: "f", label: "p.html" } }, room, {});
-    expect([q.attachments, q.quote, a.attachments, a.buttons]).toEqual([files, { kind: "page", fileId: "f", label: "p.html" }, files, buttons]);
+    expect([q.attachments, q.quote, a.attachments, a.buttons]).toEqual([drawn, { kind: "page", fileId: "f", label: "p.html" }, drawn, buttons]);
     expect(S.hubEntryToMessages({ messageId: "m", sequence: 1, receipt: { stage: "queued", at: 1 }, question: "Q" }, room, {})[0]).not.toHaveProperty("attachments");
   });
   it("nothing for an entry without a sequence", () => {
@@ -108,7 +110,7 @@ describe("createHubChatStore", () => {
   });
   it("a full page reads on from its last entry: an old settled-for-good (uncertain) or still-open entry never pins the read (#3246 review)", async () => {
     const page = (from: number, n: number, stage = "answered") => Array.from({ length: n }, (_, i) => ({ messageId: `m${from + i}`, sequence: from + i, receipt: { stage: from + i === 1 ? stage : "answered", at: 1 }, question: "q", answer: "a" }));
-    for (const [first, expected] of [["uncertain", [0, 100, 150]], ["queued", [0, 100, 50]]] as const) {   // queued: the tail page (150 - PAGE)
+    for (const [first, expected] of [["uncertain", [0, 100, 150]], ["queued", [0, 100, 51]]] as const) {   // queued: the tail leaves one slot for an unseen row (150 - PAGE + 1)
       const t = fakeTimers(), afters: number[] = [];
       const answers = [{ ok: true, entries: page(1, 100, first) }, { ok: true, entries: page(101, 50) }, { ok: true, entries: [] }];
       const c = { read: async (_id: string, after: number) => { afters.push(after); return answers.shift() ?? { ok: true, entries: [] }; } };
@@ -137,7 +139,7 @@ describe("createHubChatStore", () => {
     for (let i = 0; i < 6; i++) { t.run(); await flush(); }
     expect(afters.slice(0, 3)).toEqual([0, 100, 200]);
     expect(afters.slice(3).filter((a) => a === 0).length, "the far open entry still read now and then").toBeGreaterThanOrEqual(1);
-    expect(afters.slice(3).filter((a) => a === 150).length).toBeGreaterThanOrEqual(4);
+    expect(afters.slice(3).filter((a) => a === 151).length).toBeGreaterThanOrEqual(4);
     s.stop();
   });
   it("two old unsettled entries in different pages are each read again in turn (#3261 review)", async () => {
@@ -168,9 +170,9 @@ describe("createHubChatStore", () => {
     release({ ok: true, entries: [] }); await flush();
     s.stop();
   });
-  it("F's hooks are stubs until F: nothing is clicked", async () => {
+  it("an unknown button set cannot be clicked", async () => {
     const s = S.createHubChatStore(room, { client: client([]), timers: fakeTimers(), doc: null });
-    expect([await s.clickButton("x", 0), s.busy("x"), s.mine("x")]).toEqual([{ ok: false, code: "unsupported" }, false, []]);
+    expect([await s.clickButton("x", 0), s.busy("x"), s.mine("x")]).toEqual([{ ok: false, code: "invalid" }, false, []]);
     s.stop();
   });
 });
