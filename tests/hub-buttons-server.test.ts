@@ -57,7 +57,7 @@ describe("Hub buttons use ordinary durable question delivery", () => {
     expect((await w.click(b, { index: 1 })).status).toBe(410);
     expect(w.questions()).toEqual(["[button] Yes (value: yes)"]);
     const read = await r!.call(w.a, "GET", `/hub/v1/rooms/${w.roomId}/messages`);
-    expect(read.json.entries[0]).toMatchObject({ question: "Question", answer: "Choose", buttons: { id: b.id, labels: b.labels, state: "chosen", chosen: 0 } });
+    expect(read.json.entries[0]).toMatchObject({ question: "Question", answer: "Choose", buttons: { id: b.id, labels: b.labels, state: "chosen", chosen: 0, by: "asker" } });
     expect(r!.audits.filter(a => a.action === "buttons.chosen")).toHaveLength(1);
   });
   it.each([undefined, {}, { multi: true }])("neither an owner nor admin can bypass the exact room asker (%j)", async poll => {

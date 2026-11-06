@@ -111,8 +111,11 @@ export class HubButtonsService {
     let data: ReturnType<HubButtonsService["source"]>;
     try { data = this.source(db, row); } catch { return undefined; } // retention never reconstructs choices from a browser
     const b = data.buttons, ballot = this.ballot(row, data.msg.asker), now = this.core.now();
-    if (!b.poll) return { id: b.id, labels: [...b.labels], state: row.state === "open" && now >= row.expires_at ? "expired" : row.state,
-      ...(row.chosen_index !== null ? { chosen: row.chosen_index } : {}) };
+    if (!b.poll) {
+      const person = row.chosen_index === null ? undefined : db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(data.msg.asker) as { display_name: string } | undefined;
+      return { id: b.id, labels: [...b.labels], state: row.state === "open" && now >= row.expires_at ? "expired" : row.state,
+        ...(row.chosen_index !== null ? { chosen: row.chosen_index, by: person?.display_name ?? data.msg.asker } : {}) };
+    }
     const closed = row.state !== "open", ballots = ballot?.options.length ? [ballot] : [];
     return { id: b.id, labels: [...b.labels], state: closed ? "closed" : "open", poll: {
       deadline: row.expires_at, answered: ballots.length, multi: b.poll.multi, reveal: b.poll.reveal, rev: row.revision,
