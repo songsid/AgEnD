@@ -52,18 +52,32 @@ export class HubAttachmentStore {
   }
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private budget() { return { ...HUB_PENDING_BUDGET, ...this.options.budget }; }
-  /** What is waiting now: unexpired uploads/staged files of one owner (uploader or fleet), staging in progress, and in all. */
+  /** What is physically waiting now (after the sweep): every remaining upload/staged file of one owner (uploader or fleet),
+   * staging in progress, and in all — no age filter, so a row the sweep did not delete is always charged. */
   private waiting(db: Database.Database, owner: { uploader?: string; fleetId?: string }): { files: number; bytes: number; total: number } {
-    const now = this.now();
-    const rows = (db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged') AND expires_at > ?
-      AND ${owner.uploader !== undefined ? "uploader=?" : "fleet_id=?"}`).get(now, owner.uploader ?? owner.fleetId) as { n: number; b: number });
+    const rows = (db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged')
+      AND ${owner.uploader !== undefined ? "uploader=?" : "fleet_id=?"}`).get(owner.uploader ?? owner.fleetId) as { n: number; b: number });
     const staging = owner.fleetId !== undefined ? db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(t),0) AS b FROM (SELECT MAX(total) AS t FROM hub_attachment_staging WHERE fleet_id=? GROUP BY id)").get(owner.fleetId) as { n: number; b: number } : { n: 0, b: 0 };
-    const all = (db.prepare("SELECT COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged') AND expires_at > ?").get(now) as { b: number }).b
+    const all = (db.prepare("SELECT COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged')").get() as { b: number }).b
       + (db.prepare("SELECT COALESCE(SUM(t),0) AS b FROM (SELECT MAX(total) AS t FROM hub_attachment_staging GROUP BY id)").get() as { b: number }).b;
     return { files: rows.n + staging.n, bytes: rows.b + staging.b, total: all };
   }
-  /** Room for one more waiting file of `size` bytes for this owner (backpressure otherwise). */
+  /** Expired uploads/staged files and stale staging, deleted with any blob nothing uses any more (caller's transaction). */
+  private sweepExpired(db: Database.Database): void {
+    const now = this.now();
+    db.prepare("DELETE FROM hub_attachments WHERE state <> 'bound' AND expires_at IS NOT NULL AND expires_at <= ?").run(now);
+    db.prepare("DELETE FROM hub_attachment_staging WHERE created_at <= ?").run(now - STAGING_TTL_MS);
+    this.dropOrphans(db);
+  }
+  private dropOrphans(db: Database.Database): number {
+    const orphans = db.prepare("SELECT sha256 FROM hub_attachment_blobs b WHERE NOT EXISTS (SELECT 1 FROM hub_attachments a WHERE a.sha256 = b.sha256)").all() as { sha256: string }[];
+    for (const o of orphans) { db.prepare("DELETE FROM hub_attachment_segments WHERE sha256=?").run(o.sha256); db.prepare("DELETE FROM hub_attachment_blobs WHERE sha256=?").run(o.sha256); }
+    return orphans.length;
+  }
+  /** Room for one more waiting file of `size` bytes for this owner (backpressure otherwise). Capacity held by an expired
+   * file returns only once its bytes are actually deleted — here, in the same transaction — never by age alone. */
   admit(db: Database.Database, owner: { uploader?: string; fleetId?: string }, size: number): void {
+    this.sweepExpired(db);
     const b = this.budget(), w = this.waiting(db, owner);
     if (w.files + 1 > b.files || w.bytes + size > b.bytes || w.total + size > b.totalBytes) throw new HubProtocolError("backpressure");
   }
@@ -188,9 +202,7 @@ export class HubAttachmentStore {
     const now = this.now();
     const files = db.prepare("DELETE FROM hub_attachments WHERE created_at < ? OR (state <> 'bound' AND expires_at IS NOT NULL AND expires_at <= ?)").run(contentCut, now).changes;
     db.prepare("DELETE FROM hub_attachment_staging WHERE created_at <= ?").run(now - STAGING_TTL_MS);
-    const orphans = db.prepare("SELECT sha256 FROM hub_attachment_blobs b WHERE NOT EXISTS (SELECT 1 FROM hub_attachments a WHERE a.sha256 = b.sha256)").all() as { sha256: string }[];
-    for (const o of orphans) { db.prepare("DELETE FROM hub_attachment_segments WHERE sha256=?").run(o.sha256); db.prepare("DELETE FROM hub_attachment_blobs WHERE sha256=?").run(o.sha256); }
-    return { files, blobs: orphans.length };
+    return { files, blobs: this.dropOrphans(db) };
   }
 }
 export class HubAttachmentRefused extends HubProtocolError {
