@@ -9,7 +9,7 @@ import { InstallerPsStartGate, installerPsStartSlots, type InstallerPsStartTicke
 
 export const hasPwsh = spawnSync(process.platform === "win32" ? "where.exe" : "which", ["pwsh"]).status === 0;
 // Startup keeps the old 10 s request allowance, independently of each case.
-// Only the START hook's outer watchdog gets cleanup/reporting headroom.
+// Only setup START covers the bounded queue and cleanup/reporting headroom.
 const STARTUP_MS = 10_000;
 export class InstallerPsBatch {
   private child?: ChildProcessWithoutNullStreams;
