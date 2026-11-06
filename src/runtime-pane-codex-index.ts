@@ -33,15 +33,48 @@ async function snapshotFile(source: string, target: string, max: number, check?:
     await writeFile(target, bytes, { flag: "wx", mode: 0o600 });
   } finally { await handle.close(); }
 }
-/** SQLite silently ignores a WAL it cannot parse, so only a well-formed one whose frames end on a frame boundary counts:
- * anything else (a torn or foreign file) stays unknown instead of being read as "no rows". */
-export function completeSqliteWal(bytes: Buffer): boolean {
+/** SQLite's WAL checksum (walChecksumBytes): pairs of 32-bit words, big-endian when the magic's low bit is set. */
+function walChecksum(bytes: Buffer, start: number, end: number, bigEndian: boolean, s1: number, s2: number): [number, number] {
+  for (let i = start; i < end; i += 8) {
+    const x0 = bigEndian ? bytes.readUInt32BE(i) : bytes.readUInt32LE(i), x1 = bigEndian ? bytes.readUInt32BE(i + 4) : bytes.readUInt32LE(i + 4);
+    s1 = (s1 + x0 + s2) >>> 0; s2 = (s2 + x1 + s1) >>> 0;
+  }
+  return [s1, s2];
+}
+/** SQLite silently discards WAL content it cannot verify and then answers from the older main file, so a WAL counts
+ * only when every frame SQLite would apply verifies AND nothing it would drop looks like lost data:
+ *  - a valid header (magic, version, page size, header checksum) and whole frames;
+ *  - frames in the header's generation (same salts) chain their checksums; any mismatch there is unknown, never skipped;
+ *  - the current generation ends on a commit frame (no torn or uncommitted transaction left behind);
+ *  - frames after it may only be an older generation's leftovers (different salts) once at least one commit verified.
+ * Anything else (a torn, flipped or foreign file) stays unknown instead of being read as "no rows". */
+export function coherentSqliteWal(bytes: Buffer): boolean {
   if (bytes.length < 32) return false;
   const magic = bytes.readUInt32BE(0), pageSize = bytes.readUInt32BE(8);
   if ((magic !== 0x377f0682 && magic !== 0x377f0683) || bytes.readUInt32BE(4) !== 3007000) return false;
   const size = pageSize === 1 ? 65536 : pageSize;
   if (size < 512 || size > 65536 || (size & (size - 1))) return false;
-  return (bytes.length - 32) % (24 + size) === 0;
+  if ((bytes.length - 32) % (24 + size) !== 0) return false;
+  const bigEndian = (magic & 1) === 1;
+  let [s1, s2] = walChecksum(bytes, 0, 24, bigEndian, 0, 0);
+  if (s1 !== bytes.readUInt32BE(24) || s2 !== bytes.readUInt32BE(28)) return false;
+  const salt1 = bytes.readUInt32BE(16), salt2 = bytes.readUInt32BE(20);
+  let frames = 0, lastCommit = false;
+  for (let at = 32; at < bytes.length; at += 24 + size) {
+    const frameSalt1 = bytes.readUInt32BE(at + 8);
+    if (frameSalt1 !== salt1 || bytes.readUInt32BE(at + 12) !== salt2) {
+      // An older generation's tail is only plausible behind a verified, committed current generation, and SQLite
+      // bumps salt-1 on every restart, so an older frame's salt-1 is behind the header's (a same-salt-1 frame is damage).
+      const behind = (salt1 - frameSalt1) >>> 0;
+      return frames > 0 && lastCommit && behind > 0 && behind < 0x80000000;
+    }
+    if (bytes.readUInt32BE(at) === 0) return false;
+    [s1, s2] = walChecksum(bytes, at, at + 8, bigEndian, s1, s2);
+    [s1, s2] = walChecksum(bytes, at + 24, at + 24 + size, bigEndian, s1, s2);
+    if (s1 !== bytes.readUInt32BE(at + 16) || s2 !== bytes.readUInt32BE(at + 20)) return false;
+    frames++; lastCommit = bytes.readUInt32BE(at + 4) !== 0;
+  }
+  return frames === 0 || lastCommit;
 }
 let active = false;
 export async function codexIndexHasNoThread(path: string, id: string, current: () => boolean, walPath?: string): Promise<boolean> {
@@ -56,7 +89,7 @@ export async function codexIndexHasNoThread(path: string, id: string, current: (
       snapshot = await mkdtemp(join(tmpdir(), "agend-codex-proof-"));
       const copy = join(snapshot, "state.sqlite");
       await snapshotFile(path, copy, CODEX_PROOF_DB_MAX);
-      await snapshotFile(walPath, copy + "-wal", CODEX_PROOF_WAL_MAX, completeSqliteWal);
+      await snapshotFile(walPath, copy + "-wal", CODEX_PROOF_WAL_MAX, coherentSqliteWal);
       if (!isCurrent()) return false;
       // Our own copy: writable so SQLite can rebuild its WAL index; nothing in it is ever written back.
       uri = pathToFileURL(copy).href; readOnly = false;

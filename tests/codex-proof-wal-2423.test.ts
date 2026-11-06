@@ -11,7 +11,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { nativeCodexSessionState } from "../src/runtime-pane-transcript.js";
-import { completeSqliteWal } from "../src/runtime-pane-codex-index.js";
+import { coherentSqliteWal } from "../src/runtime-pane-codex-index.js";
 
 const cleanup: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const p of cleanup.splice(0)) rmSync(p, { recursive: true, force: true }); });
@@ -65,16 +65,52 @@ it.each(["torn", "garbage", "no-db", "grown"])("a %s WAL stays unknown", async (
   expect(await f.proof()).toBe("unknown");
 });
 
-it("only a well-formed, frame-aligned SQLite WAL header is accepted", () => {
-  const header = (magic: number, version: number, page: number, frames: number) => {
-    const b = Buffer.alloc(32 + frames * (24 + (page === 1 ? 65536 : page))); b.writeUInt32BE(magic, 0); b.writeUInt32BE(version, 4); b.writeUInt32BE(page, 8); return b;
-  };
-  expect(completeSqliteWal(header(0x377f0682, 3007000, 4096, 2))).toBe(true);
-  expect(completeSqliteWal(header(0x377f0683, 3007000, 1, 1))).toBe(true);
-  expect(completeSqliteWal(header(0x377f0682, 3007000, 4096, 0))).toBe(true);
-  expect(completeSqliteWal(header(0x12345678, 3007000, 4096, 1))).toBe(false);
-  expect(completeSqliteWal(header(0x377f0682, 3007001, 4096, 1))).toBe(false);
-  expect(completeSqliteWal(header(0x377f0682, 3007000, 3000, 1))).toBe(false);
-  expect(completeSqliteWal(header(0x377f0682, 3007000, 4096, 1).subarray(0, 100))).toBe(false);
-  expect(completeSqliteWal(Buffer.alloc(16))).toBe(false);
+// Prism R1 (#3219): SQLite drops a WAL whose header checksum, frame checksum or frame salt fails and then answers from
+// the older main file, so each of those flips on the WAL holding the only row must stay unknown, never absent.
+it.each([["header checksum", 24], ["first frame checksum", 48], ["first frame salt-1", 40], ["first frame salt-2", 44], ["page byte", 32 + 24 + 100]])
+("a bit flip in the %s of a WAL holding the only row is unknown", async (_what, offset) => {
+  const f = fixture(["$id"]); expect(await f.proof()).toBe("unknown");
+  const wal = f.dbPath + "-wal", bytes = readFileSync(wal); bytes[offset as number] ^= 1; writeFileSync(wal, bytes);
+  expect(coherentSqliteWal(bytes)).toBe(false);
+  expect(await f.proof()).toBe("unknown");
+});
+
+it("a valid WAL (control) verifies; the real, coherent one with no row for the pin proves absent", async () => {
+  const f = fixture([randomUUID()]); expect(coherentSqliteWal(readFileSync(f.dbPath + "-wal"))).toBe(true); expect(await f.proof()).toBe("absent");
+});
+
+/** A WAL SQLite restarted after a checkpoint: a short new generation at the front, the old generation's frames behind it. */
+function restartedFixture(newRow: "$id" | "other") {
+  const f = fixture([]), side = join(f.root, "side", "state_5.sqlite"), db = new DatabaseSync(side);
+  db.exec("PRAGMA wal_autocheckpoint=0");
+  for (let n = 0; n < 40; n++) db.prepare("INSERT INTO threads VALUES(?)").run(randomUUID() + "-" + "x".repeat(400));
+  db.exec("PRAGMA wal_checkpoint(PASSIVE)");
+  db.prepare("INSERT INTO threads VALUES(?)").run(newRow === "$id" ? f.id : randomUUID());
+  copyFileSync(side, f.dbPath); copyFileSync(side + "-wal", f.dbPath + "-wal"); db.close();
+  return f;
+}
+it("a restarted WAL with an older generation behind the newest commit is coherent and still read exactly", async () => {
+  const absent = restartedFixture("other"), wal = readFileSync(absent.dbPath + "-wal");
+  // The fixture really has the shape: current-generation first frame, an older generation's last frame.
+  const lastFrame = wal.length - (24 + wal.readUInt32BE(8));
+  expect(wal.readUInt32BE(32 + 8)).toBe(wal.readUInt32BE(16));
+  expect(wal.readUInt32BE(lastFrame + 8)).not.toBe(wal.readUInt32BE(16));
+  expect(coherentSqliteWal(wal)).toBe(true);
+  expect(await absent.proof()).toBe("absent");
+  expect(await restartedFixture("$id").proof()).toBe("unknown");
+});
+
+it("frame-level shapes SQLite would silently drop are not coherent", () => {
+  const f = fixture([randomUUID(), randomUUID()]), good = readFileSync(f.dbPath + "-wal"), page = good.readUInt32BE(8), frame = 24 + page;
+  expect(coherentSqliteWal(good)).toBe(true);
+  // An uncommitted (torn) last transaction: clear the commit marker of the final frame.
+  const torn = Buffer.from(good); torn.writeUInt32BE(0, good.length - frame + 4); expect(coherentSqliteWal(torn)).toBe(false);
+  // A later frame whose salt-2 alone changed (salt-1 equal): damage, not an older generation.
+  const late = Buffer.from(good); late[good.length - frame + 12] ^= 1; expect(coherentSqliteWal(late)).toBe(false);
+  // A frame of the current generation with page number 0.
+  const zero = Buffer.from(good); zero.writeUInt32BE(0, 32); expect(coherentSqliteWal(zero)).toBe(false);
+  // A not frame-aligned tail, a foreign magic/version/page size, too short.
+  expect(coherentSqliteWal(good.subarray(0, good.length - 10))).toBe(false);
+  for (const [at, value] of [[0, 0x12345678], [4, 3007001], [8, 3000]] as const) { const b = Buffer.from(good); b.writeUInt32BE(value, at); expect(coherentSqliteWal(b)).toBe(false); }
+  expect(coherentSqliteWal(Buffer.alloc(16))).toBe(false);
 });
