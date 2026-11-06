@@ -16,6 +16,7 @@ const strip = (src: string) => src.replace(/^import .*$/gm, "").replace(/^export
 const ctx = vm.createContext({ navigator: { language: "en" } });
 vm.runInContext(strip(read(join(SHARED, "app-i18n.js"))), ctx);
 vm.runInContext(strip(read(join(UI, "chat-strings.js"))), ctx);
+vm.runInContext(strip(read(join(UI, "workspace-strings.js"))), ctx);   // #3153: the Files & changes panel's own words
 vm.runInContext(strip(read(join(UI, "panel-fleet.js"))), ctx);
 // The task board's words (Fleet › Tasks): its shared module and the card dialog.
 vm.runInContext(strip(read(join(UI, "fleet-task-common.js"))), ctx);

@@ -8,6 +8,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
+import "./workspace-strings.js";   // this panel's own words (an older cached chat-strings.js lacks them)
 
 /** This panel's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
 function linkWorkspaceCss(doc = typeof document !== "undefined" ? document : null) {
