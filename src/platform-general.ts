@@ -22,6 +22,18 @@ export interface ChannelLike {
   general_channel_id?: unknown;
 }
 type Instances = Record<string, unknown>;
+/** The fleet's `defaults` as written (only `general_topic` matters here). */
+type Defaults = { general_topic?: unknown } | null | undefined;
+
+/**
+ * Whether an instance is a General as the config loader makes it: its own `general_topic`, else the fleet default
+ * (`defaults.general_topic: true` makes every unflagged instance one; an explicit `general_topic: false` never is).
+ */
+export function isEffectiveGeneral(inst: unknown, defaults?: Defaults): boolean {
+  if (!inst || typeof inst !== "object") return false;
+  const own = (inst as { general_topic?: unknown }).general_topic;
+  return own === undefined || own === null ? defaults?.general_topic === true : own === true;
+}
 
 export const channelAdapterId = (ch: ChannelLike): string => ch.id ?? ch.type;
 
@@ -36,11 +48,11 @@ export function isPersonaChannel(channels: readonly ChannelLike[], index: number
  * The General answering for a connection, as the fleet routes it: one bound by channel_id, or — for the first
  * connection only — one with no channel_id (a missing channel_id is the first connection's).
  */
-export function generalForAdapter(instances: Instances, channels: readonly ChannelLike[], adapterId: string): string | undefined {
+export function generalForAdapter(instances: Instances, channels: readonly ChannelLike[], adapterId: string, defaults?: Defaults): string | undefined {
   const first = channels[0] ? channelAdapterId(channels[0]) : undefined;
   for (const [name, inst] of Object.entries(instances ?? {})) {
-    const row = inst as { general_topic?: unknown; channel_id?: unknown } | null | undefined;
-    if (!row || typeof row !== "object" || row.general_topic !== true) continue;
+    if (!isEffectiveGeneral(inst, defaults)) continue;
+    const row = inst as { channel_id?: unknown };
     const bound = typeof row.channel_id === "string" && row.channel_id ? row.channel_id : first;
     if (bound === adapterId) return name;
   }
@@ -48,11 +60,11 @@ export function generalForAdapter(instances: Instances, channels: readonly Chann
 }
 
 /** The connections (adapter ids) with their own group that no General answers for. Personas are never listed. */
-export function adaptersWithoutGeneral(instances: Instances, channels: readonly ChannelLike[]): string[] {
+export function adaptersWithoutGeneral(instances: Instances, channels: readonly ChannelLike[], defaults?: Defaults): string[] {
   return channels.flatMap((ch, i) => {
     if (isPersonaChannel(channels, i)) return [];
     const id = channelAdapterId(ch);
-    return generalForAdapter(instances, channels, id) ? [] : [id];
+    return generalForAdapter(instances, channels, id, defaults) ? [] : [id];
   });
 }
 
@@ -77,11 +89,12 @@ export function platformGeneralPlan(
   channels: readonly ChannelLike[],
   index: number,
   home: string,
+  defaults?: Defaults,
 ): { name: string; instance: { working_directory: string; general_topic: true; channel_id: string; topic_id?: number | string } } | null {
   const ch = channels[index];
   if (!ch || isPersonaChannel(channels, index)) return null;
   const adapterId = channelAdapterId(ch);
-  if (generalForAdapter(instances, channels, adapterId)) return null;
+  if (generalForAdapter(instances, channels, adapterId, defaults)) return null;
   const name = freeGeneralName(instances ?? {}, `general-${adapterId}`);
   const topicId = generalTopicId(ch);
   return {
