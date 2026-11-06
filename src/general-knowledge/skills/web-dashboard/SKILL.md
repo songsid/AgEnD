@@ -255,7 +255,9 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
   **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
   to them first). An agent with the task board off (Dashboard access) is greyed out as an assignee: the board hands
-  it no cards. Read-only over the public link.
+  it no cards. **Insights** (beside the project's numbers): its cards counted per assignee / status / priority / size,
+  each row a bar split by status, priority or size, every card or main tasks only — what the board shows
+  (`agend_tasks_insights` keeps the choices). Read-only over the public link.
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't
