@@ -1,7 +1,7 @@
 // #2911 (6): every page in the thread — the list the preview panel shows. A page is what preview-versions.js counts as
 // versions of one thing: the agent's complete ```html blocks with one <title> (the untitled ones together), or its
 // attached .html files of one name. Pure: the panel draws it; nothing here runs a preview.
-import "./chat-render.js";
+import "/assets/chat-render.js";
 import { htmlTitle } from "./preview-versions.js";
 
 const R = () => globalThis.AgendChatRender;

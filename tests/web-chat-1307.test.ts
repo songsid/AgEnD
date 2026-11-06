@@ -23,7 +23,7 @@ type Render = {
   isNearBottom(t: number, c: number, h: number, slack?: number): boolean; lineCount(s: unknown): number; CODE_FOLD_LINES: number;
   isLongPaste(s: unknown): boolean; LONG_PASTE_CHARS: number; formatElapsed(ms: unknown): string;
 };
-const render = (): Render => { const c = vm.createContext({}); vm.runInContext(readFileSync(join(UI, "chat-render.js"), "utf8"), c); return (c as { AgendChatRender: Render }).AgendChatRender; };
+const render = (): Render => { const c = vm.createContext({}); vm.runInContext(readFileSync(join(UI, "shared", "chat-render.js"), "utf8"), c); return (c as { AgendChatRender: Render }).AgendChatRender; };
 
 describe("theme.js: system by default, this browser's choice when it made one", () => {
   function boot(stored: string | null | Error) {
@@ -193,7 +193,8 @@ describe("phones and assistive tech (segment 3)", () => {
     expect(PANEL_CHAT).toMatch(/list\.className = "thread";\s*list\.setAttribute\("role", "log"\);\s*list\.setAttribute\("aria-live", "off"\);\s*list\.setAttribute\("aria-label", t\("chat\.conversationWith", name\)\);/);
     // The announcer is the one polite status line; the panel creates it once, with the same three attributes.
     expect(PANEL_CHAT).toMatch(/el\.id = "announcer"; el\.className = "sr-only"; el\.setAttribute\("role", "status"\); el\.setAttribute\("aria-live", "polite"\); el\.setAttribute\("aria-atomic", "true"\)/);
-    const workBar = PANEL_CHAT.split("\n").find(l => l.includes('class=${`work-bar'))!;
+    // Hub PR A (#3226): the bar is drawn by the shared composer module's WorkBarView.
+    const workBar = readFileSync(join(SHARED, "chat-composer.js"), "utf8").split("\n").find(l => l.includes('class=${`work-bar'))!;
     expect(workBar, "the working line is no longer a live region of its own").toBeDefined();
     expect(workBar).not.toMatch(/aria-live|role=/);
   });

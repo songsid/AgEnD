@@ -14,8 +14,8 @@ import { h, page, type AppPage } from "./helpers/app-harness.js";
 import { createThread } from "../src/ui/chat-thread.js";
 
 const UI = join(process.cwd(), "src", "ui");
-const RENDER = readFileSync(join(UI, "chat-render.js"), "utf8");
-const PREVIEW = readFileSync(join(UI, "preview.js"), "utf8");
+const RENDER = readFileSync(join(UI, "shared", "chat-render.js"), "utf8");
+const PREVIEW = readFileSync(join(UI, "shared", "preview.js"), "utf8");
 type Fence = { code: string; terminated: boolean };
 const render = () => { const c = vm.createContext({}); vm.runInContext(RENDER, c); return (c as unknown as { AgendChatRender: { renderMarkdown(t: string, o?: object): string; htmlFences(t: string): Fence[] } }).AgendChatRender; };
 
@@ -46,7 +46,7 @@ describe("which fences get a card (§6.1)", () => {
     expect(r.htmlFences(t).map(f => f.code)).toEqual(['<img src=x onerror=alert(1)></pre><script>alert(2)</script>', '"><svg onload=alert(3)>']);
   });
   it("the chat asks for cards only for role \"agent\" — from the server, never sender or text", () => {
-    const THREAD = readFileSync(join(UI, "chat-thread.js"), "utf8");
+    const THREAD = readFileSync(join(UI, "shared", "chat-thread.js"), "utf8");
     // #1630: the same rule, written as a flag; the emoji lookup is the page's own (never message text).
     // #2053: through the memo; its one caller passes the server's role, and the memo hands it on unchanged.
     expect(THREAD).toContain('renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)');
@@ -57,7 +57,7 @@ describe("which fences get a card (§6.1)", () => {
     const code = (src: string) => src.split("\n").filter(l => !/^\s*(\*|\/\/)/.test(l));
     // Any place that can turn cards on (literally, or from the server's role): still only the thread's one line.
     const sites = uiFiles().flatMap(f => code(readFileSync(f, "utf8")).filter(l => /htmlCards:\s*(true|x\.role === "agent")/.test(l)).map(() => f.slice(UI.length + 1)));
-    expect(sites, "one call site").toEqual(["chat-thread.js"]);
+    expect(sites, "one call site").toEqual([join("shared", "chat-thread.js")]);
   });
 });
 
@@ -83,7 +83,7 @@ describe("the preview factory is the only frame (§5.3; #2799 removed the Canvas
       } while (src !== before);
       return [...src.matchAll(/createElement\(\s*["'`]iframe["'`]\s*\)|<iframe\b|["'`]sandbox["'`]|\.sandbox\b/gi)].map(m => `${f.slice(UI.length + 1)}: ${m[0]}`);
     });
-    expect(hits.sort()).toEqual(['preview.js: createElement("iframe")', 'preview.js: "sandbox"'].sort());
+    expect(hits.sort()).toEqual([`${join("shared", "preview.js")}: createElement("iframe")`, `${join("shared", "preview.js")}: "sandbox"`].sort());
     expect(PREVIEW.indexOf('createElement("iframe")')).toBeGreaterThan(PREVIEW.indexOf("function mountPreview("));
   });
 

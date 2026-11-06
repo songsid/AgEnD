@@ -3,7 +3,7 @@ import { codexTurnRecord, type CodexRecordState } from "./transcript-records.js"
 import type { PaneTranscriptBaseline } from "./runtime-pane-transcript-protocol.js";
 import { constants, fstatSync, lstatSync, type BigIntStats } from "node:fs";
 import { codexQuotaErrorMessages } from "./pane-quota-history.js";
-import { codexIndexHasNoThread } from "./runtime-pane-codex-index.js";
+import { CODEX_PROOF_DB_MAX, CODEX_PROOF_WAL_MAX, codexIndexHasNoThread } from "./runtime-pane-codex-index.js";
 import { lstat, open, opendir, realpath } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
 import type { Stats } from "node:fs";
@@ -122,9 +122,10 @@ export async function nativeCodexSessionState(cwd: string, sessionId: string, cu
     for await(const entry of profile){if(!live()||++entries>16384)return "unknown";
       if(/^state_.*\.sqlite(?:-wal|-shm)?$/.test(entry.name)&&!/^state_5\.sqlite(?:-wal|-shm)?$/.test(entry.name))return "unknown";}
     const dbPath=join(roots.codex,"state_5.sqlite"),db=await inspect(dbPath),wal=await inspect(dbPath+"-wal");
-    if(wal){regular(wal);if(wal.size)return "unknown";}
-    if(db){regular(db);if(!db.size||db.size>128*1024*1024)return "unknown";
-      if(!await codexIndexHasNoThread(dbPath,sessionId,live))return "unknown";}
+    // Codex leaves WAL bytes after a clean exit: they are read through a private snapshot, then re-checked unchanged below.
+    if(wal){regular(wal);if(wal.size>CODEX_PROOF_WAL_MAX||wal.size&&!db)return "unknown";}
+    if(db){regular(db);if(!db.size||db.size>CODEX_PROOF_DB_MAX)return "unknown";
+      if(!await codexIndexHasNoThread(dbPath,sessionId,live,wal?.size?dbPath+"-wal":undefined))return "unknown";}
     await realDirectory(roots.codex);
     return await unchanged()?"absent":"unknown";
   }catch{return "unknown";}

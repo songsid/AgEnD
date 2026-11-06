@@ -2,14 +2,15 @@
  * Unauthenticated, read-only delivery of the Windows Runtime installer:
  *   GET /runtime/install.ps1             the installer script, stamped with this server's runtime version and bundle SHA-256
  *   GET /runtime/v1/bundle/windows.zip   the same createRuntimeBundle() archive Settings offers as a download
- * Both are static for a given server version: the bundle is built once and kept, and the script is that bundle's
+ *   GET /runtime/v1/bundle/windows.json  the version, SHA-256 and size of that exact cached archive
+ * These files are static for a given server version: the bundle is built once and kept, and the script is that bundle's
  * version and SHA-256 stamped into a fixed template. The script is built once as bytes and those exact bytes are what every
  * request receives (no newline rewriting, no compression, no per-request text), so the SHA-256 that Settings shows for it is
  * the hash of what is sent: the copied command downloads the script, checks that hash and only then runs it, so the check
  * does not depend on the TLS trust decision. The script in turn pins the bundle's hash. Nothing in a response depends on
  * the request (no Host header, query, cookie or caller), and nothing in it is a credential, pairing code, profile, user data
  * or server address: the page's command hands the server address to the script.
- * They are served only while runtimes.remote_runtime is on (otherwise both answer 404), never through a public gateway link
+ * They are served only while runtimes.remote_runtime is on (otherwise they answer 404), never through a public gateway link
  * (404 there too), only over loopback or TLS (the installer must not travel over plain LAN HTTP), rate limited per client
  * address with a small burst, and never larger than the bundle's own cap.
  * Pairing stays exactly as it was: nothing here creates, accepts or approves a pairing.
@@ -25,6 +26,7 @@ import { gatewayRequestContext } from "./web-request-context.js";
 
 export const RUNTIME_INSTALL_SCRIPT_PATH = "/runtime/install.ps1";
 export const RUNTIME_BUNDLE_PATH = "/runtime/v1/bundle/windows.zip";
+export const RUNTIME_BUNDLE_METADATA_PATH = "/runtime/v1/bundle/windows.json";
 /** Replaced in the template with values that were validated first; the script holds no other server-supplied text. */
 export const RUNTIME_INSTALL_VERSION_TOKEN = "@@AGEND_RUNTIME_VERSION@@";
 export const RUNTIME_INSTALL_SHA256_TOKEN = "@@AGEND_RUNTIME_SHA256@@";
@@ -70,8 +72,8 @@ export interface RuntimeInstallOptions {
   template?: () => string;
   now?: () => number;
 }
-/** What is served for the life of this server process: the generic bundle and the script that pins its hash. */
-interface RuntimeInstallFiles { bundle: RuntimeBundle; script: Buffer; scriptSha256: string; etag: string }
+/** What is served for the life of this server process: the generic bundle, its metadata and the script that pins its hash. */
+interface RuntimeInstallFiles { bundle: RuntimeBundle; metadata: Buffer; script: Buffer; scriptSha256: string; etag: string }
 /** What the dashboard shows an administrator so the copied command can pin the script. */
 export interface RuntimeInstallerInfo { version: string; scriptSha256: string; scriptBytes: number; bundleSha256: string }
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -110,32 +112,35 @@ export class RuntimeInstallService {
   private build(): RuntimeInstallFiles {
     if (this.files) return this.files;
     const bundle = (this.options.bundle ?? createRuntimeBundle)();
-    if (bundle.bytes.length > RUNTIME_MAX_ARCHIVE_BYTES) throw new Error("Runtime bundle exceeded its archive size limit");
+    if (!bundle.bytes.length || bundle.bytes.length > RUNTIME_MAX_ARCHIVE_BYTES) throw new Error("Runtime bundle exceeded its archive size limit");
     const script = Buffer.from(renderRuntimeInstallScript((this.options.template ?? defaultTemplate)(), bundle), "utf8");
-    return this.files = { bundle, script, scriptSha256: sha256(script), etag: `"${bundle.version}-${bundle.sha256}"` };
+    const metadata = Buffer.from(JSON.stringify({ version: bundle.version, sha256: bundle.sha256, bytes: bundle.bytes.length }) + "\n");
+    return this.files = { bundle, metadata, script, scriptSha256: sha256(script), etag: `"${bundle.version}-${bundle.sha256}"` };
   }
   /** For the local administrator's dashboard. Throws when the installer cannot be built on this host. */
   installer(): RuntimeInstallerInfo {
     const { bundle, script, scriptSha256 } = this.build();
     return { version: bundle.version, scriptSha256, scriptBytes: script.length, bundleSha256: bundle.sha256 };
   }
-  /** True when the request was one of the two install routes and has been answered (404 while they are off); false leaves every other path to the normal gate. */
+  /** True for an install/metadata route (404 while off); false leaves every other path to the normal gate. */
   handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
     const isScript = url.pathname === RUNTIME_INSTALL_SCRIPT_PATH;
-    if (!isScript && url.pathname !== RUNTIME_BUNDLE_PATH) return false;
-    // Off, or reached through a public gateway link: these two routes do not exist there. 404 is the same answer as any
+    const isMetadata = url.pathname === RUNTIME_BUNDLE_METADATA_PATH;
+    if (!isScript && !isMetadata && url.pathname !== RUNTIME_BUNDLE_PATH) return false;
+    // Off, or reached through a public gateway link: these routes do not exist there. 404 is the same answer as any
     // unknown route, and it does not reveal whether remote runtimes are configured. No bundle is built for it.
     if (!remoteRuntimeEnabled() || gatewayRequestContext(req)) { answer(res, 404, { error: "Not found" }); return true; }
     const method = req.method ?? "GET";
     if (method !== "GET" && method !== "HEAD") { answer(res, 405, { error: "Runtime installer files are read-only" }, { Allow: "GET, HEAD" }); return true; }
     if (url.search) { answer(res, 400, { error: "Runtime installer files do not accept options" }); return true; }
     if (!protectedTransport(req)) { answer(res, 403, { error: "The Runtime installer is served only over HTTPS or localhost" }); return true; }
+    // ZIP and metadata share an allowance, including conditional and HEAD requests.
     const peer = req.socket.remoteAddress ?? "unknown", kind = isScript ? "script" : "bundle";
     if (!this.admit(`${kind}:${peer}`, LIMITS[kind])) {
       answer(res, 429, { error: "Too many Runtime installer requests. Wait a minute and try again." }, { "Retry-After": "30" }); return true;
     }
     try {
-      const { bundle, script, etag } = this.build();
+      const { bundle, metadata, script, etag } = this.build();
       const common = { "X-Content-Type-Options": "nosniff" };
       if (isScript) {
         // never cached anywhere: a stale script would not match the hash the page shows
@@ -146,9 +151,12 @@ export class RuntimeInstallService {
         // still verifies the SHA-256 pinned in the script, so a cached copy is never trusted on its own.
         res.writeHead(304, { ...common, "Cache-Control": "no-cache", ETag: etag }); res.end();
       } else {
-        res.writeHead(200, { ...common, "Cache-Control": "no-cache", ETag: etag, "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${bundle.filename}"`,
-          "Content-Length": bundle.bytes.length, "X-Agend-SHA256": bundle.sha256 });
-        res.end(method === "HEAD" ? undefined : bundle.bytes);
+        const bytes = isMetadata ? metadata : bundle.bytes;
+        res.writeHead(200, { ...common, "Cache-Control": "no-cache", ETag: etag,
+          "Content-Type": isMetadata ? "application/json; charset=utf-8" : "application/zip",
+          ...(isMetadata ? {} : { "Content-Disposition": `attachment; filename="${bundle.filename}"`, "X-Agend-SHA256": bundle.sha256 }),
+          "Content-Length": bytes.length });
+        res.end(method === "HEAD" ? undefined : bytes);
       }
     } catch {
       answer(res, 503, { error: "The Windows Runtime installer is unavailable on this host. Update or reinstall AgEnD and retry." });
