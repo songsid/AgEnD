@@ -102,6 +102,8 @@ agend ls --backend <name>       # Filter by backend
 agend ls --display              # Add display names as last column (hidden by default)
 agend attach [name]             # Attach to instance tmux window (accepts real name, display name, row number, or substring)
 agend tmux <tmux args…>         # Run a tmux command on this fleet's own tmux server and socket (e.g. agend tmux ls)
+agend rollback <version>        # Go back to an older AgEnD (2.3.x): stop, close AgEnD's own tmux server (confirmed), then install it and start
+agend tmux-migrate --release <name>  # After an upgrade from 2.3: release an instance held by an old tmux window you will close yourself
 agend logs                      # Show fleet log (daemon.log, or fleet.log if the daemon log is not there yet)
 agend logs -n 100               # Show last 100 lines (default: 50)
 agend logs -f                   # Follow mode (tail -f)

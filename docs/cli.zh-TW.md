@@ -103,6 +103,8 @@ agend ls --backend <name>       # 依 backend 篩選
 agend ls --display              # 在最後一欄顯示 display name（預設隱藏）
 agend attach [name]             # 接入實例的 tmux 視窗（接受真名、display name、列號或子字串）
 agend tmux <tmux 參數…>         # 對這個 fleet 自己的 tmux server 與 socket 執行 tmux 指令（例如 agend tmux ls）
+agend rollback <version>        # 回到較舊的 AgEnD（2.3.x）：先停止、關閉並確認 AgEnD 自己的 tmux 伺服器，再安裝並啟動該版本
+agend tmux-migrate --release <name>  # 從 2.3 升級後：放行因舊 tmux 視窗而暫停的實例（舊視窗由你自行關閉）
 agend logs                      # 顯示 fleet 日誌（daemon.log；還沒有時改讀 fleet.log）
 agend logs -n 100               # 顯示最後 100 行（預設 50）
 agend logs -f                   # 追蹤模式（tail -f）
