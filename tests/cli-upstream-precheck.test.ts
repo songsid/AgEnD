@@ -22,6 +22,11 @@ describe("manifest.json is the detectors' source (drift)", () => {
   it("matches what the source produces now — rebuild with build-manifest.ts when this fails", () => {
     expect(manifestKeys(committed())).toEqual(manifestKeys(buildManifest()));
   });
+  it("a manifest that lost a retired mark is stale too (the mark changes what precheck reports)", () => {
+    const stripped = structuredClone(committed());
+    for (const l of stripped.backends["kiro-cli"]!.literals) delete (l as { retiredAfter?: string }).retiredAfter;
+    expect(manifestKeys(stripped)).not.toEqual(manifestKeys(buildManifest()));
+  });
   it("a detector literal the source has and the manifest lacks is caught", () => {
     const m = committed();
     const without = structuredClone(m);
