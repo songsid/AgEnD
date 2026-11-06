@@ -33,6 +33,8 @@ import {
   type HubInitSecrets,
 } from "./types.js";
 
+import { hubInstallationInventory } from "./inventory.js";
+
 export const STAGES = ["started", "identity", "web-tls", "secret", "config", "manifest", "enabled"] as const;
 export type HubInitStage = (typeof STAGES)[number];
 
@@ -222,7 +224,7 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
     if (plan.bindPasswordRef !== BIND_PASSWORD_REF) problems.push(`bindPasswordRef must be ${BIND_PASSWORD_REF}`);
     const admin = plan.administrator;
     if (!admin || admin.realm !== plan.directory?.realm || !isCanonicalObjectId(admin.objectId ?? "")) {
-      problems.push("administrator: must be the directory identity from the test sign-in (same realm, immutable object id)");
+      problems.push("administrator: must be the designated directory identity (same realm, immutable object id)");
     }
     for (const [key, value] of Object.entries(plan.retention ?? {})) {
       if (!Number.isInteger(value) || value < 1 || value > 3650) problems.push(`retention.${key}: a whole number of days from 1 to 3650`);
@@ -375,6 +377,9 @@ export function createHubInitializer(deps: HubInitializerDeps): HubInitializer {
       }
 
       if (!r.done.includes("enabled")) {
+        // An unsigned, informational record alongside the sealed runtime manifest; enabled is still the last patch.
+        // Also creates the record when resuming a pre-inventory operation that already completed the manifest stage.
+        writePrivate(paths.inventory, `${JSON.stringify(hubInstallationInventory(plan, identity, new Date(now()).toISOString()), null, 2)}\n`, uid);
         applyFleetYamlPatches(paths.fleetYaml, [ENABLE_PATCH]);
         mark("enabled");
       }

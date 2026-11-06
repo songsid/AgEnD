@@ -153,6 +153,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-shell.js", "app-session.js", "web-authorize.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
+    // Claude history in the View: its renderer, loaded by View when a Claude agent's View is scrolled up (static code; the
+    // history is read through the pane's own route and gate).
+    "view-history.js",
     // alpha.2 (N1): the sidebar's one instance list, and View's roster read it shows to an anonymous reader.
     "instance-nav.js", "view-roster-store.js",
     // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
@@ -181,6 +184,12 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "settings-width.js",
     // The computer's display name, in a module of its own so a tab opened before an upgrade loads it fresh (Chat imports it).
     "machine-name.js",
+    // Hub PR A (#3226): the chat's drawing, shared by the fleet's chat and the Hub's (static code; messages are read
+    // behind each listener's own gate): the thread, its Markdown renderer and previews, times, the composer and WorkBar,
+    // the right-hand rail's frame and a page head. Their old /ui/js/ paths re-export them for tabs opened before.
+    "chat-thread.js", "chat-render.js", "preview.js", "html-attachment.js", "chat-time.js", "chat-composer.js", "side-rail.js", "page-head.js",
+    // …and the chat's words (static tables), so the Hub draws the same thread in the same words.
+    "chat-strings.js", "chat-md-strings.js",
     "preact.module.js", "preact-hooks.module.js", "htm.module.js",
     // #3008: the QR code of an authenticator's setup (qrcode-generator 2.0.4, MIT; shared/vendor/vendor.json, byte-checked).
     // Static code, no data — the secret is drawn by Settings behind the gate; loaded only when an app is being set up.
@@ -191,6 +200,14 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
+  // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
+  "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
+  // The task board's list, filters, card menu and Insights (#3169-#3171): linked by fleet-task-view.js (an older app.css lacks it).
+  "task-board.css": { file: join("shared", "task-board.css"), type: "text/css; charset=utf-8" },
+  // Settings -> Runtime -> Connect a computer: the install tabs, command cards and reinstall notice (linked by panel-runtimes.js; an older app.css lacks it).
+  "runtime-install.css": { file: join("shared", "runtime-install.css"), type: "text/css; charset=utf-8" },
+  // Claude history in the View: the renderer's own stylesheet (linked by it, so an older app.css never lacks its rules).
+  "view-history.css": { file: join("shared", "view-history.css"), type: "text/css; charset=utf-8" },
 };
 
 /** True for a name `/assets/` serves. The public link's manifest asks this too: one list, not two. */

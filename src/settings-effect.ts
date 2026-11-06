@@ -29,6 +29,10 @@ import { parseNativeInstanceCreate, nativePaneTopicTarget } from "./native-insta
 import { parseRuntimesSettingsBody } from "./runtime-switches.js";
 import { parseGeneralSwitchInput } from "./general-binding.js";
 import { settingsFingerprint } from "./settings-transaction.js";
+import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } from "./hub-browser-certificate-policy.js";
+import { parseHubRetention } from "./hub-retention-policy.js";
+import { parseHubMembership } from "./hub-membership-settings.js";
+import { t } from "./locale.js";
 
 export interface SettingsSecretProof {
   readonly key: string; readonly secret: string; readonly previous?: string;
@@ -40,11 +44,16 @@ export interface SettingsEffectContext {
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
   generalLocation?(input: unknown): { summary: string[]; connections: string[] };
   /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
+  hubBrowserCertificate?(input: unknown, binding: string): HubBrowserCertificateProposal;
+  hubMembership?(): { enabled: boolean };
   hubExposure?(input: unknown): { summary: string[] };
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "PUT" && path === "/api/settings/hub/membership") return true;
+  if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
+  if (method === "PUT" && path === "/api/settings/hub/retention") return true;
   if (method === "POST" && path === "/api/settings/general-location") return true;
   if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
   if (method === "POST" && /^\/api\/hub\/member\/pairing\/(?:connect|confirm|disconnect)$/.test(path)) return true;   // S3c PR B
@@ -63,6 +72,36 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  if (path === "/api/settings/hub/browser-certificate/apply") {
+    if (method !== "POST" || !cfg || !binding || !context.hubBrowserCertificate) throw new SettingsConfirmationError(404, "unavailable");
+    let input, proposal;
+    try { input = parseHubBrowserCertificateApply(body); proposal = context.hubBrowserCertificate(input, binding); }
+    catch { throw new SettingsConfirmationError(409, "conflict"); }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input, proposal.certificate]),
+      summary: [t("hub.browserCertificate.replace"), t("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
+        t("hub.browserCertificate.expires", proposal.certificate.validTo),
+        ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
+      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } };
+  }
+  if (path === "/api/settings/hub/retention") {
+    if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
+    let policy;
+    try { policy = parseHubRetention(body); } catch { throw new SettingsConfirmationError(400, "invalid_retention"); }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, policy]),
+      summary: [t("hub.retention.content", policy.contentDays), t("hub.retention.events", policy.eventDays), t("hub.retention.purge")],
+      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } };
+  }
+  if (path === "/api/settings/hub/membership") {
+    if (method !== "PUT" || !cfg || !context.hubMembership) throw new SettingsConfirmationError(503, "unavailable");
+    let next: { enabled: boolean }, previous: { enabled: boolean };
+    try { next = parseHubMembership(body); previous = context.hubMembership(); }
+    catch { throw new SettingsConfirmationError(400, "invalid_hub_membership"); }
+    const diff = settingsChangeDiff({ fleet: { hub_member: previous } }, { fleet: { hub_member: next } }, { operation });
+    return { diff: diff ? { ...diff, section: "access", summary: [t(next.enabled ? "hub.membership.enable" : "hub.membership.disable")],
+      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } : null };
+  }
   // #2453 (§0.2): the trusted effect — the named-link option off before, on after — makes the change one its asker can't
   // confirm (#2170 self-confirmation).
   // §0.3: likewise the quick-link option, on its value as in force (explicit, else the release default) before and after.

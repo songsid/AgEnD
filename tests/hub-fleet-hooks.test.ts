@@ -183,3 +183,21 @@ describe("#3130 review: disconnect withdraws every published exposure", () => {
     await expect(fm.hubMemberWithdrawAll()).rejects.toThrow(/partial/);
   });
 });
+
+
+describe("host browser certificate Settings composition", () => {
+  it("passes the running control through FleetManager and the real Settings baseline for exact-session preview", async () => {
+    const { fm } = harness({});
+    expect(fm.hubBrowserCertificate()).toBeNull();
+    const control = { preview: vi.fn(() => ({ reference: "prepared", revision: "revision", certificate: { fingerprint256: "public" } })) };
+    fm.hubRuntime = { browserCertificateSettings: () => control };
+    expect(fm.hubBrowserCertificate()).toBe(control);
+    fm.settingsGate();
+    const baseline = await fm.settingsBaselineReader.read();
+    expect(baseline.hubBrowserCertificate({ reference: "prepared" }, "owner-session")).toMatchObject({ certificate: { fingerprint256: "public" } });
+    expect(control.preview).toHaveBeenCalledWith({ reference: "prepared" }, "owner-session");
+    fm.hubRuntime = null;
+    expect(() => baseline.hubBrowserCertificate({}, "owner-session")).toThrow("unavailable");
+    await fm.stopAll();
+  });
+});

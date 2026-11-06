@@ -25,6 +25,7 @@ afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true
 type Kind = "user" | "system" | "launchd";
 interface RigOpts {
   kind: Kind | null;
+  background?: boolean;
   /** The fleet runs before the update (pid 9191). */
   running?: boolean;
   /** What the new release's `agend <args>` does: its exit status, and what it leaves the manager in. */
@@ -81,7 +82,7 @@ function rig(o: RigOpts) {
   const file = o.kind === "system" ? systemUnit
     : o.kind === "user" ? join(userHome, ".config", "systemd", "user", "com.agend.fleet.service")
     : o.kind === "launchd" ? join(userHome, "Library", "LaunchAgents", "com.agend.fleet.plist") : null;
-  const oldDefinition = o.kind === "launchd" ? "<plist>old</plist>\n" : "[Service]\nExecStart=/old/agend fleet start\n";
+  const oldDefinition = o.kind === "launchd" ? `<plist><dict>${o.background ? "<key>LimitLoadToSessionType</key><string>Background</string>" : ""}old</dict></plist>\n` : "[Service]\nExecStart=/old/agend fleet start\n";
   if (file) { mkdirSync(join(file, ".."), { recursive: true }); writeFileSync(file, oldDefinition); }
   const live = new Set<number>([4242]);
   const setFleet = (pid: number) => {
@@ -182,6 +183,15 @@ const manager = (r: ReturnType<typeof rig>) => r.calls.filter(c => c.startsWith(
 const OLD_LINKS = { agend: "../lib/node_modules/@songsid/agend/launcher/agend", "agend-agent": "../lib/node_modules/@songsid/agend/launcher/agend-agent" };
 
 describe("#2420 a new service that does not come up: the previous package, unit and service come back", () => {
+  it("refuses an unreadable launchd definition before selecting any domain or replacing the package", () => {
+    const r = rig({ kind: "launchd", background: true }), read = cjsFs.readFileSync;
+    const spy = vi.spyOn(cjsFs, "readFileSync").mockImplementation(((file: Parameters<typeof read>[0], ...args: unknown[]) => {
+      if (String(file) === r.file) throw Object.assign(Error("unreadable"), { code: "EACCES" });
+      return Reflect.apply(read, cjsFs, [file, ...args]);
+    }) as typeof read);
+    try { expect(() => r.main()).toThrow("no launchd domain was selected"); } finally { spy.mockRestore(); }
+    expect(r.version()).toBe(OLD); expect(r.calls).toEqual([]); expect(readFileSync(r.file!, "utf8")).toBe(r.oldDefinition);
+  });
   it.each([["user", "--user ", "com.agend.fleet"], ["system", "", "agend"]] as const)("systemd %s unit, Fable's shim (restart → stop + exit 1): stopped, restored, reloaded, the previous service started", (kind, scope, unit) => {
     const r = rig({ kind, running: true, agend: shimRestart });
     expect(r.main()).toBe(1);
@@ -207,21 +217,22 @@ describe("#2420 a new service that does not come up: the previous package, unit 
     expect(r.rollbackDir()).toEqual([]);
   });
 
-  it("launchd: the new release's activation left a job running (a new pid) — booted out (waited for), restored, plan removed, the previous job bootstrapped", () => {
-    const r = rig({ kind: "launchd", running: true, agend: (args, m) => {
+  it.each([false, true])("launchd background=%s: a failed activation is booted out, awaited and restored in the same domain", background => {
+    const r = rig({ kind: "launchd", background, running: true, agend: (args, m) => {
       if (args[0] !== "restart") return 0;
       // `agend restart`'s planned activation failed and put the previous plist's job back — over the NEW package.
       m.setFleet(5555); return 1;
     } });
+    const domain = background ? "user/501" : "gui/501";
     expect(r.main()).toBe(1);
     expect(manager(r)).toEqual([
-      "launchctl print gui/501/com.agend.fleet",
-      "launchctl bootout gui/501/com.agend.fleet",
-      "launchctl print gui/501/com.agend.fleet",   // still there: launchd answers before the job is gone
-      "launchctl print gui/501/com.agend.fleet",
-      `launchctl bootstrap gui/501 ${r.file}`,
-      "launchctl print gui/501/com.agend.fleet",   // the previous fleet came up (fleet.pid = the job's pid, /health answers)
-      "launchctl print gui/501/com.agend.fleet",   // its pid, for the report
+      `launchctl print ${domain}/com.agend.fleet`,
+      `launchctl bootout ${domain}/com.agend.fleet`,
+      `launchctl print ${domain}/com.agend.fleet`,   // still there: launchd answers before the job is gone
+      `launchctl print ${domain}/com.agend.fleet`,
+      `launchctl bootstrap ${domain} ${r.file}`,
+      `launchctl print ${domain}/com.agend.fleet`,   // the previous fleet came up (fleet.pid = the job's pid, /health answers)
+      `launchctl print ${domain}/com.agend.fleet`,   // its pid, for the report
     ]);
     expect(r.version()).toBe(OLD);
     expect(readFileSync(r.file!, "utf8")).toBe(r.oldDefinition);

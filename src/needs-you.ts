@@ -9,7 +9,7 @@
 
 import type { ConfigIssue } from "./config-history.js";
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "hub";
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "missed" | "hub";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -31,6 +31,8 @@ export interface NeedsYouItem {
   promptAt?: { adapterId: string; chatId: string; threadId?: string; messageId?: string };
   /** delivery: the outbox row; Acknowledge offered. */
   deliveryId?: string;
+  /** missed (Telegram downtime): the persisted row; Acknowledge offered. */
+  missedId?: string;
   /** auth_paused (#2233): the login the dashboard can sign in for it (its backend, and its credential profile). */
   signIn?: { backend: string; profile?: string };
   /**
@@ -57,6 +59,7 @@ export type NeedsYouReason =
   | "general_windows_offline" | "general_location_hold"
   | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
+  | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback"
   | "hub_proposal" | "hub_execution_hold" | "hub_unavailable";
 
@@ -140,6 +143,18 @@ export interface TaskInput {
 
 export interface BackendSignInInput { backend: string; since: number; browser: boolean }
 
+/** A Telegram message queued while AgEnD was offline, too old to auto-inject. */
+export interface MissedOfflineInput {
+  id: string;
+  instance: string;
+  /** The world that should list it when `instance` is empty. */
+  owner?: string;
+  username: string;
+  place: string;
+  preview: string;
+  since: number;
+}
+
 export interface NeedsYouInputs {
   prompts: PromptInput[];
   instances: InstanceInput[];
@@ -149,6 +164,7 @@ export interface NeedsYouInputs {
   configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
   hubExecution?: HubExecutionAttentionInput[];
   hubHolds?: HubHoldInput[];
+  missedOffline?: MissedOfflineInput[];
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
   ownerOf: (instance: string) => string | undefined;
 }
@@ -237,6 +253,15 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
       id: `delivery:${d.deliveryId}`, type: "delivery", instance: d.target,
       reason: d.state === "uncertain" ? "delivery_uncertain" : "delivery_failed",
       detail: oneLine(`${d.source} → ${d.target} · ${d.kind}`), since: d.finishedAt, deliveryId: d.deliveryId,
+    });
+  }
+
+  for (const m of inputs.missedOffline ?? []) {
+    items.push({
+      id: m.id, type: "missed", instance: m.instance, reason: "missed_offline",
+      detail: oneLine([m.username, m.place, m.preview].filter(Boolean).join(" · ")),
+      since: m.since, missedId: m.id,
+      ...(m.owner ? { owner: m.owner } : {}),
     });
   }
 
@@ -374,7 +399,7 @@ export function renderLiveMessage(
     return l.link ? `${head} · ${l.link}` : head;
   });
   if (lines.length > shown.length) body.push(t("needs.live_more", lines.length - shown.length));
-  const ackable = shown.filter(l => l.item.type === "delivery").map(l => l.item)
+  const ackable = shown.filter(l => l.item.type === "delivery" || l.item.type === "missed").map(l => l.item)
     .sort((a, b) => b.since - a.since).slice(0, LIVE_MAX_ACKS);
   const tasks = shown.filter(l => l.item.type === "task" && l.item.card).map(l => l.item).slice(0, LIVE_MAX_TASKS);
   return { text: [t(header, lines.length), ...body].join("\n"), ackable: [...ackable, ...tasks] };

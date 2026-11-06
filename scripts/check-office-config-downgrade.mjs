@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -18,12 +18,11 @@ const { OfficeStore } = await import('../dist/web-office-store.js');
 const LAID = { id: 'laid', name: 'Laid out', skin: 'snug', members: ['team:core'],
   overrides: { pack: 'snug', door: [600, 710], seats: { lounge: [[780, 280]] }, furnitureNight: { bed: [300, 420] }, seatFor: { desks: { 0: { for: ['alpha'], lend: false } } }, mailDrop: [640, 420] } };
 const PLAIN = { id: 'plain', name: 'Plain', skin: 'studio', members: [] };
-const bare = ({ overrides, ...o }) => o;
 const roots = process.argv.slice(2); assert.ok(roots.length, 'pass published package roots');
 let checked = 0;
 for (const root of roots) {
   const version = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
-  assert.ok(['2.3.1', '2.2.6'].includes(version), `unexpected rollback version ${version}`);
+  assert.ok(version === '2.3.3', `unexpected rollback version ${version}`);
   const { validateFleetConfig } = await import(pathToFileURL(join(resolve(root), 'dist/config-validator.js')).href);
   const { loadFleetConfig } = await import(pathToFileURL(join(resolve(root), 'dist/config.js')).href);
   const dir = mkdtempSync(join(tmpdir(), 'agend-office-downgrade-'));
@@ -49,12 +48,8 @@ for (const root of roots) {
       console.log(`PASS ${version}: Office default=${on}, instance=${!on}; validator accepts, old load/rewrite preserves, current gates restore`);
       checked++;
     }
-    // #2706: the stored offices. 2.2.6 has no Office (it never reads web-offices.json); 2.3.1 reads and saves it.
+    // Read and save through the actual previous-release Office store.
     const oldStore = join(resolve(root), 'dist/web-office-store.js');
-    if (version === '2.2.6') {
-      assert.equal(existsSync(oldStore), false, '2.2.6 is not expected to have an Office store');
-      console.log(`PASS ${version}: no Office store, web-offices.json is never read`);
-    } else {
       const { OfficeStore: OldStore } = await import(pathToFileURL(oldStore).href);
       const home = mkdtempSync(join(dir, 'offices-'));
       assert.equal(new OfficeStore(home).replace([LAID, PLAIN], 0).ok, true);
@@ -65,10 +60,9 @@ for (const root of roots) {
       assert.deepEqual(new OfficeStore(home).list().offices, [LAID, PLAIN], 'an old read changes nothing');
       const saved = old.replace(seen.offices, seen.rev);
       assert.equal(saved.ok, true, JSON.stringify(saved));
-      assert.deepEqual(new OfficeStore(home).list().offices, [bare(LAID), PLAIN], `${version}'s save keeps every office (without its layout)`);
-      assert.equal(new OfficeStore(home).autoSkin(), null, `${version}'s save drops the whole-fleet office's style (the default again)`);
-      console.log(`PASS ${version}: an office with Edit-layout overrides survives the old read and the old save (its layout left out)`);
-    }
+      assert.deepEqual(new OfficeStore(home).list().offices, [LAID, PLAIN], `${version}'s save keeps every office and its layout`);
+      assert.equal(new OfficeStore(home).autoSkin(), 'snug', `${version}'s save keeps the whole-fleet office style`);
+      console.log(`PASS ${version}: an office with Edit-layout overrides survives the old read and the old save (including its layout)`);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 assert.equal(checked, roots.length * 2);

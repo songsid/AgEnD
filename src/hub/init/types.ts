@@ -17,7 +17,7 @@ export interface HubInitPlan {
   memberOrigin: string;
   directory: HubDirectoryConfig;
   bindPasswordRef: string;
-  /** The directory identity the wizard's test sign-in returned for the local host owner. */
+  /** The immutable directory identity designated by the local owner; claimed on its first browser sign-in. */
   administrator: PersonKey;
   retention: { contentDays: number; eventDays: number };
   coexistence: HubCoexistence;
@@ -26,7 +26,12 @@ export interface HubInitPlan {
   /** Where the browser HTTPS listener listens. */
   webListen: HubListen;
   /** The operator's browser certificate chain and private key (PEM files); copied privately on commit. */
-  webTls: { certFile: string; keyFile: string };
+  webTls: {
+    certFile: string;
+    keyFile: string;
+    /** Private staging owned by explicit wizard generation, for cleanup after resume. */
+    generated?: true;
+  };
 }
 
 export interface HubListen {

@@ -114,7 +114,7 @@ describe("checkAuthStatus", () => {
     }
     // claude exits 0 whether or not it is logged in (live-verified), so its
     // check must also require the loggedIn marker in the output.
-    expect(LOGIN_FLOWS["claude-code"].authCheck?.validPattern).toBeDefined();
+    expect(LOGIN_FLOWS["claude-code"].authCheck?.valid).toBeDefined();
   });
 
   it("maps exit 0 to valid and non-zero to invalid", async () => {

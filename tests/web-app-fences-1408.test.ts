@@ -46,6 +46,7 @@ beforeEach(async () => {
   await p.unmount();
   requests.length = 0;
   (globalThis as any).localStorage.removeItem("agend_tasks_project");     // the board opens on Home, not the last project
+  p.window.history.replaceState(null, "", p.window.location.pathname);     // …nor the one the address names (?tp=)
   handler = (path) => path.startsWith("/ui/history") ? { messages: [] } : {};
   app.applyStatus({ uptime: 1, instances: [
     { name: "alpha", status: "running", state: "idle", execution_state: "idle" },
@@ -383,6 +384,7 @@ describe("3g. a main task's tile says who works on it now, not only who owns it"
     handler = (path) => (path === "/ui/tasks/board" ? b : {});
     await p.unmount();
     (globalThis as any).localStorage.removeItem("agend_tasks_project");
+    p.window.history.replaceState(null, "", p.window.location.pathname);
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: `fleet:tasks|${key}|en` }));
     await settle(6);
     p.root.querySelector(".tb-project-open").click(); await settle(6);

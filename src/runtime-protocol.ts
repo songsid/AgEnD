@@ -27,6 +27,18 @@ export interface RuntimeInfo {
   protocolVersions: number[];
   capabilities: string[];
 }
+/**
+ * What this AgEnD needs from any Runtime it hands work to. A Runtime that cannot offer these (it speaks no protocol this
+ * AgEnD does, or lacks a required capability) was installed from another AgEnD release: the fix is to run the install
+ * command again, which installs this AgEnD's own Runtime next to the old one.
+ */
+export const RUNTIME_REQUIRED_CAPABILITIES: readonly string[] = ["exec"];
+export function runtimeInfoCompatible(info: RuntimeInfo): boolean {
+  return info.protocolVersions.includes(RUNTIME_PROTOCOL_VERSION) && RUNTIME_REQUIRED_CAPABILITIES.every(capability => info.capabilities.includes(capability));
+}
+/** The WebSocket close reason (at most 123 bytes) AgEnD gives an incompatible Runtime; the Runtime recognises this prefix and says what to do. */
+export const RUNTIME_REINSTALL_CLOSE_PREFIX = "Runtime incompatible with this AgEnD";
+export const RUNTIME_REINSTALL_CLOSE_REASON = `${RUNTIME_REINSTALL_CLOSE_PREFIX}: re-run the install command`;
 export const validRuntimeVersion = (value: unknown): value is string => typeof value === "string" && value.length <= 64 && /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(value);
 /** Bounded diagnostic metadata; capabilities never replace execution authorization or pane negotiation. */
 export function parseRuntimeInfo(value: unknown): RuntimeInfo | undefined {
@@ -49,6 +61,8 @@ export interface RuntimeRunPayload {
   context?: string;
   /** Tool names only; coordinator credentials never cross this transport. */
   mcp?: { tools: string[] };
+  /** A credential profile NAME (a Claude sign-in kept on that computer). Never a path: the Runtime maps it to its own folder. */
+  credentialProfile?: string;
 }
 export interface RuntimeMachine {
   id: string;

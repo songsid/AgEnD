@@ -70,16 +70,17 @@ function CardMenu({ card }) {
   ];
   return html`<${Menu} items=${items} label=${t("card.menu")} icon="idcard" cls="chat-card-menu" active=${prefs.open} />`;
 }
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 import { confirmedWrite, selfConfirmed } from "./settings-confirm.js";
 import { createChatStore } from "./chat-store.js";
-import { createThread, msgKey } from "./chat-thread.js";
+import { createThread, msgKey } from "/assets/chat-thread.js";
+import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { installMessageActions } from "./chat-msg-actions.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
-import { PreviewPanel, claimPanel, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
+import { PreviewPanel, claimPanel, openMarkdown, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
@@ -205,7 +206,6 @@ const headerName = ({ primary, secondary }) => (secondary ? html`<span title=${s
 /** #2478: who the composer writes to — the display name, else the instance's name (a long id made the box two lines). */
 const composerLabel = (inst, name) => (inst && typeof inst.display_name === "string" && inst.display_name.trim()) || name;
 /** #2478: a touch screen (a coarse pointer) — Return is a new line there and only the Send button sends. Asked each time. */
-const touchScreen = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
 
 export function ChatPanel({ route, navKey }) {
   const lease = useLease(navKey);
@@ -464,7 +464,8 @@ function threadEntry(name, doc) {
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
     pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
-    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
+    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
+      openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
     openImage: openLightbox,                                               // an image, full size, in the page
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
@@ -658,9 +659,8 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
   const since = s.workingSince[name];
-  return html`<div class=${`work-bar ${kind}`}><span class="pulse" aria-hidden="true"></span><span class="lbl">${label}</span>
-    ${kind === "awaiting" ? html`<span class="note" title=${t("chat.approxNote")}>${awaiting || t("chat.approxNote")}</span>`
-      : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}</div>`;
+  return html`<${WorkBarView} kind=${kind} label=${label} note=${awaiting || t("chat.approxNote")} noteTitle=${t("chat.approxNote")}
+    elapsed=${kind === "awaiting" || since == null ? "" : R().formatElapsed(performance.now() - since)} elapsedTitle=${t("chat.elapsedTitle")} />`;
 }
 
 /** #2272: the reply bar's quote — the first ~80 characters, or what it had instead of text. */
@@ -671,17 +671,12 @@ function replySnippet(r) {
 
 function Composer({ name, inst, label = name, lease, busy }) {
   const s = store.state;
-  const input = useRef(null), fileIn = useRef(null);
+  const input = useRef(null);
   const [, tick] = useState(0);
   const [sel, setSel] = useState(0);
   const [closedFor, setClosedFor] = useState(null);    // the draft the palette was closed on (Esc); it opens again on change
-  // An IME composing (Zhuyin, Pinyin, kana…): between compositionstart and compositionend the box is the IME's. Nothing
-  // here touches it — no draft update, no re-render, no auto-grow (each one moved the box, and iOS redrew the candidate
-  // bar on every keystroke: the user's flicker). What it holds is taken once, at compositionend.
-  const composing = useRef(false);
+  // An IME composing: the box is the IME's until compositionend (ComposerInput, /assets/chat-composer.js).
   const value = s.drafts[name] || "";
-  // A render while composing (another part of the chat changed) gives the box what it holds, so it never writes it.
-  const boxValue = composing.current && input.current ? input.current.value : value;
   const files = s.pendingFiles[name] || [];
   const reply = s.replies[name];                       // #2272: the message this one will reply to
   const content = !!value.trim() || files.length > 0;
@@ -695,13 +690,6 @@ function Composer({ name, inst, label = name, lease, busy }) {
   const sendingBlocked = machineUnavailable || inst?.native_blocked || inst?.native_busy || (busy && !supportsInstanceFeature(inst,"send_while_busy"));
   const palette = !commandsSupported || files.length || closedFor === value || (guest && !guestAllowed.length) ? null : paletteFor(value, guestAllowed || undefined);
   const pick = palette && palette.length ? palette[Math.min(sel, palette.length - 1)] : null;
-  // Grow with the text, up to a limit: set through the CSSOM, never a style attribute (#1300). Empty, it is one line
-  // (#2478 — a long name's placeholder made the box two lines tall).
-  useLayoutEffect(() => {
-    const el = input.current; if (!el || composing.current) return;
-    el.style.height = "auto";
-    if (value) el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
-  }, [value]);
   useEffect(() => { if (input.current) input.current.focus(); }, [name]);
   useEffect(() => { refreshTourSpot(); });
   const setValue = (v) => { store.setDraft(name, v); setSel(0); tick(n => n + 1); };
@@ -744,11 +732,6 @@ function Composer({ name, inst, label = name, lease, busy }) {
     if (reply && e.key === "Escape" && !e.isComposing) { e.preventDefault(); store.clearReply(name); return; }   // #2272
     if (R().composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); submit(); }
   };
-  const onInput = (e) => { if (composing.current || e.isComposing) return; setValue(e.target.value); };
-  const onCompositionStart = () => { composing.current = true; };
-  // The composed text is the draft now (some engines send no input after it); a blur ends one that never ended.
-  // Lower-case props below: an element has no oncomposition… property, so Preact would listen for "CompositionStart".
-  const onCompositionEnd = (e) => { if (!composing.current) return; composing.current = false; setValue(e.target.value); };
   // Files in a paste are attached; a very long text paste goes as a text file — only once it is really attached.
   const onPaste = (e) => {
     const list = e.clipboardData && e.clipboardData.files;
@@ -772,25 +755,12 @@ function Composer({ name, inst, label = name, lease, busy }) {
       <button type="button" class="icon-btn reply-cancel" title=${t("chat.replyCancel")} aria-label=${t("chat.replyCancel")} onClick=${() => { store.clearReply(name); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button>
     </div>` : null}
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
-    <div class="composer">
-      ${attachmentsSupported ? html`<button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
-      <input ref=${fileIn} type="file" multiple hidden
-        onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />` : null}
-      ${/* #2478: the placeholder is drawn beside the box, one line ending in "…" — a textarea's own placeholder is clipped,
-          never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. Its own
-          placeholder is one space: :placeholder-shown hides the drawn one (app.css) the moment the box holds text, an
-          IME's composing text included, with no change to the page. */ ""}
-      <span class="composer-field"><textarea id="msgIn" ref=${input} rows="1" value=${boxValue} aria-label=${t("chat.composerPlaceholder", label)}
-        enterkeyhint=${touchScreen() ? "enter" : undefined} autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
-        aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
-        oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
-        placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span></span>
-      <button id="stopBtn" type="button" class="btn btn-stop" hidden=${!busy} title=${t("chat.stopReplyTitle")}
-        disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>
-      <button id="sendBtn" type="button" class="btn btn-primary btn-send" hidden=${busy && !content} disabled=${!content || sendingBlocked}
-        onMouseDown=${(e) => e.preventDefault()}
-        aria-label=${t("chat.send")} title=${t("chat.send")} onClick=${submit}><${Icon} name="send" size=${16} /><span class="send-label">${t("chat.send")}</span></button>
-    </div></div>`;
+    <${ComposerInput} inputRef=${input} value=${value} placeholder=${t("chat.composerPlaceholder", label)} onValue=${setValue}
+      onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? "cmdPalette" : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
+      attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
+      stop=${{ hidden: !busy, disabled: !!s.cancelling[name], title: t("chat.stopReplyTitle"), label: t("chat.stopReply"), onClick: () => store.cancelReply(name) }}
+      send=${{ hidden: busy && !content, disabled: !content || sendingBlocked, label: t("chat.send"), onClick: submit }} />
+    </div>`;
 }
 
 function FileChip({ f, i, name }) {

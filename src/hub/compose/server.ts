@@ -33,6 +33,8 @@ import { HUB_TRANSPORT_MIGRATION, HubTransportStore } from "../store.js";
 import { readHubIdentity } from "../tls.js";
 import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFrame, HubServerTransport, HubUnitOfWork, PersonKey } from "../types.js";
 import { HubFileVersionFloor } from "../version-floor.js";
+import { browserCertificateMigration, createHubBrowserCertificateControl, type HubBrowserCertificateControl } from "../browser-certificate.js";
+import { createHubRetentionControl, retentionMigration, type HubRetentionControl } from "../retention.js";
 
 export const SERVER_SET: HubStateSet = Object.freeze({
   database: "hub/hub.sqlite",
@@ -83,6 +85,9 @@ export interface HubServerFactoryOptions {
   now?: () => number;
   /** Retention job interval; daily by default. */
   retentionEveryMs?: number;
+  /** Host Settings only; the disposer removes this exact generation's control. */
+  retentionReady?(control: HubRetentionControl): () => void;
+  browserCertificateReady?(control: HubBrowserCertificateControl): () => void;
 }
 
 interface ServerSettings {
@@ -219,7 +224,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         floor.initialize();
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
-      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations]);
+      applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
+        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId)]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
@@ -232,7 +238,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       if (!bindSecretPath(options.home, settings.directory.bindPasswordRef)) throw new HubStateError("hub-directory-secret", "hub.directory.bindPasswordRef is not the private bind file");
       let bindPassword: string;
       try {
-        bindPassword = readPrivateFile(options.home, BIND_SECRET_REL, 4096);
+        bindPassword = readPrivateFile(options.home, BIND_SECRET_REL, 4096, { preserveBom: true });
       } catch (err) {
         throw new HubStateError("hub-directory-secret", `the directory bind secret is missing or not private: ${(err as Error).message}`);
       }
@@ -247,6 +253,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       let memberServer: HubServer | null = null;
       let fenced = false;
       const live = () => !fenced && current();
+      const retention = createHubRetentionControl({ db, hubId: settings.hubId, audit, current: live, now });
       const pairing = new HubPairingService({
         store,
         identity: { hubId: identity.hubId, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, spkiSha256: identity.spkiSha256, issuerPublicKey: identity.issuerPublicKey },
@@ -286,6 +293,12 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       // 5. The Hub web listener: every request goes to S3's handler (it serves /hub/v1/*, the Hub-only shell and its
       //    assets without fleet cookies); anything it declines is 404. The personal fleet listener is untouched.
       let web: Server | null = null;
+      const browserCertificate = createHubBrowserCertificateControl({ db, home: options.home, hubId: settings.hubId, origin: settings.webOrigin,
+        initial: settings.webTls, audit, current: live, now, activate: material => {
+          if (!web || !live()) throw Error("unavailable");
+          web.setSecureContext({ ...material, minVersion: "TLSv1.2" });
+        } });
+      teardown.add("browser certificate preparation", () => browserCertificate.close());
       let retentionTimer: NodeJS.Timeout | null = null;
       const serveWeb = (req: IncomingMessage, res: ServerResponse) => {
         if (!live()) {
@@ -302,7 +315,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           try {
             await memberServer!.start();
             const server = createHttpsServer(
-              { key: readPrivateFile(options.home, settings.webTls.keyFile), cert: readPrivateFile(options.home, settings.webTls.certificateFile), minVersion: "TLSv1.2" },
+              { ...browserCertificate.material(), minVersion: "TLSv1.2" },
               serveWeb,
             );
             teardown.add("the Hub web listener", () => {
@@ -318,10 +331,13 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
                 resolve();
               });
             });
+            browserCertificate.activate();
+            const detachCertificate = options.browserCertificateReady?.(browserCertificate);
+            if (detachCertificate) teardown.add("the host browser certificate Settings", detachCertificate);
             retentionTimer = setInterval(() => {
               if (!live()) return;
               try {
-                audit.purge(settings.retention);
+                audit.purge(retention.read());
               } catch (err) {
                 options.log("warn", "Hub retention could not run", { err: (err as Error).message });
               }
@@ -329,6 +345,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             retentionTimer.unref();
             const timer = retentionTimer;
             teardown.add("the retention timer", () => clearInterval(timer));
+            const detach = options.retentionReady?.(retention);
+            if (detach) teardown.add("the host retention Settings", detach);
           } catch (err) {
             options.report(err instanceof HubStateError ? err.code : "service-unavailable", (err as Error).message);
             throw err;

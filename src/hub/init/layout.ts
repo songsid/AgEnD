@@ -18,6 +18,7 @@ export function hubPaths(home: string) {
     initDir: join(hub, "init"),
     operation: join(hub, "init", "operation.json"),
     manifest: join(hub, "init-manifest.json"),
+    inventory: join(hub, "install-inventory.json"),
     secrets: join(hub, "secrets"),
     bindSecret: join(home, BIND_SECRET_REL),
     webTlsDir: join(hub, "web-tls"),

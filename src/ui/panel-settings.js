@@ -1,3 +1,4 @@
+import { SettingsBuildVersion } from "./settings-build-version.js";
 // #1408 step 3: the Settings panel (/settings[/<section>]) — agents, connections, ClassicBot rooms, general defaults,
 // the developer YAML. Behind the session gate (/ui/js/), loaded the first time it is opened.
 //
@@ -49,7 +50,7 @@ import { takeAgentRequest } from "./settings-request.js";
 // #1604: This device — the preview opt-in (one path: the app's confirm, then preview.js) and the tour, from the chat.
 import { setPreviewOptIn } from "./panel-chat.js";
 import { startTour } from "./chat-tour.js";
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
 import { OfficeSharesCard } from "./office-share-dialog.js";
@@ -58,16 +59,25 @@ import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
 import { DevicesCard } from "./settings-devices.js";
-/** AgEnD Hub P1: this page is a member fleet's (data-hub carries "member": set by this fleet's listener from hub_member). */
-const hubMemberPage = () => String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/).includes("member");
-/** Connect to a Hub, loaded only on a member page. */
+/** The pure owner Settings switch is available while off; its pairing UI remains lazy and member-mark gated. */
 function HubCardSlot() {
   const [Card, setCard] = useState(null);
-  useEffect(() => { let live = true; import("./settings-hub.js").then((m) => { if (live) setCard(() => m.HubConnectCard); }, () => {}); return () => { live = false; }; }, []);
+  useEffect(() => { let live = true; import("./settings-hub-membership.js").then((m) => { if (live) setCard(() => m.HubMembershipSettings); }, () => {}); return () => { live = false; }; }, []);
+  return Card ? html`<${Card} />` : null;
+}
+function HubBrowserCertificateSlot() {
+  const [Card, setCard] = useState(null);
+  useEffect(() => { let live = true; import("./settings-hub-browser-certificate.js").then(m => { if (live) setCard(() => m.HubBrowserCertificateSettings); }, () => {}); return () => { live = false; }; }, []);
+  return Card ? html`<${Card} />` : null;
+}
+function HubRetentionSlot() {
+  const [Card, setCard] = useState(null);
+  useEffect(() => { let live = true; import("./settings-hub-retention.js").then(m => { if (live) setCard(() => m.HubRetentionSettings); }, () => {}); return () => { live = false; }; }, []);
   return Card ? html`<${Card} />` : null;
 }
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
+import { AccountsView, defaultsBackendOptions } from "./accounts-view.js";   // #3212: SignInList stays exported for a page that still imports it
 import { ProviderMark } from "./provider-marks.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { SettingsPageHead, SettingsTabs, SettingsTabPanel, useSettingsTabs, revealSettingsTarget, layoutText } from "./settings-layout.js";
@@ -83,7 +93,6 @@ const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
 const ICONS = { preferences: "user", look: "palette", agents: "bot", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
-const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
 async function read(lease, path) {
@@ -133,7 +142,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const classicStatus = {};
   if (pr.ok && Array.isArray(pr.body)) for (const r of pr.body) classicStatus[r.instance_name] = r.status;
-  return { live, classicLive, classicStatus, fleetUp: f.ok, version: (f.ok && f.body && f.body.version) || "" };
+  return { live, classicLive, classicStatus, fleetUp: f.ok, version: (f.ok && f.body && f.body.version) || "", build: f.ok && f.body ? f.body.build : null };
 }
 
 export function SettingsPanel({ route, navKey }) {
@@ -406,7 +415,14 @@ export function SettingsPanel({ route, navKey }) {
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
         <div class="s-auth-scope"><${Icon} name="view" size=${18} /><div><strong>${layoutText("aiHostScope")}</strong><p>${layoutText("aiAccountsHint")}</p><a href=${settingsPath("runtimes")}>${layoutText("aiWindowsLink")}<span aria-hidden="true">→</span></a></div></div>
-        <${SignInList} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
+        <${AccountsView} instances=${ctx.fleet.instances || {}} stageAgent=${ctx.stageAgent}
+          stageDefault=${(backend, profile) => {
+            // One change for every CLI's fleet default, carrying the whole map (the write replaces it whole).
+            const opts = defaultsBackendOptions((ctx.fleet.defaults || {}).backend_options, stagedRef.current.get("defaults:account")?.request?.body?.backend_options, backend, profile);
+            if (!opts) { ctx.unstage("defaults:account"); return; }
+            ctx.stage("defaults:account", { label: tn("updateDefaults"), count: 1, impact: defaultsImpact(ctx.schema, "backend_options"),
+              request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { backend_options: opts } } });
+          }} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
       </div></details>`
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
     : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
@@ -493,7 +509,7 @@ export function SettingsPanel({ route, navKey }) {
   // Which one is shown is the root's data-view: its class stays exactly the effects producer's ("panel p-settings", #1629).
   const atList = typeof location !== "undefined" && location.pathname === "/settings";
   return html`<div data-effect-panel="settings" class="panel p-settings" data-view=${atList ? "index" : "section"}>
-    <${PanelHeader} title=${tn("title")} sub=${data && data.version ? html`<a class="pill ver" href=${data.version.includes("-") ? `${RELEASES}/latest` : `${RELEASES}/tag/v${data.version}`} target="_blank" rel="noopener">v${data.version}</a>` : null}>
+    <${PanelHeader} title=${tn("title")} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} />` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx || yamlStaged(staged)} title=${ctx && yamlStaged(staged) ? tn("yamlUnsaved") : undefined} onClick=${openWizard}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
@@ -1392,8 +1408,8 @@ function WebSection({ ctx, staged, part = "all" }) {
       <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("webSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
-          ${/* AgEnD Hub P1: Connect to a Hub, on a member fleet only (the page's mark): nothing loads while hub_member is off. */ ""}
-          ${hubMemberPage() ? html`<${HubCardSlot} />` : null}
+          ${!overPublicLink ? html`<${HubCardSlot} />` : null}
+          ${!overPublicLink && ctx.fleet.hub?.hubId ? html`<${HubRetentionSlot} /><${HubBrowserCertificateSlot} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>

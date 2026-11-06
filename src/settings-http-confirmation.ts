@@ -77,6 +77,7 @@ export class SettingsHttpConfirmation {
     if (path === "/api/settings/fleet/appearance" && gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
     // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
     if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (path.startsWith("/api/settings/hub/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
     if (path.startsWith("/api/hub/member/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (path === "/api/hub/member/exposures" && gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
     if (path === "/api/settings/general-location" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
@@ -151,7 +152,7 @@ export class SettingsHttpConfirmation {
     const ordinaryCreate = method === "POST" && url.pathname === "/ui/instances" && createBody
       && Object.keys(createBody).every(key => ["runtime", "native_adapter", "channel_id", "machineId",
         "directory", "topic_name", "backend", "model", "description", "systemPrompt", "sandbox", "tags", "branch",
-        "detach", "worktree_path", "workflow", "backend_options"].includes(key))
+        "detach", "worktree_path", "workflow", "backend_options", "credentialProfile"].includes(key))
       && (createBody.runtime==="windows"||sanitizeInstanceName(typeof createBody.topic_name==="string"?createBody.topic_name:basename(typeof createBody.directory==="string"?createBody.directory:""))!=="general");
     const direct = this.options.directAgentCreation === true && ordinaryCreate && principal.source === "web_session"
       && !gatewayRequestContext(req) && localAdmin?.() === true;

@@ -3,7 +3,8 @@ import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { readBoundedWebBody } from "./web-body.js";
-import { windowsBridgeFor, windowsCliEnabled, type WindowsCliBridge } from "./windows-cli.js";
+import { windowsBridgeFor, windowsCliEnabled, type WindowsCliBridge, type WindowsCliProbe } from "./windows-cli.js";
+import type { RuntimeMachine } from "./runtime-protocol.js";
 import { windowsAgentsFor } from "./windows-agents.js";
 import { nativeAgentId } from "./native-instance-registry.js";
 import type { FleetWindowsRuntime } from "./fleet-windows-runtime.js";
@@ -34,6 +35,27 @@ export function nativeCliAuthorization(req: IncomingMessage, url: URL, ctx: Wind
   }
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });
   return v.kind === "allow" && (v.via === "header-token" || v.session.tier === "admin");
+}
+/**
+ * Who may be shown WHICH account a sign-in is (a masked e-mail and a plan): a local administrator SESSION, and no one else. These routes also
+ * serve the CLI's own header token (an agent's) and other flows that predate the account display, so the callers are not turned away: the
+ * answer is the same without the account (`withoutAccountIdentity`). No public link or gateway, no read or guest session, no header token,
+ * no replayed confirmation.
+ */
+export function accountIdentityVisible(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): boolean {
+  if (gatewayRequestContext(req) || isSettingsReplay(req)) return false;
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local";
+}
+/** The same inventory without any account: names and `loggedIn`/`authenticated` stay, every `identity` goes. A copy; the stored value is untouched. */
+export function probeWithoutAccountIdentity(probe: WindowsCliProbe): WindowsCliProbe {
+  const copy = structuredClone(probe);
+  for (const row of copy.clis ?? []) delete (row as { identity?: unknown }).identity;
+  for (const row of copy.credentialProfiles?.profiles ?? []) delete (row as { identity?: unknown }).identity;
+  return copy;
+}
+export function machineWithoutAccountIdentity(machine: RuntimeMachine): RuntimeMachine {
+  return machine.inventory ? { ...machine, inventory: probeWithoutAccountIdentity(machine.inventory) } : machine;
 }
 export function handleWindowsCliRequest(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WindowsCliApiContext, bridge?: WindowsCliBridge): boolean {
   const path = url.pathname;
@@ -108,7 +130,7 @@ export function handleWindowsCliRequest(req: IncomingMessage, res: ServerRespons
       if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some(key => key !== "force") || (input.force !== undefined && typeof input.force !== "boolean")) throw new Error("Probe accepts only an optional boolean force field");
       const result = await service.probe(input, authorized);
       if (!authorized()) { json(res, 403, { error: "Authorization expired" }); return; }
-      json(res, 200, result);
+      json(res, 200, accountIdentityVisible(req, url, ctx) ? result : probeWithoutAccountIdentity(result));
     } else if (cancel) json(res, 202, service.cancel(cancel[1]));
     else json(res, 202, service.start(input, authorized));
   })().catch(error => json(res, 400, { error: error instanceof Error ? error.message : "Windows CLI operation failed" }));

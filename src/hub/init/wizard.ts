@@ -1,11 +1,14 @@
 /**
  * `agend hub init` (S-48 / S5a; #3095 "Installing a Hub" addendum, hub.md §5). Steps:
- *   same-account check → name and addresses → browser HTTPS certificate → directory (LDAPS) and the operator's test
- *   sign-in → bind the local host owner as Hub administrator → retention → confirm → commit (enabled last)
+ *   same-account check → name and addresses → browser HTTPS certificate → directory (LDAPS) and first-admin lookup
+ *   → local confirmation of that immutable identity → retention → confirm → commit (enabled last)
  *   → optional service install (explicit) → member pairing instructions.
- * Nothing is written before the final confirmation; opening the wizard installs nothing.
+ * No Hub is installed before final confirmation. Explicit certificate generation uses private temporary staging.
  */
+import { hubHandoffLines } from "./handoff.js";
+import { readHubInstallationInventory } from "./inventory.js";
 import { isIP } from "node:net";
+import { HUB_RETENTION_DEFAULTS } from "../../hub-retention-policy.js";
 import type { createHubDirectory as CreateHubDirectory, DirectoryPerson, HubDirectoryConfig, HubDirectoryDiagnostic } from "../directory/index.js";
 import { HubDirectoryConfigError, resolveDirectoryConfig } from "../directory/index.js";
 import { checkBrowserTls, pemCertificates } from "./browser-tls.js";
@@ -14,6 +17,9 @@ import { BIND_PASSWORD_REF } from "./layout.js";
 import { WizardCancelled, type WizardIO } from "./prompt.js";
 import { ht } from "./text.js";
 import { HubInitError, type HubCoexistence, type HubInitializer, type HubInitPlan, type HubListen } from "./types.js";
+import { directoryCaInfo, sameDirectoryFingerprint, type DirectoryCertificateProbe, type DirectoryCaBundle } from "./directory-certificate.js";
+import type { HubBrowserMaterial } from "./browser-certificate.js";
+import { checkHubInitNetworkForHome, type HubInitListeners, type HubNetworkCheck } from "./network.js";
 
 export interface HubServiceControl {
   installed(): boolean;
@@ -27,13 +33,22 @@ export interface HubWizardDeps {
   initializer: HubInitializer;
   createDirectory: typeof CreateHubDirectory;
   readFile(path: string): string;
+  readSecretFile?(path: string): string;
   service: HubServiceControl;
   now?: () => number;
+  /** Default: real local TCP preflight. Isolated tests may supply an inert checker. */
+  checkNetwork?: HubNetworkCheck;
+  createBrowserCertificate?(origin: string): Promise<HubBrowserMaterial>;
+  recoverBrowserCertificate?(plan: HubInitPlan): HubBrowserMaterial | null;
+  directoryCertificates?: {
+    inspect(url: string): Promise<DirectoryCertificateProbe>;
+    fetch(probe: DirectoryCertificateProbe, pin: string, credentials?: { bindDn: string; password: string }): Promise<DirectoryCaBundle>;
+  };
 }
 
 export type HubWizardOutcome = "initialized" | "cancelled" | "refused";
 
-const MAX_SIGNIN_ATTEMPTS = 5;
+const MAX_LOOKUP_ATTEMPTS = 5;
 
 const yes = (answer: string) => /^(y|yes|是)$/i.test(answer.trim());
 
@@ -57,8 +72,13 @@ function defaultListen(origin: string): string {
 
 export async function runHubInitWizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
   const { io } = deps;
+  const generated: HubBrowserMaterial[] = [];
   try {
-    return await wizard(deps);
+    return await wizard({ ...deps, ...(deps.createBrowserCertificate ? { createBrowserCertificate: async (origin: string) => {
+      const material = await deps.createBrowserCertificate!(origin); generated.push(material); return material;
+    } } : {}), ...(deps.recoverBrowserCertificate ? { recoverBrowserCertificate: (plan: HubInitPlan) => {
+      const material = deps.recoverBrowserCertificate!(plan); if (material) generated.push(material); return material;
+    } } : {}) });
   } catch (err) {
     if (err instanceof WizardCancelled) {
       io.say();
@@ -66,6 +86,16 @@ export async function runHubInitWizard(deps: HubWizardDeps): Promise<HubWizardOu
       return "cancelled";
     }
     throw err;
+  } finally {
+    if (generated.length) {
+      let pending: string | undefined, uncertain = false;
+      try { pending = (await deps.initializer.inspect()).incomplete?.plan.webTls.certFile; } catch { uncertain = true; }
+      for (const material of generated) {
+        // Interrupted initialization must retain its exact material for the existing same-plan resume.
+        if (uncertain || pending === material.certFile) io.say(ht("tls_stage_kept", material.certFile));
+        else try { material.cleanup(); } catch { io.say(ht("tls_stage_kept", material.certFile)); }
+      }
+    }
   }
 }
 
@@ -87,7 +117,11 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
       io.say(ht("restart_how", `${deps.home}/hub`));
       return "cancelled";
     }
-    const bindPassword = await io.askHidden(ht("dir_bind_pw_q"));
+    try { deps.recoverBrowserCertificate?.(inspection.incomplete.plan); }
+    catch { io.say(ht("tls_stage_kept", inspection.incomplete.plan.webTls.certFile)); }
+    if (!await checkNetwork(deps, inspection.incomplete.plan)) return "refused";
+    const bindPassword = await askBindSecret(deps);
+    if (bindPassword === undefined) return "cancelled";
     return confirmAndCommit(deps, inspection.incomplete.plan, bindPassword);
   }
 
@@ -111,8 +145,13 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
   const suggestedMember = `https://${new URL(webOrigin).host.replace(/:\d+$/, "")}:9443`;
   const memberOrigin = await askOrigin(deps, ht("member_origin_q", suggestedMember), suggestedMember, coexistence, webOrigin);
   if (!memberOrigin) return "cancelled";
-  const webListen = await askListen(io, "web_listen_q", defaultListen(webOrigin));
-  const memberListen = await askListen(io, "member_listen_q", defaultListen(memberOrigin), webListen);
+  let webListen: HubListen, memberListen: HubListen;
+  for (;;) {
+    webListen = await askListen(io, "web_listen_q", defaultListen(webOrigin));
+    memberListen = await askListen(io, "member_listen_q", defaultListen(memberOrigin), webListen);
+    if (await checkNetwork(deps, { webListen, memberListen })) break;
+    if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return "cancelled";
+  }
 
   // 2. Browser HTTPS certificate (separate from the member certificate S1 generates).
   io.say();
@@ -121,19 +160,19 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
   const webTls = await askBrowserTls(deps, webOrigin);
   if (!webTls) return "cancelled";
 
-  // 3. Directory and the operator's own test sign-in.
-  const signedIn = await askDirectoryAndSignIn(deps);
-  if (!signedIn) return "cancelled";
-  const { directory, bindPassword, person } = signedIn;
+  // 3. Service-account lookup only; the designated person signs in later in their own browser.
+  const selected = await askDirectoryAndAdministrator(deps);
+  if (!selected) return "cancelled";
+  const { directory, bindPassword, person } = selected;
 
-  // 4. The local host owner becomes the Hub administrator, bound to that tested identity.
+  // 4. The local host owner approves the exact directory identity, not a mutable login label.
   const label = person.displayName ?? person.login;
   if (!yes(await io.ask(ht("admin_q", label, `${person.key.realm}/${person.key.objectId}`)))) {
     io.say(ht("cancelled"));
     return "cancelled";
   }
 
-  // 5. Retention: explicit, no default.
+  // 5. Suggested retention is still included in the exact plan the owner confirms.
   io.say();
   io.say(ht("retention_title"));
   const contentDays = await askDays(io, "retention_content_q");
@@ -191,12 +230,19 @@ async function askListen(io: WizardIO, key: "web_listen_q" | "member_listen_q", 
 async function askBrowserTls(deps: HubWizardDeps, webOrigin: string): Promise<HubInitPlan["webTls"] | undefined> {
   const { io } = deps;
   for (;;) {
-    const certFile = (await io.ask(ht("tls_cert_q"))).trim();
+    let certFile = (await io.ask(ht("tls_cert_q"))).trim();
     if (!certFile) {
       io.say(ht("tls_needed", webOrigin, new URL(webOrigin).hostname));
       return undefined;
     }
-    const keyFile = (await io.ask(ht("tls_key_q"))).trim();
+    let keyFile: string, generated = false;
+    if (certFile.toLowerCase() === "generate") {
+      if (!deps.createBrowserCertificate) { io.say(ht("tls_generate_unavailable")); continue; }
+      try {
+        const material = await deps.createBrowserCertificate(webOrigin);
+        certFile = material.certFile; keyFile = material.keyFile; generated = true;
+      } catch { io.say(ht("tls_generate_failed")); return undefined; }
+    } else keyFile = (await io.ask(ht("tls_key_q"))).trim();
     let certPem = "";
     let keyPem = "";
     try {
@@ -214,13 +260,16 @@ async function askBrowserTls(deps: HubWizardDeps, webOrigin: string): Promise<Hu
       if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
       continue;
     }
-    if (check.selfSigned && !yes(await io.ask(ht("tls_self_signed")))) continue;
+    io.say(ht("tls_fingerprint", check.fingerprint256 ?? ""));
     io.say(ht("tls_ok", new URL(webOrigin).hostname, check.validTo ?? ""));
-    return { certFile, keyFile };
+    if (check.selfSigned) {
+      if (!yes(await io.ask(ht("tls_self_signed")))) continue;
+    }
+    return { certFile, keyFile, ...(generated ? { generated: true as const } : {}) };
   }
 }
 
-async function askDirectoryAndSignIn(
+async function askDirectoryAndAdministrator(
   deps: HubWizardDeps,
 ): Promise<{ directory: HubDirectoryConfig; bindPassword: string; person: DirectoryPerson } | undefined> {
   const { io } = deps;
@@ -235,12 +284,11 @@ async function askDirectoryAndSignIn(
     for (;;) {
       attempts += 1;
       const login = (await io.ask(ht("signin_login_q"))).trim();
-      const password = await io.askHidden(ht("signin_pw_q"));
       let diagnostic: HubDirectoryDiagnostic | undefined;
       const directory = deps.createDirectory(settings.directory, { bindPassword: settings.bindPassword }, { onDiagnostic: (d) => (diagnostic = d) });
       let result;
       try {
-        result = await directory.signIn(login, password);
+        result = await directory.lookupForInitialization?.(login) ?? { ok: false as const, reason: "unavailable" as const };
       } finally {
         await directory.close();
       }
@@ -248,11 +296,11 @@ async function askDirectoryAndSignIn(
         io.say(ht("signin_ok", result.person.displayName ?? result.person.login, result.person.login));
         return { directory: settings.directory, bindPassword: settings.bindPassword, person: result.person };
       }
-      if (result.reason === "invalid-credentials") io.say(ht("signin_invalid"));
+      if (result.reason === "not-found") io.say(ht("signin_invalid"));
       else if (result.reason === "not-eligible") io.say(ht("signin_not_eligible"));
       else if (result.reason === "bad-input") io.say(ht("signin_bad_input"));
       else io.say(ht("signin_unavailable", diagnostic?.error ?? "no answer"));
-      if (attempts >= MAX_SIGNIN_ATTEMPTS) {
+      if (attempts >= MAX_LOOKUP_ATTEMPTS) {
         io.say(ht("signin_too_many"));
         return undefined;
       }
@@ -263,20 +311,65 @@ async function askDirectoryAndSignIn(
   }
 }
 
+async function confirmDirectoryCa(io: WizardIO, pem: string): Promise<boolean> {
+  const bundle = directoryCaInfo(pem);
+  io.say(ht("dir_ca_compare"));
+  for (const c of bundle.certificates) io.say(ht("dir_ca_details", c.subject, c.fingerprint256, c.validTo));
+  return yes(await io.ask(ht("dir_ca_confirm_q")));
+}
+
+async function askBindSecret(deps: HubWizardDeps): Promise<string | undefined> {
+  const { io } = deps;
+  for (;;) {
+    if (!deps.readSecretFile) return io.askHidden(ht("dir_bind_pw_q"));
+    const choice = (await io.ask(ht("dir_bind_source_q"))).trim();
+    if (!choice || choice === "1") return io.askHidden(ht("dir_bind_pw_q"));
+    if (choice !== "2") { io.say(ht("dir_bind_source_invalid")); continue; }
+    const path = (await io.ask(ht("dir_bind_file_q"))).trim();
+    try { return deps.readSecretFile(path); }
+    catch (err) {
+      if (err instanceof WizardCancelled) throw err;
+      io.say(ht("dir_bind_file_invalid"));
+      if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
+    }
+  }
+}
+
 async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: HubDirectoryConfig; bindPassword: string } | undefined> {
   const { io } = deps;
   for (;;) {
     const realm = (await io.ask(ht("dir_realm_q"))).trim();
     const url = (await io.ask(ht("dir_url_q"))).trim();
     const caFile = (await io.ask(ht("dir_ca_q"))).trim();
-    let caPem: string | undefined;
-    if (caFile) {
+    let caPem: string | undefined, pending: { probe: DirectoryCertificateProbe; pin: string } | undefined;
+    if (caFile.toLowerCase() === "fetch") {
+      try {
+        if (!deps.directoryCertificates) throw Error("directory_ca_unsupported");
+        const probe = await deps.directoryCertificates.inspect(url);
+        io.say(ht("dir_leaf_unverified"));
+        io.say(ht("dir_ca_details", probe.certificate.subject, probe.certificate.fingerprint256, probe.certificate.validTo));
+        const pin = await io.ask(ht("dir_leaf_confirm_q"));
+        if (!sameDirectoryFingerprint(probe.certificate.fingerprint256, pin)) { io.say(ht("dir_leaf_refused")); return undefined; }
+        try {
+          const bundle = await deps.directoryCertificates.fetch(probe, pin);
+          if (!await confirmDirectoryCa(io, bundle.pem)) return undefined;
+          caPem = bundle.pem;
+        } catch (err) {
+          if (err instanceof Error && err.message === "directory_ca_auth_required") pending = { probe, pin };
+          else throw err;
+        }
+      } catch (err) {
+        if (err instanceof WizardCancelled) throw err;
+        io.say(ht("dir_ca_fetch_failed"));
+        if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
+        continue;
+      }
+    } else if (caFile) {
       try {
         caPem = deps.readFile(caFile);
-      } catch {
-        caPem = undefined;
-      }
-      if (!caPem || pemCertificates(caPem).length === 0) {
+        if (!await confirmDirectoryCa(io, caPem)) return undefined;
+      } catch (err) {
+        if (err instanceof WizardCancelled) throw err;
         io.say(ht("dir_ca_unreadable"));
         if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
         continue;
@@ -285,18 +378,29 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
     const profile = (await io.ask(ht("dir_profile_q"))).trim() === "2" ? "openldap" : "ad";
     const baseDn = (await io.ask(ht("dir_base_q"))).trim();
     const bindDn = (await io.ask(ht("dir_bind_q"))).trim();
-    const directory: HubDirectoryConfig = { realm, url, ...(caPem ? { caPem } : {}), baseDn, bindDn, profile };
-    try {
-      resolveDirectoryConfig(directory);
-    } catch (err) {
+    let directory: HubDirectoryConfig = { realm, url, ...(caPem ? { caPem } : {}), baseDn, bindDn, profile };
+    try { resolveDirectoryConfig(directory); }
+    catch (err) {
       io.say(ht("dir_invalid", err instanceof HubDirectoryConfigError ? err.message : String(err)));
       if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
       continue;
     }
-    const bindPassword = await io.askHidden(ht("dir_bind_pw_q"));
-    if (!bindPassword) {
-      io.say(ht("signin_bad_input"));
-      continue;
+    if (pending) io.say(ht("dir_ca_bind_needed"));
+    const bindPassword = await askBindSecret(deps);
+    if (bindPassword === undefined) return undefined;
+    if (!bindPassword) { io.say(ht("dir_bind_empty")); continue; }
+    if (pending) {
+      try {
+        const bundle = await deps.directoryCertificates!.fetch(pending.probe, pending.pin, { bindDn, password: bindPassword });
+        if (!await confirmDirectoryCa(io, bundle.pem)) return undefined;
+        directory = { ...directory, caPem: bundle.pem };
+        resolveDirectoryConfig(directory);
+      } catch (err) {
+        if (err instanceof WizardCancelled) throw err;
+        io.say(ht("dir_ca_fetch_failed"));
+        if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
+        continue;
+      }
     }
     return { directory, bindPassword };
   }
@@ -304,7 +408,9 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
 
 async function askDays(io: WizardIO, key: "retention_content_q" | "retention_event_q"): Promise<number> {
   for (;;) {
-    const text = (await io.ask(ht(key))).trim();
+    const suggested = key === "retention_content_q" ? HUB_RETENTION_DEFAULTS.contentDays : HUB_RETENTION_DEFAULTS.eventDays;
+    const text = (await io.ask(ht(key, suggested))).trim();
+    if (!text) return suggested;
     if (/^\d{1,4}$/.test(text) && Number(text) >= 1 && Number(text) <= 3650) return Number(text);
     io.say(ht("retention_need"));
   }
@@ -326,6 +432,7 @@ async function confirmAndCommit(deps: HubWizardDeps, plan: HubInitPlan, bindPass
     io.say(ht("cancelled"));
     return "cancelled";
   }
+  if (!await checkNetwork(deps, plan)) return "refused";
   let result;
   try {
     result = await initializer.commit(plan, confirmation.reference);
@@ -334,6 +441,7 @@ async function confirmAndCommit(deps: HubWizardDeps, plan: HubInitPlan, bindPass
   }
   io.say();
   io.say(ht("done", result.hubId));
+  io.say(ht("admin_browser_next", plan.webOrigin));
 
   // Service: never implied by the setup itself; an exact word installs it.
   io.say();
@@ -351,9 +459,26 @@ async function confirmAndCommit(deps: HubWizardDeps, plan: HubInitPlan, bindPass
   }
 
   io.say();
-  io.say(ht("pairing_title"));
-  io.say(ht("pairing_steps", plan.webOrigin, plan.memberOrigin, result.spkiSha256));
+  try { for (const line of hubHandoffLines(deps.home, readHubInstallationInventory(deps.home))) io.say(line); }
+  catch {
+    // A completed initialization remains committed if an informational record cannot be read/displayed.
+    io.say(ht("handoff_unavailable"));
+    io.say(ht("pairing_title"));
+    io.say(ht("pairing_steps", plan.webOrigin, plan.memberOrigin, result.spkiSha256));
+  }
   return "initialized";
+}
+
+async function checkNetwork(deps: HubWizardDeps, listeners: HubInitListeners): Promise<boolean> {
+  const { io } = deps;
+  io.say(ht("network_check"));
+  try {
+    const problems = await (deps.checkNetwork ? deps.checkNetwork(listeners) : checkHubInitNetworkForHome(deps.home, listeners));
+    for (const p of problems) io.say(ht(`network_${p.reason}`, ht(`network_${p.listener}`)));
+    if (!problems.length) { io.say(ht("network_ok")); return true; }
+  } catch { io.say(ht("network_unavailable", ht("network_both"))); }
+  io.say(ht("network_unchanged"));
+  return false;
 }
 
 function refused(io: WizardIO, err: unknown): HubWizardOutcome {

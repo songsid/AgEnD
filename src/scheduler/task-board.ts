@@ -580,6 +580,7 @@ function toProject(r: Row): Project {
 export class TaskBoard {
   private listeners: Array<(change: BoardChange) => void> = [];
   private cardLimit: (name: string) => number = () => 1;
+  private boardOff: (name: string) => boolean = () => false;
   private pending: Array<{ code: string; uuid: string; actor: Actor; type: CardEventType; data: Record<string, unknown> }> = [];
   private projectsChanged = false;
   private notes: Note[] = [];
@@ -721,8 +722,12 @@ export class TaskBoard {
     return toProject(row);
   }
 
+  /**
+   * A person or an instance creates a project (#3195, the user's decision 9af8d799: agents organize the board). Its
+   * lead, and every later change to it (name, description, archiving: updateProject), stay a person's.
+   */
   createProject(actor: Actor, input: { name: string; description?: string; leadInstance?: string | null }): Project {
-    this.personOnly(actor, "create a project");
+    if (!isPerson(actor) && input.leadInstance) this.personOnly(actor, "set a project's lead");
     return this.tx(() => {
       const name = this.checkProjectName(input.name, null);
       const description = checkText("the description", input.description ?? "", CARD_LIMITS.projectDescription);
@@ -1324,6 +1329,7 @@ export class TaskBoard {
           if (acceptance.length > CARD_LIMITS.acceptanceItems) throw new TaskBoardError("too_long", `at most ${CARD_LIMITS.acceptanceItems} acceptance items`, "acceptance_max", [CARD_LIMITS.acceptanceItems]);
           const now = this.nowIso();
           const assignee = spec.assignee !== undefined ? normalizeAssignee(spec.assignee) : isPerson(actor) ? null : actor.name;
+          this.checkAssignable(assignee);
           const opener: Dispatcher | null = isPerson(actor) ? { kind: "person", name: actor.name }
             : actor.kind === "instance" && assignee && assignee !== actor.name ? { kind: "instance", name: actor.name } : null;
           const dispatcher = spec.dispatcher !== undefined ? toDispatcher(spec.dispatcher, actor) : (parent?.dispatcher ?? opener);
@@ -1449,8 +1455,9 @@ export class TaskBoard {
         set("deps", next, "dependsOn", (v) => v.map((d) => this.codeOf(d)));
       }
       if (patch.projectId !== undefined && patch.projectId !== card.projectId) {
-        if (ai) throw new TaskBoardError("forbidden", "only a person can move a main task to another project");
         if (card.kind !== "main") throw new TaskBoardError("invalid", "a sub task follows its main task's project; move the main task", "sub_project");
+        // #3195 (9af8d799): an instance moves a main task between projects when it may edit that card; a person always.
+        if (ai && !this.canEdit(card, actor)) throw new TaskBoardError("forbidden", `${card.code} belongs to ${card.assignee}; only its assignee, its creator, its dispatcher or a person can move it to another project`);
         const projectId = this.projectForMain(patch.projectId);
         set("projectId", projectId);
         this.db.prepare("UPDATE tasks SET project_id = ? WHERE parent_id = ?").run(projectId, card.uuid);
@@ -1591,6 +1598,7 @@ export class TaskBoard {
    */
   legacyCreate(actor: Actor, params: { title: string; description?: string; priority?: CardPriority; assignee?: string; depends_on?: string[] }): Card {
     return this.tx(() => {
+      this.checkAssignable(params.assignee ?? null);
       const now = this.nowIso();
       const card: Card = {
         uuid: randomUUID(), code: this.nextCode("M"), kind: "main", projectId: null, parent: null, title: params.title, status: "open",
@@ -1988,6 +1996,22 @@ export class TaskBoard {
     this.cardLimit = limit;
   }
 
+  /**
+   * Which names are fleet instances with the task board switched off (`dashboard.task_board: false`; the fleet reads its
+   * config at each write). Such an instance has no `task` tool, so it never sees a card handed to it: nobody — the
+   * person or an agent — makes it a card's assignee. Cards it had before keep it; nothing else is refused.
+   */
+  setBoardOff(off: (name: string) => boolean): void {
+    this.boardOff = off;
+  }
+
+  /** Refuses `name` as the new assignee of a card or task when it is an instance with the task board switched off. */
+  private checkAssignable(name: string | null, current: string | null = null): void {
+    if (name === null || name === current || !this.boardOff(name)) return;
+    throw new TaskBoardError("forbidden", `${name} has the task board switched off (dashboard.task_board: false): it cannot read or move cards. `
+      + `Switch the task board on for ${name} first, or hand it the work another way (delegate_task)`, "assignee_board_off", [name]);
+  }
+
   /** The board cards an instance works on itself right now (main tasks that follow their sub tasks aside). */
   inProgress(name: string): Card[] {
     return (this.db.prepare("SELECT * FROM tasks WHERE assignee = ? AND status = 'claimed' ORDER BY sort").all(name) as Row[]).map(toCard)
@@ -2353,6 +2377,7 @@ export class TaskBoard {
 
   private assign(card: Card, assignee: string | null, actor: Actor): void {
     const from = card.assignee;
+    this.checkAssignable(assignee, from);
     card.assignee = assignee;
     card.seenEntryId = 0;
     this.event(actor, card, "assigned", { from, to: assignee });

@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
-import { PANE_EDIT_KEYS, validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneOpenResult, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { PANE_EDIT_KEYS, validatePaneQuotaHistory, validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneOpenResult, type PaneEditKey, type RuntimePaneCapture, type RuntimePaneLaunch, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type { Pane, PaneHost, PaneInputProof, PaneInputDiagnostic, PaneKey, PaneObservation, PaneOutputEvent, PaneSize, PaneStatus } from "./pane-port.js";
 import type { RuntimeCoordinatorEvent } from "./runtime-coordinator.js";
 import { validateRuntimeTranscriptReference, validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, sameRuntimeTranscriptScope, type PaneTranscriptCursor, type PaneTranscriptWireBatch, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
@@ -26,6 +26,7 @@ export class RuntimePanePort implements Pane {
   private outputLog: NativePaneOutputLog | undefined;
   private lastObservation: RuntimePaneSnapshot | undefined;
   private inputCapture: RuntimePaneCapture | undefined;
+  private quotaCapture: { messages: string[]; snapshot: RuntimePaneSnapshot } | null = null;
   private inputNotSent = false;
   private inputDiagnostic: PaneInputDiagnostic | null = null;
   private consecutiveRefusals = 0;
@@ -298,6 +299,9 @@ export class RuntimePanePort implements Pane {
     if (!this.endpoint.online() || typeof result.text !== "string") throw Error("Invalid or disconnected pane capture");
     // Capturing while an input awaits its response must never erase that input's durable identity.
     if (!this.record.pending) this.record.snapshot = snapshot;
+    const messages = validatePaneQuotaHistory(result.quotaHistory);
+    this.quotaCapture = messages && this.record.launch.cli === "codex" && this.record.launch.sessionId === snapshot.sessionId
+      ? { messages, snapshot } : null;
     const capture = { snapshot, text: result.text };
     if (!options.history && !options.joined && !options.ansi) this.inputCapture = capture;
     return capture;
@@ -306,6 +310,17 @@ export class RuntimePanePort implements Pane {
     return (await this.captureCurrent(options)).text;
   }
   // Match TmuxManager's ordinary capture-pane -p. VT replay serialization is not detector-ready text.
+  quotaReplayHistory(): { messages: readonly string[]; current(): boolean } | null {
+    const capture = this.quotaCapture;
+    if (!capture) return null;
+    return { messages: [...capture.messages], current: () => {
+      const now = this.record.snapshot, observed = this.lastObservation, before = capture.snapshot;
+      return this.endpoint.online() && !this.closing && !this.record.pending && !this.record.pendingClose
+        && this.quotaCapture === capture && now?.state === "running" && before.state === "running"
+        && (!observed || observed.seq <= before.seq && observed.commandSequence <= before.commandSequence)
+        && ["hostBootId", "paneId", "launchId", "agentId", "instance", "sessionId", "seq", "commandSequence"].every(key => now[key as keyof RuntimePaneSnapshot] === before[key as keyof RuntimePaneSnapshot]);
+    } };
+  }
   capturePane(): Promise<string> { return this.capture({}); }
   capturePaneWithHistory(lines = 50): Promise<string> { return this.capture({ history: lines }); }
   capturePaneJoined(lines = 0): Promise<string> { return this.capture({ history: lines, joined: true }); }

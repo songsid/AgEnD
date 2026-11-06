@@ -24,7 +24,7 @@ import { IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { toast } from "/assets/ui-toast.js";
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 import { api } from "./settings-confirm.js";
 import { InstanceBoardWork } from "./fleet-task-work.js";
 import { requestAgentSettings } from "./settings-request.js";

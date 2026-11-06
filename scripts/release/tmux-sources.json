@@ -1,0 +1,115 @@
+{
+  "comment": "M-2457 (docs/design/bundled-tmux.md §3): the sources of AgEnD's bundled tmux. scripts/tmux/build-tmux.mjs fetches each url and refuses any byte that does not match its sha256. Changing a pin reruns the §2 matrix and the rehearsal legs.",
+  "sourceDateEpoch": 1788912000,
+  "tmux": {
+    "version": "3.8",
+    "url": "https://github.com/tmux/tmux/releases/download/3.8/tmux-3.8.tar.gz",
+    "sha256": "e79c699c7e949dccd0a4a125e17b8d1261e311b16979dbc8eb34542f3966d82e",
+    "license": "ISC",
+    "licenseFile": "COPYING"
+  },
+  "libevent": {
+    "version": "2.1.12-stable",
+    "url": "https://github.com/libevent/libevent/releases/download/release-2.1.12-stable/libevent-2.1.12-stable.tar.gz",
+    "sha256": "92e6de1be9ec176428fd2367677e61ceffc2ee1cb119035037a27d346b0403bb",
+    "license": "BSD-3-Clause",
+    "licenseFile": "LICENSE"
+  },
+  "ncurses": {
+    "version": "6.5",
+    "url": "https://ftp.gnu.org/gnu/ncurses/ncurses-6.5.tar.gz",
+    "sha256": "136d91bc269a9a5785e5f9e980bc76ab57428f604ce3e5a5a90cebc767971cc6",
+    "license": "X11",
+    "licenseFile": "COPYING"
+  },
+  "utf8proc": {
+    "version": "2.12.0",
+    "url": "https://github.com/JuliaStrings/utf8proc/archive/refs/tags/v2.12.0.tar.gz",
+    "sha256": "f564011d38b2888d583d510b08e69ffa15aa117155db1b9b49ef1dfe1fa25111",
+    "license": "MIT AND Unicode-3.0",
+    "licenseFile": "LICENSE.md"
+  },
+  "jemalloc": {
+    "version": "5.3.0",
+    "url": "https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2",
+    "sha256": "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
+    "license": "BSD-2-Clause",
+    "licenseFile": "COPYING",
+    "platforms": [
+      "darwin"
+    ]
+  },
+  "musl": {
+    "version": "1.2.5",
+    "url": "https://musl.libc.org/releases/musl-1.2.5.tar.gz",
+    "sha256": "a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4",
+    "license": "MIT",
+    "licenseFile": "COPYRIGHT",
+    "platforms": [
+      "linux"
+    ],
+    "licenseOnly": true,
+    "comment": "The libc the Linux builds link statically: the Alpine build image's own (checked against `ldd --version`); fetched only for its licence text."
+  },
+  "terminfo": [
+    "tmux-256color",
+    "tmux",
+    "screen-256color",
+    "screen",
+    "xterm-256color",
+    "xterm",
+    "kitty",
+    "foot",
+    "alacritty",
+    "wezterm",
+    "linux",
+    "vt100",
+    "dumb"
+  ],
+  "terminfoAliases": {
+    "xterm-kitty": "kitty"
+  },
+  "toolchain": {
+    "comment": "The build toolchain (scripts/tmux/toolchain.mjs). Linux: this Alpine image by digest (x64 and arm64 index), and every package the toolchain pulls in at its exact version — a version the repository no longer carries fails the build until this lock is updated in a reviewed change. macOS: this Xcode, selected explicitly, with its build and SDK checked.",
+    "alpine": {
+      "image": "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc",
+      "release": "3.20.10",
+      "packages": {
+        "binutils": "2.42-r1",
+        "bison": "3.8.2-r1",
+        "build-base": "0.5-r3",
+        "file": "5.45-r1",
+        "fortify-headers": "1.1-r3",
+        "g++": "13.2.1_git20240309-r1",
+        "gcc": "13.2.1_git20240309-r1",
+        "gmp": "6.3.0-r1",
+        "isl26": "0.26-r1",
+        "jansson": "2.14-r4",
+        "libatomic": "13.2.1_git20240309-r1",
+        "libbz2": "1.0.8-r6",
+        "libgcc": "13.2.1_git20240309-r1",
+        "libgomp": "13.2.1_git20240309-r1",
+        "libmagic": "5.45-r1",
+        "libstdc++": "13.2.1_git20240309-r1",
+        "libstdc++-dev": "13.2.1_git20240309-r1",
+        "linux-headers": "6.6-r0",
+        "m4": "1.4.19-r3",
+        "make": "4.4.1-r2",
+        "mpc1": "1.3.1-r1",
+        "mpfr4": "4.2.1-r0",
+        "musl": "1.2.5-r4",
+        "musl-dev": "1.2.5-r4",
+        "patch": "2.7.6-r10",
+        "perl": "5.38.5-r0",
+        "pkgconf": "2.2.0-r0",
+        "zstd-libs": "1.5.6-r0"
+      }
+    },
+    "darwin": {
+      "xcode": "16.4",
+      "xcodeBuild": "16F6",
+      "sdk": "15.5",
+      "developerDir": "/Applications/Xcode_16.4.app/Contents/Developer"
+    }
+  }
+}

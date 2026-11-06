@@ -18,6 +18,7 @@
  *   Grok CLI does and persist rotated tokens back to auth.json — refusing to
  *   refresh at all when the file isn't writable, rather than risk the login.
  */
+import { normalizeSubscriptionType } from "../claude-auth-status.js";
 import { readFile, writeFile, access, constants } from "node:fs/promises";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
@@ -233,7 +234,7 @@ export function resolveClaudeAuth(
 ): { token: string; plan: string | null } | { error: string; plan: string | null } | null {
   let plan: string | null = null;
   if (file?.subscriptionType?.trim()) {
-    const subscriptionType = file.subscriptionType.trim().toLowerCase();
+    const subscriptionType = normalizeSubscriptionType(file.subscriptionType)!;
     const rateLimitTier = file.rateLimitTier?.trim().toLowerCase() ?? "";
     if (subscriptionType === "team") {
       // Anthropic reuses the Max rate-limit tier identifier for Team Premium,

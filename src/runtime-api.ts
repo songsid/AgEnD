@@ -2,13 +2,16 @@
 import { remoteRuntimeEnabled } from "./runtime-switches.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readBoundedWebBody } from "./web-body.js";
-import { nativeCliAuthorization, type WindowsCliApiContext } from "./windows-cli-api.js";
+import { accountIdentityVisible, machineWithoutAccountIdentity, nativeCliAuthorization, probeWithoutAccountIdentity, type WindowsCliApiContext } from "./windows-cli-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { createRuntimeBundle } from "./runtime-bundle.js";
+import type { RuntimeMachine } from "./runtime-protocol.js";
+import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
+import type { RuntimeInstallService } from "./runtime-install.js";
 
-export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator }
+export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator; runtimeInstaller?(): RuntimeInstallService }
 function json(res: ServerResponse, status: number, value: unknown): void {
   if (res.destroyed || res.writableEnded) return;
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(value));
@@ -40,8 +43,18 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     } else send();
     return true;
   }
+  // What the copied PowerShell command pins: the SHA-256 of the exact install.ps1 bytes this server sends. The dashboard an
+  // administrator is looking at is the trust anchor, so this is read here (local administrator only), never from the script's own response.
+  if (method === "GET" && url.pathname === "/ui/runtimes/installer") {
+    if (url.search) { json(res, 400, { error: "The installer information takes no options" }); return true; }
+    try { json(res, 200, ctx.runtimeInstaller!().installer()); }
+    catch { json(res, 503, { error: "The Windows Runtime installer is unavailable on this host. Update or reinstall AgEnD and retry." }); }
+    return true;
+  }
   const hub = ctx.runtimeCoordinator!();
-  if (method === "GET" && url.pathname === "/ui/runtimes") { json(res, 200, { enabled: true, machines: hub.listMachines() }); return true; }
+  // The header token (an agent's) may still use these routes, but it is shown no account: only a local administrator session is (accountIdentityVisible).
+  const machineFor = (machine: RuntimeMachine): RuntimeMachine => accountIdentityVisible(req, url, ctx) ? machine : machineWithoutAccountIdentity(machine);
+  if (method === "GET" && url.pathname === "/ui/runtimes") { json(res, 200, { enabled: true, machines: hub.listMachines().map(machineFor) }); return true; }
   const tasksRoute = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})\/tasks(?:\/([a-z0-9-]{16,80})\/cancel)?$/.exec(url.pathname);
   if (tasksRoute) {
     const id = tasksRoute[1], runId = tasksRoute[2];
@@ -76,7 +89,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   }
   const route = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})(?:\/(approve|revoke|rename|refresh|probe|inventory))?$/.exec(url.pathname);
   if (method === "GET" && route) {
-    const machine = hub.machine(route[1]);
+    const found = hub.machine(route[1]), machine = found ? machineFor(found) : found;
     json(res, machine ? 200 : 404, machine ? route[2] === "inventory" ? { machineId: machine.id, inventory: machine.inventory ?? null, updatedAt: machine.inventoryUpdatedAt ?? null, status: machine.status } : { machine } : { error: "Runtime machine not found" }); return true;
   }
   if (method !== "POST" || url.pathname !== "/ui/runtimes/pairing" && !route) { json(res, 404, { error: "Unknown runtime operation" }); return true; }
@@ -92,13 +105,14 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     if (!route) throw Error("Unknown runtime operation");
     const id = route[1], op = route[2];
     if (Object.keys(input).some(key => op === "rename" ? key !== "name" : op === "approve" ? key !== "fingerprint" : true)) throw Error("Unknown runtime operation field");
-    if (op === "approve") json(res, 200, { machine: hub.approve(id, input.fingerprint) });
-    else if (op === "revoke") json(res, 200, { machine: hub.revoke(id) });
-    else if (op === "rename") json(res, 200, { machine: hub.rename(id, input.name) });
+    if (op === "approve") json(res, 200, { machine: machineFor(hub.approve(id, input.fingerprint)) });
+    else if (op === "revoke") json(res, 200, { machine: machineFor(hub.revoke(id)) });
+    else if (op === "rename") json(res, 200, { machine: machineFor(hub.rename(id, input.name)) });
     else if (op === "refresh" || op === "probe") {
       const inventory = await hub.call(id, "probe", { force: true });
       if (!nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Authorization expired" }); return; }
-      json(res, 200, { machine: hub.machine(id), inventory });
+      const seen = accountIdentityVisible(req, url, ctx), current = hub.machine(id);
+      json(res, 200, { machine: current && !seen ? machineWithoutAccountIdentity(current) : current, inventory: seen ? inventory : probeWithoutAccountIdentity(inventory as WindowsCliProbe) });
     } else throw Error("Unknown runtime operation");
   })().catch(error => json(res, nativeCliAuthorization(req, url, ctx) ? 400 : 403, { error: nativeCliAuthorization(req, url, ctx) ? error instanceof Error ? error.message : "Runtime operation failed" : "Authorization expired" }));
   return true;

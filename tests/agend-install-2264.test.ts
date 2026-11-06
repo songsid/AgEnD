@@ -41,6 +41,7 @@ exit 0
 `);
   chmodSync(join(pkg, "bin", "agend"), 0o755);
   cpSync(join(REPO, "launcher", "fleet-service-owner.cjs"), join(pkg, "launcher", "fleet-service-owner.cjs"));
+  cpSync(join(REPO, "launcher", "launchd-session-type.cjs"), join(pkg, "launcher", "launchd-session-type.cjs"));
   cpSync(join(REPO, "launcher", "agend-install.cjs"), join(pkg, "launcher", "agend-install.cjs"));
   cpSync(join(REPO, "launcher", "private-home.cjs"), join(pkg, "launcher", "private-home.cjs"));
   cpSync(join(REPO, "launcher", "install-admission.cjs"), join(pkg, "launcher", "install-admission.cjs"));   // the lock's process readers
@@ -738,15 +739,27 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     try {
       await new Promise(resolve => setTimeout(resolve, 100));
       const prefixFd = `/proc/${other.pid}/fd/`;
-      const procStat = (p: string) => { if (p.startsWith(prefixFd)) throw Object.assign(new Error("EACCES"), { code: "EACCES" }); return statSync(p); };
+      const procStat = (p: string) => {
+        // Only this owned child is the subject. A runner's unrelated non-dumpable
+        // process can legitimately make the real all-process scan return unknown.
+        if (/^\/proc\/\d+$/.test(p) && p !== `/proc/${other.pid}`) {
+          return Object.assign(statSync(r.lock), { uid: statSync(r.lock).uid + 1 });
+        }
+        if (p.startsWith(prefixFd)) throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+        return statSync(p);
+      };
+      const procReaddir = (p: string) => {
+        if (p !== `/proc/${other.pid}/fd`) throw new Error(`Unrelated process read in descriptor fixture: ${p}`);
+        return readdirSync(p);
+      };
       for (const target of ["pipe:[4242]", "socket:[17]", "anon_inode:[eventfd]", "/dev/null", "/dev/pts/3"]) {
-        const got = installer.admit(r.prefix, { ...realDepsFor(r), procStat, procReadlink: () => target }, {});
+        const got = installer.admit(r.prefix, { ...realDepsFor(r), procStat, procReaddir, procReadlink: () => target }, {});
         expect(got.refuse, target).toBeUndefined();
         got.release!();
         writeFileSync(r.lock, '{"pid":');
       }
       for (const procReadlink of [() => r.lock, () => "/home/u/somefile", () => { throw Object.assign(new Error("EIO"), { code: "EIO" }); }]) {
-        expect(installer.admit(r.prefix, { ...realDepsFor(r), procStat, procReadlink }, {}).refuse).toMatch(/cannot be told \(EACCES on \/proc\/\d+\/fd\/\d+/);
+        expect(installer.admit(r.prefix, { ...realDepsFor(r), procStat, procReaddir, procReadlink }, {}).refuse).toMatch(/cannot be told \(EACCES on \/proc\/\d+\/fd\/\d+/);
         expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
       }
     } finally { other.kill("SIGKILL"); }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, appendFileSync, promises as fsp } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, appendFileSync, unlinkSync, symlinkSync, constants, promises as fsp } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rotateLogIfNeeded, rotateLogIfNeededAsync } from "../src/logger.js";
@@ -12,6 +12,11 @@ let dir: string;
 let log: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "agend-rotate-async-")); log = join(dir, "output.log"); });
 afterEach(() => { vi.restoreAllMocks(); rmSync(dir, { recursive: true, force: true }); });
+
+/** O_RDONLY is 0; a read-mode open is one with neither O_WRONLY nor O_RDWR. The truncate fd is O_WRONLY. */
+function isReadOnlyOpen(flags: unknown): boolean {
+  return typeof flags === "number" && (flags & constants.O_WRONLY) === 0 && (flags & constants.O_RDWR) === 0;
+}
 
 describe("rotateLogIfNeededAsync: same result as the sync rotation", () => {
   it("copies to .1, truncates the live file in place (same inode), shifts .1 → .2 → .3 and drops the oldest", async () => {
@@ -52,7 +57,8 @@ describe("rotateLogIfNeededAsync: same result as the sync rotation", () => {
     writeFileSync(log, "A".repeat(100));
     const open = vi.spyOn(fsp, "open");
     await rotateLogIfNeededAsync(log, 50, 3);
-    expect(open).not.toHaveBeenCalled();
+    // Live file is opened O_RDWR once (copy+delta+truncate). No O_RDONLY re-read.
+    expect(open.mock.calls.filter(([, flags]) => isReadOnlyOpen(flags))).toHaveLength(0);
   });
 
   it("a ballooned log is dropped in place without a copy, rotated files removed", async () => {
@@ -163,11 +169,120 @@ describe("rotateLogIfNeededAsync: the writer keeps appending while the copy runs
     writeFileSync(log, "A".repeat(100));
     const order: string[] = [];
     const realCopy = fsp.copyFile.bind(fsp);
-    const realTruncate = fsp.truncate.bind(fsp);
+    const realOpen = fsp.open.bind(fsp);
     vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => { await realCopy(src, dst, mode); order.push("copied"); });
-    vi.spyOn(fsp, "truncate").mockImplementation(async (path, len) => { order.push("truncated"); return realTruncate(path, len); });
+    vi.spyOn(fsp, "open").mockImplementation((async (...args: Parameters<typeof fsp.open>) => {
+      const handle = await realOpen(...args);
+      const orig = handle.truncate.bind(handle);
+      (handle as unknown as { truncate: typeof handle.truncate }).truncate = async (len?: number) => {
+        order.push("truncated");
+        return orig(len);
+      };
+      return handle;
+    }) as never);
     await rotateLogIfNeededAsync(log, 50, 3);
     expect(order).toEqual(["copied", "truncated"]);
+  });
+
+  it("a live path swapped to a symlink mid-copy does not put the target in .1", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const victim = join(dir, "victim.log");
+    writeFileSync(victim, "SECRET");
+    const realCopy = fsp.copyFile.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => {
+      unlinkSync(log);
+      symlinkSync(victim, log);
+      await realCopy(src, dst, mode);
+    });
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(victim, "utf8")).toBe("SECRET");
+    expect(readFileSync(`${log}.1`, "utf8")).toBe("A".repeat(100));
+  });
+
+  it("a .1 path swapped to a symlink after the copy does not take the delta", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const victim = join(dir, "victim.log");
+    writeFileSync(victim, "SECRET");
+    const realCopy = fsp.copyFile.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => {
+      await realCopy(src, dst, mode);
+      unlinkSync(String(dst));
+      symlinkSync(victim, String(dst));
+      appendFileSync(log, "LATE");
+    });
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(victim, "utf8")).toBe("SECRET");
+    expect(readFileSync(log, "utf8")).toBe(`${"A".repeat(100)}LATE`);
+  });
+
+  it("a failed copy (directory at .1) leaves the live log intact", async () => {
+    writeFileSync(log, "x".repeat(50));
+    mkdirSync(`${log}.1`);
+    await rotateLogIfNeededAsync(log, 10, 3);
+    expect(statSync(log).size).toBe(50);
+    expect(statSync(`${log}.1`).isDirectory()).toBe(true);
+  });
+
+  it("a live path replaced after the copy is not truncated; .1 keeps the copied bytes", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const realCopy = fsp.copyFile.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => {
+      await realCopy(src, dst, mode);
+      unlinkSync(log);
+      writeFileSync(log, "KEEP-NEW-FILE");
+    });
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(`${log}.1`, "utf8")).toBe("A".repeat(100));
+    expect(readFileSync(log, "utf8")).toBe("KEEP-NEW-FILE");
+  });
+
+  it("a dest write that returns 2 bytes at a time still lands the whole delta, then truncates", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const realCopy = fsp.copyFile.bind(fsp);
+    const realOpen = fsp.open.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => {
+      await realCopy(src, dst, mode);
+      appendFileSync(log, "DELTA");
+    });
+    vi.spyOn(fsp, "open").mockImplementation((async (...args: Parameters<typeof fsp.open>) => {
+      const handle = await realOpen(...args);
+      const flags = args[1];
+      if (typeof flags === "number" && (flags & constants.O_WRONLY) !== 0) {
+        const orig = handle.write.bind(handle);
+        (handle as unknown as { write: typeof handle.write }).write = (async (buffer: Buffer) => {
+          const piece = buffer.length > 2 ? buffer.subarray(0, 2) : buffer;
+          return orig(piece);
+        }) as typeof handle.write;
+      }
+      return handle;
+    }) as never);
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(`${log}.1`, "utf8")).toBe(`${"A".repeat(100)}DELTA`);
+    expect(statSync(log).size).toBe(0);
+  });
+
+  it("a dest write that makes no progress aborts without truncating", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const realCopy = fsp.copyFile.bind(fsp);
+    const realOpen = fsp.open.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => {
+      await realCopy(src, dst, mode);
+      appendFileSync(log, "DELTA");
+    });
+    vi.spyOn(fsp, "open").mockImplementation((async (...args: Parameters<typeof fsp.open>) => {
+      const handle = await realOpen(...args);
+      const flags = args[1];
+      if (typeof flags === "number" && (flags & constants.O_WRONLY) !== 0) {
+        (handle as unknown as { write: typeof handle.write }).write = (async (buffer: Buffer) => ({
+          bytesWritten: 0,
+          buffer,
+        })) as typeof handle.write;
+      }
+      return handle;
+    }) as never);
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(`${log}.1`, "utf8")).toBe("A".repeat(100));
+    expect(readFileSync(log, "utf8")).toBe(`${"A".repeat(100)}DELTA`);
   });
 });
 

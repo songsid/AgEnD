@@ -1,4 +1,5 @@
 /** Optional native adapter for the ordinary Daemon. The runner retains processes across coordinator detach. */
+import { CODEX_STATUS_PASSIVE_COMPOSER, isCodexStatusAutocompleteComposer } from "./backend/codex-footer-hints.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import type { CliBackend } from "./backend/types.js";
 import { createNativePaneBackend } from "./backend/native-pane.js";
@@ -24,6 +25,7 @@ export interface NativePaneLifecycle {
   mcpProof(): "alive" | "dead" | "unknown";
   checkpointSession(): void;
   snapshot?(): RuntimePaneSnapshot | null;
+  quotaReplayHistory?(): { messages: readonly string[]; current(): boolean } | null;
 }
 export interface NativePaneLifecycleOptions {
   endpoint: PaneEndpoint;
@@ -66,7 +68,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     this.host = new RuntimePaneHostPort(this.port, options.endpoint);
     this.observation = new RuntimePaneObservation(options.endpoint, () => this.port.ownedSnapshot());
     this.backend = createNativePaneBackend(options.launch.cli, () => ({ sessionId: this.port.ownedSnapshot()?.sessionId ?? null,
-      cwd: options.launch.cwd, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }));
+      cwd: options.launch.cwd, contextPercentage: null, statusLineItems: ["context-remaining"], resumes: !!options.launch.sessionId || !!this.port.ownedSnapshot()?.sessionId }), { contextlessResume: !!options.launch.sessionId });
   }
   bindDaemon(daemon: import("./daemon.js").Daemon): void {
     this.port.setInputRefusalLogger(details => daemon.logNativeInputRefusal(details));
@@ -78,14 +80,21 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     return this.port.observedSnapshot()?.state === "running";
   }
   snapshot(): RuntimePaneSnapshot | null { return this.port.observedSnapshot(); }
+  quotaReplayHistory(): { messages: readonly string[]; current(): boolean } | null {
+    if (!this.current()) return null;
+    const proof = this.port.quotaReplayHistory();
+    return proof ? { messages: proof.messages, current: () => this.current() && proof.current() } : null;
+  }
   mcpProof(): "alive" | "dead" | "unknown" { return this.current() ? this.options.mcpProof() : "unknown"; }
   checkpointSession(): void {
     const pane = this.port.ownedSnapshot();
     if (pane?.sessionId && !this.releasedExit) this.options.pin(pane.launchId, pane.sessionId);
   }
-  private ready(text: string): boolean {
+  private ready(text: string, fixedStatus = false): boolean {
     const backend = this.backend;
-    return (backend.isDeliveryInputReadyPane?.(text) ?? backend.getReadyPattern().test(text)) && !backend.getBusyPattern?.()?.test(text)
+    return ((backend.isDeliveryInputReadyPane?.(text) ?? backend.getReadyPattern().test(text))
+      // Only the command already typed by this retained one-shot intent. Other drafts do not become ready.
+      || fixedStatus && (CODEX_STATUS_PASSIVE_COMPOSER.test(text) || isCodexStatusAutocompleteComposer(text)) && backend.ownsComposerRows?.(text) === true) && !backend.getBusyPattern?.()?.test(text)
       && ![...(backend.getStartupDialogs?.() ?? []), ...(backend.getRuntimeDialogs?.() ?? [])].some(dialog => dialog.pattern.test(text) && (!dialog.isActive || dialog.isActive(text)));
   }
   private async codexIdentity(assertCurrent: () => void, reattached: boolean): Promise<void> {
@@ -139,7 +148,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
         const deadline = performance.now() + 15_000;
         for (;;) {
           const screen = await observe(deadline); assertCurrent(); this.options.admit();
-          if (this.ready(screen) && /^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) {
+          if (this.ready(screen, true) && /^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) {
             return this.port.sendSpecialKey("Enter", undefined, { kind: "composer", screen });
           }
           if (performance.now() >= deadline) throw Error("Native status composer changed; no Enter was sent");

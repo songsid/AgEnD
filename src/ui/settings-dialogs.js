@@ -27,6 +27,11 @@ import {
   chLabel, dashboardDefault, hasOwn, impactOf, newConnectionImpact, nonNegative, nonNegativeInteger, positive, replyGuardSupported, sameValue, visibilityDefault,
   classicWebEchoEffective, toolSetDefault, worstImpact,
 } from "./settings-model.js";
+import "./settings-codex-copy.js";   // M-2446: the Speed field's words (a retained old settings-strings lacks them)
+import { AccountSelect } from "./accounts-view.js";   // #3212: the Account field (a new module: never a stale named import)
+/** M-2446: Codex speed choices (backend_options.codex.speed); "" = unset. Local, not imported: a stale tab may keep an
+ *  older settings-model.js, and a new named import would fail this module's load. */
+const CODEX_SPEED_CHOICES = ["", "standard", "fast"];
 /** #2342: a field by id, for recordEdit before a pick or a reset writes it. */
 const byId = (id) => (typeof document !== "undefined" ? document.getElementById(id) : null);
 
@@ -290,7 +295,17 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
   const generalError = otherGeneral ? tn("oneGeneral", ctx.shortName(otherGeneral[0], otherGeneral[1])) : "";
   const failoverWarn = !f.inherit.model_failover && !f.model_failover.trim() ? "failoverEmpty" : "";
   const ready = !errors.auto && !errors.hang && !generalError;
-  const pending = () => agentPatch({ ...f, status_emojis: emojis.value }, inst, defaults, visibilityBaseline, emojis.baseline);
+  // #3212: the agent's own credential profile for its CLI ("" = none: it follows the fleet default). Host agents only.
+  const acctBackend = f.backend || defaults.backend || "claude-code";
+  const ownAccount = (inst.backend_options && inst.backend_options[acctBackend] && inst.backend_options[acctBackend].credential_profile) || "";
+  const [acct, setAcct] = useState(ownAccount);
+  const pending = () => {
+    const patch = agentPatch({ ...f, status_emojis: emojis.value }, inst, defaults, visibilityBaseline, emojis.baseline);
+    if (inst.runtime === "windows" || acct === ownAccount) return patch;
+    const opts = { ...(patch.backend_options || {}) };
+    opts[acctBackend] = { ...(opts[acctBackend] || {}), credential_profile: acct || null };
+    return { ...patch, backend_options: opts };
+  };
   const stage = () => {
     if (!ready) return;
     const patch = pending();
@@ -313,6 +328,11 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
       <div class="field">${L(tn("description"), "instance.description", "ag-desc")}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} /></div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
         backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
+      ${(f.backend || defaults.backend || "claude-code") === "codex" && inst.runtime !== "windows" ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed")}
+        <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
+          options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
+        <p class="note">${tn("codexSpeedHint")}</p></div>` : null}
+      ${inst.runtime !== "windows" && ["claude-code", "codex", "kiro-cli"].includes(acctBackend) ? html`<${AccountSelect} id="ag-account" backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}
     </div>
     <div class="field">${L(tn("workingDir"), "instance.working_directory", "ag-wd")}<input id="ag-wd" type="text" value=${f.working_directory} onInput=${(e) => set("working_directory")(e.target.value)} /></div>
     <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "instance.auto_pause_after", "ag-auto")}

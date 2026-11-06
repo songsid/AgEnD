@@ -7,16 +7,17 @@ import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 
 /**
- * claude-code as it was before #1200: no input-box reader. These cases pin the daemon's readerless path (grok and muse
- * still take it) on Claude's own panes and transcript format; claude-code itself now reads its box
- * (claude-input-box-1200.test.ts).
+ * claude-code as it was before #1200: no input-box reader. These cases pin the daemon's readerless path (muse still
+ * takes it; grok reads its boxed prompt since #3199, so the grok case below strips the reader) on Claude's own panes
+ * and transcript format; claude-code itself now reads its box (claude-input-box-1200.test.ts).
  */
 const readerlessClaude = (instanceDir: string) => Object.assign(new ClaudeCodeBackend(instanceDir), { readInputRow: undefined });
 import { CodexBackend } from "../src/backend/codex.js";
 import { GrokBackend } from "../src/backend/grok.js";
+const readerlessGrok = (instanceDir: string) => Object.assign(new GrokBackend(instanceDir), { readInputRow: undefined });
 
 /**
- * #758: a backend whose input row cannot be read (claude-code, grok, muse, …) was confirmed by "the pane printed something
+ * #758: a backend whose input row cannot be read (claude-code, muse, …; grok since #3199 reads its box) was confirmed by "the pane printed something
  * after Enter" — which a redraw that wiped the paste satisfies as well — and the outbox recorded `delivered` / "positive
  * submission proof". Now such a delivery is finished by the CLI's own transcript: the delivery's marker (found → delivered,
  * `transcript-marker`), or — only once the delta was READ and stayed without it for the whole window — `uncertain`.
@@ -309,7 +310,9 @@ describe("a readerless backend's idle delivery is proven by its transcript, not 
   });
 
   it("a backend without a transcript the reconciler understands (grok) keeps today's outcome, labelled — no false ⚠️", async () => {
-    const h = await deliver({ backend: dir => new GrokBackend(dir), backendName: "grok" });
+    // #3199: grok now reads its boxed prompt. This case pins the transcript-less
+    // readerless fallback (muse still takes it) — a working reader is grok-input-box-3199.test.ts.
+    const h = await deliver({ backend: dir => readerlessGrok(dir), backendName: "grok" });
     await h.pump(5, h.finished);
     expect(h.state()).toBe("delivered");
     expect(h.evidence()).toBe("output-edge-only; submission-unverifiable");
