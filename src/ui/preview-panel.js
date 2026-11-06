@@ -20,6 +20,7 @@ import { chatTime, onDayChange } from "./chat-time.js";
 import { PanelActions } from "./preview-panel-actions.js";
 import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./preview-versions.js";
 import { pagesOf, pageIdOf } from "./preview-pages.js";
+import { drawMarkdown, TEXT_CARD_MAX } from "./chat-thread.js";
 
 export { htmlTitle };
 
@@ -56,6 +57,16 @@ export function openPanel(spec, { run = false } = {}) {
   const old = state.open;
   set({ open: { ...spec, kind: "html" }, run: run ? ++runs : 0 });
   retire(old); // State changes first: cleanup reentry cannot close a newer panel.
+}
+/**
+ * M-2448: show a Markdown file in the panel — `spec`: { key, instance, msgKey, att: { id, name, size }, sender, ts,
+ * text? } (text: what the card's Show already read). Nothing runs: it is rendered by the chat's own Markdown renderer.
+ * The block shown before stops, as for any open.
+ */
+export function openMarkdown(spec) {
+  const old = state.open;
+  set({ open: { ...spec, kind: "md" }, run: 0 });
+  retire(old);
 }
 /** Close publishes the empty slot before old-owner callbacks can reenter. */
 export function closePanel() {
@@ -363,7 +374,35 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     }
     return () => { live = false; };
   }, [shown, open && open.key, prev && prev.key]);
+  // M-2448: a Markdown file's text (read once per open: the same capped, same-origin read as the chat's card) and
+  // which view shows it — rendered (the chat's Markdown renderer, which escapes first) or its source.
+  const [md, setMd] = useState(null);       // { state: "loading" | "ready" | "failed", text?, reason? }
+  const [mdView, setMdView] = useState("rendered");
+  const [mdPlain, setMdPlain] = useState(false);
+  const mdBody = useRef(null);
+  const isMd = !!open && open.kind === "md";
+  useEffect(() => {
+    if (!isMd) { setMd(null); return undefined; }
+    setMdView("rendered");
+    if (typeof open.text === "string") { setMd({ state: "ready", text: open.text }); return undefined; }
+    let live = true;
+    setMd({ state: "loading" });
+    loadHtmlAttachment(open.att, undefined, { ask: TEXT_CARD_MAX, max: TEXT_CARD_MAX }).then((r) => {
+      if (!live) return;
+      setMd(r.ok ? { state: "ready", text: r.code } : { state: "failed", reason: r.reason === "over" ? t("chat.tcOver") : attReason(r) });
+    }, () => { if (live) setMd({ state: "failed", reason: t("chat.pvAttFailed") }); });
+    return () => { live = false; };
+  }, [isMd && open.key]);
+  useEffect(() => {
+    if (!isMd || !md || md.state !== "ready" || mdView !== "rendered" || !mdBody.current) return;
+    setMdPlain(drawMarkdown(mdBody.current, md.text) === "plain");
+  }, [isMd && open.key, md, mdView]);
   const fileName = open && open.att ? open.att.name : undefined;
+  // The divider between the thread and the panel (both kinds): drag, or the arrow keys, Home and End.
+  function divider0() {
+    return html`<div data-trust="preview" class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
+      aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>`;
+  }
   // Esc in the panel closes it (and is not the chat's "stop the reply").
   const onPanelKey = (e) => {
     if (e.key !== "Escape" || e.isComposing) return;
@@ -372,6 +411,8 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
   };
 
   if (!open) return null;
+  if (isMd) return html`${divider0()}<${MarkdownPanel} open=${open} name=${name} md=${md} view=${mdView} setView=${setMdView} plain=${mdPlain}
+    body=${mdBody} panel=${panel} fs=${fs} enterFs=${enterFs} leaveFs=${leaveFs} onKey=${onPanelKey} reveal=${reveal} />`;
   const going = run.state === "starting" || run.state === "running";
   const a = P().availability();
   // #1554: a device that has not allowed previews is offered the same "Allow previews" here (the same confirm). Allowing
@@ -390,8 +431,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
     if (want && pending.current === want && panelStore.get().run === want) start();
   };
   const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
-  return html`<div data-trust="preview" class="pv-divider" ref=${divider} role="separator" aria-orientation="vertical" tabindex="0" aria-label=${t("chat.pvResize")}
-      aria-valuemin=${String(MIN_PANEL)} onKeyDown=${onKey} onPointerDown=${onDown}></div>
+  return html`${divider0()}
     <aside data-trust="preview" class=${`pv-panel${fs ? ` pv-fs pv-fs-${fs}` : ""}`} ref=${panel} aria-label=${t("chat.pvPanel")} onKeyDown=${onPanelKey}>
       <div class="pv-panel-head">
         <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
@@ -438,6 +478,41 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
         ${!listing && shown === "changes" ? html`<${Changes} changes=${changes} />` : null}
       </div>
     </aside>`;
+}
+
+/**
+ * M-2448: a Markdown file in the panel — the HTML preview's frame (head, source, close, full screen; a full-screen
+ * sheet on a phone), with Rendered / Source and Download. Nothing in the file runs: Rendered is the chat's Markdown
+ * renderer (escaped first, no raw HTML), Source is text.
+ */
+function MarkdownPanel({ open, name, md, view, setView, plain, body, panel, fs, enterFs, leaveFs, onKey, reveal }) {
+  const source = t("chat.pvSource", open.sender || name, timeOf(open.ts));
+  const ready = md && md.state === "ready";
+  return html`<aside data-trust="preview" class=${`pv-panel pv-md-panel${fs ? ` pv-fs pv-fs-${fs}` : ""}`} ref=${panel} aria-label=${t("chat.pvMdPanel")} onKeyDown=${onKey}>
+    <div class="pv-panel-head">
+      <button type="button" class="icon-btn only-narrow pv-panel-close" title=${t("chat.pvBack")} aria-label=${t("chat.pvBack")} onClick=${closePanel}><${Icon} name="back" size=${18} /></button>
+      <div class="pv-panel-title"><strong>${open.att ? open.att.name : t("chat.pvMdPanel")}</strong>
+        <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
+      <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
+    </div>
+    <div class="pv-panel-bar">
+      <div class="seg-inline" role="group" aria-label=${t("chat.pvMdPanel")}>
+        <button type="button" class=${`btn btn-sm${view === "rendered" ? " on" : ""}`} aria-pressed=${view === "rendered" ? "true" : "false"} title=${t("chat.pvMdRendered")} onClick=${() => setView("rendered")}><${Icon} name="eye" size=${14} /><span class="lbl">${t("chat.pvMdRendered")}</span></button>
+        <button type="button" class=${`btn btn-sm${view === "source" ? " on" : ""}`} aria-pressed=${view === "source" ? "true" : "false"} title=${t("chat.pvMdSource")} onClick=${() => setView("source")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvMdSource")}</span></button>
+      </div>
+      <span class="grow"></span>
+      <button type="button" class=${`btn btn-sm only-wide pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+        onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
+      ${open.att ? html`<a class="btn btn-sm pv-panel-dl" href=${`/ui/file/${open.att.id}`} download=${open.att.name} title=${t("chat.pvDownload")}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></a>` : null}
+    </div>
+    ${md && md.state === "loading" ? html`<div class="pv-note" role="status">${t("chat.pvLoading")}</div>` : null}
+    ${md && md.state === "failed" ? html`<div class="pv-note" role="alert">${md.reason}</div>` : null}
+    ${ready && view === "rendered" && plain ? html`<div class="pv-note" role="status">${t("chat.tcPlain")}</div>` : null}
+    <div class="pv-panel-body show-code">
+      ${ready && view === "rendered" ? html`<div class="pv-code pv-md" ref=${body}></div>` : null}
+      ${ready && view === "source" ? html`<pre class="pv-code"><code>${md.text}</code></pre>` : null}
+    </div>
+  </aside>`;
 }
 
 /** The Changes view: hunks of the line diff as a unified diff shows them, drawn as text (never as HTML). */

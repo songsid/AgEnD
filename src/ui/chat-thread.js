@@ -45,6 +45,33 @@ const COPY = '<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill=
 /** Escapes & " ' < >: safe for text and inside a quoted attribute. */
 export function escAttr(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 export const msgKey = (x) => `${x.boot}-${x.id}`;
+/** How many elements an HTML string would build: its opening tags (escaped text has none). */
+function tagsIn(html) {
+  let n = 0;
+  for (let i = html.indexOf("<"); i !== -1; i = html.indexOf("<", i + 1)) { const c = html.charCodeAt(i + 1); if ((c | 32) >= 97 && (c | 32) <= 122) n++; }
+  return n;
+}
+/**
+ * M-2448: a Markdown file drawn into `el` for the side panel — renderMarkdown, which escapes first (no raw HTML, no
+ * script: the same renderer and the same output as the chat's Markdown card), or the text as plain text when its
+ * formatting would build more than TEXT_PREVIEW_NODES elements. This module is the one that writes rendered Markdown
+ * (web-csp-1268); the panel asks it. Returns "md" or "plain".
+ */
+export function drawMarkdown(el, src) {
+  const doc = el.ownerDocument;
+  el.textContent = "";
+  const html = globalThis.AgendChatRender.renderMarkdown(String(src));
+  if (tagsIn(html) > TEXT_PREVIEW_NODES) {
+    const pre = doc.createElement("pre"), code = doc.createElement("code");
+    pre.className = "tc-pre"; code.textContent = String(src); pre.append(code); el.append(pre);
+    return "plain";
+  }
+  const md = doc.createElement("div");
+  md.className = "md";
+  md.innerHTML = html;
+  el.append(md);
+  return "md";
+}
 /**
  * Board 00ef2430: a thread opens with only its newest messages drawn — enough for a screen — so switching chats paints
  * at once; the older ones are drawn after that, a chunk at a time between frames, the reader's place kept.
@@ -365,10 +392,10 @@ export function createThread(list, scroller, opts) {
       const att = atts.find(a => a && a.id === ph.dataset.att);
       const type = att ? R().attachmentPreviewType(att) : null;
       if (!att || !type || type !== ph.dataset.type) continue;
-      buildTextCard(ph, att, type);
+      buildTextCard(ph, att, type, x);
     }
   }
-  function buildTextCard(ph, att, type) {
+  function buildTextCard(ph, att, type, x) {
     const doc = list.ownerDocument;
     const el = (tag, cls, text) => { const e = doc.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
     ph.textContent = "";
@@ -376,7 +403,16 @@ export function createThread(list, scroller, opts) {
     const label = el("span", "tc-label", att.name);
     const show = el("button", "btn btn-sm tc-show", tr("chat.tcShow")); show.type = "button";
     const dl = el("a", "btn btn-sm tc-dl", tr("chat.tcDownload")); dl.href = `/ui/file/${att.id}`; dl.setAttribute("download", att.name);
-    head.append(label, show, dl);
+    head.append(label, show);
+    // M-2448: a Markdown file opens in the side panel too (the panel reads it, or takes what Show already read).
+    const panel = opts.panel || null;
+    if (type === "md" && panel && typeof panel.openMarkdown === "function" && x) {
+      const toPanel = el("button", "btn btn-sm btn-ghost tc-panel", tr("chat.pvOpenPanel")); toPanel.type = "button";
+      toPanel.onclick = () => panel.openMarkdown({ key: `${msgKey(x)}:m${att.id}`, instance: x.instance, msgKey: msgKey(x),
+        att: { id: att.id, name: att.name, size: att.size }, sender: x.sender, ts: x.ts, ...(text !== null ? { text } : {}) });
+      head.append(toPanel);
+    }
+    head.append(dl);
     const note = el("div", "pv-note"); note.setAttribute("data-trust", "thread-control");
     const body = el("div", "tc-body"); body.hidden = true;
     ph.append(head, note, body);
