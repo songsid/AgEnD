@@ -260,7 +260,7 @@ register("chat", {
     wsOpen: "檔案與變更", wsTitle: "檔案與變更", wsChanges: "變更", wsFiles: "檔案", wsRefresh: "重新整理",
     wsReadOnly: "這是 Agent 工作資料夾的唯讀檢視。看起來像機密的檔案（.env、金鑰、憑證）會隱藏。",
     wsNoRepo: "這個資料夾不是 git 儲存庫，沒有可顯示的變更；「檔案」仍可使用。",
-    wsClean: "{0} 沒有尚未提交的變更。", wsSummary: "{1} 上有 {0} 個變更的檔案", wsHiddenCount: "{0} 個已隱藏",
+    wsClean: "{0} 沒有尚未提交的變更。", wsSummary: "{0} 個檔案有變更（{1}）", wsHiddenCount: "{0} 個已隱藏",
     wsCut: "部分變更未顯示：清單或差異已達大小上限。",
     wsHiddenFile: "已隱藏：可能含有機密", wsBinary: "二進位檔", wsTooLarge: "太大，無法顯示", wsLink: "連結（不追蹤）",
     wsSt_modified: "M", wsSt_added: "A", wsSt_deleted: "D", wsSt_untracked: "U",

@@ -168,7 +168,7 @@ function Listing({ listing, openDir, openFile }) {
       const usable = !e.hidden && (e.type === "dir" || e.type === "file");
       return html`<li key=${e.name} class=${`ws-entry t-${e.type}${e.hidden ? " is-hidden" : ""}`}>
         <button type="button" class="ws-entry-btn" disabled=${!usable} onClick=${() => (e.type === "dir" ? openDir(rel) : openFile(rel))}>
-          <${Icon} name=${e.type === "dir" ? "inbox" : e.type === "symlink" ? "external" : "file"} size=${14} />
+          <${Icon} name=${e.type === "dir" ? "chevron" : e.type === "symlink" ? "external" : "file"} size=${14} />
           <span class="ws-name">${e.name}${e.type === "dir" ? "/" : ""}</span>
           <span class="ws-meta">${e.hidden ? t("chat.wsHiddenFile") : e.type === "symlink" ? t("chat.wsLink") : e.type === "file" ? size(e.size) : ""}</span>
         </button></li>`;

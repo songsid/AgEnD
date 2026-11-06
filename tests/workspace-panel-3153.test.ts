@@ -150,6 +150,6 @@ describe("Files & changes (#3153 P1)", () => {
     const doc = await chat();
     await openWs();
     expect([...doc.querySelectorAll(".ws-panel .seg-inline button")].map((b: any) => b.textContent)).toEqual(["變更", "檔案"]);
-    expect(doc.querySelector(".ws-summary").textContent).toBe("main 上有 5 個變更的檔案 · 1 個已隱藏");
+    expect(doc.querySelector(".ws-summary").textContent).toBe("5 個檔案有變更（main） · 1 個已隱藏");
   });
 });
