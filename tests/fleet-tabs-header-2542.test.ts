@@ -98,9 +98,9 @@ describe("M-2542: Fleet's tab row", () => {
 });
 
 /** A fake laid-out header: widths in px; `scroll` is an element's natural width when its box is narrower (ellipsis). */
-function fakeRoot(m: { head: number; pad?: number; gap?: number; title: Array<[number, number?]>; tabs: number[]; tools: number[]; seg?: boolean }) {
+function fakeRoot(m: { head: number; pad?: number; gap?: number; title: Array<[number, number?, boolean?]>; tabs: number[]; tools: number[]; seg?: boolean }) {
   const el = (width: number, kids: any[] = [], extra: any = {}) => ({ getBoundingClientRect: () => ({ width }), scrollWidth: extra.scroll ?? width, children: kids, ...extra });
-  const title = el(0, m.title.map(([w, sw]) => el(w, [], { scroll: sw ?? w })), { cls: "title" });
+  const title = el(0, m.title.map(([w, sw, warning]) => el(w, [], { scroll: sw ?? w, querySelector: () => warning ? {} : null })), { cls: "title" });
   const nav = el(0, m.tabs.map(w => el(w)), { cls: "nav" });
   const tools = m.tools.map(w => el(w));
   const head = el(m.head, [title, ...(m.seg ? [] : [nav]), ...tools], { cls: "head" });
@@ -131,9 +131,15 @@ describe("M-2542: the header holds the tabs only when everything fits (Prism #32
     expect([await measure({ ...base, head: 1300, title: [[60], [20, 500]] }), await measure({ ...base, head: 1300, title: [[60], [20, 200]] })])
       .toEqual([false, true]);
   });
+  it("counts a capped warning's visible width while keeping the heading's full width", async () => {
+    expect([
+      await measure({ ...base, head: 1300, title: [[60], [200, 2000, true]] }),
+      await measure({ ...base, head: 1100, title: [[60], [200, 2000, true]] }),
+      await measure({ ...base, head: 1300, title: [[60, 500], [200, 2000, true]] }),
+    ]).toEqual([true, false, false]);
+  });
   it("counts every visible header tool, and not hidden ones (0 px)", async () => {
     expect([await measure({ ...base, head: 1000, tools: [80, 80, 80, 40] }), await measure({ ...base, head: 1000, tools: [80, 80, 80, 0] })])
       .toEqual([false, true]);
   });
 });
-
