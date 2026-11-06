@@ -149,6 +149,7 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
       pairingUnchanged: true, selected: pointer() === folderA ? 'old' : 'new', processProofs: proofs.size });
   } catch (error) { failure = error; writeFileSync(join(scope, `${mode}-private.log`), log.join('') + '\n' + JSON.stringify(events)); }
   finally {
+    try {
     holdArchive = false; heldArchive?.destroy();
     if (scan) clearInterval(scan); recordProofs();
     // Only exact birth/boot/PID identities recorded in this harness's fresh install may be stopped.
@@ -178,11 +179,12 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
       assert.equal(await reclaiming.finished, 0); assert.equal(existsSync(lockDir), false); assert.equal(pointer(), folderA);
       results.at(-1).nativeSharedLockControls = ['Node blocks PowerShell', 'PowerShell blocks Node', 'Node reaps ended PowerShell', 'PowerShell reaps ended Node', 'unknown work preserved by both'];
     }
+    } catch (error) { failure ??= error; }
     for (const ws of sockets.clients) ws.terminate(); await new Promise(done => sockets.close(done));
     server.closeAllConnections(); await new Promise(done => server.close(done));
     if (!failure) rmSync(root, { recursive: true, force: true });
   }
-  if (failure) throw failure;
+  if (failure) { writeFileSync(join(scope, `${mode}-private.log`), log.join('') + '\n' + JSON.stringify(events)); throw failure; }
   console.log(JSON.stringify({ leg: mode, step: 'pass-and-cleaned' }));
 }
 writeFileSync(join(scope, 'receipt.json'), JSON.stringify({ version: 1, node: process.version, inputs: identities, results, cleanup: { ownedProcessesGone: true, legDirectoriesRemoved: true } }, null, 2));
