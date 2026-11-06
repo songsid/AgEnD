@@ -63,7 +63,7 @@ describe("the WSL stage decides for itself (static)", () => {
   });
   it("the chosen distro is saved with the progress and read back on a resumed run", () => {
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"\n\s+Mark-Stage 1\n/);
-    expect(body).toMatch(/\$savedDistro = Get-ProgressValue 'DISTRO'\n\s+if \(\$savedDistro\) \{ \$UBUNTU_DISTRO = \$savedDistro \}/);
+    expect(body).toMatch(/\$savedDistro = Get-ProgressValue 'DISTRO'\n\s+if \(-not \$savedDistro\) \{ \$savedDistro = Get-ProgressValue 'WSL_INSTALL_DISTRO' \}\n\s+if \(\$savedDistro\) \{ \$UBUNTU_DISTRO = \$savedDistro \}/);
     expect(body.match(/^Start-FreshProgress \$Force\.IsPresent$/gm)).toHaveLength(1);                     // -Force starts fresh …
     expect(body.indexOf("Start-FreshProgress $Force.IsPresent")).toBeLessThan(body.indexOf("$savedDistro"));   // … before anything is read
     expect(body.indexOf("$savedDistro")).toBeLessThan(body.indexOf("Write-Step 1 $TOTAL"));
