@@ -46,7 +46,7 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1")("agend hub init against the fake dire
     const home = tempDir("agend-hubinit-rig-");
     const initializer = createHubInitializer({ home, identity: new FakeIdentity(), probe: { pidAlive: () => false } });
     const io = scriptedIO(answers);
-    const outcome = await runHubInitWizard({
+    const outcome = await runHubInitWizard({ checkNetwork: async () => [],
       io: io.io, home, initializer, createDirectory: createHubDirectory, readFile: (p) => readFileSync(p, "utf8"),
       service: { installed: () => false, install: async () => "unused" },
     });

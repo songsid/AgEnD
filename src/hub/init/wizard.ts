@@ -17,6 +17,7 @@ import { ht } from "./text.js";
 import { HubInitError, type HubCoexistence, type HubInitializer, type HubInitPlan, type HubListen } from "./types.js";
 import { directoryCaInfo, sameDirectoryFingerprint, type DirectoryCertificateProbe, type DirectoryCaBundle } from "./directory-certificate.js";
 import type { HubBrowserMaterial } from "./browser-certificate.js";
+import { checkHubInitNetworkForHome, type HubInitListeners, type HubNetworkCheck } from "./network.js";
 
 export interface HubServiceControl {
   installed(): boolean;
@@ -33,6 +34,8 @@ export interface HubWizardDeps {
   readSecretFile?(path: string): string;
   service: HubServiceControl;
   now?: () => number;
+  /** Default: real local TCP preflight. Isolated tests may supply an inert checker. */
+  checkNetwork?: HubNetworkCheck;
   createBrowserCertificate?(origin: string): Promise<HubBrowserMaterial>;
   recoverBrowserCertificate?(plan: HubInitPlan): HubBrowserMaterial | null;
   directoryCertificates?: {
@@ -114,6 +117,7 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
     }
     try { deps.recoverBrowserCertificate?.(inspection.incomplete.plan); }
     catch { io.say(ht("tls_stage_kept", inspection.incomplete.plan.webTls.certFile)); }
+    if (!await checkNetwork(deps, inspection.incomplete.plan)) return "refused";
     const bindPassword = await askBindSecret(deps);
     if (bindPassword === undefined) return "cancelled";
     return confirmAndCommit(deps, inspection.incomplete.plan, bindPassword);
@@ -139,8 +143,13 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
   const suggestedMember = `https://${new URL(webOrigin).host.replace(/:\d+$/, "")}:9443`;
   const memberOrigin = await askOrigin(deps, ht("member_origin_q", suggestedMember), suggestedMember, coexistence, webOrigin);
   if (!memberOrigin) return "cancelled";
-  const webListen = await askListen(io, "web_listen_q", defaultListen(webOrigin));
-  const memberListen = await askListen(io, "member_listen_q", defaultListen(memberOrigin), webListen);
+  let webListen: HubListen, memberListen: HubListen;
+  for (;;) {
+    webListen = await askListen(io, "web_listen_q", defaultListen(webOrigin));
+    memberListen = await askListen(io, "member_listen_q", defaultListen(memberOrigin), webListen);
+    if (await checkNetwork(deps, { webListen, memberListen })) break;
+    if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return "cancelled";
+  }
 
   // 2. Browser HTTPS certificate (separate from the member certificate S1 generates).
   io.say();
@@ -422,6 +431,7 @@ async function confirmAndCommit(deps: HubWizardDeps, plan: HubInitPlan, bindPass
     io.say(ht("cancelled"));
     return "cancelled";
   }
+  if (!await checkNetwork(deps, plan)) return "refused";
   let result;
   try {
     result = await initializer.commit(plan, confirmation.reference);
@@ -450,6 +460,18 @@ async function confirmAndCommit(deps: HubWizardDeps, plan: HubInitPlan, bindPass
   io.say(ht("pairing_title"));
   io.say(ht("pairing_steps", plan.webOrigin, plan.memberOrigin, result.spkiSha256));
   return "initialized";
+}
+
+async function checkNetwork(deps: HubWizardDeps, listeners: HubInitListeners): Promise<boolean> {
+  const { io } = deps;
+  io.say(ht("network_check"));
+  try {
+    const problems = await (deps.checkNetwork ? deps.checkNetwork(listeners) : checkHubInitNetworkForHome(deps.home, listeners));
+    for (const p of problems) io.say(ht(`network_${p.reason}`, ht(`network_${p.listener}`)));
+    if (!problems.length) { io.say(ht("network_ok")); return true; }
+  } catch { io.say(ht("network_unavailable", ht("network_both"))); }
+  io.say(ht("network_unchanged"));
+  return false;
 }
 
 function refused(io: WizardIO, err: unknown): HubWizardOutcome {
