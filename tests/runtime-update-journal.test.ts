@@ -92,3 +92,12 @@ it("refuses an identical-byte replacement of the journal at the final publicatio
   })).toThrow(/changed/);
   expect(f.journal.read()).toEqual(state);
 });
+
+it("can remember a verified target's integrity failure before dispatch without overwriting an attempt", () => {
+  const f = fixture();
+  expect(f.journal.rememberFailure(next, noop).failed).toEqual({ version: next.version, sha256: next.sha256 });
+  expect(() => f.journal.begin(f.id, f.ownerId, old, next, noop)).toThrow(/transition/);
+  const other = { ...next, folder: "2.3.6+eeeeeeee", sha256: "e".repeat(64) };
+  f.journal.begin(f.id, f.ownerId, old, other, noop); const before = f.journal.read();
+  expect(() => f.journal.rememberFailure(next, noop)).toThrow(/uncertain/); expect(f.journal.read()).toEqual(before);
+});

@@ -190,6 +190,7 @@ export class RuntimeClient {
   private updateProtocol = false;
   private preparingUpdate = false;
   private trialFence: RuntimeUpdateFence | undefined;
+  private activatedTrialId: string | undefined;
   private updateWait: { id: string; phases: RuntimeUpdateServerPhase[]; accept(phase: RuntimeUpdateServerPhase): void; reject(error: Error): void; timer: NodeJS.Timeout } | undefined;
   /** Set only when AgEnD ended the connection and the person must act; a local stop (Ctrl+C) leaves it undefined. */
   stopReason: RuntimeStopReason | undefined;
@@ -217,7 +218,7 @@ export class RuntimeClient {
     this.retirePanesRequested = false;                                    // fully closed: whatever an earlier stop asked for is over
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
-    this.stopped = false; this.closed = false; this.stopReason = undefined;
+    this.stopped = false; this.closed = false; this.stopReason = undefined; this.activatedTrialId = undefined;
     this.remoteAccounts = null;                                         // a stopped one is closed to new work for good
     try {
       const systemBootId = process.platform === "win32" ? await readPaneSystemBootId() : undefined;
@@ -328,6 +329,7 @@ export class RuntimeClient {
       if (!pending || control.bootId !== this.bootId || control.generation !== this.generation || control.id !== pending.id || !pending.phases.includes(control.phase)) return;
       if (control.phase === "activated") {
         if (this.trialFence?.id !== control.id || !this.trialFence.current() || !this.locallyIdle()) throw Error("Runtime trial is no longer idle");
+        this.activatedTrialId = control.id;
         this.trialFence.release(); this.trialFence = undefined;
         // Release synchronously: the server's next ordered frame may already contain ordinary work.
         for (const job of this.options.store.list()) this.publish(job);
@@ -704,6 +706,8 @@ export class RuntimeClient {
   }
   /** The parent persists activation intent before this call; an unconfirmed answer is never rollback permission. */
   async activateTrial(id: string): Promise<boolean> {
+    // A received exact acknowledgement is a durable fact for this process lifetime, not a second admission.
+    if (this.activatedTrialId === id && this.options.managedUpdate?.trialId === id) return true;
     if (this.trialFence?.id !== id || !this.locallyIdle()) return false;
     return await this.updateRpc("activate", id, ["activated", "busy", "cancelled"]) === "activated";
   }

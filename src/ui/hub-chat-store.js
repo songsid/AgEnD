@@ -6,6 +6,7 @@
 // with backpressure), one request at a time, paused while the page is hidden. Unanswered entries are read again (from
 // just before the oldest open one); answered history is kept. The messages answer carries the room itself (its state,
 // its grant's end, what its link negotiated: `room.features`), fresh each poll.
+import { hubFileAttachment } from "./hub-attachments.js";
 import { hubClient } from "./hub-client.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 
@@ -34,7 +35,8 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
   if (!entry || !Number.isSafeInteger(entry.sequence)) return [];
   const stage = entry.receipt ? entry.receipt.stage : "queued", at = entry.receipt ? entry.receipt.at : undefined;
   const id = entry.sequence * 2, out = [];
-  const files = (list) => (Array.isArray(list) && list.length ? { attachments: list } : {});
+  // D: a Hub file in the shared thread's shape (hub-attachments.js); one the renderer cannot take is left out.
+  const files = (list) => { const a = Array.isArray(list) ? list.map(hubFileAttachment).filter(Boolean) : []; return a.length ? { attachments: a } : {}; };
   out.push({ boot: "hub", id, role: "user", sender: me, ts: iso(entry.askedAt) ?? iso(at),
     text: entry.expired && entry.question === undefined ? "" : String(entry.question ?? ""), delivery: stageMark(stage),
     ...files(entry.questionFiles), ...(entry.quote ? { quote: entry.quote } : {}) });
@@ -136,6 +138,8 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       return w ? { since: w.receipt.at } : null;
     },
     refresh() { schedule(0); },
+    /** #3226 D2: send passes `extras.files` to the client as given (hub-attachments checks the mark). */
+    filesV1: true,
     async send(text, extras = {}) {
       const q = String(text || "").trim();
       if (!q || st.closed) return { ok: false, code: "invalid" };

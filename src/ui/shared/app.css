@@ -296,6 +296,18 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .status { display: inline-flex; align-items: center; gap: 6px; }
 /* #2015: the largest processes, after the host memory chip's text. */
 .host-mem-top { margin-left: var(--s-2); opacity: 0.8; overflow-wrap: anywhere; }
+/* M-2556: bound Fleet's warning independently of tab placement. Cached panels without a tooltip keep wrapping. */
+.p-fleet .panel-sub:has(.host-mem) { flex: 0 1 16rem; width: 16rem; min-width: 0; max-width: 100%; white-space: normal; }
+.p-fleet .host-mem { --fleet-memory-header: 1; display: grid; grid-template-columns: 6px minmax(0, 1fr); gap: 2px 6px; min-width: 0; max-width: 100%; white-space: normal; }
+.p-fleet .host-mem > .dot { margin-top: 6px; }
+.p-fleet .host-mem-top { grid-column: 2; min-width: 0; max-width: 100%; margin-left: 0; }
+.p-fleet .host-mem-top[title] { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 899px) {
+  .p-fleet .panel-head:has(.host-mem) { flex-wrap: wrap; }
+  .p-fleet .panel-title:has(.host-mem) { display: contents; }
+  .p-fleet .panel-title:has(.host-mem) > h1 { flex: 1; }
+  .p-fleet .panel-sub:has(.host-mem) { order: 1; flex: 1 0 100%; width: 100%; }
+}
 .panel-actions { display: flex; align-items: center; gap: var(--s-1); }
 /* #1523 N2: the instance view switch — beside the title on a wide screen; on a phone, a row of tabs under the header. */
 .inst-switch.seg { padding: 0; margin: 0; width: auto; max-width: none; flex-shrink: 0; }

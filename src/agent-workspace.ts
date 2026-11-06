@@ -194,6 +194,29 @@ export async function workspaceChanges(ws: WorkspaceRoot): Promise<WorkspaceChan
   return { repo: true, branch, files, patch, cut: { files: cutFiles, bytes: cutBytes }, hiddenCount: files.filter((f) => f.hidden).length };
 }
 
+/**
+ * #3160: one file's diff against HEAD (or as an addition when untracked), for highlighting what an edit changed. Hidden
+ * files are refused like a read; outside a repository there is no diff (`repo: false`). Same caps as Changes' per file.
+ */
+export async function workspaceFileDiff(ws: WorkspaceRoot, rel: unknown): Promise<{ path: string; repo: boolean; patch: string; tooLarge: boolean; binary: boolean }> {
+  const place = await placeOf(ws, rel);
+  if (isHiddenPath(place.rel)) throw new WorkspaceError("hidden");
+  const st = await lstat(place.abs).catch(() => null);
+  if (st?.isSymbolicLink()) throw new WorkspaceError("symlink");
+  if (st && !st.isFile()) throw new WorkspaceError("not_a_file");
+  const none = { path: place.rel, repo: false, patch: "", tooLarge: false, binary: false };
+  if (!(await isRepo(ws.root))) return none;
+  const hasHead = (await git(ws.root, ["rev-parse", "--verify", "-q", "HEAD"], 4096)).out.length > 0;
+  const tracked = (await git(ws.root, ["ls-files", "--error-unmatch", "--", `:(literal)${place.rel}`], 4096)).out.length > 0;
+  const r = tracked
+    ? await git(ws.root, ["diff", hasHead ? "HEAD" : EMPTY_TREE, "--no-color", "--no-ext-diff", "--no-textconv", "--no-renames", "-U3", "--", `:(literal)${place.rel}`], WORKSPACE_LIMITS.fileDiffBytes * 2)
+    : st ? await git(ws.root, ["diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv", "--", "/dev/null", place.rel], WORKSPACE_LIMITS.fileDiffBytes * 2) : null;
+  const text = r ? r.out.toString("utf8") : "";
+  if (/^Binary files /m.test(text)) return { ...none, repo: true, binary: true };
+  if (Buffer.byteLength(text) > WORKSPACE_LIMITS.fileDiffBytes || r?.cut) return { ...none, repo: true, tooLarge: true };
+  return { ...none, repo: true, patch: text };
+}
+
 // ── the tree ──
 
 export interface WorkspaceEntry { name: string; type: "dir" | "file" | "symlink" | "other"; size: number | null; hidden: boolean }

@@ -253,26 +253,28 @@ describe("runtime update bundle metadata", () => {
     clock += 10_000;
     expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { headers: { "if-none-match": '"different"' } }).res.bytes.equals(first.bytes)).toBe(true);
   });
-  it("shares the ZIP rate bucket, charges HEAD and 304, and refills without letting metadata bypass the download limit", () => {
+  it("charges metadata HEAD/304 independently so busy NAT polling cannot starve ZIP or script installs", () => {
     const service = make(), etag = `"${fixtureBundle().version}-${fixtureBundle().sha256}"`;
     expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200);
     expect(get(service, RUNTIME_BUNDLE_METADATA_PATH).res.status).toBe(200);
     expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { method: "HEAD" }).res.status).toBe(200);
     expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { headers: { "if-none-match": etag } }).res.status).toBe(304);
-    for (const path of [RUNTIME_BUNDLE_METADATA_PATH, RUNTIME_BUNDLE_PATH]) {
-      const held = get(service, path).res; expect(held.status).toBe(429); expect(held.sentHeaders["Retry-After"]).toBe("30");
-    }
+    for (let i = 3; i < 20; i++) expect(get(service, RUNTIME_BUNDLE_METADATA_PATH).res.status).toBe(200);
+    const held = get(service, RUNTIME_BUNDLE_METADATA_PATH).res; expect(held.status).toBe(429); expect(held.sentHeaders["Retry-After"]).toBe("30");
+    for (let i = 1; i < 4; i++) expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200);
+    expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
     expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(200);
     expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { remote: "::1" }).res.status).toBe(200);
-    clock += 5_001;
+    clock += 501;
     expect(get(service, RUNTIME_BUNDLE_METADATA_PATH).res.status).toBe(200);
     expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
   });
-  it("applies the global download bound to metadata from many peers", () => {
+  it("bounds global metadata traffic independently of downloads", () => {
     const service = make();
-    for (let i = 0; i < 60; i++) expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { remote: `192.0.2.${i + 1}`, encrypted: true }).res.status).toBe(200);
+    for (let i = 0; i < 240; i++) expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { remote: `192.0.2.${i + 1}`, encrypted: true }).res.status).toBe(200);
     expect(get(service, RUNTIME_BUNDLE_METADATA_PATH, { remote: "198.51.100.1", encrypted: true }).res.status).toBe(429);
-    expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
+    expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200);
+    expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(200);
   });
   it("withholds metadata for empty, overlarge or unavailable artifacts and retries a later successful build", () => {
     for (const bytes of [0, RUNTIME_MAX_ARCHIVE_BYTES + 1]) {

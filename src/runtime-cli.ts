@@ -16,6 +16,7 @@ import type { AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 import { createRuntimeProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
 import { appendAudit, describeRemoteSwitches, type AuditEntry, type RemoteSwitchState, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
+import { runRuntimeWithUpdates, runtimeUpdateInternalMain } from "./runtime-update-controller.js";
 
 const HELP = `AgEnD native Windows runtime
 
@@ -74,6 +75,7 @@ function signInLabel(loggedIn: boolean | null): string { return loggedIn === tru
 /** `ab***@example.com · team`, or `API key`: the same masked identity AgEnD shows; never the full address. */
 function identityLabel(identity: AccountIdentity | undefined): string { return !identity ? "" : identity.apiKey ? "API key" : [identity.maskedEmail, identity.plan].filter(Boolean).join(" · "); }
 export async function runtimeMain(argv = process.argv.slice(2), options: RuntimeMainOptions = {}): Promise<void> {
+  if (argv.length === 1 && argv[0] === "--internal-update") { await runtimeUpdateInternalMain(); return; }
   const env = options.env ?? process.env, home = options.home ?? homedir();
   if (argv.length === 1 && argv[0] === "--version") { process.stdout.write(`${JSON.stringify(readRuntimeInfo(), null, 2)}\n`); return; }
   if (!argv.length || argv.includes("--help") || argv[0] === "help") { process.stdout.write(HELP); return; }
@@ -254,6 +256,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     const before = store.credentialDefault(); setDefaultChecked(flags["--credential-profile"], before);
     process.stdout.write(`Credential profile for agents that do not choose one: ${flags["--credential-profile"]}${before && before !== flags["--credential-profile"] ? ` (was ${before})` : ""}\n`);
   }
+  if (await runRuntimeWithUpdates({ store, report: text => process.stdout.write(`${text}\n`) })) return;
   const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, report: text => process.stdout.write(`${text}\n`) });
   const stop = (): void => {
     void client.stop().catch(error => {
