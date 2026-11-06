@@ -18,7 +18,7 @@ export interface HubServiceStartDeps {
   sleep?: (ms: number) => Promise<void>;
 }
 
-function previousPid(home: string): number | null {
+function previousPid(home: string): { pid: number; writtenAtMs: number } | null {
   let fd: number;
   try { fd = openSync(join(home, "fleet.pid"), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
   catch (err) { if ((err as NodeJS.ErrnoException).code === "ENOENT") return null; throw new HubServiceStartError("process"); }
@@ -29,13 +29,17 @@ function previousPid(home: string): number | null {
     if (count > 32) throw new HubServiceStartError("process");
     const text = bytes.subarray(0, count).toString("utf8").trim();
     if (!/^[1-9]\d{0,9}$/.test(text) || Number(text) <= 1) throw new HubServiceStartError("process");
-    return Number(text);
+    if (!Number.isFinite(st.mtimeMs)) throw new HubServiceStartError("process");
+    return { pid: Number(text), writtenAtMs: st.mtimeMs };
   } finally { closeSync(fd); }
 }
 
 /** Installation must not signal a PID claim. An active manual Hub is stopped through the existing owner command. */
 export function assertHubServiceInstallIdle(home: string, read?: (pid: number) => ServiceProcessState): void {
-  try { if (!captureServiceProcess(previousPid(home), read)()) throw Error("still running"); }
+  try {
+    const claim = previousPid(home);
+    if (!captureServiceProcess(claim?.pid ?? null, read, claim?.writtenAtMs)()) throw Error("still running");
+  }
   catch { throw new HubServiceStartError("process"); }
 }
 
@@ -51,7 +55,10 @@ export async function waitForHubServiceStart(home: string, deps: HubServiceStart
     if (listenProblems("web", listeners.webListen).length || listenProblems("member", listeners.memberListen).length) throw Error("invalid listeners");
   } catch { throw new HubServiceStartError("config"); }
   let processStopped: () => boolean;
-  try { processStopped = captureServiceProcess(previousPid(home), deps.inspectProcess); }
+  try {
+    const claim = previousPid(home);
+    processStopped = captureServiceProcess(claim?.pid ?? null, deps.inspectProcess, claim?.writtenAtMs);
+  }
   catch { throw new HubServiceStartError("process"); }
   try {
     await waitForServiceDrain({

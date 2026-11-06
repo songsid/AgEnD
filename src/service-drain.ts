@@ -1,5 +1,6 @@
 /** Startup admission only. Service managers retain restart ownership; this module sends no PID signals. */
 import { FLEET_STOP_TIMEOUT_MS, detachedProcessExited, detachedProcessStart } from "./fleet-stop-budget.js";
+import { processStartMs } from "./update-check.js";
 
 export interface ServiceDrainDeps {
   current(): boolean;
@@ -31,7 +32,7 @@ export async function waitForServiceDrain(deps: ServiceDrainDeps): Promise<void>
   }
 }
 
-export type ServiceProcessState = "gone" | "unknown" | { birth: string };
+export type ServiceProcessState = "gone" | "unknown" | { birth: string; startedAtMs?: number };
 function inspect(pid: number): ServiceProcessState {
   try { process.kill(pid, 0); }
   catch (err) { return (err as NodeJS.ErrnoException).code === "ESRCH" ? "gone" : "unknown"; }
@@ -41,12 +42,17 @@ function inspect(pid: number): ServiceProcessState {
 }
 
 /** Capture the prior identity before waiting. A reused PID is no longer the old process; unreadable identity never proves exit. */
-export function captureServiceProcess(pid: number | null, read: (pid: number) => ServiceProcessState = inspect): () => boolean {
+export function captureServiceProcess(pid: number | null, read: (pid: number) => ServiceProcessState = inspect, writtenAtMs?: number): () => boolean {
   if (pid === null) return () => true; // No recorded old PID; manager job ordering and the singleton lock still apply.
   if (!Number.isSafeInteger(pid) || pid <= 1) throw Error("Service main process is invalid; nothing was stopped");
+  if (pid === process.pid) return () => true; // A previous fleet cannot be this replacement.
   const before = read(pid);
   if (before === "unknown") throw Error("Service main process identity is unavailable; nothing was stopped");
   if (before === "gone") return () => true;
+  // A younger process cannot have written this claim. Only the production observer reads the OS start time;
+  // injected observers supply their own evidence, never fall through to inspecting an arbitrary fixture PID.
+  const startedAtMs = before.startedAtMs ?? (read === inspect && Number.isFinite(writtenAtMs) ? processStartMs(pid) : null);
+  if (Number.isFinite(writtenAtMs) && typeof startedAtMs === "number" && Number.isFinite(startedAtMs) && startedAtMs > writtenAtMs!) return () => true;
   return () => {
     const current = read(pid);
     return current === "gone" || current !== "unknown" && current.birth !== before.birth;

@@ -1,6 +1,6 @@
 /** Private files, injected process identities and clock; real probes use only owned loopback sockets. */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type Server, type AddressInfo } from "node:net";
@@ -32,6 +32,21 @@ async function bind(port = 0) {
   return { server, port: (server.address() as AddressInfo).port };
 }
 describe("Hub replacement admission before any runtime exists", () => {
+  it("starts and permits installation when a stale claim names a younger unrelated process", async () => {
+    const r = rig(); writeFileSync(r.pid, "40"); utimesSync(r.pid, new Date(1000), new Date(1000));
+    r.deps.inspectProcess = () => ({ birth: "unrelated", startedAtMs: 2000 });
+    r.deps.sleep = vi.fn(async () => { throw Error("must not wait on the younger process"); });
+    await expect(waitForHubServiceStart(r.home, r.deps)).resolves.toBeUndefined();
+    expect(() => assertHubServiceInstallIdle(r.home, r.deps.inspectProcess)).not.toThrow();
+    expect(r.check).toHaveBeenCalledOnce(); expect(r.deps.sleep).not.toHaveBeenCalled(); expect(readFileSync(r.pid, "utf8")).toBe("40");
+  });
+  it("starts and permits installation when a stale claim names this replacement", async () => {
+    const r = rig(); writeFileSync(r.pid, String(process.pid));
+    r.deps.inspectProcess = vi.fn(() => { throw Error("self must not be inspected as an old process"); });
+    await expect(waitForHubServiceStart(r.home, r.deps)).resolves.toBeUndefined();
+    expect(() => assertHubServiceInstallIdle(r.home, r.deps.inspectProcess)).not.toThrow();
+    expect(r.deps.inspectProcess).not.toHaveBeenCalled(); expect(readFileSync(r.pid, "utf8")).toBe(String(process.pid));
+  });
   it("does no PID or socket work for an off Hub", async () => {
     const r = rig(); writeFileSync(r.file, r.config(false)); writeFileSync(r.pid, "not a PID");
     await expect(waitForHubServiceStart(r.home, r.deps)).resolves.toBeUndefined();

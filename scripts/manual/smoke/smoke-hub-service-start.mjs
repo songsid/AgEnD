@@ -1,5 +1,5 @@
 /** Compiled routing proof. The only runnable app is a fresh scratch copy with an inert FleetManager constructor. */
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,9 @@ try {
   writeFileSync(manager, `export class FleetManager { constructor() { throw Error(${JSON.stringify(target)}); } }\n`);
   assert(readFileSync(manager, 'utf8').includes(target));
   const barrier = join(app, 'dist', 'hub', 'service-start.js'), originalBarrier = readFileSync(barrier);
-  for (const locale of ['en', 'zh-TW']) for (const mode of ['off', 'invalid-pid', 'free', 'listener-wait', 'process-wait']) {
+  const selfPid = join(scratch, 'self-pid.mjs');
+  writeFileSync(selfPid, `import { writeFileSync } from 'node:fs'; import { join } from 'node:path'; writeFileSync(join(process.env.AGEND_HOME, 'fleet.pid'), String(process.pid));\n`);
+  for (const locale of ['en', 'zh-TW']) for (const mode of ['off', 'invalid-pid', 'free', 'listener-wait', 'process-wait', 'stale-pid', 'self-pid']) {
     const home = join(scratch, locale + '-' + mode); mkdirSync(home, { mode: 0o700 });
     const a = await listener(), b = await listener(); await close(a.server);
     if (mode !== 'listener-wait') await close(b.server);
@@ -50,11 +52,12 @@ try {
     const env = { HOME: home, AGEND_HOME: home, PATH: '/usr/bin:/bin', LANG: 'en_US.UTF-8', TZ: 'UTC', NO_COLOR: '1' };
     let sleeper;
     if (mode === 'invalid-pid') writeFileSync(join(home, 'fleet.pid'), 'not-a-PID');
-    if (mode === 'process-wait') {
+    if (mode === 'process-wait' || mode === 'stale-pid') {
       sleeper = child(['-e', 'setInterval(() => {}, 1000)'], env, home);
       writeFileSync(join(home, 'fleet.pid'), String(sleeper.proc.pid));
+      if (mode === 'stale-pid') utimesSync(join(home, 'fleet.pid'), new Date(1000), new Date(1000));
     }
-    const run = child([join(app, 'dist', 'cli.js'), 'fleet', 'start', '--direct'], env, home);
+    const run = child([...(mode === 'self-pid' ? ['--import', selfPid] : []), join(app, 'dist', 'cli.js'), 'fleet', 'start', '--direct'], env, home);
     let blockedBeforeRelease = false;
     if (mode.endsWith('-wait')) {
       await waitFor(() => run.out.includes(locale === 'en' ? 'Waiting for the previous Hub process' : '正在等待前一個 Hub 程序') || run.exit !== undefined, 'missing startup wait notice');
@@ -72,6 +75,10 @@ try {
       assert(!run.err.includes(target), 'invalid old state must refuse before construction');
       assert.equal(readFileSync(join(home, 'fleet.pid'), 'utf8'), 'not-a-PID');
     } else assert(run.err.includes(target), 'only the inert runtime target may be reached');
+    if (mode === 'stale-pid') {
+      assert.equal(sleeper.exit, undefined, 'the younger unrelated process must remain alive');
+      sleeper.proc.kill('SIGTERM'); await waitFor(() => sleeper.exit !== undefined, 'owned sleeper did not exit');
+    }
     cases.push({ locale, mode, exit: run.exit, blockedBeforeRelease, realFleetConstructed: false });
   }
   // Drive the real install handler, but replace every service-manager entry in this scratch app with strict inert
@@ -119,14 +126,15 @@ try {
     assert.deepEqual(JSON.parse(plan.newPlist), { home, session: 'Background' });
     cases.push({ locale, mode: 'planned-install', exit: run.exit, realServiceOperation: false });
   }
-  for (const locale of ['en', 'zh-TW']) for (const mode of ['idle-install', 'active-install']) {
+  for (const locale of ['en', 'zh-TW']) for (const mode of ['idle-install', 'active-install', 'stale-install']) {
     const home = join(scratch, locale + '-' + mode); mkdirSync(home, { mode: 0o700 });
     writeFileSync(join(home, 'fleet.yaml'), JSON.stringify({ defaults: { locale }, instances: {}, hub: { enabled: true } }));
     const env = { HOME: home, AGEND_HOME: home, PATH: '/usr/bin:/bin', LANG: 'en_US.UTF-8', TZ: 'UTC', NO_COLOR: '1' };
     let sleeper;
-    if (mode === 'active-install') {
+    if (mode !== 'idle-install') {
       sleeper = child(['-e', 'setInterval(() => {}, 1000)'], env, home);
       writeFileSync(join(home, 'fleet.pid'), String(sleeper.proc.pid));
+      if (mode === 'stale-install') utimesSync(join(home, 'fleet.pid'), new Date(1000), new Date(1000));
     }
     const run = child([join(app, 'dist', 'cli.js'), 'install'], env, home);
     await waitFor(() => run.exit !== undefined, 'inert install handler did not settle');
@@ -139,10 +147,14 @@ try {
     } else {
       assert.equal(run.exit, 0, run.err); assert(run.out.includes('INERT_INSTALL_SERVICE')); assert(run.out.includes('INERT_ACTIVATE_SERVICE'));
       assert(run.out.includes(locale === 'en' ? 'startup requested' : '已安裝並要求啟動'));
+      if (sleeper) {
+        assert.equal(sleeper.exit, undefined); assert.equal(readFileSync(join(home, 'fleet.pid'), 'utf8'), String(sleeper.proc.pid));
+        sleeper.proc.kill('SIGTERM'); await waitFor(() => sleeper.exit !== undefined, 'owned sleeper did not exit');
+      }
     }
     cases.push({ locale, mode, exit: run.exit, realServiceOperation: false });
   }
-  assert.equal(cases.length, 16);
+  assert.equal(cases.length, 22);
   const output = process.argv[2];
   if (output) { mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, JSON.stringify({ cases }, null, 2) + '\n'); }
   console.log(JSON.stringify({ passed: cases.length, cases }));

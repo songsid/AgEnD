@@ -48,6 +48,18 @@ describe("replacement waits for positive old-service closure", () => {
   });
 });
 describe("old process identity is only observed", () => {
+  it("ignores a stale PID reused by a younger process, without waiting for or signalling it", () => {
+    const read = vi.fn(() => ({ birth: "younger", startedAtMs: 2000 }));
+    expect(captureServiceProcess(40, read, 1000)()).toBe(true); expect(read).toHaveBeenCalledOnce();
+    expect(captureServiceProcess(40, read, 2000)()).toBe(false);
+    expect(captureServiceProcess(40, read, 3000)()).toBe(false);
+  });
+  it("never waits for this replacement's own PID or inspects it as the old fleet", () => {
+    const read = vi.fn(() => "unknown" as const);
+    let stopped: (() => boolean) | undefined;
+    expect(() => { stopped = captureServiceProcess(process.pid, read, Date.now()); }).not.toThrow();
+    expect(stopped!()).toBe(true); expect(read).not.toHaveBeenCalled();
+  });
   it("waits while the same birth remains and accepts a gone process or reused PID", () => {
     let state: ServiceProcessState = { birth: "first" };
     const read = vi.fn(() => state), stopped = captureServiceProcess(40, read);
