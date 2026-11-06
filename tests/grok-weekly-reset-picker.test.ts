@@ -156,9 +156,9 @@ describe("dialogs: before the reset Shift+x; after it Try Again", () => {
     const b = new GrokBackend(dir);
     const tryAgain = weekly(b, MODAL)[0]!;
     expect(tryAgain.keys).toEqual(["Down", "Down", "Enter"]);
-    tryAgain.answerDetail?.();
+    tryAgain.answerDetail?.(MODAL);
     expect(weekly(b, MODAL).map(d => d.keys)).toEqual([["Down", "Down", "Enter"], ["X"]]);
-    weekly(b, MODAL).find(d => d.keys[0] === "X")?.answerDetail?.();
+    weekly(b, MODAL).find(d => d.keys[0] === "X")?.answerDetail?.(MODAL);
     expect(weekly(b, MODAL).map(d => d.keys)).toEqual([["X"]]);
   });
 
