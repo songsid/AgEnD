@@ -415,6 +415,21 @@ describe("Hub representative files (attachments-v1, #3226 D)", () => {
   const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(HUB_ATTACHMENT_CHUNK + 99)]);
   const TXT = Buffer.from("hello from the asker\n");
 
+  it("one release lease binds answer files and buttons together", async () => {
+    const fs = files(), path = join(fs.outside, "answer.txt"); writeFileSync(path, "Owned answer file");
+    const f = fixture({ files: fs.service, features: ["attachments-v1", "buttons-v1"] });
+    f.publish(); await f.admission.admit(f.question()); await until(() => f.handed.length === 1, "question handed");
+    expect((await f.rep.report({ caller: "rep", correlationId: f.deliveries[0]!.correlationId, text: "Choose", extras: {
+      files: [path], buttons: [{ label: "Yes", value: "yes" }],
+    } })!).ok).toBe(true);
+    const answer = f.frames.find(frame => frame.type === "answer")!.payload;
+    expect(answer.attachments).toHaveLength(1); expect(answer.buttons.values).toEqual(["yes"]);
+    const digest = messageContentDigest("answer", "Choose", { attachments: answer.attachments, buttonsDigest: buttonsDigest(answer.buttons) });
+    expect(answer.contentDigest).toBe(digest);
+    expect(f.authorize.mock.calls.find(([request]) => request.phase === "release-answer")![0]).toMatchObject({ answer: { contentDigest: digest } });
+    expect(answer.contentDigest).not.toBe(messageContentDigest("answer", "Choose", { attachments: answer.attachments }));
+  });
+
   it("a question's files land whole in the agent's inbox and are named in its text, as fleet chat uploads are", async () => {
     const fs = files(), png = ref("chart.png", PNG, "image/png"), txt = ref("notes.txt", TXT, "text/plain");
     const f = fixture({ files: fs.service, features: ["attachments-v1"], hubFiles: new Map([[png.id, PNG], [txt.id, TXT]]) });
