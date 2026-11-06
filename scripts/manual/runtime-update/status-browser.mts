@@ -62,7 +62,7 @@ for(const device of ["desk","phone"] as const)for(const lang of ["en","zh-TW"] a
       const code=page.locator(".runtime-command-text").first(), expectedCopy=await code.innerText();
       await code.evaluate((node:any)=>{node.scrollLeft=node.scrollWidth;});
       need(await code.evaluate((node:any)=>node.scrollWidth<=node.clientWidth||node.scrollLeft>0),"long command can be scrolled");
-      await page.evaluate(()=>Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:async(text:string)=>{(globalThis as any).__runtimeCopied=text;}}}));
+      await page.evaluate("Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText:async function(text){globalThis.__runtimeCopied=text;}}})");
       const copy=page.locator(".runtime-command-card button").first();await copy.scrollIntoViewIfNeeded();
       const box=await copy.boundingBox();need(!!box&&box.y>=0&&box.y+box.height<=await page.evaluate(()=>innerHeight)+1,"Copy is reachable in the modal viewport");
       await copy.click();need(await page.evaluate(()=>(globalThis as any).__runtimeCopied)===expectedCopy,"Copy retains the complete command");
