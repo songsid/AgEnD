@@ -4,6 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, symlinkSync, readFileSync } from "n
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { request } from "node:http";
 import WebSocket from "ws";
 import * as bootProof from "../src/runtime-pane-boot.js";
 import { startPaneService } from "../src/runtime-pane-service.js";
@@ -11,6 +12,7 @@ import { RuntimePaneLink } from "../src/runtime-pane-link.js";
 import { RuntimePaneScreen } from "../src/runtime-pane-screen.js";
 import { RuntimePaneHost } from "../src/runtime-pane-host.js";
 import { readPaneHostDescriptor } from "../src/runtime-pane-private.js";
+import { PaneMcpRelay } from "../src/runtime-pane-mcp-relay.js";
 import type { RuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
 const cleanup: Array<() => Promise<void> | void> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
@@ -116,4 +118,41 @@ it('binds the host lock and descriptor to the same OS proof before recovering a 
  const service=await startPaneService({directory,scope:'a'.repeat(64),createHost:options=>new RuntimePaneHost({...options,spawn:async()=>{throw Error('No CLI');}})});cleanup.push(()=>service.close());
  expect(service.descriptor.systemBootId).toBe('b'.repeat(64));
  expect(JSON.parse(readFileSync(join(directory,'runtime.lock'),'utf8'))).toMatchObject({pid:process.pid,systemBootId:'b'.repeat(64)});
+});
+it('an update refuses a live pane without killing it and confirms an empty host shutdown',async()=>{
+ const f=await setup(),client=await f.connect();
+ const pane=await client.request({action:'open',launch:f.launch(),operationId:randomUUID()}) as RuntimePaneSnapshot;
+ await expect(client.drainForUpdate()).rejects.toThrow('busy');expect(f.processes[0].kill).not.toHaveBeenCalled();
+ await client.request({action:'close',paneId:pane.paneId,launchId:pane.launchId,sequence:1,operationId:randomUUID()});
+ await client.drainForUpdate();
+ await vi.waitFor(()=>expect(readPaneHostDescriptor(f.directory,'a'.repeat(64))).toBeNull());
+ expect(f.processes[0].kill).toHaveBeenCalledOnce();
+});
+it('a replacement connection cannot hide an old physical host request from shutdown',async()=>{
+ const f=await setup(),first=await f.connect();let release!:(value:unknown)=>void;
+ const original=RuntimePaneHost.prototype.request;
+ const spy=vi.spyOn(RuntimePaneHost.prototype,'request').mockImplementation(function(this:RuntimePaneHost,raw:any,current){
+  return raw.action==='general-workspace'?new Promise(done=>{release=done;}):original.call(this,raw,current);
+ });
+ const pending=first.request({action:'general-workspace',bindingId:randomUUID(),instance:'general',cli:'codex',packHash:'a'.repeat(64)});
+ const rejected=expect(pending).rejects.toThrow();await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+ const next=await f.connect();await rejected;
+ await expect(next.drainForUpdate()).rejects.toThrow('refused');
+ release({});spy.mockRestore();
+ await next.drainForUpdate();
+ await vi.waitFor(()=>expect(readPaneHostDescriptor(f.directory,'a'.repeat(64))).toBeNull());
+});
+it('a partial MCP HTTP body prevents empty-host shutdown until its response finishes',async()=>{
+ const f=await setup(),client=await f.connect();let entered!:()=>void,relay!:PaneMcpRelay;
+ const accepted=new Promise<void>(done=>{entered=done;}),original=PaneMcpRelay.prototype.handle;
+ vi.spyOn(PaneMcpRelay.prototype,'handle').mockImplementation(function(this:PaneMcpRelay,req,res){relay=this;const pending=original.call(this,req,res);entered();return pending;});
+ const response=new Promise<number>((done,reject)=>{
+  const req=request(`http://127.0.0.1:${f.service.descriptor.port}/agent`,{method:'POST',headers:{'X-Agend-Native-Token':'a'.repeat(64)}},res=>{res.resume();res.on('end',()=>done(res.statusCode!));});
+  req.on('error',reject);req.write('{');
+  void accepted.then(async()=>{
+   expect(relay.pendingCount).toBe(1);await expect(client.drainForUpdate()).rejects.toThrow('refused');req.end('}');
+  }).catch(reject);
+ });
+ expect(await response).toBe(403);await vi.waitFor(()=>expect(relay.pendingCount).toBe(0));
+ await client.drainForUpdate();await vi.waitFor(()=>expect(readPaneHostDescriptor(f.directory,'a'.repeat(64))).toBeNull());
 });

@@ -13,11 +13,13 @@ import type { NativeCliRow } from "./windows-cli-worker.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, parseCredentialProfileReport } from "./runtime-credential-profiles.js";
 import { parseAccountIdentity } from "./claude-auth-status.js";
+import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
+import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { withNativePaneVerification } from "./runtime-pane-native.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION, runtimeInfoCompatible, RUNTIME_REINSTALL_CLOSE_REASON,
-  type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
+  type RuntimeInfo, type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
 
 const PAIR_TTL = 10 * 60_000;
@@ -115,7 +117,13 @@ interface State { version: 1; machines: MachineRecord[]; pairings: PairRecord[];
  */
 const COMMAND_HARD_CAP = 4096, COMMAND_SOFT_CAP = 2048, COMMAND_KEEP_MS = 7 * 24 * 3_600_000;
 const TOMBSTONE_CAP = 65_536, TOMBSTONE_KEEP_MS = 30 * 24 * 3_600_000;
-interface Connection { ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout }
+interface Connection {
+  ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout;
+  activity: RuntimeUpdateActivity; managedUpdate?: boolean;
+  hello?: { runtimeInfo?: RuntimeInfo; paneProtocol?: 1; inventory?: WindowsCliProbe };
+  update?: { id: string; phase: "prepared" | "committed" | "trial"; fence: RuntimeUpdateFence };
+  activatedUpdateId?: string;
+}
 /**
  * alpha.2 polish: what an interrupted command becomes. A probe only reads the runner's CLI inventory — nothing to reconcile
  * if its answer was lost — so it settles as failed (compacted like any settled command); every other operation stays
@@ -145,6 +153,8 @@ export class RuntimeCoordinator {
   private readonly pending = new Map<string, Pending>();
   private readonly paneToolPending = new Set<string>();
   private readonly panePending = new Map<string, Pending>();
+  /** Physical handler ownership survives socket replacement and transport deadlines. */
+  private readonly machineActivity = new Map<string, RuntimeUpdateActivity>();
   private readonly listeners = new Set<(event: RuntimeCoordinatorEvent) => void>();
   private readonly limits = new Map<string, { count: number; until: number }>();
   private readonly heartbeat: NodeJS.Timeout;
@@ -340,7 +350,8 @@ export class RuntimeCoordinator {
     const old = this.connections.get(row.machine.id);
     if (old) { this.rejectPending(old, "Runtime connection was replaced; execution must be reconciled"); this.options.warn?.({ machineId: row.machine.id, code: 1008, reason: "Connection replaced" }, "Runtime connection closed because the same machine credential connected again"); old.ws.close(1008, "Connection replaced"); }
     row.machine.generation++; row.machine.status = "offline"; this.save();
-    const connection: Connection = { ws, machineId: row.machine.id, generation: row.machine.generation, ready: false, alive: true, helloTimer: setTimeout(() => ws.close(1008, "Runtime hello required"), 10_000) };
+    const activity = this.machineActivity.get(row.machine.id) ?? new RuntimeUpdateActivity(); this.machineActivity.set(row.machine.id, activity);
+    const connection: Connection = { ws, machineId: row.machine.id, generation: row.machine.generation, ready: false, alive: true, activity, helloTimer: setTimeout(() => ws.close(1008, "Runtime hello required"), 10_000) };
     connection.helloTimer.unref(); this.connections.set(row.machine.id, connection);
     ws.on("pong", () => { connection.alive = true; if (this.current(connection)) row.machine.lastSeenAt = this.now(); });
     ws.on("message", (data, binary) => { if (binary) { ws.close(1008, "Runtime requires JSON text frames"); return; } void this.message(connection, data).catch(error => {
@@ -365,6 +376,7 @@ export class RuntimeCoordinator {
     connection.ws.send(frame);
   }
   private rejectPending(connection: Connection, reason: string): void {
+    connection.update?.fence.release(); connection.update = undefined;
     for (const [id, pending] of this.panePending) if (pending.machineId === connection.machineId && pending.generation === connection.generation) {
       this.panePending.delete(id); clearTimeout(pending.timer); pending.reject(Error(reason));
     }
@@ -392,11 +404,65 @@ export class RuntimeCoordinator {
       status: value.status as WindowsCliTask["status"], startedAt: value.startedAt, output: value.output,
       ...(value.finishedAt !== undefined ? { finishedAt: value.finishedAt as number } : {}), ...(value.error ? { error: value.error as string } : {}), ...(value.threadId ? { threadId: value.threadId as string } : {}), ...(value.outcomeConfirmed !== undefined ? { outcomeConfirmed: value.outcomeConfirmed as boolean } : {}) };
   }
+  private admitting(connection: Connection): boolean {
+    return connection.ready && !connection.update && connection.activity.accepting && this.current(connection)
+      && this.entry(connection.machineId).machine.status === "online" && connection.ws.readyState === WebSocket.OPEN;
+  }
+  private updateIdle(connection: Connection): boolean {
+    const machine = connection.machineId;
+    return connection.activity.pending === 0 && !this.hasActiveTask(machine) && connection.ws.bufferedAmount === 0
+      && ![...this.pending.values(), ...this.panePending.values()].some(pending => pending.machineId === machine)
+      && ![...this.paneToolPending].some(key => key.startsWith(`${machine}:`));
+  }
+  /** Trial metadata is staged until activation: no online event or probe can admit work early. */
+  private promoteRuntime(connection: Connection): void {
+    const row = this.entry(connection.machineId), hello = connection.hello!;
+    row.machine.bootId = connection.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
+    if (hello.runtimeInfo) row.machine.runtimeInfo = hello.runtimeInfo; else delete row.machine.runtimeInfo;
+    if (hello.paneProtocol === 1) row.machine.paneProtocol = 1; else delete row.machine.paneProtocol;
+    if (hello.inventory !== undefined) { row.machine.inventory = hello.inventory; row.machine.inventoryUpdatedAt = this.now(); }
+    this.save();
+  }
+  private updateControl(connection: Connection, value: unknown): void {
+    if (!connection.ready || !connection.managedUpdate) throw new RuntimeProtocolError("Runtime update was not negotiated");
+    const control = parseRuntimeUpdateControl(value, "client");
+    const reply = (phase: RuntimeUpdateServerPhase) => this.send(connection, { v: 1, type: "update.control", id: control.id, bootId: connection.bootId!, generation: connection.generation, phase });
+    if (control.bootId !== connection.bootId || control.generation !== connection.generation) { reply("cancelled"); return; }
+    const owned = connection.update;
+    if (owned?.phase === "trial") {
+      if (control.phase !== "activate" || owned.id !== control.id) { reply("busy"); return; }
+      if (!owned.fence.current() || !this.updateIdle(connection)) { reply("busy"); return; }
+      // The supervisor has persisted its activation intent. Lost acknowledgement is uncertain, never rollback permission.
+      owned.fence.release(); connection.update = undefined;
+      connection.activatedUpdateId = control.id; this.promoteRuntime(connection); reply("activated");
+      this.emit({ type: "machine", machineId: connection.machineId });
+      if (!inventoryProbed(this.entry(connection.machineId).machine.inventory)) void this.call(connection.machineId, "probe", { force: true }).catch(() => {});
+      return;
+    }
+    if (control.phase === "activate" && connection.activatedUpdateId === control.id) { reply("activated"); return; }
+    if (control.phase === "prepare") {
+      if (owned) { reply(owned.id === control.id ? owned.phase === "committed" ? "commit" : "prepared" : "busy"); return; }
+      const fence = connection.activity.tryFence(control.id,
+        () => this.current(connection) && connection.ready && connection.ws.readyState === WebSocket.OPEN,
+        () => this.updateIdle(connection));
+      if (!fence) { reply("busy"); return; }
+      connection.update = { id: control.id, phase: "prepared", fence }; reply("prepared"); return;
+    }
+    if (!owned || owned.id !== control.id) { reply("cancelled"); return; }
+    if (owned.phase === "committed") { reply("commit"); return; }
+    if (control.phase === "ready" && owned.fence.current() && this.updateIdle(connection)) {
+      owned.phase = "committed"; reply("commit"); return;
+    }
+    // A cancellation/busy reply is queued before admitting any later request on this ordered connection.
+    reply(control.phase === "ready" ? "busy" : "cancelled");
+    owned.fence.release(); connection.update = undefined;
+  }
   private async message(connection: Connection, raw: RawData): Promise<void> {
     if (!this.current(connection)) return;
     const value: unknown = JSON.parse(raw.toString());
     if (!record(value) || value.v !== 1 || !text(value.type, 32)) throw new RuntimeProtocolError("Invalid runtime frame");
     const row = this.entry(connection.machineId); connection.alive = true;
+    if (value.type === "update.control") { this.updateControl(connection, value); return; }
     if (!connection.ready) {
       if (value.type !== "hello" || !text(value.bootId, 128)) throw new RuntimeProtocolError("Runtime hello required");
       const runtimeInfo = parseRuntimeInfo(value.runtimeInfo);
@@ -407,12 +473,21 @@ export class RuntimeCoordinator {
         this.options.warn?.({ machineId: connection.machineId, code: 1008, reason: "Runtime incompatible", detail: `version ${runtimeInfo.version ?? "unknown"}, protocols ${runtimeInfo.protocolVersions.join(",")}, capabilities ${runtimeInfo.capabilities.join(",")}` }, "Runtime connection refused: its version is not compatible with this AgEnD");
         connection.ws.close(1008, RUNTIME_REINSTALL_CLOSE_REASON); return;
       }
-      connection.ready = true; connection.bootId = value.bootId; clearTimeout(connection.helloTimer);
-      row.machine.bootId = value.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
-      if (runtimeInfo) row.machine.runtimeInfo = runtimeInfo; else delete row.machine.runtimeInfo;
-      if (value.paneProtocol === 1) row.machine.paneProtocol = 1; else delete row.machine.paneProtocol;
-      if (value.inventory !== undefined) { row.machine.inventory = inventory(value.inventory); row.machine.inventoryUpdatedAt = this.now(); }
-      this.save(); this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation }); this.emit({ type: "machine", machineId: connection.machineId });
+      const managed = runtimeInfo?.capabilities.includes(RUNTIME_MANAGED_UPDATE_CAPABILITY) === true;
+      if (managed && !validRuntimeUpdateId(value.bootId) || value.updateTrialId !== undefined && (!managed || !validRuntimeUpdateId(value.updateTrialId))) throw new RuntimeProtocolError("Invalid Runtime update handshake");
+      const reportedInventory = value.inventory === undefined ? undefined : inventory(value.inventory);
+      connection.bootId = value.bootId; connection.managedUpdate = managed;
+      connection.hello = { runtimeInfo, ...(value.paneProtocol === 1 ? { paneProtocol: 1 } : {}), inventory: reportedInventory };
+      if (value.updateTrialId !== undefined) {
+        const fence = connection.activity.tryFence(value.updateTrialId as string, () => this.current(connection), () => this.updateIdle(connection));
+        if (!fence) throw new RuntimeProtocolError("Runtime update trial is busy");
+        connection.update = { id: value.updateTrialId as string, phase: "trial", fence };
+      }
+      connection.ready = true; clearTimeout(connection.helloTimer);
+      if (!connection.update) this.promoteRuntime(connection);
+      this.send(connection, { v: 1, type: "welcome", machineId: connection.machineId, generation: connection.generation, ...(managed ? { updateProtocol: 1 } : {}) });
+      if (connection.update) return; // A trial has authenticated, but cannot receive tasks or an automatic CLI probe.
+      this.emit({ type: "machine", machineId: connection.machineId });
       // alpha.2 polish (dev-claude's no-chat e2e): a runner that brings no CLI inventory (just paired, nothing detected
       // yet) is asked for its own report now — its detection runs on that PC, never on this fleet's loop — so the first
       // approval of an agent's request there is not refused for "no available CLI" until someone presses Refresh.
@@ -423,6 +498,7 @@ export class RuntimeCoordinator {
       return;
     }
     row.machine.lastSeenAt = this.now();
+    if (connection.update?.phase === "trial") throw new RuntimeProtocolError("Runtime update trial has not activated");
     if (value.type === "pane.tool.request") {
       if (row.machine.paneProtocol !== 1 || Object.keys(value).some(key => !["v", "type", "id", "body"].includes(key)) || !UUID.test(String(value.id))) throw new RuntimeProtocolError("Invalid pane MCP transport request");
       const body = validatePaneMcpBody(value.body), id = value.id as string;
@@ -433,8 +509,10 @@ export class RuntimeCoordinator {
       this.paneToolPending.add(key);
       let timer: NodeJS.Timeout | undefined;
       try {
-        if (!current() || !this.options.handlePaneMcp) throw new RuntimeProtocolError("Pane MCP scope unavailable");
-        const result = await Promise.race([this.options.handlePaneMcp(connection.machineId, body, current), new Promise<never>((_resolve, reject) => {
+        if (!current() || !this.options.handlePaneMcp || !connection.activity.accepting || connection.activity.pending >= 128) throw new RuntimeProtocolError("Pane MCP scope unavailable");
+        // The activity token belongs to the underlying handler, not the deadline race that may finish first.
+        const physical = connection.activity.run(() => this.options.handlePaneMcp!(connection.machineId, body, current));
+        const result = await Promise.race([physical, new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => { active = false; reject(Error("Pane MCP deadline")); }, 80_000); timer.unref();
         })]);
         if (current()) this.send(connection, { v: 1, type: "pane.tool.result", id, ok: true, result });
@@ -499,7 +577,7 @@ export class RuntimeCoordinator {
       if (!text(value.id, 128) || !text(value.runId, 128)) throw new RuntimeProtocolError("Invalid runtime tool call");
       const command = this.state.commands.find(command => command.id === value.runId && command.machineId === connection.machineId && command.operation === "run");
       try {
-        if (!command || !record(command.payload) || !record(command.payload.mcp) || command.task && terminal(command.task) || !this.options.handleMcp) throw new RuntimeProtocolError("Runtime tool call has no active turn");
+        if (!connection.activity.accepting || connection.activity.pending >= 128 || !command || !record(command.payload) || !record(command.payload.mcp) || command.task && terminal(command.task) || !this.options.handleMcp) throw new RuntimeProtocolError("Runtime tool call has no active turn");
         const body = value.body;
         if (!record(body) || Object.keys(body).some(key => !["op", "method", "params", "callId"].includes(key))
           || body.op !== "native-mcp" || !record(body.params) || Buffer.byteLength(JSON.stringify(body)) > 64 * 1024) throw new RuntimeProtocolError("Invalid runtime MCP request");
@@ -512,7 +590,7 @@ export class RuntimeCoordinator {
             || body.params.arguments !== undefined && !record(body.params.arguments)) throw new RuntimeProtocolError("Runtime MCP tool is outside this turn");
           stable(body.params);
         } else throw new RuntimeProtocolError("Invalid runtime MCP operation");
-        const result = await this.options.handleMcp(connection.machineId, value.runId, body);
+        const result = await connection.activity.run(() => this.options.handleMcp!(connection.machineId, value.runId as string, body));
         if (!this.current(connection)) return;
         this.send(connection, { v: 1, type: "tool.result", id: value.id, ok: true, result });
       } catch { if (this.current(connection)) this.send(connection, { v: 1, type: "tool.result", id: value.id, ok: false, error: "Runtime tool call was refused or its turn expired" }); }
@@ -566,14 +644,14 @@ export class RuntimeCoordinator {
   hasActiveTask(machineId: string): boolean { return this.state.commands.some(command => command.machineId === machineId && command.operation === "run" && command.state !== "failed" && (!command.task || !terminal(command.task) || command.task.outcomeConfirmed === false)); }
   paneTransportEpoch(machineId: string): string | null {
     const connection = this.connections.get(machineId);
-    return connection?.ready && connection.ws.readyState === WebSocket.OPEN && this.current(connection) ? `${this.paneEpoch}:${machineId}:${connection.generation}` : null;
+    return connection && this.admitting(connection) ? `${this.paneEpoch}:${machineId}:${connection.generation}` : null;
   }
   /** Pane input replay/sequence authority lives in its pane ledger; reads never fill the exec-task journal. */
   async callPane(machineId: string, raw: RuntimePaneRequest, maxAgents = 4): Promise<unknown> {
     const request = validateRuntimePaneRequest(raw);
     if (!Number.isInteger(maxAgents) || maxAgents < 1 || maxAgents > 16) throw Error("Invalid machine pane limit");
     const machine = this.entry(machineId).machine, connection = this.connections.get(machineId);
-    if (this.closed || machine.status !== "online" || machine.paneProtocol !== 1 || !connection?.ready || !this.current(connection)) throw Error("Pane runtime is offline or unsupported");
+    if (this.closed || machine.status !== "online" || machine.paneProtocol !== 1 || !connection || !this.admitting(connection)) throw Error("Pane runtime is offline, updating or unsupported");
     if (this.panePending.size >= 64) throw Error("Pane transport capacity reached");
     const id = randomUUID();
     return new Promise((resolve, reject) => {
@@ -599,7 +677,7 @@ export class RuntimeCoordinator {
     if (this.closed || !["probe", "workspace", "run", "cancel", "reconcile", "recover"].includes(operation)) throw Error("Unsupported runtime operation");
     const machine = this.entry(machineId).machine;
     const connection = this.connections.get(machineId);
-    if (machine.status !== "online" || !connection?.ready || !this.current(connection)) throw Error("Runtime machine is offline");
+    if (machine.status !== "online" || !connection || !this.admitting(connection)) throw Error("Runtime machine is offline or updating");
     let id = randomUUID(), normalized = payload;
     if (operation === "run") {
       if (!record(payload) || Object.keys(payload).some(k => !["task", "resumeSessionId", "context", "mcp", "credentialProfile"].includes(k))) throw Error("Invalid runtime run payload");
@@ -649,6 +727,7 @@ export class RuntimeCoordinator {
   close(): void {
     if (this.closed) return;
     this.closed = true; clearInterval(this.heartbeat);
+    for (const activity of this.machineActivity.values()) activity.close();
     for (const connection of this.connections.values()) { clearTimeout(connection.helloTimer); this.rejectPending(connection, "Runtime coordinator stopped; reconcile before retrying"); connection.ws.terminate(); }
     this.connections.clear();
     for (const row of this.state.machines) if (row.machine.status === "online") row.machine.status = "offline";

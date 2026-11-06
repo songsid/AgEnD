@@ -12,6 +12,7 @@ export interface PaneMcpRelayOptions {
 function key(owner: PaneMcpOwner): string { return JSON.stringify([owner.hostBootId, owner.paneId, owner.launchId, owner.agentId, owner.instance]); }
 export class PaneMcpRelay {
   private pending = 0;
+  get pendingCount(): number { return this.pending; }
   constructor(private options: PaneMcpRelayOptions) {}
   private token(owner: PaneMcpOwner): string { return createHmac("sha256", this.options.secret).update(key(owner)).digest("hex"); }
   connection(owner: PaneMcpOwner, tools: string[]): PaneMcpConnection {
@@ -31,6 +32,12 @@ export class PaneMcpRelay {
       || typeof req.headers["x-agend-native-token"] !== "string" || !/^[a-f0-9]{64}$/.test(req.headers["x-agend-native-token"])
       || this.pending >= 32) { answer(403, { error: "Pane MCP scope is unavailable" }); req.resume(); return; }
     this.pending++;
+    // Keep physical HTTP ownership through response flush/close, including a held request body.
+    const finished = new Promise<void>(done => {
+      const settle = () => { res.off("finish", settle); res.off("close", settle); done(); };
+      res.once("finish", settle); res.once("close", settle);
+      if (res.writableFinished || res.destroyed) settle();
+    });
     try {
       const chunks: Buffer[] = []; let size = 0;
       req.setTimeout(10_000, () => req.destroy());
@@ -47,6 +54,6 @@ export class PaneMcpRelay {
       if (!current()) throw Error("Pane MCP lease expired");
       answer(200, result);
     } catch { answer(403, { error: "Pane MCP request was refused or is unconfirmed; it was not replayed" }); }
-    finally { this.pending--; }
+    finally { await finished; this.pending--; }
   }
 }
