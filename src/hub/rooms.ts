@@ -266,7 +266,7 @@ export class HubRoomsService {
     return rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
-      // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, in B's names.
+      // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, as B maps them.
       const f = files?.get(m.id), qf = f?.question.map(r => fileView(roomId, r)) ?? [], af = f?.answer.map(r => fileView(roomId, r)) ?? [];
       return { messageId: m.id, sequence: m.sequence, receipt: receiptOf(m), askedAt: m.created_at,
         ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
