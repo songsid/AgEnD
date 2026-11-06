@@ -1846,6 +1846,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   /** S-51: the Hub switches follow the configuration in force (load, save, reload rollback), like the runtime ones. */
   private observeHubSwitches(): void {
+    this.observeHubAgentIncarnations();
     if (!this.hubEffectsReady || this.hubEffectsScheduled || this.shuttingDown) return;
     this.hubEffectsScheduled = true;
     queueMicrotask(() => { this.hubEffectsScheduled = false; void this.applyHubSwitches(); });
@@ -1953,15 +1954,64 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * A published representative's lifecycle token: its name generation (removal/replacement), backend, folder and
-   * runtime. A change makes earlier consent stale (explicit republish); stopping or pausing it does not.
+   * A published representative's lifecycle token (#3145, #3147 review): a DURABLE incarnation id per agent name, rotated
+   * whenever its backend, folder or runtime changes and dropped when the instance is removed. A replacement (remove and
+   * re-add, even with the same name and config, across restarts) or any retarget — including A→B→A — gets a new id, so
+   * earlier consent never matches again without an explicit republish. Stopping or pausing changes nothing.
    */
   private hubAgentToken(agent: string): string | null {
     const instances = this.fleetConfig?.instances ?? {};
     if (!Object.prototype.hasOwnProperty.call(instances, agent)) return null;
-    const cfg = instances[agent]!;
-    return createHash("sha256").update(JSON.stringify(["agend-hub-agent-v1", agent, this.webChatGeneration(agent), cfg.backend ?? "claude-code",
-      cfg.working_directory, cfg.runtime ?? "", cfg.machine_id ?? ""])).digest("hex");
+    const id = this.hubAgentIncarnation(agent, instances[agent]!, true);
+    return id ? createHash("sha256").update(JSON.stringify(["agend-hub-agent-v2", agent, id])).digest("hex") : null;
+  }
+  private hubIncarnationsPath(): string { return join(this.dataDir, "hub-member", "agent-incarnations.json"); }
+  private readHubIncarnations(): Record<string, { id: string; fp: string }> {
+    try {
+      const value = JSON.parse(readFileSync(this.hubIncarnationsPath(), "utf8")) as unknown;
+      return value && typeof value === "object" && !Array.isArray(value) ? Object.assign(Object.create(null), value) : Object.create(null);
+    } catch { return Object.create(null); }
+  }
+  private writeHubIncarnations(map: Record<string, { id: string; fp: string }>): void {
+    const path = this.hubIncarnationsPath(), tmp = `${path}.${process.pid}.tmp`;
+    mkdirSync(join(this.dataDir, "hub-member"), { recursive: true, mode: 0o700 });
+    writeFileSync(tmp, JSON.stringify(map), { mode: 0o600 });
+    renameSync(tmp, path);
+  }
+  /** The agent's durable incarnation id (create: make one if none; else null). A changed fingerprint rotates it. */
+  private hubAgentIncarnation(agent: string, cfg: { backend?: string; working_directory: string; runtime?: string; machine_id?: string }, create: boolean): string | null {
+    const fp = createHash("sha256").update(JSON.stringify([cfg.backend ?? "claude-code", cfg.working_directory, cfg.runtime ?? "", cfg.machine_id ?? ""])).digest("hex");
+    try {
+      const map = this.readHubIncarnations(), entry = Object.prototype.hasOwnProperty.call(map, agent) ? map[agent] : undefined;
+      if (entry && entry.fp === fp && typeof entry.id === "string") return entry.id;
+      if (!entry && !create) return null;
+      map[agent] = { id: randomUUID(), fp };
+      this.writeHubIncarnations(map);
+      return map[agent]!.id;
+    } catch (err) {
+      this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be saved; the agent is not a deliverable representative");
+      return null;
+    }
+  }
+  /** On every configuration in force: rotate a recorded agent's incarnation when its backend/folder/runtime changed; drop removed ones. */
+  private observeHubAgentIncarnations(): void {
+    // Only against a loaded configuration: never forget every agent because none is loaded yet.
+    if (!this.fleetConfig?.instances || !existsSync(this.hubIncarnationsPath())) return;
+    const instances = this.fleetConfig.instances;
+    for (const agent of Object.keys(this.readHubIncarnations())) {
+      // Gone from the configuration in force (removed by hand in fleet.yaml, too): forgotten, never revived by a re-add.
+      if (Object.prototype.hasOwnProperty.call(instances, agent)) this.hubAgentIncarnation(agent, instances[agent]!, false);
+      else this.forgetHubAgentIncarnation(agent);
+    }
+  }
+  /** A removed instance's incarnation goes with it: a later instance of the same name is a new one. */
+  private forgetHubAgentIncarnation(agent: string): void {
+    try {
+      const map = this.readHubIncarnations();
+      if (!Object.prototype.hasOwnProperty.call(map, agent)) return;
+      delete map[agent];
+      this.writeHubIncarnations(map);
+    } catch (err) { this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be dropped"); }
   }
 
   /**
@@ -2055,13 +2105,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** The member link as the "Connect to a Hub" view shows it (S5's client lifecycle). */
   private hubMemberLink: "online" | "offline" | "revoked" = "offline";
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
-  hubReport(input: { correlationId: string; caller: string; text: string }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReports?.(input) ?? null;
   }
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
-  private hubReports: ((input: { correlationId: string; caller: string; text: string }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
+  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;
@@ -5841,12 +5891,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const log = idleGateTimeoutLog(instanceName, timeoutMs, this.instanceStateCache.get(instanceName), Date.now());
       this.logger[log.level](log.fields, log.message);
     }
-    // The Hub representative's begin lease + input intent: after wake, idle wait and storm recheck, never queued.
-    if (beforeInput) {
-      if (!(await beforeInput())) return false;
-      if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
-    }
-    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold);
+    // The Hub representative's begin lease + input intent run inside the final connected hand-off (sendWhenConnected).
+    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold, beforeInput);
     if (!sent) return false;
     if (this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.lastDeliveryAt.set(instanceName, Date.now());
@@ -5885,19 +5931,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
     stillCurrent?: () => boolean,
     onStartRetryHold?: () => void,
+    beforeInput?: () => Promise<boolean>,
   ): Promise<boolean> {
     if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
-      if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+      if (ipc?.connected) {
+        if (beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
+        if (ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
+      }
     }
 
     const attempt = (queued ?? Promise.resolve())
       .catch(() => { /* a previous waiter's failure must not cancel this one */ })
       .then(() => {
         if (!this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
-        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold);
+        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold, beforeInput);
       });
     // The chain stores a settled-either-way promise so one failed delivery cannot
     // wedge every later one, and so `queued` above is safe to await unguarded.
@@ -5914,6 +5964,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * The Hub representative's hand-off (#3145): only once a connected client exists, after every reconnect/order wait,
+   * the begin lease + input intent (beforeInput), then the fence and the LIVE client are checked again and the payload
+   * goes in one attempt. After the intent is spent nothing here retries: false is the caller's uncertain outcome.
+   */
+  private async handOffAfterBeforeInput(instanceName: string, payload: Record<string, unknown>, deliveryEpoch: number,
+    stillCurrent: (() => boolean) | undefined, beforeInput: () => Promise<boolean>): Promise<boolean> {
+    if (!(await beforeInput())) return false;
+    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
+    const ipc = this.instanceIpcClients.get(instanceName);
+    return !!ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload));
+  }
+
   /** Poll for the instance's IPC to come back, then send. Throws if it does not. */
   private async sendAfterIpcReturns(
     instanceName: string,
@@ -5921,6 +5984,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
     stillCurrent?: () => boolean,
     onStartRetryHold?: () => void,
+    beforeInput?: () => Promise<boolean>,
   ): Promise<boolean> {
     let deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
     let warned = false;
@@ -5930,6 +5994,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
+      if (ipc?.connected && beforeInput) return this.handOffAfterBeforeInput(instanceName, payload, deliveryEpoch, stillCurrent, beforeInput);
       if (ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload))) return true;
       // #2484: while the instance waits for (or runs) its own start retry, the grace runs from now — so the message is
       // delivered once a retry brings it up, and fails only after the retries stop (they gave up, or a person stopped
@@ -6338,9 +6403,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      if (options.beforeInput && !(await options.beforeInput())) return false;
-      if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
-      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent, options.onStartRetryHold);
+      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent, options.onStartRetryHold, options.beforeInput);
       if (!sent) return false;
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
@@ -14471,6 +14534,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instanceDirToClean = this.getInstanceDir(name);
     // #1774: replies sent from here on are a later instance's (a replacement registered while this one goes); the ones
     // sent before wait for the outcome before they are shown.
+    this.forgetHubAgentIncarnation(name); // #3147: a re-added instance of this name never inherits Hub consent
     const removedBelow = this.webChatGeneration(name) + 1, removedDaemon = this.daemons.get(name);
     this.webChatGenerations.set(name, removedBelow);
     let settleRemoval!: () => void;

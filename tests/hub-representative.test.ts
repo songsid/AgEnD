@@ -15,7 +15,11 @@ import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
 
 const dbs: Database.Database[] = [];
-afterEach(() => dbs.splice(0).forEach((db) => db.close()));
+const reps: HubRepresentativeExecution[] = [];
+afterEach(async () => {
+  for (const r of reps.splice(0)) await r.close();
+  dbs.splice(0).forEach((db) => db.close());
+});
 const tick = () => new Promise((r) => setImmediate(r));
 async function until(check: () => boolean, label: string): Promise<void> {
   for (let i = 0; i < 200 && !check(); i += 1) await tick();
@@ -45,6 +49,8 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
     current: () => true,
     exchange: vi.fn(async (frame: any) => {
       frames.push(frame);
+      if (frame.type === "answer" && exchangeMode === "reject") throw new Error("link dropped");
+      if (frame.type === "answer" && exchangeMode === "bad-ack") return { v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: 1, payload: { messageId: frame.payload.messageId, contentDigest: "x".repeat(64), stage: "consumed", sequence: 1, at: now } };
       if (frame.type === "answer") return { v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: 1, payload: { messageId: frame.payload.messageId, contentDigest: "x".repeat(64), stage: "answered", sequence: 1, at: now } };
       return { v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: 1, payload: frame.payload };
     }),
@@ -55,6 +61,8 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
   const audit: string[] = [];
   let journal!: HubMemberJournal;
   let onDeliver: (() => void) | null = null;
+  let failAudit: string | null = null;
+  let exchangeMode: "ok" | "reject" | "bad-ack" = "ok";
   const rep = new HubRepresentativeExecution({
     db,
     get journal() { return journal; },
@@ -70,11 +78,15 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
       handed.push(ok && handOff);
       return ok && handOff;
     },
-    audit: (event) => { audit.push(event.action + (event.reasonCode ? `:${event.reasonCode}` : "")); },
+    audit: (event) => {
+      if (failAudit === event.action) throw new Error("audit storage failed");
+      audit.push(event.action + (event.reasonCode ? `:${event.reasonCode}` : ""));
+    },
     attentionChanged: () => {},
     log: () => {},
     now: () => now,
   } as ConstructorParameters<typeof HubRepresentativeExecution>[0]);
+  reps.push(rep);
   const options = { hubId: profile.hub.hubId, encryptionKey: randomBytes(32), floor: { read: () => floor, raise: (n: number) => { floor = n; } }, outbox: rep.restrictedOutbox(), now: () => now };
   journal = new HubMemberJournal(db, options);
   journal.initialize();
@@ -87,7 +99,8 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
   const state = (id: string) => (db.prepare("SELECT state, reason FROM hub_representative_questions WHERE message_id=?").get(id) as { state: string; reason: string | null } | undefined);
   return { db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local,
     setToken: (t: string | null) => { token = t; }, withdraw: () => { current = null; }, stop: () => { live = false; }, offline: () => { online = null; }, online: () => { online = link; },
-    setHandOff: (v: boolean) => { handOff = v; }, whileWaiting: (fn: () => void) => { onDeliver = fn; } };
+    setHandOff: (v: boolean) => { handOff = v; }, whileWaiting: (fn: () => void) => { onDeliver = fn; },
+    failAuditOf: (action: string | null) => { failAudit = action; }, exchange: (mode: "ok" | "reject" | "bad-ack") => { exchangeMode = mode; } };
 }
 
 describe("Hub representative adapter (#3145)", () => {
@@ -138,7 +151,7 @@ describe("Hub representative adapter (#3145)", () => {
     await until(() => f.journal.unackedReceipts({}).receipts.length === 0, "receipts acknowledged");
     // The journal keeps one current receipt per message: its latest stage goes back (delivered/consumed are behind it).
     expect(f.frames.filter((x) => x.type === "receipt").map((x) => x.payload.stage)).toEqual(["answered"]);
-    expect(f.audit).toEqual(["representative.queued", "representative.handed", "representative.answered"]);
+    expect(f.audit).toEqual(["representative.queued", "representative.handed", "representative.release", "representative.answered"]);
   });
 
   it("a legacy (container) tuple refuses delivery: readiness says so and admission never reaches the agent", async () => {
@@ -248,5 +261,85 @@ describe("Hub representative adapter (#3145)", () => {
     expect(f.state(a.identity.messageId)!.state).toBe("queued");
     expect(f.state(b.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
     expect(() => again.recover()).toThrow();
+  });
+
+  it("#3147 P1: a failed required audit stops the release — nothing saved, nothing disclosed, a visible hold", async () => {
+    const f = fixture();
+    f.publish();
+    const q = f.question();
+    await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "handed");
+    f.failAuditOf("representative.release");
+    const outcome = await f.rep.report({ correlationId: f.deliveries[0]!.correlationId, caller: "rep", text: "secret" })!;
+    expect(outcome.ok).toBe(false);
+    expect(f.frames.some((x) => x.type === "answer")).toBe(false);
+    expect(f.stage(q.identity.messageId)).toBe("consumed"); // no answer saved
+    expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
+    expect(f.rep.attentionItems()).toHaveLength(1);
+  });
+
+  it.each(["no link", "reject", "bad-ack"] as const)("#3147 P2: a saved answer whose send fails (%s) is held in Needs-you, never resent", async (mode) => {
+    const f = fixture();
+    f.publish();
+    const q = f.question();
+    await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "handed");
+    if (mode === "no link") f.offline(); else f.exchange(mode);
+    const cid = f.deliveries[0]!.correlationId;
+    const outcome = await f.rep.report({ correlationId: cid, caller: "rep", text: "the answer" })!;
+    expect(outcome.ok).toBe(false);
+    expect(f.stage(q.identity.messageId)).toBe("answered"); // saved under its release lease
+    expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
+    expect(f.rep.attentionItems()).toMatchObject([{ kind: "hold", messageId: q.identity.messageId }]);
+    expect(f.frames.filter((x) => x.type === "answer")).toHaveLength(mode === "no link" ? 0 : 1);
+    expect(f.rep.report({ correlationId: cid, caller: "rep", text: "again" })).toBeNull(); // never a second release
+  });
+
+  it("#3147 P2: the reporting daemon generation is asked again before every release step", async () => {
+    const f = fixture();
+    f.publish();
+    const q = f.question();
+    await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "handed");
+    let current = true;
+    const grant = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async (r) => { const lease = await grant(r); if (r.phase === "release-answer") current = false; return lease; });
+    const outcome = await f.rep.report({ correlationId: f.deliveries[0]!.correlationId, caller: "rep", text: "x", callerCurrent: () => current })!;
+    expect(outcome.ok).toBe(false);
+    expect(f.frames.some((x) => x.type === "answer")).toBe(false);
+    expect(f.stage(q.identity.messageId)).toBe("consumed");
+  });
+
+  it("#3147 P2: a crash between the input intent and the representative's own transition is held uncertain, never re-queued", async () => {
+    const f = fixture();
+    f.publish();
+    f.offline();
+    const q = f.question();
+    await f.admission.admit(q);
+    // The intent committed in the journal; the process died before 'input' was written.
+    const request = { messageId: q.identity.messageId, operationId: randomUUID(), exposureRevision: 1, phase: "begin" as const };
+    f.journal.markInputIntent(q.identity.messageId, request, await f.authorize(request), { current: () => true, linkEpoch: 1, revocationVersion: 1 });
+    f.db.prepare("UPDATE hub_representative_questions SET state='dispatching', cid='hub-crash' WHERE message_id=?").run(q.identity.messageId);
+    const again = new HubRepresentativeExecution((f.rep as unknown as { options: ConstructorParameters<typeof HubRepresentativeExecution>[0] }).options);
+    again.recover();
+    expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
+    expect(f.stage(q.identity.messageId)).toBe("uncertain");
+    expect(again.attentionItems()).toHaveLength(1);
+    f.online();
+    again.pump();
+    await tick(); await tick();
+    expect(f.deliveries).toHaveLength(0);
+  });
+
+  it("#3147 P2: a backlog larger than one page keeps draining after one pump", async () => {
+    const f = fixture();
+    f.publish();
+    f.offline();
+    for (let i = 0; i < 65; i += 1) await f.admission.admit(f.question(`q${i}`));
+    for (let i = 0; i < 5; i += 1) await tick(); // every per-admission pump ran (offline: nothing to do)
+    f.online();
+    f.rep.pump();
+    await until(() => f.handed.length === 65, "all 65 handed");
+    expect(new Set(f.deliveries.map((d) => d.correlationId)).size).toBe(65);
   });
 });

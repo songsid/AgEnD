@@ -92,7 +92,7 @@ export interface HubRepresentativeHost {
   agentToken(agent: string): string | null;
   /** The report_result hook for HUB_REPORT_TARGET and the pane-failure hook for its correlation ids (null: detached). */
   attachReports(
-    handler: ((input: { correlationId: string; caller: string; text: string }) => Promise<HubReportOutcome> | null) | null,
+    handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null,
     failed: ((correlationId: string, agent: string) => void) | null,
   ): void;
 }

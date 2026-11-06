@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { HUB_REPORT_TARGET } from "../src/hub-report-target.js";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 describe("beforeInput in the delivery facade", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-06T00:00:00Z")); });
@@ -20,8 +23,11 @@ describe("beforeInput in the delivery facade", () => {
     return { fm, order };
   }
 
-  it("runs only after the storm hold clears, immediately before the hand-off; false sends nothing", async () => {
+  it("runs only after the storm hold clears and only at the connected hand-off; false sends nothing", async () => {
     const { fm, order } = manager();
+    (fm as any).sendWhenConnected = (FleetManager.prototype as any).sendWhenConnected; // the real hand-off
+    const ipc = { connected: true, send: vi.fn((p: { type?: string }) => { if (p.type === "fleet_inbound") order.push("send"); return true; }) };
+    (fm as any).instanceIpcClients.set("worker", ipc);
     fm.stormWindow.recordServerDead("worker", ["worker"]);
     const before = vi.fn(async () => { order.push("beforeInput"); return true; });
     const delivery = (fm as any).deliverWithIdleGate("worker", { type: "fleet_inbound" }, 5, 0, false, undefined, undefined, before);
@@ -36,18 +42,61 @@ describe("beforeInput in the delivery facade", () => {
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(second).resolves.toBe(false);
     expect(refused).toHaveBeenCalledTimes(1);
-    expect((fm as any).sendWhenConnected).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(["beforeInput", "send"]); // the refused one sent nothing
+    fm.stormWindow.shutdown();
+  });
+
+  it("#3147 review: during an IPC reconnect wait no lease is taken; the hook runs once the client is connected", async () => {
+    const { fm, order } = manager();
+    (fm as any).sendWhenConnected = (FleetManager.prototype as any).sendWhenConnected;
+    const down = { connected: false, send: vi.fn(() => false) };
+    (fm as any).instanceIpcClients.set("worker", down);
+    const before = vi.fn(async () => { order.push("beforeInput"); return true; });
+    const delivery = (fm as any).deliverWithIdleGate("worker", { type: "fleet_inbound" }, 5, 0, false, undefined, undefined, before);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(before).not.toHaveBeenCalled(); // still reconnecting: nothing spent
+    const up = { connected: true, send: vi.fn(() => { order.push("send"); return true; }) };
+    (fm as any).instanceIpcClients.set("worker", up); // a reconnect replaces the client
+    await vi.advanceTimersByTimeAsync(2_000);
+    await expect(delivery).resolves.toBe(true);
+    expect(order).toEqual(["beforeInput", "send"]);
+    fm.stormWindow.shutdown();
+  });
+
+  it("#3147 review: once the intent is spent, a client lost or a fence moved during the hook is a single failed attempt, never retried", async () => {
+    const { fm } = manager();
+    (fm as any).sendWhenConnected = (FleetManager.prototype as any).sendWhenConnected;
+    const ipc = { connected: true, send: vi.fn(() => true) };
+    (fm as any).instanceIpcClients.set("worker", ipc);
+    const before = vi.fn(async () => { ipc.connected = false; return true; }); // the client drops while the lease is fetched
+    const delivery = (fm as any).deliverWithIdleGate("worker", { type: "fleet_inbound" }, 5, 0, false, undefined, undefined, before);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await expect(delivery).resolves.toBe(false);
+    expect(before).toHaveBeenCalledTimes(1);
+    expect(ipc.send).not.toHaveBeenCalled();
+
+    let fenced = false;
+    const ipc2 = { connected: true, send: vi.fn(() => true) };
+    (fm as any).instanceIpcClients.set("worker", ipc2);
+    const fencing = vi.fn(async () => { fenced = true; return true; }); // e.g. consent withdrawn during the lease
+    const second = (fm as any).deliverWithIdleGate("worker", { type: "fleet_inbound" }, 5, 0, false, () => !fenced, undefined, fencing);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(second).resolves.toBe(false);
+    expect(ipc2.send).not.toHaveBeenCalled();
     fm.stormWindow.shutdown();
   });
 
   it("a cancel that lands during beforeInput drops the delivery unsent", async () => {
     const { fm } = manager();
+    (fm as any).sendWhenConnected = (FleetManager.prototype as any).sendWhenConnected;
+    const ipc = { connected: true, send: vi.fn(() => true) };
+    (fm as any).instanceIpcClients.set("worker", ipc);
     const before = vi.fn(async () => { (fm as any).deliveryEpochs.set("worker", 1); return true; });
     const delivery = (fm as any).deliverWithIdleGate("worker", { type: "fleet_inbound" }, 5, 0, false, undefined, undefined, before);
     await vi.advanceTimersByTimeAsync(1_000);
     await expect(delivery).resolves.toBe(false);
     expect(before).toHaveBeenCalledTimes(1);
-    expect((fm as any).sendWhenConnected).not.toHaveBeenCalled();
+    expect(ipc.send).not.toHaveBeenCalled();
     fm.stormWindow.shutdown();
   });
 
@@ -69,20 +118,52 @@ describe("beforeInput in the delivery facade", () => {
     fm.stormWindow.shutdown();
   });
 
-  it("the agent's lifecycle token changes with replacement, backend or folder — not with anything else", () => {
-    const { fm } = manager();
-    (fm as any).fleetConfig = { instances: { worker: { working_directory: "/tmp/w", backend: "claude-code", display_name: "W" } } };
-    const token = (fm as any).hubAgentToken("worker");
-    expect(token).toMatch(/^[0-9a-f]{64}$/);
-    expect((fm as any).hubAgentToken("missing")).toBeNull();
-    (fm as any).fleetConfig.instances.worker.display_name = "Renamed";
-    expect((fm as any).hubAgentToken("worker")).toBe(token);
-    (fm as any).fleetConfig.instances.worker.working_directory = "/tmp/other";
-    const moved = (fm as any).hubAgentToken("worker");
-    expect(moved).not.toBe(token);
-    (fm as any).webChatGenerations.set("worker", 1); // removed (and possibly re-added under the same name)
-    expect((fm as any).hubAgentToken("worker")).not.toBe(moved);
-    fm.stormWindow.shutdown();
+  it("#3147 review: the lifecycle token is durable across restarts and never revives after replacement or A→B→A", () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-hub-token-"));
+    try {
+      const made: FleetManager[] = [];
+      const make = (instances: Record<string, unknown>) => {
+        const fm = new FleetManager(home);
+        (fm as any).fleetConfig = { instances };
+        made.push(fm);
+        return fm;
+      };
+      const a = { working_directory: "/tmp/w", backend: "claude-code", display_name: "W" };
+      const fm1 = make({ worker: { ...a } });
+      const token = (fm1 as any).hubAgentToken("worker");
+      expect(token).toMatch(/^[0-9a-f]{64}$/);
+      expect((fm1 as any).hubAgentToken("missing")).toBeNull();
+      expect(statSync(join(home, "hub-member", "agent-incarnations.json")).mode & 0o777).toBe(0o600);
+      // Restart: the same agent keeps its token; a label change does not matter.
+      const fm2 = make({ worker: { ...a, display_name: "Renamed" } });
+      expect((fm2 as any).hubAgentToken("worker")).toBe(token);
+      // Removed (a reload without it), then re-added with the very same name and config, then a restart: a new token.
+      (fm2 as any).fleetConfig = { instances: {} };
+      (fm2 as any).observeHubAgentIncarnations();
+      const fm3 = make({ worker: { ...a } });
+      const readded = (fm3 as any).hubAgentToken("worker");
+      expect(readded).not.toBe(token);
+      expect((make({ worker: { ...a } }) as any).hubAgentToken("worker")).toBe(readded);
+      // A → B → A (folder): every change seen by the running fleet rotates it; going back never revives the old one.
+      (fm3 as any).fleetConfig = { instances: { worker: { ...a, working_directory: "/tmp/other" } } };
+      (fm3 as any).observeHubAgentIncarnations();
+      const moved = (fm3 as any).hubAgentToken("worker");
+      (fm3 as any).fleetConfig = { instances: { worker: { ...a } } };
+      (fm3 as any).observeHubAgentIncarnations();
+      const back = (fm3 as any).hubAgentToken("worker");
+      expect(new Set([token, readded, moved, back]).size).toBe(4);
+      // Removing it through the fleet (remove_instance) forgets it as well.
+      (fm3 as any).forgetHubAgentIncarnation("worker");
+      const after = (fm3 as any).hubAgentToken("worker");
+      expect(after).not.toBe(back);
+      // No configuration loaded yet (startup): nothing is forgotten.
+      const fm4 = new FleetManager(home);
+      made.push(fm4);
+      (fm4 as any).observeHubAgentIncarnations();
+      (fm4 as any).fleetConfig = { instances: { worker: { ...a } } };
+      expect((fm4 as any).hubAgentToken("worker")).toBe(after);
+      for (const fm of made) fm.stormWindow.shutdown();
+    } finally { rmSync(home, { recursive: true, force: true }); }
   });
 });
 
@@ -100,7 +181,7 @@ describe("report_result to the Hub", () => {
     const ctx = { ...base(), hubReport };
     expect(await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "The answer", artifacts: "a.txt" }))
       .toEqual({ result: { sent: true, target: HUB_REPORT_TARGET, correlation_id: "hub-live", message: "Delivered to the Hub asker." }, error: undefined });
-    expect(hubReport).toHaveBeenLastCalledWith({ correlationId: "hub-live", caller: "rep", text: "The answer\n\nArtifacts: a.txt" });
+    expect(hubReport).toHaveBeenLastCalledWith({ correlationId: "hub-live", caller: "rep", text: "The answer\n\nArtifacts: a.txt", callerCurrent: expect.any(Function) });
     // Not claimed (another caller, an unknown id): the ordinary refusal.
     expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "x" }, { instanceName: "other" })).error).toMatch(/not found/);
     expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-gone", summary: "x" })).error).toMatch(/not found/);
@@ -110,6 +191,20 @@ describe("report_result to the Hub", () => {
     expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "x" }, { instanceName: "rep", senderSessionName: "ext" })).error).toMatch(/not found/);
     expect((await call(ctx, { target_instance: "peer", correlation_id: "hub-live", summary: "x" })).error).toMatch(/not found/);
     expect(hubReport).not.toHaveBeenCalled();
+  });
+
+  it("#3147 review: the source-daemon generation fence — a retired generation never claims; the current one is rechecked later", async () => {
+    let boot = "boot-2";
+    const hubReport = vi.fn((input: { callerCurrent(): boolean }) => Promise.resolve({ ok: true as const, message: String(input.callerCurrent()) }));
+    const ctx = { ...base(), hubReport, getDaemonBootId: () => boot };
+    expect(await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "x" }, { instanceName: "rep", sourceDaemonBootId: "retired-boot" }))
+      .toEqual({ result: null, error: "Source daemon generation is no longer current; outcome is unknown" });
+    expect(hubReport).not.toHaveBeenCalled();
+    const ok = await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "x" }, { instanceName: "rep", sourceDaemonBootId: "boot-2" });
+    expect(ok.result).toMatchObject({ sent: true, message: "true" });
+    const { callerCurrent } = hubReport.mock.calls[0]![0];
+    boot = "boot-3"; // the agent's daemon restarted while the answer was being released
+    expect(callerCurrent()).toBe(false);
   });
 
   it("a claimed id the Hub refuses tells the agent so", async () => {

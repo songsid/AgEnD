@@ -42,6 +42,8 @@ interface Row {
   agent: string; token: string; state: State; cid: string | null; answer: string | null; reason: string | null; at: number;
 }
 const LIVE: readonly State[] = ["queued", "dispatching", "input", "delivered", "answering"];
+/** A saved answer whose transmission or acknowledgement failed is held too (visible), never resent. */
+const HOLDABLE: readonly State[] = [...LIVE, "answered"];
 
 /** The member binding as createMemberBinding() hands it out (captured per call). */
 export interface HubRepresentativeBinding {
@@ -183,32 +185,51 @@ export class HubRepresentativeExecution {
   }
 
   /**
-   * Startup: work that never reached input (no intent) goes back to the queue; anything past it is uncertain and held.
-   * The journal's own recoverInterruptedInputs() marks the same rows uncertain on its side.
+   * Startup. The journal's own recovery runs first (queued + input intent → uncertain). Then a row that was dispatching
+   * goes back to the queue ONLY if the journal still has it queued with no input intent (a crash between the intent and
+   * the representative's own transition is uncertain and held, never a fresh queue item); anything past it is held.
    */
   recover(): void {
     if (this.recovered) throw new HubProtocolError("conflict");
     const db = this.options.db;
-    db.transaction(() => {
-      for (const row of db.prepare("SELECT * FROM hub_representative_questions WHERE state IN ('dispatching','input','delivered','answering','answered')").all() as Row[]) {
-        if (row.state === "dispatching") db.prepare("UPDATE hub_representative_questions SET state='queued', cid=NULL WHERE id=?").run(row.id);
-        else this.setState(row, "held", [row.state], { reason: "uncertain" });
-      }
-    }).immediate();
+    this.options.journal.recoverInterruptedInputs();
+    for (const row of db.prepare("SELECT * FROM hub_representative_questions WHERE state IN ('dispatching','input','delivered','answering','answered')").all() as Row[]) {
+      let untouched = false;
+      if (row.state === "dispatching") { try { this.question(row); untouched = true; } catch { untouched = false; } }
+      if (untouched) db.prepare("UPDATE hub_representative_questions SET state='queued', cid=NULL WHERE id=? AND state='dispatching'").run(row.id);
+      else this.hold(row, "uncertain");
+    }
     this.recovered = true;
     this.options.attentionChanged();
   }
 
-  /** Deliver every queued question the link can authorize now (called after commits and on each completed handshake). */
+  /**
+   * Deliver queued questions the link can authorize now (after commits, on each completed handshake, and again as each
+   * dispatch settles, so a backlog larger than one page keeps draining). Input-bearing work is never picked up again.
+   */
   pump(): void {
     if (this.closed || !this.recovered || !this.options.link()) return;
-    const rows = this.options.db.prepare("SELECT * FROM hub_representative_questions WHERE state='queued' ORDER BY at LIMIT 64").all() as Row[];
+    let rows: Row[];
+    try { rows = this.options.db.prepare("SELECT * FROM hub_representative_questions WHERE state='queued' ORDER BY at LIMIT 64").all() as Row[]; }
+    catch (err) { this.options.log("warn", "Hub question queue could not be read", { err: String(err) }); return; }
     for (const row of rows) {
       if (this.running.has(row.id)) continue;
       this.running.add(row.id);
-      void this.dispatch(row).catch((err: unknown) => this.options.log("warn", "Hub question delivery failed", { messageId: row.message_id, err: String(err) }))
-        .finally(() => this.running.delete(row.id));
+      void this.dispatch(row).catch((err: unknown) => {
+        this.options.log("warn", "Hub question delivery failed", { messageId: row.message_id, err: String(err) });
+        this.uncertain(row, err);
+      }).finally(() => {
+        this.running.delete(row.id);
+        if (!this.closed) setImmediate(() => this.pump());
+      });
     }
+  }
+
+  /** The row's current state from the database (another path — fence, report — may have moved it). */
+  private refresh(row: Row): State {
+    const now = this.row("id", row.id);
+    row.state = now?.state ?? "held";
+    return row.state;
   }
 
   private async dispatch(row: Row): Promise<void> {
@@ -227,36 +248,41 @@ export class HubRepresentativeExecution {
     try {
       handed = await this.options.deliver({
         agent: row.agent, correlationId: cid, text,
-        stillCurrent: () => !this.closed && (row.state === "dispatching" || row.state === "input"),
+        // The live fence through wake/idle/reconnect: the row's state as stored now, and its consent/lifecycle/binding.
+        stillCurrent: () => { const st = this.refresh(row); return (st === "dispatching" || st === "input") && this.currentFor(row); },
         beforeInput: () => this.beforeInput(row),
       });
     } catch (err) {
       this.options.log("warn", "Hub question hand-off failed", { messageId: row.message_id, err: String(err) });
     }
-    if (handed && row.state === "input") {
+    const state = this.refresh(row);
+    if (handed && state === "input") {
       // Handed to the agent's daemon: local state only. The journal's delivered/consumed evidence waits for the agent's
       // own report (queue acceptance is not delivery); a pane that never takes it is reported back (deliveryFailed).
-      this.setState(row, "delivered", ["input"]);
-      this.audit(row, "representative.handed", "completed");
+      if (!this.setState(row, "delivered", ["input"])) return;
+      try { this.auditRequired(row, "representative.handed", "completed"); } catch (err) { this.uncertain(row, err); }
       return;
     }
     if (handed) return; // already answering (the report overtook the hand-off result)
-    if (row.state === "input") this.uncertain(row, new Error("the hand-off after the input intent did not complete"));
-    else if (row.state === "dispatching") this.hold(row, "unavailable");
+    if (state === "input") this.uncertain(row, new Error("the hand-off after the input intent did not complete"));
+    else if (state === "dispatching") this.hold(row, "unavailable");
   }
 
-  /** The fleet's last step before input: consent and lifecycle again, then the exact begin lease, spent at once. */
+  /** The fleet's last step before input (at the connected hand-off): consent and lifecycle again, the begin lease, spent at once. */
   private async beforeInput(row: Row): Promise<boolean> {
     try {
-      if (row.state !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
+      if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
       const request: HubAuthorizationRequest = { messageId: row.message_id, operationId: randomUUID(), exposureRevision: row.revision, phase: "begin" };
       const lease = await this.options.authorize(request);
-      if (row.state !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
+      if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
       this.options.journal.markInputIntent(row.message_id, request, lease, this.fenceOf(row));
       if (!this.setState(row, "input", ["dispatching"])) throw new HubProtocolError("uncertain");
       return true;
     } catch (err) {
-      if (row.state === "dispatching") this.hold(row, "unavailable");
+      // After the intent was written, a failed transition is uncertain (never re-queued); before it, a plain hold.
+      let intent = false;
+      try { this.question(row); } catch { intent = true; }
+      if (intent) this.uncertain(row, err); else this.hold(row, "unavailable");
       this.options.log("warn", "Hub question held before input", { messageId: row.message_id, err: String(err) });
       return false;
     }
@@ -265,22 +291,27 @@ export class HubRepresentativeExecution {
   /**
    * The outbound hook: a report_result to HUB_REPORT_TARGET. Returns null when the correlation id is not a live Hub id
    * issued to this caller (the call then takes its ordinary route); otherwise consumes it once and releases the answer.
+   * callerCurrent: the reporting daemon generation is still the agent's current one (asked again before every release step).
    */
-  report(input: { correlationId: string; caller: string; text: string }): Promise<HubReportOutcome> | null {
+  report(input: { correlationId: string; caller: string; text: string; callerCurrent?: () => boolean }): Promise<HubReportOutcome> | null {
     if (this.closed || !input.correlationId.startsWith("hub-")) return null;
     const row = this.row("cid", input.correlationId);
     if (!row || row.agent !== input.caller) return null;
     const was = row.state;
     // Consume once, synchronously: a second report on the same id finds it no longer live.
     if (!this.setState(row, "answering", ["input", "delivered"])) return null;
-    return this.release(row, was, input.text);
+    return this.release(row, was, input.text, input.callerCurrent ?? (() => true));
   }
 
-  private async release(row: Row, was: State, raw: string): Promise<HubReportOutcome> {
-    let saved = false, evidenced = false;
+  private async release(row: Row, was: State, raw: string, callerCurrent: () => boolean): Promise<HubReportOutcome> {
+    let saved = false, evidenced = false, disclosed = false;
+    const live = () => {
+      if (!callerCurrent() || this.refresh(row) !== (saved ? "answered" : "answering") || !this.currentFor(row)) throw new HubProtocolError("stale");
+    };
     try {
       const text = validated(plain(HUB_ANSWER_MAX), raw);
       if (!text.trim()) throw new HubProtocolError("invalid");
+      live();
       evidenced = true;
       const journal = this.options.journal;
       // The agent's own report is the evidence that the question reached it and was taken up.
@@ -289,20 +320,27 @@ export class HubRepresentativeExecution {
       // Freeze the answer's id, bytes and digest before asking for the release lease for exactly them.
       const answerId = randomUUID(), contentDigest = sha256(text);
       this.options.db.prepare("UPDATE hub_representative_questions SET answer=? WHERE id=?").run(JSON.stringify({ answerId, contentDigest }), row.id);
-      if (!this.currentFor(row)) throw new HubProtocolError("stale");
+      live();
       const request: HubAuthorizationRequest = { messageId: row.message_id, operationId: randomUUID(), exposureRevision: row.revision, phase: "release-answer", answer: { answerId, contentDigest } };
       const releaseLease = await this.options.authorize(request);
-      if (!this.currentFor(row)) throw new HubProtocolError("stale");
+      live();
       const answer: HubAnswer = validated(answerSchema, { messageId: row.message_id, answerId, text, contentDigest, releaseLease });
+      // Required audit BEFORE anything is saved or disclosed: its failure stops the release (held, nothing sent).
+      this.auditRequired(row, "representative.release", "completed");
       journal.saveAnswer(answer, request, this.fenceOf(row));
       saved = true;
-      this.setState(row, "answered", ["answering"]);
-      this.audit(row, "representative.answered", "completed");
+      if (!this.setState(row, "answered", ["answering"])) throw new HubProtocolError("stale");
+      live();
       const link = this.options.link();
       if (!link || !link.current()) throw new HubProtocolError("unavailable");
+      disclosed = true;
       const reply = await link.exchange({ v: 1, type: "answer", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: answer }, "receipt");
       if (reply.type !== "receipt" || reply.payload.messageId !== row.message_id || reply.payload.stage !== "answered") throw new HubProtocolError("uncertain");
-      this.setState(row, "released", ["answered"]);
+      // The answered state and its audit commit together; a failure leaves a visible hold, never a silent success.
+      this.options.db.transaction(() => {
+        if (!this.setState(row, "released", ["answered"])) throw new HubProtocolError("stale");
+        this.options.audit({ action: "representative.answered", result: "completed", messageId: row.message_id, exposureId: row.exposure_id }, this.options.db);
+      }).immediate();
       this.pushReceipts();
       return { ok: true, message: "Delivered to the Hub asker." };
     } catch (err) {
@@ -313,7 +351,9 @@ export class HubRepresentativeExecution {
         return { ok: false, message: `Not sent: the answer must be 1 to ${HUB_ANSWER_MAX} bytes of plain text. Report again with the same correlation_id.` };
       }
       this.uncertain(row, err);
-      return { ok: false, message: "Not delivered to the Hub asker: the question is no longer open (withdrawn, revoked, or the Hub is unreachable). The owner sees it in Needs you." };
+      return { ok: false, message: disclosed
+        ? "Sent to the Hub, but its acknowledgement is uncertain; it is not sent again. The owner sees it in Needs you."
+        : "Not delivered to the Hub asker: the question is no longer open (withdrawn, revoked, replaced, or the Hub is unreachable). The owner sees it in Needs you." };
     } finally { this.options.attentionChanged(); }
   }
 
@@ -335,24 +375,26 @@ export class HubRepresentativeExecution {
   }
 
   private question(row: Row): HubQuestion {
-    // The journal's encrypted copy is the only question text this side keeps.
+    // The journal's encrypted copy is the only question text this side keeps (readable only while queued, before input).
     const question = this.options.journal.queuedQuestion(row.message_id);
     if (questionContextDigest(question) !== row.digest) throw new HubProtocolError("uncertain");
     return question;
   }
-  private audit(row: Row, action: string, result: "completed" | "held" | "denied", reasonCode?: string): void {
-    try {
-      this.options.db.transaction(() => this.options.audit({ action, result, messageId: row.message_id, exposureId: row.exposure_id, ...(reasonCode ? { reasonCode } : {}) }, this.options.db)).immediate();
-    } catch (err) { this.options.log("warn", "Hub audit append failed", { action, err: String(err) }); }
+  /** A required audit record (its own transaction): a failure throws to the caller. */
+  private auditRequired(row: Row, action: string, result: "completed" | "held" | "denied", reasonCode?: string): void {
+    this.options.db.transaction(() => this.options.audit({ action, result, messageId: row.message_id, exposureId: row.exposure_id, ...(reasonCode ? { reasonCode } : {}) }, this.options.db)).immediate();
   }
+  /** A hold always lands (state first); its audit record is attempted and a failure is logged. */
   private hold(row: Row, reason: string): void {
-    if (!this.setState(row, "held", LIVE, { reason })) return;
-    this.audit(row, "representative.held", "held", reason);
+    if (!this.setState(row, "held", HOLDABLE, { reason })) return;
+    try { this.auditRequired(row, "representative.held", "held", reason); }
+    catch (err) { this.options.log("warn", "Hub audit append failed", { action: "representative.held", err: String(err) }); }
     this.options.attentionChanged();
   }
   private uncertain(row: Row, err: unknown): void {
     this.options.log("warn", "Hub question uncertain", { messageId: row.message_id, err: String(err) });
-    try { if (["input", "delivered", "answering"].includes(row.state)) this.options.journal.recordEvidence(row.message_id, "uncertain"); }
+    // The journal can mark uncertain only before an answer was saved; a saved-but-unacknowledged answer stays answered there.
+    try { if (["dispatching", "input", "delivered", "answering"].includes(this.refresh(row))) this.options.journal.recordEvidence(row.message_id, "uncertain"); }
     catch { /* already past the stages the journal can mark uncertain */ }
     this.hold(row, "uncertain");
     this.pushReceipts();
