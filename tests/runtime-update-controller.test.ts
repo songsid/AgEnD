@@ -62,12 +62,13 @@ class InertChild extends EventEmitter {
 
 async function fixture(options: { shared?: boolean; unmanaged?: boolean; failChild?: boolean } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agend-controller-")), requests: string[] = [], children: InertChild[] = [], clients: InertClient[] = [], reports: string[] = [];
-  let target = b, archive: Buffer | undefined, interrupted = false;
+  let target = b, archive: Buffer | undefined, interrupted = false, onArchive: (() => void) | undefined;
   const server = createServer((req, res) => {
     requests.push(req.url!); const value = metadata(target); res.setHeader("ETag", `"${value.version}-${value.sha256}"`);
     if (req.url === "/runtime/v1/bundle/windows.json") { res.end(JSON.stringify(value)); return; }
     if (req.url !== "/runtime/v1/bundle/windows.zip") { res.writeHead(404).end(); return; }
     const bytes = archive ?? target.bytes; res.setHeader("Content-Length", bytes.length);
+    onArchive?.();
     if (interrupted) { res.write(bytes.subarray(0, 16)); res.destroy(); return; }
     res.end(bytes);
   });
@@ -110,6 +111,7 @@ async function fixture(options: { shared?: boolean; unmanaged?: boolean; failChi
   return { root, store, requests, children, clients, reports, program, controllerOptions, journal, credentials, installId, machineId, origin,
     setTarget(value: RuntimeBundle) { target = value; }, corrupt() { archive = Buffer.from(target.bytes); archive[100] ^= 1; },
     interrupt(value: boolean) { interrupted = value; },
+    beforeArchive(callback: () => void) { onArchive = callback; },
     async open() { return controller = await RuntimeUpdateController.open(controllerOptions); },
     own(value: RuntimeUpdateController) { controller = value; },
     selected() { return readRuntimeSelectedProgram(root); },
@@ -318,4 +320,12 @@ it("a hash-matching malformed archive is terminal for that target without stoppi
   await expect(controller.checkNow()).rejects.toThrow(/archive/); expect(f.journal().read().failed).toEqual({ version: b.version, sha256: target.sha256 });
   expect(f.clients[0].prepare).not.toHaveBeenCalled(); expect(f.children).toEqual([]); expect(f.selected()).toEqual(f.program);
   await controller.checkNow(); expect(f.requests.filter(p => p.endsWith(".zip"))).toHaveLength(1);
+});
+it("rechecks a lockless manual selection made during download before stopping the current client", async () => {
+  const f = await fixture(), lock = await acquireRuntimeInstallLock(f.root, { ownProof: self }); let third;
+  try { third = stageRuntimeUpdate(f.root, c.bytes, metadata(c), lock); } finally { lock.release(); }
+  f.beforeArchive(() => writeFileSync(join(f.root, "bin", "current.txt"), third.folder, { mode: 0o600 }));
+  const controller = (await f.open())!; await controller.start(); await controller.checkNow();
+  expect(f.selected()).toEqual(third); expect(f.clients[0].prepare).not.toHaveBeenCalled(); expect(f.clients[0].online()).toBe(true);
+  expect(f.children).toEqual([]); expect(f.journal().read().attempt).toBeUndefined();
 });
