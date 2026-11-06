@@ -34,7 +34,10 @@ async function initializedHub(bindPassword = BIND) {
   chmodSync(home, 0o700);
   roots.push(home);
   const certs = makeTestCerts();
-  const [memberPort, webPort] = [await freeHubPort(), await freeHubPort()];
+  // Two probes in a row may get the same just-freed port from the OS (a flake: "must use different addresses"): ask again.
+  const memberPort = await freeHubPort();
+  let webPort = await freeHubPort();
+  for (let i = 0; i < 20 && webPort === memberPort; i++) webPort = await freeHubPort();
   const plan = {
     name: "Compose Hub",
     webOrigin: `https://hub.example.test:${webPort}`,

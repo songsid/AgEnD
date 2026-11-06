@@ -2174,6 +2174,15 @@ export class Daemon extends EventEmitter {
   /** The usage-pause notice told last: when (monotonic), Claude's words for the reset, and that reset (wall clock). */
   private usagePauseNotice: { at: number; when: string; resetAt: number | null } | null = null;
 
+  /** Coarse status for the representative quota hint; never exports model names or transcript text. */
+  quotaPaused(): boolean {
+    if (this.usageLimitHold) return true;
+    const pause = this.usagePauseNotice;
+    return !!pause && (pause.resetAt === null
+      ? performance.now() - pause.at < Daemon.USAGE_PAUSE_NOTICE_WINDOW_MS
+      : Date.now() < pause.resetAt);
+  }
+
   /**
    * #2834 (#816): Claude paused itself until its usage window opens — the same notice the screen pattern gave. `at`: when
    * Claude wrote it (its record's timestamp). One notice per pause: a reset time already past is not this pause (an old
@@ -2351,6 +2360,8 @@ export class Daemon extends EventEmitter {
   private nativeFleetBridge?: { current(): boolean; send(message: Record<string, unknown>): void };
   private nativeTranscriptSource?: TranscriptSource;
   usesNativePane(): boolean { return !!this.nativePaneLifecycle; }
+  /** cc3ce4fe: the CLI version this pane's launch actually ran, as its helper recorded it (undefined: not known). */
+  nativePaneCliVersion(): string | undefined { try { return this.nativePaneLifecycle?.snapshot?.()?.cliVersion; } catch { return undefined; } }
   logNativeInputRefusal(details: import("./pane-port.js").PaneInputDiagnostic): void {
     this.logger.warn({ component: "runtime-pane-host", reason: "expected_seq_changed", ...details }, "Native pane input refused before write");
   }

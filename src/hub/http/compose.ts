@@ -26,6 +26,7 @@ import { HubCatalogService } from "../catalog.js";
 import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
+import { HubQuotaService } from "../quota.js";
 import { HubCore, personByLogin } from "./core.js";
 import { HUB_HTTP_MIGRATIONS } from "./schema.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
@@ -104,6 +105,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const core = new HubCore(deps, sql);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
   const rooms = new HubRoomsService(core, policy);
+  const quota = new HubQuotaService(core);
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   let closed = false;
   const live = () => !closed && core.live();
@@ -142,7 +144,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       throw new HttpError(405, "method");
     }
     if (path === "/hub/v1/exposures" || path === "/hub/v1/grants") {
-      if (method === "GET") { signedIn(); return send(res, 200, await guard(() => catalog.visible(ctx))); }
+      if (method === "GET") {
+        signedIn(); const view = await guard(() => catalog.visible(ctx));
+        return send(res, 200, { ...view, mine: view.mine.map(e => ({ ...e, quotaVisible: quota.visible(e.id), ...quota.projection(e.id) })) });
+      }
       if (path === "/hub/v1/grants" && method === "POST") {
         csrf(); const b = await body();
         const g = await guard(() => catalog.grant(ctx, { exposureId: uuid(b.exposureId), exposureRevision: int(b.exposureRevision), login: str(b.login), days: int(b.days) }));
@@ -158,12 +163,20 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); await guard(() => catalog.freeze(ctx, uuid(r![1]), int(b.revision), false)); return send(res, 200, { ok: true });
     }
+    if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/quota$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body();
+      if (typeof b.visible !== "boolean" || Object.keys(b).some(k => !["revision", "visible"].includes(k))) throw new HubProtocolError("invalid");
+      const exposureId = uuid(r[1]);
+      await guard(() => quota.setVisible(ctx, exposureId, int(b.revision), b.visible as boolean));
+      return send(res, 200, { quotaVisible: b.visible, ...quota.projection(exposureId) });
+    }
     if (path === "/hub/v1/rooms") {
-      if (method === "GET") { signedIn(); return send(res, 200, { rooms: await guard(() => rooms.list(ctx)) }); }
+      if (method === "GET") { signedIn(); return send(res, 200, { rooms: (await guard(() => rooms.list(ctx))).map(room => ({ ...room, ...quota.roomProjection(room) })) }); }
       if (method === "POST") {
         csrf(); const b = await body();
         const room = await guard(() => rooms.open(ctx, uuid(b.exposureId), uuid(b.grantId)));
-        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId) } });
+        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...quota.projection(room.exposureId) } });
       }
       throw new HttpError(405, "method");
     }
@@ -176,9 +189,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const roomId = uuid(r[1]);
       if (method === "GET") {
         const s = signedIn();
-        // #3226 B: the room comes with its entries, fresh each poll (its state, its grant's end, what its link negotiated).
+        // #3226 B + G: the room comes with its entries, fresh each poll — its view (state, grant's end, what its link
+        // negotiated) and its quota projection (G; absent when hidden or not shared).
         const entries = await guard(() => rooms.read(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
-        return send(res, 200, { entries, room: await guard(() => rooms.view(ctx, roomId)) });
+        const view = await guard(() => rooms.view(ctx, roomId));
+        return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view) } });
       }
       if (method === "POST") {
         csrf(); const b = await body();
@@ -319,9 +334,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   async function receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void> {
     if (!live() || !link.current()) throw new HubProtocolError("stale");
     rooms.noteLink(link);
+    quota.noteLink(link);
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
-      case "exposure.snapshot": catalog.receiveSnapshot(frame.payload, link); return;
+      case "exposure.snapshot": catalog.receiveSnapshot(frame.payload, link); quota.prune(); return;
+      case "exposure.quota": quota.receive(frame.payload, link); return;
       case "receipt": return { ...reply, type: "receipt", payload: rooms.receipt(frame.payload, link) };
       case "answer": return { ...reply, type: "receipt", payload: await rooms.answer(frame.payload, link) };
       case "authorize.request": return { ...reply, type: "authorize.result", payload: await policy.authorize(frame.payload, link) };
@@ -347,6 +364,6 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   rooms.buttons.start();
   return {
     handle, receive,
-    async close() { closed = true; await rooms.buttons.close(); rooms.forget(); },
+    async close() { closed = true; await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

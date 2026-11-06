@@ -5,6 +5,7 @@ import type { PaneKey, PaneSize } from "./pane-port.js";
 import { validatePaneTranscriptCursor, type PaneTranscriptCursor } from "./runtime-pane-transcript-protocol.js";
 import { validateGeneralWorkspaceRequest, type GeneralWorkspaceRequest } from "./runtime-general-protocol.js";
 import { assertCredentialProfileCli, assertCredentialProfileName } from "./runtime-credential-profiles.js";
+import { NATIVE_CLI_VERSION_TOKEN } from "./runtime-pane-native.js";
 
 export const RUNTIME_PANE_PROTOCOL = 1;
 export const PANE_EDIT_KEYS = { "C-a": "\x01", "C-e": "\x05", "C-u": "\x15", "C-k": "\x0b", BSpace: "\x7f", DC: "\x1b[3~", Home: "\x1b[H", End: "\x1b[F", Left: "\x1b[D", Right: "\x1b[C" } as const;
@@ -42,6 +43,8 @@ export interface RuntimePaneSnapshot extends PaneSize {
   inputRefused?: true;
   exitCode?: number;
   sessionId?: string;
+  /** The CLI version this launch actually ran (its helper's own check); absent from an older host. */
+  cliVersion?: string;
   /** Durable positive receipt: admission refused before any native launch factory ran. */
   noLaunch?: true;
   exitProof?: "system-reboot" | "admin-confirmed";
@@ -176,7 +179,8 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
 }
 
 export function validateRuntimePaneSnapshot(value: unknown): RuntimePaneSnapshot {
-  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "inputRefused", "columns", "rows", "exitCode", "sessionId", "noLaunch", "exitProof"]);
+  closed(value, ["hostBootId", "paneId", "agentId", "instance", "launchId", "state", "seq", "outputAt", "commandSequence", "inputRefused", "columns", "rows", "exitCode", "sessionId", "noLaunch", "exitProof", "cliVersion"]);
+  if (value.cliVersion !== undefined && (typeof value.cliVersion !== "string" || value.cliVersion.length > 400 || !NATIVE_CLI_VERSION_TOKEN.test(value.cliVersion))) throw Error("Invalid pane CLI version");
   if (value.noLaunch !== undefined && (value.noLaunch !== true || value.state !== "exited" || value.commandSequence !== 0 || value.exitCode !== undefined)) throw Error("Invalid pane no-launch receipt");
   if(value.inputRefused!==undefined&&value.inputRefused!==true)throw Error("Invalid pane input refusal");
   id(value.hostBootId); id(value.paneId); id(value.agentId); id(value.launchId);

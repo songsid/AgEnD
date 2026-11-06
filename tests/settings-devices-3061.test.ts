@@ -14,7 +14,7 @@
  *    gone (403 — and the card reads its state again); a request that runs out while it is on screen goes back to the field;
  *  - zh-TW follows.
  */
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
@@ -214,6 +214,15 @@ describe("#3061 P2a: Settings → Devices & sign-in", () => {
 
 // ── P2b ──
 const NOW = Date.now();
+/**
+ * M-2536: the rows' times are relative to NOW, and the list says how long ago each was active by Date.now() at render.
+ * Unpinned, a row 20 s old read "1 min ago" once the run reached it 10 s or more after this module loaded (agoWords
+ * rounds to whole minutes: 30 s is the boundary). Pin Date — only Date, so the harness's timers stay real — to NOW.
+ */
+function pinClock() {
+  beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); });
+  afterEach(() => { vi.useRealTimers(); });
+}
 const ROWS = [
   { handle: "aaaaaaaaaaaaaaaa", label: "Firefox on Linux", via: "host", ownerVerified: true, current: true, surface: "local", created: NOW - 3_600_000, lastSeen: NOW, expiresAt: NOW + 3_600_000 },
   { handle: "bbbbbbbbbbbbbbbb", label: "Chrome on Android", via: "device", ownerVerified: false, current: false, surface: "local", created: NOW - 900_000, lastSeen: NOW - 5 * 60_000, expiresAt: NOW + 3_600_000 },
@@ -224,6 +233,7 @@ const ROWS = [
 const rowText = (w: any, handle: string) => [w.text(w.$(`[data-handle="${handle}"] .s-dev-name`)), w.text(w.$(`[data-handle="${handle}"] .s-dev-meta`)), w.text(w.$(`[data-handle="${handle}"] [data-signout]`))];
 
 describe("#3061 P2b: the signed-in devices", () => {
+  pinClock();
   it("every device, this one marked: how it was approved, whether its owner is verified, when it was last active", async () => {
     const w = await open({ webOnly: true, owner: true, devices: ROWS });
     expect(w.text(w.$("#devicesListTitle"))).toBe("Signed-in devices");
@@ -348,6 +358,7 @@ describe("#3061 P2b: the signed-in devices", () => {
 
 // ── P2b security review: three small things ──
 describe("#3061 P2b review: web authorization off — the card says why nobody can add or sign out a device, and what to do", () => {
+  pinClock();
   const OFF = { webOnly: true, owner: false, authority: false, devices: ROWS };
 
   it("authority off: one line replaces the two 'owner not verified' lines — nobody is the owner; run `agend web-token rotate` on the AgEnD computer, which ends every session", async () => {
@@ -392,6 +403,7 @@ describe("#3061 P2b review: web authorization off — the card says why nobody c
 });
 
 describe("#3061 P2b review: the confirm screen — where the request is from and its address lead; allow only if the new device shows the same code", () => {
+  pinClock();
   it("the reminder, and the order: from, address (the two that tell devices apart), then the code, the device name (the browser's own word), the time left", async () => {
     const w = await toConfirm();
     expect(w.text(w.$("#devSameCode"))).toBe("Only allow this if the new device's screen shows this same code. The device name comes from the browser and can be faked, so go by where it is from and its address.");

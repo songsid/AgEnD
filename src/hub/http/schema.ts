@@ -85,4 +85,7 @@ CREATE INDEX hub_leases_message ON hub_leases(message_id);
 export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   Object.freeze({ component: "s3-http" as const, version: 1, up: (db: Database.Database) => { db.exec(V1); } }),
   HUB_BUTTONS_MIGRATION,
+  Object.freeze({ component: "s3-quota" as const, version: 1, up: (db: Database.Database) => {
+    db.exec("CREATE TABLE hub_quota_preferences(exposure_id TEXT PRIMARY KEY REFERENCES hub_exposures(id), visible INTEGER NOT NULL CHECK(visible IN (0,1)))");
+  } }),
 ]);

@@ -111,6 +111,7 @@ export class HubServer {
     }
     if (frame.type === "hello" || frame.linkEpoch !== context.linkEpoch) throw new HubProtocolError("stale");
     if (!connection.ready && !["exposure.snapshot", "reconcile", "error"].includes(frame.type)) throw new HubProtocolError("unavailable");
+    if (frame.type === "exposure.quota" && (!context.features.has("quota-band-v1") || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "exposure.snapshot" && frame.payload.exposures.some(e => e.fleetId !== context.fleetId || personKeyString(e.owner) !== personKeyString(context.owner))) throw new HubProtocolError("denied");
     const result = await this.options.receive(frame, context);
     if (!context.current()) return;
