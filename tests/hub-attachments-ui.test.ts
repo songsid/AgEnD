@@ -224,4 +224,9 @@ describe("uploadChosen bounds (D2 review r1)", () => {
     expect(gates).toHaveLength(1);
     expect(o.current()).toBe(before);
   });
+  it("left before its first turn (or between turns), nothing is uploaded", async () => {
+    const o = owner(); let n = 0;
+    await att.uploadChosen({ upload: async () => { n++; return { ok: false, status: 0 }; } }, R1, files(2, "h"), { ...o, alive: () => false });
+    expect(n).toBe(0);
+  });
 });
