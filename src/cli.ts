@@ -3112,7 +3112,9 @@ async function listInstanceNames(config: import("./types.js").FleetConfig): Prom
 
 async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
-    const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
+    const config = (yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) ?? {}) as import("./types.js").FleetConfig;
+    // A fleet.yaml without an `instances:` section is an empty fleet (as `agend doctor` and the fleet read it), not a crash.
+    if (!config.instances || typeof config.instances !== "object") config.instances = {};
     const names = Object.keys(config.instances);
 
     // --names-only feeds shell completion, so it must return before any tmux or
@@ -3169,6 +3171,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
 
     if (allNames.length === 0) {
       console.log("No instances configured.");
+      // The same hint `agend doctor` gives for this file.
+      console.log("Hint: no general_topic instance — there is no general dispatcher to receive un-topic'd messages. Run `agend doctor`.");
       await printResources();
       return;
     }
@@ -3198,6 +3202,12 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       ? (channelTypes.has("telegram") ? "TG" : channelTypes.has("discord") ? "DC" : "—")
       : null;
 
+    // A fleet instance's source is the adapter the fleet routes it by: its channel_id, else the first connection
+    // (FleetManager.getInstanceAdapterId) — never guessed from its topic id, so `ls` and routing cannot disagree.
+    const channelList = config.channels?.length ? config.channels : config.channel ? [config.channel] : [];
+    const typeByAdapter = new Map(channelList.map((ch) => [ch.id ?? ch.type, ch.type] as const));
+    const firstAdapter = channelList[0] ? (channelList[0].id ?? channelList[0].type) : undefined;
+    const sourceOfType = (type: string | undefined): string => (type === "telegram" ? "TG" : type === "discord" ? "DC" : "—");
     const getSource = (name: string, inst?: Record<string, unknown>): string => {
       if (singleSource) return singleSource;
       if (classicNames.has(name)) {
@@ -3205,10 +3215,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
         const matchedChId = classicChannelIdByName.get(name) ?? "";
         return matchedChId.startsWith("-") || matchedChId.length < 17 ? "TG" : "DC";
       }
-      const topicId = String(inst?.topic_id ?? "");
-      if (topicId.length >= 17) return "DC";
-      if (topicId.length > 0 && topicId.length < 17) return "TG";
-      return "—";
+      const bound = typeof inst?.channel_id === "string" && inst.channel_id ? inst.channel_id : firstAdapter;
+      return sourceOfType(bound === undefined ? undefined : typeByAdapter.get(bound));
     };
 
     // Row collection runs concurrently (see ls-rows.ts): the per-instance
