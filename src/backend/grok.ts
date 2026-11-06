@@ -9,7 +9,7 @@ import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBo
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { displayWidth } from "../ls-rows.js";
 import { quotaLine, quotaPausedLine } from "../quota-notice.js";
-import { clearGrokWeeklyReset, grokWeeklyResetDue, noteGrokWeeklyLimitSeen } from "./grok-weekly-reset.js";
+import { clearGrokWeeklyReset, grokWeeklyResetDue, markGrokWeeklyTryAgainConsumed, noteGrokWeeklyLimitSeen, readGrokWeeklyReset } from "./grok-weekly-reset.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
 const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
@@ -90,7 +90,7 @@ function grokWeeklyLimitActive(pane: string, legend: "question" | "scrollback" |
   return GROK_LEGEND_QUESTION.test(between[0]!) || GROK_LEGEND_SCROLLBACK.test(between[0]!);
 }
 
-function grokWeeklyLimitDialog(instanceDir: string): RuntimeDialog {
+function grokWeeklyLimitDialog(instanceDir: string, pending: { value: boolean }): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
   return {
     pattern,
@@ -106,6 +106,9 @@ function grokWeeklyLimitDialog(instanceDir: string): RuntimeDialog {
     dismissIncident: { type: "quota", action: "pause", message: "Grok weekly limit used up — paused", notice: quotaPausedLine("Grok", "weekly") },
     isActive: pane => grokWeeklyLimitActive(pane, "question"),
     answerDetail: () => {
+      // The daemon has one autoResolvedDialogKey: this X claim replaces Try Again's. Drop the
+      // in-flight pending flag so a later poll cannot send Down×2+Enter again on this episode.
+      pending.value = false;
       noteGrokWeeklyLimitSeen(instanceDir);
       return null;
     },
@@ -121,6 +124,10 @@ function grokWeeklyLimitDialog(instanceDir: string): RuntimeDialog {
  * the sequence is start-independent. Daemon `capture-pane -p` has no SGR 7. A non-default start is reachable
  * (View/terminal arrows before the reset; a mid-sequence abort after one Down; a later auto-resolved dialog
  * overwriting the one-slot runtime claim so Try Again can run again in that spawn).
+ *
+ * Try Again is consumed on the reset file (`tryAgainConsumed`) independently of that one-slot claim, so an
+ * ignored Shift+x cannot re-arm Enter against the same still-limited screen. Re-arm only for a new pause
+ * episode (Shift+x after a consumed Try Again rewrites the clock).
  *
  * isActive has a side effect: when the modal is gone and pending is set it clears the reset file. The daemon
  * calls isActive from every probe and scan. A future "pure matcher" refactor must keep that clear — alpha
@@ -139,7 +146,8 @@ function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: { value: bo
     answeredByAgend: true,
     // Stay matched through the Down×2+Enter sequence: answerDetail runs before the keys, and alpha re-reads the
     // pane before each key. Clearing the clock there made isActive false and sent nothing. Drop the clock once
-    // the modal is gone (success, or the next Shift+x will write a fresh one).
+    // the modal is gone (success, or the next Shift+x will write a fresh one). After the sequence, consumed
+    // on the reset file keeps isActive false even if pending was cleared by the X fallback.
     isActive: pane => {
       const modal = grokWeeklyLimitActive(pane, "question", { tryAgain: true });
       if (!modal) {
@@ -149,10 +157,13 @@ function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: { value: bo
         }
         return false;
       }
-      return pending.value || grokWeeklyResetDue(instanceDir);
+      if (pending.value) return true;
+      const rec = readGrokWeeklyReset(instanceDir);
+      return rec !== null && Date.now() >= rec.resetAt && rec.tryAgainConsumed !== true;
     },
     answerDetail: () => {
       pending.value = true;
+      markGrokWeeklyTryAgainConsumed(instanceDir);
       return null;
     },
   };
@@ -595,7 +606,7 @@ export class GrokBackend implements CliBackend {
       grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
       { ...grokWeeklyLimitScrollbackDialog(),
         isActive: pane => grokWeeklyLimitActive(pane, "scrollback") && grokWeeklyResetDue(dir) },
-      { ...grokWeeklyLimitDialog(dir), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined,
+      { ...grokWeeklyLimitDialog(dir, this.grokWeeklyTryAgainPending), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined,
         isActive: pane => grokWeeklyLimitActive(pane, "either"),
         heldReason: () => { noteGrokWeeklyLimitSeen(dir); return null; } },
       // Animated intro logo (spinning braille X). It redraws continuously, so
@@ -677,7 +688,7 @@ export class GrokBackend implements CliBackend {
       // After the recorded reset, Try Again first (unique autoResolutionKey). Shift+x still matches so a
       // still-limited re-show pauses again. Before the reset, only Shift+x — never a paid option.
       grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
-      grokWeeklyLimitDialog(dir),
+      grokWeeklyLimitDialog(dir, this.grokWeeklyTryAgainPending),
       grokWeeklyLimitScrollbackDialog(),
       // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
       // option 1 so the fleet runs unattended. Primary mechanism is
