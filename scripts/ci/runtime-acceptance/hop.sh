@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# #1450 runtime acceptance, the 2.1.12 → 2.2 hop on an old system Node — 20, 18 or 16 (docs/design/1450-private-node-runtime.md):
-#   leg 1: the REAL published 2.1.12 runs `agend update --version <candidate>` (its writable-prefix branch: unlink,
+# #1450 runtime acceptance, the previous-release → candidate hop on an old system Node — 20, 18 or 16 (docs/design/1450-private-node-runtime.md):
+#   leg 1: the REAL published 2.3.3 runs `agend update --version <candidate>` (its writable-prefix branch: unlink,
 #          npm install -g, verify, install --no-activate, completion refresh, restart) against the local registry;
-#   leg 2: a plain `npm install -g @songsid/agend@<candidate>` over 2.1.12.
-# On Node 16, 2.1.12 installs but cannot start (its CLI needs Node >= 18), so leg 1 cannot exist there: only leg 2 runs,
-# which is also how such a host gets a working AgEnD back.
+#   leg 2: a plain `npm install -g @songsid/agend@<candidate>` over 2.3.3.
+# The previous release ships its own runtime, so both legs run on every old host-Node cell.
 # After each: the candidate is installed and runs on its bundled Node (check_installed). A fail-fast boundary:
 #   - systemctl, launchctl and sudo are stubs that log and fail, so nothing reaches a real service manager by name;
 #   - every Node process preloads boundary.cjs: a fleet start in any form (node entry, `agend`, the launcher, a shell
@@ -18,13 +17,13 @@ PKGS="${1:?packages dir}"
 CAND="$(node -p 'require(process.argv[1]).version' "$PKGS/candidate.json")"
 PIN="$(node -p 'require(process.argv[1]).pin' "$PKGS/candidate.json")"
 SYS_NODE="$(command -v node)"; SYS_NODE_VERSION="$(node --version)"
-OLD=2.1.12
+OLD=2.3.3
 # #1819: the published $OLD, from its cached tarball that .github/actions/published-agend-tarball checked against the
 # registry's dist.integrity: installing it downloads no @songsid/agend tarball from npmjs (that would count as a download).
-OLD_TGZ="${AGEND_OLD_TARBALL:?the published 2.1.12 tarball (.github/actions/published-agend-tarball)}"
+OLD_TGZ="${AGEND_OLD_TARBALL:?the published 2.3.3 tarball (.github/actions/published-agend-tarball)}"
 # shellcheck source=checks.sh
 . "$HERE/checks.sh"
-case "$SYS_NODE_VERSION" in v18.*|v20.*) OLD_STARTS=1 ;; v16.*) OLD_STARTS=0 ;; *) fail "the hop runs on an old Node: 16, 18 or 20 (got $SYS_NODE_VERSION)" ;; esac
+case "$SYS_NODE_VERSION" in v16.*|v18.*|v20.*) ;; *) fail "the hop runs on an old Node: 16, 18 or 20 (got $SYS_NODE_VERSION)" ;; esac
 
 # A fresh, isolated world for one leg: prefix, HOME, AGEND_HOME, npm cache/config, guarded service managers.
 fresh() {
@@ -53,7 +52,7 @@ STUB
   step "[$1] npm install -g @songsid/agend@$OLD (its published tarball; dependencies from npmjs) on Node $SYS_NODE_VERSION, npm $(npm --version)"
   bash "$HERE/../install-published-tarball.sh" @songsid/agend "$OLD_TGZ" --registry https://registry.npmjs.org/
   [ -f "$PREFIX/lib/node_modules/@songsid/agend/package.json" ] && [ "$(node -p 'require(process.argv[1]).version' "$PREFIX/lib/node_modules/@songsid/agend/package.json")" = "$OLD" ] || fail "agend $OLD did not install"
-  if [ "$OLD_STARTS" = 1 ]; then [ "$(agend --version)" = "$OLD" ] || fail "agend $OLD does not start"; fi
+  [ "$(agend --version)" = "$OLD" ] || fail "agend $OLD does not start on its bundled runtime"
   [ "$(command -v agend)" = "$PREFIX/bin/agend" ] || fail "agend resolves to $(command -v agend)"
 }
 ORIG_PATH="$PATH"
@@ -70,7 +69,6 @@ check_boundary() {
   fi
 }
 
-if [ "$OLD_STARTS" = 1 ]; then
 fresh old-updater
 step "[old-updater] agend $OLD: agend update --version $CAND --yes"
 set +e
@@ -84,10 +82,6 @@ grep -q "Installed: $CAND" "$WORK/update.out" || fail "the old updater did not r
 echo "  the old updater exited 1 after installing $CAND, as expected (no fleet or service to restart)"
 check_boundary old-updater
 check_installed
-else
-  step "[old-updater] skipped: agend $OLD cannot start on Node $SYS_NODE_VERSION, so it has no updater to run"
-fi
-
 fresh npm-install
 step "[npm-install] npm install -g @songsid/agend@$CAND over $OLD"
 npm install -g --no-audit --no-fund "@songsid/agend@$CAND"

@@ -181,7 +181,7 @@ describe("no workflow fetches the published package from the registry by name", 
   it.each([
     ["ci.yml", "release-rollback-smoke", "baseline-tarball", "BASELINE_TGZ", "${{ env.ROLLBACK_VERSION }}"],
     ["data-downgrade.yml", "data-downgrade", "baseline-tarball", "BASELINE_TGZ", "2.3.3"],
-    ["runtime-acceptance.yml", "hop", "old-tarball", "AGEND_OLD_TARBALL", "2.1.12"],
+    ["runtime-acceptance.yml", "hop", "old-tarball", "AGEND_OLD_TARBALL", "2.3.3"],
     ["mac-gui-rehearsal.yml", "gui", "old-tarball", "AGEND_OLD_TARBALL", "2.3.3"],
   ])("%s %s: the cached selected tarball feeds the step that installs it", (file, job, id, envName, version) => {
     const wf = yaml.load(readFileSync(join(ROOT, ".github/workflows", file), "utf8")) as {
