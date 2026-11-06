@@ -1,7 +1,7 @@
 /**
  * S3c (S-55): the member's exposure API (exposure-api.ts) and its routes (settings-api.ts, settings-effect.ts).
- * - The projection: the owner's agents only, `choices` from the approved views (none without an S4 provider),
- *   `enforceable` from S4, the committed revision and state.
+ * - The projection: the owner's agents only; P1 shares the agent itself (docs/design/hub-representative-agent.md):
+ *   one "agent" choice, no Hub tools; a legacy (container) mapping says republish_required until shared again.
  * - Publish/revise only as a confirmed Settings replay by the local admin; the confirmation's effect is the request
  *   (summary, fingerprint over the body); never over the public link; 404 "unavailable" with no member composed.
  * - Withdraw: immediate (no confirmation), admin only, ok once saved, remote "pending".
@@ -20,76 +20,125 @@ import { applyHubMigrations } from "../src/hub/db.js";
 import { createHubAudit, HUB_AUDIT_MIGRATION } from "../src/hub/audit/index.js";
 import { HubDocumentView, executionPolicyDigest } from "../src/hub/execution/views.js";
 import type { HubExecutionReadiness, HubLocalExposure } from "../src/hub/execution/service.js";
-import { HUB_EXPOSURE_MIGRATION, HubExposureStore } from "../src/hub/member/exposures.js";
+import { HUB_EXPOSURE_MIGRATION, HubExposureStore, publishExposure } from "../src/hub/member/exposures.js";
 import { createHubMemberExposureApi, type HubMemberExposureApi } from "../src/hub/member/exposure-api.js";
+import { agentPolicyDigest, isAgentDescriptor } from "../src/hub/member/agent-mode.js";
 
 const dbs: Database.Database[] = [], caps: SettingsExecution[] = [];
 afterEach(() => { dbs.splice(0).forEach((d) => d.close()); caps.splice(0).forEach((c) => c.close()); });
 
-function member(opts: { provider?: boolean; views?: boolean; providerReason?: Parameters<typeof createHubMemberExposureApi>[0]["providerReason"] } = {}) {
+function member(opts: { agents?: () => Array<{ name: string; display: string }>; readinessCandidate?: ((c: HubLocalExposure) => HubExecutionReadiness) | null } = {}) {
   const db = new Database(":memory:"); dbs.push(db);
   applyHubMigrations(db, [HUB_AUDIT_MIGRATION, HUB_EXPOSURE_MIGRATION]);
   let floor = 0;
   const owner = { realm: "directory", objectId: randomUUID() }, fleetId = randomUUID();
   const view = new HubDocumentView("notes", [{ id: "n", title: "Notes", text: "x" }]);
-  const views = new Map(opts.views === false ? [] : [[view.id, view]]);
+  const views = new Map([[view.id, view]]);
   const store = new HubExposureStore(db, { floor: { read: () => floor, raise: (n) => { floor = n; } }, audit: createHubAudit({ db, contentKey: randomBytes(32) }), views,
     binding: () => ({ owner, fleetId }) });
   store.initialize();
-  const readinessCandidate = vi.fn((c: HubLocalExposure): HubExecutionReadiness => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision }));
   const afterCommit = vi.fn(async () => "pending");
-  const api = createHubMemberExposureApi({ store, views, readinessCandidate, readiness: () => ({ ok: true, policyDigest: "x", exposureRevision: 1 }) as HubExecutionReadiness,
-    providerReason: opts.providerReason,
-    agents: () => [{ name: "atlas", display: "Atlas", providerId: opts.provider === false ? null : "inert" }], afterCommit, pending: (a) => (a === "atlas" ? null : null) });
-  return { api, store, view, afterCommit, readinessCandidate };
+  // S5's seam: a stub that accepts the candidate (opts.readinessCandidate: null leaves it out — no delivery path composed).
+  const seam = opts.readinessCandidate === undefined ? (c: HubLocalExposure): HubExecutionReadiness => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision })
+    : opts.readinessCandidate;
+  const api = createHubMemberExposureApi({ store, agents: opts.agents ?? (() => [{ name: "atlas", display: "Atlas" }]), afterCommit, pending: (a) => (a === "atlas" ? null : null),
+    ...(seam ? { readinessCandidate: seam } : {}) });
+  /** A mapping from before P1's change: S4's restricted container over an approved view (the store still holds it). */
+  const legacy = () => publishExposure(store, { agent: "atlas", providerId: "claude", displayName: "Atlas", dataViewId: "notes", allowedTools: ["documents.read"], expectedRevision: 0 },
+    (c: HubLocalExposure): HubExecutionReadiness => ({ ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision }));
+  return { api, store, view, afterCommit, legacy };
 }
+const AGENT = { agent: "atlas", dataViewId: "agent", tools: [] as string[] };
 
 describe("the member's exposure API", () => {
-  it.each(["engine-unavailable", "engine-unsupported", "image-unconfigured", "image-mismatch", "credential-unconfigured", "unavailable"] as const)("explains %s before a first publish while preserving S4's exact candidate gate", reason => {
-    const m = member({ providerReason: () => reason });
-    expect(m.api.list()[0]).toMatchObject({ exposureId: null, enforceable: false, reason });
-    expect(m.readinessCandidate).not.toHaveBeenCalled();
-    m.readinessCandidate.mockReturnValue({ ok: false, reasonCode: reason });
-    expect(() => m.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 })).toThrow();
-    expect(m.store.list().every(row => !row.committed)).toBe(true); expect(m.afterCommit).not.toHaveBeenCalled();
-  });
-  it("sanitizes a throwing or unknown provider diagnostic and cannot gain readiness from null", () => {
-    for (const providerReason of [() => { throw Error("PRIVATE-KEY"); }, () => "PRIVATE-KEY" as never]) {
-      expect(member({ providerReason }).api.list()[0]).toMatchObject({ enforceable: false, reason: "provider-unavailable" });
-    }
-    expect(member({ provider: false, providerReason: () => null }).api.list()[0].enforceable).toBe(false);
-    expect(member({ views: false, providerReason: () => null }).api.list()[0].enforceable).toBe(false);
-  });
-  it("lists the owner's agents with their choices; publish (after confirmation) and withdraw move the revision; each commit sends the snapshot", async () => {
+  it("lists the owner's agents with the agent itself as the one choice; publish (after confirmation) and withdraw move the revision; each commit sends the snapshot", async () => {
     const m = member();
     expect(m.api.list()).toEqual([{ agent: "atlas", display: "Atlas", exposureId: null, revision: 0, state: "withdrawn", policy: null, enforceable: true,
-      choices: { dataViews: [{ id: "notes", label: "notes" }], tools: [{ name: "documents.list", label: "List documents" }, { name: "documents.read", label: "Read documents" }] }, pending: null }]);
-    expect(m.api.preview({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 }).summary).toEqual(
-      ['Share "Atlas" with the Hub', "Data view: notes", "Tools: documents.read", "Revision: 1"]);
-    const v = m.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 });
-    expect(v).toMatchObject({ state: "published", revision: 1, policy: { dataView: "notes", tools: ["documents.read"] } });
-    expect(m.store.exposure(v.exposureId!)!.policyDigest).toBe(executionPolicyDigest(m.view, ["documents.read"]));
+      choices: { dataViews: [{ id: "agent", label: "Atlas" }], tools: [] }, pending: null }]);
+    expect(m.api.preview({ ...AGENT, expectedRevision: 0 }).summary).toEqual(
+      ['Share "Atlas" with the Hub', "Hub questions go to this agent's own conversation, with its folder and Settings tools", "Revision: 1"]);
+    const v = m.api.publish({ ...AGENT, expectedRevision: 0 });
+    expect(v).toMatchObject({ state: "published", revision: 1, policy: { dataView: "agent", tools: [] }, enforceable: true });
+    expect(v.reason).toBeUndefined();
+    const local = m.store.localExposure(v.exposureId!)!;
+    expect(local).toMatchObject({ agent: "atlas", providerId: "agent", exposure: { dataViewId: "agent", allowedTools: [], policyDigest: agentPolicyDigest("atlas") } });
+    expect(isAgentDescriptor(local)).toBe(true);
+    expect(m.store.snapshot().exposures).toEqual([expect.objectContaining({ id: v.exposureId, dataViewId: "agent", allowedTools: [], policyDigest: agentPolicyDigest("atlas"), state: "published" })]);
     expect(m.afterCommit).toHaveBeenCalledTimes(1);
     expect(await m.api.withdraw(v.exposureId!, 1)).toEqual({ remote: "pending" });
-    expect(m.api.list()[0]).toMatchObject({ state: "withdrawn", revision: 2, policy: null });
+    expect(m.api.list()[0]).toMatchObject({ state: "withdrawn", revision: 2, policy: null, enforceable: true });
     expect(m.afterCommit).toHaveBeenCalledTimes(2);
     await expect(m.api.withdraw(v.exposureId!, 1)).rejects.toMatchObject({ code: "conflict" });
   });
-  it("refused: an unknown agent, a stale revision, odd input; no S4 provider or no approved view: nothing to choose, not enforceable", () => {
+  it("refused: an unknown agent, a stale revision, odd input, an old tab's document view, any Hub tool; nothing committed", () => {
     const m = member();
-    expect(() => m.api.publish({ agent: "ghost", dataViewId: "notes", tools: [], expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "unknown_agent" }));
-    expect(() => m.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 3 })).toThrow(expect.objectContaining({ code: "conflict" }));
-    for (const bad of [null, [], { agent: "atlas" }, { agent: "atlas", dataViewId: "notes", tools: "x", expectedRevision: 0 }, { agent: "atlas", dataViewId: "notes", tools: [], expectedRevision: -1 },
-      { agent: "atlas", dataViewId: "notes", tools: [], expectedRevision: 0, owner: "me" }]) expect(() => m.api.preview(bad)).toThrow();
-    const p = member({ provider: false });
-    expect(p.api.list()[0]).toMatchObject({ enforceable: false, reason: "no_restricted_provider", choices: { dataViews: [], tools: [] } });
-    expect(() => p.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
-    expect(member({ views: false }).api.list()[0]).toMatchObject({ enforceable: false, reason: "no_approved_view" });
+    expect(() => m.api.publish({ ...AGENT, agent: "ghost", expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "unknown_agent" }));
+    expect(() => m.api.publish({ ...AGENT, expectedRevision: 3 })).toThrow(expect.objectContaining({ code: "conflict" }));
+    for (const bad of [null, [], { agent: "atlas" }, { ...AGENT, tools: "x", expectedRevision: 0 }, { ...AGENT, expectedRevision: -1 }, { ...AGENT, expectedRevision: 0, owner: "me" }]) {
+      expect(() => m.api.preview(bad)).toThrow();
+    }
+    // A tab loaded before the change sends a document view and a tool: refused with codes it already knows.
+    expect(() => m.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "unknown_view" }));
+    expect(() => m.api.preview({ agent: "atlas", dataViewId: "notes", tools: [], expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "unknown_view" }));
+    expect(() => m.api.publish({ ...AGENT, tools: ["documents.read"], expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
+    expect(m.store.list()).toEqual([]); expect(m.afterCommit).not.toHaveBeenCalled();
+  });
+  it("an agent removed between the check and the atomic publish: readiness asked again inside it refuses; the candidate goes", () => {
+    let calls = 0;
+    const m = member({ agents: () => (++calls <= 2 ? [{ name: "atlas", display: "Atlas" }] : []) });
+    expect(() => m.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
+    expect(m.store.list()).toEqual([]); expect(m.afterCommit).not.toHaveBeenCalled();
+  });
+  it("S5's readinessCandidate: asked before the stage and again inside the atomic publish; its refusal refuses and drops the candidate", () => {
+    const seen: Array<{ inTx: boolean; consentId: string; digest: string }> = [];
+    let db!: Database.Database;
+    const ok = vi.fn((c: HubLocalExposure): HubExecutionReadiness => {
+      seen.push({ inTx: db.inTransaction, consentId: c.consentId, digest: c.exposure.policyDigest });
+      return { ok: true, policyDigest: c.exposure.policyDigest, exposureRevision: c.exposure.revision };
+    });
+    const m = member({ readinessCandidate: ok }); db = m.store.database;
+    const v = m.api.publish({ ...AGENT, expectedRevision: 0 });
+    expect(seen.map((x) => x.inTx)).toEqual([false, true]);
+    expect(new Set(seen.map((x) => x.consentId)).size).toBe(1);
+    expect(seen[0]!.digest).toBe(agentPolicyDigest("atlas"));
+    expect(m.store.localExposure(v.exposureId!)!.consentId).toBe(seen[1]!.consentId);
+    const no = member({ readinessCandidate: () => ({ ok: false, reasonCode: "stale" }) });
+    expect(() => no.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
+    expect(no.store.list()).toEqual([]); expect(no.afterCommit).not.toHaveBeenCalled();
+  });
+  it("#3146 r1: no S5 seam composed (no delivery path): every row unshareable (delivery_unavailable) and publish refused", () => {
+    const m = member({ readinessCandidate: null });
+    expect(m.api.list()[0]).toMatchObject({ state: "withdrawn", enforceable: false, reason: "delivery_unavailable" });
+    expect(() => m.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "not_enforceable" }));
+    expect(m.store.list()).toEqual([]); expect(m.afterCommit).not.toHaveBeenCalled();
+    m.legacy();                                                                           // a legacy row still says why it is refused
+    expect(m.api.list()[0]).toMatchObject({ state: "published", enforceable: false, reason: "republish_required" });
+  });
+  it("a legacy container mapping: durable, shown as republish_required (never as shared), withdrawable; never converted silently", async () => {
+    const m = member(), old = m.legacy();
+    expect(isAgentDescriptor(old)).toBe(false);
+    expect(m.api.list()[0]).toMatchObject({ exposureId: old.exposure.id, state: "published", revision: 1, policy: { dataView: "notes", tools: ["documents.read"] },
+      enforceable: false, reason: "republish_required", choices: { dataViews: [{ id: "agent", label: "Atlas" }], tools: [] } });
+    expect(m.store.localExposure(old.exposure.id)).toEqual(old);                         // listing changed nothing
+    expect(await m.api.withdraw(old.exposure.id, 1)).toEqual({ remote: "pending" });
+    expect(m.api.list()[0]).toMatchObject({ state: "withdrawn", revision: 2, enforceable: true });
+    expect(m.api.list()[0].reason).toBeUndefined();
+  });
+  it("a legacy mapping shared again: the same confirmed, revision-checked publish gives a new revision, consent and the agent tuple", () => {
+    const m = member(), old = m.legacy();
+    expect(() => m.api.publish({ ...AGENT, expectedRevision: 0 })).toThrow(expect.objectContaining({ code: "conflict" }));   // stale tab
+    expect(m.store.localExposure(old.exposure.id)).toEqual(old);
+    const v = m.api.publish({ ...AGENT, expectedRevision: 1 });
+    expect(v).toMatchObject({ exposureId: old.exposure.id, state: "published", revision: 2, policy: { dataView: "agent", tools: [] }, enforceable: true });
+    const now = m.store.localExposure(old.exposure.id)!;
+    expect(isAgentDescriptor(now)).toBe(true);
+    expect(now.consentId).not.toBe(old.consentId); expect(now.generation).toBe(old.generation + 1);
+    expect(m.store.snapshot().exposures).toEqual([expect.objectContaining({ revision: 2, dataViewId: "agent", allowedTools: [], policyDigest: agentPolicyDigest("atlas") })]);
   });
 });
 
 describe("the routes", () => {
-  const body = { agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 };
+  const body = { agent: "atlas", dataViewId: "agent", tools: [] as string[], expectedRevision: 0 };
   async function call(o: { method: string; path: string; json?: unknown; replay?: boolean; admin?: boolean; gateway?: boolean; api?: HubMemberExposureApi | null; meanwhile?: (ctx: any) => void }) {
     const raw = Buffer.from(JSON.stringify(o.json ?? {}));
     const cap = new SettingsExecution({ current: () => true, snapshot: () => null }); caps.push(cap);
@@ -143,7 +192,7 @@ describe("the routes", () => {
 
 describe("Prism #3115 r1 (exposures)", () => {
   it("P3: withdraw rechecks the same live caller and the same composed member at the effect", async () => {
-    const m = member(), v = m.api.publish({ agent: "atlas", dataViewId: "notes", tools: ["documents.read"], expectedRevision: 0 });
+    const m = member(), v = m.api.publish({ ...AGENT, expectedRevision: 0 });
     const path = `/api/hub/member/exposures/${v.exposureId}/withdraw`;
     const routes = (await import("../src/settings-api.js")).handleSettingsRequest;
     const run = async (meanwhile: (ctx: any) => void) => {

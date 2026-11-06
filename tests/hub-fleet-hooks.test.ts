@@ -136,6 +136,20 @@ describe("S5b PR 2b: the member side's fleet hooks", () => {
   }, 30_000);
 });
 
+describe("M-2439: the representative-agent picker's agents", () => {
+  it("every configured instance by its display name (General included); an old provider block changes nothing; no Hub daemon", async () => {
+    const { fm } = harness({
+      instances: { general: { working_directory: tmpdir(), display_name: "General" }, atlas: { working_directory: tmpdir(), display_name: "Atlas notes" }, scout: { working_directory: tmpdir() } },
+      hub_member: { enabled: true, execution: { provider: { backend: "claude" } } },
+    });
+    fm.hubEffectsReady = true;
+    fm.observeHubSwitches();
+    await settle();
+    expect(hub.options.member.agents()).toEqual([{ name: "general", display: "General" }, { name: "atlas", display: "Atlas notes" }, { name: "scout", display: "scout" }]);
+    await fm.stopAll();
+  }, 30_000);
+});
+
 describe("#3130 review: disconnect withdraws every published exposure", () => {
   it("through the running member's API: each published one, at the revision the owner saw; nothing else", async () => {
     const { fm } = harness({});

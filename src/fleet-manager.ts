@@ -1933,11 +1933,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The local owner's agents a Hub exposure could map to; providerId is the configured isolated provider, if any. */
+  /**
+   * The Hub exposure picker's agents (docs/design/hub-representative-agent.md): every configured instance normal
+   * delivery addresses, General included, shown by its display name. The dedicated Hub daemon is not a fleet instance.
+   */
   private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
-    const member = (this.rawFleetConfig as { hub_member?: { execution?: { provider?: { backend?: unknown } } } })?.hub_member;
-    const backend = member?.execution?.provider?.backend;
-    const providerId = backend === "claude" || backend === "codex" ? backend : null;
-    return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: name, providerId }));
+    return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: this.shownInstanceName(name) }));
   }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */

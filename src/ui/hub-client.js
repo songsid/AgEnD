@@ -49,9 +49,9 @@ export function hubName(doc = typeof document !== "undefined" ? document : null)
  * One of THIS fleet's agents (the local owner's own inventory — never the Hub's), as the exposure list shows it.
  * `agent` is the stable local agent name, never its label. `state` is the local consent; `revision` the exposure policy
  * revision the page shows (enabling refers to it: a stale tab gets "conflict", never a silent widening). `policy`
- * summarises the approved data view and tools. `enforceable` is slice 4's restricted-context result (false until it
- * exists; never a model's claim) — not enforceable is never publishable, and true never means the owner's normal
- * session is exposed.
+ * summarises what is shared: P1 shares the agent itself (`{ dataView: "agent", tools: [] }`,
+ * docs/design/hub-representative-agent.md). `enforceable` false is never publishable; `reason: "republish_required"`
+ * marks a mapping from the older restricted mode that answers nothing until the owner shares the agent again.
  * @typedef {{ agent: string, display: string, exposureId: string | null, revision: number,
  *   state: "published" | "withdrawn" | "frozen", policy: { dataView: string, tools: string[] } | null,
  *   enforceable: boolean, reason?: string }} HubExposureView
@@ -108,9 +108,9 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
     const c = consent.get(a.name) || { state: "withdrawn", revision: 0 };
     const ok = enforceable.has(a.name);
     return { agent: a.name, display: a.display_name || a.name, exposureId: c.revision ? `stub-${a.name}` : null, revision: c.revision,
-      state: c.state, policy: ok && c.state === "published" ? { dataView: c.dataView || "summary", tools: c.tools || ["documents.read"] } : null, enforceable: ok, ...(ok ? {} : { reason: "restricted_execution_pending" }),
-      // S3c: the owner's choices (the stub's one view and the read tools) and no pending confirmation.
-      choices: ok ? { dataViews: [{ id: "summary", label: "summary" }], tools: [{ name: "documents.list", label: "List documents" }, { name: "documents.read", label: "Read documents" }] } : { dataViews: [], tools: [] },
+      state: c.state, policy: ok && c.state === "published" ? { dataView: c.dataView || "agent", tools: c.tools ? [...c.tools] : [] } : null, enforceable: ok, ...(ok ? {} : { reason: "restricted_execution_pending" }),
+      // P1 representative agent: the one choice is the agent itself, with no Hub tools; no pending confirmation.
+      choices: ok ? { dataViews: [{ id: "agent", label: a.display_name || a.name }], tools: [] } : { dataViews: [], tools: [] },
       pending: null };
   };
   const api = {
