@@ -15,6 +15,7 @@ const identities = JSON.parse(readFileSync(join(input, 'inputs.json'), 'utf8'));
 const [a, b] = identities.map(value => ({ ...value, archive: readFileSync(join(input, `${value.label}.zip`)) }));
 for (const value of [a, b]) assert.equal(createHash('sha256').update(value.archive).digest('hex'), value.sha256);
 const template = readFileSync(join(input, 'install.ps1'), 'utf8');
+const ownedChildren = new Set();
 const sleep = ms => new Promise(done => setTimeout(done, ms));
 async function until(check, label, timeout = 90_000) {
   const deadline = Date.now() + timeout;
@@ -24,6 +25,8 @@ function execute(executable, args, env, log) {
   const child = spawn(executable, args, { shell: false, cwd: scope, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
     windowsVerbatimArguments: basename(executable).toLowerCase() === 'cmd.exe' });
   const finished = new Promise((done, fail) => { child.once('error', fail); child.once('close', code => done(code)); });
+  const owned = { child, finished }; ownedChildren.add(owned);
+  void finished.finally(() => ownedChildren.delete(owned)).catch(() => {});
   child.stdout.on('data', bytes => log.push(bytes.toString())); child.stderr.on('data', bytes => log.push(bytes.toString()));
   return { child, finished };
 }
@@ -143,11 +146,16 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
       pairingUnchanged: true, selected: pointer() === folderA ? 'old' : 'new', processProofs: proofs.size });
   } catch (error) { failure = error; writeFileSync(join(scope, `${mode}-private.log`), log.join('') + '\n' + JSON.stringify(events)); }
   finally {
+    holdArchive = false; heldArchive?.destroy();
     if (scan) clearInterval(scan); recordProofs();
     // Only exact birth/boot/PID identities recorded in this harness's fresh install may be stopped.
     for (const proof of proofs.values()) if (matches(proof, await observe(proof.pid)) === true) process.kill(proof.pid);
     for (const proof of proofs.values()) await until(async () => matches(proof, await observe(proof.pid)) === false, 'owned process exit', 30_000);
     if (runner) await runner.finished;
+    for (const owned of [...ownedChildren]) {
+      if (owned.child.exitCode === null && owned.child.signalCode === null) owned.child.kill();
+      await owned.finished.catch(() => {});
+    }
     if (!failure && mode === 'busy') {
       // Reverse direction: PowerShell reclaims an actually ended Node writer, not a made-up PID.
       const proof = proofs.values().next().value, lockDir = join(install, '.agend-runtime-install.lock');
