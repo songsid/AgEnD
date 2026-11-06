@@ -128,6 +128,20 @@ describe("agend ls", () => {
     }
   });
 
+  it("M-2494 (Prism P3 on #3201): a Windows exec agent has no chat binding, so no source — a pane keeps its own", () => {
+    for (const fleet of [{ channels: [TG, DC] }, { channel: TG }] as const) {
+      const w = temp("agend-ls-win-");
+      const dir = fixture({ ...fleet, instances: {
+        winexec: { working_directory: w, runtime: "windows", native_adapter: "exec" },
+        winexec2: { working_directory: w, runtime: "windows" },   // exec is the default adapter
+        winpane: { working_directory: w, runtime: "windows", native_adapter: "pane", topic_id: TOPIC.telegram, channel_id: "telegram" },
+        tgwork: { working_directory: w, topic_id: TOPIC.telegram },
+      } });
+      const src = Object.fromEntries((JSON.parse(run(dir, ["ls", "--json"])) as { name: string; source: string }[]).map((r) => [r.name, r.source]));
+      expect(src).toMatchObject({ winexec: "—", winexec2: "—", winpane: "TG", tgwork: "TG" });
+    }
+  });
+
   it("a fleet.yaml with no instances: section lists nothing and gives doctor's hint, no crash", () => {
     const dir = fixture({ channel: TG });
     const out = run(dir, ["ls"]);

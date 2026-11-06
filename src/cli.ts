@@ -3223,7 +3223,10 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
     const typeByAdapter = new Map(channelList.map((ch) => [ch.id ?? ch.type, ch.type] as const));
     const firstAdapter = channelList[0] ? (channelList[0].id ?? channelList[0].type) : undefined;
     const sourceOfType = (type: string | undefined): string => (type === "telegram" ? "TG" : type === "discord" ? "DC" : "—");
+    const { isNativeExecInstance } = await import("./native-instance-registry.js");
     const getSource = (name: string, inst?: Record<string, unknown>): string => {
+      // A Windows exec agent has no chat binding (getInstanceAdapterId gives none): no source, in any fleet. A pane keeps its own.
+      if (inst && isNativeExecInstance(inst as Parameters<typeof isNativeExecInstance>[0])) return "—";
       if (singleSource) return singleSource;
       if (classicNames.has(name)) {
         // Telegram IDs are short/negative, Discord snowflakes are 17+ digits.
