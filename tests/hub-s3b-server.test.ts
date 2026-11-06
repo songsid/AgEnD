@@ -117,6 +117,27 @@ describe("Hub workspace page (S3b)", () => {
     expect((await rig.call(null, "GET", "/assets/nope.js")).text).toBe("fleet-404");
   });
 
+  it("the Hub workspace's lazy modules import nothing the Hub listener doesn't serve (a fleet module 404s there)", async () => {
+    rig = await s3bRig();
+    const { HUB_UI_MODULES } = await import("../src/hub/http/compose.js");
+    const seen = new Set<string>(), queue = ["panel-hub.js"];
+    while (queue.length) {
+      const file = queue.shift()!;
+      if (seen.has(file)) continue;
+      seen.add(file);
+      const code = readFileSync(join("src/ui", file), "utf8");
+      for (const m of code.matchAll(/^\s*import\s+(?:[^"';]+\s+from\s+)?["']([^"']+)["']/gm)) {
+        const spec = m[1]!;
+        if (spec.startsWith("/assets/")) continue;                 // the app's public closure, served by the Hub too
+        expect(spec, `${file} imports ${spec}`).toMatch(/^\.\/[a-z0-9-]+\.js$/);
+        const dep = spec.slice(2);
+        expect(HUB_UI_MODULES, `${file} → ${dep}`).toContain(dep);
+        queue.push(dep);
+      }
+    }
+    for (const file of seen) expect((await rig.call(null, "GET", `/ui/js/${file}`)).status, file).toBe(200);
+  });
+
   it("no Hub server module reaches a fleet session or cookie reader", () => {
     const files = [...readdirSync("src/hub").filter((f) => f.endsWith(".ts")).map((f) => join("src/hub", f)),
       ...readdirSync("src/hub/http").map((f) => join("src/hub/http", f))];

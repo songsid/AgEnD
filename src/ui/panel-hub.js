@@ -197,6 +197,7 @@ function HubRoom({ room, onBack }) {
     <div class="hub-room-head"><button type="button" class="btn btn-sm" onClick=${onBack}><${Icon} name="back" size=${14} />${hw("back")}</button>
       <h3>${room.exposureName || ""}</h3></div>
     <p class="note hub-identity">${hw("roomNote")}</p>
+    <p class="note hub-shared" role="note">${hw("roomShared")}</p>
     <ol class="hub-entries">${entries.map((e) => html`<li key=${e.messageId} class="hub-entry">
       <div class="hub-q">${e.expired ? html`<em>${hw("expiredText")}</em>` : e.question ?? ""}</div>
       ${e.answer !== undefined ? html`<div class="hub-a">${e.answer}</div>`
@@ -259,7 +260,7 @@ function HubExposureCard({ x, act }) {
   const shared = x.state === "published";
   return html`<section class=${`card hub-exposure-card${shared ? " is-shared" : ""}`}>
     <h3>${x.displayName} <span class=${`hub-badge state-${x.state}`}>${hw(`state_${x.state}`)}</span></h3>
-    <p class="note">${hw("policy", x.dataViewId, (x.allowedTools || []).join(", ") || "—")} · ${hw("revision", x.revision)}</p>
+    <p class="note">${x.dataViewId === "agent" ? hw("agentPolicy") : hw("policy", x.dataViewId, (x.allowedTools || []).join(", ") || "—")} · ${hw("revision", x.revision)}</p>
     ${x.grants && x.grants.length ? html`<ul class="hub-list">${x.grants.map((g) => html`<li key=${g.id} class="hub-item">
       <div class="grow"><strong>${g.subjectName || g.subjectLogin}</strong>${g.subjectLogin ? html` <small><code>${g.subjectLogin}</code></small>` : null}
         <small class="note">${hw("until", when(g.expiresAt))}</small></div>
