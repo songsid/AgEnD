@@ -11,6 +11,7 @@ import { RuntimeClientStore } from "./runtime-client-store.js";
 import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
 import { validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { PaneMcpRelay } from "./runtime-pane-mcp-relay.js";
+import { RuntimeUpdateActivity } from "./runtime-update-activity.js";
 import { CredentialProfileRefusal, rememberCredentialStatus, requireCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { probeCredentialProfileStatus, validWindowsDirectory, type CredentialProfileAnswer } from "./windows-cli-worker.js";
 export interface PaneServiceOptions {
@@ -44,6 +45,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
       },
     } : {}) };
   const host = options.createHost?.(hostOptions) ?? new RuntimePaneHost(hostOptions);
+  const activity = new RuntimeUpdateActivity();
   const mcpPending = new Map<string, { epoch: string; socket: WebSocket; accept(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
   const cancelMcp = (): void => { for (const row of mcpPending.values()) { clearTimeout(row.timer); row.reject(Error("Pane MCP connection changed")); } mcpPending.clear(); };
   let port = 0, descriptor: PaneHostDescriptor | undefined, closePromise: Promise<void> | undefined;
@@ -59,7 +61,10 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
         send(socket, { type: "mcp.request", id, epoch: capturedEpoch, body });
       });
     } });
-  const server = createServer((req, res) => { if (req.url === "/agent") void relay.handle(req, res); else { res.writeHead(404); res.end(); } });
+  const server = createServer((req, res) => {
+    if (!activity.accepting) { req.resume(); res.writeHead(503); res.end(); return; }
+    if (req.url === "/agent") void relay.handle(req, res); else { res.writeHead(404); res.end(); }
+  });
   server.maxConnections = 64; server.headersTimeout = 10_000; server.requestTimeout = 10_000; server.keepAliveTimeout = 2000;
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_FRAME, perMessageDeflate: false });
   const send = (socket: WebSocket, value: unknown): void => {
@@ -79,7 +84,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     cancelMcp();
     const epoch = ++generation; const previous = current; current = socket; onlineUntil = 0; leaseEpoch = "";
     previous?.close(1008, "Pane client replaced");
-    send(socket, { type: "hello", hostBootId: bootId });
+    send(socket, { type: "hello", hostBootId: bootId, idleShutdown: 1 });
     socket.on("error", () => {});
     socket.on("close", () => { if (current === socket) { current = null; onlineUntil = 0; generation++; cancelMcp(); } });
     let pending = 0;
@@ -104,7 +109,15 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
         }
         if (value.type !== "request" || Object.keys(value).some(key => !["type", "id", "epoch", "request"].includes(key)) || !/^[a-f0-9-]{36}$/i.test(value.id) || value.epoch !== leaseEpoch) throw Error("Invalid pane frame");
         pending++;
+        let leave: (() => void) | undefined, release: (() => void) | undefined;
         try {
+          if (value.request?.action === "shutdown") {
+            const fence = activity.tryFence(value.id,
+              () => !closing && current === socket && generation === epoch && value.epoch === leaseEpoch && hostOptions.online(),
+              () => relay.pendingCount === 0 && mcpPending.size === 0);
+            if (!fence) throw Error("Pane service still has in-flight work");
+            release = () => fence.release();
+          } else leave = activity.enter();
           const result = await host.request(value.request, () => current === socket && generation === epoch && value.epoch === leaseEpoch && hostOptions.online());
           if (value.request?.action === "shutdown") {
             validateRuntimePaneShutdown(result, bootId); closing = true;
@@ -122,7 +135,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
           const refusal = error instanceof CredentialProfileRefusal ? error.message.slice(0, 500) : undefined;
           if (current === socket) send(socket, { type: "response", id: value.id, ok: false, error: "Pane operation refused; refresh its owned state before retrying", ...(refusal ? { refusal } : {}) });
         }
-        finally { pending--; }
+        finally { leave?.(); release?.(); pending--; }
       })().catch(() => socket.close(1008, "Invalid pane frame"));
     });
   });
@@ -131,7 +144,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
     output.clear();
   }, 100);
   const closeService = (): Promise<void> => closePromise ??= (async () => {
-    closing = true; onlineUntil = 0; clearInterval(flush); cancelMcp();
+    closing = true; activity.close(); onlineUntil = 0; clearInterval(flush); cancelMcp();
     for (const socket of wss.clients) socket.terminate();
     await host.stop();
     const closed = new Promise<void>(done => server.close(() => done()));

@@ -76,6 +76,14 @@ describe("trusted native execution metadata",()=>{
 
 describe("managed Windows workspace transport", () => {
   const id=input.requestId, cwd=`C:\\Users\\Test\\.agend\\workspaces\\${id}`;
+  it("keeps a cancelled workspace worker physically owned until close", async () => {
+    const service = new WindowsCliBridge(launcher), pending = service.prepareWorkspace(id);
+    const rejected = expect(pending).rejects.toThrow(/cancelled/);
+    await launched(); expect(service.idleForUpdate()).toBe(false);
+    service.close(); await rejected;
+    expect(child.kill).toHaveBeenCalledOnce(); expect(service.idleForUpdate()).toBe(false);
+    child.close(); expect(service.idleForUpdate()).toBe(true);
+  });
   it("creates a per-agent workspace through a UUID-only request without discovering a CLI", async () => {
     const service=new WindowsCliBridge(launcher), pending=service.prepareWorkspace(id);
     await launched();

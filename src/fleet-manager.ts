@@ -215,6 +215,18 @@ export const LIVE_TASK_STATUSES: string[] = ["open", "claimed", "blocked", "revi
  * " \t " and [" ", "\t"] both normalize to undefined (not treated as explicit
  * filters). The same result drives the live-only default and the cap decision.
  */
+/**
+ * #3195: the saved value of each plain-update field the call named (assignee, priority, result), read back from the
+ * task — so the answer shows what was persisted, not what was asked. Status is always in the ack already.
+ */
+export function savedFields(t: Task, named: Record<string, unknown>): Partial<Pick<Task, "assignee" | "priority" | "result">> {
+  const out: Partial<Pick<Task, "assignee" | "priority" | "result">> = {};
+  if (named.assignee !== undefined) out.assignee = t.assignee;
+  if (named.priority !== undefined) out.priority = t.priority;
+  if (named.result !== undefined) out.result = t.result;
+  return out;
+}
+
 export function normalizeStatusFilter(v: unknown): string | string[] | undefined {
   if (typeof v === "string") {
     const s = v.trim();
@@ -249,7 +261,9 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
+import { nativeCliVersionState } from "./runtime-pane-native.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
+import { RuntimeInstallService } from "./runtime-install.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
@@ -378,8 +392,9 @@ import {
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
-import { guestSessionPolicy, localSessionPolicy, tokenEpoch, WebSessionStore, type SessionRecord } from "./web-session.js";
+import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
+import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
@@ -453,7 +468,8 @@ type ReconcileObserver = (
 import { kiroHome } from "./backend/kiro-kas-store.js";
 import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
-import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
+import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, type ClassicProfile } from "./classic-bindings.js";
+import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -1255,6 +1271,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
   private runtimeHub: RuntimeCoordinator | null = null;
+  private runtimeInstall: RuntimeInstallService | undefined;
+  /** One service for the public installer routes and the administrator API: the hash the dashboard shows is the hash of what is sent. */
+  runtimeInstaller(): RuntimeInstallService { return this.runtimeInstall ??= new RuntimeInstallService(); }
   private runtimeExecutor: RuntimeWindowsBridge | null = null;
   private runtimeStatusScheduled = false;
   private readonly reconciledRemoteResults = new Set<string>();
@@ -1464,6 +1483,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return result;
     });
   }
+  /** The local machine's inventory as last used to open its pane relay (status only; never a launch decision). */
+  private localPaneInventory: import("./windows-cli.js").WindowsCliProbe | null = null;
+  private nativeCliStatus(cli: string | undefined, machineId: string | undefined, daemon?: Daemon): { native_cli_version?: string; native_cli_verification?: string } {
+    if (cli !== "codex" && cli !== "claude-code") return {};
+    // The version the running pane actually launched; only without one, the machine's last inventory.
+    let running: string | undefined;
+    try { running = daemon?.usesNativePane?.() ? daemon.nativePaneCliVersion() : undefined; } catch { running = undefined; }
+    const inventory = machineId ? this.runtimeHub?.machine(machineId)?.inventory : this.localPaneInventory;
+    const version = running ?? inventory?.clis?.find(item => item.id === cli && item.runnable)?.version;
+    if (version === undefined || version === null) return {};
+    const result = nativeCliVersionState(cli, version);
+    return { ...(result.version ? { native_cli_version: result.version } : {}), native_cli_verification: result.state };
+  }
   private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
     const admit = (): void => { if (this.shuttingDown || this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off or draining"); };
     admit(); if(this.localPaneDrain)throw Error("Local Windows runtime cleanup is pending"); if (this.localPaneRelay?.online()) return this.localPaneRelay;
@@ -1471,7 +1503,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const opening = (async () => {
       const [{ LocalPaneEndpoint }, { launchLocalPaneRelay, localPaneScope }, inventory] = await Promise.all([
         import("./local-pane-endpoint.js"), import("./local-pane-launcher.js"), this.runtimeWindowsExecutor().probe({ force: false }),
-      ]); admit(); this.localPaneRelay?.stop();
+      ]); admit(); this.localPaneRelay?.stop(); this.localPaneInventory = inventory;
       const relay = await LocalPaneEndpoint.open({ scope: localPaneScope(this.dataDir), admit, maxAgents: maxAgentsPerMachine,
         diagnostic: text => this.logger.warn({ stderr: text }, "Local Windows pane relay wrote to stderr"),
         version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
@@ -1558,11 +1590,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!config?.general_topic || !epoch) throw Error("General or its paired runtime is unavailable");
     const current = (): boolean => authorized() && !this.shuttingDown && remoteRuntimeEnabled() && this.runtimeHub === hub
       && this.fleetConfig?.instances[name] === config && hub.paneTransportEpoch(machineId) === epoch;
-    const [{ loadGeneralKnowledge }, { validateGeneralWorkspaceRequest, validateGeneralWorkspaceReceipt, generalWorkspaceUpgrade }, { assertAuditedNativePaneVersion }] = await Promise.all([
+    const [{ loadGeneralKnowledge }, { validateGeneralWorkspaceRequest, validateGeneralWorkspaceReceipt, generalWorkspaceUpgrade }, { assertRunnableNativePaneVersion }] = await Promise.all([
       import("./runtime-general-workspace.js"), import("./runtime-general-protocol.js"), import("./runtime-pane-native.js"),
     ]);
     if (!current()) throw Error("General workspace authority expired");
-    assertAuditedNativePaneVersion(cli, hub.machine(machineId)?.inventory?.clis.find(row => row.id === cli && row.runnable)?.version ?? null);
+    assertRunnableNativePaneVersion(cli, hub.machine(machineId)?.inventory?.clis.find(row => row.id === cli && row.runnable)?.version ?? null);
     const request = validateGeneralWorkspaceRequest({ action: "general-workspace", bindingId, instance: name, cli, packHash: loadGeneralKnowledge(cli).hash });
     const inventory: any = await hub.callPane(machineId, { action: "list" }, maxAgentsPerMachine());
     if (!current()) throw Error("General workspace authority expired");
@@ -1907,6 +1939,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           agents: () => this.hubMemberAgents(),
           // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
           representative: {
+            quota: agent => this.hubAgentQuota(agent),
             deliver: input => this.deliverHubQuestion(input),
             agentToken: agent => this.hubAgentToken(agent),
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
@@ -1974,6 +2007,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
     return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: this.shownInstanceName(name) }));
+  }
+
+  /** Same cached usage source as the owner's rail, scoped to the representative's CLI and credential profile. */
+  private async hubAgentQuota(agent: string): Promise<import("./hub/types.js").HubQuota> {
+    const binding = () => {
+      const config = this.fleetConfig?.instances[agent];
+      if (!config || isWindowsInstance(config)) return null; // runner usage never belongs to a Linux login
+      const backend = this.backendNameForInstance(agent), provider = usageProviderIdForBackend(backend);
+      if (!provider) return null;
+      const profile = this.credentialProfileOf(agent, backend);
+      return profile ? `${provider}:${profile}` : provider;
+    };
+    const id = binding();
+    const { quotaBand } = await import("./hub/member/quota.js");
+    const paused = () => this.daemons.get(agent)?.quotaPaused?.() === true
+      || this.lifecycle.isPaused(agent) && readPauseReason(this.getInstanceDir(agent)) === "quota";
+    if (!id) return { band: "unknown" };
+    try {
+      const snapshot = await getUsageSnapshot(false, new Set([id]));
+      if (binding() !== id) return { band: "unknown" };
+      return quotaBand(snapshot.providers.find(p => p.id === id), paused());
+    } catch { return quotaBand(undefined, paused()); }
   }
 
   /**
@@ -3176,6 +3231,130 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.liveOwner(req, { hostOnly: false });
   }
 
+  /**
+   * Refs #3061 (P2a): the new-device approval's one authority — the same one that decides an agent's request: this web-only
+   * fleet's owner, asked of the LIVE session each time (a sign-out, an expiry, a revocation, the authority switch or
+   * "Only this computer can authorize" turning a session into a non-owner is seen at once). A LAN session that signed in
+   * with a one-time code, a session a device approval made, a guest, a chat fleet's admin and the CLI's header token are
+   * none of them this: they are told so, and learn nothing about any request.
+   */
+  private deviceApprovalOwner(req: IncomingMessage): { label: string; handle: string; current(): boolean } | null {
+    return this.liveOwner(req, { hostOnly: false });
+  }
+
+  /**
+   * Refs #3061 (auth-api): device-code sign-in is offered — a web-only fleet with web authorization on. With
+   * `web.verified_authority.enabled: false` no one is an owner (liveOwner → null), so no one could approve: the three
+   * `/auth/device-login*` routes answer 404 and the sign-in page shows no button. "Only this computer can authorize"
+   * does not close it: this computer's own session can still approve.
+   */
+  deviceLoginAvailable(): boolean {
+    return this.isWebOnlyFleet() && this.webAuthorityState().enabled;
+  }
+
+  /** Refs #3061 (P2b): `web.login_qr` (default off), read per page served — the sign-in page then draws the approve link's QR code. */
+  loginQrEnabled(): boolean {
+    return this.fleetConfig?.web?.login_qr === true;
+  }
+
+  /**
+   * GET /ui/devices: is this a web-only fleet, may THIS session approve a new device and end another (is it the verified
+   * owner), and — to an admin session, never to a guest or the CLI's header token — the signed-in devices (Refs #3061, P2b).
+   * `authority`: web authorization is on. With it off nobody is an owner (liveOwner → null), so nobody may add a device or
+   * sign another out; the page says why and points to `agend web-token rotate` on this computer instead of "use the AgEnD
+   * computer", which would not help.
+   */
+  webDevicesStatus(req: IncomingMessage): { webOnly: boolean; owner: boolean; authority: boolean; devices: WebDeviceRow[] } {
+    const webOnly = this.isWebOnlyFleet();
+    const owner = webOnly && !!this.deviceApprovalOwner(req);
+    return { webOnly, owner, authority: webOnly && this.webAuthorityState().enabled, devices: webOnly ? this.webDeviceRows(req) : [] };
+  }
+
+  /**
+   * Refs #3061 (P2b): the device list — this fleet's admin sessions, newest activity first (a guest's sessions are the
+   * Guests page's, and a read-only tier has none): how each was approved, whether it carries owner authority, and which
+   * one is the reader's own. The same people may read this as may read `GET /auth/sessions` (any admin session).
+   *
+   * `ownerVerified` is the §3 verdict for the session as it would be used from where it signs in (a host session from
+   * this computer, a session from outside over the link): one that signed in with a one-time code or a device approval is
+   * not an owner until the authenticator vouches for it. Display only — the checks that act on it run again at each use.
+   */
+  private webDeviceRows(req: IncomingMessage): WebDeviceRow[] {
+    const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+    if (auth.kind !== "ok" || auth.session.tier !== "admin" || !this.webSessions) return [];
+    const authorizations = this.sessionAuthorizationStore();
+    return this.webSessions.list(auth.session.idHash, r => r.tier === "admin").map(summary => {
+      const record = this.webSessions!.findByHandle(summary.handle);
+      const gateway = summary.surface === "gateway";
+      const peer: WebPeer = gateway ? authorizations?.get(summary.handle)?.peer ?? "quick_link" : record?.host === true ? "loopback" : "lan";
+      return { handle: summary.handle, label: summary.label, via: summary.via, current: summary.current, surface: summary.surface,
+        created: summary.created, lastSeen: summary.lastSeen, expiresAt: Math.min(summary.absoluteExpiry, summary.idleExpiry),
+        ownerVerified: !!record && !this.webAuthority({ session: record, gateway, peer }).refusal };
+    });
+  }
+
+  /**
+   * Refs #3061 (P2b): may this request's session end ANOTHER session — one signed in elsewhere, or all of them (auth-api
+   * `DELETE /auth/sessions…`, which an admin session could always do). On a web-only fleet that is the verified owner's:
+   * a session a code or a device approval made is signed in but not an owner, and could otherwise sign out the owner's
+   * own. A fleet with a chat connection is as it was (its admins are the chat's). Ending one's OWN session is never this.
+   */
+  mayEndOtherSessions(req: IncomingMessage): boolean {
+    return !this.isWebOnlyFleet() || !!this.deviceApprovalOwner(req);
+  }
+
+  /**
+   * Refs #3061 (P2b): POST /ui/devices/signout {handle} — the owner ends another signed-in device (the settings list's
+   * button). Only the verified owner, asked of the LIVE session each time (a non-owner learns nothing about any handle:
+   * 403 before anything is looked up); only an admin session of this fleet (a guest's is the Guests page's; an unknown
+   * handle and a guest's are the same 404); never the owner's own session here (Sign out is /auth/logout). The device's
+   * authorization goes with it, so a copy of its cookie is nobody's.
+   */
+  webDeviceSignOut(req: IncomingMessage, handle: string): { status: number; body: Record<string, unknown> } {
+    if (!this.isWebOnlyFleet() || !this.webSessions) return { status: 404, body: { error: "not_found" } };
+    const owner = this.deviceApprovalOwner(req);
+    if (!owner) return { status: 403, body: { error: "owner_required" } };
+    if (handle === owner.handle) return { status: 400, body: { error: "this_device" } };
+    const target = this.webSessions.findByHandle(handle);
+    if (!target || target.tier !== "admin") return { status: 404, body: { error: "not_found" } };
+    const { found, durable } = this.webSessions.revokeByHandle(handle, r => r.tier === "admin");
+    if (!found) return { status: 404, body: { error: "not_found" } };
+    this.sessionAuthorizationStore()?.prune(a => a.handle !== handle);
+    this.logger.info({ by: owner.handle.slice(0, 8), handle, label: target.label, via: sessionVia(target), durable }, "Device signed out by the owner");
+    if (!durable) return { status: 500, body: { ok: false, durable: false, error: "not_durable" } };
+    return { status: 200, body: { ok: true } };
+  }
+
+  /**
+   * Refs #3061 (P2a): look a new device's code up (for the confirm screen), approve it, or deny it — the verified owner's,
+   * on a web-only fleet. The answer is the request as it now stands. Approving only marks the request approved: the new
+   * browser makes its own session when it next asks (auth-api POST /auth/device-login/poll), so no credential passes from
+   * here to there — not in the answer, not through the fleet. A wrong code counts against one fleet-wide breaker; while
+   * it is open every code (a right one too) waits.
+   */
+  webDeviceLoginAct(req: IncomingMessage, op: "lookup" | "approve" | "deny", code: string): { status: number; body: Record<string, unknown> } {
+    const owner = this.deviceApprovalOwner(req);
+    if (!owner) return { status: 403, body: { error: "owner_required" } };
+    const logins = this.webDeviceLogins, token = this.webToken;
+    if (!logins || !token) return { status: 404, body: { error: "not_found" } };
+    const epoch = tokenEpoch(token);
+    const shown = (v: { code: string; label: string; peer: string; address: string; expiresAt: number; state: string }) =>
+      ({ code: v.code, label: v.label, peer: v.peer, address: v.address, expiresAt: v.expiresAt, state: v.state });
+    if (op === "lookup") {
+      const r = logins.lookup(code, epoch);
+      if (r.kind === "ok") return { status: 200, body: { request: shown(r.view) } };
+      return r.kind === "paused" ? { status: 429, body: { error: "paused", retryAfterMs: r.retryAfterMs } } : { status: 404, body: { error: "not_found" } };
+    }
+    // (The owner above was asked of the live session just now, after the body was read; nothing is awaited since.)
+    const r = logins.decide(code, op === "approve" ? "approved" : "denied", owner.handle, epoch);
+    if (r.kind === "ok") {
+      this.logger.info({ approvedBy: owner.handle.slice(0, 8), label: r.view.label, peer: r.view.peer, decision: r.view.state }, op === "approve" ? "New device sign-in approved" : "New device sign-in denied");
+      return { status: 200, body: { request: shown(r.view) } };
+    }
+    if (r.kind === "decided") return { status: 409, body: { error: "already_decided", state: r.state } };
+    return r.kind === "paused" ? { status: 429, body: { error: "paused", retryAfterMs: r.retryAfterMs } } : { status: 404, body: { error: "not_found" } };
+  }
+
   /** alpha.2: the agents' requests waiting for this web-only fleet's owner, or null when the reader is not that owner. */
   webAgentProposals(req: IncomingMessage): SettingsPendingView[] | null {
     if (!this.agentProposalOwner(req)) return null;
@@ -3643,6 +3822,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   sseHeartbeatMs = SSE_HEARTBEAT_MS;
   /** The dashboard's login codes. Memory only: a code that outlives the process is a code nobody can prove was not copied. */
   private webLoginCodes: WebLoginCodes | null = null;
+  /** Refs #3061 (P2a): device-code sign-in requests (in memory; web-device-login.ts). Read by auth-api as `webDeviceLogins`. */
+  private webDeviceLogins: DeviceLoginRequests | null = null;
   /**
    * #1920 step 4: guests' codes, apart from the admins' — one per account, so no guest's `/web` withdraws another's or
    * an admin's code (#2093 review), at most 32 at once. Local sign-in only for now (audience "local").
@@ -8239,6 +8420,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         },
       });
     }
+    if (!this.webDeviceLogins) {
+      this.webDeviceLogins = new DeviceLoginRequests({
+        onEvent: event => { if (event === "breaker-open") this.logger.warn("Device sign-in approval paused: too many wrong codes"); },
+      });
+    }
     if (!this.webGuestLoginCodes) {
       this.webGuestLoginCodes = new GuestLoginCodes({
         onEvent: event => {
@@ -8771,6 +8957,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     void this.publicWebLink?.close("dashboard revoke");
     this.forgetPublicLinkOwner();
     this.webLoginCodes!.revoke();
+    this.webDeviceLogins?.revokeAll();                // …and every new device still waiting to be approved (#3061)
     this.webGuestLoginCodes!.revokeAll();
     this.guestRevokes++;                              // and every guest /web still on its way
     // #1570: no browser may ask the sign-in page for a code any more.
@@ -10714,8 +10901,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    *                 that should be running is running
    *  - `degraded` — reachable, but something the operator should look at (an
    *                 adapter retrying, an instance crashed or stopped)
-   *  - `down`     — the fleet cannot do its job: no adapter is connected, so no
-   *                 message can arrive or be answered
+   *  - `down`     — no configured adapter is connected, or a dedicated Hub's
+   *                 server mount is unavailable
    *
    * Deliberately does NOT gate the systemd watchdog — see the comment at the
    * WATCHDOG timer for why.
@@ -10732,6 +10919,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     memory: FleetMemory;
     hostMemory: MemoryPressureSnapshot & { topProcesses?: MemoryHog[]; topProcessesAt?: string };
     problems: string[];
+    warnings: string[];
+    /** Local server mount availability; absent when the Hub server switch is off. */
+    hub?: { server: import("./hub/runtime.js").HubServerHealth };
   } {
     const names = Object.keys(this.fleetConfig?.instances ?? {});
     const counts = { configured: names.length, running: 0, crashed: 0, paused: 0, stopped: 0 };
@@ -10756,10 +10946,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (effectiveStatus === "connected") connected++;
     }
 
-    const problems: string[] = [];
+    const problems: string[] = [], warnings: string[] = [];
+    const rawHub = this.rawFleetConfig?.hub as { enabled?: unknown } | undefined;
+    const hub = rawHub?.enabled === true ? { server: this.shuttingDown ? "stopped" as const
+      : this.hubRuntime?.serverHealth?.(rawHub) ?? "unavailable" as const } : undefined;
+    const hubOnly = !!hub && names.length === 0 && this.adapterState.size === 0;
+    if (hub && hub.server !== "ready") problems.push(`Hub server is ${hub.server}`);
     const hostMemory = this.memoryPressure.snapshot();
-    if (!this.memoryPressure.advisoryOnly() && (hostMemory.level === "critical" || hostMemory.level === "elevated")) {
-      problems.push(`host memory pressure is ${hostMemory.level}`);
+    if (hostMemory.level === "critical" || hostMemory.level === "elevated") {
+      const pressure = `host memory pressure is ${hostMemory.level}`;
+      if (hubOnly) warnings.push(pressure);
+      else if (!this.memoryPressure.advisoryOnly()) problems.push(pressure);
     }
     if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
     if (counts.crashed > 0) problems.push(`${counts.crashed} instance(s) crashed`);
@@ -10768,9 +10965,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (!this.startupComplete) problems.push("startup has not completed");
 
-    // "down" is reserved for "cannot receive or answer a message at all". A fleet
-    // with adapters configured but none connected is exactly that.
-    const status = this.adapterState.size > 0 && connected === 0
+    // Preserve adapter scoring. A dedicated Hub also cannot serve its workload before its server mount is ready.
+    const status = (this.adapterState.size > 0 && connected === 0) || (hubOnly && hub?.server !== "ready")
       ? "down"
       : problems.length > 0 ? "degraded" : "ok";
 
@@ -10783,7 +10979,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       memory: readFleetMemory(),
       hostMemory: this.memoryTop && (hostMemory.level === "elevated" || hostMemory.level === "critical")
         ? { ...hostMemory, topProcesses: this.memoryTop.processes, topProcessesAt: this.memoryTop.at } : hostMemory,
-      problems,
+      problems, warnings, ...(hub ? { hub } : {}),
     };
   }
 
@@ -13640,6 +13836,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const asStatusFilter = normalizeStatusFilter;
     // #1336: small write ack — identifying fields only.
     const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
+    // #3195: an update's ack also carries what was SAVED for each field it named, read back from the task.
+    const updatedAck = (t: Task, named: Record<string, unknown>) => ({ ...ack(t), ...savedFields(t, named) });
     // The board's notes for the write (a send-back reason, a comment the assignee had not seen): with the ack when any.
     const noted = <T extends object>(a: T): T | (T & { notes: string[] }) => { const notes = db.board.takeNotes(); return notes.length ? { ...a, notes } : a; };
     try {
@@ -13691,12 +13889,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         case "update": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return noted(ack(db.updateTask(db.getTaskByPrefix(id).id, {
+          return noted(updatedAck(db.updateTask(db.getTaskByPrefix(id).id, {
             status: asStatus(args.status),
             assignee: asStr(args.assignee),
             result: asStr(args.result),
             priority: asPriority(args.priority),
-          }, { kind: "instance", name: instance })));
+          }, { kind: "instance", name: instance }), args));
         }
         default: return { error: `Unknown task action: ${action}` };
       }
@@ -13850,7 +14048,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             result: payload.result as string | undefined,
             priority: payload.priority as string | undefined,
           } as Record<string, unknown>, { kind: "instance", name: meta.instance_name || instanceName });
-          result = noted(ack(logTask));
+          // #3195: with what was SAVED for each field the update named, read back from the task.
+          result = noted({ ...ack(logTask), ...savedFields(logTask, payload) });
           break;
         default:
           throw new Error(`Unknown task action: ${action}`);
@@ -17858,6 +18057,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     authorized: Array<{ handle: string; label: string; account: string; authorizedAt: number; until: number; named?: true; quick?: true }>;
     /** #2453 (§0.2): the admin's named-tunnel hostname, while one is configured (the named-link row shows only then). */
     namedHost: string | null;
+    /** A fleet with no chat connection: the page words the card for the authenticator, not for Discord / Telegram. */
+    webOnly: boolean;
   } {
     const configured = this.fleetConfig?.web?.verified_authority ?? {};
     const lanHosts = (this.fleetConfig?.web?.allowed_hosts ?? []).filter(h => { const name = hostnameOf(String(h)); return name !== null && !LOOPBACK_HOST_NAMES.includes(name); });
@@ -17873,7 +18074,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Over a link: the temporary one (§0.3), else the named one (a record from before §0.3 has no peer).
         ...(sessions.get(a.handle)!.surface === "gateway" ? (a.peer === "quick_link" ? { quick: true as const } : { named: true as const }) : {}) })) : [];
     const host = this.fleetConfig?.web?.public_link?.hostname;
-    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null };
+    return { state, configured, hours: VERIFIED_SESSION_HOURS, lanHosts, authorized, namedHost: typeof host === "string" && host ? host : null, webOnly: this.isWebOnlyFleet() };
   }
 
   private authorizationRequests: SessionAuthorizationRequests | null = null;
@@ -19704,6 +19905,57 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (results.some(Boolean)) broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));   // read the list again: it knows more now
     });
   }
+  /**
+   * #3212 PR 1: the Accounts view (accounts-view.ts) — every CLI's default sign-in and named profiles (used or only on
+   * disk), who uses each and its weekly usage. Host rows only; a paired computer's rows come with #3190 Part 3c. Its
+   * usage is the usage panel's cached read (never forced), given at most `usageWaitMs` before the view is sent without it.
+   */
+  async accountsView(usageWaitMs = 1500): Promise<AccountsView> {
+    const fleet = this.fleetConfig;
+    const defaultBackend = fleet?.defaults?.backend ?? "claude-code";
+    this.refreshSignInIdentities();
+    const targets = this.backendSignInTargets();
+    const diskProfiles = new Map<string, Array<{ profile: string; state: SignInTarget["state"]; signIn: boolean; hostCommand?: string; identity?: AccountIdentity }>>();
+    for (const backend of PROFILE_CLIS) {
+      const rows = [];
+      for (const profile of profilesOnDisk(this.dataDir, backend)) {
+        let login: ReturnType<typeof credentialProfileLogin>["state"] = "unknown";
+        try { login = credentialProfileLogin(this.dataDir, backend, profile).state; } catch { /* unknown */ }
+        const signIn = dashboardSignInSupported(backend, profile);
+        const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
+        const identity = this.signInIdentity(backend, profile);
+        rows.push({ profile, state: (login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown") as SignInTarget["state"], signIn,
+          ...(hostCommand ? { hostCommand } : {}), ...(identity ? { identity } : {}) });
+      }
+      diskProfiles.set(backend, rows);
+    }
+    // Host agents only: an agent on a paired Windows computer runs on that computer's accounts (its own scope, later).
+    const agents = Object.keys(fleet?.instances ?? {}).filter(name => !isWindowsInstance(fleet!.instances[name])).sort()
+      .map(name => { const backend = this.backendNameForInstance(name); return { name, backend, profile: this.credentialProfileOf(name, backend) }; });
+    const classic = readClassicBindings(this.dataDir).map(b => {
+      const backend = b.backend ?? defaultBackend;
+      return { key: b.key, backend, profile: profileName(classicProfile(b.backend_options, fleet?.defaults?.backend_options, backend)) };
+    });
+    const fleetDefaults = new Map<string, string>();
+    for (const backend of PROFILE_CLIS) { const p = profileName(profileOf(fleet?.defaults?.backend_options, backend)); if (p) fleetDefaults.set(backend, p); }
+    // Weekly usage, from the usage panel's own (cached, never forced) read.
+    const usage = new Map<string, AccountUsage>();
+    const ids = new Map<string, string>();                                   // provider id → backend\0profile
+    for (const backend of ACCOUNT_CLIS) {
+      const pid = usageProviderIdForBackend(backend); if (!pid) continue;
+      ids.set(pid, `${backend}\0`);
+      for (const p of new Set([...(diskProfiles.get(backend) ?? []).map(d => d.profile), ...targets.filter(t => t.backend === backend && t.profile).map(t => t.profile!)])) ids.set(`${pid}:${p}`, `${backend}\0${p}`);
+    }
+    try {
+      const payload = await Promise.race([getUsageSnapshot(false, undefined, { allowStale: true }), new Promise<null>(r => { const tm = setTimeout(() => r(null), usageWaitMs); tm.unref?.(); })]);
+      for (const provider of payload?.providers ?? []) {
+        const at = ids.get(provider.id); const w = at ? weeklyUsage(provider as never) : undefined;
+        if (at && w) usage.set(at, w);
+      }
+    } catch { /* the view without usage */ }
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage });
+  }
+
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
     for (const row of this.backendAvailabilityRows()) {
@@ -26117,8 +26369,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
+      const publicUrl = new URL(req.url ?? "/",`http://localhost:${port}`);
       if(remoteRuntimeEnabled() && !gatewayRequestContext(req)
-        && this.runtimeCoordinator().handlePublicRequest(req,res,new URL(req.url ?? "/",`http://localhost:${port}`)))return;
+        && this.runtimeCoordinator().handlePublicRequest(req,res,publicUrl))return;
+      // The read-only installer files (/runtime/install.ps1 and the bundle ZIP) grant nothing. They answer 404 while remote runtimes
+      // are off or on a public gateway link, and touch no other path.
+      if(this.runtimeInstaller().handle(req,res,publicUrl))return;
 
       // Branding is public, after Host admission: automatic favicon requests
       // must not become noisy web-token 401s in the browser console.
@@ -26146,7 +26402,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && String(req.headers.accept ?? "").includes("text/html")
             && isWebPageNavigation(requestPath)) {
             const link = gatewayRequestContext(req);
-            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId) });
+            serveSigninPage(res, 401, { webOnly: this.isWebOnlyFleet(), outside: !!link && this.isOutsideLink(link.exposureId), deviceLogin: !link && this.deviceLoginAvailable(), loginQr: this.loginQrEnabled() });
             return;
           }
           res.writeHead(decision.status);
@@ -26763,6 +27019,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }catch{return {native_recovery:null};}})(),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:true,
             commands:true,effort:false,log:true,details:true,channels:false,terminal:false,attachments:false,usage:false,send_while_busy:true},
+          // cc3ce4fe: the version this machine's inventory reports for the agent's CLI, and whether AgEnD has audited it.
+          ...this.nativeCliStatus(nativeConfig.backend, nativeConfig.machine_id, this.daemons.get(name)),
           ...(nativeConfig.machine_id ? { machine_id: nativeConfig.machine_id, machine_name: this.runtimeHub?.machine(nativeConfig.machine_id)?.name,
             machine_status: this.runtimeHub?.machine(nativeConfig.machine_id)?.status ?? "offline" } : {}) } : {}),
         display_name: identity.display_name || undefined,

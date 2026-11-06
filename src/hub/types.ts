@@ -22,10 +22,17 @@ export interface HubHello {
 export interface HubWelcome {
   selectedVersion: 1; hubId: HubId; fleetId: FleetId;
   linkEpoch: Epoch; revocationVersion: Epoch;
+  capabilities?: readonly string[]; // only when the hello offered welcome-caps-v1
 }
 export interface HubExposureSnapshot {
   revision: Epoch; exposures: readonly HubExposure[];
 }
+/** quota-band-v1: member-derived, coarse and ephemeral. Exact usage never crosses the link. */
+export interface HubQuota {
+  band: "available" | "near_limit" | "exhausted" | "unknown";
+  resetsAt?: Millis; // exhausted only; nearest reset rounded to five minutes
+}
+export interface HubExposureQuota { exposureId: ExposureId; quota: HubQuota }
 export interface HubQuestion {
   text: string; identity: HubAskerEnvelope;
 }
@@ -84,7 +91,8 @@ export type HubMemberFrame =
   | HubFrame<"answer", HubAnswer>
   | HubFrame<"reconcile", HubReconcile>
   | HubFrame<"authorize.request", HubAuthorizationRequest>
-  | HubFrame<"error", HubProtocolError>;
+  | HubFrame<"error", HubProtocolError>
+  | HubFrame<"exposure.quota", HubExposureQuota>;
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>

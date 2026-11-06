@@ -9,7 +9,7 @@ import {randomUUID} from "node:crypto";
 import {atomicWriteFileSync} from "./atomic-write.js";
 import {runtimeJobDigest} from "./runtime-client-store.js";
 import {RuntimeNativePaneLifecycle} from "./native-pane-lifecycle.js";
-import {assertAuditedNativePaneVersion} from "./runtime-pane-native.js";
+import {assertRunnableNativePaneVersion,nativeCliVersionState} from "./runtime-pane-native.js";
 import {nativeCredentialProfile} from "./native-instance-registry.js";
 import {PaneMcpAuthorityLease} from "./runtime-pane-mcp.js";
 import {validateRuntimePaneLaunch,validateRuntimePaneSnapshot,validateRuntimePaneSessionProof,type RuntimePaneLaunch,type RuntimePaneSnapshot} from "./runtime-pane-protocol.js";
@@ -111,11 +111,15 @@ export class NativePaneManager {
   if(!snapshot.noLaunch&&(!snapshot.sessionId||!profile.threadId))this.options.store.setPaneRecovery(snapshot.agentId,{kind:"session-unconfirmed",launchId:snapshot.launchId,sessionId:this.options.store.get(snapshot.agentId).threadId,...(next.launch.cli==="codex"?{provider:"codex" as const}:{})});
   return next;
  }
- private async sessionState(endpoint:NativeMachineEndpoint,previous:RuntimePaneSnapshot,supported:boolean):Promise<"absent"|"saved"|"unknown">{
+ private async sessionState(endpoint:NativeMachineEndpoint,previous:RuntimePaneSnapshot,supported:boolean,cli:string):Promise<"absent"|"saved"|"unknown">{
   if(!previous.sessionId)return "unknown"; // A positive process exit is independent of a provider conversation pin.
   if(!supported)throw new NativePaneRecoveryError({kind:"host-upgrade",launchId:previous.launchId}); // Use the existing host-upgrade recovery, never a conversation decision.
   const raw=await endpoint.call({action:"session-proof",paneId:previous.paneId,launchId:previous.launchId});
-  try{const proof=validateRuntimePaneSessionProof(raw);if(runtimeJobDigest(proof.snapshot)===runtimeJobDigest(previous))return proof.state;}
+  // cc3ce4fe: a positive absence relies on the provider's audited store layout (Claude's project key, Codex's index), so
+  // it counts only for the version that exited launch actually ran, recorded by its own helper (never a cached inventory,
+  // which an update can outdate). Unverified, or no recorded version (an older host): "unknown" — an administrator decides.
+  const audited=previous.cliVersion!==undefined&&nativeCliVersionState(cli,previous.cliVersion).state==="verified";
+  try{const proof=validateRuntimePaneSessionProof(raw);if(runtimeJobDigest(proof.snapshot)===runtimeJobDigest(previous))return proof.state==="absent"&&!audited?"unknown":proof.state;}
   catch{/* A reachable malformed result cannot prove absence. */}
   return "unknown";
  }
@@ -137,7 +141,7 @@ export class NativePaneManager {
   const endpoint=await this.options.endpoint(agent);
   assertCurrent();this.options.admit(name,config);
   if(endpoint.machineId!==(agent.machineId??"local"))throw Error("Native endpoint machine scope differs");
-  assertAuditedNativePaneVersion(agent.cli,endpoint.version(agent.cli));
+  assertRunnableNativePaneVersion(agent.cli,endpoint.version(agent.cli));
   const inventory:unknown=await endpoint.call({action:"list"});
   assertCurrent();this.options.admit(name,config);
   if(!inventory||typeof inventory!=="object"||!UUID.test((inventory as any).hostBootId)||!Array.isArray((inventory as any).panes)||(inventory as any).panes.length>4096)throw Error("Native host identity is unconfirmed");
@@ -185,7 +189,7 @@ export class NativePaneManager {
    if(!manifest.exited.noLaunch){
     const epoch=endpoint.epoch(),before=runtimeJobDigest(agent);
     // RPC failures stay retryable; only a reachable result can hold the session. Older hosts use the upgrade hold.
-    const state=await this.sessionState(endpoint,manifest.exited,(inventory as any).capabilities?.[agent.cli==="codex"?"codexSessionProof":"claudeSessionProof"]===true);
+    const state=await this.sessionState(endpoint,manifest.exited,(inventory as any).capabilities?.[agent.cli==="codex"?"codexSessionProof":"claudeSessionProof"]===true,agent.cli);
     assertCurrent();this.options.admit(name,config);
     if(!endpoint.online()||endpoint.epoch()!==epoch||runtimeJobDigest(this.options.store.get(id))!==before)throw Error("Native profile or transport changed during session proof");
     if(state==="absent"&&!manifest.fresh){manifest=this.freshIntent(file,manifest,true,config,agent);preparedFresh=true;}
@@ -273,11 +277,11 @@ export class NativePaneManager {
     catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;}};
    unopened();const endpoint=await this.options.endpoint(agent);assertCurrent();this.options.admit(name,config);
    if(endpoint.machineId!==manifest.machineId)throw Error("Native fresh-session machine differs");
-   assertAuditedNativePaneVersion(agent.cli,endpoint.version(agent.cli));const epoch=endpoint.epoch();
+   assertRunnableNativePaneVersion(agent.cli,endpoint.version(agent.cli));const epoch=endpoint.epoch();
    const raw=await endpoint.call({action:"list"});assertCurrent();this.options.admit(name,config);
    if(!endpoint.online()||endpoint.epoch()!==epoch)throw Error("Native fresh-session transport changed");
    if(!raw||typeof raw!=="object"||!Array.isArray((raw as any).panes)||(raw as any).panes.map(validateRuntimePaneSnapshot).some((row:RuntimePaneSnapshot)=>row.agentId===id&&row.state!=="exited"))throw Error("A native process exit is still unconfirmed");
-   const state=await this.sessionState(endpoint,previous,(raw as any).capabilities?.[agent.cli==="codex"?"codexSessionProof":"claudeSessionProof"]===true);
+   const state=await this.sessionState(endpoint,previous,(raw as any).capabilities?.[agent.cli==="codex"?"codexSessionProof":"claudeSessionProof"]===true,agent.cli);
    assertCurrent();this.options.admit(name,config);unopened();
    if(!endpoint.online()||endpoint.epoch()!==epoch)throw Error("Native fresh-session transport changed");
    if(runtimeJobDigest(this.options.store.get(id))!==runtimeJobDigest(agent))throw Error(t("native_pane.changed"));

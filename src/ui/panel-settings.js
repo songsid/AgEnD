@@ -27,6 +27,7 @@ import { toast } from "/assets/ui-toast.js";
 import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
+import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
@@ -49,7 +50,7 @@ import { takeAgentRequest } from "./settings-request.js";
 // #1604: This device — the preview opt-in (one path: the app's confirm, then preview.js) and the tour, from the chat.
 import { setPreviewOptIn } from "./panel-chat.js";
 import { startTour } from "./chat-tour.js";
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 import { AppearanceSection } from "./settings-appearance.js";
 import { GuestsCard } from "./settings-guests.js";
 import { OfficeSharesCard } from "./office-share-dialog.js";
@@ -57,6 +58,7 @@ import { PageSharesCard } from "./page-share-dialog.js";
 import { syncStage, useDraft } from "./settings-draft.js";
 import { WebAuthorityCard } from "./settings-web-authority.js";
 import { OutsideCard } from "./settings-outside.js";
+import { DevicesCard } from "./settings-devices.js";
 /** The pure owner Settings switch is available while off; its pairing UI remains lazy and member-mark gated. */
 function HubCardSlot() {
   const [Card, setCard] = useState(null);
@@ -75,6 +77,7 @@ function HubRetentionSlot() {
 }
 import { NamedLinkTest, setTypedTunnelToken } from "./settings-named-test.js";
 import { SignInList } from "./backend-signin.js";
+import { AccountsView, defaultsBackendOptions } from "./accounts-view.js";   // #3212: SignInList stays exported for a page that still imports it
 import { ProviderMark } from "./provider-marks.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { SettingsPageHead, SettingsTabs, SettingsTabPanel, useSettingsTabs, revealSettingsTarget, layoutText } from "./settings-layout.js";
@@ -412,7 +415,14 @@ export function SettingsPanel({ route, navKey }) {
     : data.error ? html`<${ErrorState} message=${tn("configLoadFailed")} onRetry=${reload} />`
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}><details class="s-ui-disclosure s-ai-accounts"><summary><span>${layoutText("aiAccounts")}</span><small>${layoutText("aiAccountsSummary")}</small></summary><div class="s-disclosure-body s-auth-body">
         <div class="s-auth-scope"><${Icon} name="view" size=${18} /><div><strong>${layoutText("aiHostScope")}</strong><p>${layoutText("aiAccountsHint")}</p><a href=${settingsPath("runtimes")}>${layoutText("aiWindowsLink")}<span aria-hidden="true">→</span></a></div></div>
-        <${SignInList} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
+        <${AccountsView} instances=${ctx.fleet.instances || {}} stageAgent=${ctx.stageAgent}
+          stageDefault=${(backend, profile) => {
+            // One change for every CLI's fleet default, carrying the whole map (the write replaces it whole).
+            const opts = defaultsBackendOptions((ctx.fleet.defaults || {}).backend_options, stagedRef.current.get("defaults:account")?.request?.body?.backend_options, backend, profile);
+            if (!opts) { ctx.unstage("defaults:account"); return; }
+            ctx.stage("defaults:account", { label: tn("updateDefaults"), count: 1, impact: defaultsImpact(ctx.schema, "backend_options"),
+              request: { method: "PUT", url: "/api/settings/fleet/defaults", body: { backend_options: opts } } });
+          }} />${ctx.providerOk ? html`<${ProviderKeys} ctx=${ctx} />` : html`<section class="s-auth-section s-api-unavailable"><header class="s-auth-section-head"><div><h3>${layoutText("apiKeysTitle")}</h3><p>${layoutText("apiKeysHint")}</p></div><span class="s-auth-state">${layoutText("apiKeysUnavailableState")}</span></header><p class="note">${layoutText("apiKeysUnavailable")}</p></section>`}
       </div></details>`
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" /></${YamlLock}>`
     : section === "chat" ? html`<${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
@@ -1232,13 +1242,14 @@ function WebSection({ ctx, staged, part = "all" }) {
     usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
     levels: web.office_levels !== false,                                        // #2661: on by default
     cdn: web.preview_cdn === true,                                              // #2911 (7): off by default
+    loginQr: web.login_qr === true,                                             // #3061 (P2b): off by default
     pub: { allow_public: (web.public_link && web.public_link.allow_public) ?? true, ttl_minutes: (web.public_link && web.public_link.ttl_minutes) ?? 120, protocol: (web.public_link && web.public_link.protocol) ?? "http2", hostname: (web.public_link && web.public_link.hostname) ?? "", tunnel_token_env: (web.public_link && web.public_link.tunnel_token_env) ?? "", origin_port: (web.public_link && web.public_link.origin_port) ?? 19282, auto_open: (web.public_link && web.public_link.auto_open) ?? false },
     session: { absolute_hours: local.absolute_hours ?? null, idle_hours: local.idle_hours ?? null },
     terminal: { enabled: term.enabled ?? null, ttl_minutes: term.ttl_minutes ?? null },
   }), []);
   const text = (v) => (v === null || v === undefined ? "" : String(v));
   /** #2347: a field's row class: `s-dirty` while it differs from what is saved (the draft may come from before). */
-  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, pub: original.pub.allow_public,
+  const savedForm = useMemo(() => ({ notify: String(original.notify), echo: original.echo, log: original.log, usagePub: original.usagePub, levels: original.levels, cdn: original.cdn, loginQr: original.loginQr, pub: original.pub.allow_public,
     ttl: String(original.pub.ttl_minutes), protocol: original.pub.protocol, hostname: original.pub.hostname, originPort: String(original.pub.origin_port),
     abs: text(original.session.absolute_hours), idle: text(original.session.idle_hours), termOn: original.terminal.enabled !== false,
     termTtl: text(original.terminal.ttl_minutes), autoOpen: original.pub.auto_open }), []);
@@ -1252,7 +1263,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     return {
       notify: String(pick(pending, "notify_login", original.notify)),
       echo: pick(pending, "echo_to_channel", original.echo), log: pick(pending, "log_tab", original.log), usagePub: pick(pending, "usage_report_on_public_link", original.usagePub),
-      levels: pick(pending, "office_levels", original.levels), cdn: pick(pending, "preview_cdn", original.cdn),
+      levels: pick(pending, "office_levels", original.levels), cdn: pick(pending, "preview_cdn", original.cdn), loginQr: pick(pending, "login_qr", original.loginQr),
       pub: pick(pub, "allow_public", original.pub.allow_public), ttl: String(pick(pub, "ttl_minutes", original.pub.ttl_minutes)), protocol: pick(pub, "protocol", original.pub.protocol),
       hostname: pick(pub, "hostname", original.pub.hostname), originPort: String(pick(pub, "origin_port", original.pub.origin_port)), autoOpen: pick(pub, "auto_open", original.pub.auto_open),
       abs: text(pick(session, "absolute_hours", original.session.absolute_hours)), idle: text(pick(session, "idle_hours", original.session.idle_hours)),
@@ -1306,6 +1317,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(f.usagePub !== original.usagePub ? { usage_report_on_public_link: f.usagePub } : {}),
       ...(f.levels !== original.levels ? { office_levels: f.levels } : {}),
       ...(f.cdn !== original.cdn ? { preview_cdn: f.cdn } : {}),
+      ...(f.loginQr !== original.loginQr ? { login_qr: f.loginQr } : {}),
       ...(Object.keys(publicPatch).length ? { public_link: publicPatch } : {}),
       ...(Object.keys(sessionPatch).length ? { session: { local: sessionPatch } } : {}),
       ...(Object.keys(terminalPatch).length ? { web_terminal: terminalPatch } : {}),
@@ -1317,6 +1329,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ...(body.usage_report_on_public_link !== undefined ? ["web.usage_report_on_public_link"] : []),
       ...(body.office_levels !== undefined ? ["web.office_levels"] : []),
       ...(body.preview_cdn !== undefined ? ["web.preview_cdn"] : []),
+      ...(body.login_qr !== undefined ? ["web.login_qr"] : []),
       ...Object.keys(publicPatch).map((k) => `web.public_link.${k}`),
       ...Object.keys(sessionPatch).map((k) => `web.session.local.${k}`),
       ...Object.keys(terminalPatch).map((k) => `web_terminal.${k}`),
@@ -1374,6 +1387,10 @@ function WebSection({ ctx, staged, part = "all" }) {
       <div class="s-access-banner"><${Icon} name="info" size=${18} /><p>${layoutText("revAccessPolicy")}</p><details class="s-access-policy"><summary>${layoutText("revDetails")}</summary><p class="note">${tn("webLead")}</p></details></div>
       <${SettingsTabPanel} group="access" id="login" active=${accessTab === "login"}>
         <div class="s-access-login-layout"><div class="s-access-stack">
+          ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
+          <${OutsideCard} />
+          ${/* Refs #3061 (P2a): sign a new device in with its 8-character code — approved here by the verified owner. */ ""}
+          <${DevicesCard} />
           ${lock(html`<section class="card s-access-session"><h3>${layoutText("revLoginSessions")}</h3>
       <div class=${fc("field", "notify")}><label for="webNotifyLogin">${tn("webNotifyLogin")}<${Impact} schema=${schema} field="web.notify_login" /></label><${Select} id="webNotifyLogin" value=${f.notify} onChange=${set("notify")} options=${noticeChoices()} /><${InEffect} text=${noticeLabel(noticeMode(f.notify))} /></div>
       <div class="grid2">
@@ -1385,11 +1402,12 @@ function WebSection({ ctx, staged, part = "all" }) {
           ${value(f.idle) === null && !errors.abs ? html`<${InEffect} text=${tn("hoursValue", idle)} why=${idle < 48 ? tn("cappedBySession") : null} />` : null}</div>
       </div>
     <p class="note s-session-ceiling">${layoutText("revPublicSessionLimit")}</p>
+      ${/* Refs #3061 (P2b): the QR code on a new device's sign-in page (a web-only fleet's "Sign in with another device"). */ ""}
+      <label class=${fc("check", "loginQr")}><input id="webLoginQr" type="checkbox" checked=${f.loginQr} aria-describedby="webLoginQr-hint" onChange=${(e) => set("loginQr")(e.target.checked)} /><span>${tn("webLoginQr")}</span><${Impact} schema=${schema} field="web.login_qr" /></label>
+      <p class="note" id="webLoginQr-hint">${tn("webLoginQrHint")}</p>
       <details class="s-setting-details"><summary>${layoutText("revSessionDetails")}</summary><p class="note">${tn("webSessionHint")}</p><p class="note">${tn("webNotifyLoginHint")}</p></details>
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
-          ${/* #3008: a web-only fleet's connections from outside — changed on this computer only, shown (read-only) elsewhere. */ ""}
-          <${OutsideCard} />
           ${!overPublicLink ? html`<${HubCardSlot} />` : null}
           ${!overPublicLink && ctx.fleet.hub?.hubId ? html`<${HubRetentionSlot} /><${HubBrowserCertificateSlot} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>

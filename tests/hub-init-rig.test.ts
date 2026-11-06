@@ -1,5 +1,5 @@
 /**
- * S-48: the `agend hub init` test sign-in through the real S2 directory module against the fake directory
+ * S-48: the `agend hub init` administrator lookup through the real S2 directory module against the fake directory
  * (scripts/manual/hub-directory). Skipped unless AGEND_HUB_RIG_ENV names the rig's rig.env (CI's hub-directory job).
  * Never a real directory.
  */
@@ -53,18 +53,19 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1")("agend hub init against the fake dire
     return { home, outcome, io };
   }
 
-  it("binds the administrator to the directory's immutable id after a real LDAPS test sign-in; a disabled account is refused first", async () => {
+  it("designates the administrator's immutable id through read-only LDAPS; disabled and unknown accounts refuse first", async () => {
     const seed = rig.AGEND_HUB_RIG_SEED_PASSWORD!;
     const { home, outcome, io } = await run([
       ...start(), ...directory(rig.AGEND_HUB_RIG_CA!),
-      "bob", { hidden: seed }, "r",
-      "alice", { hidden: "wrong-" + "x".repeat(10) }, "r",
-      "alice", { hidden: seed },
+      "bob", "r",
+      "nobody", "r",
+      "alice",
       "y", "30", "180", "initialize", "no",
     ]);
     expect(outcome).toBe("initialized");
     expect(io.text()).toContain("That account is disabled or expired in the directory.");
-    expect(io.text()).toContain("The directory refused that login or password.");
+    expect(io.text()).toContain("No eligible account was found for that directory login.");
+    expect(io.prompts.filter(q => q.includes("password"))).toHaveLength(1);
     const hub = (yaml.load(readFileSync(join(home, "fleet.yaml"), "utf8")) as { hub: Record<string, any> }).hub;
     expect(hub.administrator).toEqual({ realm: "rig", objectId: aliceUuid });
     expect(hub.directory.url).toBe(rig.AGEND_HUB_RIG_LDAPS_URL);
@@ -73,8 +74,8 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1")("agend hub init against the fake dire
     expect(io.text()).not.toContain(rig.AGEND_HUB_RIG_BIND_PASSWORD!);
   });
 
-  it("a directory certificate from the wrong CA fails the test sign-in with the reason, and nothing is written", async () => {
-    const { home, outcome, io } = await run([...start(), ...directory(rig.AGEND_HUB_RIG_OTHER_CA!), "alice", { hidden: rig.AGEND_HUB_RIG_SEED_PASSWORD! }, "q"]);
+  it("a directory certificate from the wrong CA fails the lookup with the reason, and nothing is written", async () => {
+    const { home, outcome, io } = await run([...start(), ...directory(rig.AGEND_HUB_RIG_OTHER_CA!), "alice", "q"]);
     expect(outcome).toBe("cancelled");
     expect(io.text()).toMatch(/its certificate could not be verified: .*certificate/i);
     expect(existsSync(join(home, "hub"))).toBe(false);

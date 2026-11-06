@@ -4,6 +4,7 @@ import type { NativeTaskInput } from "./windows-cli-worker.js";
 import { createHash } from "node:crypto";
 import type { PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import type { RuntimePaneRequest, RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import type { RuntimeUpdateControl, RuntimeUpdateClientPhase, RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
 
 export const RUNTIME_PROTOCOL_VERSION = 1;
 export const RUNTIME_CONNECT_PATH = "/runtime/v1/connect";
@@ -27,6 +28,18 @@ export interface RuntimeInfo {
   protocolVersions: number[];
   capabilities: string[];
 }
+/**
+ * What this AgEnD needs from any Runtime it hands work to. A Runtime that cannot offer these (it speaks no protocol this
+ * AgEnD does, or lacks a required capability) was installed from another AgEnD release: the fix is to run the install
+ * command again, which installs this AgEnD's own Runtime next to the old one.
+ */
+export const RUNTIME_REQUIRED_CAPABILITIES: readonly string[] = ["exec"];
+export function runtimeInfoCompatible(info: RuntimeInfo): boolean {
+  return info.protocolVersions.includes(RUNTIME_PROTOCOL_VERSION) && RUNTIME_REQUIRED_CAPABILITIES.every(capability => info.capabilities.includes(capability));
+}
+/** The WebSocket close reason (at most 123 bytes) AgEnD gives an incompatible Runtime; the Runtime recognises this prefix and says what to do. */
+export const RUNTIME_REINSTALL_CLOSE_PREFIX = "Runtime incompatible with this AgEnD";
+export const RUNTIME_REINSTALL_CLOSE_REASON = `${RUNTIME_REINSTALL_CLOSE_PREFIX}: re-run the install command`;
 export const validRuntimeVersion = (value: unknown): value is string => typeof value === "string" && value.length <= 64 && /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/.test(value);
 /** Bounded diagnostic metadata; capabilities never replace execution authorization or pane negotiation. */
 export function parseRuntimeInfo(value: unknown): RuntimeInfo | undefined {
@@ -124,8 +137,8 @@ export interface RuntimeMachine {
 export interface RuntimePairing { pairingId: string; code: string; expiresAt: number }
 export interface RuntimePairResult { machineId: string; claimSecret: string; status: "pending"; expiresAt: number }
 export type RuntimeClaimResult = { status: "pending" } | { status: "approved"; machineId: string; credential: string };
-export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1; runtimeInfo?: RuntimeInfo }
-export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number }
+export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1; runtimeInfo?: RuntimeInfo; updateTrialId?: string }
+export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number; updateProtocol?: 1 }
 export interface RuntimeRequest { v: 1; type: "request"; id: string; operation: RuntimeOperation; payload: unknown }
 export interface RuntimeResponse { v: 1; type: "response"; id: string; ok: boolean; result?: unknown; error?: string }
 export interface RuntimeTaskEvent { v: 1; type: "task"; seq: number; task: WindowsCliTask }
@@ -139,5 +152,5 @@ export interface RuntimePaneToolCall { v: 1; type: "pane.tool.request"; id: stri
 export interface RuntimePaneToolResult { v: 1; type: "pane.tool.result"; id: string; ok: boolean; result?: unknown }
 export interface RuntimeAccountCall { v: 1; type: "account.request"; id: string; operation: RuntimeRemoteOperation; payload: unknown }
 export interface RuntimeAccountReply { v: 1; type: "account.response"; id: string; ok: boolean; result?: unknown; error?: string }
-export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall | RuntimePaneToolResult | RuntimeAccountCall;
-export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeAccountReply | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput | RuntimePaneToolCall;
+export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall | RuntimePaneToolResult | RuntimeAccountCall | RuntimeUpdateControl<RuntimeUpdateServerPhase>;
+export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeAccountReply | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput | RuntimePaneToolCall | RuntimeUpdateControl<RuntimeUpdateClientPhase>;

@@ -1,0 +1,14 @@
+/* Settings -> Runtime -> Connect a computer: the install-method tabs, the copyable command cards and the "needs reinstall" notice.
+   Linked by panel-runtimes.js itself (a tab opened before an upgrade has an app.css without these rules). */
+.runtime-install { min-width: 0; }
+.runtime-install-tabs { margin-bottom: 16px; }
+.runtime-install-panel { min-width: 0; }
+.runtime-command-card { min-width: 0; margin: 0 0 8px; }
+.runtime-command-label { display: block; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--text-2); }
+.runtime-command-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.runtime-command-row .btn { flex: none; }
+.runtime-command-text { flex: 1; min-width: 0; margin: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: normal; word-break: normal; overflow-x: auto; user-select: all; }
+.runtime-command-text code { font: inherit; }
+@media (max-width: 600px) { .runtime-command-row { flex-direction: column; align-items: stretch; } .runtime-command-row .btn { align-self: flex-start; } }
+.runtime-installer-hash code { overflow-wrap: anywhere; font-family: var(--font-mono); }
+.runtime-installer-error, .runtime-reinstall { margin: 0 0 8px; padding: 10px 12px; border: 1px solid var(--warn); border-radius: 8px; background: var(--warn-bg); font-size: var(--fs-sm); line-height: 1.5; }

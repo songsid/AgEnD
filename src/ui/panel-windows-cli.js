@@ -15,6 +15,10 @@ register("wincli", {
   "zh-TW": { workspace:"Windows 本機工作區", native:"Windows 本機", providers:"本機 CLI", available:"可派工", unavailableBadge:"尚未就緒", detectionOnly:"僅偵測", notDetected:"尚未偵測", checking:"檢查中", path:"執行檔路徑", taskHint:"使用 Windows Codex，在指定專案中執行一次性任務。", folderHint:"請填入已存在的 Windows 專案資料夾。", promptPlaceholder:"例如：檢查這個專案的結構，說明如何在 Windows 上啟動。", readHint:"適合檢查、查詢與分析", writeHint:"適合修改程式與檔案", taskLimits:"同時 1 個任務 · 5 分鐘後請求取消", policy:"存取與核准方式", policyText:"沿用本機 CLI 的沙箱與核准政策，包含已設定的自動審查。此頁不提供互動核准按鈕。", ready:"Codex 已就緒", busy:"Windows 任務執行中", unavailable:"請先確認 Codex 已安裝並登入", historyHint:"查看執行狀態與 CLI 輸出", emptyHint:"派送第一個任務後，進度與結果會出現在這裡。", noOutput:"這個任務沒有回傳輸出。", records:"筆", historyNote:"保留最近 20 筆，重啟後清空", output:"執行輸出", submitting:"正在提交…" },
   en: { workspace:"Your Windows workspace", native:"Native Windows", providers:"Local CLIs", available:"Tasks enabled", unavailableBadge:"Not ready", detectionOnly:"Detection only", notDetected:"Not detected yet", checking:"Checking", path:"Executable path", taskHint:"Run a one-off task in your project with Windows Codex.", folderHint:"Use an existing Windows project folder.", promptPlaceholder:"For example: inspect this project and explain how to run it on Windows.", readHint:"Inspect, query and analyze", writeHint:"Edit code and files", taskLimits:"One task at a time · Cancellation after 5 min", policy:"Access and approvals", policyText:"Uses the local CLI's sandbox and approval policy, including any configured automatic reviewer. This page has no interactive approval controls.", ready:"Codex is ready", busy:"Windows task in progress", unavailable:"Check that Codex is installed and signed in", historyHint:"Execution status and CLI output", emptyHint:"Send your first task to see its progress and results here.", noOutput:"This task returned no output.", records:"tasks", historyNote:"Latest 20 tasks; cleared on restart", output:"Execution output", submitting:"Submitting…" },
 });
+register("wincli", {
+  en: { paneUnverified:"Not yet verified", paneUnverifiedHint:"AgEnD has not tested this version in Windows panes yet. It still runs; any screen AgEnD does not recognise stops and waits for you in Needs you.", paneDenied:"Known not to work", paneDeniedHint:"AgEnD knows this version does not work in Windows panes, so it will not start it. Install a different version." },
+  "zh-TW": { paneUnverified:"尚未驗證", paneUnverifiedHint:"AgEnD 還沒在 Windows 面板中測試過這個版本。它仍然可以執行；遇到 AgEnD 認不得的畫面時，會停下來在「需要你」等你處理。", paneDenied:"已知無法使用", paneDeniedHint:"AgEnD 已知這個版本無法在 Windows 面板中使用，所以不會啟動它。請改裝其他版本。" },
+});
 const tn = key => t(`wincli.${key}`);
 register("wincli", {
   "zh-TW": { newTask:"派送 Windows CLI 任務", taskHint:"選擇本機 CLI 與模型，在指定專案中執行任務。", ready:"CLI 已就緒", unavailable:"請先確認 CLI 已安裝並登入", model:"模型", defaultModel:"使用 CLI 預設模型", write:"使用本機 CLI 權限", writeHint:"依照此 CLI 的本機核准設定", writeHintClaude:"可修改工作目錄內的檔案；目錄外的寫入、會修改檔案的 Shell 指令與網路都會被拒絕（唯讀指令仍會執行）", noReadOnly:"此 CLI 無法保證唯讀，請明確選擇本機 CLI 權限。", noProviders:"沒有找到已安裝的 CLI。安裝後可重新偵測。" },
@@ -30,12 +34,18 @@ register("wincli", {
 });
 const active = task => ["starting","running","cancelling"].includes(task.status);
 
+/** cc3ce4fe: a persistent-pane CLI's version AgEnD has not audited (or knows is broken), from the coordinator's label.
+ * Drawn inside the version's own cell: the diagnostics summary is a fixed five-cell grid. */
+function paneVerificationTag(cli) {
+  const key = cli.paneVerification === "unverified" ? "paneUnverified" : cli.paneVerification === "denied" ? "paneDenied" : "";
+  return key ? html`<span class="tag" title=${tn(`${key}Hint`)}>${tn(key)}</span>` : null;
+}
 function CliCard({ cli, probing, diagnostic = false }) {
   const signedIn = cli.authenticated === true;
   const checking = probing && !cli.path;
   const authKey = checking ? "checking" : !cli.path ? "missing" : signedIn ? "signedIn" : cli.authenticated === false ? "signedOut" : "unknown";
   const providerLabel = cli.company || ({codex:"OpenAI","claude-code":"Anthropic",antigravity:"Google",grok:"xAI","kiro-cli":"AWS",opencode:"Anomaly",muse:"Meta"})[cli.id];
-  if(diagnostic) return html`<details class="windows-cli-diagnostic-row"><summary><${CliProductMark} id=${cli.id} size=${24} /><strong>${cliLabel(cli.id)}</strong><span class="windows-cli-diagnostic-version">${cli.version || "—"}</span><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><${Icon} name="chevron" size=${16} /></summary>
+  if(diagnostic) return html`<details class="windows-cli-diagnostic-row"><summary><${CliProductMark} id=${cli.id} size=${24} /><strong>${cliLabel(cli.id)}</strong><span class="windows-cli-diagnostic-version">${cli.version || "—"}${paneVerificationTag(cli) ? html` ${paneVerificationTag(cli)}` : null}</span><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><${Icon} name="chevron" size=${16} /></summary>
     <div class="windows-cli-diagnostic-facts"><span class=${`windows-cli-badge ${cli.runnable ? "tone-ready" : "tone-neutral"}`}>${tn(cli.runnable ? "available" : cli.supports?.execution === false ? "detectionOnly" : "unavailableBadge")}</span><dl><dt>${tn("path")}</dt><dd><code class="windows-cli-path">${cli.path || tn("missing")}</code></dd>${cli.models?.length ? html`<dt>${tn("modelsFound")}</dt><dd><ul class="windows-cli-model-list">${cli.models.map(model=>html`<li key=${model.id}><code>${model.id}</code>${model.label && model.label!==model.id ? html`<span>${model.label}</span>` : null}</li>`)}</ul></dd>` : null}</dl>${cli.reason ? html`<p class="note">${cli.reason}</p>` : null}</div>
   </details>`;
   return html`<article class=${`windows-cli-provider is-${cli.id}`}>
@@ -44,7 +54,7 @@ function CliCard({ cli, probing, diagnostic = false }) {
       <div class="windows-cli-provider-name"><span>${providerLabel}</span><h3>${cliLabel(cli.id)}</h3></div>
       <span class=${`windows-cli-badge ${cli.runnable ? "tone-ready" : "tone-neutral"}`}>${tn(cli.runnable ? "available" : cli.supports?.execution === false ? "detectionOnly" : checking ? "checking" : "unavailableBadge")}</span>
     </div>
-    <div class="windows-cli-provider-status"><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><span class="windows-cli-version">${cli.version || "—"}</span></div>
+    <div class="windows-cli-provider-status"><span class=${`windows-cli-auth ${signedIn ? "tone-ready" : "tone-neutral"}`}><span class="windows-cli-dot"></span>${tn(authKey)}</span><span class="windows-cli-version">${cli.version || "—"}${paneVerificationTag(cli) ? html` ${paneVerificationTag(cli)}` : null}</span></div>
     <details class="windows-cli-location"><summary>${tn("path")}<${Icon} name="chevron" size=${14} /></summary><code class="windows-cli-path">${cli.path || tn(checking ? "checking" : "notDetected")}</code></details>
     ${cli.reason ? html`<p class="note">${cli.reason}</p>` : null}
   </article>`;

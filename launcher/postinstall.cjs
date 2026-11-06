@@ -14,6 +14,7 @@ var crypto = require("crypto");
 var childProcess = require("child_process");
 var platform = require("./runtime-platform.cjs");
 var select = require("./runtime-select.cjs");
+var tmuxBundle = require("./tmux-bundle.cjs");
 
 /** Runs on the candidate Node with argv[1] = the package dir: version, N-API, and a real DB open in both threads. */
 var PROOF = [
@@ -44,13 +45,36 @@ function sha256(file) {
 /** #1519 P7: the last line of a successful install (npm shows it with --foreground-scripts; install.sh says the same). */
 var NEXT_STEP = "  Next: run `agend quickstart` to set up AgEnD.";
 
+/**
+ * M-2457 §6.1: verify the bundled tmux for this host, if this release pins one, and write its receipt; refuse the
+ * install when it fails. No pin for the host (none published yet): nothing to do. Pinned but not installed
+ * (--omit=optional, a mirror without it): a warning here; AgEnD itself refuses to start without it (§8).
+ */
+function checkBundledTmux(pkg, host, log, d) {
+  var pin = tmuxBundle.pinnedTmux(pkg.manifest, host);
+  if (!pin) return;
+  var candidate = tmuxBundle.tmuxCandidate(pkg.dir, pin);
+  if (!candidate.exists) {
+    log("  ⚠ AgEnD's bundled tmux (" + pin.name + ") was not installed (--omit=optional, or a registry mirror without it); AgEnD will not start until it is.");
+    return;
+  }
+  var proved = tmuxBundle.verifyTmux(candidate, pin, d.tmuxDeps);
+  if (!proved.ok) refuse(proved.reason, "npm install -g @songsid/agend@" + pkg.manifest.version + " (if it fails again, report it: the tmux package did not pass its check here)");
+  try {
+    tmuxBundle.writeReceipt(pkg.dir, pin, proved, host);
+  } catch (e) {
+    refuse(String(e && e.message || e), "install it under a plain path");
+  }
+  log("  ✓ AgEnD's bundled tmux " + proved.tmux + " verified (sha256, -V, a private-socket start and kill)");
+}
+
 function main(deps) {
   var d = deps || {};
   var pkg = select.packageDir(d.launcherDir || __dirname);
   if (!pkg) refuse("the installed package is not @songsid/agend", "npm install -g @songsid/agend");
   // A receipt describes THIS install's verification and nothing else: whatever is there now (one npm left behind, one
   // copied in) goes first, so selection and installation see the same state (runtime-select.cjs).
-  [select.KEY, select.RECEIPT].forEach(function (name) {
+  [select.KEY, select.RECEIPT, tmuxBundle.RECEIPT].forEach(function (name) {
     var file = path.join(pkg.dir, name);
     if (select.absent(file)) return;
     try { fs.unlinkSync(file); } catch (e) { /* checked below */ }
@@ -64,7 +88,8 @@ function main(deps) {
   var pin = select.pinnedRuntime(pkg.manifest, host);
   var support = platform.runtimeSupport(host);
   var log = d.log || function (line) { process.stdout.write(line + "\n"); };
-  var installed = function () { log(NEXT_STEP); return 0; };
+  // M-2457: the bundled tmux is proved before the install is accepted (a refusal keeps the previous version).
+  var installed = function () { checkBundledTmux(pkg, host, log, d); log(NEXT_STEP); return 0; };
   // #2264: `npm exec --package @songsid/agend@<v> -- agend-install` fetches a release only to run its installer. npm
   // hoists the bundled Node out of <pkg>/node_modules there, and nothing runs `agend` from that copy: the installer's own
   // `npm install -g` proves the bundled Node where AgEnD is installed. Refusing here (an old Node running npm, the

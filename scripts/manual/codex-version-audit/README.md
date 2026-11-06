@@ -113,3 +113,11 @@ from the same run.
   without the shared background server"), so there is no separate process to kill. Their strings ("Reconnecting to
   server…", "Reconnect failed — check the endpoint, then relaunch") are unchanged in the 0.162.0 source. The update
   picker is turned off by AgEnD's config; its strings are also unchanged in the source.
+
+## Codex 0.167.0
+
+The [0.166.0 → 0.167.0 audit](../../../tests/fixtures/codex-audit-0167/README.md) reran `pass1.sh` + `pass2.sh` on both
+versions under `unshare -rn`, and captured the sign-in screens from an empty home. One backend change was needed:
+0.167's startup folder-trust screen pairs `2. Back to Agent Command Center` with `esc back`, and AgEnD's auto-trust now
+accepts that pair too. A rig note: the passes do not stop when `gen-cmd.ts` fails, for example in a checkout without
+`node_modules`. Check that `cap/` holds the scenarios before reading `classify.ts`.

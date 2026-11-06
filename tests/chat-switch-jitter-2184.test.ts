@@ -116,7 +116,7 @@ describe("#2184: after a restart", () => {
 });
 
 describe("#2184: chat-render draws a photo in its box before it loads", () => {
-  const c = vm.createContext({}); vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8"), c);
+  const c = vm.createContext({}); vm.runInContext(readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-render.js"), "utf8"), c);
   const R = (c as any).AgendChatRender;
   const att = (o: Record<string, unknown>) => R.attachmentsHtml([{ id: "a".repeat(32), kind: "photo", name: "p", size: 1, mime: "image/png", ...o }], {});
   const box = (o: Record<string, unknown>) => { const m = /<img [^>]*?(?: width="(\d+)" height="(\d+)")?(?= loading)/.exec(att(o)); return m && m[1] ? [Number(m[1]), Number(m[2])] : null; };

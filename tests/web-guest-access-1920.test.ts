@@ -254,7 +254,9 @@ describe("/auth/sessions: a non-admin's own sessions only", () => {
     expect(handles()).toEqual(["admin", "guest"]);
     expect((await raw(port, "GET", "/auth/session", { cookie: cookieOf(bob) })).status).toBe(200);
     expect((await raw(port, "GET", "/auth/session", { cookie: cookieOf(alice2) })).status).toBe(401);
-    // An admin still ends everyone's.
+    // An admin still ends everyone's — on a fleet with a chat connection (a web-only fleet's admin session that is not its
+    // verified owner no longer does: tests/device-list-3061.test.ts).
+    vi.spyOn(fm, "isWebOnlyFleet").mockReturnValue(false);
     const adminAll = await raw(port, "DELETE", "/auth/sessions", write(admin, port));
     expect([adminAll.status, JSON.parse(adminAll.body).revoked]).toEqual([200, 2]);
   });

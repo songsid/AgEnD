@@ -21,8 +21,8 @@ import { HeaderSlot, HeaderTools } from "/assets/header-tools.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import "./chat-strings.js";
-import { chatTime, chatTimeFull } from "./chat-time.js";
+import "/assets/chat-strings.js";
+import { chatTime, chatTimeFull } from "/assets/chat-time.js";
 import { confirmedWrite } from "./settings-confirm.js";
 
 register("log", {

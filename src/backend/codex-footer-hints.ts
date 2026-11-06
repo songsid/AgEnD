@@ -22,3 +22,20 @@ export function stripCodexPassiveHintRow(rows: string[]): void {
 export function withCodexPassiveHintTail(pattern: RegExp): RegExp {
   return new RegExp(pattern.source.slice(0, -1) + String.raw`(?:\r?\n${CODEX_PASSIVE_HINT_ROW})?(?:\r?\n[ \t⋆]*)*$`, pattern.flags);
 }
+
+// Positive tail shape for the known native contextless layout. Neither pattern authorizes input by itself:
+// callers still bind the native launch and check dialogs, work, liveness and the exact operation.
+const passiveComposer = (text: "Ask Codex to do anything" | "/status") => new RegExp(
+  String.raw`(?:^|\n)[>›][ \t⋆]+${text}[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${CODEX_PASSIVE_HINT_ROW}(?:\r?\n[ \t⋆]*)*$`, "iu");
+export const CODEX_EMPTY_PASSIVE_COMPOSER = passiveComposer("Ask Codex to do anything");
+export const CODEX_STATUS_PASSIVE_COMPOSER = passiveComposer("/status");
+
+// Real 0.165 contextless /status completion replaces the passive footer. This is only the exact selected
+// built-in command plus its one sibling and the same typed command; it is never empty-composer readiness.
+const statusAutocomplete = /(?:^|\n)[>›][ \t]+\/status[ \t]{2,}show current session configuration and token usage[ \t]*\n[ \t]+\/statusline[ \t]{2,}configure which items appear in the status line[ \t]*\n(?:[ \t]*\n){0,3}[>›][ \t]+\/status[ \t]*(?:\n[ \t]*)*$/u;
+export function isCodexStatusAutocompleteComposer(pane: string): boolean {
+  const text = pane.replace(/\r/g, "");
+  return statusAutocomplete.test(text)
+    && [...text.matchAll(/^[>›][ \t]+\/[a-z][a-z-]*[ \t]{2,}\S.*$/gmu)].length === 1
+    && [...text.matchAll(/^[ \t]+\/statusline[ \t]{2,}configure which items appear in the status line[ \t]*$/gmu)].length === 1;
+}

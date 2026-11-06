@@ -12,7 +12,7 @@ import { validNativeSessionId, type NativeMcpConnection } from "./windows-cli-pr
 import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfileReport, isCredentialProfileCli, listCredentialProfileNames, rememberCredentialStatus, requireCredentialProfile, credentialCacheStamp,
   assertCredentialProfileName, assertCredentialProfileCli, type CredentialProfileCli, type CredentialProfileReport } from "./runtime-credential-profiles.js";
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
-import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol.js";
+import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
@@ -20,6 +20,8 @@ import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
 import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
 import { spawn as childSpawn } from "./child-process.js";
+import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update-activity.js";
+import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateClientPhase, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneShutdown } from "./runtime-pane-protocol.js";
 import type { PaneLinkOptions } from "./runtime-pane-link.js";
@@ -28,13 +30,14 @@ import type { RuntimePaneHost } from "./runtime-pane-host.js";
 import type { RuntimePaneHostOptions } from "./runtime-pane-host.js";
 export { RUNTIME_PANE_MODULES } from "./runtime-pane-assets.js";
 
-export type RuntimeStopKind = "refused" | "revoked" | "replaced" | "rejected" | "incompatible";
+export type RuntimeStopKind = "refused" | "revoked" | "replaced" | "rejected" | "incompatible" | "reinstall";
 export interface RuntimeStopReason { kind: RuntimeStopKind; /** The close reason AgEnD gave, when it gave one. */ detail?: string }
 const REPAIR = "run .\\agend-runtime.cmd disconnect in this folder (add the same --profile if you used one), then double-click connect-agend.bat and enter a new pairing code.";
 /** Plain-language cause and next step for a stop AgEnD caused. AgEnD answers an unknown and a revoked credential with the same bare 401, so "refused" covers both. */
 export function describeRuntimeStop(reason: RuntimeStopReason): string {
   switch (reason.kind) {
     case "refused": return `${reason.detail === "HTTP 403" ? "The connection was refused with HTTP 403. If AgEnD's address goes through a proxy, check the proxy's settings too. " : ""}AgEnD did not accept this computer's saved connection, so the Runtime stopped. Open AgEnD Settings -> Runtime: if this computer is missing or revoked, or AgEnD's data was reset, it must be paired again; ${REPAIR} If the pairing was made against a different AgEnD address than this folder's, use the download that matches it.`;
+    case "reinstall": return "AgEnD refused this Runtime because its version is not compatible with this AgEnD (it was installed from a different AgEnD release). Your pairing is kept. Re-run the install command shown in AgEnD Settings -> Runtime -> Connect a computer (Windows PowerShell tab) on this computer; it installs the matching Runtime next to this one and never deletes the version that is running. Then start it again with agend-runtime run (add the same --profile if you used one). If you installed from the ZIP, download the ZIP from the same page and double-click connect-agend.bat.";
     case "revoked": return `This computer was revoked in AgEnD Settings -> Runtime, so the Runtime stopped. To connect it again, ${REPAIR}`;
     case "replaced": return "This computer connected to AgEnD again from somewhere else, so AgEnD closed this connection. A pairing allows one live connection. Close the other Runtime window (or the other computer that uses a copy of this profile), then double-click connect-agend.bat again. Each computer needs its own pairing code.";
     case "incompatible": return "This Runtime could not understand a message from AgEnD, so it stopped. This usually means the Runtime and AgEnD are different versions, or the address points at something that is not this AgEnD. Download the Windows Runtime again from AgEnD Settings -> Runtime, extract it, and double-click connect-agend.bat.";
@@ -50,6 +53,8 @@ export interface RuntimeBridge {
   cancel(id: string): WindowsCliTask;
   close(): void;
   releaseUnknown(id: string): void;
+  /** Required positive physical proof for managed update. An old/injected bridge without it stays unavailable. */
+  idleForUpdate?(): boolean;
 }
 interface Command { v: 1; type: "request"; id: string; operation: string; payload: Record<string, unknown> }
 interface PendingTool { accept(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }
@@ -82,6 +87,10 @@ export interface RuntimeClientOptions {
    * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
    */
   remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
+  /** Internal supervisor seam, never a server-supplied configuration option. */
+  managedUpdate?: { trialId?: string; authenticated?(value: { bootId: string; generation: number; updateProtocol?: 1; runtimeInfo: ReturnType<typeof readRuntimeInfo> }): void };
+  /** Isolated tests can supply a private pane service. Production uses attach-only discovery and physical exit proof. */
+  drainPaneHostForUpdate?(current: () => boolean): Promise<void>;
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
@@ -145,6 +154,13 @@ export class RuntimeClient {
   private mcpPort = 0;
   private inventory: WindowsCliProbe | null = null;
   private readonly stoppedListeners = new Set<() => void>();
+  private activity = new RuntimeUpdateActivity();
+  private stopPromise: Promise<void> | undefined;
+  private generation = 0;
+  private updateProtocol = false;
+  private preparingUpdate = false;
+  private trialFence: RuntimeUpdateFence | undefined;
+  private updateWait: { id: string; phases: RuntimeUpdateServerPhase[]; accept(phase: RuntimeUpdateServerPhase): void; reject(error: Error): void; timer: NodeJS.Timeout } | undefined;
   /** Set only when AgEnD ended the connection and the person must act; a local stop (Ctrl+C) leaves it undefined. */
   stopReason: RuntimeStopReason | undefined;
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
@@ -152,17 +168,19 @@ export class RuntimeClient {
   constructor(private readonly options: RuntimeClientOptions) {
     const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
-    this.runtimeInfo = options.credentialProfilesRoot ? info : { ...info, capabilities: info.capabilities.filter(name => name !== RUNTIME_CREDENTIAL_CAPABILITY) };
+    if (options.managedUpdate?.trialId !== undefined && !validRuntimeUpdateId(options.managedUpdate.trialId)) throw Error("Invalid Runtime update trial");
+    this.runtimeInfo = { ...info, capabilities: [...info.capabilities.filter(name => options.credentialProfilesRoot || name !== RUNTIME_CREDENTIAL_CAPABILITY), ...(options.managedUpdate ? [RUNTIME_MANAGED_UPDATE_CAPABILITY] : [])] };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
     this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities.filter(name => name !== REMOTE_SIGNIN_CAPABILITY || remote), ...(remote && options.remoteAccounts?.installer ? [CLI_INSTALL_CAPABILITY] : [])] };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
-  online(): boolean { return this.welcomed && this.socket?.readyState === WebSocket.OPEN; }
-  waitUntilStopped(): Promise<void> { return this.stopped && this.closed ? Promise.resolve() : new Promise(done => this.stoppedListeners.add(done)); }
+  online(): boolean { return !this.trialFence && this.welcomed && this.socket?.readyState === WebSocket.OPEN; }
+  waitUntilStopped(): Promise<void> { return this.stopPromise ?? (this.stopped && this.closed ? Promise.resolve() : new Promise(done => this.stoppedListeners.add(done))); }
   async start(): Promise<void> {
     if (!this.stopped) return;
+    if (this.stopPromise) { await this.stopPromise; this.stopPromise = undefined; this.activity = new RuntimeUpdateActivity(); }
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
     this.stopped = false; this.closed = false; this.stopReason = undefined;
@@ -179,14 +197,17 @@ export class RuntimeClient {
       if (this.stopped) throw Error("Runtime start was cancelled");
       this.options.store.adoptMachine(credentials.machineId);
       this.options.store.recoverInterrupted(); this.credentials = credentials;
+      if (this.options.managedUpdate?.trialId) {
+        this.trialFence = this.activity.tryFence(this.options.managedUpdate.trialId, () => !this.stopped, () => true);
+        if (!this.trialFence) throw Error("Runtime trial admission is unavailable");
+      }
       // Connect immediately, then publish the last administrator detection from the private profile.
       // A cached read starts no CLI. Only an explicit probe command with force:true performs detection.
       this.connect();
       // A foreground runtime must remain alive while an idle connection is down. Promises and unref'ed retry
       // timers do not keep Node running after the last socket closes; stop() owns and clears this liveness ref.
       this.pollTimer = setInterval(() => this.poll(), this.options.pollMs ?? 250);
-      void this.refreshInventory().catch(() => this.report("CLI discovery failed; refresh it from AgEnD after checking the local installation."));
-      this.watchCredentialCache();
+      if (!this.trialFence) this.beginDiscovery();
     } catch (error) { this.stopped = true; this.unlock?.(); this.unlock = null; throw error; }
   }
   private connect(): void {
@@ -196,10 +217,11 @@ export class RuntimeClient {
     const socket = this.socket = this.options.socketFactory?.(url.href, this.credentials.credential)
       ?? new WebSocket(url.href, { headers: { Authorization: `Bearer ${this.credentials.credential}` }, followRedirects: false,
         maxPayload: MAX_FRAME, handshakeTimeout: 15_000, perMessageDeflate: false });
-    this.welcomed = false; this.paneEpoch = randomUUID();
+    this.welcomed = false; this.updateProtocol = false; this.paneEpoch = randomUUID();
     socket.on("open", () => {
       if (this.stopped || this.socket !== socket) { socket.close(); return; }
       this.send({ v: 1, type: "hello", bootId: this.bootId, name: this.credentials!.name, platform: process.platform, runtimeInfo: this.runtimeInfo,
+        ...(this.trialFence ? { updateTrialId: this.trialFence.id } : {}),
         ...(process.platform === "win32" || this.options.createPaneHost || this.options.openPaneLink ? { paneProtocol: 1 } : {}),
         ...(this.inventory ? { inventory: this.inventory } : {}) });
     });
@@ -220,13 +242,14 @@ export class RuntimeClient {
     socket.on("close", (code,reason) => {
       if (this.socket !== socket) return;
       this.socket = null; this.welcomed = false; this.paneEpoch = randomUUID();
+      if (this.updateWait) { const pending = this.updateWait; this.updateWait = undefined; clearTimeout(pending.timer); pending.reject(Error("Runtime update connection changed")); }
       if (this.paneHost && "connectionChanged" in this.paneHost) this.paneHost.connectionChanged();
       this.rejectTools();
       if (this.stopped) return;
       if (code === 1008) {
         const why = reason.toString().replace(/[^ -~]/g, "?").slice(0, 120);
         this.report(this.selfClosed === socket ? "This Runtime could not read a message from AgEnD and closed the connection." : `AgEnD closed the connection (code 1008${why ? `: ${why}` : ""}).`);
-        this.stopReason = this.selfClosed === socket ? { kind: "incompatible" } : { kind: why === "Machine revoked" ? "revoked" : why === "Connection replaced" ? "replaced" : "rejected", ...(why ? { detail: why } : {}) };
+        this.stopReason = this.selfClosed === socket ? { kind: "incompatible" } : { kind: why === "Machine revoked" ? "revoked" : why === "Connection replaced" ? "replaced" : why.startsWith(RUNTIME_REINSTALL_CLOSE_PREFIX) ? "reinstall" : "rejected", ...(why ? { detail: why } : {}) };
         void this.stop({retirePanes:why==="Machine revoked"}); return;
       }
       this.report("Disconnected. Existing execution is not replayed; reconnecting…");
@@ -255,11 +278,25 @@ export class RuntimeClient {
     if (value.type === "welcome") {
       if (value.machineId !== this.credentials?.machineId || !Number.isSafeInteger(value.generation)) throw new Error("Runtime machine identity mismatch");
       this.welcomed = true;
+      this.generation = value.generation as number; this.updateProtocol = value.updateProtocol === 1;
       this.reconnectAttempt = 0;
       if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
       this.report("Connected to AgEnD.");
-      for (const job of this.options.store.list()) this.publish(job);
+      if (!this.trialFence) for (const job of this.options.store.list()) this.publish(job);
+      this.options.managedUpdate?.authenticated?.({ bootId: this.bootId, generation: this.generation, ...(this.updateProtocol ? { updateProtocol: 1 } : {}), runtimeInfo: this.runtimeInfo });
       return;
+    }
+    if (value.type === "update.control") {
+      const control = parseRuntimeUpdateControl(value, "server"), pending = this.updateWait;
+      if (!pending || control.bootId !== this.bootId || control.generation !== this.generation || control.id !== pending.id || !pending.phases.includes(control.phase)) return;
+      if (control.phase === "activated") {
+        if (this.trialFence?.id !== control.id || !this.trialFence.current() || !this.locallyIdle()) throw Error("Runtime trial is no longer idle");
+        this.trialFence.release(); this.trialFence = undefined;
+        // Release synchronously: the server's next ordered frame may already contain ordinary work.
+        for (const job of this.options.store.list()) this.publish(job);
+        this.beginDiscovery();
+      }
+      this.updateWait = undefined; clearTimeout(pending.timer); pending.accept(control.phase); return;
     }
     if (value.type === "revoked") { this.report("This machine was revoked by AgEnD."); this.stopReason = { kind: "revoked" }; await this.stop({retirePanes:true}); return; }
     if (!this.welcomed) throw new Error("Runtime handshake is incomplete");
@@ -285,7 +322,9 @@ export class RuntimeClient {
       const request = validateRuntimePaneRequest(value.request);
       this.machinePaneLimit = value.maxAgents as number;
       const epoch = this.paneEpoch;
+      let leave: (() => void) | undefined;
       try {
+        leave = this.activity.enter();
         const host = await this.panes();
         // A terminal for an agent with no profile of its own starts under this pairing's default profile, when there is one. The default is passed
         // beside the launch, not inside it: the host decides with it only for a pane that is new, so a pane that is already running reattaches
@@ -301,6 +340,7 @@ export class RuntimeClient {
         }
         this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
+      finally { leave?.(); }
       return;
     }
     if (value.type === "account.request") {
@@ -337,7 +377,8 @@ export class RuntimeClient {
     }
     return this.paneOpening;
   }
-  private paneMcp(raw: PaneMcpBody, current: () => boolean): Promise<unknown> {
+  private paneMcp(raw: PaneMcpBody, current: () => boolean): Promise<unknown> { return this.activity.run(() => this.forwardPaneMcp(raw, current)); }
+  private forwardPaneMcp(raw: PaneMcpBody, current: () => boolean): Promise<unknown> {
     const body = validatePaneMcpBody(raw), epoch = this.paneEpoch;
     if (!current() || !this.online() || this.pendingPaneTools.size >= 32) return Promise.reject(Error("Pane MCP transport is unavailable"));
     const id = randomUUID();
@@ -377,6 +418,7 @@ export class RuntimeClient {
     if (!this.options.credentialProfilesRoot) return;
     this.credentialStamp = this.stamp();
     this.credentialWatch = setInterval(() => {
+      if (!this.activity.accepting) return;
       const now = this.stamp(); if (now === this.credentialStamp) return;
       this.credentialStamp = now; void this.refreshInventory(false).catch(() => {});
     }, this.options.credentialWatchMs ?? 5000);
@@ -467,7 +509,12 @@ export class RuntimeClient {
       ...(extra?.now ? { now: extra.now } : {}),
     });
   }
-  private async refreshInventory(force = false): Promise<WindowsCliProbe> {
+  private beginDiscovery(): void {
+    void this.refreshInventory().catch(() => this.report("CLI discovery failed; refresh it from AgEnD after checking the local installation."));
+    this.watchCredentialCache();
+  }
+  private refreshInventory(force = false): Promise<WindowsCliProbe> { return this.activity.run(() => this.readInventory(force)); }
+  private async readInventory(force: boolean): Promise<WindowsCliProbe> {
     const probed = await this.bridge.probe({ force }), credentialProfiles = await this.credentialReport(force);
     const inventory = credentialProfiles ? { ...probed, credentialProfiles } : probed;
     this.inventory = inventory;
@@ -475,7 +522,8 @@ export class RuntimeClient {
     return inventory;
   }
   /** Testable command surface. Mutation identity is committed before calling the native bridge. */
-  async operation(operation: string, payload: Record<string, unknown>): Promise<unknown> {
+  operation(operation: string, payload: Record<string, unknown>): Promise<unknown> { return this.activity.run(() => this.ownedOperation(operation, payload)); }
+  private async ownedOperation(operation: string, payload: Record<string, unknown>): Promise<unknown> {
     if (operation === "probe") {
       if (Object.keys(payload).some(key => key !== "force") || (payload.force !== undefined && typeof payload.force !== "boolean")) throw new Error("Invalid discovery request");
       return this.refreshInventory(payload.force === true);
@@ -544,6 +592,60 @@ export class RuntimeClient {
       this.update(failed); return failed;
     }
   }
+  private locallyIdle(): boolean {
+    return this.activity.pending === 0 && this.active.size === 0 && !this.options.store.blocked()
+      && this.bridge.idleForUpdate?.() === true && this.pendingTools.size === 0 && this.pendingPaneTools.size === 0
+      && !(this.paneOpening && !this.paneHost) && (this.socket?.bufferedAmount ?? 1) === 0;
+  }
+  private updateRpc(phase: RuntimeUpdateClientPhase, id: string, phases: RuntimeUpdateServerPhase[]): Promise<RuntimeUpdateServerPhase> {
+    if (!this.welcomed || !this.updateProtocol || this.socket?.readyState !== WebSocket.OPEN || this.updateWait) return Promise.reject(Error("Runtime update negotiation is unavailable"));
+    return new Promise((accept, reject) => {
+      const pending = { id, phases, accept, reject, timer: setTimeout(() => {
+        if (this.updateWait === pending) this.updateWait = undefined;
+        reject(Error("Runtime update acknowledgement is unconfirmed"));
+      }, 10_000) };
+      pending.timer.unref(); this.updateWait = pending;
+      try { this.send({ v: 1, type: "update.control", id, bootId: this.bootId, generation: this.generation, phase }); }
+      catch (error) { this.updateWait = undefined; clearTimeout(pending.timer); reject(error); }
+    });
+  }
+  /** Called only by the local supervisor. A timeout or disconnect never authorizes process replacement. */
+  async prepareUpdate(id: string): Promise<boolean> {
+    if (!validRuntimeUpdateId(id) || !this.options.managedUpdate || this.trialFence || this.preparingUpdate || !this.online() || !this.updateProtocol) return false;
+    const socket = this.socket!, generation = this.generation;
+    const current = () => !this.stopped && this.socket === socket && socket.readyState === WebSocket.OPEN && this.generation === generation;
+    const fence = this.activity.tryFence(id, current, () => this.locallyIdle());
+    if (!fence) return false;
+    this.preparingUpdate = true; let committed = false;
+    try {
+      if (await this.updateRpc("prepare", id, ["prepared", "busy", "cancelled"]) !== "prepared") return false;
+      if (this.options.drainPaneHostForUpdate) await this.options.drainPaneHostForUpdate(() => fence.current());
+      else {
+        const { RuntimePaneLink } = await import("./runtime-pane-link.js");
+        const existing = this.paneHost instanceof RuntimePaneLink && this.paneHost.connected() ? this.paneHost : undefined;
+        if (!existing && (this.options.createPaneHost || this.options.openPaneLink)) throw Error("Injected pane host requires its own positive idle proof");
+        await RuntimePaneLink.drainExistingForUpdate({ directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
+          online: () => current(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, mcp: (body, owned) => this.paneMcp(body, owned) }, () => fence.current(), existing);
+      }
+      if (!fence.current() || !this.locallyIdle()) return false;
+      if (await this.updateRpc("ready", id, ["commit", "busy", "cancelled"]) !== "commit") return false;
+      fence.commit(); committed = true;
+      await this.stop(); return true;
+    } catch (error) { if (committed) throw error; return false; }
+    finally {
+      this.preparingUpdate = false;
+      if (!committed) {
+        try { if (!current() || await this.updateRpc("cancel", id, ["cancelled", "commit"]) !== "cancelled") socket.terminate(); }
+        catch { socket.terminate(); }
+        fence.release();
+      }
+    }
+  }
+  /** The parent persists activation intent before this call; an unconfirmed answer is never rollback permission. */
+  async activateTrial(id: string): Promise<boolean> {
+    if (this.trialFence?.id !== id || !this.locallyIdle()) return false;
+    return await this.updateRpc("activate", id, ["activated", "busy", "cancelled"]) === "activated";
+  }
   private async openMcp(runId: string, tools: string[]): Promise<NativeMcpConnection> {
     if (!this.mcpOpening) this.mcpOpening = new Promise<number>((accept, reject) => {
       const server = this.mcpServer = createServer((req, res) => {
@@ -553,6 +655,13 @@ export class RuntimeClient {
         if (req.method !== "POST" || req.url !== "/agent" || req.headers.origin !== undefined || req.headers.cookie !== undefined
           || !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress ?? "") || !entry
           || !this.active.has(entry.runId) || !this.online()) { req.resume(); reply(403, { error: "Runtime MCP capability is unavailable" }); return; }
+        let leave: () => void;
+        try { leave = this.activity.enter(); } catch { req.resume(); reply(503, { error: "Runtime update is pending" }); return; }
+        const finished = new Promise<void>(done => {
+          const settle = () => { res.off("finish", settle); res.off("close", settle); done(); };
+          res.once("finish", settle); res.once("close", settle);
+          if (res.destroyed || res.writableFinished) settle();
+        });
         void jsonBody(req).then(async body => {
           if (!object(body) || body.op !== "native-mcp" || !["tools/list", "tools/call"].includes(String(body.method))
             || !object(body.params) || Object.keys(body).some(key => !["op", "method", "params", "callId"].includes(key))) throw new Error("Invalid runtime MCP request");
@@ -562,7 +671,7 @@ export class RuntimeClient {
           if (!this.active.has(entry.runId) || !this.online()) { reply(401, { error: "Runtime MCP capability expired" }); return; }
           if (Buffer.byteLength(JSON.stringify(result) ?? "") > MAX_TOOL) throw new Error("Runtime MCP result is too large");
           reply(200, result);
-        }).catch(() => reply(403, { error: "Runtime MCP request was refused or its execution expired" }));
+        }).catch(() => reply(403, { error: "Runtime MCP request was refused or its execution expired" })).finally(async () => { await finished; leave(); });
       });
       server.on("error", reject);
       server.listen(0, "127.0.0.1", () => { const address = server.address(); if (!address || typeof address === "string") { reject(new Error("Runtime MCP could not bind")); return; } this.mcpPort = address.port; accept(address.port); });
@@ -586,9 +695,16 @@ export class RuntimeClient {
     for (const pending of this.pendingPaneTools.values()) { clearTimeout(pending.timer); pending.reject(Error("Pane MCP disconnected; no call was replayed")); }
     this.pendingPaneTools.clear();
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
-  async stop(options:{retirePanes?:boolean}={}): Promise<void> {
-    if (this.stopped) return;
+  stop(options:{retirePanes?:boolean}={}): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    if (this.stopped) return Promise.resolve();
     this.stopped = true; this.welcomed = false;
+    this.activity.close();
+    // Own cleanup before callbacks (bridge.close, pane cleanup) can re-enter stop().
+    return this.stopPromise = Promise.resolve().then(() => this.stopOwned(options));
+  }
+  private async stopOwned(options:{retirePanes?:boolean}): Promise<void> {
+    if (this.updateWait) { const pending = this.updateWait; this.updateWait = undefined; clearTimeout(pending.timer); pending.reject(Error("Runtime update stopped")); }
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.graceTimer) clearTimeout(this.graceTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
@@ -617,9 +733,9 @@ export class RuntimeClient {
       if (old) this.update({ ...old.task, status: "failed", finishedAt: Date.now(), outcomeConfirmed: false,
         error: "Runtime stopped before native process shutdown was confirmed. Inspect processes before recovery." });
     }
-    this.closed = true;
     if (this.mcpServer) { const server = this.mcpServer; this.mcpServer = null; server.closeAllConnections(); await new Promise<void>(done => server.close(() => done())); }
     this.unlock?.(); this.unlock = null;
+    this.closed = true;
     for (const done of this.stoppedListeners) done(); this.stoppedListeners.clear();
   }
 }

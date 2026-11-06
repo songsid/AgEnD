@@ -16,7 +16,7 @@ import { onPrefsChanged } from "/assets/app-prefs.js";
 import { safeMode } from "/assets/owner-css.js";
 import { setThemesShown, themeImageUrl, themesShown, themesStore } from "/assets/app-themes.js";
 import { markMotionNoteShown, motionBlocked, motionNoteDue, onMotionChange, setFollowsReducedMotion } from "/assets/fx-motion.js";
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 
 export const AMBIENT_CAPS = { loop: 24, burst: 16, bursts: 3 };
 const LOOP_PRESETS = ["fall", "rise", "twinkle"];

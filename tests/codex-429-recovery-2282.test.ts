@@ -149,7 +149,7 @@ describe("#2282 real daemon + lifecycle, all process/pane boundaries inert", () 
   it("quota after older429 history pauses without arming or spending a transient retry", async () => {
     const r = rig(); await r.poll(); r.screen.text = fixture("insufficient-quota"); await r.poll();
     expect(r.events[0]).toMatchObject({ type: "quota", action: "pause" });
-    expect(r.lc.pause).toHaveBeenCalledWith("w", "error"); expect(r.arm).not.toHaveBeenCalled();
+    expect(r.lc.pause).toHaveBeenCalledWith("w", "quota"); expect(r.arm).not.toHaveBeenCalled();
     expect(r.lc.rateLimitNudgeAttempts.size).toBe(0); await r.poll(180_000); expect(r.sent).toEqual([]); r.stop();
   });
   it("a successful later turn makes the old error history, never another recovery", async () => {

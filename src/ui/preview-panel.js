@@ -13,16 +13,16 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
-import "./chat-render.js";
-import "./preview.js";
-import { loadHtmlAttachment } from "./html-attachment.js";
-import { chatTime, onDayChange } from "./chat-time.js";
+import "/assets/chat-render.js";
+import "/assets/preview.js";
+import { loadHtmlAttachment } from "/assets/html-attachment.js";
+import { chatTime, onDayChange } from "/assets/chat-time.js";
 import { PanelActions } from "./preview-panel-actions.js";
 import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./preview-versions.js";
 import { pagesOf, pageIdOf } from "./preview-pages.js";
 import { WorkspacePanel } from "./workspace-panel.js";
-import { drawMarkdown, TEXT_CARD_MAX } from "./chat-thread.js";
-import "./chat-md-strings.js";   // M-2448: the Markdown panel's own words (an older cached chat-strings.js lacks them)
+import { drawMarkdown, TEXT_CARD_MAX } from "/assets/chat-thread.js";
+import "/assets/chat-md-strings.js";   // M-2448: the Markdown panel's own words (an older cached chat-strings.js lacks them)
 
 export { htmlTitle };
 

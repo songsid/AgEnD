@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
+import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, isUsableNativeBinaryFile, isUsableNativeBinarySize, npmNativeExecutable, npmNativeShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
 
 afterEach(() => vi.unstubAllEnvs());
 const workspaces: string[]=[];
@@ -140,6 +140,78 @@ describe("native Node shims and environment", () => {
     expect(npmCliShimTarget("codex", shim.replace("node_modules", "..\\node_modules"))).toBeNull();
     expect(npmCliShimTarget("kiro-cli", 'SET ELECTRON_RUN_AS_NODE=1\n"%dp0%\\..\\Kiro.exe" cli.js %*')).toBeNull();
     expect(npmCliShimTarget("grok", shim)).toBeNull();
+  });
+
+  describe("npm Claude Code", () => {
+    const legacy = '@ECHO off\nSET "_prog=node"\n"%_prog%" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*';
+    const modern = '@ECHO off\nGOTO start\n:find_dp0\nSET dp0=%~dp0\nEXIT /b\n:start\nSETLOCAL\nCALL :find_dp0\n\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\n';
+    const dir = "C:\\Users\\u\\AppData\\Roaming\\npm";
+    const pkg = `${dir}\\node_modules\\@anthropic-ai\\claude-code`;
+    const nested = `${pkg}\\node_modules\\@anthropic-ai\\claude-code-win32-x64\\claude.exe`;
+    const bin = `${pkg}\\bin\\claude.exe`;
+    const fs = (files: Record<string, number>) => [(p: string) => p in files, (p: string) => files[p]] as const;
+    it("keeps the legacy cli.js shim on the node path and recognizes the new native shim", () => {
+      expect(npmCliShimTarget("claude-code", legacy)).toBe("node_modules/@anthropic-ai/claude-code/cli.js");
+      expect(npmNativeShimTarget("claude-code", legacy)).toBeNull();
+      expect(npmCliShimTarget("claude-code", modern)).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern)).toBe("node_modules/@anthropic-ai/claude-code/bin/claude.exe");
+    });
+    it("only recognizes the exact known path shape, for Claude Code only", () => {
+      expect(npmNativeShimTarget("codex", modern)).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern.replace("claude-code", "evil"))).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern.replace("node_modules", "..\\node_modules"))).toBeNull();
+      expect(npmNativeShimTarget("claude-code", '@echo off\ncalc.exe "%dp0%\\other.exe" %*')).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern + " ".repeat(33 * 1024))).toBeNull();
+    });
+    it("prefers the nested platform executable and ignores the ignore-scripts placeholder", () => {
+      const [exists, size] = fs({ [nested]: 200_000_000, [bin]: 500 });
+      expect(npmNativeExecutable("claude-code", dir, exists, size, "x64")).toBe(nested);
+    });
+    it("uses bin\\claude.exe when it is the real binary", () => {
+      const [exists, size] = fs({ [bin]: 200_000_000 });
+      expect(npmNativeExecutable("claude-code", dir, exists, size, "x64")).toBe(bin);
+    });
+    it("finds a hoisted platform package", () => {
+      const hoisted = `${dir}\\node_modules\\@anthropic-ai\\claude-code-win32-x64\\claude.exe`;
+      const [exists, size] = fs({ [hoisted]: 200_000_000, [bin]: 500 });
+      expect(npmNativeExecutable("claude-code", dir, exists, size, "x64")).toBe(hoisted);
+    });
+    const MiB = 1024 * 1024;
+    const arm = `${pkg}\\node_modules\\@anthropic-ai\\claude-code-win32-arm64\\claude.exe`;
+    it("selects the platform package for the machine architecture", () => {
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [nested]: 200 * MiB, [arm]: 200 * MiB }), "arm64")).toBe(arm);
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [nested]: 200 * MiB }), "arm64")).toBe(nested);
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [arm]: 200 * MiB }), "x64")).toBeNull();
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [nested]: 200 * MiB, [arm]: 200 * MiB }), "x64")).toBe(nested);
+    });
+    it("treats 1 MiB as the smallest real binary", () => {
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [nested]: MiB - 1 }), "x64")).toBeNull();
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [nested]: MiB }), "x64")).toBe(nested);
+      expect(isUsableNativeBinarySize("claude-code", MiB - 1)).toBe(false);
+      expect(isUsableNativeBinarySize("claude-code", MiB)).toBe(true);
+      expect(isUsableNativeBinarySize("codex", 10)).toBe(true);
+    });
+    it("treats a file whose size cannot be read as not usable instead of throwing", () => {
+      const gone = () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); };
+      expect(isUsableNativeBinaryFile("claude-code", bin, gone)).toBe(false);
+      expect(isUsableNativeBinaryFile("claude-code", bin, () => 500)).toBe(false);
+      expect(isUsableNativeBinaryFile("claude-code", bin, () => 200 * MiB)).toBe(true);
+      expect(npmNativeExecutable("claude-code", dir, () => true, gone, "x64")).toBeNull();
+    });
+    it("returns null when a hoisted package is a placeholder and the nested one is missing", () => {
+      const hoisted = `${dir}\\node_modules\\@anthropic-ai\\claude-code-win32-x64\\claude.exe`;
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [hoisted]: 500 }), "x64")).toBeNull();
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [hoisted]: 500, [bin]: 500 }), "x64")).toBeNull();
+    });
+    it("recognizes a shim with CRLF line endings", () => {
+      expect(npmNativeShimTarget("claude-code", modern.replace(/\n/g, "\r\n"))).toBe("node_modules/@anthropic-ai/claude-code/bin/claude.exe");
+      expect(npmCliShimTarget("claude-code", legacy.replace(/\n/g, "\r\n"))).toBe("node_modules/@anthropic-ai/claude-code/cli.js");
+    });
+    it("reports nothing when only a placeholder or nothing is installed", () => {
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [bin]: 500 }), "x64")).toBeNull();
+      expect(npmNativeExecutable("claude-code", dir, ...fs({}), "x64")).toBeNull();
+      expect(npmNativeExecutable("codex", dir, ...fs({ [bin]: 200_000_000 }), "x64")).toBeNull();
+    });
   });
 
   it("drops inherited Linux instance paths and Node injection while keeping Windows login configuration", () => {

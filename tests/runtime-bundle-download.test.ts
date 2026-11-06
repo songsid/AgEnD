@@ -61,6 +61,7 @@ describe("Windows runtime download archive",()=>{
     writeFileSync(join(f.wsDirectory,"lib","private-extra.js"),canary);
     const bundle=createRuntimeBundle(f),files=unzip(bundle.bytes);
     expect(bundle.filename).toBe("agend-runtime-windows-2.3.5-preview.1.zip");
+    expect(bundle.version).toBe("2.3.5-preview.1");
     expect(bundle.sha256).toBe(createHash("sha256").update(bundle.bytes).digest("hex"));
     expect([...files.keys()].filter(name=>name.startsWith("agend-runtime/dist/"))).toEqual([...RUNTIME_BUNDLE_MODULES.map(name=>"agend-runtime/dist/"+name), ...GENERAL_KNOWLEDGE_FILES.map(name=>"agend-runtime/dist/general-knowledge/"+name)]);
     expect(files.get("agend-runtime/agend-runtime.cmd")?.toString()).toBe('@echo off\r\nnode.exe "%~dp0dist\\runtime-cli.js" %*\r\n');

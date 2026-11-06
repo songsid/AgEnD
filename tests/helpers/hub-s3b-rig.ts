@@ -19,7 +19,7 @@ import type { HubLinkContext } from "../../src/hub/server.js";
 export const WEB_ORIGIN = "https://hub.example.test";
 export const person = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
 
-export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = {}) {
+export async function s3bRig(opts: { now?: () => number; webOrigin?: string; administrator?: PersonKey } = {}) {
   const webOrigin = opts.webOrigin ?? WEB_ORIGIN;
   const db = new Database(":memory:");
   migrateHubTransportStore(db);
@@ -27,6 +27,7 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = 
   db.exec("CREATE TABLE audit_rows (value TEXT NOT NULL)");
   const live = new WeakMap<HubTx, Database.Database>();
   let auditFails = false;
+  let auditFailAction: string | undefined;
   const audits: HubAuditRecord[] = [];
   const uow = {
     atomic<T>(work: (tx: HubTx) => T): T {
@@ -40,7 +41,7 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = 
   const sql = (tx: HubTx) => { const d = live.get(tx); if (!d) throw new Error("tx is not running"); return d; };
   const audit = {
     append(tx: HubTx, record: HubAuditRecord) {
-      if (auditFails) throw new Error("disk full");
+      if (auditFails && (!auditFailAction || auditFailAction === record.action)) throw new Error("disk full");
       sql(tx).prepare("INSERT INTO audit_rows VALUES(?)").run(JSON.stringify(record));
       audits.push(record);
     },
@@ -75,8 +76,8 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = 
     },
     async close() {},
   };
-  const addPerson = (login: string, name = login) => { const key = person(); people.set(login, { key, login, password: `pw-${login}`, name, eligible: true }); return key; };
-  const admin = addPerson("admin", "Hub Admin");
+  const addPerson = (login: string, name = login, key = person()) => { people.set(login, { key, login, password: `pw-${login}`, name, eligible: true }); return key; };
+  const admin = addPerson("admin", "Hub Admin", opts.administrator);
 
   const hubId = randomUUID();
   const keys = generateKeyPairSync("ed25519");
@@ -116,7 +117,7 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = 
   /** An authenticated member link as S1 would hand it over. */
   const fleets = new Map<string, HubLinkContext & { alive: boolean }>();
   const link = (fleetId: string, owner: PersonKey, linkEpoch = 1) => {
-    const l = { fleetId, owner, linkEpoch, alive: true, current: () => l.alive && enabled } as HubLinkContext & { alive: boolean };
+    const l = { fleetId, owner, linkEpoch, features: new Set<string>(), alive: true, current: () => l.alive && enabled } as HubLinkContext & { alive: boolean };
     fleets.set(fleetId, l); return l;
   };
   const frame = <T extends string, P>(type: T, payload: P, l: HubLinkContext) => ({ v: 1 as const, type, requestId: randomUUID(), linkEpoch: l.linkEpoch, payload });
@@ -127,7 +128,7 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string } = 
     setEligible: (login: string, v: boolean) => { people.get(login)!.eligible = v; },
     /** The directory renames an account (its key stays); the old login may later be given to someone else. */
     rename: (from: string, to: string) => { const p = people.get(from)!; people.delete(from); p.login = to; p.password = `pw-${to}`; people.set(to, p); },
-    setAuditFails: (v: boolean) => { auditFails = v; },
+    setAuditFails: (v: boolean, action?: string) => { auditFails = v; auditFailAction = action; },
     setTransport: (v: boolean) => { transportOn = v; },
     setSendFails: (v: boolean) => { sendFails = v; },
     disable: () => { enabled = false; },

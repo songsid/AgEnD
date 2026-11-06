@@ -722,8 +722,12 @@ export class TaskBoard {
     return toProject(row);
   }
 
+  /**
+   * A person or an instance creates a project (#3195, the user's decision 9af8d799: agents organize the board). Its
+   * lead, and every later change to it (name, description, archiving: updateProject), stay a person's.
+   */
   createProject(actor: Actor, input: { name: string; description?: string; leadInstance?: string | null }): Project {
-    this.personOnly(actor, "create a project");
+    if (!isPerson(actor) && input.leadInstance) this.personOnly(actor, "set a project's lead");
     return this.tx(() => {
       const name = this.checkProjectName(input.name, null);
       const description = checkText("the description", input.description ?? "", CARD_LIMITS.projectDescription);
@@ -1451,8 +1455,9 @@ export class TaskBoard {
         set("deps", next, "dependsOn", (v) => v.map((d) => this.codeOf(d)));
       }
       if (patch.projectId !== undefined && patch.projectId !== card.projectId) {
-        if (ai) throw new TaskBoardError("forbidden", "only a person can move a main task to another project");
         if (card.kind !== "main") throw new TaskBoardError("invalid", "a sub task follows its main task's project; move the main task", "sub_project");
+        // #3195 (9af8d799): an instance moves a main task between projects when it may edit that card; a person always.
+        if (ai && !this.canEdit(card, actor)) throw new TaskBoardError("forbidden", `${card.code} belongs to ${card.assignee}; only its assignee, its creator, its dispatcher or a person can move it to another project`);
         const projectId = this.projectForMain(patch.projectId);
         set("projectId", projectId);
         this.db.prepare("UPDATE tasks SET project_id = ? WHERE parent_id = ?").run(projectId, card.uuid);

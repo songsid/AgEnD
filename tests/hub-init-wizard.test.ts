@@ -1,7 +1,7 @@
 /**
  * S-48 `agend hub init` wizard (hub.md §5; #3095 "Installing a Hub" and "Hub and a personal fleet on one machine"
  * addenda). Scripted terminal, real initializer and files in a temporary home, fake S1 identity and fake directory.
- * The directory sign-in against the real S2 module and the fake LDAP rig is in hub-init-rig.test.ts.
+ * The directory lookup against the real S2 module and the fake LDAP rig is in hub-init-rig.test.ts.
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { verify, X509Certificate } from "node:crypto";
@@ -44,7 +44,7 @@ function service(installed = false) {
 function setup(opts: { home?: string; directory?: Parameters<typeof fakeDirectory>[0]; serviceInstalled?: boolean; generate?: boolean } = {}) {
   const home = opts.home ?? tempDir("agend-hubinit-home-");
   const identity = new FakeIdentity();
-  const dir = fakeDirectory(opts.directory ?? { [`alice:${USER_PW}`]: { ok: true, person: ADMIN } });
+  const dir = fakeDirectory(opts.directory ?? { alice: { ok: true, person: ADMIN } });
   const svc = service(opts.serviceInstalled ?? false);
   const initializer = createHubInitializer({ home, identity, probe: { pidAlive: () => false } });
   const run = (answers: Parameters<typeof scriptedIO>[0]) => {
@@ -60,7 +60,7 @@ function setup(opts: { home?: string; directory?: Parameters<typeof fakeDirector
 const addresses = ["Team Hub", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443"];
 const tls = () => [certs.cert, certs.key];
 const directoryAnswers = () => ["corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "dc=example,dc=test", "cn=reader,dc=example,dc=test", { hidden: BIND_PW }];
-const signIn = (pw = USER_PW) => ["alice", { hidden: pw }];
+const selectAdmin = () => ["alice"];
 const tail = ["y", "30", "180", "initialize", "install"];
 
 function allFiles(dir: string): string[] {
@@ -72,7 +72,7 @@ function allFiles(dir: string): string[] {
 describe("agend hub init — the whole flow", () => {
   it("sets up a dedicated Hub: config with enabled last, private files, sealed manifest, service on request, pairing steps", async () => {
     const t = setup();
-    const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), ...tail]);
+    const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
     expect(io.remaining()).toBe(0);
 
@@ -124,13 +124,13 @@ describe("agend hub init — the whole flow", () => {
 
   it("asks for the service with an exact word: anything else installs nothing; an installed service is not reinstalled", async () => {
     const skip = setup();
-    const r1 = await skip.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize", "y"]);
+    const r1 = await skip.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), "y", "30", "180", "initialize", "y"]);
     expect(r1.outcome).toBe("initialized");
     expect(skip.svc.s.installs).toBe(0);
     expect(r1.io.text()).toContain("Service not installed");
 
     const already = setup({ serviceInstalled: true });
-    const r2 = await already.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize"]);
+    const r2 = await already.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), "y", "30", "180", "initialize"]);
     expect(r2.outcome).toBe("initialized");
     expect(already.svc.s.installs).toBe(0);
     expect(r2.io.text()).toContain("it was not reinstalled");
@@ -138,22 +138,23 @@ describe("agend hub init — the whole flow", () => {
 
   it("writes nothing when the operator does not type the confirmation word", async () => {
     const t = setup();
-    const { outcome } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "y", "30", "180", "yes"]);
+    const { outcome } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), "y", "30", "180", "yes"]);
     expect(outcome).toBe("cancelled");
     expect(existsSync(join(t.home, "hub"))).toBe(false);
     expect(existsSync(join(t.home, "fleet.yaml"))).toBe(false);
   });
 
-  it("writes nothing when the operator declines to become the administrator", async () => {
+  it("writes nothing when the operator declines the administrator designation", async () => {
     const t = setup();
-    const { outcome } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "n"]);
+    const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), "n", "30", "180", "initialize", "no"]);
     expect(outcome).toBe("cancelled");
+    expect(io.remaining()).toBe(4);
     expect(readdirSync(t.home)).toEqual([]);
   });
 
   it("refuses to touch an already initialized Hub", async () => {
     const t = setup();
-    expect((await t.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), ...tail])).outcome).toBe("initialized");
+    expect((await t.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail])).outcome).toBe("initialized");
     const before = readFileSync(join(t.home, "fleet.yaml"), "utf8");
     const again = await t.run([]);
     expect(again.outcome).toBe("refused");
@@ -168,8 +169,8 @@ describe("an interrupted setup", () => {
     const identity = new FakeIdentity();
     const cut = createHubInitializer({ home, identity, probe: { pidAlive: () => false }, afterStage: (s) => { if (s === "secret") throw new Error("power cut"); } });
     const svc = service();
-    const dir = fakeDirectory({ [`alice:${USER_PW}`]: { ok: true, person: ADMIN } });
-    const first = scriptedIO([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize"]);
+    const dir = fakeDirectory({ alice: { ok: true, person: ADMIN } });
+    const first = scriptedIO([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), "y", "30", "180", "initialize"]);
     expect(await runHubInitWizard({ checkNetwork: async () => [], io: first.io, home, initializer: cut, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control })).toBe("refused");
     expect(first.text()).toContain("power cut");
     expect(first.text()).toContain("The Hub stays off.");
@@ -219,7 +220,7 @@ describe("same OS account as an existing fleet", () => {
   it("with “same account” typed, sets up a same-user pilot beside the fleet, keeping its config", async () => {
     const home = withFleet();
     const t = setup({ home });
-    const { outcome, io } = await t.run(["same account", ...addresses, ...tls(), ...directoryAnswers(), ...signIn(), ...tail]);
+    const { outcome, io } = await t.run(["same account", ...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
     expect(io.text()).toContain("Reminder: same account as an existing fleet");
     const text = readFileSync(join(home, "fleet.yaml"), "utf8");
@@ -230,49 +231,57 @@ describe("same OS account as an existing fleet", () => {
   });
 });
 
-describe("directory: LDAPS only, and the test sign-in", () => {
+describe("directory: LDAPS only, and administrator lookup", () => {
+  it("fails closed when the directory adapter has no initialization lookup, without a personal sign-in fallback", async () => {
+    const t = setup(), create = t.dir.create;
+    t.dir.create = (...args) => { const d = create(...args); delete d.lookupForInitialization; d.signIn = async () => { throw Error("personal sign-in fallback forbidden"); }; return d; };
+    const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), "alice", "q"]);
+    expect(outcome).toBe("cancelled"); expect(io.remaining()).toBe(0);
+    expect(io.text()).toContain("Could not reach the directory"); expect(t.dir.calls).toEqual([]);
+    expect(readdirSync(t.home)).toEqual([]);
+  });
   it("refuses an ldap:// address and asks again", async () => {
     const t = setup();
     const plaintext = ["corp", "ldap://directory.example.test", "", "2", "dc=example,dc=test", "cn=reader,dc=example,dc=test", "r"];
-    const { outcome, io } = await t.run([...addresses, ...tls(), ...plaintext, ...directoryAnswers(), ...signIn(), ...tail]);
+    const { outcome, io } = await t.run([...addresses, ...tls(), ...plaintext, ...directoryAnswers(), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
     expect(io.text()).toMatch(/ldap:\/\/ is plaintext/);
   });
 
-  it("shows why a test sign-in failed (wrong password, disabled, unreachable or bad certificate) and lets the operator retry", async () => {
+  it("shows why administrator lookup failed (unknown, disabled, unreachable or bad certificate) and lets the operator retry", async () => {
     const t = setup({
       directory: {
-        [`alice:${USER_PW}`]: { ok: true, person: ADMIN },
+        alice: { ok: true, person: ADMIN },
         "bob": { ok: false, reason: "not-eligible" },
         "carol": { unavailable: "Error: self-signed certificate in certificate chain" },
       },
     });
     const { outcome, io } = await t.run([
       ...addresses, ...tls(), ...directoryAnswers(),
-      "alice", { hidden: "wrong" }, "r",
-      "bob", { hidden: USER_PW }, "r",
-      "carol", { hidden: USER_PW }, "r",
-      ...signIn(), ...tail,
+      "unknown", "r",
+      "bob", "r",
+      "carol", "r",
+      ...selectAdmin(), ...tail,
     ]);
     expect(outcome).toBe("initialized");
     const text = io.text();
-    expect(text).toContain("The directory refused that login or password.");
+    expect(text).toContain("No eligible account was found for that directory login.");
     expect(text).toContain("That account is disabled or expired in the directory.");
     expect(text).toContain("its certificate could not be verified: Error: self-signed certificate in certificate chain");
   });
 
-  it("stops after too many failed sign-ins without writing anything", async () => {
+  it("stops after too many failed lookups without writing anything", async () => {
     const t = setup();
-    const fail = ["alice", { hidden: "wrong" }];
+    const fail = ["unknown"];
     const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...fail, "r", ...fail, "r", ...fail, "r", ...fail, "r", ...fail]);
     expect(outcome).toBe("cancelled");
     expect(io.text()).toContain("Too many attempts");
     expect(readdirSync(t.home)).toEqual([]);
   });
 
-  it("can go back and change the directory settings after a failed sign-in", async () => {
+  it("can go back and change the directory settings after a failed lookup", async () => {
     const t = setup();
-    const { outcome } = await t.run([...addresses, ...tls(), ...directoryAnswers(), "alice", { hidden: "wrong" }, "e", ...directoryAnswers(), ...signIn(), ...tail]);
+    const { outcome } = await t.run([...addresses, ...tls(), ...directoryAnswers(), "unknown", "e", ...directoryAnswers(), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
   });
 });
@@ -292,7 +301,7 @@ describe("browser HTTPS certificate", () => {
       ...addresses,
       certs.wrongHost, certs.wrongHostKey, "r",
       certs.cert, certs.otherKey, "r",
-      ...tls(), ...directoryAnswers(), ...signIn(), ...tail,
+      ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail,
     ]);
     expect(outcome).toBe("initialized");
     expect(io.text()).toContain("host-not-covered");
@@ -301,7 +310,7 @@ describe("browser HTTPS certificate", () => {
 
   it("warns about a self-signed certificate and needs a yes to use it", async () => {
     const t = setup();
-    const { outcome, io } = await t.run([...addresses, certs.selfSigned, certs.selfSignedKey, "n", ...tls(), ...directoryAnswers(), ...signIn(), ...tail]);
+    const { outcome, io } = await t.run([...addresses, certs.selfSigned, certs.selfSignedKey, "n", ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
     expect(io.text()).toContain("This certificate is self-signed");
   });
@@ -313,7 +322,7 @@ describe("addresses, listeners and retention", () => {
     const { outcome, io } = await t.run([
       "Team Hub", "http://hub.example.test", "https://hub.example.test:8443", "https://hub.example.test:8443", "",
       "0.0.0.0:8443", "192.0.2.10:8443", "192.0.2.10:8443", "192.0.2.10:9443",
-      ...tls(), ...directoryAnswers(), ...signIn(), "y", "0", "3651", "thirty", "30", "180", "initialize", "no",
+      ...tls(), ...directoryAnswers(), ...selectAdmin(), "y", "0", "3651", "thirty", "30", "180", "initialize", "no",
     ]);
     expect(outcome).toBe("initialized");
     const text = io.text();
@@ -328,7 +337,7 @@ describe("addresses, listeners and retention", () => {
     setLocale(locale);
     try {
       const t = setup();
-      const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "y", "", "", "initialize", "no"]);
+      const { outcome, io } = await t.run([...addresses, ...tls(), ...directoryAnswers(), ...selectAdmin(), "y", "", "", "initialize", "no"]);
       expect(outcome).toBe("initialized");
       expect(io.remaining()).toBe(0);
       expect(io.text()).toContain("[7]"); expect(io.text()).toContain("[30]");
@@ -340,7 +349,7 @@ describe("addresses, listeners and retention", () => {
 
   it("a loopback address on a dedicated Hub needs an explicit yes", async () => {
     const t = setup();
-    const { outcome, io } = await t.run(["Team Hub", "https://127.0.0.1:8443", "n", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443", ...tls(), ...directoryAnswers(), ...signIn(), ...tail]);
+    const { outcome, io } = await t.run(["Team Hub", "https://127.0.0.1:8443", "n", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443", ...tls(), ...directoryAnswers(), ...selectAdmin(), ...tail]);
     expect(outcome).toBe("initialized");
     expect(io.text()).toContain("only works on this computer");
   });
@@ -361,7 +370,7 @@ describe("browser certificate generation in init", () => {
     setLocale(locale);
     try {
       const t = setup({ generate: true, serviceInstalled: true });
-      const r = await t.run([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize"]);
+      const r = await t.run([...addresses, "generate", "y", ...directoryAnswers(), ...selectAdmin(), "y", "30", "180", "initialize"]);
       expect(r.outcome).toBe("initialized"); expect(r.io.remaining()).toBe(0);
       expect(readdirSync(t.home).some(name => name.startsWith(".hub-browser-"))).toBe(false);
       const pem = readFileSync(join(t.home, "hub/web-tls/cert.pem"), "utf8");
@@ -372,7 +381,7 @@ describe("browser certificate generation in init", () => {
     } finally { setLocale("en"); }
   });
   it("removes generated material if its warning or the later administrator confirmation is declined", async () => {
-    for (const answers of [[...addresses, "generate", "n", ""], [...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "n"]]) {
+    for (const answers of [[...addresses, "generate", "n", ""], [...addresses, "generate", "y", ...directoryAnswers(), ...selectAdmin(), "n"]]) {
       const t = setup({ generate: true });
       expect((await t.run(answers)).outcome).toBe("cancelled");
       expect(readdirSync(t.home)).toEqual([]); expect(t.identity.provisions).toBe(0);
@@ -380,7 +389,7 @@ describe("browser certificate generation in init", () => {
   });
   it("keeps the existing import path when generation is unavailable and never deletes imported files", async () => {
     const before = readFileSync(certs.cert), key = readFileSync(certs.key), t = setup();
-    const r = await t.run([...addresses, "generate", ...tls(), ...directoryAnswers(), ...signIn(), "n"]);
+    const r = await t.run([...addresses, "generate", ...tls(), ...directoryAnswers(), ...selectAdmin(), "n"]);
     expect(r.outcome).toBe("cancelled"); expect(r.io.text()).toContain("generation is unavailable");
     expect(readdirSync(t.home)).toEqual([]); expect(readFileSync(certs.cert)).toEqual(before); expect(readFileSync(certs.key)).toEqual(key);
   });
@@ -397,7 +406,7 @@ describe("browser certificate generation in init", () => {
     const t = setup(), generated: HubBrowserMaterial[] = [];
     try {
       const initializer = createHubInitializer({ home: t.home, identity: t.identity, probe: { pidAlive: () => false } });
-      const io = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "n"]);
+      const io = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...selectAdmin(), "n"]);
       const outcome = runHubInitWizard({ checkNetwork: async () => [], io: io.io, home: t.home,
         initializer: { ...initializer, inspect: async () => {
           if (generated.length) throw Error("inspection unavailable");
@@ -415,9 +424,9 @@ describe("browser certificate generation in init", () => {
   });
   it("retains exact generated files after interruption and cleans them only after the same plan resumes", async () => {
     const home = tempDir("agend-hubinit-generated-cut-"), identity = new FakeIdentity(), svc = service();
-    const dir = fakeDirectory({ [`alice:${USER_PW}`]: { ok: true, person: ADMIN } });
+    const dir = fakeDirectory({ alice: { ok: true, person: ADMIN } });
     const cut = createHubInitializer({ home, identity, probe: { pidAlive: () => false }, afterStage: stage => { if (stage === "secret") throw Error("cut"); } });
-    const first = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize"]);
+    const first = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...selectAdmin(), "y", "30", "180", "initialize"]);
     const deps = { home, createDirectory: dir.create, readFile: (path: string) => readFileSync(path, "utf8"), service: svc.control,
       createBrowserCertificate: (origin: string) => createBrowserCertificate(home, origin),
       recoverBrowserCertificate: (plan: HubInitPlan) => recoverBrowserCertificate(home, plan.webOrigin, plan.webTls) };

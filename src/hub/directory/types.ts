@@ -45,6 +45,11 @@ export type SignInResult =
   | { readonly ok: true; readonly person: DirectoryPerson }
   | { readonly ok: false; readonly reason: SignInRefusal };
 
+/** Local initialization only: finding an account does not authenticate it or issue a session. */
+export type InitializationLookupResult =
+  | { readonly ok: true; readonly person: DirectoryPerson }
+  | { readonly ok: false; readonly reason: "bad-input" | "not-found" | "not-eligible" | "unavailable" };
+
 export type IneligibleReason =
   | "gone" // no entry carries this object id any more (deleted, or recreated with a new id)
   | "disabled" // the entry exists but the directory marks it disabled or expired
@@ -58,6 +63,8 @@ export interface HubDirectory {
   readonly realm: string;
   /** Verify a login and password with the directory. The password is used for one bind and never kept. */
   signIn(login: string, password: string): Promise<SignInResult>;
+  /** Narrow service-account lookup for local init, never exposed as a browser lookup endpoint. Missing = unavailable. */
+  lookupForInitialization?(login: string): Promise<InitializationLookupResult>;
   /** Per-request eligibility (design §4): exists, same immutable id, enabled. No cache; unreachable = not eligible. */
   checkEligibility(key: PersonKey): Promise<Eligibility>;
   /** Release the directory; later calls refuse (unavailable). */
