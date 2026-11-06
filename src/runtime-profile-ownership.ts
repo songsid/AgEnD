@@ -10,11 +10,12 @@
  *
  * Built-ins only: part of the Runtime bundle.
  */
-import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
+import { spawn } from "./child-process.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, credentialProfileDirectory, ensureCredentialProfile, forgetCredentialStatus, isCredentialProfileCli, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 
 export const CREATED_PROFILES_FILE = "created.json";
@@ -75,22 +76,32 @@ export function createRuntimeProfile(root: string, cli: unknown, name: unknown):
 }
 
 /** Which of these paths are links or other reparse points. Windows only has more than the lstat answer, so only Windows is asked. */
-export type ReparseInspector = (paths: readonly string[]) => readonly boolean[];
+export type ReparseInspector = (paths: readonly string[]) => readonly boolean[] | Promise<readonly boolean[]>;
 /**
  * Windows: `[IO.File]::GetAttributes` has the ReparsePoint bit (0x400) set for a junction, a symbolic link, a OneDrive placeholder or any other
  * reparse point, which Node's lstat does not always report. The paths go through the child's environment (`|` cannot be in a Windows path), never
- * into a command line. Fail closed: if the answer cannot be read, the caller is told it could not be proven.
+ * into a command line. Asynchronous (a slow PowerShell must not stop the Runtime's connection), its stderr and stdin are discarded (its errors
+ * carry paths), and its environment is the minimum Windows PowerShell 5.1 needs to start: `SystemRoot` and `windir` (module and assembly lookup),
+ * `TEMP`/`TMP` (its own scratch use) and a `PATH` that holds System32 only. Nothing from the Runtime's environment, so no setting of the computer's
+ * own can redirect it. Fail closed: when the answer cannot be read, the caller is told it could not be proven.
  */
-export const windowsReparseInspector: ReparseInspector = paths => {
-  const system = process.env.SystemRoot || "C:\\Windows";
-  const out = execFileSync(join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+export const windowsReparseInspector = (paths: readonly string[]): Promise<readonly boolean[]> => new Promise((done, fail) => {
+  const system = process.env.SystemRoot || "C:\\Windows", temp = process.env.TEMP || process.env.TMP || join(system, "Temp");
+  const child = spawn(join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; foreach ($p in $env:AGEND_CHECK_PATHS.Split('|')) { if (([int][System.IO.File]::GetAttributes($p) -band 0x400) -ne 0) { '1' } else { '0' } }"],
-    { env: { SystemRoot: system, AGEND_CHECK_PATHS: paths.join("|") }, encoding: "utf8", timeout: 20_000, windowsHide: true });
-  const rows = out.split(/\r?\n/).filter(Boolean);
-  if (rows.length !== paths.length || rows.some(row => row !== "0" && row !== "1")) throw new Error("Reparse point check was unreadable");
-  return rows.map(row => row === "1");
-};
+    { env: { SystemRoot: system, windir: system, TEMP: temp, TMP: temp, PATH: join(system, "System32"), AGEND_CHECK_PATHS: paths.join("|") }, stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+  let out = ""; const timer = setTimeout(() => { child.kill(); fail(new Error("Reparse point check timed out")); }, 20_000); timer.unref?.();
+  child.stdout?.on("data", chunk => { out = (out + chunk.toString()).slice(0, 4096); });
+  child.on("error", () => { clearTimeout(timer); fail(new Error("Reparse point check could not start")); });
+  child.on("close", code => {
+    clearTimeout(timer);
+    const rows = out.split(/\r?\n/).filter(Boolean);
+    if (code !== 0 || rows.length !== paths.length || rows.some(row => row !== "0" && row !== "1")) { fail(new Error("Reparse point check was unreadable")); return; }
+    done(rows.map(row => row === "1"));
+  });
+});
 const noReparseInspector: ReparseInspector = paths => paths.map(() => false);
+const NOT_PROVEN = "This computer could not confirm that the profile folder has no link in its path, so nothing is changed. If this keeps happening, Windows PowerShell may be unavailable or restricted (for example by a constrained language mode) for this Windows user";
 const same = (a: string, b: string): boolean => process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
 function notLink(path: string, what: string): void {
   let stat; try { stat = lstatSync(path); } catch { throw new ProfileOwnershipRefusal(`${what} does not exist`, "not_found"); }
@@ -110,12 +121,18 @@ function assertNoLinksInside(directory: string): void {
     }
   }
 }
-export interface OwnedProfileOptions { inspect?: ReparseInspector; /** The Windows user's own sign-in homes, which are never a profile. */ protectedHomes?: readonly string[] }
+export interface OwnedProfileOptions {
+  inspect?: ReparseInspector;
+  /** The Windows user's own sign-in homes, which are never a profile. */
+  protectedHomes?: readonly string[];
+  /** Test seam: runs between the checks and the delete, where a hostile process on the same computer could swap the folder. */
+  afterChecks?: () => void;
+}
 /**
  * The folder of a profile that this Runtime created and that is where it should be, with no link at any level. Throws a
  * ProfileOwnershipRefusal otherwise; nothing is read from or written to the profile.
  */
-export function requireOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): string {
+export async function requireOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): Promise<string> {
   if (!isCredentialProfileCli(cli)) throw new ProfileOwnershipRefusal("Credential profiles on a Windows Runtime support Claude Code only. Codex may keep its sign-in in the Windows Credential Manager, which a profile folder cannot hold or remove, so it is not offered yet", "unsupported");
   let checked: string; try { checked = assertCredentialProfileName(name); } catch { throw new ProfileOwnershipRefusal("That is not a valid credential profile name", "invalid_request"); }
   const directory = credentialProfileDirectory(root, cli, checked);
@@ -126,8 +143,8 @@ export function requireOwnedProfile(pairingDirectory: string, root: string, cli:
   const levels = [pairingDirectory, root, join(root, cli), directory];
   for (const [index, path] of levels.entries()) notLink(path, ["This Runtime's folder", "The credential profile folder", "The CLI's profile folder", `Credential profile "${checked}"`][index]);
   let flags: readonly boolean[];
-  try { flags = (options.inspect ?? (process.platform === "win32" ? windowsReparseInspector : noReparseInspector))(levels); }
-  catch { throw new ProfileOwnershipRefusal("This computer could not confirm that the profile folder has no link in its path, so nothing is changed", "link"); }
+  try { flags = await (options.inspect ?? (process.platform === "win32" ? windowsReparseInspector : noReparseInspector))(levels); }
+  catch { throw new ProfileOwnershipRefusal(NOT_PROVEN, "link"); }
   if (flags.length !== levels.length || flags.some(Boolean)) throw new ProfileOwnershipRefusal("The profile folder or one above it is a link or junction, so nothing is changed there", "link");
   // Where it really is, against where it should be: any redirect not reported above still fails here.
   const real = realpathSync(directory), expected = join(realpathSync(pairingDirectory), "credential-profiles", cli, checked);
@@ -137,11 +154,28 @@ export function requireOwnedProfile(pairingDirectory: string, root: string, cli:
   assertNoLinksInside(directory);
   return directory;
 }
-/** Deletes only `<profile root>\<cli>\<name>` after requireOwnedProfile, then forgets it (record and cached sign-in), and proves it is gone. */
-export function removeOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): void {
-  const directory = requireOwnedProfile(pairingDirectory, root, cli, name, options), kind = cli as CredentialProfileCli, checked = name as string;
-  rmSync(directory, { recursive: true, force: false, maxRetries: 3, retryDelay: 50 });
-  if (existsSync(directory)) throw new Error("The profile folder could not be fully removed");
+/**
+ * Deletes only `<profile root>\<cli>\<name>`, after requireOwnedProfile. The checks and the delete are not one atomic step, and something running as
+ * the same Windows user could swap the folder for a junction in between. So the folder is first RENAMED to a unique name beside it (renaming a
+ * junction renames the junction itself, never what it points to), the renamed thing is checked again (a real folder, no link, no reparse point,
+ * nothing linked inside), and only then deleted. Any failure puts the name back, so the profile is still there to retry. Then the record and the
+ * cached sign-in are forgotten, and the folder is proven gone.
+ */
+export async function removeOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): Promise<void> {
+  const directory = await requireOwnedProfile(pairingDirectory, root, cli, name, options), kind = cli as CredentialProfileCli, checked = name as string;
+  options.afterChecks?.();
+  // A leading dot is not a valid profile name, so the temporary name can never be one, and is never listed or selected.
+  const moved = join(dirname(directory), `.removing-${randomBytes(8).toString("hex")}`);
+  renameSync(directory, moved);
+  const restore = (): void => { try { renameSync(moved, directory); } catch { /* left under its temporary name, which is not a profile */ } };
+  try {
+    notLink(moved, `Credential profile "${checked}"`);
+    let flags: readonly boolean[]; try { flags = await (options.inspect ?? (process.platform === "win32" ? windowsReparseInspector : noReparseInspector))([moved]); } catch { throw new ProfileOwnershipRefusal(NOT_PROVEN, "link"); }
+    if (flags.length !== 1 || flags[0]) throw new ProfileOwnershipRefusal("The profile folder is a link or junction, so nothing is changed there", "link");
+    assertNoLinksInside(moved);
+    rmSync(moved, { recursive: true, force: false, maxRetries: 3, retryDelay: 50 });
+  } catch (error) { restore(); throw error; }
+  if (existsSync(moved) || existsSync(directory)) throw new Error("The profile folder could not be fully removed");
   forgetCreatedProfile(root, kind, checked); forgetCredentialStatus(root, kind, checked);
 }
 /**

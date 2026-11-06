@@ -57,15 +57,27 @@ export function reduceClaudeLoginScreen(raw: string): string {
   let url: string | undefined, outcome: string | undefined;
   for (const line of lines) {
     if (line.length > MAX_LINE) continue;
-    const found = /^If the browser didn't open, visit:\s*(https:\/\/\S+)$/.exec(line);
-    if (found && found[1].length <= MAX_URL && linkableLoginUrl("claude-code", found[1])) { url = found[1]; continue; }
-    if (/Login successful|Logged in as\b/.test(line)) outcome = REDUCED_SUCCESS;
-    else if (/Login failed: Request failed with status code 400/.test(line)) outcome = REDUCED_REJECTED;
-    else if (/^Invalid code\b/.test(line)) outcome = REDUCED_INVALID_CODE;
+    // The URL is printable ASCII only (a bell, a backspace or a NUL inside it drops the line), and it is sent in the form the URL parser gives
+    // back, not as the CLI wrote it. Its query is the CLI's own and not a closed set; only the scheme, the host and these characters are checked.
+    const found = /^If the browser didn't open, visit:\s*(https:\/\/[\x21-\x7e]+)$/.exec(line);
+    if (found) { const href = checkedLoginUrl(found[1]); if (href) url = href; continue; }
+    // The CLI prints a verdict on the line of the prompt itself ("Paste code here if prompted > Invalid code..." measured with 2.1.319), so an
+    // optional prompt prefix is allowed; nothing else may come before the words.
+    const verdict = line.replace(PROMPT_PREFIX, "");
+    if (/^(?:Login successful|Logged in as\b)/.test(verdict)) outcome = REDUCED_SUCCESS;
+    else if (/^Login failed: Request failed with status code 400/.test(verdict)) outcome = REDUCED_REJECTED;
+    else if (/^Invalid code\b/.test(verdict)) outcome = REDUCED_INVALID_CODE;
   }
   if (outcome) return `${outcome}\n`;
   const last = lines[lines.length - 1];
   return `${url ? `${REDUCED_URL_PREFIX}${url}\n` : ""}${last === REDUCED_CODE_PROMPT ? `${REDUCED_CODE_PROMPT}\n` : ""}`;
+}
+const PROMPT_PREFIX = /^Paste code here if prompted >\s*/;
+/** https, an allowed host, no credentials, bounded, printable ASCII after parsing; returns the parsed form. */
+function checkedLoginUrl(text: string): string | undefined {
+  if (text.length > MAX_URL) return undefined;
+  let href: string; try { href = new URL(text).href; } catch { return undefined; }
+  return href.length <= MAX_URL && /^https:\/\/[\x21-\x7e]+$/.test(href) && linkableLoginUrl("claude-code", href) ? href : undefined;
 }
 
 /**
@@ -105,7 +117,7 @@ export class RuntimeSignIn {
   private child: ChildProcess | null = null;
   private exited: { code: number | null } | null = null;
   private codeWritten = false;
-  private closed: Promise<void> | null = null;
+  private closeRun: Promise<void> | null = null;
   private released = false;
   private scratch: string | null = null;
   private readonly timer: ReturnType<typeof setTimeout>;
@@ -132,15 +144,19 @@ export class RuntimeSignIn {
   /** One code, only while the code prompt is the screen. */
   async write(input: unknown): Promise<void> {
     const code = checkedSignInInput(input);
-    if (this.closed || this.exited || !this.child?.stdin?.writable) throw new SignInRefusal("This sign-in has ended", "invalid_request");
+    if (this.closeRun || this.exited || !this.child?.stdin?.writable) throw new SignInRefusal("This sign-in has ended", "invalid_request");
     if (this.codeWritten) throw new SignInRefusal("A sign-in takes one code", "invalid_request");
     if (!this.capture().endsWith(`${REDUCED_CODE_PROMPT}\n`)) throw new SignInRefusal("This sign-in is not asking for a code", "invalid_request");
     this.codeWritten = true;
-    await new Promise<void>((done, fail) => this.child!.stdin!.write(`${code}\n`, error => error ? fail(error) : done()));
+    await new Promise<void>((done, fail) => this.child!.stdin!.write(`${code}\r`, error => error ? fail(error) : done()));
   }
-  /** Ends exactly this child, removes the scratch folder, and resolves only when the child is gone; rejects when that cannot be shown. */
+  /**
+   * Ends exactly this child, removes the scratch folder, and resolves only when the child is gone; rejects when that cannot be shown. A failed
+   * attempt can be tried again (the next call kills and waits again), so a stuck child does not hold the computer's sign-in slot for ever.
+   */
   close(): Promise<void> {
-    return this.closed ??= (async () => {
+    if (this.closeRun) return this.closeRun;
+    const run = (async () => {
       clearTimeout(this.timer);
       try { this.child?.stdin?.end(); } catch { /* already closed */ }
       if (!this.exited) { (this.deps.kill ?? killTree)(this.child!); }
@@ -149,16 +165,20 @@ export class RuntimeSignIn {
       clearTimeout(timeout);
       if (!ended) throw new SignInRefusal("The sign-in process could not be confirmed ended", "failed");
       this.raw = ""; this.removeScratch(); this.released = true;
-    })();
+    })().catch(error => { this.closeRun = null; throw error; });
+    return this.closeRun = run;
   }
+  /** The child has ended on its own (or could not start); the attempt only waits to be closed. */
+  get childEnded(): boolean { return this.exited !== null; }
   private removeScratch(): void { if (this.scratch) { try { rmSync(this.scratch, { recursive: true, force: true }); } catch { /* a temporary folder */ } this.scratch = null; } }
   /** A sign-in that is still taking this computer's one slot. */
   get live(): boolean { return !this.released; }
 }
 
 /**
- * The one slot: a second start while one is live, too-fast starts and too many in an hour are refused with a reason. A finished or closed
- * attempt frees the slot; one whose child could not be shown gone keeps it.
+ * The one slot: a second start while one is live, too-fast starts and too many in an hour are refused with a reason. A closed attempt frees the
+ * slot. One whose child has ended on its own, or whose close failed earlier, is closed again by the next start (the child is shown gone or the
+ * kill is retried), so a lost `signin.close` or a failed `taskkill` does not block sign-ins until the Runtime restarts.
  */
 export class RuntimeSignInSlot {
   private active: RuntimeSignIn | null = null;
@@ -166,13 +186,22 @@ export class RuntimeSignInSlot {
   private cleanupFailed = false;
   constructor(private readonly now: () => number = Date.now) {}
   current(): RuntimeSignIn | null { return this.active && this.active.live ? this.active : null; }
-  start(make: () => RuntimeSignIn): RuntimeSignIn {
+  /** Closes an attempt that cannot go on (its child ended, or an earlier close failed); a live, working one is left alone. */
+  async recover(): Promise<void> {
+    const session = this.active;
+    if (!session || !session.live || !(session.childEnded || this.cleanupFailed)) return;
+    try { await session.close(); this.cleanupFailed = false; if (this.active === session) this.active = null; } catch { this.cleanupFailed = true; }
+  }
+  /** Busy or too fast: throws, starts nothing. For a caller that must know before it changes anything else. */
+  check(): void {
     if (this.current() || this.cleanupFailed) throw new SignInRefusal("Another sign-in is running on this computer", "busy");
-    const now = this.now();
-    this.starts = this.starts.filter(at => now - at < 3_600_000);
+    const now = this.now(); this.starts = this.starts.filter(at => now - at < 3_600_000);
     if (this.starts.length && now - this.starts[this.starts.length - 1] < SIGNIN_MIN_GAP_MS) throw new SignInRefusal("Sign-ins start too quickly on this computer; wait a few seconds", "rate_limited");
     if (this.starts.length >= SIGNIN_MAX_STARTS_PER_HOUR) throw new SignInRefusal("Too many sign-ins were started on this computer in the last hour", "rate_limited");
-    const session = make(); this.starts.push(now); this.active = session; return session;
+  }
+  async start(make: () => RuntimeSignIn): Promise<RuntimeSignIn> {
+    await this.recover(); this.check();
+    const session = make(); this.starts.push(this.now()); this.active = session; return session;
   }
   /** Looks up an attempt by id, only while it is the live one. */
   find(id: unknown): RuntimeSignIn {

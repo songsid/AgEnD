@@ -6,7 +6,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import WebSocket, { WebSocketServer } from "ws";
 import { RuntimePaneHost, type RuntimePaneHostOptions } from "./runtime-pane-host.js";
 import { readPaneSystemBootId } from "./runtime-pane-boot.js";
-import { RuntimePaneStore } from "./runtime-pane-store.js";
+import { PANE_HOST_STATE_DIRECTORY, RuntimePaneStore } from "./runtime-pane-store.js";
 import { RuntimeClientStore } from "./runtime-client-store.js";
 import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
 import { validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
@@ -30,7 +30,7 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
   const systemBootId = await readPaneSystemBootId();
   const unlock = new RuntimeClientStore(options.directory).lock(bootId, systemBootId);
   let current: WebSocket | null = null, generation = 0, onlineUntil = 0, limit = 4, closing = false, leaseEpoch = "";
-  const store = new RuntimePaneStore(join(options.directory, "state")); store.recoverInterrupted(systemBootId);
+  const store = new RuntimePaneStore(join(options.directory, PANE_HOST_STATE_DIRECTORY)); store.recoverInterrupted(systemBootId);
   const output = new Map<string, RuntimePaneSnapshot>();
   let relay!: PaneMcpRelay;
   const hostOptions: RuntimePaneHostOptions = { store, bootId, ...(systemBootId ? { systemBootId } : {}), online: () => !!current && current.readyState === WebSocket.OPEN && performance.now() < onlineUntil,

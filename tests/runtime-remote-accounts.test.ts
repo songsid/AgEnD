@@ -132,7 +132,7 @@ describe("add account and sign in (Runtime side of RuntimeSignInTransport)", () 
     expect(await ask(f, "signin.capture", { sessionId })).toEqual({ screen: `${REDUCED_URL_PREFIX}${URL_OK}\n${REDUCED_CODE_PROMPT}\n` });
     expect(await ask(f, "signin.status", { sessionId })).toEqual({ alive: true });
     await expect(ask(f, "signin.write", { sessionId, input: "\x1b[B\r" })).rejects.toThrow(/not a sign-in code/);
-    await expect(ask(f, "signin.write", { sessionId, input: `\x15${CODE}\r` })).resolves.toEqual({ accepted: true }); expect(child.written).toBe(`${CODE}\n`);
+    await expect(ask(f, "signin.write", { sessionId, input: `\x15${CODE}\r` })).resolves.toEqual({ accepted: true }); expect(child.written).toBe(`${CODE}\r`);
     await expect(ask(f, "signin.write", { sessionId, input: "\x15SECOND\r" })).rejects.toThrow(/one code/);
     child.stdout.write("\nLogged in as alice@example.com\n"); child.end(0);
     expect((await ask(f, "signin.capture", { sessionId })).screen).toBe(`${REDUCED_SUCCESS}\n`);
@@ -278,5 +278,108 @@ describe("cli install", () => {
     expect(g.accounts.canInstall).toBe(true);
     await expect(ask(g, "cli.install", { cli: "claude-code", actor })).resolves.toEqual({ version: "2.1.318" });
     expect(g.audit().at(-1)).toMatchObject({ action: "cli.install", outcome: "ok", cli: "claude-code", detail: "2.1.318" });
+  });
+});
+
+describe("Console sign-in is not offered from AgEnD (B3)", () => {
+  it("answers `console` with a fixed unsupported text that names the command to run on that computer; the protocol still carries both values", async () => {
+    const f = fixture(); f.on();
+    expect(parseRuntimeRemotePayload("signin.start", { cli: "claude-code", profile: "work", method: "console", actor })).toMatchObject({ method: "console" });
+    const error = (await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "console", actor }).catch((e: Error) => e)) as Error;
+    expect(error.message).toMatch(/Console account is not supported from AgEnD.*On that computer run: agend-runtime login claude-code NAME/);
+    expect(f.spawned).toHaveLength(0); expect(existsSync(join(f.root, "claude-code", "work"))).toBe(false);
+    expect(f.audit().at(-1)).toMatchObject({ action: "signin", outcome: "refused", reason: "unsupported" });
+  });
+  it("a subscription sign-in builds --claudeai and never --console", async () => {
+    const f = fixture(); f.on(); await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor });
+    expect(f.spawned[0]!.args).toEqual(["auth", "login", "--claudeai"]);
+  });
+});
+
+describe("what a refusal leaves behind, and the record of a code", () => {
+  const start = (f: F, profile: string) => ask(f, "signin.start", { cli: "claude-code", profile, method: "subscription", actor });
+  it("a start that is refused (busy, too fast, no CLI, in use) creates no folder and leaves no `started` line", async () => {
+    const f = fixture(); f.on(); await start(f, "work");
+    await expect(start(f, "second")).rejects.toThrow(/Another sign-in/); expect(existsSync(join(f.root, "claude-code", "second"))).toBe(false);
+    const g = fixture({ find: async () => null }); g.on(); await expect(start(g, "third")).rejects.toThrow(/not installed/); expect(existsSync(join(g.root, "claude-code", "third"))).toBe(false);
+    expect(g.audit().map(row => `${row.outcome}`)).toEqual(["refused"]);
+  });
+  it("records the code's submission (who, when, which profile) and never its content", async () => {
+    const f = fixture(); f.on(); const { sessionId } = await start(f, "work"); f.children[0]!.stdout.write(`If the browser didn't open, visit: ${URL_OK}\nPaste code here if prompted >`);
+    await ask(f, "signin.write", { sessionId, input: `\x15${CODE}\r` });
+    expect(f.audit().filter(row => row.action === "signin.write").map(row => `${row.actor}:${row.outcome}:${row.profile}`)).toEqual([`${actor}:started:work`, `${actor}:ok:work`]);
+    expect(f.auditText()).not.toContain(CODE);
+    await expect(ask(f, "signin.write", { sessionId, input: "\x15SECOND\r" })).rejects.toThrow(/one code/);
+    expect(f.audit().at(-1)).toMatchObject({ action: "signin.write", outcome: "refused" });
+  });
+  it("a flood of refused requests from ever-changing actors writes a handful of lines, and the real operations that follow are all there", async () => {
+    const f = fixture(); owned(f);
+    for (let i = 0; i < 300; i++) await ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor: `attacker-${i}` }).catch(() => {});
+    expect(f.audit()).toHaveLength(1); f.on();
+    await ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor });
+    expect(f.audit().map(row => `${row.action}:${row.outcome}`)).toEqual(["profile.remove:refused", "profile.remove:refused", "profile.remove:started", "profile.remove:ok"]);
+    expect(f.audit()[1]).toMatchObject({ repeated: 299 });
+  });
+});
+
+describe("a switch that is turned off, or runs out, ends the sign-in by itself (item 10)", () => {
+  it("looks at the switch every few seconds while a sign-in is open, ends it, records it, and stops looking", async () => {
+    vi.useFakeTimers(); const f = fixture({ now: () => Date.now(), switchWatchMs: 3000 }); setRemoteSwitch(f.pairing, "accounts", true, undefined, Date.now());
+    const { sessionId } = await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor });
+    await vi.advanceTimersByTimeAsync(9000); expect(f.children[0]!.killed).toBe(false);
+    setRemoteSwitch(f.pairing, "accounts", false, undefined, Date.now()); await vi.advanceTimersByTimeAsync(3100);
+    expect(f.children[0]!.killed).toBe(true); expect(f.audit().at(-1)).toMatchObject({ action: "signin", outcome: "failed", reason: "switch_off" });
+    const lines = f.audit().length; await vi.advanceTimersByTimeAsync(30_000); expect(f.audit()).toHaveLength(lines);
+    await expect(ask(f, "signin.capture", { sessionId })).rejects.toThrow(/./);
+  });
+  it("also when a timed switch runs out, with no request at all in between", async () => {
+    vi.useFakeTimers(); const f = fixture({ now: () => Date.now(), switchWatchMs: 3000 }); setRemoteSwitch(f.pairing, "accounts", true, 60_000, Date.now());
+    await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor });
+    await vi.advanceTimersByTimeAsync(57_000); expect(f.children[0]!.killed).toBe(false);
+    await vi.advanceTimersByTimeAsync(7000); expect(f.children[0]!.killed).toBe(true); expect(f.audit().at(-1)).toMatchObject({ reason: "switch_off" });
+  });
+  it("a child that cannot be shown gone is killed again at the next look, not forgotten", async () => {
+    vi.useFakeTimers(); let canKill = false;
+    const f = fixture({ now: () => Date.now(), switchWatchMs: 3000, signIn: { scratchRoot: scratch(), kill: child => { if (canKill) (child as unknown as FakeChild).kill(); },
+      spawn: () => new FakeChild() as unknown as ChildProcess } });
+    setRemoteSwitch(f.pairing, "accounts", true, undefined, Date.now()); await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor });
+    setRemoteSwitch(f.pairing, "accounts", false, undefined, Date.now()); await vi.advanceTimersByTimeAsync(3100 + 5100);
+    expect(f.audit().some(row => row.action === "signin" && row.outcome === "failed")).toBe(false);
+    canKill = true; await vi.advanceTimersByTimeAsync(10_000);
+    expect(f.audit().at(-1)).toMatchObject({ action: "signin", outcome: "failed", reason: "switch_off" });
+  });
+  it("the ten-minute timeout that fails to end the child is retried too", async () => {
+    vi.useFakeTimers(); let canKill = false;
+    const f = fixture({ now: () => Date.now(), switchWatchMs: 3000, signIn: { scratchRoot: scratch(), kill: child => { if (canKill) (child as unknown as FakeChild).kill(); },
+      spawn: () => new FakeChild() as unknown as ChildProcess } });
+    setRemoteSwitch(f.pairing, "accounts", true, 3 * 3_600_000, Date.now()); await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor });
+    await vi.advanceTimersByTimeAsync(10 * 60_000 + 6000); expect(f.audit().some(row => row.reason === "timeout")).toBe(false);
+    canKill = true; await vi.advanceTimersByTimeAsync(10_000); expect(f.audit().at(-1)).toMatchObject({ action: "signin", outcome: "failed", reason: "timeout" });
+  });
+});
+
+describe("one operation at a time on a profile (item 12)", () => {
+  it("a sign-out and a remove of the same profile cannot overlap; the second gets `busy`; different profiles do not block each other", async () => {
+    const f = fixture(); f.on(); owned(f); owned(f, "home");
+    let release!: () => void; f.runLogout.mockImplementation(() => new Promise(done => { release = () => { f.setAnswer({ loggedIn: false }); done(0); }; }));
+    const first = ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }); await vi.waitFor(() => expect(f.runLogout).toHaveBeenCalled());
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/Another operation on "work" is in progress/);
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/Another operation/);
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "home", actor })).resolves.toEqual({ removed: true });
+    expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
+    release(); await expect(first).resolves.toEqual({ loggedIn: false });
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
+    expect(f.audit().filter(row => row.reason === "busy").map(row => row.action)).toEqual(["profile.remove", "profile.signout"]);   // one line per kind
+  });
+  it("frees the lock when the operation fails, so the next request is not stuck", async () => {
+    const f = fixture(); f.on(); owned(f); f.setAnswer({ loggedIn: true }); f.runLogout.mockResolvedValue(1);
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/still signed in/);
+    f.setAnswer({ loggedIn: false }); await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
+  });
+  it("a sign-in that lost its close (the child ended, nobody closed it) does not keep the next one out", async () => {
+    const f = fixture(); f.on(); await ask(f, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor });
+    f.children[0]!.end(1); f.tick(6000);
+    await expect(ask(f, "signin.start", { cli: "claude-code", profile: "home", method: "subscription", actor })).resolves.toMatchObject({ sessionId: expect.stringMatching(/^[a-f0-9]{32}$/) });
+    expect(f.children).toHaveLength(2);
   });
 });

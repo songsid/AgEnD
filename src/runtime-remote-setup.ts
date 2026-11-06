@@ -11,7 +11,7 @@
  *
  * Built-ins only: part of the Runtime bundle.
  */
-import { closeSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
+import { closeSync, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 
@@ -27,6 +27,8 @@ export const AUDIT_FILE = "audit.jsonl";
 export const MIN_SWITCH_MS = 60_000;
 export const MAX_SWITCH_MS = 7 * 24 * 3_600_000;
 const MAX_AUDIT_BYTES = 1024 * 1024;
+/** Rotated copies kept besides the current file (`audit.jsonl.1` is the newest). */
+export const AUDIT_KEEP = 5;
 
 export interface RemoteSwitchState { on: boolean; /** Epoch ms at which a timed switch turns itself off. */ until?: number }
 export type RemoteSwitches = Record<RemoteSwitchName, RemoteSwitchState>;
@@ -68,7 +70,9 @@ export function readRemoteSwitches(directory: string, now = Date.now()): RemoteS
     if (!row || typeof row !== "object" || Array.isArray(row) || (row as { on?: unknown }).on !== true) continue;
     const until = (row as { until?: unknown }).until;
     if (until === undefined) { result[name] = { on: true }; continue; }
-    if (typeof until === "number" && Number.isFinite(until) && until > now) result[name] = { on: true, until };
+    // A timed switch never reaches further than the longest a person can set it for: a clock that was moved back, or a hand-written huge
+    // value, would otherwise bring an expired switch back to life.
+    if (typeof until === "number" && Number.isFinite(until) && until > now && until - now <= MAX_SWITCH_MS) result[name] = { on: true, until };
   }
   return result;
 }
@@ -97,7 +101,7 @@ export function describeRemoteSwitches(switches: RemoteSwitches, now = Date.now(
 }
 
 /** Closed vocabulary of the audit record. Free text has no field here. */
-export const AUDIT_ACTIONS = ["switch", "profile.add", "signin", "profile.signout", "profile.remove", "cli.install"] as const;
+export const AUDIT_ACTIONS = ["switch", "profile.add", "signin", "signin.write", "profile.signout", "profile.remove", "cli.install"] as const;
 export const AUDIT_OUTCOMES = ["started", "ok", "refused", "failed"] as const;
 export const AUDIT_REASONS = ["switch_off", "invalid_request", "busy", "not_found", "not_owned", "in_use", "default_profile", "link", "unsupported", "timeout", "rate_limited", "failed"] as const;
 export type AuditAction = typeof AUDIT_ACTIONS[number];
@@ -113,6 +117,8 @@ export interface AuditEntry {
   /** `on`, `off` or `expired` for a switch; a CLI version for an install. */
   detail?: string;
   reason?: AuditReason;
+  /** How many identical refusals this one stands for (see AuditLog). Absent for a single one. */
+  repeated?: number;
 }
 /** What the dashboard may call a person in the record: a name or an id, not an address and not free text. */
 export const AUDIT_ACTOR = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -125,13 +131,14 @@ export function validAuditActor(value: unknown): value is string { return typeof
 export function formatAuditLine(entry: AuditEntry, now = Date.now()): string {
   if (!validAuditActor(entry.actor) || !(AUDIT_ACTIONS as readonly string[]).includes(entry.action) || !(AUDIT_OUTCOMES as readonly string[]).includes(entry.outcome)
     || entry.cli !== undefined && !AUDIT_CLI.test(entry.cli) || entry.profile !== undefined && !AUDIT_PROFILE.test(entry.profile)
-    || entry.detail !== undefined && !AUDIT_DETAIL.test(entry.detail) || entry.reason !== undefined && !(AUDIT_REASONS as readonly string[]).includes(entry.reason)) throw new Error("Audit entry is not in its closed form");
+    || entry.detail !== undefined && !AUDIT_DETAIL.test(entry.detail) || entry.repeated !== undefined && (!Number.isSafeInteger(entry.repeated) || entry.repeated < 2 || entry.repeated > 1_000_000_000) || entry.reason !== undefined && !(AUDIT_REASONS as readonly string[]).includes(entry.reason)) throw new Error("Audit entry is not in its closed form");
   return `${JSON.stringify({ at: new Date(now).toISOString(), actor: entry.actor, action: entry.action, outcome: entry.outcome,
     ...(entry.cli !== undefined ? { cli: entry.cli } : {}), ...(entry.profile !== undefined ? { profile: entry.profile } : {}),
-    ...(entry.detail !== undefined ? { detail: entry.detail } : {}), ...(entry.reason !== undefined ? { reason: entry.reason } : {}) })}\n`;
+    ...(entry.detail !== undefined ? { detail: entry.detail } : {}), ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
+    ...(entry.repeated !== undefined ? { repeated: entry.repeated } : {}) })}\n`;
 }
 /**
- * Appends to `<pairing folder>\audit.jsonl` (private; a link is refused; one rotated copy past 1 MiB). Throws when it cannot write: a remote
+ * Appends to `<pairing folder>\audit.jsonl` (private; a link is refused; five rotated copies, each up to about 1 MiB). Throws when it cannot write: a remote
  * operation whose record cannot be kept does not run.
  */
 export function appendAudit(directory: string, entry: AuditEntry, now = Date.now()): void {
@@ -140,11 +147,49 @@ export function appendAudit(directory: string, entry: AuditEntry, now = Date.now
   try {
     const stat = lstatSync(path);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error("Audit log must be a regular file");
-    if (stat.size > MAX_AUDIT_BYTES) renameSync(path, `${path}.1`);
+    if (stat.size > MAX_AUDIT_BYTES) {
+      // .4 -> .5, ... , .1 -> .2, current -> .1; the oldest copy goes.
+      for (let index = AUDIT_KEEP; index >= 2; index--) { const from = `${path}.${index - 1}`; if (existsSync(from)) renameSync(from, `${path}.${index}`); }
+      renameSync(path, `${path}.1`);
+    }
   } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const fd = openSync(path, "a", 0o600);
   try {
     if (!fstatSync(fd).isFile()) throw new Error("Audit log must be a regular file");
     writeSync(fd, line);
   } finally { closeSync(fd); }
+}
+
+/**
+ * The record of one Runtime process, with the refusals folded together.
+ *
+ * A refusal costs the asker nothing, and the one who asks is whoever the server says (a compromised server is the threat model), so an unbounded
+ * stream of them could push the real operations out of a rotating file. So: a `refused` entry that repeats within a minute is not written again; it is
+ * counted, and the count goes out with the next entry of its kind (or with the next non-refused entry, or at `flush`). The folding key is the
+ * action and the reason ONLY. It must not hold the actor, the profile or the CLI, which the server chooses freely: a new name per request would
+ * defeat it. What is never folded: `started`, `ok` and `failed` entries and the switch changes, which only a real operation can produce.
+ * Therefore the most refusals can write is one line per (action, reason) pair per minute.
+ */
+export const AUDIT_FOLD_MS = 60_000;
+export class AuditLog {
+  private readonly folded = new Map<string, { since: number; suppressed: number; entry: AuditEntry }>();
+  constructor(private readonly directory: string, private readonly now: () => number = Date.now) {}
+  /** Throws when the line cannot be written (the caller decides whether that stops its operation). */
+  append(entry: AuditEntry): void {
+    const now = this.now();
+    if (entry.outcome !== "refused") { this.flush(); appendAudit(this.directory, entry, now); return; }
+    const key = `${entry.action}\u0000${entry.reason ?? ""}`, seen = this.folded.get(key);
+    if (seen && now - seen.since < AUDIT_FOLD_MS) { seen.suppressed++; return; }
+    appendAudit(this.directory, { ...entry, ...(seen && seen.suppressed + 1 >= 2 ? { repeated: seen.suppressed + 1 } : {}) }, now);
+    this.folded.set(key, { since: now, suppressed: 0, entry });
+  }
+  /** Writes what was folded and not yet written (best effort), so no count is lost when a process ends. */
+  flush(): void {
+    const now = this.now();
+    for (const [key, seen] of [...this.folded]) {
+      if (!seen.suppressed) continue;
+      try { appendAudit(this.directory, { ...seen.entry, ...(seen.suppressed >= 2 ? { repeated: seen.suppressed } : {}) }, now); seen.suppressed = 0; seen.since = now; } catch { /* kept for the next flush */ }
+      this.folded.set(key, seen);
+    }
+  }
 }

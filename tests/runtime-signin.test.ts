@@ -115,9 +115,9 @@ describe("one sign-in attempt", () => {
     await expect(session.write("\x15ABC\r")).rejects.toThrow(/not asking for a code/);
     h.child().say(REAL);
     await expect(session.write("\x1b[B\r")).rejects.toThrow(/not a sign-in code/);
-    await session.write("\x15ABCD-1234\r"); expect(h.child().written).toBe("ABCD-1234\n");
+    await session.write("\x15ABCD-1234\r"); expect(h.child().written).toBe("ABCD-1234\r");
     await expect(session.write("\x15EFGH\r")).rejects.toThrow(/one code/);
-    expect(h.child().written).toBe("ABCD-1234\n");
+    expect(h.child().written).toBe("ABCD-1234\r");
     void session.close();
   });
   it("reports alive and the exit code; a rejected code ends as the host's does", async () => {
@@ -160,25 +160,92 @@ describe("one sign-in attempt", () => {
 describe("one sign-in at a time on this computer", () => {
   it("refuses a second while one is live, frees the slot when it is closed, and rate-limits starts", async () => {
     let now = 1_000_000; const h = harness(), slot = new RuntimeSignInSlot(() => now);
-    const first = slot.start(() => h.make());
-    expect(() => slot.start(() => h.make())).toThrow(/Another sign-in/);
+    const first = await slot.start(() => h.make());
+    await expect(slot.start(() => h.make())).rejects.toThrow(/Another sign-in/);
     expect(h.calls).toHaveLength(1);
     expect(slot.find(first.id)).toBe(first);
     await slot.close(first.id);
-    expect(() => slot.start(() => h.make())).toThrow(/too quickly/);
-    now += 5_000; const second = slot.start(() => h.make()); await slot.close(second.id);
-    for (let i = 0; i < 10; i++) { now += 5_000; await slot.close(slot.start(() => h.make()).id); }
-    now += 5_000; expect(() => slot.start(() => h.make())).toThrow(/Too many sign-ins/);
-    now += 3_600_000; await slot.close(slot.start(() => h.make()).id);
+    await expect(slot.start(() => h.make())).rejects.toThrow(/too quickly/);
+    now += 5_000; const second = await slot.start(() => h.make()); await slot.close(second.id);
+    for (let i = 0; i < 10; i++) { now += 5_000; await slot.close((await slot.start(() => h.make())).id); }
+    now += 5_000; await expect(slot.start(() => h.make())).rejects.toThrow(/Too many sign-ins/);
+    now += 3_600_000; await slot.close((await slot.start(() => h.make())).id);
   });
   it("answers only for the live attempt's own id", async () => {
-    const h = harness(), slot = new RuntimeSignInSlot(), session = slot.start(() => h.make());
+    const h = harness(), slot = new RuntimeSignInSlot(), session = await slot.start(() => h.make());
     for (const bad of [undefined, 5, "", "0".repeat(32), session.id.toUpperCase()]) expect(() => slot.find(bad)).toThrow(/no longer running/);
     await slot.close(session.id);
   });
-  it("keeps the slot taken when an attempt's child could not be shown gone", async () => {
-    vi.useFakeTimers(); const h = harness({ kill: () => {} }), slot = new RuntimeSignInSlot(() => Date.now()), session = slot.start(() => h.make());
+  it("keeps the slot taken while an attempt's child cannot be shown gone, and lets a later start close it again once the child is gone", async () => {
+    vi.useFakeTimers(); let canKill = false; const h = harness({ kill: child => { if (canKill) (child as unknown as FakeChild).kill(); } }), slot = new RuntimeSignInSlot(() => Date.now()), session = await slot.start(() => h.make());
     const closing = slot.close(session.id).catch(error => error); await vi.advanceTimersByTimeAsync(6000); expect(await closing).toBeInstanceOf(SignInRefusal);
-    vi.setSystemTime(Date.now() + 60_000); expect(() => slot.start(() => h.make())).toThrow(/Another sign-in/);
+    vi.setSystemTime(Date.now() + 60_000);
+    const stuck = slot.start(() => h.make()).catch(error => error); await vi.advanceTimersByTimeAsync(6000);
+    expect(await stuck).toMatchObject({ message: expect.stringMatching(/Another sign-in/) });
+    canKill = true; vi.setSystemTime(Date.now() + 60_000);
+    const next = await slot.start(() => h.make()); expect(next).not.toBe(session); expect(session.live).toBe(false); await slot.close(next.id);
+  });
+  it("frees the slot by itself when the child already ended and nobody closed the attempt (a lost close)", async () => {
+    let now = 1_000_000; const h = harness(), slot = new RuntimeSignInSlot(() => now), first = await slot.start(() => h.make());
+    await expect(slot.start(() => h.make())).rejects.toThrow(/Another sign-in/);
+    h.child().end(0); now += 6_000;
+    const second = await slot.start(() => h.make()); expect(second).not.toBe(first); expect(first.live).toBe(false); expect(h.calls).toHaveLength(2);
+    await slot.close(second.id);
+  });
+  it("check() says busy or too fast without starting anything", async () => {
+    let now = 1_000_000; const h = harness(), slot = new RuntimeSignInSlot(() => now); slot.check();
+    const first = await slot.start(() => h.make()); expect(() => slot.check()).toThrow(/Another sign-in/); await slot.close(first.id); expect(() => slot.check()).toThrow(/too quickly/); now += 5_000; slot.check();
+  });
+});
+
+describe("the method flag, an early exit, and the line ending", () => {
+  it("pins both flags and the closed method table (the CLI's own help: --claudeai = Claude subscription, --console = Console)", () => {
+    expect(CLAUDE_LOGIN_METHOD_FLAGS).toEqual({ subscription: "--claudeai", console: "--console" });
+    expect(Object.keys(CLAUDE_LOGIN_METHOD_FLAGS)).toEqual(["subscription", "console"]);
+    const h = harness(); void h.make("subscription"); expect(h.calls[0]!.args).toEqual(["--prefix", ...CLAUDE_LOGIN_ARGV, "--claudeai"]);
+  });
+  it("a child that exits at once with an error (a CLI that does not know the flag) is reported as ended right away, not after the ten minutes", async () => {
+    const h = harness(), session = h.make();
+    expect(session.status()).toEqual({ alive: true });
+    h.child().stderr.write("error: unknown option '--claudeai'\n"); h.child().end(1);
+    expect(session.status()).toEqual({ alive: false, exitCode: 1 });
+    expect(session.capture()).toBe("");                       // nothing of that output reaches the screen
+    expect(session.childEnded).toBe(true);
+    await session.close(); expect(session.live).toBe(false);
+  });
+  it("a program that cannot be started at all is reported as ended too", async () => {
+    const h = harness(), session = h.make(); h.child().emit("error", new Error("spawn ENOENT C:\\secret\\claude.exe"));
+    expect(session.status()).toEqual({ alive: false }); expect(session.capture()).toBe(""); await session.close();
+  });
+  it("writes the code with \\r (measured on Linux with claude 2.1.319: \\n, \\r and \\r\\n all submit it; \\r is the one the host's terminal sends)", async () => {
+    const h = harness(), session = h.make(); h.child().say(REAL); await session.write("\x15BADCODE123\r");
+    expect(h.child().written).toBe("BADCODE123\r"); void session.close();
+  });
+  it("a close that failed can be tried again", async () => {
+    vi.useFakeTimers(); let canKill = false; const h = harness({ kill: child => { if (canKill) (child as unknown as FakeChild).kill(); } }), session = h.make();
+    const first = session.close().catch(error => error); await vi.advanceTimersByTimeAsync(6000); expect(await first).toBeInstanceOf(SignInRefusal); expect(session.live).toBe(true);
+    canKill = true; await session.close(); expect(session.live).toBe(false);
+  });
+});
+
+describe("hardening of the reduced screen (review items 4 and 5)", () => {
+  it("drops a URL line with a bell, a backspace, a NUL or any control or non-ASCII character in it", () => {
+    for (const bad of ["https://claude.ai/oauth/x\x07\x08evil", "https://claude.ai/oauth/\x00x", "https://claude.ai/oauth/\x7fx", "https://claude.ai/oauth/\x01x", "https://claude.ai/oauth/é", "https://claude.ai/oauth/x\u2028y", "https://claude.ai/\x1fx"]) {
+      expect(reduceClaudeLoginScreen(`If the browser didn't open, visit: ${bad}\n${REDUCED_CODE_PROMPT}`), JSON.stringify(bad)).toBe(`${REDUCED_CODE_PROMPT}\n`);
+    }
+  });
+  it("sends the URL in the form the URL parser gives back, not as written", () => {
+    expect(reduceClaudeLoginScreen("If the browser didn't open, visit: https://CLAUDE.ai:443/oauth/a")).toBe("If the browser didn't open, visit: https://claude.ai/oauth/a\n");
+    expect(reduceClaudeLoginScreen("If the browser didn't open, visit: https://claude.com")).toBe("If the browser didn't open, visit: https://claude.com/\n");
+  });
+  it("matches an outcome only at the start of a line (or of the text after the prompt), not anywhere in it", () => {
+    for (const noise of ["Please note Login successful elsewhere", "foo Logged in as x", "x Login failed: Request failed with status code 400", "the Invalid code message", "You are Logged in as ab@example.com now"]) {
+      expect(reduceClaudeLoginScreen(`${REAL}\n${noise}`), noise).toBe(`${REDUCED_URL_PREFIX}${URL_OK}\n`);
+    }
+  });
+  it("reads the verdict the CLI prints on the line of the prompt itself (measured with claude 2.1.319)", () => {
+    expect(reduceClaudeLoginScreen(`If the browser didn't open, visit: ${URL_OK}\nPaste code here if prompted > Invalid code. Please make sure the full code was copied.\n`)).toBe(`${REDUCED_INVALID_CODE}\n`);
+    expect(reduceClaudeLoginScreen(`${REAL} Login successful`)).toBe(`${REDUCED_SUCCESS}\n`);
+    expect(structuredSignInPrompt("claude-code", reduceClaudeLoginScreen(`${REAL} Invalid code. Please make sure the full code was copied.`))).toEqual({ phase: "failed", reason: "provider_rejected" });
   });
 });

@@ -1,11 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runtimeMain } from "../src/runtime-cli.js";
 import { credentialProfilesRoot, ensureCredentialProfile } from "../src/runtime-credential-profiles.js";
 import { isCreatedProfile } from "../src/runtime-profile-ownership.js";
-import { AUDIT_FILE, readRemoteSwitches } from "../src/runtime-remote-setup.js";
+import { AUDIT_FILE, readRemoteSwitches, setRemoteSwitch } from "../src/runtime-remote-setup.js";
 
 const directories: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const path of directories.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); } });
@@ -54,6 +54,27 @@ describe("agend-runtime remote-setup", () => {
   it("is in the help, with what the switches allow", async () => {
     const f = setup(); await f.run(["--help"]);
     expect(f.text()).toMatch(/remote-setup status/); expect(f.text()).toMatch(/remote-setup \(accounts \| install\) \(on \| off\) \[--for 2h\]/); expect(f.text()).toMatch(/AgEnD cannot change them/);
+  });
+});
+
+describe("when the audit log cannot be written (B2)", () => {
+  const blockAudit = (f: ReturnType<typeof setup>) => { mkdirSync(f.runtimeHome, { recursive: true }); mkdirSync(join(f.runtimeHome, AUDIT_FILE)); };
+  it("turning a switch ON is refused (no record, no change), and says what to fix", async () => {
+    const f = setup(); blockAudit(f);
+    await expect(f.run(["remote-setup", "accounts", "on"])).rejects.toThrow(/audit log.*cannot be written, so the switch was not turned on/);
+    expect(readRemoteSwitches(f.runtimeHome).accounts.on).toBe(false);
+  });
+  it("turning a switch OFF still works, and tells the person on stderr that it was not recorded", async () => {
+    const f = setup(); setRemoteSwitch(f.runtimeHome, "accounts", true); setRemoteSwitch(f.runtimeHome, "install", true); blockAudit(f);
+    const err: string[] = []; vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => { err.push(String(chunk)); return true; });
+    await f.run(["remote-setup", "accounts", "off"]);
+    expect(readRemoteSwitches(f.runtimeHome)).toEqual({ accounts: { on: false }, install: { on: true } });
+    expect(err.join("")).toMatch(/audit log.*could not be written.*not recorded.*turned off anyway/s);
+    expect(f.text()).toMatch(/accounts: off/);
+  });
+  it("with a working audit log neither message appears", async () => {
+    const f = setup(); const err: string[] = []; vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => { err.push(String(chunk)); return true; });
+    await f.run(["remote-setup", "accounts", "on"]); await f.run(["remote-setup", "accounts", "off"]); expect(err.join("")).toBe("");
   });
 });
 
