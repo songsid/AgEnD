@@ -3162,7 +3162,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 842,
-     "symbol": "KIRO_V3_EASE_IN.header"
+     "symbol": "KIRO_V3_EASE_IN.header",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Don't ask again",
@@ -3170,7 +3171,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 843,
-     "symbol": "KIRO_V3_EASE_IN.options"
+     "symbol": "KIRO_V3_EASE_IN.options",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Remind me later",
@@ -3186,7 +3188,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 843,
-     "symbol": "KIRO_V3_EASE_IN.options"
+     "symbol": "KIRO_V3_EASE_IN.options",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Your agent configs are still in the 2.0 format",
@@ -3242,7 +3245,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 875,
-     "symbol": "KIRO_V3_EASE_IN_V2_USER.header"
+     "symbol": "KIRO_V3_EASE_IN_V2_USER.header",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Switch to V3 and upgrade my configs",
@@ -3250,7 +3254,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 876,
-     "symbol": "KIRO_V3_EASE_IN_V2_USER.options"
+     "symbol": "KIRO_V3_EASE_IN_V2_USER.options",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Your agent configs are still in the V2 format",
