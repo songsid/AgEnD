@@ -225,6 +225,10 @@ describe("remote machine UI",()=>{
       expect(read("src/ui/shared/runtime-install.css")).toMatch(/@media \(max-width: 600px\) \{ \.runtime-command-row \{ flex-direction: column/);
       expect(read("src/ui/shared/runtime-install.css")).not.toMatch(/style\s*=|@import|url\(/);
     });
+    it("keeps the account list's rules (credential profiles, which account a sign-in is) there too, and none in app.css",()=>{
+      const own=[".runtime-profiles",".runtime-profile-list",".runtime-account",".runtime-profile-default",".runtime-profiles-old"];
+      for(const selector of own){expect(selectors,selector).toContain(selector);expect(read("src/ui/shared/app.css"),`${selector} must not be in app.css: a tab with an older app.css never gets it`).not.toMatch(new RegExp(`(^|[\\s,}])${selector.replace(".","\\.")}(?![a-z-])`,"m"));}
+    });
     it("links the stylesheet once, when the page module loads, so an old shell gets it too",async()=>{
       const links=()=>[...document.head.querySelectorAll('link[data-runtime-install-css="1"]')];
       expect(links()).toHaveLength(1);expect(links()[0].getAttribute("href")).toBe("/assets/runtime-install.css");expect(links()[0].getAttribute("rel")).toBe("stylesheet");
