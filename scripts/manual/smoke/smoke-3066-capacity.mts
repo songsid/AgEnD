@@ -38,9 +38,15 @@ const chat = `/ui/chat/${encodeURIComponent(fx.instances[4].name)}`;
 const failed: string[] = [];
 const check = (ok: boolean, what: string) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failed.push(what); };
 const r: Record<string, unknown> = {};
-const read = (scope: string) => `(() => { const s = document.querySelector(${JSON.stringify(scope)}); if (!s) return null;
-  return [...s.querySelectorAll(".u-cap")].map((c) => ({ line: c.querySelector(".u-cap-line").textContent, notes: [...c.querySelectorAll(".u-cap-note")].map((n) => n.textContent),
-    clipped: [...c.querySelectorAll("div")].some((d) => d.scrollWidth > d.clientWidth + 1) })); })()`;
+/**
+ * The capacity blocks under `scope`, read in the page. A fixed page function with the selector passed as its argument
+ * (never spliced into code). Only anonymous inline callbacks, so tsx adds no named-function helpers the page lacks.
+ */
+const readCaps = (page: any, scope: string) => page.evaluate((sel: string) => {
+  const s = document.querySelector(sel); if (!s) return null;
+  return [...s.querySelectorAll(".u-cap")].map((c) => ({ line: c.querySelector(".u-cap-line")!.textContent, notes: [...c.querySelectorAll(".u-cap-note")].map((n) => n.textContent),
+    clipped: [...c.querySelectorAll("div")].some((d) => d.scrollWidth > d.clientWidth + 1) }));
+}, scope);
 async function open(c: any, skew?: { pattern: string; body: string }) {
   const kind = c.device === "desk" ? "rail" : "phone";
   const { ctx, page, csp } = await fx.page(c, { path: chat, storage: { agend_usage_rail: "1" } });
@@ -55,7 +61,7 @@ async function open(c: any, skew?: { pattern: string; body: string }) {
 for (const c of matrix()) {
   const tag = caseName(c);
   const o = await open(c);
-  const caps = await o.page.evaluate(read(o.scope)) as Array<{ line: string; notes: string[]; clipped: boolean }> | null;
+  const caps = await readCaps(o.page, o.scope) as Array<{ line: string; notes: string[]; clipped: boolean }> | null;
   r[tag] = { caps, errs: o.errs, csp: await o.csp() };
   const zh = c.lang === "zh-TW";
   check(!!caps && caps.length === 2, `${tag}: a capacity block under each weekly bar (${caps?.length})`);
@@ -78,7 +84,7 @@ if (process.env.SKEW_OLD_STRINGS && process.env.SKEW_OLD_DIALOG) {
   const c = { device: "desk", theme: "light", lang: "zh-TW" } as const;
   {
     const o = await open(c, { pattern: "**/assets/view-strings.js", body: readFileSync(process.env.SKEW_OLD_STRINGS, "utf8") });
-    const caps = await o.page.evaluate(read(o.scope)) as Array<{ line: string; notes: string[] }> | null;
+    const caps = await readCaps(o.page, o.scope) as Array<{ line: string; notes: string[] }> | null;
     check(caps?.[0]?.line === "100% ≈ $412 ($378–$455) · ≈ 31.0M tokens · from 3 weeks", `skew new dialog + old strings: the server's English, never a key ("${caps?.[0]?.line}")`);
     check(!!caps && caps.every((x) => !/usage\.capacity/.test(x.line + x.notes.join(""))), "skew new dialog + old strings: no bare key anywhere");
     check(o.errs.length === 0, `skew new dialog + old strings: no page error (${o.errs.join(" | ")})`);
@@ -87,7 +93,7 @@ if (process.env.SKEW_OLD_STRINGS && process.env.SKEW_OLD_DIALOG) {
   }
   {
     const o = await open(c, { pattern: "**/assets/usage-dialog.js", body: readFileSync(process.env.SKEW_OLD_DIALOG, "utf8") });
-    const caps = await o.page.evaluate(read(o.scope)) as unknown[] | null;
+    const caps = await readCaps(o.page, o.scope) as unknown[] | null;
     const bars = await o.page.evaluate(`document.querySelectorAll(${JSON.stringify(o.scope)} + " .u-meter").length`) as number;
     check(Array.isArray(caps) && caps.length === 0 && bars >= 2, `skew old dialog + new strings: the bars as before, no capacity (${bars} bars)`);
     check(o.errs.length === 0, `skew old dialog + new strings: no page error (${o.errs.join(" | ")})`);
