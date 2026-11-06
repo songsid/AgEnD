@@ -11,6 +11,27 @@ import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { COLUMNS, ProgressBar, UNASSIGNED, Who, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, wrapUpText, writeStored } from "./fleet-task-common.js";
 
+/** The task board's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
+export function linkTaskBoardCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-tb-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/task-board.css"); link.setAttribute("data-tb-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* the board still works without it */ }
+}
+linkTaskBoardCss();
+
+// The Filter icon, drawn here: a tab opened before an upgrade has a ui-icons.js without it.
+const FilterIcon = () => html`<svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z"/></svg>`;
+/** A labelled menu button, with only the Menu props an older cached ui-menu.js has (`trigger`, `triggerClass`). */
+function TextMenu({ cls, icon, text, tip, active = false, items }) {
+  const glyph = icon === "filter" ? html`<${FilterIcon} />` : icon ? html`<${Icon} name=${icon} size=${16} />` : null;
+  return html`<${Menu} cls=${cls} label=${tip ? `${text}, ${tip}` : text} active=${active} items=${items}
+    triggerClass="btn btn-sm menu-text" trigger=${html`${glyph}<span>${text}</span>`} />`;
+}
+
 register("taskview", {
   en: {
     display: "Display", displayTip: "Board or list, grouping, order, finished cards", filter: "Filter", filterTip: "Show only some cards",
@@ -198,7 +219,7 @@ export function FilterMenu({ cards, filters, onChange }) {
       items.push({ key: `${field}:${v}`, checkbox: true, checked: !!f && f.values.includes(v), label: valueWord(field, v), onSelect: () => onChange(toggleValue(filters, field, v)) });
     }
   }
-  return html`<${Menu} cls="tb-filter-menu" icon="filter" text=${t("taskview.filter")} label=${t("taskview.filterTip")} active=${filters.length > 0} items=${items} />`;
+  return html`<${TextMenu} cls="tb-filter-menu" icon="filter" text=${t("taskview.filter")} tip=${t("taskview.filterTip")} active=${filters.length > 0} items=${items} />`;
 }
 
 /** Display: board or list; the list's grouping, order and sub-task rows; which finished cards show. */
@@ -219,7 +240,7 @@ export function DisplayMenu({ display, onChange }) {
   ];
   // Pressed while it shows something other than the defaults (beyond board or list, which is plain to see).
   const changed = ["group", "order", "done", "subs"].some((k) => d[k] !== DEFAULT_DISPLAY[k]);
-  return html`<${Menu} cls="tb-view-menu" icon="sliders" text=${t("taskview.display")} label=${t("taskview.displayTip")} active=${changed} items=${items} />`;
+  return html`<${TextMenu} cls="tb-view-menu" icon="sliders" text=${t("taskview.display")} tip=${t("taskview.displayTip")} active=${changed} items=${items} />`;
 }
 
 /** The filters in force, a chip each: its field, is / is not (a click switches), its values (a menu), and remove. */
@@ -233,7 +254,7 @@ export function FilterBar({ cards, filters, onChange }) {
         <span class="tb-chip-field">${field}</span>
         <button type="button" class="tb-chip-op" title=${t("taskview.opTip")} aria-label=${`${field} ${f.not ? t("taskview.isNot") : t("taskview.is")} — ${t("taskview.opTip")}`}
           onClick=${() => onChange(filters.map((x) => (x === f ? { ...f, not: !f.not } : x)))}>${f.not ? t("taskview.isNot") : t("taskview.is")}</button>
-        <${Menu} cls="tb-chip-menu" icon="" text=${shown} label=${t("taskview.values", field)}
+        <${TextMenu} cls="tb-chip-menu" icon="" text=${shown} tip=${t("taskview.values", field)}
           items=${fieldValues(f.field, cards, f).map((v) => ({ key: v, checkbox: true, checked: f.values.includes(v), label: valueWord(f.field, v), onSelect: () => onChange(toggleValue(filters, f.field, v)) }))} />
         <button type="button" class="tb-chip-x" title=${t("taskview.remove")} aria-label=${`${t("taskview.remove")}: ${field}`} onClick=${() => onChange(filters.filter((x) => x !== f))}><${Icon} name="close" size=${14} /></button>
       </span>`;

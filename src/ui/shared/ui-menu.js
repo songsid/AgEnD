@@ -7,11 +7,10 @@ import { t } from "./app-i18n.js";
 /**
  * items: [{ key, label, icon?, onSelect, danger?, disabled? }] (falsy entries are skipped). `checked` makes a radio item;
  * `checkbox: true` with `checked` a checkbox item (#2217 hotfix: the chat's card menu), which toggles and keeps the menu
- * open. `active`: the button shows a pressed look (what it controls is on), without changing its role. `text` makes it a
- * labelled button (the task board's Filter and Display, a filter's values); `icon=""` leaves its icon out.
+ * open. `active`: the button shows a pressed look (what it controls is on), without changing its role.
  * Optional `trigger` and `triggerClass` customize the button content and styling; `label` remains its accessible name.
  */
-export function Menu({ items, label, icon = "more", cls = "", active = false, text = "", trigger, triggerClass = "icon-btn", disabled = false, fit = false }) {
+export function Menu({ items, label, icon = "more", cls = "", active = false, trigger, triggerClass = "icon-btn", disabled = false, fit = false }) {
   const [open, setOpen] = useState(false);
   const [placement,setPlacement] = useState("");
   const btn = useRef(null), list = useRef(null);
@@ -53,9 +52,9 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, te
   }
   function choose(item) { if (disabled || item.disabled) return; setOpen(false); btn.current && btn.current.focus({ preventScroll: true }); item.onSelect(); }
   return html`<div class=${`menu ${cls}`}>
-    <button ref=${btn} type="button" class=${`${text ? "btn btn-sm menu-text" : triggerClass}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} disabled=${disabled}
-      aria-label=${text ? (label ? `${text}, ${label}` : text) : label || t("app.more")} title=${label || t("app.more")} onClick=${() => { if (!disabled) setOpen(!open); }}
-      onKeyDown=${(e) => { if (!disabled && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setOpen(true); } }}>${trigger !== undefined ? trigger : html`${icon ? html`<${Icon} name=${icon} size=${text ? 16 : undefined} />` : null}${text ? html`<span>${text}</span>` : null}`}</button>
+    <button ref=${btn} type="button" class=${`${triggerClass}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} disabled=${disabled}
+      aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => { if (!disabled) setOpen(!open); }}
+      onKeyDown=${(e) => { if (!disabled && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setOpen(true); } }}>${trigger === undefined ? html`<${Icon} name=${icon} />` : trigger}</button>
     ${open && !disabled ? html`<div data-trust="menu" ref=${list} class=${`menu-list${fit ? placement : ""}`} role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
       ${shown.map(item => item.heading
         ? html`<div key=${item.key} class="menu-heading" role="presentation">${item.label}</div>`
