@@ -33,6 +33,7 @@ import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
+import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
 
 export function memberSet(hubId: string): HubStateSet {
@@ -67,6 +68,8 @@ export interface HubMemberFactoryOptions {
   /** The owner's local agents, each with the S4 provider it would run under (null: none). */
   agents(): import("../member/exposure-api.js").HubMemberAgent[];
   views?: HubViewSource;
+  /** P1's representative mode: the fleet's ordinary delivery, the agent lifecycle token and the report_result hook. */
+  representative: HubRepresentativeHost;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null): void;
   pokeAttention(): void;
@@ -80,6 +83,18 @@ export interface HubMemberFactoryOptions {
   notice?(code: HubHoldCode, reason: ProviderSetupReason, detail: string): void;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   now?: () => number;
+}
+
+export interface HubRepresentativeHost {
+  /** Ordinary cross-instance delivery to the published agent, with beforeInput run immediately before the IPC hand-off. */
+  deliver(input: HubRepresentativeDelivery): Promise<boolean>;
+  /** The agent's current lifecycle token (null: not a deliverable agent now). */
+  agentToken(agent: string): string | null;
+  /** The report_result hook for HUB_REPORT_TARGET and the pane-failure hook for its correlation ids (null: detached). */
+  attachReports(
+    handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null,
+    failed: ((correlationId: string, agent: string) => void) | null,
+  ): void;
 }
 
 /** Ordered cleanup that stops at the first unconfirmed step (same rules as the server factory). */
@@ -317,6 +332,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         HUB_MEMBER_JOURNAL_MIGRATION,
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution },
         exposureMods.store.HUB_EXPOSURE_MIGRATION,
+        HUB_REPRESENTATIVE_MIGRATION,
       ]);
       bindHubInstance(db, hubId, state, now());
 
@@ -347,30 +363,14 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         now,
       });
 
-      // 5. S4 store + service (+ the owner-configured S4b provider, else no provider at all).
-      const executionStore = new execution.HubExecutionStore(db, {
-        floor: executionFloor!,
-        audit: (event, database) =>
-          audit.appendInTransaction(
-            {
-              id: randomBytes(16).toString("hex"),
-              sequence: 0,
-              at: now(),
-              requestId: event.operationId ?? event.contextId ?? "s4",
-              actor: { kind: "local-host" },
-              action: execAction(event.kind),
-              result: "completed",
-              policyVersion: 0,
-              ...(event.messageId ? { messageId: event.messageId } : {}),
-              ...(event.reason ? { reasonCode: event.reason.slice(0, 64) } : {}),
-            } as HubAuditRecord,
-            database,
-          ),
-      });
+      // 5. P1's only execution path: the representative adapter (docs/design/hub-representative-agent.md). No S4 service
+      // or S4b provider is constructed; an old hub_member.execution.provider block is ignored (one info line, no hold).
       if (state === "new") {
         journal.initialize();
-        executionStore.initialize();
         exposures.initialize();
+      }
+      if ((cfg as { execution?: { provider?: unknown } }).execution?.provider !== undefined) {
+        options.log("info", "hub_member.execution.provider is ignored: P1 Hub answers come from the published agent (representative mode)");
       }
       let fenced = false;
       const live = () => !fenced && current();
@@ -381,59 +381,39 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         revocationFloor: () => journal.revocationVersion(),
       });
       const binding = links.binding;
-      const providers = new Map<string, import("../execution/index.js").HubIsolatedProvider>();
-      /** The bounded reason the configured provider could not be set up (null: none configured, or installed). */
-      let providerFailure: ProviderSetupReason | null = null;
-      // The owner-configured isolated provider (S4b). Any setup failure is non-fatal: the member runs with NO provider
-      // (every exposure unavailable) and one member hold carries the bounded reason for localized guidance.
-      try {
-        const provider = providerConfig(cfg, hubId);
-        if (provider) {
-          if (!options.components.provider) throw new HubProviderSetupError("unavailable", "the isolated provider (S4b) is not in this build");
-          const s4b = await options.components.provider();
-          let credential: string;
-          try {
-            credential = readPrivateFile(options.home, `hub-member/${hubId}/secrets/model-api`, 4096);
-          } catch {
-            throw new HubProviderSetupError("credential-unconfigured", "the model credential file is missing or not private");
-          }
-          const broker = s4b.createHubModelBroker({ [provider.backend]: credential });
-          const pending = s4b.createHubCliProvider({ backend: provider.backend, imageId: provider.imageId, model: provider.model, modelBroker: broker, ...(provider.dockerSocket ? { dockerSocket: provider.dockerSocket } : {}) });
-          let timer: NodeJS.Timeout | undefined;
-          const made = await Promise.race([
-            pending,
-            new Promise<never>((_, reject) => {
-              timer = setTimeout(() => reject(new HubProviderSetupError("unavailable", "the isolated provider did not become ready in 30 s")), 30_000);
-              timer.unref();
-            }),
-          ]).catch((err) => {
-            // A provider that resolves after the deadline is closed, never used.
-            void pending.then((late) => late.close()).catch(() => undefined);
-            throw err;
-          }).finally(() => clearTimeout(timer));
-          teardown.add("the isolated provider", () => made.close());
-          providers.set(provider.backend, made);
-        }
-      } catch (err) {
-        const reason = providerSetupReason(err);
-        providerFailure = reason;
-        options.notice?.("hub-provider-unavailable", reason, err instanceof HubProviderSetupError ? err.message : `the isolated provider could not be set up (${reason})`);
-      }
       let client: HubMemberClient | null = null;
-      const service = new execution.HubRestrictedExecutionService({
-        store: executionStore,
+      let online: HubMemberLink | null = null;
+      const service = new HubRepresentativeExecution({
+        db,
         journal,
-        transport: { authorize: (request) => (client ? client.authorize(request) : Promise.reject(new HubStateError("service-unavailable", "not connected"))) },
         binding,
         localExposure: (id) => exposures.localExposure(id),
-        views: registry,
-        providers,
-        now,
+        agentToken: (agent) => options.representative.agentToken(agent),
+        authorize: (request) => (client ? client.authorize(request) : Promise.reject(new HubStateError("service-unavailable", "not connected"))),
+        link: () => (online && online.current() && links.link() === online ? online : null),
+        deliver: (input) => options.representative.deliver(input),
+        audit: (event, database) =>
+          audit.appendInTransaction(
+            {
+              id: randomBytes(16).toString("hex"),
+              sequence: 0,
+              at: now(),
+              requestId: event.messageId ?? "s5-representative",
+              actor: { kind: "local-host" },
+              action: event.action,
+              result: event.result,
+              policyVersion: 0,
+              ...(event.messageId ? { messageId: event.messageId } : {}),
+              ...(event.exposureId ? { exposureId: event.exposureId } : {}),
+              ...(event.reasonCode ? { reasonCode: event.reasonCode.slice(0, 64) } : {}),
+            } as HubAuditRecord,
+            database,
+          ),
         attentionChanged: () => options.pokeAttention(),
-        // Presentation metadata for the owner (S4's providerReason): never readiness, never admission.
-        providerSetupReason: () => providerFailure,
+        log: options.log,
+        now,
       });
-      teardown.add("the restricted execution", () => service.close());
+      teardown.add("the representative adapter", () => service.close());
       service.recover();
       outbox = service.restrictedOutbox();
 
@@ -460,8 +440,14 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         current: live,
         reconcile: async (l) => {
           links.relink(l);
+          online = null;
           await handshake(l);
-          if (l.current() && live()) options.linkState?.("online");
+          if (l.current() && live()) {
+            online = l;
+            options.linkState?.("online");
+            // Questions admitted while offline (or before a restart, with no input yet) go out on this link.
+            service.pump();
+          }
         },
         receive,
         hold: (code) => {
@@ -477,6 +463,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
         agents: options.agents,
         afterCommit: () => sender.afterCommit(),
+        // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
+        readinessCandidate: (candidate) => service.readinessCandidate(candidate),
       });
 
       return {
@@ -484,7 +472,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
           options.attachAttention(() => service.attentionItems());
           options.attachExposures(api);
+          options.representative.attachReports((input) => service.report(input), (cid, agent) => service.deliveryFailed(cid, agent));
           teardown.add("the fleet attachments", () => {
+            options.representative.attachReports(null, null);
             options.attachExposures(null);
             options.attachAttention(null);
           });
@@ -494,6 +484,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           fenced = true;
           links.fence();
           client?.fence();
+          options.representative.attachReports(null, null);
           options.attachExposures(null);
           options.linkState?.("offline");
         },
@@ -503,7 +494,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         /** Diagnostics seams (not part of HubMountedService). */
         binding,
-        providerReason: (providerId?: string | null) => service.providerReason(providerId),
+        representative: service,
       } as HubMountedService & Record<string, unknown>;
     } catch (err) {
       return fail(err);

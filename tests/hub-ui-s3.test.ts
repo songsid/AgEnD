@@ -284,6 +284,8 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     (pg.root.querySelector(".hub-ask .hub-item button") as any).click();
     await until(() => pg.root.querySelector(".hub-room"));
     expect(pg.root.querySelector(".hub-identity")!.textContent).toContain("not any authority");
+    // #3145: every asker shares the representative agent's one conversation — said before anyone types.
+    expect(pg.root.querySelector(".hub-shared")!.textContent).toContain("shares its one conversation");
     input(pg, "#hubQuestion", "Q3?"); await settle(5);
     fire(pg.root.querySelector(".hub-compose")!, "submit");
     await until(() => pg.root.querySelector(".hub-stage"));
@@ -299,7 +301,7 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
   });
 
   it("My exposures: grants against the revision shown, a pending pairing to confirm; Administration only for the administrator", async () => {
-    const mine = [{ id: "e1", displayName: "Sales numbers", revision: 3, state: "published", dataViewId: "sales", allowedTools: ["read_sheet"],
+    const mine = [{ id: "e1", displayName: "Sales numbers", revision: 3, state: "published", dataViewId: "agent", allowedTools: [],
       grants: [{ id: "g1", revision: 1, subjectName: "Alex", subjectLogin: "alex", expiresAt: 2_000_000_000_000 }] }];
     const { calls } = hubApi({
       "GET /hub/v1/session": () => [200, SIGNED],
@@ -310,6 +312,7 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     const pg = await mountTab("exposures");
     await until(() => pg.root.querySelector(".hub-exposure-card"));
     expect(pg.root.querySelector(".hub-exposure-card h3")!.textContent).toContain("Shared");
+    expect(pg.root.querySelector(".hub-exposure-card .note")!.textContent).toContain("Shared as a representative agent");
     expect(pg.root.querySelector(".hub-pairings .hub-fp-groups")!.textContent!.split(" ")).toHaveLength(8);
     input(pg, ".hub-grant input", "bea"); await settle(5);
     fire(pg.root.querySelector(".hub-grant")!, "submit");

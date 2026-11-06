@@ -10,7 +10,6 @@
 // Off is the default: the server marks the page (data-hub) only when a switch is on, and nothing here is ever loaded
 // otherwise (app-shell.js and panel-settings.js import the Hub modules only when the mark is present).
 import { appStore } from "/assets/app-store.js";
-import * as settingsConfirm from "./settings-confirm.js";
 
 /** The page's Hub marks (presentation only — a mark confers no authority): { hub, member }. */
 export function hubMarks(doc = typeof document !== "undefined" ? document : null) {
@@ -33,16 +32,19 @@ export function hubName(doc = typeof document !== "undefined" ? document : null)
 /**
  * Pairing, as the member's page sees it (a projection of S1's local status):
  * - { state: "unpaired" }
- * - { state: "pending", memberOrigin, fingerprint (pairing), expiresAt, ownerConfirmed, adminApproved }
- *     both confirmations are needed: the owner's from a current Hub directory session, the Hub administrator's approval
- *     of this exact fingerprint — possession of the code proves neither
+ * - { state: "pending", memberOrigin, fingerprint (pairing), expiresAt, localConfirmed, ownerConfirmed, adminApproved }
+ *     localConfirmed: this fleet's owner compared and confirmed the fingerprint here (confirmFingerprint);
+ *     both Hub confirmations are needed: the owner's from a current Hub directory session, the Hub administrator's
+ *     approval of this exact fingerprint — possession of the code proves neither. On a member they are null (unknown:
+ *     S1 keeps neither; never derived from the local approval or a claim answer); true/false only from a trusted Hub
+ *     status projection
  * - { state: "paired", hub: { hubId, name, memberOrigin, webOrigin, fingerprint (hub-key) }, link: "online" | "offline" }
  *     memberOrigin: the pinned transport origin; webOrigin: the separately approved browser origin (they may differ)
  * - { state: "key_changed", hub: {…approved, fingerprint (hub-key)}, offered (hub-key) }
  *     nothing connects; the offered value is never accepted automatically — re-pair or disconnect
  * - { state: "held", hold, memberOrigin? }
- *     a safety hold, visible: hold ∈ "unknown_outcome" | "expired" | "unsaved" | "refused" | "revoked" — never shown as
- *     paired, never as a successful unpair
+ *     a safety hold, visible: hold ∈ "unknown_outcome" | "expired" | "unsaved" | "refused" | "revoked" | "disconnected"
+ *     — never shown as paired, never as a successful unpair ("unavailable": an older host, shown as one line, not a hold)
  * @typedef {object} HubPairingView
  */
 /**
@@ -57,22 +59,41 @@ export function hubName(doc = typeof document !== "undefined" ? document : null)
  *   enforceable: boolean, reason?: string }} HubExposureView
  */
 /**
- * Results. A withdrawal or disconnect fences locally at once (even offline) but answers ok only once the local
- * restrictive state is saved; `remote` says whether the Hub confirmed it ("pending": not yet — shown as a warning).
+ * Results (docs/design/hub-ui-client.md "Results"). A withdrawal or disconnect fences locally at once (even offline) but
+ * answers ok only once the local restrictive state is saved; `remote` is "pending" in P1 (S1 has no acknowledgement or
+ * remote revoke), shown as a warning — "confirmed" is reserved.
  * @typedef {{ ok: true, pairing: HubPairingView } | { ok: false, error: "address" | "code" | "busy" | "unreachable" | "refused" }} HubConnectResult
- * @typedef {{ ok: true, view: HubExposureView } | { ok: false, error: "not_paired" | "unknown_agent" | "not_enforceable" | "conflict" | "unsaved" }} HubPublishResult
- * @typedef {{ ok: true, remote: "confirmed" | "pending" } | { ok: false, error: "unsaved" | "conflict" }} HubWithdrawResult
+ * @typedef {{ ok: true, view: HubExposureView } | { ok: true, pending: { expiresAt: number }, view: HubExposureView, settled: Promise<unknown> }
+ *   | { ok: false, error: "not_paired" | "unknown_agent" | "unknown_view" | "not_enforceable" | "limit" | "conflict" | "unsaved" | "unavailable" }} HubPublishResult
+ * @typedef {{ ok: true, remote: "confirmed" | "pending" } | { ok: false, error: "unsaved" | "conflict" | "unavailable" }} HubWithdrawResult
  */
 
 /**
- * The client every Hub page uses (one per page). On a Hub's own workspace it is the real one: the Hub's /hub/v1/* API
- * at this page's own origin, with the Hub's session. On a member fleet's Settings card it is still the stub (until the
- * member side is composed).
+ * The client every Hub page uses (one per page): on a Hub's own workspace the Hub's /hub/v1/* API at this page's own
+ * origin, with the Hub's session; on a member fleet's Settings card this fleet's /api/hub/member/*; in tests the stub.
  */
 let client = null;
+/**
+ * The Settings confirmation (settings-confirm.js), loaded only when a member fleet's card first needs it — never
+ * statically: a Hub's own listener serves only the Hub's three modules (src/hub/http/compose.ts HUB_UI_MODULES), so a
+ * static import of a fleet Settings module left the Hub workspace unable to load at all.
+ */
+let confirmModule = null, confirmLoaded = null;
+const loadConfirm = () => (confirmModule ??= import("./settings-confirm.js").then((m) => { confirmLoaded = m; return m; }, (e) => { confirmModule = null; throw e; }));
+const lazyConfirm = {
+  async api(path, opts) { return (await loadConfirm()).api(path, opts); },
+  // Called before the first request goes out: the same key settings-confirm.js would make.
+  newKey(prefix = "k") {
+    if (confirmLoaded) return confirmLoaded.newKey(prefix);
+    return typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  },
+  // Only ever asked of a response api() returned, so the module is loaded by then.
+  isPendingResponse(r) { return confirmLoaded ? confirmLoaded.isPendingResponse(r) : false; },
+  track(view, label) { return loadConfirm().then((m) => m.track(view, label)); },
+};
 export function hubClient() {
   // S3c: a member fleet's card uses this fleet's own endpoints (createMemberClient); the Hub workspace its own; tests the stub.
-  return client ??= hubMarks().hub ? createHubWebClient() : hubMarks().member ? createMemberClient({ confirm: settingsConfirm })
+  return client ??= hubMarks().hub ? createHubWebClient() : hubMarks().member ? createMemberClient({ confirm: lazyConfirm })
     : createStubClient({ agents: () => (appStore.get().instances || []).filter((i) => i && i.name) });
 }
 /** For tests and the switch-over to slice 1: put another client in place (null: the stub again, fresh). */

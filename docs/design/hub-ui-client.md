@@ -28,22 +28,26 @@ Until slice 1's `HubMode` exists, `src/hub-mode.ts` reads `hub_member.enabled` d
 Every Hub page reads and writes through one object, `hubClient()`. Its answers are **projections** (`HubPairingView`, `HubExposureView`), deliberately separate from `hub.md`'s signed protocol and model records. The browser never holds the machine credential or sees WSS frames.
 
 - **On a Hub workspace** (S3b) it is `createHubWebClient()`: `/hub/v1/*` at the page's own origin, with the Hub's own session (below).
-- **On a member fleet's Settings card** it is still a stub in the page's memory (the card says so in a preview note) until S5's member composition exists; re-pointing it replaces `createStubClient`, including its `control` object. The member's publish step then follows the order agreed with S1/S4 (cid-hub-s3-readiness): stage the owner-approved candidate unpublished, ask S4 `readiness(exposureId, expectedRevision)`, re-check owner, mode and the exact local policy, then publish only that unchanged revision in S1's snapshot.
+- **On a member fleet's Settings card** it is `createMemberClient()` (S3c, #3115/#3146): this fleet's own `/api/hub/member/*`, local owner only and never over the public link. Publishing goes through the existing Settings confirmation, then the order agreed with S1/S4/S5: stage the candidate unpublished, check readiness, re-check owner, mode and the exact descriptor, then publish only that unchanged revision in S1's snapshot. Since #3145 that readiness is the representative agent's, not S4's (below).
+- **In tests** it is `createStubClient()`, held in the page's memory, with its `control` object.
 
 ### `HubPairingView`
 
 | state | fields | what the page shows |
 | --- | --- | --- |
 | `unpaired` | | the form: Hub address (https://) and one-time code |
-| `pending` | `memberOrigin`, `fingerprint` (kind `pairing`), `expiresAt`, `ownerConfirmed`, `adminApproved` | the pairing fingerprint to compare, and both confirmations, each marked as done |
+| `pending` | `memberOrigin`, `fingerprint` (kind `pairing`), `expiresAt`, `localConfirmed`, `ownerConfirmed`, `adminApproved` | the pairing fingerprint to compare; "It matches the Hub's screen" until confirmed here; then what is still needed on the Hub |
 | `paired` | `hub: { hubId, name, memberOrigin, webOrigin, fingerprint (kind hub-key) }`, `link: online \| offline` | the approved Hub key's fingerprint, Open the Hub, Disconnect, and the agents to share |
 | `key_changed` | `hub` (the approved one) and `offered` (kind `hub-key`) | both keys, labelled, never compared with a pairing fingerprint; only Pair again or Disconnect; the offered key is never accepted automatically and nothing connects |
 | `held` | `hold`, `memberOrigin?` | a visible safety hold, never shown as paired or as a successful unpair |
 
 Notes on the fields:
-- **Confirmations (`pending`):** the owner's comes from a current Hub directory session, and the administrator approves the exact fingerprint. Possession of the code alone proves neither.
+- **Confirmations (`pending`):** the owner's comes from a current Hub directory session (the Hub's My exposures), and the administrator approves the exact fingerprint (the Hub's Administration). Possession of the code alone proves neither.
+  - **On the member they are unknown:** `ownerConfirmed` and `adminApproved` are `null`. S1 keeps neither, and a claim answer of "pending" doesn't say which is missing. They are never derived from the local Settings approval, `pending.json` or a claim answer. The card then shows both steps as instructions with no done/waiting marks, and says it can't see their progress. `true`/`false` is reserved for a trusted Hub status projection, which P1 doesn't have (agreed with S1 on cid-hub-member-pairing-projection).
+  - **`localConfirmed`** is this fleet's own step. The owner compares the fingerprint and confirms it here (`confirmFingerprint(digest)`, through the Settings confirmation), which lets the member claim. It is never the Hub owner's confirmation.
 - **Origins (`paired`):** `memberOrigin` is the pinned transport origin and `webOrigin` the separately approved browser origin. They may differ. The switcher uses only a paired `https:` `webOrigin` without credentials, and never one offered after a key change.
-- **Holds:** the codes are `unknown_outcome`, `expired`, `unsaved`, `refused` and `revoked`.
+- **Holds:** the codes are `unknown_outcome`, `expired`, `unsaved`, `refused`, `revoked` and `disconnected` (after a local disconnect: "Start over" goes back to `unpaired` for a new code; the old pairing never reconnects automatically). `unavailable` is not a hold: an older host answers 404 and the card shows one line, "Not available on this AgEnD version".
+- **`key_changed`** is never shown on a member in P1: S1 can't tell a changed key from a failed connection. The card keeps the state for a future trusted projection.
 
 **Fingerprints:** `{ kind: "pairing" | "hub-key", digest }`.
 - The digest is the full SHA-256 (64 hex). The page shows its first 128 bits (32 hex, 8 groups of 4) for comparison, and the whole digest on request.
@@ -54,24 +58,33 @@ Notes on the fields:
 ### `HubExposureView`
 
 ```
-{ agent, display, exposureId, revision, state: "published" | "withdrawn" | "frozen", policy: { dataView, tools } | null, enforceable, reason? }
+{ agent, display, exposureId, revision, state: "published" | "withdrawn" | "frozen", policy: { dataView, tools } | null,
+  enforceable, reason?, choices: { dataViews: { id, label }[], tools: { name, label }[] }, pending: { expiresAt } | null }
 ```
 
+P1 shares a **representative agent** (decision f619f813, [hub-representative-agent.md](hub-representative-agent.md)). The owner picks one of this fleet's existing agents, and the Hub's questions reach that agent's ordinary conversation through normal delivery. It keeps its own login, folder and Settings tool set, and all its askers share that one conversation. There is no restricted, read-only context and no per-asker session in P1; a narrower tool set (worker/minimal) is chosen in ordinary Settings.
+
 - **`agent`:** the stable local agent name. The list is the local owner's own agents, never the Hub's inventory.
-- **`revision`:** the revision the page shows. Enabling sends it (`setExposed(agent, on, expectedRevision)`), so a stale tab gets `conflict`, never a silent widening.
-- **`policy`:** summarises the approved data view and tools.
-- **`enforceable`:** slice 4's restricted-context result, not a model's claim. It is false until slice 4 exists, and then the agent can't be shared. True never means the owner's normal session is exposed.
+- **`revision`:** the revision the page shows. Enabling sends it (`setExposed(agent, on, expectedRevision, choice)`), so a stale tab gets `conflict`, never a silent widening.
+- **`policy`:** what is shared. For a representative agent it is always `{ dataView: "agent", tools: [] }`. The wire descriptor is `dataViewId: "agent"`, `allowedTools: []` and `policyDigest = sha256(canonicalArguments({ mode: "agent", agent }))`. The empty list means no Hub-delegated tool phases; the agent's own Settings tools are unchanged.
+- **`choices`:** what the owner may pick. For a shareable agent it is `{ dataViews: [{ id: "agent", label }], tools: [] }`, and the card sends it as the `choice`. Otherwise both lists are empty.
+- **`enforceable`:** whether the representative is ready (the configured target accepts normal delivery and the descriptor matches), never a model's claim. False is never publishable. `reason` says why: `delivery_unavailable`, or `republish_required` for a mapping from the older restricted mode, which answers nothing until the owner shares the agent again (never converted silently).
+- **`pending`:** a publish waiting for the owner's Settings confirmation. The row says so and the switch stays off until it is answered or expires.
 
 ### Results
 
 ```
-connect   → { ok: true, pairing } | { ok: false, error: "address" | "code" | "busy" | "unreachable" | "refused" }
-setExposed(on)  → { ok: true, view } | { ok: false, error: "not_paired" | "unknown_agent" | "not_enforceable" | "conflict" | "unsaved" }
-setExposed(off), disconnect → { ok: true, remote: "confirmed" | "pending" } | { ok: false, error: "unsaved" | "conflict" }
+connect, confirmFingerprint → { ok: true, pairing, pendingConfirmation? } | { ok: false, error: "address" | "code" | "busy" | "unreachable" | "refused" | "conflict" | "expired" | "unsaved" | "unavailable" }
+setExposed(on, choice) → { ok: true, view } | { ok: true, pending: { expiresAt }, view, settled }
+                        | { ok: false, error: "not_paired" | "unknown_agent" | "unknown_view" | "not_enforceable" | "limit" | "conflict" | "unsaved" | "unavailable" }
+setExposed(off)        → { ok: true, remote: "pending" } | { ok: false, error: "unsaved" | "conflict" | "unavailable" }
+disconnect(shown)      → { ok: true, remote: "pending", pendingConfirmation? } | { ok: false, error: "unsaved" | "conflict" }
+cancel()               → HubPairingView (local only: back to unpaired)
 ```
 
-- **Withdrawal and disconnect** fence locally at once, even offline. They answer `ok` only once the local restrictive state is saved. If the Hub's acknowledgement is unknown, `remote: "pending"` is shown as a warning.
-- **`subscribe(fn)`:** the local status projection's changes, through slice 1's member status; no direct connection from the page.
+- **Withdrawal and disconnect** fence locally at once, even offline. They answer `ok` only once the local restrictive state is saved. `remote` is always `"pending"` in P1: S1 has no acknowledgement frame and no remote revoke, so the Hub learns of a withdrawal from the next snapshot, and of a disconnect only when its administrator revokes the fleet. The card shows "pending" as a warning. `"confirmed"` is reserved for a future S1 acknowledgement.
+- **`disconnect(shown)`** names exactly the pairing the page showed (its hub and binding). The server refuses any other (`conflict`), such as a replacement or a re-pair.
+- **`subscribe(fn)`:** the member's local status, read every 5 s while the card is shown (one request at a time, none while the page is hidden), stopping with the last listener. There is no direct connection from the page.
 ## The Hub workspace (S3b): `/hub/v1/*` and its session
 
 `src/hub/http/compose.ts` `createHubHttp(deps)` (S5's lazy entry: it exports `createHubHttp` and `migrations`) serves the Hub web listener: `/hub/v1/*`, the Hub-only pages (`/`, `/web`, `/ui`, `/ui/hub*`), the three Hub modules under `/ui/js/` and the public `/assets/`. Anything else is S5's not-found.
@@ -108,8 +121,8 @@ Server rules (hub.md §2, §4, §5; S1/S4 seams):
 - **The shell's part:** the Hub sidebar (`hubShell.*` words) and two lazy slots, all drawn only under a mark.
 - **Old shells:** a shell from before this change ignores `data-hub`.
 
-## Not in this slice
+## Elsewhere
 
-- S5 composition (`createServer` registering this entry, the Hub web listener, DB, audit and content store) — S5b.
-- The member side of the Settings card (pairing through S1's client, publishing through S4 readiness) — after S5's member composition.
-- Restricted execution (slice 4) and owner notifications (S5).
+- S5 composition: registering this entry, the Hub web listener, DB, audit and content store (S5b). The representative adapter: delivery, the `beforeInput` hand-off and the `report_result` answer bridge (#3147).
+- The member side of the Settings card: pairing and the representative picker (S3c, #3115/#3146).
+- Owner notifications (S5). The isolated S4 context and container provider stay off and uncomposed in P1 (#3145).

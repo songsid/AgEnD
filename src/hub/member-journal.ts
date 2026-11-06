@@ -1,4 +1,4 @@
-/** Durable restricted outbox boundary. No ordinary daemon or terminal API is imported here. */
+/** Durable member outbox boundary (P1: the representative adapter). No ordinary daemon or terminal API is imported here. */
 import type Database from "better-sqlite3";
 import { createCipheriv, createDecipheriv, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -14,7 +14,11 @@ const rowSchema = z.strictObject({ messageId: uuid, contentDigest: hash, context
   sequence: epoch, at: epoch, deliveryId: uuid.nullable(), inputIntent: uuid.nullable(), ackedSequence: epoch });
 type Row = z.infer<typeof rowSchema>;
 export interface HubRestrictedOutbox {
-  /** Same DB transaction, unique source key. This adapter MUST be a restricted S4 context, never a full-tool instance. */
+  /**
+   * Same DB transaction, unique source key. P1: the representative adapter (docs/design/hub-representative-agent.md,
+   * approved), which hands the question to the owner's published agent through ordinary delivery; the isolated S4
+   * context is off and uncomposed in P1.
+   */
   insert(db: Database.Database, question: HubQuestion, sourceKey: string): string;
   /** Re-reads the unique source row. It must match the same question and restricted context or throw. */
   lookup(db: Database.Database, question: HubQuestion, sourceKey: string): string | null;
@@ -132,6 +136,15 @@ export class HubMemberJournal {
       if (!fence.current()) throw new HubProtocolError("stale");
       row.deliveryId = deliveryId; return this.advance(row, "queued");
     });
+  }
+  /**
+   * The admitted question for its representative hand-off (docs/design/hub-representative-agent.md): only while it is
+   * queued with no input intent, i.e. before anything reached the agent. Later stages never re-read the text.
+   */
+  queuedQuestion(messageId: string): HubQuestion {
+    const row = this.row(messageId);
+    if (!row || row.stage !== "queued" || row.inputIntent) throw new HubProtocolError("uncertain");
+    return this.decrypt(row).question;
   }
   markInputIntent(messageId: string, request: HubAuthorizationRequest, lease: HubAuthorizationLease, fence: { current(): boolean; linkEpoch: number; revocationVersion: number }): void {
     this.change(() => {

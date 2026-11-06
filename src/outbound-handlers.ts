@@ -72,6 +72,7 @@ import {
   validateArgs,
 } from "./outbound-schemas.js";
 import type { CrossInstanceRecord } from "./search/search-docs.js";
+import { HUB_REPORT_TARGET, type HubReportOutcome } from "./hub-report-target.js";
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
@@ -118,6 +119,11 @@ export interface OutboundContext {
     payload: Record<string, unknown>,
     options?: OutboundDeliveryOptions,
   ): Promise<void | boolean>;
+  /**
+   * The Hub representative's answer hook (docs/design/hub-representative-agent.md): a report to HUB_REPORT_TARGET with
+   * a live Hub-issued correlation id from the agent it was delivered to. null: not a Hub answer (ordinary routing).
+   */
+  hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }): Promise<HubReportOutcome> | null;
   /** Persist a cross-instance action before its MCP call is acknowledged. */
   admitDurableDelivery?(input: {
     operationId: string;
@@ -420,6 +426,26 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const isExternalSender = meta.senderSessionName != null && meta.senderSessionName !== meta.instanceName;
+
+  // A Hub answer: only the reserved target, a live Hub-issued correlation id, and the agent it went to (consumed once).
+  // Anything else takes the ordinary route below (a real instance of that name included).
+  if (targetName === HUB_REPORT_TARGET && parsedCorrelationId && !isExternalSender && ctx.hubReport) {
+    // The same source-daemon fence ordinary durable admission applies (#3147 review): a report from a retired daemon
+    // generation never claims a Hub correlation, and the generation is asked again before every release step.
+    const bootNow = ctx.getDaemonBootId?.(meta.instanceName), bootSent = meta.sourceDaemonBootId ?? bootNow;
+    if (ctx.getDaemonBootId && (!bootNow || bootSent !== bootNow)) {
+      respond(null, "Source daemon generation is no longer current; outcome is unknown");
+      return;
+    }
+    const callerCurrent = () => !ctx.getDaemonBootId || ctx.getDaemonBootId(meta.instanceName) === bootSent;
+    const claimed = ctx.hubReport({ correlationId: parsedCorrelationId, caller: meta.instanceName, text: message, callerCurrent });
+    if (claimed) {
+      const outcome = await claimed;
+      if (outcome.ok) respond({ sent: true, target: HUB_REPORT_TARGET, correlation_id: parsedCorrelationId, message: outcome.message });
+      else respond(null, outcome.message);
+      return;
+    }
+  }
 
   let targetIpc = ctx.instanceIpcClients.get(targetName);
   let targetSession: string = targetName;
