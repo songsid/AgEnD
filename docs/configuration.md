@@ -722,8 +722,8 @@ Ambient effects (falling petals, click stars and other data-only presets, `set_w
 ## Data directory permissions
 
 AgEnD creates its home (`~/.agend`, or `AGEND_HOME`) with mode `0700`, including on hosts with umask `0002`.
-If an existing real directory belongs to the current user and permits group/other writes, AgEnD tightens that
-root to `0700` and logs one line. Existing files and non-writable roots are left unchanged. A foreign-owned home
+If an existing real directory belongs to the current user and gives the group or others any access (for example
+`0755` or `0750`), AgEnD tightens that root to `0700` and logs one line. Files inside are not changed recursively. A foreign-owned home
 or a path containing a symlink is refused; use a real directory owned by the account running AgEnD. The local
 operator directory and sockets retain their separate private-permission checks. The live shell/WSL installer
 prepares this boundary before running older releases' setup code too. From 2.3.4 (#3083) `daemon.log` and its
