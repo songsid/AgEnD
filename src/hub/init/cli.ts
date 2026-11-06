@@ -28,14 +28,18 @@ async function realService(home: string): Promise<HubServiceControl> {
   return {
     installed: () => installer.inspectService(SERVICE_LABEL).installed,
     async install(): Promise<string> {
+      const { assertHubServiceInstallIdle } = await import("../service-start.js");
+      try { assertHubServiceInstallIdle(home); } catch { throw Error(ht("service_install_idle")); }
       const path = installer.installService({
         label: SERVICE_LABEL,
         execPath: canonicalCliEntry(),
         path: process.env.PATH ?? "",
         workingDirectory: home,
         logPath: join(home, "fleet.log"),
+        agendHome: home,
+        launchdSessionType: "Background",
       });
-      installer.activateService(path, join(home, "fleet.pid"));
+      installer.activateService(path, join(home, "fleet.pid"), { preservePidFile: true });
       return path;
     },
   };
