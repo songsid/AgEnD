@@ -130,6 +130,8 @@ export interface OwnedProfileOptions {
   afterChecks?: () => void;
   /** Synchronous last look at the caller's own state, immediately before the folder is renamed (no await may sit between it and the rename). Throws to stop. */
   beforeCommit?: () => void;
+  /** Synchronous look at the caller's own state after the rename and the re-check and immediately before the delete: throws to stop, and the name is put back. */
+  beforeDelete?: () => void;
   /** A line for the person at this computer (never for AgEnD): used when a removal could neither finish nor be undone. */
   report?: (text: string) => void;
 }
@@ -207,7 +209,9 @@ function failIsolated(isolated: Isolated, options: OwnedProfileOptions, error: u
  */
 export async function removeOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): Promise<void> {
   const isolated = await isolateOwnedProfile(pairingDirectory, root, cli, name, options, "removing"), kind = cli as CredentialProfileCli, checked = name as string;
-  try { rmSync(isolated.moved, { recursive: true, force: false, maxRetries: 3, retryDelay: 50 }); }
+  // The default profile is written by another process (`agend-runtime profile default`), so it is read once more now that the folder has been taken away:
+  // if it was set in the meantime, the folder is put back and the removal refused.
+  try { options.beforeDelete?.(); rmSync(isolated.moved, { recursive: true, force: false, maxRetries: 3, retryDelay: 50 }); }
   catch (error) { failIsolated(isolated, options, error); }
   if (present(isolated.moved) || present(isolated.directory)) throw new Error("The profile folder could not be fully removed");
   forgetCreatedProfile(root, kind, checked); forgetCredentialStatus(root, kind, checked);
