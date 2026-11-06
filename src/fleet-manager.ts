@@ -74,6 +74,7 @@ import { join, dirname, basename, delimiter, isAbsolute, relative, resolve as re
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { LegacyWindowHoldError } from "./tmux-legacy.js";
 import { planKiroReconciliation, applyKiroReconciliation, kiroReconciliationPrompt, type KiroReconciliation, type KiroReconcileDeps } from "./kiro-reconcile.js";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps, type KiroMigrationPlan } from "./kiro-migrate.js";
 import { fleetLabel } from "./fleet-label.js";
@@ -2273,6 +2274,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubHolds: readonly import("./hub/runtime.js").HubHold[] = [];
   /** M-2457 §6 rule 2: the fleet is held — an old tmux server is still on the socket and AgEnD can't prove it its own. */
   private tmuxHold: { key: string; detail: string; since: number } | null = null;
+  /** M-2457 §6 rule 3: instances held by an old 2.3 window AgEnD could not prove its own. */
+  private readonly legacyWindowHolds = new Map<string, { key: string; detail: string; since: number }>();
   private rawFleetDocument: ReturnType<typeof parseDocument> | null = null;
   /** #2208: the paths a saveFleetConfig() wrote, for its check that nothing else changed. */
   private fleetDocumentWrites: Array<Array<string | number>> | null = null;
@@ -7512,12 +7515,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
       const identity = { kind, backend, model: isWindowsInstance(config) ? config.model || "default" : this.resolveInstanceModel(name).display };
-      if (receipt) {
-        await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
-          // Only this transition's actual publication can acquire its replacement.
-          receipt.daemon = daemon;
-        });
-      } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
+      // M-2457 §6 rule 3: an old 2.3 window AgEnD can't prove its own holds only this instance (Needs-you says why).
+      try {
+        if (receipt) {
+          await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
+            // Only this transition's actual publication can acquire its replacement.
+            receipt.daemon = daemon;
+          });
+        } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
+      } catch (err) {
+        if (err instanceof LegacyWindowHoldError) {
+          this.legacyWindowHolds.set(name, { key: `legacy:${Date.now()}`, detail: err.message, since: Date.now() });
+          this.needsYou?.poke();
+        }
+        throw err;
+      }
+      if (this.legacyWindowHolds.delete(name)) this.needsYou?.poke();
       execution?.assert();
       // Only clear a stale process status after a real start succeeded.  Clearing
       // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
@@ -17164,7 +17177,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const guidance = h.reason ? t(`hub.provider.${h.reason}`) : "";
         return { side: h.side, code: h.code, since: h.since, detail: guidance && guidance !== `hub.provider.${h.reason}` ? guidance : t(`hub.hold.${h.code}`) };
       }),
-      tmuxHolds: () => (this.tmuxHold ? [{ instance: null, ...this.tmuxHold }] : []),
+      tmuxHolds: () => [...(this.tmuxHold ? [{ instance: null, ...this.tmuxHold }] : []),
+        ...[...this.legacyWindowHolds].map(([instance, h]) => ({ instance, ...h }))],
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
         ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,
       })),

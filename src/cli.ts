@@ -3735,6 +3735,18 @@ program
   });
 
 program
+  .command("tmux-migrate")
+  .description("After an upgrade from AgEnD 2.3: release an instance held because an old tmux window (system tmux, default socket) may still run it. You then own that window; the instance starts on its next start.")
+  .requiredOption("--release <name>", "the held instance")
+  .action(async (opts: { release: string }) => {
+    const { releaseLegacyWindow } = await import("./tmux-legacy.js");
+    const dir = join(DATA_DIR, "instances", opts.release);
+    const id = releaseLegacyWindow(DATA_DIR, opts.release, dir);
+    if (!id) { console.error(`${opts.release} is not held by an old tmux window.`); process.exit(1); }
+    console.log(`Released ${opts.release}: AgEnD will leave the old window ${id} (system tmux) alone. Close it yourself if it still runs that agent, then start ${opts.release} again (agend fleet start ${opts.release}).`);
+  });
+
+program
   .command("attach")
   .description("Attach to an instance's tmux window. Accepts display name, instance name, row number from ls, or a substring. No argument: interactive picker.")
   .argument("[name]", "Instance name, display name, row number, or substring (omit for interactive picker)")
