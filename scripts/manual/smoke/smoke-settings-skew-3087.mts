@@ -24,6 +24,11 @@
 // The stale and old copies are proven, not assumed: stale-shell asserts the loaded stylesheet lacks a rule the branch added;
 // every swapped URL must be requested at least once in its case (swapped-urls-requested), so a file list that goes stale — a file
 // renamed, a swap the page never loads — fails the case instead of passing without testing anything; the counts are in the receipt.
+// Refs #3061 (review of #3165, P2 3): per new-page case, one more step after the Shared agent settings flow — Settings → Access & security
+//   (in-page, as a tab would): the QR switch's label and hint (settings.webLoginQr / webLoginQrHint) and the Web authorization card's rule line
+//   (settingsLayout.revAuthorityRule) read as their words, in the language of the case, and not as raw keys (access-words). In stale-deps those
+//   words are only in settings-access-strings.js, a file the old tab cannot hold: the settings-strings.js and settings-layout.js it does hold are
+//   BASE's, and stale-held-before-panel proves they were delivered (and so kept by URL) before panel-settings.js was first requested.
 // A receipt (receipt.md + result.json) names the commit, whether the tree was clean, the command, the swapped files and each case.
 // The old copies are read straight from git (`git show BASE:src/ui/…`), so BASE must be fetched; BASE defaults to the branch's merge-base
 // with upstream/release/2.3.5-alpha (v2.3.5-alpha.4). Run it on a clean checkout of the commit to be judged. CASES=<names> runs a subset.
@@ -90,17 +95,28 @@ const X = {
 } as const;
 // The words of every register("settings", …) call of a file, merged as register() merges them. The words this branch added are the keys
 // of the checkout's settings-strings.js and settings-shared-strings.js (where the review moved them) that BASE's settings-strings.js lacks.
-const settingsWords = (code: string) => {
+const wordsOf = (code: string, wanted: string) => {
   const out: Record<string, Record<string, string>> = { en: {}, "zh-TW": {} };
-  new Function("register", code.replace(/^import .*$/gm, ""))((ns: string, tables: Record<string, Record<string, string>>) => { if (ns === "settings") for (const l of Object.keys(out)) Object.assign(out[l]!, tables[l] ?? {}); });
+  new Function("register", code.replace(/^import .*$/gm, ""))((ns: string, tables: Record<string, Record<string, string>>) => { if (ns === wanted) for (const l of Object.keys(out)) Object.assign(out[l]!, tables[l] ?? {}); });
   return out;
 };
+const settingsWords = (code: string) => wordsOf(code, "settings");
 const wordsAtBase = settingsWords(oldBody("src/ui/settings-strings.js"));
 const wordsNow = settingsWords(newBody("src/ui/settings-strings.js"));
 if (atHead("src/ui/settings-shared-strings.js")) { const w = settingsWords(newBody("src/ui/settings-shared-strings.js")); for (const l of Object.keys(wordsNow)) Object.assign(wordsNow[l]!, w[l]); }
+// Refs #3061: Access & security's words live in settings-access-strings.js (settings.* and settingsLayout.*), another file no old tab can hold.
+const layoutNow: Record<string, Record<string, string>> = { en: {}, "zh-TW": {} };
+if (atHead("src/ui/settings-access-strings.js")) {
+  const access = newBody("src/ui/settings-access-strings.js"), w = settingsWords(access), l = wordsOf(access, "settingsLayout");
+  for (const lang of Object.keys(wordsNow)) { Object.assign(wordsNow[lang]!, w[lang]); Object.assign(layoutNow[lang]!, l[lang]); }
+}
 const addedKeys = Object.keys(wordsNow.en!).filter(k => !(k in wordsAtBase.en!));
+// This smoke began on a branch whose BASE had no Shared agent settings page (`.s-shared`), so "the old page is served" was proven by its absence.
+// On a branch cut after that page shipped (#3061: BASE already has it) the old and new pages both carry `.s-shared`; then the proof is that the
+// BASE copy of panel-settings.js was the one the browser was given (its request was answered from BASE: swapped-urls-requested counts it).
+const baseHasShared = oldBody("src/ui/panel-settings.js").includes("s-shared");
 const hasKey = (code: string, k: string) => new RegExp(`[\\s,{]"?${k.replace(/[-]/g, "\\-")}"?\\s*:`).test(code);
-const RAW_KEY = /\bsettings\.[A-Za-z][A-Za-z0-9_]*|\{\d+\}|\bundefined\b|\[object Object\]/;
+const RAW_KEY = /\bsettings(?:Layout)?\.[A-Za-z][A-Za-z0-9_]*|\{\d+\}|\bundefined\b|\[object Object\]/;
 
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48957), classic: true, instances: 3 });
 const fm = fx.fm as any;
@@ -132,10 +148,12 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
   const page = await ctx.newPage(), errors: string[] = [], hits: Record<string, number> = {};
   const writes: CaseResult["writes"] = [];
   let deliveredStrings: string | null = null;   // the settings-strings.js body the browser actually got (when this mode swaps it)
+  const firstAnswered: Record<string, number> = {}; let answered = 0;   // the order the browser got the modules in (stale-held-before-panel)
   page.on("pageerror", (e: any) => errors.push(String(e)));
   page.on("console", (m: any) => { if (m.type() === "error" && !/Failed to load resource/.test(m.text())) errors.push(`console: ${m.text()}`); });
   page.on("response", async (r: any) => {
     const q = r.request(), u = new URL(r.url());
+    if (/^\/ui\/js\/(settings-strings|settings-layout|panel-settings)\.js$/.test(u.pathname) && !(u.pathname in firstAnswered)) firstAnswered[u.pathname] = ++answered;
     if (u.pathname === "/ui/js/settings-strings.js" && MODES[mode].includes("src/ui/settings-strings.js") && deliveredStrings === null) deliveredStrings = await r.text().catch(() => null);
     if (q.method() !== "GET" && /^\/(api\/settings|ui\/config)/.test(u.pathname)) writes.push({ method: q.method(), path: u.pathname, status: r.status(), body: (() => { try { return JSON.parse(q.postData() ?? "null"); } catch { return q.postData(); } })(), response: (await r.text().catch(() => "")).slice(0, 300) });
   });
@@ -170,7 +188,8 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
     await page.waitForSelector(".p-settings #g-model", { timeout: 20000 });
     await sleep(600);
     const newPage = (await t(".p-settings .s-shared").count()) === 1;
-    check(mode === "old-page" ? "old-page-is-served" : "new-page-renders", mode === "old-page" ? !newPage : newPage, newPage ? ".s-shared present" : ".s-shared absent");
+    check(mode === "old-page" ? "old-page-is-served" : "new-page-renders", mode === "old-page" ? (baseHasShared ? (hits["/ui/js/panel-settings.js"] ?? 0) > 0 : !newPage) : newPage,
+      mode === "old-page" && baseHasShared ? `BASE's panel-settings.js served ×${hits["/ui/js/panel-settings.js"] ?? 0} (BASE already has .s-shared)` : newPage ? ".s-shared present" : ".s-shared absent");
     check("no-error-state", (await t(".p-settings .error-state, .p-settings [role=alert].error").count()) === 0);
     await page.screenshot({ path: shotPath(SMOKE, name, "page"), fullPage: true });
 
@@ -261,6 +280,20 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
     const held = w2.length === 1 && w2[0].status === 202 && /"result":"pending_confirmation"/.test(w2[0].response) && /"pending_change":\{"id":"[0-9a-f]+"/.test(w2[0].response);
     check("save-confirm-flow", held, `status ${w2[0]?.status ?? "none"}; ${w2[0]?.response.slice(0, 110) ?? ""}`);
     await page.screenshot({ path: shotPath(SMOKE, name, "saved"), fullPage: false });
+    if (newPage && mode !== "old-page") {            // the old Settings modules have no QR switch: nothing to read there
+      // Refs #3061 (P2 3): Access & security, in-page, in a tab that already holds what Fleet and search loaded. The QR switch's label and hint
+      // and the Web authorization card's rule line are words the new files added; they must read as words, in this case's language.
+      await page.evaluate((path: string) => { history.pushState(null, "", path); dispatchEvent(new PopStateEvent("popstate")); }, "/settings/access");
+      await page.waitForSelector("#webLoginQr", { timeout: 20000 }).catch(() => null);
+      await sleep(500);
+      const qrLabel = ((await t("label:has(#webLoginQr) > span").first().textContent().catch(() => "")) ?? "").trim();
+      const qrHint = ((await t("#webLoginQr-hint").textContent().catch(() => "")) ?? "").trim();
+      const rule = ((await t(".s-authority-rule").first().textContent().catch(() => "")) ?? "").trim();
+      const accessText = (await t(".p-settings").textContent()) ?? "";
+      check("access-words", qrLabel === wordsNow[lang]!.webLoginQr && qrHint === wordsNow[lang]!.webLoginQrHint && rule === layoutNow[lang]!.revAuthorityRule && !RAW_KEY.test(accessText),
+        `label «${qrLabel}»; hint «${qrHint.slice(0, 60)}…»; rule «${rule.slice(0, 60)}…»; raw key: ${RAW_KEY.exec(accessText)?.[0] ?? "none"}`);
+      await page.screenshot({ path: shotPath(SMOKE, name, "access"), fullPage: false });
+    }
     check("no-page-errors", errors.length === 0, errors.slice(0, 3).join(" | "));
   } catch (e) { check("case-ran", false, String(e).slice(0, 400)); check("no-page-errors", errors.length === 0, errors.slice(0, 3).join(" | ")); }
   // The old settings-strings.js that was served must really be the old one: none of the keys this branch added, and it is BASE's file.
@@ -268,6 +301,13 @@ for (const lang of ["en", "zh-TW"] as const) for (const dev of [{ device: "desk"
     const got = deliveredStrings as string | null, leaked = got === null ? addedKeys : addedKeys.filter(k => hasKey(got, k));
     check("stale-strings-served", got !== null && got === oldBody("src/ui/settings-strings.js") && leaked.length === 0,
       got === null ? "never delivered" : `${got.length} bytes, identical to BASE's file; ${addedKeys.length} keys this branch added (e.g. sharedGroupAgents, opt_tool_set_worker) — ${leaked.length ? `PRESENT: ${leaked.slice(0, 5).join(", ")}` : "none present"}`);
+  }
+  // Refs #3061: the old modules were held BEFORE the new Settings panel loaded — Fleet (and search) ran first, so the tab already had BASE's
+  // settings-strings.js and settings-layout.js by URL when panel-settings.js was first asked for.
+  if (MODES[mode].includes("src/ui/settings-strings.js")) {
+    const f = firstAnswered, ok = f["/ui/js/settings-strings.js"] !== undefined && f["/ui/js/panel-settings.js"] !== undefined && f["/ui/js/settings-strings.js"] < f["/ui/js/panel-settings.js"]
+      && (!MODES[mode].includes("src/ui/settings-layout.js") || (f["/ui/js/settings-layout.js"] !== undefined && f["/ui/js/settings-layout.js"] < f["/ui/js/panel-settings.js"]));
+    check("stale-held-before-panel", ok, `answered in order: ${Object.entries(f).sort((a, b) => a[1] - b[1]).map(([u, n]) => `${n}. ${u.slice("/ui/js/".length)}`).join(", ")}`);
   }
   // A swap that nobody requests tests nothing: every URL replaced in this mode must have been asked for at least once.
   if (MODES[mode].length) {
@@ -309,7 +349,7 @@ const receipt = [
   `(– = not applicable in that mode: the old page has none of the new controls.)`,
   ``,
   `## Evidence for the stale-deps cases`,
-  ...results.filter(r => r.mode === "stale-deps").flatMap(r => [`- ${r.name}: stale-strings-served — ${r.checks["stale-strings-served"]?.detail ?? "n/a"}`, `  - probe-words — ${r.checks["probe-words"]?.detail ?? "n/a"}`, `  - search-words — ${r.checks["search-words"]?.detail ?? "n/a"}`]),
+  ...results.filter(r => r.mode === "stale-deps").flatMap(r => [`- ${r.name}: stale-strings-served — ${r.checks["stale-strings-served"]?.detail ?? "n/a"}`, `  - probe-words — ${r.checks["probe-words"]?.detail ?? "n/a"}`, `  - search-words — ${r.checks["search-words"]?.detail ?? "n/a"}`, `  - stale-held-before-panel — ${r.checks["stale-held-before-panel"]?.detail ?? "n/a"}`, `  - access-words — ${r.checks["access-words"]?.detail ?? "n/a"}`]),
   ``,
   `## Observed, not pass/fail (what a stale dependency cannot do)`,
   `| case | default-mark tooltip | backend "not installed" text | page lead |`,

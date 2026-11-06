@@ -1108,6 +1108,7 @@ export function handleSettingsRequest(
       if (parsed.usageOnPublicLink !== undefined) { web.usage_report_on_public_link = parsed.usageOnPublicLink; changes.push({ path: ["web", "usage_report_on_public_link"], value: parsed.usageOnPublicLink }); }
       if (parsed.officeLevels !== undefined) { web.office_levels = parsed.officeLevels; changes.push({ path: ["web", "office_levels"], value: parsed.officeLevels }); }
       if (parsed.previewCdn !== undefined) { web.preview_cdn = parsed.previewCdn; changes.push({ path: ["web", "preview_cdn"], value: parsed.previewCdn }); }
+      if (parsed.loginQr !== undefined) { web.login_qr = parsed.loginQr; changes.push({ path: ["web", "login_qr"], value: parsed.loginQr }); }
       if (parsed.publicLink) {
         if (Object.keys(parsed.publicLink).length) web.public_link = { ...web.public_link, ...parsed.publicLink };
         for (const [key, value] of Object.entries(parsed.publicLink)) changes.push({ path: ["web", "public_link", key], value });

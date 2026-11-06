@@ -6,6 +6,7 @@ import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 let p: AppPage, SettingsPanel: any, nav: any, registry: any;
 const originalFetch = globalThis.fetch;
 const writes: string[] = [];
+let webOnly = false;
 const fakeFetch = async (path: string, init: { method?: string } = {}) => {
   if ((init.method || "GET") !== "GET") writes.push(path);
   const body = (() => {
@@ -14,6 +15,7 @@ const fakeFetch = async (path: string, init: { method?: string } = {}) => {
     if (path === "/api/settings/classic") return { defaults: {}, channels: {} };
     if (path === "/api/fleet") return { version: "2.3.5-alpha", instances: [] };
     if (path === "/api/settings/web-authority") return { state: { enabled: true }, configured: {}, hours: { min: 1, max: 48, default: 8 }, lanHosts: [], authorized: [] };
+    if (path === "/ui/outside") return webOnly ? { webOnly: true, here: true, enrolled: false, outside: false, pausedForMs: 0 } : {};
     if (path === "/api/settings/guests") return { enabled: false, chat: true, explicit: true, instances: [], connections: [], guests: [] };
     if (path === "/api/settings/public-tunnel-token") return [{ token_present: false }];
     return [];
@@ -36,6 +38,7 @@ afterEach(async () => {
   (await import("/ui/js/settings-apply.js")).resetOperation();
   (await import("/ui/js/settings-confirm.js")).resetConfirmations();
   writes.length = 0;
+  webOnly = false;
 });
 afterAll(() => { p.restore(); globalThis.fetch = originalFetch; });
 
@@ -62,6 +65,16 @@ describe("the real Settings forms across page tabs", () => {
     expect(byId("access-panel-login").hasAttribute("hidden")).toBe(false);
     expect(p.root.querySelector(".s-pending")).not.toBeNull();
     expect(writes).toEqual([]);
+  });
+
+  it("lists the Sign-in & authorization cards in the reference order: owner verification, sessions, web authorization", async () => {
+    webOnly = true;
+    await open("access");
+    const login = byId("access-panel-login");
+    const order = [...login.querySelectorAll(".s-outside, .s-access-session, .s-web-authority")].map((c: any) => c.className.split(" ").find((x: string) => /^s-(outside|access-session|web-authority)$/.test(x)));
+    expect(order).toEqual(["s-outside", "s-access-session", "s-web-authority"]);
+    expect([byId("outsideCard").querySelector("h3").textContent, byId("outState").textContent]).toEqual(["Owner verification", "Not set up"]);
+    expect(login.querySelector(".s-authority-rule")?.textContent).toContain("judged separately");
   });
 
   it("opens a hidden Sharing tab and its credentials disclosure for a settings-search target", async () => {

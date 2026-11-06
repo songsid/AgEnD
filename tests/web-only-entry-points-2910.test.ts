@@ -36,11 +36,12 @@ async function served(config: Record<string, unknown>) {
 const CHAT = { channel: { type: "telegram", mode: "topic", bot_token_env: "T", group_id: "-100", access: { mode: "locked", allowed_users: ["1"] } } };
 
 describe("#2910 D5 the sign-in page knows a web-only fleet", () => {
+  // (#3061: a web-only fleet's own listener also carries data-device-login, so the mark is matched by its start.)
   it.each([["web-only", {}, true], ["with a chat connection", CHAT, false]] as const)("%s: /signin and a signed-out navigation's page are marked: %s", async (_why, config, marked) => {
     const h = await served(config);
     try {
       const page = await get(h.port, "/signin"), nav = await get(h.port, "/ui", { accept: "text/html" });
-      expect([page.status, nav.status, page.body.includes('<body data-web-only="1">'), nav.body.includes('<body data-web-only="1">'), page.body.includes("/assets/signin.js")])
+      expect([page.status, nav.status, page.body.includes('<body data-web-only="1"'), nav.body.includes('<body data-web-only="1"'), page.body.includes("/assets/signin.js")])
         .toEqual([200, 401, marked, marked, true]);
     } finally { await h.stop(); }
   }, 20_000);
