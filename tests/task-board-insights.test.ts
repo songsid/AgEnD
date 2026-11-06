@@ -42,7 +42,8 @@ beforeAll(async () => {
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
-  for (const k of ["agend_tasks_project", "agend_tasks_insights", "agend_tasks_assignee"]) (globalThis as any).localStorage.removeItem(k);
+  (globalThis as any).history.replaceState(null, "", "/ui/fleet");   // the board keeps its project and filters in the address
+  for (const k of ["agend_tasks_project", "agend_tasks_insights", "agend_tasks_assignee", "agend_tasks_filters", "agend_tasks_display"]) (globalThis as any).localStorage.removeItem(k);
   handler = (path) => path.startsWith("/ui/tasks/board") ? { rev: 1, projects: [PROJECT], cards: CARDS } : {};
   app.applyStatus({ uptime: 1, instances: ["alpha", "beta"].map((name) => ({ name, status: "running", state: "idle", execution_state: "idle" })) });
 });
@@ -117,5 +118,32 @@ describe("on the board", () => {
     pick(2, "none"); await settle(4);
     expect(rows()).toEqual([["High", "1"], ["Low", "1"]]);
     expect(JSON.parse((globalThis as any).localStorage.getItem("agend_tasks_insights"))).toEqual({ count: "main", rows: "priority", split: "none" });
+  });
+
+  // #3191 (Prism): a list with sub-task rows shows only its rows, so Insights counts those; the board keeps a main task's
+  // sub tasks as its context.
+  const LIST = JSON.stringify({ view: "list", group: "status", subs: true });
+  const listed = () => [...(globalThis as any).document.querySelectorAll(".tb-row")].map((r: any) => r.getAttribute("data-id") || r.querySelector(".tb-row-code, .tb-code")?.textContent);
+  it("a list with sub-task rows and a filter: Insights counts the rows the list shows", async () => {
+    await open({ agend_tasks_display: LIST, agend_tasks_filters: "assignee:alpha" });
+    expect(listed().length).toBe(3);   // M-1, S-1, S-3 (not M-2, beta's, nor S-2)
+    expect(q("dialog[open] .ts-sum").textContent).toBe("3 cards");
+    expect(rows()).toEqual([["Aalpha", "3", "1", "1", "1", "0", "0"]]);
+  });
+  it("a list with sub-task rows, finished cards hidden: a finished sub task is not counted", async () => {
+    handler = (path) => path.startsWith("/ui/tasks/board")
+      ? { rev: 1, projects: [PROJECT], cards: [...CARDS, card({ id: "S-4", kind: "sub", parentId: "M-2", status: "done", assignee: "beta", sort: 4, doneAt: "2026-11-01T00:00:00.000Z" })] } : {};
+    await open({ agend_tasks_display: JSON.stringify({ view: "list", group: "status", subs: true, done: "hide" }) });
+    expect(listed().length).toBe(6);   // M-1, M-2, S-1, S-2, S-3 and M-3 (waiting in review); S-4 is done: hidden
+    expect(q("dialog[open] .ts-sum").textContent).toBe("6 cards");   // not 7: the hidden finished S-4 is not counted
+  });
+  it("controls: the same list unfiltered counts all 6; the board with the filter still counts M-2's sub tasks (5)", async () => {
+    await open({ agend_tasks_display: LIST });
+    expect([listed().length, q("dialog[open] .ts-sum").textContent]).toEqual([6, "6 cards"]);
+    await p.unmount();
+    (globalThis as any).history.replaceState(null, "", "/ui/fleet");
+    (globalThis as any).localStorage.removeItem("agend_tasks_display");
+    await open({ agend_tasks_filters: "assignee:alpha" });
+    expect(q("dialog[open] .ts-sum").textContent).toBe("5 cards");
   });
 });

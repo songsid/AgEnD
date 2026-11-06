@@ -367,6 +367,11 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
   const columns = display.done === "hide" ? COLUMNS.filter((s) => s !== "done") : COLUMNS;
   const toggleSubs = (id) => setExpanded({ ...expanded, [id]: !expanded[id] });
   const empty = () => html`<${Empty} icon="tasks" title=${filters.length ? t("tasks.emptyFiltered") : t("tasks.emptyBoard")} hint=${filters.length || archived ? undefined : t("tasks.emptyBoardHint")} />`;
+  // Insights counts what the page shows. A list with sub-task rows shows exactly its rows (each matched by the filter, a
+  // finished one as Done shows it); the board, or a list without them, shows a main task with all its sub tasks.
+  const insightCards = () => (display.view === "list" && display.subs
+    ? listRows(mains, subsOf, display, filters, now)
+    : mains.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]));
   const listBody = () => {
     const rows = listRows(mains, subsOf, display, filters, now);
     return rows.length === 0 ? empty() : html`<${ListView} rows=${rows} display=${display} subsOf=${subsOf} byId=${byId} flashed=${flashed} now=${now}
@@ -480,7 +485,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
       })}
     </div></div>`}
     ${insights ? html`<${InsightsDialog} name=${project === NO_PROJECT ? t("tasks.noProject") : project.name} onClose=${() => setInsights(false)}
-      cards=${mains.flatMap((c) => [c, ...(subsOf.get(c.id) || [])])} />` : null}
+      cards=${insightCards()} />` : null}
   </div>`;
 }
 
