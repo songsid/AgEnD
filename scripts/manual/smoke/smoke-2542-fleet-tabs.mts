@@ -29,16 +29,21 @@ const READ = `(() => {
   const ar = active && active.getBoundingClientRect();
   return { inHeader: !!(head && nav && head.contains(nav)), tabs: items.length, head: head && r(head), h1: h1 && r(h1), nav: nav && r(nav),
     activeVisible: !!(ar && ar.width > 0 && ar.left >= 0 && ar.right <= innerWidth), scrollW: document.documentElement.scrollWidth, innerW: innerWidth,
-    tools: head ? head.querySelectorAll(".panel-actions > *").length : 0 };
+    tools: head ? head.querySelectorAll(".panel-actions > *").length : 0,
+    // Every tab whole inside the tab row's own box (a clipped/scrolled-away tab fails), and the title clear of the tabs.
+    allInNav: !!nav && items.length === 6 && items.every((a) => { const b = a.getBoundingClientRect(), n = nav.getBoundingClientRect();
+      return b.width > 0 && b.left >= n.left - 0.5 && b.right <= n.right + 0.5 && b.right <= innerWidth; }),
+    navW: nav ? Math.round(nav.getBoundingClientRect().width) : 0,
+    titleClear: !(head && nav && head.contains(nav)) || head.querySelector(".panel-title").getBoundingClientRect().right <= nav.getBoundingClientRect().left + 0.5 };
 })()`;
 
-async function open(c: { device: "desk" | "phone"; theme: "light" | "dark"; lang: "en" | "zh-TW" }, css?: string) {
+async function open(c: { device: "desk" | "phone"; theme: "light" | "dark"; lang: "en" | "zh-TW" }, css?: string, path = "/ui/fleet") {
   const p = await freshPage(fx, c);
   const errors: string[] = [];
   p.page.on("pageerror", (e: any) => errors.push(String(e).slice(0, 200)));
   if (css) await p.page.route("**/assets/app.css*", (r: any) => r.fulfill({ status: 200, contentType: "text/css", body: css }));
   await mounted(p.page, 30000);
-  await p.page.goto(new URL("/ui/fleet", p.page.url()).href);
+  await p.page.goto(new URL(path, p.page.url()).href);
   await p.page.locator(".p-fleet").waitFor({ timeout: 15000 });
   await p.page.waitForTimeout(800);
   return { ...p, errors };
@@ -69,12 +74,13 @@ for (const c of CASES) {
     ok("no sideways overflow", v.scrollW <= v.innerW);
     if (c.device === "desk") {
       ok("tabs in the header", v.inHeader);
+      ok("every tab whole in the row", v.allInNav && v.titleClear);
       const mid = (v.nav.top + v.nav.bottom) / 2;
       ok("tabs on the title's row", mid > v.h1.top - 4 && mid < v.h1.bottom + 4);
       ok("the header is one row", v.head.h <= 64);
       await p.page.setViewportSize({ width: 900, height: 740 }); await p.page.waitForTimeout(400);
       const w9 = await p.page.evaluate(READ) as any;
-      ok("900 px: in the header, one row, no overflow", w9.inHeader && w9.head.h <= 64 && w9.scrollW <= w9.innerW && w9.activeVisible);
+      ok("900 px: every tab whole (in the header only if it all fits), no overflow", w9.allInNav && w9.titleClear && w9.scrollW <= w9.innerW && w9.activeVisible && (!w9.inHeader || w9.head.h <= 64));
       await p.page.setViewportSize({ width: 800, height: 740 }); await p.page.waitForTimeout(400);
       const w8 = await p.page.evaluate(READ) as any;
       ok("resized under 900 px: the row under the header", !w8.inHeader && w8.tabs === 6 && w8.nav.top >= w8.h1.bottom - 2);
@@ -88,6 +94,51 @@ for (const c of CASES) {
   }
   record(name, failed, { head: Math.round(v.head?.h ?? 0), inHeader: v.inHeader, scrollW: v.scrollW, innerW: v.innerW, narrow: narrow && { scrollW: narrow.scrollW, innerW: narrow.innerW }, errors: p.errors.slice(0, 2) });
   await p.ctx.close();
+}
+
+// Prism #3267 r1: every route at 900 px and 1366 px (the open tab can be any of the six), and the host memory warning
+// with its largest processes in the title: the tabs are whole wherever they are, never clipped or squeezed to nothing.
+if (!process.env.BEFORE) {
+  const ROUTES = ["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage"];
+  for (const lang of ["en", "zh-TW"] as const) for (const width of [900, 1100, 1366]) {
+    const failed: string[] = [], where: string[] = [];
+    for (const path of ROUTES) {
+      const p = await open({ device: "desk", theme: "light", lang }, undefined, path);
+      await p.page.setViewportSize({ width, height: 800 }); await p.page.waitForTimeout(300);
+      const v = await p.page.evaluate(READ) as any;
+      where.push(v.inHeader ? "H" : "R");
+      if (!v.allInNav || !v.activeVisible) failed.push(`${path}: a tab clipped`);
+      if (v.scrollW > v.innerW) failed.push(`${path}: overflow`);
+      if (!v.titleClear) failed.push(`${path}: title over the tabs`);
+      if (v.inHeader && v.head.h > 64) failed.push(`${path}: header two rows`);
+      if (p.errors.length) failed.push(`${path}: page errors`);
+      await p.ctx.close();
+    }
+    record(`routes ${lang} ${width}px`, failed, { where: where.join("") });
+  }
+  const PRESSURE = `(async () => { const m = await import("/assets/app-store.js"); m.appStore.set({ hostMemory: "critical", hostMemoryTop: [
+    { name: "claude", pid: 4242, rssBytes: 3_400_000_000, owner: "instance", instance: "agend-dev-claude2-t481212" },
+    { name: "chrome-headless-shell", pid: 5151, rssBytes: 1_900_000_000, owner: "other" },
+    { name: "node", pid: 6161, rssBytes: 900_000_000, owner: "fleet" }] }); })()`;
+  for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk", theme: "dark", lang: "zh-TW" }] as const) for (const width of [900, 1366, 1920]) {
+    const failed: string[] = [];
+    const p = await open(c, undefined, "/ui/fleet/usage");
+    await p.page.setViewportSize({ width, height: 800 });
+    await p.page.evaluate(PRESSURE); await p.page.waitForTimeout(500);
+    const v = await p.page.evaluate(READ) as any;
+    if (!v.allInNav || !v.activeVisible) failed.push("a tab clipped");
+    if (v.scrollW > v.innerW) failed.push("overflow");
+    if (!v.titleClear) failed.push("title over the tabs");
+    if (p.errors.length) failed.push("page errors");
+    await p.page.screenshot({ path: shotPath(SMOKE, c as any, `pressure-${width}`), clip: { x: 0, y: 0, width, height: 200 } });
+    // The warning gone again: the tabs come back up when they fit.
+    await p.page.evaluate(`(async () => { const m = await import("/assets/app-store.js"); m.appStore.set({ hostMemory: null, hostMemoryTop: [] }); })()`);
+    await p.page.waitForTimeout(400);
+    const after = await p.page.evaluate(READ) as any;
+    if (width >= 1366 && !after.inHeader) failed.push("warning cleared: tabs back in the header");
+    record(`pressure ${c.lang} ${width}px`, failed, { inHeader: v.inHeader, navW: v.navW, cleared: after.inHeader });
+    await p.ctx.close();
+  }
 }
 
 const S = process.env.SKEW;

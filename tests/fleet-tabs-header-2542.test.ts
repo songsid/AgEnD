@@ -76,3 +76,44 @@ describe("M-2542: Fleet's tab row", () => {
     expect(seen).toEqual([[TABS, []], [[], TABS], [TABS, []]]);
   });
 });
+
+/** A fake laid-out header: widths in px; `scroll` is an element's natural width when its box is narrower (ellipsis). */
+function fakeRoot(m: { head: number; pad?: number; gap?: number; title: Array<[number, number?]>; tabs: number[]; tools: number[]; seg?: boolean }) {
+  const el = (width: number, kids: any[] = [], extra: any = {}) => ({ getBoundingClientRect: () => ({ width }), scrollWidth: extra.scroll ?? width, children: kids, ...extra });
+  const title = el(0, m.title.map(([w, sw]) => el(w, [], { scroll: sw ?? w })), { cls: "title" });
+  const nav = el(0, m.tabs.map(w => el(w)), { cls: "nav" });
+  const tools = m.tools.map(w => el(w));
+  const head = el(m.head, [title, ...(m.seg ? [] : [nav]), ...tools], { cls: "head" });
+  const style = new Map<any, any>([[head, { paddingLeft: `${m.pad ?? 16}px`, paddingRight: `${m.pad ?? 16}px`, columnGap: `${m.gap ?? 12}px` }],
+    [title, { columnGap: "12px" }], [nav, { columnGap: "4px" }]]);
+  const root = { querySelector: (q: string) => q === ".panel-head" ? head : q.startsWith("nav") ? nav : null };
+  (head as any).querySelector = (q: string) => (q === ".panel-title" ? title : null);
+  return { root, style };
+}
+
+describe("M-2542: the header holds the tabs only when everything fits (Prism #3267 r1)", () => {
+  const realCS = (globalThis as any).getComputedStyle;
+  afterEach(() => { (globalThis as any).getComputedStyle = realCS; });
+  const measure = async (m: Parameters<typeof fakeRoot>[0]) => {
+    const { root, style } = fakeRoot(m);
+    (globalThis as any).getComputedStyle = (e: any) => style.get(e) ?? {};
+    // @ts-expect-error — a JS module of the app, with no types
+    const { measureTabsFit } = await import("../src/ui/panel-fleet.js");
+    return measureTabsFit(root);
+  };
+  // 6 tabs × 100 + 5 × 4 = 620; title 60; tools 3 × 80 = 240; 4 gaps between the 5 items × 12 = 48 → 968, plus 2 × 16 padding = 1000 px.
+  const base = { title: [[60]] as Array<[number, number?]>, tabs: [100, 100, 100, 100, 100, 100], tools: [80, 80, 80] };
+  it("fits at exactly the sum, not a pixel less; the row under the header measures the same", async () => {
+    expect([await measure({ ...base, head: 1000 }), await measure({ ...base, head: 999 }), await measure({ ...base, head: 1000, seg: true }),
+      await measure({ ...base, head: 999, seg: true })]).toEqual([true, false, true, false]);
+  });
+  it("counts the title's whole text (a host memory warning), not its squeezed box", async () => {
+    expect([await measure({ ...base, head: 1300, title: [[60], [20, 500]] }), await measure({ ...base, head: 1300, title: [[60], [20, 200]] })])
+      .toEqual([false, true]);
+  });
+  it("counts every visible header tool, and not hidden ones (0 px)", async () => {
+    expect([await measure({ ...base, head: 1000, tools: [80, 80, 80, 40] }), await measure({ ...base, head: 1000, tools: [80, 80, 80, 0] })])
+      .toEqual([false, true]);
+  });
+});
+
