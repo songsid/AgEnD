@@ -63,8 +63,9 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
       .toEqual(["s1-member-journal", "s3c-exposures", "s4-execution", "s5-audit", "s5-instance"]);
     db.close();
     // Attached to the fleet: the exposure API (P1 representative agent: the agent itself is the one choice) and attention.
+    // No delivery path is composed yet (S5's adapter, #3145): nothing is shareable (#3146 r1).
     const api = f.attached.exposures as { list(): Array<{ agent: string; choices: { dataViews: unknown[] }; enforceable: boolean }> };
-    expect(api.list()).toMatchObject([{ agent: "general", choices: { dataViews: [{ id: "agent", label: "General" }], tools: [] }, enforceable: true }]);
+    expect(api.list()).toMatchObject([{ agent: "general", choices: { dataViews: [{ id: "agent", label: "General" }], tools: [] }, enforceable: false, reason: "delivery_unavailable" }]);
     expect(typeof f.attached.attention).toBe("function");
     // The handshake ran on the real link: the Hub saw the member's snapshot.
     for (let i = 0; i < 50 && !rig.received.some((x) => x.type === "exposure.snapshot"); i += 1) await new Promise((r) => setTimeout(r, 50));
@@ -157,9 +158,9 @@ describe.skipIf(process.platform === "win32")("provider setup is non-fatal (agre
       expect((service as unknown as { providerReason(id: string): unknown }).providerReason("claude"), label).toBe(reason);
       expect(f.reports, label).toEqual([]); // not fatal
       const api = f.attached.exposures as { list(): Array<{ enforceable: boolean; reason?: string }> };
-      // P1 representative agent: the container provider's state no longer gates the owner's share (the hold stays S5's).
-      expect(api.list(), label).toMatchObject([{ enforceable: true }]);
-      expect(api.list()[0]!.reason, label).toBeUndefined();
+      // P1 representative agent: the container provider's state is not the reason any more (the hold stays S5's); with no
+      // delivery path composed the agent is unshareable for that reason alone.
+      expect(api.list(), label).toMatchObject([{ enforceable: false, reason: "delivery_unavailable" }]);
       await service.close();
     }
   });
