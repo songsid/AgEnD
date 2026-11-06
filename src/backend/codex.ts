@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
-import { stripCodexPassiveHintRow, withCodexPassiveHintTail } from "./codex-footer-hints.js";
+import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER, isCodexStatusAutocompleteComposer } from "./codex-footer-hints.js";
 import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -995,7 +995,7 @@ export const CODEX_RESUME_LARGE_BYTES = 20 * 1024 * 1024;
 
 /** Pane-only detectors: construction performs no provider, config or session discovery. */
 export class CodexPaneDetectors {
-  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean }) {}
+  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean; contextlessResume?: boolean }) {}
   protected readConfiguredStatusLineItems(): string[] | null { return this.paneDetectorContext?.statusLineItems()?.slice() ?? null; }
   protected trustPaneFields(pane: string): Record<string, unknown> { const state = codexTrustPromptState(pane); return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote }; }
   protected trustHoldReason(pane: string): Record<string, unknown> { return { ...this.trustPaneFields(pane), reason: "Folder permission needs confirmation on this execution machine" }; }
@@ -1039,6 +1039,7 @@ export class CodexPaneDetectors {
 
   /** Observed on real Codex 0.156.0: the live input row precedes its footer. */
   isDeliveryInputReadyPane(pane: string): boolean {
+    if (this.nativeContextlessEmpty(pane)) return true;
     const frame = this.composerFrame(pane);
     if (!frame) return false;
     const { rows, contextFooter } = frame;
@@ -1065,7 +1066,36 @@ export class CodexPaneDetectors {
    */
   ownsComposerRows(pane: string): boolean {
     const frame = this.composerFrame(pane);
-    return !!frame?.contextFooter && ownedComposerRow(frame.rows) >= 0;
+    if (frame?.contextFooter) return ownedComposerRow(frame.rows) >= 0;
+    // A paste owns its wrapped rows, not a new-paste readiness verdict. The native caller still proves its
+    // exact payload/operation and current sequence before Enter; a passive footer alone never grants input.
+    const rows = this.nativeContextlessRows(pane);
+    return rows !== null && ownedComposerRow(rows) >= 0;
+  }
+
+  // Codex 0.165 can restore a limit-only session before any Context value exists. This is the known native
+  // empty-composer/passive-footer layout, only for a resumed launch with our context-only status configuration.
+  // Other layouts retain their existing guard; this is not native's unknown-layout stability fallback.
+  private nativeContextlessPattern(): RegExp | null {
+    if (!this.paneDetectorContext?.windowsConpty || this.paneDetectorContext.contextlessResume !== true) return null;
+    const items = this.readConfiguredStatusLineItems();
+    return items?.length === 1 && items[0] === "context-remaining" ? CODEX_EMPTY_PASSIVE_COMPOSER : null;
+  }
+
+  private nativeContextlessEmpty(pane: string): boolean {
+    return !!this.nativeContextlessPattern()?.test(pane) && !codexAppServerDisconnected(pane) && !this.getBusyPattern().test(pane)
+      && ![...this.getStartupDialogs(), ...this.getRuntimeDialogs()].some(dialog => dialog.pattern.test(pane) && (!dialog.isActive || dialog.isActive(pane)));
+  }
+
+  private nativeContextlessRows(pane: string): string[] | null {
+    if (!this.nativeContextlessPattern() || codexAppServerDisconnected(pane)) return null;
+    const rows = pane.replace(/\r/g, "").split("\n");
+    while (rows.length && !rows.at(-1)!.trim()) rows.pop();
+    if (isCodexStatusAutocompleteComposer(pane)) return rows;
+    const before = rows.length; stripCodexPassiveHintRow(rows);
+    if (rows.length === before) return null;
+    const remaining = [...rows]; stripCodexPassiveHintRow(remaining);
+    return remaining.length === rows.length ? rows : null;
   }
 
   /**
@@ -1127,6 +1157,7 @@ export class CodexPaneDetectors {
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     if (codexAppServerDisconnected(pane)) return false;
+    if (this.nativeContextlessEmpty(pane)) return true;
     // Astra's 0.154 theme animates U+22C6 star points across otherwise-stable
     // idle chrome.  Remove only that observed decorative glyph; broader
     // punctuation stripping could turn real tool output into a false prompt.
@@ -1194,7 +1225,7 @@ export class CodexPaneDetectors {
       ))
       : null;
     return new RegExp(
-      [contextReady.source, noContextReady.source, configuredContextReady?.source]
+      [contextReady.source, noContextReady.source, configuredContextReady?.source, this.nativeContextlessPattern()?.source]
         .filter((source): source is string => !!source)
         .map(source => `(?:${source})`)
         .join("|"),
