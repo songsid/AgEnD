@@ -99,3 +99,9 @@ Remove-Item -Recurse -Force "$env:LOCALAPPDATA\agend-runtime"
 ```
 
 配對資料夾（預設 `%USERPROFILE%\.agend-runtime`）是分開的，需要自己刪除。要在 AgEnD 端讓憑證失效，請在設定撤銷該電腦。
+
+## 帳號識別：看得出登入的是哪一個 Claude 帳號
+
+Runtime 會在那台電腦上讀取 `claude auth status`，對每個 credential profile 與電腦自己的預設登入，只回報**遮罩過的 email 與方案**，顯示成 `work · ab***@example.com · Team`（設定 → Runtime 的電腦卡片，以及 Agent 的「Claude 帳號」選單）。遮罩只保留 email 前一到兩個字元，接著 `***`，再接完整網域，所以能分辨工作帳號與個人帳號；完整 email 不會離開那台電腦，不會被記錄，也不會寫入 Runtime 的磁碟。沒有 email 或含非 ASCII 字元時不會回報；API key 登入顯示為「沒有帳號 email（API key）」。方案是 `free`、`pro`、`max`、`team`、`enterprise` 或 `unknown` 其中之一；AgEnD 只接受這個格式，其他一律視為通訊協定錯誤，錯誤訊息只指出欄位，不會附上內容。只有按「重新偵測」或 `agend-runtime login` 之後才會更新；不認得這個欄位的舊版 Runtime 就只是不顯示。
+
+**只有直接連到 dashboard 的 fleet 管理員看得到這些詳細資訊**（遮罩的 email 與方案；「直接連到」是指這台電腦、區網、tailnet 或自己的 proxy，見[三種連線方式比較](web-dashboard.zh-TW.md#三種連線方式比較)），在 Runtime 頁、Claude 帳號選單、設定 → Agents 與設定 → Accounts 看到。其他人看到的是同一個頁面但沒有這兩項，profile 名稱與是否已登入照舊：經由臨時公開連結或固定位址（named tunnel）登入的 session 看不到，即使是 fleet 管理員也一樣；guest、唯讀 session，以及用 CLI header token 呼叫的 Agent 也看不到。Agent 工具與 Agent 能讀到的內容裡也沒有。
