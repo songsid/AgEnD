@@ -6,8 +6,9 @@ import { validHubAnswerButtons } from "./buttons-model.js";
 export const HUB_VERSION = 1;
 export const HUB_PATHS = { pair: "/hub/v1/pair", claim: "/hub/v1/claim", connect: "/hub/v1/connect" } as const;
 export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] as const;
-/** Optional link features this build offers (never required: an old peer that lacks one keeps working without it).
- * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. */
+/** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
+ * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
+ * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
 export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "buttons-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;

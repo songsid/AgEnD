@@ -341,11 +341,6 @@ export class HubRepresentativeExecution {
       const buttons = prepareHubAnswerButtons(extras.buttons, extras.poll);
       const buttonLink = buttons ? this.options.link() : null;
       if (buttons && (!buttonLink?.current() || !buttonLink.features?.has("buttons-v1"))) throw new HubButtonRefusal();
-      evidenced = true;
-      const journal = this.options.journal;
-      // The agent's own report is the evidence that the question reached it and was taken up.
-      journal.recordEvidence(row.message_id, "delivered");
-      journal.recordEvidence(row.message_id, "consumed");
       // The agent's files (D): copied under the reply tool's rule, then pushed to the Hub before the answer names them.
       let attachments: HubAnswer["attachments"];
       if (extras.files?.length) {
@@ -361,6 +356,11 @@ export class HubRepresentativeExecution {
         live();
       }
       if (buttons && (!buttonLink?.current() || this.options.link() !== buttonLink || !buttonLink.features?.has("buttons-v1"))) throw new HubProtocolError("stale");
+      evidenced = true;
+      const journal = this.options.journal;
+      // The agent's own report is the evidence that the question reached it and was taken up.
+      journal.recordEvidence(row.message_id, "delivered");
+      journal.recordEvidence(row.message_id, "consumed");
       // Freeze the answer's id, bytes and digest before asking for the release lease for exactly them.
       const answerId = randomUUID(), contentDigest = messageContentDigest("answer", text, { attachments, buttonsDigest: buttonsDigest(buttons) });
       this.options.db.prepare("UPDATE hub_representative_questions SET answer=? WHERE id=?").run(JSON.stringify({ answerId, contentDigest }), row.id);
@@ -394,6 +394,11 @@ export class HubRepresentativeExecution {
       if (!saved && !evidenced && err instanceof HubButtonRefusal) {
         this.setState(row, was === "input" ? "delivered" : was, ["answering"]);
         return { ok: false, message: "Not sent: this Hub can't send buttons yet. Report text only with the same correlation_id." };
+      }
+      if (!saved && !evidenced && err instanceof HubFileRefusal) {
+        // A file the agent can fix (a state-dir path, a refused type, too large): the question stays open on the same id.
+        this.setState(row, was === "input" ? "delivered" : was, ["answering"]);
+        return { ok: false, message: `Not sent: ${err.message}. Report again with the same correlation_id.` };
       }
       if (!saved && code === "invalid" && !evidenced) {
         // A malformed report (empty or oversized) is the agent's to fix: the question stays open on the same id.
