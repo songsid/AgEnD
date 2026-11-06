@@ -32,7 +32,7 @@ export const ALLOW_TEST_ENV = "AGEND_ALLOW_TEST_FLEET_CONTROL";
 
 export type FleetControlAction =
   | "fleet-stop" | "fleet-restart" | "fleet-restart-reload"
-  | "stop" | "restart" | "update"
+  | "stop" | "restart" | "update" | "rollback"
   | "instance-stop" | "instance-restart" | "kiro-restore-classic";
 
 export interface CallerProcess { pid: number; command: string }
