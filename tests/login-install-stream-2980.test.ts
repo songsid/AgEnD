@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
-import { unattendedInstallCommand, loginShell, UNATTENDED_INSTALL_SCRIPT } from "../src/unattended-install.js";
+import { unattendedInstallCommand, loginShell, UNATTENDED_INSTALL_SCRIPT, installExitMarker, exitCodeFromMarker, withoutExitMarker } from "../src/unattended-install.js";
 import { InstallStream, renderInstallFrame, INSTALL_STREAM_BYTES, INSTALL_STREAM_LINES, type InstallStreamClock } from "../src/install-stream.js";
 import { LoginSession, type LoginTmux } from "../src/login-manager.js";
 import { t } from "../src/locale.js";
@@ -109,18 +109,26 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
   it.skipIf(spawnSync("tmux", ["-L", "agend-test-2980-probe", "-V"]).status !== 0)("in a tmux window, an install that ends at once still leaves its exit code and output (remain-on-exit is waited for)", async () => {
     const sock = `agend-test-2980-${process.pid}`;
     const tmux = (...args: string[]) => spawnSync("tmux", ["-L", sock, ...args], { encoding: "utf8" });
+    const marker = installExitMarker();
     try {
       tmux("new-session", "-d", "-s", "s", "-x", "80", "-y", "20", `sleep 60`);
       // What LoginSession does: the window first, remain-on-exit some time after (here 500 ms — far longer than the install).
-      const id = tmux("new-window", "-d", "-t", "s:", "-P", "-F", "#{window_id}", unattendedInstallCommand("echo 'error: no terminal'; exit 3", null)).stdout.trim();
+      const id = tmux("new-window", "-d", "-t", "s:", "-P", "-F", "#{window_id}", unattendedInstallCommand("echo 'error: no terminal'; exit 3", null, marker)).stdout.trim();
+      expect(id).toMatch(/^@\d+$/);
       await new Promise(r => setTimeout(r, 500));
       expect(tmux("set-option", "-t", `s:${id}`, "remain-on-exit", "on").status).toBe(0);
+      // The explicit condition: the pane is dead — its pty reached EOF, so every byte the install and the wrapper wrote
+      // is in the pane (and the window was kept: remain-on-exit was waited for). Not tmux's exit status: tmux 3.4 can
+      // miss the pane's SIGCHLD and never record it (the CI flake: "1" for "1 3"); the wrapper's own verdict line is read.
       let dead = "";
-      for (let i = 0; i < 50 && dead !== "1 3"; i++) { await new Promise(r => setTimeout(r, 50)); dead = tmux("display-message", "-p", "-t", `s:${id}`, "#{pane_dead} #{pane_dead_status}").stdout.trim(); }
-      expect(id).toMatch(/^@\d+$/);
-      expect(dead).toBe("1 3");
+      for (let i = 0; i < 200 && dead !== "1"; i++) { await new Promise(r => setTimeout(r, 25)); dead = tmux("display-message", "-p", "-t", `s:${id}`, "#{pane_dead}").stdout.trim(); }
+      expect(dead).toBe("1");
       const shown = tmux("capture-pane", "-p", "-S", "-", "-t", `s:${id}`).stdout;
       expect(shown).toContain("error: no terminal");
+      expect(exitCodeFromMarker(shown, marker)).toBe(3);
+      // When tmux did record a status, it agrees.
+      const status = tmux("display-message", "-p", "-t", `s:${id}`, "#{pane_dead_status}").stdout.trim();
+      if (status) expect(status).toBe("3");
     } finally {
       tmux("kill-server");
     }
@@ -135,6 +143,17 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
     expect(await loginShell(() => { throw new Error("no passwd entry"); })).toBeUndefined();
     expect(unattendedInstallCommand("x", null)).not.toContain("SHELL=");
     expect(unattendedInstallCommand("x", "/bin/zsh")).toMatch(/^SHELL='\/bin\/zsh' /);
+  });
+
+  it("the wrapper prints its own verdict after the session's marker, and keeps the install's exit code", () => {
+    const marker = installExitMarker();
+    expect(marker).toMatch(/^AGEND-INSTALL-EXIT-[0-9a-f]{16}=$/);
+    const r = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 4", null, marker)], { encoding: "utf8" });
+    expect(r.status).toBe(4);
+    expect(r.stdout.trim().split("\n").at(-1)).toBe(`${marker}4`);
+    const none = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 4", null)], { encoding: "utf8" });
+    expect([none.status, none.stdout]).toEqual([4, "out\n"]);                      // no marker, no line
+    expect(() => unattendedInstallCommand("x", null, "bad marker; rm -rf /")).toThrow();
   });
 
   it("an install command with quotes survives the wrapping intact", () => {
@@ -352,6 +371,50 @@ describe("LoginSession hands its captures to onProgress (M-2281)", () => {
       release("late frame");
       await vi.advanceTimersByTimeAsync(50);
       expect(seen).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("tmux recorded no exit code (its SIGCHLD missed): the wrapper's verdict line decides, read after the pane died, never shown", async () => {
+    const marker = installExitMarker();
+    for (const [code, ok] of [[0, true], [3, false]] as const) {
+      vi.useFakeTimers();
+      try {
+        const done = vi.fn(), seen: string[] = [];
+        // The first capture is from before the end (no verdict line yet); the pane is then seen dead with no code.
+        const tmux = fakeTmux(["Installing…", `Installing…\nerror: no terminal\n\n${marker}${code}\n\n\nPane is dead`], [true, false]);
+        tmux.getPaneStatus = async () => ({ alive: false });
+        const s = new LoginSession({ backend: "codex", command: "x", successPattern: /$^/, timeoutMs: 60_000, exitMarker: marker },
+          tmux, { onDone: done, onProgress: p => seen.push(p) }, logger, 10);
+        await s.start();
+        await vi.advanceTimersByTimeAsync(100);
+        expect(done).toHaveBeenCalledWith(expect.objectContaining(ok
+          ? { ok: true, detail: "clean exit" }
+          : { ok: false, detail: "CLI exited with code 3 — Installing… / error: no terminal" }));
+        expect(seen.some((p) => p.includes(marker))).toBe(false);
+        expect(seen.at(-1)).toContain("error: no terminal");                          // the final frame is the late capture
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+  });
+
+  it("only the session's own marker counts: a line the installer prints with another marker is just output", async () => {
+    vi.useFakeTimers();
+    try {
+      const done = vi.fn();
+      const forged = installExitMarker(), mine = installExitMarker();
+      const tmux = fakeTmux([`${forged}0\nerror: failed`], [false]);
+      tmux.getPaneStatus = async () => ({ alive: false });
+      const s = new LoginSession({ backend: "codex", command: "x", successPattern: /$^/, timeoutMs: 60_000, exitMarker: mine }, tmux, { onDone: done }, logger, 10);
+      await s.start();
+      await vi.advanceTimersByTimeAsync(50);
+      expect(done).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
+      expect(exitCodeFromMarker(`${forged}0`, mine)).toBeUndefined();
+      expect(exitCodeFromMarker(`${mine}0\n${mine}7`, mine)).toBe(7);                 // the last one
+      expect(exitCodeFromMarker(`${mine}0x`, mine)).toBeUndefined();
+      expect(withoutExitMarker(`a\n${mine}0\nb`, mine)).toBe("a\nb");
     } finally {
       vi.useRealTimers();
     }
