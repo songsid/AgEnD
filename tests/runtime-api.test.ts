@@ -10,6 +10,8 @@ import { handleRuntimeRequest, type RuntimeApiContext } from "../src/runtime-api
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { WEB_SESSION_COOKIE } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
+import { RuntimeInstallService } from "../src/runtime-install.js";
+import { createHash } from "node:crypto";
 
 const token = "t".repeat(48), homes: string[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [];
 function context() {
@@ -54,6 +56,42 @@ describe("runtime administration API", () => {
     }
     expect(create).not.toHaveBeenCalled();
   });
+  describe("the installer hash the dashboard pins in the copied command", () => {
+    const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+    const bytes = Buffer.from("zip fixture");
+    const service = (over: ConstructorParameters<typeof RuntimeInstallService>[0] = {}) => new RuntimeInstallService({ bundle: () => ({ bytes, filename: "agend-runtime-windows-2.3.5.zip", version: "2.3.5", sha256: sha(bytes) }), template: () => "# t\n$v='@@AGEND_RUNTIME_VERSION@@'\n$h='@@AGEND_RUNTIME_SHA256@@'\n", ...over });
+    it("reports the version and the SHA-256 of the exact script the public route sends, to a local administrator only", () => {
+      const { ctx: base } = context(), installer = service(), ctx: RuntimeApiContext = { ...base, runtimeInstaller: () => installer };
+      const answer = run(ctx, "/ui/runtimes/installer");
+      expect(answer.handled).toBe(true); expect(answer.res.status).toBe(200);
+      const info = JSON.parse(answer.res.body);
+      // what the public route sends, hashed independently
+      const req = request("/runtime/install.ps1", "GET"); delete req.headers["x-agend-token"];
+      let sent = Buffer.alloc(0); const out = new Response(req); out.end = ((chunk?: Buffer) => { sent = Buffer.from(chunk ?? ""); return out; }) as never;
+      expect(installer.handle(req, out, new URL("/runtime/install.ps1", "http://localhost"))).toBe(true);
+      expect(info).toEqual({ version: "2.3.5", scriptSha256: sha(sent), scriptBytes: sent.length, bundleSha256: sha(bytes) });
+      expect(answer.res.sentHeaders["Cache-Control"]).toBe("no-store");
+      // not for anyone else: no token, a foreign origin and a public gateway link are all refused, and nothing is built for them
+      const build = vi.fn(() => ({ bytes, filename: "x.zip", version: "2.3.5", sha256: sha(bytes) })), guarded: RuntimeApiContext = { ...base, runtimeInstaller: () => service({ bundle: build }) };
+      for (const kind of ["missing", "origin", "gateway"]) {
+        const r = request("/ui/runtimes/installer"), res = new Response(r);
+        if (kind === "missing") delete r.headers["x-agend-token"];
+        if (kind === "origin") r.headers.origin = "https://foreign.example";
+        if (kind === "gateway") bindGatewayRequest(r, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
+        handleRuntimeRequest(r, res, new URL(r.url!, "http://localhost"), guarded); expect(res.status, kind).toBe(403);
+      }
+      expect(build).not.toHaveBeenCalled();
+    });
+    it("is absent while remote runtimes are off, takes no options, is read-only, and fails plainly when the installer cannot be built", () => {
+      const { ctx: base } = context(), ctx: RuntimeApiContext = { ...base, runtimeInstaller: () => service() };
+      vi.stubEnv("AGEND_REMOTE_RUNTIME", ""); expect(run(ctx, "/ui/runtimes/installer").res.status).toBe(404); vi.stubEnv("AGEND_REMOTE_RUNTIME", "1");
+      expect(run(ctx, "/ui/runtimes/installer?x=1").res.status).toBe(400);
+      expect(run(ctx, "/ui/runtimes/installer", "POST").res.status).toBe(404);
+      const broken: RuntimeApiContext = { ...base, runtimeInstaller: () => service({ bundle: () => { throw new Error("ENOENT /srv/secret"); } }) };
+      const failed = run(broken, "/ui/runtimes/installer"); expect(failed.res.status).toBe(503); expect(failed.res.body).toContain("unavailable"); expect(failed.res.body).not.toContain("secret");
+      expect(run({ ...base }, "/ui/runtimes/installer").res.status).toBe(503);   // a context without the installer service
+    });
+  });
   it("requires a session's CSRF proof and administrator tier", async () => {
     for (const tier of ["admin", "read", "guest"] as const) {
       const { ctx: base } = context(), store = new WebSessionStore(), ctx: RuntimeApiContext = { ...base, webSessions: store };
@@ -89,7 +127,7 @@ describe("runtime package download", () => {
   function setup() {
     const coordinator = vi.fn((): RuntimeCoordinator => { throw Error("Downloads must not create a coordinator"); });
     const ctx: RuntimeApiContext = { webToken: token, runtimeCoordinator: coordinator };
-    const file = { bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff]), filename: "agend-runtime-windows-2.3.3.zip", sha256: "a".repeat(64) };
+    const file = { bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff]), filename: "agend-runtime-windows-2.3.3.zip", sha256: "a".repeat(64), version: "2.3.3" };
     const bundle = vi.fn(() => file);
     const download = (req = request(path)) => {
       const res = new Response(req);

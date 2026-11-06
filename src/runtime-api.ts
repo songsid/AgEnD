@@ -9,8 +9,9 @@ import type { RuntimeMachine } from "./runtime-protocol.js";
 import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
+import type { RuntimeInstallService } from "./runtime-install.js";
 
-export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator }
+export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordinator?(): RuntimeCoordinator; runtimeInstaller?(): RuntimeInstallService }
 function json(res: ServerResponse, status: number, value: unknown): void {
   if (res.destroyed || res.writableEnded) return;
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }); res.end(JSON.stringify(value));
@@ -40,6 +41,14 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         if (!res.destroyed && !res.writableEnded) send(origin);
       })().catch(()=>json(res,nativeCliAuthorization(req,url,ctx)?400:403,{error:nativeCliAuthorization(req,url,ctx)?"Enter a valid HTTPS AgEnD origin (HTTP is allowed only for loopback)":"Authorization expired"}));
     } else send();
+    return true;
+  }
+  // What the copied PowerShell command pins: the SHA-256 of the exact install.ps1 bytes this server sends. The dashboard an
+  // administrator is looking at is the trust anchor, so this is read here (local administrator only), never from the script's own response.
+  if (method === "GET" && url.pathname === "/ui/runtimes/installer") {
+    if (url.search) { json(res, 400, { error: "The installer information takes no options" }); return true; }
+    try { json(res, 200, ctx.runtimeInstaller!().installer()); }
+    catch { json(res, 503, { error: "The Windows Runtime installer is unavailable on this host. Update or reinstall AgEnD and retry." }); }
     return true;
   }
   const hub = ctx.runtimeCoordinator!();

@@ -8,6 +8,7 @@ tests/concepts-skill-sync.test.ts
 tests/docs-reading-tests-list.test.ts
 tests/fleet-docs-link-1844.test.ts
 tests/no-wsl-shutdown-advice.test.ts
+tests/runtime-install-script.test.ts
 tests/stale-forwards-guidance-1780.test.ts
 tests/web-appearance-copy-2056.test.ts
 tests/web-authority-s2a-1939.test.ts

@@ -1,5 +1,7 @@
 # Paired Windows runtimes
 
+繁體中文：[連接電腦與一行安裝](remote-runtime.zh-TW.md)（連接流程與 Windows 一行安裝；其餘章節目前只有英文）。
+
 The default adapter remains per-turn **exec**. For the 2.3.5 alpha line's opt-in persistent Codex/Claude panes, see [Persistent Windows agents](windows-persistent-panes.md) ([繁體中文](windows-persistent-panes.zh-TW.md)). Its disconnect/stop/revocation rules replace the exec-only lifecycle below; ordinary runtime-client exit preserves those resident panes.
 
 This preview lets a native Windows computer connect **outbound** to a central AgEnD coordinator. The computer reports its installed coding CLIs and executes Agents assigned to that machine. Its own CLI login, filesystem, ADB and serial devices stay on that computer. Opening the dashboard from another computer does not provide that browser's local tools.
@@ -14,7 +16,17 @@ Current runtimes report their own package version, code Build ID, supported prot
 
 The code Build ID hashes the installed fixed runtime modules (including the pane helper scripts) and package version. It distinguishes different program builds carrying the same alpha version; it is not a signature or the downloadable ZIP's SHA-256, and excludes user profiles, CLI installations and runtime dependencies. An incomplete program installation has no Build ID. Unreadable package metadata remains unknown instead of using the coordinator's version.
 
-Older runtimes keep connecting over protocol v1 and show **This Runtime does not provide version information**. Replace the portable program folder once and reconnect the existing profile to enable reporting. There is no automatic update or remote installation in this change. Protocol compatibility is diagnostic metadata based on the reported supported protocols; it does not change existing wire validation, execution authorization or pane negotiation. Reported capabilities grant no permissions. Reconnecting with an older client clears the prior connection's version report.
+Older runtimes that report nothing keep connecting over protocol v1 and show **This Runtime does not provide version information**. Replace the portable program folder once (or run the [one-line install](#one-line-install-windows-powershell) again) and reconnect the existing profile to enable reporting. Reported capabilities grant no permissions. Reconnecting with an older client clears the prior connection's version report.
+
+### A Runtime that does not match this AgEnD
+
+AgEnD needs a Runtime that speaks a protocol AgEnD speaks (today: protocol 1) and offers the `exec` capability. A Runtime whose report says otherwise was installed from a different AgEnD release, so AgEnD **refuses it clearly instead of letting it connect and fail later**:
+
+- AgEnD does not welcome it and sends it no work. Its computer card in **Settings → Runtime** stays offline and says it is not compatible and that the install command must be run again. The report is kept so you can see which version it is.
+- The Runtime's own window stops with a non-zero exit and says: AgEnD refused it because its version is not compatible, **re-run the install command** shown in Settings → Runtime → Connect a computer, then start it again with `agend-runtime run`. The pairing is kept; no new code is needed.
+- Running the install command again installs this AgEnD's Runtime **next to** the old one. It never deletes or replaces a version folder, so a Runtime that is running keeps working, and `agend-runtime` is repointed only after the new version is whole (see below). If you installed from the ZIP, download the ZIP from the same page instead.
+
+A Runtime that reports nothing at all (installed before reports existed) is not refused: it is shown as legacy, with a hint to run the install command again. There is no automatic update or remote installation.
 
 ## CLI diagnostics on a selected computer
 
@@ -34,8 +46,10 @@ The environment variable `AGEND_REMOTE_RUNTIME` still overrides the setting: `1`
 
 1. On the coordinator, open **Settings → Runtime → Connect a computer**.
 2. Review the **AgEnD address** that the other computer can reach. The page starts with the browser's origin; replace localhost with your existing reachable HTTPS origin unless the other computer has a loopback tunnel. This does not configure a proxy or change network access.
-3. Click **Download Windows Runtime (ZIP)** inside the connection section. This authenticated download includes the reviewed public origin in `agend-server.json` and a `connect-agend.bat` launcher. No pairing code, browser token or machine credential is embedded. The address is read as JSON, never interpolated into a batch command.
-4. Transfer the ZIP to the Windows computer, extract it, and double-click **connect-agend.bat** under the Windows user whose CLIs are installed and signed in. A supported Windows Node.js installation is still required. The Runtime prints the destination before asking for a pairing code.
+3. Choose how the other computer gets the Runtime, in the tabs under the address:
+   - **Windows (PowerShell)**: copy the **install command** (it checks the SHA-256 of `install.ps1` shown on the page before running it), paste it into PowerShell on the other Windows computer, then copy the **connect command** and run it there. See [One-line install](#one-line-install-windows-powershell).
+   - **Other install methods (ZIP)**: click **Download Windows Runtime (ZIP)**. This authenticated download includes the reviewed public origin in `agend-server.json` and a `connect-agend.bat` launcher. No pairing code, browser token or machine credential is embedded. The address is read as JSON, never interpolated into a batch command. Transfer the ZIP to the Windows computer, extract it, and double-click **connect-agend.bat**.
+4. Run it under the Windows user whose CLIs are installed and signed in. A supported Windows Node.js installation is required with either method. The Runtime prints the destination before asking for a pairing code.
 5. On first connection, enter the one-time code from Settings. Compare the **Pairing fingerprint** printed in the Runtime terminal with the fingerprint on the machine card, then approve it in AgEnD. Keep the terminal running. If AgEnD ends the connection (the computer was revoked or is not recognised, another Runtime took over the same pairing, or AgEnD rejected a message), the window stays open with the reason and the next step, and the exit code is non-zero; stopping with Ctrl+C is the only silent exit. If it says the profile still holds an unfinished job from another pairing, check that no CLI that job started is still running, delete `jobs.json` in the profile folder as the message says, and pair again. An existing profile paired with the same origin reconnects without asking for another code; a profile paired with another origin is never reused or sent to the new server. With a connection-ready ZIP, `connect-agend.bat` keeps that profile untouched and pairs a separate one under `%USERPROFILE%\.agend-runtime\profiles\<host>-<port>`; the same bat, and `run`, `status`, `rotate` and `disconnect` started from that folder, find it again. Without `agend-server.json`, or when you choose one yourself with `--profile DIRECTORY` or `AGEND_RUNTIME_HOME` (which always wins), the command fails and names both addresses; keep both with a separate `--profile` and pass the same `--profile` to every later `run`, `status`, `rotate` and `disconnect`.
 6. In Settings, explicitly detect this computer's CLI inventory when needed. Connecting alone starts no CLI discovery.
 
@@ -47,13 +61,90 @@ The manual command remains available under **Manual connection command**:
 
 `run` still reconnects a saved profile. Connection defaults never replace its credential or retarget it to another server. Generic packages without `agend-server.json` keep supporting the explicit `--server` command. The connection-ready download uses an administrator POST with the existing same-origin and CSRF protections; GET download URLs cannot embed a caller-selected server.
 
-The download requires an administrator session on the local dashboard and is unavailable through public gateway links. It includes program assets, license notices and, for a connection-ready download, the administrator-selected public server origin. It excludes pairing codes, machine credentials, CLI sign-ins and workspaces. If installed runtime assets are missing, update or reinstall AgEnD and retry. Developers can also run `npm run build:runtime` after the normal TypeScript build and transfer the resulting `.artifacts/runtime-bundle` folder.
+The ZIP download from Settings requires an administrator session on the local dashboard and is unavailable through public gateway links; the one-line install routes above are separate, public and read-only. It includes program assets, license notices and, for a connection-ready download, the administrator-selected public server origin. It excludes pairing codes, machine credentials, CLI sign-ins and workspaces. If installed runtime assets are missing, update or reinstall AgEnD and retry. Developers can also run `npm run build:runtime` after the normal TypeScript build and transfer the resulting `.artifacts/runtime-bundle` folder.
+
+## One-line install (Windows PowerShell)
+
+**Settings → Runtime → Connect a computer → Windows (PowerShell)** shows two commands with the address you confirmed in step 1. Run the first on the other Windows computer, in PowerShell, as the Windows user whose CLIs are installed. No administrator rights are needed.
+
+```powershell
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor 3072; $agend = 'https://your-agend-host'; $s = $null; $h = $null; $s = (iwr "$agend/runtime/install.ps1" -UseBasicParsing).Content; $h = (-join ([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($s)) | % { $_.ToString('x2') })); if ($s -and $h -eq '<sha256 shown on the page>') { iex $s } else { Write-Host 'install.ps1 could not be verified against the hash on the AgEnD page (a certificate or download error above is the usual cause: trust this AgEnD certificate, or use the ZIP; otherwise reload the page and copy the command again)' -ForegroundColor Red; throw 'install.ps1 was not run' }
+```
+
+The page fills in your address and the SHA-256 of `install.ps1`. The command downloads the script, hashes the bytes it received, compares that with the hash on the page, and runs the script **only if they are equal**. It prints the next command and does **not** connect and does **not** pair:
+
+```powershell
+agend-runtime connect --server "https://your-agend-host"
+```
+
+The one-time pairing code is typed into that terminal when it asks, never put in either command. Then compare the **Pairing fingerprint** and approve the computer in AgEnD exactly as in [First connection](#first-connection). The ZIP flow is unchanged and remains under **Other install methods (ZIP)**.
+
+### Why the command pins the script
+
+The script and the Runtime archive come from the same server over the same TLS channel, so a hash written inside the script can only prove that the archive matches the script. It cannot protect against a modified script, which is the real risk of running a downloaded script. The page the administrator is looking at is the trust anchor: the script's SHA-256 is shown there and put in the command, and is checked **before anything of the script runs**. So the integrity of what runs does not depend on a TLS trust decision. The script then checks the archive against the hash pinned inside it (a second, separate check).
+
+- The hash on the page is read from AgEnD by the signed-in local administrator, not from the script's own response. The server builds the script once as bytes and sends exactly those bytes every time (no newline rewriting, no compression, nothing that depends on the request), so the hash shown is the hash of what is sent. A script modified in transit, a line-ending conversion, a byte-order mark or a script from another server fails the check. So does a stale page: after AgEnD is updated, reload the page and copy the command again.
+- **No failure reaches `iex`.** In PowerShell a failing .NET method call is only statement-terminating: that statement is skipped and the next one runs, so a check written as `if (<hash check>) { throw }; iex $s` would run the unverified script whenever the hash cannot be computed (for example under Constrained Language Mode, where `[Security.Cryptography.SHA256]::Create()` is refused). The command is therefore written the other way round: `$s` and `$h` are cleared first, the hash is computed into `$h` in a statement of its own, the condition is only `$s -and $h -eq '<hash>'` (nothing in it can throw), and `iex` sits only inside the branch that condition admits. Whatever fails (the download, the hash, the TLS line), `$h` stays empty, the condition is false, and the other branch prints why and throws; `iex` is never reached. The first statement only adds TLS 1.2 to this PowerShell session (Windows PowerShell 5.1 may not offer it by default); if it fails, nothing the check depends on has changed, and the check still refuses. (The message is written with `Write-Host` before the `throw` because a person's own `$ErrorActionPreference = 'SilentlyContinue'` swallows a bare `throw`.) This shape differs from `if (-not $s -or <hash> -ne …) { throw }; iex $s`, which fails open, and that is the only reason for the difference.
+- If the page cannot get the hash (for example the Runtime files were not built on this AgEnD), it shows no install command at all and points to the ZIP; there is no unpinned fallback.
+- **If PowerShell reports a certificate error** (for example a self-signed certificate: Windows PowerShell 5.1 refuses those), make that computer trust the AgEnD server's certificate, or use a trusted HTTPS address such as Tailscale Serve, or use the ZIP. **Never turn certificate validation off**, by any switch, callback or policy: this documentation never suggests it, and the command never does it. The hash check does not replace TLS; it removes the need to trust the connection for the script's integrity.
+- The address is taken **only** from `$agend`, which the page filled in with the reviewed remote-runtime address you confirmed in step 1. The script reads the address from nowhere else: not the `Host` header that served it, not a redirect, not the network. An address with credentials, a path, a query, a fragment or a quote produces no command; plain `http` is accepted only for `localhost` (an SSH forward).
+- Under **Constrained Language Mode or AppLocker** the command **stops without running anything**: the hash cannot be computed there, so the script is never trusted. Use the ZIP instead. `iex` of a string is not subject to the execution policy, and the command never changes your execution policy (machine, user or process).
+
+### What the install script does
+
+1. Checks that Node.js 22.14 or newer (22.14+, 23.6+ or 24+) is installed. If not, it stops and shows `winget install OpenJS.NodeJS.LTS` or nodejs.org. It never installs software for you.
+2. Downloads the Runtime archive from `$agend` (one bounded request, redirects refused, at most 16 MiB).
+3. Computes the archive's SHA-256 itself and compares it with the checksum written inside the installer script. On a mismatch it stops before anything is unpacked.
+4. Unpacks into `%LOCALAPPDATA%\agend-runtime\<version>+<build>`, **beside** any version already there. `<build>` is the first 8 characters of the archive's SHA-256, because one version number can cover more than one build.
+5. Points `agend-runtime` at it (below), and adds `%LOCALAPPDATA%\agend-runtime\bin` to **your user PATH**.
+6. Prints the connect command.
+
+**Versions side by side.** An existing folder is never deleted or replaced, because it may be the Runtime that is running right now (a running Windows program holds its files). The install folder is named `<version>+<build>`, so a newer AgEnD's Runtime, and a different build of the same version number, each add a new folder beside the old ones; running the same build's command again finds its own folder and only repoints `agend-runtime`. Nobody has to delete a folder by hand to update. `bin\agend-runtime.cmd` is written once and never changes: it starts the version named in the one-line file `bin\current.txt`, and the install swaps that file in with an atomic replace only **after** the new version is whole. So `agend-runtime` starts either the old or the new version, never a half-installed one, and a batch file that is running is never rewritten. The shim starts with `setlocal DisableDelayedExpansion`, so a `!` in the install folder (an accepted `AGEND_RUNTIME_INSTALL_DIR` can contain one) is kept even when cmd.exe runs with delayed expansion on (`/V:ON` or the DelayedExpansion registry setting). A Runtime that is already running keeps its own version until you stop it (Ctrl+C) and start it again with `agend-runtime run`. If a failure happens before the switch, `current.txt` still names the working version. **Earlier folders are not removed by this installer** (one of them may be running); clearing old ones comes with the update and uninstall commands in a later phase. Until then they stay, and you can delete one yourself once no Runtime uses it. The one case the script refuses is a folder that already carries this build's own name but does not hold it, which only happens if it was changed by hand or left incomplete: it is left alone, and the script says so.
+
+**PATH.** The `bin` folder is added to the **user** PATH by writing the registry value back with the kind it had, so a PATH with `%VARIABLES%` stays expandable. `[Environment]::SetEnvironmentVariable('Path', …, 'User')` is not used for the write because it turns a `REG_EXPAND_SZ` PATH into a plain string (measured on Windows PowerShell 5.1 and PowerShell 7), and `setx` is never used because it truncates at 1024 characters. An entry already there, written out or with `%VARIABLES%`, is not added again, and nothing else in the PATH is touched. A running terminal does not see the change; open a new one, or use the full path the script prints.
+
+It deletes only its own staging folder, a temporary sibling file it just wrote, and an install folder it created itself and that is still empty after a failure. It reports failures with a non-zero `$LASTEXITCODE`.
+
+Optional variables, set in the same PowerShell window before the command:
+
+| Variable | Effect |
+|---|---|
+| `AGEND_RUNTIME_NO_PATH=1` | Leave PATH alone. The final message then shows the full path of `agend-runtime.cmd` to run. |
+| `AGEND_RUNTIME_INSTALL_DIR=D:\agend` | Install under this folder (a full drive path) instead of `%LOCALAPPDATA%\agend-runtime`. |
+
+### What the server serves
+
+Two read-only GET routes, next to the pairing endpoints, need no sign-in:
+
+| Route | Content |
+|---|---|
+| `/runtime/install.ps1` | The installer script, with this server's runtime version and the archive's SHA-256 written into it. |
+| `/runtime/v1/bundle/windows.zip` | The generic Runtime archive: the same `createRuntimeBundle()` output Settings downloads, without `agend-server.json`. |
+
+They are served only while **Allow other Windows PCs to pair** is on (otherwise both answer `404`, exactly like an unknown route), never through a public gateway link (`404` there too: the gateway does not list them), and only over HTTPS or loopback (plain HTTP from anywhere else is refused with `403`). The usual Host allow-list still applies.
+
+Both are **static for a server version**: the generic bundle is built once per server process and kept, so its hash is stable, and the script is that bundle's version and SHA-256 inside a fixed template. Nothing in a response depends on the request: not the Host header, a query (a query is refused), a cookie or the caller. Neither carries a token, secret, pairing code, profile, user data or server address; the address comes from `$agend` in the command. The script is never cached (`Cache-Control: no-store`). The archive carries `Cache-Control: no-cache` and an `ETag` made from the server version and its SHA-256; a matching `If-None-Match` is answered `304` without the body. The script still verifies the archive's pinned SHA-256, so a cached copy is never trusted on its own. Downloading the installer grants no authority: pairing (one-time code, ten-minute expiry, fingerprint, local administrator approval) is unchanged, and an unapproved computer can do nothing.
+
+Requests are rate limited per client address with a small burst (a few downloads in a row, then a steady rate; each route has its own allowance), and in total, because a reverse proxy makes every client look like one address. A client address is asked first: a request its own allowance refuses costs the shared total nothing, so one address that hammers a route is held by its own limit and cannot use up what everyone else shares. A held request gets `429` with `Retry-After`. The archive can never exceed the bundle's 8 MiB cap.
+
+### Remove it
+
+Disconnect the profile and delete the program folder, then remove its `bin` folder from your user PATH (Windows **Settings → System → About → Advanced system settings → Environment Variables**, user variable `Path`):
+
+```powershell
+agend-runtime disconnect
+Remove-Item -Recurse -Force "$env:LOCALAPPDATA\agend-runtime"
+```
+
+That removes every version folder at once; stop every Runtime window first.
+
+The profile (`%USERPROFILE%\.agend-runtime` by default) is separate and stays until you delete it. Revoke the computer in AgEnD Settings to invalidate its credential centrally.
 
 ## Network connection
 
 The runtime uses `/runtime/v1/connect` on the same externally reachable AgEnD service as pairing and the dashboard. Remote origins require HTTPS/WSS and a valid certificate. HTTP is accepted only for exact loopback hostnames, for example `http://localhost:19280` through a private SSH forward. The client refuses credential-bearing URLs and redirects.
 
-The existing coordinator listener still binds to loopback. Publishing a new port, changing a firewall or configuring TLS/proxy access is a separate host operation; pairing does not make the listener reachable automatically. A proxy must pass WebSocket upgrades on `/runtime/v1/connect` and POST requests on `/runtime/v1/pair`, `/runtime/v1/claim` and `/runtime/v1/rotate`. Pairing codes expire after ten minutes and are single-use. The runtime machine credential is unrelated to browser sessions; browser cookies and origins cannot authenticate the runtime channel.
+The existing coordinator listener still binds to loopback. Publishing a new port, changing a firewall or configuring TLS/proxy access is a separate host operation; pairing does not make the listener reachable automatically. A proxy must pass WebSocket upgrades on `/runtime/v1/connect` and POST requests on `/runtime/v1/pair`, `/runtime/v1/claim` and `/runtime/v1/rotate`. The one-line install also needs GET on `/runtime/install.ps1` and `/runtime/v1/bundle/windows.zip`. Pairing codes expire after ten minutes and are single-use. The runtime machine credential is unrelated to browser sessions; browser cookies and origins cannot authenticate the runtime channel.
 
 This preview does not open a runtime listener for other computers. Its per-turn MCP relay binds an ephemeral port to **127.0.0.1 only**, and requires a separate random capability for the active execution. It relays scoped AgEnD tool calls over the authenticated outbound runtime connection. The CLI never receives the permanent machine credential. Existing local `/agent` restrictions remain in place.
 

@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RuntimeClient, describeRuntimeStop, pairRuntime, type RuntimeBridge } from "../src/runtime-client.js";
 import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
+import { RUNTIME_REINSTALL_CLOSE_REASON } from "../src/runtime-protocol.js";
 import type { WindowsCliProbe } from "../src/windows-cli.js";
 
 const directories: string[] = [], clients: RuntimeClient[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [];
@@ -23,7 +24,7 @@ async function listen(server: Server): Promise<string> {
   const address = server.address(); if (!address || typeof address === "string") throw Error("No fixture port");
   return `http://127.0.0.1:${address.port}`;
 }
-async function fixture(options: ConstructorParameters<typeof RuntimeCoordinator>[1] = {}, report?: (text: string) => void) {
+async function fixture(options: ConstructorParameters<typeof RuntimeCoordinator>[1] = {}, report?: (text: string) => void, runtimeInfo?: unknown) {
   const hub = new RuntimeCoordinator(home(), options); hubs.push(hub);
   const pairing = hub.createPairing(), pending = hub.pair({ code: pairing.code, name: "Fixture Windows", platform: "win32" });
   hub.approve(pending.machineId, hub.machine(pending.machineId)?.pairingFingerprint);
@@ -31,8 +32,11 @@ async function fixture(options: ConstructorParameters<typeof RuntimeCoordinator>
   const base = await listen(createServer((req, res) => { if (!hub.handlePublicRequest(req, res, new URL(req.url ?? "/", "http://localhost"))) { res.writeHead(404); res.end(); } }).on("upgrade", (req, socket, head) => { if (!hub.handleUpgrade(req, socket, head)) socket.destroy(); }));
   const store = new RuntimeClientStore(home());
   store.saveCredentials({ server: base, machineId: claim.machineId, credential: claim.credential, name: "Fixture Windows" });
-  const client = new RuntimeClient({ store, bridge: bridge(), reconnectMs: 25, pollMs: 10, ...(report ? { report } : {}) }); clients.push(client); await client.start();
-  await vi.waitFor(() => expect(client.online()).toBe(true));
+  const client = new RuntimeClient({ store, bridge: bridge(), reconnectMs: 25, pollMs: 10, ...(report ? { report } : {}) }); clients.push(client);
+  // An older or newer program than this AgEnD: what it reports in its hello (private, so only a test reaches it).
+  if (runtimeInfo !== undefined) (client as unknown as { runtimeInfo: unknown }).runtimeInfo = runtimeInfo;
+  await client.start();
+  if (runtimeInfo === undefined) await vi.waitFor(() => expect(client.online()).toBe(true));
   const socket = () => (hub as unknown as { connections: Map<string, { ws: import("ws").WebSocket }> }).connections.get(claim.machineId)!.ws;
   return { hub, base, store, client, socket, machineId: claim.machineId, credential: claim.credential };
 }
@@ -105,6 +109,34 @@ describe("what AgEnD tells a Runtime when it closes the connection", () => {
     const line = String(report.mock.calls.find(call => String(call[0]).includes("code 1008"))![0]);
     expect(line).toMatch(/^AgEnD closed the connection \(code 1008: Invalid runtime message: \?+ x+\)\.$/);
     expect(f.client.stopReason!.detail!.length).toBeLessThanOrEqual(120); expect(f.client.stopReason!.detail).not.toMatch(/[^\x20-\x7e]/);
+  });
+});
+
+describe("version skew: a Runtime installed earlier meets a newer AgEnD", () => {
+  it("is refused, stops with a plain 'run the install command again', and keeps its pairing", async () => {
+    const report = vi.fn(), f = await fixture({}, report, { version: "1.0.0", protocolVersions: [2], capabilities: ["exec"] });
+    await f.client.waitUntilStopped();
+    expect(f.client.stopReason).toEqual({ kind: "reinstall", detail: RUNTIME_REINSTALL_CLOSE_REASON });
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("re-run the install command"));
+    const message = describeRuntimeStop(f.client.stopReason!);
+    expect(message).toMatch(/not compatible with this AgEnD/); expect(message).toMatch(/Re-run the install command shown in AgEnD Settings -> Runtime -> Connect a computer/);
+    expect(message).toMatch(/next to this one and never deletes the version that is running/); expect(message).toMatch(/agend-runtime run/); expect(message).toMatch(/ZIP/);
+    expect(message).toMatch(/pairing is kept/i); expect(message).not.toMatch(/pairing code|disconnect/);   // not told to pair again
+    expect(f.hub.machine(f.machineId)).toMatchObject({ status: "offline", runtimeCompatibility: "incompatible" });
+    expect(f.store.credentials()).not.toBeNull();
+  });
+  it("reconnects on the same pairing, with no new code, once the matching Runtime is installed", async () => {
+    const f = await fixture({}, undefined, { version: "1.0.0", protocolVersions: [2], capabilities: ["exec"] });
+    await f.client.waitUntilStopped();
+    const matching = new RuntimeClient({ store: f.store, bridge: bridge(), reconnectMs: 25, pollMs: 10 }); clients.push(matching); await matching.start();
+    await vi.waitFor(() => expect(matching.online()).toBe(true));
+    expect(f.hub.machine(f.machineId)).toMatchObject({ status: "online", runtimeCompatibility: "compatible" });
+  });
+  it("does not blame the version for a plain close that has another reason", async () => {
+    const f = await fixture();
+    f.socket().close(1008, "Something else entirely");
+    await f.client.waitUntilStopped();
+    expect(f.client.stopReason).toEqual({ kind: "rejected", detail: "Something else entirely" });
   });
 });
 
