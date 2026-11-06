@@ -57,6 +57,17 @@ for(const device of ["desk","phone"] as const)for(const lang of ["en","zh-TW"] a
       need(commands.includes("AGEND_RUNTIME_INSTALL_DIR")&&commands.includes("[Guid]::NewGuid()"),"fresh separate root");
       need(commands.includes(fm.runtimeInstaller().installer().scriptSha256),"server-pinned script hash");need(!commands.includes("connect --server"),"no new pairing");
       await page.screenshot({path:join(out,`${label}-repair.png`),fullPage:true});
+      // The command intentionally scrolls inside its code box. Prove both that and the real Copy action;
+      // the private browser stub records text without touching the host clipboard.
+      const code=page.locator(".runtime-command-text").first(), expectedCopy=await code.innerText();
+      await code.evaluate((node:any)=>{node.scrollLeft=node.scrollWidth;});
+      need(await code.evaluate((node:any)=>node.scrollWidth<=node.clientWidth||node.scrollLeft>0),"long command can be scrolled");
+      await page.evaluate(()=>Object.defineProperty(navigator,"clipboard",{configurable:true,value:{writeText:async(text:string)=>{(globalThis as any).__runtimeCopied=text;}}}));
+      const copy=page.locator(".runtime-command-card button").first();await copy.scrollIntoViewIfNeeded();
+      const box=await copy.boundingBox();need(!!box&&box.y>=0&&box.y+box.height<=await page.evaluate(()=>innerHeight)+1,"Copy is reachable in the modal viewport");
+      await copy.click();need(await page.evaluate(()=>(globalThis as any).__runtimeCopied)===expectedCopy,"Copy retains the complete command");
+      need(expectedCopy.includes("AGEND_RUNTIME_NO_PATH = '1'")&&expectedCopy.includes("AGEND_RUNTIME_REPAIR = '1'"),"repair mode keeps PATH and pairing");
+      await page.screenshot({path:join(out,`${label}-repair-copy.png`),fullPage:true});
       await page.locator(".dlg-x").click();
     }else need(await page.locator(".runtime-update-notice").count()===0,"actual old panel ignores new fields");
     await page.screenshot({path:join(out,`${label}-runtime.png`),fullPage:true});
