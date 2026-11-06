@@ -92,6 +92,7 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
 
 export interface SettingsApiContext extends AppShellContext {
   /** The running Hub's host-owner retention policy; absent while off/unavailable. */
+  hubBrowserCertificate?(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null;
   hubRetention?(): import("./hub/retention.js").HubRetentionControl | null;
   /** S3c (S-55): the member's exposures (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
@@ -930,6 +931,50 @@ export function handleSettingsRequest(
       json(res, 200, { ok: true, ...result });
     }).catch(err => { ctx.logger.warn({ err }, "settings: General location change held"); json(res, 409, { error: (err as Error).message }); });
     return true;
+  }
+
+  if (["/api/settings/hub/browser-certificate", "/api/settings/hub/browser-certificate/prepare", "/api/settings/hub/browser-certificate/apply"].includes(path)) {
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    const control = ctx.hubBrowserCertificate?.() ?? null;
+    if (!control) { json(res, 404, { error: "unavailable" }); return true; }
+    const refused = (err: unknown) => {
+      const code = err instanceof Error && ["invalid_browser_certificate", "conflict", "unavailable", "browser_certificate_busy"].includes(err.message) ? err.message : "unsaved";
+      json(res, code === "invalid_browser_certificate" ? 400 : code === "conflict" ? 409 : 503, { ok: false, error: code });
+    };
+    if (path.endsWith("/apply") && method === "POST") {
+      const execution = settingsRequestExecution(req);
+      let allowed = false; try { allowed = !!execution && isSettingsReplay(req) && settingsRequestLocalAdmin(req); } catch { /* stale */ }
+      if (!allowed || !execution) { json(res, 403, { error: "admin_confirmation_required" }); return true; }
+      readBody(req, 4096).then(bytes => {
+        try {
+          execution.assert();
+          if (ctx.hubBrowserCertificate?.() !== control) throw Error("unavailable");
+          const certificate = settingsWrite(req, () => control.apply(JSON.parse(bytes.toString("utf8")), requestSessionBinding(req),
+            () => settingsRequestLocalAdmin(req) && ctx.hubBrowserCertificate?.() === control));
+          json(res, 200, { ok: true, certificate });
+        } catch (err) { refused(err); }
+      }).catch(refused);
+      return true;
+    }
+    const caller = guestSettingsCaller(req, url, ctx);
+    if (!caller) { json(res, 403, { error: "admin_required" }); return true; }
+    if (path.endsWith("/prepare") && method === "POST") {
+      const binding = requestSessionBinding(req);
+      const current = () => !req.aborted && !res.destroyed && ctx.hubBrowserCertificate?.() === control
+        && guestSettingsCaller(req, url, ctx) === caller && requestSessionBinding(req) === binding;
+      readBody(req, 16 * 1024).then(async bytes => {
+        if (!current()) throw Error("unavailable");
+        const proposal = await control.prepare(JSON.parse(bytes.toString("utf8")), binding, current);
+        if (!current()) throw Error("unavailable");
+        json(res, 200, { ok: true, proposal });
+      }).catch(refused);
+      return true;
+    }
+    if (path === "/api/settings/hub/browser-certificate" && method === "GET") {
+      try { json(res, 200, { ok: true, certificate: control.read() }); } catch (err) { refused(err); }
+      return true;
+    }
+    json(res, 405, { error: "method_not_allowed" }); return true;
   }
 
   if (path === "/api/settings/hub/retention") {
