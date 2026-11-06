@@ -9,6 +9,7 @@ import {TmuxManager} from "../src/tmux-manager.js";
 import {WindowsAgents} from "../src/windows-agents.js";
 import type {WindowsCliExecutor,WindowsCliTask,WindowsRunOptions} from "../src/windows-cli.js";
 import {nativeCredentialProfile} from "../src/native-instance-registry.js";
+import {RuntimeWindowsBridge,type RuntimeExecutionCoordinator} from "../src/runtime-windows-bridge.js";
 
 const a="12345678-1234-4321-abcd-123456789012",b="22345678-1234-4321-abcd-123456789012",old="32345678-1234-4321-abcd-123456789012";
 const fixtures:Array<{home:string;fm:FleetManager}>=[];
@@ -83,6 +84,35 @@ describe("choosing a Claude account for an agent on a Windows Runtime computer (
   await expect(r.service.change("agent-1",r.body({credentialProfile:"expired"}),()=>true)).rejects.toThrow(/"expired" is not signed in on that computer/);
   expect(r.save).not.toHaveBeenCalled();
   await expect(r.service.change("agent-1",r.body({credentialProfile:"unknown"}),()=>true)).resolves.toMatchObject({machineId:b});
+ });
+});
+
+describe("names that are also Object properties, on the server",()=>{
+ it.each(["constructor","toString","hasOwnProperty"])("%s is a profile only when the computer reported it",async name=>{
+  const r=fixture();
+  await expect(r.service.change("agent-1",r.body({credentialProfile:name}),()=>true)).rejects.toThrow(new RegExp(`has not reported a credential profile named "${name}"`));
+  expect(r.save).not.toHaveBeenCalled();
+  r.machines.set(b,r.machine(b,{inventory:{clis:[claude],credentialProfiles:{profiles:[{name,loggedIn:true}]}}}));
+  await r.service.change("agent-1",r.body({credentialProfile:name}),()=>true);
+  expect(r.config().backend_options).toEqual({"claude-code":{credential_profile:name}});
+  await r.fm.nativeInstanceRuntime().deliver("agent-1",{requestId:crypto.randomUUID(),content:"hello",meta:{source:"web"}});
+  expect(r.started[0].options.credentialProfile).toBe(name);
+ });
+});
+
+describe("an old Runtime is never given a profile (through the real remote bridge)",()=>{
+ it("refuses before anything is sent or journaled when the computer stopped reporting the capability after the agent was created",async()=>{
+  const r=fixture();await r.service.change("agent-1",r.body({credentialProfile:"work"}),()=>true);
+  const calls:unknown[]=[];
+  const coordinator={machine:(id:string)=>r.machines.get(id),call:vi.fn(async(...args:unknown[])=>{calls.push(args);throw Error("must not be called");}),task:()=>null,hasActiveTask:()=>false,subscribe:()=>()=>{}} as unknown as RuntimeExecutionCoordinator;
+  (r.any as any).runtimeWindowsExecutor=()=>new RuntimeWindowsBridge(r.fm,()=>coordinator,{close(){}} as never);
+  (r.any as any).fleetWindowsRuntime=undefined;
+  // The computer was downgraded (or re-paired with an older Runtime): the saved agent keeps its profile, the machine no longer offers it.
+  r.machines.set(b,r.machine(b,{runtimeInfo:{protocolVersions:[1],capabilities:["exec","mcp","panes"]}}));
+  await expect(r.fm.nativeInstanceRuntime().deliver("agent-1",{requestId:crypto.randomUUID(),content:"hello",meta:{source:"web"}})).rejects.toThrow(/Runtime is too old to choose a Claude account/);
+  expect(calls).toEqual([]);
+  const agent=new WindowsAgents(r.home,r.bridge).list()[0];expect(agent.activeId).toBeUndefined();
+  expect(new WindowsAgents(r.home,r.bridge).get(agent.id).turns).toEqual([]);
  });
 });
 

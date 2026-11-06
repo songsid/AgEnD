@@ -133,6 +133,38 @@ describe("a run that names a credential profile", () => {
   });
 });
 
+describe("names that are also Object properties, and a default that is signed out", () => {
+  it.each(["constructor", "toString", "hasOwnProperty"])("a run on a profile named %s uses exactly that folder", async name => {
+    const f = await fixture(), directory = ensureCredentialProfile(f.root, "claude-code", name), task = claudeTask();
+    await f.hub.call(f.machineId, "run", { task, credentialProfile: name });
+    expect(f.bridge.options.get(task.requestId)?.credentialHome).toBe(directory); await finish(f, task.requestId);
+  });
+  it("a name that only the prototype has is simply unknown", async () => {
+    const f = await fixture(), task = claudeTask(); ensureCredentialProfile(f.root, "claude-code", "work");
+    await f.hub.call(f.machineId, "run", { task, credentialProfile: "constructor" });
+    expect((await settled(f, task.requestId)).error).toMatch(/"constructor" does not exist on this computer/); expect(f.bridge.launches).toBe(0);
+  });
+  it("a pairing default that is signed out refuses the run; it never falls back to the computer's own account", async () => {
+    const f = await fixture(); ensureCredentialProfile(f.root, "claude-code", "work"); f.store.setCredentialDefault("work"); f.login.mockResolvedValue(false);
+    const task = claudeTask(); await f.hub.call(f.machineId, "run", { task });
+    expect((await settled(f, task.requestId)).error).toMatch(/"work" is not signed in on this computer/); expect(f.bridge.launches).toBe(0);
+    // A default whose folder has gone is refused too, and so is a malformed saved default.
+    f.login.mockResolvedValue(true); rmSync(join(f.root, "claude-code", "work"), { recursive: true });
+    const gone = claudeTask(); await f.hub.call(f.machineId, "run", { task: gone });
+    expect((await settled(f, gone.requestId)).error).toMatch(/does not exist on this computer/); expect(f.bridge.launches).toBe(0);
+  });
+  it("a terminal for an agent with no profile starts under the pairing's default, and an unusable default refuses the terminal, not the default account", async () => {
+    const seen: any[] = [];
+    const f = await fixture({ createPaneHost: () => ({ request: async (request: any) => { seen.push(request); return { reattached: false }; }, stop: async () => {}, connectionChanged() {} } as never) });
+    ensureCredentialProfile(f.root, "claude-code", "work"); f.store.setCredentialDefault("work");
+    const launch = (extra: Record<string, unknown> = {}) => ({ paneId: randomUUID(), agentId: randomUUID(), instance: "agent-x", cli: "claude-code", cwd: "C:\\scratch", sandbox: "read-only", columns: 80, rows: 24, ...extra });
+    await f.hub.callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: launch() } as never).catch(() => {});
+    await f.hub.callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: launch({ credentialProfile: "home" }) } as never).catch(() => {});
+    await f.hub.callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: launch({ cli: "codex" }) } as never).catch(() => {});
+    expect(seen.map(request => request.launch.credentialProfile)).toEqual(["work", "home", undefined]);
+  });
+});
+
 describe("what a Runtime tells AgEnD about its profiles", () => {
   it("is the `credential-profiles` capability plus names and signed-in yes/no from an explicit detection; no path, e-mail or token", async () => {
     const f = await fixture(); ensureCredentialProfile(f.root, "claude-code", "work"); ensureCredentialProfile(f.root, "claude-code", "home");

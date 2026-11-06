@@ -12,7 +12,7 @@ import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import { NativePaneTranscriptReader, nativeClaudeSessionState, nativeCodexSessionState, nativePaneTranscriptRoots, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
-import { credentialLoginRequired, withCredentialProfile } from "./runtime-credential-profiles.js";
+import { CredentialProfileRefusal, credentialLoginRequired, withCredentialProfile } from "./runtime-credential-profiles.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
@@ -110,15 +110,16 @@ export class RuntimePaneHost {
   /** The profile folder for a launch that names one (checked, never created here); undefined when it names none. */
   private credentialHome(launch: RuntimePaneLaunch): string | undefined {
     if (launch.credentialProfile === undefined) return undefined;
-    if (!this.options.credentialHome) throw Error("This pane host cannot select a credential profile. Close its panes so the Runtime starts a new host, then try again.");
-    return this.options.credentialHome(launch.cli, launch.credentialProfile);
+    if (!this.options.credentialHome) throw new CredentialProfileRefusal("This pane host cannot select a credential profile. Close its panes so the Runtime starts a new host, then try again.");
+    try { return this.options.credentialHome(launch.cli, launch.credentialProfile); }
+    catch (error) { throw new CredentialProfileRefusal(error instanceof Error ? error.message : "Credential profile is unavailable"); }
   }
   private async admitCredentialProfile(launch: RuntimePaneLaunch): Promise<string | undefined> {
     const home = this.credentialHome(launch);
     if (home === undefined) return undefined;
-    if (!this.options.credentialLogin) throw Error("This pane host cannot confirm a credential profile's sign-in, so nothing was started.");
+    if (!this.options.credentialLogin) throw new CredentialProfileRefusal("This pane host cannot confirm a credential profile's sign-in, so nothing was started.");
     const loggedIn = await this.options.credentialLogin(launch.cli, home, launch.credentialProfile!);
-    if (loggedIn !== true) throw credentialLoginRequired(launch.cli, launch.credentialProfile!, loggedIn);
+    if (loggedIn !== true) throw new CredentialProfileRefusal(credentialLoginRequired(launch.cli, launch.credentialProfile!, loggedIn).message);
     if (this.closing) throw Error("Pane host stopped during launch");
     return home;
   }

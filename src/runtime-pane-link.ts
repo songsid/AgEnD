@@ -103,7 +103,8 @@ export class RuntimePaneLink {
           if (value?.type !== "response" || typeof value.id !== "string" || typeof value.ok !== "boolean") throw Error("Invalid pane reply");
           const pending = link.pending.get(value.id); if (!pending) return;
           link.pending.delete(value.id); clearTimeout(pending.timer);
-          if (value.ok) pending.resolve(value.result); else pending.reject(Error("Pane host refused operation; inspect its owned snapshot"));
+          const refusal = typeof value.refusal === "string" && value.refusal.length <= 500 && !/[\x00-\x1f\x7f]/.test(value.refusal) ? value.refusal : undefined;
+          if (value.ok) pending.resolve(value.result); else pending.reject(Error(refusal ?? "Pane host refused operation; inspect its owned snapshot"));
         } catch { socket.close(1008, "Invalid pane host frame"); }
       });
     });

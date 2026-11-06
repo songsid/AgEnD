@@ -66,6 +66,28 @@ describe("Settings → Runtime: the computer card", () => {
   });
 });
 
+describe("names that are also Object properties", () => {
+  const names = ["constructor", "toString", "hasOwnProperty"];
+  it("the computer card lists them as ordinary accounts, in the reported order", async () => {
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [claude], credentialProfiles: { profiles: names.map((name, index) => ({ name, loggedIn: index === 0 ? true : index === 1 ? false : null })), default: "constructor" } } })];
+    await p.mount(h(Panel, { navKey: "profiles-awkward" })); await settle(12);
+    const rows = p.root.querySelectorAll(".runtime-profile-list li");
+    expect(rows.map((row: any) => row.getAttribute("data-profile"))).toEqual(names);
+    expect(rows.map((row: any) => row.querySelector(".runtime-cli-auth").textContent.trim())).toEqual(["Signed in", "Not signed in", "Not checked"]);
+    expect(rows[0].querySelector(".runtime-profile-default").textContent).toBe("Default"); expect(rows[1].querySelector(".runtime-profile-default")).toBeNull();
+  });
+  it("the new-agent form offers and sends them by name; an unreported one is not mistaken for a reported one", async () => {
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [claude], credentialProfiles: { profiles: names.map(name => ({ name, loggedIn: true })) } } })];
+    await p.mount(h(Create, { onClose() {} })); await settle(8); await choose(idA);
+    expect(p.root.querySelectorAll("#native-create-claude-account option").map((node: any) => node.value)).toEqual(["", ...names]);
+    await select("#native-create-claude-account", "hasOwnProperty"); button("Next").click(); await settle(8);
+    const name = p.root.querySelectorAll(".agent-runtime-fields input")[1]; name.value = "Awkward"; fire(name, "input"); await settle();
+    button("Create").click(); await settle(8);
+    expect(posts.find(row => row.path === "/ui/instances")?.body).toMatchObject({ credentialProfile: "hasOwnProperty" });
+    expect(accounts.credentialProfileView({ runtimeInfo: caps(["credential-profiles"]), inventory: { credentialProfiles: { profiles: [{ name: "work", loggedIn: true }] } } }).profiles.some((row: any) => row.name === "constructor")).toBe(false);
+  });
+});
+
 describe("new remote agent: Claude account", () => {
   const open = async (id: string) => { await p.mount(h(Create, { onClose() {} })); await settle(8); await choose(id); };
   it("offers the computer's accounts for Claude Code, disables a signed-out one and sends only the chosen name", async () => {

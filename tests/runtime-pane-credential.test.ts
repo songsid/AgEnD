@@ -8,6 +8,7 @@ import { RuntimePaneStore } from "../src/runtime-pane-store.js";
 import { validateRuntimePaneLaunch, validateRuntimePaneRequest, type RuntimePaneLaunch, type RuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
 import { credentialProfilesRoot, ensureCredentialProfile, requireCredentialProfile } from "../src/runtime-credential-profiles.js";
 import { startPaneService } from "../src/runtime-pane-service.js";
+import { RuntimePaneLink } from "../src/runtime-pane-link.js";
 
 const directories: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); directories.splice(0).forEach(dir => rmSync(dir, { force: true, recursive: true })); });
@@ -107,5 +108,22 @@ describe("the pane host process wiring", () => {
   it("without a credential root it offers no profile at all, so a launch that names one is refused", async () => {
     const { service, options } = await start();
     try { expect(options.credentialHome).toBeUndefined(); expect(options.credentialLogin).toBeUndefined(); } finally { await service.close(); }
+  });
+});
+
+describe("the refusal reaches AgEnD with its clear text", () => {
+  it("crosses the pane host's local link for a credential profile, and nothing else is passed through verbatim", async () => {
+    const root = credentialProfilesRoot(scratch()); ensureCredentialProfile(root, "claude-code", "expired");
+    const service = await startPaneService({ directory: scratch(), scope: "a".repeat(64), credentialRoot: root, probeLogin: async () => false,
+      createHost: options => new RuntimePaneHost({ ...options, spawn: async () => fakeProcess() as RuntimePaneProcess }) });
+    const link = await RuntimePaneLink.attach(service.descriptor, { online: () => true, maxAgents: () => 4 });
+    try {
+      const open = (extra: Partial<RuntimePaneLaunch>) => link.request({ action: "open", operationId: randomUUID(), launch: launch(extra) });
+      await expect(open({ credentialProfile: "ghost" })).rejects.toThrow(/Credential profile "ghost" does not exist on this computer.*agend-runtime login claude-code ghost/);
+      await expect(open({ credentialProfile: "expired" })).rejects.toThrow(/"expired" is not signed in on this computer/);
+      for (const error of await Promise.allSettled([open({ credentialProfile: "ghost" }), open({ credentialProfile: "expired" })])) expect(JSON.stringify(error)).not.toContain(root);
+      // A different failure (a pane that does not exist) is still the generic text: no host detail leaks.
+      await expect(link.request({ action: "snapshot", paneId: randomUUID(), launchId: randomUUID() })).rejects.toThrow(/Pane host refused operation; inspect its owned snapshot/);
+    } finally { await link.stop(); await service.close(); }
   });
 });

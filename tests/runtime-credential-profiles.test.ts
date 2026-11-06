@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, statSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, statSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -119,5 +119,64 @@ describe("is a profile signed in?", () => {
   });
   it("is unknown (null), never true, when the CLI cannot be found", async () => {
     expect(await probeCredentialProfileLogin("claude-code", "C:\\p\\work", async () => null)).toBeNull();
+  });
+});
+
+describe("names are unique without regard to letter case (Windows folders are)", () => {
+  it("resolving a case variant refuses and names the folder that exists, instead of silently opening it", () => {
+    const base = root(); ensureCredentialProfile(base, "claude-code", "Work");
+    expect(() => requireCredentialProfile(base, "claude-code", "work")).toThrow(/does not exist on this computer; "Work" does.*Use "Work"/);
+    expect(() => requireCredentialProfile(base, "claude-code", "WORK")).toThrow(/"Work" does/);
+    expect(requireCredentialProfile(base, "claude-code", "Work")).toBe(join(base, "claude-code", "Work"));
+  });
+  it("lists and resolves neither of two folders that differ only by case: the name is ambiguous, never guessed", () => {
+    const base = root(); ensureCredentialProfile(base, "claude-code", "other");
+    mkdirSync(join(base, "claude-code", "Work")); mkdirSync(join(base, "claude-code", "work"), { recursive: true });
+    if (readdirSync(join(base, "claude-code")).filter(name => name.toLowerCase() === "work").length < 2) return;   // a case-insensitive disk cannot hold both
+    expect(listCredentialProfileNames(base, "claude-code")).toEqual(["other"]);
+    for (const name of ["Work", "work"]) expect(() => requireCredentialProfile(base, "claude-code", name)).toThrow(/ambiguous.*letter case/);
+    expect(() => requireCredentialProfile(base, "claude-code", "work")).not.toThrow(/does not exist/);
+    expect(credentialProfileReport(base).profiles.map(row => row.name)).toEqual(["other"]);
+  });
+  it("an ambiguity message names no folder of this computer", () => {
+    const base = root(); mkdirSync(join(base, "claude-code", "Work"), { recursive: true }); mkdirSync(join(base, "claude-code", "work"), { recursive: true });
+    if (readdirSync(join(base, "claude-code")).length < 2) return;
+    try { requireCredentialProfile(base, "claude-code", "work"); } catch (error) { expect((error as Error).message).not.toContain(base); }
+  });
+});
+
+describe("a profile name is data, never a property (prototype safety)", () => {
+  const awkward = ["constructor", "toString", "hasOwnProperty", "valueOf", "isPrototypeOf", "propertyIsEnumerable", "toLocaleString", "prototype"];
+  it("every Object.prototype member is a valid name, and __proto__ is not", () => {
+    for (const name of awkward) expect(validCredentialProfileName(name), name).toBe(true);
+    for (const bad of ["__proto__", "__defineGetter__", "_x"]) expect(validCredentialProfileName(bad), bad).toBe(false);
+  });
+  it("creates, lists, resolves and reports them like any other name, with no state inherited from Object", () => {
+    const base = root();
+    for (const name of awkward) expect(requireCredentialProfile(base, "claude-code", ensureCredentialProfile(base, "claude-code", name).split(/[\\/]/).pop())).toBe(join(base, "claude-code", name));
+    expect(listCredentialProfileNames(base, "claude-code")).toEqual([...awkward].sort((a, b) => a.localeCompare(b)));
+    // Nothing was ever checked, and an inherited member must not read as an answer.
+    for (const name of awkward) expect(cachedCredentialLogin(base, "claude-code", name), name).toBeNull();
+    expect(credentialProfileReport(base, "constructor")).toEqual({ profiles: [...awkward].sort((a, b) => a.localeCompare(b)).map(name => ({ name, loggedIn: null })), default: "constructor" });
+  });
+  it("remembers a sign-in answer for each, round-trips through the file, and pollutes no prototype", () => {
+    const base = root(); for (const name of awkward) ensureCredentialProfile(base, "claude-code", name);
+    rememberCredentialLogin(base, "claude-code", "constructor", true); rememberCredentialLogin(base, "claude-code", "toString", false);
+    expect(cachedCredentialLogin(base, "claude-code", "constructor")).toBe(true); expect(cachedCredentialLogin(base, "claude-code", "toString")).toBe(false);
+    expect(cachedCredentialLogin(base, "claude-code", "hasOwnProperty")).toBeNull();
+    const file = JSON.parse(readFileSync(join(base, "status.json"), "utf8")); expect(Object.keys(file.checkedAt["claude-code"]).sort()).toEqual(["constructor", "toString"]);
+    expect(({} as Record<string, unknown>).loggedIn).toBeUndefined(); expect(Object.keys(Object.prototype)).toEqual([]);
+  });
+  it("a hostile status file cannot smuggle a prototype or an answer for an invalid name", () => {
+    const base = root(); ensureCredentialProfile(base, "claude-code", "constructor");
+    writeFileSync(join(base, "status.json"), '{"version":1,"checkedAt":{"claude-code":{"__proto__":{"loggedIn":true,"at":1},"constructor":{"loggedIn":false,"at":1},"C:\\\\x":{"loggedIn":true,"at":1},"toString":"yes"},"__proto__":{"claude-code":{"polluted":{"loggedIn":true,"at":1}}}}}');
+    expect(cachedCredentialLogin(base, "claude-code", "constructor")).toBe(false); expect(cachedCredentialLogin(base, "claude-code", "toString")).toBeNull();
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined(); expect((Object.prototype as Record<string, unknown>)["claude-code"]).toBeUndefined();
+    rememberCredentialLogin(base, "claude-code", "constructor", true); expect(cachedCredentialLogin(base, "claude-code", "constructor")).toBe(true);
+  });
+  it("a report with these names parses, and a duplicate (even by case) is refused", () => {
+    expect(parseCredentialProfileReport({ profiles: awkward.map(name => ({ name, loggedIn: true })), default: "hasOwnProperty" }).default).toBe("hasOwnProperty");
+    expect(() => parseCredentialProfileReport({ profiles: [{ name: "constructor", loggedIn: true }, { name: "Constructor", loggedIn: true }] })).toThrow();
+    expect(() => parseCredentialProfileReport({ profiles: [{ name: "__proto__", loggedIn: true }] })).toThrow();
   });
 });

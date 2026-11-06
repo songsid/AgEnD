@@ -11,7 +11,7 @@ import { RuntimeClientStore } from "./runtime-client-store.js";
 import { protectPaneDirectory, savePaneHostDescriptor, removePaneHostDescriptor, type PaneHostDescriptor } from "./runtime-pane-private.js";
 import { validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { PaneMcpRelay } from "./runtime-pane-mcp-relay.js";
-import { rememberCredentialLogin, requireCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
+import { CredentialProfileRefusal, rememberCredentialLogin, requireCredentialProfile, type CredentialProfileCli } from "./runtime-credential-profiles.js";
 import { probeCredentialProfileLogin, validWindowsDirectory } from "./windows-cli-worker.js";
 export interface PaneServiceOptions {
   directory: string;
@@ -117,7 +117,11 @@ export async function startPaneService(options: PaneServiceOptions): Promise<{ d
             } finally { await closeService(); }
           } else if (current === socket) send(socket, { type: "response", id: value.id, ok: true, result });
         }
-        catch { if (current === socket) send(socket, { type: "response", id: value.id, ok: false, error: "Pane operation refused; refresh its owned state before retrying" }); }
+        catch (error) {
+          // Only a credential-profile refusal carries its own text across: it names a profile and a command, never a path or a secret.
+          const refusal = error instanceof CredentialProfileRefusal ? error.message.slice(0, 500) : undefined;
+          if (current === socket) send(socket, { type: "response", id: value.id, ok: false, error: "Pane operation refused; refresh its owned state before retrying", ...(refusal ? { refusal } : {}) });
+        }
         finally { pending--; }
       })().catch(() => socket.close(1008, "Invalid pane frame"));
     });

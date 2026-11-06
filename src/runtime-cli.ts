@@ -77,8 +77,14 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   if (command !== "connect" && flags["--credential-profile"]) throw new Error("--credential-profile is used only by connect; use profile default NAME to change it later");
   const explicitProfile = flags["--profile"] || env.AGEND_RUNTIME_HOME;
   const defaultProfile = resolve(join(home, ".agend-runtime"));
-  // Sign-ins belong to the person on this computer, not to one pairing: one root under the profile the user chose (or the default one).
-  const credentialRoot = credentialProfilesRoot(resolve(explicitProfile || defaultProfile));
+  let bundledServer: string | undefined;
+  // Only connect needs a valid bundled address; run/status/rotate/disconnect just use it to find the same profile.
+  if (!flags["--server"]) { try { bundledServer = readBundledRuntimeServer(options.programDirectory); } catch (error) { if (command === "connect") throw error; } }
+  // Without an explicit profile, a bundled server that differs from the default profile's pairing gets its own profile under it.
+  const choice = explicitProfile ? undefined : chooseRuntimeProfile(defaultProfile, bundledServer, command === "connect");
+  const store = new RuntimeClientStore(resolve(explicitProfile || choice!.directory));
+  // A pairing's profiles live in that pairing's own folder: approving a pairing lets that fleet use the profiles signed in here, and no other fleet.
+  const credentialRoot = credentialProfilesRoot(store.directory);
   const probeLogin = options.probeLogin ?? probeCredentialProfileLogin;
   if (command === "login") {
     if (process.platform !== "win32" && !options.runLogin) throw new Error("Signing in to a Claude account here needs native Windows Node, under the Windows user whose Claude Code this Runtime uses.");
@@ -107,12 +113,6 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     }
     return;
   }
-  let bundledServer: string | undefined;
-  // Only connect needs a valid bundled address; run/status/rotate/disconnect just use it to find the same profile.
-  if (!flags["--server"]) { try { bundledServer = readBundledRuntimeServer(options.programDirectory); } catch (error) { if (command === "connect") throw error; } }
-  // Without an explicit profile, a bundled server that differs from the default profile's pairing gets its own profile under it.
-  const choice = explicitProfile ? undefined : chooseRuntimeProfile(defaultProfile, bundledServer, command === "connect");
-  const store = new RuntimeClientStore(resolve(explicitProfile || choice!.directory));
   if (command === "profile") {
     // Only `default` is left here; `list` returned above. It changes which sign-in this pairing uses for agents that do not choose one.
     if (positional[0] !== "default" || positional.length > 2 || Object.keys(flags).some(key => key !== "--profile" && key !== "--clear") || (flags["--clear"] !== undefined) === (positional.length === 2)) throw new Error("Usage: agend-runtime profile list | profile default (NAME | --clear)");
