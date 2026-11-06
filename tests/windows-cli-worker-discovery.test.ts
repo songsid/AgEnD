@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, isUsableNativeBinarySize, npmNativeExecutable, npmNativeShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
+import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, isUsableNativeBinaryFile, isUsableNativeBinarySize, npmNativeExecutable, npmNativeShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
 
 afterEach(() => vi.unstubAllEnvs());
 const workspaces: string[]=[];
@@ -190,6 +190,13 @@ describe("native Node shims and environment", () => {
       expect(isUsableNativeBinarySize("claude-code", MiB - 1)).toBe(false);
       expect(isUsableNativeBinarySize("claude-code", MiB)).toBe(true);
       expect(isUsableNativeBinarySize("codex", 10)).toBe(true);
+    });
+    it("treats a file whose size cannot be read as not usable instead of throwing", () => {
+      const gone = () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); };
+      expect(isUsableNativeBinaryFile("claude-code", bin, gone)).toBe(false);
+      expect(isUsableNativeBinaryFile("claude-code", bin, () => 500)).toBe(false);
+      expect(isUsableNativeBinaryFile("claude-code", bin, () => 200 * MiB)).toBe(true);
+      expect(npmNativeExecutable("claude-code", dir, () => true, gone, "x64")).toBeNull();
     });
     it("returns null when a hoisted package is a placeholder and the nested one is missing", () => {
       const hoisted = `${dir}\\node_modules\\@anthropic-ai\\claude-code-win32-x64\\claude.exe`;

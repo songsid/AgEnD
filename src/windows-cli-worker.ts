@@ -169,6 +169,10 @@ const NPM_NATIVE_MIN_BYTES = 1024 * 1024;
 export function isUsableNativeBinarySize(id: NativeCliId, size: number): boolean {
   return !NPM_NATIVE_TARGETS[id] || size >= NPM_NATIVE_MIN_BYTES;
 }
+/** Same check on a file: a size that cannot be read (the file vanished after it was found) is not usable. */
+export function isUsableNativeBinaryFile(id: NativeCliId, path: string, sizeOf: (path: string) => number): boolean {
+  try { return isUsableNativeBinarySize(id, sizeOf(path)); } catch { return false; }
+}
 export function npmNativeShimTarget(id: NativeCliId, source: string): string | null {
   const native = NPM_NATIVE_TARGETS[id];
   if (!native || source.length > 32 * 1024) return null;
@@ -189,7 +193,7 @@ export function npmNativeExecutable(id: NativeCliId, shimDir: string, exists: (p
     candidates.push(win32.join(packageRoot, "node_modules", ...parts, native.exe), win32.join(root, ...parts, native.exe));
   }
   candidates.push(win32.join(shimDir, ...native.shim.split("/")));
-  return candidates.find(path => exists(path) && isUsableNativeBinarySize(id, sizeOf(path))) ?? null;
+  return candidates.find(path => exists(path) && isUsableNativeBinaryFile(id, path, sizeOf)) ?? null;
 }
 function isNativeFile(path: string): boolean {
   if (!validWindowsDirectory(path)) return false;
@@ -222,7 +226,7 @@ export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | nu
     const p = candidate.trim();
     if (!isNativeFile(p)) continue;
     if (provider.binaryNames.some(name => win32.basename(p).toLowerCase() === name.toLowerCase())) {
-      if (!isUsableNativeBinarySize(id, statSync(p).size)) continue;
+      if (!isUsableNativeBinaryFile(id, p, path => statSync(path).size)) continue;
       return { path: p, command: p, args: [] };
     }
     if (/\.cmd$/i.test(p) && NPM_CLI_TARGETS[id]) {
