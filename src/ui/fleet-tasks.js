@@ -18,6 +18,7 @@ import { toast } from "/assets/ui-toast.js";
 import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardDialog } from "./fleet-task-card.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
+import { InsightsDialog } from "./fleet-task-stats.js";
 
 const PROJECT_KEY = "agend_tasks_project";
 const FILTER_KEY = "agend_tasks_assignee";
@@ -273,6 +274,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writab
   const setAssignee = (v) => { setAssigneeRaw(v); writeStored(FILTER_KEY, v || null); };
   const key = project === NO_PROJECT ? NO_PROJECT : project.id;
   const archived = project !== NO_PROJECT && project.archived;
+  const [insights, setInsights] = useState(false);
   const stats = statsOf(key);
   const now = Date.now();
 
@@ -362,6 +364,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writab
         <span class="muted">${stats.mains === 1 ? t("tasks.mainOne") : t("tasks.mainCount", stats.mains)}</span>
         ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
         ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
+        <button type="button" class="btn btn-ghost btn-sm tb-insights" title=${t("taskstats.buttonTip")} onClick=${() => setInsights(true)}><${Icon} name="chart" size=${16} />${t("taskstats.button")}</button>
       </div>
       <span class="tb-grow"></span>
       <select class="tb-select" value=${assignee} aria-label=${t("tasks.filterLabel")} onChange=${(e) => setAssignee(e.target.value)}>
@@ -392,6 +395,8 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writab
         </section>`;
       })}
     </div></div>`}
+    ${insights ? html`<${InsightsDialog} name=${project === NO_PROJECT ? t("tasks.noProject") : project.name} onClose=${() => setInsights(false)}
+      cards=${mains.flatMap((c) => [c, ...(subsOf.get(c.id) || [])])} />` : null}
   </div>`;
 }
 

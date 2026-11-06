@@ -2558,6 +2558,41 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .tb-tile-stats > .all { color: var(--ok); }
 .tb-tile-stats > .reply { color: var(--accent); }
 
+/* A project's Insights (fleet-task-stats.js): its choices, a bar per row coloured by class, its numbers. */
+.tb-stats > .tb-insights { min-height: 26px; padding: 0 var(--s-2); }
+.ts { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+.ts-choices { display: flex; flex-wrap: wrap; gap: var(--s-3); }
+.ts-pick { flex: 1 1 140px; min-width: 0; margin: 0; }
+.ts-sum, .ts-note { margin: 0; }
+.ts-sum { font-size: var(--fs-sm); }
+.ts-note { font-size: var(--fs-xs); }
+.ts-legend { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); margin: 0; padding: 0; list-style: none; font-size: var(--fs-xs); color: var(--text-2); }
+.ts-legend li { display: inline-flex; align-items: center; gap: var(--s-1); }
+.ts-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--text-3); }
+.ts-scroll { overflow-x: auto; }
+.ts-table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.ts-table th, .ts-table td { padding: var(--s-1) var(--s-2); border-bottom: 1px solid var(--border); text-align: left; font-weight: var(--fw-regular); white-space: nowrap; }
+.ts-table thead th { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.ts-table thead th.ts-part { max-width: 5em; white-space: normal; vertical-align: bottom; }
+.ts-table tbody th { max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.ts-table tbody th .tb-person { max-width: 100%; }
+.ts-table tbody th .tb-who { overflow: hidden; text-overflow: ellipsis; }
+.ts-table .ts-bar-col { width: 35%; min-width: 96px; }
+.ts-bar { display: block; width: 100%; height: 10px; border-radius: 2px; overflow: hidden; }
+.ts-track { fill: var(--surface-2); }
+.ts-table .ts-n { text-align: right; font-variant-numeric: tabular-nums; }
+.ts-n.zero { color: var(--text-3); }
+.ts-table .ts-total { font-weight: var(--fw-semibold); }
+/* The parts' colours: a status as the board's dots; a priority from urgent (red) to low (grey); a size by weight. */
+.ts-seg.none-all { fill: var(--accent); }
+.ts-seg.status-open, .ts-key.status-open, .ts-seg.priority-low, .ts-key.priority-low, .ts-seg.size-none, .ts-key.size-none { fill: var(--text-3); background: var(--text-3); }
+.ts-seg.status-claimed, .ts-key.status-claimed, .ts-seg.priority-normal, .ts-key.priority-normal, .ts-seg.size-M, .ts-key.size-M { fill: var(--accent); background: var(--accent); }
+.ts-seg.status-blocked, .ts-key.status-blocked, .ts-seg.priority-urgent, .ts-key.priority-urgent { fill: var(--danger); background: var(--danger); }
+.ts-seg.status-review, .ts-key.status-review, .ts-seg.priority-high, .ts-key.priority-high, .ts-seg.size-L, .ts-key.size-L { fill: var(--warn); background: var(--warn); }
+.ts-seg.status-done, .ts-key.status-done, .ts-seg.size-S, .ts-key.size-S { fill: var(--ok); background: var(--ok); }
+/* A phone keeps the bar and the total; the parts are in the legend's colours. */
+@media (max-width: 899px) { .ts-table .ts-part { display: none; } }
+
 /* #2246 step 3: who works on what (fleet-task-work.js) — the board's Instance drawer and the Details page's block. */
 .tw { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
 .tw-head { margin: 0; font-size: var(--fs-sm); }
