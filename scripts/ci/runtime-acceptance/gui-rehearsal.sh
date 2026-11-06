@@ -56,12 +56,10 @@ set -e
 echo "  the old updater exited $rc"
 # The hop's verdict, before anything else touches the service: the old updater must have installed the candidate,
 # succeeded, and ACTIVATED it — its restart consumed the planned activation. Nothing here repairs a failed hop.
-grep -q "Installed: $CAND" "$WORK/update.out" || fail "the old updater did not install $CAND"
+check_installed # real installed version/runtime/receipt/SQLite, independent of updater wording
 [ "$rc" = 0 ] || fail "the old updater exited $rc: it installed $CAND but did not complete the update"
 [ ! -f "$HOME/.agend/service-plan.json" ] || fail "the old updater left the planned activation unconsumed: launchd was not switched to $CAND"
 echo "  hop verdict: the old updater installed $CAND, exited 0 and consumed the planned activation"
-
-check_installed
 
 step "after the update: what launchd runs"
 wait_health || { show_job || true; fail "the fleet did not answer /health after the update"; }

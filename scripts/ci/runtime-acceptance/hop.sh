@@ -77,11 +77,10 @@ rc=${PIPESTATUS[0]}
 set -e
 # Expected: the install and its verification succeed, then the final restart has no fleet and no reachable service
 # manager (stubs) to restart, so the old updater reports a failed restart: exit 1 — nothing else.
-grep -q "Installed: $CAND" "$WORK/update.out" || fail "the old updater did not report installing $CAND"
+check_installed # installed identity/runtime/receipt/SQLite, not a historical output string
 [ "$rc" = 1 ] || fail "the old updater exited $rc; expected 1 (installed, then a restart with nothing to restart)"
 echo "  the old updater exited 1 after installing $CAND, as expected (no fleet or service to restart)"
 check_boundary old-updater
-check_installed
 fresh npm-install
 step "[npm-install] npm install -g @songsid/agend@$CAND over $OLD"
 npm install -g --no-audit --no-fund "@songsid/agend@$CAND"

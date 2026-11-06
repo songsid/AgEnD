@@ -337,3 +337,28 @@ describe("#1460 r5: the boundary judges the command WITH its effective environme
     expect(r.stdout).toContain("boundary.cjs");
   });
 });
+
+
+describe('previous-release system-Node preflight', () => {
+  const probe = `command -v node >/dev/null 2>&1 || exit 127; exec node -p "process.versions.node + ' ' + process.execPath"`;
+  it('executes only the fixed read-only probe with the preload intact', () => {
+    const w = world();
+    const r = w.run(`const out=require('child_process').execFileSync('/bin/sh',['-c',${JSON.stringify(probe)}],{encoding:'utf8'});process.stdout.write(out);`);
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout.trim()).toBe(process.versions.node+' '+process.execPath);
+    expect(w.logged()).toBe('');
+    expect(existsSync(w.mark)).toBe(false);
+  });
+  it.each([
+    probe+'; agend fleet start',
+    probe.replace('>/dev/null','>/tmp/other'),
+    probe.replace('process.execPath', 'process.exit(0)'),
+    'PATH=/tmp/private '+probe,
+  ])('refuses a modified probe: %s', modified => {
+    const w = world();
+    const r = w.run(`require('child_process').execFileSync('/bin/sh',['-c',${JSON.stringify(modified)}]);`);
+    expect(r.status).not.toBe(0);
+    expect(w.logged()).not.toBe('');
+    expect(existsSync(w.mark)).toBe(false);
+  });
+});
