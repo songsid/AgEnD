@@ -91,6 +91,7 @@ export interface NeedsYouHubContext {
   hubExecution?(): import("./needs-you.js").HubExecutionAttentionInput[];
   hubHolds?(): import("./needs-you.js").HubHoldInput[];
   runtimeUpdates?(): import("./needs-you.js").RuntimeUpdateAttentionInput[];
+  tmuxHolds?(): import("./needs-you.js").TmuxHoldInput[];
   /**
    * The person's move on a card from the chat: confirm it, send it back with `text` (the reason), or answer its blocked
    * question with `text`. Checked against the version the button showed; the answer is said to the clicker.
@@ -270,7 +271,7 @@ export class NeedsYouHub {
     }
     let hubHolds: import("./needs-you.js").HubHoldInput[] = [];
     try { hubHolds = this.ctx.hubHolds?.() ?? []; } catch { /* the holds are also in the fleet log */ }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {

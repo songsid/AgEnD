@@ -30,8 +30,8 @@ import { runtimeUpdateText } from "./runtime-update-status.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
-  en: { needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running" },
-  "zh-TW": { needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行" },
+  en: { needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_tmux_hold: "Held: an old tmux server or window" },
+  "zh-TW": { needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_tmux_hold: "已暫停：舊的 tmux 伺服器或視窗" },
 });
 
 register("needs", {

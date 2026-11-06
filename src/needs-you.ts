@@ -63,13 +63,17 @@ export type NeedsYouReason =
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "backend_signin" | "config_invalid" | "config_fallback"
-  | "hub_proposal" | "hub_execution_hold" | "hub_unavailable";
+  | "hub_proposal" | "hub_execution_hold" | "hub_unavailable"
+  | "tmux_hold";                                                    // M-2457: the bundled tmux's server/window held
 
 /** S-51: the Hub (or this fleet's Hub membership) is held: why, as the composition's reason code and localized text. */
 export interface HubHoldInput {
   side: "server" | "member"; code: string; detail: string; since: number;
 }
 export interface RuntimeUpdateAttentionInput { key: string; detail: string; since: number; owner?: string }
+
+/** M-2457 §6: a tmux server (instance null: the whole fleet) or an old window (that instance) held, with why. */
+export interface TmuxHoldInput { instance: string | null; key: string; detail: string; since: number }
 
 export interface HubExecutionAttentionInput {
   id: string; kind: "proposal" | "hold"; agent: string; messageId: string; exposureId: string; since: number;
@@ -168,6 +172,7 @@ export interface NeedsYouInputs {
   hubExecution?: HubExecutionAttentionInput[];
   hubHolds?: HubHoldInput[];
   runtimeUpdates?: RuntimeUpdateAttentionInput[];
+  tmuxHolds?: TmuxHoldInput[];
   missedOffline?: MissedOfflineInput[];
   /** The live world that owns an instance, or undefined (no channel, or its world is gone). */
   ownerOf: (instance: string) => string | undefined;
@@ -289,6 +294,12 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   for (const update of inputs.runtimeUpdates ?? []) items.push({
     id: `runtime-update:${update.key}`, type: "runtime", instance: "", owner: update.owner,
     reason: "dialog", detail: oneLine(update.detail, 320), since: update.since, runtimeUpdate: true,
+  });
+
+  // M-2457 §6: AgEnD held a tmux server or window it could not prove its own — nothing was killed; the detail says what to do.
+  for (const hold of inputs.tmuxHolds ?? []) items.push({
+    id: `tmux-hold:${hold.instance ?? "-"}:${hold.key}`, type: hold.instance ? "instance" : "config", instance: hold.instance ?? "",
+    reason: "tmux_hold", detail: hold.detail, since: hold.since,
   });
 
   // Hub proposals remain display-only in the member owner's local inbox.

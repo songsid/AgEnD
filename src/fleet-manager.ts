@@ -74,6 +74,7 @@ import { join, dirname, basename, delimiter, isAbsolute, relative, resolve as re
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { LegacyWindowHoldError } from "./tmux-legacy.js";
 import { planKiroReconciliation, applyKiroReconciliation, kiroReconciliationPrompt, type KiroReconciliation, type KiroReconcileDeps } from "./kiro-reconcile.js";
 import { applyKiroMigration, kiroMigrationPrompt, planKiroMigration, type KiroMigrateDeps, type KiroMigrationPlan } from "./kiro-migrate.js";
 import { fleetLabel } from "./fleet-label.js";
@@ -2276,6 +2277,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubEffectsReady = false;
   private hubEffectsScheduled = false;
   private hubHolds: readonly import("./hub/runtime.js").HubHold[] = [];
+  /** M-2457 §6 rule 2: the fleet is held — an old tmux server is still on the socket and AgEnD can't prove it its own. */
+  private tmuxHold: { key: string; detail: string; since: number } | null = null;
+  /** M-2457 §6 rule 3: instances held by an old 2.3 window AgEnD could not prove its own. */
+  private readonly legacyWindowHolds = new Map<string, { key: string; detail: string; since: number }>();
   private rawFleetDocument: ReturnType<typeof parseDocument> | null = null;
   /** #2208: the paths a saveFleetConfig() wrote, for its check that nothing else changed. */
   private fleetDocumentWrites: Array<Array<string | number>> | null = null;
@@ -7413,6 +7418,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     execution?: SettingsExecution,
     kiroMigration?: symbol,
   ): Promise<void> {
+    // M-2457 §6: no agent starts on a held tmux server (an old one AgEnD could not prove its own may still run it).
+    if (this.tmuxHold) throw new Error(this.tmuxHold.detail);
     if (isNativeExecInstance(config)) {
       execution?.assert();
       if (!windowsCliEnabled()) throw new Error("Windows runtime is disabled");
@@ -7513,12 +7520,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       const receipt = execution ? this.classicSettingsOwners.get(execution) : undefined;
       const identity = { kind, backend, model: isWindowsInstance(config) ? config.model || "default" : this.resolveInstanceModel(name).display };
-      if (receipt) {
-        await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
-          // Only this transition's actual publication can acquire its replacement.
-          receipt.daemon = daemon;
-        });
-      } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
+      // M-2457 §6 rule 3: an old 2.3 window AgEnD can't prove its own holds only this instance (Needs-you says why).
+      try {
+        if (receipt) {
+          await this.lifecycle.start(name, config, topicMode, identity, transition, execution, daemon => {
+            // Only this transition's actual publication can acquire its replacement.
+            receipt.daemon = daemon;
+          });
+        } else await this.lifecycle.start(name, config, topicMode, identity, transition, execution);
+      } catch (err) {
+        if (err instanceof LegacyWindowHoldError) {
+          this.legacyWindowHolds.set(name, { key: `legacy:${Date.now()}`, detail: err.message, since: Date.now() });
+          this.needsYou?.poke();
+        }
+        throw err;
+      }
+      if (this.legacyWindowHolds.delete(name)) this.needsYou?.poke();
       execution?.assert();
       // Only clear a stale process status after a real start succeeded.  Clearing
       // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
@@ -9855,11 +9872,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Set tmux socket isolation for custom AGEND_HOME
     // M-2457: the bundled tmux's socket while it is on; getTmuxSocketName() as before while off.
-    const { tmuxSocket } = await import("./tmux-binary.js");
+    const { tmuxSocket, bundledTmuxEnabled, resolveTmux } = await import("./tmux-binary.js");
     TmuxManager.setSocketName(tmuxSocket());
+    // M-2457 §6 rule 2 (bundled tmux only): a server from another pin still on the socket is ended by its own recorded
+    // client, positively, before ours starts; one AgEnD cannot prove its own holds the whole fleet (nothing is killed).
+    const bundled = bundledTmuxEnabled() ? await (async () => {
+      const srv = await import("./tmux-server.js");
+      const binary = resolveTmux().binary;
+      return { srv, socket: tmuxSocket()!, current: { binary, sha256: srv.sha256File(binary) }, previous: srv.readServerRecord(getAgendHome()) };
+    })() : null;
+    this.tmuxHold = null;
+    TmuxManager.setHold(null);
+    if (bundled) {
+      const reason = await bundled.srv.reconcileServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current,
+        log: (msg, data) => this.logger.info(data ?? {}, msg) });
+      if (reason) {
+        this.tmuxHold = { key: `server:${Date.now()}`, detail: reason, since: Date.now() };
+        TmuxManager.setHold(reason);   // every other way in (sign-in/install windows, a daemon) is refused too
+        this.logger.error({ reason }, "Fleet held: AgEnD's previous tmux server can't be verified; no agent starts");
+      }
+    }
 
-    await TmuxManager.ensureSession(getTmuxSession());
-    this.tmuxSessionEnsured = true;
+    if (!this.tmuxHold) {
+      await TmuxManager.ensureSession(getTmuxSession());
+      this.tmuxSessionEnsured = true;
+      if (bundled) {
+        await bundled.srv.recordServer({ agendHome: getAgendHome(), socket: bundled.socket, current: bundled.current, version: "",
+          log: (msg, data) => this.logger.warn(data ?? {}, msg) });
+        // The current copy and the one the previous server ran (kept for a handover/rollback); older ones go.
+        const removed = bundled.srv.pruneCopies(getAgendHome(), [bundled.current.binary, ...(bundled.previous ? [bundled.previous.binary] : [])]);
+        if (removed.length) this.logger.info({ removed }, "Pruned old bundled tmux copies");
+      }
+    }
 
     // #2072: what this host can run — probed in the background, published for every picker.
     this.startAvailabilityRefresh();
@@ -9876,7 +9920,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
 
     // Start tmux control mode client for idle detection
-    if (!this.controlClient) {
+    if (!this.controlClient && !this.tmuxHold) {
       this.controlClient = new TmuxControlClient(getTmuxSession(), 2000, this.logger);
       this.controlClient.start();
     }
@@ -9890,7 +9934,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // windows from deleted instances that are no longer in fleet.yaml.
     const agendNames = new Set(Object.keys(fleet.instances));
     agendNames.add("general");
-    try {
+    if (!this.tmuxHold) try {
       const existingWindows = await TmuxManager.listWindows(getTmuxSession());
       for (const w of existingWindows) {
         // Kill known instance windows (will be recreated)
@@ -10144,11 +10188,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Phase 1: Start general instances first and wait for them
-    const allEntries = Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config));
+    // M-2457: a held fleet starts no agent (the hold's Needs-you line says why and what to do).
+    const allEntries = this.tmuxHold ? [] : Object.entries(fleet.instances).filter(([,config])=>!isNativeExecInstance(config));
     const generals = allEntries.filter(([_, cfg]) => cfg.general_topic);
     const others = allEntries.filter(([_, cfg]) => !cfg.general_topic);
     const startupProgress = new RestartProgress(
-      this.runnableStartupCount(fleet, topicMode),
+      this.tmuxHold ? 0 : this.runnableStartupCount(fleet, topicMode),
       pendingUpdateProgress?.startedAt ?? startupStartedAt,
       this.logger,
       { mode: pendingProgressOperation === "full-restart" ? "reload" : pendingUpdateProgress ? "update" : "restart" },
@@ -10157,7 +10202,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Auth, restored chat, Classic roster and the task DB are ready. Listening is not service readiness:
     // the dashboard observes startup, while /health and READY retain their existing completion boundary.
-    this.startupDashboard = new FleetStartup(this.configuredStartupInstanceNames(fleet, topicMode)
+    this.startupDashboard = new FleetStartup(this.tmuxHold ? [] : this.configuredStartupInstanceNames(fleet, topicMode)
       .filter(name => !this.lifecycle.isPaused(name)));
     await this.startHealthServer(fleet.health_port ?? 19280);
     if (this.shuttingDown) return;
@@ -17138,6 +17183,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const guidance = h.reason ? t(`hub.provider.${h.reason}`) : "";
         return { side: h.side, code: h.code, since: h.since, detail: guidance && guidance !== `hub.provider.${h.reason}` ? guidance : t(`hub.hold.${h.code}`) };
       }),
+      tmuxHolds: () => [...(this.tmuxHold ? [{ instance: null, ...this.tmuxHold }] : []),
+        ...[...this.legacyWindowHolds].map(([instance, h]) => ({ instance, ...h }))],
       configIssues: () => (this.configHistory?.currentIssues() ?? []).map(issue => ({
         ...issue, detail: configIssueText(issue, t), owner: this.worlds.keys().next().value,
       })),
