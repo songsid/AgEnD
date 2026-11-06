@@ -128,6 +128,7 @@ Pick an instance on the left to talk to it. The web chat is **the same conversat
 ### Keyboard and screen readers
 - **Esc** stops the agent's reply while it works, as Esc in its terminal would. It does nothing while it is idle or when a form or menu is open: Esc closes that first.
 - The sidebar's rows are links: **Tab** reaches them and **Enter** opens one (a middle click or Ctrl+click opens it in a new tab). On a phone, the rest of the page cannot be reached while the drawer is open.
+- On the task board, the menu key (or **Shift+F10**) on a card opens its menu, as a right click does; in an open card, **K** / **J** step to the previous / next card ([features](features.md#on-the-dashboard-fleet--tasks)).
 - Messages are not read out as they arrive. A screen reader hears the coarse events once each: the agent started, finished, replied, or is waiting for your input. The conversation itself is a log to browse.
 
 ### Writing

@@ -2625,6 +2625,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .tc-comment-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-bottom: 2px; font-size: var(--fs-xs); }
 .tc-comment-body { white-space: pre-wrap; overflow-wrap: anywhere; }
 .tc-composer { display: flex; gap: var(--s-2); align-items: flex-end; }
+/* A card's menu at the pointer (fleet-task-menu.js): the app's menu, fixed where the right click was; and the card's
+   Previous / Next in its dialog's header. */
+.menu-list.tb-card-menu { position: fixed; left: 0; top: 0; right: auto; max-height: min(80vh, 560px); overflow-y: auto; z-index: 40; }
+.tb-card-menu .menu-heading.bare { padding: 0; }
+.tb-card-menu .menu-item > .tb-dot { margin: 0 4px; }
+.tc-steps { display: inline-flex; align-items: center; gap: 2px; margin-right: var(--s-1); }
+.tc-step-at { min-width: 3.5em; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
 
 @media (max-width: 899px) {
   /* A phone stacks the columns: no sideways scrolling, and a card moves through its dialog's "Move to…". */

@@ -243,7 +243,11 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
   progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
   (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
-  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A main
+  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A right
+  click on a card (tile, list row, waiting row; or the menu key / Shift+F10) opens its menu: Open, Confirm / Send
+  back / Answer when it waits for the person, Move to, Assignee, Priority, Copy link / number, Cancel (Shift+right
+  click keeps the browser's menu). An open card's arrows (or K / J) step to the previous / next card the page showed
+  (a sub task: its siblings). A main
   task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
   **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
   to them first). Read-only over the public link.

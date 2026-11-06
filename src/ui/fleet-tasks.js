@@ -5,7 +5,8 @@
 // (an agent's tool, another tab) arrives as a "tasks" stream event with the board's revision; the board reads again
 // when its revision moved. Over the temporary public link the board is read-only (the server refuses its writes there).
 // A card moves by drag, by Alt+arrow keys on its title, or by its dialog ("Move to…", up and down) — touch and keyboard
-// need no drag.
+// need no drag. A right click on a card (or the menu key) opens its menu; its dialog steps to the previous / next card
+// (fleet-task-menu.js).
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
@@ -15,8 +16,9 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, askText, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, notesForPeople, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardDialog } from "./fleet-task-card.js";
+import { CardMenu, cardAt, cardMenuItems, pageOrder, stepsOf } from "./fleet-task-menu.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
 
 const PROJECT_KEY = "agend_tasks_project";
@@ -43,6 +45,9 @@ export function TaskBoardTab({ lease }) {
   const [tick, setTick] = useState(0);
   const [flashed, setFlashed] = useState(() => new Map());
   const [dialog, setDialog] = useState(null);
+  // A card's menu ({ card, x, y, el }), and the cards the page showed when a card's dialog opened (its Previous / Next).
+  const [menu, setMenu] = useState(null);
+  const [trail, setTrail] = useState([]);
   // The Done column's "All": every done main task is read only when asked for (the server keeps recent ones otherwise).
   const [allDone, setAllDone] = useState(false);
   const seq = useRef(0);
@@ -95,8 +100,12 @@ export function TaskBoardTab({ lease }) {
   };
   const closeCard = () => {
     setOpenId(null);
+    setTrail([]);
     try { const u = new URL(globalThis.location.href); u.searchParams.delete("card"); globalThis.history.replaceState(globalThis.history.state, "", u); } catch { /* no address bar */ }
   };
+
+  // A card's dialog walks the page's cards in the order shown when it opened (read once the page is drawn).
+  useEffect(() => { if (openId && !trail.length) setTrail(pageOrder()); }, [openId, state]);
 
   // #2246 step 3: who works on what — the drawer gives way to a card opened from it (one drawer at a time).
   const showInstances = () => setDialog({ kind: "instances" });
@@ -114,11 +123,58 @@ export function TaskBoardTab({ lease }) {
     ? html`<${Home} cards=${cards} projects=${projects} stats=${stats} writable=${writable} onOpenProject=${setAt} onOpen=${openCard} onDialog=${setDialog} onInstances=${showInstances} reload=${reload} />`
     : html`<${ProjectBoard} project=${project} cards=${cards} stats=${stats} flashed=${flashed} allDone=${allDone} writable=${writable} onAllDone=${setAllDone} onBack=${() => setAt(null)}
         onOpen=${openCard} onCreate=${() => setDialog({ kind: "main", project: project === NO_PROJECT ? null : project.id })} onInstances=${showInstances} reload=${reload} />`;
-  return html`<div class="tb">
+
+  /** A right click on a card, or the keyboard's menu key on it (no pointer: the menu goes under the card). */
+  function onMenu(e) {
+    const hit = cardAt(e);
+    const card = hit && cards.find((c) => c.id === hit.id);
+    if (!card) return;
+    e.preventDefault();
+    let x = e.clientX || 0, y = e.clientY || 0;
+    if (!x && !y && typeof hit.el.getBoundingClientRect === "function") { const r = hit.el.getBoundingClientRect(); x = r.left + 8; y = r.bottom; }
+    setMenu({ id: card.id, x, y, el: hit.el });
+  }
+  function closeMenu(refocus) {
+    const el = menu && menu.el;
+    setMenu(null);
+    if (refocus && el && document.contains?.(el)) (el.querySelector("button") || el).focus?.();
+  }
+  /** A menu choice, through the calls and questions the card's dialog uses. */
+  async function menuAct(card, a) {
+    const after = (r, said) => { if (r) { if (said) toast(t(said, card.id)); reload(); } };
+    try {
+      if (a.kind === "open") openCard(card.id);
+      else if (a.kind === "confirm") after(await moveCard(card, "done"), "tasks.confirmed");
+      else if (a.kind === "sendBack") after(await moveCard(card, "claimed"), "tasks.sentBack");
+      else if (a.kind === "answer") after(await answerBlocked(card), "tasks.answered");
+      else if (a.kind === "move") after(await moveCard(card, a.to));
+      else if (a.kind === "cancel") after(await moveCard(card, "cancelled"));
+      else if (a.kind === "assign" || a.kind === "assignOther" || a.kind === "priority") {
+        const value = a.kind === "assignOther" ? await askText({ title: t("taskcard.otherTitle"), label: t("taskcard.otherLabel"), required: true }) : a.value;
+        if (a.kind === "assignOther" && !value) return;
+        const r = await boardApi.update(card.id, { [a.kind === "priority" ? "priority" : "assignee"]: value, version: card.version });
+        for (const n of notesForPeople(r.notes)) toast(n);
+        reload();
+      } else if (a.kind === "copyLink" || a.kind === "copyId") {
+        const u = new URL(globalThis.location.href);
+        u.searchParams.set("card", card.id);
+        const text = a.kind === "copyLink" ? u.toString() : card.id;
+        // Without a clipboard (a plain-http address) the text is shown to copy by hand.
+        if (navigator.clipboard) { await navigator.clipboard.writeText(text); toast(t("taskmenu.copied", text)); } else toast(text);
+      }
+    } catch (err) { toast(errorText(err), false); }
+  }
+  const menuCard = menu ? cards.find((c) => c.id === menu.id) : null;
+  // The assignees a card's menu offers: who has cards in its project (Other… names anyone else).
+  const names = menuCard ? cards.filter((c) => projectKey(c) === projectKey(menuCard) && c.assignee).map((c) => c.assignee) : [];
+
+  return html`<div class="tb" onContextMenu=${onMenu}>
     ${writable ? null : html`<p class="tb-readonly" role="note"><${Icon} name="eye" size=${16} />${t("tasks.readOnly")}</p>`}
     ${body}
+    ${menuCard ? html`<${CardMenu} at=${{ x: menu.x, y: menu.y }} label=${t("taskmenu.label", menuCard.id)} onClose=${closeMenu}
+      items=${cardMenuItems(menuCard, { writable, names, act: (a) => menuAct(menuCard, a) })} />` : null}
     ${openId ? html`<${CardDialog} key=${openId} id=${openId} tick=${tick} projects=${projects} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
-      onClose=${closeCard} onOpen=${openCard} reloadBoard=${reload} />` : null}
+      steps=${stepsOf(trail, openId, cards)} onClose=${closeCard} onOpen=${openCard} reloadBoard=${reload} />` : null}
     ${dialog && dialog.kind === "main" ? html`<${CreateMainDialog} projects=${projects} project=${dialog.project} onClose=${() => setDialog(null)}
       onCreated=${(id) => { if (!lease.current()) return; setDialog(null); reload(); openCard(id); }} />` : null}
     ${dialog && dialog.kind === "instances" ? html`<${InstancesDrawer} tick=${tick} onClose=${() => setDialog(null)} onOpen=${(id) => { setDialog(null); openCard(id); }} />` : null}
@@ -208,7 +264,7 @@ function Waiting({ cards, writable, onOpen, reload }) {
   };
   return html`<section class="tb-waiting" aria-label=${t("tasks.waitingTitle")}>
     <h3 class="tb-section-title"><${Icon} name="inbox" size=${16} />${t("tasks.waitingTitle")}</h3>
-    <ul class="rows">${[...review, ...blocked].map((c) => html`<li key=${c.id} class="row-item tb-wait-row">
+    <ul class="rows">${[...review, ...blocked].map((c) => html`<li key=${c.id} class="row-item tb-wait-row" data-wait=${c.id}>
       <div class="tb-wait-main">
         <${StatusPill} status=${c.status} />
         <button type="button" class="tb-wait-title" onClick=${() => onOpen(c.id)}><span class="tb-code">${c.id}</span> ${c.title}
