@@ -22,3 +22,10 @@ export function stripCodexPassiveHintRow(rows: string[]): void {
 export function withCodexPassiveHintTail(pattern: RegExp): RegExp {
   return new RegExp(pattern.source.slice(0, -1) + String.raw`(?:\r?\n${CODEX_PASSIVE_HINT_ROW})?(?:\r?\n[ \t⋆]*)*$`, pattern.flags);
 }
+
+// Positive tail shape for the known native contextless layout. Neither pattern authorizes input by itself:
+// callers still bind the native launch and check dialogs, work, liveness and the exact operation.
+const passiveComposer = (text: "Ask Codex to do anything" | "/status") => new RegExp(
+  String.raw`(?:^|\n)[>›][ \t⋆]+${text}[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${CODEX_PASSIVE_HINT_ROW}(?:\r?\n[ \t⋆]*)*$`, "iu");
+export const CODEX_EMPTY_PASSIVE_COMPOSER = passiveComposer("Ask Codex to do anything");
+export const CODEX_STATUS_PASSIVE_COMPOSER = passiveComposer("/status");

@@ -1,4 +1,5 @@
 /** Optional native adapter for the ordinary Daemon. The runner retains processes across coordinator detach. */
+import { CODEX_STATUS_PASSIVE_COMPOSER } from "./backend/codex-footer-hints.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import type { CliBackend } from "./backend/types.js";
 import { createNativePaneBackend } from "./backend/native-pane.js";
@@ -89,9 +90,11 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     const pane = this.port.ownedSnapshot();
     if (pane?.sessionId && !this.releasedExit) this.options.pin(pane.launchId, pane.sessionId);
   }
-  private ready(text: string): boolean {
+  private ready(text: string, fixedStatus = false): boolean {
     const backend = this.backend;
-    return (backend.isDeliveryInputReadyPane?.(text) ?? backend.getReadyPattern().test(text)) && !backend.getBusyPattern?.()?.test(text)
+    return ((backend.isDeliveryInputReadyPane?.(text) ?? backend.getReadyPattern().test(text))
+      // Only the command already typed by this retained one-shot intent. Other drafts do not become ready.
+      || fixedStatus && CODEX_STATUS_PASSIVE_COMPOSER.test(text) && backend.ownsComposerRows?.(text) === true) && !backend.getBusyPattern?.()?.test(text)
       && ![...(backend.getStartupDialogs?.() ?? []), ...(backend.getRuntimeDialogs?.() ?? [])].some(dialog => dialog.pattern.test(text) && (!dialog.isActive || dialog.isActive(text)));
   }
   private async codexIdentity(assertCurrent: () => void, reattached: boolean): Promise<void> {
@@ -145,7 +148,7 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
         const deadline = performance.now() + 15_000;
         for (;;) {
           const screen = await observe(deadline); assertCurrent(); this.options.admit();
-          if (this.ready(screen) && /^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) {
+          if (this.ready(screen, true) && /^[ \t]*[>›][ \t]*\/status[ \t]*$/m.test(screen)) {
             return this.port.sendSpecialKey("Enter", undefined, { kind: "composer", screen });
           }
           if (performance.now() >= deadline) throw Error("Native status composer changed; no Enter was sent");

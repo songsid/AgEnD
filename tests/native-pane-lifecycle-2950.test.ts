@@ -2,10 +2,10 @@
 import{afterEach,expect,it,vi}from'vitest';import{randomUUID}from'node:crypto';import{mkdtempSync,rmSync}from'node:fs';import{tmpdir}from'node:os';import{join}from'node:path';
 import{RuntimeNativePaneLifecycle,type NativePaneLifecycleOptions}from'../src/native-pane-lifecycle.js';import{RuntimePaneHost}from'../src/runtime-pane-host.js';import{RuntimePaneStore}from'../src/runtime-pane-store.js';import type{RuntimePaneLaunch}from'../src/runtime-pane-protocol.js';
 const clean:Array<()=>unknown>=[];afterEach(async()=>{for(const f of clean.splice(0).reverse())await f();vi.restoreAllMocks();});
-async function fixture(cli:'codex'|'claude-code'='codex',expected?:string){
+async function fixture(cli:'codex'|'claude-code'='codex',expected?:string,contextless=false){
  const root=mkdtempSync(join(tmpdir(),'agend-native-lifecycle-'));clean.push(()=>rmSync(root,{recursive:true,force:true}));const actual=randomUUID(),launch:RuntimePaneLaunch={paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:'native-agent',cli,cwd:'C:\\scratch',sandbox:'read-only',columns:100,rows:30,...(expected?{sessionId:expected}:{})};
- let output:(text:string)=>void=()=>{},exit:(value:{exitCode:number})=>void=()=>{};const idle='› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n';
- const write=vi.fn((text:string)=>{if(text==='/status')output('\x1b[2J\x1b[H› /status\r\n\r\n  Context 100% left\r\n');if(text==='\r')output(`\x1b[2J\x1b[HSession: ${actual}\r\n${idle}`);});
+ let output:(text:string)=>void=()=>{},exit:(value:{exitCode:number})=>void=()=>{};const idle=contextless?'› Ask Codex to do anything\r\n\r\n  ? for shortcuts    ⚠ 2 warnings · f2 to view\r\n':'› Ask Codex to do anything\r\n\r\n  Context 100% left\r\n';
+ const write=vi.fn((text:string)=>{if(text==='/status')output('\x1b[2J\x1b[H'+idle.replace('Ask Codex to do anything','/status'));if(text==='\r')output(`\x1b[2J\x1b[HSession: ${actual}\r\n${idle}`);});
  const process={pid:12345,write,resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:(fn:typeof output)=>{output=fn;setTimeout(()=>output(cli==='codex'?idle:'Accessing workspace:\r\nC:\\scratch\r\nYes, I trust this folder\r\n❯ No, exit\r\n'),0);return{dispose(){}};},onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
  const spawn=vi.fn(async()=>process),host=new RuntimePaneHost({store:new RuntimePaneStore(join(root,'runner')),bootId:randomUUID(),online:()=>true,maxAgents:()=>4,spawn,transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:'pending' as const,cursor,data:'',lines:[],complete:false,gap:false};},close:async()=>{}})});clean.push(()=>host.stop());
  const options:NativePaneLifecycleOptions={endpoint:{machineId:randomUUID(),online:()=>true,call:request=>host.request(request),subscribe:()=>()=>{}},receiptFile:join(root,'receipt.json'),launch,admit:vi.fn(),reserve:vi.fn(),pin:vi.fn(),exited:vi.fn(),mcpProof:()=> 'unknown',releaseAuthority:vi.fn()};const make=()=>new RuntimeNativePaneLifecycle(options);
@@ -94,4 +94,32 @@ it('the native Enter proof accepts a long owned pasted envelope, and refuses one
  const owned=['› [agend-human-id:hmsg-1] first line of the pasted message',...envelope,'','  Context 95% left'].join('\n');
  const history=['› old echoed prompt','  wrapped history','• Called agend.reply',...envelope,'','  Context 95% left'].join('\n');
  expect(inputIsComposer(owned)).toBe(true);expect(inputIsComposer(history)).toBe(false);await native.release('detach');
+});
+
+it('a contextless exact native resume verifies only its once-typed status command and retains the session',async()=>{
+ const f=await fixture('codex',undefined,true);f.launch.sessionId=f.actual;const native=f.make();let retired=false,result:unknown;
+ const pending=native.acquire(()=>{if(retired)throw Error('test admission retired');});void pending.then(value=>{result=value;},()=>{});
+ try{
+  await vi.waitFor(()=>expect(result).toBeDefined(),{timeout:8000});
+  expect(result).toMatchObject({disposition:'resumed'});expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status','\r']);
+  expect(f.options.pin).toHaveBeenCalledExactlyOnceWith(f.launch.launchId,f.actual);expect(native.backend.getSessionId()).toBe(f.actual);
+ }finally{retired=true;await native.release('detach');await pending.catch(()=>{});}
+});
+
+it('a contextless fixed-status draft containing extra text never takes Enter',async()=>{
+ const f=await fixture('codex',undefined,true);f.launch.sessionId=f.actual;const paint=f.write.getMockImplementation()!;
+ f.write.mockImplementation(text=>{if(text==='/status'){f.output('\x1b[2J\x1b[H› /status\r\n  unrelated draft text\r\n\r\n  ? for shortcuts    ⚠ 2 warnings · f2 to view\r\n');return;}paint(text);});
+ const call=f.options.endpoint.call;let reads=0,retired=false;
+ f.options.endpoint.call=async request=>{const result=await call(request);if(request.action==='capture'&&f.write.mock.calls.some(row=>row[0]==='/status'))reads++;return result;};
+ const native=f.make(),pending=native.acquire(()=>{if(retired)throw Error('test admission retired');});void pending.catch(()=>{});
+ try{await vi.waitFor(()=>expect(reads).toBeGreaterThanOrEqual(2),{timeout:8000});expect(f.write.mock.calls.map(row=>row[0])).toEqual(['/status']);expect(f.options.pin).not.toHaveBeenCalled();}
+ finally{retired=true;await native.release('detach');await pending.catch(()=>{});}
+});
+it('contextless fixed-status readiness still needs its native owned-composer proof',async()=>{
+ const f=await fixture('codex',undefined,true);f.launch.sessionId=f.actual;const native=f.make();
+ const screen='› /status\n\n  ? for shortcuts    ⚠ 2 warnings · f2 to view';
+ expect((native as unknown as {ready(text:string,fixed?:boolean):boolean}).ready(screen)).toBe(false);
+ expect((native as unknown as {ready(text:string,fixed?:boolean):boolean}).ready(screen,true)).toBe(true);
+ vi.spyOn(native.backend,'ownsComposerRows').mockReturnValue(false);
+ expect((native as unknown as {ready(text:string,fixed?:boolean):boolean}).ready(screen,true)).toBe(false);await native.release('detach');
 });
