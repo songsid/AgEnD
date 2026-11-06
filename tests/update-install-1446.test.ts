@@ -9,7 +9,10 @@
  * whose name holds `$`, spaces and quotes. No host npm, no network, no fleet.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -30,7 +33,7 @@ function sq(text: string): string {
 }
 
 /** A fixture @songsid/agend package: `agend --version` prints its version; better-sqlite3 is an inert recorder. */
-function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok", opts: { launcher?: boolean; select?: "runtime" | "error" | "other-package"; realLauncher?: boolean } = {}): string {
+function fixturePackage(root: string, name: string, version: string, native: NativeMode = "ok", opts: { launcher?: boolean; select?: "runtime" | "error" | "other-package"; realLauncher?: boolean; tmux?: "missing" | "verified" } = {}): string {
   const dir = join(root, "src", name);
   mkdirSync(join(dir, "dist"), { recursive: true });
   mkdirSync(join(dir, "node_modules", "better-sqlite3"), { recursive: true });
@@ -63,6 +66,22 @@ function fixturePackage(root: string, name: string, version: string, native: Nat
       `exec ${sq(join(dir, "dist", "cli.js"))} "$@"`,
     ].join("\n") + "\n");
     chmodSync(join(dir, "launcher", "agend"), 0o755);
+    if (opts.tmux) {
+      // M-2457 §6 rule 1: a package pinning a bundled tmux for this host — its own launcher libraries, and (verified)
+      // the tmux package with the receipt its postinstall writes.
+      for (const f of ["tmux-bundle.cjs", "runtime-platform.cjs"]) cpSync(join(process.cwd(), "launcher", f), join(dir, "launcher", f));
+      const host = require(join(process.cwd(), "launcher", "runtime-platform.cjs")).hostPlatform();
+      const manifest = { name: "@songsid/agend", version, bin: { agend: "launcher/agend" }, optionalDependencies: { [`@songsid/agend-tmux-${host.id}`]: "3.8.0" } };
+      writeFileSync(join(dir, "package.json"), JSON.stringify(manifest));
+      if (opts.tmux === "verified") {
+        const tbin = join(dir, "node_modules", "@songsid", `agend-tmux-${host.id}`, "bin", "tmux");
+        mkdirSync(dirname(tbin), { recursive: true });
+        writeFileSync(tbin, "#!/bin/sh\necho tmux 3.8\n"); chmodSync(tbin, 0o755);
+        const st = statSync(tbin);
+        require(join(process.cwd(), "launcher", "tmux-bundle.cjs")).writeReceipt(dir, { version: "3.8.0" },
+          { real: tbin, tmux: "3.8", sha256: createHash("sha256").update(readFileSync(tbin)).digest("hex"), size: st.size, mtime: Math.floor(st.mtimeMs / 1000) }, host);
+      }
+    }
   }
   if (!opts.realLauncher) {
     writeFileSync(join(dir, "dist", "cli.js"), `#!/bin/sh\n[ "$1" = "--version" ] && { echo ${version}; exit 0; }\necho "agend $*" >> '${join(root, "agend.log")}'\nexit 0\n`);
@@ -245,6 +264,17 @@ describe("#1450 C4: a launcher-era target is verified on the Node IT selects, no
     expect(outcome).toMatchObject({ ok: true, node: join(w.root, "bundled", "node") });
     expect(ran).toContain(`bundled -e ${NATIVE_CHECK_SCRIPT.slice(0, 20)}`);
     expect(w.nativeLog()).toEqual([...ONE_OPEN, ...ONE_OPEN]);
+  });
+
+  it("M-2457 §6 rule 1: a bundled tmux pinned here but not verified fails verification before anything stops; verified passes", () => {
+    const run = (tmux: "missing" | "verified") => {
+      const w = world();
+      return runUpdateInstall(plan(fixturePackage(w.root, "v220", "2.2.0", "ok", { launcher: true, select: "runtime", tmux })), w.runner);
+    };
+    const host = require(join(process.cwd(), "launcher", "runtime-platform.cjs")).hostPlatform();
+    expect(run("missing")).toMatchObject({ ok: false, stage: "verify",
+      message: `  ✗ Verification failed: the new version's tmux failed its check (@songsid/agend-tmux-${host.id}@3.8.0: not installed or not verified). Still on the previous version.` });
+    expect(run("verified")).toMatchObject({ ok: true, version: "2.2.0" });
   });
 
   it("a package that will not start here (its selection refuses) fails verification with its own repair line", () => {
