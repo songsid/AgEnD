@@ -2082,6 +2082,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   getHubHolds(): readonly import("./hub/runtime.js").HubHold[] {
     return this.hubHolds;
   }
+  hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
 
   private observeRuntimeSwitches(): void {
@@ -2960,6 +2961,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       generalLocation: input => this.previewGeneralLocation(input),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
+      hubBrowserCertificate: (input: unknown, binding: string) => {
+        const control = this.hubBrowserCertificate();
+        if (!control) throw Error("unavailable");
+        return control.preview(input, binding);
+      },
       hubExposure: (input: unknown) => {
         const api = this.hubMemberExposureApi;
         if (!api) throw Object.assign(new Error("hub_member_unavailable"), { code: "hub_member_unavailable" });

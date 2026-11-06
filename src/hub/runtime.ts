@@ -94,6 +94,8 @@ const MOUNT_CODE: Record<"initialization" | "member-pairing" | "service-unavaila
 };
 
 export class HubRuntime {
+  private browserCertificateControl: import("./browser-certificate.js").HubBrowserCertificateControl | null = null;
+  browserCertificateSettings(): import("./browser-certificate.js").HubBrowserCertificateControl | null { return this.browserCertificateControl; }
   private retentionControl: import("./retention.js").HubRetentionControl | null = null;
   retentionSettings(): import("./retention.js").HubRetentionControl | null { return this.retentionControl; }
   private readonly mount: HubMount;
@@ -123,6 +125,10 @@ export class HubRuntime {
           home: options.home,
           components: options.components ?? { http: S3B_HTTP_ENTRY },
           createDirectory: options.createDirectory ?? createHubDirectory,
+          browserCertificateReady: control => {
+            this.browserCertificateControl = control;
+            return () => { if (this.browserCertificateControl === control) this.browserCertificateControl = null; };
+          },
           retentionReady: control => {
             this.retentionControl = control;
             return () => { if (this.retentionControl === control) this.retentionControl = null; };

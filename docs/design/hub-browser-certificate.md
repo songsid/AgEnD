@@ -8,4 +8,4 @@ The guarded OpenSSL invocation has fixed command options, a bounded duration/out
 
 Cancelled or completed setup removes generated staging; imported files remain the owner's files. An interrupted initialization retains the exact generated files for the existing same-plan resume. A saved generated marker and private hash record permit cleanup after resume. Changed files, directory replacement or uncertain initialization state retain material with a local notice instead of deleting it.
 
-This slice covers initialization and import. Confirmed renewal for an already running Hub is a separate install-UX change. Existing browser certificate validation remains in force for all paths; there is no expiry, hostname or key-match bypass.
+This slice covers initialization and import. Confirmed renewal for an already running Hub is described in [browser certificate renewal](hub-browser-certificate-renewal.md). Existing browser certificate validation remains in force for all paths; there is no expiry, hostname or key-match bypass.
