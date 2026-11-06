@@ -111,6 +111,11 @@ export function ensureCredentialProfile(root: string, cli: unknown, name: unknow
   mkdirSync(directory, { recursive: true, mode: 0o700 }); realDirectory(directory, `Credential profile "${checked}"`);
   return directory;
 }
+/** The name of an existing profile folder that differs from this one only by letter case (the same folder on Windows), if any: such a name cannot be created. */
+export function credentialProfileCaseClash(root: string, cli: unknown, name: unknown): string | undefined {
+  const checked = assertCredentialProfileName(name);
+  return profileFolders(root, assertCredentialProfileCli(cli)).find(other => other.toLowerCase() === checked.toLowerCase() && other !== checked);
+}
 /** Names of the profile folders that exist, from the disk (the truth). Not listed: anything that is not a real folder with a valid name, and any name that is ambiguous by letter case. */
 export function listCredentialProfileNames(root: string, cli: unknown): string[] {
   const folders = profileFolders(root, assertCredentialProfileCli(cli)), ambiguous = ambiguousFolders(folders);

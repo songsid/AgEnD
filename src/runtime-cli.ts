@@ -15,7 +15,7 @@ import { findCli, nativeCliEnvironment, probeCredentialProfileStatus, type Crede
 import type { AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
-import { createRuntimeProfile } from "./runtime-profile-ownership.js";
+import { createRuntimeProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
 import { appendAudit, describeRemoteSwitches, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 
 const HELP = `AgEnD native Windows runtime
@@ -141,7 +141,11 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
   if (command === "profile" && positional[0] === "list") {
     if (positional.length !== 1 || Object.keys(flags).some(key => key !== "--profile")) throw new Error("Usage: agend-runtime profile list [--profile DIRECTORY]");
     const names = listCredentialProfileNames(credentialRoot, "claude-code");
-    if (!names.length) { process.stdout.write("No credential profiles yet. Create one: agend-runtime login claude-code NAME\n"); return; }
+    // A removal that could neither finish nor be undone leaves its folder under a temporary name, with a sign-in possibly still in it. It is listed
+    // here and nowhere else, and is never deleted or put back by the Runtime: that is for the person at this computer.
+    const leftovers = listRemovalLeftovers(credentialRoot, "claude-code");
+    for (const name of leftovers) process.stdout.write(`${name}\tLEFT OVER from a removal that could not finish, in ${join(credentialRoot, "claude-code")}. It may still hold a sign-in. To finish removing it, delete that folder yourself; to keep it, rename it to its profile name. Nothing does either for you.\n`);
+    if (!names.length) { if (!leftovers.length) process.stdout.write("No credential profiles yet. Create one: agend-runtime login claude-code NAME\n"); return; }
     for (const name of names) {
       let answer: CredentialProfileAnswer = { loggedIn: null };
       try { answer = await probeStatus("claude-code", requireCredentialProfile(credentialRoot, "claude-code", name)); } catch { /* shown as not checked */ }

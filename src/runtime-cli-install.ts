@@ -165,13 +165,16 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   }
 }
 
-/** One install at a time on this computer: a second request while one runs is refused, not queued. */
-export function managedInstaller(deps: Omit<InstallDeps, "signal">, signal?: () => AbortSignal | undefined): (cli: string) => Promise<{ version: string }> {
-  let running = false;
-  return async cli => {
-    if (running) throw new CliInstallError("busy", "A CLI install is already running on this computer; wait for it to end");
-    running = true;
-    try { const { version } = await installManagedCli(cli, { ...deps, signal: signal?.() }); return { version }; }
-    finally { running = false; }
+/** One install at a time on this computer: a second request while one runs is refused (the caller asks `running` first, so it is refused before it is recorded), not queued. */
+export function managedInstaller(deps: Omit<InstallDeps, "signal">, signal?: () => AbortSignal | undefined): { install: (cli: string) => Promise<{ version: string }>; running: () => boolean } {
+  let busy = false;
+  return {
+    running: () => busy,
+    install: async cli => {
+      if (busy) throw new CliInstallError("busy", "A CLI install is already running on this computer; wait for it to end");
+      busy = true;
+      try { const { version } = await installManagedCli(cli, { ...deps, signal: signal?.() }); return { version }; }
+      finally { busy = false; }
+    },
   };
 }

@@ -96,10 +96,12 @@ describe("managed CLI install (#3190 3b)", () => {
   it("one install at a time, and a failed one does not block the next", async () => {
     let release = (): void => {}; const gate = new Promise<void>(done => { release = done; });
     const inner = fakeRun("codex"), run: NonNullable<InstallDeps["run"]> = async (...args) => { await gate; return inner.run(...args); };
-    const install = managedInstaller({ root: join(home, "cli"), nodePath: node, run, signerOf: async () => ({ status: "Valid", subject: 'CN="OpenAI OpCo, LLC"' }) });
+    const { install, running } = managedInstaller({ root: join(home, "cli"), nodePath: node, run, signerOf: async () => ({ status: "Valid", subject: 'CN="OpenAI OpCo, LLC"' }) });
+    expect(running()).toBe(false);
     const first = install("codex");
+    expect(running()).toBe(true);
     await expect(install("claude-code")).rejects.toMatchObject({ reason: "busy" });
-    release(); await expect(first).resolves.toEqual({ version: "0.165.0" });
+    release(); await expect(first).resolves.toEqual({ version: "0.165.0" }); expect(running()).toBe(false);
     await expect(install("grok")).rejects.toMatchObject({ reason: "install-failed" });
     await expect(install("codex")).resolves.toEqual({ version: "0.165.0" });
   });

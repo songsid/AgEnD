@@ -131,15 +131,21 @@ describe("the audit log cannot be flooded (review item 6)", () => {
     log.append(refused("a")); log.append({ ...refused("a"), reason: "busy" }); log.append({ ...refused("a"), action: "profile.remove" }); log.append(refused("b"));
     expect(rows(dir).map(row => `${row.action}:${row.reason}`)).toEqual(["signin:switch_off", "signin:busy", "profile.remove:switch_off"]);
   });
-  it("never folds a switch change, a started, ok or failed entry: a refusal flood cannot push them out or hide them", () => {
+  it("never folds a switch change, a started, ok or failed entry: a refusal flood cannot push them out or hide them; the folded count goes out before the next real operation starts", () => {
     const dir = home(); const log = new AuditLog(dir, () => 1_700_000_000_000);
     for (let i = 0; i < 100; i++) log.append(refused("x"));
     log.append({ actor: "local", action: "switch", outcome: "ok", detail: "off" });
+    expect(rows(dir).map(row => `${row.action}:${row.outcome}`)).toEqual(["signin:refused", "switch:ok"]);        // an ok or a refusal does not make the log write the count
     log.append({ actor: "admin:u1", action: "profile.remove", outcome: "started", cli: "claude-code", profile: "work" }); log.append({ actor: "admin:u1", action: "profile.remove", outcome: "ok", cli: "claude-code", profile: "work" });
     log.append({ actor: "admin:u1", action: "profile.remove", outcome: "failed", reason: "failed" }); log.append({ actor: "admin:u1", action: "profile.remove", outcome: "failed", reason: "failed" });
     const all = rows(dir);
-    expect(all.map(row => `${row.action}:${row.outcome}`)).toEqual(["signin:refused", "signin:refused", "switch:ok", "profile.remove:started", "profile.remove:ok", "profile.remove:failed", "profile.remove:failed"]);
-    expect(all[1]).toMatchObject({ repeated: 99 });                                           // the folded count is written before the next real entry
+    expect(all.map(row => `${row.action}:${row.outcome}`)).toEqual(["signin:refused", "switch:ok", "signin:refused", "profile.remove:started", "profile.remove:ok", "profile.remove:failed", "profile.remove:failed"]);
+    expect(all[2]).toMatchObject({ repeated: 99 });
+  });
+  it("an ok, a failed or a switch change in between does not unfold: 1000 refusals each followed by an ok still write about one refusal line", () => {
+    const dir = home(); const log = new AuditLog(dir, () => 1_700_000_000_000);
+    for (let i = 0; i < 1000; i++) { log.append(refused(`a${i}`)); log.append({ actor: "x", action: "profile.signout", outcome: "ok" }); }
+    expect(rows(dir).filter(row => row.outcome === "refused")).toHaveLength(1);
   });
   it("flush writes the folded count when a process ends", () => {
     const dir = home(); const log = new AuditLog(dir, () => 1_700_000_000_000); for (let i = 0; i < 10; i++) log.append(refused("x"));

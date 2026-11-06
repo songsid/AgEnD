@@ -9,7 +9,7 @@ import { RuntimeClientStore } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
 import { credentialProfilesRoot } from "../src/runtime-credential-profiles.js";
 import { AUDIT_FILE, setRemoteSwitch } from "../src/runtime-remote-setup.js";
-import { CliInstallError } from "../src/runtime-cli-install.js";
+import { CliInstallError, isInstallableCli } from "../src/runtime-cli-install.js";
 import type { WindowsCliProbe, WindowsCliTask } from "../src/windows-cli.js";
 
 // #3190 Part 3b: the server asks a computer to install a CLI through `callAccount` (an account.request frame that is NOT journaled), and the Runtime's
@@ -102,6 +102,14 @@ describe("callAccount: the server's way to an account or install operation", () 
     const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install: async cli => { throw new CliInstallError("install-failed", `cannot: ${cli}`); } } });
     setRemoteSwitch(f.dir, "install", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "grok", actor: ACTOR })).rejects.toThrow(/cannot: grok/);
+  });
+  it("a CLI outside the installer's table is refused before anything is recorded as started", async () => {
+    const install = vi.fn(async () => ({ version: "x" }));
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install, knowsCli: isInstallableCli } });
+    setRemoteSwitch(f.dir, "install", true);
+    await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "grok", actor: ACTOR })).rejects.toThrow(/not in this Runtime's install list/);
+    expect(install).not.toHaveBeenCalled();
+    expect(audit(f.dir).map(line => JSON.parse(line)).filter(line => line.action === "cli.install").map(line => line.outcome)).not.toContain("started");
   });
   it("is not journaled: the request, its actor and its answer reach no file on the server", async () => {
     const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), install: async () => ({ version: "0.165.0" }) } });

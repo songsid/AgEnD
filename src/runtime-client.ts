@@ -16,7 +16,7 @@ import { RUNTIME_ROTATE_PATH, runtimeClaimFingerprint } from "./runtime-protocol
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
-import { managedCliRoot, managedInstaller } from "./runtime-cli-install.js";
+import { isInstallableCli, managedCliRoot, managedInstaller } from "./runtime-cli-install.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
 import { findCli, nativeCliEnvironment } from "./windows-cli-worker.js";
@@ -82,7 +82,7 @@ export interface RuntimeClientOptions {
    * operations: the CLI lookup, the logout run, the CLI installer (its presence is what makes this Runtime report `cli-install`), the sign-in
    * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
    */
-  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "install" | "signIn" | "ownership" | "environment" | "now">>;
+  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "install" | "knowsCli" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
@@ -139,6 +139,8 @@ export class RuntimeClient {
   private remoteAccounts: RemoteAccounts | null = null;
   /** Ends a CLI install that is still running when this Runtime stops (the install's child process is the exact one it started). */
   private readonly installAbort = new AbortController();
+  /** The Runtime's own installer (native Windows only): its closed table, its pinned versions and one install at a time. */
+  private readonly managed: ReturnType<typeof managedInstaller> | null;
   private readonly snapshots = new Map<string, string>();
   private readonly pendingPaneTools = new Map<string, PendingTool>();
   private readonly pendingTools = new Map<string, PendingTool>();
@@ -153,6 +155,7 @@ export class RuntimeClient {
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
+    this.managed = process.platform === "win32" ? managedInstaller({ root: managedCliRoot(options.store.directory) }, () => this.installAbort.signal) : null;
     const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.install || process.platform === "win32" });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     this.runtimeInfo = options.credentialProfilesRoot ? info : { ...info, capabilities: info.capabilities.filter(name => name !== RUNTIME_CREDENTIAL_CAPABILITY) };
@@ -414,26 +417,38 @@ export class RuntimeClient {
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
     return credentialProfileReport(root, name);
   }
+  private computerBoot: Promise<string | undefined> | undefined;
+  /** The computer's boot identity, read once (it cannot change while this Runtime runs). Unknown is never evidence either way. */
+  private systemBoot(): Promise<string | undefined> { return this.computerBoot ??= (this.options.remoteAccounts?.systemBootId ?? readPaneSystemBootId)().catch(() => undefined); }
   /**
-   * Whether a task or terminal is running under this profile (case-insensitively: on Windows `Work` and `work` are one folder). Terminals come from
-   * the pane ledgers (`paneLedgerFiles`: the pane host's own state folder in production, the in-process folder in tests; a missing one is "none",
-   * an unreadable one is "in use"). A Claude Code terminal that names no profile runs under this pairing's default, which the ledger does not hold.
+   * Whether a task or terminal is running under this profile (case-insensitively: on Windows `Work` and `work` are one folder). Terminals come from the
+   * pane ledgers (`paneLedgerFiles`: the pane host's own state folder in production, the in-process folder in tests; a missing ledger is "none").
+   * A row recorded under another boot of the computer is a terminal that cannot still be running (the pane store treats it the same way), so a restart
+   * does not leave it in the way. A ledger that cannot be read, or a default profile that cannot be read while a terminal needs it, is `unknown`: the
+   * caller refuses with a message that says the state could not be confirmed, not that a terminal is running. A Claude Code terminal that names no
+   * profile runs under this pairing's default, which the ledger does not hold.
    */
-  private profileInUse(name: string): "task" | "pane" | undefined {
+  private async profileInUse(name: string): Promise<"task" | "pane" | "unknown" | undefined> {
     const same = (other: unknown): boolean => typeof other === "string" && other.toLowerCase() === name.toLowerCase();
     for (const used of this.activeProfiles.values()) if (same(used)) return "task";
-    let fallback: string | undefined; try { fallback = this.options.store.credentialDefault(); } catch { /* an unreadable default cannot show a pane is free */ fallback = name; }
+    let fallback: string | undefined, fallbackReadable = true; try { fallback = this.options.store.credentialDefault(); } catch { fallbackReadable = false; }
+    let boot: string | undefined, bootRead = false, unknown = false;
     for (const file of paneLedgerFiles(this.options.store.directory)) {
       try {
         const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
         for (const row of object(raw) && object(raw.panes) ? Object.values(raw.panes) : []) {
           const launch = object(row) && object(row.launch) ? row.launch : undefined, snapshot = object(row) && object(row.snapshot) ? row.snapshot : undefined;
           if (!launch || snapshot?.state === "exited") continue;
-          if (same(launch.credentialProfile) || launch.credentialProfile === undefined && launch.cli === "claude-code" && same(fallback)) return "pane";
+          if (typeof (row as { systemBootId?: unknown }).systemBootId === "string") {
+            if (!bootRead) { boot = await this.systemBoot(); bootRead = true; }
+            if (boot && boot !== (row as { systemBootId: string }).systemBootId) continue;
+          }
+          if (same(launch.credentialProfile)) return "pane";
+          if (launch.credentialProfile === undefined && launch.cli === "claude-code") { if (!fallbackReadable) unknown = true; else if (same(fallback)) return "pane"; }
         }
-      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") return "pane"; }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") unknown = true; }
     }
-    return undefined;
+    return unknown ? "unknown" : undefined;
   }
   /** #3190 Part 3a: the remote account operations (switches, sign-in, sign-out, remove, install), built on first use. */
   private remote(): RemoteAccounts {
@@ -455,8 +470,8 @@ export class RuntimeClient {
       defaultProfile: () => { try { return this.options.store.credentialDefault(); } catch { return undefined; } },
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
       // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
-      ...(extra?.install ? { install: extra.install } : process.platform === "win32" ? { install: managedInstaller({ root: managedCliRoot(this.options.store.directory) }, () => this.installAbort.signal) } : {}),
-      ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
+      ...(extra?.install ? { install: extra.install } : this.managed ? { install: this.managed.install, knowsCli: isInstallableCli, installing: this.managed.running } : {}),
+      ...(extra?.knowsCli ? { knowsCli: extra.knowsCli } : {}), ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
       ...(extra?.now ? { now: extra.now } : {}),
     });
   }
