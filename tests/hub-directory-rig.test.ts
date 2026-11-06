@@ -69,6 +69,36 @@ describe.skipIf(!enabled)("hub directory sign-in against the fake directory (S-4
   }
   const replace = (dn: string, type: string, values: string[]) => admin.modify(dn, new Change({ operation: "replace", modification: new Attribute({ type, values }) }));
 
+  describe("local first-administrator lookup", () => {
+    it("resolves an OpenLDAP identity with no user password or personal bind", async () => {
+      const uid = `init-${tag()}`, dn = `uid=${uid},${PEOPLE}`;
+      await admin.add(dn, { objectClass: "inetOrgPerson", uid, cn: "First Administrator", sn: "Test" });
+      const d = directory(), selected = await d.lookupForInitialization!(uid);
+      expect(selected).toMatchObject({ ok:true,person:{key:{realm:"rig",objectId:await entryUUID(dn)},login:uid} });
+      expect(await d.signIn(uid,pw())).toEqual({ok:false,reason:"invalid-credentials"});
+      await d.close();
+    });
+    it("uses decoded AD objectGUID and refuses disabled or ambiguous logins", async () => {
+      const login = `init-${tag()}`, valid = await addAdPerson(login,pw());
+      const d = directory({profile:"ad"});
+      expect(await d.lookupForInitialization!(login)).toMatchObject({ok:true,person:{key:{realm:"rig",objectId:guidBytesToString(valid.guid)}}});
+      await replace(valid.dn,"userAccountControl",["514"]);
+      expect(await d.lookupForInitialization!(login)).toEqual({ok:false,reason:"not-eligible"});
+      const other = await addAdPerson(`init-${tag()}`,pw()); await replace(other.dn,"sAMAccountName",[login]);
+      expect(await d.lookupForInitialization!(login)).toEqual({ok:false,reason:"unavailable"});
+      const third = await addAdPerson(`init-${tag()}`,pw()); await replace(third.dn,"sAMAccountName",[login]);
+      // ldapts throws SizeLimitExceeded for 3+ matches rather than returning a partial successful selection.
+      expect(await d.lookupForInitialization!(login)).toEqual({ok:false,reason:"unavailable"}); await d.close();
+    });
+    it("refuses unknown/filter-shaped accounts and an untrusted directory CA", async () => {
+      const d = directory();
+      for(const login of ["nobody", "*", "alice)(uid=*"]) expect(await d.lookupForInitialization!(login)).toEqual({ok:false,reason:"not-found"});
+      const untrusted = directory({caPem:readFileSync(rig.AGEND_HUB_RIG_OTHER_CA!,"utf8")});
+      expect(await untrusted.lookupForInitialization!("alice")).toEqual({ok:false,reason:"unavailable"});
+      await d.close(); await untrusted.close();
+    });
+  });
+
   describe("openldap profile (entryUUID)", () => {
     it("signs in with the right password; the key is realm + entryUUID, never the login", async () => {
       const uid = `t-${tag()}`, password = pw();

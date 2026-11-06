@@ -18,7 +18,7 @@ import * as tls from "node:tls";
 import type { Client as LdapClient, Entry, Filter } from "ldapts";
 import { HubDirectoryConfigError, resolveDirectoryConfig, type ResolvedDirectoryConfig } from "./config.js";
 import { PROFILES, escapeFilterValue, isDisabled, objectIdMatch, readObjectId, readText, readTextList } from "./profiles.js";
-import type { DirectoryPerson, Eligibility, HubDirectory, PersonKey, SignInResult } from "./types.js";
+import type { DirectoryPerson, Eligibility, HubDirectory, InitializationLookupResult, PersonKey, SignInResult } from "./types.js";
 
 export interface HubDirectorySecrets {
   /** The service account's password (resolved by the caller from the Hub's secret store). */
@@ -26,7 +26,7 @@ export interface HubDirectorySecrets {
 }
 
 export interface HubDirectoryDiagnostic {
-  readonly op: "sign-in" | "eligibility";
+  readonly op: "sign-in" | "eligibility" | "initialization-lookup";
   readonly outcome: string;
   /** The underlying error's message, for the technical log. Never contains a password. */
   readonly error?: string;
@@ -208,12 +208,52 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
 
   let closed = false;
 
+  type Selection = { ok: true; entry: Entry; objectId: string }
+    | { ok: false; reason: "not-found" | "not-eligible" | "unavailable"; detail?: string };
+  // Shared with sign-in so local designation never acquires a weaker identity/eligibility rule.
+  const selectLogin = async (service: Session, login: string): Promise<Selection> => {
+    const found = await service.search(`(&${cfg.userFilter}(${cfg.loginAttribute}=${escapeFilterValue(login)}))`, attributes, shape.binaryAttributes);
+    if (closed) return { ok: false, reason: "unavailable" };
+    if (found.length === 0) return { ok: false, reason: "not-found" };
+    if (found.length !== 1) return { ok: false, reason: "unavailable", detail: "the login matches more than one entry" };
+    const entry = found[0]!, objectId = readObjectId(cfg.profile, entry);
+    if (!objectId) return { ok: false, reason: "unavailable", detail: `the entry has no usable ${shape.idAttribute}` };
+    if (isDisabled(cfg.profile, entry, now())) return { ok: false, reason: "not-eligible" };
+    return { ok: true, entry, objectId };
+  };
+  const recheck = async (service: Session, entry: Entry, objectId: string, expectedLogin?: string): Promise<InitializationLookupResult> => {
+    const again = await findById(service, objectId), current = again.length === 1 ? again[0] : undefined;
+    if (closed || !current || readObjectId(cfg.profile, current) !== objectId
+      || current.dn.toLowerCase() !== entry.dn.toLowerCase()
+      || (expectedLogin !== undefined && readText(current, cfg.loginAttribute)?.toLowerCase() !== expectedLogin.toLowerCase())) return { ok: false, reason: "unavailable" };
+    if (isDisabled(cfg.profile, current, now())) return { ok: false, reason: "not-eligible" };
+    return { ok: true, person: toPerson(current, objectId) };
+  };
+
   return {
     realm: cfg.realm,
 
     async close(): Promise<void> {
       // Nothing is pooled; after close every call refuses (fail closed) instead of opening a new connection.
       closed = true;
+    },
+
+    async lookupForInitialization(login: string): Promise<InitializationLookupResult> {
+      if (closed) return { ok: false, reason: "unavailable" };
+      if (!validLogin(login)) return { ok: false, reason: "bad-input" };
+      let service: Session | undefined;
+      try {
+        service = await openService();
+        const selected = await selectLogin(service, login);
+        if (!selected.ok) return { ok: false, reason: selected.reason };
+        // Re-read by immutable id; a rename, deletion or replacement while selecting never retargets the plan.
+        return await recheck(service, selected.entry, selected.objectId, login);
+      } catch (err) {
+        // Init diagnostics are local, but server-supplied exception text can repeat a login or DN.
+        const certificate = err instanceof Error && /certificate|self.signed|verify/i.test(err.message);
+        report("initialization-lookup", "unavailable", certificate ? "directory certificate verification failed" : "directory lookup failed");
+        return { ok: false, reason: "unavailable" };
+      } finally { await service?.close(); }
     },
 
     async signIn(login: string, password: string): Promise<SignInResult> {
@@ -225,25 +265,13 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
       let service: Session | undefined;
       try {
         service = await openService();
-        const found = await service.search(`(&${cfg.userFilter}(${cfg.loginAttribute}=${escapeFilterValue(login)}))`, attributes, shape.binaryAttributes);
-        if (found.length === 0) {
-          report("sign-in", "invalid-credentials");
-          return { ok: false, reason: "invalid-credentials" };
+        const selected = await selectLogin(service, login);
+        if (!selected.ok) {
+          const reason = selected.reason === "not-found" ? "invalid-credentials" : selected.reason;
+          report("sign-in", reason, selected.detail);
+          return { ok: false, reason };
         }
-        if (found.length > 1) {
-          report("sign-in", "unavailable", "the login matches more than one entry");
-          return { ok: false, reason: "unavailable" };
-        }
-        const entry = found[0]!;
-        const objectId = readObjectId(cfg.profile, entry);
-        if (!objectId) {
-          report("sign-in", "unavailable", `the entry has no usable ${shape.idAttribute}`);
-          return { ok: false, reason: "unavailable" };
-        }
-        if (isDisabled(cfg.profile, entry, now())) {
-          report("sign-in", "not-eligible");
-          return { ok: false, reason: "not-eligible" };
-        }
+        const { entry, objectId } = selected;
 
         // The password goes to the directory once, on its own connection, for the DN the service search found.
         const user = await Session.open(cfg);
@@ -261,17 +289,13 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         }
 
         // The bound DN must still be the same object, still enabled (closes a delete/recreate race during the bind).
-        const again = await findById(service, objectId);
-        const current = again.length === 1 ? again[0]! : undefined;
-        if (!current || readObjectId(cfg.profile, current) !== objectId || current.dn.toLowerCase() !== entry.dn.toLowerCase()) {
-          report("sign-in", "unavailable", "the entry changed during sign-in");
-          return { ok: false, reason: "unavailable" };
+        const checked = await recheck(service, entry, objectId);
+        if (!checked.ok) {
+          const reason = checked.reason === "not-eligible" ? "not-eligible" : "unavailable";
+          report("sign-in", reason, reason === "unavailable" ? "the entry changed during sign-in" : undefined);
+          return { ok: false, reason };
         }
-        if (isDisabled(cfg.profile, current, now())) {
-          report("sign-in", "not-eligible");
-          return { ok: false, reason: "not-eligible" };
-        }
-        return { ok: true, person: toPerson(current, objectId) };
+        return checked;
       } catch (err) {
         report("sign-in", "unavailable", err);
         return { ok: false, reason: "unavailable" };

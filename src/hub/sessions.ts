@@ -91,12 +91,16 @@ export class HubSessions {
     const token = randomBytes(32).toString("hex"), sessionId = randomUUID();
     const displayName = (result.person.displayName || result.person.login || label).slice(0, 256);
     this.core.atomic((db, tx) => {
+      // A person row is created only by successful directory sign-in. Its first insertion is the durable claim
+      // witness; checking it in this same transaction keeps concurrent sign-ins from claiming/auditing twice.
+      const firstAdmin = this.isAdmin(person) && !db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(id);
       db.prepare(`INSERT INTO hub_people(person, realm, object_id, display_name, login_label, status, last_checked_at) VALUES(?,?,?,?,?,'active',?)
         ON CONFLICT(person) DO UPDATE SET display_name=excluded.display_name, login_label=excluded.login_label, status='active', last_checked_at=excluded.last_checked_at`)
         .run(id, person.realm, person.objectId, displayName, result.person.login.slice(0, LOGIN_MAX), now);
       db.prepare("INSERT INTO hub_sessions(token_hash, id, person, created_at, seen_at, expires_at, state) VALUES(?,?,?,?,?,?,'active')")
         .run(digest(token), sessionId, id, now, now, now + HUB_SESSION_TTL);
       this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "session.signed-in", result: "completed" });
+      if (firstAdmin) this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "administrator.claimed", result: "completed" });
     });
     return { token, maxAgeMs: HUB_SESSION_TTL,
       view: { sessionId, person, displayName, login: result.person.login, admin: this.isAdmin(person), csrf: hubCsrfOf(token) } };
