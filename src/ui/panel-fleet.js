@@ -132,6 +132,20 @@ function useLoad(lease, path, version) {
   return state;
 }
 
+/** M-2542: whether the viewport is a desktop's (900 px and wider, app.css's breakpoint), following resizes. */
+const WIDE = "(min-width: 900px)";
+function useWide() {
+  const mq = () => (typeof matchMedia === "function" ? matchMedia(WIDE) : null);
+  const [wide, setWide] = useState(() => mq()?.matches ?? true);
+  useEffect(() => {
+    const m = mq(); if (!m || !m.addEventListener) return undefined;
+    const on = () => setWide(m.matches);
+    on(); m.addEventListener("change", on);
+    return () => m.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
 export function FleetPanel({ route, navKey }) {
   const lease = useLease(navKey);
   const tab = route.tab;
@@ -143,10 +157,16 @@ export function FleetPanel({ route, navKey }) {
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
   const top = hostMemory && hostMemoryTop?.length ? t("fleet.hostMemory_top", hostMemoryTop.map(memoryHogText).join(" · ")) : "";
   const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}${top ? html`<span class="host-mem-top">${top}</span>` : null}</span>` : null;
+  const wide = useWide();
+  const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
+    aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
   return html`<div data-effect-panel="fleet" class="panel p-fleet">
-    <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
-    <nav data-trust="panel-navigation" class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
-      aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
+    ${/* M-2542: on a desktop the tabs share the title row (PanelHeader's nav slot, as the instance tabs do), saving a
+         line; under 900 px they stay the row under the header they always were (.seg, the same markup as before). Not
+         ".seg" in the header, and the phone row chosen here rather than by CSS: a previous release's app.css, cached in
+         an open tab, has no rule for the header slot — this way either stylesheet lays both out (smoke-2542 SKEW). */ ""}
+    <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+    ${wide ? null : tabs("seg")}
     <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }

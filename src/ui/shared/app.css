@@ -343,6 +343,11 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
    its row (a phone puts them on a row of their own, under it). */
 .panel-head .btn-sm { min-height: 36px; }
 @media (min-width: 900px) { .panel-head .inst-switch .seg-item { min-height: 36px; } }
+/* M-2542: Fleet's tabs on its title row — the title, then the tabs (scrolling sideways if they do not fit), then the
+   header's tools; under 900 px a row of their own under the header, as the instance tabs. Never wider than the page. */
+@media (min-width: 900px) { .p-fleet .panel-title { flex: none; } }
+.fleet-tabs { display: flex; gap: var(--s-1); flex: 1 1 auto; min-width: 0; overflow-x: auto; }
+.panel-head .fleet-tabs .seg-item { min-height: 36px; flex-shrink: 0; }
 @media (max-width: 899px) {
   .panel-head:has(.inst-switch) { flex-wrap: wrap; }
   .inst-switch.seg { order: 3; flex-basis: 100%; display: grid; grid-template-columns: repeat(4, 1fr); padding: 0 0 var(--s-1); }
