@@ -83,9 +83,9 @@ describe(".gitleaks.toml release-keys commit allowlist", () => {
   const allowed = releaseKeys ? compile(releaseKeys) : /(?!)/;
   const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
 
-  it("is one of the match-target regexes, next to the WebSocket, token-env-name and test-sentinel ones", () => {
+  it("is one of the match-target regexes, next to the WebSocket and token-env-name ones", () => {
     expect(releaseKeys).toBeDefined();
-    expect(patterns).toHaveLength(4);
+    expect(patterns).toHaveLength(3);
   });
 
   it("allows only RELEASE_KEYS_COMMIT with a 40-hex value", () => {
@@ -121,30 +121,6 @@ describe(".gitleaks.toml token env NAME allowlist (#1519)", () => {
     ["a Telegram-shaped token", () => `bot_token_env: "123456:${secret(35)}"`],
     ["the name followed by a real key", () => `bot_token_env: "AGEND_X_TOKEN", ${apiKey}: "${secret(32)}"`],
     ["the same value under another key", () => `${apiKey}: "AGEND_TEST_P6_PRIMARY"`],
-  ])("still reports %s", (_name, match) => {
-    expect(allowed.test(match())).toBe(false);
-  });
-});
-
-describe(".gitleaks.toml test sentinel allowlist (#3215)", () => {
-  const sentinel = patterns.find(p => p.includes("sentinel-secret-"));
-  const allowed = sentinel ? compile(sentinel) : /(?!)/;
-
-  it("lets the one made-up sentinel of tests/runtime-install.test.ts through, as gitleaks 8.24.3 reported it", () => {
-    expect(sentinel).toBeDefined();
-    // The Match value of the real finding (tests/runtime-install.test.ts:252): the key, a quote, the sentinel and a trailing quote or comma.
-    for (const match of ['secret: "sentinel-secret-e19a64d7"', 'secret: "sentinel-secret-e19a64d7",', "secret = 'sentinel-secret-0123abcd'", 'secret": "sentinel-secret-ffffffff"']) {
-      expect(allowed.test(match), match).toBe(true);
-    }
-  });
-
-  it.each([
-    ["a realistic high-entropy value on the same key", () => `secret: "${secret(40)}"`],
-    ["the sentinel prefix with a longer real-looking tail", () => `secret: "sentinel-secret-e19a64d7${secret(24)}"`],
-    ["the sentinel prefix with non-hex characters", () => `secret: "sentinel-secret-${secret(8)}zz"`],
-    ["the sentinel under another key", () => `${apiKey}: "sentinel-secret-e19a64d7"`],
-    ["the sentinel followed by a real key", () => `secret: "sentinel-secret-e19a64d7", ${apiKey}: "${secret(32)}"`],
-    ["a real value that merely mentions the sentinel earlier on the line", () => `secret: "${secret(32)}" // sentinel-secret-e19a64d7`],
   ])("still reports %s", (_name, match) => {
     expect(allowed.test(match())).toBe(false);
   });

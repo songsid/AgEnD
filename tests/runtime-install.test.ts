@@ -247,9 +247,9 @@ describe("what is served carries no token, pairing code or host-specific address
     expect(hosts.every(host => ["your-agend-host", "nodejs.org"].includes(host))).toBe(true);
   });
   it("rendering puts nothing of the machine it runs on into the script: injected identity and secret sentinels never reach it, and the check does catch a real interpolation", () => {
-    // Distinctive values that appear nowhere in the template (a real user or host name, such as a CI account called "runner", can: it is not evidence of anything). They are
+    // The secret is a run of one repeated character, so it can never be mistaken for a credential by a scanner. Distinctive values that appear nowhere in the template (a real user or host name, such as a CI account called "runner", can: it is not evidence of anything). They are
     // injected where a careless render could pick them up (the environment, the AgEnD home, a token file) and must not come out.
-    const sentinels = { user: "sentinel-user-7f3c9a1e", host: "sentinel-host-b52d08c4", secret: "sentinel-secret-e19a64d7", home: "sentinel-home-3c8e5b20" };
+    const sentinels = { user: "sentinel-user-7f3c9a1e", host: "sentinel-host-b52d08c4", secret: "Z".repeat(32), home: "sentinel-home-3c8e5b20" };
     const home = mkdtempSync(join(tmpdir(), `agend-${sentinels.home}-`)); cleanups.push(() => { if (!resolve(home).startsWith(resolve(tmpdir()) + sep)) throw Error("Unsafe cleanup"); rmSync(home, { recursive: true, force: true }); });
     writeFileSync(join(home, "web.token"), sentinels.secret);
     for (const name of ["USER", "USERNAME", "LOGNAME"]) vi.stubEnv(name, sentinels.user);
