@@ -3,7 +3,7 @@ import { afterEach, expect, it } from 'vitest';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';import { join } from 'node:path';import { randomUUID } from 'node:crypto';
 import { prepareNativePaneConfig } from '../src/runtime-pane-config.js';
-import { assertAuditedNativePaneVersion, persistentNativeArguments, nativeDeveloperInstructions, nativePaneCommandLineLength, assertNativePaneCommandLine, type NativePaneOwner } from '../src/runtime-pane-native.js';
+import { assertRunnableNativePaneVersion, persistentNativeArguments, nativeDeveloperInstructions, nativePaneCommandLineLength, assertNativePaneCommandLine, type NativePaneOwner } from '../src/runtime-pane-native.js';
 import { parse } from 'smol-toml'; import { createRequire } from 'node:module';
 import { validateRuntimePaneLaunch, type RuntimePaneLaunch } from '../src/runtime-pane-protocol.js';
 const roots:string[]=[];afterEach(()=>{for(const root of roots.splice(0))rmSync(root,{recursive:true,force:true});});
@@ -70,9 +70,12 @@ it('Codex trusts only its exact configured AgEnD helper menu while preserving sh
  expect(persistentNativeArguments(f.launch).some(arg=>arg.includes('default_tools_approval_mode='))).toBe(false);config.cleanup();
 });
 
-it('cache and final launch version gates accept real lines and refuse stale or ambiguous releases',()=>{
- expect(()=>assertAuditedNativePaneVersion('codex','codex-cli 0.165.0')).not.toThrow();expect(()=>assertAuditedNativePaneVersion('claude-code','2.1.316 (Claude Code)')).not.toThrow();
- for(const line of ['codex-cli 0.166.0','codex-cli 0.165.0-beta','0.165.0 0.166.0','0.165.0+changed','unknown'])expect(()=>assertAuditedNativePaneVersion('codex',line)).toThrow('not passed');expect(()=>assertAuditedNativePaneVersion('kiro-cli','0.165.0')).toThrow();
+it('cache and final launch version gates (cc3ce4fe): any readable version runs unless known-broken; unreadable or ambiguous lines are refused',()=>{
+ expect(assertRunnableNativePaneVersion('codex','codex-cli 0.165.0')).toBe('0.165.0');expect(assertRunnableNativePaneVersion('claude-code','2.1.316 (Claude Code)')).toBe('2.1.316');
+ // Newer or prerelease versions are no longer refused for being unaudited.
+ for(const line of ['codex-cli 0.167.0','codex-cli 0.165.0-beta','0.165.0+changed'])expect(()=>assertRunnableNativePaneVersion('codex',line)).not.toThrow();
+ for(const line of ['0.165.0 0.166.0','unknown','codex-cli 1.2.1.316','codex-cli v0.165','',null])expect(()=>assertRunnableNativePaneVersion('codex',line as string|null)).toThrow('could not be read');
+ expect(()=>assertRunnableNativePaneVersion('kiro-cli','0.165.0')).toThrow('could not be read');
 });
 
 it.each(['read-only','workspace-write'] as const)('Claude pane %s has a launch-local hard file policy without account or shell permission bypass',sandbox=>{

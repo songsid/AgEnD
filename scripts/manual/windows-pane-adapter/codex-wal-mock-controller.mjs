@@ -16,6 +16,7 @@ const coordinator=mkdtempSync(join(project,'.artifacts/codex-wal-proof-'));proce
 for(const k of ['NOTIFY_SOCKET','WATCHDOG_USEC','WATCHDOG_PID','TMUX'])delete process.env[k];process.env.AGEND_TMUX_SESSION='codexwal-'+tag;
 const load=name=>import(pathToFileURL(join(compiled,name)).href);
 const[{FleetManager},{windowsAgentsFor},{nativeInstanceConfig},{setConfiguredRuntimeSwitches},{LocalPaneEndpoint},{createRuntimeBundle},{TmuxManager},{getTmuxSocketName},{nativeCliEnvironment}]=await Promise.all(['fleet-manager.js','windows-agents.js','native-instance-registry.js','runtime-switches.js','local-pane-endpoint.js','runtime-bundle.js','tmux-manager.js','paths.js','windows-cli-worker.js'].map(load));
+const{withNativePaneVerification}=await load('runtime-pane-native.js');
 assert(getTmuxSocketName()&&getTmuxSocketName()!=='agend');TmuxManager.setSocketName(getTmuxSocketName());
 for(const method of ['ensureSession','createWindow','respawnWindow','killWindow','killWindowConfirmed','getPanePid'])if(typeof TmuxManager.prototype[method]==='function')TmuxManager.prototype[method]=()=>{throw Error('Forbidden coordinator tmux boundary: '+method);};
 const receipt={...source,kind:'codex-wal-mock-native',scratchTag:tag,noAccount:true,mockOnly:true,legs:{},archived:[],unmaterialized:[]};
@@ -72,8 +73,19 @@ let passed=false,phase='start';
 try{
  // Leg 1+2: no-turn pin, clean stop, then the automatic fresh.
  phase='leg2-first-start';log('phase:'+phase);await fleet.startInstance(name,config,true);const original=pin();assert(original);
+ // cc3ce4fe (#3243): the version the helper recorded for this launch, and the agent's status label from it.
+ { const st=fleet.getUiStatus().instances.find(x=>x.name===name)??{};
+   receipt.legs.label={launchedVersion:fleet.daemons.get(name).nativePaneCliVersion()??null,statusVersion:st.native_cli_version??null,verification:st.native_cli_verification??null,
+     inventoryLabel:withNativePaneVerification({clis:[{id:'codex',version:inventory.codex}]}).clis[0].paneVerification}; }
  await until(()=>fleet.daemons.get(name)?.nativePauseReady(),'idle before stop',60000);await fleet.stopInstance(name);assert(!store.get(agent.id).activeId);
  receipt.legs.wal={walBytesAfterCleanExit:await walSize(),rollouts:(await rollouts()).length,...await walShape()};assert.equal(receipt.legs.wal.coherent,true,'Windows Codex WAL is not fully current-generation and committed');assert(receipt.legs.wal.walBytesAfterCleanExit>0,'Windows Codex left no WAL');assert.equal(receipt.legs.wal.rollouts,0);
+ if(process.env.UNVERIFIED==='1'){
+  // A local build that does not list this version as audited: the absence proof is only unknown → held, no fresh.
+  phase='unverified-absence';log('phase:'+phase);const noticesBefore=notices.length;
+  await assert.rejects(fleet.startInstance(name,config,true),e=>e.name==='NativePaneRecoveryError'&&e.recovery?.kind==='session-unconfirmed');
+  assert.equal(pin(),original);assert.equal(store.get(agent.id).activeId,undefined);assert.equal(notices.length,noticesBefore);
+  receipt.legs.unverifiedAbsence={held:true,noAutomaticFresh:true,pinKept:true};
+ } else {
  phase='leg2-automatic-fresh';log('phase:'+phase);const noticesBefore=notices.length;
  await fleet.startInstance(name,config,true);const fresh=pin(),i=await intent(),snap=fleet.daemons.get(name).nativePaneLifecycle.snapshot();
  assert(fresh&&fresh!==original);assert.equal(i.fresh?.automatic,true);assert.equal(i.fresh.previous.sessionId,original);assert.equal(i.fresh.sessionId,fresh);
@@ -98,6 +110,7 @@ try{
  await rename(held,rollout);
  try{await fleet.startInstance(name,config,true);walOnly.afterRestoreResumed=fleet.daemons.get(name)?.nativePaneLifecycle.snapshot().sessionId===fresh;}catch(e){walOnly.afterRestore=e.name+':'+(e.recovery?.kind??'');}
  receipt.legs.walOnlyRow=walOnly;
+ }
  passed=true;
 }catch(error){receipt.error=String(error?.message??error).replace(/[A-Z]:\\[^\s'"]+/g,'[path]').slice(0,300);}
 finally{
