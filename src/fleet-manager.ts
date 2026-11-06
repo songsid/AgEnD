@@ -261,6 +261,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 }
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
+import { nativeCliVersionState } from "./runtime-pane-native.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
 import { RuntimeInstallService } from "./runtime-install.js";
 import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
@@ -1482,6 +1483,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return result;
     });
   }
+  /** The local machine's inventory as last used to open its pane relay (status only; never a launch decision). */
+  private localPaneInventory: import("./windows-cli.js").WindowsCliProbe | null = null;
+  private nativeCliStatus(cli: string | undefined, machineId: string | undefined, daemon?: Daemon): { native_cli_version?: string; native_cli_verification?: string } {
+    if (cli !== "codex" && cli !== "claude-code") return {};
+    // The version the running pane actually launched; only without one, the machine's last inventory.
+    let running: string | undefined;
+    try { running = daemon?.usesNativePane?.() ? daemon.nativePaneCliVersion() : undefined; } catch { running = undefined; }
+    const inventory = machineId ? this.runtimeHub?.machine(machineId)?.inventory : this.localPaneInventory;
+    const version = running ?? inventory?.clis?.find(item => item.id === cli && item.runnable)?.version;
+    if (version === undefined || version === null) return {};
+    const result = nativeCliVersionState(cli, version);
+    return { ...(result.version ? { native_cli_version: result.version } : {}), native_cli_verification: result.state };
+  }
   private async localNativePaneEndpoint(): Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> {
     const admit = (): void => { if (this.shuttingDown || this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Local Windows runtime is switched off or draining"); };
     admit(); if(this.localPaneDrain)throw Error("Local Windows runtime cleanup is pending"); if (this.localPaneRelay?.online()) return this.localPaneRelay;
@@ -1489,7 +1503,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const opening = (async () => {
       const [{ LocalPaneEndpoint }, { launchLocalPaneRelay, localPaneScope }, inventory] = await Promise.all([
         import("./local-pane-endpoint.js"), import("./local-pane-launcher.js"), this.runtimeWindowsExecutor().probe({ force: false }),
-      ]); admit(); this.localPaneRelay?.stop();
+      ]); admit(); this.localPaneRelay?.stop(); this.localPaneInventory = inventory;
       const relay = await LocalPaneEndpoint.open({ scope: localPaneScope(this.dataDir), admit, maxAgents: maxAgentsPerMachine,
         diagnostic: text => this.logger.warn({ stderr: text }, "Local Windows pane relay wrote to stderr"),
         version: provider => inventory.clis.find(row => row.id === provider && row.runnable)?.version ?? null,
@@ -1576,11 +1590,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!config?.general_topic || !epoch) throw Error("General or its paired runtime is unavailable");
     const current = (): boolean => authorized() && !this.shuttingDown && remoteRuntimeEnabled() && this.runtimeHub === hub
       && this.fleetConfig?.instances[name] === config && hub.paneTransportEpoch(machineId) === epoch;
-    const [{ loadGeneralKnowledge }, { validateGeneralWorkspaceRequest, validateGeneralWorkspaceReceipt, generalWorkspaceUpgrade }, { assertAuditedNativePaneVersion }] = await Promise.all([
+    const [{ loadGeneralKnowledge }, { validateGeneralWorkspaceRequest, validateGeneralWorkspaceReceipt, generalWorkspaceUpgrade }, { assertRunnableNativePaneVersion }] = await Promise.all([
       import("./runtime-general-workspace.js"), import("./runtime-general-protocol.js"), import("./runtime-pane-native.js"),
     ]);
     if (!current()) throw Error("General workspace authority expired");
-    assertAuditedNativePaneVersion(cli, hub.machine(machineId)?.inventory?.clis.find(row => row.id === cli && row.runnable)?.version ?? null);
+    assertRunnableNativePaneVersion(cli, hub.machine(machineId)?.inventory?.clis.find(row => row.id === cli && row.runnable)?.version ?? null);
     const request = validateGeneralWorkspaceRequest({ action: "general-workspace", bindingId, instance: name, cli, packHash: loadGeneralKnowledge(cli).hash });
     const inventory: any = await hub.callPane(machineId, { action: "list" }, maxAgentsPerMachine());
     if (!current()) throw Error("General workspace authority expired");
@@ -1925,6 +1939,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           agents: () => this.hubMemberAgents(),
           // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
           representative: {
+            quota: agent => this.hubAgentQuota(agent),
             deliver: input => this.deliverHubQuestion(input),
             agentToken: agent => this.hubAgentToken(agent),
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
@@ -1992,6 +2007,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
     return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: this.shownInstanceName(name) }));
+  }
+
+  /** Same cached usage source as the owner's rail, scoped to the representative's CLI and credential profile. */
+  private async hubAgentQuota(agent: string): Promise<import("./hub/types.js").HubQuota> {
+    const binding = () => {
+      const config = this.fleetConfig?.instances[agent];
+      if (!config || isWindowsInstance(config)) return null; // runner usage never belongs to a Linux login
+      const backend = this.backendNameForInstance(agent), provider = usageProviderIdForBackend(backend);
+      if (!provider) return null;
+      const profile = this.credentialProfileOf(agent, backend);
+      return profile ? `${provider}:${profile}` : provider;
+    };
+    const id = binding();
+    const { quotaBand } = await import("./hub/member/quota.js");
+    const paused = () => this.daemons.get(agent)?.quotaPaused?.() === true
+      || this.lifecycle.isPaused(agent) && readPauseReason(this.getInstanceDir(agent)) === "quota";
+    if (!id) return { band: "unknown" };
+    try {
+      const snapshot = await getUsageSnapshot(false, new Set([id]));
+      if (binding() !== id) return { band: "unknown" };
+      return quotaBand(snapshot.providers.find(p => p.id === id), paused());
+    } catch { return quotaBand(undefined, paused()); }
   }
 
   /**
@@ -26982,6 +27019,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }catch{return {native_recovery:null};}})(),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:true,
             commands:true,effort:false,log:true,details:true,channels:false,terminal:false,attachments:false,usage:false,send_while_busy:true},
+          // cc3ce4fe: the version this machine's inventory reports for the agent's CLI, and whether AgEnD has audited it.
+          ...this.nativeCliStatus(nativeConfig.backend, nativeConfig.machine_id, this.daemons.get(name)),
           ...(nativeConfig.machine_id ? { machine_id: nativeConfig.machine_id, machine_name: this.runtimeHub?.machine(nativeConfig.machine_id)?.name,
             machine_status: this.runtimeHub?.machine(nativeConfig.machine_id)?.status ?? "offline" } : {}) } : {}),
         display_name: identity.display_name || undefined,
