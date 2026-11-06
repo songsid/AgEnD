@@ -57,6 +57,44 @@ describe.skipIf(process.platform === "win32")("private log files", () => {
     expect(mode(fifo)).toBe(0o644);
   });
 
+  it("the pino writer does not append through a planted daemon.log symlink", () => {
+    const home = scratch(), target = join(home, "victim.log");
+    fs.writeFileSync(target, "untouched\n"); fs.chmodSync(target, 0o644);
+    fs.symlinkSync(target, join(home, "daemon.log"));
+    const r = runLogger(home);
+    expect(r.status, r.stderr).toBe(0);
+    expect(fs.readFileSync(target, "utf8")).toBe("untouched\n");
+    expect(mode(target)).toBe(0o644);
+    expect(fs.lstatSync(join(home, "daemon.log")).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(join(home, "daemon.log"), "utf8")).toBe("untouched\n");
+  });
+
+  it("rotation does not truncate a live symlink's target, and replaces a planted .1 link with a regular 0600 copy", async () => {
+    const rotates = [(p: string) => { rotateLogIfNeeded(p, 10); }, (p: string) => rotateLogIfNeededAsync(p, 10)];
+    for (let i = 0; i < rotates.length; i++) {
+      const rotate = rotates[i]!;
+      const dir = scratch(), victim = join(dir, "victim.log"), log = join(dir, "output.log");
+      fs.writeFileSync(victim, "x".repeat(50)); fs.chmodSync(victim, 0o644); fs.symlinkSync(victim, log);
+      await rotate(log);
+      expect(fs.readFileSync(victim, "utf8")).toBe("x".repeat(50));
+      expect(mode(victim)).toBe(0o644);
+      expect(fs.lstatSync(log).isSymbolicLink()).toBe(true);
+      expect(fs.existsSync(`${log}.1`)).toBe(false);
+
+      const live = join(dir, "live.log");
+      const slot = join(dir, "slot");
+      fs.writeFileSync(live, "x".repeat(50));
+      fs.writeFileSync(slot, "planted"); fs.chmodSync(slot, 0o644); fs.symlinkSync(slot, `${live}.1`);
+      await rotate(live);
+      expect(fs.readFileSync(slot, "utf8")).toBe("planted");
+      expect(mode(slot)).toBe(0o644);
+      expect(fs.lstatSync(`${live}.1`).isSymbolicLink()).toBe(false);
+      expect(fs.readFileSync(`${live}.1`, "utf8")).toBe("x".repeat(50));
+      expect(mode(`${live}.1`)).toBe(0o600);
+      expect(fs.statSync(live).size).toBe(0);
+    }
+  });
+
   it("a rotation's copy is private even when the live log was not", async () => {
     for (const rotate of [(p: string) => { rotateLogIfNeeded(p, 10); }, (p: string) => rotateLogIfNeededAsync(p, 10)]) {
       const dir = scratch(), log = join(dir, "output.log");
