@@ -45,7 +45,7 @@ const ctx = (): RuntimeApiContext => ({ webToken: token, webSessions: store, run
 const ask = async (path: string, method: string, kind: Kind, body: unknown = {}, omit?: Omit) => {
   const { req, res } = request(path, method, kind, body, omit);
   expect(handleRuntimeRequest(req, res, new URL(path, "http://localhost"), ctx())).toBe(true);
-  await vi.waitFor(() => expect(res.status).not.toBe(0));
+  await vi.waitFor(() => expect(res.status).not.toBe(0), { timeout: 4000 });
   return { status: res.status, json: JSON.parse(res.body) };
 };
 const SETUP = `/ui/runtimes/machines/${machineId}/remote-setup`, INSTALL = `/ui/runtimes/machines/${machineId}/cli-install`;
@@ -105,9 +105,9 @@ describe("install a CLI from the dashboard: a run under way", () => {
     finish({ version: "0.165.0" });
     await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done", version: "0.165.0" }));
     // A failure that comes later (the install ran, then a check failed) is a job that failed, not a refusal.
-    outcome = () => new Promise((_done, fail) => setTimeout(() => fail(new Error("A downloaded package is not the one this AgEnD version expects, so nothing was installed")), 30));
+    outcome = () => new Promise((_done, fail) => setTimeout(() => fail(new Error("A downloaded package is not the one this AgEnD version expects, so nothing was installed")), 1700));
     expect((await ask(INSTALL, "POST", "admin", { cli: "codex" })).status).toBe(202);
-    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "failed", error: expect.stringMatching(/not the one this AgEnD version expects/) }));
+    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "failed", error: expect.stringMatching(/not the one this AgEnD version expects/) }), { timeout: 3000 });
   });
   it("a Runtime that cannot install is shown as such, and is not asked", async () => {
     machine.runtimeInfo = { capabilities: ["exec"] };
@@ -169,5 +169,43 @@ describe("N8: what the computer says about its switches is checked before the br
     current = { ...hub(), callAccount: vi.fn(async () => { throw new Error("offline"); }) } as unknown as RuntimeCoordinator;
     const answer = await ask(SETUP, "GET", "admin");
     expect(answer.status).toBe(200); expect(answer.json.switches).toBeNull();
+  });
+});
+
+describe("F2: a refusal that the Runtime sends back within a few milliseconds is a 400, not a 202", () => {
+  const OFF = "The owner of that computer has not turned this on. On that computer, run: agend-runtime remote-setup install on [--for 2h]";
+  const installCalls = (): number => calls.filter(call => call.operation === "cli.install").length;
+  it("a switch-off answer that arrives after a few ms (not in the same tick) is answered 400 with the Runtime's sentence, and no job is left", async () => {
+    outcome = () => new Promise((_done, fail) => setTimeout(() => fail(new Error(OFF)), 25));
+    const refused = await ask(INSTALL, "POST", "admin", { cli: "codex" });
+    expect(refused.status).toBe(400); expect(refused.json.error).toBe(OFF);
+    expect((await ask(SETUP, "GET", "admin")).json.job).toBeNull();
+    // and the computer is not left "installing": the next request is taken (and refused for its own reason)
+    outcome = async () => ({ version: "0.165.0" });
+    expect((await ask(INSTALL, "POST", "admin", { cli: "codex" })).status).toBe(202);
+  });
+  it("the earlier job is shown again after such a refusal", async () => {
+    expect((await ask(INSTALL, "POST", "admin", { cli: "codex" })).status).toBe(202);
+    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done" }));
+    outcome = () => new Promise((_done, fail) => setTimeout(() => fail(new Error(OFF)), 25));
+    expect((await ask(INSTALL, "POST", "admin", { cli: "claude-code" })).status).toBe(400);
+    expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ cli: "codex", state: "done" });
+  });
+  it("a Runtime that answers only after the waiting time is answered 202, and the job then follows it to its end", async () => {
+    outcome = () => new Promise((_done, fail) => setTimeout(() => fail(new Error(OFF)), 1800));
+    const started = Date.now(), accepted = await ask(INSTALL, "POST", "admin", { cli: "codex" });
+    expect(accepted.status).toBe(202); expect(Date.now() - started).toBeGreaterThanOrEqual(1400); expect(Date.now() - started).toBeLessThan(1790);
+    expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ cli: "codex", state: "installing" });
+    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "failed", error: expect.stringMatching(/remote-setup install on/) }), { timeout: 3000 });
+  });
+  it("while the first request is still waiting, a second one is answered 409 and sends nothing", async () => {
+    outcome = () => new Promise((_done, fail) => setTimeout(() => fail(new Error(OFF)), 300));
+    const first = ask(INSTALL, "POST", "admin", { cli: "codex" });
+    await new Promise(done => setTimeout(done, 50));
+    const second = await ask(INSTALL, "POST", "admin", { cli: "claude-code" });
+    expect(second.status).toBe(409);
+    expect((await first).status).toBe(400);
+    expect(installCalls()).toBe(1);
+    expect((await ask(SETUP, "GET", "admin")).json.job).toBeNull();
   });
 });

@@ -32,6 +32,12 @@ function switchStatesOf(value: unknown): RuntimeSwitchStates | null {
   const accounts = one((value as { accounts?: unknown }).accounts), install = one((value as { install?: unknown }).install);
   return accounts && install ? { accounts, install } : null;
 }
+/**
+ * How long a POST waits to see whether the Runtime refuses at once. The refusals that matter (the owner's switch is off, an install the Runtime
+ * will not take) come back from the computer in a few milliseconds over its connection, and a bare `setImmediate` is gone before they can: the page
+ * got a 202 and only later a failed job. A run that is really under way is still answered 202 after this long, and followed through the job.
+ */
+const EARLY_ANSWER_MS = 1500;
 const jobsOf = (hub: RuntimeCoordinator): Map<string, CliInstallJob> => { let jobs = installJobs.get(hub); if (!jobs) installJobs.set(hub, jobs = new Map()); return jobs; };
 function json(res: ServerResponse, status: number, value: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -136,8 +142,10 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         // Taken in the same synchronous step as the check above, before any await: of two requests at once, only one gets here.
         const previous = jobs.get(id); jobs.set(id, job);
         const settled = hub.callAccount(id, "cli.install", { cli, actor }, INSTALL_DEADLINE_MS).then(result => ({ result }), (error: unknown) => ({ error }));
-        // A refusal known at once (offline, an older Runtime) is answered now; a run that is under way is followed through the job.
-        const early = await Promise.race([settled, new Promise<undefined>(resolve => setImmediate(() => resolve(undefined)))]);
+        // A refusal that comes within EARLY_ANSWER_MS (offline, an older Runtime, the switch is off) is answered now; a run that is under way is followed through the job.
+        let wait: NodeJS.Timeout | undefined;
+        const early = await Promise.race([settled, new Promise<undefined>(resolve => { wait = setTimeout(() => resolve(undefined), EARLY_ANSWER_MS); })]);
+        clearTimeout(wait);
         if (early && "error" in early) {
           // Nothing started (offline, an older Runtime, a switch that is off): this attempt leaves no job, and the earlier one (if any) is shown again.
           if (jobs.get(id) === job) { if (previous) jobs.set(id, previous); else jobs.delete(id); }

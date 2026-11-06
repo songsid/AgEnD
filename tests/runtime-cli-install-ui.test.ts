@@ -42,6 +42,42 @@ beforeEach(() => {
 afterEach(async () => { await p.unmount(); catalog.forgetRuntimeCatalog(); vi.restoreAllMocks(); });
 afterAll(() => { p.restore(); globalThis.fetch = originalFetch; });
 
+describe("F1: what the CLI printed is compared by its version number", () => {
+  const withVersion = async (cliId: string, version: string | undefined, navKey: string) => {
+    machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, id: cliId, version }] } })];
+    await p.mount(h(Panel, { navKey })); await settle(14);
+  };
+  it.each([["codex", "codex-cli 0.165.0", "0.165.0"], ["claude-code", "2.1.316 (Claude Code)", "2.1.316"]])("%s printing %j is installed at %s: it says so and has no install button", async (cli, printed, number) => {
+    await withVersion(cli, printed, `f1-${cli}`);
+    expect(rowOf(cli).textContent).toContain(`Installed ${number}`); expect(rowOf(cli).textContent).not.toContain("not the version");
+    expect(installButton(cli)).toBeNull();
+  });
+  it("another version is `installed other` and is offered the audited one", async () => {
+    await withVersion("codex", "codex-cli 0.161.0", "f1-other");
+    expect(rowOf("codex").textContent).toContain("Installed codex-cli 0.161.0 (not the version AgEnD installs)");
+    expect(installButton("codex").textContent).toBe("Install pinned 0.165.0");
+  });
+  it.each(["codex-cli 0.165.01", "10.165.0", "codex-cli 0.165.0.1", "codex-cli 0.165", "codex-cli 20.165.0", "unknown", ""])("%j is not the pinned version (digits or dots around it, or no version at all)", async printed => {
+    await withVersion("codex", printed, `f1-bad-${printed}`);
+    expect(rowOf("codex").textContent).toContain("not the version AgEnD installs");
+    expect(installButton("codex")).not.toBeNull();
+  });
+  it("a prerelease is a different version from the pin", async () => {
+    await withVersion("codex", "codex-cli 0.165.0-alpha.1", "f1-pre");
+    expect(rowOf("codex").textContent).toContain("not the version AgEnD installs");
+  });
+  it("a missing version is shown as `?`, not as installed", async () => {
+    await withVersion("codex", undefined, "f1-none");
+    expect(rowOf("codex").textContent).toContain("Installed ? (not the version AgEnD installs)");
+  });
+  it("versionNumber takes the first x.y.z, not one that is glued to other digits or dots", async () => {
+    const { versionNumber } = await import("/ui/js/runtime-cli-install.js");
+    expect(versionNumber("codex-cli 0.165.0")).toBe("0.165.0"); expect(versionNumber("2.1.316 (Claude Code)")).toBe("2.1.316");
+    expect(versionNumber("v1.2.3-rc.1 extra 4.5.6")).toBe("1.2.3-rc.1");
+    for (const bad of ["10.165.0.1", "1.2", "", "abc", 7, undefined, null]) expect(versionNumber(bad as string), String(bad)).toBeNull();
+  });
+});
+
 describe("Settings → Runtime: install a CLI on a paired computer", () => {
   it("lists Claude Code and Codex with their state; a CLI at another version is offered the audited one", async () => {
     await p.mount(h(Panel, { navKey: "install-list" })); await settle(14);

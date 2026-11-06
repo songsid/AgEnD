@@ -36,6 +36,11 @@ export const OFFICIAL_COMMANDS = [
   { id: "kiro", label: "Kiro", command: "irm https://cli.kiro.dev/install.ps1 | iex", administrator: true },
 ];
 /** A computer shows this only when its Runtime says it can (and it is a paired, approved one). */
+/**
+ * The version number inside what a CLI printed for `--version` ("codex-cli 0.165.0", "2.1.316 (Claude Code)"): the first x.y.z (a prerelease may follow),
+ * not glued to other digits or dots. Null when there is none, which counts as "a different version".
+ */
+export const versionNumber = printed => typeof printed === "string" ? /(?<![\d.])\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?![\d.])/.exec(printed)?.[0] ?? null : null;
 export const offersCliInstall = machine => !!machine && !machine.isLocal && machine.runtimeInfo?.capabilities?.includes("cli-install") === true && ["online", "offline"].includes(machine.status);
 
 export function CliInstall({ machine, lease, onChanged }) {
@@ -74,8 +79,9 @@ export function CliInstall({ machine, lease, onChanged }) {
   const row = cli => {
     const entry = (machine.inventory?.clis || []).find(item => item.id === cli.id && item.path);
     const pinned = view?.catalog?.find(item => item.id === cli.id)?.version || "";
-    const state = !entry ? text("notInstalled") : entry.version && pinned && entry.version === pinned ? text("installed", entry.version) : text("installedOther", entry.version || "?");
-    const upToDate = !!entry && entry.version === pinned;
+    // What the CLI printed is compared by its version number, whole; the path says nothing (the owner's own copy of the same version is just as installed).
+    const found = entry ? versionNumber(entry.version) : null, upToDate = !!entry && !!pinned && found === pinned;
+    const state = !entry ? text("notInstalled") : upToDate ? text("installed", found) : text("installedOther", entry.version || "?");
     const start = async () => {
       if (busy || !pinned) return;
       if (!await confirmDialog({ message: text("ask", cli.label, pinned, machine.name), confirmLabel: text("confirm") })) return;
