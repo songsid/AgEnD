@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { Daemon } from "../src/daemon.js";
@@ -80,6 +80,15 @@ describe("quota history at the actual resume admission boundary", () => {
     const db = new Database(join(process.env.CODEX_HOME!, "state_5.sqlite")); db.exec("DELETE FROM threads"); db.close();
     await f.spawn(); await f.admit(); f.scan(); expect(f.quota()).toEqual([]);
   });
+  it.each(["old-and-new", "new-only"])("a different-text limit already visible at admission is new (%s)", async frame => {
+    const current = "› current request\n■ " + MESSAGE.replace("8:59 AM", "9:59 AM")
+      + "\n\n› Ask Codex to do anything\n  Context 100% left";
+    const f = setup("codex", frame === "old-and-new" ? OLD + "\n" + current : current);
+    f.saved(); await f.spawn(); await f.admit();
+    vi.useFakeTimers(); f.d.startErrorMonitor(); await vi.advanceTimersByTimeAsync(6_000);
+    expect(f.quota()).toHaveLength(1);
+    expect(f.quota()[0]).toMatchObject({ action: "pause" });
+  });
   it("a genuine first monitor hit after resume admission still reports once", async () => {
     const f = setup("codex", OLD); f.saved(); await f.spawn(); await f.admit();
     f.state.pane += "\n› current turn\n" + HIT;
@@ -105,6 +114,19 @@ describe("quota history at the actual resume admission boundary", () => {
     appendFileSync(f.path, f.record(MESSAGE, { turn_id: "new-turn" }));
     await f.admit(); f.scan(); expect(f.quota()).toHaveLength(1);
   });
+  it.each(["id", "cwd", "source"])("a selected DB row cannot borrow a rollout with different %s metadata", async field => {
+    const f = setup("codex", OLD); f.saved();
+    const meta = { id: ID, cwd: dirname(f.instance), source: "cli" };
+    if (field === "id") meta.id = "01a1afde-52f1-7e82-887e-c75c389cde4c";
+    if (field === "cwd") meta.cwd += "/other-directory";
+    if (field === "source") meta.source = "vscode";
+    const other = join(process.env.CODEX_HOME!, "sessions", "other-rollout.jsonl");
+    writeFileSync(other, JSON.stringify({ type: "session_meta", payload: meta }) + "\n" + f.record());
+    const db = new Database(join(process.env.CODEX_HOME!, "state_5.sqlite"));
+    db.prepare("UPDATE threads SET rollout_path = ? WHERE id = ?").run(other, ID); db.close();
+    await f.spawn(); expect((f.backend as CodexBackend).quotaReplayHistory()).toBeNull();
+    await f.admit(); f.scan(); expect(f.quota()).toHaveLength(1);
+  });
   it("a different resumed session gets no other session's quota proof", async () => {
     const f = setup("codex", OLD); f.saved();
     writeFileSync(f.path, JSON.stringify({ type: "session_meta", payload: { id: "other-session", cwd: "/other", source: "cli" } }) + "\n" + f.record());
@@ -113,8 +135,30 @@ describe("quota history at the actual resume admission boundary", () => {
   it("empty and loading frames before restored history do not consume its proof", async () => {
     const f = setup("codex", ""); f.saved(); await f.spawn();
     const frames = ["", fixture("codex-0159-resume-loading.pane.txt"), OLD, OLD];
-    f.tmux.capturePane.mockImplementation(async () => frames.shift() ?? OLD);
-    await f.admit(); f.scan(OLD); expect(f.quota()).toEqual([]);
+    // Charge one startup tick per capture so scheduler load cannot exhaust the budget between fixture frames.
+    let clock = Date.now(); const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    f.tmux.capturePane.mockImplementation(async () => { clock++; return frames.shift() ?? OLD; });
+    await f.admit(); now.mockRestore(); f.scan(OLD); expect(f.quota()).toEqual([]);
+  });
+  it.each(["dialog", "transient"])("exhausting startup on an unresolved %s never absorbs quota history", async kind => {
+    const f = setup("codex", OLD + "\nfixture unresolved phase"); f.saved(); await f.spawn();
+    if (kind === "dialog") {
+      vi.spyOn(f.backend, "getStartupDialogs").mockReturnValue([
+        { pattern: /fixture unresolved phase/, description: "fixture unresolved choice", keys: [], holdOnly: true },
+      ]);
+    } else {
+      vi.spyOn(f.backend as CodexBackend, "getInputUnavailableTransients").mockReturnValue([
+        { pattern: /fixture unresolved phase/, description: "fixture input transient", isActive: pane => pane.includes("fixture unresolved phase") },
+      ]);
+      f.d.inputTransientGuardGeneration = f.d.spawnGeneration;
+      expect(f.d.inputTransientInPane(f.state.pane)?.description).toBe("fixture input transient");
+    }
+    await f.admit();
+    const expected = kind === "dialog" ? "dialog still on screen" : "input was still unavailable";
+    expect(f.logger.warn.mock.calls.some(call => String(call.at(-1)).includes(expected))).toBe(true);
+    expect(f.tmux.sendKeys).not.toHaveBeenCalled(); expect(f.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    f.state.pane = "■ " + MESSAGE + "\n\n› Ask Codex to do anything\n  Context 100% left";
+    f.scan(); expect(f.quota()).toEqual([expect.objectContaining({ action: "pause" })]);
   });
   it("history absent at admission never suppresses a later single hit", async () => {
     const f = setup("codex", "› Ask Codex to do anything\n  Context 100% left"); f.saved(); await f.spawn();

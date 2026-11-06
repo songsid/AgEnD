@@ -2005,7 +2005,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 5199,
+     "line": 5201,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2161,7 +2161,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13098,
+     "line": 13100,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2169,7 +2169,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13099,
+     "line": 13101,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2177,7 +2177,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13099,
+     "line": 13101,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2185,7 +2185,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13099,
+     "line": 13101,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2193,7 +2193,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13099,
+     "line": 13101,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2201,7 +2201,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13099,
+     "line": 13101,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2209,7 +2209,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13099,
+     "line": 13101,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2217,7 +2217,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13100,
+     "line": 13102,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2225,7 +2225,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13196,
+     "line": 13198,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2233,7 +2233,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13314,
+     "line": 13316,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2241,7 +2241,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13314,
+     "line": 13316,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]

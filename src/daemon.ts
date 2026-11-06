@@ -2103,6 +2103,8 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  // Submission makes captured rows history even when no monitor reported them yet. This relies on a still-limited CLI
+  // printing a NEW quota row for this input, which remains eligible; the absorbed row alone cannot prove its failure.
   private commitPreInputQuotaHistory(evidence: PaneEvidence | null): void {
     const history = evidence?.quotaHistory;
     if (!history || history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch || history.attempt !== this.launchAttempt
