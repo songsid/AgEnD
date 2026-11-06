@@ -61,7 +61,9 @@ export function drawMarkdown(el, src) {
   const doc = el.ownerDocument;
   el.textContent = "";
   const html = globalThis.AgendChatRender.renderMarkdown(String(src));
-  if (tagsIn(html) > TEXT_PREVIEW_NODES) {
+  // Each code block gains three elements below (its frame, head and label): counted before anything is built.
+  const pres = (html.match(/<pre[\s>]/g) || []).length;
+  if (tagsIn(html) + 3 * pres > TEXT_PREVIEW_NODES) {
     const pre = doc.createElement("pre"), code = doc.createElement("code");
     pre.className = "tc-pre"; code.textContent = String(src); pre.append(code); el.append(pre);
     return "plain";

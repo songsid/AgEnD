@@ -21,6 +21,7 @@ import { PanelActions } from "./preview-panel-actions.js";
 import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./preview-versions.js";
 import { pagesOf, pageIdOf } from "./preview-pages.js";
 import { drawMarkdown, TEXT_CARD_MAX } from "./chat-thread.js";
+import "./chat-md-strings.js";   // M-2448: the Markdown panel's own words (an older cached chat-strings.js lacks them)
 
 export { htmlTitle };
 

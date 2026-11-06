@@ -133,6 +133,32 @@ describe("a Markdown file in the side panel (M-2448)", () => {
     expect(doc.querySelector(".pv-md-panel")).toBeNull();
   });
 
+  it("many tiny code blocks: their frames count toward the budget — plain text instead of thousands of elements (Prism P3)", async () => {
+    serve({ [ID(3)]: Array.from({ length: 1500 }, () => "```\nx\n```").join("\n") });
+    const doc = await chat([att(3, "fences.md")]);
+    await click(doc.querySelector(".text-card .tc-panel"));
+    const p = doc.querySelector(".pv-md-panel");
+    expect(p.querySelector(".pv-md .codeblock")).toBeNull();
+    expect(p.querySelector(".pv-md pre.tc-pre")).not.toBeNull();
+    expect(p.querySelector(".pv-note").textContent).toBe("Too large to format here: shown as plain text.");
+  });
+
+  it("an older chat-strings.js (cached by Log or Details before an upgrade) still gives the panel its words (Prism P2)", async () => {
+    const tables = i18n as any;
+    // The pre-PR dictionary: the three keys absent from chat.* — the panel's own registration supplies them.
+    // @ts-expect-error — a JS module of the app, with no types
+    const strings = await import("../src/ui/chat-strings.js");
+    void strings;
+    expect(readFileSync("src/ui/chat-strings.js", "utf8")).not.toMatch(/pvMdPanel|pvMdRendered|pvMdSource/);
+    serve({ [ID(3)]: "# T" });
+    const doc = await chat([att(3, "notes.md")]);
+    await click(doc.querySelector(".text-card .tc-panel"));
+    const p = doc.querySelector(".pv-md-panel");
+    expect([...p.querySelectorAll(".seg-inline button")].map((b: any) => b.textContent)).toEqual(["Formatted", "Source"]);
+    expect(p.getAttribute("aria-label")).toBe("Markdown preview");
+    void tables;
+  });
+
   it("zh-TW", async () => {
     serve({ [ID(3)]: "# 標題" });
     i18n.setLang("zh-TW", { store: false });
@@ -146,5 +172,6 @@ describe("a Markdown file in the side panel (M-2448)", () => {
     const src = readFileSync("src/ui/preview-panel.js", "utf8");
     expect(src).not.toMatch(/innerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/);
     expect(src).toContain('import { drawMarkdown, TEXT_CARD_MAX } from "./chat-thread.js";');
+    expect(src).toContain('import "./chat-md-strings.js";');
   });
 });

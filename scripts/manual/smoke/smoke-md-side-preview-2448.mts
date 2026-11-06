@@ -111,6 +111,18 @@ try {
     check("skew-new-shell-old-chat", JSON.stringify(before.actions) === "[false,false]" && shown && o.errs.length === 0, { before: before.actions, shown, errs: o.errs });
     await o.ctx.close();
   }
+  {
+    // Prism on #3155: an older chat-strings.js held from before the upgrade (Log or Details loaded it) with these chat
+    // modules — the panel's words come from its own module, never a raw key.
+    const o = await open(CASES[0], async (page: any) => page.route(/\/ui\/js\/chat-strings\.js(\?.*)?$/, (route: any) =>
+      route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: old("chat-strings.js") ?? "" })));
+    await o.page.evaluate(`document.querySelector(".text-card .tc-panel").click()`);
+    await o.page.waitForSelector(".pv-md-panel", { timeout: 10000 });
+    const words = await o.page.evaluate(`({ tabs: [...document.querySelectorAll(".pv-md-panel .seg-inline button")].map((b) => b.textContent.trim()), label: document.querySelector(".pv-md-panel").getAttribute("aria-label") })`);
+    await o.page.screenshot({ path: shotPath(SMOKE, "skew", "old-chat-strings") });
+    check("skew-old-chat-strings", JSON.stringify(words.tabs) === JSON.stringify(["Formatted", "Source"]) && words.label === "Markdown preview" && o.errs.length === 0, { words, errs: o.errs });
+    await o.ctx.close();
+  }
 } catch (e) {
   fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500);
 } finally {
