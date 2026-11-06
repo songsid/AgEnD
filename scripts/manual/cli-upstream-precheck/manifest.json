@@ -3180,8 +3180,7 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 843,
-     "symbol": "KIRO_V3_EASE_IN.options",
-     "retiredAfter": "3.0.0"
+     "symbol": "KIRO_V3_EASE_IN.options"
     },
     {
      "text": "Switch to 3.0 and upgrade my configs",

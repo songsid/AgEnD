@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
-import { MANIFEST_PATH, SURFACES, buildManifest, declarationNames, literalsOf, manifestKeys, regexRuns, surfaceOf, type Manifest } from "../scripts/manual/cli-upstream-precheck/build-manifest.js";
+import { MANIFEST_PATH, SURFACES, buildManifest, dedupeLiterals, declarationNames, literalsOf, manifestKeys, regexRuns, surfaceOf, type Manifest } from "../scripts/manual/cli-upstream-precheck/build-manifest.js";
 
 const DIR = join(process.cwd(), "scripts/manual/cli-upstream-precheck");
 const PRECHECK = join(DIR, "precheck.py");
@@ -189,7 +189,16 @@ describe("precheck.py's verdict", () => {
     const retired = kiro.filter(l => l.retiredAfter);
     expect(retired.length).toBeGreaterThan(0);
     expect(retired.every(l => /^KIRO_V3_EASE_IN(?:_V2_USER)?\./.test(l.symbol) && l.retiredAfter === "3.0.0")).toBe(true);
-    expect(kiro.filter(l => /^KIRO_V3_EASE_IN(?:_V2_USER)?\./.test(l.symbol)).every(l => l.retiredAfter === "3.0.0")).toBe(true);
+    // Text the Classic nudge still shows is not retired with the ease-in (Prism on #3245).
+    expect(kiro.find(l => (l as { text?: string }).text === "Remind me later")?.retiredAfter).toBeUndefined();
+  });
+  it("shared text is retired only when every declaration that has it is (either order); then up to the newest release named", () => {
+    const lit = (text: string, symbol: string, retiredAfter?: string) => ({ text, kind: "string" as const, surface: "onboarding" as const, file: "src/k.ts", line: symbol.length, symbol, ...(retiredAfter ? { retiredAfter } : {}) });
+    const of = (list: ReturnType<typeof lit>[]) => dedupeLiterals(list).map(l => [l.text, l.symbol, l.retiredAfter ?? null]);
+    expect(of([lit("Remind me later", "EASE_IN", "3.0.0"), lit("Remind me later", "NUDGE")])).toEqual([["Remind me later", "EASE_IN", null]]);
+    expect(of([lit("Remind me later", "NUDGE"), lit("Remind me later", "EASE_IN", "3.0.0")])).toEqual([["Remind me later", "NUDGE", null]]);
+    expect(of([lit("Gone", "A", "2.9.1"), lit("Gone", "BB", "3.0.0"), lit("Gone", "C", "2.10.0")])).toEqual([["Gone", "A", "3.0.0"]]);
+    expect(of([lit("Alone", "A", "3.0.0")])).toEqual([["Alone", "A", "3.0.0"]]);
   });
   it("only a count changed: MINOR", () => {
     expect(pair(OLD.replace("tail", `esc to interrupt now${pad(4)}tail`)).verdict).toBe("PRECHECK: MINOR");

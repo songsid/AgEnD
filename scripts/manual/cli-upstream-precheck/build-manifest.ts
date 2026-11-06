@@ -245,14 +245,31 @@ export function literalsOf(entry: SourceEntry, source?: string): ManifestLiteral
   return out;
 }
 
+const versionParts = (v: string): number[] => v.split(/[.-]/).map(x => (/^\d+$/.test(x) ? Number(x) : -1));
+const newer = (a: string, b: string): string => {
+  const x = versionParts(a), y = versionParts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0) ? a : b;
+  return a;
+};
+/** One entry per text, at its first place in the source. Shared text is retired only when EVERY declaration that has it
+ * is retired (then up to the newest release named): a detector still in use somewhere keeps it a real finding. */
+export function dedupeLiterals(all: readonly ManifestLiteral[]): ManifestLiteral[] {
+  const seen = new Map<string, ManifestLiteral>(), live = new Set<string>(), last = new Map<string, string>();
+  for (const l of all) {
+    if (!seen.has(l.text)) { const { retiredAfter: _r, ...first } = l; seen.set(l.text, first); }
+    if (l.retiredAfter === undefined) live.add(l.text);
+    else last.set(l.text, last.has(l.text) ? newer(last.get(l.text)!, l.retiredAfter) : l.retiredAfter);
+  }
+  return [...seen.values()].map(l => (!live.has(l.text) && last.has(l.text) ? { ...l, retiredAfter: last.get(l.text)! } : l))
+    .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line) || (a.text < b.text ? -1 : 1));
+}
+
 /** The manifest the sources produce now: one entry per (backend, text), at its first place in the source. */
 export function buildManifest(): Manifest {
   const sources = JSON.parse(readFileSync(join(HERE, "sources.json"), "utf8")) as { backends: Record<string, SourceEntry[]> };
   const backends: Manifest["backends"] = {};
   for (const [backend, entries] of Object.entries(sources.backends)) {
-    const seen = new Map<string, ManifestLiteral>();
-    for (const e of entries) for (const l of literalsOf(e)) if (!seen.has(l.text)) seen.set(l.text, l);
-    backends[backend] = { literals: [...seen.values()].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line) || (a.text < b.text ? -1 : 1)) };
+    backends[backend] = { literals: dedupeLiterals(entries.flatMap(e => literalsOf(e))) };
   }
   return { format: 1, source: relative(ROOT, join(HERE, "sources.json")), backends };
 }
