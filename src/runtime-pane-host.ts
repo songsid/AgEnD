@@ -16,6 +16,8 @@ import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePa
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
 export type RuntimePaneProcess = Pick<IPty, "pid" | "write" | "resize" | "kill" | "pause" | "resume" | "onData" | "onExit"> & {
+  /** Internal pre-spawn proof; only bounded matching messages cross a capture response. */
+  quotaReplay?: { messages: readonly string[]; current(): boolean };
   onFailure?(listener: () => void): { dispose(): void };
 };
 export interface RuntimePaneHostOptions {
@@ -225,7 +227,10 @@ export class RuntimePaneHost {
     if (request.action === "capture") {
       const seq=record.snapshot.seq,text=await live.screen.capture(request);
       if(seq!==record.snapshot.seq)throw Error("Pane changed during capture; observe it again");
-      return {snapshot:structuredClone(record.snapshot),text};
+      const proof = live.process.quotaReplay;
+      const quotaHistory = record.launch.cli === "codex" && record.launch.sessionId === record.snapshot.sessionId && proof?.current()
+        ? [...proof.messages] : undefined;
+      return { snapshot: structuredClone(record.snapshot), text, ...(quotaHistory ? { quotaHistory } : {}) };
     }
     if (request.action === "bind-session") {
       const expected = record.snapshot.sessionId ?? record.launch.sessionId ?? (record.launch.cli === "claude-code" ? record.snapshot.launchId : undefined);

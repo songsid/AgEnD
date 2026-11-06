@@ -24,6 +24,7 @@ export interface NativePaneLifecycle {
   mcpProof(): "alive" | "dead" | "unknown";
   checkpointSession(): void;
   snapshot?(): RuntimePaneSnapshot | null;
+  quotaReplayHistory?(): { messages: readonly string[]; current(): boolean } | null;
 }
 export interface NativePaneLifecycleOptions {
   endpoint: PaneEndpoint;
@@ -78,6 +79,11 @@ export class RuntimeNativePaneLifecycle implements NativePaneLifecycle {
     return this.port.observedSnapshot()?.state === "running";
   }
   snapshot(): RuntimePaneSnapshot | null { return this.port.observedSnapshot(); }
+  quotaReplayHistory(): { messages: readonly string[]; current(): boolean } | null {
+    if (!this.current()) return null;
+    const proof = this.port.quotaReplayHistory();
+    return proof ? { messages: proof.messages, current: () => this.current() && proof.current() } : null;
+  }
   mcpProof(): "alive" | "dead" | "unknown" { return this.current() ? this.options.mcpProof() : "unknown"; }
   checkpointSession(): void {
     const pane = this.port.ownedSnapshot();

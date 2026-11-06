@@ -46,7 +46,13 @@ export interface RuntimePaneSnapshot extends PaneSize {
 /** Host-origin open outcome, never inferred from a coordinator's possibly lost ACK. */
 export type RuntimePaneOpenResult = RuntimePaneSnapshot & { reattached: boolean };
 export interface RuntimePaneShutdown { hostBootId: string; shutdown: true }
-export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: string }
+export interface RuntimePaneCapture { snapshot: RuntimePaneSnapshot; text: string; quotaHistory?: string[] }
+/** Optional proof from a new runner. Missing/invalid/old-host metadata never grants an exemption. */
+export function validatePaneQuotaHistory(value: unknown): string[] | null {
+  if (!Array.isArray(value) || !value.length || value.length > 32 || Buffer.byteLength(JSON.stringify(value)) > 16 * 1024
+    || value.some(message => typeof message !== "string" || !/you['’]ve hit your usage limit/i.test(message))) return null;
+  return [...value];
+}
 export interface RuntimePaneSessionProof { snapshot: RuntimePaneSnapshot; state: "absent" | "saved" | "unknown" }
 export type RuntimePaneRequest =
   | GeneralWorkspaceRequest

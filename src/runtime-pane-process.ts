@@ -3,6 +3,7 @@ import { spawn } from "./child-process.js";
 import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
+import { prepareNativePaneQuotaHistory } from "./runtime-pane-quota-history.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import type { RuntimePaneProcess } from "./runtime-pane-host.js";
@@ -11,8 +12,10 @@ import type { NativePaneCommand, NativePaneFrame, NativePaneOwner } from "./runt
 import type {} from "./runtime-pane-worker.js";
 import type {} from "./runtime-pane-job-owner.js";
 
-export function spawnNativePane(launch: RuntimePaneLaunch, owner: NativePaneOwner): Promise<RuntimePaneProcess> {
+export async function spawnNativePane(launch: RuntimePaneLaunch, owner: NativePaneOwner): Promise<RuntimePaneProcess> {
   if (process.platform !== "win32") return Promise.reject(Error("Persistent Windows panes require native Windows Node"));
+  // Freeze only positively verified quota records BEFORE this exact resume can write or repaint anything.
+  const quotaReplay = await prepareNativePaneQuotaHistory(launch);
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [
       fileURLToPath(new URL("./runtime-pane-job-owner.js", import.meta.url)),
@@ -31,6 +34,7 @@ export function spawnNativePane(launch: RuntimePaneLaunch, owner: NativePaneOwne
       child.stdin.write(JSON.stringify(value) + "\n", error => { if (error) fail(); });
     };
     const proxy: RuntimePaneProcess = {
+      ...(quotaReplay ? { quotaReplay } : {}),
       get pid() { return child.pid ?? 0; },
       write: data => send({ type: "input", data: typeof data === "string" ? data : data.toString("utf8") }), resize: (columns, rows) => send({ type: "resize", columns, rows }),
       kill: () => send({ type: "close" }), pause: () => send({ type: "pause" }), resume: () => send({ type: "resume" }),

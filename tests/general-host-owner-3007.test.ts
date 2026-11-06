@@ -90,9 +90,12 @@ describe("General's exact saved host conversation on switch-back", () => {
       { type: "session_meta", payload: { id: f.pin, cwd: f.cwd, source: "cli", originator: "codex-tui", cli_version: "0.165.0" } },
       { type: "event_msg", payload: { type: "task_started" } },
       { type: "response_item", payload: { type: "message", role: "assistant", content: [] } },
+      { timestamp: "2026-01-01T00:00:00Z", type: "event_msg", payload: { type: "task_complete", turn_id: "old", error: { message: "You've hit your usage limit. Old.", codex_error_info: "usage_limit_exceeded" } } },
     ].map(v => JSON.stringify(v)).join("\n") + "\n");
     const backend = new CodexBackend(f.instanceDir); backend.writeConfig(f.config);
     expect(backend.buildCommand(f.config)).toContain(` resume '${f.pin}' `);
+    expect(backend.quotaReplayHistory()?.messages).toEqual(["You've hit your usage limit. Old."]);
+    expect(backend.quotaReplayHistory()?.current()).toBe(true);
     rmSync(path); expect(() => backend.buildCommand(f.config)).toThrow("General");
   });
 });

@@ -1,3 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { RuntimePanePort } from "../src/runtime-pane-port.js";
 import {afterEach,expect,it,vi} from 'vitest';
 import {PassThrough} from 'node:stream';import {EventEmitter} from 'node:events';import {randomUUID} from 'node:crypto';
 import {LocalPaneEndpoint} from '../src/local-pane-endpoint.js';import {serveLocalPaneRelay} from '../src/runtime-pane-stdio.js';import {PaneStdioFramer,paneStdioInput,paneStdioOutput,PANE_STDIO_LIMIT} from '../src/runtime-pane-stdio-protocol.js';import type {PaneLinkOptions, RuntimePaneLink} from '../src/runtime-pane-link.js';
@@ -96,4 +100,20 @@ it('host loss invalidates the shared local relay so another agent can discover a
  f.settings.disconnected!();await vi.waitFor(()=>expect(f.endpoint.online()).toBe(false));
  await expect(f.endpoint.call({action:'list'})).rejects.toThrow('unavailable');
  expect(f.request).not.toHaveBeenCalled();expect(f.child.kill).not.toHaveBeenCalled();
+});
+
+it("local Windows relay preserves optional quota metadata and an old or invalid response grants no exemption", async () => {
+ const f=await fixture(),dir=mkdtempSync(join(tmpdir(),"agend-local-quota-")),id=randomUUID();
+ const launch={paneId:randomUUID(),launchId:randomUUID(),agentId:randomUUID(),instance:"quota-fixture",cli:"codex" as const,cwd:"C:\\fixture",sandbox:"read-only" as const,columns:80,rows:24,sessionId:id};
+ const snapshot={paneId:launch.paneId,agentId:launch.agentId,instance:launch.instance,sessionId:id,columns:80,rows:24,hostBootId:f.hostBootId,launchId:launch.launchId,state:"running",seq:1,outputAt:1,commandSequence:0};
+ let quotaHistory:unknown=["You've hit your usage limit. Old."];
+ f.request.mockImplementation(async(request:any)=>request.action==='open'?{...snapshot,reattached:false}:{snapshot,text:"owned",...(quotaHistory===undefined?{}:{quotaHistory})});
+ try{
+  const port=new RuntimePanePort(f.endpoint,join(dir,"pane.json"),launch);await port.open();await port.capturePane();const proof=port.quotaReplayHistory();
+  expect(proof?.messages).toEqual(quotaHistory);expect(proof?.current()).toBe(true);
+  for(const value of [undefined,["unrelated text"],Array(33).fill("You've hit your usage limit."),["You've hit your usage limit."+"x".repeat(17*1024)]]){
+   quotaHistory=value;await port.capturePane();expect(port.quotaReplayHistory()).toBeNull();expect(proof?.current()).toBe(false);
+  }
+  expect(f.request.mock.calls.every(([request])=>['open','capture'].includes((request as {action:string}).action))).toBe(true);
+ }finally{f.endpoint.stop();rmSync(dir,{recursive:true,force:true});}
 });

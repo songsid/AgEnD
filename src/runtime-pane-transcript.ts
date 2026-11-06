@@ -1,7 +1,8 @@
 /** Exact-session reads on the runner. No caller-supplied path and no newest-by-cwd discovery. */
 import { codexTurnRecord, type CodexRecordState } from "./transcript-records.js";
 import type { PaneTranscriptBaseline } from "./runtime-pane-transcript-protocol.js";
-import { constants } from "node:fs";
+import { constants, fstatSync, lstatSync, type BigIntStats } from "node:fs";
+import { codexQuotaErrorMessages } from "./pane-quota-history.js";
 import { codexIndexHasNoThread } from "./runtime-pane-codex-index.js";
 import { lstat, open, opendir, realpath } from "node:fs/promises";
 import type { FileHandle } from "node:fs/promises";
@@ -243,6 +244,41 @@ export class NativePaneTranscriptReader {
           turnKnown: state.turnKnown, openTurn: state.turnKnown ? state.openTurn : null };
       } finally { await file.close(); }
     } catch (error) { if (!missing(error)) throw error; if (cursor.fileId || this.pinnedFile) throw Error("Pinned pane baseline disappeared"); return pending(); }
+    finally { this.busy = false; }
+  }
+  /** Runner-only, before spawn. Never infer history from a post-resume baseline or a pane footer. */
+  async quotaReplayHistory(current: () => boolean): Promise<{ messages: readonly string[]; current(): boolean } | null> {
+    if (this.provider !== "codex" || this.busy || this.stopped) return null;
+    this.busy = true;
+    try {
+      let found = await this.locate(current);
+      // Discovery normally advances across monitor polls. Before launch it gets only this bounded, leased window.
+      for (let look = 1; found.pending && current() && look < 128; look++) found = await this.locate(current);
+      const path = found.path;
+      if (!path || !current()) return null;
+      await realDirectory(dirname(path)); const before = await lstat(path); regular(before);
+      const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      try {
+        const stat = await file.stat(); regular(stat);
+        if (!sameFile(before, stat)) return null;
+        const frozen = fstatSync(file.fd, { bigint: true }), at = Date.now();
+        const header = ownedHeader(await bytes(file, 0, Math.min(stat.size, META)), this.provider, this.sessionId, this.cwd);
+        const first = record(decode(header).split(/\r?\n/)[0]!);
+        if (first.payload?.source !== "cli") return null;
+        const start = Math.max(0, stat.size - 256 * 1024), tail = await bytes(file, start, stat.size - start);
+        if (!tail.length || tail.at(-1) !== 10 || start && tail.indexOf(10) < 0) return null;
+        const lines = decode(tail.subarray(start ? tail.indexOf(10) + 1 : 0)).split(/\r?\n/); lines.pop();
+        const messages = codexQuotaErrorMessages(lines, at);
+        if (!messages?.length || messages.length > 32 || Buffer.byteLength(JSON.stringify(messages)) > 16 * 1024) return null;
+        const signature = (value: BigIntStats) => `${value.dev}:${value.ino}:${value.uid}:${value.birthtimeNs}:${value.size}:${value.mtimeNs}:${value.ctimeNs}`;
+        const initial = signature(frozen);
+        const unchanged = (): boolean => {
+          try { const named = lstatSync(path, { bigint: true }); return named.isFile() && !named.isSymbolicLink() && signature(named) === initial; }
+          catch { return false; }
+        };
+        return current() && unchanged() ? { messages, current: unchanged } : null;
+      } finally { await file.close(); }
+    } catch { return null; }
     finally { this.busy = false; }
   }
   async close(): Promise<void> { this.stopped = true; await this.discovery?.return(undefined); this.discovery = undefined; }
