@@ -20,8 +20,9 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 import { afterAll, describe, expect, it } from "vitest";
+import { extractPsFunction, extractPsAssignments } from "./support/installer-ps-extract.js";
+import { InstallerC3Batch, hasPwsh } from "./support/installer-pwsh-c3.js";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
@@ -39,9 +40,10 @@ describe("stage 2 looks before it installs (static)", () => {
   });
 });
 
-// Resolved once: each run below gets a PATH of its own (the scratch bin and the system's).
-const PWSH = spawnSync("sh", ["-c", "command -v pwsh"], { encoding: "utf8" }).stdout.trim();
-const pwsh = !!PWSH && spawnSync(PWSH, ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
+const posix = process.platform !== 'win32' && existsSync('/bin/bash');
+const prelude = extractPsAssignments(text, ['ALL_BACKENDS','BACKEND_PROBE','WSL_COMMAND_FN'])
+  + "\n. ([scriptblock]::Create($WSL_COMMAND_FN))\n" + extractPsFunction(text, 'Get-InstalledBackend');
+const batch = new InstallerC3Batch({ installer: prelude });
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 const scratch = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
@@ -52,9 +54,10 @@ const cli = (file: string, name: string, code = 0) => {
 
 /** The few host tools the probe itself uses, as a directory of links: the scratch Linux's only system PATH. */
 const TOOLS = scratch("agend-2583-tools-");
-for (const tool of ["bash", "sh", "head", "mkdir", "ln", "sed"]) {
-  const at = spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).stdout.trim();
-  if (at) symlinkSync(at, join(TOOLS, tool));
+if (posix) for (const tool of ["bash", "sh", "head", "mkdir", "ln", "sed"]) {
+  const at = [join("/bin",tool),join("/usr/bin",tool)].find(existsSync);
+  if (!at) throw Error(`Missing fixture tool: ${tool}`);
+  symlinkSync(at, join(TOOLS, tool));
 }
 
 /**
@@ -86,58 +89,49 @@ exec /usr/bin/env -i HOME='${home}' PATH='${bin}:${TOOLS}' ${join(TOOLS, "bash")
   return { bin, home, prefix, wslBin };
 }
 /** Get-InstalledBackend for one table row, in pwsh: "<null>" or "version | path | linkedFrom". */
-function installed(key: string, m: ReturnType<typeof machine>, extraPath = ""): string {
+async function installed(key: string, m: ReturnType<typeof machine>, extraPath = ""): Promise<string> {
   const dir = scratch("agend-2583-");
-  const file = join(dir, "t.ps1");
-  writeFileSync(file, `$ErrorActionPreference = 'Stop'
-$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-InstalledBackend' }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(ALL_BACKENDS|BACKEND_PROBE|WSL_COMMAND_FN)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
-. ([scriptblock]::Create($WSL_COMMAND_FN))
-$UBUNTU_DISTRO = 'AgEnD-Ubuntu'
+  // Only the native transport sees pwsh's PATH; bash gets the scratch machine's env -i PATH.
+  return (await batch.run('installer', `$UBUNTU_DISTRO = 'AgEnD-Ubuntu'
 $b = $ALL_BACKENDS | Where-Object { $_.Key -eq '${key}' }
 $r = Get-InstalledBackend $b
-if ($null -eq $r) { '<null>' } else { "$($r.Version) | $($r.Path) | $($r.LinkedFrom)" }`);
-  // pwsh needs the fake wsl on its PATH; the probe never sees this PATH (the fake wsl starts it with env -i).
-  const r = spawnSync(PWSH, ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, env: { ...process.env, TMPDIR: dir, PATH: `${m.wslBin}:${extraPath}${process.env.PATH}` } });
-  if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
-  return r.stdout.replace(/\s+$/, "");
+if ($null -eq $r) { '<null>' } else { "$($r.Version) | $($r.Path) | $($r.LinkedFrom)" }`, dir,
+    { PATH: `${m.wslBin}:${extraPath}${process.env.PATH}` })).trimEnd();
 }
 
-describe.skipIf(!pwsh)("with pwsh: Get-InstalledBackend", { timeout: 90_000 }, () => {
-  it("kiro-cli on PATH and answering --version: kept, with the first line of its version", () => {
+describe.skipIf(!hasPwsh || !posix)("with pwsh: Get-InstalledBackend", () => {
+  it("kiro-cli on PATH and answering --version: kept, with the first line of its version", async () => {
     const m = machine({ onPath: { "kiro-cli": 0 } });
-    expect(installed("kiro", m)).toBe(`kiro-cli 9.9.9 | ${m.bin}/kiro-cli |`);
+    expect(await installed("kiro", m)).toBe(`kiro-cli 9.9.9 | ${m.bin}/kiro-cli |`);
   });
-  it("not installed: not kept (its installer runs)", () => {
-    expect(installed("kiro", machine())).toBe("<null>");
-    expect(installed("codex", machine({ onPath: { claude: 0 } }))).toBe("<null>");
+  it("not installed: not kept (its installer runs)", async () => {
+    expect(await installed("kiro", machine())).toBe("<null>");
+    expect(await installed("codex", machine({ onPath: { claude: 0 } }))).toBe("<null>");
   });
-  it("control: a backend outside the scratch machine (on pwsh's own PATH) is never found or run", () => {
+  it("control: a backend outside the scratch machine (on pwsh's own PATH) is never found or run", async () => {
     const outside = scratch("agend-2583-outside-");
     const ran = join(outside, "ran");
     writeFileSync(join(outside, "kiro-cli"), `#!/bin/sh\ntouch '${ran}'\necho "kiro-cli 0.0.0-outside"\n`);
     chmodSync(join(outside, "kiro-cli"), 0o755);
-    expect(installed("kiro", machine(), `${outside}:`)).toBe("<null>");
+    expect(await installed("kiro", machine(), `${outside}:`)).toBe("<null>");
     expect(existsSync(ran)).toBe(false);
   });
-  it("there but broken (--version fails): not kept, so the installer repairs it", () => {
-    expect(installed("kiro", machine({ onPath: { "kiro-cli": 1 } }))).toBe("<null>");
+  it("there but broken (--version fails): not kept, so the installer repairs it", async () => {
+    expect(await installed("kiro", machine({ onPath: { "kiro-cli": 1 } }))).toBe("<null>");
   });
-  it("codex installed by hand as root, only in ~/.local/bin (not on this shell's PATH): found and kept", () => {
+  it("codex installed by hand as root, only in ~/.local/bin (not on this shell's PATH): found and kept", async () => {
     const m = machine({ inHomeLocalBin: ["codex"] });
-    expect(installed("codex", m)).toBe(`codex 9.9.9 | ${m.home}/.local/bin/codex |`);
+    expect(await installed("codex", m)).toBe(`codex 9.9.9 | ${m.home}/.local/bin/codex |`);
   });
-  it("codex only under npm's global prefix: kept, and linked into ~/.local/bin so AgEnD finds it", () => {
+  it("codex only under npm's global prefix: kept, and linked into ~/.local/bin so AgEnD finds it", async () => {
     const m = machine({ inNpmPrefix: ["codex"] });
-    expect(installed("codex", m)).toBe(`codex 9.9.9 | ${m.home}/.local/bin/codex | ${m.prefix}/bin/codex`);
+    expect(await installed("codex", m)).toBe(`codex 9.9.9 | ${m.home}/.local/bin/codex | ${m.prefix}/bin/codex`);
     const link = join(m.home, ".local", "bin", "codex");
     expect(existsSync(link) && lstatSync(link).isSymbolicLink() && readlinkSync(link)).toBe(join(m.prefix, "bin", "codex"));
   });
-  it("every backend the installer offers is looked for the same way (claude, antigravity)", () => {
+  it("every backend the installer offers is looked for the same way (claude, antigravity)", async () => {
     const m = machine({ onPath: { claude: 0, agy: 0 } });
-    expect(installed("claude", m)).toBe(`claude 9.9.9 | ${m.bin}/claude |`);
-    expect(installed("antigravity", m)).toBe(`agy 9.9.9 | ${m.bin}/agy |`);
+    expect(await installed("claude", m)).toBe(`claude 9.9.9 | ${m.bin}/claude |`);
+    expect(await installed("antigravity", m)).toBe(`agy 9.9.9 | ${m.bin}/agy |`);
   });
 });
