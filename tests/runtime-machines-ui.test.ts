@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
-let p:AppPage, Panel:any, Create:any, catalog:any, windowsCatalog:any, windowsInventory:any, models:any, app:any, routes:any, connectCommand:any;
+let p:AppPage, Panel:any, Create:any, catalog:any, windowsCatalog:any, windowsInventory:any, models:any, app:any, routes:any, connectCommand:any, installCommand:any, windowsConnectCommand:any;
 const originalFetch=globalThis.fetch;
 const idA="12345678-1234-4321-abcd-123456789012", idB="22345678-1234-4321-abcd-123456789012";
 const requests:Array<{path:string;body:any}>=[];
@@ -11,6 +11,7 @@ const machine=(id:string,name:string,status="online")=>({id,name,status,...(stat
 let machines:any[], enabled:boolean;
 const response=(body:any,status=200)=>({ok:status>=200&&status<300,status,json:async()=>body});
 const button=(text:string)=>p.root.querySelectorAll("button").find((item:any)=>item.textContent.trim()===text);
+const zipTab=async()=>{const tab=p.root.querySelectorAll('[role="tab"]').find((item:any)=>item.textContent.trim()==="Other install methods (ZIP)");tab.click();await settle(4);};
 const choose=async(id:string)=>{const input=p.root.querySelectorAll(".agent-runtime-picker input").find((item:any)=>item.value===`machine:${id}`);input.checked=true;fire(input,"change");await settle(5);};
 
 beforeAll(async()=>{
@@ -38,7 +39,7 @@ beforeAll(async()=>{
   const {setLang}=await import("/assets/app-i18n.js");setLang("en",{store:false});
   catalog=await import("/ui/js/runtime-catalog.js");models=await import("/ui/js/settings-catalog.js");app=await import("/assets/app-store.js");
   windowsCatalog=await import("/ui/js/windows-cli-catalog.js");
-  const runtimeUi=await import("/ui/js/panel-runtimes.js");Panel=runtimeUi.RuntimesPanel;connectCommand=runtimeUi.runtimeConnectCommand;Create=(await import("/ui/js/panel-fleet.js")).CreateInstanceDialog;routes=await import("/assets/app-route.js");
+  const runtimeUi=await import("/ui/js/panel-runtimes.js");Panel=runtimeUi.RuntimesPanel;connectCommand=runtimeUi.runtimeConnectCommand;installCommand=runtimeUi.runtimeInstallCommand;windowsConnectCommand=runtimeUi.runtimeWindowsConnectCommand;Create=(await import("/ui/js/panel-fleet.js")).CreateInstanceDialog;routes=await import("/assets/app-route.js");
 });
 beforeEach(()=>{requests.length=0;enabled=true;machines=[machine(idA,"Desktop"),machine(idB,"Laptop","pending")];windowsInventory={home:"C:\\Test",hostname:"WINDOWS-DESK",probedAt:1,clis:[cli()]};windowsCatalog.forgetWindowsCliCatalog();catalog.forgetRuntimeCatalog();models.forgetCatalogs();app.appStore.set({windowsCli:false});});
 afterEach(async()=>{await p.unmount();catalog.forgetRuntimeCatalog();vi.restoreAllMocks();});
@@ -174,7 +175,7 @@ describe("remote machine UI",()=>{
     expect(p.root.querySelector(`[data-machine-id="${idB}"]`).textContent).toContain("Online");
   });
   it("creates a transient pairing code with an interactive CLI command, then hides it",async()=>{
-    await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);button("Connect a computer").click();await settle(8);
+    await p.mount(h(Panel,{navKey:"runtime"}));await settle(8);button("Connect a computer").click();await settle(8);await zipTab();
     const download=p.root.querySelector(".runtime-pairing .runtime-bundle-download");
     expect(download.textContent).toContain("Download Windows Runtime");
     expect(download.tagName).toBe("BUTTON");expect(download.disabled).toBe(false);
@@ -195,10 +196,86 @@ describe("remote machine UI",()=>{
   });
   it("shows the pairing card as waiting for a computer, at the download step, while nothing is pending",async()=>{
     machines=[machine(idA,"Desktop")];
-    await p.mount(h(Panel,{navKey:"runtime-waiting"}));await settle(8);button("Connect a computer").click();await settle(8);
+    await p.mount(h(Panel,{navKey:"runtime-waiting"}));await settle(8);button("Connect a computer").click();await settle(8);await zipTab();
     expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Download the Runtime");
     expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("Waiting for the computer to connect");
     expect(p.root.querySelector(".runtime-pair-card .expires, .runtime-pair-card .note").textContent).toContain("Expires");
+  });
+  describe("install method tabs (Windows one-line install)",()=>{
+    const tabs=()=>p.root.querySelectorAll('.runtime-install-tabs [role="tab"]');
+    const stepTitles=()=>[...p.root.querySelectorAll(".runtime-pairing .runtime-step h4")].map((el:any)=>el.textContent);
+    const open=async(navKey:string)=>{await p.mount(h(Panel,{navKey}));await settle(8);button("Connect a computer").click();await settle(8);};
+    const commands=()=>[...p.root.querySelectorAll(".runtime-command-text")].map((el:any)=>el.textContent);
+    const setServer=async(value:string)=>{const address=p.root.querySelector('.runtime-pairing input[type=url]');address.value=value;fire(address,"input");await settle();};
+    it("opens on Windows (PowerShell) with the other install method named ZIP, as a labelled tablist",async()=>{
+      await open("runtime-tabs");
+      expect(tabs().map((item:any)=>item.textContent)).toEqual(["Windows (PowerShell)","Other install methods (ZIP)"]);
+      expect(tabs().map((item:any)=>item.getAttribute("aria-selected"))).toEqual(["true","false"]);
+      expect(p.root.querySelector(".runtime-install-tabs").getAttribute("role")).toBe("tablist");
+      const panel=p.root.querySelector(".runtime-install-panel");expect(panel.getAttribute("role")).toBe("tabpanel");expect(panel.getAttribute("aria-labelledby")).toBe(tabs()[0].id);
+      expect(tabs()[0].getAttribute("aria-controls")).toBe(panel.id);
+      expect(p.root.textContent).not.toMatch(/macOS|Linux tab/i);expect(tabs()).toHaveLength(2);
+    });
+    it("shows the install and connect commands with the confirmed address, no code, no ZIP step, and no account option",async()=>{
+      await open("runtime-windows-commands");
+      expect(stepTitles()).toEqual(["AgEnD address","Install the Runtime","Connect that computer","Return here to approve"]);
+      expect(commands()).toEqual(["$agend = 'http://localhost'; irm \"$agend/runtime/install.ps1\" | iex",'agend-runtime connect --server "http://localhost"']);
+      expect(p.root.querySelector(".runtime-bundle-download")).toBeNull();expect(p.root.textContent).not.toContain("connect-agend.bat");
+      expect(commands().join(" ")).not.toContain("PAIR-TEST-CODE");expect(p.root.querySelector(".runtime-pair-code").value).toBe("PAIR-TEST-CODE");
+      // The multi-account option and its flags are not part of this feature.
+      expect(p.root.textContent).not.toMatch(/another Claude account|claude-config-dir|--profile/i);expect(p.root.querySelectorAll('.runtime-pairing input[type=checkbox]')).toHaveLength(0);
+      expect(p.root.textContent).toContain("never put in the command");expect(p.root.textContent).toContain("22.14");
+    });
+    it("rewrites both commands when the address changes, and shows neither for an unsafe one",async()=>{
+      await open("runtime-windows-address");
+      await setServer("https://fleet.example.test:10443");
+      expect(commands()).toEqual(["$agend = 'https://fleet.example.test:10443'; irm \"$agend/runtime/install.ps1\" | iex",'agend-runtime connect --server "https://fleet.example.test:10443"']);
+      for(const bad of ["http://192.168.1.20:19280","https://user:password@fleet.example.test","https://fleet.example.test/path","https://fleet.example.test/?x=1","https://fleet.example.test'; calc; '"]){
+        await setServer(bad);expect(commands(),bad).toEqual([]);expect(p.root.querySelector('.runtime-pairing [role="alert"]').textContent).toContain("Enter an HTTPS origin");
+      }
+    });
+    it("copies exactly the command shown, and marks it copied for a moment",async()=>{
+      const written:string[]=[];Object.defineProperty(globalThis.navigator,"clipboard",{value:{writeText:async(text:string)=>{written.push(text);}},configurable:true});
+      try{
+        await open("runtime-windows-copy");
+        const copy=(index:number)=>p.root.querySelectorAll(".runtime-command-row .btn")[index];
+        copy(0).click();await settle(6);copy(1).click();await settle(6);
+        expect(written).toEqual(commands());expect(copy(1).textContent).toContain("Copied");
+      }finally{Object.defineProperty(globalThis.navigator,"clipboard",{value:undefined,configurable:true});}
+    });
+    it("keeps the existing waiting behaviour: the code card waits, the flow moves on once the install command is copied, and to approval when a computer asks",async()=>{
+      Object.defineProperty(globalThis.navigator,"clipboard",{value:{writeText:async()=>{}},configurable:true});
+      try{
+        machines=[machine(idA,"Desktop")];await open("runtime-windows-waiting");
+        expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Install the Runtime");
+        expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("Waiting for the computer to connect");
+        p.root.querySelectorAll(".runtime-command-row .btn")[0].click();await settle(6);
+        expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Connect that computer");
+      }finally{Object.defineProperty(globalThis.navigator,"clipboard",{value:undefined,configurable:true});}
+      expect(requests.filter(item=>item.path==="/ui/runtimes").length).toBeGreaterThan(0);
+    });
+    it("lands on the approval step with the fingerprint card when a computer is pending, whichever tab is open",async()=>{
+      await open("runtime-windows-approval");
+      expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Return here to approve");
+      expect(p.root.querySelector(".runtime-pair-card .runtime-pair-status").textContent).toContain("A computer is waiting for your approval");
+      await zipTab();expect(p.root.querySelector('.runtime-step[aria-current="step"] h4').textContent).toBe("Return here to approve");
+    });
+    it("switches by click and by arrow, Home and End keys, moving focus with the selection",async()=>{
+      await open("runtime-windows-keys");
+      tabs()[1].click();await settle(4);expect(tabs().map((item:any)=>item.getAttribute("aria-selected"))).toEqual(["false","true"]);
+      expect(p.root.querySelector(".runtime-install-panel").getAttribute("data-install-method")).toBe("zip");expect(p.root.querySelector(".runtime-bundle-download")).not.toBeNull();expect(commands()).toEqual([]);
+      expect(tabs().map((item:any)=>item.getAttribute("tabindex"))).toEqual(["-1","0"]);
+      fire(tabs()[1],"keydown",{key:"ArrowRight"});await settle(6);expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
+      fire(tabs()[0],"keydown",{key:"End"});await settle(6);expect(tabs()[1].getAttribute("aria-selected")).toBe("true");
+      fire(tabs()[1],"keydown",{key:"Home"});await settle(6);expect(tabs()[0].getAttribute("aria-selected")).toBe("true");
+      const other=fire(tabs()[0],"keydown",{key:"a"});expect(other.defaultPrevented).toBe(false);
+    });
+    it("keeps the ZIP flow as it was inside its tab: download, connect-agend.bat and the manual command",async()=>{
+      await open("runtime-zip-unchanged");await zipTab();
+      expect(stepTitles()).toEqual(["AgEnD address","Download the Runtime","Double-click connect-agend.bat there","Return here to approve"]);
+      expect(p.root.querySelector(".runtime-command").value).toBe('.\\agend-runtime.cmd connect --server "http://localhost"');
+      expect(p.root.querySelector(".runtime-bundle-download").textContent).toContain("Download Windows Runtime");
+    });
   });
   it("downloads a connection-ready ZIP with the reviewed address in a protected POST and claims one download",async()=>{
     const fixtureFetch=globalThis.fetch;let release!:(value:unknown)=>void;const create=vi.spyOn(URL,"createObjectURL").mockReturnValue("blob:runtime-fixture"),revoke=vi.spyOn(URL,"revokeObjectURL").mockImplementation(()=>{});
@@ -207,7 +284,7 @@ describe("remote machine UI",()=>{
       requests.push({path,body:JSON.parse(options.body)});return new Promise(resolve=>{release=resolve;});
     }) as any;
     try{
-      await p.mount(h(Panel,{navKey:"runtime-download-config"}));await settle(12);button("Download Windows Runtime (ZIP)").click();await settle(12);
+      await p.mount(h(Panel,{navKey:"runtime-download-config"}));await settle(12);button("Download Windows Runtime (ZIP)").click();await settle(12);await zipTab();
       const address=p.root.querySelector('.runtime-pairing input[type=url]');address.value="https://fleet.example.test:10443";fire(address,"input");await settle();
       const download=p.root.querySelector(".runtime-pairing .runtime-bundle-download");download.click();download.click();await settle(8);
       expect(requests.filter(item=>item.path==="/ui/runtimes/download/windows")).toEqual([{path:"/ui/runtimes/download/windows",body:{server:"https://fleet.example.test:10443"}}]);expect(address.disabled).toBe(true);
@@ -300,6 +377,16 @@ describe("machine snapshot boundary",()=>{
     expect(connectCommand("https://runtime.example.com:443")).toBe('.\\agend-runtime.cmd connect --server "https://runtime.example.com"');
     expect(connectCommand("http://localhost:19280")).toContain('"http://localhost:19280"');
     for(const bad of ["http://192.168.1.2:19280","https://user:password@example.com","https://example.com/?x=$(calc)","https://$(calc)","https://example.com/path","https://example.com;calc"])expect(connectCommand(bad)).toBe("");
+    // The Windows one-line commands carry the same origin and nothing else: no pairing code, no token, no flag the page did not choose.
+    expect(installCommand("https://runtime.example.com:443")).toBe("$agend = 'https://runtime.example.com'; irm \"$agend/runtime/install.ps1\" | iex");
+    expect(installCommand("http://localhost:19280")).toBe("$agend = 'http://localhost:19280'; irm \"$agend/runtime/install.ps1\" | iex");
+    expect(windowsConnectCommand("https://runtime.example.com:443")).toBe('agend-runtime connect --server "https://runtime.example.com"');
+    for(const bad of ["http://192.168.1.2:19280","https://user:password@example.com","https://example.com/?x=$(calc)","https://$(calc)","https://example.com/path","https://example.com;calc","https://exa'mple.com","https://example.com/'; calc; '","",undefined as any]){
+      expect(installCommand(bad),String(bad)).toBe("");expect(windowsConnectCommand(bad),String(bad)).toBe("");
+    }
+    for(const good of ["https://runtime.example.com","https://[fd7a:115c::1]:8445","http://127.0.0.1:19280"]){
+      expect(installCommand(good)).not.toMatch(/[`;](?!\s*irm)|\$\(|\|\s*iex.+\|/);expect(installCommand(good)).toMatch(/^\$agend = '[^']*'; irm "\$agend\/runtime\/install\.ps1" \| iex$/);
+    }
   });
   it("coalesces reads and keeps the last good snapshot after a network failure, clearing it on lost authorization",async()=>{
     let resolve!:(value:any)=>void;let count=0;let mode="pending";

@@ -3050,6 +3050,17 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .runtime-step.is-done .runtime-step-n { color: var(--ok); border-color: var(--ok); }
 .runtime-step.is-done h4 { color: var(--text-2); }
 .runtime-step input[type=url], .runtime-step .runtime-command { max-width: 520px; }
+/* Connect a computer, install method tabs: the page's own tab bar sits above the steps, and a command wraps only between its words, never inside an address. */
+.runtime-install { min-width: 0; }
+.runtime-install-tabs { margin-bottom: 16px; }
+.runtime-install-panel { min-width: 0; }
+.runtime-command-card { min-width: 0; margin: 0 0 8px; }
+.runtime-command-label { display: block; margin: 0 0 6px; font-size: var(--fs-sm); color: var(--text-2); }
+.runtime-command-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.runtime-command-row .btn { flex: none; }
+.runtime-command-text { flex: 1; min-width: 0; margin: 0; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5; white-space: pre-wrap; overflow-wrap: normal; word-break: normal; overflow-x: auto; user-select: all; }
+.runtime-command-text code { font: inherit; }
+@media (max-width: 600px) { .runtime-command-row { flex-direction: column; align-items: stretch; } .runtime-command-row .btn { align-self: flex-start; } }
 .runtime-pair-card { align-self: start; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
 .runtime-pair-card.is-pending { border-color: var(--warn); }
 .runtime-pair-card label { margin: 0 0 8px; }
