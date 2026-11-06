@@ -13,9 +13,10 @@ import { appendAudit, AUDIT_FILE, AUDIT_LOCK_FILE, auditLockTiming, setRemoteSwi
 import { parseRuntimeRemotePayload } from "../src/runtime-protocol.js";
 import { REDUCED_CODE_PROMPT, REDUCED_SUCCESS, REDUCED_URL_PREFIX } from "../src/runtime-signin.js";
 
-// A second audit writer that runs in the middle of the first one (see the last describe). The hook runs once, synchronously, while the first writer is paused: the
-// first fstat that follows (`wait`: after the 25 ms look at an incomplete tail; `failedWrite`: after an audit write failed) is the one whose answer is stale.
-const tap = vi.hoisted(() => ({ hook: null as null | { on: "wait" | "failedWrite"; run: () => void }, armed: false, inHook: false, failAuditWrite: false, calls: 0 }));
+// A second audit writer that runs in the middle of the first one (see the last describe). The hook runs once, synchronously, while the first writer is paused: after
+// its `fstats`-th fstat that follows (`wait`: the 25 ms look at an incomplete tail; `failedWrite`: an audit write that failed). 1 is the size check of its snapshot, 2
+// is the last look of the snapshot, right before the cut. The first writer goes on with the answer it had, which is stale by then.
+const tap = vi.hoisted(() => ({ hook: null as null | { on: "wait" | "failedWrite"; run: () => void; fstats?: number }, armed: false, left: 0, inHook: false, failAuditWrite: false, calls: 0 }));
 vi.mock("node:fs", async importOriginal => {
   const original = await importOriginal<typeof import("node:fs")>(); const flagsOf = new Map<number, number>();
   const fire = (): void => { const current = tap.hook; if (!current || tap.inHook) return; tap.hook = null; tap.inHook = true; try { current.run(); } finally { tap.inHook = false; } };
@@ -25,10 +26,10 @@ vi.mock("node:fs", async importOriginal => {
     writeSync: ((fd: number, buffer: any, offset?: number, length?: number) => {
       if (!tap.failAuditWrite || tap.inHook || typeof buffer === "string" || !((flagsOf.get(fd) ?? 0) & original.constants.O_APPEND)) return (original.writeSync as any)(fd, buffer, offset, length);
       tap.calls++;                                                                          // the audit record's write: three bytes, three bytes, then nothing
-      if (tap.calls > 2) { if (tap.hook?.on === "failedWrite") tap.armed = true; return 0; }
+      if (tap.calls > 2) { if (tap.hook?.on === "failedWrite") { tap.armed = true; tap.left = tap.hook.fstats ?? 1; } return 0; }
       return (original.writeSync as any)(fd, buffer, offset, Math.min(3, length ?? buffer.byteLength));
     }) as typeof original.writeSync,
-    fstatSync: ((fd: number, options?: any) => { const result = (original.fstatSync as any)(fd, options); if (tap.armed && !tap.inHook) { tap.armed = false; fire(); } return result; }) as typeof original.fstatSync };
+    fstatSync: ((fd: number, options?: any) => { const result = (original.fstatSync as any)(fd, options); if (tap.armed && !tap.inHook && --tap.left <= 0) { tap.armed = false; fire(); } return result; }) as typeof original.fstatSync };
 });
 const URL_OK = "https://claude.com/cai/oauth/authorize?code=true&client_id=fixture&response_type=code&state=STATE-NEVER-LOGGED";
 const CODE = "SECRETCODE123-abc";
@@ -872,26 +873,28 @@ describe("P2: another audit writer's accepted record is never cut by an operatio
   const seed = `{"at":"2026-11-06T12:00:00.000Z","actor":"local","action":"switch","outcome":"ok","detail":"on","switch":"accounts"}\n`;
   const other = { actor: "admin:u2", action: "profile.remove" as const, outcome: "started" as const, cli: "claude-code", profile: "home" };      // a record another writer was told is written
   const actions = (f: F): string[] => f.audit().map(row => `${row.actor}:${row.action}:${row.outcome}:${row.profile ?? ""}`);
-  beforeEach(() => { const real = Atomics.wait.bind(Atomics); vi.spyOn(Atomics, "wait").mockImplementation(((...args: Parameters<typeof Atomics.wait>) => { if (tap.hook?.on === "wait" && !tap.inHook) tap.armed = true; return (real as any)(...args); }) as typeof Atomics.wait); });
-  afterEach(() => { tap.hook = null; tap.armed = false; tap.inHook = false; tap.failAuditWrite = false; tap.calls = 0; auditLockTiming.waitMs = 3_000; auditLockTiming.unreadableMs = 10_000; vi.mocked(Atomics.wait).mockRestore(); });
-  it("repair: B commits its record while the operation's `started` record is about to cut the incomplete tail: B's record stays, the operation goes ahead, every line parses", async () => {
-    const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE);
-    writeFileSync(log, `${seed}{"at":"2026-11-06T12:00:01.000Z","actor":"admin:u1","act`);
-    let accepted = false;
-    tap.hook = { on: "wait", run: () => { rmSync(join(f.pairing, AUDIT_LOCK_FILE), { force: true }); appendAudit(f.pairing, other); accepted = true; } };      // as if the operation's lock had been cleared as stale
-    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
-    expect(accepted).toBe(true); expect(tap.hook).toBeNull(); expect(existsSync(directory)).toBe(false);
-    expect(actions(f)).toEqual(["local:switch:ok:", "admin:u2:profile.remove:started:home", `${actor}:profile.remove:started:work`, `${actor}:profile.remove:ok:work`]);
-  });
-  it("rollback: the operation's `started` write fails after B has repaired its partial tail and committed a record: the operation is refused and not executed, B's record stays, every line parses", async () => {
-    const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE); writeFileSync(log, seed);
-    let accepted = false; tap.failAuditWrite = true;
-    tap.hook = { on: "failedWrite", run: () => { tap.failAuditWrite = false; rmSync(join(f.pairing, AUDIT_LOCK_FILE), { force: true }); appendAudit(f.pairing, other); accepted = true; } };
-    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/could not write its audit log, so nothing was done/);
-    tap.failAuditWrite = false; expect(accepted).toBe(true); expect(tap.hook).toBeNull();
-    expect(existsSync(directory)).toBe(true); expect(f.changed).not.toHaveBeenCalled(); expect(f.runLogout).not.toHaveBeenCalled();
-    expect(actions(f)).toEqual(["local:switch:ok:", "admin:u2:profile.remove:started:home"]);
-  });
+  beforeEach(() => { const real = Atomics.wait.bind(Atomics); vi.spyOn(Atomics, "wait").mockImplementation(((...args: Parameters<typeof Atomics.wait>) => { if (tap.hook?.on === "wait" && !tap.inHook) { tap.armed = true; tap.left = tap.hook.fstats ?? 1; } return (real as any)(...args); }) as typeof Atomics.wait); });
+  afterEach(() => { tap.hook = null; tap.armed = false; tap.left = 0; tap.inHook = false; tap.failAuditWrite = false; tap.calls = 0; auditLockTiming.waitMs = 3_000; auditLockTiming.unreadableMs = 10_000; vi.mocked(Atomics.wait).mockRestore(); });
+  for (const [place, fstats] of [["at the size check of its snapshot", 1], ["at the last look of its snapshot, right before the cut", 2]] as const) {
+    it(`repair: B commits its record while the operation's lock is gone (${place}): B's record stays, the operation is refused and not executed, every line parses`, async () => {
+      const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE);
+      writeFileSync(log, `${seed}{"at":"2026-11-06T12:00:01.000Z","actor":"admin:u1","act`);
+      let accepted = false;
+      tap.hook = { on: "wait", fstats, run: () => { rmSync(join(f.pairing, AUDIT_LOCK_FILE), { force: true }); appendAudit(f.pairing, other); accepted = true; } };      // as if the operation's lock had been cleared as stale
+      await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/could not write its audit log, so nothing was done/);
+      expect(accepted).toBe(true); expect(tap.hook).toBeNull(); expect(existsSync(directory)).toBe(true); expect(f.changed).not.toHaveBeenCalled(); expect(f.runLogout).not.toHaveBeenCalled();
+      expect(actions(f)).toEqual(["local:switch:ok:", "admin:u2:profile.remove:started:home"]);
+    });
+    it(`rollback: the operation's \`started\` write fails after B has repaired its partial tail and committed a record while its lock is gone (${place}): the operation is refused and not executed, B's record stays, every line parses`, async () => {
+      const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE); writeFileSync(log, seed);
+      let accepted = false; tap.failAuditWrite = true;
+      tap.hook = { on: "failedWrite", fstats, run: () => { tap.failAuditWrite = false; rmSync(join(f.pairing, AUDIT_LOCK_FILE), { force: true }); appendAudit(f.pairing, other); accepted = true; } };
+      await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/could not write its audit log, so nothing was done/);
+      tap.failAuditWrite = false; expect(accepted).toBe(true); expect(tap.hook).toBeNull();
+      expect(existsSync(directory)).toBe(true); expect(f.changed).not.toHaveBeenCalled(); expect(f.runLogout).not.toHaveBeenCalled();
+      expect(actions(f)).toEqual(["local:switch:ok:", "admin:u2:profile.remove:started:home"]);
+    });
+  }
   it("a lock held by another live process: the operation is refused and nothing is touched (no repair, no cut, no record); when the lock is gone the operation works", async () => {
     auditLockTiming.waitMs = 60; const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE);
     writeFileSync(log, `${seed}{"at":"2026-11-06T12:00:01.000Z","actor":"admin:u1","act`); const before = readFileSync(log, "utf8");
