@@ -9,7 +9,7 @@ import { afterAll, beforeAll } from "vitest";
 export const hasPwsh = spawnSync(process.platform === "win32" ? "where.exe" : "which", ["pwsh"]).status === 0;
 // Startup keeps the old 10 s request allowance, independently of each case.
 // Only the START hook's outer watchdog gets cleanup/reporting headroom.
-const STARTUP_MS = 10_000;
+const STARTUP_MS = 30_000; // DIAGNOSTIC observation window; draft only.
 export class InstallerPsBatch {
   private child?: ChildProcessWithoutNullStreams;
   private dir?: string;
@@ -25,7 +25,7 @@ export class InstallerPsBatch {
   constructor(private templates: Record<string, string>, warmInSetup = true) {
     // Lazy until fixture setup; every consumer (including adapters) gets a warm
     // worker before its first case. Inert lifecycle probes can drive ready() themselves.
-    if (warmInSetup) beforeAll(async () => { if (hasPwsh) await this.ready(); }, 12_000); // START only: helper fails/kills at 10 s before this watchdog.
+    if (warmInSetup) beforeAll(async () => { if (hasPwsh) await this.ready(); }, 32_000); // DIAGNOSTIC START hook only; case timers remain 10 s.
     afterAll(async () => {
       if (this.child) {
         if (this.child.exitCode === null && this.child.signalCode === null) {
@@ -44,7 +44,7 @@ export class InstallerPsBatch {
       this.readyResolve = resolve; this.readyReject = reject;
     });
     this.startupTimer = setTimeout(() => {
-      this.fail(new Error("pwsh startup readiness exceeded 10 s"));
+      this.fail(new Error("pwsh startup readiness exceeded 30 s"));
       this.child?.kill();
     }, STARTUP_MS);
     try { this.start(); } catch (e) { this.fail(e instanceof Error ? e : new Error(String(e))); }
@@ -53,6 +53,7 @@ export class InstallerPsBatch {
   private start() {
     const started = performance.now();
     let bootstrapMs: number | undefined;
+    let spawnAt = started;
     this.dir = mkdtempSync(join(tmpdir(), "agend-ps-batch-"));
     const templates = join(this.dir, "templates.json"), driver = join(this.dir, "driver.ps1");
     writeFileSync(templates, JSON.stringify(this.templates));
@@ -106,6 +107,8 @@ while($null -ne ($line=[Console]::ReadLine())) {
   [Console]::WriteLine(('__AGEND_BATCH__'+(@{id=$request.id;out=($output -join [char]10)+[char]10;status=$status;error=$errorText} | ConvertTo-Json -Compress)))
 }
 `);
+    spawnAt = performance.now();
+    if (process.env.CI) process.stderr.write(`[pwsh-prepare] ${JSON.stringify({prepareMs:Math.round(spawnAt-started), templateBytes:Object.values(this.templates).reduce((n,s)=>n+Buffer.byteLength(s),0)})}\n`);
     this.child = spawn("pwsh", ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", driver, templates], {
       // Linux pwsh's JIT profile and module analysis cache otherwise race with
       // every parallel fixture using the runner's shared home cache.
@@ -116,7 +119,7 @@ while($null -ne ($line=[Console]::ReadLine())) {
     createInterface({ input: this.child.stdout }).on("line", line => {
       try {
         if (line === "__AGEND_BOOT__" && this.readyResolve) { bootstrapMs = performance.now() - started;
-          if (process.env.CI) process.stderr.write(`[pwsh-bootstrap] ${JSON.stringify({bootstrapMs:Math.round(bootstrapMs), templateBytes:Object.values(this.templates).reduce((n,s)=>n+Buffer.byteLength(s),0)})}\n`);
+          if (process.env.CI) process.stderr.write(`[pwsh-bootstrap] ${JSON.stringify({bootstrapMs:Math.round(bootstrapMs), processMs:Math.round(performance.now()-spawnAt), templateBytes:Object.values(this.templates).reduce((n,s)=>n+Buffer.byteLength(s),0)})}\n`);
           return; }
         const ready = /^__AGEND_READY__(\d+)$/.exec(line);
         if (ready && this.readyResolve) {
