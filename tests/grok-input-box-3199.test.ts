@@ -16,6 +16,7 @@ import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { GrokBackend, readGrokInputBox } from "../src/backend/grok.js";
 import { nativeHumanOrigin } from "../src/human-delivery-receipts.js";
+import { displayWidth, padToDisplayWidth } from "../src/ls-rows.js";
 
 const FIX = join(import.meta.dirname, "fixtures");
 const AUDIT = join(FIX, "grok-1.0.70-audit");
@@ -25,24 +26,35 @@ const EMPTY = { text: "", collapsedPastes: 0 };
 function grokBox(draft = "") {
   const innerWidth = 70;
   const prompt = draft ? ` ❯ ${draft}` : " ❯";
-  if (prompt.length > innerWidth) throw new Error(`draft does not fit the box (${prompt.length} > ${innerWidth})`);
-  const inner = prompt.padEnd(innerWidth, " ");
+  if (displayWidth(prompt) > innerWidth) throw new Error(`draft does not fit the box (${displayWidth(prompt)} > ${innerWidth})`);
+  const inner = padToDisplayWidth(prompt, innerWidth);
   const top = "╭" + "─".repeat(innerWidth) + "╮";
   const mid = "│" + inner + "│";
   const label = " grok-mock · always-approve ─";
-  const bot = "╰" + "─".repeat(innerWidth - label.length) + label + "╯";
+  const bot = "╰" + "─".repeat(innerWidth - displayWidth(label)) + label + "╯";
   return `  ${top}\n  ${mid}\n  ${bot}\n\n  Shift+Tab:mode  │  Ctrl+x:shortcuts\n`;
 }
 
 function withDraft(emptyPane: string, text: string): string {
   const replaced = emptyPane.replace(/^(\s*)│ ❯( *)│\s*$/m, (_, indent: string, pad: string) => {
     const old = " ❯" + pad;
-    const next = (` ❯ ${text}`).padEnd(old.length, " ");
-    if (next.length !== old.length) throw new Error(`draft ${JSON.stringify(text)} does not fit this fixture row`);
+    const next = padToDisplayWidth(` ❯ ${text}`, displayWidth(old));
+    if (displayWidth(next) !== displayWidth(old)) throw new Error(`draft ${JSON.stringify(text)} does not fit this fixture row`);
     return `${indent}│${next}│`;
   });
   if (replaced === emptyPane) throw new Error("empty boxed ❯ row not found");
   return replaced;
+}
+
+/** 70-cell inner: combining accents plus an internal `│` sitting at the top `╮`'s UTF-16 index. */
+function combiningInternalBarPane(id = "hmsg-3199-test") {
+  const innerWidth = 70;
+  const inner = " ❯ " + "a\u0301".repeat(33) + "a│" + id + " ".repeat(18);
+  const top = "╭" + "─".repeat(innerWidth) + "╮";
+  const mid = "│" + inner + "│";
+  const label = " grok-mock · always-approve ─";
+  const bot = "╰" + "─".repeat(innerWidth - displayWidth(label)) + label + "╯";
+  return `  ${top}\n  ${mid}\n  ${bot}\n\n  Shift+Tab:mode  │  Ctrl+x:shortcuts\n`;
 }
 
 describe("readGrokInputBox on live grok captures", () => {
@@ -118,6 +130,29 @@ describe("readGrokInputBox on live grok captures", () => {
     expect(backend.readInputRow(pane(AUDIT, "1.0.70-80/02-ready.pane.txt"))).toEqual(EMPTY);
     expect(backend.readInputRow(withDraft(pane(AUDIT, "1.0.70-80/02-ready.pane.txt"), "hello"))).toEqual({ text: "hello", collapsedPastes: 0 });
     expect((backend as { getBottomReadyPattern?: unknown }).getBottomReadyPattern).toBeUndefined();
+  });
+
+  it("a cell-aligned CJK draft is the boxed prompt", () => {
+    expect(readGrokInputBox(grokBox("中文"))).toEqual({ text: "中文", collapsedPastes: 0 });
+  });
+
+  it("combining marks plus an internal │ keep the unsent id inside the box", () => {
+    const id = "hmsg-3199-test";
+    const drawn = combiningInternalBarPane(id);
+    const mid = drawn.split("\n").find(row => row.includes("❯"))!;
+    const top = drawn.split("\n").find(row => row.includes("╭"))!;
+    const innerBar = mid.indexOf("│", mid.indexOf("│") + 1);
+    expect(displayWidth(mid.slice(mid.indexOf("│") + 1, mid.lastIndexOf("│")))).toBe(70);
+    expect(innerBar).toBe(top.lastIndexOf("╮"));
+    expect(mid.lastIndexOf("│")).toBeGreaterThan(top.lastIndexOf("╮"));
+    expect(readGrokInputBox(drawn)?.text).toContain(id);
+  });
+
+  it("leftover text past the cell-aligned closer is not a box", () => {
+    const boxed = grokBox("hello");
+    const junk = boxed.replace(/^(  │ ❯ hello.*)│$/m, "$1│ leftover");
+    expect(junk).toContain("leftover");
+    expect(readGrokInputBox(junk)).toBeNull();
   });
 });
 
@@ -223,6 +258,29 @@ describe("Grok human receipts (#3199)", () => {
       targetInstance: "worker", kind: "fleet_inbound", forwards: [r.row!.message_id],
       payload: { type: "fleet_inbound", content: "relay", meta: { message_id: "xmsg-3199-forward" } },
     }).delivery).toMatchObject({ kind: "fleet_inbound" });
+  });
+
+  it("an ASCII unsent unique id still in the box is stranded (control)", () => {
+    const h = grokHarness();
+    const id = "hmsg-3199-ascii";
+    const humanPositive = vi.fn();
+    const signature = { value: id, unique: true, humanPositive };
+    const baseline = h.daemon["paneEvidence"](grokBox(""), signature);
+    expect(readGrokInputBox(grokBox(id))?.text).toBe(id);
+    expect(h.daemon["judgeSubmission"](grokBox(id), signature, baseline)).toBe("stranded");
+    expect(humanPositive).not.toHaveBeenCalled();
+  });
+
+  it("a combining/internal-│ unsent unique id stays stranded and does not fire unique-id-pane", () => {
+    const h = grokHarness();
+    const id = "hmsg-3199-test";
+    const humanPositive = vi.fn();
+    const signature = { value: id, unique: true, humanPositive };
+    const baseline = h.daemon["paneEvidence"](grokBox(""), signature);
+    const drawn = combiningInternalBarPane(id);
+    expect(h.daemon["judgeSubmission"](drawn, signature, baseline)).toBe("stranded");
+    expect(humanPositive).not.toHaveBeenCalled();
+    expect(readGrokInputBox(drawn)?.text).toContain(id);
   });
 
   it("a readerless Grok plus output-edge / transcript-marker stays uncertain (verification is not loosened)", async () => {
