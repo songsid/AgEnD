@@ -335,11 +335,6 @@ export class HubRepresentativeExecution {
       const text = validated(plain(HUB_ANSWER_MAX), raw);
       if (!text.trim()) throw new HubProtocolError("invalid");
       live();
-      evidenced = true;
-      const journal = this.options.journal;
-      // The agent's own report is the evidence that the question reached it and was taken up.
-      journal.recordEvidence(row.message_id, "delivered");
-      journal.recordEvidence(row.message_id, "consumed");
       // The agent's files (D): copied under the reply tool's rule, then pushed to the Hub before the answer names them.
       let attachments: HubAnswer["attachments"];
       if (extras.files?.length) {
@@ -354,6 +349,11 @@ export class HubRepresentativeExecution {
         attachments = prepared.map(f => f.ref);
         live();
       }
+      evidenced = true;
+      const journal = this.options.journal;
+      // The agent's own report is the evidence that the question reached it and was taken up.
+      journal.recordEvidence(row.message_id, "delivered");
+      journal.recordEvidence(row.message_id, "consumed");
       // F: buttons/poll join here (their payload field and buttonsDigest into messageContentDigest).
       // Freeze the answer's id, bytes and digest before asking for the release lease for exactly them.
       const answerId = randomUUID(), contentDigest = messageContentDigest("answer", text, { attachments });
@@ -383,6 +383,11 @@ export class HubRepresentativeExecution {
       return { ok: true, message: "Delivered to the Hub asker." };
     } catch (err) {
       const code = err instanceof HubProtocolError ? err.code : "uncertain";
+      if (!saved && !evidenced && err instanceof HubFileRefusal) {
+        // A file the agent can fix (a state-dir path, a refused type, too large): the question stays open on the same id.
+        this.setState(row, was === "input" ? "delivered" : was, ["answering"]);
+        return { ok: false, message: `Not sent: ${err.message}. Report again with the same correlation_id.` };
+      }
       if (!saved && code === "invalid" && !evidenced) {
         // A malformed report (empty or oversized) is the agent's to fix: the question stays open on the same id.
         this.setState(row, was === "input" ? "delivered" : was, ["answering"]);
