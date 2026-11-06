@@ -119,17 +119,20 @@ export interface Ledger {
   gaps: GapEvent[];
   /** A real OpenAI cache-write count was seen (Codex): writes are then measured, not estimated. */
   writesSeen?: boolean;
+  /** M-2452: the speed method its speeds were measured with (SPEED_METHOD); absent: before it. */
+  spv?: number;
 }
 
 /** A dictionary keyed by names from outside (paths, model ids): every key an own property (#1467 lesson). */
 const dict = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
-export function emptyLedger(): Ledger { return { v: 2, files: dict(), hours: dict(), gaps: [] }; }
+export function emptyLedger(): Ledger { return { v: 2, files: dict(), hours: dict(), gaps: [], spv: SPEED_METHOD }; }
 
 /** A ledger read back from disk; anything that is not one is a fresh ledger. */
 export function reviveLedger(raw: unknown): Ledger {
   const l = emptyLedger();
   if (!raw || typeof raw !== "object" || (raw as Ledger).v !== 2) return l;
   const r = raw as Ledger;
+  const currentSpeeds = r.spv === SPEED_METHOD;                         // M-2452
   for (const [k, v] of Object.entries(r.files ?? {})) if (v && typeof v.offset === "number") l.files[k] = v;
   for (const [k, v] of Object.entries(r.hours ?? {})) {
     if (!v || !Array.isArray(v.g)) continue;
@@ -158,6 +161,7 @@ export function reviveLedger(raw: unknown): Ledger {
     const sp = dict<Record<string, SpeedAgg>>();
     for (const [sk, sm] of Object.entries((v.sp && typeof v.sp === "object" ? v.sp : {}) as Record<string, unknown>)) {
       if (!src[sk] || !sm || typeof sm !== "object") continue;
+      if (!currentSpeeds && sk.startsWith("claude:")) continue;  // M-2452: measured by the old Claude method — dropped once
       const into = dict<SpeedAgg>();
       for (const [mk, a] of Object.entries(sm)) if (Array.isArray(a) && a.length === 3 + SPEED_BUCKETS && a.every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)) into[mk] = a as SpeedAgg;
       if (Object.keys(into).length) sp[sk] = into;
@@ -229,6 +233,12 @@ export function addTurn(ledger: Ledger, file: FileCursor, turn: Turn, cutoff: nu
  * the first token; the window runs to the last block. A response without that (no thinking block, an API error or a
  * fallback, no stop_reason) is not timed. Rate = Σ tokens ÷ Σ duration, never a mean of rates.
  *
+ * M-2452: Claude Code writes the message's final `stop_reason` and `usage` on EVERY block line (checked on 2.1.282–2.1.318:
+ * every multi-block response), so a stop_reason does not mean the last block has been read. A response is finished only
+ * when the next assistant message begins; until then its window can still grow. (Before, the first line finished it:
+ * the window was the thinking alone while the tokens were the whole response's — Opus 5.5 read ≈248 tok/s for ≈113.)
+ * Stored Claude speeds from before are dropped once (SPEED_METHOD). Faster than 3000 tok/s is an artefact, not counted.
+ *
  * Kept per hour, source and model key as one array: [tokens, ms, responses, …SPEED_BUCKETS] — the histogram is the
  * duration in each rate bucket (√2 steps from 1 tok/s), for a duration-weighted p10–p90.
  */
@@ -251,13 +261,15 @@ export function addSpeed(ledger: Ledger, file: FileCursor, s: SpeedSample, cutof
   agg[3 + speedBucket(s.tokens * 1000 / s.ms)]! += s.ms;
 }
 
+/** M-2452: the speed method the stored speeds were measured with; Claude speeds of an older one are dropped on load. */
+export const SPEED_METHOD = 2;
 /** A Claude response being read (one message id, one line per content block): what its timing needs. */
 export interface ClaudeResponse { id: string; first: number; think: number | null; last: number; out: number; model: string; prompt: number; stopped: boolean; failed: boolean; done?: true }
 
 /**
- * Observe one assistant line for the speed of its response; a finished response (its stop_reason seen) becomes a sample
- * in `file.speeds`, which the reader drains. Every line of a message is observed — not only the first, which counts its
- * tokens — because the window ends at the last block.
+ * Observe one assistant line for the speed of its response. Every line of a message is observed — not only the first,
+ * which counts its tokens — because the window ends at the last block; the response becomes a sample (in `file.speeds`,
+ * which the reader drains) only when another message's line arrives (finishClaudeSpeed).
  */
 function observeClaudeSpeed(file: FileCursor, id: string | undefined, d: { timestamp?: unknown; isApiErrorMessage?: unknown; thinkingDurationMs?: unknown;
   message?: { model?: unknown; stop_reason?: unknown; content?: unknown; usage?: Record<string, unknown> } }): void {
@@ -267,7 +279,8 @@ function observeClaudeSpeed(file: FileCursor, id: string | undefined, d: { times
   const content = d.message.content;
   const thinking = Array.isArray(content) && content.length === 1 && (content[0] as { type?: unknown } | null)?.type === "thinking";
   let r = file.resp;
-  if (!r || r.id !== id) {
+  if (r && r.id !== id) { finishClaudeSpeed(file); r = undefined; }
+  if (!r) {
     r = file.resp = { id, first: stamp, think: thinking && typeof d.thinkingDurationMs === "number" && d.thinkingDurationMs > 0 ? d.thinkingDurationMs : null,
       last: stamp, out: 0, model, prompt: num(u?.input_tokens) + num(u?.cache_read_input_tokens) + num(u?.cache_creation_input_tokens), stopped: false, failed: false };
   }
@@ -276,11 +289,30 @@ function observeClaudeSpeed(file: FileCursor, id: string | undefined, d: { times
   r.out = Math.max(r.out, num(u?.output_tokens));
   r.failed ||= d.isApiErrorMessage === true || model === "<synthetic>";
   r.stopped ||= !!d.message.stop_reason;
-  if (!r.stopped) return;
-  r.done = true;
-  if (r.failed || r.think === null) return;                           // timed only after its first token (tokdash's rule)
+}
+
+/**
+ * A line kept as its two ends (over SCAN_WHOLE_UP_TO): a block of the open response still moves its window's end; a
+ * line of another message finishes the open one and starts this one untimed (its own first line is not readable whole).
+ */
+function observeClaudeLongSpeed(file: FileCursor, id: string | undefined, ts: string | undefined, usage: Record<string, unknown> | undefined): void {
+  const stamp = typeof ts === "string" ? Date.parse(ts) : NaN;
+  if (!id || !Number.isFinite(stamp)) return;
+  const r = file.resp;
+  if (r && r.id === id) { r.last = Math.max(r.last, stamp); r.out = Math.max(r.out, num(usage?.output_tokens)); return; }
+  finishClaudeSpeed(file);
+  file.resp = { id, first: stamp, think: null, last: stamp, out: num(usage?.output_tokens), model: "", prompt: 0, stopped: false, failed: true };
+}
+
+/** The open response is complete (another message began): a sample when it is measurable, else nothing. */
+function finishClaudeSpeed(file: FileCursor): void {
+  const r = file.resp;
+  file.resp = undefined;
+  // `done`: finished by an older reader (it already counted it, by its method) — never counted twice.
+  if (!r || r.done || !r.stopped || r.failed || r.think === null) return;   // timed only after its first token (tokdash's rule)
   const ms = r.last - (r.first - r.think);
-  if (ms > 0 && r.out > 0) (file.speeds ??= []).push({ t: r.first, model: r.model, prompt: r.prompt, tokens: r.out, ms });
+  if (!(ms > 0) || !(r.out > 0) || (r.out * 1000) / ms > CODEX_MAX_TOK_PER_S) return;
+  (file.speeds ??= []).push({ t: r.first, model: r.model, prompt: r.prompt, tokens: r.out, ms });
 }
 
 /**
@@ -455,9 +487,10 @@ export function claudeLine(line: ScanLine, file: FileCursor): Turn | null {
     const either = (needle: string): boolean => head.includes(needle) || tail.includes(needle);
     if (!either("\"type\":\"assistant\"") || either("\"isSidechain\":true")) return null;
     id = CLAUDE_ID.exec(head)?.[1] ?? lastMatch(tail, CLAUDE_ID_G);
-    if (id && file.ids?.includes(id)) return null;
     const usage = lastUsage(tail) ?? lastUsage(head);
     const ts = lastMatch(tail, TIMESTAMP) ?? lastMatch(head, TIMESTAMP);
+    observeClaudeLongSpeed(file, id, ts, usage);                       // M-2452: a long block line still ends its window
+    if (id && file.ids?.includes(id)) return null;
     turn = claudeTurn(usage, CLAUDE_MODEL.exec(head)?.[1] ?? lastMatch(tail, CLAUDE_MODEL_G), ts);
   }
   if (turn && id) file.ids = [...(file.ids ?? []).slice(-15), id];
