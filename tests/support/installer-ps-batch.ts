@@ -4,18 +4,28 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { afterAll } from "vitest";
+import { afterAll, beforeAll } from "vitest";
 
 export const hasPwsh = spawnSync(process.platform === "win32" ? "where.exe" : "which", ["pwsh"]).status === 0;
+// Leave headroom inside Vitest's unchanged 10 s hook limit. Startup and a case
+// are different operations; cold pwsh must not spend the first case's budget.
+const STARTUP_MS = 8_000;
 export class InstallerPsBatch {
   private child?: ChildProcessWithoutNullStreams;
   private dir?: string;
   private next = 0;
+  private readiness?: Promise<void>;
+  private readyResolve?: () => void;
+  private readyReject?: (e: Error) => void;
+  private startupTimer?: ReturnType<typeof setTimeout>;
   private terminalError?: Error;
   private pending = new Map<number, { resolve: (r: { out: string; status: number }) => void; reject: (e: Error) => void }>();
   private stderr = "";
   private consoleOutput = "";
-  constructor(private templates: Record<string, string>) {
+  constructor(private templates: Record<string, string>, warmInSetup = true) {
+    // Lazy until fixture setup; every consumer (including adapters) gets a warm
+    // worker before its first case, without enlarging either Vitest timeout.
+    if (warmInSetup) beforeAll(async () => { if (hasPwsh) await this.ready(); });
     afterAll(async () => {
       if (this.child) {
         if (this.child.exitCode === null && this.child.signalCode === null) {
@@ -27,14 +37,28 @@ export class InstallerPsBatch {
       if (this.dir) rmSync(this.dir, { recursive: true, force: true });
     });
   }
+  ready(): Promise<void> {
+    if (this.terminalError) return Promise.reject(this.terminalError);
+    if (this.readiness) return this.readiness;
+    this.readiness = new Promise<void>((resolve, reject) => {
+      this.readyResolve = resolve; this.readyReject = reject;
+    });
+    this.startupTimer = setTimeout(() => {
+      this.fail(new Error("pwsh startup readiness exceeded 8 s"));
+      this.child?.kill();
+    }, STARTUP_MS);
+    try { this.start(); } catch (e) { this.fail(e instanceof Error ? e : new Error(String(e))); }
+    return this.readiness;
+  }
   private start() {
     const started = performance.now();
+    let bootstrapMs: number | undefined;
     this.dir = mkdtempSync(join(tmpdir(), "agend-ps-batch-"));
     const templates = join(this.dir, "templates.json"), driver = join(this.dir, "driver.ps1");
     writeFileSync(templates, JSON.stringify(this.templates));
     writeFileSync(driver, String.raw`
-[Console]::WriteLine('__AGEND_START__')
-$bootClock=[Diagnostics.Stopwatch]::StartNew()
+[Console]::WriteLine('__AGEND_BOOT__')
+$compileClock = [Diagnostics.Stopwatch]::StartNew()
 $ErrorActionPreference = 'Stop'
 class BatchExit : System.Exception { [int]$Code; BatchExit([int]$code) : base('batch exit') { $this.Code = $code } }
 # Parse only the already-sliced helper template, once. Exit becomes a typed unwind so a
@@ -49,10 +73,9 @@ function Compile-Batch([string]$text) {
   }
   return [scriptblock]::Create($text)
 }
-[Console]::WriteLine('__AGEND_PHASE__definitions')
 $templates=@{}
 (Get-Content -Raw -LiteralPath $args[0] | ConvertFrom-Json -AsHashtable).GetEnumerator() | ForEach-Object { $templates[$_.Key]=Compile-Batch $_.Value }
-[Console]::WriteLine(('__AGEND_READY__'+$bootClock.ElapsedMilliseconds))
+[Console]::WriteLine(('__AGEND_READY__'+$compileClock.ElapsedMilliseconds))
 while($null -ne ($line=[Console]::ReadLine())) {
   $request=$line | ConvertFrom-Json -AsHashtable
   $saved=@{}; Get-ChildItem Env: | ForEach-Object { $saved[$_.Name]=$_.Value }
@@ -88,7 +111,14 @@ while($null -ne ($line=[Console]::ReadLine())) {
     this.child.stderr.on("data", (b: Buffer) => { this.stderr += b; });
     createInterface({ input: this.child.stdout }).on("line", line => {
       try {
-        if (line.startsWith("__AGEND_START__") || line.startsWith("__AGEND_PHASE__") || line.startsWith("__AGEND_READY__")) { process.stderr.write(`[pwsh-startup] ${JSON.stringify({phase:line,elapsedMs:performance.now()-started,bytes:Object.values(this.templates).reduce((n,s)=>n+s.length,0)})}\n`); return; }
+        if (line === "__AGEND_BOOT__" && this.readyResolve) { bootstrapMs = performance.now() - started; return; }
+        const ready = /^__AGEND_READY__(\d+)$/.exec(line);
+        if (ready && this.readyResolve) {
+          clearTimeout(this.startupTimer); this.startupTimer = undefined;
+          const resolve = this.readyResolve; this.readyResolve = undefined; this.readyReject = undefined;
+          if (process.env.CI) process.stderr.write(`[pwsh-startup] ${JSON.stringify({ bootstrapMs: Math.round(bootstrapMs ?? 0), compileMs: Number(ready[1]), readyMs: Math.round(performance.now() - started), templateBytes: Object.values(this.templates).reduce((n, s) => n + Buffer.byteLength(s), 0) })}\n`);
+          resolve(); return;
+        }
         const marker = line.indexOf("__AGEND_BATCH__");
         if (marker < 0) { this.consoleOutput += line + "\n"; return; }
         this.consoleOutput += line.slice(0, marker);
@@ -104,12 +134,15 @@ while($null -ne ($line=[Console]::ReadLine())) {
   }
   private fail(e: Error) {
     this.terminalError ??= e;
+    clearTimeout(this.startupTimer); this.startupTimer = undefined;
+    this.readyReject?.(this.terminalError); this.readyResolve = undefined; this.readyReject = undefined;
     for (const p of this.pending.values()) p.reject(this.terminalError);
     this.pending.clear();
   }
   async run(template: string, body: string, options: { env?: Record<string, string>; input?: string; status?: number } = {}) {
     if (this.terminalError) throw this.terminalError;
-    if (!this.child) this.start();
+    await this.ready();
+    if (this.terminalError) throw this.terminalError;
     const id = ++this.next;
     const result = await new Promise<{ out: string; status: number }>((resolve, reject) => {
       const timeout = setTimeout(() => {
