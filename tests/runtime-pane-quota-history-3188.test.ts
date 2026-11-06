@@ -68,3 +68,29 @@ it.each(["count", "bytes"])("a %s overflow provides no native metadata", async k
   writeFileSync(f.path, f.line(f.meta) + f.line(error).repeat(kind === "count" ? 33 : 1));
   expect(await prepareNativePaneQuotaHistory(f.launch, f.reader)).toBeNull();
 });
+
+it("retains shared read capacity past the logical deadline through physical read and cleanup", async () => {
+  vi.useFakeTimers(); const f = fixture();
+  let settleRead!: (value: null) => void, settleClose!: () => void;
+  const close = vi.fn(() => new Promise<void>(resolve => { settleClose = resolve; }));
+  const first = vi.fn(() => ({ quotaReplayHistory: () => new Promise<null>(resolve => { settleRead = resolve; }), close }));
+  const next = vi.fn(() => ({ quotaReplayHistory: async () => null, close: async () => {} }));
+  const pending = prepareNativePaneQuotaHistory(f.launch, first);
+  try {
+    await vi.advanceTimersByTimeAsync(1000); expect(await pending).toBeNull();
+    expect(await prepareNativePaneQuotaHistory(f.launch, next)).toBeNull(); expect(next).not.toHaveBeenCalled();
+    settleRead(null); await vi.advanceTimersByTimeAsync(0); expect(close).toHaveBeenCalledOnce();
+    expect(await prepareNativePaneQuotaHistory(f.launch, next)).toBeNull(); expect(next).not.toHaveBeenCalled();
+    settleClose(); await vi.advanceTimersByTimeAsync(0);
+    expect(await prepareNativePaneQuotaHistory(f.launch, next)).toBeNull(); expect(next).toHaveBeenCalledOnce();
+  } finally { settleRead(null); settleClose?.(); await vi.advanceTimersByTimeAsync(0); }
+});
+
+it("a constructor or read failure retires optional proof without stranding shared capacity", async () => {
+  const f = fixture();
+  expect(await prepareNativePaneQuotaHistory(f.launch, () => { throw Error("constructor unavailable"); })).toBeNull();
+  const close = vi.fn(async () => {});
+  expect(await prepareNativePaneQuotaHistory(f.launch, () => ({ quotaReplayHistory: async () => { throw Error("read unavailable"); }, close }))).toBeNull();
+  expect(close).toHaveBeenCalledOnce();
+  expect((await prepareNativePaneQuotaHistory(f.launch, f.reader))?.messages).toEqual([MESSAGE]);
+});
