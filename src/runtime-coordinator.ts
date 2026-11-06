@@ -9,6 +9,7 @@ import { readBoundedWebBody } from "./web-body.js";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { validateNativeTask, type NativeTaskInput } from "./windows-cli-worker.js";
 import { inventoryProbed, type WindowsCliProbe, type WindowsCliTask } from "./windows-cli.js";
+import type { NativeCliRow } from "./windows-cli-worker.js";
 import { isNativeProviderId } from "./windows-cli-providers.js";
 import { assertCredentialProfileCli, assertCredentialProfileName, parseCredentialProfileReport } from "./runtime-credential-profiles.js";
 import { parseAccountIdentity } from "./claude-auth-status.js";
@@ -40,9 +41,18 @@ function stable(value: unknown, depth = 0): string {
   if (record(value)) return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key], depth + 1)}`).join(",")}}`;
   return JSON.stringify(value) ?? "null";
 }
+/** The CLI rows' `supports` flags AgEnD knows; any other key a Runtime adds is not kept. */
+const SUPPORT_KEYS = ["execution", "resume", "model", "mcp"] as const;
+const MODEL_SOURCES = ["cli-cache", "official-catalog", "cli-list", "unavailable"] as const;
+/**
+ * A Runtime's inventory, copied field by field from an allowlist: a field AgEnD does not know is not kept (so it can never be stored or served back
+ * by /ui/runtimes), every text field has a length limit, and the account identity and the credential profile report are accepted in their
+ * closed, masked form only. A refusal names the field and the reason, never the rejected value: an unmasked e-mail must not reach a log, a close
+ * reason or an error message from here.
+ */
 function inventory(value: unknown): WindowsCliProbe {
   if (!record(value) || typeof value.home !== "string" || value.home.length > 1024 || !Array.isArray(value.clis) || value.clis.length > 16) throw new RuntimeProtocolError("Invalid runtime inventory");
-  const seen = new Set<string>();
+  const seen = new Set<string>(), clis: NativeCliRow[] = [];
   for (const row of value.clis) {
     if (!record(row) || !isNativeProviderId(row.id) || seen.has(row.id) || !record(row.supports)
       || typeof row.runnable !== "boolean" || typeof row.readOnlySupport !== "boolean"
@@ -50,23 +60,34 @@ function inventory(value: unknown): WindowsCliProbe {
       || !(row.path === null || text(row.path, 2048)) || !(row.version === null || text(row.version, 256))
       || typeof row.permissionNote !== "string" || row.permissionNote.length > 2048
       || !Array.isArray(row.models) || row.models.length > 256) throw new RuntimeProtocolError("Invalid runtime CLI inventory");
-    for (const model of row.models) if (!record(model) || !text(model.id, 256) || model.name !== undefined && !text(model.name, 256)
-      || model.description !== undefined && (typeof model.description !== "string" || model.description.length > 2048)) throw new RuntimeProtocolError("Invalid runtime model inventory");
+    const models = row.models.map(model => {
+      if (!record(model) || !text(model.id, 256) || model.name !== undefined && !text(model.name, 256)
+        || model.description !== undefined && (typeof model.description !== "string" || model.description.length > 2048)) throw new RuntimeProtocolError("Invalid runtime model inventory");
+      return { id: model.id as string, ...(model.name !== undefined ? { name: model.name as string } : {}), ...(model.description !== undefined ? { description: model.description as string } : {}) };
+    });
     if (Object.values(row.supports).some(v => typeof v !== "boolean")) throw new RuntimeProtocolError("Invalid runtime capabilities");
-    seen.add(row.id);
+    if (row.reason !== undefined && (typeof row.reason !== "string" || row.reason.length > 1024)) throw new RuntimeProtocolError("Invalid runtime CLI inventory");
+    const supports = Object.fromEntries(SUPPORT_KEYS.filter(key => Object.hasOwn(row.supports as object, key)).map(key => [key, (row.supports as Record<string, boolean>)[key]]));
+    const entry: NativeCliRow = { id: row.id, path: row.path as string | null, version: row.version as string | null, authenticated: row.authenticated as boolean | null, runnable: row.runnable, supports: supports as NativeCliRow["supports"],
+      readOnlySupport: row.readOnlySupport, permissionNote: row.permissionNote, models,
+      ...(row.reason !== undefined ? { reason: row.reason as string } : {}),
+      ...((MODEL_SOURCES as readonly unknown[]).includes(row.modelsSource) ? { modelsSource: row.modelsSource as NativeCliRow["modelsSource"] } : {}) };
+    seen.add(row.id); clis.push(entry);
   }
   if (Buffer.byteLength(JSON.stringify(value)) > RUNTIME_MAX_FRAME_BYTES / 2) throw new RuntimeProtocolError("Runtime inventory is too large");
-  const probe = structuredClone(value) as unknown as WindowsCliProbe;
-  // Account identity (a masked e-mail and a plan) is accepted in its closed form only. A refusal names the field and the reason, never the
-  // rejected value: an unmasked e-mail must not reach a log, a close reason or an error message from here.
+  if (value.probedAt !== undefined && value.probedAt !== null && (typeof value.probedAt !== "number" || !Number.isFinite(value.probedAt))) throw new RuntimeProtocolError("Invalid runtime inventory");
+  const probe: WindowsCliProbe = { clis, home: value.home, ...(value.probedAt !== undefined ? { probedAt: value.probedAt as number | null } : {} as { probedAt: null }),
+    ...(typeof value.hostname === "string" && value.hostname.trim() && value.hostname.length <= 255 && !/[\x00-\x1f\x7f]/.test(value.hostname) ? { hostname: value.hostname.trim() } : {}) };
   const field = (error: unknown): string => /^Invalid (?:credential profile report|account identity): [A-Za-z ,.]{1,48}$/.test(String((error as Error)?.message)) ? String((error as Error).message).replace(/^Invalid (?:credential profile report|account identity): /, "") : "invalid";
   if (value.credentialProfiles !== undefined) {
     try { probe.credentialProfiles = parseCredentialProfileReport(value.credentialProfiles); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime credential profiles (${field(error)})`); }
   }
+  const identities = new Map((value.clis as Array<Record<string, unknown>>).map(row => [row.id as string, row.identity]));
   for (const row of probe.clis) {
-    if (row.identity === undefined) continue;
+    const identity = identities.get(row.id);
+    if (identity === undefined) continue;
     if (row.id !== "claude-code" || row.authenticated !== true) throw new RuntimeProtocolError("Invalid runtime CLI identity (only a signed-in Claude Code has one)");
-    try { row.identity = parseAccountIdentity(row.identity); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime CLI identity (${field(error)})`); }
+    try { row.identity = parseAccountIdentity(identity); } catch (error) { throw new RuntimeProtocolError(`Invalid runtime CLI identity (${field(error)})`); }
   }
   return probe;
 }
