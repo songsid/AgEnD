@@ -39,6 +39,18 @@ export function writeNativePaneExit(owner: NativePaneOwner, launch: RuntimePaneL
   writePaneState(join(directory, `${owner.launchId}.json`), JSON.stringify({ version: 1, launchId: owner.launchId,
     paneId: launch.paneId, agentId: launch.agentId, pid, code }));
 }
+/**
+ * Where the pane ledger lives, in ONE place. The production Runtime keeps it in the pane host's own state folder (`<runtime>\pane-host\state`,
+ * the host is a separate process); an in-process host (tests) keeps it in `<runtime>\panes`. Anything that needs to know which panes exist
+ * (for instance, which credential profile a running terminal uses) reads it from `paneLedgerFiles`, never from a path of its own.
+ */
+export const PANE_HOST_DIRECTORY = "pane-host";
+export const PANE_HOST_STATE_DIRECTORY = "state";
+export const PANE_IN_PROCESS_DIRECTORY = "panes";
+export const PANE_LEDGER_FILE = "panes.json";
+export function paneLedgerFiles(runtimeDirectory: string): string[] {
+  return [join(runtimeDirectory, PANE_HOST_DIRECTORY, PANE_HOST_STATE_DIRECTORY, PANE_LEDGER_FILE), join(runtimeDirectory, PANE_IN_PROCESS_DIRECTORY, PANE_LEDGER_FILE)];
+}
 export class RuntimePaneStore {
   private readonly file: string;
   private ledger: Ledger;
@@ -46,7 +58,7 @@ export class RuntimePaneStore {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const entry = lstatSync(directory);
     if (!entry.isDirectory() || entry.isSymbolicLink()) throw Error("Pane state must be a private real directory");
-    this.file = join(directory, "panes.json");
+    this.file = join(directory, PANE_LEDGER_FILE);
     this.ledger = { version: 1, panes: {} };
     try {
       const stat = lstatSync(this.file);

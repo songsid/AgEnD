@@ -13,6 +13,7 @@ import { protectPaneDirectory, readPaneHostDescriptor, type PaneHostDescriptor }
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import type {} from "./runtime-pane-service.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
+import { PANE_HOST_DIRECTORY } from "./runtime-pane-store.js";
 export interface PaneLinkOptions {
   directory: string;
   server: string;
@@ -39,7 +40,7 @@ export class RuntimePaneLink {
   private constructor(private socket: WebSocket, readonly hostBootId: string, private options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">) {}
   static async open(options: PaneLinkOptions): Promise<RuntimePaneLink> {
     if (process.platform !== "win32") throw Error("Persistent pane host requires Windows Node");
-    const directory = join(options.directory, "pane-host");
+    const directory = join(options.directory, PANE_HOST_DIRECTORY);
     await protectPaneDirectory(directory);
     const scope = runtimeJobDigest({ server: options.server, machineId: options.machineId });
     let descriptor = readPaneHostDescriptor(directory, scope);

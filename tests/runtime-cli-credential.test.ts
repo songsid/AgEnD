@@ -150,3 +150,24 @@ describe("profile default while the Runtime is running", () => {
     try { await expect(f.run(["disconnect"])).rejects.toThrow(/Another runtime already uses this profile/); } finally { unlock(); }
   });
 });
+
+
+describe("profile default against a removal that AgEnD carries out at the same time", () => {
+  it("a profile that is taken away while its sign-in is being probed is not made the default", async () => {
+    const f = setup(); const directory = ensureCredentialProfile(f.root, "claude-code", "work");
+    const { renameSync } = await import("node:fs");
+    await expect(f.runWithStatus(["profile", "default", "work"], { probeStatus: async () => { renameSync(directory, `${directory}.gone`); return { loggedIn: true }; } })).rejects.toThrow(/does not exist/);
+    expect(new RuntimeClientStore(f.runtimeHome).credentialDefault()).toBeUndefined();
+  });
+  it("a profile that is taken away right after the default was written: the default goes back to what it was, and the command says why", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "other"); const directory = ensureCredentialProfile(f.root, "claude-code", "work");
+    await f.run(["profile", "default", "other"]);
+    const { renameSync } = await import("node:fs"); const original = RuntimeClientStore.prototype.setCredentialDefault; let moved = false;
+    vi.spyOn(RuntimeClientStore.prototype, "setCredentialDefault").mockImplementation(function (this: RuntimeClientStore, name: string | undefined) { original.call(this, name); if (name === "work" && !moved) { moved = true; renameSync(directory, `${directory}.gone`); } });
+    await expect(f.run(["profile", "default", "work"])).rejects.toThrow(/being removed or is gone, so it was not made the default/);
+    expect(new RuntimeClientStore(f.runtimeHome).credentialDefault()).toBe("other");
+  });
+  it("with nothing in the way the default is set as before", async () => {
+    const f = setup(); ensureCredentialProfile(f.root, "claude-code", "work"); await f.run(["profile", "default", "work"]); expect(new RuntimeClientStore(f.runtimeHome).credentialDefault()).toBe("work");
+  });
+});
