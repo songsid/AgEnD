@@ -1,12 +1,18 @@
 import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { hostname, tmpdir, userInfo } from "node:os";
+import { join, resolve, sep } from "node:path";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { RUNTIME_MAX_ARCHIVE_BYTES, type RuntimeBundle } from "../src/runtime-bundle.js";
+import { RUNTIME_MAX_ARCHIVE_BYTES, createRuntimeBundle, type RuntimeBundle } from "../src/runtime-bundle.js";
+import { runtimeBundleFixture, unzipStored } from "./support/runtime-bundle-fixture.js";
 import { RUNTIME_BUNDLE_PATH, RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_INSTALL_SHA256_TOKEN, RUNTIME_INSTALL_VERSION_TOKEN,
   RuntimeInstallService, renderRuntimeInstallScript } from "../src/runtime-install.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { createPublicWebGateway, isPublicWebRoute } from "../src/public-web-gateway.js";
+import { EventEmitter } from "node:events";
 import { WebSessionStore } from "../src/web-session.js";
 
 const TEMPLATE = `# fixture installer\n$version = '${RUNTIME_INSTALL_VERSION_TOKEN}'\n$sha256 = '${RUNTIME_INSTALL_SHA256_TOKEN}'\n`;
@@ -35,7 +41,8 @@ let clock = 1_000_000;
 const make = (overrides: ConstructorParameters<typeof RuntimeInstallService>[0] = {}) => new RuntimeInstallService({ bundle: () => fixtureBundle(), template: () => TEMPLATE, now: () => clock, ...overrides });
 
 beforeEach(() => { vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"); clock = 1_000_000; });
-afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+const cleanups: Array<() => void> = [];
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0)) cleanup(); });
 
 describe("runtime installer routes", () => {
   it("answers 404 for both routes, whatever the method, and builds nothing, while remote runtimes are off", () => {
@@ -124,24 +131,128 @@ describe("runtime installer routes", () => {
     const { res } = get(make({ bundle: () => fixtureBundle("2.3.5", RUNTIME_MAX_ARCHIVE_BYTES + 1) }), RUNTIME_BUNDLE_PATH);
     expect(res.status).toBe(503); expect(res.bytes.length).toBeLessThan(1024);
   });
-  it("rate limits each route per peer, and everything in total, then recovers", () => {
+  it("allows a small burst per client address, then holds it to the refill rate; each route has its own allowance", () => {
     const service = make();
-    for (let i = 0; i < 12; i++) expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200);
-    const limited = get(service, RUNTIME_BUNDLE_PATH).res; expect(limited.status).toBe(429); expect(limited.sentHeaders["Retry-After"]).toBe("60");
+    for (let i = 0; i < 4; i++) expect(get(service, RUNTIME_BUNDLE_PATH).res.status, `burst ${i}`).toBe(200);
+    const limited = get(service, RUNTIME_BUNDLE_PATH).res; expect(limited.status).toBe(429); expect(limited.sentHeaders["Retry-After"]).toBe("30");
+    // another address, and the other route for the same address, are not held
     expect(get(service, RUNTIME_BUNDLE_PATH, { remote: "::1" }).res.status).toBe(200);
-    clock += 60_001; expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200);
-    const total = make();
-    let refused = 0;
-    for (let i = 0; i < 130; i++) if (get(total, i % 2 ? RUNTIME_BUNDLE_PATH : RUNTIME_INSTALL_SCRIPT_PATH, { remote: `::ffff:127.0.0.1`, encrypted: true, headers: {} }).res.status === 429) refused++;
-    expect(refused).toBeGreaterThan(0);
+    expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(200);
+    // 12 a minute is one every five seconds: not yet, then one, then held again
+    clock += 4_000; expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
+    clock += 1_001; expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200); expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
+    // a long pause restores the whole burst, and no more than the burst
+    clock += 120_000; for (let i = 0; i < 4; i++) expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200); expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(429);
   });
-  it("charges the total first, so a flood of different peers cannot grow the table past one window's worth", () => {
+  it("lets a person run the installer a few times in a row: the script and the archive twice over", () => {
+    const service = make();
+    for (let i = 0; i < 2; i++) { expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.status).toBe(200); expect(get(service, RUNTIME_BUNDLE_PATH).res.status).toBe(200); }
+  });
+  it("bounds everything together, so a flood from many addresses (or one proxy) is held, and the table stays small", () => {
     const service = make(); let served = 0;
     for (let i = 0; i < 400; i++) if (get(service, RUNTIME_INSTALL_SCRIPT_PATH, { remote: `203.0.113.${i % 250}`, encrypted: true }).res.status === 200) served++;
-    expect(served).toBe(120);
-    expect((service as unknown as { limits: Map<string, unknown> }).limits.size).toBeLessThanOrEqual(121);
-    clock += 61_000; expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH, { remote: "203.0.113.1", encrypted: true }).res.status).toBe(200);
-    expect((service as unknown as { limits: Map<string, unknown> }).limits.size).toBe(2);
+    expect(served).toBe(60);
+    const size = () => (service as unknown as { buckets: Map<string, unknown> }).buckets.size;
+    expect(size()).toBeLessThanOrEqual(61);
+    clock += 1_000; expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH, { remote: "203.0.113.1", encrypted: true }).res.status).toBe(200);   // 4 a second refill
+    clock += 600_000; get(service, RUNTIME_INSTALL_SCRIPT_PATH, { remote: "203.0.113.2", encrypted: true });
+    expect(size()).toBeLessThanOrEqual(3);   // everything that refilled to full was forgotten
+  });
+  it("reports the SHA-256 of the exact script bytes it sends, and sends those same bytes every time, even from a template with CRLF line ends", () => {
+    for (const template of [TEMPLATE, TEMPLATE.replace(/\n/g, "\r\n")]) {
+      const service = make({ template: () => template }), bundle = fixtureBundle(), info = service.installer();
+      const sent = get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.bytes;
+      expect(info.scriptSha256).toBe(createHash("sha256").update(sent).digest("hex"));
+      expect(info).toEqual({ version: bundle.version, scriptSha256: info.scriptSha256, scriptBytes: sent.length, bundleSha256: bundle.sha256 });
+      // not rewritten on the way out: the bytes are the rendered template, line ends included
+      expect(sent.equals(Buffer.from(renderRuntimeInstallScript(template, bundle), "utf8"))).toBe(true);
+      expect(sent.includes(0x0d)).toBe(template.includes("\r"));
+      for (let i = 0; i < 3; i++) { clock += 10_000; expect(get(service, RUNTIME_INSTALL_SCRIPT_PATH).res.bytes.equals(sent)).toBe(true); expect(service.installer().scriptSha256).toBe(info.scriptSha256); }
+      expect(Number(get(service, RUNTIME_INSTALL_SCRIPT_PATH, { method: "HEAD" }).res.sentHeaders["Content-Length"])).toBe(sent.length);
+    }
+  });
+  it("reports a different script hash for a different server version, and cannot report one when the installer is unavailable", () => {
+    expect(make({ bundle: () => fixtureBundle("2.3.5") }).installer().scriptSha256).not.toBe(make({ bundle: () => fixtureBundle("2.3.6") }).installer().scriptSha256);
+    expect(() => make({ bundle: () => { throw new Error("missing"); } }).installer()).toThrow();
+    expect(() => make({ template: () => "no placeholders" }).installer()).toThrow();
+  });
+  it("sends Cache-Control and an ETag keyed by the server version for the archive, answers a matching If-None-Match with 304 and no body, and never lets the script be cached", () => {
+    const service = make(), bundle = fixtureBundle(), first = get(service, RUNTIME_BUNDLE_PATH).res, etag = `"${bundle.version}-${bundle.sha256}"`;
+    expect(first.sentHeaders.ETag).toBe(etag); expect(first.sentHeaders["Cache-Control"]).toBe("no-cache");
+    for (const header of [etag, `W/"other", ${etag}`, `"x" , ${etag}`]) {
+      const again = get(service, RUNTIME_BUNDLE_PATH, { headers: { "if-none-match": header } }).res;
+      expect(again.status, header).toBe(304); expect(again.bytes.length).toBe(0); expect(again.sentHeaders.ETag).toBe(etag);
+    }
+    for (const header of [`"other"`, `W/${etag}`, "*"]) { clock += 10_000; expect(get(service, RUNTIME_BUNDLE_PATH, { headers: { "if-none-match": header } }).res.status, header).toBe(200); }
+    expect(make({ bundle: () => fixtureBundle("2.3.6") }).installer().version).toBe("2.3.6");
+    expect(get(make({ bundle: () => fixtureBundle("2.3.6") }), RUNTIME_BUNDLE_PATH).res.sentHeaders.ETag).toBe(`"2.3.6-${fixtureBundle("2.3.6").sha256}"`);
+    const script = get(make(), RUNTIME_INSTALL_SCRIPT_PATH).res;
+    expect(script.sentHeaders["Cache-Control"]).toBe("no-store"); expect(script.sentHeaders.ETag).toBeUndefined();
+    // a conditional request still counts against the limit
+    const limited = make(); for (let i = 0; i < 4; i++) get(limited, RUNTIME_BUNDLE_PATH, { headers: { "if-none-match": etag } });
+    expect(get(limited, RUNTIME_BUNDLE_PATH, { headers: { "if-none-match": etag } }).res.status).toBe(429);
+  });
+});
+
+describe("the public gateway link never carries the installer", () => {
+  it("does not list either route among the public routes, for any method", () => {
+    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH, "/runtime/v1/pair", "/runtime/v1/claim", "/ui/runtimes/installer"])
+      for (const method of ["GET", "HEAD", "POST", "PUT", "DELETE"]) expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(false);
+  });
+  it("refuses both routes at the gateway with a 404 before anything is dispatched, while remote runtimes are on", () => {
+    let callback!: (req: IncomingMessage, res: ServerResponse) => void;
+    const server = Object.assign(new EventEmitter(), { close: vi.fn(), closeAllConnections: vi.fn(), setTimeout: vi.fn() }), dispatch = vi.fn();
+    const gateway = createPublicWebGateway({ exposureId: "e".repeat(32), isCurrent: () => true, isOpen: () => true, dispatch,
+      create: ((handler: typeof callback) => { callback = handler; return server; }) as never });
+    gateway.setHost("gateway-fixture.trycloudflare.com");
+    for (const path of [RUNTIME_INSTALL_SCRIPT_PATH, RUNTIME_BUNDLE_PATH]) for (const method of ["GET", "HEAD"]) {
+      const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "gateway-fixture.trycloudflare.com" }, socket: { remoteAddress: "198.51.100.7", encrypted: true } });
+      let status = 0; const res = { headersSent: false, destroyed: false, writableEnded: false, setHeader: vi.fn(), writeHead: (code: number) => { status = code; }, end: vi.fn(), destroy: vi.fn() };
+      callback(req as unknown as IncomingMessage, res as unknown as ServerResponse);
+      expect(status, `${method} ${path}`).toBe(404);
+    }
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("what is served carries no token, pairing code or host-specific address", () => {
+  const template = readFileSync("templates/runtime-install/install.ps1", "utf8");
+  it("the script, rendered from the real template, holds only its own pins and fixed, public references", () => {
+    const bundle = fixtureBundle(), script = renderRuntimeInstallScript(template, bundle);
+    // the only 64-hex strings are the bundle's SHA-256 (twice at most: the pin), never a token
+    expect([...new Set(script.match(/[a-f0-9]{32,}/gi) ?? [])]).toEqual([bundle.sha256]);
+    // no pairing code, no bearer or authorization material, no secret-looking word used as a value
+    expect(script).not.toMatch(/\b[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}\b/);
+    // (words are checked in the code, not in comments that explain what the script refuses to accept)
+    const code = script.split("\n").filter(line => !/^\s*#/.test(line) && !/^\s*\/\//.test(line)).join("\n");
+    expect(code).not.toMatch(/\bBearer\b|\bAuthorization\b|X-Agend-Token|web\.token|claimSecret|password|secret|token/i);
+    expect(code).not.toMatch(/\bpair(ing)?\s*(code)?\s*=|\/runtime\/v1\/(pair|claim|rotate|connect)/i);
+    // no IP address, no host name, no tailnet name: the only URLs are the placeholder example and nodejs.org
+    // (the loopback names the script accepts for http are the one fixed exception: they name this computer, not a host)
+    const named = script.replace(/'(localhost|127\.0\.0\.1|\[::1\]|::1)'/g, "'loopback'");
+    expect(named).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/);
+    expect(named).not.toMatch(/\.ts\.net|trycloudflare|localhost|127\.0\.0\.1/i);
+    const hosts = [...script.matchAll(/https?:\/\/([^\s'"\/)]+)/g)].map(match => match[1]);
+    expect(hosts.every(host => ["your-agend-host", "nodejs.org"].includes(host))).toBe(true);
+    // rendering leaves no host or user of this machine in it either
+    expect(script).not.toContain(hostname()); expect(script).not.toContain(userInfo().username);
+  });
+  it("the generic archive the route sends has no server address, no token and no pairing code in what AgEnD wrote", () => {
+    // what the route serves is createRuntimeBundle()'s output without a server origin; its own files are scanned, not third-party licences
+    const token = "T".repeat(48), home = mkdtempSync(join(tmpdir(), "agend-served-")); cleanups.push(() => { if (!resolve(home).startsWith(resolve(tmpdir()) + sep)) throw Error("Unsafe cleanup"); rmSync(home, { recursive: true, force: true }); }); writeFileSync(join(home, "web.token"), token);
+    vi.stubEnv("AGEND_HOME", home);
+    const f = runtimeBundleFixture(); cleanups.push(f.cleanup);
+    const bundle = createRuntimeBundle(f), served = get(make({ bundle: () => bundle }), RUNTIME_BUNDLE_PATH).res.bytes;
+    expect(served.equals(bundle.bytes)).toBe(true);
+    expect(served.includes(Buffer.from(token))).toBe(false); expect(served.includes(Buffer.from(hostname()))).toBe(false);
+    const files = unzipStored(served);
+    expect(files.has("agend-runtime/agend-server.json")).toBe(false);
+    for (const name of ["README.txt", "connect-agend.bat", "agend-runtime.cmd", "package.json", "bundle-manifest.json"]) {
+      const text = files.get(`agend-runtime/${name}`)!.toString();
+      expect(text, name).not.toMatch(/\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b/); expect(text, name).not.toMatch(/\.ts\.net|trycloudflare|localhost|127\.0\.0\.1/i);
+      expect(text, name).not.toMatch(/\b[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}\b/); expect(text, name).not.toMatch(/Bearer|X-Agend-Token|web\.token/);
+      expect([...text.matchAll(/https?:\/\/([^\s'"\/)]+)/g)].every(match => ["your-agend-host", "example.com"].includes(match[1])), name).toBe(true);
+    }
   });
 });
 

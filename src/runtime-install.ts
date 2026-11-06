@@ -3,14 +3,18 @@
  *   GET /runtime/install.ps1             the installer script, stamped with this server's runtime version and bundle SHA-256
  *   GET /runtime/v1/bundle/windows.zip   the same createRuntimeBundle() archive Settings offers as a download
  * Both are static for a given server version: the bundle is built once and kept, and the script is that bundle's
- * version and SHA-256 stamped into a fixed template. Nothing in the response depends on the request (no Host header,
- * query, cookie or caller), and nothing in it is a credential, pairing code, profile, user data or server address:
- * the page's command hands the server address to the script.
+ * version and SHA-256 stamped into a fixed template. The script is built once as bytes and those exact bytes are what every
+ * request receives (no newline rewriting, no compression, no per-request text), so the SHA-256 that Settings shows for it is
+ * the hash of what is sent: the copied command downloads the script, checks that hash and only then runs it, so the check
+ * does not depend on the TLS trust decision. The script in turn pins the bundle's hash. Nothing in a response depends on
+ * the request (no Host header, query, cookie or caller), and nothing in it is a credential, pairing code, profile, user data
+ * or server address: the page's command hands the server address to the script.
  * They are served only while runtimes.remote_runtime is on (otherwise both answer 404), never through a public gateway link
- * (404 there too), only over loopback or TLS (the installer must not travel over plain LAN HTTP), rate limited, and never larger than the bundle's own cap.
- * The script pins the bundle's SHA-256 inside itself, not from the response that delivers the archive.
+ * (404 there too), only over loopback or TLS (the installer must not travel over plain LAN HTTP), rate limited per client
+ * address with a small burst, and never larger than the bundle's own cap.
  * Pairing stays exactly as it was: nothing here creates, accepts or approves a pairing.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,8 +29,15 @@ export const RUNTIME_BUNDLE_PATH = "/runtime/v1/bundle/windows.zip";
 export const RUNTIME_INSTALL_VERSION_TOKEN = "@@AGEND_RUNTIME_VERSION@@";
 export const RUNTIME_INSTALL_SHA256_TOKEN = "@@AGEND_RUNTIME_SHA256@@";
 export const RUNTIME_INSTALL_MAX_SCRIPT_BYTES = 64 * 1024;
-/** Per peer address and per minute: a person re-running an installer, not a crawler. A reverse proxy shares one address, so the total below also bounds it. */
-const SCRIPT_PER_PEER = 30, BUNDLE_PER_PEER = 12, TOTAL_PER_MINUTE = 120, WINDOW_MS = 60_000;
+/**
+ * Token buckets: a person re-running an installer, not a crawler. Each client address may burst a few requests, then is held to the
+ * refill rate; everything together is bounded too, because a reverse proxy makes every client look like one address.
+ */
+const LIMITS = {
+  script: { burst: 10, perMinute: 30 },
+  bundle: { burst: 4, perMinute: 12 },
+  total: { burst: 60, perMinute: 240 },
+} as const;
 const VERSION = /^\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?$/, SHA256 = /^[a-f0-9]{64}$/;
 
 function defaultTemplate(): string {
@@ -60,29 +71,44 @@ export interface RuntimeInstallOptions {
   now?: () => number;
 }
 /** What is served for the life of this server process: the generic bundle and the script that pins its hash. */
-interface RuntimeInstallFiles { bundle: RuntimeBundle; script: Buffer }
+interface RuntimeInstallFiles { bundle: RuntimeBundle; script: Buffer; scriptSha256: string; etag: string }
+/** What the dashboard shows an administrator so the copied command can pin the script. */
+export interface RuntimeInstallerInfo { version: string; scriptSha256: string; scriptBytes: number; bundleSha256: string }
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 export class RuntimeInstallService {
-  private readonly limits = new Map<string, { count: number; until: number }>();
+  private readonly buckets = new Map<string, { tokens: number; at: number; burst: number; perMs: number }>();
   private files: RuntimeInstallFiles | undefined;
   constructor(private readonly options: RuntimeInstallOptions = {}) {}
-  /** The total is charged first, so at most TOTAL_PER_MINUTE keys are ever created per window and expired ones are dropped here: the table stays small without a cap. */
-  private charge(key: string, limit: number): boolean {
+  /**
+   * The total is taken first, so a new per-address bucket exists only for a request the total admitted, and a bucket that has
+   * refilled to full is forgotten: the table stays small without a cap.
+   */
+  private take(key: string, limit: { burst: number; perMinute: number }): boolean {
     const now = (this.options.now ?? Date.now)();
-    for (const [id, row] of this.limits) if (row.until <= now) this.limits.delete(id);
-    const row = this.limits.get(key) ?? { count: 0, until: now + WINDOW_MS };
-    this.limits.set(key, row);
-    return ++row.count <= limit;
+    for (const [id, row] of this.buckets) if (row.tokens + (now - row.at) * row.perMs >= row.burst) this.buckets.delete(id);
+    const perMs = limit.perMinute / 60_000, row = this.buckets.get(key) ?? { tokens: limit.burst, at: now, burst: limit.burst, perMs };
+    row.tokens = Math.min(row.burst, row.tokens + Math.max(0, now - row.at) * row.perMs); row.at = now;
+    this.buckets.set(key, row);
+    if (row.tokens < 1) return false;
+    row.tokens -= 1;
+    return true;
   }
   /**
    * Built on first use and kept: a server version has one generic bundle, so the hash the script pins stays the hash of the
-   * archive every later request receives. A failure is not remembered; the next request tries again (under the rate limit).
+   * archive every later request receives, and one script, so the hash Settings shows is the hash of every script sent. A
+   * failure is not remembered; the next request tries again (under the rate limit).
    */
   private build(): RuntimeInstallFiles {
     if (this.files) return this.files;
     const bundle = (this.options.bundle ?? createRuntimeBundle)();
     if (bundle.bytes.length > RUNTIME_MAX_ARCHIVE_BYTES) throw new Error("Runtime bundle exceeded its archive size limit");
     const script = Buffer.from(renderRuntimeInstallScript((this.options.template ?? defaultTemplate)(), bundle), "utf8");
-    return this.files = { bundle, script };
+    return this.files = { bundle, script, scriptSha256: sha256(script), etag: `"${bundle.version}-${bundle.sha256}"` };
+  }
+  /** For the local administrator's dashboard. Throws when the installer cannot be built on this host. */
+  installer(): RuntimeInstallerInfo {
+    const { bundle, script, scriptSha256 } = this.build();
+    return { version: bundle.version, scriptSha256, scriptBytes: script.length, bundleSha256: bundle.sha256 };
   }
   /** True when the request was one of the two install routes and has been answered (404 while they are off); false leaves every other path to the normal gate. */
   handle(req: IncomingMessage, res: ServerResponse, url: URL): boolean {
@@ -95,18 +121,23 @@ export class RuntimeInstallService {
     if (method !== "GET" && method !== "HEAD") { answer(res, 405, { error: "Runtime installer files are read-only" }, { Allow: "GET, HEAD" }); return true; }
     if (url.search) { answer(res, 400, { error: "Runtime installer files do not accept options" }); return true; }
     if (!protectedTransport(req)) { answer(res, 403, { error: "The Runtime installer is served only over HTTPS or localhost" }); return true; }
-    const peer = req.socket.remoteAddress ?? "unknown";
-    if (!this.charge("total", TOTAL_PER_MINUTE) || !this.charge(`${isScript ? "script" : "bundle"}:${peer}`, isScript ? SCRIPT_PER_PEER : BUNDLE_PER_PEER)) {
-      answer(res, 429, { error: "Too many Runtime installer requests. Wait a minute and try again." }, { "Retry-After": "60" }); return true;
+    const peer = req.socket.remoteAddress ?? "unknown", kind = isScript ? "script" : "bundle";
+    if (!this.take("total", LIMITS.total) || !this.take(`${kind}:${peer}`, LIMITS[kind])) {
+      answer(res, 429, { error: "Too many Runtime installer requests. Wait a minute and try again." }, { "Retry-After": "30" }); return true;
     }
     try {
-      const { bundle, script } = this.build();
-      const common = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" };
+      const { bundle, script, etag } = this.build();
+      const common = { "X-Content-Type-Options": "nosniff" };
       if (isScript) {
-        res.writeHead(200, { ...common, "Content-Type": "text/plain; charset=utf-8", "Content-Length": script.length });
+        // never cached anywhere: a stale script would not match the hash the page shows
+        res.writeHead(200, { ...common, "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8", "Content-Length": script.length });
         res.end(method === "HEAD" ? undefined : script);
+      } else if ((req.headers["if-none-match"] ?? "").split(",").some(tag => tag.trim() === etag)) {
+        // The archive is immutable for this server version, so a client may ask whether its copy is still current. The installer
+        // still verifies the SHA-256 pinned in the script, so a cached copy is never trusted on its own.
+        res.writeHead(304, { ...common, "Cache-Control": "no-cache", ETag: etag }); res.end();
       } else {
-        res.writeHead(200, { ...common, "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${bundle.filename}"`,
+        res.writeHead(200, { ...common, "Cache-Control": "no-cache", ETag: etag, "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${bundle.filename}"`,
           "Content-Length": bundle.bytes.length, "X-Agend-SHA256": bundle.sha256 });
         res.end(method === "HEAD" ? undefined : bundle.bytes);
       }
