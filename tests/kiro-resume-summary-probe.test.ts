@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile, execFileSync, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { KiroBackend, type KiroCliCompatibility } from "../src/backend/kiro.js";
 import { shellQuote, type CliBackendConfig } from "../src/backend/types.js";
@@ -169,6 +169,17 @@ describe("AgEnD kiro launch: no resume-summary probe", () => {
   });
 });
 
+/** Until tmux answers "no server running" / "error connecting" on `socket` (positively gone); throws after 5 s. */
+async function serverGone(socket: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  for (;;) {
+    const r = spawnSync("tmux", ["-L", socket, "has-session"], { encoding: "utf-8" });
+    if (r.status === 1 && /no server running|error connecting/.test(r.stderr ?? "")) return;
+    if (Date.now() > deadline) throw new Error(`tmux server on -L ${socket} still answering 5 s after kill-server (has-session exit ${r.status}: ${String(r.stderr).trim()})`);
+    await new Promise(res => setTimeout(res, 10));
+  }
+}
+
 describe("isolated repro: scratch AGEND_HOME, private tmux, mock kiro-cli", () => {
   it("the AgEnD launch argv on a private socket does not inject; dropping the override does", async () => {
     const h = home();
@@ -212,6 +223,10 @@ setTimeout(() => {}, 15000);
       // kill-server, not only kill-session: the second new-session must start a
       // new tmux server so KIRO_PROBE_LOG is the dropped dest, not the first run's.
       execFileSync("tmux", ["-L", socket!, "kill-server"], { stdio: "ignore" });
+      // M-2540: kill-server returns before the old server has stopped answering. A new-session sent in that window
+      // reaches the dying server and fails with "server exited unexpectedly" (tmux 3.4 under load: 71 of 800). Relaunch
+      // only once tmux itself says there is no server on this socket.
+      await serverGone(socket!);
       const seenDropped = await run(dropped, droppedLog);
       expect(kiroChatWouldInjectResumeSummary(seenDropped)).toBe(true);
       expect(KIRO_RESUME_SUMMARY_PROMPT.length).toBeGreaterThan(10);
