@@ -17,10 +17,13 @@ const cases = [
   ["wrong-login", "src/fleet-manager.ts", "snapshot.providers.find(p => p.id === id)", 'snapshot.providers.find(p => p.id === "codex")', "tests/hub-quota-fleet.test.ts"],
   ["drop-jittered-change", server, "try { this.receive(input, link); } catch", "try { /* lost */ } catch", "tests/hub-quota-server.test.ts"],
   ["allow-extra-usage-fields", "src/hub/protocol.ts", 'z.strictObject({ band: z.enum(["available", "near_limit", "unknown"]) })', 'z.object({ band: z.enum(["available", "near_limit", "unknown"]) })', "tests/hub-quota.test.ts"],
+  ["drop-access-fallback", "src/ui/hub-quota.js", 'if (!quota || quota.band === "available") return fallback;', 'if (!quota || quota.band === "available") return null;', "tests/hub-quota-ui.test.ts"],
 ];
+const selected = process.argv.length > 2 ? cases.filter(([name]) => process.argv.slice(2).includes(name)) : cases;
+if (!selected.length) throw Error("No matching mutation names");
 const out = ".artifacts/hub-quota-mutations"; mkdirSync(out, { recursive: true });
 const results = [];
-for (const [name, path, before, after, suite] of cases) {
+for (const [name, path, before, after, suite] of selected) {
   const original = readFileSync(path, "utf8");
   if (original.split(before).length !== 2) throw Error(`${name}: expected exactly one target`);
   try {
@@ -37,4 +40,4 @@ for (const [name, path, before, after, suite] of cases) {
     results.push({ name, status }); console.log(JSON.stringify(results.at(-1)));
   } finally { writeFileSync(path, original); writeFileSync(join(out, "results.json"), JSON.stringify(results, null, 2) + "\n"); }
 }
-if (results.length !== cases.length || results.some(r => r.status !== "KILLED")) process.exitCode = 1;
+if (results.length !== selected.length || results.some(r => r.status !== "KILLED")) process.exitCode = 1;

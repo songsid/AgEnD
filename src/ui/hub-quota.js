@@ -46,9 +46,9 @@ export function QuotaCard({ room }) {
       <div class="u-sub">${word("coarse")}</div></div>
   </section>`;
 }
-export function QuotaChip({ room }) {
+export function QuotaChip({ room, fallback = null }) {
   const quota = quotaOf(room);
-  if (!quota || quota.band === "available") return null;
+  if (!quota || quota.band === "available") return fallback;
   return html`<span class=${`tag u-status hub-quota-chip ${statusClass(quota.band)}`} role="status">${quotaLabel(quota)}</span>`;
 }
 export function QuotaBanner({ room }) {

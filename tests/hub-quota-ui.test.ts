@@ -34,6 +34,14 @@ describe("the lazy quota module for B and C", () => {
       const root = await mount(room); expect(root.textContent).toBe(""); expect(root.querySelector("section")).toBeNull();
     }
   });
+  it("keeps B's ordinary access tag for absent or available quota, and replaces it with explicit unknown", async () => {
+    pg = page();
+    for (const room of [{}, { quota: { band: "available" } }, { quota: { band: "unknown" } }]) {
+      await pg.mount(h(quota.QuotaChip, { room, fallback: h("span", { class: "access-tag" }, "Can ask") }));
+      expect(!!pg.root.querySelector(".access-tag")).toBe(room.quota?.band !== "unknown");
+      expect(!!pg.root.querySelector(".hub-quota-chip")).toBe(room.quota?.band === "unknown");
+    }
+  });
   it("formats only the coarse five-minute time in the browser's timezone", async () => {
     words.setLang("zh-TW", { store: false });
     const at = Date.parse("2026-11-06T12:15:00Z"), d = new Date(at);
