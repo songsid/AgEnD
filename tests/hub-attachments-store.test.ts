@@ -151,3 +151,21 @@ describe("Prism R2 on #3247: an expired waiting file gives its budget back only 
     expect(db.prepare("SELECT COUNT(*) AS n FROM hub_attachment_staging").get()).toEqual({ n: 0 });
   });
 });
+
+describe("Prism R3 on #3247: one clock edge between the sweep and the count", () => {
+  it.each(["upload", "staged answer"] as const)("%s: the clock reads expiry-1 at the sweep and expiry at the count — the old file stays charged", (kind) => {
+    const db = new Database(":memory:"); HUB_ATTACHMENTS_MIGRATION.up(db);
+    let now = 1_000_000, step = 0; const s = new HubAttachmentStore({ contentKey: randomBytes(32), now: () => now + step, budget: { totalBytes: 4 } });
+    const tx = <T>(f: () => T) => db.transaction(f).immediate(), fleet = randomUUID();
+    const add = (n: number) => { const data = Buffer.from(`f00${n}`);
+      return kind === "upload" ? tx(() => s.createUpload(db, { roomId: randomUUID(), uploader: "corp/a", name: "a.txt", bytes: data }))
+        : tx(() => s.stage(db, fleet, { id: randomUUID(), offset: 0, total: data.length, sha256: sha(data), data })); };
+    add(0);
+    const expires = (db.prepare("SELECT expires_at FROM hub_attachments").get() as { expires_at: number }).expires_at;
+    // An advancing clock: every read is one millisecond later, starting just before the old file's expiry.
+    now = expires - 1; let reads = 0; (s as unknown as { options: { now: () => number } }).options.now = () => now + reads++;
+    expect(() => add(1)).toThrow(/backpressure/);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hub_attachment_blobs").get()).toEqual({ n: 1 });
+    void step;
+  });
+});

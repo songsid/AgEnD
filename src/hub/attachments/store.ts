@@ -52,13 +52,13 @@ export class HubAttachmentStore {
   }
   private now(): number { return this.options.now?.() ?? Date.now(); }
   private budget() { return { ...HUB_PENDING_BUDGET, ...this.options.budget }; }
-  /** What is waiting now: unexpired uploads/staged files of one owner (uploader or fleet), staging in progress, and in all. */
+  /** What is physically waiting now (after the sweep): every remaining upload/staged file of one owner (uploader or fleet),
+   * staging in progress, and in all — no age filter, so a row the sweep did not delete is always charged. */
   private waiting(db: Database.Database, owner: { uploader?: string; fleetId?: string }): { files: number; bytes: number; total: number } {
-    const now = this.now();
-    const rows = (db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged') AND expires_at > ?
-      AND ${owner.uploader !== undefined ? "uploader=?" : "fleet_id=?"}`).get(now, owner.uploader ?? owner.fleetId) as { n: number; b: number });
+    const rows = (db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged')
+      AND ${owner.uploader !== undefined ? "uploader=?" : "fleet_id=?"}`).get(owner.uploader ?? owner.fleetId) as { n: number; b: number });
     const staging = owner.fleetId !== undefined ? db.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(t),0) AS b FROM (SELECT MAX(total) AS t FROM hub_attachment_staging WHERE fleet_id=? GROUP BY id)").get(owner.fleetId) as { n: number; b: number } : { n: 0, b: 0 };
-    const all = (db.prepare("SELECT COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged') AND expires_at > ?").get(now) as { b: number }).b
+    const all = (db.prepare("SELECT COALESCE(SUM(size),0) AS b FROM hub_attachments WHERE state IN ('pending','staged')").get() as { b: number }).b
       + (db.prepare("SELECT COALESCE(SUM(t),0) AS b FROM (SELECT MAX(total) AS t FROM hub_attachment_staging GROUP BY id)").get() as { b: number }).b;
     return { files: rows.n + staging.n, bytes: rows.b + staging.b, total: all };
   }
