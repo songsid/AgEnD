@@ -13,6 +13,8 @@ import { HubRepresentativeExecution, HUB_REPORT_TARGET, agentPolicyDigest, isAge
 import type { HubAuthorizationRequest, HubQuestion } from "../src/hub/types.js";
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
+import { buttonsDigest } from "../src/hub/buttons-model.js";
+import { messageContentDigest } from "../src/hub/identity.js";
 
 const dbs: Database.Database[] = [];
 const reps: HubRepresentativeExecution[] = [];
@@ -26,7 +28,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
   expect(check(), label).toBe(true);
 }
 
-function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
+function fixture(opts: { legacy?: boolean; handOff?: boolean; buttons?: boolean } = {}) {
   const db = new Database(":memory:");
   dbs.push(db);
   migrateHubMemberJournal(db);
@@ -46,6 +48,7 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
   const frames: any[] = [];
   const link = {
     linkEpoch: 1,
+    features: new Set<string>(opts.buttons ? ["buttons-v1"] : []),
     current: () => true,
     exchange: vi.fn(async (frame: any) => {
       frames.push(frame);
@@ -97,7 +100,7 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean } = {}) {
   const publish = () => db.transaction(() => rep.readinessCandidate({ ...local, exposure: { ...local.exposure, state: "withdrawn" } })).immediate();
   const stage = (id: string) => (JSON.parse((db.prepare("SELECT value FROM hub_member_messages WHERE message_id=?").get(id) as { value: string }).value) as { stage: string }).stage;
   const state = (id: string) => (db.prepare("SELECT state, reason FROM hub_representative_questions WHERE message_id=?").get(id) as { state: string; reason: string | null } | undefined);
-  return { db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local,
+  return { db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local, link,
     setToken: (t: string | null) => { token = t; }, withdraw: () => { current = null; }, stop: () => { live = false; }, offline: () => { online = null; }, online: () => { online = link; },
     setHandOff: (v: boolean) => { handOff = v; }, whileWaiting: (fn: () => void) => { onDeliver = fn; },
     failAuditOf: (action: string | null) => { failAudit = action; }, exchange: (mode: "ok" | "reject" | "bad-ack") => { exchangeMode = mode; } };
@@ -341,5 +344,45 @@ describe("Hub representative adapter (#3145)", () => {
     f.rep.pump();
     await until(() => f.handed.length === 65, "all 65 handed");
     expect(new Set(f.deliveries.map((d) => d.correlationId)).size).toBe(65);
+  });
+});
+
+describe("buttons-v1 representative reports", () => {
+  it("snapshots choices before release authorization and saves/sends exactly those bytes", async () => {
+    const f = fixture({ buttons: true }); f.publish(); const q = f.question(); await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "question handed");
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), seen = new Promise<void>(resolve => { entered = resolve; });
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async request => { if (request.phase === "release-answer") { entered(); await gate; } return real(request); });
+    const buttons = [{ label: "Original", value: "original" }, { label: "Other", value: "other" }];
+    const poll = { seconds: 10, multi: true, reveal: "close" as const, showVoters: false, question: "Choose" };
+    const pending = f.rep.report({ caller: "rep", correlationId: f.deliveries[0]!.correlationId, text: "Choose", extras: { buttons, poll } })!;
+    await seen; buttons[0]!.label = "mutated"; poll.seconds = 99; release();
+    expect((await pending).ok).toBe(true);
+    const answer = f.frames.find(frame => frame.type === "answer").payload;
+    expect(answer.buttons).toMatchObject({ labels: ["Original", "Other"], values: ["original", "other"], poll: { seconds: 10 } });
+    expect(answer.contentDigest).toBe(messageContentDigest("answer", "Choose", { buttonsDigest: buttonsDigest(answer.buttons) }));
+    const request = f.authorize.mock.calls.map(([request]) => request).find(request => request.phase === "release-answer")!;
+    expect(request).toMatchObject({ answer: { answerId: answer.answerId, contentDigest: answer.contentDigest } });
+    expect(f.stage(q.identity.messageId)).toBe("answered");
+    expect(f.frames.filter(frame => frame.type === "answer")).toHaveLength(1);
+  });
+  it("an old Hub receives no button fields or release attempt, and text-only retry uses the same correlation", async () => {
+    const f = fixture(); f.publish(); await f.admission.admit(f.question()); await until(() => f.handed.length === 1, "question handed");
+    const correlationId = f.deliveries[0]!.correlationId;
+    const refused = await f.rep.report({ caller: "rep", correlationId, text: "Choose", extras: { buttons: [{ label: "A", value: "a" }] } })!;
+    expect(refused).toMatchObject({ ok: false, message: expect.stringContaining("can't send buttons yet") });
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "release-answer")).toHaveLength(0);
+    expect(f.frames.filter(frame => frame.type === "answer")).toEqual([]);
+    expect((await f.rep.report({ caller: "rep", correlationId, text: "Plain answer" })!).ok).toBe(true);
+    expect(f.frames.find(frame => frame.type === "answer").payload.buttons).toBeUndefined();
+  });
+  it("a lost negotiated capability during release prevents disclosure", async () => {
+    const f = fixture({ buttons: true }); f.publish(); await f.admission.admit(f.question()); await until(() => f.handed.length === 1, "question handed");
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async request => { const lease = await real(request); if (request.phase === "release-answer") f.link.features.clear(); return lease; });
+    expect((await f.rep.report({ caller: "rep", correlationId: f.deliveries[0]!.correlationId, text: "Choose", extras: { buttons: [{ label: "A", value: "a" }] } })!).ok).toBe(false);
+    expect(f.frames.filter(frame => frame.type === "answer")).toEqual([]);
   });
 });

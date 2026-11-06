@@ -90,10 +90,11 @@ export class HubButtonsService {
       || !grantApplies(grant, exposure, personFromString(msg.asker), now)) throw new HubProtocolError("revoked");
     return data;
   }
-  private ballot(row: Row): PollBallot | undefined {
+  private ballot(row: Row, asker: string): PollBallot | undefined {
     if (!row.ballot_ref) return undefined;
     const b = this.core.deps.content.get(row.ballot_ref)?.pollBallot;
-    if (!b || !Array.isArray(b.options) || !b.options.every(i => Number.isInteger(i) && i >= 0 && i < 10)
+    if (!b || b.setId !== row.id || b.roomId !== row.room_id || b.messageId !== row.message_id || b.voter !== asker
+      || !Array.isArray(b.options) || !b.options.every(i => Number.isInteger(i) && i >= 0 && i < 10)
       || new Set(b.options).size !== b.options.length || typeof b.voter !== "string" || typeof b.name !== "string" || !Number.isSafeInteger(b.at)) throw new HubProtocolError("expired");
     return b;
   }
@@ -109,7 +110,7 @@ export class HubButtonsService {
     if (!row) return undefined;
     let data: ReturnType<HubButtonsService["source"]>;
     try { data = this.source(db, row); } catch { return undefined; } // retention never reconstructs choices from a browser
-    const b = data.buttons, ballot = this.ballot(row), now = this.core.now();
+    const b = data.buttons, ballot = this.ballot(row, data.msg.asker), now = this.core.now();
     if (!b.poll) return { id: b.id, labels: [...b.labels], state: row.state === "open" && now >= row.expires_at ? "expired" : row.state,
       ...(row.chosen_index !== null ? { chosen: row.chosen_index } : {}) };
     const closed = row.state !== "open", ballots = ballot?.options.length ? [ballot] : [];
@@ -163,7 +164,8 @@ export class HubButtonsService {
         this.audit(tx, msg, "buttons.chosen", "completed", ctx.requestId, auditActor);
       } else {
         const person = db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(me) as { display_name: string } | undefined;
-        const ref = this.core.deps.content.put(tx, { pollBallot: { voter: me, name: person?.display_name ?? me, options: picked, at: this.core.now() } });
+        const ref = this.core.deps.content.put(tx, { pollBallot: { voter: me, name: person?.display_name ?? me, options: picked, at: this.core.now(),
+          setId, roomId, messageId: msg.id } });
         this.audit(tx, msg, "poll.voted", "completed", ctx.requestId, auditActor, ref);
         db.prepare("UPDATE hub_answer_buttons SET ballot_ref=?,revision=revision+1 WHERE id=?").run(ref, row.id);
         receipt = receiptOf(msg); // the ballot is durable; a multi-choice poll queues results only at its deadline
@@ -189,7 +191,7 @@ export class HubButtonsService {
   private queueResults(db: Database.Database, tx: HubTx, row: Row, requestId: string): HubReceipt {
     const { msg, buttons: b } = this.authorized(db, row, this.core.now());
     if (!b.poll || row.closed_at === null || !["owed", "held"].includes(row.result_state)) throw new HubProtocolError("conflict");
-    const ballot = this.ballot(row);
+    const ballot = this.ballot(row, msg.asker);
     const choices = b.labels.map((label, i) => ({ label, value: b.values?.[i] ?? label }));
     let text = pollResultsText({ id: row.id, buttons: choices, createdAt: row.created_at, expiresAt: row.expires_at }, b.poll,
       ballot?.options.length ? [ballot] : [], row.closed_at);

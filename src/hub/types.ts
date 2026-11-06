@@ -52,6 +52,7 @@ export interface HubAnswerButtons {
   id: string; labels: readonly string[]; values?: readonly string[];
   poll?: import("../reply-polls.js").PollConfig;
 }
+export type HubPollBallot = import("../reply-polls.js").PollBallot & { setId: string; roomId: RoomId; messageId: MessageId };
 export interface HubReconcile {
   afterReceiptSequence: Epoch;
   messages: readonly { messageId: MessageId; contentDigest: Sha256 }[];
@@ -233,6 +234,8 @@ export interface HubUnitOfWork {
 }
 export interface HubAuditContent {
   recordId: string; question?: string; answer?: string; audience: readonly PersonKey[];
+  buttons?: HubAnswerButtons;
+  pollBallot?: HubPollBallot;
 }
 export interface HubAuditSink {
   append(tx: HubTx, record: HubAuditRecord): void;

@@ -7,7 +7,7 @@ import type { HubAskerEnvelope, HubAuditSink, HubDirectory, HubMode, HubServerTr
 import type { HubPairingService } from "../pairing.js";
 import type { HubTransportStore } from "../store.js";
 import type { HubAnswerButtons } from "../types.js";
-import type { PollBallot } from "../../reply-polls.js";
+import type { HubPollBallot } from "../types.js";
 
 /** The `hub` section the sealed manifest covers — frozen, validated, never re-read from a request. */
 export interface HubHttpConfig {
@@ -23,9 +23,9 @@ export interface HubIssuer {
 }
 /** Encrypted question/answer payloads (S5, under content.key). One payload per record; S5 chooses the ref. */
 export interface HubContentStore {
-  put(tx: HubTx, payload: { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: PollBallot }): string;
+  put(tx: HubTx, payload: { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot }): string;
   /** S3's own room projection only, after its audience check. Undefined: retention removed it (shown as expired). */
-  get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: PollBallot } | undefined;
+  get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
   uow: HubUnitOfWork;

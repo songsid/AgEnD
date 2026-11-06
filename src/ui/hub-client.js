@@ -236,6 +236,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a) } = {}) {
     openRoom(exposureId, grantId) { return call("POST", "/hub/v1/rooms", { exposureId, grantId }); },
     ask(roomId, idempotencyKey, text) { return call("POST", `/hub/v1/rooms/${id(roomId)}/messages`, { idempotencyKey, text }); },
     read(roomId, after = 0) { return call("GET", `/hub/v1/rooms/${id(roomId)}/messages?after=${id(after)}`); },
+    chooseButtons(roomId, input) { return call("POST", `/hub/v1/rooms/${id(roomId)}/buttons`, input); },
     pairings() { return call("GET", "/hub/v1/pairings"); },
     confirmPairing(pairingId, fingerprint) { return call("POST", `/hub/v1/pairings/${id(pairingId)}/confirm`, { fingerprint }); },
     adminOverview() { return call("GET", "/hub/v1/admin/overview"); },

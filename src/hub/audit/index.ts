@@ -137,7 +137,7 @@ export interface HubContentPayload {
   question?: string;
   answer?: string;
   buttons?: import("../types.js").HubAnswerButtons;
-  pollBallot?: import("../../reply-polls.js").PollBallot;
+  pollBallot?: import("../types.js").HubPollBallot;
 }
 
 export interface HubContentStore {
@@ -347,7 +347,8 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
         if (actor.kind === "person") audience.push(actor.person);
         const owner = parsePersonId(row.owner_at_event);
         if (owner && !audience.some((p) => personKeyString(p) === row.owner_at_event)) audience.push(owner);
-        return { recordId: row.id, ...(payload?.question !== undefined ? { question: payload.question } : {}), ...(payload?.answer !== undefined ? { answer: payload.answer } : {}), audience };
+        return { recordId: row.id, ...(payload?.question !== undefined ? { question: payload.question } : {}), ...(payload?.answer !== undefined ? { answer: payload.answer } : {}),
+          ...(payload?.buttons !== undefined ? { buttons: payload.buttons } : {}), ...(payload?.pollBallot !== undefined ? { pollBallot: payload.pollBallot } : {}), audience };
       }).immediate();
     },
 
