@@ -1,9 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { InstallerPsBatch, hasPwsh, INERT_PWSH_CHILD } from "./support/installer-ps-batch.js";
 import { extractPsAssignments, extractPsFunctions } from "./support/installer-ps-extract.js";
+import { preparePowerShell } from "../scripts/ci/prepare-pwsh.mjs";
 
 const batch = new InstallerPsBatch({ helpers: "function End-Case { try { exit 3 } finally { Write-Output 'FINALLY' } }" });
 const otherBatch = new InstallerPsBatch({ helpers: "function F { 'ok' }" });
@@ -44,5 +46,35 @@ describe.skipIf(!hasPwsh)("batch isolation", () => {
     writeFileSync(file, "param([string]$InstallVersion,[switch]$Force); Write-Output (\"VERSION=$InstallVersion FORCE=$Force\"); exit 7");
     const out = await batch.run("helpers", `${INERT_PWSH_CHILD}\n[Console]::Write('RAW-CONS'); pwsh -NoProfile -File '${file}' -InstallVersion beta -Force; Write-Output ('CODE='+$LASTEXITCODE)`);
     expect(out).toContain("RAW-CONS"); expect(out).toContain("VERSION=beta FORCE=True"); expect(out).toContain("CODE=7");
+  });
+});
+
+describe.skipIf(!hasPwsh)("real PowerShell preparation", () => {
+  it.each([false, true])("compiler failure=%s propagates before complete, with a healthy control", invalid => {
+    const cache = mkdtempSync(join(dir, "preparation-"));
+    const lines: string[] = [];
+    const results: Array<{ status: number | null; stderr: string }> = [];
+    const prepare = () => preparePowerShell({
+      run: (file, args, options) => {
+        const command = args.at(-1)!;
+        const result = spawnSync(file, [...args.slice(0, -1), invalid ? command.replace("return 1;", "return;") : command], {
+          ...options, stdio: "pipe", encoding: "utf8",
+          env: { ...process.env, XDG_CACHE_HOME: join(cache, "cache"), PSModuleAnalysisCachePath: join(cache, "module-analysis") },
+        });
+        results.push({ status: result.status, stderr: result.stderr });
+        return result;
+      },
+      log: line => lines.push(line),
+    });
+    if (invalid) {
+      expect(prepare).toThrow("PowerShell preparation compile failed");
+      expect(results.at(-1)!.status).toBe(1);
+      expect(results.at(-1)!.stderr).toContain("CS0126");
+    } else {
+      expect(prepare).not.toThrow();
+      expect(results.every(result => result.status === 0 && result.stderr === "")).toBe(true);
+    }
+    expect(results).toHaveLength(3);
+    expect(lines.some(line => line.includes('"phase":"complete"'))).toBe(!invalid);
   });
 });

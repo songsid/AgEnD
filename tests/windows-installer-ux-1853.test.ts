@@ -15,7 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { InstallerPsBatch, hasPwsh } from "./support/installer-ps-batch.js";
-import { extractPsFunctions } from "./support/installer-ps-extract.js";
+import { extractPsFunction } from "./support/installer-ps-extract.js";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
@@ -61,7 +61,39 @@ describe("the installer's long steps and console guards (static)", () => {
 });
 
 const pwsh = hasPwsh;
-const functions = extractPsFunctions(text);
+// Compile the actual transitive helper closure once, not unrelated installer functions.
+// Extend this list when a production helper adds a dependency; missing names fail the real cases.
+const functions = [
+  "Write-Ok",
+  "Write-Warn",
+  "Write-Err",
+  "Write-Info",
+  "Protect-LogText",
+  "Write-InstallLog",
+  "Get-InputMode",
+  "Set-InputMode",
+  "Enter-StepConsole",
+  "Restore-StepConsole",
+  "Test-LiveConsole",
+  "Read-StepKey",
+  "Test-CtrlC",
+  "Get-StatusWidth",
+  "Join-ProcessArguments",
+  "Format-Elapsed",
+  "Get-DisplayWidth",
+  "Limit-Width",
+  "Get-SafeWidth",
+  "Format-StatusLine",
+  "New-StatusConsole",
+  "Write-StatusLine",
+  "New-OutputTail",
+  "Read-OutputTail",
+  "Get-LastSegment",
+  "Split-ToolOutput",
+  "Stop-InstallChild",
+  "Invoke-Watched",
+  "Confirm-StopInstall",
+].map(name => extractPsFunction(text, name)).join("\n");
 // Substitute only the clock acquisition; all production elapsed/deadline/heartbeat branches remain.
 const watchedClock = "$clock = [Diagnostics.Stopwatch]::StartNew()";
 const batch = new InstallerPsBatch({ installer: functions.replaceAll(watchedClock, "$clock = $script:BatchClock") });

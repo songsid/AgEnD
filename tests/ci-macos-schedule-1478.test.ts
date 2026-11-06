@@ -79,7 +79,7 @@ describe("CI admission and cancellation", () => {
   function runAggregate(result = "success", extra: Record<string, string> = {}) {
     return execFileSync("/bin/bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", aggregate.run!], {
       encoding: "utf8", env: { PATH: process.env.PATH, CHANGELOG: "success",
-        ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success",
+        ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success", PWSH: "success",
         DOCS_TESTS: "success", SMOKE: result, ROLLBACK: "success", ...extra },
       stdio: "pipe",
     });
