@@ -25,6 +25,8 @@ register("runtimeInstall", {
 });
 const text = (key, ...values) => t(`runtimeInstall.${key}`, ...values);
 
+/** A command, not words: the same in every language. */
+export const SWITCH_COMMAND = "agend-runtime remote-setup install on --for 2h";
 /** The CLIs a Runtime can install, as AgEnD's own table names them; the Runtime enforces its own list. */
 export const INSTALL_CLIS = [{ id: "claude-code", label: "Claude Code" }, { id: "codex", label: "Codex" }];
 /** Vendor commands, for the computer's owner to run: AgEnD never sends them anywhere. */
@@ -95,7 +97,7 @@ export function CliInstall({ machine, lease, onChanged }) {
     ${!online ? html`<p class="note" role="status">${text("offline")}</p>` : view && !view.capable ? html`<p class="note" role="status">${text("old")}</p>` : html`
       <ul class="runtime-install-list" aria-label=${text("title")}>${INSTALL_CLIS.map(row)}</ul>
       ${view && !view.switches ? html`<p class="note" role="status">${text("unreadable")}</p>` : null}
-      ${switchState && !allowed ? html`<p class="note runtime-install-off" role="status">${text("switchOff")}</p><pre><code>agend-runtime remote-setup install on --for 2h</code></pre>` : null}
+      ${switchState && !allowed ? html`<p class="note runtime-install-off" role="status">${text("switchOff")}</p><pre><code>${SWITCH_COMMAND}</code></pre>` : null}
       ${allowed ? html`<p class="note">${switchState.until ? text("switchUntil", new Date(switchState.until).toLocaleString()) : text("switchOn")}</p>` : null}
       ${running ? html`<p class="note" role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${text("installing")}</p>` : null}
       ${note ? html`<p class="note" role="status">${note}</p>` : null}

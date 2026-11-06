@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **A fleet admin can now install Claude Code or Codex on a paired Windows computer from Settings → Runtime.** It works only while that computer's local administrator has turned on `agend-runtime remote-setup install on [--for 2h]` (off by default; the dashboard can read the switch, never change it). The dashboard sends only a CLI id: the Runtime installs the exact version its terminals accept, from the official npm registry, into its own folder (no administrator, no PATH change, no vendor script), and keeps it only after npm's integrity check, a pinned registry hash, `npm audit signatures` and the Windows publisher signature all pass. Detection and runs use the installed copy first. Grok, Antigravity and Kiro show their official command for the computer's owner to run. The request travels in a frame AgEnD does not journal, and every install is recorded in `audit.jsonl` on that computer.
