@@ -31,7 +31,7 @@ describe("the existing-Ubuntu choice (static)", () => {
     expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*if \(Clear-MissingWslTarget \$names\) \{ \$UBUNTU_DISTRO = 'Ubuntu-26\.04'; \$AgendWslDrive = Resolve-AgendWslDrive \$WslDrive; Save-WslDrive \$AgendWslDrive \}\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
     expect(stage).toMatch(/if \(\$situation\.State -eq 'reuse'\) \{ \$choice = 'reuse' \} elseif \(\$situation\.State -eq 'ubuntu'\) \{ \$choice = Read-DistroChoice \$installedDistroName \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO = Get-FreeAgendDistroName \$names \}/);
-    expect(stage).toMatch(/\$leaf = if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO \} else \{ 'Ubuntu' \}/);
+    expect(stage).toMatch(/\$leaf = if \(\$choice -eq 'separate' -or \$UBUNTU_DISTRO -like 'AgEnD\*'\) \{ \$UBUNTU_DISTRO \} else \{ 'Ubuntu' \}/);
     expect(stage).toMatch(/\$location = Get-WslInstallLocation \(Get-LocalDisks\) \(\$env:SystemDrive \+ '\\'\) \$UBUNTU_DISTRO \$leaf \$AgendWslDrive/);
     expect(stage).toMatch(/\$disk = \$location\.Disk; \$wslPath = \$location\.Path/);
     expect(stage).toMatch(/Install-AgendDistro \$UBUNTU_DISTRO \$wslPath -UseVersionName:\$useVersionName -InstalledName \(\[ref\]\$UBUNTU_DISTRO\)/);
@@ -273,6 +273,15 @@ Write-Output ('DOWNLOADS='+($script:downloads -join ','))
     expect(out).toContain('IMAGES=Ubuntu-26.04,Ubuntu-24.04');
     expect(out).toContain('DOWNLOADS=Ubuntu-26.04');
     expect(out).toMatch(/OPS=--install Ubuntu-26\.04 .*\|--install Ubuntu-24\.04 .*\|--install Ubuntu-22\.04 /);
+  });
+  it.each(['Ubuntu-24.04','Ubuntu-22.04'])('a saved %s plan starts at that version instead of being upgraded', async version => {
+    const bin=fakeWsl([]);
+    const {out}=await withHelpers(`function Get-InstalledWslVersion {return [version]'2.6.3'}
+$selected='${version}';$ok=Install-AgendDistro $selected (Join-Path $env:TMPDIR 'linux') -UseVersionName -InstalledName ([ref]$selected)
+Write-Output ('OK='+$ok+' SELECTED='+$selected)`,bin);
+    expect(out).toContain('OK=True SELECTED='+version);
+    expect(calls(bin)).toMatch(new RegExp('^--install '+version.replaceAll('.','\\.')+' --name '+version));
+    expect(calls(bin)).not.toContain('--install Ubuntu-26.04');
   });
   it('an old WSL imports the first available 24.04 image, checks its hash, and keeps a custom name', async () => {
     const {out} = await withHelpers(`${imageStubs()}

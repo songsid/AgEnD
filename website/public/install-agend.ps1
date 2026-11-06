@@ -707,6 +707,10 @@ function Get-UbuntuWslImage([string]$version = 'Ubuntu-26.04') {
 function Install-AgendDistro([string]$name, [string]$location, [switch]$UseVersionName, [ref]$InstalledName) {
     $version = Get-InstalledWslVersion
     $candidates = @('Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04')
+    # A previously saved, not-yet-installed version keeps its plan and location.
+    if ($UseVersionName -and $candidates -contains $name) {
+        $candidates = @($candidates | Select-Object -Skip ([array]::IndexOf($candidates, $name)))
+    }
     foreach ($candidate in $candidates) {
         $target = if ($UseVersionName) { $candidate } else { $name }
         if ($candidate -ne $candidates[0]) {
@@ -2484,6 +2488,7 @@ Start-FreshProgress $Force.IsPresent
 if ((Test-Path $ProgressFile) -and -not $Force) {
     # 上次選定的 Linux（例如沿用已經裝好的 Ubuntu-22.04）：接續時沿用，不要回到預設。
     $savedDistro = Get-ProgressValue 'DISTRO'
+    if (-not $savedDistro) { $savedDistro = Get-ProgressValue 'WSL_INSTALL_DISTRO' }
     if ($savedDistro) { $UBUNTU_DISTRO = $savedDistro }
     Write-Warn "偵測到上次安裝進度，將從中斷處繼續"
     Write-Info "如需全部重新安裝：用一行指令安裝的，先執行 `$env:AGEND_INSTALL_FORCE = '1'，再貼上同一行指令；直接執行腳本的，請執行 .\install-agend.ps1 -Force"
@@ -2580,7 +2585,7 @@ if ($wslStageVerified) {
         $UBUNTU_DISTRO = $installedDistroName
     } else {
         if ($choice -eq 'separate') { $UBUNTU_DISTRO = Get-FreeAgendDistroName $names }
-        $leaf = if ($choice -eq 'separate') { $UBUNTU_DISTRO } else { 'Ubuntu' }
+        $leaf = if ($choice -eq 'separate' -or $UBUNTU_DISTRO -like 'AgEnD*') { $UBUNTU_DISTRO } else { 'Ubuntu' }
         $location = Get-WslInstallLocation (Get-LocalDisks) ($env:SystemDrive + '\') $UBUNTU_DISTRO $leaf $AgendWslDrive
         $disk = $location.Disk; $wslPath = $location.Path
         Write-Ok "Linux 版本：$UBUNTU_DISTRO"
@@ -2589,7 +2594,7 @@ if ($wslStageVerified) {
 
         # 安裝
         Write-Info "正在安裝 $UBUNTU_DISTRO，請不要關閉視窗..."
-        $useVersionName = $choice -ne 'separate'
+        $useVersionName = $UBUNTU_DISTRO -in @('Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04')
         if (-not (Install-AgendDistro $UBUNTU_DISTRO $wslPath -UseVersionName:$useVersionName -InstalledName ([ref]$UBUNTU_DISTRO))) {
             Write-Err "Ubuntu 沒有安裝成功；你原本的 Linux 都沒有被動到。"
             Write-Info "  請確認網路正常，再執行同一行安裝指令。"

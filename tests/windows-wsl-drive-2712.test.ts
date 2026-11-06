@@ -82,6 +82,16 @@ $wslStageVerified=$false
 Write-Output ('TARGET='+$UBUNTU_DISTRO+' VERIFIED='+$wslStageVerified+' LOCATION=['+(Get-ProgressValue 'WSL_INSTALL_PATH')+']')`));
   expect(out).toContain('TARGET=Ubuntu-26.04 VERIFIED=False LOCATION=[]');
  });
+ it.each(['Ubuntu-24.04','AgEnD-2'])('a saved %s location before the first download survives an installer upgrade',async target=>{
+  const out=await run(`$UBUNTU_DISTRO='Ubuntu-26.04';$Force=$false
+$leaf=if('${target}' -like 'AgEnD*'){'${target}'}else{'Ubuntu'}
+@('WSL_INSTALL_DISTRO=${target}',('WSL_INSTALL_PATH=D:\\WSL\\'+$leaf))|Set-Content -LiteralPath $ProgressFile
+. ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(extractLeadingStatement(source, "if ((Test-Path $ProgressFile) -and -not $Force)")).toString("base64")}'))))
+function Read-Host {throw 'Saved location must not prompt'}
+$location=Get-WslInstallLocation $disks 'C:\\' $UBUNTU_DISTRO $leaf
+Write-Output ('TARGET='+$UBUNTU_DISTRO+' LOCATION='+$location.Path)`);
+  expect(out).toContain('TARGET='+target+' LOCATION=D:\\WSL\\'+(target.startsWith('AgEnD')?target:'Ubuntu'));
+ });
  it('a saved 24.04 stage stays on 24.04 even when 26.04 is also installed',async ()=>{
   const out=await run(`$UBUNTU_DISTRO='Ubuntu-24.04'
 @('DISTRO=Ubuntu-24.04','STAGE_1_DONE','WSL_INSTALL_DISTRO=Ubuntu-24.04','WSL_INSTALL_PATH=D:\\WSL\\Ubuntu')|Set-Content -LiteralPath $ProgressFile
