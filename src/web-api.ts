@@ -365,6 +365,8 @@ export interface WebApiContext {
   createNativePaneInstance?(profile:Record<string,unknown>,channelId:string|undefined,authorized:()=>boolean,execution:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
   updateNativePaneConfig?(name:string,patch:Partial<import("./fleet-windows-runtime.js").NativeRuntimePatch>,authorized:()=>boolean,execution?:import("./settings-transaction.js").SettingsExecution):Promise<unknown>;
   runtimeCoordinator?(): RuntimeCoordinator;
+  /** The static installer files (script and bundle) and the hash of the script the dashboard shows. */
+  runtimeInstaller?(): import("./runtime-install.js").RuntimeInstallService;
   readonly webToken: string | null;
   /** #2072: what this host can run (the published snapshot); absent in a hand-built context. */
   backendAvailabilityRows?(): import("./backend-availability.js").BackendAvailability[];
