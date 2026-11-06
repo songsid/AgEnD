@@ -179,18 +179,18 @@ describe("no workflow fetches the published package from the registry by name", 
   });
 
   it.each([
-    ["ci.yml", "node20-rollback-smoke", "baseline-tarball", "BASELINE_TGZ"],
-    ["data-downgrade.yml", "data-downgrade", "baseline-tarball", "BASELINE_TGZ"],
-    ["runtime-acceptance.yml", "hop", "old-tarball", "AGEND_OLD_TARBALL"],
-    ["mac-gui-rehearsal.yml", "gui", "old-tarball", "AGEND_OLD_TARBALL"],
-  ])("%s %s: the cached 2.1.12 tarball feeds the step that installs it", (file, job, id, envName) => {
+    ["ci.yml", "release-rollback-smoke", "baseline-tarball", "BASELINE_TGZ", "${{ env.ROLLBACK_VERSION }}"],
+    ["data-downgrade.yml", "data-downgrade", "baseline-tarball", "BASELINE_TGZ", "2.3.3"],
+    ["runtime-acceptance.yml", "hop", "old-tarball", "AGEND_OLD_TARBALL", "2.1.12"],
+    ["mac-gui-rehearsal.yml", "gui", "old-tarball", "AGEND_OLD_TARBALL", "2.3.3"],
+  ])("%s %s: the cached selected tarball feeds the step that installs it", (file, job, id, envName, version) => {
     const wf = yaml.load(readFileSync(join(ROOT, ".github/workflows", file), "utf8")) as {
       jobs: Record<string, { steps: Array<{ id?: string; if?: string; uses?: string; with?: Record<string, unknown>; env?: Record<string, string> }> }>;
     };
     const steps = wf.jobs[job].steps;
     const at = steps.findIndex(s => s.id === id);
     expect(steps[at].uses).toBe("./.github/actions/published-agend-tarball");
-    expect(String(steps[at].with!.version)).toBe("2.1.12");
+    expect(String(steps[at].with!.version)).toBe(version);
     const consumer = steps.findIndex(s => s.env?.[envName] === `\${{ steps.${id}.outputs.tarball }}`);
     expect(consumer).toBeGreaterThan(at);
     // The packaging/src guard of the fetch covers the install too: a skipped head downloads nothing.
