@@ -241,7 +241,9 @@ describe.skipIf(process.platform === "win32")("Hub runtime (S5b lifecycle)", () 
     const hub = await initializedHub();
     const http = fakeHttp();
     const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => http.entry } });
+    expect(runtime.serverHealth(hub.config.hub)).toBe("starting");
     await runtime.apply(hub.config);
+    expect(runtime.serverHealth(hub.config.hub)).toBe("ready");
     expect(runtime.currentHolds()).toEqual([]);
     expect((await get(hub.webPort, "/hub/v1/ping", hub.caPem)).status).toBe(200);
     const deps = http.state.deps;

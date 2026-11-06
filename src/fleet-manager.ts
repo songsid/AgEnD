@@ -10726,8 +10726,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    *                 that should be running is running
    *  - `degraded` — reachable, but something the operator should look at (an
    *                 adapter retrying, an instance crashed or stopped)
-   *  - `down`     — the fleet cannot do its job: no adapter is connected, so no
-   *                 message can arrive or be answered
+   *  - `down`     — no configured adapter is connected, or a dedicated Hub's
+   *                 server mount is unavailable
    *
    * Deliberately does NOT gate the systemd watchdog — see the comment at the
    * WATCHDOG timer for why.
@@ -10744,6 +10744,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     memory: FleetMemory;
     hostMemory: MemoryPressureSnapshot & { topProcesses?: MemoryHog[]; topProcessesAt?: string };
     problems: string[];
+    warnings: string[];
+    /** Local server mount availability; absent when the Hub server switch is off. */
+    hub?: { server: import("./hub/runtime.js").HubServerHealth };
   } {
     const names = Object.keys(this.fleetConfig?.instances ?? {});
     const counts = { configured: names.length, running: 0, crashed: 0, paused: 0, stopped: 0 };
@@ -10768,10 +10771,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (effectiveStatus === "connected") connected++;
     }
 
-    const problems: string[] = [];
+    const problems: string[] = [], warnings: string[] = [];
+    const rawHub = this.rawFleetConfig?.hub as { enabled?: unknown } | undefined;
+    const hub = rawHub?.enabled === true ? { server: this.shuttingDown ? "stopped" as const
+      : this.hubRuntime?.serverHealth?.(rawHub) ?? "unavailable" as const } : undefined;
+    const hubOnly = !!hub && names.length === 0 && this.adapterState.size === 0;
+    if (hub && hub.server !== "ready") problems.push(`Hub server is ${hub.server}`);
     const hostMemory = this.memoryPressure.snapshot();
-    if (!this.memoryPressure.advisoryOnly() && (hostMemory.level === "critical" || hostMemory.level === "elevated")) {
-      problems.push(`host memory pressure is ${hostMemory.level}`);
+    if (hostMemory.level === "critical" || hostMemory.level === "elevated") {
+      const pressure = `host memory pressure is ${hostMemory.level}`;
+      if (hubOnly) warnings.push(pressure);
+      else if (!this.memoryPressure.advisoryOnly()) problems.push(pressure);
     }
     if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
     if (counts.crashed > 0) problems.push(`${counts.crashed} instance(s) crashed`);
@@ -10780,9 +10790,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (!this.startupComplete) problems.push("startup has not completed");
 
-    // "down" is reserved for "cannot receive or answer a message at all". A fleet
-    // with adapters configured but none connected is exactly that.
-    const status = this.adapterState.size > 0 && connected === 0
+    // Preserve adapter scoring. A dedicated Hub also cannot serve its workload before its server mount is ready.
+    const status = (this.adapterState.size > 0 && connected === 0) || (hubOnly && hub?.server !== "ready")
       ? "down"
       : problems.length > 0 ? "degraded" : "ok";
 
@@ -10795,7 +10804,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       memory: readFleetMemory(),
       hostMemory: this.memoryTop && (hostMemory.level === "elevated" || hostMemory.level === "critical")
         ? { ...hostMemory, topProcesses: this.memoryTop.processes, topProcessesAt: this.memoryTop.at } : hostMemory,
-      problems,
+      problems, warnings, ...(hub ? { hub } : {}),
     };
   }
 
