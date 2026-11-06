@@ -67,6 +67,13 @@ it("never deletes an unknown lock entry to manufacture a successful release", as
   writeFileSync(extra, "preserve"); expect(() => lock.release()).toThrow(/held/); lock.assert();
   expect(readFileSync(extra, "utf8")).toBe("preserve"); rmSync(extra); lock.release();
 });
+it("a positively dead owner with unknown in-flight state remains intact during stale recovery", async () => {
+  const path = root(), old = previous(path), directory = join(path, RUNTIME_INSTALL_LOCK), text = readFileSync(join(directory, "owner.json"), "utf8");
+  writeFileSync(join(directory, "inflight"), "uncertain installer fixture", { mode: 0o600 });
+  await expect(acquireRuntimeInstallLock(path, { ownProof: own, observe: async () => ({ state: "gone" }) })).rejects.toThrow(/held/);
+  expect(readFileSync(join(directory, "owner.json"), "utf8")).toBe(text); expect(JSON.parse(text).nonce).toBe(old.nonce);
+  expect(readFileSync(join(directory, "inflight"), "utf8")).toBe("uncertain installer fixture"); expect(existsSync(join(directory, "reclaim"))).toBe(false);
+});
 it("rejects writable/symlink/overlarge state and strict record extras", async () => {
   const path = root(), file = join(path, "state"); writeFileSync(file, "x".repeat(3000), { mode: 0o600 });
   expect(() => readRuntimeInstallFile(file, 2048)).toThrow(/unsafe/);

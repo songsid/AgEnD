@@ -103,6 +103,7 @@ export async function acquireRuntimeInstallLock(root: string, options: {
     const guard = lstatSync(reclaim);
     try {
       if (!current(path, before)) throw new RuntimeInstallLockError("changed");
+      if (readdirSync(path).some(name => name !== "owner.json" && name !== "reclaim")) throw new RuntimeInstallLockError("held");
       unlinkSync(join(path, "owner.json")); rmdirSync(reclaim); rmdirSync(path);
     } finally {
       try { if (sameFile(lstatSync(reclaim), guard)) rmdirSync(reclaim); }
