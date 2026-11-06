@@ -60,10 +60,11 @@ describe("Hub buttons use ordinary durable question delivery", () => {
     expect(read.json.entries[0]).toMatchObject({ question: "Question", answer: "Choose", buttons: { id: b.id, labels: b.labels, state: "chosen", chosen: 0 } });
     expect(r!.audits.filter(a => a.action === "buttons.chosen")).toHaveLength(1);
   });
-  it("neither an owner nor admin can bypass the exact room asker", async () => {
-    const w = await world(), b = wire(); await w.answer(b);
-    expect((await w.click(b, { index: 0 }, w.o)).status).toBe(403);
-    expect((await w.click(b, { index: 0 }, w.admin)).status).toBe(403);
+  it.each([undefined, {}, { multi: true }])("neither an owner nor admin can bypass the exact room asker (%j)", async poll => {
+    const w = await world(), b = wire(poll); await w.answer(b);
+    const selection = poll ? { options: [0] } : { index: 0 };
+    expect((await w.click(b, selection, w.o)).status).toBe(403);
+    expect((await w.click(b, selection, w.admin)).status).toBe(403);
     expect(w.questions()).toEqual([]);
   });
   it("an admin who IS the granted asker can choose in that person's own room", async () => {
@@ -93,6 +94,12 @@ describe("Hub buttons use ordinary durable question delivery", () => {
     expect((await r!.call(w.o, "DELETE", `/hub/v1/grants/${w.grant.id}?revision=${w.grant.revision}`)).status).toBe(200);
     expect((await w.click(b, { index: 0, idempotencyKey: key })).status).toBe(403);
     expect(w.questions()).toHaveLength(1);
+  });
+  it("a revised grant cannot authorize the earlier answer's continuation", async () => {
+    const w = await world(), b = wire(); await w.answer(b);
+    r!.db.prepare("UPDATE hub_grants SET revision=revision+1 WHERE id=?").run(w.grant.id);
+    expect((await w.click(b, { index: 0 })).status).toBe(409);
+    expect(w.questions()).toEqual([]);
   });
   it("rejects metadata without negotiation or with a changed exact release digest", async () => {
     const w = await world({ features: [] }), b = wire();
@@ -212,6 +219,32 @@ describe("Hub buttons use ordinary durable question delivery", () => {
     expect((await click).status).toBe(403);
     expect(w.questions()).toEqual([]);
     spy.mockRestore();
+  });
+
+  it("a delayed ballot cannot replace a newer committed ballot", async () => {
+    const w = await world(), b = wire({ multi: true }); await w.answer(b);
+    let release!: () => void, entered!: () => void, blocked = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const seen = new Promise<void>(resolve => { entered = resolve; });
+    const real = r!.directory.checkEligibility.bind(r!.directory);
+    const spy = vi.spyOn(r!.directory, "checkEligibility").mockImplementation(async key => {
+      if (key.objectId === w.owner.objectId && !blocked) { blocked = true; entered(); await gate; }
+      return real(key);
+    });
+    const old = w.click(b, { options: [0] }); await seen;
+    expect((await w.click(b, { options: [1] })).status).toBe(200);
+    release(); expect((await old).status).toBe(409);
+    const ref = (r!.db.prepare("SELECT ballot_ref FROM hub_answer_buttons WHERE id=?").get(b.id) as { ballot_ref: string }).ballot_ref;
+    expect((r!.contents.get(ref) as any).pollBallot.options).toEqual([1]);
+    spy.mockRestore();
+  });
+  it("an idempotency key cannot choose another answer's set", async () => {
+    const w = await world(), a = wire(); await w.answer(a);
+    const key = randomUUID(); expect((await w.click(a, { index: 0, idempotencyKey: key })).status).toBe(200);
+    const next = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.roomId}/messages`, { idempotencyKey: randomUUID(), text: "Second" });
+    const b = wire(); await w.answer(b, { messageId: next.json.receipt.messageId });
+    expect((await w.click(b, { index: 0, idempotencyKey: key })).status).toBe(409);
+    expect(r!.db.prepare("SELECT state FROM hub_answer_buttons WHERE id=?").get(b.id)).toEqual({ state: "open" });
   });
 
   it("keeps operation idempotency across a controller restart", async () => {
