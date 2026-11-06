@@ -27,7 +27,7 @@ function setup(allowHiddenService = false) {
       if (/Service account password|服務帳號密碼/.test(question)) expect(allowHiddenService, "file import must not request a typed service password").toBe(true);
       return askHidden(question);
     };
-    const outcome = await runHubInitWizard({ home, io: io.io, initializer: selected, createDirectory: directory.create,
+    const outcome = await runHubInitWizard({ checkNetwork: async () => [], home, io: io.io, initializer: selected, createDirectory: directory.create,
       readFile: p => readFileSync(p, "utf8"), readSecretFile: readHubSecretFile,
       service: { installed: () => false, install: async () => { throw Error("not requested"); } } });
     return { outcome, io };
