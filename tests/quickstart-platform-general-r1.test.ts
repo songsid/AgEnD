@@ -43,15 +43,18 @@ describe("an inherited General (defaults.general_topic: true) answers for its co
       expect(validateFleetConfig(fleet).warnings.filter((w) => w.message.includes(`connection "${other}"`))).toEqual([]);
     });
 
-    it(`channels [${first}, ${other}], control: an explicit general_topic: false is not a General, whatever the default`, () => {
-      const fleet = { channels, defaults: { general_topic: true }, instances: {
-        general: { working_directory: "/w/g", general_topic: true },
-        worker: { working_directory: "/w/x", channel_id: other, general_topic: false },
-      } };
-      expect(loadFleetConfigSource(yaml.dump(fleet)).instances.worker!.general_topic).toBe(false);
-      expect(platformGeneralPlan(fleet.instances, channels, 1, "/h", fleet.defaults)?.name).toBe(`general-${other}`);
-      expect(validateFleetConfig(fleet).warnings.some((w) => w.message.includes(`connection "${other}"`))).toBe(true);
-    });
+    for (const explicit of [false, null] as const) {
+      it(`channels [${first}, ${other}], control: an explicit general_topic: ${explicit} is not a General, whatever the default`, () => {
+        const fleet = { channels, defaults: { general_topic: true }, instances: {
+          general: { working_directory: "/w/g", general_topic: true },
+          worker: { working_directory: "/w/x", channel_id: other, general_topic: explicit },
+        } };
+        // The loader keeps the explicit value, and the fleet's `=== true` test makes it no General.
+        expect(loadFleetConfigSource(yaml.dump(fleet)).instances.worker!.general_topic === true).toBe(false);
+        expect(platformGeneralPlan(fleet.instances, channels, 1, "/h", fleet.defaults)?.name).toBe(`general-${other}`);
+        expect(validateFleetConfig(fleet).warnings.some((w) => w.message.includes(`connection "${other}"`))).toBe(true);
+      });
+    }
   }
 });
 

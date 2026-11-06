@@ -27,12 +27,14 @@ type Defaults = { general_topic?: unknown } | null | undefined;
 
 /**
  * Whether an instance is a General as the config loader makes it: its own `general_topic`, else the fleet default
- * (`defaults.general_topic: true` makes every unflagged instance one; an explicit `general_topic: false` never is).
+ * (`defaults.general_topic: true` makes every instance without the key one; an explicit `false` or `null` never is).
  */
 export function isEffectiveGeneral(inst: unknown, defaults?: Defaults): boolean {
   if (!inst || typeof inst !== "object") return false;
   const own = (inst as { general_topic?: unknown }).general_topic;
-  return own === undefined || own === null ? defaults?.general_topic === true : own === true;
+  // Only an absent key inherits: the loader keeps an explicit null (deepMergeGeneric), and the fleet's `=== true` test
+  // then makes it no General.
+  return own === undefined ? defaults?.general_topic === true : own === true;
 }
 
 export const channelAdapterId = (ch: ChannelLike): string => ch.id ?? ch.type;
