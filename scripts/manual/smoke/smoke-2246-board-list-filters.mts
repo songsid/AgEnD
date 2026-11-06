@@ -45,7 +45,9 @@ const shot = (name: string) => join(OUT, `${name}.png`);
 const NUMBERS = `(() => ({ csp: (window.__csp || []).length, sideScroll: document.documentElement.scrollWidth > window.innerWidth + 1,
   chips: Array.prototype.map.call(document.querySelectorAll(".tb-chip"), function (c) { return c.textContent; }).join(" | "),
   rows: document.querySelectorAll(".tb-row").length, tiles: document.querySelectorAll(".tb-tile").length,
-  groups: Array.prototype.map.call(document.querySelectorAll(".tb-group-head"), function (g) { return g.textContent; }).join(" | "), address: location.search }))()`;
+  groups: Array.prototype.map.call(document.querySelectorAll(".tb-group-head"), function (g) { return g.textContent; }).join(" | "), address: location.search,
+  buttons: Array.prototype.map.call(document.querySelectorAll(".tb-filter-menu > button, .tb-view-menu > button"), function (b) { return b.textContent.trim() + (b.querySelector("svg path") ? "+icon" : ""); }).join(" | "),
+  css: !!document.querySelector('link[data-tb-css="1"]'), chipFlex: (function () { var c = document.querySelector(".tb-chip"); return c ? getComputedStyle(c).display : null; })() }))()`;
 async function report(p: any, label: string) { console.log(label, JSON.stringify(await p.page.evaluate(NUMBERS)), "errors:", p.errors.length ? p.errors : "none"); }
 async function openMenu(page: any, menu: string) { await page.locator(`${menu} > button`).click(); await page.waitForSelector(`${menu} .menu-list`); }
 async function choose(page: any, menu: string, label: string) {
@@ -53,9 +55,24 @@ async function choose(page: any, menu: string, label: string) {
   await page.locator(`${menu} .menu-list button`, { hasText: label }).first().click();
   await page.waitForTimeout(250);
 }
+// SKEW=<git rev> (e.g. v2.3.5-alpha.4): the tab opened before the upgrade — app.css, ui-menu.js and ui-icons.js are
+// served as that release had them, while the lazily loaded Fleet panel is this tree's.
+const SKEW = process.env.SKEW || "";
+const OLD: Record<string, string> = {};
+if (SKEW) {
+  const { execFileSync } = await import("node:child_process");
+  for (const f of ["app.css", "ui-menu.js", "ui-icons.js"]) OLD[f] = execFileSync("git", ["-C", REPO, "show", `${SKEW}:src/ui/shared/${f}`], { encoding: "utf8" });
+}
+async function skew(ctx: any) {
+  if (!SKEW) return;
+  await ctx.route(/\/assets\/(app\.css|ui-menu\.js|ui-icons\.js)(\?.*)?$/, (route: any) => {
+    const f = new URL(route.request().url()).pathname.split("/").pop()!;
+    route.fulfill({ status: 200, contentType: f.endsWith(".css") ? "text/css; charset=utf-8" : "text/javascript; charset=utf-8", body: OLD[f] });
+  });
+}
 async function openBoard(c: MatrixCase, projectId: number, storage: Record<string, string> = {}) {
   const kept = { agend_tasks_project: String(projectId), ...storage };
-  const p = await freshPage(fx, c, { beforeNavigate: (ctx: any) => ctx.addInitScript({ content: Object.entries(kept).map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join(" ") }) });
+  const p = await freshPage(fx, c, { beforeNavigate: async (ctx: any) => { await skew(ctx); await ctx.addInitScript({ content: Object.entries(kept).map(([k, v]) => `localStorage.setItem(${JSON.stringify(k)}, ${JSON.stringify(v)});`).join(" ") }); } });
   await mounted(p.page);
   await p.page.goto(`${fx.base}/ui/fleet`);
   await p.page.waitForSelector(".tb-board-page");
