@@ -184,8 +184,8 @@ describe("the chat's states", () => {
     };
     // #1629: a person's Lock and Reset of the agent's web theme, before Delete (still last); #1958: its colour, before them.
     // #2556: Full width (a desk's view choice), after the theme's.
-    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Colour…", "Lock theme", "Reset theme…", "Full width", "Delete instance…"]);
-    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Colour…", "Lock theme", "Reset theme…", "Full width", "Delete instance…"]);
+    expect(await items("alpha")).toEqual(["Instance details", "Restart instance", "Stop instance", "Files & changes", "Colour…", "Lock theme", "Reset theme…", "Full width", "Delete instance…"]);
+    expect(await items("beta")).toEqual(["Instance details", "Start instance", "Files & changes", "Colour…", "Lock theme", "Reset theme…", "Full width", "Delete instance…"]);
   });
 
   it("the composer's control is 'Stop reply', shown only while the agent works; Send hides then unless there is something to send", async () => {

@@ -18,7 +18,7 @@
  *
  * Callers (web-api.ts) decide who may ask: the fleet's local admin session only.
  */
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { constants as fsConstants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, resolve, sep } from "node:path";
