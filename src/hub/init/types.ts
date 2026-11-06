@@ -26,7 +26,12 @@ export interface HubInitPlan {
   /** Where the browser HTTPS listener listens. */
   webListen: HubListen;
   /** The operator's browser certificate chain and private key (PEM files); copied privately on commit. */
-  webTls: { certFile: string; keyFile: string };
+  webTls: {
+    certFile: string;
+    keyFile: string;
+    /** Private staging owned by explicit wizard generation, for cleanup after resume. */
+    generated?: true;
+  };
 }
 
 export interface HubListen {

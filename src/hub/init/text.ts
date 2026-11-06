@@ -24,8 +24,8 @@ const en = {
   listen_need: "Enter host:port, for example 192.0.2.10:8443 (one interface; 0.0.0.0 is not accepted).",
   tls_title: "Browser HTTPS certificate",
   tls_intro:
-    "Colleagues' browsers must trust the web address's certificate. Use a certificate from your organisation's certificate authority (or one their browsers already trust) whose name covers {0}. The Hub never signs anyone in over plain HTTP.",
-  tls_cert_q: "Certificate file (PEM, full chain), or press Enter if you don't have one yet: ",
+    "Import a trusted certificate covering {0}, or generate a 30-day self-signed certificate for this address. Browsers warn about self-signed certificates until the owner arranges trust. Generation does not change any trust store. The Hub never signs anyone in over plain HTTP.",
+  tls_cert_q: "Certificate file (PEM, full chain), or type generate for a 30-day self-signed certificate: ",
   tls_key_q: "Its private key file (PEM, not encrypted): ",
   tls_needed:
     "You need a certificate and its private key for {0}:\n  • issued by a certificate authority colleagues' browsers trust (usually your IT department's),\n  • naming the host {1} (subject alternative name),\n  • as PEM files: the certificate (with its chain) and an unencrypted private key.\nNothing was changed. Run agend hub init again when you have them.",
@@ -33,6 +33,10 @@ const en = {
   tls_self_signed:
     "This certificate is self-signed: browsers will warn colleagues unless it is installed as trusted on their computers. Use it anyway? [y/N] ",
   tls_ok: "Certificate for {0}, valid until {1}.",
+  tls_fingerprint: "Browser certificate SHA-256: {0}",
+  tls_generate_unavailable: "Certificate generation is unavailable in this build. Import a certificate and its private key instead.",
+  tls_generate_failed: "Could not generate the browser certificate. Check that OpenSSL is installed, or import a certificate and its private key.",
+  tls_stage_kept: "Private certificate staging remains at {0}. If setup is incomplete, resume with agend hub init. Otherwise inspect it before removing it manually.",
   retry_q: "[r] try again  [q] quit: ",
   dir_title: "Directory (LDAP / Active Directory, LDAPS only)",
   dir_realm_q: "Directory id: a short stable name for this directory, lowercase (for example “corp”): ",
@@ -102,14 +106,18 @@ const zhTW: Record<Key, string> = {
   listen_need: "請輸入 主機:埠，例如 192.0.2.10:8443（單一介面；不接受 0.0.0.0）。",
   tls_title: "瀏覽器用的 HTTPS 憑證",
   tls_intro:
-    "同事的瀏覽器必須信任網址的憑證。請使用貴單位憑證機構簽發（或同事瀏覽器已信任）且名稱涵蓋 {0} 的憑證。Hub 絕不透過一般 HTTP 讓人登入。",
-  tls_cert_q: "憑證檔（PEM，含完整憑證鏈），若還沒有請直接按 Enter：",
+    "請匯入涵蓋 {0} 的受信任憑證，或為這個位址產生有效 30 天的自簽憑證。自行安排信任前，瀏覽器會對自簽憑證顯示警告。產生憑證不會變更任何信任存放區。Hub 絕不透過一般 HTTP 讓人登入。",
+  tls_cert_q: "憑證檔（PEM，含完整憑證鏈），或輸入 generate 產生有效 30 天的自簽憑證：",
   tls_key_q: "對應的私鑰檔（PEM，未加密）：",
   tls_needed:
     "你需要 {0} 的憑證與私鑰：\n  • 由同事瀏覽器信任的憑證機構簽發（通常是 IT 部門），\n  • 名稱涵蓋主機 {1}（subject alternative name），\n  • PEM 檔：憑證（含憑證鏈）與未加密的私鑰。\n沒有做任何變更。準備好後再執行 agend hub init。",
   tls_problem: "這個憑證無法使用：",
   tls_self_signed: "這是自簽憑證：除非在同事電腦上安裝為信任憑證，瀏覽器會跳出警告。仍要使用嗎？[y/N] ",
   tls_ok: "{0} 的憑證，有效到 {1}。",
+  tls_fingerprint: "瀏覽器憑證 SHA-256：{0}",
+  tls_generate_unavailable: "這個版本無法產生憑證。請改用現有憑證與對應的私鑰檔。",
+  tls_generate_failed: "無法產生瀏覽器憑證。請確認已安裝 OpenSSL，或改用現有憑證與私鑰檔。",
+  tls_stage_kept: "私人憑證暫存仍保留於 {0}。初始化若尚未完成，請執行 agend hub init 繼續；已完成時，請先檢查再手動刪除。",
   retry_q: "[r] 再試一次  [q] 離開：",
   dir_title: "目錄（LDAP / Active Directory，只接受 LDAPS）",
   dir_realm_q: "目錄代號：這個目錄的固定短名稱，小寫（例如「corp」）：",
