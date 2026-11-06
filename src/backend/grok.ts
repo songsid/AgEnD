@@ -116,7 +116,7 @@ function grokWeeklyLimitDialog(instanceDir: string): RuntimeDialog {
  * After the recorded reset: Down×2 from the captured default (option 1, reverse-video) then Enter on Try Again.
  * Unique autoResolutionKey so a still-limited re-show falls through to Shift+x on the next scan.
  */
-function grokWeeklyLimitTryAgainDialog(instanceDir: string): RuntimeDialog {
+function grokWeeklyLimitTryAgainDialog(instanceDir: string, pending: { value: boolean }): RuntimeDialog {
   const pattern = /You hit your weekly limit\./;
   return {
     pattern,
@@ -127,9 +127,22 @@ function grokWeeklyLimitTryAgainDialog(instanceDir: string): RuntimeDialog {
     verifyAfterKeys: true,
     autoResolutionKey: "grok-weekly-limit-try-again",
     answeredByAgend: true,
-    isActive: pane => grokWeeklyLimitActive(pane, "question", { tryAgain: true }) && grokWeeklyResetDue(instanceDir),
+    // Stay matched through the Down×2+Enter sequence: answerDetail runs before the keys, and alpha re-reads the
+    // pane before each key. Clearing the clock there made isActive false and sent nothing. Drop the clock once
+    // the modal is gone (success, or the next Shift+x will write a fresh one).
+    isActive: pane => {
+      const modal = grokWeeklyLimitActive(pane, "question", { tryAgain: true });
+      if (!modal) {
+        if (pending.value) {
+          pending.value = false;
+          clearGrokWeeklyReset(instanceDir);
+        }
+        return false;
+      }
+      return pending.value || grokWeeklyResetDue(instanceDir);
+    },
     answerDetail: () => {
-      clearGrokWeeklyReset(instanceDir);
+      pending.value = true;
       return null;
     },
   };
@@ -306,6 +319,8 @@ export class GrokBackend implements CliBackend {
   // Cached from buildCommand/writeConfig so getSessionId() (which takes no args)
   // can scope to grok's per-cwd session directory.
   private workingDirectory?: string;
+  /** Try-again keys are in flight: keep matching until the modal leaves (see grokWeeklyLimitTryAgainDialog). */
+  private readonly grokWeeklyTryAgainPending = { value: false };
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("grok");
@@ -584,7 +599,7 @@ export class GrokBackend implements CliBackend {
       // After the recorded reset: Try Again (question) or Space (scrollback) first so the ready pattern cannot
       // mistake "Grok Build" in the credits row for a composer. Hold is the fallback (before the reset, and if
       // Try Again is already claimed this launch). Never a paid option from startup.
-      grokWeeklyLimitTryAgainDialog(dir),
+      grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
       { ...grokWeeklyLimitScrollbackDialog(),
         isActive: pane => grokWeeklyLimitActive(pane, "scrollback") && grokWeeklyResetDue(dir) },
       { ...grokWeeklyLimitDialog(dir), keys: [], holdOnly: true, verifyAfterKeys: false, answeredByAgend: false, dismissIncident: undefined, literalKeys: undefined,
@@ -668,7 +683,7 @@ export class GrokBackend implements CliBackend {
       },
       // After the recorded reset, Try Again first (unique autoResolutionKey). Shift+x still matches so a
       // still-limited re-show pauses again. Before the reset, only Shift+x — never a paid option.
-      grokWeeklyLimitTryAgainDialog(dir),
+      grokWeeklyLimitTryAgainDialog(dir, this.grokWeeklyTryAgainPending),
       grokWeeklyLimitDialog(dir),
       grokWeeklyLimitScrollbackDialog(),
       // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
