@@ -26,6 +26,7 @@
  * so the very first bytes are captured (verified live: new-session + pipe-pane
  * loses the first line; placeholder + respawn does not).
  */
+import { tmuxBinary, tmuxEnvOption } from "./tmux-binary.js";
 import { EventEmitter } from "node:events";
 import { execFile } from "./child-process.js";
 import { randomBytes, timingSafeEqual } from "node:crypto";
@@ -649,7 +650,10 @@ export class TmuxTerminalBackend implements TerminalBackend {
   private readonly socketPaths = new Map<string, string>();
   private readonly probe: (pid: number) => ProcessProbe;
 
-  constructor(private readonly tmuxBin = "tmux", opts: { probeProcess?: (pid: number) => ProcessProbe } = {}) {
+  /** A test's tmux, or AgEnD's (tmux-binary.ts: PATH's while the bundled tmux is off), resolved at each call. */
+  private get tmuxBin(): string { return this.tmuxBinOverride ?? tmuxBinary(); }
+
+  constructor(private readonly tmuxBinOverride?: string, opts: { probeProcess?: (pid: number) => ProcessProbe } = {}) {
     this.probe = opts.probeProcess ?? probeProcess;
   }
 
@@ -665,7 +669,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
    */
   private async tmux(socket: string, op: string, args: string[], input?: Buffer, timeoutMs = TMUX_EXEC_TIMEOUT_MS): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      const child = execFile(this.tmuxBin, ["-L", socket, op, ...args], { encoding: "utf8", timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
+      const child = execFile(this.tmuxBin, ["-L", socket, op, ...args], { encoding: "utf8", timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, ...tmuxEnvOption() },
         (error, stdout) => {
           if (error) {
             const code = (error as { code?: unknown }).code;
@@ -697,7 +701,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
     let stream: NetSocket | null = null;
     try {
       await new Promise<void>((resolve, reject) => execFile(this.tmuxBin, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main",
-        "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"], { timeout: TMUX_EXEC_TIMEOUT_MS },
+        "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"], { timeout: TMUX_EXEC_TIMEOUT_MS, ...tmuxEnvOption() },
         err => err ? reject(new Error(`tmux new-session failed (socket ${socket})`)) : resolve()));
       if (signal?.aborted) throw aborted();
       const pid = Number.parseInt((await this.tmux(socket, "display-message", ["-p", "#{pid}"])).trim(), 10);
@@ -838,7 +842,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
     }
     const pid = server?.pid;
     const tmuxSays = await new Promise<"alive" | "dead" | "unknown">(resolve => {
-      execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: KILL_OP_TIMEOUT_MS }, (error, _stdout, stderr) => {
+      execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: KILL_OP_TIMEOUT_MS, ...tmuxEnvOption() }, (error, _stdout, stderr) => {
         if (!error) { resolve("alive"); return; }
         const code = (error as { code?: unknown }).code;
         const text = String(stderr ?? "");

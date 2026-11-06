@@ -45,7 +45,7 @@ import Database from "better-sqlite3";
 import type { FleetConfig } from "./types.js";
 import type { Logger } from "./logger.js";
 import { getTmuxSession } from "./config.js";
-import { getTmuxSocketName } from "./paths.js";
+import { tmuxArgs as tmuxArgsFor, tmuxBinary, tmuxEnvOption } from "./tmux-binary.js";
 import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
 import { bannerFocusOk, CARD_SLOTS, type CardSlot, HumanCardStore, resolveCard } from "./web-card.js";
@@ -275,10 +275,8 @@ function paneTarget(ctx: ViewApiContext, name: string): string | null {
   return `${getTmuxSession()}:${wid}`;
 }
 
-function tmuxArgs(rest: string[]): string[] {
-  const socket = getTmuxSocketName();
-  return socket ? ["-L", socket, ...rest] : rest;
-}
+/** This fleet's tmux socket (and, with the bundled tmux, its config) in front of `rest` (tmux-binary.ts). */
+const tmuxArgs = (rest: string[]): string[] => tmuxArgsFor(rest);
 
 /**
  * #2855: a trusted guest's read-only View. Per account: GUEST_PANE_READS reads a second, of at most `panes` agents at
@@ -426,12 +424,12 @@ async function capturePane(ctx: ViewApiContext, name: string, historyLines = 0):
   const capture = ["capture-pane", "-p", "-e", ...(historyLines > 0 ? ["-S", `-${Math.floor(historyLines)}`] : []), "-t", target];
   const [text, size] = await Promise.all([
     // #1956: through the fleet's spawn helper when it runs (a viewer polls this every 800 ms).
-    tmuxExecHelper.exec("tmux", tmuxArgs(capture), { maxBuffer: 8 * 1024 * 1024 },
-      () => execFileP("tmux", tmuxArgs(capture), { maxBuffer: 8 * 1024 * 1024 }))
+    tmuxExecHelper.exec(tmuxBinary(), tmuxArgs(capture), { maxBuffer: 8 * 1024 * 1024, ...tmuxEnvOption() },
+      () => execFileP(tmuxBinary(), tmuxArgs(capture), { maxBuffer: 8 * 1024 * 1024, ...tmuxEnvOption() }))
       .then(r => r.stdout),
     // display-message resolves the window's *active* pane, matching capture-pane.
-    tmuxExecHelper.exec("tmux", tmuxArgs(["display-message", "-p", "-t", target, format]), {},
-      () => execFileP("tmux", tmuxArgs(["display-message", "-p", "-t", target, format])))
+    tmuxExecHelper.exec(tmuxBinary(), tmuxArgs(["display-message", "-p", "-t", target, format]), { ...tmuxEnvOption() },
+      () => tmuxEnvOption().env ? execFileP(tmuxBinary(), tmuxArgs(["display-message", "-p", "-t", target, format]), tmuxEnvOption()) : execFileP(tmuxBinary(), tmuxArgs(["display-message", "-p", "-t", target, format])))
       .then(r => r.stdout)
       // A missing size must not fail the whole capture — the client falls back
       // to its last known size (or skips refitting) when the headers are absent.

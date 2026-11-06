@@ -7,6 +7,7 @@
 // just before the oldest open one); answered history is kept. The messages answer carries the room itself (its state,
 // its grant's end, what its link negotiated: `room.features`), fresh each poll.
 import { hubClient } from "./hub-client.js";
+import { createHubButtonActions } from "./hub-button-actions.js";
 
 export const POLL_MS = 10_000;
 /** The server's page: at most this many entries per read, the oldest first (rooms.read LIMIT 100). */
@@ -49,7 +50,7 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
 /**
  * The store of one room: `subscribe(fn)` (fn() on any change) → unsubscribe; `messages()`, `room()`, `working()` (the
  * question being worked on, if any: { since }), `closed()`; `refresh()` (a read now); `send(text, extras)`;
- * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)` (stubs until F); `stop()`.
+ * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)`; `stop()`.
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   const subs = new Set();
@@ -57,7 +58,12 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
   const emit = () => { for (const fn of subs) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const merge = (got) => {
     const byId = new Map(st.entries.map((e) => [e.messageId, e]));
-    for (const e of got) byId.set(e.messageId, { ...byId.get(e.messageId), ...e });
+    for (const e of got) {
+      const next = { ...byId.get(e.messageId), ...e };
+      // A returned entry is complete: removed/retained-away controls must not survive in the cache.
+      if (!e.buttons) delete next.buttons;
+      byId.set(e.messageId, next);
+    }
     st.entries = [...byId.values()].sort((a, b) => a.sequence - b.sequence);
   };
   const schedule = (ms) => { timers.clearTimeout(st.timer); if (st.live && !st.closed) st.timer = timers.setTimeout(poll, ms); };
@@ -68,14 +74,16 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     // Unsettled entries are read again (from just before the oldest one) — but a full page means there is more after
     // it: read on from the last one first, so an old open entry can never pin the read to the same page (#3246 review).
     const last = st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
-    const open = st.full ? null : st.entries.find((e) => !SETTLED.has(e.receipt && e.receipt.stage));
+    // Keep one response slot for an unseen entry: PAGE known rows would hide every newer row behind LIMIT PAGE.
+    const tail = Math.max(0, last - PAGE + 1);
+    const open = st.full ? null : st.entries.find((e) => !SETTLED.has(e.receipt && e.receipt.stage) || e.buttons?.state === "open");
     // The tail page is always read again (the newest entries' stages move); an open entry older than that is read from
     // its own place only every FAR_EVERY-th read, so it never holds back the newer ones (#3246 review, residual).
     // Every FAR_EVERY-th read goes back to one of them, in turn (#3261 review: each old unsettled entry, not only the oldest).
     st.reads += 1;
-    const old = st.full ? [] : st.entries.filter((e) => e.sequence - 1 < last - PAGE && !SETTLED.has(e.receipt && e.receipt.stage));
+    const old = st.full ? [] : st.entries.filter((e) => e.sequence - 1 < tail && (!SETTLED.has(e.receipt && e.receipt.stage) || e.buttons?.state === "open"));
     const far = old.length > 0 && st.reads % FAR_EVERY === 0 ? old[(st.farTurn++) % old.length] : null;
-    const after = far ? far.sequence - 1 : open ? Math.max(open.sequence - 1, last - PAGE) : last;
+    const after = far ? far.sequence - 1 : open ? Math.max(open.sequence - 1, tail) : last;
     let r;
     try { r = await client.read(st.room.id, after); } catch { r = { ok: false, code: "unreachable" }; }
     st.inflight = false;
@@ -106,6 +114,9 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     const x = [...b].map((v) => v.toString(16).padStart(2, "0")).join("");
     return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
   };
+  const actions = createHubButtonActions({ id: room.id, get features() { return st.closed ? [] : st.room.features; } }, {
+    client, entries: () => st.entries, refresh: () => schedule(0), changed: emit,
+  });
   return {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     room: () => st.room,
@@ -135,13 +146,12 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       emit();
       return r;
     },
-    // F (buttons and polls) fills these four (#3226 seams); until then nothing can be clicked or voted.
-    async clickButton() { return { ok: false, code: "unsupported" }; },
-    async vote() { return { ok: false, code: "unsupported" }; },
-    busy() { return false; },
-    mine() { return []; },
+    clickButton: actions.clickButton,
+    vote: actions.vote,
+    busy: actions.busy,
+    mine: actions.mine,
     stop() {
-      st.live = false; timers.clearTimeout(st.timer); subs.clear();
+      st.live = false; actions.stop(); timers.clearTimeout(st.timer); subs.clear();
       if (doc) doc.removeEventListener("visibilitychange", onVisible);
     },
   };

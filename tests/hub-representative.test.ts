@@ -18,6 +18,7 @@ import { HubRepresentativeExecution, HUB_REPORT_TARGET, agentPolicyDigest, isAge
 import type { HubAttachmentRef, HubAuthorizationRequest, HubQuestion } from "../src/hub/types.js";
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
+import { buttonsDigest } from "../src/hub/buttons-model.js";
 
 const dbs: Database.Database[] = [];
 const reps: HubRepresentativeExecution[] = [];
@@ -32,7 +33,7 @@ async function until(check: () => boolean, label: string): Promise<void> {
 }
 
 /** files/features/hubFiles: attachments-v1 (D) — the member's files service, the link's features, the Hub's stored files by id. */
-function fixture(opts: { legacy?: boolean; handOff?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
+function fixture(opts: { legacy?: boolean; handOff?: boolean; buttons?: boolean; files?: HubMemberFiles; features?: string[]; hubFiles?: Map<string, Buffer>; claimedSha?: Map<string, string> } = {}) {
   const db = new Database(":memory:");
   dbs.push(db);
   migrateHubMemberJournal(db);
@@ -54,7 +55,7 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean; files?: HubMemberF
   const link = {
     linkEpoch: 1,
     current: () => true,
-    features: new Set(opts.features ?? []),
+    features: new Set(opts.features ?? (opts.buttons ? ["buttons-v1"] : [])),
     exchange: vi.fn(async (frame: any) => {
       frames.push(frame);
       if (frame.type === "attachment.get") {
@@ -114,7 +115,7 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean; files?: HubMemberF
   const publish = () => db.transaction(() => rep.readinessCandidate({ ...local, exposure: { ...local.exposure, state: "withdrawn" } })).immediate();
   const stage = (id: string) => (JSON.parse((db.prepare("SELECT value FROM hub_member_messages WHERE message_id=?").get(id) as { value: string }).value) as { stage: string }).stage;
   const state = (id: string) => (db.prepare("SELECT state, reason FROM hub_representative_questions WHERE message_id=?").get(id) as { state: string; reason: string | null } | undefined);
-  return { puts, db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local,
+  return { puts, db, rep, admission, journal, question, publish, authorize, deliveries, handed, frames, audit, stage, state, local, link,
     setToken: (t: string | null) => { token = t; }, withdraw: () => { current = null; }, stop: () => { live = false; }, offline: () => { online = null; }, online: () => { online = link; },
     setHandOff: (v: boolean) => { handOff = v; }, whileWaiting: (fn: () => void) => { onDeliver = fn; },
     failAuditOf: (action: string | null) => { failAudit = action; }, exchange: (mode: "ok" | "reject" | "bad-ack") => { exchangeMode = mode; } };
@@ -361,6 +362,46 @@ describe("Hub representative adapter (#3145)", () => {
   });
 });
 
+describe("buttons-v1 representative reports", () => {
+  it("snapshots choices before release authorization and saves/sends exactly those bytes", async () => {
+    const f = fixture({ buttons: true }); f.publish(); const q = f.question(); await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "question handed");
+    let release!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), seen = new Promise<void>(resolve => { entered = resolve; });
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async request => { if (request.phase === "release-answer") { entered(); await gate; } return real(request); });
+    const buttons = [{ label: "Original", value: "original" }, { label: "Other", value: "other" }];
+    const poll = { seconds: 10, multi: true, reveal: "close" as const, showVoters: false, question: "Choose" };
+    const pending = f.rep.report({ caller: "rep", correlationId: f.deliveries[0]!.correlationId, text: "Choose", extras: { buttons, poll } })!;
+    await seen; buttons[0]!.label = "mutated"; poll.seconds = 99; release();
+    expect((await pending).ok).toBe(true);
+    const answer = f.frames.find(frame => frame.type === "answer").payload;
+    expect(answer.buttons).toMatchObject({ labels: ["Original", "Other"], values: ["original", "other"], poll: { seconds: 10 } });
+    expect(answer.contentDigest).toBe(messageContentDigest("answer", "Choose", { buttonsDigest: buttonsDigest(answer.buttons) }));
+    const request = f.authorize.mock.calls.map(([request]) => request).find(request => request.phase === "release-answer")!;
+    expect(request).toMatchObject({ answer: { answerId: answer.answerId, contentDigest: answer.contentDigest } });
+    expect(f.stage(q.identity.messageId)).toBe("answered");
+    expect(f.frames.filter(frame => frame.type === "answer")).toHaveLength(1);
+  });
+  it("an old Hub receives no button fields or release attempt, and text-only retry uses the same correlation", async () => {
+    const f = fixture(); f.publish(); await f.admission.admit(f.question()); await until(() => f.handed.length === 1, "question handed");
+    const correlationId = f.deliveries[0]!.correlationId;
+    const refused = await f.rep.report({ caller: "rep", correlationId, text: "Choose", extras: { buttons: [{ label: "A", value: "a" }] } })!;
+    expect(refused).toMatchObject({ ok: false, message: expect.stringContaining("can't send buttons yet") });
+    expect(f.authorize.mock.calls.filter(([request]) => request.phase === "release-answer")).toHaveLength(0);
+    expect(f.frames.filter(frame => frame.type === "answer")).toEqual([]);
+    expect((await f.rep.report({ caller: "rep", correlationId, text: "Plain answer" })!).ok).toBe(true);
+    expect(f.frames.find(frame => frame.type === "answer").payload.buttons).toBeUndefined();
+  });
+  it("a lost negotiated capability during release prevents disclosure", async () => {
+    const f = fixture({ buttons: true }); f.publish(); await f.admission.admit(f.question()); await until(() => f.handed.length === 1, "question handed");
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async request => { const lease = await real(request); if (request.phase === "release-answer") f.link.features.clear(); return lease; });
+    expect((await f.rep.report({ caller: "rep", correlationId: f.deliveries[0]!.correlationId, text: "Choose", extras: { buttons: [{ label: "A", value: "a" }] } })!).ok).toBe(false);
+    expect(f.frames.filter(frame => frame.type === "answer")).toEqual([]);
+  });
+});
+
 describe("Hub representative files (attachments-v1, #3226 D)", () => {
   const dirs: string[] = [];
   afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -373,6 +414,21 @@ describe("Hub representative files (attachments-v1, #3226 D)", () => {
   const ref = (name: string, bytes: Buffer, mime: string): HubAttachmentRef => ({ id: randomUUID(), name, size: bytes.length, mime, sha256: sha256(bytes) });
   const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(HUB_ATTACHMENT_CHUNK + 99)]);
   const TXT = Buffer.from("hello from the asker\n");
+
+  it("one release lease binds answer files and buttons together", async () => {
+    const fs = files(), path = join(fs.outside, "answer.txt"); writeFileSync(path, "Owned answer file");
+    const f = fixture({ files: fs.service, features: ["attachments-v1", "buttons-v1"] });
+    f.publish(); await f.admission.admit(f.question()); await until(() => f.handed.length === 1, "question handed");
+    expect((await f.rep.report({ caller: "rep", correlationId: f.deliveries[0]!.correlationId, text: "Choose", extras: {
+      files: [path], buttons: [{ label: "Yes", value: "yes" }],
+    } })!).ok).toBe(true);
+    const answer = f.frames.find(frame => frame.type === "answer")!.payload;
+    expect(answer.attachments).toHaveLength(1); expect(answer.buttons.values).toEqual(["yes"]);
+    const digest = messageContentDigest("answer", "Choose", { attachments: answer.attachments, buttonsDigest: buttonsDigest(answer.buttons) });
+    expect(answer.contentDigest).toBe(digest);
+    expect(f.authorize.mock.calls.find(([request]) => request.phase === "release-answer")![0]).toMatchObject({ answer: { contentDigest: digest } });
+    expect(answer.contentDigest).not.toBe(messageContentDigest("answer", "Choose", { attachments: answer.attachments }));
+  });
 
   it("a question's files land whole in the agent's inbox and are named in its text, as fleet chat uploads are", async () => {
     const fs = files(), png = ref("chart.png", PNG, "image/png"), txt = ref("notes.txt", TXT, "text/plain");

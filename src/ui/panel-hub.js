@@ -376,7 +376,9 @@ function HubThread({ store, name }) {
     const thread = createThread(list, doc.createElement("div"), {
       t: threadT, tf: threadT, isUser: (x) => x.role === "user", onJump: setJump, onEmpty: setEmpty, canReply: () => false,
       setPreviewOptIn: () => {}, copyText, download: () => {}, toggleWrap: () => {}, notice: (text) => toast(text, false),
-      clickReplyButton: (id, index) => { void store.clickButton(id, index).then(() => store.refresh()); },
+      clickReplyButton: (id, index) => { void store.clickButton(id, index).then((r) => {
+        if (!r.ok && r.code !== "busy" && r.code !== "stopped") { toast(errText(r), false); store.refresh(); }
+      }); },
       replyButtonBusy: (id) => store.busy(id), pollMine: (id) => store.mine(id), serverNow: () => Date.now(),
       retryOutgoing: () => {}, deleteOutgoing: () => {}, putBackOutgoing: () => {}, startReply: () => {}, findQuoted: () => null,
       emojis: () => false, mentions: () => null,
