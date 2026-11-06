@@ -95,6 +95,12 @@ export class RuntimeUpdateJournal {
     const { attempt: _, ...rest } = before;
     return this.commit(before, { ...rest, failed: { version: attempt.next.version, sha256: attempt.next.sha256 } }, current);
   }
+  /** Integrity failure before dispatch: transport interruptions must never use this path. */
+  rememberFailure(target: { version: string; sha256: string }, current: () => void): RuntimeUpdateState {
+    const before = this.read(), { version, sha256 } = parseRuntimeUpdateMetadata({ version: target.version, sha256: target.sha256, bytes: 1 });
+    if (before.attempt) throw new RuntimeUpdateJournalError("uncertain");
+    return this.commit(before, { ...before, failed: { version, sha256 } }, current);
+  }
   complete(id: string, current: () => void): RuntimeUpdateState {
     const before = this.read();
     if (before.attempt?.id !== id || before.attempt.phase !== "active") throw new RuntimeUpdateJournalError("transition");
