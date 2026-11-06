@@ -49,7 +49,7 @@ beforeAll(async () => {
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
-  (globalThis as any).localStorage.removeItem("agend_tasks_project");
+  for (const k of ["agend_tasks_project", "agend_tasks_display", "agend_tasks_filters"]) (globalThis as any).localStorage.removeItem(k);
   delete (globalThis as any).document.body.dataset.publicLink;
   (globalThis as any).history.replaceState(null, "", "/ui/fleet");
   calls.length = 0;
@@ -231,6 +231,19 @@ describe("Previous / Next in a card's dialog", () => {
     fire(field, "keydown", { key: "j" }); await settle(10);
     expect(new URLSearchParams((globalThis as any).location.search).get("card"), "typing a j is typing").toBe("M-2");
     field.remove();
+  });
+
+  it("the project as a list: a row's menu, and the steps in the list's order", async () => {
+    (globalThis as any).localStorage.setItem("agend_tasks_display", JSON.stringify({ view: "list", group: "none", order: "title" }));
+    await mount();
+    await rightClick(q('[data-row="M-2"]'));
+    expect(q(".tb-card-menu").getAttribute("aria-label")).toBe("M-2: actions");
+    fire(q(".tb-card-menu"), "keydown", { key: "Escape" }); await settle(4);
+    fire(q('[data-row="M-1"] .tb-row-title'), "click"); await settle(10);
+    // By title: Add the shop (M-2), Choose the badge (M-3), Serve the weekly leaderboard (M-1).
+    expect(step().querySelector(".tc-step-at").textContent).toBe("3 / 3");
+    fire(step().querySelectorAll("button")[0], "click"); await settle(10);
+    expect(new URLSearchParams((globalThis as any).location.search).get("card")).toBe("M-3");
   });
 
   it("a sub task opened from its main task steps among its siblings", async () => {
