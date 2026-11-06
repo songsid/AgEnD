@@ -914,11 +914,17 @@ export async function runQuickstart(): Promise<void> {
     }
 
     // Check tmux
-    try {
-      execSync("which tmux", { stdio: "pipe" });
-    } catch {
-      console.error("tmux is required. Install: brew install tmux (macOS) or apt install tmux (Linux)");
-      process.exit(1);
+    // With AgEnD's bundled tmux (M-2457) the bundle must resolve — never a fallback to PATH; otherwise PATH's tmux.
+    const { bundledTmuxEnabled, resolveTmux } = await import("./tmux-binary.js");
+    if (bundledTmuxEnabled()) {
+      try { resolveTmux(); } catch (e) { console.error((e as Error).message); process.exit(1); }
+    } else {
+      try {
+        execSync("which tmux", { stdio: "pipe" });
+      } catch {
+        console.error("tmux is required. Install: brew install tmux (macOS) or apt install tmux (Linux)");
+        process.exit(1);
+      }
     }
 
     // ── Web only, or with a bot ─────────────────────────

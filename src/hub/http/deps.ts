@@ -6,6 +6,8 @@ import type Database from "better-sqlite3";
 import type { HubAskerEnvelope, HubAuditSink, HubDirectory, HubMode, HubServerTransport, HubTx, HubUnitOfWork, PersonKey } from "../types.js";
 import type { HubPairingService } from "../pairing.js";
 import type { HubTransportStore } from "../store.js";
+import type { HubAnswerButtons } from "../types.js";
+import type { HubPollBallot } from "../types.js";
 
 /** The `hub` section the sealed manifest covers — frozen, validated, never re-read from a request. */
 export interface HubHttpConfig {
@@ -21,9 +23,9 @@ export interface HubIssuer {
 }
 /** Encrypted question/answer payloads (S5, under content.key). One payload per record; S5 chooses the ref. */
 export interface HubContentStore {
-  put(tx: HubTx, payload: { question?: string; answer?: string }): string;
+  put(tx: HubTx, payload: { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot }): string;
   /** S3's own room projection only, after its audience check. Undefined: retention removed it (shown as expired). */
-  get(ref: string): { question?: string; answer?: string } | undefined;
+  get(ref: string): { question?: string; answer?: string; buttons?: HubAnswerButtons; pollBallot?: HubPollBallot } | undefined;
 }
 export interface HubHttpDeps {
   uow: HubUnitOfWork;
@@ -32,10 +34,13 @@ export interface HubHttpDeps {
   pairing: HubPairingService;
   store: HubTransportStore;
   config: HubHttpConfig;
+  preview?: Readonly<import("../preview.js").HubPreviewView>;
   issuer: HubIssuer;
   /** Re-read on every use: null before HubServer exists and after fence/close — then work is unavailable, never queued. */
   transport(): Pick<HubServerTransport, "send"> | null;
   content: HubContentStore;
+  /** attachments-v1 files (absent: this Hub stores none, and offers no upload). */
+  attachments?: import("../attachments/store.js").HubAttachmentStore;
   /** The server's mode (S5): `serverEnabled()` false once fenced — every request and continuation refuses from then on. */
   current(): HubMode;
   now?: () => number;

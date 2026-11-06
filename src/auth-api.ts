@@ -198,6 +198,10 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "app.css": { file: join("shared", "app.css"), type: "text/css; charset=utf-8" },
   // AgEnD Hub P1: the Hub pages' own stylesheet (linked by their lazy modules only; static, no data).
   "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
+  // #3226 B: the Hub chat's stylesheet (linked by hub-chat-strings.js; an older hub.css lacks it).
+  "hub-chat.css": { file: join("shared", "hub-chat.css"), type: "text/css; charset=utf-8" },
+  // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
+  "hub-owner.css": { file: join("shared", "hub-owner.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
@@ -205,7 +209,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
   // The task board's list, filters, card menu and Insights (#3169-#3171): linked by fleet-task-view.js (an older app.css lacks it).
   "task-board.css": { file: join("shared", "task-board.css"), type: "text/css; charset=utf-8" },
-  // Settings -> Runtime -> Connect a computer: the install tabs, command cards and reinstall notice (linked by panel-runtimes.js; an older app.css lacks it).
+  // Settings -> Runtime: the install tabs, command cards, reinstall notice and the account list (credential profiles, which account each sign-in is), linked by panel-runtimes.js; an older app.css lacks it.
   "runtime-install.css": { file: join("shared", "runtime-install.css"), type: "text/css; charset=utf-8" },
   // Claude history in the View: the renderer's own stylesheet (linked by it, so an older app.css never lacks its rules).
   "view-history.css": { file: join("shared", "view-history.css"), type: "text/css; charset=utf-8" },

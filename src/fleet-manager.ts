@@ -277,7 +277,7 @@ import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log
 import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
-import { WebChatDiskStore } from "./web-chat-store.js";
+import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
@@ -1942,6 +1942,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             quota: agent => this.hubAgentQuota(agent),
             deliver: input => this.deliverHubQuestion(input),
             agentToken: agent => this.hubAgentToken(agent),
+            // attachments-v1: a question's files go into the agent's inbox; an answer's come from its own paths.
+            files: { stateDir: this.dataDir,
+              inboxDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "inbox") : null,
+              scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
           },
           attachExposures: api => this.attachHubMemberExposures(api),
@@ -2259,13 +2263,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** The member link as the "Connect to a Hub" view shows it (S5's client lifecycle). */
   private hubMemberLink: "online" | "offline" | "revoked" = "offline";
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
-  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReports?.(input) ?? null;
   }
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
-  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
+  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;
@@ -9849,8 +9853,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = daemonTopicMode(fleet);
 
     // Set tmux socket isolation for custom AGEND_HOME
-    const { getTmuxSocketName: getSocket } = await import("./paths.js");
-    TmuxManager.setSocketName(getSocket());
+    // M-2457: the bundled tmux's socket while it is on; getTmuxSocketName() as before while off.
+    const { tmuxSocket } = await import("./tmux-binary.js");
+    TmuxManager.setSocketName(tmuxSocket());
 
     await TmuxManager.ensureSession(getTmuxSession());
     this.tmuxSessionEnsured = true;
@@ -11470,13 +11475,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             try {
               const { execFile } = await import("./child-process.js");
               const { promisify } = await import("node:util");
-              const { getTmuxSocketName } = await import("./paths.js");
+              const { tmuxArgs, tmuxBinary, tmuxEnvOption } = await import("./tmux-binary.js");
               // Honour socket isolation: without -L this queried the user's default
               // tmux server instead of the fleet's, so under a custom AGEND_HOME the
               // check was meaningless (it reported every pane dead).
-              const socket = getTmuxSocketName();
-              const args = socket ? ["-L", socket, "list-panes", "-t", windowId] : ["list-panes", "-t", windowId];
-              await promisify(execFile)("tmux", args, { timeout: 5_000 });
+              const args = tmuxArgs(["list-panes", "-t", windowId]);
+              await promisify(execFile)(tmuxBinary(), args, { timeout: 5_000, ...tmuxEnvOption() });
             } catch {
               // Pane dead — respawn
               this.logger.info({ name }, "Tmux pane dead after IPC loss — respawning instance");

@@ -35,6 +35,8 @@ import type { HubAskerEnvelope, HubMemberFrame, HubMode, HubPerson, HubServerFra
 import { HubFileVersionFloor } from "../version-floor.js";
 import { browserCertificateMigration, createHubBrowserCertificateControl, type HubBrowserCertificateControl } from "../browser-certificate.js";
 import { createHubRetentionControl, retentionMigration, type HubRetentionControl } from "../retention.js";
+import { createHubPreviewHandler, hubPreviewSettings, hubPreviewView, type HubPreviewSettings, type HubPreviewView } from "../preview.js";
+import { HUB_ATTACHMENTS_MIGRATION, HubAttachmentStore } from "../attachments/store.js";
 
 export const SERVER_SET: HubStateSet = Object.freeze({
   database: "hub/hub.sqlite",
@@ -47,11 +49,14 @@ export interface HubHttpDeps {
   uow: HubUnitOfWork;
   audit: HubAuditStore;
   content: HubContentStore;
+  /** attachments-v1 files under the content key (absent: the Hub offers no upload). */
+  attachments?: HubAttachmentStore;
   directory: HubDirectory;
   pairing: HubPairingService;
   store: HubTransportStore;
   current(): HubMode;
   now?: () => number;
+  preview?: Readonly<HubPreviewView>;
   config: Readonly<{ hubId: string; name: string; webOrigin: string; administrator: PersonKey }>;
   issuer: { keyId: string; sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope };
   /** null before the member listener runs and after fence/close: S3 answers "unavailable", never queues. */
@@ -98,6 +103,7 @@ interface ServerSettings {
   memberListen: { host: string; port: number };
   webListen: { host: string; port: number };
   webTls: { certificateFile: string; keyFile: string };
+  preview: HubPreviewSettings | null;
   directory: HubDirectoryConfig & { bindPasswordRef: string };
   administrator: PersonKey;
   retention: { contentDays: number; eventDays: number };
@@ -124,13 +130,16 @@ function settingsOf(cfg: Record<string, unknown>): ServerSettings {
   if (typeof admin.realm !== "string" || typeof admin.objectId !== "string") throw new HubStateError("hub-unsealed", "hub.administrator is missing");
   if (!Number.isSafeInteger(retention.contentDays) || !Number.isSafeInteger(retention.eventDays)) throw new HubStateError("hub-unsealed", "hub.retention is missing");
   if (typeof directory.bindPasswordRef !== "string") throw new HubStateError("hub-unsealed", "hub.directory.bindPasswordRef is missing");
+  const webListen = listen(cfg.webListen, "webListen"), memberListen = listen(cfg.memberListen, "memberListen");
+  const preview = hubPreviewSettings({ web: cfg.web, webOrigin: cfg.webOrigin as string, memberOrigin: cfg.memberOrigin as string, webListen, memberListen });
   return {
     hubId: cfg.hubId as string,
     name: cfg.name as string,
     webOrigin: cfg.webOrigin as string,
     memberOrigin: cfg.memberOrigin as string,
-    memberListen: listen(cfg.memberListen, "memberListen"),
-    webListen: listen(cfg.webListen, "webListen"),
+    memberListen,
+    webListen,
+    preview,
     webTls: { certificateFile: tls.certificateFile, keyFile: tls.keyFile },
     directory: directory as unknown as ServerSettings["directory"],
     administrator: { realm: admin.realm, objectId: admin.objectId },
@@ -214,6 +223,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       if (!options.components.http) throw new HubStateError("hub-incomplete", "the Hub web service (S3) is not in this build");
       const httpEntry = await options.components.http();
       const settings = settingsOf(cfg);
+      const previewBoot = randomBytes(16).toString("hex");
 
       // 1. The private state set: new (create all), complete (open), anything else refused.
       const state = inspectStateSet(options.home, SERVER_SET);
@@ -225,11 +235,14 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         createKeyFile(options.home, SERVER_SET.keys[0]!);
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_TRANSPORT_MIGRATION, ...httpEntry.migrations,
-        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId)]);
+        retentionMigration(settings.hubId, settings.retention), browserCertificateMigration(settings.hubId), HUB_ATTACHMENTS_MIGRATION]);
       bindHubInstance(db, settings.hubId, state, now());
 
       // 2. Audit + unit of work + S1's transport store (its audit goes through the bridge, same transaction).
-      const audit = createHubAudit({ db, contentKey: readKeyFile(options.home, SERVER_SET.keys[0]!), now });
+      const contentKey = readKeyFile(options.home, SERVER_SET.keys[0]!);
+      const audit = createHubAudit({ db, contentKey, now });
+      // attachments-v1 files, under the same content key as audit content.
+      const attachments = new HubAttachmentStore({ contentKey, now });
       const uow = createHubUnitOfWork(db);
       const store = new HubTransportStore(db, { floor, appendAudit: (record, database) => audit.appendInTransaction(record, database) });
       if (state === "new") store.initialize();
@@ -268,11 +281,13 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         uow,
         audit,
         content: audit.content,
+        attachments,
         directory,
         pairing,
         store,
         current: () => mode,
         now,
+        preview: hubPreviewView(settings.webOrigin, settings.preview, previewBoot),
         config: Object.freeze({ hubId: settings.hubId, name: settings.name, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
         issuer: { keyId: identity.issuerKeyId, sign: (envelope) => signAsker(envelope, issuerKey) },
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),
@@ -293,10 +308,12 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       // 5. The Hub web listener: every request goes to S3's handler (it serves /hub/v1/*, the Hub-only shell and its
       //    assets without fleet cookies); anything it declines is 404. The personal fleet listener is untouched.
       let web: Server | null = null;
+      let preview: Server | null = null;
       const browserCertificate = createHubBrowserCertificateControl({ db, home: options.home, hubId: settings.hubId, origin: settings.webOrigin,
         initial: settings.webTls, audit, current: live, now, activate: material => {
           if (!web || !live()) throw Error("unavailable");
           web.setSecureContext({ ...material, minVersion: "TLSv1.2" });
+          preview?.setSecureContext({ ...material, minVersion: "TLSv1.2" });
         } });
       teardown.add("browser certificate preparation", () => browserCertificate.close());
       let retentionTimer: NodeJS.Timeout | null = null;
@@ -314,6 +331,19 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub was switched off while starting");
           try {
             await memberServer!.start();
+            if (settings.preview) {
+              const server = createHttpsServer({ ...browserCertificate.material(), minVersion: "TLSv1.2" },
+                createHubPreviewHandler(settings.preview, settings.webOrigin, previewBoot, live));
+              preview = server;
+              teardown.add("the Hub preview listener", () => {
+                server.closeAllConnections?.();
+                return new Promise<void>((resolve, reject) => server.close(err => err && (err as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING" ? reject(err) : resolve()));
+              });
+              await new Promise<void>((resolve, reject) => {
+                server.once("error", reject);
+                server.listen(settings.preview!.port, settings.preview!.host, () => { server.removeListener("error", reject); resolve(); });
+              });
+            }
             const server = createHttpsServer(
               { ...browserCertificate.material(), minVersion: "TLSv1.2" },
               serveWeb,
@@ -337,7 +367,10 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
             retentionTimer = setInterval(() => {
               if (!live()) return;
               try {
-                audit.purge(retention.read());
+                const policy = retention.read();
+                audit.purge(policy);
+                // Files follow the content policy; expired uploads and unfinished transfers go too.
+                db.transaction(() => attachments.purge(db, now() - policy.contentDays * 86_400_000)).immediate();
               } catch (err) {
                 options.log("warn", "Hub retention could not run", { err: (err as Error).message });
               }
@@ -365,6 +398,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         /** Test and diagnostics seams (not part of HubMountedService). */
         webAddress: () => web?.address() ?? null,
         memberAddress: () => memberServer?.address() ?? null,
+        previewAddress: () => preview?.address() ?? null,
         audit,
       } as HubMountedService & Record<string, unknown>;
     } catch (err) {

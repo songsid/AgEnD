@@ -5,7 +5,7 @@
 // Opening a tab reads its list: a person's navigation, so it counts as use, as the old tab click did (#1374 — no timer
 // here re-reads anything). Every read is under the navigation's lease: a list that arrives after the person moved on
 // is dropped (#1408 §4).
-import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register, lang } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
@@ -137,6 +137,50 @@ function useLoad(lease, path, version) {
   return state;
 }
 
+/**
+ * M-2542: whether the tab row goes in the header. Not on a phone (app.css's breakpoint — the query app-shell's narrow()
+ * asks). On a desktop only when the header's row holds everything at its natural width: the title (with any host
+ * memory warning), all six tabs and the header's tools. Otherwise the tabs are the row under the header, as before —
+ * never clipped, never squeezed. The natural widths are the same in either place, so the answer does not flip-flop.
+ */
+const NARROW = "(max-width: 899px)";
+export function tabsFit(m) { return m.title + m.tabs + m.tools + m.gaps <= m.room + 0.5; }
+export function measureTabsFit(root) {
+  const head = root?.querySelector(".panel-head");
+  const title = head?.querySelector(".panel-title");
+  const nav = root?.querySelector("nav[data-trust='panel-navigation']");
+  if (!head || !title || !nav || typeof getComputedStyle !== "function") return true;
+  const w = (el) => el.getBoundingClientRect().width || 0;
+  const natural = (el) => Math.max(w(el), el.scrollWidth || 0);   // an ellipsised title still counts its whole text
+  const px = (v) => parseFloat(v) || 0;
+  const sum = (els, f) => els.reduce((n, el) => n + f(el), 0);
+  const hs = getComputedStyle(head);
+  const parts = [...title.children], items = [...nav.children];
+  const others = [...head.children].filter(el => el !== title && el !== nav && w(el) > 0);   // tools, sidebar buttons
+  return tabsFit({
+    room: w(head) - px(hs.paddingLeft) - px(hs.paddingRight),
+    title: sum(parts, natural) + px(getComputedStyle(title).columnGap) * Math.max(0, parts.length - 1),
+    tabs: sum(items, w) + px(getComputedStyle(nav).columnGap) * Math.max(0, items.length - 1),
+    tools: sum(others, w),
+    gaps: px(hs.columnGap) * (others.length + 1),
+  });
+}
+function useTabsInHeader(rootRef) {
+  const mq = () => (typeof matchMedia === "function" ? matchMedia(NARROW) : null);
+  const [inHeader, setInHeader] = useState(() => !(mq()?.matches ?? false));
+  const check = () => setInHeader(!(mq()?.matches ?? false) && measureTabsFit(rootRef.current));
+  useLayoutEffect(check);   // every render: the title's warning can come and go
+  useEffect(() => {
+    const m = mq();
+    m?.addEventListener?.("change", check);
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(check) : null;
+    if (ro && rootRef.current) ro.observe(rootRef.current);
+    document.fonts?.ready?.then(check, () => {});
+    return () => { m?.removeEventListener?.("change", check); ro?.disconnect(); };
+  }, []);
+  return inHeader;
+}
+
 export function FleetPanel({ route, navKey }) {
   const lease = useLease(navKey);
   const tab = route.tab;
@@ -148,10 +192,18 @@ export function FleetPanel({ route, navKey }) {
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
   const top = hostMemory && hostMemoryTop?.length ? t("fleet.hostMemory_top", hostMemoryTop.map(memoryHogText).join(" · ")) : "";
   const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}${top ? html`<span class="host-mem-top">${top}</span>` : null}</span>` : null;
-  return html`<div data-effect-panel="fleet" class="panel p-fleet">
-    <${PanelHeader} title=${t("fleet.title")} sub=${sub}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
-    <nav data-trust="panel-navigation" class="seg" aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
-      aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>
+  const root = useRef(null);
+  const wide = useTabsInHeader(root);
+  const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
+    aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
+  return html`<div ref=${root} data-effect-panel="fleet" class="panel p-fleet">
+    ${/* M-2542: the tabs share the title row (PanelHeader's nav slot, as the instance tabs do) when everything fits
+         there (useTabsInHeader), saving a line; otherwise — a phone, a narrow window, a long host memory warning — they
+         stay the row under the header they always were (.seg, the same markup as before). Not ".seg" in the header,
+         and chosen here rather than by CSS: a previous release's app.css, cached in an open tab, has no rule for the
+         header slot — this way either stylesheet lays both out (smoke-2542 SKEW). */ ""}
+    <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
+    ${wide ? null : tabs("seg")}
     <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }

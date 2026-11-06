@@ -306,7 +306,7 @@ docker compose exec agend ls .agend/instances/        # each instance's logs are
 ### 觀看或操作 instance
 
 ```sh
-docker compose exec -it agend tmux attach -t agend
+docker compose exec -it agend agend attach
 ```
 
 用 `Ctrl-b d` 離開。instance 正在工作時，不要在它的視窗裡打字。

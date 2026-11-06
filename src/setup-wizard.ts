@@ -5,7 +5,8 @@ import { writeSecretFile } from "./secret-file.js";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { stdin, stdout } from "node:process";
-import { execSync } from "node:child_process";
+import { execFileSync, execSync } from "node:child_process";
+import { bundledTmuxEnabled, tmuxBinary, tmuxEnvOption } from "./tmux-binary.js";
 import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry } from "./cli-entry.js";
@@ -298,7 +299,10 @@ export function checkPrerequisites(binary: string): PrereqResult {
   } catch { /* not installed */ }
 
   try {
-    tmuxVersion = execSync("tmux -V", { stdio: "pipe" }).toString().trim();
+    // Off: exactly the old shell call; with AgEnD's bundled tmux (M-2457): that binary, never PATH's.
+    tmuxVersion = (bundledTmuxEnabled()
+      ? execFileSync(tmuxBinary(), ["-V"], { stdio: "pipe", ...tmuxEnvOption() })
+      : execSync("tmux -V", { stdio: "pipe" })).toString().trim();
     tmux = true;
   } catch { /* not installed */ }
 

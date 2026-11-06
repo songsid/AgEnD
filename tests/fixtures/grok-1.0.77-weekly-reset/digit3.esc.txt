@@ -1,0 +1,40 @@
+
+  [2mmaster[0m /t/a/work-1.0.77-120/repo                                                           1.3K / 256K[2m │ [0m[Dashboard]
+
+
+     ❯ hello limited                                                                                        11:54 PM
+
+                                                                                                                       █
+     [2mTrying again…[0m                                                                                                     █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+                                                                                                                       █
+
+  ┃
+  ┃  [1mYou hit your weekly limit.[0m
+  ┃
+  ┃
+  ┃  [7m1 (○) [1mUpgrade tier    [0;7m  Upgrade to a higher tier for more usage                                                [0m
+  ┃  2 (○) Buy more credits  Purchase credits to keep using Grok Build
+  ┃  3 (○) Try Again         Resubmit the last prompt once you have usage again
+  ┃
+  ┃  [1m↑/↓ navigate · y copy[0m                                                                            [1mEnter[0m:submit
+  ┃
+
+  [1mTab[0;2m:next answer  │  [0;1mEsc[0;2m:scrollback  │  [0;1mShift+x[0;2m:dismiss[0m
+

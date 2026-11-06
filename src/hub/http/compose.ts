@@ -25,6 +25,7 @@ import { HubSessions, hubClearCookie, hubSetCookie } from "../sessions.js";
 import { HubCatalogService } from "../catalog.js";
 import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
+import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
 import { HubCore, personByLogin } from "./core.js";
 import { HUB_HTTP_MIGRATIONS } from "./schema.js";
@@ -38,8 +39,9 @@ export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
-export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-quota.js"]);
+export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-button-actions.js"]);
 const BODY_LIMIT = 96 * 1024;
+const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const HEX64 = /^[a-f0-9]{64}$/;
 const API_HEADERS = { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
@@ -74,6 +76,27 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new HubProtocolError("invalid");
   return value as Record<string, unknown>;
 }
+/** The upload's name: X-File-Name, percent-encoded UTF-8, one path segment. */
+function fileName(v: unknown): string {
+  let name: string;
+  try { name = typeof v === "string" && v.length <= 1024 ? decodeURIComponent(v) : ""; } catch { name = ""; }
+  if (!name || Buffer.byteLength(name, "utf8") > 255 || /[\\/\u0000-\u001f\u007f]/.test(name) || name.startsWith(".") || name.trim() !== name) throw new HubProtocolError("invalid");
+  return name;
+}
+/** A raw request body, never decoded, cut off past `limit` bytes. */
+async function readRaw(req: IncomingMessage, limit: number): Promise<Buffer> {
+  if (req.headers["content-encoding"] !== undefined) throw new HttpError(415, "invalid");
+  const declared = req.headers["content-length"];
+  if (declared !== undefined && (!/^\d{1,10}$/.test(declared) || Number(declared) > limit)) { req.resume(); throw new HttpError(413, "too-large"); }
+  const chunks: Buffer[] = []; let bytes = 0;
+  for await (const part of req) {
+    const b = Buffer.from(part as Buffer); bytes += b.length;
+    if (bytes > limit) { req.destroy(); throw new HttpError(413, "too-large"); }
+    chunks.push(b);
+  }
+  if (bytes === 0) throw new HubProtocolError("invalid");
+  return Buffer.concat(chunks);
+}
 const str = (v: unknown, max = 256): string => { if (typeof v !== "string" || !v || v.length > max) throw new HubProtocolError("invalid"); return v; };
 const uuid = (v: unknown): string => { if (typeof v !== "string" || !UUID.test(v)) throw new HubProtocolError("invalid"); return v; };
 const int = (v: unknown): number => { const n = typeof v === "string" && /^\d{1,15}$/.test(v) ? Number(v) : v; if (!Number.isSafeInteger(n) || (n as number) < 0) throw new HubProtocolError("invalid"); return n as number; };
@@ -87,6 +110,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const uiDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ui");
   let closed = false;
   const live = () => !closed && core.live();
+  /** Upload bodies being read now, per session and in all (each up to the file limit in memory). */
+  const uploading = new Map<string, number>(); let uploadingTotal = 0;
 
   /** One API request: method and path enumerated, mutations same-origin with the session's CSRF token. */
   async function api(req: IncomingMessage, res: ServerResponse, path: string, query: URLSearchParams): Promise<void> {
@@ -137,6 +162,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "DELETE") throw new HttpError(405, "method");
       csrf(); await guard(() => catalog.revokeGrant(ctx, uuid(r![1]), int(query.get("revision")))); return send(res, 200, { ok: true });
     }
+    // #3226 C: who asked the owner's agent and when (no content), for its owner only.
+    if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/activity$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, { activity: await guard(() => rooms.activity(ctx, uuid(r![1]))) });
+    }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/freeze$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); await guard(() => catalog.freeze(ctx, uuid(r![1]), int(b.revision), false)); return send(res, 200, { ok: true });
@@ -154,23 +184,65 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method === "POST") {
         csrf(); const b = await body();
         const room = await guard(() => rooms.open(ctx, uuid(b.exposureId), uuid(b.grantId)));
-        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, ...quota.projection(room.exposureId) } });
+        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...quota.projection(room.exposureId) } });
       }
       throw new HttpError(405, "method");
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/buttons$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      csrf(); const b = await body();
+      return send(res, 200, { receipt: await guard(() => rooms.buttons.click(ctx, uuid(r![1]), b)) });
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/messages$/))) {
       const roomId = uuid(r[1]);
       if (method === "GET") {
         const s = signedIn();
+        // #3226 B + G: the room comes with its entries, fresh each poll — its view (state, grant's end, what its link
+        // negotiated) and its quota projection (G; absent when hidden or not shared).
         const entries = await guard(() => rooms.read(ctx, roomId, int(query.get("after") ?? "0"), s.sessionId));
-        const room = core.atomic(db => db.prepare("SELECT exposure_id FROM hub_rooms WHERE id=?").get(roomId) as { exposure_id: string });
-        return send(res, 200, { entries, room: { id: roomId, ...quota.projection(room.exposure_id) } });
+        const view = await guard(() => rooms.view(ctx, roomId));
+        return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view) } });
       }
       if (method === "POST") {
         csrf(); const b = await body();
-        return send(res, 200, { receipt: await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "")) });
+        const files = b.files === undefined ? [] : Array.isArray(b.files) && b.files.length <= 10 ? b.files.map(uuid) : (() => { throw new HubProtocolError("invalid"); })();
+        return send(res, 200, { receipt: await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "", files)) });
       }
       throw new HttpError(405, "method");
+    }
+    // attachments-v1: the asker's upload (raw body, streamed under the file limit) and the room's files.
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files$/))) {
+      if (method !== "POST") throw new HttpError(405, "method");
+      // Nothing of the body is read until the request is admitted: a closed connection, never a buffer, for a refusal.
+      res.once("finish", () => { if (!req.readableEnded) req.destroy(); });
+      const roomId = uuid(r[1]); const s = csrf();
+      const store = deps.attachments; if (!store) throw new HubProtocolError("incompatible");
+      const name = fileName(req.headers["x-file-name"]);
+      const declared = req.headers["content-length"];
+      if (declared === undefined || !/^\d{1,10}$/.test(declared)) throw new HttpError(411, "length-required");
+      if (Number(declared) > store.limits.fileBytes) throw new HttpError(413, "too-large");
+      // At most UPLOADS_PER_SESSION bodies per session and UPLOADS_TOTAL in all are read at once.
+      if ((uploading.get(s.sessionId) ?? 0) >= UPLOADS_PER_SESSION || uploadingTotal >= UPLOADS_TOTAL) throw new HubProtocolError("backpressure");
+      uploading.set(s.sessionId, (uploading.get(s.sessionId) ?? 0) + 1); uploadingTotal++;
+      try {
+        await guard(() => rooms.uploadAdmit(ctx, roomId, Number(declared)));
+        const bytes = await readRaw(req, Number(declared)); if (!live()) throw new HubProtocolError("unavailable");
+        if (bytes.length !== Number(declared)) throw new HubProtocolError("invalid");
+        return send(res, 200, { file: await guard(() => rooms.upload(ctx, roomId, name, bytes)) });
+      } finally {
+        const n = (uploading.get(s.sessionId) ?? 1) - 1; if (n > 0) uploading.set(s.sessionId, n); else uploading.delete(s.sessionId); uploadingTotal--;
+      }
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/files\/([^/]+)$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      const roomId = uuid(r[1]), fileId = uuid(r[2]); signedIn();
+      const file = await guard(() => rooms.download(ctx, roomId, fileId));
+      // Never executed or sniffed: a download, in a sandbox; only a magic-checked image may show inline when asked.
+      const inline = query.get("inline") === "1" && file.image;
+      res.writeHead(200, { "Content-Type": file.mime, "Content-Length": String(file.bytes.length), "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "Cross-Origin-Resource-Policy": "same-origin",
+        "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(file.name)}` });
+      res.end(file.bytes); return;
     }
     if (path === "/hub/v1/audit") {
       if (method !== "GET") throw new HttpError(405, "method");
@@ -244,6 +316,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   function fail(res: ServerResponse, e: unknown): void {
     if (e instanceof SignedOut) return send(res, 401, { code: "signed-out" });
     if (e instanceof HttpError) return send(res, e.status, { code: e.code });
+    if (e instanceof HubAttachmentRefused) return send(res, 415, { code: e.refusal });
     if (e instanceof HubProtocolError) {
       const status = STATUS[e.code] ?? 400;
       return send(res, status, { code: e.code }, status === 429 ? { "Retry-After": "10" } : {});
@@ -263,7 +336,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (!live()) { send(res, 503, { code: "unavailable" }); return true; }
     if (path === "/") { res.writeHead(302, { Location: "/ui/hub", "Cache-Control": "no-store" }); res.end(); return true; }
     if (path === "/web" || path === "/ui" || path === "/ui/hub" || path === "/ui/hub/exposures" || path === "/ui/hub/admin") {
-      serveHubWorkspaceShell(res, { name: deps.config.name });
+      serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview });
       return true;
     }
     if (path.startsWith("/ui/js/")) {
@@ -297,6 +370,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (!page.more) flushSoon(link);
         return { ...reply, type: "reconcile", payload: page };
       }
+      case "attachment.get": return { ...reply, type: "attachment.chunk", payload: await rooms.attachmentGet(frame.payload, link) };
+      case "attachment.put": return { ...reply, type: "attachment.ack", payload: rooms.attachmentPut(frame.payload, link) };
       case "error": return;
     }
   }
@@ -308,8 +383,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     t.unref?.();
   }
 
+  rooms.buttons.start();
   return {
     handle, receive,
-    async close() { closed = true; rooms.forget(); quota.close(); },
+    async close() { closed = true; await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }
