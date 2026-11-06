@@ -10,7 +10,7 @@ import { InstallerPsStartGate, installerPsStartSlots, type InstallerPsStartTicke
 export const hasPwsh = spawnSync(process.platform === "win32" ? "where.exe" : "which", ["pwsh"]).status === 0;
 // Startup keeps the old 10 s request allowance, independently of each case.
 // Only setup START covers the bounded queue and cleanup/reporting headroom.
-const STARTUP_MS = 10_000;
+const STARTUP_MS = 30_000; // DIAGNOSTIC ONLY: observe censored cold starts, never merge this branch.
 export class InstallerPsBatch {
   private child?: ChildProcessWithoutNullStreams;
   private dir?: string;
@@ -56,7 +56,7 @@ export class InstallerPsBatch {
       this.queueMs = Math.round(performance.now() - queuedAt); this.slots = slots;
       if (process.env.CI) process.stderr.write(`[pwsh-queue] ${JSON.stringify({queueMs:Math.round(performance.now()-queuedAt), slots, cores:availableParallelism()})}\n`);
       this.startupTimer = setTimeout(() => {
-        this.fail(new Error("pwsh startup readiness exceeded 10 s"));
+        this.fail(new Error("pwsh startup observation exceeded 30 s"));
         this.child?.kill();
       }, STARTUP_MS);
       try { this.start(); } catch (e) { this.fail(e instanceof Error ? e : new Error(String(e))); this.child?.kill(); }
