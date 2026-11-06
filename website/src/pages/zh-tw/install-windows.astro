@@ -236,8 +236,11 @@ exit                                         # 離開 WSL</pre>
 
     <!-- Uninstall -->
     <h2 class="text-2xl font-bold text-text-primary mb-5">完全移除方法</h2>
-    <p class="text-sm text-text-secondary mb-4">在 PowerShell 中依序執行：</p>
-    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister Ubuntu-26.04
+    <p class="text-sm text-text-secondary mb-4">先讀取 AgEnD 記錄的 Linux 名稱與使用者，再把名稱與 WSL 清單、AgEnD 桌面捷徑實際開啟的 Linux 核對。如果紀錄不存在、已過期或對不上，先停下來；不要用 Ubuntu 版本號猜測。</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD\install.json') -Raw | ConvertFrom-Json | Select-Object distro, user
+wsl --list --quiet</pre>
+    <p class="text-sm text-text-secondary mb-4"><b class="text-text-primary">取消註冊會刪除所選 Linux 發行版及其中所有檔案，不只是 AgEnD。</b> 如果安裝時沿用了原本的 Ubuntu，你原有的其他檔案與軟體也會一起刪除。要保留這個 Linux 或其中資料，就不要執行取消註冊指令。確認目標後，才把下方的 <code class="font-mono text-accent">EXACT-VERIFIED-DISTRO-NAME</code> 換成核對過的完整名稱（可能是自訂的 AgEnD 名稱，也可能是較舊的 Ubuntu），再執行：</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister "EXACT-VERIFIED-DISTRO-NAME"
 Remove-Item "$env:USERPROFILE\.agend-install-progress" -ErrorAction SilentlyContinue
 Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs" -ErrorAction SilentlyContinue</pre>
     <p class="text-sm text-text-secondary mb-4">安裝程式在你的 <code class="font-mono text-accent">%USERPROFILE%\.wslconfig</code> 合併了兩個設定（<code class="font-mono text-accent">[wsl2] vmIdleTimeout=-1</code> 與 <code class="font-mono text-accent">[general] instanceIdleTimeout=-1</code>），保留你原有的其他設定，並在旁邊留了備份（<code class="font-mono text-accent">.wslconfig.agend-backup-…</code>）。請只刪掉這兩行，或還原備份；檔案裡有你自己的設定時，不要整個刪掉。</p>

@@ -236,8 +236,11 @@ exit                                         # leave WSL</pre>
 
     <!-- Uninstall -->
     <h2 class="text-2xl font-bold text-text-primary mb-5">Complete removal</h2>
-    <p class="text-sm text-text-secondary mb-4">Run these in PowerShell, in order:</p>
-    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister Ubuntu-26.04
+    <p class="text-sm text-text-secondary mb-4">First, read AgEnD's recorded distro and user, then compare the exact distro name with WSL's list and the distro opened by your AgEnD desktop shortcut. If the record is missing, stale or does not match, stop; do not guess from an Ubuntu version number.</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">Get-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD\install.json') -Raw | ConvertFrom-Json | Select-Object distro, user
+wsl --list --quiet</pre>
+    <p class="text-sm text-text-secondary mb-4"><b class="text-text-primary">Unregistering deletes the entire selected Linux distro and all its files, not just AgEnD.</b> This includes your other files and software if you chose to reuse an existing Ubuntu. To keep that distro or its data, do not run the unregister command. Only after confirming the target, replace <code class="font-mono text-accent">EXACT-VERIFIED-DISTRO-NAME</code> below with that exact name (which may be a custom AgEnD name or an older Ubuntu), then run:</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister "EXACT-VERIFIED-DISTRO-NAME"
 Remove-Item "$env:USERPROFILE\.agend-install-progress" -ErrorAction SilentlyContinue
 Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs" -ErrorAction SilentlyContinue</pre>
     <p class="text-sm text-text-secondary mb-4">The installer merged two keys into your <code class="font-mono text-accent">%USERPROFILE%\.wslconfig</code> (<code class="font-mono text-accent">[wsl2] vmIdleTimeout=-1</code> and <code class="font-mono text-accent">[general] instanceIdleTimeout=-1</code>) and kept your other settings, with a backup next to it (<code class="font-mono text-accent">.wslconfig.agend-backup-…</code>). Remove just those two lines, or restore the backup; don't delete the file if it holds settings of your own.</p>
