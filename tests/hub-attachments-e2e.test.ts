@@ -23,7 +23,7 @@ import { readPrivateFile } from "../src/hub/private-files.js";
 import { messageContentDigest, signAsker, verifyAsker, personKeyString } from "../src/hub/identity.js";
 import { createHubHttp, HUB_HTTP_MIGRATIONS } from "../src/hub/http/compose.js";
 import { HUB_ATTACHMENTS_MIGRATION, HubAttachmentStore } from "../src/hub/attachments/store.js";
-import { HUB_ATTACHMENT_CHUNK } from "../src/hub/protocol.js";
+import { HUB_ATTACHMENT_CHUNK, HUB_OPTIONAL_CAPABILITIES } from "../src/hub/protocol.js";
 import type { HubAttachmentRef, HubAuditRecord, HubDirectory, HubQuestion, HubTx, PersonKey } from "../src/hub/types.js";
 
 const sha = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
@@ -144,7 +144,8 @@ async function world(opts: { memberCapabilities?: readonly string[]; hubCapabili
 
 it("both directions end to end: upload → signed question with files → member pulls and checks → answer with a file → asker downloads", async () => {
   const w = await world();
-  expect(w.room.features).toEqual(["attachments-v1"]);
+  // Every optional feature this build offers, as both ends are this build (quota-band-v1 too, since G).
+  expect(w.room.features).toEqual(HUB_OPTIONAL_CAPABILITIES.filter(f => f !== "welcome-caps-v1"));
   const png = await w.alex("POST", `/hub/v1/rooms/${w.room.id}/files`, undefined, { bytes: PNG, name: "chart.png" });
   expect(png.status).toBe(200);
   expect(png.json.file).toMatchObject({ name: "chart.png", size: PNG.length, mime: "image/png", url: `/hub/v1/rooms/${w.room.id}/files/${png.json.file.id}` });

@@ -30,6 +30,7 @@ import { HubMemberClient, type HubMemberLink } from "../client.js";
 import { HUB_MEMBER_JOURNAL_MIGRATION, HubMemberJournal, type HubRestrictedOutbox } from "../member-journal.js";
 import { createHubMemberHandshake } from "../member-reconciliation.js";
 import { HubMemberProfileStore, type HubMemberProfile } from "../profile.js";
+import { createQuotaPublisher } from "../member/quota.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
@@ -87,6 +88,8 @@ export interface HubMemberFactoryOptions {
 }
 
 export interface HubRepresentativeHost {
+  /** Derive only a coarse band from this agent's local CLI/profile. Never hands exact usage to the Hub layer. */
+  quota?(agent: string): Promise<import("../types.js").HubQuota>;
   /** Ordinary cross-instance delivery to the published agent, with beforeInput run immediately before the IPC hand-off. */
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
   /** The agent's current lifecycle token (null: not a deliverable agent now). */
@@ -423,6 +426,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
 
       // 6. S1 admission + client: #3116's handshake on (re)connect, S5's receive routing.
       const sender = exposureMods.store.exposureSnapshotSender(exposures);
+      const quota = createQuotaPublisher({
+        exposures: () => exposures.list().flatMap(row => row.committed?.exposure.state === "published"
+          ? [{ exposureId: row.committed.exposure.id, agent: row.agent }] : []),
+        read: agent => options.representative.quota?.(agent) ?? Promise.resolve({ band: "unknown" }),
+        now,
+      });
+      teardown.add("quota updates", () => quota.stop());
       const handshake = createHubMemberHandshake({ journal, publishSnapshot: (l) => sender.publishSnapshot(l) });
       const admission = new HubMemberAdmissionAdapter({
         journal,
@@ -448,6 +458,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           await handshake(l);
           if (l.current() && live()) {
             online = l;
+            quota.start(l);
             options.linkState?.("online");
             // Questions admitted while offline (or before a restart, with no input yet) go out on this link.
             service.pump();
@@ -455,6 +466,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         receive,
         hold: (code) => {
+          quota.stop();
           options.linkState?.(code === "revoked" ? "revoked" : "offline");
           options.log("warn", "Hub link held", { code });
         },
@@ -486,6 +498,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         fence() {
           fenced = true;
+          quota.stop();
           links.fence();
           client?.fence();
           options.representative.attachReports(null, null);

@@ -11,8 +11,8 @@ const LEGACY_PAUSED_MARKER_FILE = "paused-state.json";
  */
 export const PAUSE_REASON_FILE = "paused-reason";
 /** `error`: a non-auth error pause (e.g. model capacity exhausted); `auth`: a login failure. */
-export type PauseReason = "idle" | "warm_cap" | "operator" | "auth" | "error";
-const PAUSE_REASONS: readonly PauseReason[] = ["idle", "warm_cap", "operator", "auth", "error"];
+export type PauseReason = "idle" | "warm_cap" | "operator" | "auth" | "error" | "quota";
+const PAUSE_REASONS: readonly PauseReason[] = ["idle", "warm_cap", "operator", "auth", "error", "quota"];
 
 export function hasPausedMarker(instanceDir: string): boolean {
   return existsSync(join(instanceDir, PAUSED_MARKER_FILE))

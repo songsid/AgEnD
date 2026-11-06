@@ -30,6 +30,12 @@ export interface HubAttachmentChunk { id: string; offset: number; total: number;
 export interface HubExposureSnapshot {
   revision: Epoch; exposures: readonly HubExposure[];
 }
+/** quota-band-v1: member-derived, coarse and ephemeral. Exact usage never crosses the link. */
+export interface HubQuota {
+  band: "available" | "near_limit" | "exhausted" | "unknown";
+  resetsAt?: Millis; // exhausted only; nearest reset rounded to five minutes
+}
+export interface HubExposureQuota { exposureId: ExposureId; quota: HubQuota }
 export interface HubQuestion {
   text: string; identity: HubAskerEnvelope;
   attachments?: readonly HubAttachmentRef[]; // attachments-v1 links only
@@ -92,7 +98,8 @@ export type HubMemberFrame =
   | HubFrame<"authorize.request", HubAuthorizationRequest>
   | HubFrame<"error", HubProtocolError>
   | HubFrame<"attachment.get", { id: string; offset: number }>
-  | HubFrame<"attachment.put", HubAttachmentChunk>;
+  | HubFrame<"attachment.put", HubAttachmentChunk>
+  | HubFrame<"exposure.quota", HubExposureQuota>;
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>

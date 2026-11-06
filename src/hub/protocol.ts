@@ -8,7 +8,7 @@ export const HUB_CAPABILITIES = ["identity-v1", "receipts-v1", "reconcile-v1"] a
 /** Optional link features this build offers, never required: an older peer that lacks one keeps working without it.
  * `welcome-caps-v1` lets the Hub answer with its own list; a feature is enabled only when both ends list it. Each feature
  * PR adds its own flag here (#3226: attachments-v1, buttons-v1, quota-band-v1) and checks `features` before sending. */
-export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1"];
+export const HUB_OPTIONAL_CAPABILITIES: readonly string[] = ["welcome-caps-v1", "attachments-v1", "quota-band-v1"];
 export const HUB_ATTACHMENT_FILE_MAX = 20 * 1024 * 1024;
 export const HUB_ATTACHMENTS_PER_MESSAGE = 10;
 /** Raw bytes per attachment chunk: base64 (4/3) plus the frame envelope stays under HUB_LIMITS.frame (256 KiB). */
@@ -22,6 +22,12 @@ export const askerSchema = z.strictObject({
 });
 export const exposureSchema = z.strictObject({ id: uuid, fleetId: uuid, owner: person, displayName: plain(256), revision: epoch,
   state: z.enum(["published", "withdrawn", "frozen"]), dataViewId: identifier, allowedTools: z.array(identifier).max(64), policyDigest: hash });
+/** No extensible bag: percentages, provider/profile ids and precise reset times are refused. */
+export const quotaSchema = z.union([
+  z.strictObject({ band: z.enum(["available", "near_limit", "unknown"]) }),
+  z.strictObject({ band: z.literal("exhausted"), resetsAt: epoch.max(8.64e15).refine(n => n % 300_000 === 0).optional() }),
+]);
+export const exposureQuotaSchema = z.strictObject({ exposureId: uuid, quota: quotaSchema });
 /** A file's name as shown and saved: one path segment, no control characters, no leading dot. */
 export const attachmentName = plain(255).refine(s => s.length > 0 && !/[\\/\u0000-\u001f\u007f]/.test(s) && !s.startsWith(".") && s.trim() === s, "Invalid file name");
 export const attachmentMime = z.string().regex(/^(?:image|application|text)\/[a-z0-9][a-z0-9.+-]{0,99}$/);
@@ -63,6 +69,7 @@ export const memberFrameSchema = z.union([
   frame("authorize.request", authorizationSchema), frame("error", errorSchema),
   // attachments-v1 only: pull a question's file; push an answer's file before its answer frame.
   frame("attachment.get", z.strictObject({ id: uuid, offset: epoch })), frame("attachment.put", attachmentChunk),
+  frame("exposure.quota", exposureQuotaSchema),
 ]);
 export const serverFrameSchema = z.union([
   frame("welcome", welcome), frame("question", questionSchema), frame("receipt", receiptSchema),

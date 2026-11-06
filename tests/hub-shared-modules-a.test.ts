@@ -3,7 +3,7 @@
  * with the old /ui/js/ paths re-exporting it for tabs opened before the move.
  * - served: every moved module is in the /assets map and lives under shared/; each old path is only a re-export of it, and
  *   both paths give the same module (one instance: the thread's caches and timers are not doubled); the Hub's own
- *   module list (HUB_UI_MODULES) is unchanged — the Hub reaches the shared ones through /assets/.
+ *   module list (HUB_UI_MODULES) contains Hub-only modules — it reaches the shared ones through /assets/.
  * - a file's URL: an attachment's own `url` is used only when it is a plain same-origin path (the Hub's room-scoped files);
  *   anything else (another origin, "//", "..", a quote, a space) is the fleet's /ui/file/<id>, for the picture, the link and
  *   the HTML loader alike.
@@ -39,8 +39,8 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
       expect(old[name], f).toBe(shared[name]);
     }
   });
-  it("the Hub's own module list is unchanged: it reaches the shared ones through /assets/", () => {
-    expect([...HUB_UI_MODULES]).toEqual(["panel-hub.js", "hub-client.js", "hub-strings.js"]);
+  it("the Hub-only module list includes quota; shared modules stay under /assets/", () => {
+    expect([...HUB_UI_MODULES]).toEqual(["panel-hub.js", "hub-client.js", "hub-strings.js", "hub-quota.js"]);
   });
 });
 

@@ -1469,7 +1469,7 @@ export class InstanceLifecycle {
         this.notifyIncident(name, data.type, data.notice ?? data.message);
         if (data.action === "pause") {
           if (data.type === "auth_error") { daemon.confirmAuthFailure?.(); daemon.requestPauseWhenIdle({ reconfirmAuth: true, reason: "auth" }); }
-          else daemon.requestPauseWhenIdle({ reason: "error" });
+          else daemon.requestPauseWhenIdle({ reason: data.type === "quota" ? "quota" : "error" });
         }
         return;
       }
@@ -1716,7 +1716,7 @@ export class InstanceLifecycle {
         } else {
           // The marker must say auth (2b never auto-wakes a login failure); any
           // other pause-action error is an error pause, not an operator one.
-          const reason: PauseReason = data.type === "auth_error" ? "auth" : "error";
+          const reason: PauseReason = data.type === "auth_error" ? "auth" : data.type === "quota" ? "quota" : "error";
           void this.pause(name, reason)
             .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
             .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle({ reason }); });

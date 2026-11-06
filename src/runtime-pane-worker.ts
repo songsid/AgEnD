@@ -16,11 +16,12 @@ import { validateRuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { prepareNativePaneConfig, type NativePaneConfig } from "./runtime-pane-config.js";
 import { validatePaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import { validateNativeMcpConnection, nativeUpdateGuard } from "./windows-cli-providers.js";
-import { assertAuditedNativePaneVersion, assertNativePaneCommandLine, persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
+import { assertRunnableNativePaneVersion, assertNativePaneCommandLine, persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
 
 export async function nativePaneWorker(): Promise<void> {
   if (process.platform !== "win32") throw Error("ConPTY helper requires native Windows Node");
   let config: NativePaneConfig | undefined;
+  let launchedVersion: string | undefined;
   let pty: IPty | undefined, started = false, finished = false, disconnected = false, closing = false, bytes = 0;
   const emit = (frame: NativePaneFrame): void => {
     const text = JSON.stringify(frame) + "\n";
@@ -77,7 +78,8 @@ export async function nativePaneWorker(): Promise<void> {
         const version=await promisify(execFile)(executable.command,[...executable.args,...nativeUpdateGuard(launch.cli),"--version"],{
           cwd:actual,env:{...environment(),NO_COLOR:"1"},timeout:30_000,maxBuffer:4096,encoding:"utf8",windowsHide:true,shell:false,
         });
-        assertAuditedNativePaneVersion(launch.cli,String(version.stdout));
+        // The version this launch actually runs: reported with "ready", so verification never relies on a cached inventory.
+        launchedVersion=assertRunnableNativePaneVersion(launch.cli,String(version.stdout));
         if(disconnected||finished)throw Error("Pane helper was disconnected before version verification");
         pty = binding.spawn(executable.command, args, {
           cwd: actual, cols: launch.columns, rows: launch.rows, name: "xterm-256color", useConpty: true, useConptyDll: true,
@@ -97,7 +99,7 @@ export async function nativePaneWorker(): Promise<void> {
           // Only the helper exits here: the CLI's own terminal exit was observed first.
           process.stdout.write(JSON.stringify({ type: "exit", code: exitCode } satisfies NativePaneFrame) + "\n", () => process.exit(0));
         });
-        emit({ type: "ready", pid: pty.pid });
+        emit({ type: "ready", pid: pty.pid, ...(launchedVersion ? { version: launchedVersion } : {}) });
         return;
       }
       if (!pty || finished) throw Error("Pane helper is not ready");
