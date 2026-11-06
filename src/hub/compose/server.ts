@@ -238,7 +238,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       if (!bindSecretPath(options.home, settings.directory.bindPasswordRef)) throw new HubStateError("hub-directory-secret", "hub.directory.bindPasswordRef is not the private bind file");
       let bindPassword: string;
       try {
-        bindPassword = readPrivateFile(options.home, BIND_SECRET_REL, 4096);
+        bindPassword = readPrivateFile(options.home, BIND_SECRET_REL, 4096, { preserveBom: true });
       } catch (err) {
         throw new HubStateError("hub-directory-secret", `the directory bind secret is missing or not private: ${(err as Error).message}`);
       }
