@@ -1,10 +1,11 @@
 /** Real private files and producer ZIPs; inert module bytes, no process, installer, account or native CLI. */
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { createRuntimeBundle, type RuntimeBundle } from "../src/runtime-bundle.js";
+import { runtimeCodeBuildId } from "../src/runtime-build-info.js";
 import { runtimeBundleFixture } from "./support/runtime-bundle-fixture.js";
 import { acquireRuntimeInstallLock, type RuntimeInstallLock } from "../src/runtime-update-lock.js";
 import { parseRuntimeInstallReceipt, readRuntimeInstallReceipt, readRuntimeInstalledProgram, readRuntimeSelectedProgram, registerRuntimeInstallOrigin, selectRuntimeProgram, stageRuntimeUpdate, RUNTIME_INSTALL_RECEIPT, type RuntimeInstallReceipt } from "../src/runtime-update-install.js";
@@ -47,9 +48,38 @@ it("permanently records a second origin under the install lock, including after 
     expect(readRuntimeInstallReceipt(path)).toEqual(shared);
   } finally { lock.release(); }
 });
-it("keeps an overflowed origin receipt bounded and permanently shared", async () => {
+it("refuses an origin receipt overflow without silently dropping origins or bumping revisions", async () => {
   const initial = { ...receipt(), origins: Array.from({ length: 8 }, (_, i) => `https://fleet-${i}.example.test`), shared: true }, path = root(initial), lock = await lockAt(path);
-  try { const next = registerRuntimeInstallOrigin(path, "https://ninth.example.test", lock); expect(next.origins).toEqual(initial.origins); expect(next.shared).toBe(true); expect(next.revision).toBe(2); }
+  try { expect(() => registerRuntimeInstallOrigin(path, "https://ninth.example.test", lock)).toThrow(/unsafe/); expect(readRuntimeInstallReceipt(path)).toEqual(initial); }
+  finally { lock.release(); }
+});
+it("refuses an on-disk manifest Build ID that differs from its actual modules", async () => {
+  const path = root(), lock = await lockAt(path);
+  try {
+    const installed = stageRuntimeUpdate(path, a.bytes, metadata(a), lock), manifestFile = join(path, installed.folder, "bundle-manifest.json"), manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
+    manifest.buildId = "f".repeat(64); writeFileSync(manifestFile, JSON.stringify(manifest));
+    expect(() => readRuntimeInstalledProgram(path, installed.folder)).toThrow(/unsafe/);
+  } finally { lock.release(); }
+});
+it.each(["hash", "build"] as const)("refuses an existing short-prefix target with a different full %s identity", async variant => {
+  const path = root(), lock = await lockAt(path);
+  try {
+    const installed = stageRuntimeUpdate(path, a.bytes, metadata(a), lock), base = join(path, installed.folder), marker = join(base, ".agend-install-sha256");
+    if (variant === "hash") writeFileSync(marker, a.sha256.slice(0, 8) + "0".repeat(56));
+    else {
+      const manifestFile = join(base, "bundle-manifest.json"), manifest = JSON.parse(readFileSync(manifestFile, "utf8")), bytes = Buffer.from("// different verified fixture module\nexport {};\n");
+      writeFileSync(join(base, "dist", "runtime-cli.js"), bytes); manifest.sha256["dist/runtime-cli.js"] = createHash("sha256").update(bytes).digest("hex");
+      manifest.buildId = runtimeCodeBuildId(a.version, manifest.modules.map((name: string) => [name, readFileSync(join(base, "dist", name))] as const));
+      writeFileSync(manifestFile, JSON.stringify(manifest));
+    }
+    const changed = readRuntimeInstalledProgram(path, installed.folder); expect(changed).not.toEqual(installed);
+    expect(() => stageRuntimeUpdate(path, a.bytes, metadata(a), lock)).toThrow(/collision/);
+    expect(readRuntimeInstalledProgram(path, installed.folder)).toEqual(changed);
+  } finally { lock.release(); }
+});
+it("resolves relative roots without changing the verified program identity", async () => {
+  const path = root(), lock = await lockAt(path);
+  try { const installed = stageRuntimeUpdate(path, a.bytes, metadata(a), lock); expect(readRuntimeInstalledProgram(relative(process.cwd(), path), installed.folder)).toEqual(installed); }
   finally { lock.release(); }
 });
 it("stages verified programs side by side, hashes disk bytes and atomically selects forward and back", async () => {

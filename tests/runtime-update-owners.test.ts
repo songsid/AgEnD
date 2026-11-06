@@ -11,7 +11,7 @@ const roots: string[] = [], origin = "https://paired.example.test", parent = { p
 async function fixture() {
   const root = mkdtempSync(join(tmpdir(), "agend-install-owners-")); roots.push(root);
   writeFileSync(join(root, RUNTIME_INSTALL_RECEIPT), JSON.stringify({ version: 1, id: randomUUID(), createdAt: 1, revision: 1, origins: [origin], shared: false }), { mode: 0o600 });
-  const lock = await acquireRuntimeInstallLock(root, { ownProof: parent }), owner = registerRuntimeInstallOwner(root, origin, lock);
+  const lock = await acquireRuntimeInstallLock(root, { ownProof: parent }), owner = await registerRuntimeInstallOwner(root, origin, lock);
   return { root, lock, owner, directory: join(root, ".agend-runtime-owners") };
 }
 const alive = (proof: RuntimeProcessProof): RuntimeProcessObservation => ({ state: "alive", proof });
@@ -37,11 +37,41 @@ it("commits only public parent identity before child startup and requires its ex
 it("a second origin permanently disables exclusivity even after its owner exits", async () => {
   const f = await fixture();
   try {
-    const second = registerRuntimeInstallOwner(f.root, "https://z-other.example.test", f.lock);
+    const second = await registerRuntimeInstallOwner(f.root, "https://z-other.example.test", f.lock);
     await releaseRuntimeInstallOwner(f.root, second, f.lock, gone);
     expect(readRuntimeInstallReceipt(f.root)?.shared).toBe(true);
     expect(readRuntimeInstallReceipt(f.root)?.origins[0]).toBe(origin);
     await expect(assertRuntimeInstallExclusive(f.root, f.owner, f.lock, gone)).rejects.toThrow(/shared/);
+  } finally { f.lock.release(); }
+});
+it.each(["gone", "unknown", "live-child"] as const)("registration reaps shared-root capacity only with positive %s proof", async state => {
+  const f = await fixture();
+  try {
+    rmSync(join(f.directory, `${f.owner.id}.json`));
+    const receipt = readRuntimeInstallReceipt(f.root)!;
+    writeFileSync(join(f.root, RUNTIME_INSTALL_RECEIPT), JSON.stringify({ ...receipt, origins: [origin, "https://z-other.example.test"], shared: true }));
+    const rows = Array.from({ length: 64 }, (_, i) => other(f, { parent: { ...parent, pid: 123500 + i }, ...(state === "live-child" ? { child } : {}) }));
+    const observe = async (pid: number): Promise<RuntimeProcessObservation> => state === "unknown" ? { state: "unknown" } : state === "live-child" && pid === child.pid ? alive(child) : { state: "gone" };
+    const registering = registerRuntimeInstallOwner(f.root, origin, f.lock, observe);
+    if (state === "gone") {
+      await expect(registering).resolves.toMatchObject({ origin });
+      const next = await registering; expect(readdirSync(f.directory)).toEqual([`${next.id}.json`]);
+      expect(next.origin).toBe(origin); expect(readRuntimeInstallReceipt(f.root)?.shared).toBe(true);
+    } else {
+      await expect(registering).rejects.toThrow(/owned/); expect(readdirSync(f.directory)).toHaveLength(64);
+      for (const previous of rows) expect(JSON.parse(readFileSync(join(f.directory, `${previous.id}.json`), "utf8"))).toEqual(previous);
+    }
+  } finally { f.lock.release(); }
+});
+it("registration preserves a stale row replaced during its process observation", async () => {
+  const f = await fixture(), previous = other(f); let release!: (value: RuntimeProcessObservation) => void;
+  try {
+    const registering = registerRuntimeInstallOwner(f.root, origin, f.lock, async pid => pid === previous.parent.pid ? await new Promise(done => { release = done; }) : alive(parent));
+    const refused = expect(registering).rejects.toThrow(/changed/);
+    while (!release) await new Promise(done => setImmediate(done));
+    const replacement = { ...previous, child }; writeFileSync(join(f.directory, `${previous.id}.json`), JSON.stringify(replacement));
+    release({ state: "gone" }); await refused;
+    expect(JSON.parse(readFileSync(join(f.directory, `${previous.id}.json`), "utf8"))).toEqual(replacement);
   } finally { f.lock.release(); }
 });
 it("a remembered shared receipt stays unavailable even when its bounded origin list has one entry", async () => {

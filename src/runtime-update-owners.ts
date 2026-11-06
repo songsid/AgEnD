@@ -44,16 +44,36 @@ function own(owner: RuntimeInstallOwner, lock: RuntimeInstallLock): void {
   if (lock.record.type !== "supervisor" || owner.parent.pid !== process.pid || runtimeProcessMatches(owner.parent, { state: "alive", proof: lock.record }) !== true) throw new RuntimeInstallOwnerError("changed");
 }
 /** Must commit BEFORE spawning; the child remains IPC-gated until its exact proof is committed below. */
-export function registerRuntimeInstallOwner(root: string, origin: string, lock: RuntimeInstallLock): RuntimeInstallOwner {
+export async function registerRuntimeInstallOwner(root: string, origin: string, lock: RuntimeInstallLock,
+  observe: (pid: number) => Promise<RuntimeProcessObservation> = observeRuntimeProcess): Promise<RuntimeInstallOwner> {
   lock.assert();
   if (lock.record.type !== "supervisor" || lock.record.pid !== process.pid) throw new RuntimeInstallOwnerError("changed");
   const receipt = registerRuntimeInstallOrigin(root, origin, lock), path = directory(root, true);
+  const current = () => {
+    lock.assert();
+    if (JSON.stringify(readRuntimeInstallReceipt(root)) !== JSON.stringify(receipt)) throw new RuntimeInstallOwnerError("changed");
+  };
+  const names = readdirSync(path);
+  if (names.length > 64 || names.some(name => !UUID.test(name.slice(0, -5)) || !name.endsWith(".json"))) throw new RuntimeInstallOwnerError("unsafe");
+  // Registration must remain available on shared roots too. Reap only positive process absence;
+  // a dead parent does not vouch for its child, and unknown/live rows keep their slots.
+  const observations = new Map<number, Promise<RuntimeProcessObservation>>();
+  for (const name of names) {
+    const before = row(path, name.slice(0, -5)); let retired = true;
+    for (const proof of [before.owner.parent, ...before.owner.child ? [before.owner.child] : []]) {
+      let observation = observations.get(proof.pid);
+      if (!observation) { observation = observe(proof.pid); observations.set(proof.pid, observation); }
+      if (runtimeProcessMatches(proof, await observation) !== false) { retired = false; break; }
+    }
+    if (retired) { current(); unchanged(path, before); unlinkSync(join(path, name)); }
+  }
+  current();
   if (readdirSync(path).length >= 64) throw new RuntimeInstallOwnerError("owned");
   const owner = parseRuntimeInstallOwner({ version: 1, id: randomUUID(), installId: receipt.id, origin,
     parent: { pid: lock.record.pid, birth: lock.record.birth, boot: lock.record.boot } });
   own(owner, lock);
   // A fresh unguessable row is created once; updates use compare-and-swap below.
-  atomicWriteFileSync(join(path, `${owner.id}.json`), JSON.stringify(owner), { mode: 0o600, beforeRename: () => { own(owner, lock); } });
+  atomicWriteFileSync(join(path, `${owner.id}.json`), JSON.stringify(owner), { mode: 0o600, beforeRename: () => { own(owner, lock); current(); } });
   return owner;
 }
 export async function attachRuntimeInstallChild(root: string, expected: RuntimeInstallOwner, child: RuntimeProcessProof, lock: RuntimeInstallLock,

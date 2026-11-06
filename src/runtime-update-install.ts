@@ -38,8 +38,9 @@ export function registerRuntimeInstallOrigin(root: string, pairedOrigin: string,
   lock.assert(); const selected = origin(pairedOrigin), before = readRuntimeInstallReceipt(root);
   if (!before) throw new RuntimeManagedInstallError("unmanaged");
   if (before.origins.includes(selected)) return before;
+  if (before.origins.length >= 8) throw new RuntimeManagedInstallError("unsafe");
   const next: RuntimeInstallReceipt = { ...before, revision: before.revision + 1, shared: true,
-    origins: [...before.origins, ...before.origins.length < 8 ? [selected] : []].sort() };
+    origins: [...before.origins, selected].sort() };
   lock.assert();
   atomicWriteFileSync(join(root, RUNTIME_INSTALL_RECEIPT), JSON.stringify(parseRuntimeInstallReceipt(next)), { mode: 0o600, beforeRename: () => lock.assert() });
   return next;
@@ -51,8 +52,8 @@ function programFolder(value: string): { version: string; suffix: string } {
 }
 function programPath(root: string, folder: string, name: string): string {
   if (name.length > 240 || !name.split("/").every(part => /^[A-Za-z0-9@_-][A-Za-z0-9@_.-]*$/.test(part) && !part.endsWith("."))) throw new RuntimeManagedInstallError("unsafe");
-  const base = join(root, folder), target = resolve(base, name);
-  if (!target.startsWith(resolve(base) + sep)) throw new RuntimeManagedInstallError("unsafe");
+  const base = resolve(root, folder), target = resolve(base, name);
+  if (!target.startsWith(base + sep)) throw new RuntimeManagedInstallError("unsafe");
   let parent = dirname(target);
   while (parent !== base) { assertRuntimeInstallDirectory(parent); const next = dirname(parent); if (parent === next) throw new RuntimeManagedInstallError("unsafe"); parent = next; }
   return target;
