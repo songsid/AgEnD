@@ -59,7 +59,7 @@ const fileReply = (id: string, name: string): [number, unknown] => [200, { file:
 const uuidOf = (n: number) => `aaaaaaaa-bbbb-4ccc-8ddd-${String(n).padStart(12, "0")}`;
 const held = <T,>() => { let release!: (v: T) => void; const p = new Promise<T>((r) => { release = r; }); return { p, release }; };
 const type = async (pg: AppPage, text: string) => { const box = pg.root.querySelector("#msgIn") as any; box.value = text; fire(box, "input"); await settle(5); };
-const asks = (calls: { method: string; path: string }[]) => calls.filter(c => c.method === "POST" && c.path.endsWith("/messages"));
+const asks = <T extends { method: string; path: string }>(calls: T[]) => calls.filter(c => c.method === "POST" && c.path.endsWith("/messages"));
 const chips = (pg: AppPage) => [...pg.root.querySelectorAll(".hub-pending-files .file-chip")].map((c: any) => `${c.querySelector(".nm").textContent}:${c.getAttribute("data-state")}`);
 async function openRoom(lang = "en") {
   i18n.setLang(lang, { store: false });

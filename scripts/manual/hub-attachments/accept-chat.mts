@@ -6,10 +6,17 @@
  *   before — a room whose fleet link did not negotiate attachments-v1: no Attach, a line saying files can't be sent yet;
  *   after  — Attach a PNG and a CSV (uploaded at once, listed), Send names them; the agent answers with a CSV; the thread
  *            shows the asker's image inline and both files; downloads are attachment/nosniff/sandboxed.
- *   PW_DIR=… [OUT=docs/screenshots/hub-attachments-d2] REPO=$PWD npx tsx scripts/manual/hub-attachments/accept-chat.mts
+ * SKEW (no screenshots), in a room that takes files, with the browser served D1's own modules (git SKEW_REF, default
+ * 132399cb = #3247's merge) in place of this tree's:
+ *   d1-client — a tab that kept D1's hub-client.js and hub-chat-store.js under D2's panel: no Attach, the reload line,
+ *               and a text question goes as text (never a question that silently lost its files);
+ *   d1-panel  — a tab still on D1's panel, client and store against this server: the room opens, a question sends,
+ *               an answer with a file arrives without a page error.
+ *   PW_DIR=… [OUT=docs/screenshots/hub-attachments-d2] [SKEW_REF=…] REPO=$PWD npx tsx scripts/manual/hub-attachments/accept-chat.mts
  */
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:https";
 import { resolve, join } from "node:path";
@@ -53,6 +60,11 @@ async function answerWithFile(link: any, messageId: string) {
   await r.http.receive(r.frame("answer", { messageId, answerId, text, contentDigest, releaseLease: lease, attachments: [ref] }, link), link);
 }
 
+const skewRef = process.env.SKEW_REF ?? "132399cb";
+const d1 = (name: string) => execFileSync("git", ["-C", repo, "show", `${skewRef}:src/ui/${name}`], { encoding: "utf8" });
+assert(!d1("hub-client.js").includes("upload(") && !d1("panel-hub.js").includes("hub-attachments"), "SKEW_REF is before D2");
+const skews: unknown[] = [];
+
 const pw = createRequire(resolve(process.env.PW_DIR!, "package.json"))("playwright-core");
 const browser = await pw.chromium.launch({ args: ["--no-sandbox"] });
 const results: unknown[] = [];
@@ -60,8 +72,9 @@ try {
   for (const c of [{ device: "desktop", lang: "en", theme: "light", viewport: { width: 1366, height: 900 } },
     { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } }]) {
     const zh = c.lang === "zh-TW", prefix = `${c.device}-${c.lang}`;
-    const open = async (roomId: string) => {
+    const open = async (roomId: string, retained: string[] = []) => {
       const context = await browser.newContext({ viewport: c.viewport, colorScheme: c.theme, ignoreHTTPSErrors: true });
+      for (const name of retained) await context.route(`**/${name}`, (q: any) => q.fulfill({ status: 200, contentType: "text/javascript", body: d1(name) }));
       await context.addInitScript(({ lang }) => { localStorage.setItem("agend_lang", lang); localStorage.setItem("agend_tour_done", "1"); }, { lang: c.lang });
       const p = await context.newPage(), errors: string[] = [], foreign: string[] = [], csp: string[] = [];
       p.on("pageerror", (e: Error) => errors.push(e.message));
@@ -109,8 +122,31 @@ try {
     assert.deepEqual([a.errors, a.foreign, a.csp], [[], [], []]);
     results.push({ ...c, before: { noAttach: true, offLine: true }, after: { uploaded: 2, sentWithFiles: true, answerFile: true, imageInline: true, downloadHeaders: true }, errors: a.errors, foreign: a.foreign, csp: a.csp });
     await a.context.close();
+
+    // SKEW d1-client: D2's panel over D1's client and store, in a room that takes files.
+    const s1w = await world(["attachments-v1"]);
+    const s1 = await open(s1w.room.id, ["hub-client.js", "hub-chat-store.js"]);
+    assert.equal(await s1.p.locator("#attachBtn").count(), 0);
+    assert.equal((await s1.p.locator(".hub-files-off").innerText()).trim(), zh ? "重新載入頁面後才能附加檔案。" : "Reload the page to attach files.");
+    await s1.p.fill("#msgIn", "Text only");
+    const s1sent = s1.p.waitForResponse((q: any) => q.url().endsWith("/messages") && q.request().method() === "POST");
+    await s1.p.click("#sendBtn");
+    const s1body = JSON.parse((await s1sent).request().postData());
+    assert.equal(s1body.text, "Text only"); assert(!("files" in s1body));
+    assert.deepEqual([s1.errors, s1.foreign, s1.csp], [[], [], []]); await s1.context.close();
+    // SKEW d1-panel: D1's whole Hub page (panel, client, store) against this server; an answer with a file arrives.
+    const s2w = await world(["attachments-v1"]);
+    const s2 = await open(s2w.room.id, ["panel-hub.js", "hub-client.js", "hub-chat-store.js"]);
+    assert.equal(await s2.p.locator("#attachBtn").count(), 0);
+    await s2.p.fill("#msgIn", "Old page");
+    const s2sent = s2.p.waitForResponse((q: any) => q.url().endsWith("/messages") && q.request().method() === "POST");
+    await s2.p.click("#sendBtn");
+    await answerWithFile(s2w.link, (await (await s2sent).json()).receipt.messageId);
+    await s2.p.waitForFunction(() => (document.querySelector(".msg.agent") as HTMLElement | null)?.innerText.includes("breakdown by region"), null, { timeout: 30_000 });
+    assert.deepEqual([s2.errors, s2.foreign, s2.csp], [[], [], []]); await s2.context.close();
+    skews.push({ device: c.device, lang: c.lang, d1Client: { noAttach: true, reloadLine: true, textOnly: true }, d1Panel: { opened: true, sent: true, answerArrived: true }, errors: 0 });
   }
-  console.log(JSON.stringify({ cases: results.length, pngs: results.length * 3, out, results }));
+  console.log(JSON.stringify({ cases: results.length, pngs: results.length * 3, out, results, skewRef, skews }));
 } finally {
   await browser.close(); await new Promise<void>(done => server.close(() => done())); await r.close();
   rmSync(keys, { recursive: true, force: true }); rmSync(tmp, { recursive: true, force: true });
