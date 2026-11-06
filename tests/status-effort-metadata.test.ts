@@ -4,6 +4,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as buildInfo from "../src/build-provenance.js";
+import { bindGatewayRequest } from "../src/web-request-context.js";
+import { tokenEpoch, WebSessionStore } from "../src/web-session.js";
+import { WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 
 const guards = vi.hoisted(() => ({
   armed: false,
@@ -291,6 +295,28 @@ describe("FleetManager status composers", () => {
       expect.objectContaining({ name: "classic", backend: "grok", effort: "high", effort_supported: true }),
     ]));
     assertPure();
+  });
+  it("keeps the running build snapshot across updater replacements and omits it on the public gateway", () => {
+    const fm = fleet(), token = "a".repeat(48), running = fm.currentBuild;
+    const reader = vi.spyOn(buildInfo, "readInstalledBuild").mockReturnValue({ version: "99.9.9", source: null, label: "replacement" });
+    expect(fm.currentVersion).toBe(running.version);
+    vi.spyOn(fm as unknown as { readonly webToken: string | null }, "webToken", "get").mockReturnValue(token);
+    vi.spyOn(fm, "getSysInfo").mockReturnValue({ instances: [] } as never);
+    const sessions = new WebSessionStore(); (fm as any).webSessions = sessions;
+    const { sessionId } = sessions.create({ tier: "admin", surface: "gateway", label: "inert fixture", tokenEpoch: tokenEpoch(token), exposureId: "fixture" });
+    fm["startHealthServer"](0); // The same inert createServer boundary as the effort regression above.
+    arm();
+    for (const gateway of [false, true]) {
+      const headers = gateway ? { host: "fixture.invalid", cookie: `${WEB_SESSION_COOKIE_SECURE}=${sessionId}` } : { host: "localhost", "x-agend-token": token };
+      const req = { method: "GET", url: "/api/fleet", headers } as unknown as IncomingMessage;
+      if (gateway) bindGatewayRequest(req, { surface: "gateway", exposureId: "fixture", expectedOrigin: "https://fixture.invalid", isCurrent: () => true });
+      const res = { setHeader: vi.fn(), writeHead: vi.fn(), end: vi.fn() };
+      guards.httpHandler!(req, res as unknown as ServerResponse); expect(res.writeHead).toHaveBeenCalledWith(200);
+      const body = JSON.parse(String(res.end.mock.calls[0]![0]));
+      expect(body.version).toBe(running.version);
+      if (gateway) expect(Object.hasOwn(body, "build")).toBe(false); else expect(body.build).toEqual(running);
+    }
+    expect(reader).not.toHaveBeenCalled(); assertPure();
   });
   it("multiple SSE clients and 10s ticks share pure status reads, with cleanup", () => {
     vi.useFakeTimers(); const fm = fleet();

@@ -23,6 +23,9 @@ cached old Settings panel keeps its old label until reloaded.
 
 Runtime reads only bounded, fixed installed files: it does not run Git, inspect
 the current working directory, use an environment override or read a profile.
+The fleet captures its version and source metadata once when the program loads;
+dashboard polls use that running-code snapshot. Public-link responses omit source
+metadata, including branch names, while retaining the existing package version.
 The stamp is build metadata supplied by the installer, **not a signed attestation**
 or evidence that the installed files remain unchanged. It grants no authority.
 It does not alter `agend --version`, package SemVer, updater channel/version

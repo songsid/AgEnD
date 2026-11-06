@@ -108,6 +108,10 @@ import { kiroLogGate } from "./kiro-log-gate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+// Describe this running program, not files an updater may replace later. No reads on dashboard polls.
+const RUNNING_BUILD = readInstalledBuild();
+if (RUNNING_BUILD.source) Object.freeze(RUNNING_BUILD.source);
+Object.freeze(RUNNING_BUILD);
 import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig, WebVerifiedAuthorityConfig } from "./types.js";
 
 /** Fallback access policy for a channel with no `access:` block — open (no gate). */
@@ -5001,9 +5005,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** AgEnD package version (for the Settings "current version" / What's New). */
   get currentVersion(): string {
-    try { return JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version ?? "unknown"; }
-    catch { return "unknown"; }
+    return RUNNING_BUILD.version;
   }
+
+  get currentBuild() { return RUNNING_BUILD; }
 
   /**
    * Resolve a slash-command target in a channel. Classic channels are looked up
@@ -26200,7 +26205,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           res.end(JSON.stringify({
             ...sysInfo,
             version: this.currentVersion,
-            build: readInstalledBuild(),
+            build: gatewayRequestContext(req) ? undefined : this.currentBuild,
             instances: enriched,
             publicLink: this.getPublicWebStatus(),
           }));
