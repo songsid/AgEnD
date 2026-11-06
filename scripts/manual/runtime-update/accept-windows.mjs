@@ -162,13 +162,21 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
     if (!failure && mode === 'busy') {
       // Reverse direction: PowerShell reclaims an actually ended Node writer, not a made-up PID.
       const proof = proofs.values().next().value, lockDir = join(install, '.agend-runtime-install.lock');
-      assert.ok(proof); mkdirSync(lockDir); writeFileSync(join(lockDir, 'owner.json'), JSON.stringify({ version: 1, type: 'supervisor', nonce: randomUUID(), ...proof }));
+      assert.ok(proof); const ownerText = JSON.stringify({ version: 1, type: 'supervisor', nonce: randomUUID(), ...proof });
+      mkdirSync(lockDir); writeFileSync(join(lockDir, 'owner.json'), ownerText); writeFileSync(join(lockDir, 'inflight'), 'owned inert uncertainty marker');
       target = a;
       const command = runtimeInstallCommand(origin, createHash('sha256').update(template.replaceAll('@@AGEND_RUNTIME_VERSION@@', a.version).replaceAll('@@AGEND_RUNTIME_SHA256@@', a.sha256)).digest('hex'));
       const encoded = Buffer.from(`[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); ${command}; if ($LASTEXITCODE) { exit $LASTEXITCODE }`, 'utf16le').toString('base64');
+      const uncertain = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], env, log);
+      assert.notEqual(await uncertain.finished, 0); assert.equal(readFileSync(join(lockDir, 'owner.json'), 'utf8'), ownerText);
+      assert.equal(readFileSync(join(lockDir, 'inflight'), 'utf8'), 'owned inert uncertainty marker');
+      await assert.rejects(acquire(install, { type: 'supervisor' }), error => error.reason === 'held');
+      assert.deepEqual(readdirSync(lockDir).sort(), ['inflight', 'owner.json']);
+      // Explicit cleanup of the harness's own synthetic marker, after both production paths refused it. No physical work exists.
+      rmSync(lockDir, { recursive: true }); mkdirSync(lockDir); writeFileSync(join(lockDir, 'owner.json'), ownerText);
       const reclaiming = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], env, log);
       assert.equal(await reclaiming.finished, 0); assert.equal(existsSync(lockDir), false); assert.equal(pointer(), folderA);
-      results.at(-1).nativeSharedLockControls = ['Node blocks PowerShell', 'PowerShell blocks Node', 'Node reaps ended PowerShell', 'PowerShell reaps ended Node'];
+      results.at(-1).nativeSharedLockControls = ['Node blocks PowerShell', 'PowerShell blocks Node', 'Node reaps ended PowerShell', 'PowerShell reaps ended Node', 'unknown work preserved by both'];
     }
     for (const ws of sockets.clients) ws.terminate(); await new Promise(done => sockets.close(done));
     server.closeAllConnections(); await new Promise(done => server.close(done));
