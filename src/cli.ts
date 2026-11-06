@@ -3735,6 +3735,39 @@ program
   });
 
 program
+  .command("rollback")
+  .description("Go back to an older AgEnD (2.3.x): stop the fleet, close AgEnD's own tmux server and confirm it, then install that version and start it. Stops before installing anything if the close can't be confirmed.")
+  .argument("<version>", "the version to go back to, e.g. 2.3.4")
+  .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
+  .action(async (version: string, opts: { yes?: boolean }) => {
+    if (!gateFleetControl(DATA_DIR, "rollback", { yes: opts.yes, target: version })) process.exit(1);
+    const { rollback } = await import("./tmux-rollback.js");
+    const { readServerRecord } = await import("./tmux-server.js");
+    const { bundledTmuxEnabled, tmuxSocket } = await import("./tmux-binary.js");
+    const { spawnSync } = await import("node:child_process");
+    const self = (args: string[]) => spawnSync(process.execPath, [process.argv[1]!, ...args], { stdio: "inherit" });
+    const fleetPid = (() => { try { return parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10); } catch { return NaN; } })();
+    const result = await rollback({
+      agendHome: DATA_DIR, from: pkgVersion, to: version.replace(/^v/, ""),
+      socket: readServerRecord(DATA_DIR)?.socket ?? (bundledTmuxEnabled() ? tmuxSocket() : null),
+      async stopFleet() { const r = self(["stop", "--yes"]); return { ok: r.status === 0, detail: `agend stop exited ${r.status ?? r.signal}` }; },
+      async fleetGone() {
+        if (!Number.isSafeInteger(fleetPid)) return true;
+        for (let i = 0; i < 600; i++) {
+          try { process.kill(fleetPid, 0); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ESRCH") return true; }
+          await new Promise(r => setTimeout(r, 100));
+        }
+        return false;
+      },
+      async install(v) { const r = spawnSync("npm", ["install", "-g", `@songsid/agend@${v}`], { stdio: "inherit" }); return { ok: r.status === 0, detail: `npm exited ${r.status ?? r.signal}` }; },
+      // The newly installed version's own `agend start` (the one now on PATH), never this process's code.
+      async startService() { const r = spawnSync("agend", ["start"], { stdio: "inherit" }); return { ok: r.status === 0, detail: `agend start exited ${r.status ?? r.signal}` }; },
+      out: line => console.log(line),
+    });
+    if (!result.ok) { console.error(`  ✗ ${result.message}`); process.exit(1); }
+  });
+
+program
   .command("tmux-migrate")
   .description("After an upgrade from AgEnD 2.3: release an instance held because an old tmux window (system tmux, default socket) may still run it. You then own that window; the instance starts on its next start.")
   .requiredOption("--release <name>", "the held instance")
