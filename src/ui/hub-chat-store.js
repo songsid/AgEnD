@@ -68,7 +68,10 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     if (!st.live) return;
     if (r.ok) {
       merge(r.entries || []);
-      if (r.room) st.room = { ...st.room, ...r.room };
+      // The room as the server says it now. Its quota is the server's to give: absent means withdrawn (the owner hid it,
+      // the grant is gone), never "unchanged" — a band once shown must not outlive that. An answer with no room at all
+      // (an older Hub) keeps what is known.
+      if (r.room) { st.room = { ...st.room, ...r.room }; if (!Object.prototype.hasOwnProperty.call(r.room, "quota")) delete st.room.quota; }
       st.pending = st.pending.filter((p) => !st.entries.some((e) => e.messageId === p.messageId));
       st.error = null; emit(); schedule(POLL_MS); return;
     }

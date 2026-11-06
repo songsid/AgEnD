@@ -71,7 +71,7 @@ describe("createHubChatStore", () => {
     expect([c.calls.length, t.pending()]).toEqual([2, [30_000]]);
     s.stop();
   });
-  it("a question shows at once (queued); the read that brings its entry replaces it; the room's own fields are kept", async () => {
+  it("a question shows at once (queued); the read that brings its entry replaces it; a room without quota withdraws it, other fields kept", async () => {
     const t = fakeTimers();
     const c = client([{ ok: true, entries: [], room: { quota: { band: "near_limit" } } },
       { ok: true, entries: [{ messageId: "m9", sequence: 1, receipt: { stage: "delivered", at: 6 }, question: "Q?" }], room: { exposureState: "published" } }]);
@@ -82,7 +82,16 @@ describe("createHubChatStore", () => {
     expect(s.messages().map((m: any) => [m.text, m.delivery])).toEqual([["Q?", "queued"]]);
     t.run(); await flush();
     expect(s.messages().map((m: any) => [m.text, m.delivery])).toEqual([["Q?", "processing"]]);
-    expect([s.room().quota, s.room().exposureState]).toEqual([{ band: "near_limit" }, "published"]);   // G's field survives a read without it
+    // G's quota is the server's to give: a room without it withdraws it (the owner hid it); the other fields stay.
+    expect([s.room().quota, s.room().exposureState, s.room().exposureName]).toEqual([undefined, "published", "Sales numbers"]);
+    s.stop();
+  });
+  it("an answer with no room object at all (an older Hub) keeps what is known, quota included", async () => {
+    const t = fakeTimers();
+    const c = client([{ ok: true, entries: [], room: { quota: { band: "exhausted" } } }, { ok: true, entries: [] }]);
+    const s = S.createHubChatStore(room, { client: c, timers: t, doc: null }); await flush();
+    t.run(); await flush();
+    expect(s.room().quota).toEqual({ band: "exhausted" });
     s.stop();
   });
   it("revoked or not-found closes the room and stops reading; hidden pages do not read", async () => {
