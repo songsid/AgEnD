@@ -49,7 +49,7 @@ describe.skipIf(!hasPwsh)("batch isolation", () => {
   });
 });
 
-describe.skipIf(!hasPwsh)("real PowerShell preparation", () => {
+describe.skipIf(!hasPwsh)("real PowerShell preparation compiler phase", () => {
   it.each([false, true])("compiler failure=%s propagates before complete, with a healthy control", invalid => {
     const cache = mkdtempSync(join(dir, "preparation-"));
     const lines: string[] = [];
@@ -57,6 +57,9 @@ describe.skipIf(!hasPwsh)("real PowerShell preparation", () => {
     const prepare = () => preparePowerShell({
       run: (file, args, options) => {
         const command = args.at(-1)!;
+        // Version-query ordering/failures have unit coverage; run the exact compiler
+        // command in one real child here rather than charging three starts to a case.
+        if (!command.includes("Add-Type -TypeDefinition")) return { status: 0 };
         const result = spawnSync(file, [...args.slice(0, -1), invalid ? command.replace("return 1;", "return;") : command], {
           ...options, stdio: "pipe", encoding: "utf8",
           env: { ...process.env, XDG_CACHE_HOME: join(cache, "cache"), PSModuleAnalysisCachePath: join(cache, "module-analysis") },
@@ -74,7 +77,7 @@ describe.skipIf(!hasPwsh)("real PowerShell preparation", () => {
       expect(prepare).not.toThrow();
       expect(results.every(result => result.status === 0 && result.stderr === "")).toBe(true);
     }
-    expect(results).toHaveLength(3);
+    expect(results).toHaveLength(1);
     expect(lines.some(line => line.includes('"phase":"complete"'))).toBe(!invalid);
   });
 });
