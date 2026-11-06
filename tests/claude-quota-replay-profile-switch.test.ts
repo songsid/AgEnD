@@ -20,6 +20,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Daemon } from "../src/daemon.js";
 import { TranscriptMonitor, HISTORY_SKEW_MS } from "../src/transcript-monitor.js";
 import { claudeResetInstant } from "../src/quota-notice.js";
+import { InstanceLifecycle, type ClaudeQuotaVerdict, type LifecycleContext } from "../src/instance-lifecycle.js";
 import type { Logger } from "../src/logger.js";
 
 const logger = pino({ level: "silent" }) as Logger;
@@ -133,13 +134,14 @@ describe("a profile switch's copied transcript does not tell its old usage notes
     expect(w.notices).toEqual([]);
   });
 
-  it("the skew: a record stamped just before the boundary in a file created after it is still this run's own", async () => {
+  it("the skew (#2835): a new session's first record stamped 2 s before the monitor attached is still this run's own", async () => {
+    expect(HISTORY_SKEW_MS).toBeGreaterThan(2_000);
     const w = wired();
     await new Promise(r => setTimeout(r, 30));
-    const p = join(tmp(), "skew.jsonl");
-    writeFileSync(p, line(credit(w.monitor.attachBoundary - HISTORY_SKEW_MS + 1000)));
+    const p = join(tmp(), "skew.jsonl");                                                // created after attach: read from the top
+    writeFileSync(p, line(credit(w.monitor.attachBoundary - 2_000)));                    // the CLI wrote it a moment before
     w.follow(p); await w.poll();
-    expect(w.notices).toHaveLength(1);
+    expect(w.notices).toEqual([expect.objectContaining({ action: "pause", message: "Insufficient API credits" })]);
   });
 
   it("a record without a timestamp is judged as before (told): a CLI that stops stamping must not lose its live alarms", async () => {
@@ -198,6 +200,17 @@ describe("the usage-pause notice: never a past reset, one per pause", () => {
     expect(d.notices).toHaveLength(2);
   });
 
+  it("#3186 review P2-2: once the told pause's reset has passed, a new pause inside the window is told (no reset note needed)", () => {
+    const d = daemonAt();
+    let wall = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => wall);
+    d.tell("Usage limit reached · continuing automatically in 10m · esc to cancel", wall);
+    expect(d.notices).toHaveLength(1);
+    d.advance(20 * 60_000); wall += 20 * 60_000;                                           // its reset came 10 min ago, unremarked
+    d.tell("Usage limit reached · continuing automatically in 3h · esc to cancel", wall); // a new limit
+    expect(d.notices).toHaveLength(2);
+  });
+
   it("words it cannot judge (a date) are told as before — never dropped for being unreadable", () => {
     const d = daemonAt();
     d.tell("Usage limit reached · continuing automatically at Nov 9, 3pm · esc to cancel", new Date(2026, 9, 1).getTime());
@@ -225,5 +238,32 @@ describe("claudeResetInstant: Claude's reset words as a moment", () => {
   });
   it("anything else: null (never judged stale)", () => {
     for (const w of ["at Nov 9, 3pm", "soon", "at 13pm", "at 7:75pm", "in a while", "in 0h", ""]) expect(claudeResetInstant(w, at(10, 1, 0)), w).toBeNull();
+  });
+});
+
+/**
+ * #3186 review P2-1: the dedupe sits BEFORE the lifecycle's usage-API second opinion. When that drops the first note (the
+ * API lags the CLI right as the limit hits: "available"), nothing was told — so the next "reached again" must reach the
+ * second opinion again, not be collapsed into a notice nobody saw.
+ */
+describe("the one-notice-per-pause mark follows what was actually told", () => {
+  it("first note verified 'available' (dropped) → the next repeat is verified again and told", async () => {
+    const verdicts: ClaudeQuotaVerdict[] = ["available", "exhausted"];
+    const notifyInstanceTopic = vi.fn();
+    const ctx = {
+      fleetConfig: { instances: { worker: { backend: "claude-code" } }, defaults: {} },
+      logger: { info() {}, warn() {}, error() {}, debug() {} }, eventLog: null, isPlannedRestart: () => false,
+      notifyInstanceTopic, webhookEmit: vi.fn(), clearCancelButton: vi.fn(), checkModelFailover() {}, restartSingleInstance: async () => {},
+      getInstanceDir: (name: string) => `/nonexistent/${name}`, verifyClaudeQuota: async () => verdicts.shift() ?? "exhausted",
+    } as unknown as LifecycleContext;
+    const dir = tmp();
+    const daemon = new Daemon("worker", { working_directory: dir, log_level: "silent" } as any, dir, false, undefined, undefined, logger) as any;
+    new InstanceLifecycle(ctx).attachIncidentHandlers("worker", daemon);
+    const now = Date.now();
+    daemon.noteClaudeInformational("Usage limit reached · continuing automatically in 3h · esc to cancel", now);
+    await new Promise(r => setTimeout(r, 20));
+    expect(notifyInstanceTopic).not.toHaveBeenCalled();                                   // dropped by the second opinion
+    daemon.noteClaudeInformational("Usage limit reached again · continuing automatically in 3h · esc to cancel", now + 60_000);
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));         // verified again: told
   });
 });

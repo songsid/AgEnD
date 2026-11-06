@@ -2106,6 +2106,9 @@ export class Daemon extends EventEmitter {
    * note), and its repeats ("reached again") within the window — or naming the same reset, until it comes — say nothing
    * more. Claude's own "Usage limit reset" ends it.
    */
+  /** #3186 review: the lifecycle's second opinion dropped the notice (usage has capacity): nothing was told. */
+  clearUsagePauseNotice(): void { this.usagePauseNotice = null; }
+
   private noteClaudeInformational(text: string, at: number | null = null): void {
     const line = text.trim();
     if (Daemon.USAGE_LIMIT_RESET.test(line)) { this.usagePauseNotice = null; return; }
@@ -2118,8 +2121,12 @@ export class Daemon extends EventEmitter {
       this.logger.debug({ when, writtenAt: at }, "Claude usage-limit note names a reset already past — an old note, not told");
       return;
     }
+    // A pause told earlier is this one while its own reset has not come (unknown: within the window): its repeats —
+    // "reached again", or a relative time drifting ("in 3h", "in 2h 55m") — within the window, or naming the same reset.
+    // Once its reset has passed, a later note is a new pause even without Claude's "Usage limit reset" (#3186 review).
     const told = this.usagePauseNotice;
-    if (told && (now - told.at < Daemon.USAGE_PAUSE_NOTICE_WINDOW_MS || (told.when === when && told.resetAt !== null && wallNow < told.resetAt))) {
+    const toldOpen = !!told && (told.resetAt === null || wallNow < told.resetAt);
+    if (told && toldOpen && (now - told.at < Daemon.USAGE_PAUSE_NOTICE_WINDOW_MS || (told.when === when && told.resetAt !== null))) {
       this.logger.debug({ when }, "Claude usage-limit note repeats a pause already told — collapsed");
       return;
     }

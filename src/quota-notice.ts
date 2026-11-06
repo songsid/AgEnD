@@ -32,6 +32,7 @@ export function claudeResetTime(when: string): QuotaReset {
  * When Claude's words for its reset ("at 7:10pm", "at 2pm", "in 3h", "in 2h 30m") come true, judged from `from` — the
  * moment Claude wrote them (its record's timestamp): "at" is the first such local clock time after it, "in" is added to
  * it. null when the words are anything else (a date, a form not known): such a reset is never judged stale.
+ * The clock time is read in this process's time zone — the CLI's, as both run on the same host with the same TZ.
  */
 export function claudeResetInstant(when: string, from: number): number | null {
   const text = when.trim().replace(/\s*\([^)]*\)\s*$/, "");                     // a trailing "(Asia/Taipei)" note
