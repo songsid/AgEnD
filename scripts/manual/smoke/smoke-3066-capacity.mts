@@ -47,6 +47,8 @@ const readCaps = (page: any, scope: string) => page.evaluate((sel: string) => {
   return [...s.querySelectorAll(".u-cap")].map((c) => ({ line: c.querySelector(".u-cap-line")!.textContent, notes: [...c.querySelectorAll(".u-cap-note")].map((n) => n.textContent),
     clipped: [...c.querySelectorAll("div")].some((d) => d.scrollWidth > d.clientWidth + 1) }));
 }, scope);
+/** How many usage bars `scope` holds: the same fixed page function, the selector as its argument. */
+const countBars = (page: any, scope: string): Promise<number> => page.evaluate((sel: string) => document.querySelectorAll(sel + " .u-meter").length, scope);
 async function open(c: any, skew?: { pattern: string; body: string }) {
   const kind = c.device === "desk" ? "rail" : "phone";
   const { ctx, page, csp } = await fx.page(c, { path: chat, storage: { agend_usage_rail: "1" } });
@@ -71,7 +73,7 @@ for (const c of matrix()) {
   check(caps?.[0]?.notes[1] === (zh ? "「API 等值」最吻合：3 週內 ±7%" : "API-equivalent fits best: ±7% across 3 weeks"), `${tag}: the best fit "${caps?.[0]?.notes[1]}"`);
   check(caps?.[1]?.line === (zh ? "用量還不夠估算 100%（已用 Δ 6%，需 10%）" : "Not enough usage yet to measure 100% (Δ 6% of 10%)"), `${tag}: not enough yet "${caps?.[1]?.line}"`);
   check(!!caps && caps.every((x) => !x.clipped), `${tag}: nothing clipped`);
-  const bars = await o.page.evaluate(`document.querySelectorAll(${JSON.stringify(o.scope)} + " .u-meter").length`) as number;
+  const bars = await countBars(o.page, o.scope);
   check(bars >= 4, `${tag}: every bar served, the no-basis account's too (${bars} bars; Prism #3073 P1)`);
   check(o.errs.length === 0 && (r[tag] as any).csp.length === 0, `${tag}: no page error, no CSP violation (${o.errs.join(" | ")})`);
   const box = await o.page.locator(o.scope).first().boundingBox().catch(() => null);
@@ -94,7 +96,7 @@ if (process.env.SKEW_OLD_STRINGS && process.env.SKEW_OLD_DIALOG) {
   {
     const o = await open(c, { pattern: "**/assets/usage-dialog.js", body: readFileSync(process.env.SKEW_OLD_DIALOG, "utf8") });
     const caps = await readCaps(o.page, o.scope) as unknown[] | null;
-    const bars = await o.page.evaluate(`document.querySelectorAll(${JSON.stringify(o.scope)} + " .u-meter").length`) as number;
+    const bars = await countBars(o.page, o.scope);
     check(Array.isArray(caps) && caps.length === 0 && bars >= 2, `skew old dialog + new strings: the bars as before, no capacity (${bars} bars)`);
     check(o.errs.length === 0, `skew old dialog + new strings: no page error (${o.errs.join(" | ")})`);
     await o.page.screenshot({ path: shotPath("3066-cap", "skew", "old-dialog-new-strings") });
