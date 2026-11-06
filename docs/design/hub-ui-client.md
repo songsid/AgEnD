@@ -6,7 +6,7 @@ The frozen contract is `docs/design/hub.md` (S0 #3096; fleet decision 7e5b8a8f; 
 
 | Workspace | What the web shows |
 | --- | --- |
-| **A Hub**, served by its own listener and origin (slice 1) | The brand reads **AgEnD Hub · <name>**. The navigation is **Ask** (`/ui/hub`), **My exposures** (`/ui/hub/exposures`) and **Administration** (`/ui/hub/admin`). It has no fleet overview, Needs you or agent list, because the Hub runs no agents; `/ui` opens Ask. |
+| **A Hub**, served by its own listener and origin (slice 1) | The brand reads **AgEnD Hub · <name>**. Since #3226 B it is a chat app: the sidebar is the person's **conversations** (**New chat**, a filter, one row per room, a waiting question marked; a closed room listed as closed), a room is `/ui/hub?room=<id>` (the fleet chat's own thread and composer, the right-hand panel in the AI usage rail's frame: who the agent answers for, your access, who sees the chat, what is not here), and **My exposures** (`/ui/hub/exposures`) and **Administration** (`/ui/hub/admin`) are in the session row's menu. It has no fleet overview, Needs you or agent list, because the Hub runs no agents; `/ui` opens the chats. |
 | **A member fleet** (`hub_member.enabled`) | The brand and pages are the fleet's own. Once paired, a **My fleet ↔ Hub** switcher under the brand opens the Hub's approved `webOrigin` in a new tab: no token or identity in the URL, no opener, no sign-in proxied. **Settings → Access & security → Connect to a Hub** has the form, the pairing states and the agents to share. |
 
 `/ui/hub*` are browser **page** paths. Slice 1's `/hub/v1/*` are its API and wire paths.
@@ -87,7 +87,7 @@ cancel()               → HubPairingView (local only: back to unpaired)
 - **`subscribe(fn)`:** the member's local status, read every 5 s while the card is shown (one request at a time, none while the page is hidden), stopping with the last listener. There is no direct connection from the page.
 ## The Hub workspace (S3b): `/hub/v1/*` and its session
 
-`src/hub/http/compose.ts` `createHubHttp(deps)` (S5's lazy entry: it exports `createHubHttp` and `migrations`) serves the Hub web listener: `/hub/v1/*`, the Hub-only pages (`/`, `/web`, `/ui`, `/ui/hub*`), the three Hub modules under `/ui/js/` and the public `/assets/`. Anything else is S5's not-found.
+`src/hub/http/compose.ts` `createHubHttp(deps)` (S5's lazy entry: it exports `createHubHttp` and `migrations`) serves the Hub web listener: `/hub/v1/*`, the Hub-only pages (`/`, `/web`, `/ui`, `/ui/hub*`), the Hub modules under `/ui/js/` (`HUB_UI_MODULES`: `panel-hub.js`, `hub-client.js`, `hub-strings.js`, and since #3226 B `hub-chat-store.js`, `hub-chat-strings.js`, `hub-quota.js`) and the public `/assets/` (the shared chat modules among them). Anything else is S5's not-found.
 
 - **Session:** directory sign-in (S2 `signIn`) → cookie `__Host-agend_hub_<hubId>` (Secure, HttpOnly, SameSite=Strict, Path=/). Only that exact name is read; a fleet cookie, bearer token or member credential is never a Hub person. 8 h absolute, 1 h idle.
 - **Mutations:** `Origin` = the Hub's `webOrigin` (and `Sec-Fetch-Site` same-origin when sent) plus `X-AgEnD-Hub-CSRF`, a value derived from the session token that only a same-origin read of `GET /hub/v1/session` learns.

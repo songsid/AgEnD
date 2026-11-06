@@ -1,5 +1,6 @@
-/* Settings -> Runtime -> Connect a computer: the install-method tabs, the copyable command cards and the "needs reinstall" notice.
-   Linked by panel-runtimes.js itself (a tab opened before an upgrade has an app.css without these rules). */
+/* Settings -> Runtime: the install-method tabs, the copyable command cards, the "needs reinstall" notice, and a computer's account
+   list (credential profiles and which account each sign-in is). Linked by panel-runtimes.js itself (a tab opened before an upgrade
+   has an app.css without these rules). */
 .runtime-install { min-width: 0; }
 .runtime-install-tabs { margin-bottom: 16px; }
 .runtime-install-panel { min-width: 0; }
@@ -12,3 +13,14 @@
 @media (max-width: 600px) { .runtime-command-row { flex-direction: column; align-items: stretch; } .runtime-command-row .btn { align-self: flex-start; } }
 .runtime-installer-hash code { overflow-wrap: anywhere; font-family: var(--font-mono); }
 .runtime-installer-error, .runtime-reinstall { margin: 0 0 8px; padding: 10px 12px; border: 1px solid var(--warn); border-radius: 8px; background: var(--warn-bg); font-size: var(--fs-sm); line-height: 1.5; }
+.runtime-profiles { margin: 0 0 16px; }
+.runtime-profiles h4 { margin: 0 0 6px; font-size: var(--fs-sm); font-weight: 500; }
+.runtime-profile-list { list-style: none; margin: 0 0 6px; padding: 0; }
+.runtime-profile-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.runtime-profile-list li code { font: var(--fs-sm)/1.4 var(--font-mono); overflow-wrap: anywhere; }
+.runtime-profile-list .runtime-cli-auth { margin-inline-start: auto; }
+.runtime-account { display: block; color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.runtime-profile-list .runtime-account { display: inline; }
+.runtime-profile-default { padding: 1px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-2); font-size: var(--fs-xs); }
+.runtime-profiles .note, .runtime-profiles-old { margin: 4px 0 0; font-size: var(--fs-xs); }
+.runtime-profiles-old { margin-bottom: 16px; }
