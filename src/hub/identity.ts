@@ -1,8 +1,20 @@
 import { createHash, createPublicKey, sign, verify, type KeyObject } from "node:crypto";
 import { person, validated, parseStrictJson, HubProtocolError } from "./validation.js";
 import { leaseSchema, validateAsker, validateAuthorization } from "./protocol.js";
-import type { HubAskerEnvelope, HubAuthorizationRequest, HubAuthorizationLease, PersonKey } from "./types.js";
+import type { HubAskerEnvelope, HubAttachmentRef, HubAuthorizationRequest, HubAuthorizationLease, PersonKey } from "./types.js";
 export const sha256 = (input: string | Buffer): string => createHash("sha256").update(input).digest("hex");
+/** The canonical digest of an attachments-v1 file list, in its order. */
+export function attachmentsDigest(refs: readonly HubAttachmentRef[]): string {
+  return sha256(JSON.stringify(refs.map(r => [r.id, r.name, r.size, r.mime, r.sha256])));
+}
+/** A message's contentDigest. With nothing but text it is sha256(text), as before. With files (D) and/or reply buttons
+ * (F, its own canonical digest) it also binds them, so the asker signature, receipts and the release lease cover them
+ * with no new envelope or lease field. */
+export function messageContentDigest(kind: "question" | "answer", text: string, extras?: { attachments?: readonly HubAttachmentRef[]; buttonsDigest?: string }): string {
+  const files = extras?.attachments?.length ? attachmentsDigest(extras.attachments) : null, buttons = extras?.buttonsDigest ?? null;
+  if (files === null && buttons === null) return sha256(text);
+  return sha256(JSON.stringify([`agend-hub-${kind}-extras-v1`, sha256(text), files, buttons]));
+}
 export function personKeyString(input: PersonKey): string { const p = validated(person, input); return `${p.realm}/${p.objectId}`; }
 function tuple(e: HubAskerEnvelope): string {
   return JSON.stringify(["agend-hub-ask-v1", e.v, e.issuer, e.issuerKeyId, e.messageId, e.asker.realm, e.asker.objectId,
@@ -18,11 +30,11 @@ export interface HubIdentityBinding {
   hubId: string; issuerKeyId: string; issuerPublicKey: KeyObject; fleetId: string; owner: PersonKey;
   revocationVersion: number; now: number;
 }
-export function verifyAsker(input: unknown, text: string, binding: HubIdentityBinding): HubAskerEnvelope {
+export function verifyAsker(input: unknown, text: string, binding: HubIdentityBinding, attachments?: readonly HubAttachmentRef[]): HubAskerEnvelope {
   const e = validateAsker(input), key = binding.issuerPublicKey;
   if (key.type !== "public" || key.asymmetricKeyType !== "ed25519" || e.issuer !== binding.hubId || e.issuerKeyId !== binding.issuerKeyId
     || e.destinationFleetId !== binding.fleetId || personKeyString(e.owner) !== personKeyString(binding.owner)
-    || e.contentDigest !== sha256(text) || e.revocationVersion !== binding.revocationVersion
+    || e.contentDigest !== messageContentDigest("question", text, { attachments }) || e.revocationVersion !== binding.revocationVersion
     || !Number.isSafeInteger(binding.now) || e.expiresAt <= binding.now || e.issuedAt > binding.now + 5_000
     || e.expiresAt <= e.issuedAt || e.expiresAt - e.issuedAt > 120_000
     || Buffer.from(e.signature, "base64url").toString("base64url") !== e.signature
