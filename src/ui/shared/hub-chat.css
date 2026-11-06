@@ -1,0 +1,85 @@
+/* #3226 B: the Hub chat — the conversation list (in the sidebar; the page itself on a phone), a room (its header, the
+   fleet chat's thread and composer) and the right-hand panel (the usage rail's frame and cards). Linked by the Hub's
+   hub-chat-strings.js (an older hub.css or app.css lacks these rules). Tokens only: both themes follow. No style= anywhere
+   (#1300): every look here is a class. */
+
+/* ── the conversation list ── */
+.hub-side-nav { display: flex; flex-direction: column; min-height: 0; flex: 1; }
+.hub-nav { display: flex; flex-direction: column; gap: var(--s-1); min-height: 0; padding: 0 var(--s-2) var(--s-2); }
+.hub-new { justify-content: flex-start; gap: var(--s-2); margin: var(--s-1) 0 var(--s-2); }
+.hub-search { display: flex; align-items: center; gap: var(--s-2); background: var(--surface); border-radius: var(--r-sm); padding: 0 var(--s-2); color: var(--text-3); }
+.hub-search input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--text); padding: 7px 0; font: inherit; font-size: var(--fs-sm); outline: none; }
+.hub-sec { font-size: var(--fs-xs); color: var(--text-3); letter-spacing: .06em; padding: var(--s-3) var(--s-2) var(--s-1); }
+.hub-rooms { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.hub-room-row, .hub-pick-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: var(--s-2); align-items: center; padding: 7px var(--s-2);
+  border-radius: var(--r-sm); color: var(--text); text-decoration: none; }
+.hub-room-row:hover { background: var(--surface); }
+.hub-room-row.active { background: var(--surface-2); }
+.hub-room-row.closed .t, .hub-room-row.closed .s { color: var(--text-3); }
+.hub-room-text { min-width: 0; display: flex; flex-direction: column; }
+.hub-room-text .t { font-weight: var(--fw-semibold, 600); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-room-text .s { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-room-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.hub-room-side .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); animation: hub-pulse 1.4s ease-in-out infinite; }
+@keyframes hub-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .hub-room-side .pulse { animation: none; } }
+.hub-list-empty, .hub-list-err { margin: var(--s-2); font-size: var(--fs-sm); }
+
+/* a name's letter on a tone (the same tones in both themes) */
+.hub-av { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; font-weight: 600; font-size: 14px; color: #fff; flex: none; }
+.hub-av.sm { width: 28px; height: 28px; font-size: 12px; border-radius: 8px; }
+.hub-av.lg { width: 56px; height: 56px; font-size: 22px; border-radius: 16px; }
+.hub-av.t0 { background: #4f6bd8; } .hub-av.t1 { background: #2f8f83; } .hub-av.t2 { background: #b4643a; }
+.hub-av.t3 { background: #7b5bc4; } .hub-av.t4 { background: #6b7280; } .hub-av.t5 { background: #b8447a; }
+
+/* ── the page: a phone's list, or a wide screen's "pick a chat" ── */
+.hub-chat-body { display: flex; flex-direction: column; overflow: hidden; padding: 0; }
+.hub-home { flex: 1; min-height: 0; display: flex; }
+.hub-home-list { display: none; }
+.hub-home-pick { flex: 1; display: flex; align-items: center; justify-content: center; padding: var(--s-6); }
+@media (max-width: 899px) {
+  .hub-home-list { display: block; flex: 1; overflow-y: auto; padding-top: var(--s-2); }
+  .hub-home-pick { display: none; }
+}
+
+/* ── a room ── */
+.hub-chat { flex: 1; min-height: 0; display: flex; }
+.hub-chat-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+.hub-chat-head { display: flex; align-items: center; gap: var(--s-2); min-height: var(--header-h, 52px); padding: 0 var(--s-4); border-bottom: 1px solid var(--border); flex: none; }
+.hub-chat-title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.hub-chat-title strong { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-chat-title .s { color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-back { flex: none; }
+.hub-scroller { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; position: relative; }
+.hub-scroller .thread { max-width: var(--col); margin: 0 auto; padding: var(--s-4) var(--s-5); }
+.hub-room-empty { padding: var(--s-6) var(--s-4); }
+.hub-banner { margin: 0; padding: var(--s-2) var(--s-3); border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--surface); color: var(--text-2); }
+.hub-banner.danger { background: var(--danger-bg, var(--surface)); color: var(--danger); }
+.hub-banner.warn { background: var(--warn-bg, var(--surface)); color: var(--warn); }
+
+/* ── the right-hand panel: the usage rail's frame (side-rail.js), its cards ── */
+.hub-chat > .u-rail { width: 320px; flex-shrink: 0; }
+.hub-card { gap: var(--s-2); }
+.hub-agent-card { align-items: center; text-align: center; }
+.hub-agent-card strong { font-size: var(--fs-lg, 17px); }
+.hub-kv { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: var(--fs-sm); }
+.hub-kv dt { color: var(--text-3); } .hub-kv dd { margin: 0; min-width: 0; }
+.hub-aud { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.hub-aud li { display: grid; grid-template-columns: 18px 1fr; gap: var(--s-2); }
+.hub-aud li > .icon { margin-top: 2px; color: var(--text-3); }
+.hub-aud b { color: var(--text); }
+.hub-p1 { margin: 0 var(--s-1); font-size: var(--fs-xs); }
+.hub-rail-sheet { display: flex; flex-direction: column; gap: var(--s-3); }
+
+/* ── New chat ── */
+.hub-pick { display: flex; flex-direction: column; gap: var(--s-2); }
+.hub-pick-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hub-pick-row { grid-template-columns: 34px minmax(0, 1fr) auto; }
+.hub-pick-row .hub-room-text .s { white-space: normal; }
+.hub-dock .composer-row .hint { white-space: normal; overflow: visible; text-overflow: clip; }
+
+/* the session's menu sits at the sidebar's foot: it always opens upward */
+.hub-session .hub-menu .menu-list { top: auto; bottom: calc(100% + 6px); right: 0; left: auto; }
+
+/* An HTML block's Download needs the preview (#3226 E): not offered in the Hub's thread until then. */
+.hub-scroller .pv-dl { display: none; }
