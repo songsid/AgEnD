@@ -127,6 +127,13 @@ describe("the Hub's rooms for the chat (the real listener)", () => {
     const after = (await rig.call(alex, "GET", "/hub/v1/rooms")).json.rooms[0];
     expect([after.waiting, after.lastAt >= before[0].lastAt]).toEqual([true, true]);
   });
+  it("features: what the room's current fleet link negotiated (none without a current link)", async () => {
+    link.features = new Set(["buttons-v1", "attachments-v1"]);
+    expect((await rig.call(alex, "GET", "/hub/v1/rooms")).json.rooms[0].features).toEqual(["attachments-v1", "buttons-v1"]);
+    link.alive = false;
+    expect((await rig.call(alex, "GET", "/hub/v1/rooms")).json.rooms[0].features).toEqual([]);
+    link.alive = true;
+  });
   it("the messages answer carries the room; its entries say when each was asked; another person's read is not-found", async () => {
     const r = await rig.call(alex, "GET", `/hub/v1/rooms/${R1}/messages?after=0`);
     expect([r.status, r.json.room.id, r.json.room.ownerName, typeof r.json.entries[0].askedAt, r.json.entries[0].question]).toEqual([200, R1, "Olivia Chen", "number", "Q3?"]);
