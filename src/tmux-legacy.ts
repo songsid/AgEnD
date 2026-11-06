@@ -24,7 +24,7 @@
  * Divergence from the design note, flagged in the PR: the tag is a sidecar file (`window-id.socket`) instead of a
  * prefix inside `window-id` (`agend:@12`), so the many readers of `window-id` keep reading a bare window id.
  */
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 

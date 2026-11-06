@@ -15,7 +15,7 @@
  *
  * Only while the bundled tmux is on (tmux-binary.ts); the decision is pure (decideServer), the probes are injected.
  */
-import { execFile } from "node:child_process";
+import { execFile } from "./child-process.js";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { connect } from "node:net";
