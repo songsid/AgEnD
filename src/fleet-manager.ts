@@ -177,6 +177,7 @@ import {
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { applyInstanceConfigPatch, outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
+import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 import { backendArgs, backendStep, joinBackendArgs, modelNameCarried, planDisplay, type BackendCommandDeps, type BackendStep } from "./backend-command.js";
 import { DeliveryOutbox, DEFAULT_REPLY_OBLIGATION_TTL_MS, isSilentScheduleDelivery, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage, type DeliveryStatusItem } from "./delivery-outbox.js";
 
@@ -918,6 +919,11 @@ export interface DeliveryOptions {
   authorityCurrent?: () => boolean;
   /** Explicitly identify agent-to-agent delivery when metadata is unavailable. */
   isCrossInstance?: boolean;
+  /**
+   * The Hub representative's last step (docs/design/hub-representative-agent.md): run after any wake, the idle wait and
+   * the storm recheck, immediately before the IPC hand-off. False drops the delivery unsent. Not for Windows agents.
+   */
+  beforeInput?: () => Promise<boolean>;
   /** Force or bypass the idle gate. Schedules set this explicitly. */
   waitForIdle?: boolean;
   /** Test/operational override; normal deliveries use the 60 second backstop. */
@@ -1875,6 +1881,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // S3c's currentBinding: a fresh, fail-closed read of the pairing state (null unless consistent and connectable).
           boundHub: () => this.hubMemberBinding?.(this.dataDir)?.hubId ?? null,
           agents: () => this.hubMemberAgents(),
+          // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
+          representative: {
+            deliver: input => this.deliverHubQuestion(input),
+            agentToken: agent => this.hubAgentToken(agent),
+            attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
+          },
           attachExposures: api => this.attachHubMemberExposures(api),
           attachAttention: read => this.attachHubExecutionAttention(read),
           pokeAttention: () => this.needsYou?.poke(),
@@ -1933,11 +1945,49 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** The local owner's agents a Hub exposure could map to; providerId is the configured isolated provider, if any. */
+  /** The owner's agents for the Hub picker: every configured instance, as a representative agent (P1). */
   private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
-    const member = (this.rawFleetConfig as { hub_member?: { execution?: { provider?: { backend?: unknown } } } })?.hub_member;
-    const backend = member?.execution?.provider?.backend;
-    const providerId = backend === "claude" || backend === "codex" ? backend : null;
-    return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: name, providerId }));
+    return Object.entries(this.fleetConfig?.instances ?? {}).map(([name, cfg]) => ({ name, display: cfg.display_name || name, providerId: "agent" }));
+  }
+
+  /**
+   * A published representative's lifecycle token: its name generation (removal/replacement), backend, folder and
+   * runtime. A change makes earlier consent stale (explicit republish); stopping or pausing it does not.
+   */
+  private hubAgentToken(agent: string): string | null {
+    const instances = this.fleetConfig?.instances ?? {};
+    if (!Object.prototype.hasOwnProperty.call(instances, agent)) return null;
+    const cfg = instances[agent]!;
+    return createHash("sha256").update(JSON.stringify(["agend-hub-agent-v1", agent, this.webChatGeneration(agent), cfg.backend ?? "claude-code",
+      cfg.working_directory, cfg.runtime ?? "", cfg.machine_id ?? ""])).digest("hex");
+  }
+
+  /**
+   * A Hub question to its representative agent: ordinary cross-instance delivery (idle gate, wake, retries), from the
+   * reserved Hub sender with the Hub-issued correlation id. beforeInput runs immediately before the IPC hand-off.
+   */
+  private async deliverHubQuestion(input: import("./hub/representative.js").HubRepresentativeDelivery): Promise<boolean> {
+    const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
+    if (this.shuttingDown || !this.fleetConfig?.instances[input.agent]) return false;
+    // Windows agents run through their own runtime, which has no pre-input hook: not a P1 representative.
+    if (isNativeExecInstance(this.fleetConfig.instances[input.agent])) return false;
+    const ipcMeta: Record<string, string> = {
+      chat_id: "",
+      message_id: `hubmsg-${input.correlationId.slice(4)}`,
+      user: `instance:${HUB_REPORT_TARGET}`,
+      user_id: `instance:${HUB_REPORT_TARGET}`,
+      ts: new Date().toISOString(),
+      thread_id: "",
+      from_instance: HUB_REPORT_TARGET,
+      from_display: "Hub",
+      correlation_id: input.correlationId,
+      request_kind: "query",
+      requires_reply: "true",
+      task_summary: "A question from the Hub",
+    };
+    const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: input.text, meta: ipcMeta },
+      { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: input.beforeInput });
+    return result !== false;
   }
 
   /** S-51: why the Hub (or this fleet's Hub membership) is not running, if it is held. Empty while off or running. */
@@ -2002,6 +2052,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubMemberBinding: ((home: string) => { hubId: string } | null) | null = null;
   /** The member link as the "Connect to a Hub" view shows it (S5's client lifecycle). */
   private hubMemberLink: "online" | "offline" | "revoked" = "offline";
+  /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
+  hubReport(input: { correlationId: string; caller: string; text: string }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+    return this.hubReports?.(input) ?? null;
+  }
+  /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
+  private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
+  /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
+  private hubReports: ((input: { correlationId: string; caller: string; text: string }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;
@@ -5739,6 +5797,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     noInlineWake = false,
     stillCurrent?: () => boolean,
     onStartRetryHold?: () => void,
+    beforeInput?: () => Promise<boolean>,
   ): Promise<boolean> {
     if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
@@ -5779,6 +5838,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2482: a busy target is the normal case (its CLI queues the message): INFO; a WARN only for a likely anomaly.
       const log = idleGateTimeoutLog(instanceName, timeoutMs, this.instanceStateCache.get(instanceName), Date.now());
       this.logger[log.level](log.fields, log.message);
+    }
+    // The Hub representative's begin lease + input intent: after wake, idle wait and storm recheck, never queued.
+    if (beforeInput) {
+      if (!(await beforeInput())) return false;
+      if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     }
     const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold);
     if (!sent) return false;
@@ -6250,6 +6314,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<boolean | void> {
     if (this.generalLocationDeliveryHold(instanceName)) return false;
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
+      if (options.beforeInput) return false; // no pre-input hook on the Windows runtime
       return this.nativeInstanceRuntime().deliver(instanceName,payload,{stillCurrent:options.stillCurrent,
         ...(options.authorityCurrent ? {authorityCurrent:options.authorityCurrent} : {})});
     }
@@ -6271,6 +6336,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
+      if (options.beforeInput && !(await options.beforeInput())) return false;
+      if (!this.deliveryCurrent(instanceName, deliveryEpoch, options.stillCurrent)) return false;
       const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch, options.stillCurrent, options.onStartRetryHold);
       if (!sent) return false;
       // A cross-instance item arriving before the daemon observes this turn as
@@ -6290,6 +6357,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       options.noInlineWake === true,
       options.stillCurrent,
       options.onStartRetryHold,
+      options.beforeInput,
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
@@ -10906,6 +10974,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.eventLog?.insert(targetInstance, "cross_instance_delivery_failed", {
             from: senderSession, correlation_id: correlationId, error,
           });
+          // A Hub question the pane never took: the representative holds it uncertain (never resent).
+          if (senderSession === HUB_REPORT_TARGET && !senderInstance) this.hubDeliveryFailed?.(correlationId, targetInstance);
           if (senderInstance) {
             this.notifyInstanceTopic(senderInstance, t(
               "cross_instance.delivery_failed_notice", targetInstance, displayError, correlationId,

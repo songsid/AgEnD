@@ -30,27 +30,32 @@ async function paired() {
   return rig;
 }
 
-function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS, providerId: string | null = null) {
+function factory(home: string, hubId: string | null, components: HubMemberComponents = MEMBER_COMPONENTS, providerId: string | null = "agent") {
   const reports: { code: string; detail: string }[] = [];
-  const attached: { exposures: unknown; attention: unknown; link: string[]; notices: { code: string; reason: string }[] } = { exposures: null, attention: null, link: [], notices: [] };
+  const attached: { exposures: unknown; attention: unknown; reports: unknown; link: string[]; notices: { code: string; reason: string }[]; logs: string[] } = { exposures: null, attention: null, reports: null, link: [], notices: [], logs: [] };
   const create = createHubMemberFactory({
     home,
     components,
     boundHub: () => hubId,
     agents: () => [{ name: "general", display: "General", providerId }],
+    representative: {
+      deliver: async () => false,
+      agentToken: (agent) => (agent === "general" ? "t".repeat(64) : null),
+      attachReports: (handler) => { attached.reports = handler; },
+    },
     attachExposures: (api) => { attached.exposures = api; },
     attachAttention: (read) => { attached.attention = read; },
     pokeAttention: () => {},
     linkState: (state) => { attached.link.push(state); },
     notice: (code, reason) => { attached.notices.push({ code, reason }); },
     report: (code, detail) => reports.push({ code, detail }),
-    log: () => {},
+    log: (_level, message) => { attached.logs.push(message); },
   });
   return { create, reports, attached };
 }
 
 describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", () => {
-  it("composes S1 + S4 + S3c on a private member DB, connects, and with no views nothing is publishable", async () => {
+  it("composes S1 + the representative adapter + S3c on a private member DB, connects, and attaches the report hook", async () => {
     const rig = await paired();
     const hubId = rig.identity.hubId;
     const f = factory(rig.memberHome, hubId);
@@ -60,12 +65,13 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     for (const p of [set.database, ...set.floors, ...set.keys]) expect(statSync(join(rig.memberHome, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(rig.memberHome, set.database), { readonly: true });
     expect((db.prepare("SELECT component FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component))
-      .toEqual(["s1-member-journal", "s3c-exposures", "s4-execution", "s5-audit", "s5-instance"]);
+      .toEqual(["s1-member-journal", "s3c-exposures", "s4-execution", "s5-audit", "s5-instance", "s5-representative"]);
     db.close();
     // Attached to the fleet: the exposure API (empty registry: nothing to choose, not enforceable) and attention.
     const api = f.attached.exposures as { list(): Array<{ agent: string; choices: { dataViews: unknown[] }; enforceable: boolean }> };
     expect(api.list()).toMatchObject([{ agent: "general", choices: { dataViews: [] }, enforceable: false }]);
     expect(typeof f.attached.attention).toBe("function");
+    expect(typeof f.attached.reports).toBe("function"); // the report_result hook for Hub answers
     // The handshake ran on the real link: the Hub saw the member's snapshot.
     for (let i = 0; i < 50 && !rig.received.some((x) => x.type === "exposure.snapshot"); i += 1) await new Promise((r) => setTimeout(r, 50));
     expect(rig.received.some((x) => x.type === "exposure.snapshot")).toBe(true);
@@ -74,6 +80,7 @@ describe.skipIf(process.platform === "win32")("Hub member factory (S5b PR 2b)", 
     service.fence();
     expect(f.attached.link.at(-1)).toBe("offline");
     expect(f.attached.exposures).toBeNull(); // fence detaches the owner API at once, before any close
+    expect(f.attached.reports).toBeNull(); // and the report hook: no Hub answer is taken after a fence
     await service.close();
     expect(f.attached.exposures).toBeNull();
     expect(f.attached.attention).toBeNull();
@@ -137,30 +144,24 @@ describe.skipIf(process.platform === "win32")("member link state", () => {
   });
 });
 
-describe.skipIf(process.platform === "win32")("provider setup is non-fatal (agreed with S4b)", () => {
+describe.skipIf(process.platform === "win32")("P1 representative-only composition (#3145)", () => {
   const good = (hubId: string) => ({ backend: "claude", imageId: `sha256:${"b".repeat(64)}`, model: "m-1", credentialRef: `file:hub-member/${hubId}/secrets/model-api` });
-  it("a bad block, a missing credential or a missing S4b: the member runs with no provider and one hold with the bounded reason", async () => {
+  it("an old provider block (valid or not) is ignored: one info line, no hold, no provider, no fallback", async () => {
     const rig = await paired();
     const hubId = rig.identity.hubId;
-    const cases: [string, Record<string, unknown>, HubMemberComponents, string][] = [
-      ["bad image", { ...good(hubId), imageId: "latest" }, MEMBER_COMPONENTS, "image-unconfigured"],
-      ["bad credentialRef", { ...good(hubId), credentialRef: "env:KEY" }, MEMBER_COMPONENTS, "credential-unconfigured"],
-      ["missing credential file", good(hubId), MEMBER_COMPONENTS, "credential-unconfigured"],
-      ["no S4b in the build", good(hubId), { execution: MEMBER_COMPONENTS.execution!, exposures: MEMBER_COMPONENTS.exposures! }, "unavailable"],
-    ];
-    for (const [label, provider, components, reason] of cases) {
-      const f = factory(rig.memberHome, hubId, components, "claude");
+    let providerBuilt = 0;
+    const components: HubMemberComponents = { ...MEMBER_COMPONENTS, provider: async () => { providerBuilt += 1; return MEMBER_COMPONENTS.provider!(); } };
+    for (const provider of [good(hubId), { ...good(hubId), imageId: "latest" }]) {
+      const f = factory(rig.memberHome, hubId, components);
       const service = await f.create({ enabled: true, execution: { provider } }, () => true);
       await service.start();
-      expect(f.attached.notices, label).toEqual([{ code: "hub-provider-unavailable", reason }]);
-      // S4 sees the same bounded reason (presentation only).
-      expect((service as unknown as { providerReason(id: string): unknown }).providerReason("claude"), label).toBe(reason);
-      expect(f.reports, label).toEqual([]); // not fatal
-      const api = f.attached.exposures as { list(): Array<{ enforceable: boolean; reason?: string }> };
-      // The owner page shows S4's bounded reason for the agent's provider, and the agent cannot be shared.
-      expect(api.list(), label).toMatchObject([{ enforceable: false, reason }]);
+      expect(f.attached.notices).toEqual([]); // never a hub-provider-unavailable hold
+      expect(f.reports).toEqual([]);
+      expect(f.attached.logs.filter((l) => /execution\.provider is ignored/.test(l))).toHaveLength(1);
+      expect((service as unknown as { representative: unknown }).representative).toBeTruthy();
       await service.close();
     }
+    expect(providerBuilt).toBe(0); // the container provider is never constructed in P1
   });
 });
 
