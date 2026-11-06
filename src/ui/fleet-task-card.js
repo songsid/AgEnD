@@ -8,7 +8,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
-import { StatusPill, Who, answerBlocked, askText, boardApi, currentWork, errorText, followsSubs, moveCard, notesForPeople, relTime, wrapUpText } from "./fleet-task-common.js";
+import { AssigneeOption, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, errorText, followsSubs, moveCard, notesForPeople, relTime, wrapUpText } from "./fleet-task-common.js";
 import { StepButtons } from "./fleet-task-menu.js";
 
 register("taskcard", {
@@ -87,7 +87,7 @@ const fieldName = (k) => { const key = `taskcard.f${k[0].toUpperCase()}${k.slice
  * for touch and keyboard (null when it cannot move). `steps`: the previous and next card the page showed, and where
  * this one is among them (null: nowhere to step).
  */
-export function CardDialog({ id, tick, projects, writable = true, place = null, steps = null, onClose, onOpen, reloadBoard }) {
+export function CardDialog({ id, tick, projects, boardOff = [], writable = true, place = null, steps = null, onClose, onOpen, reloadBoard }) {
   const { instances } = useStore(appStore);
   const [detail, setDetail] = useState(null);
   const [missing, setMissing] = useState(false);
@@ -203,7 +203,7 @@ export function CardDialog({ id, tick, projects, writable = true, place = null, 
           ${writable ? html`<select class="tb-select" value="\u0000pick" aria-label=${t("taskcard.assignee")} onChange=${(e) => { const v = e.target.value; e.target.value = "\u0000pick"; void chooseAssignee(v); }}>
             <option value="\u0000pick" disabled hidden>${t("taskcard.change")}</option>
             ${card.assignee ? html`<option value="\u0000none">${t("taskcard.unassign")}</option>` : null}
-            ${names.filter((n) => n !== card.assignee).map((n) => html`<option key=${n} value=${n}>${n}</option>`)}
+            ${names.filter((n) => n !== card.assignee).map((n) => html`<${AssigneeOption} key=${n} name=${n} boardOff=${boardOff} />`)}
             <option value="\u0000other">${t("taskcard.other")}</option>
           </select>` : null}</dd>
         ${isMain && children.length ? html`<dt>${t("taskcard.now")}</dt><dd>${(() => {

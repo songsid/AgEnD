@@ -18,7 +18,7 @@ on:
       - scripts/preinstall-guard.cjs
       - scripts/runtime/**
       - scripts/ci/runtime-acceptance/**
-      # #1819: the hop installs the published 2.1.12 through these.
+      # #1819: the hop installs the published 2.3.3 through these.
       - .github/actions/published-agend-tarball/**
       - scripts/ci/install-published-tarball.sh
       - scripts/ci/verify-published-tarball.sh
@@ -50,7 +50,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,7 +62,7 @@ jobs:
       - name: Runtime packages from the signed official Node ${{ env.PIN }}
         run: node scripts/runtime/build-runtime-packages.mjs --node "$PIN" --out "$RUNNER_TEMP/runtime"
       - name: The candidate, pinning them
-        run: node scripts/ci/runtime-acceptance/prepare-candidate.mjs "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/packages" "$PIN" "2.2.0-acceptance.${{ github.run_id }}"
+        run: node scripts/ci/runtime-acceptance/prepare-candidate.mjs "$RUNNER_TEMP/runtime" "$RUNNER_TEMP/packages" "$PIN" "2.3.4-acceptance.${{ github.run_id }}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-acceptance-packages
@@ -74,7 +74,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","ubuntu-24.04-arm","macos-latest","macos-15-intel"]') }}
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || '["ubuntu-24.04","ubuntu-24.04-arm","macos-latest","macos-15-intel"]') }}
         # The system Node is never a reason to refuse where a bundled Node applies (#1450, user 2026-10-09): 16 and 18
         # install and run too — AgEnD runs on the bundled Node, whatever Node runs npm. A pull request runs the two
         # ends: 16 (npm 8, node-gyp) and 22.
@@ -115,9 +115,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
-        # 2.1.12 itself starts on 18 and 20, so both legs run there; on 16 it cannot start, so only plain npm applies.
-        # A pull request runs 18: the oldest Node where both legs (the old updater and plain npm) run.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || '["ubuntu-24.04","macos-latest"]') }}
+        # Keep the host-system Node coverage. The previous release's bundled Node runs its updater on all cells.
+        # PR cardinality stays unchanged; deferred runs keep the full Node16/18/20 matrix.
         node: ${{ fromJSON(github.event_name == 'pull_request' && '["18"]' || '["16","18","20.19.0"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 25
@@ -142,13 +142,13 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.11'
-      # #1819: the published 2.1.12 from one cached, integrity-checked tarball, not a registry download per leg.
-      - name: Published 2.1.12 tarball (cached, integrity-checked)
+      # #1819: the published 2.3.3 from one cached, integrity-checked tarball, not a registry download per leg.
+      - name: Published 2.3.3 tarball (cached, integrity-checked)
         id: old-tarball
         uses: ./.github/actions/published-agend-tarball
         with:
-          version: 2.1.12
-      - name: 2.1.12 → candidate, through the old updater and through plain npm
+          version: 2.3.3
+      - name: 2.3.3 → candidate, through the old updater and through plain npm
         env:
           AGEND_OLD_TARBALL: ${{ steps.old-tarball.outputs.tarball }}
         run: bash scripts/ci/runtime-acceptance/hop.sh "$RUNNER_TEMP/packages"
@@ -160,7 +160,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest","macos-latest"]') }}
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || '["ubuntu-24.04","macos-latest"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:

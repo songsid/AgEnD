@@ -1,18 +1,18 @@
 /**
  * #1493 review: the Mac GUI-domain rehearsal (scripts/ci/runtime-acceptance/gui-rehearsal.sh) is a GATE on the
- * 2.1.12 → candidate hop. Its verdict comes right after the old updater, before anything else touches the service: the
+ * 2.3.3 → candidate hop. Its verdict comes right after the old updater, before anything else touches the service: the
  * updater must have installed the candidate, exited 0 and consumed the planned activation. An updater that installs but
  * fails its activation — exit 1, or exit 0 with the plan left behind — fails the rehearsal; nothing repairs it first.
  * The real script runs here with inert npm / launchctl / curl / agend stubs (no service, fleet or install).
  */
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 const SCRIPT = join(process.cwd(), "scripts", "ci", "runtime-acceptance", "gui-rehearsal.sh");
-const CAND = "2.2.0-acceptance.1";
+const CAND = "2.3.4-acceptance.1";
 const roots: string[] = [];
 afterAll(() => { for (const r of roots) rmSync(r, { recursive: true, force: true }); });
 
@@ -23,11 +23,13 @@ function rehearse(updater: { rc: number; leavesPlan: boolean }) {
   for (const d of [bin, home, pkgs, join(temp, "registry")]) mkdirSync(d, { recursive: true });
   writeFileSync(join(pkgs, "candidate.json"), JSON.stringify({ version: CAND, pin: "22.23.4", tarballs: [] }));
   writeFileSync(join(temp, "registry", "npmrc"), "");
-  // #1819: the published 2.1.12 comes as a tarball (the CI action restores and checks it); a placeholder here.
-  const oldTgz = join(root, "songsid-agend-2.1.12.tgz");
+  // #1819: the published 2.3.3 comes as a tarball (the CI action restores and checks it); a placeholder here.
+  const oldTgz = join(root, "songsid-agend-2.3.3.tgz");
   writeFileSync(oldTgz, "");
+  const prefixBin = join(temp, "gui", "prefix", "bin");
+  mkdirSync(prefixBin, { recursive: true });
   const calls = join(root, "calls"), state = join(root, "installed");
-  writeFileSync(state, "2.1.12");
+  writeFileSync(state, "2.3.3");
   const stub = (name: string, body: string) => { writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> '${calls}'\n${body}\n`); chmodSync(join(bin, name), 0o755); };
   stub("npm", "exit 0");
   stub("curl", "printf 200");
@@ -43,6 +45,8 @@ function rehearse(updater: { rc: number; leavesPlan: boolean }) {
     `  restart) exit 0 ;;`,
     `esac`,
   ].join("\n"));
+  // The installer owns this absolute bin as well as the PATH entry.
+  symlinkSync(join(bin, "agend"), join(prefixBin, "agend"));
   const r = spawnSync("bash", [SCRIPT, pkgs], {
     encoding: "utf8", timeout: 60_000,
     env: { PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`, HOME: home, RUNNER_TEMP: temp, AGEND_OLD_TARBALL: oldTgz },
@@ -73,7 +77,7 @@ describe("gui-rehearsal.sh: the hop's verdict comes from the old updater alone",
     expect(r.out).toContain(`hop verdict: the old updater installed ${CAND}, exited 0 and consumed the planned activation`);
     expect(r.restarts).toBe(0);
   });
-  it("#1819: 2.1.12 is installed from its tarball, never fetched from the registry by name", () => {
+  it("#1819: 2.3.3 is installed from its tarball, never fetched from the registry by name", () => {
     const r = rehearse({ rc: 0, leavesPlan: false });
     expect(r.npm).toEqual([`npm install --global --no-audit --no-fund --loglevel=http --registry https://registry.npmjs.org/ ${r.oldTgz}`]);
   });
