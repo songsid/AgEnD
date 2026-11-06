@@ -36,6 +36,7 @@ import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
 import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
+import { HubMemberFiles } from "../member/attachments.js";
 
 export function memberSet(hubId: string): HubStateSet {
   const base = `hub-member/${hubId}`;
@@ -93,9 +94,11 @@ export interface HubRepresentativeHost {
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
   /** The agent's current lifecycle token (null: not a deliverable agent now). */
   agentToken(agent: string): string | null;
+  /** attachments-v1: the agent's inbox for a question's files and its own paths for an answer's (absent: no files). */
+  files?: import("../member/attachments.js").HubMemberFilesOptions;
   /** The report_result hook for HUB_REPORT_TARGET and the pane-failure hook for its correlation ids (null: detached). */
   attachReports(
-    handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null,
+    handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("../../hub-report-target.js").HubReportExtras }) => Promise<HubReportOutcome> | null) | null,
     failed: ((correlationId: string, agent: string) => void) | null,
   ): void;
 }
@@ -395,6 +398,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         authorize: (request) => (client ? client.authorize(request) : Promise.reject(new HubStateError("service-unavailable", "not connected"))),
         link: () => (online && online.current() && links.link() === online ? online : null),
         deliver: (input) => options.representative.deliver(input),
+        ...(options.representative.files ? { files: new HubMemberFiles(options.representative.files) } : {}),
         audit: (event, database) =>
           audit.appendInTransaction(
             {
