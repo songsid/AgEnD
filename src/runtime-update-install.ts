@@ -1,4 +1,4 @@
-/** Public managed-install inventory and code-only staging. Does not launch, pair, upgrade CLIs or select a program. */
+/** Public managed-install inventory, code-only staging and pointer swap. Not composed into run/connect yet. */
 import { createHash, randomUUID } from "node:crypto";
 import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, renameSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
@@ -99,8 +99,9 @@ export function stageRuntimeUpdate(root: string, bytes: Buffer, metadata: Runtim
     return existing;
   }
   const stage = join(root, `.install-${randomUUID()}`); mkdirSync(stage, { mode: 0o700 }); const identity = lstatSync(stage);
-  const unpacked = join(stage, folder); mkdirSync(unpacked, { mode: 0o700 });
+  const unpacked = join(stage, folder);
   try {
+    mkdirSync(unpacked, { mode: 0o700 });
     for (const [name, contents] of archive.files) {
       const path = join(unpacked, name); mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       const fd = openSync(path, "wx", 0o600); try { writeFileSync(fd, contents); fsyncSync(fd); } finally { closeSync(fd); }

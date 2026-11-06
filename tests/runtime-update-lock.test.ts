@@ -1,10 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
 vi.mock("node:fs", async original => { const fs = await original<typeof import("node:fs")>(); return { ...fs, rmdirSync: vi.fn(fs.rmdirSync) }; });
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acquireRuntimeInstallLock, parseRuntimeInstallLock, readRuntimeInstallFile, runtimeProcessMatches, RUNTIME_INSTALL_LOCK, type RuntimeInstallLockRecord, type RuntimeProcessObservation } from "../src/runtime-update-lock.js";
+import { acquireRuntimeInstallLock, parseRuntimeInstallLock, readRuntimeInstallBytes, readRuntimeInstallFile, runtimeProcessMatches, RUNTIME_INSTALL_LOCK, type RuntimeInstallLockRecord, type RuntimeProcessObservation } from "../src/runtime-update-lock.js";
 const roots: string[] = [];
 const own = { pid: process.pid, birth: "638980000000000000", boot: "a".repeat(64) };
 function root() { const path = mkdtempSync(join(tmpdir(), "agend-install-lock-")); roots.push(path); return path; }
@@ -58,7 +58,7 @@ it("elects only one stale reclaimer and leaves an uncertain previous reclaim mar
 it("retains ownership when removal fails and permits a later positive release", async () => {
   const path = root(), lock = await acquireRuntimeInstallLock(path, { ownProof: own });
   vi.mocked(rmdirSync).mockImplementationOnce(() => { throw Object.assign(Error("inert removal failure"), { code: "ENOTEMPTY" }); });
-  expect(() => lock.release()).toThrow("inert removal failure"); lock.assert();
+  expect(() => lock.release()).toThrow("inert removal failure"); expect(() => lock.assert()).not.toThrow();
   expect(JSON.parse(readFileSync(join(path, RUNTIME_INSTALL_LOCK, "owner.json"), "utf8")).nonce).toBe(lock.record.nonce);
   lock.release(); expect(existsSync(join(path, RUNTIME_INSTALL_LOCK))).toBe(false);
 });
@@ -75,4 +75,11 @@ it("rejects writable/symlink/overlarge state and strict record extras", async ()
   expect(parseRuntimeInstallLock(value)).toEqual(value);
   for (const bad of [{ ...value, command: "anything" }, { ...value, nonce: null }, { ...value, birth: "unknown" }, { ...value, type: "runtime-cli" }]) expect(() => parseRuntimeInstallLock(bad)).toThrow(/unsafe/);
   expect(runtimeProcessMatches(own, { state: "unknown" })).toBeUndefined();
+});
+it("bounds raw binary reads and rejects hardlinks without decoding code assets as text", () => {
+  const path = root(), file = join(path, "binary"), bytes = Buffer.from([0xff, 0, 0xfe]); writeFileSync(file, bytes, { mode: 0o600 });
+  expect(readRuntimeInstallBytes(file, 3)?.bytes).toEqual(bytes);
+  expect(() => readRuntimeInstallFile(file, 3)).toThrow();
+  expect(() => readRuntimeInstallBytes(file, 2)).toThrow(/unsafe/);
+  linkSync(file, join(path, "alias")); expect(() => readRuntimeInstallBytes(file, 3)).toThrow(/unsafe/);
 });
