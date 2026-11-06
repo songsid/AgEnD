@@ -55,7 +55,6 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean; buttons?: boolean;
   const puts = new Map<string, Buffer[]>();
   const link = {
     linkEpoch: 1,
-    features: new Set<string>(opts.buttons ? ["buttons-v1"] : []),
     current: () => true,
     features: new Set(opts.features ?? (opts.buttons ? ["buttons-v1"] : [])),
     exchange: vi.fn(async (frame: any) => {
