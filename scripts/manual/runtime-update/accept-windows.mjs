@@ -1,0 +1,132 @@
+/** Run only in a scheduled Windows scratch window. Local fake server, dummy pairing, no CLI/account/policy/PATH changes. */
+import assert from 'node:assert/strict';
+import { createHash, randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { createServer } from 'node:http';
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { WebSocketServer } from './ws/wrapper.mjs';
+import { runtimeInstallCommand } from './runtime-commands.mjs';
+if (process.platform !== 'win32') throw Error('Scheduled native Windows scratch scope required');
+const input = dirname(fileURLToPath(import.meta.url)), scope = resolve(input, '..');
+if (!/^agend-runtime-update-[a-f0-9]{32}$/.test(scope.split(/[\\/]/).at(-1))) throw Error('Use the reserved private scratch subtree');
+const identities = JSON.parse(readFileSync(join(input, 'inputs.json'), 'utf8'));
+const [a, b] = identities.map(value => ({ ...value, archive: readFileSync(join(input, `${value.label}.zip`)) }));
+for (const value of [a, b]) assert.equal(createHash('sha256').update(value.archive).digest('hex'), value.sha256);
+const template = readFileSync(join(input, 'install.ps1'), 'utf8');
+const sleep = ms => new Promise(done => setTimeout(done, ms));
+async function until(check, label, timeout = 90_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) { if (await check()) return; if (Date.now() > deadline) throw Error(`Timed out: ${label}`); await sleep(150); }
+}
+function execute(executable, args, env, log) {
+  const child = spawn(executable, args, { shell: false, cwd: scope, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  const finished = new Promise((done, fail) => { child.once('error', fail); child.once('close', code => done(code)); });
+  child.stdout.on('data', bytes => log.push(bytes.toString())); child.stderr.on('data', bytes => log.push(bytes.toString()));
+  return { child, finished };
+}
+const results = [];
+for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
+  const root = join(scope, mode); mkdirSync(root, { mode: 0o700 });
+  const install = join(root, 'install'), profile = join(root, 'profile'), user = join(root, 'user');
+  mkdirSync(user); mkdirSync(join(user, 'AppData', 'Local'), { recursive: true }); mkdirSync(join(user, 'AppData', 'Roaming'));
+  const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT;
+  const env = { ...process.env, USERPROFILE: user, HOME: user, LOCALAPPDATA: join(user, 'AppData', 'Local'), APPDATA: join(user, 'AppData', 'Roaming'),
+    PATH: `${dirname(process.execPath)};${join(systemRoot, 'System32')}`, AGEND_RUNTIME_NO_PATH: '1', AGEND_RUNTIME_INSTALL_DIR: install };
+  const log = [], events = [], requests = [], proofs = new Map(), machineId = randomUUID();
+  let target = a, generations = 0, normal = 0, trial = 0, busy = 0, activations = 0, activates = [], runner, observe, matches, store, scan, failure;
+  const server = createServer((req, res) => {
+    requests.push(req.url);
+    if (req.url === '/runtime/install.ps1') {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end(template.replaceAll('@@AGEND_RUNTIME_VERSION@@', a.version).replaceAll('@@AGEND_RUNTIME_SHA256@@', a.sha256)); return;
+    }
+    res.setHeader('ETag', `"${target.version}-${target.sha256}"`);
+    if (req.url === '/runtime/v1/bundle/windows.json') { res.end(JSON.stringify({ version: target.version, sha256: target.sha256, bytes: target.bytes })); return; }
+    if (req.url === '/runtime/v1/bundle/windows.zip') { res.end(mode === 'sha' && target === b ? a.archive : target.archive); return; }
+    res.writeHead(404).end();
+  });
+  const sockets = new WebSocketServer({ noServer: true });
+  server.on('upgrade', (req, socket, head) => {
+    if (req.url !== '/runtime/v1/connect' || req.headers.authorization !== `Bearer ${'b'.repeat(64)}`) { socket.destroy(); return; }
+    sockets.handleUpgrade(req, socket, head, ws => {
+      let generation;
+      ws.on('message', bytes => {
+        const frame = JSON.parse(bytes.toString());
+        if (frame.type === 'hello') {
+          generation = ++generations;
+          if (frame.updateTrialId) {
+            trial++; events.push({ type: 'trial', version: frame.runtimeInfo.version, id: frame.updateTrialId });
+            if (mode === 'rollback') { ws.close(1008, 'Rehearsal candidate refused'); return; }
+            assert.equal(frame.runtimeInfo.version, b.version);
+          } else { normal++; events.push({ type: 'normal', version: frame.runtimeInfo.version }); }
+          target = b; ws.send(JSON.stringify({ v: 1, type: 'welcome', machineId, generation, updateProtocol: 1 })); return;
+        }
+        if (frame.type !== 'update.control') return;
+        events.push({ type: frame.phase, id: frame.id, generation: frame.generation }); assert.equal(frame.generation, generation);
+        const response = phase => ws.send(JSON.stringify({ ...frame, phase }));
+        if (frame.phase === 'prepare') { if (mode === 'busy') { busy++; response('busy'); } else response('prepared'); }
+        if (frame.phase === 'ready') response('commit');
+        if (frame.phase === 'cancel') response('cancelled');
+        if (frame.phase === 'activate') {
+          activates.push(frame.id);
+          if (mode === 'lost-ack' && activates.length === 1) return;
+          if (activations === 0) activations++; response('activated');
+        }
+      });
+    });
+  });
+  await new Promise(done => server.listen(0, '127.0.0.1', done));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const pointer = () => readFileSync(join(install, 'bin/current.txt'), 'utf8');
+  const folderA = `${a.version}+${a.sha256.slice(0, 8)}`, folderB = `${b.version}+${b.sha256.slice(0, 8)}`;
+  function state() {
+    const receipt = JSON.parse(readFileSync(join(install, '.agend-runtime-install.json'), 'utf8'));
+    const file = join(profile, 'runtime-updates', receipt.id, machineId, 'runtime-update.json');
+    return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+  }
+  function recordProofs() {
+    const dir = join(install, '.agend-runtime-owners');
+    if (!existsSync(dir)) return;
+    for (const name of readdirSync(dir)) {
+      const owner = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+      for (const proof of [owner.parent, owner.child].filter(Boolean)) proofs.set(JSON.stringify(proof), proof);
+    }
+  }
+  try {
+    const script = template.replaceAll('@@AGEND_RUNTIME_VERSION@@', a.version).replaceAll('@@AGEND_RUNTIME_SHA256@@', a.sha256);
+    const command = runtimeInstallCommand(origin, createHash('sha256').update(script).digest('hex'));
+    const encoded = Buffer.from(`[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); ${command}; if ($LASTEXITCODE) { exit $LASTEXITCODE }`, 'utf16le').toString('base64');
+    const installing = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], env, log);
+    assert.equal(await installing.finished, 0); assert.equal(pointer(), folderA);
+    const receipt = JSON.parse(readFileSync(join(install, '.agend-runtime-install.json'), 'utf8')); assert.deepEqual(receipt.origins, [origin]); assert.equal(receipt.shared, false);
+    const imported = await import(pathToFileURL(join(install, folderA, 'dist/runtime-client-store.js')));
+    ({ observeRuntimeProcess: observe, runtimeProcessMatches: matches } = await import(pathToFileURL(join(install, folderA, 'dist/runtime-update-lock.js'))));
+    store = new imported.RuntimeClientStore(profile); store.saveCredentials({ server: origin, machineId, credential: 'b'.repeat(64), name: 'Fake rehearsal Runtime' });
+    const credentials = readFileSync(join(profile, 'connection.json'), 'utf8');
+    runner = execute(join(systemRoot, 'System32/cmd.exe'), ['/d', '/s', '/c', `""${join(install, 'bin/agend-runtime.cmd')}" run --profile "${profile}""`], env, log);
+    scan = setInterval(recordProofs, 100);
+    if (mode === 'busy') { await until(() => busy > 0, 'busy defer'); assert.equal(pointer(), folderA); assert.equal(trial, 0); assert.equal(normal, 1); }
+    else if (mode === 'sha') { await until(() => state()?.failed?.sha256 === b.sha256, 'SHA refusal'); assert.equal(pointer(), folderA); assert.equal(trial, 0); }
+    else if (mode === 'rollback') { await until(() => normal >= 2 && state()?.failed?.sha256 === b.sha256, 'automatic rollback'); assert.equal(pointer(), folderA); assert.equal(trial, 1); assert.equal(activations, 0); }
+    else { await until(() => activations === 1 && state()?.attempt === undefined && pointer() === folderB, 'positive activation'); assert.equal(trial, 1); assert.equal(normal, 1);
+      if (mode === 'lost-ack') { assert.equal(activates.length, 2); assert.equal(activates[0], activates[1]); } }
+    assert.equal(readFileSync(join(profile, 'connection.json'), 'utf8'), credentials);
+    assert.ok(requests.every(path => ['/runtime/install.ps1', '/runtime/v1/bundle/windows.json', '/runtime/v1/bundle/windows.zip'].includes(path)));
+    recordProofs(); results.push({ mode, passed: true, normal, trial, activations, exactActivationRetries: activates.length,
+      pairingUnchanged: true, selected: pointer() === folderA ? 'old' : 'new', processProofs: proofs.size });
+  } catch (error) { failure = error; writeFileSync(join(scope, `${mode}-private.log`), log.join('') + '\n' + JSON.stringify(events)); }
+  finally {
+    if (scan) clearInterval(scan); recordProofs();
+    // Only exact birth/boot/PID identities recorded in this harness's fresh install may be stopped.
+    for (const proof of proofs.values()) if (matches(proof, await observe(proof.pid)) === true) process.kill(proof.pid);
+    for (const proof of proofs.values()) await until(async () => matches(proof, await observe(proof.pid)) === false, 'owned process exit', 30_000);
+    if (runner) await runner.finished;
+    for (const ws of sockets.clients) ws.terminate(); await new Promise(done => sockets.close(done));
+    server.closeAllConnections(); await new Promise(done => server.close(done));
+    if (!failure) rmSync(root, { recursive: true, force: true });
+  }
+  if (failure) throw failure;
+}
+writeFileSync(join(scope, 'receipt.json'), JSON.stringify({ version: 1, node: process.version, inputs: identities, results, cleanup: { ownedProcessesGone: true, legDirectoriesRemoved: true } }, null, 2));
+console.log(JSON.stringify({ passed: results.length, cleanup: true }));
