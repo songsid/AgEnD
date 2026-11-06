@@ -137,6 +137,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "DELETE") throw new HttpError(405, "method");
       csrf(); await guard(() => catalog.revokeGrant(ctx, uuid(r![1]), int(query.get("revision")))); return send(res, 200, { ok: true });
     }
+    // #3226 C: who asked the owner's agent and when (no content), for its owner only.
+    if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/activity$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, { activity: await guard(() => rooms.activity(ctx, uuid(r![1]))) });
+    }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/freeze$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); await guard(() => catalog.freeze(ctx, uuid(r![1]), int(b.revision), false)); return send(res, 200, { ok: true });
