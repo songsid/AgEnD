@@ -1,0 +1,214 @@
+// #3212 PR 1: Settings → Agents → Accounts — one card per CLI: its default sign-in and its named credential profiles
+// (the ones agents use, and the ones only on this host), which account each is (masked, #3190), who uses it and its
+// weekly usage. From GET /ui/accounts (the local admin session only; nothing about a credential reaches this page).
+// - Sign in / Sign in again: the existing dialogs (backend-signin.js: one implementation, the same login flows).
+// - Move agents here…: stages each chosen agent's `backend_options.<cli>.credential_profile`, through Settings' own
+//   staging and Save (a change of account waits for the same confirmation as any credential setting, and restarts).
+// - Fleet default: the same, for `defaults.backend_options.<cli>.credential_profile`.
+// - AccountSelect: the Agent dialog's Account field (settings-dialogs.js), from the same view.
+// Rows carry a `scope`: only `host` today; a paired computer's rows (`machine`) are drawn read-only under its name.
+// Words are registered here (a new module: an older cached strings file never leaves a raw key).
+import { html, useEffect, useState } from "/assets/app-html.js";
+import { register, t } from "/assets/app-i18n.js";
+import { createStore, useStore } from "/assets/app-store.js";
+import { Dialog } from "/assets/ui-dialog.js";
+import { CliProductMark, cliLabel } from "./cli-picker.js";
+import { identityText } from "./account-identity.js";
+import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
+
+register("accounts", {
+  en: {
+    title: "Accounts", hint: "Each CLI's sign-ins on this host: the default one and named accounts (credential profiles), who uses them and their weekly usage.",
+    loading: "Reading accounts…", failed: "Could not read the accounts.", empty: "No CLI is installed or used by an agent on this host.",
+    def: "Default sign-in", profile: "Account “{0}”", state_usable: "signed in", state_not_signed_in: "not signed in", state_unknown: "not checked",
+    state_not_installed: "not installed", state_too_old: "too old",
+    usedBy: "used by {0}", usedByNone: "used by no agent", agents: "{0} agents", agent: "1 agent", channels: "{0} ClassicBot rooms", channel: "1 ClassicBot room",
+    fleetDefaultTag: "fleet default", weekly: "{0}% of the week", resets: "resets {0}", stale: "last known",
+    signIn: "Sign in", signInAgain: "Sign in again", hostCommand: "Sign in on the host", hostCommandHint: "Run this in a terminal on the host running AgEnD.",
+    moveHere: "Move agents here…", moveTitle: "Move agents to {0}", moveLead: "Choose the {0} agents that should use {1}. Each restarts on it when you Save:",
+    carry_claude: "Claude Code carries its conversation over.", carry_codex: "Codex keeps its conversation.", carry_kiro: "Kiro starts a new conversation, with a handover.",
+    moveNone: "Every {0} agent already uses this account.", moveStage: "Stage", cancel: "Cancel", current: "now: {0}",
+    fleetDefault: "Fleet default for {0} agents", fleetDefaultHint: "Agents that don't choose an account use this one.",
+    machine: "On {0}", machineReadOnly: "Read-only here",
+    acctLabel: "Account", acctInherit: "Fleet default ({0})", acctInheritDefault: "Fleet default (default sign-in)", acctNotSignedIn: "{0} — not signed in",
+    acctHint: "Changing the account restarts the agent. A signed-out account can't be chosen: sign it in under Accounts first.",
+    acctDefaultBlocked: "This fleet's default for {0} is “{1}”, so an agent follows it unless it names another account.",
+  },
+  "zh-TW": {
+    title: "帳號", hint: "這台主機上各 CLI 的登入：預設登入與具名帳號（憑證設定檔）、誰在使用，以及每週用量。",
+    loading: "正在讀取帳號…", failed: "無法讀取帳號。", empty: "這台主機上沒有安裝或被 Agent 使用的 CLI。",
+    def: "預設登入", profile: "帳號「{0}」", state_usable: "已登入", state_not_signed_in: "尚未登入", state_unknown: "未確認",
+    state_not_installed: "未安裝", state_too_old: "版本太舊",
+    usedBy: "使用者：{0}", usedByNone: "沒有 Agent 使用", agents: "{0} 個 Agent", agent: "1 個 Agent", channels: "{0} 個 ClassicBot 房間", channel: "1 個 ClassicBot 房間",
+    fleetDefaultTag: "Fleet 預設", weekly: "本週已用 {0}%", resets: "{0} 重置", stale: "最後已知",
+    signIn: "登入", signInAgain: "重新登入", hostCommand: "在主機上登入", hostCommandHint: "請在執行 AgEnD 的主機終端機執行。",
+    moveHere: "把 Agent 移到這裡…", moveTitle: "把 Agent 移到 {0}", moveLead: "選擇要改用 {1} 的 {0} Agent。按「儲存」後，各自會以它重新啟動：",
+    carry_claude: "Claude Code 會帶著對話過去。", carry_codex: "Codex 保留原本的對話。", carry_kiro: "Kiro 會開新對話並附上交接。",
+    moveNone: "所有 {0} Agent 都已經使用這個帳號。", moveStage: "加入待儲存", cancel: "取消", current: "目前：{0}",
+    fleetDefault: "{0} Agent 的 Fleet 預設帳號", fleetDefaultHint: "沒有指定帳號的 Agent 會使用這個。",
+    machine: "在 {0}", machineReadOnly: "這裡只能檢視",
+    acctLabel: "帳號", acctInherit: "Fleet 預設（{0}）", acctInheritDefault: "Fleet 預設（預設登入）", acctNotSignedIn: "{0}——尚未登入",
+    acctHint: "更換帳號會重新啟動 Agent。尚未登入的帳號不能選，請先在「帳號」登入。",
+    acctDefaultBlocked: "這個 Fleet 的 {0} 預設帳號是「{1}」，Agent 除非指定其他帳號，否則會使用它。",
+  },
+});
+const tx = (k, ...v) => t(`accounts.${k}`, ...v);
+/** This view's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
+function linkAccountsCss(doc = typeof document !== "undefined" ? document : null) {
+  try {
+    if (!doc || !doc.head || doc.querySelector('link[data-accounts-css="1"]')) return;
+    const link = doc.createElement("link");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/accounts.css"); link.setAttribute("data-accounts-css", "1");
+    doc.head.appendChild(link);
+  } catch { /* the view still works without it */ }
+}
+const CARRY = { "claude-code": "carry_claude", codex: "carry_codex", "kiro-cli": "carry_kiro" };
+
+export const accountsStore = createStore({ loaded: false, failed: false, view: null });
+let reading = null;
+/** Read GET /ui/accounts (one read at a time). */
+export function refreshAccounts() {
+  if (reading) return reading;
+  reading = fetch("/ui/accounts", { credentials: "same-origin", cache: "no-store" })
+    .then(async (r) => { const v = r.ok ? await r.json() : null; accountsStore.set({ loaded: true, failed: !v, view: v }); })
+    .catch(() => accountsStore.set({ loaded: true, failed: true, view: accountsStore.get().view }))
+    .finally(() => { reading = null; });
+  return reading;
+}
+const rowName = (row) => (row.profile ? tx("profile", row.profile) : tx("def"));
+const usedText = (row) => {
+  const parts = [];
+  const n = row.usedBy.agents.length, c = row.usedBy.classic.length;
+  if (n) parts.push(n === 1 ? tx("agent") : tx("agents", n));
+  if (c) parts.push(c === 1 ? tx("channel") : tx("channels", c));
+  return parts.length ? tx("usedBy", parts.join(" · ")) : tx("usedByNone");
+};
+const when = (iso) => { try { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : ""; } catch { return ""; } };
+
+/**
+ * The fleet default's `backend_options` after choosing `profile` (null: none) for `backend`: the whole map, because the
+ * defaults write replaces a nested map whole (the Advanced editor relies on that to remove a key). Built on what is
+ * already staged, so two CLIs' choices add up in one change; null when it comes back to what is saved.
+ */
+export function defaultsBackendOptions(saved, staged, backend, profile) {
+  const copy = (m) => Object.fromEntries(Object.entries(m && typeof m === "object" ? m : {}).filter(([, o]) => o && typeof o === "object" && !Array.isArray(o)).map(([b, o]) => [b, { ...o }]));
+  const out = copy(staged || saved);
+  const next = { ...(out[backend] || {}) };
+  if (profile) next.credential_profile = profile; else delete next.credential_profile;
+  if (Object.keys(next).length) out[backend] = next; else delete out[backend];
+  const same = (a, b) => JSON.stringify(Object.keys(a).sort().map((k) => [k, Object.keys(a[k]).sort().map((j) => [j, a[k][j]])]))
+    === JSON.stringify(Object.keys(b).sort().map((k) => [k, Object.keys(b[k]).sort().map((j) => [j, b[k][j]])]));
+  return same(out, copy(saved)) ? null : out;
+}
+
+/** The choices for an agent's Account field: its CLI's named, host profiles (signed-out ones listed, not choosable). */
+export function accountChoices(view, backend) {
+  const cli = view && Array.isArray(view.clis) ? view.clis.find((c) => c.backend === backend) : null;
+  if (!cli || !cli.profiles) return null;
+  return { fleetDefault: cli.fleetDefault, rows: cli.rows.filter((r) => r.scope && r.scope.kind === "host" && r.profile) };
+}
+
+/** Settings → Agents → Accounts. `stageAgent(name, inst, patch)` and `stageDefault(backend, profile | null)` stage changes. */
+export function AccountsView({ instances, stageAgent, stageDefault }) {
+  const { loaded, failed, view } = useStore(accountsStore);
+  // Settings read its data again (after a Save): so does this view.
+  useEffect(() => { if (loaded) void refreshAccounts(); }, [instances]);
+  const { structured, login } = useStore(signInStore);
+  const [move, setMove] = useState(null);           // { cli, row }
+  // The sign-in controllers' state too (a sign-in already running disables Sign in, as the old list did).
+  useEffect(() => { linkAccountsCss(); void refreshAccounts(); void refreshSignIn(); }, []);
+  // A sign-in that ends may be another account now: read again.
+  const phase = `${(login && login.phase) || ""}:${(structured && structured.login && structured.login.phase) || ""}`;
+  useEffect(() => { if (loaded) void refreshAccounts(); }, [phase]);
+  const active = structured && structured.login;
+  const running = !!((login && login.phase === "running") || (active && active.phase !== "done" && !(active.phase === "failed" && active.reason)));
+  if (!loaded) return html`<p class="note" role="status">${tx("loading")}</p>`;
+  if (failed && !view) return html`<p class="note" role="alert">${tx("failed")}</p>`;
+  const clis = (view && view.clis) || [];
+  return html`<section class="s-group s-accounts" aria-label=${tx("title")}>
+    <header class="s-auth-section-head"><div><h3>${tx("title")}</h3><p>${tx("hint")}</p></div></header>
+    ${!clis.length ? html`<p class="note">${tx("empty")}</p>` : clis.map((cli) => html`<${Card} key=${cli.backend} cli=${cli} running=${running} onMove=${(row) => setMove({ cli, row })} stageDefault=${stageDefault} />`)}
+    ${move ? html`<${MoveDialog} cli=${move.cli} row=${move.row} instances=${instances} stageAgent=${stageAgent} onClose=${() => setMove(null)} />` : null}
+  </section>`;
+}
+
+function Card({ cli, running, onMove, stageDefault }) {
+  const [picked, setPicked] = useState(undefined);   // a staged fleet default, shown until Save reads it back
+  useEffect(() => setPicked(undefined), [cli.fleetDefault]);
+  const host = cli.rows.filter((r) => r.scope && r.scope.kind === "host");
+  const machines = new Map();
+  for (const r of cli.rows) if (r.scope && r.scope.kind === "machine") { const k = r.scope.id; if (!machines.has(k)) machines.set(k, { scope: r.scope, rows: [] }); machines.get(k).rows.push(r); }
+  const signedIn = host.filter((r) => r.profile && r.state !== "not_signed_in");
+  return html`<div class="s-account-card" data-backend=${cli.backend}>
+    <div class="s-account-head"><${CliProductMark} id=${cli.backend} size=${24} /><strong>${cliLabel(cli.backend)}</strong></div>
+    <div class="s-account-rows">${host.map((row) => html`<${Row} key=${row.profile || ""} cli=${cli} row=${row} running=${running} onMove=${onMove} />`)}</div>
+    ${[...machines.values()].map((m) => html`<div class="s-account-machine"><p class="note">${tx("machine", m.scope.name)}${m.scope.readOnlyReason ? ` — ${m.scope.readOnlyReason}` : ` — ${tx("machineReadOnly")}`}</p>
+      ${m.rows.map((row) => html`<${Row} key=${`m:${m.scope.id}:${row.profile || ""}`} cli=${cli} row=${row} readOnly=${true} />`)}</div>`)}
+    ${cli.profiles && typeof stageDefault === "function" ? html`<label class="field s-account-default"><span>${tx("fleetDefault", cliLabel(cli.backend))}</span>
+      <select value=${(picked !== undefined ? picked : cli.fleetDefault) || ""} onChange=${(e) => { setPicked(e.target.value || null); stageDefault(cli.backend, e.target.value || null); }}>
+        <option value="">${tx("def")}</option>
+        ${signedIn.map((r) => html`<option value=${r.profile}>${r.profile}</option>`)}
+        ${cli.fleetDefault && !signedIn.some((r) => r.profile === cli.fleetDefault) ? html`<option value=${cli.fleetDefault}>${cli.fleetDefault}</option>` : null}
+      </select><small class="note">${tx("fleetDefaultHint")}</small></label>` : null}
+  </div>`;
+}
+
+function Row({ cli, row, onMove, running = false, readOnly = false }) {
+  const who = identityText(row.identity);
+  const u = row.usage;
+  return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
+    <div class="s-account-who"><strong>${rowName(row)}</strong>
+      ${who ? html`<small class="s-account-identity">${who}</small>` : null}
+      <small class="s-account-used">${usedText(row)}${row.usedBy.fleetDefault && cli.profiles ? html` · <span class="tag">${tx("fleetDefaultTag")}</span>` : null}</small>
+      ${u ? html`<small class=${`s-account-usage${u.stale ? " is-stale" : ""}`}>${tx("weekly", u.percent)}${u.resetsAt ? ` · ${tx("resets", when(u.resetsAt))}` : ""}${u.stale ? ` · ${tx("stale")}` : ""}</small>` : null}
+    </div>
+    <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${tx(`state_${row.state || "unknown"}`)}</span>
+    ${readOnly ? null : html`<span class="s-actions">
+      ${row.signIn ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => openSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}) })}>${row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
+      ${cli.profiles && row.state !== "not_signed_in" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
+    </span>`}
+    ${!readOnly && !row.signIn && row.hostCommand ? html`<details class="s-host-cli-help"><summary>${tx("hostCommand")}</summary><p class="note">${tx("hostCommandHint")}</p><p class="s-host-cli-command"><code>${row.hostCommand}</code></p></details>` : null}
+  </div>`;
+}
+
+/** The CLI's agents not on this account; the chosen ones are staged onto it (Settings' Save applies them). */
+function MoveDialog({ cli, row, instances, stageAgent, onClose }) {
+  const others = cli.agents.filter((a) => a.profile !== row.profile && instances && Object.hasOwn(instances, a.name));
+  const [chosen, setChosen] = useState(() => new Set());
+  const label = rowName(row);
+  const stage = () => {
+    for (const name of chosen) {
+      const inst = instances[name];
+      const opts = { ...(inst.backend_options || {}) };
+      opts[cli.backend] = { ...(opts[cli.backend] || {}), credential_profile: row.profile };
+      stageAgent(name, inst, { backend_options: opts });
+    }
+    onClose();
+  };
+  return html`<${Dialog} title=${tx("moveTitle", label)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${tx("cancel")}</button>
+    <button type="button" class="btn btn-primary" disabled=${!chosen.size} onClick=${stage}>${tx("moveStage")}</button>`}>
+    ${!others.length ? html`<p class="note">${tx("moveNone", cliLabel(cli.backend))}</p>` : html`<p>${tx("moveLead", cliLabel(cli.backend), label)}</p>
+      <p class="note">${tx(CARRY[cli.backend] || "carry_claude")}</p>
+      <ul class="s-account-move">${others.map((a) => html`<li><label class="check"><input type="checkbox" checked=${chosen.has(a.name)}
+        onChange=${(e) => setChosen((s) => { const n = new Set(s); if (e.target.checked) n.add(a.name); else n.delete(a.name); return n; })} />
+        <span>${a.name}</span><small class="note">${tx("current", a.profile || tx("def"))}</small></label></li>`)}</ul>`}
+  </${Dialog}>`;
+}
+
+/**
+ * The Agent dialog's Account field (host agents of a CLI with credential profiles). `value`: the agent's own profile
+ * ("" = it names none and follows the fleet default). A signed-out account is listed but disabled.
+ */
+export function AccountSelect({ id, backend, value, onChange }) {
+  const { loaded, view } = useStore(accountsStore);
+  useEffect(() => { if (!loaded) void refreshAccounts(); }, []);
+  const choices = accountChoices(view, backend);
+  if (!choices) return null;
+  const inherit = choices.fleetDefault ? tx("acctInherit", choices.fleetDefault) : tx("acctInheritDefault");
+  return html`<div class="field s-account-select"><label for=${id}>${tx("acctLabel")}</label>
+    <select id=${id} value=${value || ""} onChange=${(e) => onChange(e.target.value)}>
+      <option value="">${inherit}</option>
+      ${choices.rows.map((r) => html`<option value=${r.profile} disabled=${r.state === "not_signed_in" && r.profile !== value}>${r.state === "not_signed_in" ? tx("acctNotSignedIn", r.profile) : r.profile}</option>`)}
+    </select>
+    <p class="note">${tx("acctHint")}${choices.fleetDefault ? ` ${tx("acctDefaultBlocked", cliLabel(backend), choices.fleetDefault)}` : ""}</p></div>`;
+}

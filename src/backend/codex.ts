@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { execFile } from "../child-process.js";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
-import { stripCodexPassiveHintRow, withCodexPassiveHintTail } from "./codex-footer-hints.js";
+import { stripCodexPassiveHintRow, withCodexPassiveHintTail, CODEX_EMPTY_PASSIVE_COMPOSER, isCodexStatusAutocompleteComposer } from "./codex-footer-hints.js";
 import { codexPackageWarning } from "./codex-package.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -340,6 +340,12 @@ type CodexTrustPrompt = {
   trustCursor: boolean;
 };
 
+/** A folder-trust prompt's cancel option, and the footer that must come with it. */
+const CODEX_TRUST_CANCEL_FOOTER: Readonly<Record<string, RegExp>> = {
+  "Quit": /^\s*enter continue\s*·\s*esc quit\s*$/i,
+  "Back to Agent Command Center": /^\s*enter continue\s*·\s*esc back\s*$/i,
+};
+
 /** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
 function codexTrustPromptState(pane: string): CodexTrustPrompt {
   const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false, trustCursor: false };
@@ -376,21 +382,26 @@ function codexTrustPromptState(pane: string): CodexTrustPrompt {
   });
   // Unknown option orders, a moved cursor, a third option, or any different
   // footer are held for a human. Never guess where Enter would land.
+  // The cancel option and the footer come as a pair: "Quit" / "esc quit" (onboarding, and every codex before 0.167), or
+  // "Back to Agent Command Center" / "esc back" (0.167's startup trust screen, where Esc returns to the command center).
+  // Exactly one cancel option, and the footer that belongs to it.
+  const cancels = choices.filter(choice => Object.prototype.hasOwnProperty.call(CODEX_TRUST_CANCEL_FOOTER, choice.text));
+  const footerFits = cancels.length === 1 && CODEX_TRUST_CANCEL_FOOTER[cancels[0]!.text]!.test(rows[last]);
   const safeChoice = choices.length === 2
     && choices[0].row + 1 === choices[1].row
     && rows.slice(choices[1].row + 1, last).every(row => row.trim() === "")
     && choices[0].cursor === "›" && choices[0].number === "1" && choices[0].text === "Trust and continue"
-    && choices[1].cursor === "" && choices[1].number === "2" && choices[1].text === "Quit"
-    && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
-  const known = new Set(["Trust and continue", "Open restricted", "Quit"]);
-  // Exactly one selection marker, whichever form (› ❯ >), and it is on Trust; the footer is the one both 0.160 and 0.166
-  // show. Two markers, another footer mapping or an unknown option is held — never a guess where Enter lands (#2896 review).
+    && choices[1].cursor === "" && choices[1].number === "2" && cancels[0] === choices[1]
+    && footerFits;
+  const known = new Set(["Trust and continue", "Open restricted", ...Object.keys(CODEX_TRUST_CANCEL_FOOTER)]);
+  // Exactly one selection marker, whichever form (› ❯ >), and it is on Trust; the footer is the one its cancel option
+  // pairs with. Two markers, another footer mapping or an unknown option is held — never a guess where Enter lands (#2896 review).
   const atCursor = choices.filter(choice => choice.cursor !== "");
   const trustCursor = choices.length >= 2 && choices.every(choice => known.has(choice.text))
     && choices.every((choice, index) => index === 0 || choice.row === choices[index - 1]!.row + 1)
     && rows.slice(choices[choices.length - 1]!.row + 1, last).every(row => row.trim() === "")
     && atCursor.length === 1 && atCursor[0]!.cursor === "›" && atCursor[0]!.text === "Trust and continue"
-    && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
+    && footerFits;
   return { active: true, folder, root, rootNote, safeChoice, trustCursor };
 }
 
@@ -995,7 +1006,7 @@ export const CODEX_RESUME_LARGE_BYTES = 20 * 1024 * 1024;
 
 /** Pane-only detectors: construction performs no provider, config or session discovery. */
 export class CodexPaneDetectors {
-  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean }) {}
+  constructor(private readonly paneDetectorContext?: { statusLineItems(): readonly string[] | null; launchMayResume(): boolean; windowsConpty?: boolean; contextlessResume?: boolean }) {}
   protected readConfiguredStatusLineItems(): string[] | null { return this.paneDetectorContext?.statusLineItems()?.slice() ?? null; }
   protected trustPaneFields(pane: string): Record<string, unknown> { const state = codexTrustPromptState(pane); return { promptFolder: state.folder, promptRoot: state.root, rootNote: state.rootNote }; }
   protected trustHoldReason(pane: string): Record<string, unknown> { return { ...this.trustPaneFields(pane), reason: "Folder permission needs confirmation on this execution machine" }; }
@@ -1039,6 +1050,7 @@ export class CodexPaneDetectors {
 
   /** Observed on real Codex 0.156.0: the live input row precedes its footer. */
   isDeliveryInputReadyPane(pane: string): boolean {
+    if (this.nativeContextlessEmpty(pane)) return true;
     const frame = this.composerFrame(pane);
     if (!frame) return false;
     const { rows, contextFooter } = frame;
@@ -1065,7 +1077,36 @@ export class CodexPaneDetectors {
    */
   ownsComposerRows(pane: string): boolean {
     const frame = this.composerFrame(pane);
-    return !!frame?.contextFooter && ownedComposerRow(frame.rows) >= 0;
+    if (frame?.contextFooter) return ownedComposerRow(frame.rows) >= 0;
+    // A paste owns its wrapped rows, not a new-paste readiness verdict. The native caller still proves its
+    // exact payload/operation and current sequence before Enter; a passive footer alone never grants input.
+    const rows = this.nativeContextlessRows(pane);
+    return rows !== null && ownedComposerRow(rows) >= 0;
+  }
+
+  // Codex 0.165 can restore a limit-only session before any Context value exists. This is the known native
+  // empty-composer/passive-footer layout, only for a resumed launch with our context-only status configuration.
+  // Other layouts retain their existing guard; this is not native's unknown-layout stability fallback.
+  private nativeContextlessPattern(): RegExp | null {
+    if (!this.paneDetectorContext?.windowsConpty || this.paneDetectorContext.contextlessResume !== true) return null;
+    const items = this.readConfiguredStatusLineItems();
+    return items?.length === 1 && items[0] === "context-remaining" ? CODEX_EMPTY_PASSIVE_COMPOSER : null;
+  }
+
+  private nativeContextlessEmpty(pane: string): boolean {
+    return !!this.nativeContextlessPattern()?.test(pane) && !codexAppServerDisconnected(pane) && !this.getBusyPattern().test(pane)
+      && ![...this.getStartupDialogs(), ...this.getRuntimeDialogs()].some(dialog => dialog.pattern.test(pane) && (!dialog.isActive || dialog.isActive(pane)));
+  }
+
+  private nativeContextlessRows(pane: string): string[] | null {
+    if (!this.nativeContextlessPattern() || codexAppServerDisconnected(pane)) return null;
+    const rows = pane.replace(/\r/g, "").split("\n");
+    while (rows.length && !rows.at(-1)!.trim()) rows.pop();
+    if (isCodexStatusAutocompleteComposer(pane)) return rows;
+    const before = rows.length; stripCodexPassiveHintRow(rows);
+    if (rows.length === before) return null;
+    const remaining = [...rows]; stripCodexPassiveHintRow(remaining);
+    return remaining.length === rows.length ? rows : null;
   }
 
   /**
@@ -1127,6 +1168,7 @@ export class CodexPaneDetectors {
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     if (codexAppServerDisconnected(pane)) return false;
+    if (this.nativeContextlessEmpty(pane)) return true;
     // Astra's 0.154 theme animates U+22C6 star points across otherwise-stable
     // idle chrome.  Remove only that observed decorative glyph; broader
     // punctuation stripping could turn real tool output into a false prompt.
@@ -1194,7 +1236,7 @@ export class CodexPaneDetectors {
       ))
       : null;
     return new RegExp(
-      [contextReady.source, noContextReady.source, configuredContextReady?.source]
+      [contextReady.source, noContextReady.source, configuredContextReady?.source, this.nativeContextlessPattern()?.source]
         .filter((source): source is string => !!source)
         .map(source => `(?:${source})`)
         .join("|"),

@@ -126,10 +126,10 @@ describe("Hub listener preflight", () => {
 describe("real default preflight in the init flow", () => {
   it("initializes with two free local endpoints, retains the exact listeners and needs no agent login or service install", async () => {
     const h = home(), certs = makeTestCerts(), listeners = await freePair(); roots.push(certs.dir);
-    const identity = new FakeIdentity(), directory = fakeDirectory({ "alice:Dummy-owner-password": { ok: true, person: ADMIN } });
+    const identity = new FakeIdentity(), directory = fakeDirectory({ "alice": { ok: true, person: ADMIN } });
     const io = scriptedIO(["Example Hub", "https://hub.example.test:8443", "", `127.0.0.1:${listeners.webListen.port}`, `127.0.0.1:${listeners.memberListen.port}`,
       certs.cert, certs.key, "corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test",
-      { hidden: "Dummy-bind-password" }, "alice", { hidden: "Dummy-owner-password" }, "y", "7", "30", "initialize", "no"]);
+      { hidden: "Dummy-bind-password" }, "alice", "y", "7", "30", "initialize", "no"]);
     const service = vi.fn(async () => "not requested");
     expect(await runHubInitWizard({ home: h, io: io.io, initializer: createHubInitializer({ home: h, identity, probe: { pidAlive: () => false } }),
       createDirectory: directory.create, readFile: p => readFileSync(p, "utf8"), service: { installed: () => false, install: service } })).toBe("initialized");
@@ -154,10 +154,10 @@ describe("real default preflight in the init flow", () => {
   });
   it("rechecks after the owner confirms and refuses a newly occupied port without persisting a Hub", async () => {
     const h = home(), certs = makeTestCerts(), listeners = await freePair(); roots.push(certs.dir);
-    const identity = new FakeIdentity(), directory = fakeDirectory({ "alice:Dummy-owner-password": { ok: true, person: ADMIN } });
+    const identity = new FakeIdentity(), directory = fakeDirectory({ "alice": { ok: true, person: ADMIN } });
     const io = scriptedIO(["Example Hub", "https://hub.example.test:8443", "", `127.0.0.1:${listeners.webListen.port}`, `127.0.0.1:${listeners.memberListen.port}`,
       certs.cert, certs.key, "corp", "ldaps://directory.example.test", certs.caCert, "y", "2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test",
-      { hidden: "Dummy-bind-password" }, "alice", { hidden: "Dummy-owner-password" }, "y", "7", "30", "initialize", "no"]);
+      { hidden: "Dummy-bind-password" }, "alice", "y", "7", "30", "initialize", "no"]);
     const ask = io.io.ask; let owner: Server | undefined;
     io.io.ask = async q => { const answer = await ask(q); if (q === ht("confirm_q")) owner = await bind(listeners.memberListen.port); return answer; };
     const result = await runHubInitWizard({ home: h, io: io.io, initializer: createHubInitializer({ home: h, identity, probe: { pidAlive: () => false } }),

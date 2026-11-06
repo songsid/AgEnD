@@ -16,7 +16,7 @@ import { parseAccountIdentity } from "./claude-auth-status.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
 import { withNativePaneVerification } from "./runtime-pane-native.js";
-import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION,
+import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION, runtimeInfoCompatible, RUNTIME_REINSTALL_CLOSE_REASON,
   type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
 
@@ -94,7 +94,7 @@ function inventory(value: unknown): WindowsCliProbe {
 }
 function machineView(machine: RuntimeMachine): RuntimeMachine {
   return { ...structuredClone(machine), ...(machine.inventory ? { inventory: withNativePaneVerification(machine.inventory) } : {}), runtimeCompatibility: machine.runtimeInfo
-    ? machine.runtimeInfo.protocolVersions.includes(RUNTIME_PROTOCOL_VERSION) ? "compatible" : "incompatible"
+    ? runtimeInfoCompatible(machine.runtimeInfo) ? "compatible" : "incompatible"
     : machine.bootId ? "legacy" : "unknown" };
 }
 interface MachineRecord { machine: RuntimeMachine; credentialHash?: string; claimHash?: string; claimExpiresAt?: number }
@@ -400,6 +400,13 @@ export class RuntimeCoordinator {
     if (!connection.ready) {
       if (value.type !== "hello" || !text(value.bootId, 128)) throw new RuntimeProtocolError("Runtime hello required");
       const runtimeInfo = parseRuntimeInfo(value.runtimeInfo);
+      if (runtimeInfo && !runtimeInfoCompatible(runtimeInfo)) {
+        // Version skew fails clearly: no welcome, no work, and the Runtime is told to run the install command again. Its report is
+        // kept (it stays offline) so Settings can show which version needs reinstalling; the pairing itself is untouched.
+        row.machine.runtimeInfo = runtimeInfo; row.machine.lastSeenAt = this.now(); this.save(); this.emit({ type: "machine", machineId: connection.machineId });
+        this.options.warn?.({ machineId: connection.machineId, code: 1008, reason: "Runtime incompatible", detail: `version ${runtimeInfo.version ?? "unknown"}, protocols ${runtimeInfo.protocolVersions.join(",")}, capabilities ${runtimeInfo.capabilities.join(",")}` }, "Runtime connection refused: its version is not compatible with this AgEnD");
+        connection.ws.close(1008, RUNTIME_REINSTALL_CLOSE_REASON); return;
+      }
       connection.ready = true; connection.bootId = value.bootId; clearTimeout(connection.helloTimer);
       row.machine.bootId = value.bootId; row.machine.status = "online"; row.machine.lastSeenAt = this.now();
       if (runtimeInfo) row.machine.runtimeInfo = runtimeInfo; else delete row.machine.runtimeInfo;

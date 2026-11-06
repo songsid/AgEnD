@@ -501,7 +501,7 @@ describe("the page: the limits in force, and words with their numbers", () => {
     expect(shellBody({ upload_max_file_mb: 200, upload_max_total_mb: 300 }, true)).toEqual({ maxFileBytes: 95 * MB, maxFiles: 5, maxTotalBytes: 300 * MB, publicLinkCapped: true });
   });
 
-  const SRC = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
+  const SRC = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-render.js"), "utf8");
   const render = (limits?: string) => {
     const c = vm.createContext(limits === undefined ? {} : { document: { body: { dataset: { uploadLimits: limits } } } });
     vm.runInContext(SRC, c);
@@ -528,7 +528,7 @@ describe("the page: the limits in force, and words with their numbers", () => {
       .toEqual({ key: "chat.file_too_large_public", values: ["95"] });
   });
   it("the strings, EN and zh-TW, take the numbers — none is written into them", () => {
-    const src = readFileSync(join(process.cwd(), "src", "ui", "chat-strings.js"), "utf8");
+    const src = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-strings.js"), "utf8");
     for (const key of ["file_too_large", "file_too_large_public", "file_too_many", "file_too_much"]) {
       const all = [...src.matchAll(new RegExp(`\\b${key}: "([^"]*)"`, "g"))].map(m => m[1]!);
       expect(all, key).toHaveLength(2);

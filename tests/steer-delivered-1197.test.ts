@@ -8,14 +8,15 @@ import { transcriptDeltaHasDeliveryMarker } from "../src/delivery-reconciliation
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 
 /**
- * claude-code as it was before #1200: no input-box reader. These cases pin the daemon's readerless path (grok and muse
- * still take it) on Claude's own panes and transcript format; claude-code itself now reads its box
- * (claude-input-box-1200.test.ts).
+ * claude-code as it was before #1200: no input-box reader. These cases pin the daemon's readerless path (muse still
+ * takes it; grok reads its boxed prompt since #3199) on Claude's own panes and transcript format; claude-code itself
+ * now reads its box (claude-input-box-1200.test.ts).
  */
 const readerlessClaude = (instanceDir: string) => Object.assign(new ClaudeCodeBackend(instanceDir), { readInputRow: undefined });
 
 /**
- * #1197: a durable steer into a BUSY pane of a CLI whose input row cannot be read (claude-code, grok, muse) always ended
+ * #1197: a durable steer into a BUSY pane of a CLI whose input row cannot be read (claude-code, muse; grok since #3199
+ * reads its box) always ended
  * `uncertain` ("best-effort-submission:unverified"): such a backend proves an ordinary submission by the idle→busy edge, and a
  * steer goes into a pane that is already busy. The operator got a ⚠️ and the sender a [system:delivery-outcome] for a steer
  * that had landed. Now the steer is `delivered` — labelled as ACCEPTED into the live turn's input, not as read — when the

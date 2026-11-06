@@ -113,6 +113,17 @@ export function fakeDirectory(table: Record<string, SignInResult | { unavailable
   const calls: { bindPassword: string; login: string }[] = [];
   const create = ((_config: unknown, secrets: { bindPassword: string }, options?: { onDiagnostic?: (d: HubDirectoryDiagnostic) => void }): HubDirectory => ({
     realm: "corp",
+    async lookupForInitialization(login) {
+      calls.push({ bindPassword: secrets.bindPassword, login });
+      const row = table[login];
+      if (!row) return { ok: false, reason: "not-found" };
+      if ("unavailable" in row) {
+        options?.onDiagnostic?.({ op: "initialization-lookup", outcome: "unavailable", error: row.unavailable });
+        return { ok: false, reason: "unavailable" };
+      }
+      if (row.ok) return row;
+      return { ok: false, reason: row.reason === "invalid-credentials" ? "not-found" : row.reason };
+    },
     async signIn(login: string, password: string): Promise<SignInResult> {
       calls.push({ bindPassword: secrets.bindPassword, login });
       const row = table[`${login}:${password}`] ?? table[login];

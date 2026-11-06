@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe("connect-agend.bat exit behaviour", () => {
-  it.each([["refused", /Settings -> Runtime.*disconnect.*connect-agend\.bat/], ["revoked", /revoked.*disconnect.*connect-agend\.bat/], ["replaced", /one live connection.*Close the other Runtime window/], ["rejected", /rejected a message.*jobs.json.*connect-agend.bat/], ["incompatible", /different versions.*connect-agend.bat/]] as const)(
+  it.each([["refused", /Settings -> Runtime.*disconnect.*connect-agend\.bat/], ["revoked", /revoked.*disconnect.*connect-agend\.bat/], ["replaced", /one live connection.*Close the other Runtime window/], ["rejected", /rejected a message.*jobs.json.*connect-agend.bat/], ["incompatible", /different versions.*connect-agend.bat/], ["reinstall", /not compatible with this AgEnD.*Re-run the install command.*agend-runtime run/s]] as const)(
     "fails with a plain next step when AgEnD ends the connection (%s), so the exit code is non-zero",
     async (kind, next) => {
       stop.reason = { kind }; const { home, program } = paired();

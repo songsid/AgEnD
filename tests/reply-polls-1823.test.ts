@@ -134,7 +134,7 @@ describe("a ballot, the tally and what is shown", () => {
       "ms = time from the poll opening to the voter's last change. AgEnD only counts votes: post the answer and any scores yourself.",
     ].join("\n"));
     expect(pollResultsText(set, { ...POLL, multi: true, question: "" }, [], 151_000)).toBe([
-      "[poll results] poll 3f2a9c00 · multiple choice · 30 s · 0 voted · closed 120 s late (AgEnD was not running at the deadline)",
+      "[poll results] poll 3f2a9c00 · multiple choice · 30 s · 0 voted · closed 120 s late",
       "1) Paris — 0", "2) London — 0", "3) Rome (value: rome-it) — 0",
       "ms = time from the poll opening to the voter's last change. AgEnD only counts votes: post the answer and any scores yourself.",
     ].join("\n"));
@@ -728,7 +728,7 @@ describe("the close: shown once, results to the agent exactly once — across a 
     await b.ctl().sweep();
     const [notice, ...more] = b.notices();
     expect(more).toEqual([]);
-    expect(JSON.parse(notice!.payload_json).content).toMatch(/· closed 300 s late \(AgEnD was not running at the deadline\)/);
+    expect(JSON.parse(notice!.payload_json).content).toMatch(/· closed 300 s late/);
     expect(b.rec.renders.filter(r => r.poll.closed)).toHaveLength(1);
   });
 });

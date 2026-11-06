@@ -20,13 +20,13 @@ afterEach(async () => { for (const f of listeners.splice(0)) await f.close(); fo
 afterAll(() => { directory?.cleanup(); if (web) rmSync(web.dir, { recursive: true, force: true }); });
 const start = () => ["Example Hub", "https://hub.example.test:8443", "", "192.0.2.10:8443", "192.0.2.10:9443", web.cert, web.key];
 const reader = () => ["2", "DC=example,DC=test", "CN=Reader,DC=example,DC=test", { hidden: BIND }];
-const finish = () => ["alice", { hidden: USER }, "y", "7", "30", "initialize", "no"];
+const finish = () => ["alice", "y", "7", "30", "initialize", "no"];
 async function listener(requireBind = false) {
   const f = await directoryCaFixture(directory.leaf, directory.ca, { requireBind }); listeners.push(f); return f;
 }
 function setup(answers: Parameters<typeof scriptedIO>[0], o: { cancelled?: boolean; noFetch?: boolean } = {}) {
   const home = tempDir("agend-ca-wizard-"), identity = new FakeIdentity(); roots.push(home);
-  const io = scriptedIO(answers), person = fakeDirectory({ [`alice:${USER}`]: { ok: true, person: ADMIN } });
+  const io = scriptedIO(answers), person = fakeDirectory({ alice: { ok: true, person: ADMIN } });
   let fetchCalls = 0, hiddenPrompts = 0;
   const askHidden = io.io.askHidden;
   io.io.askHidden = async question => { hiddenPrompts++; return askHidden(question); };
