@@ -234,10 +234,6 @@ jobs:
       - name: Run isolated installer tests
         if: needs.detect-changes.outputs.text-only != 'true'
         run: npx vitest run --config vitest.config.pwsh.ts
-      # Record the runtime AFTER tests, not as an unbounded pre-warm before START.
-      - name: PowerShell version
-        if: always() && needs.detect-changes.outputs.text-only != 'true'
-        run: pwsh --version
 
   # ── tests that read docs ─────────────────────────────────────────────────────
   # Always runs. Heavy work only on text-only PRs, where the four shards skip.
