@@ -54,6 +54,11 @@ it("fences new ordinary and pane work until the exact prepared attempt cancels",
   const f = await fixture(), p = await f.peer(), id = randomUUID();
   expect(p.welcome.updateProtocol).toBe(1); expect(f.hub.paneTransportEpoch(f.machineId)).not.toBeNull();
   expect((await p.control("prepare", id)).phase).toBe("prepared");
+  // Even a broken admission gate must settle promptly, so a mutant fails an assertion rather than the test deadline.
+  p.ws.on("message", bytes => {
+    const frame = JSON.parse(bytes.toString());
+    if (frame.type === "request" || frame.type === "pane.request") p.send({ v: 1, type: frame.type === "request" ? "response" : "pane.response", id: frame.id, ok: false });
+  });
   await expect(f.hub.call(f.machineId, "probe", {})).rejects.toThrow(/updat|offline/);
   await expect(f.hub.callPane(f.machineId, { action: "list" })).rejects.toThrow(/updat|offline/);
   expect(f.hub.paneTransportEpoch(f.machineId)).toBeNull();

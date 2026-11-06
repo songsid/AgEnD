@@ -121,6 +121,7 @@ interface Connection {
   activity: RuntimeUpdateActivity; managedUpdate?: boolean;
   hello?: { runtimeInfo?: RuntimeInfo; paneProtocol?: 1; inventory?: WindowsCliProbe };
   update?: { id: string; phase: "prepared" | "committed" | "trial"; fence: RuntimeUpdateFence };
+  activatedUpdateId?: string;
 }
 /**
  * alpha.2 polish: what an interrupted command becomes. A probe only reads the runner's CLI inventory — nothing to reconcile
@@ -432,11 +433,12 @@ export class RuntimeCoordinator {
       if (!owned.fence.current() || !this.updateIdle(connection)) { reply("busy"); return; }
       // The supervisor has persisted its activation intent. Lost acknowledgement is uncertain, never rollback permission.
       owned.fence.release(); connection.update = undefined;
-      this.promoteRuntime(connection); reply("activated");
+      connection.activatedUpdateId = control.id; this.promoteRuntime(connection); reply("activated");
       this.emit({ type: "machine", machineId: connection.machineId });
       if (!inventoryProbed(this.entry(connection.machineId).machine.inventory)) void this.call(connection.machineId, "probe", { force: true }).catch(() => {});
       return;
     }
+    if (control.phase === "activate" && connection.activatedUpdateId === control.id) { reply("activated"); return; }
     if (control.phase === "prepare") {
       if (owned) { reply(owned.id === control.id ? owned.phase === "committed" ? "commit" : "prepared" : "busy"); return; }
       const fence = connection.activity.tryFence(control.id,
