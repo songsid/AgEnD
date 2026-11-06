@@ -135,6 +135,14 @@ try {
       };
       await a.page.locator(".rb-btn").first().scrollIntoViewIfNeeded();
       await a.page.screenshot({ path: shot(`${tag}-f-before-button`) });
+      // Inert browser transport refusal: the UI must show it, never silently queue or discard the action.
+      const beforeRefusal = rig.sent.length;
+      const buttonRoute = "**/hub/v1/rooms/*/buttons";
+      await a.page.route(buttonRoute, (route: any) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ code: "denied" }) }));
+      await a.page.locator(".rb-row:not(.poll) .rb-btn").first().click();
+      await a.page.locator(".toast.err").waitFor({ timeout: 5000 });
+      check(`${tag}-f-visible-refusal`, rig.sent.length === beforeRefusal && await a.page.locator(".toast.err").isVisible());
+      await a.page.unroute(buttonRoute);
       const beforeClick = rig.sent.length;
       await a.page.locator(".rb-row:not(.poll) .rb-btn").first().click();
       const clicked = await nextQuestion(beforeClick);
