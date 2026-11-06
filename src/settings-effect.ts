@@ -29,6 +29,7 @@ import { parseNativeInstanceCreate, nativePaneTopicTarget } from "./native-insta
 import { parseRuntimesSettingsBody } from "./runtime-switches.js";
 import { parseGeneralSwitchInput } from "./general-binding.js";
 import { settingsFingerprint } from "./settings-transaction.js";
+import { parseHubBrowserCertificateApply, type HubBrowserCertificateProposal } from "./hub-browser-certificate-policy.js";
 import { parseHubRetention } from "./hub-retention-policy.js";
 import { t } from "./locale.js";
 
@@ -42,11 +43,13 @@ export interface SettingsEffectContext {
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
   generalLocation?(input: unknown): { summary: string[]; connections: string[] };
   /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
+  hubBrowserCertificate?(input: unknown, binding: string): HubBrowserCertificateProposal;
   hubExposure?(input: unknown): { summary: string[] };
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[] };
 }
 export function isSettingsMutation(method: string, path: string): boolean {
+  if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
   if (method === "POST" && path === "/api/settings/general-location") return true;
   if (method === "POST" && path === "/api/hub/member/exposures") return true;      // S3c: an owner's publish/revise
@@ -66,6 +69,18 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
 } {
   const cfg = context.config, before: any = { fleet: structuredClone(cfg), classic: structuredClone(context.classic) }, after = structuredClone(before);
   const operation = `${method} ${path}`;
+  if (path === "/api/settings/hub/browser-certificate/apply") {
+    if (method !== "POST" || !cfg || !binding || !context.hubBrowserCertificate) throw new SettingsConfirmationError(404, "unavailable");
+    let input, proposal;
+    try { input = parseHubBrowserCertificateApply(body); proposal = context.hubBrowserCertificate(input, binding); }
+    catch { throw new SettingsConfirmationError(409, "conflict"); }
+    const diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input, proposal.certificate]),
+      summary: [t("hub.browserCertificate.replace"), t("hub.browserCertificate.fingerprint", proposal.certificate.fingerprint256),
+        t("hub.browserCertificate.expires", proposal.certificate.validTo),
+        ...(proposal.certificate.selfSigned ? [t("hub.browserCertificate.selfSigned")] : [])],
+      affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } } };
+  }
   if (path === "/api/settings/hub/retention") {
     if (method !== "PUT" || !cfg) throw new SettingsConfirmationError(404, "unavailable");
     let policy;

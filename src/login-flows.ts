@@ -54,6 +54,11 @@ export interface LoginFlow {
   backend: string;
   /** Shell command started inside the dedicated login window. */
   command: string;
+  /**
+   * The verdict line's marker (unattended-install.ts installExitMarker), when the command prints one: the exit code is
+   * read from `<marker><code>` when tmux has none (its SIGCHLD missed), and the line is never shown.
+   */
+  exitMarker?: string;
   /** Pre-check run before starting a session; valid auth asks for confirmation. */
   authCheck?: AuthCheck;
   /**
