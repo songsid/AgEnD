@@ -180,6 +180,9 @@ code (`web.guests`, #1920). Guests see only the agents they are granted, in
 chat they could already use.
 
 - Can: chat with granted agents; sign out with `/web revoke` (own sessions).
+  A Trusted guest (#2855) also gets a read-only View of those agents — for
+  Claude Code with its earlier conversation, tool results included, like
+  anyone who may open the View (#3069).
 - Can't: admin routes, Notices, the usage report, or anything over surfaces
   the fleet closed to guests.
 - Code: `src/config-validator.ts:738-740`.

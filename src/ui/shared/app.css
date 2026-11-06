@@ -878,6 +878,10 @@ img.amb-p { object-fit: contain; }
 .pv-panel-body { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 var(--s-3) var(--s-3); }
 .pv-panel-body .pv-holder { flex: 1; min-height: 0; margin: 0; display: flex; flex-direction: column; }
 .pv-panel-body.show-code .pv-holder { display: none; }
+/* M-2448: a Markdown file in the panel — the chat's Markdown look, scrolling inside the panel (never the page). */
+.pv-code.pv-md { font-family: var(--font-ui); font-size: var(--fs-md); line-height: 1.6; white-space: normal; padding: var(--s-3) var(--s-4); }
+.pv-md .md { max-width: 860px; overflow-wrap: anywhere; }
+.pv-md .tc-pre { white-space: pre-wrap; font-family: var(--font-mono); font-size: var(--fs-xs); }
 .preview-frame.fill { flex: 1; height: 100%; min-height: 0; }
 .pv-code { flex: 1; min-height: 0; margin: 0; overflow: auto; font-family: var(--font-mono); font-size: var(--fs-xs); line-height: 1.5;
   background: var(--surface); border-radius: var(--r-sm); padding: var(--s-3); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }

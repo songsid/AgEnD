@@ -79,7 +79,7 @@ import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
-import { PreviewPanel, claimPanel, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
+import { PreviewPanel, claimPanel, openMarkdown, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { needsArgument, paletteFor, parseCommandLine } from "./chat-commands.js";
 import { installTour, refreshTourSpot } from "./chat-tour.js";
 import { LightboxHost, openLightbox } from "./image-lightbox.js";
@@ -464,7 +464,8 @@ function threadEntry(name, doc) {
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
     pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
-    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims },   // #1481, #1704
+    panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
+      openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
     openImage: openLightbox,                                               // an image, full size, in the page
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names

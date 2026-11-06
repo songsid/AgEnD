@@ -10,16 +10,16 @@ import yaml from 'js-yaml';
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflow = yaml.load(readFileSync(join(repo, '.github/workflows/data-downgrade.yml'), 'utf8'));
-// Every round trip (2.1.12, and 2.2.6 since #2481/#2483) must fail the step on a failing probe, artifact or not.
-const ROUNDTRIPS = ['roundtrip', 'roundtrip-226'];
-const EXPECTED = { roundtrip: '2.1.12', 'roundtrip-226': '2.2.6' };
+// The previous-release round trip must fail on a failing probe, artifact or not.
+const ROUNDTRIPS = ['roundtrip'];
+const EXPECTED = { roundtrip: '2.3.3' };
 for (const id of ROUNDTRIPS) {
   const steps = workflow.jobs['data-downgrade'].steps.filter(step => step.id === id);
   assert.equal(steps.length, 1, `There must be one authoritative ${id} step`);
   const step = steps[0];
   assert.equal(typeof step.run, 'string');
   assert.ok(step.shell === undefined || step.shell === 'bash', 'Model only the workflow Linux bash shells');
-  // The step names its own baseline (2.1.12 for roundtrip, 2.2.6 for roundtrip-226), so the runner can refuse the other.
+  // The step binds the exact previous-release baseline.
   const baselineCalls = [...step.run.matchAll(/check-data-downgrade\.mjs "\$OLD_PACKAGE" "\$OLD_NODE" (\S+) \|/g)];
   assert.equal(baselineCalls.length, 1, `${id} must name exactly one baseline probe`);
   assert.equal(baselineCalls[0][1], EXPECTED[id], `${id} must pass its baseline`);

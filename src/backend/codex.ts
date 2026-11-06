@@ -34,9 +34,10 @@ import {
 import { getAgendHome } from "../paths.js";
 import { selectedGeneralHostSession } from "../general-binding.js";
 import { ResumeBlockedError } from "./types.js";
-import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels, resolveCodexLaunchModel } from "./codex-metadata.js";
+import { CODEX_MODELS_CACHE_MAX_BYTES, codexShortHomeFor, readCodexEffortLevels, readCodexModelEffortLevels, readCodexModelServiceTiers, resolveCodexLaunchModel } from "./codex-metadata.js";
 import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
+import { codexSpeed } from "./codex-speed.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { type CodexResumePlan, type ExactCwdSession, checkResumeId, codexSiblingState, codexStateDbAbsent, codexThreadRowExists, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestResumableRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
@@ -1916,7 +1917,12 @@ export class CodexBackend extends CodexPaneDetectors implements CliBackend {
       ? readCodexModelEffortLevels({ isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome, model: runs.model })
       : { model: runs.model, levels: null, unproven: true });
     if (effort.arg) cmd += effort.arg;
-    this.quietLaunchNotes = effort.note ? [effort.note] : [];
+    // M-2446: the per-agent speed (codex-speed.ts) — Fast only where the running model's catalog entry offers it.
+    const speed = codexSpeed(config.backendOptions?.speed, runs.proven
+      ? readCodexModelServiceTiers({ isolatedHome: this.isolatedCodexHome, sharedHome: this.sharedCodexHome, model: runs.model })
+      : { model: runs.model, tiers: null, unproven: true });
+    if (speed.arg) cmd += speed.arg;
+    this.quietLaunchNotes = [effort.note, speed.note].filter((n): n is string => !!n);
     // AgEnD instances are unattended processes: an interactive self-update
     // picker blocks delivery and must never be enabled by a copied global or
     // managed config layer. Keep this last so the CLI override is authoritative.

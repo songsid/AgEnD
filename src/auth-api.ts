@@ -130,6 +130,9 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "app-shell.js", "app-session.js", "web-authorize.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
+    // Claude history in the View: its renderer, loaded by View when a Claude agent's View is scrolled up (static code; the
+    // history is read through the pane's own route and gate).
+    "view-history.js",
     // alpha.2 (N1): the sidebar's one instance list, and View's roster read it shows to an anonymous reader.
     "instance-nav.js", "view-roster-store.js",
     // #1523 N2: the instance view switch (Chat | View | Details), in Chat's, View's and Details' headers.
@@ -168,6 +171,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   "hub.css": { file: join("shared", "hub.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
+  // Claude history in the View: the renderer's own stylesheet (linked by it, so an older app.css never lacks its rules).
+  "view-history.css": { file: join("shared", "view-history.css"), type: "text/css; charset=utf-8" },
 };
 
 /** True for a name `/assets/` serves. The public link's manifest asks this too: one list, not two. */

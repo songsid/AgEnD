@@ -28,18 +28,52 @@ const read = (lines: any[]): { file: FileCursor; samples: Array<{ tokens: number
 };
 
 describe("Claude: timed after the first token (tokdash's rule)", () => {
+  // M-2452: Claude Code writes the message's final stop_reason and usage on EVERY block line (2.1.282–2.1.318); a response
+  // is finished only when the next message begins. `real` builds that shape.
+  const real = (id: string, at: number, o: { thinking?: number; out: number; model?: string }) => block(id, at, { ...o, stop: true });
+  const next = (at: number) => real("msg_next", at, { out: 1 });
   it("a leading thinking block: its stamp minus thinkingDurationMs is the first token; the window ends at the last block", () => {
-    const { samples } = read([block("msg_a", 5_000, { thinking: 2_000, out: 50 }), block("msg_a", 9_000, { stop: true, out: 400 })]);
+    const { samples } = read([block("msg_a", 5_000, { thinking: 2_000, out: 50 }), block("msg_a", 9_000, { stop: true, out: 400 }), next(20_000)]);
     expect(samples).toEqual([{ tokens: 400, ms: 9_000 - (5_000 - 2_000) }]);
   });
-  it("not timed: no thinking block (only a request window), an API error, no stop_reason", () => {
-    expect(read([block("msg_b", 5_000, { out: 100 }), block("msg_b", 8_000, { stop: true, out: 300 })]).samples).toEqual([]);
-    expect(read([block("msg_c", 5_000, { thinking: 1_000 }), block("msg_c", 8_000, { stop: true, out: 300, error: true })]).samples).toEqual([]);
-    expect(read([block("msg_d", 5_000, { thinking: 1_000 }), block("msg_d", 8_000, { out: 300 })]).samples).toEqual([]);
+  it("M-2452: every block carries the stop_reason (the real shape) — the window still runs to the LAST block, not the thinking alone", () => {
+    // A real Opus 5.5 response (2.1.318 transcript): thinking 769 ms, stamped 01:14:24.712; its tool_use block 01:14:26.075;
+    // 236 output tokens on both lines. Before the fix: 236 over 769 ms (307 tok/s); the measurable window is 2 132 ms.
+    const { samples } = read([real("msg_r", 0, { thinking: 769, out: 236 }), real("msg_r", 1_363, { out: 236 }), next(5_000)]);
+    expect(samples).toEqual([{ tokens: 236, ms: 2_132 }]);
+  });
+  it("open until the next message: nothing while its blocks may still come, then one sample", () => {
+    const lines = [real("msg_o", 0, { thinking: 1_000, out: 300 }), real("msg_o", 2_000, { out: 300 }), real("msg_o", 4_000, { out: 300 })];
+    const { file, samples } = read(lines);
+    expect(samples).toEqual([]);
+    expect(file.resp).toMatchObject({ id: "msg_o", last: T0 + 4_000 });
+    claudeLine(next(9_000), file);
+    expect(file.speeds).toEqual([expect.objectContaining({ tokens: 300, ms: 5_000 })]);
+  });
+  it("not timed: no thinking block (only a request window), an API error, no stop_reason, faster than 3000 tok/s", () => {
+    expect(read([block("msg_b", 5_000, { out: 100 }), block("msg_b", 8_000, { stop: true, out: 300 }), next(9_000)]).samples).toEqual([]);
+    expect(read([block("msg_c", 5_000, { thinking: 1_000 }), block("msg_c", 8_000, { stop: true, out: 300, error: true }), next(9_000)]).samples).toEqual([]);
+    expect(read([block("msg_d", 5_000, { thinking: 1_000 }), block("msg_d", 8_000, { out: 300 }), next(9_000)]).samples).toEqual([]);
+    // A real artefact: thinkingDurationMs 1, the blocks 5 ms apart, 218 tokens (36 000 tok/s): not a generation window.
+    expect(read([real("msg_x", 0, { thinking: 1, out: 218 }), real("msg_x", 5, { out: 218 }), next(9_000)]).samples).toEqual([]);
+    expect(read([real("msg_y", 0, { thinking: 100, out: 300 }), next(9_000)]).samples).toEqual([{ tokens: 300, ms: 100 }]);        // exactly 3000: counted
   });
   it("one sample per response, however many block lines; the tokens the turn counts are unchanged", () => {
-    const { samples } = read([block("msg_e", 5_000, { thinking: 1_000 }), block("msg_e", 6_000, { out: 10 }), block("msg_e", 7_000, { stop: true, out: 90 }), block("msg_e", 7_500, { stop: true, out: 90 })]);
-    expect(samples).toEqual([{ tokens: 90, ms: 3_000 }]);
+    const { samples } = read([block("msg_e", 5_000, { thinking: 1_000 }), block("msg_e", 6_000, { out: 10 }), block("msg_e", 7_000, { stop: true, out: 90 }), block("msg_e", 7_500, { stop: true, out: 90 }), next(9_000)]);
+    expect(samples).toEqual([{ tokens: 90, ms: 3_500 }]);
+  });
+  it("a block line too long to read whole (head and tail) still ends its response's window; one of another message finishes it", () => {
+    const long = (id: string, at: number, out: number) => ({ head: Buffer.from(`{"type":"assistant","message":{"id":"${id}","model":"claude-opus-4-5","content":[{"type":"tool_use","input":{"content":"`),
+      tail: Buffer.from(`"}}],"usage":{"input_tokens":10,"output_tokens":${out}},"stop_reason":"tool_use"},"timestamp":"${iso(at)}"}`), length: 2_000_000 }) as any;
+    expect(read([real("msg_l", 0, { thinking: 1_000, out: 900 }), long("msg_l", 6_000, 900), next(9_000)]).samples).toEqual([{ tokens: 900, ms: 7_000 }]);
+    // A long line of another message: the open response is finished there; the long one (its first line unread) is untimed.
+    expect(read([real("msg_m", 0, { thinking: 1_000, out: 200 }), real("msg_m", 1_000, { out: 200 }), long("msg_n", 3_000, 50), next(9_000)]).samples)
+      .toEqual([{ tokens: 200, ms: 2_000 }]);
+  });
+  it("a cursor saved by the old reader (its response marked done) is never counted again", () => {
+    const file: FileCursor = { kind: "claude", ino: 1, offset: 0, resp: { id: "msg_old", first: T0, think: 500, last: T0 + 400, out: 50, model: "m", prompt: 1, stopped: true, failed: false, done: true } };
+    claudeLine(real("msg_old", 600, { out: 50 }), file); claudeLine(next(9_000), file);
+    expect(file.speeds ?? []).toEqual([]);
   });
 });
 
@@ -232,6 +266,31 @@ describe("kept: ledger hours and the daily rollup", () => {
     expect(reviveLedger(raw).hours[String(T0)]!.sp!["claude:default"]!["m|0"]!.slice(0, 3)).toEqual([10, 100, 1]);
     raw.hours[String(T0)].sp["claude:default"]["m|0"] = [1, 2];
     expect(reviveLedger(raw).hours[String(T0)]!.sp).toBeUndefined();
+  });
+  it("M-2452: Claude speeds stored by the old method are dropped once on load (ledger and rollup); other sources and the tokens stay", () => {
+    const f: FileCursor = { kind: "claude", ino: 1, offset: 0 }, cx: FileCursor = { kind: "codex", ino: 2, offset: 0 };
+    addSpeed(l, f, { t: T0, model: "m", prompt: 1, tokens: 10, ms: 100 }, 0, "default");
+    addSpeed(l, cx, { t: T0, model: "g", prompt: 1, tokens: 20, ms: 100 }, 0, "default");
+    l.hours[String(T0)]!.src = { "claude:default": { "m|0": [1, 1, 0, 0, 0, 0, 10] }, "codex:default": { "g|0": [1, 1, 0, 0, 0, 0, 20] } };
+    l.hours[String(T0)]!.m = { "m|0": [1, 1, 0, 0, 0, 0, 10], "g|0": [1, 1, 0, 0, 0, 0, 20] };
+    expect(l.spv).toBe(2);                                                               // a new ledger is the current method
+    const old = JSON.parse(JSON.stringify(l)); delete old.spv;                           // as saved before M-2452
+    const back = reviveLedger(old);
+    expect(back.spv).toBe(2);
+    expect(Object.keys(back.hours[String(T0)]!.sp!)).toEqual(["codex:default"]);
+    expect(back.hours[String(T0)]!.src!["claude:default"]).toBeDefined();                  // its tokens stay
+    expect(Object.keys(reviveLedger(JSON.parse(JSON.stringify(back))).hours[String(T0)]!.sp!)).toEqual(["codex:default"]);
+    expect(Object.keys(reviveLedger(JSON.parse(JSON.stringify(l))).hours[String(T0)]!.sp!).sort()).toEqual(["claude:default", "codex:default"]);   // current: kept
+    // The daily rollup: an old file's claude-code rows lose their speed only.
+    const days = emptyDays();
+    foldHours(days, l, T0 + 2 * 3_600_000, "UTC");
+    expect(days.spv).toBe(2);
+    const oldDays = JSON.parse(JSON.stringify(days)); delete oldDays.spv;
+    const revived = reviveDays(oldDays);
+    expect(revived.rows.find((r) => r.be === "claude-code")!.s).toBeUndefined();
+    expect(revived.rows.find((r) => r.be === "claude-code")!.m["m|0"]).toBeDefined();
+    expect(revived.rows.find((r) => r.be === "codex")!.s!["g|0"]!.slice(0, 3)).toEqual([20, 100, 1]);
+    expect(reviveDays(JSON.parse(JSON.stringify(days))).rows.find((r) => r.be === "claude-code")!.s!["m|0"]!.slice(0, 3)).toEqual([10, 100, 1]);
   });
   it("folded into its day, and read back from the rollup file", () => {
     const f: FileCursor = { kind: "claude", ino: 1, offset: 0 };
