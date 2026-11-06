@@ -61,6 +61,14 @@ describe("remote machine UI",()=>{
     p.root.querySelector(".dlg-x").click();await settle();await openInfo(idB);
     expect(p.root.querySelector(".runtime-reported-version").textContent).toBe("This Runtime does not provide version information");expect(p.root.querySelector(".runtime-reported-build")).toBeNull();
   });
+  it("labels a persistent-pane CLI version AgEnD has not audited (cc3ce4fe) on the card and in diagnostics, and says nothing for verified or other CLIs",async()=>{
+    machines[0]={...machines[0],inventory:{...machines[0].inventory,clis:[{...cli(),version:"codex-cli 0.199.0",paneVerification:"unverified"},{...cli(),id:"claude-code",version:"2.1.316",paneVerification:"verified"},{...cli(),id:"grok",version:"1.0.70"}]}};
+    await p.mount(h(Panel,{navKey:"runtime-pane-unverified"}));await settle(12);
+    const card=p.root.querySelector(`[data-machine-id="${idA}"]`),tags=card.querySelectorAll(".runtime-cli-table .tag");
+    expect(tags.map((tag:any)=>tag.textContent)).toEqual(["Not yet verified"]);expect(tags[0].getAttribute("title")).toContain("has not tested this version in Windows panes");
+    await openDiagnostics(idA);
+    expect(diagnosticDialog().querySelectorAll(".windows-cli-diagnostic-row .tag").map((tag:any)=>tag.textContent)).toEqual(["Not yet verified"]);
+  });
   it("uses the same machine cards and does not load task history until diagnostics open",async()=>{
     app.appStore.set({windowsCli:true});await p.mount(h(Panel,{navKey:"unified-machine-cards"}));await settle(12);
     const cards=p.root.querySelectorAll(".runtime-machine");expect(cards).toHaveLength(3);

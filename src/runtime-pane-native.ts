@@ -3,13 +3,53 @@ import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneConfig } from "./runtime-pane-config.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { nativeUpdateGuard, nativeClaudeFilePolicyArgs } from "./windows-cli-providers.js";
-/** Cache admission and the owned worker's final pre-spawn check share the same audited release set. */
-export function assertAuditedNativePaneVersion(provider:string,line:string|null):void{
- const expected=provider==="codex"?"0.165.0":provider==="claude-code"?"2.1.316":null;
- const versions=typeof line==="string"&&line.length<=4096?line.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/g):null;
- if(!expected||versions?.length!==1||versions[0]!==expected)throw Error("This native CLI version has not passed persistent-pane acceptance");
+export type NativePaneCli = "codex" | "claude-code";
+/** Releases AgEnD has audited for this CLI: the same ledger as the Linux upstream watch (ffb8104e) — when a version is
+ * marked audited there, it is added here, so the shipped app can say "verified" on any machine. Informational only
+ * (decision cc3ce4fe): an unlisted version still runs, shown as "Not yet verified"; every readiness, dialog and
+ * delivery fence still applies to it, and an unknown screen keeps failing closed. */
+export const NATIVE_CLI_AUDITED: Readonly<Record<NativePaneCli, readonly string[]>> = Object.freeze({
+  // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit.
+  codex: Object.freeze(["0.165.0", "0.166.0"]),
+  // 2.1.316: native persistent-pane acceptance. 2.1.318: upstream watch audit (#3048).
+  "claude-code": Object.freeze(["2.1.316", "2.1.318"]),
+});
+/** Releases known NOT to work in a persistent pane, refused with their reason. Only with evidence (an issue or an
+ * audit that reproduced the break); a version is never listed for being new. Empty today. */
+export const NATIVE_CLI_DENIED: Readonly<Record<NativePaneCli, Record<string, string>>> = {
+  codex: {},
+  "claude-code": {},
+};
+const NATIVE_CLI_LABEL: Readonly<Record<NativePaneCli, string>> = Object.freeze({ codex: "Codex", "claude-code": "Claude Code" });
+const SEMVER = /(?<![\w.-])\d{1,6}\.\d{1,6}\.\d{1,6}(?:[-+][0-9A-Za-z.-]{1,64})?(?![\w.-])/g;
+export type NativeCliVersionState = "verified" | "unverified" | "denied" | "invalid";
+/** Strict reading of a `--version` line: a supported CLI and exactly one version number, or "invalid". */
+export function nativeCliVersionState(provider: string, line: string | null | undefined, denylist: Readonly<Record<NativePaneCli, Readonly<Record<string, string>>>> = NATIVE_CLI_DENIED): { state: NativeCliVersionState; version?: string; reason?: string } {
+  if (provider !== "codex" && provider !== "claude-code") return { state: "invalid" };
+  const versions = typeof line === "string" && line.length <= 4096 ? line.match(SEMVER) : null;
+  if (versions?.length !== 1) return { state: "invalid" };
+  const version = versions[0], denied = Object.hasOwn(denylist[provider], version) ? denylist[provider][version] : undefined;
+  if (denied !== undefined) return { state: "denied", version, reason: denied };
+  return { state: NATIVE_CLI_AUDITED[provider].includes(version) ? "verified" : "unverified", version };
 }
-/** `credentialHome` is a folder the pane host itself resolved from a credential profile name under this Runtime's profile root. */
+/** Cache admission and the owned worker's final pre-spawn check share this rule: a readable version of a supported CLI
+ * runs unless it is a known-broken release. Returns the version. */
+export function assertRunnableNativePaneVersion(provider: string, line: string | null): string {
+  const result = nativeCliVersionState(provider, line);
+  if (result.state === "invalid") throw Error("This native CLI's version could not be read, so AgEnD does not start it in a persistent pane");
+  if (result.state === "denied") throw Error(`${NATIVE_CLI_LABEL[provider as NativePaneCli]} ${result.version} is known not to work in AgEnD's Windows panes (${result.reason}). Install a different version.`);
+  return result.version!;
+}
+/** A copy of an inventory with each persistent-pane CLI row labelled by the rule above. Any runner-supplied label is
+ * replaced; rows of other CLIs carry none. */
+export function withNativePaneVerification<T extends { clis?: Array<{ id: string; version: string | null; paneVerification?: NativeCliVersionState }> }>(inventory: T): T {
+  const copy = structuredClone(inventory);
+  for (const row of copy.clis ?? []) {
+    if (row.id === "codex" || row.id === "claude-code") row.paneVerification = nativeCliVersionState(row.id, row.version).state;
+    else delete row.paneVerification;
+  }
+  return copy;
+}
 export interface NativePaneOwner { directory: string; launchId: string; mcp?: PaneMcpConnection; credentialHome?: string }
 export type NativePaneCommand = { type: "start"; launch: RuntimePaneLaunch; owner: NativePaneOwner }
   | { type: "input"; data: string } | { type: "resize"; columns: number; rows: number }

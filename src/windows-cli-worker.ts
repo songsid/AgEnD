@@ -23,6 +23,8 @@ export interface NativeCliRow {
   id: NativeCliId; path: string | null; version: string | null; authenticated: boolean | null; runnable: boolean;
   supports: NativeProviderDescriptor["supports"]; readOnlySupport: boolean;
   permissionNote: string; models: NativeModelOption[]; reason?: string;
+  /** Coordinator-derived (cc3ce4fe), never trusted from a runner: whether this persistent-pane CLI's version is audited. */
+  paneVerification?: "verified" | "unverified" | "denied" | "invalid";
   modelsSource?: "cli-cache" | "official-catalog" | "cli-list" | "unavailable";
   /** Claude Code only: the masked e-mail and plan of the default sign-in, taken from the same `auth status` answer as `authenticated`. */
   identity?: AccountIdentity;

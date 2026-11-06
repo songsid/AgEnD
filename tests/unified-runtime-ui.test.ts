@@ -104,6 +104,13 @@ describe("one fleet UI across runtimes",()=>{
     const online={instances:[linuxRow,{...remote,machine_status:"online"}],windows_cli:true};app.applyStatus(online);emit("status",online);await settle();
     expect(p.root.querySelector("#sendBtn").disabled).toBe(false);expect(input.value).toBe("Keep remote draft");expect(p.root.querySelector(".runtime-machine-unavailable")).toBeNull();
   });
+  it("labels a native agent whose CLI version AgEnD has not audited (cc3ce4fe), and nothing for a verified one",async()=>{
+    const unverified={...nativeRow(),machine_id:nativeId,machine_name:"Build desktop",machine_status:"online",native_cli_version:"0.199.0",native_cli_verification:"unverified"};
+    let status={instances:[linuxRow,unverified],windows_cli:true};app.applyStatus(status);emit("status",status);
+    await mountNative();const tag=p.root.querySelector(".native-cli-unverified");expect(tag.textContent).toBe("Not yet verified");expect(tag.getAttribute("title")).toBe("Codex 0.199.0: AgEnD has not tested this version in Windows panes yet. It still runs; any screen AgEnD does not recognise stops and waits for you in Needs you.");
+    status={instances:[linuxRow,{...unverified,native_cli_version:"0.165.0",native_cli_verification:"verified"}],windows_cli:true};app.applyStatus(status);emit("status",status);await settle();
+    expect(p.root.querySelector(".native-cli-unverified")).toBeNull();
+  });
   it("shows a remote computer on the same Instances row without changing its Agent state",async()=>{
     const status={instances:[linuxRow,{...nativeRow(),machine_id:nativeId,machine_name:"Build desktop",machine_status:"offline"}],windows_cli:true};app.applyStatus(status);emit("status",status);
     const panels=new Map([["chat",{load:async()=>()=>h("div",{},"Shared chat")}]]);await p.mount(h(shell.Shell,{panels,onNewInstance(){}}));await settle(8);

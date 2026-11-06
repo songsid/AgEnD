@@ -9,7 +9,7 @@ import { GeneralLocation } from "./general-location.js";
 // The instance's own actions (details, start, stop, restart, delete) are in the header's ⋯ menu, and only the ones
 // that apply to its state are offered (#1408 rough edges 4 and 7).
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
-import { lang, t } from "/assets/app-i18n.js";
+import { lang, register, t } from "/assets/app-i18n.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
@@ -26,6 +26,16 @@ import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { recordEdit } from "/assets/text-undo.js";
 import { toast } from "/assets/ui-toast.js";
+// cc3ce4fe: registered here, not in the shared chat strings, so a newer panel never shows a bare key on an older page.
+register("nativecli", {
+  en: { unverified:"Not yet verified", unverifiedHint:"{0} {1}: AgEnD has not tested this version in Windows panes yet. It still runs; any screen AgEnD does not recognise stops and waits for you in Needs you." },
+  "zh-TW": { unverified:"尚未驗證", unverifiedHint:"{0} {1}：AgEnD 還沒在 Windows 面板中測試過這個版本。它仍然可以執行；遇到 AgEnD 認不得的畫面時，會停下來在「需要你」等你處理。" },
+});
+function nativeCliTag(inst) {
+  if (inst.native_cli_verification !== "unverified") return null;
+  const cli = inst.backend === "codex" ? "Codex" : inst.backend === "claude-code" ? "Claude Code" : inst.backend;
+  return html`<span class="tag native-cli-unverified" title=${t("nativecli.unverifiedHint", cli, inst.native_cli_version || "")}>${t("nativecli.unverified")}</span>`;
+}
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { savePref } from "/assets/app-prefs.js";
 import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeMenuItems, themesStore } from "/assets/app-themes.js";
@@ -359,7 +369,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const pick = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const sub = html`<span class="status"><span class=${`dot ${cls}`} aria-hidden="true"></span>${statusLabel(inst, exec, awaiting)}</span>
     ${inst.runtime === "windows" ? html`<span class="tag">Windows</span>` : null}
-    ${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",machineName(inst.machine_id,inst.machine_name))}>${machineName(inst.machine_id,inst.machine_name)}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
+    ${nativeCliTag(inst)}${inst.machine_id ? html`<span class="tag runtime-machine-tag" title=${t("chat.machineName",machineName(inst.machine_id,inst.machine_name))}>${machineName(inst.machine_id,inst.machine_name)}</span>${inst.machine_status !== "online" ? html`<span class="tag runtime-machine-offline">${t(inst.machine_status === "revoked" ? "chat.machineRevoked" : "chat.machineOffline")}</span>` : null}` : null}
     ${inst.model ? html`<button type="button" class="hd-chip" title=${t("chat.chipModel", modelText(inst))} aria-label=${t("chat.chipModel", modelText(inst))} onClick=${() => supportsInstanceFeature(inst,"commands") ? pick("model") : navigate(sectionPath("agents"))}>${modelText(inst)}</button>` : null}
     ${inst.effort && supportsInstanceFeature(inst,"effort") ? html`<button type="button" class="hd-chip" title=${t("chat.chipEffort", inst.effort)} aria-label=${t("chat.chipEffort", inst.effort)} onClick=${() => pick("effort")}>${inst.effort}</button>` : null}`;
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>

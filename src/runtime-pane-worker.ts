@@ -16,7 +16,7 @@ import { validateRuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { prepareNativePaneConfig, type NativePaneConfig } from "./runtime-pane-config.js";
 import { validatePaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
 import { validateNativeMcpConnection, nativeUpdateGuard } from "./windows-cli-providers.js";
-import { assertAuditedNativePaneVersion, assertNativePaneCommandLine, persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
+import { assertRunnableNativePaneVersion, assertNativePaneCommandLine, persistentNativeArguments, type NativePaneFrame, type NativePaneOwner } from "./runtime-pane-native.js";
 
 export async function nativePaneWorker(): Promise<void> {
   if (process.platform !== "win32") throw Error("ConPTY helper requires native Windows Node");
@@ -77,7 +77,7 @@ export async function nativePaneWorker(): Promise<void> {
         const version=await promisify(execFile)(executable.command,[...executable.args,...nativeUpdateGuard(launch.cli),"--version"],{
           cwd:actual,env:{...environment(),NO_COLOR:"1"},timeout:30_000,maxBuffer:4096,encoding:"utf8",windowsHide:true,shell:false,
         });
-        assertAuditedNativePaneVersion(launch.cli,String(version.stdout));
+        assertRunnableNativePaneVersion(launch.cli,String(version.stdout));
         if(disconnected||finished)throw Error("Pane helper was disconnected before version verification");
         pty = binding.spawn(executable.command, args, {
           cwd: actual, cols: launch.columns, rows: launch.rows, name: "xterm-256color", useConpty: true, useConptyDll: true,

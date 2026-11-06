@@ -66,8 +66,16 @@ it("changed retained settings or an unknown active profile hold instead of fresh
  const f=await fixture(),first=await f.manager.prepare("native",f.config,()=>{});await first.acquire(()=>{});await first.release("detach");f.config.model="different-model";
  await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("settings differ");expect(f.spawn).toHaveBeenCalledOnce();expect(f.process.kill).not.toHaveBeenCalled();
 });
-it.each(["Claude Code 2.1.315","Claude Code 2.1.316-alpha","prefix 1.2.1.316","unknown"])("unaudited version %s is refused before a launch manifest or reservation",async version=>{
- const f=await fixture();f.version(version);await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("not passed");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).not.toHaveBeenCalled();
+it.each(["prefix 1.2.1.316","unknown","Claude Code 2.1.316 2.1.317"])("an unreadable version %s is refused before a launch manifest or reservation",async version=>{
+ const f=await fixture();f.version(version);await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("could not be read");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).not.toHaveBeenCalled();
+});
+it("a known-broken version is refused with its reason before a launch manifest or reservation (cc3ce4fe)",async()=>{
+ const {NATIVE_CLI_DENIED}=await import("../src/runtime-pane-native.js");NATIVE_CLI_DENIED["claude-code"]["2.1.399"]="it never shows its input box";
+ try{const f=await fixture();f.version("Claude Code 2.1.399");await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("Claude Code 2.1.399 is known not to work in AgEnD's Windows panes (it never shows its input box)");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).not.toHaveBeenCalled();}
+ finally{delete NATIVE_CLI_DENIED["claude-code"]["2.1.399"];}
+});
+it.each(["Claude Code 2.1.315","Claude Code 2.1.399","Claude Code 2.1.316-alpha"])("an unaudited version %s is prepared like an audited one (cc3ce4fe)",async version=>{
+ const f=await fixture();f.version(version);await expect(f.manager.prepare("native",f.config,()=>{})).resolves.toBeDefined();
 });
 it("a profile changed while host discovery is held cannot be admitted from its old snapshot",async()=>{
  const f=await fixture();let release!:(value:any)=>void;f.endpoint.call.mockImplementationOnce(()=>new Promise(done=>{release=done;}));const pending=f.manager.prepare("native",f.config,()=>{});await Promise.resolve();await Promise.resolve();f.store.reservePane(f.agent.id,randomUUID());release({hostBootId:randomUUID(),panes:[]});await expect(pending).rejects.toThrow("changed during host");expect(f.spawn).not.toHaveBeenCalled();
