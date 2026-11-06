@@ -169,7 +169,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     mkdirSync(old); const oldCommand=join(old,process.platform==="win32"?"agend-runtime.cmd":"agend-runtime");writeFileSync(oldCommand,process.platform==="win32"?"@echo OLD-PATH-RUNTIME\r\n":"#!/bin/sh\necho OLD-PATH-RUNTIME\n");chmodSync(oldCommand,0o700);
     mkdirSync(profile); writeFileSync(join(profile,"connection.json"),'{"paired":"keep"}'); const before=snapshot(profile);
     const preset=`$env:PATH=${quoted(old)}+[IO.Path]::PathSeparator+$env:PATH`;
-    const r=await run(s,{AGEND_RUNTIME_REPAIR:"1",AGEND_RUNTIME_NO_PATH:"1",T_PRESET:preset});
+    const r=await run(s,{AGEND_RUNTIME_REPAIR:"1",AGEND_RUNTIME_NO_PATH:"",T_PRESET:preset});
     expect(r.code,r.out).toBe(0); expect(r.out).not.toContain('connect --server'); expect(r.out).not.toContain('one-time pairing code');
     const command=r.out.split(/\r?\n/).find(line=>line.includes('Read-Host')&&line.includes('run --profile'))?.trim(); expect(command,r.out).toBeTruthy();
     const shim=join(s.install,"bin","agend-runtime.cmd");expect(command).toContain(shim.replace(/'/g,"''"));
