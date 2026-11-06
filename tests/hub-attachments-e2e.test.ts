@@ -144,7 +144,8 @@ async function world(opts: { memberCapabilities?: readonly string[]; hubCapabili
 
 it("both directions end to end: upload → signed question with files → member pulls and checks → answer with a file → asker downloads", async () => {
   const w = await world();
-  expect(w.room.features).toEqual(HUB_OPTIONAL_CAPABILITIES.filter(feature => feature !== "welcome-caps-v1"));
+  // Every optional feature this build offers, as both ends are this build (quota-band-v1 too, since G).
+  expect(w.room.features).toEqual(HUB_OPTIONAL_CAPABILITIES.filter(f => f !== "welcome-caps-v1"));
   const png = await w.alex("POST", `/hub/v1/rooms/${w.room.id}/files`, undefined, { bytes: PNG, name: "chart.png" });
   expect(png.status).toBe(200);
   expect(png.json.file).toMatchObject({ name: "chart.png", size: PNG.length, mime: "image/png", url: `/hub/v1/rooms/${w.room.id}/files/${png.json.file.id}` });

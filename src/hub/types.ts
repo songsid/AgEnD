@@ -97,9 +97,9 @@ export type HubMemberFrame =
   | HubFrame<"reconcile", HubReconcile>
   | HubFrame<"authorize.request", HubAuthorizationRequest>
   | HubFrame<"error", HubProtocolError>
-  | HubFrame<"exposure.quota", HubExposureQuota>
   | HubFrame<"attachment.get", { id: string; offset: number }>
-  | HubFrame<"attachment.put", HubAttachmentChunk>;
+  | HubFrame<"attachment.put", HubAttachmentChunk>
+  | HubFrame<"exposure.quota", HubExposureQuota>;
 export type HubServerFrame =
   | HubFrame<"welcome", HubWelcome>
   | HubFrame<"question", HubQuestion>
