@@ -10,23 +10,29 @@ import { BerReader, BerWriter } from "ldapts";
 export const CA_DN = "CN=Example Root,CN=AIA,DC=example,DC=test";
 export function directoryCertificates() {
   const home = mkdtempSync(join(tmpdir(), "agend-ca-cert-"));
-  const run = (args: string[]) => execFileSync("openssl", args, { cwd: home, stdio: "ignore" });
-  const ec = ["-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes"];
-  run(["req", "-x509", ...ec, "-days", "2", "-subj", "/CN=Example Root", "-keyout", "ca.key", "-out", "ca.pem"]);
-  const leaf = (name: string, san: string, aia: string, days = "2") => {
-    run(["req", ...ec, "-subj", `/CN=${name}`, "-keyout", `${name}.key`, "-out", `${name}.csr`]);
-    writeFileSync(join(home, `${name}.ext`), `subjectAltName=${san}\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\nauthorityInfoAccess=@aia\n[aia]\ncaIssuers;URI.0=${aia}\n`);
-    run(["x509", "-req", "-in", `${name}.csr`, "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-days", days, "-extfile", `${name}.ext`, "-out", `${name}.pem`]);
-    return { cert: readFileSync(join(home, `${name}.pem`), "utf8"), key: readFileSync(join(home, `${name}.key`), "utf8") };
-  };
-  const uri = `ldap:///${encodeURIComponent(CA_DN)}?cACertificate?base?objectClass=certificationAuthority`;
-  const ca = readFileSync(join(home, "ca.pem"), "utf8");
-  run(["req", "-x509", ...ec, "-days", "2", "-subj", "/CN=Unrelated Directory", "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", "unrelated.key", "-out", "unrelated.pem"]);
-  const unrelated = { cert: readFileSync(join(home, "unrelated.pem"), "utf8"), key: readFileSync(join(home, "unrelated.key"), "utf8") };
-  return { ca, unrelated, leaf: leaf("directory", "IP:127.0.0.1,DNS:localhost", uri), alternate: leaf("alternate", "IP:127.0.0.1,DNS:localhost", uri),
-    wrongHost: leaf("wrong", "DNS:other.invalid", uri), expired: leaf("expired", "IP:127.0.0.1", uri, "-1"),
-    external: leaf("external", "IP:127.0.0.1", "ldap://other.invalid/cn=outside?cACertificate?base"),
-    cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  try {
+    const run = (args: string[]) => execFileSync("openssl", args, { cwd: home, stdio: "ignore" });
+    const ec = ["-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes"];
+    run(["req", "-x509", ...ec, "-days", "2", "-subj", "/CN=Example Root", "-keyout", "ca.key", "-out", "ca.pem"]);
+    const leaf = (name: string, san: string, aia: string, expired = false) => {
+      run(["req", ...ec, "-subj", `/CN=${name}`, "-keyout", `${name}.key`, "-out", `${name}.csr`]);
+      writeFileSync(join(home, `${name}.ext`), `subjectAltName=${san}\nbasicConstraints=critical,CA:FALSE\nextendedKeyUsage=serverAuth\nauthorityInfoAccess=@aia\n[aia]\ncaIssuers;URI.0=${aia}\n`);
+      if (expired) {
+        writeFileSync(join(home, "index.txt"), ""); writeFileSync(join(home, "serial"), "1000\n");
+        writeFileSync(join(home, "expired-ca.cnf"), "[ca]\ndefault_ca=fixture\n[fixture]\ndatabase=index.txt\nnew_certs_dir=.\ncertificate=ca.pem\nprivate_key=ca.key\nserial=serial\ndefault_md=sha256\npolicy=subject\n[subject]\ncommonName=supplied\n");
+        run(["ca", "-batch", "-notext", "-config", "expired-ca.cnf", "-in", `${name}.csr`, "-startdate", "20000101000000Z", "-enddate", "20000102000000Z", "-extfile", `${name}.ext`, "-out", `${name}.pem`]);
+      } else run(["x509", "-req", "-in", `${name}.csr`, "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-days", "2", "-extfile", `${name}.ext`, "-out", `${name}.pem`]);
+      return { cert: readFileSync(join(home, `${name}.pem`), "utf8"), key: readFileSync(join(home, `${name}.key`), "utf8") };
+    };
+    const uri = `ldap:///${encodeURIComponent(CA_DN)}?cACertificate?base?objectClass=certificationAuthority`;
+    const ca = readFileSync(join(home, "ca.pem"), "utf8");
+    run(["req", "-x509", ...ec, "-days", "2", "-subj", "/CN=Unrelated Directory", "-addext", "subjectAltName=IP:127.0.0.1", "-keyout", "unrelated.key", "-out", "unrelated.pem"]);
+    const unrelated = { cert: readFileSync(join(home, "unrelated.pem"), "utf8"), key: readFileSync(join(home, "unrelated.key"), "utf8") };
+    return { ca, unrelated, leaf: leaf("directory", "IP:127.0.0.1,DNS:localhost", uri), alternate: leaf("alternate", "IP:127.0.0.1,DNS:localhost", uri),
+      wrongHost: leaf("wrong", "DNS:other.invalid", uri), expired: leaf("expired", "IP:127.0.0.1", uri, true),
+      external: leaf("external", "IP:127.0.0.1", "ldap://other.invalid/cn=outside?cACertificate?base"),
+      cleanup: () => rmSync(home, { recursive: true, force: true }) };
+  } catch (error) { rmSync(home, { recursive: true, force: true }); throw error; }
 }
 export async function directoryCaFixture(material: { cert: string; key: string }, caPem: string, mode: {
   requireBind?: boolean; dropAfterBind?: boolean; wrongCa?: boolean; referral?: string; duplicate?: boolean; oversized?: boolean; afterSearch?: () => void;
