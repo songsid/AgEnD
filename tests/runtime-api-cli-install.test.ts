@@ -16,8 +16,10 @@ class Response extends ServerResponse {
   override end(chunk?: unknown): this { this.body += String(chunk ?? ""); return this; }
 }
 type Kind = "admin" | "guest" | "token" | "gateway" | "remote-admin" | "none";
+/** What a request leaves out, to see that its absence alone is a refusal. */
+type Omit = "csrf" | "origin";
 const store = new WebSessionStore();
-function request(path: string, method: string, kind: Kind, body: unknown = {}): { req: IncomingMessage; res: Response } {
+function request(path: string, method: string, kind: Kind, body: unknown = {}, omit?: Omit): { req: IncomingMessage; res: Response } {
   const req = Readable.from([JSON.stringify(body)]) as unknown as IncomingMessage;
   req.method = method; req.url = path; req.headers = { host: "localhost" };
   Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
@@ -25,28 +27,30 @@ function request(path: string, method: string, kind: Kind, body: unknown = {}): 
   else if (kind !== "none") {
     const session = store.create({ tier: kind === "guest" ? "guest" : "admin", surface: kind === "remote-admin" ? "gateway" : "local", label: "test", tokenEpoch: tokenEpoch(token),
       ...(kind === "guest" ? { owner: { adapterId: "tg", userId: "1" } } : {}), ...(kind === "remote-admin" ? { exposureId: "a".repeat(32) } : {}) });
-    req.headers.cookie = `${WEB_SESSION_COOKIE}=${session.sessionId}`; req.headers.origin = "http://localhost"; req.headers["x-agend-csrf"] = csrfTokenFor(session.sessionId);
+    req.headers.cookie = `${WEB_SESSION_COOKIE}=${session.sessionId}`;
+    if (omit !== "origin") req.headers.origin = "http://localhost";
+    if (omit !== "csrf") req.headers["x-agend-csrf"] = csrfTokenFor(session.sessionId);
     if (kind === "gateway") bindGatewayRequest(req, { surface: "gateway", exposureId: "a".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
   }
   return { req, res: new Response(req) };
 }
-let calls: Array<{ operation: string; payload: any; timeout?: number }>, outcome: () => Promise<unknown>, machine: any;
+let calls: Array<{ operation: string; payload: any; timeout?: number }>, outcome: () => Promise<unknown>, machine: any, switchesAnswer: unknown;
 const hub = () => ({
   machine: (id: string) => id === machineId ? machine : undefined,
-  callAccount: vi.fn(async (_id: string, operation: string, payload: any, timeout?: number) => { calls.push({ operation, payload, timeout }); if (operation === "accounts.switches") return { accounts: { on: false }, install: { on: true } }; return outcome(); }),
+  callAccount: vi.fn(async (_id: string, operation: string, payload: any, timeout?: number) => { calls.push({ operation, payload, timeout }); if (operation === "accounts.switches") return switchesAnswer; return outcome(); }),
   listMachines: () => [], diagnosticTasks: () => [],
 }) as unknown as RuntimeCoordinator;
 let current: RuntimeCoordinator;
 const ctx = (): RuntimeApiContext => ({ webToken: token, webSessions: store, runtimeCoordinator: () => current });
-const ask = async (path: string, method: string, kind: Kind, body: unknown = {}) => {
-  const { req, res } = request(path, method, kind, body);
+const ask = async (path: string, method: string, kind: Kind, body: unknown = {}, omit?: Omit) => {
+  const { req, res } = request(path, method, kind, body, omit);
   expect(handleRuntimeRequest(req, res, new URL(path, "http://localhost"), ctx())).toBe(true);
   await vi.waitFor(() => expect(res.status).not.toBe(0));
   return { status: res.status, json: JSON.parse(res.body) };
 };
 const SETUP = `/ui/runtimes/machines/${machineId}/remote-setup`, INSTALL = `/ui/runtimes/machines/${machineId}/cli-install`;
 beforeEach(() => {
-  vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"); calls = []; outcome = async () => ({ version: "0.165.0" }); current = hub();
+  vi.stubEnv("AGEND_REMOTE_RUNTIME", "1"); calls = []; outcome = async () => ({ version: "0.165.0" }); switchesAnswer = { accounts: { on: false }, install: { on: true } }; current = hub();
   machine = { id: machineId, status: "online", runtimeInfo: { capabilities: ["exec", "remote-signin", "cli-install"] } };
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -109,5 +113,61 @@ describe("install a CLI from the dashboard: a run under way", () => {
     machine.runtimeInfo = { capabilities: ["exec"] };
     expect((await ask(SETUP, "GET", "admin")).json).toMatchObject({ capable: false, switches: null });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("install a CLI from the dashboard: a request that is not the page's own", () => {
+  it("a POST without the CSRF header, or without an Origin, is refused (403) and nothing is sent; the same request with both is accepted", async () => {
+    for (const omit of ["csrf", "origin"] as Omit[]) {
+      const refused = await ask(INSTALL, "POST", "admin", { cli: "codex" }, omit);
+      expect(refused.status, omit).toBe(403);
+      expect(calls, omit).toEqual([]);
+    }
+    expect((await ask(INSTALL, "POST", "admin", { cli: "codex" })).status).toBe(202);
+    expect(calls.filter(call => call.operation === "cli.install")).toHaveLength(1);
+  });
+});
+
+describe("N5: the job is taken before anything is awaited", () => {
+  it("two POSTs at the same moment: one install is started and the other is answered 409", async () => {
+    outcome = () => new Promise(() => {});
+    const answers = await Promise.all([ask(INSTALL, "POST", "admin", { cli: "codex" }), ask(INSTALL, "POST", "admin", { cli: "codex" }), ask(INSTALL, "POST", "admin", { cli: "claude-code" })]);
+    expect(answers.map(answer => answer.status).sort()).toEqual([202, 409, 409]);
+    expect(calls.filter(call => call.operation === "cli.install")).toHaveLength(1);
+  });
+  it("a refusal that comes at once removes the job it had taken, and shows the earlier job again", async () => {
+    expect((await ask(INSTALL, "POST", "admin", { cli: "codex" })).status).toBe(202);
+    await vi.waitFor(async () => expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ state: "done" }));
+    outcome = async () => { throw new Error("The owner of that computer has not turned this on"); };
+    expect((await ask(INSTALL, "POST", "admin", { cli: "claude-code" })).status).toBe(400);
+    expect((await ask(SETUP, "GET", "admin")).json.job).toMatchObject({ cli: "codex", state: "done", version: "0.165.0" });
+    // and the machine is not left "installing": the next request is accepted
+    outcome = async () => ({ version: "2.1.316" });
+    expect((await ask(INSTALL, "POST", "admin", { cli: "claude-code" })).status).toBe(202);
+  });
+});
+
+describe("N8: what the computer says about its switches is checked before the browser sees it", () => {
+  it("passes a well-formed answer on, with only the fields it knows", async () => {
+    switchesAnswer = { accounts: { on: true, until: 1234, extra: "x" }, install: { on: false }, secret: "s" };
+    const answer = await ask(SETUP, "GET", "admin");
+    expect(answer.status).toBe(200);
+    expect(answer.json.switches).toEqual({ accounts: { on: true, until: 1234 }, install: { on: false } });
+    expect(JSON.stringify(answer.json)).not.toMatch(/extra|secret/);
+  });
+  it.each([
+    ["a string", "all on"], ["an array", []], ["a number", 7], ["no install", { accounts: { on: true } }], ["a non-boolean on", { accounts: { on: "yes" }, install: { on: true } }],
+    ["a non-number until", { accounts: { on: true, until: "soon" }, install: { on: true } }], ["a non-finite until", { accounts: { on: true, until: null }, install: { on: true } }],
+    ["a null entry", { accounts: null, install: { on: true } }],
+  ])("a wrong shape (%s) is one fixed error and none of the answer reaches the browser", async (_name, wrong) => {
+    switchesAnswer = wrong;
+    const answer = await ask(SETUP, "GET", "admin");
+    expect(answer.status).toBe(502);
+    expect(answer.json).toEqual({ error: "That computer's answer about its setup was not understood" });
+  });
+  it("a computer that does not answer at all is still shown as `could not read` (no switches), not as an error", async () => {
+    current = { ...hub(), callAccount: vi.fn(async () => { throw new Error("offline"); }) } as unknown as RuntimeCoordinator;
+    const answer = await ask(SETUP, "GET", "admin");
+    expect(answer.status).toBe(200); expect(answer.json.switches).toBeNull();
   });
 });

@@ -18,8 +18,20 @@ export interface RuntimeApiContext extends WindowsCliApiContext { runtimeCoordin
  * how it ended. The text is the Runtime's own refusal sentence (it carries no path, URL or output), or a fixed one of ours.
  */
 export interface CliInstallJob { cli: InstallableCliId; state: "installing" | "done" | "failed"; startedAt: number; finishedAt?: number; version?: string; error?: string }
-const INSTALL_DEADLINE_MS = 11 * 60_000;          // the Runtime's own limit is 10 minutes
+const INSTALL_DEADLINE_MS = 11 * 60_000;          // longer than the Runtime's own overall limit (CLI_INSTALL_TIMEOUT_MS, 10 minutes), so the Runtime's answer is the one shown
 const installJobs = new WeakMap<RuntimeCoordinator, Map<string, CliInstallJob>>();
+/** What `accounts.switches` must answer, checked here before it goes on to the browser: only these fields, and only these types. Null: not that. */
+function switchStatesOf(value: unknown): RuntimeSwitchStates | null {
+  const one = (entry: unknown): { on: boolean; until?: number } | null => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    const { on, until } = entry as { on?: unknown; until?: unknown };
+    if (typeof on !== "boolean" || (until !== undefined && (typeof until !== "number" || !Number.isFinite(until)))) return null;
+    return { on, ...(until !== undefined ? { until: until as number } : {}) };
+  };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const accounts = one((value as { accounts?: unknown }).accounts), install = one((value as { install?: unknown }).install);
+  return accounts && install ? { accounts, install } : null;
+}
 const jobsOf = (hub: RuntimeCoordinator): Map<string, CliInstallJob> => { let jobs = installJobs.get(hub); if (!jobs) installJobs.set(hub, jobs = new Map()); return jobs; };
 function json(res: ServerResponse, status: number, value: unknown): void {
   if (res.destroyed || res.writableEnded) return;
@@ -100,8 +112,11 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
       void (async () => {
         let switches: RuntimeSwitchStates | null = null;
         const capable = machine.runtimeInfo?.capabilities.includes("cli-install") === true;
-        if (capable && machine.status === "online") { try { switches = await hub.callAccount(id, "accounts.switches", {}, 15_000) as RuntimeSwitchStates; } catch { /* shown as "could not read" */ } }
+        let answered: unknown, got = false;
+        if (capable && machine.status === "online") { try { answered = await hub.callAccount(id, "accounts.switches", {}, 15_000); got = true; } catch { /* shown as "could not read" */ } }
         if (!remoteSetupActor(req, url, ctx)) { json(res, 403, { error: "Authorization expired" }); return; }
+        // What came back from the computer is checked before the browser sees it: a wrong shape is one fixed error, not a pass-through.
+        if (got) { switches = switchStatesOf(answered); if (!switches) { json(res, 502, { error: "That computer's answer about its setup was not understood" }); return; } }
         json(res, 200, { capable, online: machine.status === "online", switches, job: jobs.get(id) ?? null,
           catalog: Object.values(INSTALLABLE_CLIS).map(({ id: cli, version }) => ({ id: cli, version })) });
       })().catch(() => json(res, 400, { error: "Could not read this computer's setup" }));
@@ -118,11 +133,16 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
         if (jobs.get(id)?.state === "installing") { json(res, 409, { error: "An install is already running on this computer", job: jobs.get(id) }); return; }
         // Fixed fields only: the Runtime takes the CLI id and the asker's name, and decides everything else itself.
         const job: CliInstallJob = { cli, state: "installing", startedAt: Date.now() };
+        // Taken in the same synchronous step as the check above, before any await: of two requests at once, only one gets here.
+        const previous = jobs.get(id); jobs.set(id, job);
         const settled = hub.callAccount(id, "cli.install", { cli, actor }, INSTALL_DEADLINE_MS).then(result => ({ result }), (error: unknown) => ({ error }));
         // A refusal known at once (offline, an older Runtime) is answered now; a run that is under way is followed through the job.
         const early = await Promise.race([settled, new Promise<undefined>(resolve => setImmediate(() => resolve(undefined)))]);
-        if (early && "error" in early) throw early.error instanceof Error ? early.error : Error("The install could not start");
-        jobs.set(id, job);
+        if (early && "error" in early) {
+          // Nothing started (offline, an older Runtime, a switch that is off): this attempt leaves no job, and the earlier one (if any) is shown again.
+          if (jobs.get(id) === job) { if (previous) jobs.set(id, previous); else jobs.delete(id); }
+          throw early.error instanceof Error ? early.error : Error("The install could not start");
+        }
         void settled.then(outcome => {
           job.finishedAt = Date.now();
           if ("error" in outcome) { job.state = "failed"; job.error = outcome.error instanceof Error ? outcome.error.message.slice(0, 400) : "The install failed"; return; }

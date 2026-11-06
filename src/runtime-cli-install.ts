@@ -13,17 +13,20 @@
  *   - `--ignore-scripts`: no vendor script runs. Claude Code's package then holds the real binary in its platform package (nested), which is
  *     what we run (its `bin/claude.exe` stays a 500-byte placeholder until the postinstall links it, and hangs if run);
  *   - four checks, all required before anything is switched: npm's own integrity check, our pin of the registry sha512 of each package,
- *     `npm audit signatures`, then the Windows Authenticode signer of the native binary ("Anthropic, PBC" / "OpenAI OpCo, LLC").
+ *     `npm audit signatures`, then the Windows Authenticode signer of the native binary (its subject's CN and O, each compared whole, see signerMatches).
  * Kiro (an MSI into Program Files), Grok and Antigravity (vendor PowerShell scripts, no npm package) are NOT in this table on purpose: the
  * dashboard shows their official command and the computer's owner runs it.
  *
  * Built-ins and shared Runtime modules only: part of the Runtime bundle.
  */
 import { execFile as nodeExecFile } from "./child-process.js";
-import { existsSync, lstatSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative } from "node:path";
 
+/** The whole install, all of its steps together (npm install, npm audit signatures, the signer check): one deadline, not one per step. */
 export const CLI_INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
+/** #3190 3b: the installer exists only where its table has a binary: native Windows on x64. (arm64 gets no installer and does not claim `cli-install`.) */
+export const nativeInstallSupported = (platform: string = process.platform, arch: string = process.arch): boolean => platform === "win32" && arch === "x64";
 export const NPM_REGISTRY = "https://registry.npmjs.org/";
 /** The Runtime's own process reads this to find what it installed; its child workers get it through spawn (see findCli). */
 export const MANAGED_CLI_ROOT_ENV = "AGEND_MANAGED_CLI_ROOT";
@@ -39,8 +42,10 @@ export interface InstallableCli {
   /** Registry sha512 of each package that lands, by node_modules path inside the install folder. */
   integrity: Readonly<Record<string, string>>;
   /** Where the runnable file is, relative to the install folder, and who must have signed it. */
-  native: { path: string; signer: RegExp };
+  native: { path: string; signer: ExpectedSigner };
 }
+/** The certificate subject's CN and O that must both be exactly this (not a prefix, not a pattern). */
+export interface ExpectedSigner { cn: string; o: string }
 export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>> = Object.freeze({
   "claude-code": {
     id: "claude-code", spec: "@anthropic-ai/claude-code", version: "2.1.316",
@@ -48,7 +53,7 @@ export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>
       "node_modules/@anthropic-ai/claude-code": "sha512-i3BpzyDkcCPnsa0CSkWgxGPs7WMsyqDkxkqT0SDxyEC5XMIxEmcUmluWRHG9VSeBY8Vyv+l9X34JvJ/Bj54nBQ==",
       "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-qs/GOpsQmgWECHVTpqUfTg33BaWoaH7CNOZQlOSqXbBOYst6YL1OqdutE12JsXg096NqGaE7vb5eFa6ZynOIKw==",
     },
-    native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: /CN="?Anthropic, PBC"?/ },
+    native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
   codex: {
     id: "codex", spec: "@openai/codex", version: "0.165.0",
@@ -56,9 +61,56 @@ export const INSTALLABLE_CLIS: Readonly<Record<InstallableCliId, InstallableCli>
       "node_modules/@openai/codex": "sha512-aiwtQVp2KBhJld966CuU5bVfQ46VNB4mNTl6giX3WGZdt4euI3tv2RUqJpnupPNA8DXHg2z+RoQ0Zfw87dy8Lw==",
       "node_modules/@openai/codex-win32-x64": "sha512-f5LMyugPSnAovnTnR1N+SNHSTfWZ+ym5A4H3zZHz/zhuMGMGZD8IxUdlSUlEbiENYyPXrJ8G3Jh+CLyzTfQB6Q==",
     },
-    native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: /CN="?OpenAI OpCo/ },
+    native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
 });
+/**
+ * A certificate subject as Windows prints it (`CN="Anthropic, PBC", O="Anthropic, PBC", L=..., C=US`) as a list of [type, value]. A value is either plain
+ * (up to the next comma; `\\` escapes the next character) or in double quotes (a comma inside is part of the value, `""` is one quote). Anything it cannot
+ * read with certainty (an unclosed quote, text after a closing quote, a multi-valued RDN with `+`, an empty type) is null: an unreadable subject matches nothing.
+ */
+export function parseSubject(subject: string): Array<[string, string]> | null {
+  const out: Array<[string, string]> = [];
+  let at = 0;
+  const blanks = (): void => { while (subject[at] === " " || subject[at] === "\t") at++; };
+  while (at < subject.length) {
+    blanks();
+    const eq = subject.indexOf("=", at);
+    if (eq < 0) return null;
+    const type = subject.slice(at, eq).trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9-]*$|^(?:OID\.)?\d+(?:\.\d+)*$/.test(type)) return null;
+    at = eq + 1; blanks();
+    let value = "";
+    if (subject[at] === '"') {
+      at++;
+      for (;;) {
+        if (at >= subject.length) return null;
+        if (subject[at] === '"') { if (subject[at + 1] === '"') { value += '"'; at += 2; continue; } at++; break; }
+        value += subject[at++];
+      }
+      blanks();
+      if (at < subject.length && subject[at] !== ",") return null;
+    } else {
+      while (at < subject.length && subject[at] !== ",") {
+        if (subject[at] === "+") return null;
+        if (subject[at] === "\\") { if (at + 1 >= subject.length) return null; value += subject[at + 1]; at += 2; continue; }
+        value += subject[at++];
+      }
+      value = value.trim();
+    }
+    out.push([type, value]);
+    if (subject[at] === ",") { at++; if (at >= subject.length) return null; }
+  }
+  return out.length ? out : null;
+}
+/** The subject's CN and O are each EXACTLY the expected one, and each appears once. "Anthropic, PBC Evil" or an O that is right beside a wrong CN is not it. */
+export function signerMatches(subject: string, expected: ExpectedSigner): boolean {
+  const parts = parseSubject(subject);
+  if (!parts) return false;
+  const only = (type: string): string | null => { const found = parts.filter(([name]) => name === type); return found.length === 1 ? found[0][1] : null; };
+  const cn = only("CN"), o = only("O");
+  return cn !== null && o !== null && cn === expected.cn && o === expected.o;
+}
 export const isInstallableCli = (id: unknown): id is InstallableCliId => typeof id === "string" && Object.hasOwn(INSTALLABLE_CLIS, id);
 
 export type InstallStep = "installing" | "checking-integrity" | "checking-signatures" | "checking-publisher" | "ready";
@@ -71,11 +123,16 @@ export interface InstallDeps {
   root: string;
   nodePath?: string;
   /** Runs one program without a shell. Tests replace it; production uses execFile with this environment, a timeout and an exact-child cancel. */
-  run?: (file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }) => Promise<{ code: number | null; stdout: string }>;
+  run?: (file: string, args: string[], options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number; signal?: AbortSignal }) => Promise<{ code: number | null; stdout: string; /** The output went over the limit and the child was stopped for it (not a timeout). */ overflow?: boolean }>;
   env?: NodeJS.ProcessEnv;
-  signerOf?: (file: string) => Promise<{ status: string; subject: string }>;
+  signerOf?: (file: string, signal?: AbortSignal) => Promise<{ status: string; subject: string }>;
   report?: (step: InstallStep) => void;
+  /** The Runtime stopping: the install ends as `cancelled`. The overall deadline is separate and ends it as `timed-out`. */
   signal?: AbortSignal;
+  /** The overall deadline of the whole install. Production never sets it (10 minutes); a test shortens it. */
+  deadlineMs?: number;
+  /** Renames a folder (the swap of the old install and the new one). Tests make it fail on purpose. */
+  rename?: (from: string, to: string) => void;
 }
 /** What a child npm may see: the Windows basics and the user's proxy/certificate settings, nothing else (same idea as nativeCliEnvironment). */
 export function installEnvironment(source: NodeJS.ProcessEnv, cache: string): NodeJS.ProcessEnv {
@@ -87,14 +144,18 @@ export function installEnvironment(source: NodeJS.ProcessEnv, cache: string): No
 }
 const defaultRun: NonNullable<InstallDeps["run"]> = (file, args, { cwd, env, timeoutMs, signal }) => new Promise(resolve => {
   nodeExecFile(file, args, { cwd, env, timeout: timeoutMs, maxBuffer: 512 * 1024, windowsHide: true, shell: false, encoding: "utf8", signal },
-    (error, stdout, stderr) => resolve({ code: error ? (typeof (error as { code?: unknown }).code === "number" ? (error as { code: number }).code : null) : 0, stdout: `${stdout}${stderr}` }));
+    (error, stdout, stderr) => {
+      const code = (error as { code?: unknown } | null)?.code;
+      // Past maxBuffer the child is killed too, but that is not a timeout: it is reported as its own thing.
+      resolve({ code: error ? (typeof code === "number" ? code : null) : 0, stdout: `${stdout}${stderr}`, ...(code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" ? { overflow: true } : {}) });
+    });
 });
 /** Windows' own answer about who signed a file (Get-AuthenticodeSignature through Windows PowerShell; the path travels in the environment, never in the command text). */
-export const windowsSignerOf = async (file: string, run = defaultRun): Promise<{ status: string; subject: string }> => {
+export const windowsSignerOf = async (file: string, run = defaultRun, signal?: AbortSignal): Promise<{ status: string; subject: string }> => {
   const system = process.env.SystemRoot || "C:\\Windows";
   const result = await run(join(system, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-Command", "$s = Get-AuthenticodeSignature -LiteralPath $env:AGEND_CHECK_FILE; \"$($s.Status)|$($s.SignerCertificate.Subject)\""],
-    { cwd: system, env: { SystemRoot: system, AGEND_CHECK_FILE: file }, timeoutMs: 60_000 });
+    { cwd: system, env: { SystemRoot: system, AGEND_CHECK_FILE: file }, timeoutMs: 60_000, ...(signal ? { signal } : {}) });
   const [status = "", ...rest] = result.stdout.trim().split("|");
   return { status, subject: rest.join("|") };
 };
@@ -114,27 +175,52 @@ export function managedCliExecutable(root: string, id: string): { command: strin
   } catch { return null; }
 }
 
-/** Installs the pinned CLI under `<root>\<id>\<version>`, verifies it, and only then points `current.json` at it. */
+/** Removes a path and swallows any failure (a file in use, a lock): used only for leftovers that the next install clears again. */
+const bestEffortRemove = (path: string): void => { try { rmSync(path, { recursive: true, force: true }); } catch { /* cleared by the next install */ } };
+/** After a switch: the other versions of this CLI and the npm cache are not needed any more. Their names are ours (`<x.y.z>`, `.old`, `.staging`); anything else stays. */
+function pruneManaged(root: string, id: string, keep: string): void {
+  try {
+    for (const entry of readdirSync(join(root, id))) if (entry !== keep && /^\d+\.\d+\.\d+(?:\.old|\.staging)?$/.test(entry)) bestEffortRemove(join(root, id, entry));
+  } catch { /* nothing to clear, or cleared next time */ }
+  bestEffortRemove(join(root, ".npm-cache"));
+}
+
+/**
+ * Installs the pinned CLI under `<root>\<id>\<version>`, verifies it, and only then points `current.json` at it.
+ *   - Already installed (the pointer is this pin and its program is there): nothing is done at all.
+ *   - One deadline covers every step. The Runtime stopping ends it as `cancelled`; the deadline ends it as `timed-out`.
+ *   - The new folder replaces an old one by moving the old one aside (`<version>.old`), never by deleting it first: if the swap fails, the old one is moved back.
+ */
 export async function installManagedCli(id: unknown, deps: InstallDeps): Promise<{ version: string; command: string }> {
   if (!isInstallableCli(id)) throw new CliInstallError("install-failed", "This CLI cannot be installed from the dashboard");
   const cli = INSTALLABLE_CLIS[id];
-  const run = deps.run ?? defaultRun, report = deps.report ?? (() => {}), node = deps.nodePath ?? process.execPath;
+  const run = deps.run ?? defaultRun, report = deps.report ?? (() => {}), node = deps.nodePath ?? process.execPath, rename = deps.rename ?? renameSync;
   const fail = (reason: InstallFailure, message: string): never => { throw new CliInstallError(reason, message); };
-  const npmCli = join(dirname(node), "node_modules", "npm", "bin", "npm-cli.js");
-  if (!existsSync(npmCli)) fail("npm-missing", "npm was not found next to this computer's Node.js, so nothing was installed");
-  const folder = join(deps.root, id, cli.version), staging = `${folder}.staging`;
+  const folder = join(deps.root, id, cli.version), staging = `${folder}.staging`, old = `${folder}.old`;
   if (!inside(deps.root, folder) || !inside(deps.root, staging)) throw new CliInstallError("install-failed", "The install folder must stay inside the Runtime's CLI folder");
-  mkdirSync(deps.root, { recursive: true, mode: 0o700 });
   // A link where we are about to write is not followed: the CLI folder and its id folder are ours, plain folders.
   for (const dir of [deps.root, join(deps.root, id)]) if (existsSync(dir) && lstatSync(dir).isSymbolicLink()) fail("install-failed", "The Runtime's CLI folder is a link, so nothing was installed");
-  rmSync(staging, { recursive: true, force: true }); mkdirSync(staging, { recursive: true, mode: 0o700 });
+  const present = managedCliExecutable(deps.root, id);
+  if (present && present.version === cli.version) { report("ready"); return { version: cli.version, command: present.command }; }
+  const npmCli = join(dirname(node), "node_modules", "npm", "bin", "npm-cli.js");
+  if (!existsSync(npmCli)) fail("npm-missing", "npm was not found next to this computer's Node.js, so nothing was installed");
+  mkdirSync(deps.root, { recursive: true, mode: 0o700 });
+  // One deadline for all of it; the Runtime's own stop is a separate reason and is checked first.
+  const deadline = AbortSignal.timeout(deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS);
+  const signal = deps.signal ? AbortSignal.any([deps.signal, deadline]) : deadline;
+  const stopped = (): void => {
+    if (deps.signal?.aborted) fail("cancelled", "The install was cancelled");
+    if (deadline.aborted) fail("timed-out", "The install did not finish in time and was stopped");
+  };
+  bestEffortRemove(staging); mkdirSync(staging, { recursive: true, mode: 0o700 });
   const env = installEnvironment(deps.env ?? process.env, join(deps.root, ".npm-cache"));
-  const npm = (args: string[]) => run(node, [npmCli, ...args], { cwd: staging, env, timeoutMs: CLI_INSTALL_TIMEOUT_MS, signal: deps.signal });
+  const npm = (args: string[]) => run(node, [npmCli, ...args], { cwd: staging, env, timeoutMs: deps.deadlineMs ?? CLI_INSTALL_TIMEOUT_MS, signal });
   try {
     report("installing");
     writeFileSync(join(staging, "package.json"), '{"name":"agend-managed-cli","private":true,"version":"0.0.0"}\n');
     const installed = await npm(["install", `${cli.spec}@${cli.version}`, "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", NPM_REGISTRY]);
-    if (deps.signal?.aborted) fail("cancelled", "The install was cancelled");
+    stopped();
+    if (installed.overflow) fail("install-failed", "npm could not install the package (its output was far larger than expected)");
     if (installed.code === null) fail("timed-out", "The install did not finish in time and was stopped");
     if (installed.code !== 0) fail("install-failed", "npm could not install the package (see this computer's network and proxy settings)");
     report("checking-integrity");
@@ -145,21 +231,39 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     }
     report("checking-signatures");
     const audited = await npm(["audit", "signatures"]);
-    if (deps.signal?.aborted) fail("cancelled", "The install was cancelled");
+    stopped();
+    if (audited.overflow) fail("signature-check-failed", "npm could not verify the registry signatures of the packages");
+    if (audited.code === null) fail("timed-out", "The install did not finish in time and was stopped");
     if (audited.code !== 0) fail("signature-check-failed", "npm could not verify the registry signatures of the packages");
     report("checking-publisher");
     const file = join(staging, cli.native.path);
     if (!existsSync(file) || !statSync(file).isFile()) fail("install-failed", "The package did not contain the expected program");
-    const signer = await (deps.signerOf ?? (f => windowsSignerOf(f, run)))(file);
-    if (signer.status !== "Valid" || !cli.native.signer.test(signer.subject)) fail("publisher-mismatch", "The program is not signed by the expected publisher, so nothing was installed");
-    if (deps.signal?.aborted) fail("cancelled", "The install was cancelled");
-    rmSync(folder, { recursive: true, force: true }); renameSync(staging, folder);
-    const pointer = join(deps.root, id, "current.json");
-    writeFileSync(`${pointer}.tmp`, JSON.stringify({ version: cli.version })); renameSync(`${pointer}.tmp`, pointer);
+    const signer = await (deps.signerOf ?? ((f, s) => windowsSignerOf(f, run, s)))(file, signal);
+    stopped();
+    if (signer.status !== "Valid" || !signerMatches(signer.subject, cli.native.signer)) fail("publisher-mismatch", "The program is not signed by the expected publisher, so nothing was installed");
+    stopped();
+    // The swap. Whatever was there is moved aside, not deleted: a failure puts it back, and `current.json` is not touched until the new folder is in place.
+    bestEffortRemove(old);
+    const hadOld = existsSync(folder);
+    let swapped = false;
+    try {
+      if (hadOld) rename(folder, old);
+      rename(staging, folder); swapped = true;
+      const pointer = join(deps.root, id, "current.json");
+      writeFileSync(`${pointer}.tmp`, JSON.stringify({ version: cli.version })); rename(`${pointer}.tmp`, pointer);
+    } catch (error) {
+      // Back to what it was: the new folder (if it landed) goes, the old one comes back.
+      if (swapped) bestEffortRemove(folder);
+      if (hadOld) { try { if (!existsSync(folder)) rename(old, folder); } catch { /* nothing more can be done from here */ } }
+      bestEffortRemove(`${join(deps.root, id, "current.json")}.tmp`);
+      throw error;
+    }
+    bestEffortRemove(old);
+    pruneManaged(deps.root, id, cli.version);
     report("ready");
     return { version: cli.version, command: join(folder, cli.native.path) };
   } catch (error) {
-    rmSync(staging, { recursive: true, force: true });
+    bestEffortRemove(staging);
     // Only our own errors keep their text; a filesystem or JSON error could carry a path or a package line.
     throw error instanceof CliInstallError ? error : new CliInstallError("install-failed", "The install could not be completed on this computer");
   }

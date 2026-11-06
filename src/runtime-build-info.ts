@@ -8,6 +8,7 @@ import { RUNTIME_PROTOCOL_VERSION, validRuntimeVersion, type RuntimeInfo } from 
 import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
 import { ACCOUNT_IDENTITY_CAPABILITY } from "./claude-auth-status.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
+import { nativeInstallSupported } from "./runtime-cli-install.js";
 
 export const RUNTIME_BUNDLE_MODULES = Object.freeze([
   "runtime-cli.js", "runtime-client.js", "runtime-client-store.js", "runtime-protocol.js", "runtime-build-info.js", "runtime-connection.js", "windows-cli.js", "windows-cli-worker.js",
@@ -32,8 +33,8 @@ export function runtimeCodeBuildId(version: string, modules: ReadonlyArray<reado
 export function readRuntimeInfo(options: { moduleDirectory?: string; packagePath?: string; panes?: boolean; /** The Runtime has its own CLI installer (native Windows). */ install?: boolean } = {}): RuntimeInfo {
   const directory = options.moduleDirectory ?? dirname(fileURLToPath(import.meta.url));
   const result: RuntimeInfo = { protocolVersions: [RUNTIME_PROTOCOL_VERSION], capabilities: ["exec", "mcp", ...((options.panes ?? process.platform === "win32") ? ["panes"] : []), RUNTIME_CREDENTIAL_CAPABILITY, ACCOUNT_IDENTITY_CAPABILITY, REMOTE_SIGNIN_CAPABILITY,
-    // Claimed only when this Runtime has an installer: AgEnD must not offer an install to one that cannot do it.
-    ...((options.install ?? process.platform === "win32") ? [CLI_INSTALL_CAPABILITY] : [])] };
+    // Claimed only when this Runtime has an installer (native Windows x64): AgEnD must not offer an install to one that cannot do it.
+    ...((options.install ?? nativeInstallSupported()) ? [CLI_INSTALL_CAPABILITY] : [])] };
   try {
     const pkg: unknown = JSON.parse(boundedFile(options.packagePath ?? join(directory, "..", "package.json"), 64 * 1024).toString("utf8"));
     if (!pkg || typeof pkg !== "object" || !("name" in pkg) || !["@songsid/agend", "@songsid/agend-runtime"].includes(String(pkg.name)) || !("version" in pkg) || !validRuntimeVersion(pkg.version)) return result;
