@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cachedCredentialStatus, credentialProfilesRoot, ensureCredentialProfile, rememberCredentialStatus } from "../src/runtime-credential-profiles.js";
 import { CREATED_PROFILES_FILE, ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, isCreatedProfile, listRemovalLeftovers, removeOwnedProfile, requireOwnedProfile } from "../src/runtime-profile-ownership.js";
 
@@ -179,5 +179,38 @@ describe("the folder above is checked again after the rename, and a leftover is 
     createRuntimeProfile(root, "claude-code", "work"); mkdirSync(join(root, "claude-code", ".removing-xyz")); writeFileSync(join(root, "claude-code", ".removing-0123456789abcdef"), "a file");
     expect(listRemovalLeftovers(root, "claude-code")).toEqual([]); mkdirSync(join(root, "claude-code", ".removing-0123456789abcdef.d"));
     expect(listRemovalLeftovers(root, "claude-code")).toEqual([]); expect(() => listRemovalLeftovers(root, "codex")).toThrow(/Claude Code only/);
+  });
+});
+
+describe("the isolation shared by remove and sign-out (review round)", () => {
+  it("lists a `.working-<hex>` folder as a leftover too", () => {
+    const { root } = setup(); createRuntimeProfile(root, "claude-code", "work");
+    mkdirSync(join(root, "claude-code", ".working-0123456789abcdef")); mkdirSync(join(root, "claude-code", ".removing-fedcba9876543210")); mkdirSync(join(root, "claude-code", ".working-short"));
+    expect(listRemovalLeftovers(root, "claude-code")).toEqual([".removing-fedcba9876543210", ".working-0123456789abcdef"]);
+  });
+  it("beforeCommit is the last thing before the rename: when it throws nothing was renamed, and it runs after the checks and the swap seam", async () => {
+    const { pairing, root } = setup(), directory = createRuntimeProfile(root, "claude-code", "work").directory; writeFileSync(join(directory, "f"), "x"); const order: string[] = [];
+    const error = await refusal(() => removeOwnedProfile(pairing, root, "claude-code", "work", { inspect: paths => { order.push(`inspect${paths.length}`); return paths.map(() => false); }, afterChecks: () => { order.push("afterChecks"); },
+      beforeCommit: () => { order.push("beforeCommit"); throw new ProfileOwnershipRefusal("stop", "in_use"); } }));
+    expect(error.reason).toBe("in_use"); expect(order).toEqual(["inspect4", "afterChecks", "beforeCommit"]); expect(readFileSync(join(directory, "f"), "utf8")).toBe("x"); expect(readdirSync(join(root, "claude-code"))).toEqual(["work"]);
+  });
+  it("withIsolatedOwnedProfile: the work sees the renamed folder, the name is back afterwards, and the result is returned", async () => {
+    const { pairing, root } = setup(), directory = createRuntimeProfile(root, "claude-code", "work").directory; writeFileSync(join(directory, "f"), "x");
+    const { withIsolatedOwnedProfile } = await import("../src/runtime-profile-ownership.js"); let seen = "";
+    const result = await withIsolatedOwnedProfile(pairing, root, "claude-code", "work", {}, async (dir) => { seen = dir; expect(existsSync(directory)).toBe(false); expect(readFileSync(join(dir, "f"), "utf8")).toBe("x"); return 42; });
+    expect(result).toBe(42); expect(seen).toMatch(/\.working-[a-f0-9]{16}$/); expect(existsSync(join(directory, "f"))).toBe(true); expect(readdirSync(join(root, "claude-code"))).toEqual(["work"]);
+  });
+  it("it never puts the name back over something that took it meanwhile, and says so locally", async () => {
+    const { pairing, root } = setup(), directory = createRuntimeProfile(root, "claude-code", "work").directory; const report = vi.fn();
+    const { withIsolatedOwnedProfile } = await import("../src/runtime-profile-ownership.js");
+    const error = await withIsolatedOwnedProfile(pairing, root, "claude-code", "work", { report }, async () => { mkdirSync(directory); writeFileSync(join(directory, "planted"), "p"); return 1; }).catch((e: Error) => e);
+    expect((error as Error).message).toMatch(/could not be put back/); expect(report).toHaveBeenCalledTimes(1); expect(readFileSync(join(directory, "planted"), "utf8")).toBe("p"); expect(listRemovalLeftovers(root, "claude-code")).toHaveLength(1);
+  });
+  it("work that fails with a process that is not confirmed gone keeps the temporary name until that process ends, then puts it back", async () => {
+    const { pairing, root } = setup(), directory = createRuntimeProfile(root, "claude-code", "work").directory; const report = vi.fn();
+    const { withIsolatedOwnedProfile } = await import("../src/runtime-profile-ownership.js"); let end!: () => void; const ended = new Promise<void>(done => { end = done; });
+    const error = await withIsolatedOwnedProfile(pairing, root, "claude-code", "work", { report }, async () => { throw Object.assign(new Error("not confirmed"), { ended }); }).catch((e: Error) => e);
+    expect((error as Error).message).toBe("not confirmed"); expect(existsSync(directory)).toBe(false); expect(listRemovalLeftovers(root, "claude-code")).toHaveLength(1); expect(report).toHaveBeenCalledTimes(1);
+    end(); await vi.waitFor(() => expect(existsSync(directory)).toBe(true)); expect(listRemovalLeftovers(root, "claude-code")).toEqual([]);
   });
 });

@@ -1,11 +1,11 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { PassThrough } from "node:stream";
 import type { ChildProcess } from "node:child_process";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RemoteAccounts, type RemoteAccountsDeps, type RemoteStatusAnswer } from "../src/runtime-remote-accounts.js";
+import { MAX_CONCURRENT_CHECKS, ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps, type RemoteStatusAnswer } from "../src/runtime-remote-accounts.js";
 import { cachedCredentialStatus, credentialProfilesRoot } from "../src/runtime-credential-profiles.js";
 import { createRuntimeProfile, isCreatedProfile } from "../src/runtime-profile-ownership.js";
 import { AUDIT_FILE, setRemoteSwitch } from "../src/runtime-remote-setup.js";
@@ -32,7 +32,7 @@ function fixture(extra: Partial<RemoteAccountsDeps> = {}) {
   const runLogout = vi.fn(async (): Promise<number | null> => { answer = { loggedIn: false }; return 0; });
   const changed = vi.fn(); const inUse = vi.fn((): "task" | "pane" | "unknown" | undefined => undefined); const defaultProfile = vi.fn((): string | undefined => undefined);
   const deps: RemoteAccountsDeps = { pairingDirectory: pairing, credentialRoot: root, now: () => now, status, find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }),
-    runLogout, inUse, defaultProfile, changed,
+    runLogout, inUse, inUseNow: (name: string) => (inUse as unknown as (n: string) => unknown)(name) as "task" | "pane" | "unknown" | undefined, defaultProfile, changed,
     signIn: { scratchRoot: scratch(), spawn: (_c, args, options) => { spawned.push({ args, env: options.env }); const child = new FakeChild(); children.push(child); return child as unknown as ChildProcess; } },
     ...extra };
   const accounts = new RemoteAccounts(deps);
@@ -210,7 +210,7 @@ describe("sign out", () => {
     f.setAnswer({ loggedIn: true }); f.runLogout.mockImplementation(async () => { f.setAnswer({ loggedIn: false }); return 0; });
     await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
     const [executable, args, env] = f.runLogout.mock.calls[0] as unknown as [{ command: string }, string[], NodeJS.ProcessEnv];
-    expect(executable.command).toBe("claude.exe"); expect(args).toEqual(["auth", "logout"]); expect(env.CLAUDE_CONFIG_DIR).toBe(directory);
+    expect(executable.command).toBe("claude.exe"); expect(args).toEqual(["auth", "logout"]); expect(env.CLAUDE_CONFIG_DIR).toMatch(/[\\/]\.working-[a-f0-9]{16}$/); expect(existsSync(directory)).toBe(true);   // the logout ran against the renamed folder; the name is back
     expect(existsSync(join(directory, "backups", ".claude.json.backup.1"))).toBe(false); expect(existsSync(join(directory, "backups", "keep"))).toBe(true);
     expect(cachedCredentialStatus(f.root, "claude-code", "work")).toEqual({ loggedIn: false });
     expect(f.audit().map(row => `${row.action}:${row.outcome}`)).toEqual(["profile.signout:started", "profile.signout:ok"]);
@@ -366,8 +366,8 @@ describe("one operation at a time on a profile (item 12)", () => {
     await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/Another operation on "work" is in progress/);
     await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/Another operation/);
     await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "home", actor })).resolves.toEqual({ removed: true });
-    expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
-    release(); await expect(first).resolves.toEqual({ loggedIn: false });
+    expect(existsSync(join(f.root, "claude-code", "work"))).toBe(false); expect(readdirSync(join(f.root, "claude-code")).some(name => /^\.working-[a-f0-9]{16}$/.test(name))).toBe(true);   // under its working name while the logout runs
+    release(); await expect(first).resolves.toEqual({ loggedIn: false }); expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
     f.tick(6000); await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
     expect(f.audit().filter(row => row.reason === "busy").map(row => row.action)).toEqual(["profile.remove", "profile.signout"]);   // one line per kind
   });
@@ -550,5 +550,220 @@ describe("round 3: the order of the pace check, `since`, and the local report", 
     expect(error.message).toBe("The operation could not be completed on this computer. Check that computer's Runtime window.");
     expect(report).toHaveBeenCalledTimes(1); expect(report.mock.calls[0]![0]).toMatch(/could not finish and could not be undone.*agend-runtime profile list/); expect(report.mock.calls[0]![0]).not.toMatch(/[A-Za-z]:\\|\/tmp|\.removing/);
     expect(f.auditText()).not.toMatch(/removing|profile list/);
+  });
+});
+
+
+// ---------------------------------------------------------------- review of the upstream PR: fences at the edges of every effect
+function held<T = void>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
+const NOT_AVAILABLE = /stopping or its connection changed/;
+const startReq2 = (profile: string) => ({ cli: "claude-code", profile, method: "subscription", actor });
+/** An inspector seam that lets the first calls through and holds the call number `at` (1-based) until released; every call is counted. */
+function holdInspect(at: number) { const gate = held(); let calls = 0; return { gate, calls: () => calls, inspect: async (paths: readonly string[]) => { calls++; if (calls === at) await gate.promise; return paths.map(() => false); } }; }
+const nothingCreated = (f: F, name: string) => !existsSync(join(f.root, "claude-code", name)) && f.spawned.length === 0;
+
+describe("P1: stop and a changed connection fence the work that is waiting (and wait for it)", () => {
+  it("a start waiting in `find` when the Runtime stops: stop waits for it to unwind, and nothing is created or started when the lookup answers", async () => {
+    const lookup = held<{ path: string; command: string; args: string[] }>(); const f = fixture({ find: () => lookup.promise }); f.on();
+    const request = ask(f, "signin.start", startReq2("late")).catch((e: Error) => e); await new Promise(done => setTimeout(done, 20));
+    let stopped = false; const stopping = f.accounts.stop().then(() => { stopped = true; }); await new Promise(done => setTimeout(done, 30));
+    expect(stopped).toBe(false);                                                                   // stop is holding for the request that is still in flight
+    lookup.resolve({ path: "claude.exe", command: "claude.exe", args: [] }); await stopping;
+    const error = await request; expect(error).toBeInstanceOf(Error); expect((error as Error).message).toMatch(NOT_AVAILABLE);
+    expect(nothingCreated(f, "late")).toBe(true); expect(f.audit().some(row => row.outcome === "started" || row.action === "profile.add")).toBe(false);
+  });
+  it("after stop, nothing is admitted at all (every operation answers that the Runtime is stopping)", async () => {
+    const f = fixture(); f.on(); owned(f); await f.accounts.stop();
+    for (const [operation, payload] of [["signin.start", startReq2("x")], ["accounts.signout", { cli: "claude-code", profile: "work", actor }], ["accounts.remove", { cli: "claude-code", profile: "work", actor }],
+      ["accounts.check", { cli: "claude-code", profile: "work" }], ["accounts.switches", {}], ["signin.close", { sessionId: "0".repeat(32) }]] as Array<[string, unknown]>) await expect(ask(f, operation, payload), operation).rejects.toThrow(NOT_AVAILABLE);
+    expect(f.runLogout).not.toHaveBeenCalled(); expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
+  });
+  it("stop ends an open sign-in and waits for a sign-out that is running (the process is owned until it has finished)", async () => {
+    const f = fixture(); f.on(); owned(f, "other"); const { sessionId } = await ask(f, "signin.start", startReq2("work")); expect(sessionId).toMatch(/^[a-f0-9]{32}$/);
+    let release!: () => void; f.runLogout.mockImplementation(() => new Promise(done => { release = () => done(0); }));
+    f.tick(6000); const signout = ask(f, "accounts.signout", { cli: "claude-code", profile: "other", actor }).catch((e: Error) => e); await vi.waitFor(() => expect(f.runLogout).toHaveBeenCalled());
+    let stopped = false; const stopping = f.accounts.stop().then(() => { stopped = true; }); await new Promise(done => setTimeout(done, 30));
+    expect(stopped).toBe(false); release(); await stopping; await signout;
+    expect(f.children[0]!.killed).toBe(true); expect(f.accounts.idle()).toBe(true);
+  });
+  it("a connection that changes while a start waits: the old request may not create or start anything, and the new one is unaffected", async () => {
+    const lookup = held<{ path: string; command: string; args: string[] }>(); const f = fixture({ find: () => lookup.promise }); f.on();
+    const request = ask(f, "signin.start", startReq2("late")).catch((e: Error) => e); await new Promise(done => setTimeout(done, 20));
+    f.accounts.connectionChanged(); lookup.resolve({ path: "claude.exe", command: "claude.exe", args: [] });
+    expect(((await request) as Error).message).toMatch(NOT_AVAILABLE); expect(nothingCreated(f, "late")).toBe(true);
+    const g = fixture(); g.on(); g.accounts.connectionChanged(); await expect(ask(g, "signin.start", startReq2("fresh"))).resolves.toMatchObject({ sessionId: expect.any(String) });   // a request that arrives after the change is the new connection's
+  });
+  it("a request that says its own connection is no longer the live one is refused before it does anything", async () => {
+    const f = fixture(); f.on(); let live = true;
+    const request = f.accounts.handle("signin.start", startReq2("x"), () => live); live = false;
+    await expect(request).rejects.toThrow(/./); expect(nothingCreated(f, "x")).toBe(true);
+    await expect(f.accounts.handle("accounts.switches", {}, () => false)).rejects.toThrow(NOT_AVAILABLE);
+  });
+  it("a sign-in opened over a connection is ended when that connection changes, and recorded", async () => {
+    const f = fixture(); f.on(); await ask(f, "signin.start", startReq2("work"));
+    f.accounts.connectionChanged(); await vi.waitFor(() => expect(f.children[0]!.killed).toBe(true));
+    await vi.waitFor(() => expect(f.audit().at(-1)).toMatchObject({ action: "signin", outcome: "failed" })); expect(f.accounts.idle()).toBe(true);
+  });
+});
+
+describe("P1: the local switch is looked at again at the edge of every effect", () => {
+  it("signin.start: a switch turned off while the CLI lookup waits means no folder, no child and no `started`", async () => {
+    const lookup = held<{ path: string; command: string; args: string[] }>(); const f = fixture({ find: () => lookup.promise }); f.on();
+    const request = ask(f, "signin.start", startReq2("late")).catch((e: Error) => e); await new Promise(done => setTimeout(done, 20));
+    setRemoteSwitch(f.pairing, "accounts", false, undefined, 1_700_000_000_000); lookup.resolve({ path: "claude.exe", command: "claude.exe", args: [] });
+    expect(((await request) as Error).message).toMatch(/turned off/); expect(nothingCreated(f, "late")).toBe(true); expect(f.audit().some(row => row.outcome === "started")).toBe(false);
+  });
+  it("signin.start: a switch that runs out (its --for time passes) while the lookup waits is the same", async () => {
+    const lookup = held<{ path: string; command: string; args: string[] }>(); const f = fixture({ find: () => lookup.promise }); setRemoteSwitch(f.pairing, "accounts", true, 60_000, 1_700_000_000_000);
+    const request = ask(f, "signin.start", startReq2("late")).catch((e: Error) => e); await new Promise(done => setTimeout(done, 20));
+    f.tick(61_000); lookup.resolve({ path: "claude.exe", command: "claude.exe", args: [] });
+    expect(((await request) as Error).message).toMatch(/turned off/); expect(nothingCreated(f, "late")).toBe(true);
+  });
+  it("accounts.signout: switch off while the ownership inspection waits: no logout, the folder is untouched", async () => {
+    const hold = holdInspect(1); const f = fixture({ ownership: { inspect: hold.inspect } }); f.on(); const directory = owned(f); writeFileSync(join(directory, ".credentials.json"), "secret");
+    const request = ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e); await vi.waitFor(() => expect(hold.calls()).toBe(1));
+    setRemoteSwitch(f.pairing, "accounts", false, undefined, 1_700_000_000_000); hold.gate.resolve();
+    expect(((await request) as Error).message).toMatch(/turned off/); expect(f.runLogout).not.toHaveBeenCalled(); expect(readFileSync(join(directory, ".credentials.json"), "utf8")).toBe("secret");
+    expect(readdirSync(join(f.root, "claude-code")).filter(name => name.startsWith("."))).toEqual([]);
+  });
+  it("accounts.signout: the switch turned off DURING the logout stops the backups from being deleted", async () => {
+    const f = fixture(); f.on(); const directory = owned(f); mkdirSync(join(directory, "backups")); writeFileSync(join(directory, "backups", ".claude.json.backup.1"), "old identity");
+    f.runLogout.mockImplementation(async () => { setRemoteSwitch(f.pairing, "accounts", false, undefined, 1_700_000_000_000); return 0; });
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/turned off/);
+    expect(readFileSync(join(directory, "backups", ".claude.json.backup.1"), "utf8")).toBe("old identity"); expect(existsSync(directory)).toBe(true);
+  });
+  it("accounts.remove: switch off, or expired, while the removal's own inspection waits (just before the rename): nothing is renamed or deleted", async () => {
+    for (const how of ["off", "expired"] as const) {
+      const hold = holdInspect(2); const f = fixture({ ownership: { inspect: hold.inspect } }); if (how === "off") f.on(); else setRemoteSwitch(f.pairing, "accounts", true, 60_000, 1_700_000_000_000);
+      const directory = owned(f); writeFileSync(join(directory, ".credentials.json"), "secret");
+      const request = ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e); await vi.waitFor(() => expect(hold.calls()).toBe(2));
+      if (how === "off") setRemoteSwitch(f.pairing, "accounts", false, undefined, 1_700_000_000_000); else f.tick(61_000); hold.gate.resolve();
+      expect(((await request) as Error).message, how).toMatch(/turned off/); expect(readFileSync(join(directory, ".credentials.json"), "utf8")).toBe("secret");
+      expect(readdirSync(join(f.root, "claude-code")).filter(name => name.startsWith("."))).toEqual([]); expect(isCreatedProfile(f.root, "claude-code", "work")).toBe(true);
+    }
+  });
+  it("accounts.check: a switch turned off while `auth status` runs means nothing is cached", async () => {
+    const answer = held<RemoteStatusAnswer>(); const f = fixture({ status: () => answer.promise }); f.on(); owned(f);
+    const request = ask(f, "accounts.check", { cli: "claude-code", profile: "work" }).catch((e: Error) => e); await new Promise(done => setTimeout(done, 20));
+    setRemoteSwitch(f.pairing, "accounts", false, undefined, 1_700_000_000_000); answer.resolve({ loggedIn: true });
+    expect(((await request) as Error).message).toMatch(/turned off/); expect(cachedCredentialStatus(f.root, "claude-code", "work")).toBeNull();
+  });
+  it("closing and ending what is already running stays possible with the switch off", async () => {
+    const f = fixture(); f.on(); const { sessionId } = await ask(f, "signin.start", startReq2("work")); setRemoteSwitch(f.pairing, "accounts", false, undefined, 1_700_000_000_000);
+    await expect(ask(f, "signin.close", { sessionId })).resolves.toEqual({ closed: true }); await expect(ask(f, "accounts.switches", {})).resolves.toMatchObject({ accounts: { on: false } });
+    await f.accounts.stop();
+  });
+});
+
+describe("P2: default and in-use protection holds until the rename (accounts.remove)", () => {
+  const removing = async (flip: (f: F) => void) => {
+    const hold = holdInspect(2); const f = fixture({ ownership: { inspect: hold.inspect } }); f.on(); const directory = owned(f); writeFileSync(join(directory, ".credentials.json"), "secret");
+    const request = ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e); await vi.waitFor(() => expect(hold.calls()).toBe(2));
+    flip(f); hold.gate.resolve(); const error = await request;
+    expect(readFileSync(join(directory, ".credentials.json"), "utf8")).toBe("secret"); expect(readdirSync(join(f.root, "claude-code")).filter(name => name.startsWith("."))).toEqual([]);
+    return { f, error: error as Error };
+  };
+  it("a task that becomes active during the wait stops the removal", async () => { expect((await removing(f => f.inUse.mockReturnValue("task"))).error.message).toMatch(/running task/); });
+  it("a terminal that appears during the wait stops the removal", async () => { expect((await removing(f => f.inUse.mockReturnValue("pane"))).error.message).toMatch(/running terminal/); });
+  it("a profile that the local administrator makes the default during the wait stops the removal", async () => { expect((await removing(f => f.defaultProfile.mockReturnValue("Work"))).error.message).toMatch(/default for agents/); });
+  it("a default that becomes unreadable during the wait stops the removal as unconfirmed", async () => {
+    const { error, f } = await removing(f => f.defaultProfile.mockImplementation(() => { throw new Error("EBUSY C:\\secret\\credential-default.json"); }));
+    expect(error.message).toMatch(/could not confirm which credential profile is the default/); expect(error.message).not.toMatch(/secret|EBUSY/); expect(f.audit().some(row => row.reason === "unconfirmed")).toBe(true);
+  });
+  it("a state that cannot be confirmed during the wait stops it as well", async () => { expect((await removing(f => f.inUse.mockReturnValue("unknown"))).error.message).toMatch(/could not confirm whether a terminal is running/); });
+  it("an unreadable default at the start is `unconfirmed` and nothing is removed (it is not read as `no default`)", async () => {
+    const f = fixture({ defaultProfile: () => { throw new Error("bad json"); } }); f.on(); const directory = owned(f);
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/could not confirm which credential profile is the default/); expect(existsSync(directory)).toBe(true);
+    expect(f.audit().at(-1)).toMatchObject({ outcome: "refused", reason: "unconfirmed" });
+  });
+  it("the profile is reserved for the whole operation: tasks and terminals that would start under it are told to wait", async () => {
+    const hold = holdInspect(1); const f = fixture({ ownership: { inspect: hold.inspect } }); f.on(); owned(f);
+    const request = ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e); await vi.waitFor(() => expect(hold.calls()).toBe(1));
+    expect(f.accounts.profileReserved("work")).toBe(true); expect(f.accounts.profileReserved("WORK")).toBe(true); expect(f.accounts.profileReserved("home")).toBe(false);
+    hold.gate.resolve(); await request; expect(f.accounts.profileReserved("work")).toBe(false);
+  });
+});
+
+describe("P2: sign-out follows no replacement of the checked folder", () => {
+  const canary = () => { const dir = scratch(); mkdirSync(join(dir, "backups")); writeFileSync(join(dir, "backups", ".claude.json.backup.1"), "outside identity"); writeFileSync(join(dir, ".credentials.json"), "outside secret"); return dir; };
+  const link = (target: string, path: string): boolean => { try { symlinkSync(target, path, "dir"); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "EPERM") return false; throw error; } };
+  const intact = (dir: string) => expect(readFileSync(join(dir, "backups", ".claude.json.backup.1"), "utf8")).toBe("outside identity");
+  it("a folder replaced by a link while the CLI lookup waits: refused as a link, the logout never runs, the outside folder is untouched", async () => {
+    const lookup = held<{ path: string; command: string; args: string[] }>(); const f = fixture({ find: () => lookup.promise }); f.on(); const directory = owned(f), outside = canary();
+    const request = ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e); await new Promise(done => setTimeout(done, 20));
+    rmSync(directory, { recursive: true }); if (!link(outside, directory)) { lookup.resolve({ path: "c", command: "c", args: [] }); await request; return; }
+    lookup.resolve({ path: "claude.exe", command: "claude.exe", args: [] });
+    expect(((await request) as Error).message).toMatch(/link/); expect(f.runLogout).not.toHaveBeenCalled(); intact(outside); expect(readFileSync(join(outside, ".credentials.json"), "utf8")).toBe("outside secret");
+  });
+  it("a folder replaced right after the checks (the last moment before the rename): the link itself is renamed, found, put back; no logout, no backup deletion", async () => {
+    const outside = canary(); let swapped = false; let directory = "";
+    const f = fixture({ ownership: { afterChecks: () => { rmSync(directory, { recursive: true }); swapped = link(outside, directory); } } }); f.on(); directory = owned(f);
+    const error = (await ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e)) as Error;
+    if (!swapped) return;
+    expect(error.message).toMatch(/link|not inside this Runtime's profile folder/); expect(f.runLogout).not.toHaveBeenCalled(); intact(outside);
+    expect(readdirSync(join(f.root, "claude-code")).filter(name => name.startsWith(".working-"))).toEqual([]);
+  });
+  it("a renamed folder swapped for a link during the logout: the backups are not deleted through it", async () => {
+    const outside = canary(); let swapped = false;
+    const f = fixture(); f.on(); owned(f);
+    (f.runLogout as unknown as { mockImplementation(fn: (e: unknown, a: unknown, env: NodeJS.ProcessEnv) => Promise<number>): void }).mockImplementation(async (_e, _a, env) => { const working = env.CLAUDE_CONFIG_DIR!; rmSync(working, { recursive: true }); swapped = link(outside, working); return 0; });
+    const error = (await ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e)) as Error;
+    if (!swapped) return;
+    expect(error.message).toMatch(/link|not inside this Runtime's profile folder/); intact(outside); expect(readFileSync(join(outside, ".credentials.json"), "utf8")).toBe("outside secret");
+  });
+  it("the control: an untouched profile signs out normally, deletes its own backups, and gets its name back", async () => {
+    const f = fixture(); f.on(); const directory = owned(f); mkdirSync(join(directory, "backups")); writeFileSync(join(directory, "backups", ".claude.json.backup.1"), "mine"); writeFileSync(join(directory, "backups", "keep"), "x");
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
+    expect(existsSync(join(directory, "backups", ".claude.json.backup.1"))).toBe(false); expect(existsSync(join(directory, "backups", "keep"))).toBe(true);
+    expect(readdirSync(join(f.root, "claude-code"))).toEqual(["work"]);
+  });
+});
+
+describe("P2: a process that was told to stop is not assumed gone", () => {
+  it("a logout that cannot be confirmed ended keeps the profile busy and its working name, until the process really ends", async () => {
+    const ended = held(); const f = fixture(); f.on(); owned(f); let first = true;
+    f.runLogout.mockImplementation(async () => { if (first) { first = false; throw new ProcessNotConfirmedEnded(ended.promise); } return 0; });
+    const report = vi.fn(); const g = fixture({ report }); g.on(); owned(g); let gFirst = true; g.runLogout.mockImplementation(async () => { if (gFirst) { gFirst = false; throw new ProcessNotConfirmedEnded(ended.promise); } g.setAnswer({ loggedIn: false }); return 0; });
+    await expect(ask(g, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/could not be confirmed ended/);
+    expect(g.accounts.profileReserved("work")).toBe(true); expect(g.accounts.idle()).toBe(false); expect(report).toHaveBeenCalledTimes(1);
+    expect(readdirSync(join(g.root, "claude-code")).some(name => /^\.working-[a-f0-9]{16}$/.test(name))).toBe(true);
+    g.tick(6000); await expect(ask(g, "accounts.signout", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/Another operation on "work"/);
+    await expect(ask(g, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/Another operation/);
+    ended.resolve(); await vi.waitFor(() => expect(g.accounts.profileReserved("work")).toBe(false));
+    expect(readdirSync(join(g.root, "claude-code"))).toEqual(["work"]); expect(g.accounts.idle()).toBe(true);        // the name is back once the process has ended
+    g.tick(6000); await expect(ask(g, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
+    void f;
+  });
+});
+
+describe("P2: accounts.check is bounded before it starts any child", () => {
+  it(`20 at once with a slow \`auth status\`: at most ${MAX_CONCURRENT_CHECKS} reach it, the others are refused at once, and the capacity comes back`, async () => {
+    const answers: Array<(value: RemoteStatusAnswer) => void> = []; let inspections = 0;
+    const f = fixture({ status: () => new Promise(done => { answers.push(done); }), ownership: { inspect: paths => { inspections++; return paths.map(() => false); } } }); f.on(); owned(f);
+    const settled: string[] = [];
+    const results = Array.from({ length: 20 }, () => ask(f, "accounts.check", { cli: "claude-code", profile: "work" }).then(() => { settled.push("ok"); }, (e: Error) => { settled.push(e.message); }));
+    await vi.waitFor(() => expect(answers.length).toBe(MAX_CONCURRENT_CHECKS)); await new Promise(done => setTimeout(done, 30));
+    expect(answers.length).toBe(MAX_CONCURRENT_CHECKS); expect(inspections).toBe(MAX_CONCURRENT_CHECKS);       // only that many PowerShell inspections and `auth status` calls were ever started
+    expect(settled).toHaveLength(20 - MAX_CONCURRENT_CHECKS); expect(settled.every(message => /Other account checks are running/.test(message))).toBe(true);
+    answers.forEach(done => done({ loggedIn: false })); await Promise.all(results);
+    const again = ask(f, "accounts.check", { cli: "claude-code", profile: "work" }).then(() => "ok");        // the capacity came back
+    await vi.waitFor(() => expect(answers.length).toBe(MAX_CONCURRENT_CHECKS + 1)); answers.at(-1)!({ loggedIn: false }); await expect(again).resolves.toBe("ok");
+  });
+  it("the refusals are immediate (they do not wait for the running ones)", async () => {
+    const answers: Array<(value: RemoteStatusAnswer) => void> = []; const f = fixture({ status: () => new Promise(done => { answers.push(done); }) }); f.on(); owned(f);
+    const running = Array.from({ length: MAX_CONCURRENT_CHECKS }, () => ask(f, "accounts.check", { cli: "claude-code", profile: "work" })); await vi.waitFor(() => expect(answers.length).toBe(MAX_CONCURRENT_CHECKS));
+    const started = Date.now(); for (let i = 0; i < 18; i++) await expect(ask(f, "accounts.check", { cli: "claude-code", profile: "work" })).rejects.toThrow(/Other account checks are running/);
+    expect(Date.now() - started).toBeLessThan(2000); expect(answers.length).toBe(MAX_CONCURRENT_CHECKS);
+    answers.forEach(done => done({ loggedIn: false })); await Promise.all(running);
+  });
+  it("a profile that is being changed is `busy` for a check, and no child is started for it", async () => {
+    const f = fixture(); f.on(); owned(f); let release!: () => void; f.runLogout.mockImplementation(() => new Promise(done => { release = () => done(0); }));
+    const signout = ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }); await vi.waitFor(() => expect(f.runLogout).toHaveBeenCalled()); const before = f.status.mock.calls.length;
+    await expect(ask(f, "accounts.check", { cli: "claude-code", profile: "work" })).rejects.toThrow(/Another operation on "work"/); expect(f.status.mock.calls.length).toBe(before);
+    release(); await signout;
+  });
+  it("the slot is returned when a check fails", async () => {
+    const f = fixture({ status: async () => { throw new Error("boom"); } }); f.on(); owned(f);
+    for (let i = 0; i < MAX_CONCURRENT_CHECKS * 3; i++) await expect(ask(f, "accounts.check", { cli: "claude-code", profile: "work" })).rejects.toThrow(/could not be completed/);
   });
 });

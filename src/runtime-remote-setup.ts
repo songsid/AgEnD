@@ -121,6 +121,9 @@ export interface AuditEntry {
   repeated?: number;
   /** Where the folded run began (a closed ISO time, UTC). `at` stays the time the line was written. Only present together with `repeated`. */
   since?: string;
+  /** Only for `switch`: which switch, and (when it was turned on for a time) when it ends. */
+  switch?: RemoteSwitchName;
+  until?: string;
 }
 /** What the dashboard may call a person in the record: a name or an id, not an address and not free text. */
 export const AUDIT_ACTOR = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -134,11 +137,13 @@ export function validAuditActor(value: unknown): value is string { return typeof
 export function formatAuditLine(entry: AuditEntry, now = Date.now()): string {
   if (!validAuditActor(entry.actor) || !(AUDIT_ACTIONS as readonly string[]).includes(entry.action) || !(AUDIT_OUTCOMES as readonly string[]).includes(entry.outcome)
     || entry.cli !== undefined && !AUDIT_CLI.test(entry.cli) || entry.profile !== undefined && !AUDIT_PROFILE.test(entry.profile)
-    || entry.detail !== undefined && !AUDIT_DETAIL.test(entry.detail) || entry.repeated !== undefined && (!Number.isSafeInteger(entry.repeated) || entry.repeated < 2 || entry.repeated > 1_000_000_000) || entry.since !== undefined && (entry.repeated === undefined || !AUDIT_SINCE.test(entry.since)) || entry.reason !== undefined && !(AUDIT_REASONS as readonly string[]).includes(entry.reason)) throw new Error("Audit entry is not in its closed form");
+    || entry.detail !== undefined && !AUDIT_DETAIL.test(entry.detail) || entry.repeated !== undefined && (!Number.isSafeInteger(entry.repeated) || entry.repeated < 2 || entry.repeated > 1_000_000_000) || entry.since !== undefined && (entry.repeated === undefined || !AUDIT_SINCE.test(entry.since))
+    || entry.switch !== undefined && (entry.action !== "switch" || !isRemoteSwitchName(entry.switch)) || entry.until !== undefined && (entry.action !== "switch" || !AUDIT_SINCE.test(entry.until)) || entry.reason !== undefined && !(AUDIT_REASONS as readonly string[]).includes(entry.reason)) throw new Error("Audit entry is not in its closed form");
   return `${JSON.stringify({ at: new Date(now).toISOString(), actor: entry.actor, action: entry.action, outcome: entry.outcome,
     ...(entry.cli !== undefined ? { cli: entry.cli } : {}), ...(entry.profile !== undefined ? { profile: entry.profile } : {}),
     ...(entry.detail !== undefined ? { detail: entry.detail } : {}), ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
-    ...(entry.repeated !== undefined ? { repeated: entry.repeated } : {}), ...(entry.since !== undefined ? { since: entry.since } : {}) })}\n`;
+    ...(entry.repeated !== undefined ? { repeated: entry.repeated } : {}), ...(entry.since !== undefined ? { since: entry.since } : {}),
+    ...(entry.switch !== undefined ? { switch: entry.switch } : {}), ...(entry.until !== undefined ? { until: entry.until } : {}) })}\n`;
 }
 /**
  * Appends to `<pairing folder>\audit.jsonl` (private; a link is refused; five rotated copies, each up to about 1 MiB). Throws when it cannot write: a remote
@@ -159,7 +164,13 @@ export function appendAudit(directory: string, entry: AuditEntry, now = Date.now
   const fd = openSync(path, "a", 0o600);
   try {
     if (!fstatSync(fd).isFile()) throw new Error("Audit log must be a regular file");
-    writeSync(fd, line);
+    // A record is whole or it is an error: a partial write (a full disk, an interrupted call) is never accepted as written.
+    const bytes = Buffer.from(line, "utf8");
+    for (let done = 0; done < bytes.byteLength;) {
+      const wrote = writeSync(fd, bytes, done, bytes.byteLength - done);
+      if (!(wrote > 0)) throw new Error("Audit log write was incomplete");
+      done += wrote;
+    }
   } finally { closeSync(fd); }
 }
 

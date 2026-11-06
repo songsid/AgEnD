@@ -128,6 +128,8 @@ export interface OwnedProfileOptions {
   protectedHomes?: readonly string[];
   /** Test seam: runs between the checks and the delete, where a hostile process on the same computer could swap the folder. */
   afterChecks?: () => void;
+  /** Synchronous last look at the caller's own state, immediately before the folder is renamed (no await may sit between it and the rename). Throws to stop. */
+  beforeCommit?: () => void;
   /** A line for the person at this computer (never for AgEnD): used when a removal could neither finish nor be undone. */
   report?: (text: string) => void;
 }
@@ -157,41 +159,82 @@ export async function requireOwnedProfile(pairingDirectory: string, root: string
   assertNoLinksInside(directory);
   return directory;
 }
+interface Isolated { directory: string; moved: string; verify(): Promise<void>; restore(): boolean }
 /**
- * Deletes only `<profile root>\<cli>\<name>`, after requireOwnedProfile. The checks and the delete are not one atomic step, and something running as
- * the same Windows user could swap the folder for a junction in between. So the folder is first RENAMED to a unique name beside it (renaming a
- * junction renames the junction itself, never what it points to), the renamed thing is checked again (a real folder, no link, no reparse point,
- * nothing linked inside), and only then deleted. Any failure puts the name back, so the profile is still there to retry. Then the record and the
- * cached sign-in are forgotten, and the folder is proven gone.
+ * Takes an owned profile out of the place a hostile swap could redirect, and proves what was taken. The checks (`requireOwnedProfile`) and any
+ * work on the folder are not one atomic step, and something running as the same Windows user could replace the folder with a junction in between.
+ * So after the checks, and after `beforeCommit` (a SYNCHRONOUS last look at the current state: the caller's switch, default profile, tasks and
+ * terminals, with no await between it and the rename), the folder is RENAMED to a unique name beside it (renaming a junction renames the junction
+ * itself, never what it points to), and the renamed thing is checked again: the folder above it, a real folder, no link, no reparse point, nothing
+ * linked inside. `verify()` repeats that on demand; `restore()` puts the name back, and only if that name is still free.
+ * A leading dot is not a valid profile name, so the temporary name can never be one, and is never listed or selected.
  */
-export async function removeOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): Promise<void> {
+async function isolateOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions, prefix: "removing" | "working"): Promise<Isolated> {
   const directory = await requireOwnedProfile(pairingDirectory, root, cli, name, options), kind = cli as CredentialProfileCli, checked = name as string;
   options.afterChecks?.();
   const expectedBase = join(realpathSync(pairingDirectory), "credential-profiles", kind);
-  // A leading dot is not a valid profile name, so the temporary name can never be one, and is never listed or selected.
-  const moved = join(dirname(directory), `.removing-${randomBytes(8).toString("hex")}`);
+  options.beforeCommit?.();
+  const moved = join(dirname(directory), `.${prefix}-${randomBytes(8).toString("hex")}`);
   renameSync(directory, moved);
-  let restored = true;
-  const restore = (): void => { try { renameSync(moved, directory); } catch { restored = !present(moved); /* else left under its temporary name, which is not a profile */ } };
-  try {
+  const restore = (): boolean => {
+    if (present(directory)) return false;                                   // something else took the name meanwhile: never replace it
+    try { renameSync(moved, directory); return true; } catch { return !present(moved); }
+  };
+  const verify = async (): Promise<void> => {
     // The folder above it, again, after the rename: a CLI folder swapped for a link in the meantime would have taken the rename elsewhere.
     if (!same(realpathSync(dirname(moved)), expectedBase) || !same(realpathSync(moved), join(expectedBase, basename(moved)))) throw new ProfileOwnershipRefusal(`Credential profile "${checked}" is not inside this Runtime's profile folder`, "link");
     notLink(moved, `Credential profile "${checked}"`);
     let flags: readonly boolean[]; try { flags = await (options.inspect ?? (process.platform === "win32" ? windowsReparseInspector : noReparseInspector))([moved]); } catch { throw new ProfileOwnershipRefusal(NOT_PROVEN, "link"); }
     if (flags.length !== 1 || flags[0]) throw new ProfileOwnershipRefusal("The profile folder is a link or junction, so nothing is changed there", "link");
     assertNoLinksInside(moved);
-    rmSync(moved, { recursive: true, force: false, maxRetries: 3, retryDelay: 50 });
-  } catch (error) {
-    restore();
-    // Neither deleted nor put back: say where it is, locally (`agend-runtime profile list` names it). Nothing here deletes or restores it by itself.
-    if (!restored) {
-      try { options.report?.("A credential profile removal could not finish and could not be undone: its folder is left under a temporary name and may still hold a sign-in. On this computer run: agend-runtime profile list"); } catch { /* a report must not change the outcome */ }
-      throw new Error("The profile folder could not be removed or put back and is left under a temporary name; see agend-runtime profile list on that computer");
-    }
-    throw error;
+  };
+  const isolated: Isolated = { directory, moved, verify, restore };
+  try { await verify(); } catch (error) { failIsolated(isolated, options, error); }
+  return isolated;
+}
+const LEFT_OVER = "A credential profile operation could not finish and could not be undone: its folder is left under a temporary name and may still hold a sign-in. On this computer run: agend-runtime profile list";
+/** Puts the name back; when that is impossible says so (here, locally; the server only ever gets a fixed sentence) and throws. Otherwise rethrows `error`. */
+function failIsolated(isolated: Isolated, options: OwnedProfileOptions, error: unknown): never {
+  if (!isolated.restore()) {
+    try { options.report?.(LEFT_OVER); } catch { /* a report must not change the outcome */ }
+    throw new Error("The profile folder could not be removed or put back and is left under a temporary name; see agend-runtime profile list on that computer");
   }
-  if (existsSync(moved) || existsSync(directory)) throw new Error("The profile folder could not be fully removed");
+  throw error;
+}
+/**
+ * Deletes only `<profile root>\<cli>\<name>`: isolate (checks, final look, rename, re-check), delete, then forget the record and the cached
+ * sign-in and prove the folder is gone. Any failure puts the name back, so the profile is still there to retry.
+ */
+export async function removeOwnedProfile(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions = {}): Promise<void> {
+  const isolated = await isolateOwnedProfile(pairingDirectory, root, cli, name, options, "removing"), kind = cli as CredentialProfileCli, checked = name as string;
+  try { rmSync(isolated.moved, { recursive: true, force: false, maxRetries: 3, retryDelay: 50 }); }
+  catch (error) { failIsolated(isolated, options, error); }
+  if (present(isolated.moved) || present(isolated.directory)) throw new Error("The profile folder could not be fully removed");
   forgetCreatedProfile(root, kind, checked); forgetCredentialStatus(root, kind, checked);
+}
+/**
+ * Runs `work` on an owned profile that has been taken out of reach of a swap: the same isolation as a removal (so a folder replaced by a junction to
+ * the user's own sign-in after the checks is found and nothing is run against it), `work` gets the renamed folder and a `verify` to call again before
+ * it changes anything inside, and the name is put back afterwards. If `work` fails with an error that carries `ended` (a process that could not be
+ * confirmed gone), the name is put back only once that process has ended, and the person at the computer is told meanwhile.
+ */
+export async function withIsolatedOwnedProfile<T>(pairingDirectory: string, root: string, cli: unknown, name: unknown, options: OwnedProfileOptions,
+  work: (directory: string, verify: () => Promise<void>) => Promise<T>): Promise<T> {
+  const isolated = await isolateOwnedProfile(pairingDirectory, root, cli, name, options, "working");
+  let result: T;
+  try { result = await work(isolated.moved, isolated.verify); }
+  catch (error) {
+    const ended = (error as { ended?: Promise<unknown> } | null)?.ended;
+    if (ended && typeof ended.then === "function") {
+      try { options.report?.(LEFT_OVER); } catch { /* best effort */ }
+      void ended.then(() => isolated.restore(), () => isolated.restore());
+      throw error;
+    }
+    return failIsolated(isolated, options, error);
+  }
+  try { await isolated.verify(); } catch (error) { return failIsolated(isolated, options, error); }
+  if (!isolated.restore()) { try { options.report?.(LEFT_OVER); } catch { /* best effort */ } throw new Error("The profile folder could not be put back and is left under a temporary name; see agend-runtime profile list on that computer"); }
+  return result;
 }
 /**
  * `backups\.claude.json.backup*` in an owned profile: Claude Code keeps copies of its settings file there, and they carry the previous account's
@@ -211,11 +254,11 @@ export function deleteProfileBackups(directory: string): number {
   return removed;
 }
 
-/** Folders a removal began and could not finish (renamed to `.removing-<hex>`, then neither deleted nor put back). They may still hold a sign-in. */
+/** Folders a removal or a sign-out began and could not finish (renamed to `.removing-<hex>` / `.working-<hex>`, then neither deleted nor put back). They may still hold a sign-in. */
 export function listRemovalLeftovers(root: string, cli: unknown): string[] {
   const base = join(root, assertCredentialProfileCli(cli));
   try {
     if (!lstatSync(base).isDirectory()) return [];
-    return readdirSync(base, { withFileTypes: true }).filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && /^\.removing-[a-f0-9]{16}$/.test(entry.name)).map(entry => entry.name).sort();
+    return readdirSync(base, { withFileTypes: true }).filter(entry => entry.isDirectory() && !entry.isSymbolicLink() && /^\.(?:removing|working)-[a-f0-9]{16}$/.test(entry.name)).map(entry => entry.name).sort();
   } catch { return []; }
 }

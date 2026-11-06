@@ -214,7 +214,7 @@ describe("the method flag, an early exit, and the line ending", () => {
     await session.close(); expect(session.live).toBe(false);
   });
   it("a program that cannot be started at all is reported as ended too", async () => {
-    const h = harness(), session = h.make(); h.child().emit("error", new Error("spawn ENOENT C:\\secret\\claude.exe"));
+    const h = harness(), session = h.make(); (h.child() as unknown as { pid?: number }).pid = undefined; h.child().emit("error", new Error("spawn ENOENT C:\\secret\\claude.exe"));   // no pid: it never started
     expect(session.status()).toEqual({ alive: false }); expect(session.capture()).toBe(""); await session.close();
   });
   it("writes the code with \\r (measured on Linux with claude 2.1.319: \\n, \\r and \\r\\n all submit it; \\r is the one the host's terminal sends)", async () => {
@@ -247,5 +247,25 @@ describe("hardening of the reduced screen (review items 4 and 5)", () => {
     expect(reduceClaudeLoginScreen(`If the browser didn't open, visit: ${URL_OK}\nPaste code here if prompted > Invalid code. Please make sure the full code was copied.\n`)).toBe(`${REDUCED_INVALID_CODE}\n`);
     expect(reduceClaudeLoginScreen(`${REAL} Login successful`)).toBe(`${REDUCED_SUCCESS}\n`);
     expect(structuredSignInPrompt("claude-code", reduceClaudeLoginScreen(`${REAL} Invalid code. Please make sure the full code was copied.`))).toEqual({ phase: "failed", reason: "provider_rejected" });
+  });
+});
+
+describe("an `error` event is not proof that a child is gone (review)", () => {
+  it("a started child (it has a pid) whose kill fails with `error` and does not close: close() refuses, keeps the scratch folder and the slot, and succeeds once `close` really comes", async () => {
+    vi.useFakeTimers(); let killWorks = false; const h = harness({ kill: child => { if (killWorks) (child as unknown as FakeChild).kill(); else child.emit("error", new Error("kill EPERM")); } }), slot = new RuntimeSignInSlot(() => Date.now()), session = await slot.start(() => h.make()), cwd = String(h.calls[0]!.options.cwd);
+    const closing = slot.close(session.id).catch(error => error); await vi.advanceTimersByTimeAsync(6000);
+    expect(await closing).toBeInstanceOf(SignInRefusal); expect(session.live).toBe(true); expect(existsSync(cwd)).toBe(true); expect(session.childEnded).toBe(false); expect(session.status()).toEqual({ alive: true });
+    await vi.advanceTimersByTimeAsync(60_000);
+    const blocked = slot.start(() => h.make()).catch(error => error); await vi.advanceTimersByTimeAsync(6000);                     // the start tries to close it again (kills again) and still cannot confirm
+    expect(await blocked).toMatchObject({ message: expect.stringMatching(/Another sign-in/) });                                  // still not released for the next sign-in
+    h.child().end(1);                                                                                                              // the process really ends
+    expect(session.childEnded).toBe(true); await slot.close(session.id); expect(session.live).toBe(false); expect(existsSync(cwd)).toBe(false);
+    killWorks = true; const next = await slot.start(() => h.make()); expect(next).not.toBe(session); await slot.close(next.id);
+  });
+  it("an `error` before any pid exists (the program could not start) is the only error that counts as ended", async () => {
+    const h = harness(), session = h.make(); (h.child() as unknown as { pid?: number }).pid = undefined; h.child().emit("error", new Error("spawn ENOENT"));
+    expect(session.childEnded).toBe(true); await session.close();
+    const g = harness(), live = g.make(); g.child().emit("error", new Error("EPERM"));                                              // a pid is set: an error alone proves nothing
+    expect(live.childEnded).toBe(false); expect(live.status()).toEqual({ alive: true }); void live.close();
   });
 });

@@ -3,6 +3,7 @@ import WebSocket from "ws";
 import { readPaneSystemBootId, reusedRuntimeLockPid } from "./runtime-pane-boot.js";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { hostname } from "node:os";
+import type { ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFileSync } from "node:fs";
@@ -14,7 +15,8 @@ import { RUNTIME_CREDENTIAL_CAPABILITY, credentialLoginRequired, credentialProfi
 import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type RuntimeCredentials, type RuntimeStoredJob } from "./runtime-client-store.js";
 import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
-import { RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
+import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps } from "./runtime-remote-accounts.js";
+import { killTree } from "./runtime-signin.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
 import { isRuntimeRemoteOperation } from "./runtime-protocol.js";
 import { PANE_IN_PROCESS_DIRECTORY, paneLedgerFiles } from "./runtime-pane-store.js";
@@ -120,6 +122,28 @@ function jsonBody(req: IncomingMessage): Promise<unknown> {
     req.on("end", () => { try { accept(JSON.parse(text)); } catch { reject(new Error("Invalid MCP JSON")); } });
   });
 }
+/**
+ * `claude auth logout` for a profile. Output is not read, kept or logged: only whether the command ended well. A program that never started (no pid) has
+ * ended; for one that exists, ONLY its `close` is evidence that it ended (an `error` event can also mean it could not be killed). On the 30 s limit the
+ * whole process tree is killed and `close` is waited for up to five more seconds; if it still has not come the result is a ProcessNotConfirmedEnded, whose
+ * `ended` settles when the process really ends, so that whoever owns the profile keeps it busy until then.
+ */
+export function runLogoutProcess(executable: { command: string; args: string[] }, args: string[], env: NodeJS.ProcessEnv, limitMs = 30_000, waitMs = 5_000,
+  spawnChild: typeof childSpawn = childSpawn, kill: (child: ChildProcess) => void = killTree): Promise<number | null> {
+  return new Promise((done, fail) => {
+    const child = spawnChild(executable.command, [...executable.args, ...args], { env, shell: false, stdio: "ignore", windowsHide: true });
+    let ended = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const closed = new Promise<void>(accept => { child.on("close", () => accept()); });
+    closed.then(() => { ended = true; });
+    child.on("error", () => { if (child.pid === undefined) { clearTimeout(timer); ended = true; done(null); } });
+    child.on("close", code => { clearTimeout(timer); done(code); });
+    timer = setTimeout(() => {
+      kill(child);
+      const gave = setTimeout(() => { if (!ended) fail(new ProcessNotConfirmedEnded(closed)); }, waitMs); gave.unref?.();
+    }, limitMs);
+    timer.unref?.();
+  });
+}
 export class RuntimeClient {
   readonly bootId = randomUUID();
   private readonly runtimeInfo: ReturnType<typeof readRuntimeInfo>;
@@ -144,6 +168,8 @@ export class RuntimeClient {
   private readonly active = new Set<string>();
   /** Run id -> the credential profile it runs under, so removing or signing out a profile waits for its runs. */
   private readonly activeProfiles = new Map<string, string>();
+  /** Terminals being opened right now, by profile (lower-case): they are not in the pane ledger until the host has answered. */
+  private readonly openingPanes = new Map<string, number>();
   private remoteAccounts: RemoteAccounts | null = null;
   private readonly snapshots = new Map<string, string>();
   private readonly pendingPaneTools = new Map<string, PendingTool>();
@@ -184,6 +210,7 @@ export class RuntimeClient {
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
     this.stopped = false; this.closed = false; this.stopReason = undefined;
+    this.remoteAccounts = null;                                         // a stopped one is closed to new work for good
     try {
       const systemBootId = process.platform === "win32" ? await readPaneSystemBootId() : undefined;
       if (this.stopped) throw Error("Runtime start was cancelled");
@@ -242,6 +269,8 @@ export class RuntimeClient {
     socket.on("close", (code,reason) => {
       if (this.socket !== socket) return;
       this.socket = null; this.welcomed = false; this.paneEpoch = randomUUID();
+      // Whatever the old connection started over account requests is over with it: a sign-in it opened is ended, and what it still has in flight may not start more.
+      this.remoteAccounts?.connectionChanged();
       if (this.updateWait) { const pending = this.updateWait; this.updateWait = undefined; clearTimeout(pending.timer); pending.reject(Error("Runtime update connection changed")); }
       if (this.paneHost && "connectionChanged" in this.paneHost) this.paneHost.connectionChanged();
       this.rejectTools();
@@ -322,9 +351,18 @@ export class RuntimeClient {
       const request = validateRuntimePaneRequest(value.request);
       this.machinePaneLimit = value.maxAgents as number;
       const epoch = this.paneEpoch;
-      let leave: (() => void) | undefined;
+      let leave: (() => void) | undefined, opening: string | undefined;
       try {
         leave = this.activity.enter();
+        // A terminal that would run under a profile that AgEnD is signing out, removing or signing in right now is not started; and from here until the host
+        // has answered it counts as using its profile, because the pane ledger does not show it yet.
+        if (request.action === "open") {
+          const profile = request.launch.credentialProfile ?? this.credentialProfileFor(request.launch.cli, undefined);
+          if (profile !== undefined) {
+            if (this.remoteAccounts?.profileReserved(profile)) throw new Error(`Credential profile "${profile}" is being changed from AgEnD; try again in a moment`);
+            opening = profile.toLowerCase(); this.openingPanes.set(opening, (this.openingPanes.get(opening) ?? 0) + 1);
+          }
+        }
         const host = await this.panes();
         // A terminal for an agent with no profile of its own starts under this pairing's default profile, when there is one. The default is passed
         // beside the launch, not inside it: the host decides with it only for a pane that is new, so a pane that is already running reattaches
@@ -340,15 +378,29 @@ export class RuntimeClient {
         }
         this.send({ v: 1, type: "pane.response", id: value.id, ok: true, result });
       } catch (error) { this.send({ v: 1, type: "pane.response", id: value.id, ok: false, error: message(error) }); }
-      finally { leave?.(); }
+      finally {
+        if (opening !== undefined) { const left = (this.openingPanes.get(opening) ?? 1) - 1; if (left > 0) this.openingPanes.set(opening, left); else this.openingPanes.delete(opening); }
+        leave?.();
+      }
       return;
     }
     if (value.type === "account.request") {
       // Not journaled by AgEnD and not stored here: a sign-in's URL and code travel in these frames and nowhere else.
       if (Object.keys(value).some(key => !["v", "type", "id", "operation", "payload"].includes(key)) || typeof value.id !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)
         || !isRuntimeRemoteOperation(value.operation)) throw new Error("Invalid account request");
-      try { this.send({ v: 1, type: "account.response", id: value.id, ok: true, result: await this.remote().handle(value.operation, value.payload) }); }
-      catch (error) { this.send({ v: 1, type: "account.response", id: value.id, ok: false, error: message(error) }); }
+      // The answer belongs to the connection that asked: it is sent only while that very connection (socket and AgEnD's generation for it) is still the live
+      // one, never to a later connection, and the request is refused outright while a managed update is holding new work.
+      const socket = this.socket, generation = this.generation, id = value.id;
+      const sameConnection = (): boolean => !this.stopped && !!socket && this.socket === socket && this.generation === generation && this.welcomed && socket.readyState === WebSocket.OPEN;
+      const current = (): boolean => sameConnection() && this.online();
+      const reply = (frame: Record<string, unknown>): void => { if (sameConnection()) this.send(frame); };
+      let leave: (() => void) | undefined;
+      try {
+        if (this.trialFence) throw new Error("Runtime update is holding new work");
+        leave = this.activity.enter();
+        reply({ v: 1, type: "account.response", id, ok: true, result: await this.remote().handle(value.operation, value.payload, current) });
+      } catch (error) { reply({ v: 1, type: "account.response", id, ok: false, error: message(error) }); }
+      finally { leave?.(); }
       return;
     }
     if (value.type !== "request" || typeof value.id !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(value.id)
@@ -454,31 +506,32 @@ export class RuntimeClient {
     return credentialProfileReport(root, name);
   }
   private computerBoot: Promise<string | undefined> | undefined;
+  private computerBootValue: string | undefined;
   /** The computer's boot identity, read once (it cannot change while this Runtime runs). Unknown is never evidence either way. */
-  private systemBoot(): Promise<string | undefined> { return this.computerBoot ??= (this.options.remoteAccounts?.systemBootId ?? readPaneSystemBootId)().catch(() => undefined); }
+  private systemBoot(): Promise<string | undefined> { return this.computerBoot ??= (this.options.remoteAccounts?.systemBootId ?? readPaneSystemBootId)().catch(() => undefined).then(value => this.computerBootValue = value); }
   /**
    * Whether a task or terminal is running under this profile (case-insensitively: on Windows `Work` and `work` are one folder). Terminals come from the
-   * pane ledgers (`paneLedgerFiles`: the pane host's own state folder in production, the in-process folder in tests; a missing ledger is "none").
-   * A row recorded under another boot of the computer is a terminal that cannot still be running (the pane store treats it the same way), so a restart
-   * does not leave it in the way. A ledger that cannot be read, or a default profile that cannot be read while a terminal needs it, is `unknown`: the
-   * caller refuses with a message that says the state could not be confirmed, not that a terminal is running. A Claude Code terminal that names no
-   * profile runs under this pairing's default, which the ledger does not hold.
+   * pane ledgers (`paneLedgerFiles`: the pane host's own state folder in production, the in-process folder in tests; a missing ledger is "none") and from
+   * the terminals this Runtime is opening right now. A row recorded under another boot of the computer is a terminal that cannot still be running (the pane
+   * store treats it the same way). A ledger that cannot be read, or a default profile that cannot be read while a terminal needs it, is `unknown`: the
+   * caller refuses with a message that says the state could not be confirmed. A Claude Code terminal that names no profile runs under this pairing's
+   * default, which the ledger does not hold.
    */
-  private async profileInUse(name: string): Promise<"task" | "pane" | "unknown" | undefined> {
+  private async profileInUse(name: string): Promise<"task" | "pane" | "unknown" | undefined> { await this.systemBoot(); return this.profileInUseNow(name); }
+  /** The same answer with no await, from the boot identity read earlier (before it is read, a row with a boot id is counted as running: the safe side). */
+  private profileInUseNow(name: string): "task" | "pane" | "unknown" | undefined {
     const same = (other: unknown): boolean => typeof other === "string" && other.toLowerCase() === name.toLowerCase();
     for (const used of this.activeProfiles.values()) if (same(used)) return "task";
+    if (this.openingPanes.has(name.toLowerCase())) return "pane";
     let fallback: string | undefined, fallbackReadable = true; try { fallback = this.options.store.credentialDefault(); } catch { fallbackReadable = false; }
-    let boot: string | undefined, bootRead = false, unknown = false;
+    const boot = this.computerBootValue; let unknown = false;
     for (const file of paneLedgerFiles(this.options.store.directory)) {
       try {
         const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
         for (const row of object(raw) && object(raw.panes) ? Object.values(raw.panes) : []) {
           const launch = object(row) && object(row.launch) ? row.launch : undefined, snapshot = object(row) && object(row.snapshot) ? row.snapshot : undefined;
           if (!launch || snapshot?.state === "exited") continue;
-          if (typeof (row as { systemBootId?: unknown }).systemBootId === "string") {
-            if (!bootRead) { boot = await this.systemBoot(); bootRead = true; }
-            if (boot && boot !== (row as { systemBootId: string }).systemBootId) continue;
-          }
+          if (typeof (row as { systemBootId?: unknown }).systemBootId === "string" && boot && boot !== (row as { systemBootId: string }).systemBootId) continue;
           if (same(launch.credentialProfile)) return "pane";
           if (launch.credentialProfile === undefined && launch.cli === "claude-code") { if (!fallbackReadable) unknown = true; else if (same(fallback)) return "pane"; }
         }
@@ -496,14 +549,11 @@ export class RuntimeClient {
       status: (cli, directory) => this.statusOf(cli, directory),
       find: extra?.find ?? ((cli) => findCli(cli)),
       environment: extra?.environment ?? (() => nativeCliEnvironment()),
-      runLogout: extra?.runLogout ?? ((executable, args, env) => new Promise(done => {
-        // Output is not read, kept or logged: only whether the command ended well.
-        const child = childSpawn(executable.command, [...executable.args, ...args], { env, shell: false, stdio: "ignore", windowsHide: true });
-        const timer = setTimeout(() => { child.kill(); done(null); }, 30_000); timer.unref?.();
-        child.on("error", () => { clearTimeout(timer); done(null); }); child.on("close", code => { clearTimeout(timer); done(code); });
-      })),
-      inUse: name => this.profileInUse(name), report: text => this.report(text),
-      defaultProfile: () => { try { return this.options.store.credentialDefault(); } catch { return undefined; } },
+      runLogout: extra?.runLogout ?? ((executable, args, env) => runLogoutProcess(executable, args, env)),
+      inUse: name => this.profileInUse(name), inUseNow: name => this.profileInUseNow(name), report: text => this.report(text),
+      // Throws when `credential-default.json` cannot be read: an unreadable default is not "no default" (the remove then answers `unconfirmed`).
+      defaultProfile: () => this.options.store.credentialDefault(),
+      enter: () => this.activity.enter(),
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
       ...(extra?.installer ? { installer: extra.installer } : {}), ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
       ...(extra?.now ? { now: extra.now } : {}),
@@ -575,6 +625,9 @@ export class RuntimeClient {
     try {
       // Fail closed, and as a confirmed failed turn: an unknown, unsigned or unusable profile never falls back to another account.
       const profile = this.credentialProfileFor(task.cli, run.credentialProfile);
+      // Registered (or refused) in one synchronous step with the look at AgEnD's own change of that profile, so a sign-out or removal that has reserved the
+      // profile is never raced by a task, and one that has not yet reserved it finds this task in `activeProfiles`.
+      if (profile && this.remoteAccounts?.profileReserved(profile)) throw new Error(`Credential profile "${profile}" is being changed from AgEnD; try again in a moment`);
       if (profile) this.activeProfiles.set(task.requestId, profile);
       const credentialHome = profile ? await this.credentialHome(task.cli, profile) : undefined;
       const mcp = payload.mcp ? await this.openMcp(task.requestId, (payload.mcp as { tools: string[] }).tools) : undefined;
@@ -595,7 +648,7 @@ export class RuntimeClient {
   private locallyIdle(): boolean {
     return this.activity.pending === 0 && this.active.size === 0 && !this.options.store.blocked()
       && this.bridge.idleForUpdate?.() === true && this.pendingTools.size === 0 && this.pendingPaneTools.size === 0
-      && !(this.paneOpening && !this.paneHost) && (this.socket?.bufferedAmount ?? 1) === 0;
+      && !(this.paneOpening && !this.paneHost) && (this.socket?.bufferedAmount ?? 1) === 0 && (this.remoteAccounts?.idle() ?? true);
   }
   private updateRpc(phase: RuntimeUpdateClientPhase, id: string, phases: RuntimeUpdateServerPhase[]): Promise<RuntimeUpdateServerPhase> {
     if (!this.welcomed || !this.updateProtocol || this.socket?.readyState !== WebSocket.OPEN || this.updateWait) return Promise.reject(Error("Runtime update negotiation is unavailable"));

@@ -101,7 +101,7 @@ export interface SignInLaunch {
 export type SignInSpawn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
 export interface SignInDeps { spawn?: SignInSpawn; now?: () => number; ttlMs?: number; scratchRoot?: string; kill?: (child: ChildProcess) => void; /** The ten minutes ran out: the owner records it, and this ends the attempt. */ onTimeout?: () => void }
 
-function killTree(child: ChildProcess): void {
+export function killTree(child: ChildProcess): void {
   if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
   if (process.platform === "win32") {
     // Only the process this module created, and what it started: never a name match.
@@ -132,7 +132,9 @@ export class RuntimeSignIn {
         { cwd: this.scratch, env: { ...launch.env, BROWSER: "true" }, shell: false, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       const take = (chunk: Buffer | string): void => { this.raw = (this.raw + chunk.toString()).slice(-MAX_RAW); };
       child.stdout?.on("data", take); child.stderr?.on("data", take);
-      child.on("error", () => { this.exited ??= { code: null }; this.markGone(); });
+      // `error` means two different things. With no pid the program never started: nothing runs, so it counts as ended. With a pid it is a failure
+      // to signal or kill a child that EXISTS (Node emits it then too), which proves nothing about whether it died: only `close` does.
+      child.on("error", () => { if (child.pid === undefined) { this.exited ??= { code: null }; this.markGone(); } });
       child.on("close", code => { this.exited ??= { code }; this.markGone(); });
     } catch (error) { this.removeScratch(); throw error; }
     // The same ten minutes as the host's sign-in, enforced here whatever the server does.
