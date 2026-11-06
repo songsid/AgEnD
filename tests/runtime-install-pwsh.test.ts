@@ -49,7 +49,9 @@ function makeBundle(version: string, tag = version): RuntimeBundle {
   return { bytes, filename: `agend-runtime-windows-${version}.zip`, version, sha256: sha(bytes) };
 }
 const serviceFor = (bundle: RuntimeBundle): RuntimeInstallService => new RuntimeInstallService({ bundle: () => bundle, template: () => TEMPLATE, now: () => clock });
-const bundleA = makeBundle(VERSION), serviceA = serviceFor(bundleA);
+/** The install folder names the build as well as the version, so a different build of the same version lands beside it. */
+const folderOf = (bundle: RuntimeBundle): string => `${bundle.version}+${bundle.sha256.slice(0, 8)}`;
+const bundleA = makeBundle(VERSION), serviceA = serviceFor(bundleA), FOLDER_A = folderOf(bundleA);
 let active: RuntimeInstallService = serviceA;
 
 beforeAll(async () => {
@@ -122,16 +124,16 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
   it("runs the page's command: downloads the script, checks its hash, then installs under <LOCALAPPDATA>\\agend-runtime\\<version> and only prints the connect command", async () => {
     const s = scratch(), r = await run(s);
     expect(r.code, r.out).toBe(0); expect(r.verifyFailed).toBe(false);
-    expect(readFileSync(join(s.install, VERSION, "dist", "runtime-cli.js"), "utf8")).toBe(`// fixture runtime ${VERSION}\n`);
-    expect(readFileSync(join(s.install, VERSION, ".agend-install-sha256"), "utf8")).toBe(bundleA.sha256);
+    expect(readFileSync(join(s.install, FOLDER_A, "dist", "runtime-cli.js"), "utf8")).toBe(`// fixture runtime ${VERSION}\n`);
+    expect(readFileSync(join(s.install, FOLDER_A, ".agend-install-sha256"), "utf8")).toBe(bundleA.sha256);
     // a shim that names no version, and the one small file that says which version it starts
     const shim = readFileSync(join(s.install, "bin", "agend-runtime.cmd"), "latin1");
     expect(shim).toContain('set /p AGEND_RT_VERSION=<"%~dp0current.txt"'); expect(shim).not.toContain(VERSION); expect(shim.split("\r\n").length).toBeGreaterThan(8);
-    expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(VERSION);
+    expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);   // version+build, e.g. 2.3.5-alpha.7+1a2b3c4d
     expect(r.out).toContain(`& "${join(s.install, "bin", "agend-runtime.cmd")}" connect --server "${origin()}"`);
     expect(r.out).toContain("not connected yet and nothing has been paired");
     // It touched the install folder and nothing else: no staging folder or temporary file left, nothing beside it.
-    expect(readdirSync(s.local)).toEqual(["agend-runtime"]); expect(readdirSync(s.install).sort()).toEqual(["bin", VERSION].sort()); expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);
+    expect(readdirSync(s.local)).toEqual(["agend-runtime"]); expect(readdirSync(s.install).sort()).toEqual(["bin", FOLDER_A].sort()); expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);
     // Two requests, both static downloads: never a pairing endpoint.
     expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`, `GET ${RUNTIME_BUNDLE_PATH}`]);
   });
@@ -187,6 +189,28 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       const t = scratch(), u = await run(t, { T_PRESET: `$s = "Set-Content -LiteralPath '${t.marker}' -Value 'stale script ran'"` });
       expect(existsSync(t.marker)).toBe(false); expect(existsSync(t.install)).toBe(false); expect(u.out).toMatch(/could not be verified|does not indicate success/);
     });
+    it("stops, and runs nothing, when the check itself cannot be computed: ConstrainedLanguage, under any $ErrorActionPreference (B1: any step failing must not reach iex)", async () => {
+      // In ConstrainedLanguage [Security.Cryptography.SHA256]::Create() is refused. That is a statement-terminating error: an `if` whose condition throws it is
+      // skipped, and a command written as `if (bad) { throw }; iex $s` then runs the unverified script. The sentinel proves whether it did.
+      for (const preference of ["Continue", "SilentlyContinue", "Stop"]) {
+        const s = scratch(); behaviour = serveScript(Buffer.concat([realScript(), sentinel(s.marker)]));
+        const r = await run(s, { T_PRESET: `$ErrorActionPreference = '${preference}'; $ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'` }, "paste");
+        expect(existsSync(s.marker), `the unverified script must not run (${preference})\n${r.out}`).toBe(false);
+        expect(existsSync(s.install), `nothing installed (${preference})`).toBe(false); expect(readdirSync(s.local)).toEqual([]);
+        // (under Stop the failing TLS line ends the command before even the script is requested: stricter, and just as safe)
+        expect(seen.filter(request => request !== `GET ${RUNTIME_INSTALL_SCRIPT_PATH}`), `no archive was requested (${preference})`).toEqual([]);
+        // the message is always shown, even when the person's own $ErrorActionPreference swallows a bare throw (it then also lets the session carry on)
+        // (under Stop the first failure, the TLS line, is itself what ends the command, and its own error is what is shown)
+        if (preference === "Stop") expect(r.out, "the reason is shown (Stop)").toMatch(/Cannot set property|only on core types/i);
+        else expect(r.out, `the reason is shown (${preference})`).toContain("could not be verified");
+        if (preference !== "SilentlyContinue") expect(r.status, `the command ends in an error (${preference})`).not.toBe(0);
+        // the TLS 1.2 line is the first thing in the command and fails in ConstrainedLanguage; the check after it still refuses
+        if (preference === "Continue") expect(r.out).toMatch(/Cannot set property|only on core types|Property setting is supported only on core types/i);
+      }
+      // an honest script in ConstrainedLanguage is stopped as well: the hash cannot be checked, so nothing runs
+      const honest = scratch(), h = await run(honest, { T_PRESET: "$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'" }, "paste");
+      expect(existsSync(honest.install), h.out).toBe(false); expect(h.out).toContain("could not be verified"); expect(h.out).not.toContain("installed version");
+    });
     it("accepts the script when the hash matches, byte for byte, and then still checks the archive's own pinned hash", async () => {
       const s = scratch(); expect(sha(realScript())).toBe(serviceA.installer().scriptSha256);
       const r = await run(s); expect(r.code, r.out).toBe(0); expect(r.verifyFailed).toBe(false);
@@ -231,43 +255,49 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
     });
   });
 
-  describe("version skew (M4): installing again puts the new version beside the old one and never touches a running version", () => {
+  describe("version skew (M4): installing again puts the new build beside the old one and never touches a running one", () => {
     const serveNext = (bundle: RuntimeBundle) => { active = serviceFor(bundle); };
-    it("installs the next version side by side, swaps current.txt, leaves the first version byte-for-byte alone and the shim unchanged", async () => {
+    it("installs the next version side by side, swaps current.txt, leaves the first folder byte-for-byte alone and the shim unchanged", async () => {
       const s = scratch(); expect((await run(s)).code).toBe(0);
-      const first = snapshot(join(s.install, VERSION)), shim = snapshot(join(s.install, "bin"))["agend-runtime.cmd"];
-      // a "running" Runtime: an open handle on a file of the first version (it would block a delete on Windows)
-      const nextBundle = makeBundle(NEXT); serveNext(nextBundle); seen.length = 0;
+      const first = snapshot(join(s.install, FOLDER_A)), shim = snapshot(join(s.install, "bin"))["agend-runtime.cmd"];
+      const nextBundle = makeBundle(NEXT), NEXT_FOLDER = folderOf(nextBundle); serveNext(nextBundle);
       const r = await run(s, { T_COMMAND: pageCommand(active) });
       expect(r.code, r.out).toBe(0);
-      expect(snapshot(join(s.install, VERSION))).toEqual(first);   // not deleted, not replaced, not even re-written
-      expect(readFileSync(join(s.install, NEXT, "dist", "runtime-cli.js"), "utf8")).toBe(`// fixture runtime ${NEXT}\n`);
-      expect(readdirSync(s.install).sort()).toEqual(["bin", NEXT, VERSION].sort());
-      expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(NEXT);
+      expect(snapshot(join(s.install, FOLDER_A))).toEqual(first);   // not deleted, not replaced, not even re-written
+      expect(readFileSync(join(s.install, NEXT_FOLDER, "dist", "runtime-cli.js"), "utf8")).toBe(`// fixture runtime ${NEXT}\n`);
+      expect(readdirSync(s.install).sort()).toEqual(["bin", NEXT_FOLDER, FOLDER_A].sort());
+      expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(NEXT_FOLDER);
       expect(snapshot(join(s.install, "bin"))["agend-runtime.cmd"]).toBe(shim);   // the shim file was not rewritten
       expect(readdirSync(join(s.install, "bin")).sort()).toEqual(["agend-runtime.cmd", "current.txt"]);   // no temporary sibling left behind
-      expect(r.out).toContain(`agend-runtime now starts version ${NEXT} (it was ${VERSION})`); expect(r.out).toContain("already running keeps its own version");
-      expect(r.out).toContain(`earlier versions are kept where they are (${VERSION})`);
+      expect(r.out).toContain(`agend-runtime now starts ${NEXT_FOLDER} (it was ${FOLDER_A})`); expect(r.out).toContain("already running keeps its own version");
+      expect(r.out).toContain(`earlier versions are kept where they are (${FOLDER_A})`); expect(r.out).toContain("never removes a version");
     });
-    it("can switch back to the earlier version by running its command again, with both folders still there", async () => {
+    it("a different BUILD of the same version lands beside the old one, with no manual deleting: current.txt moves, the old folder is untouched (N3)", async () => {
       const s = scratch(); expect((await run(s)).code).toBe(0);
-      serveNext(makeBundle(NEXT)); expect((await run(s, { T_COMMAND: pageCommand(active) })).code).toBe(0);
-      active = serviceA; const back = await run(s);
-      expect(back.code, back.out).toBe(0); expect(back.out).toContain("is already installed"); expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(VERSION);
-      expect(readdirSync(s.install).sort()).toEqual(["bin", NEXT, VERSION].sort());
-    });
-    it("never deletes or replaces a folder for the same version that is not this build, because it may be the one running", async () => {
-      const s = scratch(); expect((await run(s)).code).toBe(0);
-      const before = snapshot(s.install);
-      serveNext(makeBundle(VERSION, "rebuilt with the same version"));   // same version string, different bytes
+      const before = snapshot(join(s.install, FOLDER_A));
+      const rebuilt = makeBundle(VERSION, "rebuilt with the same version"), REBUILT = folderOf(rebuilt);
+      expect(rebuilt.version).toBe(VERSION); expect(REBUILT).not.toBe(FOLDER_A); expect(REBUILT.split("+")[0]).toBe(FOLDER_A.split("+")[0]);
+      serveNext(rebuilt);
       const r = await run(s, { T_COMMAND: pageCommand(active) });
-      expect(r.code, r.out).toBe(1); expect(r.out).toContain("It was left untouched because it may be running"); expect(r.out).toContain("delete that folder yourself");
-      expect(snapshot(s.install)).toEqual(before);
+      expect(r.code, r.out).toBe(0); expect(r.out).not.toContain("exists but does not hold this build");
+      expect(readdirSync(s.install).sort()).toEqual(["bin", FOLDER_A, REBUILT].sort());
+      expect(snapshot(join(s.install, FOLDER_A))).toEqual(before);
+      expect(readFileSync(join(s.install, REBUILT, "dist", "runtime-cli.js"), "utf8")).toBe("// fixture runtime rebuilt with the same version\n");
+      expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(REBUILT);
+      expect(r.out).toContain(`agend-runtime now starts ${REBUILT} (it was ${FOLDER_A})`);
     });
-    it("leaves a folder for this version that it did not install (no marker) completely alone", async () => {
-      const s = scratch(), folder = join(s.install, VERSION, "dist"); mkdirSync(folder, { recursive: true }); writeFileSync(join(folder, "runtime-cli.js"), "// installed from the ZIP\n");
+    it("running the same build's command again finds its own folder and only repoints; switching back to an earlier build keeps every folder", async () => {
+      const s = scratch(); expect((await run(s)).code).toBe(0);
+      const next = makeBundle(NEXT), NEXT_FOLDER = folderOf(next); serveNext(next); expect((await run(s, { T_COMMAND: pageCommand(active) })).code).toBe(0);
+      active = serviceA; const back = await run(s);
+      expect(back.code, back.out).toBe(0); expect(back.out).toContain("is already installed"); expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);
+      expect(readdirSync(s.install).sort()).toEqual(["bin", NEXT_FOLDER, FOLDER_A].sort());
+      expect(seen).toEqual([`GET ${RUNTIME_INSTALL_SCRIPT_PATH}`]);   // no archive was downloaded again
+    });
+    it("leaves a folder that carries this build's own name but does not hold it (changed by hand, or incomplete) completely alone", async () => {
+      const s = scratch(), folder = join(s.install, FOLDER_A, "dist"); mkdirSync(folder, { recursive: true }); writeFileSync(join(folder, "runtime-cli.js"), "// changed by hand\n");
       const before = snapshot(s.install), r = await run(s);
-      expect(r.code, r.out).toBe(1); expect(r.out).toContain("not this AgEnD's build or it is incomplete"); expect(snapshot(s.install)).toEqual(before);
+      expect(r.code, r.out).toBe(1); expect(r.out).toContain("exists but does not hold this build"); expect(r.out).toContain("It was left untouched because it may be running"); expect(snapshot(s.install)).toEqual(before);
       expect(existsSync(join(s.install, "bin", "current.txt"))).toBe(false);   // nothing was repointed
     });
     it("does not repoint agend-runtime when the new version failed to install, so the working version keeps working", async () => {
@@ -275,7 +305,7 @@ describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run again
       const before = snapshot(s.install), bad = makeBundle(NEXT); serveNext(bad);
       behaviour = (req, res) => { if (req.url !== RUNTIME_BUNDLE_PATH) return false; const wrong = Buffer.concat([bad.bytes, Buffer.from([1])]); res.writeHead(200, { "Content-Length": wrong.length }); res.end(wrong); return true; };
       const r = await run(s, { T_COMMAND: pageCommand(active) });
-      expect(r.code, r.out).toBe(1); expect(snapshot(s.install)).toEqual(before); expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(VERSION);
+      expect(r.code, r.out).toBe(1); expect(snapshot(s.install)).toEqual(before); expect(readFileSync(join(s.install, "bin", "current.txt"), "latin1")).toBe(FOLDER_A);
     });
   });
 

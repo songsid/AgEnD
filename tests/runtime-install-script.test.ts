@@ -91,13 +91,31 @@ describe("install.ps1 template", () => {
     expect(code).toMatch(/\$e -ieq \$want -or \[Environment\]::ExpandEnvironmentVariables\(\$e\)\.TrimEnd\('\\'\) -ieq \$want\) \{ return \$false \}/);
     expect(code).not.toMatch(/Set-ExecutionPolicy|-ExecutionPolicy|ExecutionPolicy\b/);
   });
+  it("pins the exact text of the shim: changing it rewrites a batch file that a running Runtime may be executing (N4)", () => {
+    const body = /\$shimText = \(([\s\S]*?)\) -join/.exec(code)![1], text = [...body.matchAll(/'([^']*)'/g)].map(match => match[1]).join("\r\n");
+    // If this fails you changed the shim. cmd.exe reads a running batch file a piece at a time, so Set-AgendFile replacing the agend-runtime.cmd of a
+    // Runtime that is running can make its window misbehave when it ends. Change the shim only if a bug in it makes installs unusable; then update this
+    // hash in the same commit, and say in the docs and the changelog that running Runtimes should be stopped before the install command is run again.
+    expect(createHash("sha256").update(text).digest("hex")).toBe("36fcf08973287924389695d1d0d22614812d107b59c2f3d7ca7c69713e8bbd66");
+    expect(text).not.toMatch(/\d+\.\d+\.\d+/);   // it names no version
+    expect(template).toMatch(/# DO NOT CHANGE \$shimText unless a bug in it makes installs unusable\. cmd\.exe reads a batch file as it runs it/);
+  });
+  it("does not use an automatic variable as its own, and a failed PATH broadcast is a warning, never 'install failed' (N5)", () => {
+    expect(code).not.toMatch(/\$input\b/); expect(code).toContain("$bodyStream = $response.GetResponseStream()");
+    // the broadcast is the part after the PATH value was written: both SetEnvironmentVariable calls sit in a try whose catch warns and clears the variable
+    const broadcast = /try \{\s+\[Environment\]::SetEnvironmentVariable\('AGEND_RUNTIME_ENV_REFRESH', '1', 'User'\)\s+\[Environment\]::SetEnvironmentVariable\('AGEND_RUNTIME_ENV_REFRESH', \$null, 'User'\)\s+\} catch \{([\s\S]*?)\n        \}\s+return \$true/.exec(code);
+    expect(broadcast, "the broadcast is wrapped").not.toBeNull();
+    expect(broadcast![1]).toContain("SetEnvironmentVariable('AGEND_RUNTIME_ENV_REFRESH', $null, 'User')"); expect(broadcast![1]).toMatch(/warning: your PATH was updated, but running programs could not be told/);
+    expect(broadcast![1]).not.toMatch(/\bthrow\b|install failed/);
+  });
   it("never skips or replaces certificate validation, in any form", () => {
     expect(code).not.toMatch(/SkipCertificateCheck|ServerCertificateValidationCallback|CertificatePolicy|ICertificatePolicy|TrustAllCertsPolicy|-k\b|--insecure/i);
     expect(code).toContain("AllowAutoRedirect = $false");
   });
   it("installs under a version folder beside the others, with a shim that never changes and a current.txt that is swapped atomically", () => {
     expect(code).toContain("Join-Path $env:LOCALAPPDATA 'agend-runtime'");
-    expect(code).toContain("$target = Join-Path $root $pinnedVersion");
+    // the folder names the build as well as the version, so a different build of one version lands beside the old one (N3)
+    expect(code).toContain("$folder = $pinnedVersion + '+' + $pinnedSha256.Substring(0, 8)"); expect(code).toContain("$target = Join-Path $root $folder");
     expect(code).toContain("$bin = Join-Path $root 'bin'");
     expect(code).toContain("AGEND_RUNTIME_INSTALL_DIR");
     // the shim text holds no version, so replacing a version cannot change a batch file that is running
@@ -108,8 +126,8 @@ describe("install.ps1 template", () => {
     expect(shim).toContain('node.exe "%~dp0..\\%AGEND_RT_VERSION%\\dist\\runtime-cli.js" %*'); expect(shim).toContain("exit /b %errorlevel%");
     // the switch: a sibling written whole, then File.Replace (a rename when there is nothing to replace); only the changed file is touched
     expect(code).toContain("[IO.File]::Replace($new, $Path, [NullString]::Value)"); expect(code).toContain("[IO.File]::Move($new, $Path)");
-    expect(code).toMatch(/Set-AgendFile \$shim \$shimText\s+Set-AgendFile \$current \$pinnedVersion/);
-    expect(code.indexOf("Set-AgendFile $current $pinnedVersion")).toBeGreaterThan(code.indexOf("Move-Item -LiteralPath $unpacked -Destination $target"));   // switched only after the new version is whole
+    expect(code).toMatch(/Set-AgendFile \$shim \$shimText\s+Set-AgendFile \$current \$folder/);
+    expect(code.indexOf("Set-AgendFile $current $folder")).toBeGreaterThan(code.indexOf("Move-Item -LiteralPath $unpacked -Destination $target"));   // switched only after the new version is whole
   });
   it("fails loudly and leaves earlier installs alone: it deletes only its own staging folder, a temporary sibling and a root it created empty", () => {
     expect(code).toContain("$global:LASTEXITCODE = 1");
@@ -134,9 +152,11 @@ describe("what the documentation, the page and the changelog promise", () => {
   });
   it("tells the administrator what to do on a TLS failure, under Constrained Language Mode or AppLocker, and says the execution policy is never changed", () => {
     expect(en).toMatch(/certificate error[\s\S]*trust the AgEnD server's certificate[\s\S]*or use the ZIP/); expect(en).toMatch(/Never turn certificate validation off/);
-    expect(en).toMatch(/Constrained Language Mode or AppLocker[\s\S]*Use the ZIP instead/); expect(en).toMatch(/never changes your execution policy/);
+    // the claim "the command stops under Constrained Language Mode" is true only because no failure reaches iex (B1), and is tested under a real pwsh
+    expect(en).toMatch(/Constrained Language Mode or AppLocker\*\* the command \*\*stops without running anything\*\*[\s\S]*Use the ZIP instead/); expect(en).toMatch(/never changes your execution policy/);
+    expect(en).toMatch(/No failure reaches `iex`/); expect(zh).toMatch(/任何失敗都不會走到 `iex`/);
     expect(zh).toMatch(/憑證錯誤[\s\S]*信任這台 AgEnD 伺服器的憑證[\s\S]*改用 ZIP/); expect(zh).toMatch(/絕對不要以任何開關、回呼或政策關閉憑證驗證/);
-    expect(zh).toMatch(/受限語言模式[\s\S]*AppLocker[\s\S]*改用 ZIP/); expect(zh).toMatch(/不會變更你的執行原則/);
+    expect(zh).toMatch(/受限語言模式[\s\S]*AppLocker[\s\S]*停下來、什麼都不執行[\s\S]*改用 ZIP/); expect(zh).toMatch(/不會變更你的執行原則/);
   });
   it("says the address comes only from $agend, the reviewed remote-runtime address, and why the command pins the script", () => {
     expect(en).toMatch(/taken \*\*only\*\* from `\$agend`[\s\S]*reviewed remote-runtime address[\s\S]*not the `Host` header/); expect(zh).toMatch(/\*\*只\*\*取自 `\$agend`[\s\S]*審核過的 remote runtime 位址[\s\S]*`Host` 標頭/);
@@ -148,6 +168,14 @@ describe("what the documentation, the page and the changelog promise", () => {
     expect(en).toMatch(/never deleted or replaced, because it may be the Runtime that is running/); expect(en).toMatch(/refuses it clearly/); expect(en).toMatch(/re-run the install command/i);
     expect(zh).toMatch(/永遠不會被刪除或取代/); expect(zh).toMatch(/明確拒絕/); expect(zh).toMatch(/重新執行安裝指令/);
     expect(en).not.toMatch(/Protocol compatibility is diagnostic metadata/);
+  });
+  it("explains the build-named folders and that clearing old ones is for a later phase, never manual deleting to update (N3)", () => {
+    expect(en).toContain("<version>+<build>"); expect(en).toMatch(/different build of the same version number[\s\S]*beside the old ones/); expect(en).toMatch(/Nobody has to delete a folder by hand to update/);
+    expect(en).toMatch(/Earlier folders are not removed by this installer[\s\S]*later phase/); expect(en).not.toMatch(/delete that folder yourself, and run the install command again|tells you to close any Runtime window and delete that folder/);
+    expect(zh).toContain("<版本>+<build>"); expect(zh).toMatch(/同一個版本號的不同 build/); expect(zh).toMatch(/更新時不需要任何人手動刪資料夾/); expect(zh).toMatch(/這個安裝程式不會移除舊資料夾[\s\S]*之後/);
+  });
+  it("says a request an address's own limit refuses costs the shared total nothing (N1)", () => {
+    expect(en).toMatch(/A client address is asked first: a request its own allowance refuses costs the shared total nothing/); expect(zh).toMatch(/被它自己的額度拒絕的請求不會扣共用的總量/);
   });
   it("documents the caching and burst behaviour of the installer routes", () => {
     for (const text of [en, zh]) { expect(text).toContain("ETag"); expect(text).toContain("If-None-Match"); expect(text).toContain("no-store"); expect(text).toContain("429"); }

@@ -16,7 +16,8 @@
 #   1. Checks that Node.js 22.14 or newer is installed (it never installs software for you).
 #   2. Downloads the Runtime archive from $agend, checks its SHA-256 against the value pinned inside this script and, if it
 #      does not match, stops before anything is unpacked.
-#   3. Unpacks it into %LOCALAPPDATA%\agend-runtime\<version>, NEXT TO any version already there. An existing version folder
+#   3. Unpacks it into %LOCALAPPDATA%\agend-runtime\<version>+<build>, NEXT TO any version already there (the folder names the build,
+#      the first 8 characters of the archive's SHA-256, because one version number can cover more than one build). An existing folder
 #      is never deleted or replaced: it may be the Runtime that is running right now.
 #   4. Points agend-runtime at the new version: bin\agend-runtime.cmd never changes, and bin\current.txt (the version it
 #      starts) is swapped in with an atomic file replace. A Runtime that is already running keeps running its own version.
@@ -60,22 +61,22 @@
     function Save-AgendArchive([string]$Uri, [string]$OutFile, [long]$MaxBytes) {
         $request = [Net.HttpWebRequest]::Create($Uri)
         $request.AllowAutoRedirect = $false; $request.Timeout = 120000; $request.ReadWriteTimeout = 60000; $request.UserAgent = 'agend-runtime-install'
-        $response = $null; $input = $null; $output = $null; $done = $false
+        $response = $null; $bodyStream = $null; $output = $null; $done = $false
         try {
             $response = $request.GetResponse()
             if ([int]$response.StatusCode -ne 200) { throw ('The AgEnD server answered ' + [int]$response.StatusCode + ' for the Runtime archive.') }
             if ($response.ContentLength -gt $MaxBytes) { throw 'The Runtime archive is larger than expected; refusing to download it.' }
-            $input = $response.GetResponseStream()
+            $bodyStream = $response.GetResponseStream()
             $output = [IO.File]::Open($OutFile, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
             $buffer = New-Object byte[] 65536; $total = 0
-            while (($count = $input.Read($buffer, 0, $buffer.Length)) -gt 0) {
+            while (($count = $bodyStream.Read($buffer, 0, $buffer.Length)) -gt 0) {
                 $total += $count
                 if ($total -gt $MaxBytes) { throw 'The Runtime archive is larger than expected; stopped downloading it.' }
                 $output.Write($buffer, 0, $count)
             }
             $done = $true
         } finally {
-            if ($output) { $output.Dispose() }; if ($input) { $input.Dispose() }; if ($response) { $response.Close() }
+            if ($output) { $output.Dispose() }; if ($bodyStream) { $bodyStream.Dispose() }; if ($response) { $response.Close() }
             if (-not $done) { Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue }
         }
     }
@@ -119,13 +120,24 @@
             if ($raw.Trim().Length -gt 0) { $next = $raw.TrimEnd(';') + ';' + $Folder }
             $key.SetValue('Path', $next, $kind)
         } finally { $key.Close() }
-        # Tell running programs the environment changed: setting and clearing a throwaway user variable makes Windows broadcast it.
-        [Environment]::SetEnvironmentVariable('AGEND_RUNTIME_ENV_REFRESH', '1', 'User')
-        [Environment]::SetEnvironmentVariable('AGEND_RUNTIME_ENV_REFRESH', $null, 'User')
+        # Tell running programs the environment changed: setting and clearing a throwaway user variable makes Windows broadcast it. The PATH is
+        # already written, so a failure here is only a warning (open terminals learn of it later), never "install failed".
+        try {
+            [Environment]::SetEnvironmentVariable('AGEND_RUNTIME_ENV_REFRESH', '1', 'User')
+            [Environment]::SetEnvironmentVariable('AGEND_RUNTIME_ENV_REFRESH', $null, 'User')
+        } catch {
+            try { [Environment]::SetEnvironmentVariable('AGEND_RUNTIME_ENV_REFRESH', $null, 'User') } catch { }
+            Write-Host ('AgEnD Runtime: warning: your PATH was updated, but running programs could not be told (' + $_.Exception.Message + '). Open a new terminal to see the change.') -ForegroundColor Yellow
+        }
         return $true
     }
     # The shim never changes from one version to the next, so replacing a version cannot disturb a batch file that is running.
     # It starts the version named in current.txt, next to it; that one small file is what an install swaps.
+    # DO NOT CHANGE $shimText unless a bug in it makes installs unusable. cmd.exe reads a batch file as it runs it, a piece at a time, not all at
+    # once, so rewriting the agend-runtime.cmd of a Runtime that is running (Set-AgendFile does that whenever this text differs from what is on
+    # disk) can make that Runtime's window misbehave when it ends. The text names no version for exactly that reason. If it must change, update the
+    # pinned hash in tests/runtime-install-script.test.ts in the same commit, and say in the docs and the changelog that running Runtimes should be
+    # stopped before the install command is run again.
     $shimText = ('@echo off', 'setlocal', 'set "AGEND_RT_VERSION="', 'if not exist "%~dp0current.txt" goto :agend_rt_missing', 'set /p AGEND_RT_VERSION=<"%~dp0current.txt"', 'if not defined AGEND_RT_VERSION goto :agend_rt_missing',
         'if not exist "%~dp0..\%AGEND_RT_VERSION%\dist\runtime-cli.js" goto :agend_rt_missing', 'node.exe "%~dp0..\%AGEND_RT_VERSION%\dist\runtime-cli.js" %*',
         'exit /b %errorlevel%', ':agend_rt_missing', 'echo AgEnD Runtime is not installed correctly. Run the install command shown in AgEnD Settings - Runtime - Connect a computer again.>&2',
@@ -166,27 +178,31 @@
             $root = Join-Path $env:LOCALAPPDATA 'agend-runtime'
         }
         $root = [IO.Path]::GetFullPath($root).TrimEnd('\')
-        $target = Join-Path $root $pinnedVersion
+        # The folder names the build as well as the version: one version number often covers more than one build, and a different build must land
+        # beside the old one, not on it. The same build finds its own folder again and only repoints agend-runtime.
+        $folder = $pinnedVersion + '+' + $pinnedSha256.Substring(0, 8)
+        $target = Join-Path $root $folder
         $bin = Join-Path $root 'bin'
         $marker = Join-Path $target '.agend-install-sha256'
         $createdRoot = -not (Test-Path -LiteralPath $root)
         $null = New-Item -ItemType Directory -Path $root -Force
 
-        # An existing folder for this version is never deleted or replaced: it may be the Runtime that is running right now.
+        # An existing folder is never deleted or replaced: it may be the Runtime that is running right now. A folder with this build's own name that does
+        # not hold this build can only be one that was changed by hand or left incomplete, and is left alone too.
         $installed = $false
         if (Test-Path -LiteralPath $target) {
             $existing = ''
             if (Test-Path -LiteralPath $marker) { $existing = ([IO.File]::ReadAllText($marker)).Trim() }
             if ($existing -eq $pinnedSha256 -and (Test-Path -LiteralPath (Join-Path $target 'dist\runtime-cli.js'))) { $installed = $true }
-            else { throw ('Version ' + $pinnedVersion + ' is already in ' + $target + ', but it is not this AgEnD''s build or it is incomplete. It was left untouched because it may be running. Close any agend-runtime window, delete that folder yourself, and run the install command again.') }
+            else { throw ('The folder ' + $target + ' exists but does not hold this build (it was changed or is incomplete). It was left untouched because it may be running. Close any agend-runtime window, move that folder away yourself, and run the install command again.') }
         }
         if ($installed) {
-            Write-Step ('version ' + $pinnedVersion + ' is already installed in ' + $target + '.')
+            Write-Step ('version ' + $pinnedVersion + ' (build ' + $pinnedSha256.Substring(0, 8) + ') is already installed in ' + $target + '.')
         } else {
             $tmp = Join-Path $root ('.install-' + [Guid]::NewGuid().ToString('N'))
             $null = New-Item -ItemType Directory -Path $tmp
             $archive = Join-Path $tmp 'runtime.zip'
-            Write-Step ('downloading version ' + $pinnedVersion + ' from ' + $origin)
+            Write-Step ('downloading version ' + $pinnedVersion + ' (build ' + $pinnedSha256.Substring(0, 8) + ') from ' + $origin)
             Save-AgendArchive ($origin + '/runtime/v1/bundle/windows.zip') $archive $maxArchiveBytes
             $actual = Get-AgendSha256 $archive
             if ($actual -ne $pinnedSha256) {
@@ -203,7 +219,7 @@
             [IO.File]::WriteAllText((Join-Path $unpacked '.agend-install-sha256'), $pinnedSha256)
             # A rename inside the install folder: the version folder appears whole or not at all, beside the versions already there.
             Move-Item -LiteralPath $unpacked -Destination $target
-            Write-Step ('installed version ' + $pinnedVersion + ' in ' + $target + '.')
+            Write-Step ('installed version ' + $pinnedVersion + ' (build ' + $pinnedSha256.Substring(0, 8) + ') in ' + $target + '.')
         }
 
         # Repoint agend-runtime. The shim file is written once and then left alone; current.txt is the atomic switch.
@@ -213,12 +229,13 @@
         $was = ''
         if (Test-Path -LiteralPath $current) { $was = ([IO.File]::ReadAllText($current)).Trim() }
         Set-AgendFile $shim $shimText
-        Set-AgendFile $current $pinnedVersion
-        if ($was -ne '' -and $was -ne $pinnedVersion) {
-            Write-Step ('agend-runtime now starts version ' + $pinnedVersion + ' (it was ' + $was + '). A Runtime that is already running keeps its own version until you stop it with Ctrl+C and start it again with agend-runtime run.')
+        Set-AgendFile $current $folder
+        if ($was -ne '' -and $was -ne $folder) {
+            Write-Step ('agend-runtime now starts ' + $folder + ' (it was ' + $was + '). A Runtime that is already running keeps its own version until you stop it with Ctrl+C and start it again with agend-runtime run.')
         }
-        $others = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $pinnedVersion -and $_.Name -match '\A\d+\.\d+\.\d+([-+][A-Za-z0-9.-]+)?\z' } | ForEach-Object { $_.Name })
-        if ($others.Count -gt 0) { Write-Step ('earlier versions are kept where they are (' + ($others -join ', ') + '); delete them yourself when you no longer need them.') }
+        $others = @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $folder -and $_.Name -match '\A\d+\.\d+\.\d+([-+][A-Za-z0-9.+-]+)?\z' } | ForEach-Object { $_.Name })
+        # Earlier folders are not removed here: one of them may be running. Cleaning them up comes with the update and uninstall commands (phase 2).
+        if ($others.Count -gt 0) { Write-Step ('earlier versions are kept where they are (' + ($others -join ', ') + '). This installer never removes a version; clearing old ones comes later, with the update and uninstall commands.') }
 
         $onPath = $false
         if ([string]$env:AGEND_RUNTIME_NO_PATH -eq '1') {
