@@ -109,7 +109,11 @@ export class HubMemberClient implements HubMemberTransport {
       const features: ReadonlySet<string> = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
       const view: HubMemberLink = { profile: structuredClone(profile), linkEpoch: epoch, features, get revocationVersion() { return self.revocation; },
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
-        send: value => { if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale")); return link.send(value); },
+        send: value => {
+          if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
+          if (value.type === "exposure.quota" && !features.has("quota-band-v1")) return Promise.reject(new HubAuthorizationError("unavailable", "incompatible"));
+          return link.send(value);
+        },
         exchange: (value, type) => this.exchange(value, type, view) };
       this.view = view;
       // Do not await reconciliation on the receive queue: its RPC response arrives on that queue.
