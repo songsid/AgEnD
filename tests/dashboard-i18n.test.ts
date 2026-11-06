@@ -22,8 +22,9 @@ vm.runInContext(strip(read(join(UI, "panel-fleet.js"))), ctx);
 // The task board's words (Fleet › Tasks): its shared module and the card dialog.
 vm.runInContext(strip(read(join(UI, "fleet-task-common.js"))), ctx);
 vm.runInContext(strip(read(join(UI, "fleet-task-card.js"))), ctx);
+vm.runInContext(strip(read(join(UI, "fleet-task-view.js"))), ctx);   // a project as a list, and its filters
 const tables = vm.runInContext("tables", ctx) as Record<"en" | "zh-TW", Record<string, string>>;
-const NAMESPACES = ["app", "chat", "fleet", "tasks", "taskcard"];
+const NAMESPACES = ["app", "chat", "fleet", "tasks", "taskcard", "taskview"];
 const keys = (lang: "en" | "zh-TW") => Object.keys(tables[lang]).filter(k => NAMESPACES.includes(k.split(".")[0]!));
 
 describe("the app's dictionary: English and zh-TW", () => {
@@ -60,7 +61,7 @@ describe("the app's dictionary: English and zh-TW", () => {
       ...readdirSync(SHARED).filter(f => f.endsWith(".js") && !f.endsWith(".module.js")).map(f => join(SHARED, f)),
     ];
     const used = new Set<string>();
-    for (const file of files) for (const m of read(file).matchAll(/\bt\(\s*"((?:app|chat|fleet|tasks|taskcard)\.[\w.]+)"/g)) used.add(m[1]!);
+    for (const file of files) for (const m of read(file).matchAll(/\bt\(\s*"((?:app|chat|fleet|tasks|taskcard|taskview)\.[\w.]+)"/g)) used.add(m[1]!);
     expect(used.size).toBeGreaterThan(50);
     for (const key of used) {
       expect(tables.en[key], `${key} (en)`).toBeDefined();
