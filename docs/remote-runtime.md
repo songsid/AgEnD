@@ -93,7 +93,7 @@ The script and the Runtime archive come from the same server over the same TLS c
 ### What the install script does
 
 1. Checks that Node.js 22.14 or newer (22.14+, 23.6+ or 24+) is installed. If not, it stops and shows `winget install OpenJS.NodeJS.LTS` or nodejs.org. It never installs software for you.
-2. Downloads the Runtime archive from `$agend` (one bounded request, redirects refused, at most 16 MiB).
+2. Downloads the Runtime archive from `$agend` (one bounded request, redirects refused, at most 8 MiB).
 3. Computes the archive's SHA-256 itself and compares it with the checksum written inside the installer script. On a mismatch it stops before anything is unpacked.
 4. Unpacks into `%LOCALAPPDATA%\agend-runtime\<version>+<build>`, **beside** any version already there. `<build>` is the first 8 characters of the archive's SHA-256, because one version number can cover more than one build.
 5. Points `agend-runtime` at it (below), and adds `%LOCALAPPDATA%\agend-runtime\bin` to **your user PATH**.
@@ -128,7 +128,7 @@ Both are **static for a server version**: the generic bundle is built once per s
 
 The metadata comes from that same cached bundle, so its hash and byte count describe the ZIP actually served. ZIP and metadata use the same `ETag` (`"<version>-<sha256>"`), `Cache-Control: no-cache` and conditional `304` behavior. `HEAD` returns their headers without a body. This metadata endpoint prepares the server contract for automatic updates; it does not switch a running Runtime by itself.
 
-Requests are rate limited per client address with a small burst (a few downloads in a row, then a steady rate; ZIP and metadata share one allowance, and the script has its own), and in total, because a reverse proxy makes every client look like one address. Conditional requests and `HEAD` also count. A client address is asked first: a request its own allowance refuses costs the shared total nothing, so one address that hammers a route is held by its own limit and cannot use up what everyone else shares. A held request gets `429` with `Retry-After`. The archive can never exceed the bundle's 16 MiB cap.
+Requests are rate limited per client address with a small burst (a few downloads in a row, then a steady rate; ZIP and metadata share one allowance, and the script has its own), and in total, because a reverse proxy makes every client look like one address. Conditional requests and `HEAD` also count. A client address is asked first: a request its own allowance refuses costs the shared total nothing, so one address that hammers a route is held by its own limit and cannot use up what everyone else shares. A held request gets `429` with `Retry-After`. The archive can never exceed the bundle's 8 MiB cap.
 
 ### Remove it
 
