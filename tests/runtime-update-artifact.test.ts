@@ -161,11 +161,11 @@ describe("stored ZIP code validation before any filesystem write", () => {
     const changed = Buffer.from(bundle.bytes); changed[50] ^= 1;
     expect(() => validateRuntimeUpdateArchive(changed, metadataFor(bundle.bytes))).toThrow(/checksum/);
   });
-  it("refuses unsafe Windows paths, aliases, duplicate entries and file/directory collisions", () => {
-    for (const name of ["../outside", "/absolute", "C:/outside", "dir\\outside", "dir/file:stream", "dir/NUL.txt", "dir/file.", "dir/./file", "dir//file", "x\0y"]) {
-      const archive = withFiles(files => files.set(name, Buffer.from("unsafe")));
-      expect(() => validateRuntimeUpdateArchive(archive, metadataFor(archive)), name).toThrow(/archive/);
-    }
+  it.each(["../outside", "/absolute", "C:/outside", "dir\\outside", "dir/file:stream", "dir/NUL.txt", "dir/file.", "dir/./file", "dir//file", "x\0y"])("refuses unsafe Windows path %j in an otherwise valid archive", name => {
+    const archive = withFiles(files => files.set(name, Buffer.from("unsafe")));
+    expect(() => validateRuntimeUpdateArchive(archive, metadataFor(archive))).toThrow(/archive/);
+  });
+  it("refuses aliases, duplicate entries and file/directory collisions", () => {
     const alias = withFiles(files => files.set("readme.txt", Buffer.from("alias")));
     expect(() => validateRuntimeUpdateArchive(alias, metadataFor(alias))).toThrow(/archive/);
     const files = new Map(validateRuntimeUpdateArchive(bundle.bytes, metadataFor(bundle.bytes)).files);

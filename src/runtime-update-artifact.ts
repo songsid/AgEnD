@@ -72,17 +72,17 @@ function download(origin: URL, path: string, limit: number, timeoutMs: number): 
         || (res.headers["content-encoding"] !== undefined && res.headers["content-encoding"] !== "identity")) return finish(new RuntimeUpdateArtifactError("transport"));
       const declared = res.headers["content-length"];
       if (declared !== undefined && (!/^\d+$/.test(declared) || !Number.isSafeInteger(Number(declared)) || Number(declared) > limit)) return finish(new RuntimeUpdateArtifactError("download"));
-      let size = 0; const chunks: Buffer[] = [];
+      let size = 0; const bytes = Buffer.allocUnsafe(limit);
       res.on("data", (chunk: Buffer) => {
         size += chunk.length;
         if (size > limit) return finish(new RuntimeUpdateArtifactError("download"));
-        chunks.push(chunk);
+        chunk.copy(bytes, size - chunk.length);
       });
       res.on("aborted", () => finish(new RuntimeUpdateArtifactError("download")));
       res.on("error", () => finish(new RuntimeUpdateArtifactError("download")));
       res.on("end", () => {
         if (declared !== undefined && size !== Number(declared)) return finish(new RuntimeUpdateArtifactError("download"));
-        finish(undefined, { bytes: Buffer.concat(chunks, size), etag: res.headers.etag });
+        finish(undefined, { bytes: bytes.subarray(0, size), etag: res.headers.etag });
       });
     });
     const deadline = setTimeout(() => finish(new RuntimeUpdateArtifactError("download")), timeoutMs);
