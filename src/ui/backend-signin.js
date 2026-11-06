@@ -13,6 +13,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
 import { mountStructuredSignIns } from "./structured-signin.js";
 import { CliProductMark, cliLabel } from "./cli-picker.js";
+import { identityText } from "./account-identity.js";
 
 register("signin", {
   en: {
@@ -327,6 +328,8 @@ export function SignInLine() {
     <button type="button" class="btn btn-sm" onClick=${() => openRunning(login)}>${tn("open")}</button></div>`;
 }
 
+/** Which account a Claude Code sign-in is (masked e-mail and plan, as the host's own `claude auth status` said). An older server sends none: then nothing is shown. */
+const accountOf = (target) => identityText(target?.identity);
 const STATE_KEY = { usable: "stUsable", not_signed_in: "stNotSignedIn", not_installed: "stNotInstalled", too_old: "stTooOld", unknown: "stUnknown" };
 
 register("signin", {
@@ -358,7 +361,7 @@ export function SignInList() {
     ${!loaded ? html`<p class="note" role="status">${tn("hostLoading")}</p>` : !targets.length ? html`<p class="note">${tn("hostEmpty")}</p>` : html`<div class="s-host-cli-list">${targets.map((x) => {
       const commands = [["install", x.install], ["update", x.update], ["onHost", x.hostCommand]].filter(([, value]) => value);
       return html`<div key=${`${x.backend}:${x.profile || ""}`} class="s-row s-host-cli-row" data-backend=${x.backend}>
-        <div class="s-host-cli-identity"><${CliProductMark} id=${x.backend} size=${24} /><div><strong class="s-name">${cliLabel(x.backend)}</strong>${x.profile ? html`<small>${tn("hostProfile", x.profile)}</small>` : null}</div></div>
+        <div class="s-host-cli-identity"><${CliProductMark} id=${x.backend} size=${24} /><div><strong class="s-name">${cliLabel(x.backend)}</strong>${x.profile ? html`<small>${tn("hostProfile", x.profile)}</small>` : null}${accountOf(x) ? html`<small class="s-host-cli-account" data-account=${x.profile || "default"}>${accountOf(x)}</small>` : null}</div></div>
         <span class=${`tag s-auth-state is-${x.state || "unknown"}`}>${tn(STATE_KEY[x.state] || "stUnknown")}</span>
         ${x.signIn ? html`<span class="s-actions"><button type="button" class=${x.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${!!running}
           onClick=${() => openSignIn(x)}>${x.state === "usable" ? tn("signInAgain") : tn("signIn")}</button></span>` : null}

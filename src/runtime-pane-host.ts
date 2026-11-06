@@ -11,7 +11,9 @@ import { spawnNativePane } from "./runtime-pane-process.js";
 import type { PaneMcpConnection } from "./windows-pane-mcp.js";
 import type { NativePaneOwner } from "./runtime-pane-native.js";
 import type { PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
-import { NativePaneTranscriptReader, nativeClaudeSessionState, nativeCodexSessionState, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
+import { NativePaneTranscriptReader, nativeClaudeSessionState, nativeCodexSessionState, nativePaneTranscriptRoots, type NativeClaudeSessionState } from "./runtime-pane-transcript.js";
+import { CredentialProfileRefusal, credentialLoginRequired, withCredentialProfile } from "./runtime-credential-profiles.js";
+import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePaneTranscriptWireBatch, type PaneTranscriptCursor, type PaneTranscriptWireBatch } from "./runtime-pane-transcript-protocol.js";
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
@@ -32,6 +34,13 @@ export interface RuntimePaneHostOptions {
   /** Internal runner seam. A remote request never provides roots or a path. */
   transcript?(launch: RuntimePaneLaunch, sessionId: string): (Pick<NativePaneTranscriptReader, "read" | "close"> & Partial<Pick<NativePaneTranscriptReader, "baseline">>);
   sessionProof?(launch: RuntimePaneLaunch, sessionId: string, current: () => boolean): Promise<NativeClaudeSessionState>;
+  /**
+   * Local seam, never a request field: the folder of a credential profile that exists under this Runtime's own profile root, or a refusal.
+   * Absent means this host cannot honour a profile, and a launch that names one is refused rather than started on the default account.
+   */
+  credentialHome?(cli: RuntimePaneLaunch["cli"], name: string): string;
+  /** Asked once for each NEW launch that names a profile (never for a reattach): true = signed in. Anything else refuses the launch. */
+  credentialLogin?(cli: RuntimePaneLaunch["cli"], home: string, name: string): Promise<boolean | null>;
   output?(snapshot: RuntimePaneSnapshot): void;
 }
 interface LivePane {
@@ -100,9 +109,33 @@ export class RuntimePaneHost {
     try { return await operation; }
     finally { if (--queue.count === 0 && this.queues.get(id) === queue) this.queues.delete(id); }
   }
+  /** The profile folder for a launch that names one (checked, never created here); undefined when it names none. */
+  private credentialHome(launch: RuntimePaneLaunch): string | undefined {
+    if (launch.credentialProfile === undefined) return undefined;
+    if (!this.options.credentialHome) throw new CredentialProfileRefusal("This pane host cannot select a credential profile. Close its panes so the Runtime starts a new host, then try again.");
+    try { return this.options.credentialHome(launch.cli, launch.credentialProfile); }
+    catch (error) { throw new CredentialProfileRefusal(error instanceof Error ? error.message : "Credential profile is unavailable"); }
+  }
+  private async admitCredentialProfile(launch: RuntimePaneLaunch): Promise<string | undefined> {
+    const home = this.credentialHome(launch);
+    if (home === undefined) return undefined;
+    if (!this.options.credentialLogin) throw new CredentialProfileRefusal("This pane host cannot confirm a credential profile's sign-in, so nothing was started.");
+    const loggedIn = await this.options.credentialLogin(launch.cli, home, launch.credentialProfile!);
+    if (loggedIn !== true) throw new CredentialProfileRefusal(credentialLoginRequired(launch.cli, launch.credentialProfile!, loggedIn).message);
+    if (this.closing) throw Error("Pane host stopped during launch");
+    return home;
+  }
+  /** Transcripts and conversation proofs live under the profile's own folder; a launch without a profile keeps the Runtime's own roots. */
+  private transcriptRoots(launch: RuntimePaneLaunch): ReturnType<typeof nativePaneTranscriptRoots> | undefined {
+    const home = this.credentialHome(launch);
+    return home ? nativePaneTranscriptRoots(withCredentialProfile(nativeCliEnvironment(), launch.cli, home)) : undefined;
+  }
   private async open(request: Extract<RuntimePaneRequest, { action: "open" }>): Promise<RuntimePaneOpenResult> {
-    const { launch, operationId } = request;
-    const digest = RuntimePaneStore.digest(launch);
+    const { operationId } = request;
+    // The identity of an open is the launch AgEnD sent: a pairing default that is set, changed or cleared afterwards must not make a pane that is
+    // already here look like another launch. The default only decides which profile a NEW pane starts with, and the pane keeps it.
+    const digest = RuntimePaneStore.digest(request.launch);
+    const launch = request.defaultCredentialProfile !== undefined && request.launch.credentialProfile === undefined ? { ...request.launch, credentialProfile: request.defaultCredentialProfile } : request.launch;
     const existing = this.options.store.get(launch.paneId);
     if (existing) {
       if (existing.openOperationId !== operationId || existing.openDigest !== digest) throw Error("Pane id already belongs to another launch");
@@ -110,6 +143,8 @@ export class RuntimePaneHost {
       if (!live && existing.snapshot.state !== "exited") throw Error("Pane launch outcome is unknown; no replacement was started");
       return { ...structuredClone(live?.record.snapshot ?? existing.snapshot), reattached: true };
     }
+    // Before any reservation: a profile that is missing or signed out here consumes no pane identity, so the same open works once it is fixed.
+    const credentialHome = await this.admitCredentialProfile(launch);
     this.list();
     const rows = this.options.store.list();
     const limit = this.options.maxAgents();
@@ -136,7 +171,7 @@ export class RuntimePaneHost {
     this.options.store.put(record);
     let process: RuntimePaneProcess | undefined;
     try {
-      const owner: NativePaneOwner = { directory: this.options.store.directory, launchId: record.snapshot.launchId };
+      const owner: NativePaneOwner = { directory: this.options.store.directory, launchId: record.snapshot.launchId, ...(credentialHome ? { credentialHome } : {}) };
       if (launch.mcpTools) {
         if (!this.options.mcpConnection) throw Error("Persistent pane MCP authority is unavailable");
         owner.mcp = this.options.mcpConnection({ hostBootId: this.options.bootId, paneId: launch.paneId, launchId: record.snapshot.launchId, agentId: launch.agentId, instance: launch.instance }, launch.mcpTools);
@@ -212,7 +247,7 @@ export class RuntimePaneHost {
       const lease = () => !settled && !this.closing && this.options.online() && current();
       const read = this.options.sessionProof
         ? this.options.sessionProof(launch, snapshot.sessionId, lease)
-        : (launch.cli === "codex" ? nativeCodexSessionState : nativeClaudeSessionState)(launch.cwd, snapshot.sessionId, lease);
+        : (launch.cli === "codex" ? nativeCodexSessionState : nativeClaudeSessionState)(launch.cwd, snapshot.sessionId, lease, this.transcriptRoots(launch));
       try {
         const state = await Promise.race([read, new Promise<"unknown">(done => { timer = setTimeout(() => done("unknown"), 1500); })]);
         return { snapshot: structuredClone(snapshot), state: lease() && ["absent", "saved", "unknown"].includes(state) ? state : "unknown" };
@@ -294,7 +329,7 @@ export class RuntimePaneHost {
     const { launch, snapshot } = live.record;
     if (!snapshot.sessionId || cursor.sessionId !== snapshot.sessionId) throw Error("Transcript identity differs from its owned pane");
     if (snapshot.state !== "running" && snapshot.state !== "exited") throw Error("Transcript pane ownership is unconfirmed");
-    live.transcript ??= this.options.transcript?.(launch, snapshot.sessionId) ?? new NativePaneTranscriptReader(launch.cli, launch.cwd, snapshot.sessionId);
+    live.transcript ??= this.options.transcript?.(launch, snapshot.sessionId) ?? new NativePaneTranscriptReader(launch.cli, launch.cwd, snapshot.sessionId, this.transcriptRoots(launch));
     let settled = false, timer: ReturnType<typeof setTimeout> | undefined;
     const lease = (): boolean => !settled && !this.closing && current() && this.options.online();
     const read = baseline ? live.transcript.baseline?.(cursor, lease) ?? Promise.resolve({ state: "pending" as const, cursor, complete: false, turnKnown: false, openTurn: null }) : live.transcript.read(cursor, lease);

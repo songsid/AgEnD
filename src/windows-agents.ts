@@ -38,7 +38,7 @@ export class MachineSlotLimitError extends Error {
   }
 }
 export interface WindowsAgentPatch { name?: string; cwd?: string; description?: string; instructions?: string; sandbox?: WindowsAgent["sandbox"]; cli?: NativeProviderId; model?: string }
-export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string }
+export interface WindowsAgentSendOptions { onSettled?: (task: WindowsCliTask) => void; mcp?: NativeMcpConnection; context?: string; credentialProfile?: string }
 interface AgentData { version: 1; agents: WindowsAgent[]; requests: Record<string, { agentId: string; digest: string }> }
 const idPattern = /^[a-f0-9-]{36}$/i;
 const shortText = (value: unknown, limit: number): value is string => typeof value === "string" && value.length <= limit && !value.includes("\0");
@@ -320,6 +320,7 @@ export class WindowsAgents {
         resumeSessionId: agent.threadId,
         ...(agent.machineId ? {machineId:agent.machineId} : {}),
         ...(options.mcp ? {mcp:options.mcp} : {}),...(options.context ? {context:options.context} : {}),
+        ...(options.credentialProfile ? {credentialProfile:options.credentialProfile} : {}),
         onSettled: task => { try { this.change(() => {
           const current = this.find(id), turn = current.turns.find(t => t.id === requestId)!;
           Object.assign(turn, { output: task.output, status: task.status, finishedAt: task.finishedAt, error: task.error });

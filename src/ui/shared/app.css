@@ -3942,6 +3942,17 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .runtime-cli-auth { display: inline-flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--fs-xs); white-space: nowrap; }
 .runtime-cli-auth.is-signed-in { color: var(--ok); }
 .runtime-cli-table small { color: var(--text-3); font-size: var(--fs-xs); }
+.runtime-profiles { margin: 0 0 16px; }
+.runtime-profiles h4 { margin: 0 0 6px; font-size: var(--fs-sm); font-weight: 500; }
+.runtime-profile-list { list-style: none; margin: 0 0 6px; padding: 0; }
+.runtime-profile-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.runtime-profile-list li code { font: var(--fs-sm)/1.4 var(--font-mono); overflow-wrap: anywhere; }
+.runtime-profile-list .runtime-cli-auth { margin-inline-start: auto; }
+.runtime-account { display: block; color: var(--text-2); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.runtime-profile-list .runtime-account { display: inline; }
+.runtime-profile-default { padding: 1px 6px; border: 1px solid var(--border); border-radius: 5px; color: var(--text-2); font-size: var(--fs-xs); }
+.runtime-profiles .note, .runtime-profiles-old { margin: 4px 0 0; font-size: var(--fs-xs); }
+.runtime-profiles-old { margin-bottom: 16px; }
 .p-settings .runtime-machine-actions { margin-top: auto; gap: 8px; padding-top: 4px; }
 .runtime-machine-menu { margin-inline-start: auto; }
 .runtime-machine-menu .menu-list { min-width: 180px; }

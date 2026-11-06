@@ -16,6 +16,7 @@ import { RuntimePicker, AgentDraftAssistant, NativeAgendToolsHint, tr } from "./
 import { CliPicker, cliLabel as productLabel } from "./cli-picker.js";
 import { useWindowsCliCatalog, WindowsCliDiscoveryStatus, detectionText } from "./windows-cli-catalog.js";
 import { useRuntimeCatalog } from "./runtime-catalog.js";
+import { ClaudeAccountSelect } from "./credential-profile-select.js";
 import { chatPath, fleetPath, FLEET_TABS, rememberFleetTab } from "/assets/app-route.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
@@ -428,6 +429,8 @@ export function CreateInstanceDialog({ onClose }) {
   const [runtime,setRuntime] = useState("");
   const [machineId,setMachineId] = useState("");
   const [nativeAdapter,setNativeAdapter]=useState("exec");
+  // A Claude account on the chosen computer, by name ("" = that computer's own sign-in); never a folder.
+  const [credentialProfile,setCredentialProfile]=useState("");
   const machineCatalog = useRuntimeCatalog();
   // A computer paired a moment ago must show up: ask for a fresh list whenever the dialog opens (the hook then keeps polling).
   useEffect(() => { void machineCatalog.refresh(); },[]);
@@ -471,7 +474,7 @@ export function CreateInstanceDialog({ onClose }) {
     const nextInventory = nextMachineId ? machines.find(item => item.id === nextMachineId)?.inventory : discovery.data;
     const { sandbox: savedFileAccess } = saved || {};
     setRuntime(value);
-    setMachineId(nextMachineId);
+    setMachineId(nextMachineId);setCredentialProfile("");
     setF(saved?.form || {dir:"",topic:"",desc:"",prompt:"",tags:"",branch:"",model:"",backend:value === "windows" ? nextInventory?.clis?.find(b => b.path && b.runnable)?.id || "codex" : backends?.find(b => b.installed && !b.deprecated && !b.fallback)?.name || ""});
     setSandbox(savedFileAccess || "read-only");setNativeAdapter(saved?.nativeAdapter||"exec");
   };
@@ -490,7 +493,7 @@ export function CreateInstanceDialog({ onClose }) {
     if (windows) {
       const name = f.topic.trim() || f.dir.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop();
       if (!name) { toast(tr("required"),false); return null; }
-      return {runtime:"windows",...(nativeAdapter==="pane"?{native_adapter:"pane"}:{}),...(machineId ? {machineId} : {}),topic_name:name,backend:f.backend,...(f.model.trim() ? {model:f.model.trim()} : {}),...(f.dir.trim() ? {directory:f.dir.trim()} : {}),description:f.desc.trim(),systemPrompt:f.prompt.trim(),sandbox};
+      return {runtime:"windows",...(nativeAdapter==="pane"?{native_adapter:"pane"}:{}),...(machineId ? {machineId} : {}),...(machineId && f.backend === "claude-code" && credentialProfile ? {credentialProfile} : {}),topic_name:name,backend:f.backend,...(f.model.trim() ? {model:f.model.trim()} : {}),...(f.dir.trim() ? {directory:f.dir.trim()} : {}),description:f.desc.trim(),systemPrompt:f.prompt.trim(),sandbox};
     }
     if (!f.dir.trim() && !f.topic.trim()) { toast(t("fleet.topicRequired"), false); return null; }
     const body = {};
@@ -513,9 +516,10 @@ export function CreateInstanceDialog({ onClose }) {
   const runtimeLabel = machineId ? `${machine?.name || machineId} · ${machine?.platform || tr(runtime)}` : runtime ? tr(runtime) : "";
   const cliLabel = productLabel(f.backend) || `${t("fleet.fleetDefault")} (${productLabel(defaultBackend)})`;
   const backendField = windows ? html`<div class="field"><div class="cli-discovery-heading"><span>${tr("backend")}</span>${native && !machineId ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${discovery.loading} onClick=${discovery.refresh}><${Icon} name="restart" size=${14} />${detectionText("refresh")}</button>` : null}</div>
-    <div aria-busy=${!machineId && discovery.loading ? "true" : "false"}>${native ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${nativeChoices} onChange=${value => setF(x => ({...x,backend:value,model:""}))} disabled=${!nativeChoices.length || !!machineId && machine?.status !== "online"} />` : null}</div>
+    <div aria-busy=${!machineId && discovery.loading ? "true" : "false"}>${native ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${nativeChoices} onChange=${value => { setCredentialProfile(""); setF(x => ({...x,backend:value,model:""})); }} disabled=${!nativeChoices.length || !!machineId && machine?.status !== "online"} />` : null}</div>
     ${machineId ? html`<p class="note">${tr(!nativeChoices.length ? "noRemoteCli" : "remotePolicy")}</p>${machine?.inventoryUpdatedAt ? html`<p class="note">${t("runtime.inventoryAt",new Date(machine.inventoryUpdatedAt).toLocaleString())}</p>` : null}` : html`<${WindowsCliDiscoveryStatus} state=${discovery} />`}
-    ${!machineId && native && !discovery.loading && !discovery.error ? html`<p class="note">${!nativeChoices.length ? tr("noCli") : tr("nativeHint")}</p>` : null}</div>`
+    ${!machineId && native && !discovery.loading && !discovery.error ? html`<p class="note">${!nativeChoices.length ? tr("noCli") : tr("nativeHint")}</p>` : null}
+    ${machineId ? html`<${ClaudeAccountSelect} id="native-create-claude-account" machine=${machine} backend=${f.backend} value=${credentialProfile} onChange=${setCredentialProfile} disabled=${machine?.status !== "online"} />` : null}</div>`
     : field(tr("backend"),backends ? html`<${CliPicker} label=${tr("backend")} value=${f.backend} choices=${[{value:"",label:t("fleet.fleetDefault")},...backends.filter(b => backendState(b) !== "not_installed" && !b.deprecated).map(b => ({value:b.name,label:productLabel(b.name),disabled:backendBlocked(b),description:backendNote(b)}))]} onChange=${value => setF(x => ({...x,backend:value,model:""}))} />` : html`<div role="status" aria-busy="true"><${Skeleton} lines=${1} /><span class="note">${tr("loadingClis")}</span></div>`);
   const actions = ({busy,go}) => step === 3 ? html`<button type="button" class="btn" onClick=${onClose}>${tr("finish")}</button><button type="button" class="btn btn-primary" onClick=${() => { onClose(); navigate(destination || "/settings/agents"); }}>${tr(destination ? "openChat" : "viewAgents")}<${Icon} name="forward" size=${16} /></button>`
     : html`<button type="button" class="btn" disabled=${busy || assistBusy} onClick=${step === 1 ? onClose : () => setStep(1)}>${step === 1 ? t("fleet.cancel") : tr("back")}</button>

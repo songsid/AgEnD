@@ -4,6 +4,7 @@ import { validWindowsAgentId, validWindowsDirectory } from "./windows-cli-worker
 import type { PaneKey, PaneSize } from "./pane-port.js";
 import { validatePaneTranscriptCursor, type PaneTranscriptCursor } from "./runtime-pane-transcript-protocol.js";
 import { validateGeneralWorkspaceRequest, type GeneralWorkspaceRequest } from "./runtime-general-protocol.js";
+import { assertCredentialProfileCli, assertCredentialProfileName } from "./runtime-credential-profiles.js";
 
 export const RUNTIME_PANE_PROTOCOL = 1;
 export const PANE_EDIT_KEYS = { "C-a": "\x01", "C-e": "\x05", "C-u": "\x15", "C-k": "\x0b", BSpace: "\x7f", DC: "\x1b[3~", Home: "\x1b[H", End: "\x1b[F", Left: "\x1b[D", Right: "\x1b[C" } as const;
@@ -24,6 +25,8 @@ export interface RuntimePaneLaunch extends PaneSize {
   /** A coordinator-selected, runner-owned General workspace; never an arbitrary directory publication. */
   generalWorkspace?: Omit<GeneralWorkspaceRequest, "action" | "instance" | "cli">;
   mcpTools?: string[];
+  /** A credential profile NAME kept on this Windows computer. Never a path: the host maps it to its own folder or refuses the launch. */
+  credentialProfile?: string;
 }
 export interface RuntimePaneSnapshot extends PaneSize {
   hostBootId: string;
@@ -59,7 +62,8 @@ export type RuntimePaneRequest =
   | { action: "list" }
   | { action: "shutdown"; hostBootId: string }
   | { action: "recover"; paneId: string; launchId: string; hostBootId: string; confirmedStopped: true }
-  | { action: "open"; operationId: string; launch: RuntimePaneLaunch }
+  /** `defaultCredentialProfile`: this pairing's default, offered only to a launch that names no profile of its own. It is not part of the launch's identity: a pane keeps the profile it started with when the default later changes. */
+  | { action: "open"; operationId: string; launch: RuntimePaneLaunch; defaultCredentialProfile?: string }
   | { action: "capture"; paneId: string; launchId: string; history?: number; joined?: boolean; ansi?: boolean }
   | { action: "snapshot"; paneId: string; launchId: string }
   | { action: "session-proof"; paneId: string; launchId: string }
@@ -83,7 +87,7 @@ function dimension(value: unknown, min: number, max: number): asserts value is n
   if (!Number.isSafeInteger(value) || (value as number) < min || (value as number) > max) throw Error("Invalid pane dimensions");
 }
 export function validateRuntimePaneLaunch(value: unknown): RuntimePaneLaunch {
-  closed(value, ["paneId", "agentId", "instance", "cli", "cwd", "sandbox", "model", "sessionId", "launchId", "instructions", "generalWorkspace", "mcpTools", "columns", "rows"]);
+  closed(value, ["paneId", "agentId", "instance", "cli", "cwd", "sandbox", "model", "sessionId", "launchId", "instructions", "generalWorkspace", "mcpTools", "credentialProfile", "columns", "rows"]);
   id(value.paneId); id(value.agentId);
   if (value.launchId !== undefined) id(value.launchId);
   if (value.instructions !== undefined && (typeof value.instructions !== "string" || Buffer.byteLength(value.instructions) > 64 * 1024 || value.instructions.includes("\0"))) throw Error("Invalid pane instructions");
@@ -91,6 +95,7 @@ export function validateRuntimePaneLaunch(value: unknown): RuntimePaneLaunch {
     || new Set(value.mcpTools).size !== value.mcpTools.length || value.mcpTools.some(tool => typeof tool !== "string" || !/^[a-z][a-z0-9_]{0,63}$/.test(tool)))) throw Error("Invalid pane MCP tools");
   if (typeof value.instance !== "string" || !/^[\p{L}\p{N}_.-]{1,160}$/u.test(value.instance)) throw Error("Invalid pane instance");
   if (value.cli !== "codex" && value.cli !== "claude-code") throw Error("This provider has no verified persistent pane adapter");
+  if (value.credentialProfile !== undefined) { assertCredentialProfileName(value.credentialProfile); assertCredentialProfileCli(value.cli); }
   if (value.generalWorkspace !== undefined) {
     closed(value.generalWorkspace, ["bindingId", "packHash"]);
     validateGeneralWorkspaceRequest({ action: "general-workspace", ...value.generalWorkspace, instance: value.instance, cli: value.cli });
@@ -108,7 +113,15 @@ export function validateRuntimePaneRequest(value: unknown): RuntimePaneRequest {
     case "general-workspace": return validateGeneralWorkspaceRequest(value);
     case "list": closed(value, ["action"]); break;
     case "shutdown": closed(value, ["action", "hostBootId"]); id(value.hostBootId); return value as unknown as RuntimePaneRequest;
-    case "open": closed(value, ["action", "operationId", "launch"]); id(value.operationId); return { action: "open", operationId: value.operationId, launch: validateRuntimePaneLaunch(value.launch) };
+    case "open": {
+      closed(value, ["action", "operationId", "launch", "defaultCredentialProfile"]); id(value.operationId);
+      const launch = validateRuntimePaneLaunch(value.launch);
+      if (value.defaultCredentialProfile !== undefined) {
+        assertCredentialProfileName(value.defaultCredentialProfile);
+        if (launch.cli !== "claude-code" || launch.credentialProfile !== undefined) throw Error("A default credential profile applies only to a Claude Code launch that names none");
+      }
+      return { action: "open", operationId: value.operationId, launch, ...(value.defaultCredentialProfile !== undefined ? { defaultCredentialProfile: value.defaultCredentialProfile as string } : {}) };
+    }
     case "session-proof": closed(value, ["action", "paneId", "launchId"]); break;
     case "capture":
       closed(value, ["action", "paneId", "launchId", "history", "joined", "ansi"]);

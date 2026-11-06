@@ -152,7 +152,7 @@ export class SettingsHttpConfirmation {
     const ordinaryCreate = method === "POST" && url.pathname === "/ui/instances" && createBody
       && Object.keys(createBody).every(key => ["runtime", "native_adapter", "channel_id", "machineId",
         "directory", "topic_name", "backend", "model", "description", "systemPrompt", "sandbox", "tags", "branch",
-        "detach", "worktree_path", "workflow", "backend_options"].includes(key))
+        "detach", "worktree_path", "workflow", "backend_options", "credentialProfile"].includes(key))
       && (createBody.runtime==="windows"||sanitizeInstanceName(typeof createBody.topic_name==="string"?createBody.topic_name:basename(typeof createBody.directory==="string"?createBody.directory:""))!=="general");
     const direct = this.options.directAgentCreation === true && ordinaryCreate && principal.source === "web_session"
       && !gatewayRequestContext(req) && localAdmin?.() === true;

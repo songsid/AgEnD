@@ -379,6 +379,8 @@ export interface WebApiContext {
   readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
   /** #2233: Settings → Agents' sign-in list (FleetManager.backendSignInTargets). */
   backendSignInTargets?(): import("./web-backend-login.js").SignInTarget[];
+  /** Starts, in the background, reading the account behind each Claude Code sign-in (masked). Never awaited: the list answers at once with what is known. */
+  refreshSignInIdentities?(): void;
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
@@ -1153,7 +1155,14 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
   const logins = ctx.webBackendLogins;
   if (!logins) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
   const action = /^\/ui\/backend-login\/(check|start|cancel)$/.exec(path)?.[1];
-  if (reading && path === "/ui/backend-login" && [...url.searchParams.keys()].length === 0) { json(res, 200, { login: logins.view(first.handle), targets: ctx.backendSignInTargets?.() ?? [] }); return true; }
+  if (reading && path === "/ui/backend-login" && [...url.searchParams.keys()].length === 0) {
+    // The sign-in view (its access code included) is answered at once and never waits for an account to be read: that happens in the background
+    // and the page is told to read again when something new is known.
+    try { ctx.refreshSignInIdentities?.(); } catch { /* the list is served with what is known */ }
+    try { json(res, 200, { login: logins.view(first.handle), targets: ctx.backendSignInTargets?.() ?? [] }); }
+    catch { json(res, 503, { error: "sign_in_unavailable" }); }
+    return true;
+  }
   if (method !== "POST" || !action) { json(res, 404, { error: "not_found" }); return true; }
   (async () => {
     let bytes: Buffer;
