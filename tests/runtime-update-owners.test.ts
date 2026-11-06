@@ -184,3 +184,80 @@ it.each([["adopt", "row"], ["adopt", "receipt"], ["transfer", "row"], ["transfer
     expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(changed === "row" ? { ...previous, parent: { ...previous.parent, birth: "639000000000000000" } } : previous);
   } finally { f.lock.release(); }
 });
+
+it.each(["control", "child-replace", "child-mutate", "id", "install", "origin", "parent"] as const)("transfer snapshots caller inputs during held verification: %s", async mutation => {
+  const f = await fixture();
+  try {
+    const running = await attachRuntimeInstallChild(f.root, f.owner, child, f.lock, async () => alive(child)), input = structuredClone(running);
+    let release!: (value: RuntimeProcessObservation) => void; const queried: number[] = [];
+    const work = transferRuntimeInstallOwner(f.root, input, f.lock, async pid => { queried.push(pid); return new Promise(done => { release = done; }); });
+    if (mutation === "child-replace") input.child = { ...child, pid: 123458 };
+    if (mutation === "child-mutate") input.child!.pid = 123458;
+    if (mutation === "id") input.id = randomUUID();
+    if (mutation === "install") input.installId = randomUUID();
+    if (mutation === "origin") input.origin = "https://different.example.test";
+    if (mutation === "parent") input.parent.birth = "639000000000000000";
+    release(alive(child));
+    const next = await work;
+    expect(queried).toEqual([child.pid]); expect(next).toEqual({ ...f.owner, parent: child });
+    expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(next); expect(readdirSync(f.directory)).toEqual([`${f.owner.id}.json`]);
+  } finally { f.lock.release(); }
+});
+it.each(["control", "child-mutate", "id", "install", "origin"] as const)("adoption snapshots caller identity and binding during held verification: %s", async mutation => {
+  const f = await fixture(), previous = { ...f.owner, parent: child, child: parent }, input = structuredClone(previous);
+  writeFileSync(join(f.directory, `${previous.id}.json`), JSON.stringify(previous));
+  try {
+    let release!: (value: RuntimeProcessObservation) => void; const queried: number[] = [];
+    const work = adoptRuntimeInstallOwner(f.root, input, f.lock, async pid => {
+      queried.push(pid); return pid === child.pid ? new Promise(done => { release = done; }) : alive(parent);
+    });
+    if (mutation === "child-mutate") input.child!.birth = "639000000000000000";
+    if (mutation === "id") input.id = randomUUID();
+    if (mutation === "install") input.installId = randomUUID();
+    if (mutation === "origin") input.origin = "https://different.example.test";
+    release({ state: "gone" });
+    const next = await work;
+    expect(queried).toEqual([child.pid, parent.pid]); expect(next).toEqual(f.owner);
+    expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(f.owner); expect(readdirSync(f.directory)).toEqual([`${f.owner.id}.json`]);
+  } finally { f.lock.release(); }
+});
+it("attachment snapshots the caller's owner before waiting for a prior child's positive exit", async () => {
+  const f = await fixture();
+  try {
+    const running = await attachRuntimeInstallChild(f.root, f.owner, child, f.lock, async () => alive(child)), input = structuredClone(running), actualNext = { ...child, pid: 123458 }, nextChild = structuredClone(actualNext);
+    let release!: (value: RuntimeProcessObservation) => void;
+    const work = attachRuntimeInstallChild(f.root, input, nextChild, f.lock, async pid => pid === child.pid ? new Promise(done => { release = done; }) : alive(actualNext));
+    input.id = randomUUID(); nextChild.birth = "639000000000000000"; release({ state: "gone" });
+    const stored = await work;
+    expect(stored.id).toBe(f.owner.id); expect(stored.child).toEqual({ ...child, pid: 123458 });
+  } finally { f.lock.release(); }
+});
+it("exclusivity snapshots the caller's process proof across another owner's observation", async () => {
+  const f = await fixture(), prior = other(f), input = structuredClone(f.owner);
+  try {
+    let release!: (value: RuntimeProcessObservation) => void;
+    const work = assertRuntimeInstallExclusive(f.root, input, f.lock, async pid => pid === prior.parent.pid ? new Promise(done => { release = done; }) : alive(parent));
+    input.parent.birth = "639000000000000000"; release({ state: "gone" }); await work;
+    expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(f.owner);
+  } finally { f.lock.release(); }
+});
+it("release snapshots the exact row ID before its registered child's exit query", async () => {
+  const f = await fixture();
+  try {
+    const running = await attachRuntimeInstallChild(f.root, f.owner, child, f.lock, async () => alive(child)), input = structuredClone(running);
+    let release!: (value: RuntimeProcessObservation) => void;
+    const work = releaseRuntimeInstallOwner(f.root, input, f.lock, async () => new Promise(done => { release = done; }));
+    input.id = randomUUID(); release({ state: "gone" }); await work; expect(readdirSync(f.directory)).toEqual([]);
+  } finally { f.lock.release(); }
+});
+it("registration snapshots its own process proof before asynchronous stale-row observations", async () => {
+  const f = await fixture(), prior = other(f);
+  try {
+    const registering = registerRuntimeInstallOwner(f.root, origin, f.lock, async pid => {
+      if (pid !== prior.parent.pid) return alive(parent);
+      f.lock.record.birth = "639000000000000000"; return { state: "gone" };
+    });
+    await expect(registering).rejects.toThrow(/changed/);
+    expect(readdirSync(f.directory)).toEqual([`${f.owner.id}.json`]);
+  } finally { f.lock.record.birth = parent.birth; f.lock.release(); }
+});
