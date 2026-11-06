@@ -1258,21 +1258,10 @@ export function handleSettingsRequest(
       const restored = restoreRedactedSecrets(body, cfg.defaults);
       if ("path" in restored) return json(res, 400, { error: `redacted value has no stored credential: defaults.${restored.path}` });
       const merged = { ...cfg.defaults, ...officeInputPatch(restored.value) };
-      // #3212: backend_options merge per backend and key (null removes a key), as an agent's do (M-2446): setting the
-      // fleet default's credential profile for one CLI never drops another CLI's default options.
-      if (body.backend_options !== undefined) {
+      // #3212: backend_options is replaced whole, like every nested map in this write (the top-level keys merge): Settings
+      // → Accounts sends the whole map, and so does the Advanced editor, where leaving a key out removes it.
+      if (body.backend_options !== undefined && body.backend_options && typeof body.backend_options === "object" && !Array.isArray(body.backend_options)) {
         const sent = body.backend_options;
-        if (!sent || typeof sent !== "object" || Array.isArray(sent) || !Object.values(sent).every(o => o && typeof o === "object" && !Array.isArray(o)))
-          return json(res, 400, { error: "unsupported_backend_options" });
-        const out: Record<string, Record<string, unknown>> = {};
-        const prev = cfg.defaults?.backend_options as Record<string, Record<string, unknown>> | undefined;
-        if (prev && typeof prev === "object") for (const [b, o] of Object.entries(prev)) if (o && typeof o === "object") out[b] = { ...o };
-        for (const [b, o] of Object.entries(sent as Record<string, Record<string, unknown>>)) {
-          const next = { ...(out[b] ?? {}) };
-          for (const [k, v] of Object.entries(o)) { if (v === null) delete next[k]; else next[k] = v; }
-          if (Object.keys(next).length) out[b] = next; else delete out[b];
-        }
-        if (Object.keys(out).length) (merged as Record<string, unknown>).backend_options = out; else delete (merged as Record<string, unknown>).backend_options;
         // A fleet default moved onto a signed-out profile would leave every agent that follows it at a sign-in prompt.
         for (const b of Object.keys(sent as object)) {
           const after = instanceCredentialProfile(undefined, merged as never, b), before = instanceCredentialProfile(undefined, cfg.defaults as never, b);

@@ -1950,9 +1950,10 @@ export function handleWebRequest(
   }
 
   // ── #3212 PR 1: Settings → Agents → Accounts (read-only) ─────────────────────────────────
-  // Each CLI's default sign-in and credential profiles, who uses them and their weekly usage. Names, states and the
-  // masked identity only (no credential, path or full e-mail): still only for the fleet's local admin session — never
-  // the public link, a guest, a token or the gateway (the same rule as the sign-in list it extends).
+  // Each CLI's default sign-in and credential profiles, who uses them and their weekly usage. Names, states, the masked
+  // identity and the host login command (which, as in the sign-in list, names the profile's folder) — no credential or
+  // full e-mail: only for the fleet's local admin session — never the public link, a guest, a token or the gateway (the
+  // same rule as the sign-in list it extends).
   if (method === "GET" && path === "/ui/accounts") {
     res.setHeader("Cache-Control", "private, no-store");
     if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }

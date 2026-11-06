@@ -85,6 +85,22 @@ const usedText = (row) => {
 };
 const when = (iso) => { try { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { weekday: "short", hour: "numeric", minute: "2-digit" }) : ""; } catch { return ""; } };
 
+/**
+ * The fleet default's `backend_options` after choosing `profile` (null: none) for `backend`: the whole map, because the
+ * defaults write replaces a nested map whole (the Advanced editor relies on that to remove a key). Built on what is
+ * already staged, so two CLIs' choices add up in one change; null when it comes back to what is saved.
+ */
+export function defaultsBackendOptions(saved, staged, backend, profile) {
+  const copy = (m) => Object.fromEntries(Object.entries(m && typeof m === "object" ? m : {}).filter(([, o]) => o && typeof o === "object" && !Array.isArray(o)).map(([b, o]) => [b, { ...o }]));
+  const out = copy(staged || saved);
+  const next = { ...(out[backend] || {}) };
+  if (profile) next.credential_profile = profile; else delete next.credential_profile;
+  if (Object.keys(next).length) out[backend] = next; else delete out[backend];
+  const same = (a, b) => JSON.stringify(Object.keys(a).sort().map((k) => [k, Object.keys(a[k]).sort().map((j) => [j, a[k][j]])]))
+    === JSON.stringify(Object.keys(b).sort().map((k) => [k, Object.keys(b[k]).sort().map((j) => [j, b[k][j]])]));
+  return same(out, copy(saved)) ? null : out;
+}
+
 /** The choices for an agent's Account field: its CLI's named, host profiles (signed-out ones listed, not choosable). */
 export function accountChoices(view, backend) {
   const cli = view && Array.isArray(view.clis) ? view.clis.find((c) => c.backend === backend) : null;

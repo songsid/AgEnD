@@ -11,7 +11,8 @@ vi.mock("../src/logger.js", async original => {
   const silent: Record<string, unknown> = new Proxy({}, { get: (_t, key) => (key === "child" ? () => silent : key === "level" ? "silent" : () => {}) });
   return { ...await original<typeof import("../src/logger.js")>(), createLogger: () => silent };
 });
-import { request } from "node:http";
+import { ServerResponse, request, type IncomingMessage } from "node:http";
+import { Readable } from "node:stream";
 import { execFileSync } from "node:child_process";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,8 +21,10 @@ import { join } from "node:path";
 const home = mkdtempSync(join(tmpdir(), "agend-ws-home-"));
 process.env.AGEND_HOME = home;
 const { FleetManager } = await import("../src/fleet-manager.js");
-const { WEB_SESSION_COOKIE } = await import("../src/web-auth.js");
+const { WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE } = await import("../src/web-auth.js");
 const { tokenEpoch } = await import("../src/web-session.js");
+const { handleWebRequest } = await import("../src/web-api.js");
+const { bindGatewayRequest } = await import("../src/web-request-context.js");
 
 interface Raw { status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }
 function raw(port: number, path: string, headers: Record<string, string> = {}): Promise<Raw> {
@@ -88,5 +91,37 @@ describe("GET /ui/accounts (#3212)", () => {
       expect([401, 403, 404]).toContain(r.status);
       expect(r.body.toString("utf8")).not.toContain("spare-account");
     }
+  });
+  it("a session that ends while the accounts are being read gets no answer (checked again before it goes out)", async () => {
+    const created = fm.webSessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!) });
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const spy = vi.spyOn(fm, "accountsView").mockImplementation(async () => { await held; return { clis: [{ backend: "claude-code", rows: [{ profile: "spare-account" }] }] }; });
+    try {
+      const pending = get(created.sessionId as string);
+      await vi.waitFor(() => expect(spy).toHaveBeenCalled());
+      fm.webSessions.revokeById(created.sessionId);
+      release();
+      const r = await pending;
+      expect(r.status).toBe(403);
+      expect(r.body.toString("utf8")).not.toContain("spare-account");
+    } finally { spy.mockRestore(); }
+  });
+  it("a request that came in through the public link (gateway-bound) is not found, before any session check", async () => {
+    class Res extends ServerResponse { status = 0; body = "";
+      override writeHead(code: number): this { this.status = code; return this; }
+      override end(chunk?: unknown): this { this.body += String(chunk ?? ""); return this; } }
+    const gw = fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!) });
+    const req = Readable.from([]) as unknown as IncomingMessage; req.method = "GET"; req.url = "/ui/accounts";
+    req.headers = { host: "localhost", cookie: `${WEB_SESSION_COOKIE_SECURE}=${gw.sessionId}` };   // the public link reads only its __Host- cookie
+    Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
+    bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
+    const spy = vi.spyOn(fm, "accountsView");
+    const res = new Res(req);
+    expect(handleWebRequest(req, res, new URL("/ui/accounts", "http://localhost"), fm)).toBe(true);
+    await vi.waitFor(() => expect(res.status).not.toBe(0));
+    expect([res.status, JSON.parse(res.body).error]).toEqual([404, "not_found"]);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

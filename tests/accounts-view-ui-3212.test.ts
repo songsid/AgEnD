@@ -102,6 +102,17 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(card("claude-code").querySelector(".s-account-default select").value).toBe("work");
   });
 
+  it("the fleet default's backend_options: the whole map, two CLIs' choices adding up, null when back to what is saved", () => {
+    const saved = { codex: { speed: "fast" }, "claude-code": { prompt_cache_ttl: "1h" } };
+    const one = A.defaultsBackendOptions(saved, undefined, "claude-code", "work");
+    expect(one).toEqual({ codex: { speed: "fast" }, "claude-code": { prompt_cache_ttl: "1h", credential_profile: "work" } });
+    const two = A.defaultsBackendOptions(saved, one, "codex", "team2");
+    expect(two).toEqual({ codex: { speed: "fast", credential_profile: "team2" }, "claude-code": { prompt_cache_ttl: "1h", credential_profile: "work" } });
+    expect(A.defaultsBackendOptions(saved, one, "claude-code", null)).toBeNull();                    // back to what is saved
+    expect(A.defaultsBackendOptions({ "claude-code": { credential_profile: "work" } }, undefined, "claude-code", null)).toEqual({});   // the CLI's entry goes
+    expect(saved).toEqual({ codex: { speed: "fast" }, "claude-code": { prompt_cache_ttl: "1h" } });   // not changed in place
+  });
+
   it("in zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();

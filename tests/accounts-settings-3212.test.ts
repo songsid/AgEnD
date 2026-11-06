@@ -79,19 +79,19 @@ describe("Settings: the dialog sends only the changed key", () => {
 });
 
 describe("Settings: the fleet default account (#3212)", () => {
-  it("merges per CLI (Codex's default speed is kept) and refuses a signed-out profile; null removes it", async () => {
+  it("backend_options is replaced whole (Accounts sends the whole map); a signed-out profile is refused; a key left out is removed", async () => {
     const { path, fm } = fixture();
-    expect((await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { backend_options: { "claude-code": { prompt_cache_ttl: "1h" } } })).status).toBe(200);
-    const ok = await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { backend_options: { "claude-code": { credential_profile: "work" } } });
-    expect(ok.status).toBe(200);
+    const ok = await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { backend_options: { codex: { speed: "fast" }, "claude-code": { prompt_cache_ttl: "1h", credential_profile: "work" } } });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
     expect(saved(path).defaults.backend_options).toEqual({ codex: { speed: "fast" }, "claude-code": { prompt_cache_ttl: "1h", credential_profile: "work" } });
-    const off = await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { backend_options: { "claude-code": { credential_profile: "off" } } });
-    expect([off.status, off.body.error]).toEqual([409, "credential_profile_signed_out"]);
+    expect(saved(path).defaults.backend).toBe("claude-code");                                          // the top-level keys still merge
+    const off = await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { backend_options: { codex: { speed: "fast" }, "claude-code": { credential_profile: "off" } } });
+    expect([off.status, off.body.error, off.body.profile]).toEqual([409, "credential_profile_signed_out", "off"]);
     expect(saved(path).defaults.backend_options["claude-code"]).toEqual({ prompt_cache_ttl: "1h", credential_profile: "work" });
-    const back = await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { backend_options: { "claude-code": { credential_profile: null } } });
-    expect(back.status).toBe(200);
+    // The Advanced editor's Apply sends the whole defaults: a key the person deleted there is gone (not kept by a merge).
+    const advanced = await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { ...saved(path).defaults, backend_options: { codex: { speed: "fast" }, "claude-code": { prompt_cache_ttl: "1h" } } });
+    expect(advanced.status).toBe(200);
     expect(saved(path).defaults.backend_options).toEqual({ codex: { speed: "fast" }, "claude-code": { prompt_cache_ttl: "1h" } });
-    expect((await settingsRequest(fm, "/api/settings/fleet/defaults", "PUT", { backend_options: ["x"] })).status).toBe(400);
   });
 });
 
