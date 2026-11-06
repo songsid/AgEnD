@@ -18,6 +18,46 @@ import { cardLine, cardText, myWorkText, projectsText, writeText } from "./sched
 const BOARD_CREATE = ["project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"] as const;
 /** An `update` naming one of these edits the card on the board's terms; without them it is the tool's plain update. */
 const BOARD_UPDATE = ["title", "description", "scope", "context", "state", "acceptance", "check", "uncheck", "log", "comment", "needs_review", "size", "depends_on", "version", "dispatcher"] as const;
+/**
+ * The fields each action reads, through either door (this file and the plain task in fleet-manager.ts). Anything else
+ * is refused by name before anything is written (#3195): a field the tool would ignore must never look like a saved
+ * change.
+ */
+export const ACTION_FIELDS: Readonly<Record<string, readonly string[]>> = {
+  create: ["title", "description", "priority", "assignee", "depends_on", "project", "parent", "scope", "acceptance", "context", "needs_review", "size", "dispatcher"],
+  update: ["id", "title", "description", "priority", "assignee", "depends_on", "result", "status", "scope", "acceptance", "check", "uncheck", "context", "state", "log", "comment", "needs_review", "size", "dispatcher", "version"],
+  move: ["id", "to", "status", "reason", "result", "comment", "version"],
+  claim: ["id"],
+  done: ["id", "result"],
+  get: ["id"],
+  list: ["filter_assignee", "filter_status", "verbose", "project", "parent"],
+  mine: [],
+  projects: [],
+};
+/** What to do instead, for the fields agents reach for most. */
+const INSTEAD: Readonly<Record<string, string>> = {
+  "update.project": "a main task's project is changed by a person on the dashboard (Fleet › Tasks)",
+  "update.parent": "a card's parent cannot be changed",
+  "update.to": "use action \"move\" to change a card's status",
+  "update.reason": "use action \"move\", which takes the reason with the status",
+  "done.comment": "use action \"move\" with to: \"done\" and a comment, or comment with action \"update\"",
+};
+
+/**
+ * The fields of `args` that its action does not take (any value, null included), or null when there are none. An
+ * action the tool does not know is left to the tool's own error.
+ */
+export function unsupportedFields(args: Record<string, unknown>): string | null {
+  const action = typeof args.action === "string" ? args.action : "";
+  const allowed = Object.prototype.hasOwnProperty.call(ACTION_FIELDS, action) ? ACTION_FIELDS[action]! : null;
+  if (!allowed) return null;
+  const extra = Object.keys(args).filter((k) => k !== "action" && args[k] !== undefined && !allowed.includes(k));
+  if (!extra.length) return null;
+  const hints = extra.map((k) => INSTEAD[`${action}.${k}`]).filter(Boolean);
+  return `${action} does not take ${extra.map((k) => `"${k}"`).join(", ")}${hints.length ? ` (${hints.join("; ")})` : ""}. Nothing was changed.`
+    + (allowed.length ? ` ${action} takes: ${allowed.join(", ")}.` : ` ${action} takes no other fields.`);
+}
+
 /** Words agents bring from other boards. */
 const STATUS_ALIAS: Record<string, CardStatus> = { todo: "open", "to do": "open", doing: "claimed", in_progress: "claimed", "in progress": "claimed", waiting: "review" };
 
@@ -50,6 +90,9 @@ function need(v: unknown, what: string): string {
 }
 
 export function boardToolAction(db: SchedulerDb, instance: string, args: Record<string, unknown>): string | undefined {
+  // Before anything else, for every action and both doors: a field the action would not read is an error, not a no-op.
+  const refused = unsupportedFields(args);
+  if (refused) throw new TaskBoardError("invalid", refused);
   const board = db.board;
   const actor: Actor = { kind: "instance", name: instance };
   switch (args.action) {
