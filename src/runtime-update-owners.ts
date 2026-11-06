@@ -121,3 +121,44 @@ export async function releaseRuntimeInstallOwner(root: string, expected: Runtime
   if (expected.child && runtimeProcessMatches(expected.child, await observe(expected.child.pid)) !== false) throw new RuntimeInstallOwnerError("owned");
   own(expected, lock); unchanged(path, before); unlinkSync(join(path, `${expected.id}.json`));
 }
+
+/** Read-only recovery evidence. Possessing a row never grants process or update authority. */
+export function readRuntimeInstallOwner(root: string, id: string): RuntimeInstallOwner {
+  return row(directory(root), id).owner;
+}
+function receiptCurrent(root: string, expected: RuntimeInstallOwner): () => void {
+  const receipt = readRuntimeInstallReceipt(root);
+  if (!receipt || receipt.id !== expected.installId || !receipt.origins.includes(expected.origin)) throw new RuntimeInstallOwnerError("changed");
+  return () => { if (JSON.stringify(readRuntimeInstallReceipt(root)) !== JSON.stringify(receipt)) throw new RuntimeInstallOwnerError("changed"); };
+}
+/** An already registered child may adopt its own row only after positive parent absence.
+ * Used by the temporary handoff helper and by a task-capable candidate whose helper died;
+ * IPC loss and an unknown observation are never proof of parent exit. */
+export async function adoptRuntimeInstallOwner(root: string, expected: RuntimeInstallOwner, lock: RuntimeInstallLock,
+  observe: (pid: number) => Promise<RuntimeProcessObservation> = observeRuntimeProcess): Promise<RuntimeInstallOwner> {
+  lock.assert(); const candidate = expected.child;
+  if (!candidate || lock.record.type !== "supervisor" || candidate.pid !== process.pid
+    || runtimeProcessMatches(candidate, { state: "alive", proof: lock.record }) !== true) throw new RuntimeInstallOwnerError("changed");
+  const current = receiptCurrent(root, expected), path = directory(root), before = row(path, expected.id);
+  if (before.text !== JSON.stringify(expected)) throw new RuntimeInstallOwnerError("changed");
+  const parent = runtimeProcessMatches(expected.parent, await observe(expected.parent.pid));
+  if (parent !== false) throw new RuntimeInstallOwnerError(parent ? "owned" : "unknown");
+  if (runtimeProcessMatches(candidate, await observe(candidate.pid)) !== true) throw new RuntimeInstallOwnerError("unknown");
+  const next = parseRuntimeInstallOwner({ version: 1, id: expected.id, installId: expected.installId, origin: expected.origin, parent: candidate });
+  const assert = () => { own(next, lock); current(); unchanged(path, before); };
+  assert(); atomicWriteFileSync(join(path, `${expected.id}.json`), JSON.stringify(next), { mode: 0o600, beforeRename: assert });
+  return next;
+}
+/** After positive activation, the helper transfers ownership to the exact registered live child.
+ * The child independently verifies the resulting row before starting its next update loop. */
+export async function transferRuntimeInstallOwner(root: string, expected: RuntimeInstallOwner, lock: RuntimeInstallLock,
+  observe: (pid: number) => Promise<RuntimeProcessObservation> = observeRuntimeProcess): Promise<RuntimeInstallOwner> {
+  own(expected, lock); if (!expected.child) throw new RuntimeInstallOwnerError("changed");
+  const current = receiptCurrent(root, expected), path = directory(root), before = row(path, expected.id);
+  if (before.text !== JSON.stringify(expected)) throw new RuntimeInstallOwnerError("changed");
+  if (runtimeProcessMatches(expected.child, await observe(expected.child.pid)) !== true) throw new RuntimeInstallOwnerError("unknown");
+  const next = parseRuntimeInstallOwner({ version: 1, id: expected.id, installId: expected.installId, origin: expected.origin, parent: expected.child });
+  const assert = () => { own(expected, lock); current(); unchanged(path, before); };
+  assert(); atomicWriteFileSync(join(path, `${expected.id}.json`), JSON.stringify(next), { mode: 0o600, beforeRename: assert });
+  return next;
+}

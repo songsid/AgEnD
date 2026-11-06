@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { acquireRuntimeInstallLock, type RuntimeProcessObservation, type RuntimeProcessProof } from "../src/runtime-update-lock.js";
 import { RUNTIME_INSTALL_RECEIPT, readRuntimeInstallReceipt } from "../src/runtime-update-install.js";
-import { assertRuntimeInstallExclusive, attachRuntimeInstallChild, parseRuntimeInstallOwner, registerRuntimeInstallOwner, releaseRuntimeInstallOwner, type RuntimeInstallOwner } from "../src/runtime-update-owners.js";
+import { adoptRuntimeInstallOwner, readRuntimeInstallOwner, transferRuntimeInstallOwner, assertRuntimeInstallExclusive, attachRuntimeInstallChild, parseRuntimeInstallOwner, registerRuntimeInstallOwner, releaseRuntimeInstallOwner, type RuntimeInstallOwner } from "../src/runtime-update-owners.js";
 const roots: string[] = [], origin = "https://paired.example.test", parent = { pid: process.pid, birth: "638980000000000000", boot: "a".repeat(64) }, child = { ...parent, pid: 123457 };
 async function fixture() {
   const root = mkdtempSync(join(tmpdir(), "agend-install-owners-")); roots.push(root);
@@ -139,5 +139,48 @@ it("strictly rejects command/path/credential fields and malformed process identi
   const f = await fixture();
   try {
     for (const bad of [{ ...f.owner, credential: "anything" }, { ...f.owner, child: { ...child, command: "anything" } }, { ...f.owner, parent: { ...parent, birth: "unknown" } }, { ...f.owner, origin: "https://paired.example.test/" }]) expect(() => parseRuntimeInstallOwner(bad)).toThrow();
+  } finally { f.lock.release(); }
+});
+
+it("transfers only to the exact registered live child after checking the current row", async () => {
+  const f = await fixture();
+  try {
+    const pending = await attachRuntimeInstallChild(f.root, f.owner, child, f.lock, async () => alive(child));
+    await expect(transferRuntimeInstallOwner(f.root, pending, f.lock, async () => ({ state: "unknown" }))).rejects.toThrow(/unknown/);
+    expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(pending);
+    const next = await transferRuntimeInstallOwner(f.root, pending, f.lock, async () => alive(child));
+    expect(next).toEqual({ ...f.owner, parent: child }); expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(next);
+    await expect(releaseRuntimeInstallOwner(f.root, pending, f.lock, gone)).rejects.toThrow(/changed/);
+  } finally { f.lock.release(); }
+});
+it.each(["gone", "reused", "alive", "unknown"] as const)("registered self-child adoption requires positive %s parent proof", async state => {
+  const f = await fixture(), previous = { ...f.owner, parent: child, child: parent };
+  writeFileSync(join(f.directory, `${f.owner.id}.json`), JSON.stringify(previous));
+  try {
+    const observe = async (pid: number): Promise<RuntimeProcessObservation> => pid === parent.pid ? alive(parent)
+      : state === "gone" ? { state: "gone" } : state === "unknown" ? { state: "unknown" } : alive(state === "reused" ? { ...child, birth: "638990000000000000" } : child);
+    const adopting = adoptRuntimeInstallOwner(f.root, previous, f.lock, observe);
+    if (state === "gone" || state === "reused") {
+      await expect(adopting).resolves.toEqual(f.owner); expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(f.owner);
+    } else { await expect(adopting).rejects.toThrow(state === "alive" ? /owned/ : /unknown/); expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(previous); }
+  } finally { f.lock.release(); }
+});
+it("an unregistered child cannot adopt merely because its claimed parent is gone", async () => {
+  const f = await fixture();
+  try { await expect(adoptRuntimeInstallOwner(f.root, f.owner, f.lock, gone)).rejects.toThrow(/changed/); expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(f.owner); }
+  finally { f.lock.release(); }
+});
+it.each([["adopt", "row"], ["adopt", "receipt"], ["transfer", "row"], ["transfer", "receipt"]] as const)("%s refuses a %s change while process proof is pending", async (kind, changed) => {
+  const f = await fixture(), previous = kind === "adopt" ? { ...f.owner, parent: child, child: parent } : { ...f.owner, child };
+  writeFileSync(join(f.directory, `${f.owner.id}.json`), JSON.stringify(previous));
+  try {
+    const replacing = async (pid: number): Promise<RuntimeProcessObservation> => {
+      if (changed === "receipt") {
+        const receipt = readRuntimeInstallReceipt(f.root)!; writeFileSync(join(f.root, RUNTIME_INSTALL_RECEIPT), JSON.stringify({ ...receipt, revision: receipt.revision + 1 }));
+      } else writeFileSync(join(f.directory, `${previous.id}.json`), JSON.stringify({ ...previous, parent: { ...previous.parent, birth: "639000000000000000" } }));
+      return kind === "adopt" && pid === child.pid ? { state: "gone" } : alive(pid === parent.pid ? parent : child);
+    };
+    await expect((kind === "adopt" ? adoptRuntimeInstallOwner : transferRuntimeInstallOwner)(f.root, previous, f.lock, replacing)).rejects.toThrow(/changed/);
+    expect(readRuntimeInstallOwner(f.root, f.owner.id)).toEqual(changed === "row" ? { ...previous, parent: { ...previous.parent, birth: "639000000000000000" } } : previous);
   } finally { f.lock.release(); }
 });
