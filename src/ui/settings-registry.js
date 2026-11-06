@@ -7,6 +7,7 @@ import { sectionPath } from "/assets/app-route.js";
 import { navigate } from "/assets/app-nav.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // search shows these labels from outside Settings (dailyTips, hangEnabled, crossInstanceVisibility)
+import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
 import { GUESTS_SETTINGS } from "./settings-guests.js";
 
@@ -43,6 +44,7 @@ const ROWS = [
   ["runtimes.machines", "runtimes", ".runtime-settings", "settings.sec_runtimes", null, ["runtime", "computer", "machine", "pair", "connect", "windows", "linux", "CLI"], ["執行環境", "電腦", "機器", "配對", "連接", "Windows", "CLI"]],
   ["defaults.tips", "agent-defaults", "#g-tips", "settings.dailyTips", "defaults.tips", ["daily tips", "notices"], ["每日提示"]],
   ["web.notify-login", "access", "#webNotifyLogin", "settings.webNotifyLogin", "web.notify_login", ["sign in", "login", "notices"], ["登入通知"]],
+  ["web.login-qr", "access", "#webLoginQr", "settings.webLoginQr", "web.login_qr", ["qr", "qr code", "sign in", "another device", "scan", "device"], ["QR", "QR Code", "登入", "其他裝置", "掃描"]],
   // Fleet · Agent defaults
   ["defaults.locale", "agent-defaults", "#g-locale", "settings.language", "defaults.locale", ["language", "bot language", "reply language", "locale"], ["語言", "回覆語言", "bot 語言"]],
   ["defaults.backend", "agent-defaults", "#g-be", "settings.defaultBackend", "defaults.backend", ["backend", "cli", "claude", "codex", "kiro"], ["後端", "CLI"]],

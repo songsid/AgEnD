@@ -15,6 +15,7 @@ import { editsOf, keepDraft, syncStage } from "./settings-draft.js";
 import { resetWebAuthorization } from "/assets/web-authorize.js";
 import "./settings-strings.js";
 import { layoutText } from "./settings-layout.js";
+import "./settings-access-strings.js";   // revAuthorityBriefWeb / revAuthorityEnabledWeb / revAuthorityRule: an older settings-layout.js from a tab that visited Fleet first lacks them (#3061)
 
 const tn = (k, ...v) => t(`settings.${k}`, ...v);
 
@@ -65,7 +66,9 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
     syncStage(ctx, "verified_authority", body ? { label: tn("vaTitle"), count: Object.keys(body).length,
       impact: impactOf(ctx.schema || DEFAULT_SCHEMA, "web.verified_authority"), request: { method: "PUT", url: "/api/settings/fleet/web", body: { verified_authority: body } } } : null);
   }, [f, original, overview]);
-  const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText("revAuthorityBrief")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
+  // A fleet with no chat connection is worded for the authenticator (the reference page); one with Discord / Telegram keeps the confirm-card words.
+  const webOnly = !!overview && overview.webOnly === true;
+  const card = (body) => html`<section class="card s-web-authority"><h3>${tn("vaTitle")}</h3><p class="note s-authority-brief">${layoutText(webOnly ? "revAuthorityBriefWeb" : "revAuthorityBrief")}</p><p class="note s-authority-rule">${layoutText("revAuthorityRule")}</p>${body}<details class="s-setting-details"><summary>${layoutText("revAuthorityDetails")}</summary><p class="note">${tn("vaHint")}</p><p class="note">${tn("vaEnabledHint")}</p><p class="note">${tn("vaLoopbackOnlyHint")}</p></details></section>`;
   if (failed) return card(html`<p class="note" role="status">${tn("vaLoadFailed")} <button type="button" class="btn btn-sm" onClick=${load}>${t("app.retry")}</button></p>`);
   if (!overview || !f) return card(html`<p class="note">${t("app.loading")}</p>`);
 
@@ -87,7 +90,7 @@ export function WebAuthorityCard({ ctx, staged, disabled = false }) {
 
   return card(html`<fieldset class="s-va-fields" disabled=${disabled}>
       ${stuckOff ? html`<p class="note s-va-warn" role="status" id="vaStuckOff">${tn("vaStuckOff")}</p>` : null}
-      <label class=${fc("check", "enabled")}><input class="s-ui-toggle" id="vaEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${layoutText("revAuthorityEnabled")}</span></label>
+      <label class=${fc("check", "enabled")}><input class="s-ui-toggle" id="vaEnabled" type="checkbox" checked=${f.enabled} onChange=${(e) => set({ enabled: e.target.checked })} /><span>${layoutText(webOnly ? "revAuthorityEnabledWeb" : "revAuthorityEnabled")}</span></label>
       <p class="note">${layoutText("revAuthorityEnabledHint")}</p>
       <label class=${fc("check", "loopbackOnly")}><input class="s-ui-toggle" id="vaLoopbackOnly" type="checkbox" checked=${f.loopbackOnly} onChange=${(e) => set({ loopbackOnly: e.target.checked })} /><span>${layoutText("revAuthorityLocal")}</span></label>
       <p class="note">${layoutText("revAuthorityLocalHint")}</p>

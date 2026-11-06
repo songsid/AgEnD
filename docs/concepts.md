@@ -143,14 +143,20 @@ can still message each other from the dashboard.
 
 The person on the AgEnD computer. On a web-only fleet, the `agend web --code`
 session on this computer (`HOST_OPERATOR`): it confirms its own authority and
-answers its own prompts.
+answers its own prompts. The browser signed in from outside with the
+authenticator's TOTP code (see "connections from outside") is the verified
+owner too, with the same authority, checked on every request.
 
 - Can: confirm web authority, sign in, approve what asks for the host operator.
-- Can't: act as operator from another machine, or after the session was
-  revoked or ran out.
+  On a web-only fleet the verified owner — on this computer, or signed in from
+  outside with the authenticator — can also approve a new device
+  (device-code sign-in) and sign other devices out.
+- Can't: act as operator from another machine, except the owner signed in from
+  outside with the authenticator; or after the session was revoked or ran out.
+  Setting up, re-binding or removing the authenticator is this computer only.
 - Code: `src/authority/web-authority.ts` (`HOST_OPERATOR`);
   `src/fleet-manager.ts:2056-2060`; `src/locale.ts:1505-1506`.
-- Refs: 28c2d3a3.
+- Refs: 28c2d3a3, #3165.
 
 ## fleet admin (`admin_users`)
 
@@ -353,14 +359,18 @@ with authority.
 
 `origin/release/2.3.5-alpha`: a web-only fleet may open itself to the
 internet — "Allow connections from outside" — and sign the outside browser in
-with an authenticator-app TOTP code (#3008; fleet decision 0471da59).
+with an authenticator-app TOTP code (#3008; fleet decision 0471da59). While
+that switch is on and "Only this computer can authorize" is off, the browser
+signed in this way is the verified owner, the same as the host operator.
 
 - Can (alpha): reach the dashboard from outside without a tunnel the operator
-  builds; sign in with the authenticator app's code.
-- Can't: use it on main today — alpha only.
+  builds; sign in with the authenticator app's code and, as the verified owner,
+  approve a new device and sign other devices out (maintainer ruling, #3165).
+- Can't: use it on main today — alpha only; set up, re-bind or remove the
+  authenticator (this computer only).
 - Code (alpha branch): `src/auth-api.ts` (`/auth/totp`);
-  `src/authority/web-authority.ts`.
-- Refs: #3008, fleet decision 0471da59.
+  `src/authority/web-authority.ts`; `src/fleet-manager.ts` (`deviceApprovalOwner`).
+- Refs: #3008, #3165, fleet decision 0471da59.
 
 ## web session and the verified web go-ahead
 
@@ -373,12 +383,24 @@ on Discord or Telegram (#1939); a guest session never qualifies. Agents check a
 Discord/Telegram receipt or a `web (verified)` one — an open browser alone
 proves nothing.
 
-- Can: with verification, stand behind the same acts as a chat message.
-- Can't: without it, authorize anything; plain `via web` and guests never
-  carry authority.
+Device-code sign-in (alpha experiment): on a web-only fleet with web
+authorization on, a new device shows an 8-character code and the verified owner
+approves it from a signed-in device. The session it gets is an ordinary one —
+plain `via web`, never the approver's owner authority. On a web-only fleet only
+the verified owner may end another session.
+
+- Can: with verification, stand behind the same acts as a chat message; sign
+  itself out. The verified owner can also approve a new device and end another
+  session.
+- Can't: without verification, authorize anything; plain `via web` and guests
+  never carry authority. A session made by a device approval (or any other
+  non-owner session) cannot approve a device or end another session, only its
+  own. Device-code sign-in is not offered on a fleet with a chat connection, or
+  while web authorization is off.
 - Code: `src/authority/web-authority.ts`;
-  `src/config-validator.ts:517-522` (`web.verified_authority`).
-- Refs: #1939.
+  `src/config-validator.ts:517-522` (`web.verified_authority`);
+  `src/fleet-manager.ts` (`deviceApprovalOwner`, `mayEndOtherSessions`).
+- Refs: #1939, #3165.
 
 ## Mismatches
 
