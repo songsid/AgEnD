@@ -20,7 +20,9 @@ import type { HubLinkContext } from "../../src/hub/server.js";
 export const WEB_ORIGIN = "https://hub.example.test";
 export const person = (): PersonKey => ({ realm: "corp", objectId: randomUUID() });
 
-export async function s3bRig(opts: { now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean } = {}) {
+export async function s3bRig(opts: { now?: () => number; webOrigin?: string; administrator?: PersonKey; attachments?: boolean;
+  /** #3226 E: what the Hub shell says about previews (hubPreviewView); the smoke serves the /frame listener itself. */
+  preview?: Readonly<import("../../src/hub/preview.js").HubPreviewView> } = {}) {
   const webOrigin = opts.webOrigin ?? WEB_ORIGIN;
   const db = new Database(":memory:");
   migrateHubTransportStore(db);
@@ -94,7 +96,7 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string; adm
     identity: { hubId, memberOrigin: "https://127.0.0.1:9", webOrigin, spkiSha256: "a".repeat(64), issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() },
     fenceFleet: () => {}, now: opts.now });
   const config = Object.freeze({ hubId, name: "Team Hub", webOrigin, administrator: admin });
-  const http = createHubHttp({ uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}),
+  const http = createHubHttp({ uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}), ...(opts.preview ? { preview: opts.preview } : {}),
     transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now }, sql);
 
   const server: Server = createServer((req, res) => { if (!http.handle(req, res)) { res.writeHead(404); res.end("fleet-404"); } });

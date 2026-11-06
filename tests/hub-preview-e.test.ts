@@ -187,6 +187,9 @@ describe("a Hub room's HTML page in the side panel", () => {
     yes = true;
     await press($(pg, ".msg.agent .pv-opt")); await settle(10);
     expect([P.optedIn(), g.localStorage.getItem("agend_html_preview"), P.availability().ok]).toEqual([true, "on", true]);
+    // The banner's "I understand" lasts for this tab (the Hub has no fleet session handle), not just this page.
+    P.ackBanner();
+    expect(g.sessionStorage.getItem("agend_html_preview_banner_ack")).toBe("1");
   });
 
   it("zh-TW: not offered, in the Hub's words", async () => {
