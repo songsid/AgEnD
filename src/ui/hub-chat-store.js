@@ -7,6 +7,7 @@
 // just before the oldest open one); answered history is kept. The messages answer carries the room itself (its state,
 // its grant's end, what its link negotiated: `room.features`), fresh each poll.
 import { hubClient } from "./hub-client.js";
+import { createHubButtonActions } from "./hub-button-actions.js";
 
 export const POLL_MS = 10_000;
 const FINAL = new Set(["answered", "rejected", "cancelled", "failed"]);
@@ -44,7 +45,7 @@ export function hubEntryToMessages(entry, room, { me = "", reason = (code) => co
 /**
  * The store of one room: `subscribe(fn)` (fn() on any change) → unsubscribe; `messages()`, `room()`, `working()` (the
  * question being worked on, if any: { since }), `closed()`; `refresh()` (a read now); `send(text, extras)`;
- * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)` (stubs until F); `stop()`.
+ * F's `clickButton(setId, index)`, `vote(setId, options)`, `busy(setId)`, `mine(setId)`; `stop()`.
  */
 export function createHubChatStore(room, { client = hubClient(), me = "", reason, timers = globalThis, doc = typeof document !== "undefined" ? document : null } = {}) {
   const subs = new Set();
@@ -52,7 +53,12 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
   const emit = () => { for (const fn of subs) { try { fn(); } catch { /* a subscriber's own failure */ } } };
   const merge = (got) => {
     const byId = new Map(st.entries.map((e) => [e.messageId, e]));
-    for (const e of got) byId.set(e.messageId, { ...byId.get(e.messageId), ...e });
+    for (const e of got) {
+      const next = { ...byId.get(e.messageId), ...e };
+      // A returned entry is a complete projection: removed/retained-away controls must not survive in old cache.
+      if (!e.buttons) delete next.buttons;
+      byId.set(e.messageId, next);
+    }
     st.entries = [...byId.values()].sort((a, b) => a.sequence - b.sequence);
   };
   const schedule = (ms) => { timers.clearTimeout(st.timer); if (st.live && !st.closed) st.timer = timers.setTimeout(poll, ms); };
@@ -60,7 +66,8 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     if (!st.live || st.inflight || st.closed) return;
     if (doc && doc.hidden) { schedule(POLL_MS); return; }
     st.inflight = true;
-    const open = st.entries.find((e) => !FINAL.has(e.receipt && e.receipt.stage));
+    // Answered rows with open controls still change at a choice/deadline; keep reading them until closed.
+    const open = st.entries.find((e) => !FINAL.has(e.receipt && e.receipt.stage) || e.buttons?.state === "open");
     const after = open ? open.sequence - 1 : st.entries.length ? st.entries[st.entries.length - 1].sequence : 0;
     let r;
     try { r = await client.read(st.room.id, after); } catch { r = { ok: false, code: "unreachable" }; }
@@ -85,6 +92,9 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     const x = [...b].map((v) => v.toString(16).padStart(2, "0")).join("");
     return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`;
   };
+  const actions = createHubButtonActions({ id: room.id, get features() { return st.closed ? [] : st.room.features; } }, {
+    client, entries: () => st.entries, refresh: () => schedule(0), changed: emit,
+  });
   return {
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     room: () => st.room,
@@ -114,13 +124,12 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
       emit();
       return r;
     },
-    // F (buttons and polls) fills these four (#3226 seams); until then nothing can be clicked or voted.
-    async clickButton() { return { ok: false, code: "unsupported" }; },
-    async vote() { return { ok: false, code: "unsupported" }; },
-    busy() { return false; },
-    mine() { return []; },
+    clickButton: actions.clickButton,
+    vote: actions.vote,
+    busy: actions.busy,
+    mine: actions.mine,
     stop() {
-      st.live = false; timers.clearTimeout(st.timer); subs.clear();
+      st.live = false; actions.stop(); timers.clearTimeout(st.timer); subs.clear();
       if (doc) doc.removeEventListener("visibilitychange", onVisible);
     },
   };

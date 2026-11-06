@@ -186,7 +186,7 @@ export class HubRoomsService {
   }
 
   private featuresOf(fleetId: string): readonly string[] {
-    return this.features(fleetId);
+    return [...this.features(fleetId)].sort();
   }
 
   /** Ask in a room: committed with its audit before "queued" is reported; then sent if the member is on. */

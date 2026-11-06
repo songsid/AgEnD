@@ -97,9 +97,9 @@ describe("createHubChatStore", () => {
     expect([c2.calls.length, t2.pending()]).toEqual([0, [S.POLL_MS]]);
     h.stop();
   });
-  it("F's hooks are stubs until F: nothing is clicked", async () => {
+  it("an unknown button set cannot be clicked", async () => {
     const s = S.createHubChatStore(room, { client: client([]), timers: fakeTimers(), doc: null });
-    expect([await s.clickButton("x", 0), s.busy("x"), s.mine("x")]).toEqual([{ ok: false, code: "unsupported" }, false, []]);
+    expect([await s.clickButton("x", 0), s.busy("x"), s.mine("x")]).toEqual([{ ok: false, code: "invalid" }, false, []]);
     s.stop();
   });
 });
@@ -107,7 +107,7 @@ describe("createHubChatStore", () => {
 describe("the Hub's rooms for the chat (the real listener)", () => {
   let rig: any, alex: any, ben: any, olivia: any, link: any, R1 = "", exposureId = "";
   beforeAll(async () => {
-    rig = await s3bRig();
+    rig = await s3bRig({ attachments: true });
     olivia = rig.addPerson("olivia", "Olivia Chen"); rig.addPerson("alex", "Alex Lin"); rig.addPerson("ben", "Ben");
     const fleetId = randomUUID(); link = rig.link(fleetId, olivia); exposureId = randomUUID();
     await rig.http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [{ id: exposureId, fleetId, owner: olivia, displayName: "Sales numbers", revision: 1,
