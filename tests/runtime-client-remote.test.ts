@@ -18,6 +18,7 @@ import { AUDIT_FILE, setRemoteSwitch } from "../src/runtime-remote-setup.js";
 import { readRuntimeInfo } from "../src/runtime-build-info.js";
 import type { WindowsCliProbe, WindowsCliTask } from "../src/windows-cli.js";
 
+function held<T = void>() { let resolve!: (value: T) => void, reject!: (error: Error) => void; const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; }
 const directories: string[] = [], clients: RuntimeClient[] = [], closers: Array<() => Promise<void>> = [];
 const scratch = (): string => { const path = mkdtempSync(join(tmpdir(), "agend-client-remote-")); directories.push(path); return path; };
 afterEach(async () => {
@@ -32,8 +33,8 @@ class FakeChild extends EventEmitter {
   kill(): boolean { queueMicrotask(() => { this.exitCode = 1; this.emit("close", 1); }); return true; }
 }
 async function fixture(clientOptions: Partial<ConstructorParameters<typeof RuntimeClient>[0]> = {}) {
-  const http = createServer(), sockets = new WebSocketServer({ server: http }), machineId = randomUUID(), frames: any[] = []; let socket: WebSocket | undefined, hello: any;
-  const welcomed = new Promise<void>(done => sockets.on("connection", ws => { socket = ws; ws.on("message", raw => { const frame = JSON.parse(raw.toString()); if (frame.type === "hello") { hello = frame; ws.send(JSON.stringify({ v: 1, type: "welcome", machineId, generation: 1 })); done(); } else frames.push(frame); }); }));
+  const http = createServer(), sockets = new WebSocketServer({ server: http }), machineId = randomUUID(), frames: any[] = []; let socket: WebSocket | undefined, hello: any, helloCount = 0;
+  const welcomed = new Promise<void>(done => sockets.on("connection", ws => { socket = ws; ws.on("message", raw => { const frame = JSON.parse(raw.toString()); if (frame.type === "hello") { hello = frame; helloCount++; ws.send(JSON.stringify({ v: 1, type: "welcome", machineId, generation: 1 })); done(); } else frames.push(frame); }); }));
   http.listen(0, "127.0.0.1"); await once(http, "listening"); const address = http.address(); if (!address || typeof address === "string") throw Error("No fixture port");
   closers.push(async () => { for (const ws of sockets.clients) ws.terminate(); await new Promise<void>(done => sockets.close(() => done())); http.closeAllConnections(); await new Promise<void>(done => http.close(() => done())); });
   const home = scratch(), root = credentialProfilesRoot(join(home, "state")), store = new RuntimeClientStore(join(home, "state"));
@@ -45,7 +46,7 @@ async function fixture(clientOptions: Partial<ConstructorParameters<typeof Runti
   clients.push(client); await client.start(); await welcomed; await vi.waitFor(() => expect(client.online()).toBe(true));
   const send = (frame: unknown): void => socket!.send(JSON.stringify(frame));
   const call = async (operation: string, payload: unknown, id = `a-${randomUUID()}`): Promise<any> => { send({ v: 1, type: "account.request", id, operation, payload }); await vi.waitFor(() => expect(frames.some(f => f.id === id)).toBe(true)); return frames.find(f => f.id === id); };
-  return { client, store, root, home: store.directory, frames, children, hello: () => hello, call, send, machineId };
+  return { client, store, root, home: store.directory, frames, children, hello: () => hello, call, send, machineId, drop: () => socket!.terminate(), hellos: () => helloCount };
 }
 
 describe("capabilities", () => {
@@ -174,5 +175,77 @@ describe("a state this computer cannot confirm is not reported as a running term
     write(paneLedgerFiles(f.home)[0]!, ledger({ nameless: { launch: { cli: "claude-code" }, snapshot: { state: "running" } } }));
     createRuntimeProfile(f.root, "claude-code", "second");                                       // (the first sign-out of "work" started its 5 s wait)
     expect((await f.call("accounts.signout", { cli: "claude-code", profile: "second", actor: "admin:u1" })).error).toMatch(/could not confirm whether a terminal is running/);
+  });
+});
+
+
+// ---------------------------------------------------------------- the connection, stop, tasks and terminals
+const holdLookup = () => { let resolve!: (value: { path: string; command: string; args: string[] }) => void; const promise = new Promise<{ path: string; command: string; args: string[] }>(done => { resolve = done; }); return { promise, resolve }; };
+const startFrame = (id: string, profile = "late") => ({ v: 1, type: "account.request", id, operation: "signin.start", payload: { cli: "claude-code", profile, method: "subscription", actor: "admin:u1" } });
+const claudeTask = (profile: string) => ({ task: { requestId: randomUUID(), cli: "claude-code" as const, cwd: "C:\\workspace", prompt: "Private fixture request; never invoke a real CLI", sandbox: "read-only" as const }, credentialProfile: profile });
+
+describe("a request belongs to the connection that asked", () => {
+  it("a start still waiting when the connection drops and comes back: the late answer is never sent to the new connection, and nothing is created or started", async () => {
+    const lookup = holdLookup(); const f = await fixture({ remoteAccounts: { find: () => lookup.promise, environment: () => ({ PATH: "p" }), runLogout: async () => 0,
+      signIn: { scratchRoot: scratch(), spawn: () => { const child = new FakeChild(); spawnedChildren.push(child); return child as unknown as ChildProcess; } } } });
+    setRemoteSwitch(f.home, "accounts", true); const spawnedChildren: FakeChild[] = []; const id = "late-1";
+    f.send(startFrame(id)); await new Promise(done => setTimeout(done, 40));
+    const before = f.hellos(); f.drop(); await vi.waitFor(() => expect(f.hellos()).toBe(before + 1)); await vi.waitFor(() => expect(f.client.online()).toBe(true));
+    lookup.resolve({ path: "claude.exe", command: "claude.exe", args: [] }); await new Promise(done => setTimeout(done, 150));
+    expect(f.frames.some(frame => frame.id === id)).toBe(false);                                   // no answer on the new connection
+    expect(spawnedChildren).toHaveLength(0); expect(existsSync(join(f.root, "claude-code", "late"))).toBe(false);
+    const next = await f.call("accounts.switches", {}); expect(next.ok).toBe(true);                  // the new connection works normally
+  });
+  it("a sign-in opened over a connection is ended when that connection drops", async () => {
+    const spawnedChildren: FakeChild[] = []; const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0,
+      signIn: { scratchRoot: scratch(), spawn: () => { const child = new FakeChild(); spawnedChildren.push(child); return child as unknown as ChildProcess; } } } });
+    setRemoteSwitch(f.home, "accounts", true); expect((await f.call("signin.start", startFrame("x").payload)).ok).toBe(true);
+    const before = f.hellos(); f.drop(); await vi.waitFor(() => expect(f.hellos()).toBe(before + 1)); await vi.waitFor(() => expect(f.client.online()).toBe(true));
+    await vi.waitFor(() => expect(spawnedChildren[0]!.exitCode).not.toBeNull());
+  });
+  it("stop while a start is waiting for the CLI lookup: stop waits for it, and no child or folder comes out of it", async () => {
+    const lookup = holdLookup(), spawnedChildren: FakeChild[] = []; const f = await fixture({ remoteAccounts: { find: () => lookup.promise, environment: () => ({ PATH: "p" }), runLogout: async () => 0,
+      signIn: { scratchRoot: scratch(), spawn: () => { const child = new FakeChild(); spawnedChildren.push(child); return child as unknown as ChildProcess; } } } });
+    setRemoteSwitch(f.home, "accounts", true); f.send(startFrame("held-1")); await new Promise(done => setTimeout(done, 40));
+    let stopped = false; const stopping = f.client.stop().then(() => { stopped = true; }); await new Promise(done => setTimeout(done, 60));
+    expect(stopped).toBe(false); lookup.resolve({ path: "claude.exe", command: "claude.exe", args: [] }); await stopping;
+    expect(spawnedChildren).toHaveLength(0); expect(existsSync(join(f.root, "claude-code", "late"))).toBe(false);
+  });
+});
+
+describe("tasks and terminals meet the same reservation as a removal", () => {
+  const removeFrame = (id: string) => ({ v: 1, type: "account.request", id, operation: "accounts.remove", payload: { cli: "claude-code", profile: "work", actor: "admin:u1" } });
+  const holdInspector = () => { let release!: () => void; const gate = new Promise<void>(done => { release = done; }); let calls = 0; return { release, calls: () => calls, inspect: async (paths: readonly string[]) => { if (++calls === 1) await gate; return paths.map(() => false); } }; };
+  it("while a removal is under way (its inspection waits), a task that names the profile is not started, and the profile is not removed from under a task that was already admitted", async () => {
+    const hold = holdInspector(); const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0, ownership: { inspect: hold.inspect } } });
+    setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    f.send(removeFrame("rm-1")); await vi.waitFor(() => expect(hold.calls()).toBe(1));
+    const task = await f.client.operation("run", claudeTask("work")) as { status: string; error?: string }; expect(task.status).toBe("failed"); expect(task.error).toMatch(/is being changed from AgEnD/);
+    hold.release(); await vi.waitFor(() => expect(f.frames.some(frame => frame.id === "rm-1")).toBe(true)); expect(f.frames.find(frame => frame.id === "rm-1").ok).toBe(true);
+  });
+  it("a task admitted before the removal started is found by the removal (it is registered in the same step as admission)", async () => {
+    const login = held<boolean>(); const f = await fixture({ credentialLogin: () => login.promise, bridge: { ...bridge, start: () => { throw new Error("stop here"); } } as never });
+    setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    const pending = f.client.operation("run", claudeTask("work"));            // admitted, and now waiting for the profile's sign-in check
+    expect((f.client as any).activeProfiles.size).toBe(1);
+    const removed = await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" }); expect(removed.ok).toBe(false); expect(removed.error).toMatch(/running task/);
+    expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true); login.resolve(true); await pending;
+  });
+  const launch = (profile: string) => ({ paneId: randomUUID(), agentId: randomUUID(), instance: "pane-agent", cli: "claude-code", cwd: "C:\\fixture", sandbox: "read-only", columns: 80, rows: 24, credentialProfile: profile });
+  it("a terminal that would open under a profile being removed is refused", async () => {
+    const paneId1 = randomUUID();
+    const hold = holdInspector(); const f = await fixture({ remoteAccounts: { find: async () => ({ path: "claude.exe", command: "claude.exe", args: [] }), environment: () => ({ PATH: "p" }), runLogout: async () => 0, ownership: { inspect: hold.inspect } } });
+    setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    f.send(removeFrame("rm-2")); await vi.waitFor(() => expect(hold.calls()).toBe(1));
+    f.send({ v: 1, type: "pane.request", id: paneId1, maxAgents: 4, request: { action: "open", operationId: randomUUID(), launch: launch("work") } });
+    await vi.waitFor(() => expect(f.frames.some(frame => frame.id === paneId1)).toBe(true)); const refused = f.frames.find(frame => frame.id === paneId1);
+    expect(refused.ok).toBe(false); expect(refused.error).toMatch(/is being changed from AgEnD/); hold.release(); await vi.waitFor(() => expect(f.frames.some(frame => frame.id === "rm-2")).toBe(true));
+  });
+  it("a terminal whose open is still waiting for the pane host counts as using its profile, so the removal refuses", async () => {
+    const opening = held<never>(); const f = await fixture({ openPaneLink: () => opening.promise as never });
+    setRemoteSwitch(f.home, "accounts", true); createRuntimeProfile(f.root, "claude-code", "work");
+    f.send({ v: 1, type: "pane.request", id: randomUUID(), maxAgents: 4, request: { action: "open", operationId: randomUUID(), launch: launch("work") } }); await new Promise(done => setTimeout(done, 60));
+    const refused = await f.call("accounts.remove", { cli: "claude-code", profile: "work", actor: "admin:u1" }); expect(refused.ok).toBe(false); expect(refused.error).toMatch(/running terminal/); expect(existsSync(join(f.root, "claude-code", "work"))).toBe(true);
+    opening.promise.catch(() => {}); opening.reject(new Error("closed"));
   });
 });

@@ -14,7 +14,7 @@ import { CliInstallError } from "./runtime-cli-install.js";
 import { parseAccountIdentity, type AccountIdentity } from "./claude-auth-status.js";
 import { CredentialProfileRefusal, credentialProfileCaseClash, credentialProfileDirectory, isCredentialProfileCli, rememberCredentialStatus, withCredentialProfile,
   type CredentialProfileCli } from "./runtime-credential-profiles.js";
-import { ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, removeOwnedProfile, requireOwnedProfile, type OwnedProfileOptions } from "./runtime-profile-ownership.js";
+import { ProfileOwnershipRefusal, createRuntimeProfile, deleteProfileBackups, removeOwnedProfile, requireOwnedProfile, withIsolatedOwnedProfile, type OwnedProfileOptions } from "./runtime-profile-ownership.js";
 import { AuditLog, RemoteSetupRefusal, readRemoteSwitches, requireRemoteSwitch, validAuditActor, type AuditAction, type AuditEntry, type AuditReason, type RemoteSwitchName } from "./runtime-remote-setup.js";
 import { RuntimeSignIn, RuntimeSignInSlot, SignInRefusal, type SignInDeps, type SignInMethod } from "./runtime-signin.js";
 import { isRuntimeRemoteOperation, parseRuntimeRemotePayload, type RuntimeRemoteOperation, type RuntimeRemotePayloads, type RuntimeSwitchStates } from "./runtime-protocol.js";
@@ -42,10 +42,14 @@ export interface RemoteAccountsDeps {
   environment(): NodeJS.ProcessEnv;
   /** `claude auth logout` for a profile, with the profile's variable in `env`. Output is discarded by the caller. Resolves with the exit code. */
   runLogout(executable: RemoteCliExecutable, args: string[], env: NodeJS.ProcessEnv): Promise<number | null>;
-  /** Whether a task or terminal is running with this profile, which makes sign-out and remove wait. */
+  /** Whether a task or terminal is running with this profile, which makes sign-out and remove refuse. */
   inUse(name: string): "task" | "pane" | "unknown" | undefined | Promise<"task" | "pane" | "unknown" | undefined>;
-  /** The pairing's own default profile, known only here. */
+  /** The same question with no await (from what is already known in memory and on disk): asked once more, synchronously, immediately before a profile is renamed. */
+  inUseNow(name: string): "task" | "pane" | "unknown" | undefined;
+  /** The pairing's own default profile, known only here. THROWS when it cannot be read: an unreadable default is not "no default". */
   defaultProfile(): string | undefined;
+  /** Takes a share of the Runtime's activity (the update fence waits for it): held for each request and for as long as a sign-in is open. Returns the release. */
+  enter?: () => () => void;
   /** A cached answer was written or forgotten: the caller re-reports the computer's inventory. */
   changed(): void;
   /** Installs a CLI from the closed table and returns the version that landed. Absent: this Runtime cannot install (and does not claim to). */
@@ -57,6 +61,13 @@ export interface RemoteAccountsDeps {
   /** How often a sign-in that is under way looks at its switch (default 3 s), so turning the switch off or letting it expire ends the sign-in. */
   switchWatchMs?: number;
 }
+/** A process that was told to stop and was not confirmed gone: `ended` settles when it really has. Whoever owns the profile keeps it busy until then. */
+export class ProcessNotConfirmedEnded extends Error { constructor(readonly ended: Promise<unknown>) { super("The process could not be confirmed ended"); this.name = "ProcessNotConfirmedEnded"; } }
+/** What an operation knows about its own request: still the live connection of a Runtime that is not stopping. */
+interface Ctx { alive(): boolean }
+const NOT_AVAILABLE = "This computer's Runtime is stopping or its connection changed, so nothing was done";
+/** At most this many `accounts.check` at a time on the computer: each one can start PowerShell and the CLI. */
+export const MAX_CONCURRENT_CHECKS = 2;
 const GENERIC = "The operation could not be completed on this computer. Check that computer's Runtime window.";
 /** Text that may leave this computer: only our own refusals. Everything else (a filesystem error carries a path) becomes one fixed sentence. */
 export function safeRemoteMessage(error: unknown): string {
@@ -86,6 +97,15 @@ export class RemoteAccounts {
   private readonly exclusive = new Set<string>();
   /** When a sign-out or remove of a profile (lower-case name) last passed its checks. Only profiles this Runtime created get here. */
   private readonly lastChange = new Map<string, number>();
+  /** Closed to new work by `stop()`; and the connection the requests in flight belong to (a change ends the old ones' right to start anything). */
+  private stopped = false;
+  private connectionEpoch = 0;
+  /** Requests being handled, so `stop()` can wait for every one of them to unwind. */
+  private readonly pending = new Set<Promise<unknown>>();
+  /** Profiles kept busy after a process that was killed was not confirmed gone, until it is. */
+  private readonly retained = new Set<string>();
+  private activeChecks = 0;
+  private hold: (() => void) | null = null;
   constructor(private readonly deps: RemoteAccountsDeps) { this.slot = new RuntimeSignInSlot(deps.now); this.audit = new AuditLog(deps.pairingDirectory, () => this.now()); }
   private now(): number { return this.deps.now?.() ?? Date.now(); }
   /** The switches as they stand now (read-only; the server cannot change them). */
@@ -94,10 +114,46 @@ export class RemoteAccounts {
   get canInstall(): boolean { return !!this.deps.installer; }
   /** A profile with a sign-in under way, which makes sign-out and remove refuse. */
   signInProfile(): string | undefined { return this.slot.current() ? this.meta?.profile : undefined; }
-  /** The Runtime is stopping: nothing is left running, and the folded counts of the record are written. */
+  /**
+   * The Runtime is stopping. Admission closes first (synchronously, so a request that is waiting for a lookup finds the door shut when it wakes), then every
+   * request in flight is waited for until it has unwound, then any sign-in (open, or whose child was not confirmed gone) is ended, then the folded
+   * counts of the record are written.
+   */
   async stop(): Promise<void> {
+    this.stopped = true; this.connectionEpoch++; this.stopWatching();
+    await Promise.allSettled([...this.pending]);
     if (this.meta && this.slot.current()) await this.endSignIn(this.meta.id, "closed").catch(() => {});
-    this.audit.flush();
+    else await this.slot.recover().catch(() => {});
+    this.refreshHold(); this.audit.flush();
+  }
+  /** The connection to AgEnD changed: requests of the old one may not start anything more, and a sign-in that was opened over it is ended. */
+  connectionChanged(): void {
+    this.connectionEpoch++;
+    if (this.meta && this.slot.current()) this.endWithRetry(this.meta.id, "closed");
+  }
+  /** Nothing of this module is running or being held: the update fence may ask. */
+  idle(): boolean { return this.pending.size === 0 && !this.slot.current() && this.busy.size === 0 && this.retained.size === 0 && this.activeChecks === 0 && this.exclusive.size === 0; }
+  /** A change to this profile has been reserved or is under way: a task or terminal must not start under it now. */
+  profileReserved(name: string): boolean { const key = name.toLowerCase(); return this.busy.has(key) || this.retained.has(key); }
+  private refreshHold(): void { if (this.hold && !this.slot.current()) { const leave = this.hold; this.hold = null; leave(); } }
+  private retainBusy(key: string, ended: Promise<unknown>): void { this.retained.add(key); const done = (): void => { this.retained.delete(key); }; ended.then(done, done); }
+  /** Both the live-request check and the switch, immediately before anything that changes something. */
+  private gate(ctx: Ctx, switchName: RemoteSwitchName): void {
+    if (!ctx.alive()) throw new RemoteSetupRefusal(NOT_AVAILABLE, "failed");
+    requireRemoteSwitch(this.deps.pairingDirectory, switchName, this.now());
+  }
+  /** The last, synchronous look before a profile is renamed: the switch, the default, tasks and terminals, and a sign-in, all as they are at this instant. */
+  private finalLook(ctx: Ctx, name: string, forRemove: boolean): void {
+    this.gate(ctx, "accounts");
+    if (forRemove) {
+      let fallback: string | undefined;
+      try { fallback = this.deps.defaultProfile(); } catch { throw new ProfileOwnershipRefusal("This computer could not confirm which credential profile is the default, so nothing was changed. Check that computer's Runtime folder", "unconfirmed"); }
+      if (fallback && fallback.toLowerCase() === name.toLowerCase()) throw new ProfileOwnershipRefusal(`Credential profile "${name}" is this computer's default for agents; change it there first: agend-runtime profile default NAME`, "default_profile");
+    }
+    if (this.signInProfile()?.toLowerCase() === name.toLowerCase()) throw new SignInRefusal(`A sign-in for "${name}" is running; end it first`, "busy");
+    const using = this.deps.inUseNow(name);
+    if (using === "unknown") throw new ProfileOwnershipRefusal("This computer could not confirm whether a terminal is running under this profile, so nothing was changed. Check that computer's terminals and Runtime folder", "unconfirmed");
+    if (using) throw new ProfileOwnershipRefusal(`Credential profile "${name}" is in use by a running ${using === "pane" ? "terminal" : "task"} on this computer; stop it first`, "in_use");
   }
 
   private record(entry: AuditEntry, required: boolean): void {
@@ -112,7 +168,7 @@ export class RemoteAccounts {
    *   4. `started` is recorded, and must be written, so a refusal costs one folded line and only real work leaves `started` entries;
    *   5. `run`, then `ok` or the reason it failed.
    */
-  private async audited<T>(action: AuditAction, switchName: RemoteSwitchName, actor: string, subject: { cli?: string; profile?: string; detail?: (result: T) => string | undefined },
+  private async audited<T>(action: AuditAction, switchName: RemoteSwitchName, actor: string, subject: { cli?: string; profile?: string; detail?: (result: T) => string | undefined }, ctx: Ctx,
     steps: { check?: () => void | Promise<void>; run: () => Promise<T>; /** The operation goes on after `run` (a sign-in): its own end is recorded later, so no `ok` here. */ openEnded?: boolean;
       /** Only one operation of this kind at a time on the computer, taken in the same synchronous step as the switch and profile checks (before any await). */ exclusive?: "signin-start" | "install" }): Promise<T> {
     const base = { actor, action, ...(subject.cli ? { cli: subject.cli } : {}), ...(subject.profile ? { profile: subject.profile } : {}) };
@@ -121,14 +177,16 @@ export class RemoteAccounts {
     const refuse = (error: unknown, inCheck = false): never => { this.record({ ...base, outcome: inCheck || error instanceof RemoteSetupRefusal || error instanceof ProfileOwnershipRefusal || error instanceof SignInRefusal ? "refused" : "failed", reason: reasonOf(error) }, false); throw error; };
     const key = subject.profile?.toLowerCase();
     try { requireRemoteSwitch(this.deps.pairingDirectory, switchName, this.now()); } catch (error) { return refuse(error); }
-    if (key !== undefined) { if (this.busy.has(key)) return refuse(new SignInRefusal(`Another operation on "${subject.profile}" is in progress; try again in a moment`, "busy")); this.busy.add(key); }
+    if (key !== undefined) { if (this.busy.has(key) || this.retained.has(key)) return refuse(new SignInRefusal(`Another operation on "${subject.profile}" is in progress; try again in a moment`, "busy")); this.busy.add(key); }
     const taken = steps.exclusive;
     if (taken !== undefined) {
       if (this.exclusive.has(taken)) { if (key !== undefined) this.busy.delete(key); return refuse(new SignInRefusal(taken === "install" ? "Another install is running on this computer" : "Another sign-in is starting on this computer", "busy")); }
       this.exclusive.add(taken);
     }
     try {
-      try { await steps.check?.(); } catch (error) { return refuse(error, true); }
+      // The switch and the connection are looked at again after the checks, which can wait a long time (PowerShell, a CLI lookup): a switch turned off or
+      // run out meanwhile, or a connection that has gone, stops the operation here, before anything is recorded as started.
+      try { await steps.check?.(); this.gate(ctx, switchName); } catch (error) { return refuse(error, true); }
       this.record({ ...base, outcome: "started" }, true);
       try {
         const result = await steps.run();
@@ -157,26 +215,35 @@ export class RemoteAccounts {
   }
   private paceMark(name: string): void { this.lastChange.set(name.toLowerCase(), this.now()); }
 
-  /** The one entry: a remote request already received from the server. Returns what the dashboard may see, or throws a message safe to send. */
-  async handle(operation: string, payload: unknown): Promise<unknown> {
+  /**
+   * The one entry: a remote request already received from the server. Returns what the dashboard may see, or throws a message safe to send.
+   * `current` says whether the connection the request arrived on is still the live one. A request is admitted only while the Runtime is not stopping and
+   * the connection is current, is counted until it has completely unwound (`stop()` waits for it), and carries the same question into every step that
+   * can change something.
+   */
+  async handle(operation: string, payload: unknown, current?: () => boolean): Promise<unknown> {
     if (!isRuntimeRemoteOperation(operation)) throw new Error("Unknown runtime operation");
-    try { return await this.dispatch(operation, payload); }
-    catch (error) { throw new Error(safeRemoteMessage(error)); }
+    const epoch = this.connectionEpoch, ctx: Ctx = { alive: () => !this.stopped && this.connectionEpoch === epoch && (current ? current() : true) };
+    if (!ctx.alive()) throw new Error(NOT_AVAILABLE);
+    const work = (async (): Promise<unknown> => { try { return await this.dispatch(operation, payload, ctx); } catch (error) { throw new Error(safeRemoteMessage(error)); } })();
+    this.pending.add(work);
+    try { return await work; } finally { this.pending.delete(work); }
   }
-  private async dispatch(operation: RuntimeRemoteOperation, payload: unknown): Promise<unknown> {
+  private async dispatch(operation: RuntimeRemoteOperation, payload: unknown, ctx: Ctx): Promise<unknown> {
     // Two operations do not look at a switch, on purpose: `accounts.switches` only reads (a dashboard has to be able to say why a request would be
     // refused), and `signin.close` only ends something that is already running (turning a switch off must never leave a sign-in that cannot be closed).
     if (operation === "accounts.switches") { this.parse(operation, payload); return this.switches(); }
     if (operation === "signin.close") { const input = this.parse(operation, payload); return this.endSignIn(input.sessionId, "closed"); }
     if (operation === "cli.install") {
       const input = this.parse(operation, payload);
-      return this.audited("cli.install", "install", this.actorOf(input.actor), { cli: input.cli, detail: (result: { version: string }) => result.version }, {
+      return this.audited("cli.install", "install", this.actorOf(input.actor), { cli: input.cli, detail: (result: { version: string }) => result.version }, ctx, {
         exclusive: "install",
         check: () => {
           if (!this.deps.installer) throw new ProfileOwnershipRefusal("This Runtime cannot install CLIs", "unsupported");
           if (!this.deps.installer.knows(input.cli)) throw new ProfileOwnershipRefusal("That CLI is not in this Runtime's install list", "unsupported");
         },
         run: async () => {
+          this.gate(ctx, "install");
           const result = await this.deps.installer!.install(input.cli);
           // The computer's CLI list changes now: the dashboard sees the new CLI without waiting for the next detection.
           this.deps.changed();
@@ -189,11 +256,11 @@ export class RemoteAccounts {
     switch (operation) {
       case "signin.capture": { const input = this.parse(operation, payload); this.needSwitch(); return { screen: this.slot.find(input.sessionId).capture() }; }
       case "signin.status": { const input = this.parse(operation, payload); this.needSwitch(); return this.slot.find(input.sessionId).status(); }
-      case "signin.write": return this.writeCode(this.parse(operation, payload));
-      case "signin.start": return this.startSignIn(this.parse(operation, payload));
-      case "accounts.check": return this.check(this.parse(operation, payload));
-      case "accounts.signout": return this.signOut(this.parse(operation, payload));
-      case "accounts.remove": return this.remove(this.parse(operation, payload));
+      case "signin.write": return this.writeCode(this.parse(operation, payload), ctx);
+      case "signin.start": return this.startSignIn(this.parse(operation, payload), ctx);
+      case "accounts.check": return this.check(this.parse(operation, payload), ctx);
+      case "accounts.signout": return this.signOut(this.parse(operation, payload), ctx);
+      case "accounts.remove": return this.remove(this.parse(operation, payload), ctx);
       default: throw new Error("Unknown runtime operation");
     }
   }
@@ -208,12 +275,12 @@ export class RemoteAccounts {
     return actor;
   }
 
-  private async startSignIn(input: { cli: string; profile: string; method: SignInMethod; actor: string }): Promise<{ sessionId: string }> {
+  private async startSignIn(input: { cli: string; profile: string; method: SignInMethod; actor: string }, ctx: Ctx): Promise<{ sessionId: string }> {
     const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli);
     let executable: RemoteCliExecutable | null = null;
     // A sign-in begins by creating the profile when it is new: this is "Add account". The record says so. Nothing is created until every refusal
     // that does not need a change has been made (the slot, the profile's state, the CLI), so refused requests leave no folder behind.
-    return this.audited("signin", "accounts", actor, { cli, profile: input.profile }, {
+    return this.audited("signin", "accounts", actor, { cli, profile: input.profile }, ctx, {
       // The slot is only taken at the end of `run`; until then another start (under any name) must not get past `check`.
       exclusive: "signin-start",
       check: async () => {
@@ -230,15 +297,21 @@ export class RemoteAccounts {
       run: async () => {
         const { credentialRoot, pairingDirectory } = this.deps;
         if (!existsSync(credentialProfileDirectory(credentialRoot, cli, input.profile))) {
+          this.gate(ctx, "accounts");                                   // immediately before the folder is created
           try { createRuntimeProfile(credentialRoot, cli, input.profile); }
           catch { throw new ProfileOwnershipRefusal("The profile folder could not be created", "invalid_request"); }
           this.record({ actor, action: "profile.add", outcome: "ok", cli, profile: input.profile }, false);
         }
         const directory = await requireOwnedProfile(pairingDirectory, credentialRoot, cli, input.profile, this.deps.ownership);
-        const session = await this.slot.start(() => new RuntimeSignIn({ command: executable!.command, args: executable!.args, method: input.method,
+        // The switch and the connection once more, in the same synchronous step as the child is started (the slot waits before it calls this).
+        const session = await this.slot.start(() => { this.gate(ctx, "accounts"); return new RuntimeSignIn({ command: executable!.command, args: executable!.args, method: input.method,
           env: withCredentialProfile(this.deps.environment(), cli, directory) }, { ...this.deps.signIn, now: this.deps.now,
-          onTimeout: () => { this.endWithRetry(session.id, "timeout"); } }));
+          onTimeout: () => { this.endWithRetry(session.id, "timeout"); } }); });
         this.meta = { id: session.id, actor, cli, profile: input.profile };
+        // The sign-in is the Runtime's work for as long as its child lives: the update fence waits for it. If the Runtime stopped or the connection went
+        // while the child was being started, it is ended at once, over the same path as any other end.
+        try { if (!ctx.alive()) throw new RemoteSetupRefusal(NOT_AVAILABLE, "failed"); this.hold = this.deps.enter?.() ?? null; }
+        catch (error) { await this.endSignIn(session.id, "closed").catch(() => {}); throw error; }
         this.watchSwitch(session.id);
         return { sessionId: session.id };
       },
@@ -250,12 +323,12 @@ export class RemoteAccounts {
    * already written, no prompt showing, the child gone) is made in `check`, before `started`, so a flood of bad writes folds into one line; `started` is
    * only for the one write that really reaches the CLI.
    */
-  private async writeCode(input: { sessionId: string; input: string }): Promise<{ accepted: true }> {
+  private async writeCode(input: { sessionId: string; input: string }, ctx: Ctx): Promise<{ accepted: true }> {
     const session = this.slot.find(input.sessionId), meta = this.meta;
     if (!meta || meta.id !== session.id) throw new SignInRefusal("That sign-in is no longer running", "invalid_request");
-    return this.audited("signin.write", "accounts", meta.actor, { cli: meta.cli, profile: meta.profile }, {
+    return this.audited("signin.write", "accounts", meta.actor, { cli: meta.cli, profile: meta.profile }, ctx, {
       check: () => { session.assertWritable(input.input); },
-      run: async () => { await session.write(input.input); return { accepted: true as const }; },
+      run: async () => { this.gate(ctx, "accounts"); await session.write(input.input); return { accepted: true as const }; },
     });
   }
   /** While a sign-in is open, look at its switch every few seconds: a switch that was turned off, or that ran out, ends it and says so in the record. */
@@ -269,7 +342,7 @@ export class RemoteAccounts {
   }
   private stopWatching(): void { if (this.watch) { clearInterval(this.watch); this.watch = null; } }
   /** Ends a sign-in on this Runtime's own initiative (timeout, switch); a child that cannot be shown gone is tried again, not forgotten. */
-  private endWithRetry(id: string, how: "timeout" | "switch_off", attempt = 0): void {
+  private endWithRetry(id: string, how: "timeout" | "switch_off" | "closed", attempt = 0): void {
     void this.endSignIn(id, how).catch(() => {
       if (attempt >= 5 || this.meta?.id !== id) return;
       const timer = setTimeout(() => this.endWithRetry(id, how, attempt + 1), this.deps.switchWatchMs ?? 3000); timer.unref?.();
@@ -282,6 +355,7 @@ export class RemoteAccounts {
   private async endSignIn(sessionId: string, how: "closed" | "timeout" | "switch_off"): Promise<{ closed: true }> {
     this.stopWatching();
     await this.slot.close(sessionId);
+    this.refreshHold();
     const meta = this.meta;
     if (meta && meta.id === sessionId) {
       this.meta = null;
@@ -304,36 +378,69 @@ export class RemoteAccounts {
       this.meta = null; this.stopWatching();
       this.record({ actor: meta.actor, action: "signin", cli: meta.cli, profile: meta.profile, outcome: "failed", reason: "failed" }, false);
     }
+    this.refreshHold();
   }
-  /** Read-only (`auth status` under the profile), so not recorded. */
-  private async check(input: { cli: string; profile: string }): Promise<{ loggedIn: boolean | null; identity?: AccountIdentity }> {
-    this.needSwitch();
-    const cli = this.cliOf(input.cli), directory = await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
-    const answer = await this.deps.status(cli, directory);
-    // The shared parser already masked the address; check the masked form once more before anything is stored or sent.
-    const identity = answer.loggedIn === true && answer.identity ? parseAccountIdentity(answer.identity) : undefined;
-    rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) });
-    if (this.meta && this.meta.profile === input.profile) this.meta.signedIn = answer.loggedIn === true;
-    this.deps.changed();
-    return { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) };
+  /**
+   * Read-only toward the profile (`auth status` under it), so not recorded; it still starts PowerShell and the CLI, so it is bounded: a profile that is
+   * being changed is `busy`, and only `MAX_CONCURRENT_CHECKS` run at once on the computer (the slot is taken before anything is started, and given
+   * back only when the last child of this check is done).
+   */
+  private async check(input: { cli: string; profile: string }, ctx: Ctx): Promise<{ loggedIn: boolean | null; identity?: AccountIdentity }> {
+    this.gate(ctx, "accounts");
+    const cli = this.cliOf(input.cli), key = input.profile.toLowerCase();
+    if (this.busy.has(key) || this.retained.has(key)) throw new SignInRefusal(`Another operation on "${input.profile}" is in progress; try again in a moment`, "busy");
+    if (this.activeChecks >= MAX_CONCURRENT_CHECKS) throw new SignInRefusal("Other account checks are running on this computer; try again in a moment", "busy");
+    this.activeChecks++;
+    try {
+      const directory = await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
+      this.gate(ctx, "accounts");
+      const answer = await this.deps.status(cli, directory);
+      this.gate(ctx, "accounts");                                      // before anything is written
+      // The shared parser already masked the address; check the masked form once more before anything is stored or sent.
+      const identity = answer.loggedIn === true && answer.identity ? parseAccountIdentity(answer.identity) : undefined;
+      rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) });
+      if (this.meta && this.meta.profile === input.profile) this.meta.signedIn = answer.loggedIn === true;
+      this.deps.changed();
+      return { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) };
+    } finally { this.activeChecks--; }
   }
-  private async signOut(input: { cli: string; profile: string; actor: string }): Promise<{ loggedIn: false }> {
-    const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli);
-    let directory = "", executable: RemoteCliExecutable | null = null;
-    return this.audited("profile.signout", "accounts", actor, { cli, profile: input.profile }, {
+  /**
+   * Sign-out. The checks come first (ownership, in use, the CLI, the pace); then, with the folder taken out of reach of a swap (renamed and re-checked, as for a
+   * removal), `claude auth logout` runs against the renamed folder, the folder is verified again, its backups are deleted, and the name is put back. So a
+   * folder replaced by a junction to the user's own sign-in after the checks is found before anything is run against it. The switch and the connection are
+   * looked at again immediately before the logout starts and before the backups go.
+   */
+  private async signOut(input: { cli: string; profile: string; actor: string }, ctx: Ctx): Promise<{ loggedIn: false }> {
+    const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli), key = input.profile.toLowerCase();
+    let executable: RemoteCliExecutable | null = null;
+    return this.audited("profile.signout", "accounts", actor, { cli, profile: input.profile }, ctx, {
       check: async () => {
         this.paceCheck(input.profile);
-        directory = await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
+        await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
         await this.busyProfile(input.profile);
         executable = await this.deps.find(cli);
         if (!executable) throw new SignInRefusal("Claude Code is not installed on this computer", "failed");
         this.paceMark(input.profile);
       },
       run: async () => {
-        await this.deps.runLogout(executable!, ["auth", "logout"], withCredentialProfile(this.deps.environment(), cli, directory));
-        // No old identity is left behind: Claude Code keeps copies of its settings file under backups\.
-        deleteProfileBackups(directory);
-        const answer = await this.deps.status(cli, directory);
+        const answer = await withIsolatedOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile,
+          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, false) },
+          async (directory, verify) => {
+            this.gate(ctx, "accounts");
+            try { await this.deps.runLogout(executable!, ["auth", "logout"], withCredentialProfile(this.deps.environment(), cli, directory)); }
+            catch (error) {
+              if (error instanceof ProcessNotConfirmedEnded) {
+                // The old logout may still be running: the profile stays busy, and keeps its temporary name, until that process really ends.
+                this.retainBusy(key, error.ended);
+                throw Object.assign(new SignInRefusal("The sign-out process could not be confirmed ended, so this profile stays busy until it is", "failed"), { ended: error.ended });
+              }
+              throw error;
+            }
+            await verify(); this.gate(ctx, "accounts");
+            // No old identity is left behind: Claude Code keeps copies of its settings file under backups\.
+            deleteProfileBackups(directory);
+            return this.deps.status(cli, directory);
+          });
         rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn });
         this.deps.changed();
         if (answer.loggedIn !== false) throw new SignInRefusal(`Credential profile "${input.profile}" is still signed in after sign-out`, "failed");
@@ -341,19 +448,23 @@ export class RemoteAccounts {
       },
     });
   }
-  private async remove(input: { cli: string; profile: string; actor: string }): Promise<{ removed: true }> {
+  private async remove(input: { cli: string; profile: string; actor: string }, ctx: Ctx): Promise<{ removed: true }> {
     const actor = this.actorOf(input.actor), cli = this.cliOf(input.cli);
-    return this.audited("profile.remove", "accounts", actor, { cli, profile: input.profile }, {
+    return this.audited("profile.remove", "accounts", actor, { cli, profile: input.profile }, ctx, {
       check: async () => {
         this.paceCheck(input.profile);
         await requireOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, this.deps.ownership);
-        const fallback = this.deps.defaultProfile();
+        let fallback: string | undefined;
+        try { fallback = this.deps.defaultProfile(); } catch { throw new ProfileOwnershipRefusal("This computer could not confirm which credential profile is the default, so nothing was changed. Check that computer's Runtime folder", "unconfirmed"); }
         if (fallback && fallback.toLowerCase() === input.profile.toLowerCase()) throw new ProfileOwnershipRefusal(`Credential profile "${input.profile}" is this computer's default for agents; change it there first: agend-runtime profile default NAME`, "default_profile");
         await this.busyProfile(input.profile);
         this.paceMark(input.profile);
       },
       run: async () => {
-        await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile, { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}) });
+        this.gate(ctx, "accounts");
+        // The protection (the default profile, tasks, terminals, the switch) is asked again, synchronously, immediately before the rename: `beforeCommit`.
+        await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile,
+          { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, true) });
         this.deps.changed();
         return { removed: true as const };
       },

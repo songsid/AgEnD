@@ -39,7 +39,7 @@ describe("agend-runtime remote-setup", () => {
   it("records each change as `local` in the audit log, and refuses a malformed command without changing anything", async () => {
     const f = setup(); await f.run(["remote-setup", "accounts", "on"]); await f.run(["remote-setup", "accounts", "off"]);
     const rows = readFileSync(join(f.runtimeHome, AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line));
-    expect(rows.map(row => `${row.actor}:${row.action}:${row.detail}`)).toEqual(["local:switch:on", "local:switch:off"]);
+    expect(rows.map(row => `${row.actor}:${row.action}:${row.switch}:${row.detail}:${row.outcome}`)).toEqual(["local:switch:accounts:on:started", "local:switch:accounts:on:ok", "local:switch:accounts:off:ok"]);
     for (const argv of [["remote-setup"], ["remote-setup", "accounts"], ["remote-setup", "accounts", "maybe"], ["remote-setup", "network", "on"], ["remote-setup", "accounts", "off", "--for", "2h"], ["remote-setup", "accounts", "on", "--for", "0"],
       ["remote-setup", "accounts", "on", "--for", "200h"], ["remote-setup", "status", "--for", "2h"], ["remote-setup", "accounts", "on", "extra"], ["remote-setup", "accounts", "on", "--server", "https://x.example.com"]]) {
       await expect(f.run(argv), argv.join(" ")).rejects.toThrow();
@@ -94,7 +94,7 @@ describe("profile list shows what a removal left behind", () => {
   it("names a leftover folder and what to do, with or without other profiles, and does not touch it", async () => {
     const f = setup(); mkdirSync(join(f.root, "claude-code", ".removing-0123456789abcdef"), { recursive: true }); writeFileSync(join(f.root, "claude-code", ".removing-0123456789abcdef", "x"), "secret");
     await f.run(["profile", "list"]);
-    expect(f.text()).toMatch(/\.removing-0123456789abcdef\tLEFT OVER from a removal that could not finish.*may still hold a sign-in.*delete that folder yourself.*rename it.*Nothing does either for you/s);
+    expect(f.text()).toMatch(/\.removing-0123456789abcdef\tLEFT OVER from a removal or sign-out that could not finish.*may still hold a sign-in.*delete that folder yourself.*rename it.*Nothing does either for you/s);
     expect(f.text()).not.toMatch(/No credential profiles yet/);
     expect(readFileSync(join(f.root, "claude-code", ".removing-0123456789abcdef", "x"), "utf8")).toBe("secret");
     createRuntimeProfile(f.root, "claude-code", "work");

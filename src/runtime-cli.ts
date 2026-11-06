@@ -16,7 +16,7 @@ import type { AccountIdentity } from "./claude-auth-status.js";
 import { spawn } from "./child-process.js";
 import { MANAGED_CLI_ROOT_ENV, managedCliRoot } from "./runtime-cli-install.js";
 import { createRuntimeProfile, listRemovalLeftovers } from "./runtime-profile-ownership.js";
-import { appendAudit, describeRemoteSwitches, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
+import { appendAudit, describeRemoteSwitches, type AuditEntry, type RemoteSwitchState, isRemoteSwitchName, parseSwitchDuration, readRemoteSwitches, setRemoteSwitch } from "./runtime-remote-setup.js";
 
 const HELP = `AgEnD native Windows runtime
 
@@ -111,11 +111,29 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     if (what === "status" && positional.length === 1 && flags["--for"] === undefined) { process.stdout.write(`${describeRemoteSwitches(readRemoteSwitches(store.directory))}\n`); return; }
     if (positional.length !== 2 || !isRemoteSwitchName(what) || (state !== "on" && state !== "off") || (flags["--for"] !== undefined && state !== "on")) throw new Error(usage);
     const forMs = flags["--for"] === undefined ? undefined : parseSwitchDuration(flags["--for"]);
-    // Turning a switch ON is recorded first: a change whose record cannot be kept is not made. Turning it OFF must always work (fail open): the
-    // record is then best-effort, and the person is told when it was not written.
-    try { appendAudit(store.directory, { actor: "local", action: "switch", outcome: "ok", detail: state }); }
-    catch { if (state === "on") throw new Error("The audit log (audit.jsonl in this profile folder) cannot be written, so the switch was not turned on. Fix that file or folder and run this again."); process.stderr.write("Note: the audit log (audit.jsonl in this profile folder) could not be written, so this change is not recorded there. The switch is being turned off anyway.\n"); }
-    const result = setRemoteSwitch(store.directory, what, state === "on", forMs);
+    // What is recorded: which switch, on or off, and when a timed switch ends; first as an attempt, then as what really happened.
+    // ON: the attempt is written first and must be written (no record, no change); the switch is set; then the result is written. If that last line
+    // cannot be written the switch is put back off, so a switch is never left on without its record. A failed change is recorded as failed, never as ok.
+    // OFF must always work (fail open): the switch is turned off first, and the record is best effort, with a note when it was not written.
+    const now = Date.now(), until = forMs === undefined ? undefined : new Date(now + forMs).toISOString();
+    const entry = (outcome: "started" | "ok" | "failed"): AuditEntry => ({ actor: "local", action: "switch", switch: what, outcome, detail: state, ...(until ? { until } : {}), ...(outcome === "failed" ? { reason: "failed" as const } : {}) });
+    const notRecorded = "Note: the audit log (audit.jsonl in this profile folder) could not be written, so this change is not recorded there. The switch is being turned off anyway.\n";
+    let result: RemoteSwitchState;
+    if (state === "on") {
+      try { appendAudit(store.directory, entry("started"), now); }
+      catch { throw new Error("The audit log (audit.jsonl in this profile folder) cannot be written, so the switch was not turned on. Fix that file or folder and run this again."); }
+      try { result = setRemoteSwitch(store.directory, what, true, forMs, now); }
+      catch (error) { try { appendAudit(store.directory, entry("failed")); } catch { /* the failure itself is what is thrown */ } throw error; }
+      try { appendAudit(store.directory, entry("ok")); }
+      catch {
+        try { setRemoteSwitch(store.directory, what, false); } catch { /* reported below either way */ }
+        throw new Error("The audit log (audit.jsonl in this profile folder) could not be written after the switch was set, so the switch was turned off again. Fix that file or folder and run this again.");
+      }
+    } else {
+      try { result = setRemoteSwitch(store.directory, what, false, undefined, now); }
+      catch (error) { try { appendAudit(store.directory, entry("failed")); } catch { /* best effort */ } throw error; }
+      try { appendAudit(store.directory, entry("ok")); } catch { process.stderr.write(notRecorded); }
+    }
     process.stdout.write(`${what}: ${result.on ? "on" : "off"}${result.until !== undefined ? `, turns off by itself at ${new Date(result.until).toLocaleString()}` : ""}\n`);
     if (result.on) process.stdout.write(what === "accounts"
       ? "AgEnD administrators can now add, sign in, sign out and remove Claude accounts that this Runtime creates on this computer. The sign-in stays on this computer, and anyone who can sign in to this Windows user can use it. Your own Claude sign-in is not touched.\n"
@@ -144,7 +162,7 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     // A removal that could neither finish nor be undone leaves its folder under a temporary name, with a sign-in possibly still in it. It is listed
     // here and nowhere else, and is never deleted or put back by the Runtime: that is for the person at this computer.
     const leftovers = listRemovalLeftovers(credentialRoot, "claude-code");
-    for (const name of leftovers) process.stdout.write(`${name}\tLEFT OVER from a removal that could not finish, in ${join(credentialRoot, "claude-code")}. It may still hold a sign-in. To finish removing it, delete that folder yourself; to keep it, rename it to its profile name. Nothing does either for you.\n`);
+    for (const name of leftovers) process.stdout.write(`${name}\tLEFT OVER from a removal or sign-out that could not finish, in ${join(credentialRoot, "claude-code")}. It may still hold a sign-in. To finish removing it, delete that folder yourself; to keep it, rename it to its profile name. Nothing does either for you.\n`);
     if (!names.length) { if (!leftovers.length) process.stdout.write("No credential profiles yet. Create one: agend-runtime login claude-code NAME\n"); return; }
     for (const name of names) {
       let answer: CredentialProfileAnswer = { loggedIn: null };
