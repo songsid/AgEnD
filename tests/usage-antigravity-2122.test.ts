@@ -4,7 +4,7 @@
  * same tables and field numbers agy 1.4.6 wrote on the host.
  */
 import Database from "better-sqlite3";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -16,8 +16,17 @@ import { buildUsageReport } from "../src/usage-report.js";
 
 const NOW = Date.UTC(2026, 9, 18, 12), T = (h: number) => Date.UTC(2026, 9, 17, h);
 const dirs: string[] = [];
+const services: CacheService[] = [];
 const tmp = () => { const d = mkdtempSync(join(tmpdir(), "agend-agy-usage-")); dirs.push(d); return d; };
-afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+const service = (options: ConstructorParameters<typeof CacheService>[0]) => {
+  const svc = new CacheService(options); services.push(svc); return svc;
+};
+async function cleanup() {
+  // Reports start a catch-up without awaiting it. Fence timers/new scans and join its writes before removing storage.
+  for (const svc of services.splice(0)) await svc.stop();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+}
+afterEach(cleanup);
 
 // ── A protobuf writer for the fixtures: [field, value] pairs; a number is a varint, a string or nested list a message.
 type PB = Array<[number, number | string | PB]>;
@@ -120,7 +129,7 @@ describe("the version gate (design §10.4: the field map is reverse-engineered)"
     for (const version of ["1.5.0", null]) {
       let scans = 0;
       const inst: CacheInstance = { name: "agy", backend: "antigravity", workingDirectory: c.cwd, ledgerPath: join(c.root, `agy-${version}`, "cache-ledger.json"), profile: "default" };
-      const svc = new CacheService({ instances: () => [inst], claudeProjectsDir: () => join(c.root, "c"), claudeKey: (d) => d, codexSessionsDir: () => join(c.root, "x"),
+      const svc = service({ instances: () => [inst], claudeProjectsDir: () => join(c.root, "c"), claudeKey: (d) => d, codexSessionsDir: () => join(c.root, "x"),
         listRollouts: () => [], metaPath: join(c.root, "m.json"), now: () => NOW, zone: () => "UTC", antigravityDir: () => c.dir, antigravityVersion: () => version,
         antigravityScan: async (i) => { scans++; return scanAntigravityUsage(i); } });
       await svc.kick();
@@ -135,7 +144,7 @@ describe("in the usage report", () => {
     const c = conversations();
     c.make("a", c.cwd, T(8), [[0, gen({ id: "r1", model: "claude-sonnet-4-6", out: 300, at: T(9) })], [1, gen({ id: "r2", model: "gemini-3-flash-a", out: 100, at: T(10) })]]);
     const inst: CacheInstance = { name: "agy", backend: "antigravity", workingDirectory: c.cwd, ledgerPath: join(c.root, "agy", "cache-ledger.json"), profile: "default" };
-    const svc = new CacheService({ instances: () => [inst], claudeProjectsDir: () => join(c.root, "c"), claudeKey: (d) => d, codexSessionsDir: () => join(c.root, "x"),
+    const svc = service({ instances: () => [inst], claudeProjectsDir: () => join(c.root, "c"), claudeKey: (d) => d, codexSessionsDir: () => join(c.root, "x"),
       listRollouts: () => [], metaPath: join(c.root, "m.json"), now: () => NOW, zone: () => "UTC", antigravityDir: () => c.dir, antigravityVersion: () => "1.4.7", antigravityScan: async (i) => scanAntigravityUsage(i) });
     await svc.pass(); await svc.pass();
     const data = await svc.usageData();
@@ -145,5 +154,32 @@ describe("in the usage report", () => {
     expect(by["claude-sonnet-4-6"]).toMatchObject({ requests: 1, input: 1632, output: 300, reasoning: 40, reasoningReported: true, priced: "all" });
     expect(by["gemini-3-flash-a"]).toMatchObject({ amount: null, flags: ["not_priced"] });
     expect((await svc.report("7d")).instances[0]).toMatchObject({ status: "unsupported" });
+  });
+
+  it("teardown retains storage until a report's background catch-up and writes have drained", async () => {
+    const c = conversations();
+    c.make("a", c.cwd, T(8), [[0, gen({ id: "r1", model: "m", at: T(9) })]]);
+    let release!: () => void, entered!: () => void, scanned = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const scanning = new Promise<void>(resolve => { entered = resolve; });
+    const inst: CacheInstance = { name: "agy", backend: "antigravity", workingDirectory: c.cwd, ledgerPath: join(c.root, "agy", "cache-ledger.json") };
+    const svc = service({ instances: () => [inst], claudeProjectsDir: () => join(c.root, "c"), claudeKey: d => d, codexSessionsDir: () => join(c.root, "x"),
+      listRollouts: () => [], metaPath: join(c.root, "m.json"), now: () => NOW, zone: () => "UTC", antigravityDir: () => c.dir, antigravityVersion: () => "1.4.7",
+      antigravityScan: async i => { entered(); await gate; const out = scanAntigravityUsage(i); scanned = true; return out; } });
+    await svc.report("7d");
+    await scanning;
+    const drained = cleanup();
+    try {
+      expect(scanned).toBe(false);
+      expect(svc.scanning().active).toBe(true);
+      expect(existsSync(c.root)).toBe(true);
+    } finally {
+      release();
+      await drained;
+      await svc.stop();
+    }
+    expect(scanned).toBe(true);
+    expect(svc.scanning().active).toBe(false);
+    expect(existsSync(c.root)).toBe(false);
   });
 });
