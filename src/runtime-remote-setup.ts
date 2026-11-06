@@ -154,11 +154,11 @@ export function formatAuditLine(entry: AuditEntry, now = Date.now()): string {
 export const AUDIT_LOCK_FILE = "audit.lock";
 /** Held while one writer takes over the lock of a process that is gone. At most one takeover at a time. */
 const AUDIT_RECLAIM_FILE = `${AUDIT_LOCK_FILE}.reclaim`;
-/** How long a writer waits for the one before it (it then refuses: it never touches the log without the lock), and how old a lock file that holds nothing readable must be to be cleared. Tests lower these. */
-export const auditLockTiming = { waitMs: 3_000, unreadableMs: 10_000 };
+/** How long a writer waits for the one before it (it then refuses: it never touches the log without the lock). Tests lower it. */
+export const auditLockTiming = { waitMs: 3_000 };
 const heldAuditLocks = new Set<string>();      // tokens of the lock files (the lock, or the takeover guard) this process holds right now
 const pause = (ms: number): void => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); };
-const AUDIT_BUSY = "Audit log is busy (another process is writing it, or its lock file cannot be cleared): nothing was written; try again";
+const AUDIT_BUSY = `Audit log is busy (another process is writing it, or ${AUDIT_LOCK_FILE} or ${AUDIT_LOCK_FILE}.reclaim in this folder was left behind and needs a look on this computer): nothing was written; try again`;
 function processAlive(pid: number): boolean { try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; } }
 type AuditLockOwner = { pid: number; token: string };
 /** A lock file as it was looked at: which file it is (device and inode), what it held, and when it was written. */
@@ -176,13 +176,15 @@ function snapshotAuditLock(path: string): AuditLockFile | "gone" {
   return { dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs, raw, owner: parseAuditLockOwner(raw) };
 }
 /**
- * A lock nobody is using any more: its process is gone; or it is this process's pid with a token this process does not hold (a pid that was reused); or it holds
- * nothing readable and has been like that for a while (its writer may be between creating it and filling it). A live owner's lock is never stale.
+ * A lock nobody is using any more: it names an owner (pid and token, readable), and that process is gone, or it is this process's pid with a token this process
+ * does not hold (a pid that was reused). Nothing else is ever stale: a live owner's lock, and a lock that holds nothing readable, however old. The creator of an
+ * empty lock may only be slow (between creating the file and writing its owner into it), and age does not show that it is gone; it is waited for, and when the wait
+ * runs out the writer refuses and the file is left for someone to look at on this computer.
  */
 function auditLockIsStale(lock: AuditLockFile): boolean {
-  return lock.owner === "unreadable" ? Date.now() - lock.mtimeMs > auditLockTiming.unreadableMs : !heldAuditLocks.has(lock.owner.token) && (lock.owner.pid === process.pid || !processAlive(lock.owner.pid));
+  return lock.owner !== "unreadable" && !heldAuditLocks.has(lock.owner.token) && (lock.owner.pid === process.pid || !processAlive(lock.owner.pid));
 }
-/** The very file that was looked at: same device and inode, same bytes. An unreadable lock is compared the same way (what was empty and old and is now a valid owner is a different lock). */
+/** The very file that was looked at: same device and inode, same bytes. */
 function sameAuditLockFile(before: AuditLockFile, after: AuditLockFile | "gone"): boolean {
   return after !== "gone" && after.dev === before.dev && after.ino === before.ino && after.size === before.size && after.raw === before.raw;
 }
@@ -206,21 +208,18 @@ function removeAuditLockFile(path: string, token: string, identity?: { dev: numb
   }
   // Still there: it is ours, so the next writer of this process clears it (same pid, token not held) and another process waits until this one ends.
 }
-/** Clears a lock file nobody is using, only if it is still exactly what was looked at. */
-function clearStaleAuditLockFile(path: string): void {
-  const seen = snapshotAuditLock(path);
-  if (seen === "gone" || !auditLockIsStale(seen) || !sameAuditLockFile(seen, snapshotAuditLock(path))) return;
-  try { unlinkSync(path); } catch { /* it stays; whoever needs it waits and then refuses */ }
-}
 /**
- * Takes over the lock of a process that is gone, keeping exclusive, identity-bound ownership through the whole takeover. Only one taker at a time (it holds the
- * reclaim file, created exclusively). Under it the lock file is looked at again: it must still be the very file that was seen to be stale (same inode, same
- * bytes; a lock that was empty and is now a valid owner is not), and stale. The new lock is written whole to a file of its own and then renamed over the old one,
- * so there is never a moment without a lock, and a file that is replaced between the last look and the rename is the only gap left. Anything uncertain: no
- * takeover (the caller waits, and refuses when the wait runs out). Nothing here ever removes a lock that was not seen to be stale.
+ * Takes over the lock of a process that is gone, and only that: the lock names its owner, and that process is gone. Only one taker at a time, and only without
+ * contention: it creates the reclaim file exclusively and removes only that file, by token and identity; a reclaim file that is already there is never touched
+ * (its taker may be alive, or it was left behind by one that died: either way it is left for someone to look at, and writers wait and then refuse). Under it the
+ * lock file is looked at again: it must still be the very file that was seen to be stale (same inode, same bytes) and stale. The new lock is written whole to a
+ * file of its own and renamed over the old one, so there is never a moment without a lock. If the rename fails the takeover fails: the lock file is never
+ * unlinked here, since a writer that is about to create it would own the path in the gap before the rename. Anything uncertain: no takeover (the caller
+ * waits, and refuses when the wait runs out).
  */
 function takeOverAuditLock(directory: string, path: string, reclaimPath: string, token: string, seen: AuditLockFile): { dev: number; ino: number } | undefined {
-  if (!createAuditLockFile(reclaimPath, token)) { clearStaleAuditLockFile(reclaimPath); return undefined; }     // another taker is at it (or died at it: cleared for the next try)
+  const claimed = createAuditLockFile(reclaimPath, token);
+  if (!claimed) return undefined;                                                       // another taker is at it, or left it behind: not ours to touch
   heldAuditLocks.add(token);
   const next = join(directory, `${AUDIT_LOCK_FILE}.next-${token}`); let staged = false, taken = false;
   try {
@@ -229,8 +228,7 @@ function takeOverAuditLock(directory: string, path: string, reclaimPath: string,
     if (!createAuditLockFile(next, token)) return undefined;
     staged = true;
     if (!sameAuditLockFile(seen, snapshotAuditLock(path))) return undefined;
-    try { renameSync(next, path); }
-    catch { if (!sameAuditLockFile(seen, snapshotAuditLock(path))) return undefined; unlinkSync(path); renameSync(next, path); }      // where a rename cannot replace
+    renameSync(next, path);
     staged = false;
     const mine = snapshotAuditLock(path);
     if (mine === "gone" || mine.owner === "unreadable" || mine.owner.token !== token) return undefined;
@@ -238,7 +236,7 @@ function takeOverAuditLock(directory: string, path: string, reclaimPath: string,
   } catch { return undefined; }
   finally {
     if (staged) { try { unlinkSync(next); } catch { /* left behind: it holds nothing but a token */ } }
-    removeAuditLockFile(reclaimPath, token);
+    removeAuditLockFile(reclaimPath, token, claimed);
     if (!taken) heldAuditLocks.delete(token);
   }
 }
@@ -263,7 +261,7 @@ function acquireAuditLock(directory: string): AuditLockHandle {
     };
   };
   for (;;) {
-    if (existsSync(reclaimPath)) { clearStaleAuditLockFile(reclaimPath); wait(); continue; }       // a takeover is under way: nobody creates or takes over in the middle of it
+    if (snapshotAuditLock(reclaimPath) !== "gone") { wait(); continue; }       // a takeover is under way, or was left behind: nobody creates or takes over in the middle of it, and nothing here removes it (a link or a folder is refused)
     const made = createAuditLockFile(path, token);
     if (made) return owned(made);
     const seen = snapshotAuditLock(path);

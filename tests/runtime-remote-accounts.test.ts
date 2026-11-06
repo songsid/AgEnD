@@ -874,7 +874,7 @@ describe("P2: another audit writer's accepted record is never cut by an operatio
   const other = { actor: "admin:u2", action: "profile.remove" as const, outcome: "started" as const, cli: "claude-code", profile: "home" };      // a record another writer was told is written
   const actions = (f: F): string[] => f.audit().map(row => `${row.actor}:${row.action}:${row.outcome}:${row.profile ?? ""}`);
   beforeEach(() => { const real = Atomics.wait.bind(Atomics); vi.spyOn(Atomics, "wait").mockImplementation(((...args: Parameters<typeof Atomics.wait>) => { if (tap.hook?.on === "wait" && !tap.inHook) { tap.armed = true; tap.left = tap.hook.fstats ?? 1; } return (real as any)(...args); }) as typeof Atomics.wait); });
-  afterEach(() => { tap.hook = null; tap.armed = false; tap.left = 0; tap.inHook = false; tap.failAuditWrite = false; tap.calls = 0; auditLockTiming.waitMs = 3_000; auditLockTiming.unreadableMs = 10_000; vi.mocked(Atomics.wait).mockRestore(); });
+  afterEach(() => { tap.hook = null; tap.armed = false; tap.left = 0; tap.inHook = false; tap.failAuditWrite = false; tap.calls = 0; auditLockTiming.waitMs = 3_000; vi.mocked(Atomics.wait).mockRestore(); });
   for (const [place, fstats] of [["at the size check of its snapshot", 1], ["at the last look of its snapshot, right before the cut", 2]] as const) {
     it(`repair: B commits its record while the operation's lock is gone (${place}): B's record stays, the operation is refused and not executed, every line parses`, async () => {
       const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE);

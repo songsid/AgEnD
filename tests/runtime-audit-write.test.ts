@@ -9,7 +9,10 @@ let mode: "real" | "short" | "zero" | "shortThenZero" = "real"; let calls = 0; l
 // failed (in both, `fstats` says after which fstat of the first writer the hook runs: 1 is the size check of its snapshot, 2 is the last look of the snapshot, right
 // before the cut); `truncate`: at the call that cuts; `lockRead`: after the `nth` read of the lock file by the first writer. The hook runs once, and synchronously,
 // while the first writer is paused, and the first writer goes on with the answer it had (stale by then): what it looks at next is what has to notice.
-let hook: { on: "wait" | "failedWrite" | "truncate" | "lockRead"; run: () => void; fstats?: number; nth?: number; seen?: number } | null = null; let armed = false; let inHook = false; let fstatsLeft = 0;
+let hook: { on: "wait" | "failedWrite" | "truncate" | "lockRead" | "unlink"; run: () => void; fstats?: number; nth?: number; seen?: number; file?: "lock" | "reclaim" } | null = null; let armed = false; let inHook = false; let fstatsLeft = 0;
+// `lockRead` counts the first writer's reads of `audit.lock` (or of `audit.lock.reclaim`, with `file: "reclaim"`); `unlink` runs right after `audit.lock` is unlinked.
+// `renameFails`: a rename onto `audit.lock` fails (as it can where a rename cannot replace a file that is in use). `unlinked` lists every path that was unlinked.
+let renameFails = false; const unlinked: string[] = [];
 const fireHook = (): void => { const current = hook; if (!current || inHook) return; hook = null; inHook = true; try { current.run(); } finally { inHook = false; } };
 vi.mock("node:fs", async importOriginal => {
   const original = await importOriginal<typeof import("node:fs")>();
@@ -21,13 +24,15 @@ vi.mock("node:fs", async importOriginal => {
     if (mode === "zero" || (mode === "shortThenZero" && calls > 2)) { if (hook?.on === "failedWrite" && !inHook) { armed = true; fstatsLeft = hook.fstats ?? 1; } return 0; }
     const part = Math.min(3, length ?? buffer.byteLength);                              // a short write: only three bytes go out
     return (original.writeSync as any)(fd, buffer, offset, part);
-  }) as typeof original.writeSync, fstatSync: ((fd: number, options?: any) => { const result = (original.fstatSync as any)(fd, options); if (armed && !inHook && --fstatsLeft <= 0) { armed = false; fireHook(); } return result; }) as typeof original.fstatSync, readFileSync: ((path: any, options?: any) => { const result = (original.readFileSync as any)(path, options); if (hook?.on === "lockRead" && !inHook && String(path).endsWith("audit.lock") && (hook.seen = (hook.seen ?? 0) + 1) === (hook.nth ?? 1)) fireHook(); return result; }) as typeof original.readFileSync, ftruncateSync: ((fd: number, length?: number) => { if (hook?.on === "truncate" && !inHook) fireHook(); if ((flagsOf.get(fd) ?? 0) & original.constants.O_APPEND) throw Object.assign(new Error("EPERM: an append-only handle cannot truncate (Windows)"), { code: "EPERM" }); if (truncateFails) throw Object.assign(new Error("EPERM simulated"), { code: "EPERM" }); return original.ftruncateSync(fd, length); }) as typeof original.ftruncateSync };
+  }) as typeof original.writeSync, fstatSync: ((fd: number, options?: any) => { const result = (original.fstatSync as any)(fd, options); if (armed && !inHook && --fstatsLeft <= 0) { armed = false; fireHook(); } return result; }) as typeof original.fstatSync, readFileSync: ((path: any, options?: any) => { const result = (original.readFileSync as any)(path, options); if (hook?.on === "lockRead" && !inHook && String(path).endsWith(hook.file === "reclaim" ? "audit.lock.reclaim" : "audit.lock") && (hook.seen = (hook.seen ?? 0) + 1) === (hook.nth ?? 1)) fireHook(); return result; }) as typeof original.readFileSync,
+    renameSync: ((from: any, to: any) => { if (renameFails && String(to).endsWith("audit.lock")) throw Object.assign(new Error("EPERM simulated"), { code: "EPERM" }); return (original.renameSync as any)(from, to); }) as typeof original.renameSync,
+    unlinkSync: ((path: any) => { const result = (original.unlinkSync as any)(path); unlinked.push(String(path)); if (hook?.on === "unlink" && !inHook && String(path).endsWith("audit.lock")) fireHook(); return result; }) as typeof original.unlinkSync, ftruncateSync: ((fd: number, length?: number) => { if (hook?.on === "truncate" && !inHook) fireHook(); if ((flagsOf.get(fd) ?? 0) & original.constants.O_APPEND) throw Object.assign(new Error("EPERM: an append-only handle cannot truncate (Windows)"), { code: "EPERM" }); if (truncateFails) throw Object.assign(new Error("EPERM simulated"), { code: "EPERM" }); return original.ftruncateSync(fd, length); }) as typeof original.ftruncateSync };
 });
 const { appendAudit, AUDIT_FILE, AUDIT_LOCK_FILE, auditLockTiming } = await import("../src/runtime-remote-setup.js");
 const realWait = Atomics.wait.bind(Atomics);
 beforeEach(() => { vi.spyOn(Atomics, "wait").mockImplementation(((...args: Parameters<typeof Atomics.wait>) => { if (hook?.on === "wait" && !inHook) { armed = true; fstatsLeft = hook.fstats ?? 1; } return realWait(...args); }) as typeof Atomics.wait); });
 const directories: string[] = [];
-afterEach(() => { mode = "real"; calls = 0; truncateFails = false; hook = null; armed = false; inHook = false; fstatsLeft = 0; vi.restoreAllMocks(); auditLockTiming.waitMs = 3_000; auditLockTiming.unreadableMs = 10_000; for (const path of directories.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); } });
+afterEach(() => { mode = "real"; calls = 0; truncateFails = false; hook = null; armed = false; inHook = false; fstatsLeft = 0; renameFails = false; unlinked.length = 0; vi.restoreAllMocks(); auditLockTiming.waitMs = 3_000; for (const path of directories.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); } });
 const dir = (): string => { const path = mkdtempSync(join(tmpdir(), "agend-audit-write-")); directories.push(path); return path; };
 const entry = { actor: "admin:u1", action: "profile.remove" as const, outcome: "ok" as const, cli: "claude-code", profile: "work" };
 
@@ -81,6 +86,7 @@ describe("an incomplete audit tail never turns the next record into accepted cor
 });
 
 const lockOf = (d: string): string => join(d, AUDIT_LOCK_FILE);
+const textOf = (path: string): string => existsSync(path) ? readFileSync(path, "utf8") : "<missing>";
 const profiles = (d: string): string[] => lines(d).map(line => JSON.parse(line).profile);
 const incompleteTail = '{"at":"2026-11-06T12:00:00.000Z","actor":"admin:u1","act';
 const sleeping = () => spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
@@ -160,11 +166,12 @@ describe("the audit lock", () => {
     writeFileSync(lockOf(d), JSON.stringify({ pid: process.pid, token: "bbbbbbbbbbbbbbbb" }));      // this process's pid, a token it does not hold: left over (a reused pid)
     appendAudit(d, second); expect(lines(d)).toHaveLength(2); expect(existsSync(lockOf(d))).toBe(false);
   });
-  it("a lock file with nothing readable in it is waited for while it is new (its writer may be filling it), and cleared when it has been there too long", () => {
+  it("a lock file with nothing readable in it is never cleared, however old: the writer waits, then refuses, and the file is left as it is for someone to look at; nothing is written", () => {
     auditLockTiming.waitMs = 40; const d = dir(); writeFileSync(lockOf(d), "");
     expect(() => appendAudit(d, entry)).toThrow(/busy/); expect(existsSync(join(d, AUDIT_FILE))).toBe(false);
     const old = new Date(Date.now() - 60_000); utimesSync(lockOf(d), old, old);
-    appendAudit(d, entry); expect(lines(d)).toHaveLength(1); expect(existsSync(lockOf(d))).toBe(false);
+    expect(() => appendAudit(d, entry)).toThrow(/busy/);
+    expect(textOf(lockOf(d))).toBe(""); expect(existsSync(join(d, AUDIT_FILE))).toBe(false); expect(readdirSync(d)).toEqual([AUDIT_LOCK_FILE]);
   });
   it("is released only if the file is still ours: a lock another process holds by then is not removed", async () => {
     const d = dir(); const other = sleeping(); const foreign = JSON.stringify({ pid: other.pid, token: "aaaaaaaaaaaaaaaa" });
@@ -201,14 +208,13 @@ describe("taking over the lock of a process that is gone is exclusive and bound 
       expect(readdirSync(d)).toEqual([AUDIT_LOCK_FILE]);                              // no takeover file and no half-made lock left behind
     } finally { other.kill(); }
   });
-  it("unreadable → valid: A has decided that an old, empty lock is stale; B writes a valid live owner into it: A never removes it, refuses, and the log is not touched", () => {
+  it("a delayed empty-lock creator resumes: the lock was empty and old, and its creator writes its valid owner after the writer has looked at it again and again: the writer refuses, the creator's lock is left intact, the log is not touched", () => {
     auditLockTiming.waitMs = 60; const d = dir(); writeFileSync(lockOf(d), ""); const old = new Date(Date.now() - 60_000); utimesSync(lockOf(d), old, old);
-    const other = sleeping(); const foreign = JSON.stringify({ pid: other.pid, token: "bbbbbbbbbbbbbbbb" });
+    const other = sleeping(); const owner = JSON.stringify({ pid: other.pid, token: "bbbbbbbbbbbbbbbb" });
     try {
-      hook = { on: "lockRead", nth: 2, run: () => { writeFileSync(lockOf(d), foreign); } };
+      hook = { on: "lockRead", nth: 3, run: () => { writeFileSync(lockOf(d), owner); } };       // in place: the same file, now with its owner in it
       expect(() => appendAudit(d, entry)).toThrow(/busy/);
-      expect(hook).toBeNull(); expect(readFileSync(lockOf(d), "utf8")).toBe(foreign); expect(existsSync(join(d, AUDIT_FILE))).toBe(false);
-      expect(readdirSync(d)).toEqual([AUDIT_LOCK_FILE]);
+      expect(hook).toBeNull(); expect(textOf(lockOf(d))).toBe(owner); expect(existsSync(join(d, AUDIT_FILE))).toBe(false); expect(readdirSync(d)).toEqual([AUDIT_LOCK_FILE]);
     } finally { other.kill(); }
   });
   it("a takeover that another live process has under way is waited for: nothing is taken over, the dead owner's lock is left as it is, and the writer refuses when the wait runs out", () => {
@@ -220,9 +226,43 @@ describe("taking over the lock of a process that is gone is exclusive and bound 
       expect(readFileSync(lockOf(d), "utf8")).toBe(dead); expect(readFileSync(reclaimOf(d), "utf8")).toBe(taking); expect(existsSync(join(d, AUDIT_FILE))).toBe(false);
     } finally { other.kill(); }
   });
-  it("a takeover file left by a process that is gone is cleared, and the dead owner's lock is then taken over: no lock file is left behind", () => {
-    const d = dir(); writeFileSync(lockOf(d), JSON.stringify({ pid: gonePid(), token: "aaaaaaaaaaaaaaaa" })); writeFileSync(reclaimOf(d), JSON.stringify({ pid: gonePid(), token: "cccccccccccccccc" }));
-    appendAudit(d, entry); expect(lines(d)).toHaveLength(1); expect(readdirSync(d)).toEqual([AUDIT_FILE]);
+  it("two contenders meet an abandoned takeover file: A has read it twice when B (which has cleared it, in the old way) puts a live takeover file of its own there: A never removes it, and refuses; nothing is written", () => {
+    auditLockTiming.waitMs = 60; const d = dir(); const dead = JSON.stringify({ pid: gonePid(), token: "aaaaaaaaaaaaaaaa" }); writeFileSync(lockOf(d), dead); writeFileSync(reclaimOf(d), JSON.stringify({ pid: gonePid(), token: "cccccccccccccccc" }));
+    const other = sleeping(); const live = JSON.stringify({ pid: other.pid, token: "bbbbbbbbbbbbbbbb" });
+    try {
+      hook = { on: "lockRead", file: "reclaim", nth: 2, run: () => { rmSync(reclaimOf(d)); writeFileSync(reclaimOf(d), live); } };
+      expect(() => appendAudit(d, entry)).toThrow(/busy/);
+      expect(hook).toBeNull(); expect(textOf(reclaimOf(d)), "B's takeover file").toBe(live); expect(textOf(lockOf(d))).toBe(dead); expect(existsSync(join(d, AUDIT_FILE))).toBe(false);
+      expect(unlinked.filter(path => path.endsWith(AUDIT_LOCK_FILE) || path.endsWith(`${AUDIT_LOCK_FILE}.reclaim`))).toEqual([]);
+    } finally { other.kill(); }
+  });
+  it("two contenders, an abandoned takeover file and a dead owner's lock: neither takes over, clears or writes; both refuse, and both files are left as they were for someone to look at", () => {
+    auditLockTiming.waitMs = 60; const d = dir(); const dead = JSON.stringify({ pid: gonePid(), token: "aaaaaaaaaaaaaaaa" }), abandoned = JSON.stringify({ pid: gonePid(), token: "cccccccccccccccc" });
+    writeFileSync(lockOf(d), dead); writeFileSync(reclaimOf(d), abandoned);
+    let outcome = "not run";
+    hook = { on: "lockRead", file: "reclaim", nth: 1, run: () => { try { appendAudit(d, second); outcome = "accepted"; } catch (error) { outcome = (error as Error).message; } } };
+    expect(() => appendAudit(d, entry)).toThrow(/busy/);
+    expect(hook).toBeNull(); expect(outcome).toMatch(/busy/);
+    expect(textOf(lockOf(d))).toBe(dead); expect(textOf(reclaimOf(d))).toBe(abandoned); expect(existsSync(join(d, AUDIT_FILE))).toBe(false);
+    expect(unlinked.filter(path => path.endsWith(AUDIT_LOCK_FILE) || path.endsWith(`${AUDIT_LOCK_FILE}.reclaim`))).toEqual([]);
+  });
+  it("a rename that cannot replace the lock fails the takeover: the lock file is never unlinked, so an acquirer that was already on its way cannot own the path in a gap and be replaced after it", () => {
+    auditLockTiming.waitMs = 60; const d = dir(); const dead = JSON.stringify({ pid: gonePid(), token: "aaaaaaaaaaaaaaaa" }); writeFileSync(lockOf(d), dead);
+    const other = sleeping(); const owner = JSON.stringify({ pid: other.pid, token: "bbbbbbbbbbbbbbbb" });
+    try {
+      renameFails = true;
+      hook = { on: "unlink", run: () => { writeFileSync(lockOf(d), owner, { flag: "wx" }); } };       // the acquirer that was in flight creates the lock the moment it is gone
+      expect(() => appendAudit(d, entry)).toThrow(/busy/);
+      expect(unlinked.filter(path => path.endsWith(AUDIT_LOCK_FILE)), "the lock file was unlinked").toEqual([]);
+      expect(textOf(lockOf(d))).toBe(dead); expect(existsSync(join(d, AUDIT_FILE))).toBe(false); expect(readdirSync(d)).toEqual([AUDIT_LOCK_FILE]);
+    } finally { other.kill(); }
+  });
+  it("uncontended: a readable lock of a process that is gone is taken over under the takeover file, the incomplete tail is repaired, the record is appended, and no lock, takeover or staging file is left", () => {
+    const d = dir(); appendAudit(d, entry); appendFileSync(join(d, AUDIT_FILE), incompleteTail); writeFileSync(lockOf(d), JSON.stringify({ pid: gonePid(), token: "aaaaaaaaaaaaaaaa" }));
+    let takeoverFile = false;
+    hook = { on: "lockRead", nth: 2, run: () => { takeoverFile = existsSync(reclaimOf(d)); } };
+    appendAudit(d, second);
+    expect(hook).toBeNull(); expect(takeoverFile).toBe(true); allParse(d); expect(profiles(d)).toEqual(["work", "home"]); expect(readdirSync(d)).toEqual([AUDIT_FILE]);
   });
   it("a takeover file that is not a regular file is refused, never followed", () => {
     const d = dir(); writeFileSync(lockOf(d), JSON.stringify({ pid: gonePid(), token: "aaaaaaaaaaaaaaaa" })); mkdirSync(reclaimOf(d));
