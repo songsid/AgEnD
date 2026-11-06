@@ -18,6 +18,8 @@ import { validatePaneTranscriptBaseline, type PaneTranscriptBaseline, validatePa
 export { persistentNativeArguments } from "./runtime-pane-native.js";
 
 export type RuntimePaneProcess = Pick<IPty, "pid" | "write" | "resize" | "kill" | "pause" | "resume" | "onData" | "onExit"> & {
+  /** The CLI version the helper verified and launched (absent from an older helper). */
+  readonly version?: string;
   /** Internal pre-spawn proof; only bounded matching messages cross a capture response. */
   quotaReplay?: { messages: readonly string[]; current(): boolean };
   onFailure?(listener: () => void): { dispose(): void };
@@ -185,6 +187,7 @@ export class RuntimePaneHost {
       const live: LivePane = { record, process, screen, parsed: Promise.resolve(), output: new RuntimePaneOutputBuffer(), exited, finish };
       this.live.set(launch.paneId, live);
       record.pid = process.pid;
+      if (process.version !== undefined) record.snapshot.cliVersion = process.version;
       record.snapshot.state = "running";
       process.onFailure?.(() => {
         if (record.snapshot.state === "exited") return;

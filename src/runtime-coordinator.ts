@@ -17,6 +17,7 @@ import { RuntimeUpdateActivity, type RuntimeUpdateFence } from "./runtime-update
 import { parseRuntimeUpdateControl, RUNTIME_MANAGED_UPDATE_CAPABILITY, validRuntimeUpdateId, type RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
 import { validatePaneMcpBody, type PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import { validateRuntimePaneRequest, validateRuntimePaneSnapshot, validateRuntimePaneShutdown, type RuntimePaneRequest, type RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import { withNativePaneVerification } from "./runtime-pane-native.js";
 import { RUNTIME_CLAIM_PATH, RUNTIME_CONNECT_PATH, RUNTIME_MAX_FRAME_BYTES, RUNTIME_PAIR_PATH, RUNTIME_ROTATE_PATH, runtimeFingerprintFromHash, parseRuntimeInfo, RUNTIME_PROTOCOL_VERSION, runtimeInfoCompatible, RUNTIME_REINSTALL_CLOSE_REASON,
   type RuntimeInfo, type RuntimeMachine, type RuntimeOperation, type RuntimePairing, type RuntimePairResult, type RuntimeClaimResult,
   type RuntimeRunPayload, type RuntimeServerMessage } from "./runtime-protocol.js";
@@ -94,7 +95,7 @@ function inventory(value: unknown): WindowsCliProbe {
   return probe;
 }
 function machineView(machine: RuntimeMachine): RuntimeMachine {
-  return { ...structuredClone(machine), runtimeCompatibility: machine.runtimeInfo
+  return { ...structuredClone(machine), ...(machine.inventory ? { inventory: withNativePaneVerification(machine.inventory) } : {}), runtimeCompatibility: machine.runtimeInfo
     ? runtimeInfoCompatible(machine.runtimeInfo) ? "compatible" : "incompatible"
     : machine.bootId ? "legacy" : "unknown" };
 }

@@ -51,7 +51,15 @@ const SECRET = "SMUGGLED-FIXTURE-TEXT";
 describe("an inventory is copied from an allowlist", () => {
   it("keeps the known fields exactly as sent", async () => {
     const f = await fixture(); expect((await f.send(inventory())).code).toBe(0);
-    expect(f.hub.machine(f.machineId)?.inventory).toEqual({ home: "C:\\U", probedAt: 5, hostname: "DESK", clis: [row()] });
+    // The coordinator adds its own persistent-pane label (cc3ce4fe) to the view; the stored copy is as sent.
+    expect(f.hub.machine(f.machineId)?.inventory).toEqual({ home: "C:\\U", probedAt: 5, hostname: "DESK", clis: [{ ...row(), paneVerification: "verified" }] });
+  });
+  it("a runner's own pane-verification label is never trusted: the coordinator derives it from the version (cc3ce4fe)", async () => {
+    const f = await fixture();
+    expect((await f.send(inventory({ clis: [row({ version: "2.1.399", paneVerification: "verified" }), row({ id: "grok", version: "1.0.70", paneVerification: "verified" }),
+      row({ id: "codex", version: "nonsense", paneVerification: "verified" })] }))).code).toBe(0);
+    expect(f.hub.machine(f.machineId)?.inventory?.clis.map(cli => cli.paneVerification)).toEqual(["unverified", undefined, "invalid"]);
+    expect(JSON.parse(f.listed()).machines[0].inventory.clis.map((cli: { paneVerification?: string }) => cli.paneVerification ?? null)).toEqual(["unverified", null, "invalid"]);
   });
   it("drops a field AgEnD does not know, at the top, on a CLI row, on supports and on a model: it is neither stored nor served by /ui/runtimes", async () => {
     const f = await fixture();
