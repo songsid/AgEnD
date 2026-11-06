@@ -1093,7 +1093,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/codex.ts",
-     "line": 346,
+     "line": 345,
      "symbol": "CODEX_TRUST_CANCEL_FOOTER.Quit"
     },
     {
@@ -1101,7 +1101,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/codex.ts",
-     "line": 346,
+     "line": 345,
      "symbol": "CODEX_TRUST_CANCEL_FOOTER.Quit"
     },
     {
@@ -1109,7 +1109,7 @@
      "kind": "string",
      "surface": "trust",
      "file": "src/backend/codex.ts",
-     "line": 347,
+     "line": 346,
      "symbol": "CODEX_TRUST_CANCEL_FOOTER.Back to Agent Command Center"
     },
     {
@@ -1117,7 +1117,7 @@
      "kind": "regex",
      "surface": "trust",
      "file": "src/backend/codex.ts",
-     "line": 347,
+     "line": 346,
      "symbol": "CODEX_TRUST_CANCEL_FOOTER.Back to Agent Command Center"
     },
     {

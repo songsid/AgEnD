@@ -340,13 +340,13 @@ type CodexTrustPrompt = {
   trustCursor: boolean;
 };
 
-/** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
 /** A folder-trust prompt's cancel option, and the footer that must come with it. */
 const CODEX_TRUST_CANCEL_FOOTER: Readonly<Record<string, RegExp>> = {
   "Quit": /^\s*enter continue\s*·\s*esc quit\s*$/i,
   "Back to Agent Command Center": /^\s*enter continue\s*·\s*esc back\s*$/i,
 };
 
+/** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
 function codexTrustPromptState(pane: string): CodexTrustPrompt {
   const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false, trustCursor: false };
   const rows = pane.replace(/\r/g, "").split("\n");
