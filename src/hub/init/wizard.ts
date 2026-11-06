@@ -30,6 +30,7 @@ export interface HubWizardDeps {
   initializer: HubInitializer;
   createDirectory: typeof CreateHubDirectory;
   readFile(path: string): string;
+  readSecretFile?(path: string): string;
   service: HubServiceControl;
   now?: () => number;
   createBrowserCertificate?(origin: string): Promise<HubBrowserMaterial>;
@@ -113,7 +114,8 @@ async function wizard(deps: HubWizardDeps): Promise<HubWizardOutcome> {
     }
     try { deps.recoverBrowserCertificate?.(inspection.incomplete.plan); }
     catch { io.say(ht("tls_stage_kept", inspection.incomplete.plan.webTls.certFile)); }
-    const bindPassword = await io.askHidden(ht("dir_bind_pw_q"));
+    const bindPassword = await askBindSecret(deps);
+    if (bindPassword === undefined) return "cancelled";
     return confirmAndCommit(deps, inspection.incomplete.plan, bindPassword);
   }
 
@@ -306,6 +308,23 @@ async function confirmDirectoryCa(io: WizardIO, pem: string): Promise<boolean> {
   return yes(await io.ask(ht("dir_ca_confirm_q")));
 }
 
+async function askBindSecret(deps: HubWizardDeps): Promise<string | undefined> {
+  const { io } = deps;
+  for (;;) {
+    if (!deps.readSecretFile) return io.askHidden(ht("dir_bind_pw_q"));
+    const choice = (await io.ask(ht("dir_bind_source_q"))).trim();
+    if (!choice || choice === "1") return io.askHidden(ht("dir_bind_pw_q"));
+    if (choice !== "2") { io.say(ht("dir_bind_source_invalid")); continue; }
+    const path = (await io.ask(ht("dir_bind_file_q"))).trim();
+    try { return deps.readSecretFile(path); }
+    catch (err) {
+      if (err instanceof WizardCancelled) throw err;
+      io.say(ht("dir_bind_file_invalid"));
+      if ((await io.ask(ht("retry_q"))).trim().toLowerCase() === "q") return undefined;
+    }
+  }
+}
+
 async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: HubDirectoryConfig; bindPassword: string } | undefined> {
   const { io } = deps;
   for (;;) {
@@ -357,7 +376,8 @@ async function askDirectorySettings(deps: HubWizardDeps): Promise<{ directory: H
       continue;
     }
     if (pending) io.say(ht("dir_ca_bind_needed"));
-    const bindPassword = await io.askHidden(ht("dir_bind_pw_q"));
+    const bindPassword = await askBindSecret(deps);
+    if (bindPassword === undefined) return undefined;
     if (!bindPassword) { io.say(ht("signin_bad_input")); continue; }
     if (pending) {
       try {
