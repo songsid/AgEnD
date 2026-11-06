@@ -19,6 +19,7 @@ import { checkNodeVersion } from "./node-version-guard.js";
 checkNodeVersion();
 
 import { Command, Option } from "commander";
+import { registerBuildInfoCommand } from "./build-provenance-cli.js";
 import { registerBugReportCommand } from "./bug-report-cli.js";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
@@ -196,6 +197,7 @@ program
   .enablePositionalOptions();
 
 registerBugReportCommand(program, pkgVersion);
+registerBuildInfoCommand(program);
 
 function signalFleetReload(): void {
   const pidPath = join(DATA_DIR, "fleet.pid");

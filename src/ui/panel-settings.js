@@ -1,3 +1,4 @@
+import { SettingsBuildVersion } from "./settings-build-version.js";
 // #1408 step 3: the Settings panel (/settings[/<section>]) — agents, connections, ClassicBot rooms, general defaults,
 // the developer YAML. Behind the session gate (/ui/js/), loaded the first time it is opened.
 //
@@ -89,7 +90,6 @@ const APPLY_ERRORS = new Set(["unsupported_sensitive_effect", "confirmation_diff
 // #2726: a code or words of the setup host (the wizard's commit) in the page's language; anything else as it came.
 export const applyErrorText = (code) => (APPLY_ERRORS.has(code) ? tn(`applyError_${code}`) : tn("applyErrorOther", hostText(String(code), lang())));
 const ICONS = { preferences: "user", look: "palette", agents: "bot", runtimes: "view", "agent-defaults": "sliders", chat: "chat", "web-dashboard": "globe", access: "key", advanced: "code" };
-const RELEASES = "https://github.com/songsid/AgEnD/releases";
 
 /** GET under the panel's lease → { ok, status, body }. */
 async function read(lease, path) {
@@ -139,7 +139,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const classicStatus = {};
   if (pr.ok && Array.isArray(pr.body)) for (const r of pr.body) classicStatus[r.instance_name] = r.status;
-  return { live, classicLive, classicStatus, fleetUp: f.ok, version: (f.ok && f.body && f.body.version) || "" };
+  return { live, classicLive, classicStatus, fleetUp: f.ok, version: (f.ok && f.body && f.body.version) || "", build: f.ok && f.body ? f.body.build : null };
 }
 
 export function SettingsPanel({ route, navKey }) {
@@ -499,7 +499,7 @@ export function SettingsPanel({ route, navKey }) {
   // Which one is shown is the root's data-view: its class stays exactly the effects producer's ("panel p-settings", #1629).
   const atList = typeof location !== "undefined" && location.pathname === "/settings";
   return html`<div data-effect-panel="settings" class="panel p-settings" data-view=${atList ? "index" : "section"}>
-    <${PanelHeader} title=${tn("title")} sub=${data && data.version ? html`<a class="pill ver" href=${data.version.includes("-") ? `${RELEASES}/latest` : `${RELEASES}/tag/v${data.version}`} target="_blank" rel="noopener">v${data.version}</a>` : null}>
+    <${PanelHeader} title=${tn("title")} sub=${data ? html`<${SettingsBuildVersion} version=${data.version} build=${data.build} />` : null}>
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx || yamlStaged(staged)} title=${ctx && yamlStaged(staged) ? tn("yamlUnsaved") : undefined} onClick=${openWizard}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>

@@ -1,3 +1,4 @@
+import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
 import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
@@ -26199,6 +26200,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           res.end(JSON.stringify({
             ...sysInfo,
             version: this.currentVersion,
+            build: readInstalledBuild(),
             instances: enriched,
             publicLink: this.getPublicWebStatus(),
           }));
