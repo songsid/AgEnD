@@ -1,7 +1,7 @@
 /** Native startup shares the quota scanner; provider history must come from the owned runner. */
 import { afterEach, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -81,4 +81,22 @@ it("Claude reattachment does not run a Codex history lookup or startup scan", as
   f.native.quotaReplayHistory.mockImplementation(() => { throw Error("No Codex history on Claude"); });
   const scan = vi.spyOn(f.daemon, "finishStartupScan").mockImplementation(() => { throw Error("No startup scan on reattachment"); });
   await f.daemon.start(); expect(scan).not.toHaveBeenCalled(); expect(f.native.quotaReplayHistory).not.toHaveBeenCalled();
+});
+
+it.each(["resumed", "reattached", "fresh"] as const)("guarded native %s input counts the real same-count replacement once", async disposition => {
+  const f = fixture(disposition); await f.daemon.start();
+  const before = readFileSync(new URL("./fixtures/codex-0165-same-count-before.pane.txt", import.meta.url), "utf8");
+  const after = readFileSync(new URL("./fixtures/codex-0165-same-count-after.pane.txt", import.meta.url), "utf8");
+  f.setText(before);
+  f.daemon.tmux.pasteBuffer = vi.fn(async () => true);
+  f.daemon.sendDeliveryEnter = vi.fn(async () => true);
+  f.daemon.confirmSubmitted = vi.fn(async () => "submitted");
+  vi.useFakeTimers();
+  const input = f.daemon.submitSystemPaste("Q-NEW-LIMIT-d702cfa6", "same-count-native", { current: () => true, accept: () => true });
+  await vi.advanceTimersByTimeAsync(1000); expect(await input).toBe(true);
+  f.scan(); expect(f.quota).toEqual([]);
+  f.setText(after); f.scan(); f.scan();
+  expect(f.quota).toEqual([expect.objectContaining({ action: "pause" })]);
+  expect(f.daemon.tmux.pasteBuffer).toHaveBeenCalledOnce();
+  expect(f.daemon.sendDeliveryEnter).toHaveBeenCalledOnce();
 });
