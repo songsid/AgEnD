@@ -37,11 +37,13 @@ describe("managed CLI install (#3190 3b)", () => {
   });
   it("installs with a fixed argv and no shell, checks integrity, signatures and publisher, then points current.json at it", async () => {
     const { run, calls } = fakeRun("claude-code"), steps: string[] = [];
-    const root = join(home, "cli");
+    const root = join(home, "cli"), staging = join(root, "claude-code", "2.1.316.staging"), user = join(staging, "agend-user.npmrc"), global = join(staging, "agend-global.npmrc");
+    // Private configuration and local mode, on the command line as well as in the environment: no user or global `.npmrc` is read, and nothing is installed globally.
+    const local = ["--userconfig", user, "--globalconfig", global, "--global=false", "--prefix", staging, "--registry", "https://registry.npmjs.org/"];
     const result = await installManagedCli("claude-code", { root, nodePath: node, run, signerOf: signed, report: s => steps.push(s) });
     expect(steps).toEqual(["installing", "checking-integrity", "checking-signatures", "checking-publisher", "ready"]);
-    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.316", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", "--registry", "https://registry.npmjs.org/"]);
-    expect(calls[1].slice(2)).toEqual(["audit", "signatures"]);
+    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.316", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", ...local]);
+    expect(calls[1].slice(2)).toEqual(["audit", "signatures", ...local]);
     expect(result.version).toBe("2.1.316");
     expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.316" });
     expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.316" });
@@ -115,7 +117,11 @@ describe("managed CLI install (#3190 3b)", () => {
   it("gives npm only the Windows basics and the network settings, never a secret or a registry from outside", () => {
     const env = installEnvironment({ PATH: "p", SystemRoot: "C:\\Windows", HTTPS_PROXY: "http://proxy:8080", ANTHROPIC_API_KEY: "sk-secret", OPENAI_API_KEY: "sk-secret", AGEND_TOKEN: "t", npm_config_registry: "https://evil.example/", npm_config_ignore_scripts: "false", NPM_CONFIG_USERCONFIG: "C:\\evil\\.npmrc" }, "C:\\cache");
     expect(env).toMatchObject({ PATH: "p", SystemRoot: "C:\\Windows", HTTPS_PROXY: "http://proxy:8080", npm_config_registry: "https://registry.npmjs.org/", npm_config_ignore_scripts: "true", npm_config_cache: "C:\\cache" });
-    expect(Object.keys(env).join(",")).not.toMatch(/KEY|TOKEN|USERCONFIG/i);
+    expect(Object.keys(env).join(",")).not.toMatch(/KEY|TOKEN/i);
+    expect(env.NPM_CONFIG_USERCONFIG).toBeUndefined(); expect(env.npm_config_userconfig).toBeUndefined(); expect(env.npm_config_global).toBe("false");
+    const own = installEnvironment({ PATH: "p", NPM_CONFIG_PREFIX: "C:\\outside", NPM_CONFIG_GLOBAL: "true" }, "C:\\cache", { user: "C:\\staging\\u.npmrc", global: "C:\\staging\\g.npmrc" }, "C:\\staging");
+    expect(own).toMatchObject({ npm_config_userconfig: "C:\\staging\\u.npmrc", npm_config_globalconfig: "C:\\staging\\g.npmrc", npm_config_global: "false", npm_config_prefix: "C:\\staging" });
+    expect(Object.keys(own).filter(key => /^NPM_CONFIG_/.test(key))).toEqual([]);
   });
 });
 

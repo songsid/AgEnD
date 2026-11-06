@@ -55,7 +55,7 @@ describe("callAccount: the server's way to an account or install operation", () 
     expect(await f.hub.callAccount(f.machineId, "accounts.switches", {})).toEqual({ accounts: { on: false }, install: { on: false } });
     setRemoteSwitch(f.dir, "install", true, 3_600_000);
     expect(await f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR })).toEqual({ version: "0.165.0" });
-    expect(install).toHaveBeenCalledWith("codex");
+    expect(install).toHaveBeenCalledWith("codex", expect.any(Function));
     const lines = audit(f.dir).map(line => JSON.parse(line));
     expect(lines.map(line => `${line.action}|${line.outcome}|${line.cli}|${line.actor}`)).toEqual([`cli.install|started|codex|${ACTOR}`, `cli.install|ok|codex|${ACTOR}`]);
   });
@@ -75,7 +75,8 @@ describe("callAccount: the server's way to an account or install operation", () 
   });
   it("shows the installer's own sentence for a failure, and a generic one for anything else (a path would travel in it)", async () => {
     let next: Error = new CliInstallError("integrity-mismatch", "A downloaded package is not the one this AgEnD version expects, so nothing was installed");
-    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: installerOf(async () => { throw next; }) } });
+    let clock = Date.now();                                                // each request is more than the 5 s pace after the one before
+    const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), now: () => (clock += 6_000), installer: installerOf(async () => { throw next; }) } });
     setRemoteSwitch(f.dir, "install", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR })).rejects.toThrow(/not the one this AgEnD version expects/);
     next = new Error("ENOENT: no such file C:\\Users\\secret\\x");

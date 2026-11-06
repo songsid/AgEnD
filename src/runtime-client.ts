@@ -89,6 +89,8 @@ export interface RuntimeClientOptions {
    * operations: the CLI lookup, the logout run, the CLI installer (its presence is what makes this Runtime report `cli-install`), the sign-in
    * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
    */
+  /** The Runtime's installation root, where the shared install lock is taken for a CLI install. Default: the managed install root this code runs from, else the CLI folder. */
+  installRoot?: string;
   remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
   /** Internal supervisor seam, never a server-supplied configuration option. */
   managedUpdate?: { trialId?: string; authenticated?(value: { bootId: string; generation: number; updateProtocol?: 1; runtimeInfo: ReturnType<typeof readRuntimeInfo> }): void };
@@ -197,7 +199,7 @@ export class RuntimeClient {
   /** The socket this Runtime itself closed with 1008 because it could not read AgEnD's frame; that is not AgEnD refusing us. */
   private selfClosed: WebSocket | null = null;
   constructor(private readonly options: RuntimeClientOptions) {
-    this.managed = nativeInstallSupported() ? managedInstaller({ root: managedCliRoot(options.store.directory) }, () => this.installAbort.signal) : null;
+    this.managed = nativeInstallSupported() ? managedInstaller({ root: managedCliRoot(options.store.directory), ...(options.installRoot ? { installRoot: options.installRoot } : {}) }, () => this.installAbort.signal) : null;
     const info = readRuntimeInfo({ panes: process.platform === "win32" || !!options.createPaneHost || !!options.openPaneLink, install: !!options.remoteAccounts?.installer || nativeInstallSupported() });
     // Offered only when this client has a profile root to resolve names under; otherwise AgEnD must not ask for a profile.
     if (options.managedUpdate?.trialId !== undefined && !validRuntimeUpdateId(options.managedUpdate.trialId)) throw Error("Invalid Runtime update trial");
@@ -561,6 +563,8 @@ export class RuntimeClient {
       defaultProfile: () => this.options.store.credentialDefault(),
       enter: () => this.activity.enter(),
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
+      // A CLI was just installed: the cached list is stale, so detect for real and send it (this request already holds a share of the Runtime's activity).
+      installed: async () => { await this.readInventory(true); },
       // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
       ...(extra?.installer ? { installer: extra.installer } : this.managed ? { installer: this.managed } : {}),
       ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),

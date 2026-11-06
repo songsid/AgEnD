@@ -94,10 +94,10 @@ describe("the shared install lock (#3258) is held for the whole install", () => 
     expect(error).toBeInstanceOf(CliInstallError); expect(error.reason).toBe("install-failed"); expect(error.message).toBe("This computer could not lock its Runtime install folder, so nothing was installed");
     expect(existsSync(join(cliRoot, "codex"))).toBe(false);
   });
-  it("uses an explicit lockRoot (the managed Runtime install root) for the lock, and leaves nothing in the CLI folder", async () => {
+  it("uses an explicit installRoot (the managed Runtime install root) for the lock, and leaves nothing in the CLI folder", async () => {
     const installRoot = join(home, "agend-runtime"); mkdirSync(installRoot, { mode: 0o700 }); chmodSync(installRoot, 0o700);
     let at: string | undefined;
-    await installManagedCli("codex", deps({ lockRoot: installRoot, run: npm({ before: step => { if (step === "install") at = [existsSync(lockDir(installRoot)), existsSync(lockDir(cliRoot))].join(); } }) }));
+    await installManagedCli("codex", deps({ installRoot, run: npm({ before: step => { if (step === "install") at = [existsSync(lockDir(installRoot)), existsSync(lockDir(cliRoot))].join(); } }) }));
     expect(at).toBe("true,false"); expect(existsSync(lockDir(installRoot))).toBe(false);
   });
   it("finds the managed install root from where the code runs: <root>\\<version>\\dist\\file, with bin\\current.txt or the receipt; a ZIP copy has none", () => {
@@ -134,7 +134,7 @@ describe("a child process that could not be confirmed ended keeps the lock, its 
     let ended!: () => void; const closed = new Promise<void>(done => { ended = done; });
     const run: NonNullable<InstallDeps["run"]> = async (_f, args, { cwd }) => { if (args[1] === "install") { writeFileSync(join(cwd, "partial"), "x"); throw new ProcessNotConfirmedEnded(closed); } return { code: 0, stdout: "" }; };
     const error = await installManagedCli("codex", deps({ run })).catch((e: unknown) => e) as CliInstallError;
-    expect(error).toBeInstanceOf(CliInstallError); expect(error.reason).toBe("install-failed"); expect(error.ended).toBe(closed);
+    expect(error).toBeInstanceOf(CliInstallError); expect(error.reason).toBe("install-failed"); expect(error.ended).toBeInstanceOf(Promise);
     expect(existsSync(join(lockDir(), "owner.json"))).toBe(true); expect(existsSync(join(lockDir(), "inflight"))).toBe(true);
     expect(existsSync(join(cliRoot, "codex", `${codex.version}.staging`, "partial"))).toBe(true);
     await expect(installManagedCli("codex", deps())).rejects.toMatchObject({ reason: "busy" });
@@ -149,7 +149,7 @@ describe("a child process that could not be confirmed ended keeps the lock, its 
       const controller = new AbortController(); let ended!: () => void; const closed = new Promise<void>(done => { ended = done; });
       const run: NonNullable<InstallDeps["run"]> = async () => { if (stop) controller.abort(); else await new Promise(done => setTimeout(done, 30)); throw new ProcessNotConfirmedEnded(closed); };
       const error = await installManagedCli("codex", deps({ run, ...(stop ? { signal: controller.signal } : { deadlineMs: 5 }) })).catch((e: unknown) => e) as CliInstallError;
-      expect(error.reason).toBe(reason); expect(error.ended).toBe(closed);
+      expect(error.reason).toBe(reason); expect(error.ended).toBeInstanceOf(Promise);
       ended(); await vi.waitFor(() => expect(existsSync(lockDir())).toBe(false));
     }
   });
