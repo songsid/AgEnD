@@ -169,7 +169,7 @@ describe("a Markdown file in the side panel (M-2448)", () => {
   });
 
   it("the panel writes no HTML itself: rendered Markdown comes only through chat-thread's drawMarkdown", () => {
-    const src = readFileSync("src/ui/preview-panel.js", "utf8");
+    const src = readFileSync("src/ui/shared/preview-panel.js", "utf8");
     expect(src).not.toMatch(/innerHTML|insertAdjacentHTML|dangerouslySetInnerHTML/);
     expect(src).toContain('import { drawMarkdown, TEXT_CARD_MAX } from "/assets/chat-thread.js";');
     expect(src).toContain('import "/assets/chat-md-strings.js";');
