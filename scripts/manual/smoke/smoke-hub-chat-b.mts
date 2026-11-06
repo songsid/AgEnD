@@ -21,6 +21,9 @@ import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 const REPO = process.env.REPO!, OUT = process.env.OUT!, PW = process.env.PW_DIR!;
+const BUTTONS_F = process.env.BUTTONS_F === "1";
+const { messageContentDigest } = await import(REPO + "/src/hub/identity.ts");
+const { prepareHubAnswerButtons, buttonsDigest } = await import(REPO + "/src/hub/buttons-model.ts");
 const OLD_REF = process.env.OLD_REF ?? "songsid/release/2.3.5-alpha";
 const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
 const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
@@ -44,6 +47,7 @@ await new Promise<void>((resolve) => server.listen(port, "127.0.0.1", resolve));
 // The world: olivia's fleet publishes two agents; alex is granted both; admin administers.
 const olivia = rig.addPerson("olivia", "Olivia Chen"), alex = rig.addPerson("alex", "Alex Lin");
 const fleetId = randomUUID(), link = rig.link(fleetId, olivia);
+if (BUTTONS_F) (link.features as Set<string>).add("buttons-v1");
 const sales = randomUUID(), design = randomUUID();
 const exposure = (id: string, name: string) => ({ id, fleetId, owner: olivia, displayName: name, revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) });
 await http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [exposure(sales, "Sales numbers"), exposure(design, "Design guide")] }, link) as never, link);
@@ -52,7 +56,7 @@ void alex;
 const pw = createRequire(PW + "/")("playwright-core");
 const browser = await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox"] });
 const CASES = [{ device: "desk", lang: "en", theme: "light", viewport: { width: 1366, height: 860 } }, { device: "phone", lang: "zh-TW", theme: "dark", viewport: { width: 390, height: 844 } }] as const;
-const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota)\.js|ui\/hub|favicon)/;
+const ALLOWED = /^\/(hub\/v1\/|assets\/|ui\/js\/(panel-hub|hub-client|hub-strings|hub-chat-store|hub-chat-strings|hub-quota|hub-owner-strings|hub-button-actions)\.js|ui\/hub|favicon)/;
 
 async function open(c: (typeof CASES)[number], path: string, route?: (page: any) => Promise<void>) {
   const ctx = await browser.newContext({ viewport: c.viewport, colorScheme: c.theme, locale: c.lang === "zh-TW" ? "zh-TW" : "en-US", ignoreHTTPSErrors: true,
@@ -73,13 +77,14 @@ async function signIn(page: any, login: string, password = `pw-${login}`) {
   await page.click(".hub-signin button[type=submit]");
 }
 const until = async (page: any, js: string, ms = 15000) => { for (let i = 0; i < ms / 250; i++) { if (await page.evaluate(js)) return true; await page.waitForTimeout(250); } return false; };
-async function answer(question: string, text: string) {
+async function answer(question: string, text: string, buttons?: any) {
   const sentQ = () => rig.sent.map((x: any) => x.frame).find((f: any) => f.type === "question" && f.payload.text === question);
   for (let i = 0; i < 80 && !sentQ(); i++) await new Promise((res) => setTimeout(res, 50));
   const q = sentQ() as any;
   const messageId = q?.payload?.identity?.messageId, answerId = randomUUID();
-  const lease = await http.receive(rig.frame("authorize.request", { messageId, operationId: randomUUID(), exposureRevision: 1, phase: "release-answer", answer: { answerId, contentDigest: sha(text) } }, link) as never, link) as any;
-  await http.receive(rig.frame("answer", { messageId, answerId, text, contentDigest: sha(text), releaseLease: lease.payload.lease }, link) as never, link);
+  const digest = messageContentDigest("answer", text, { buttonsDigest: buttonsDigest(buttons) });
+  const lease = await http.receive(rig.frame("authorize.request", { messageId, operationId: randomUUID(), exposureRevision: 1, phase: "release-answer", answer: { answerId, contentDigest: digest } }, link) as never, link) as any;
+  await http.receive(rig.frame("answer", { messageId, answerId, text, ...(buttons ? { buttons } : {}), contentDigest: digest, releaseLease: lease.payload.lease }, link) as never, link);
   return !!q;
 }
 
@@ -114,10 +119,52 @@ try {
     await a.page.screenshot({ path: shot(`${tag}-4-asked`) });
     const md = en ? "Q3 by region:\n\n| Region | Sales |\n| --- | --- |\n| North | 18.2 M |\n| South | 23.8 M |\n\n- **South** grew 12%\n- North held flat\n\n```sql\nSELECT region, SUM(amount) FROM sales GROUP BY region;\n```"
       : "第三季各地區：\n\n| 地區 | 營收 |\n| --- | --- |\n| 北區 | 1,820 萬 |\n| 南區 | 2,380 萬 |\n\n- **南區**成長 12%\n- 北區持平\n\n```sql\nSELECT region, SUM(amount) FROM sales GROUP BY region;\n```";
-    const sent = await answer(question, md);
+    const choice = BUTTONS_F ? prepareHubAnswerButtons([{ label: en ? "Details" : "查看細節", value: "details" }, { label: en ? "Summary" : "保留摘要", value: "summary" }]) : undefined;
+    const sent = await answer(question, md, choice);
     const answered = await until(a.page, `!!document.querySelector(".msg.agent .body table")`, 30000);
     const marks = await a.page.evaluate(`({ tick: document.querySelector(".msg.user .tick")?.getAttribute("aria-label"), code: !!document.querySelector(".msg.agent pre code"), sender: document.querySelector(".msg.agent .sender")?.textContent })`);
     await a.page.screenshot({ path: shot(`${tag}-5-answered`) });
+    if (BUTTONS_F) {
+      const nextQuestion = async (after: number) => {
+        for (let i = 0; i < 200; i++) {
+          const found = rig.sent.slice(after).find((v: any) => v.frame.type === "question");
+          if (found) return (found.frame as any).payload;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        throw new Error("No ordinary question after Hub choice");
+      };
+      await a.page.locator(".rb-btn").first().scrollIntoViewIfNeeded();
+      await a.page.screenshot({ path: shot(`${tag}-f-before-button`) });
+      // Inert browser transport refusal: the UI must show it, never silently queue or discard the action.
+      const beforeRefusal = rig.sent.length;
+      const buttonRoute = "**/hub/v1/rooms/*/buttons";
+      await a.page.route(buttonRoute, (route: any) => route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ code: "denied" }) }));
+      await a.page.locator(".rb-row:not(.poll) .rb-btn").first().click();
+      await a.page.locator(".toast.err").waitFor({ timeout: 5000 });
+      check(`${tag}-f-visible-refusal`, rig.sent.length === beforeRefusal && await a.page.locator(".toast.err").isVisible());
+      await a.page.unroute(buttonRoute);
+      const beforeClick = rig.sent.length;
+      await a.page.locator(".rb-row:not(.poll) .rb-btn").first().click();
+      const clicked = await nextQuestion(beforeClick);
+      check(`${tag}-f-button-question`, clicked.text === `[button] ${en ? "Details" : "查看細節"} (value: details)`);
+      const poll = prepareHubAnswerButtons([{ label: en ? "Option A" : "方案 A", value: "a" }, { label: en ? "Option B" : "方案 B", value: "b" }],
+        { seconds: 120, multi: false, reveal: "close", showVoters: true, question: en ? "Which option?" : "選擇哪個方案？" });
+      await answer(clicked.text, en ? "Which option?" : "選擇哪個方案？", poll);
+      await a.page.locator(".rb-row.poll .rb-btn").first().waitFor({ timeout: 30000 });
+      await a.page.locator(".rb-row.poll .rb-btn").first().scrollIntoViewIfNeeded();
+      await a.page.screenshot({ path: shot(`${tag}-f-before-vote`) });
+      const beforeVote = rig.sent.length;
+      await a.page.locator(".rb-row.poll .rb-btn").first().click();
+      const results = await nextQuestion(beforeVote);
+      check(`${tag}-f-poll-question`, results.text.startsWith("[poll results]") && results.text.includes("(value: a) — 1"));
+      const finalText = en ? "Poll result received." : "已收到投票結果。";
+      await answer(results.text, finalText);
+      const visible = await until(a.page, `document.querySelector(".hub-thread")?.textContent.includes(${JSON.stringify(finalText)}) || [...document.querySelectorAll(".msg.agent .body")].some(x => x.textContent.includes(${JSON.stringify(finalText)}))`, 30000);
+      const control = await a.page.locator(".rb-row.poll").evaluate((x: Element) => ({ disabled: [...x.querySelectorAll("button")].every(b => b.disabled), text: x.textContent }));
+      check(`${tag}-f-closed`, visible && control.disabled && control.text.includes("100%"), control);
+      await a.page.locator(".rb-row.poll").scrollIntoViewIfNeeded();
+      await a.page.screenshot({ path: shot(`${tag}-f-after-vote`) });
+    }
     // The room fills the page beside the sidebar, its composer at the bottom; the list no longer says "waiting".
     const layout = await a.page.evaluate(`(() => { const m = document.querySelector(".hub-chat").getBoundingClientRect(), c = document.querySelector(".composer").getBoundingClientRect();
       return { right: Math.round(innerWidth - m.right), composerGap: Math.round(innerHeight - c.bottom) }; })()`);

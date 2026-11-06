@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { PassThrough } from "node:stream";
@@ -788,5 +788,64 @@ describe("the default is read once more after the rename, before the delete (ano
     const hold = holdInspect(3); const f = fixture({ ownership: { inspect: hold.inspect } }); f.on(); const directory = owned(f);
     const request = ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor }); await vi.waitFor(() => expect(hold.calls()).toBe(3)); hold.gate.resolve();
     await expect(request).resolves.toEqual({ removed: true }); expect(existsSync(directory)).toBe(false); expect(readdirSync(join(f.root, "claude-code"))).toEqual([]);
+  });
+});
+
+describe("P2-4 remainder: the renamed folder is looked at again when the inspector has answered", () => {
+  const outside = (): string => { const dir = scratch(); mkdirSync(join(dir, "backups")); writeFileSync(join(dir, "backups", ".claude.json.backup.1"), "outside identity"); writeFileSync(join(dir, ".credentials.json"), "outside secret"); return dir; };
+  const link = (target: string, path: string): boolean => { try { symlinkSync(target, path, "dir"); return true; } catch (error) { if ((error as NodeJS.ErrnoException).code === "EPERM") return false; throw error; } };
+  const untouched = (dir: string) => { expect(readFileSync(join(dir, "backups", ".claude.json.backup.1"), "utf8")).toBe("outside identity"); expect(readFileSync(join(dir, ".credentials.json"), "utf8")).toBe("outside secret"); };
+  /** The inspector sees the real renamed folder and answers "no link"; the folder is replaced before that answer is used. `nth` picks which inspection of the renamed folder (1: before the logout, 2: before the backups go). */
+  const swapping = (nth: number, how: "link" | "directory", target: string) => {
+    let seen = 0, done = false;
+    return { done: () => done, inspect: async (paths: readonly string[]) => {
+      if (paths.length === 1 && /[\\/]\.working-[a-f0-9]{16}$/.test(paths[0]!) && ++seen === nth) {
+        rmSync(paths[0]!, { recursive: true });
+        if (how === "link") done = link(target, paths[0]!); else { renameSync(target, paths[0]!); done = true; }
+      }
+      return paths.map(() => false);
+    } };
+  };
+  for (const how of ["link", "directory"] as const) {
+    it(`${how === "link" ? "a link" : "another real folder"} put in place of the renamed folder after the FIRST inspection answered: refused, the logout is not run, the outside folder is untouched`, async () => {
+      const target = outside(), swap = swapping(1, how, target); const f = fixture({ ownership: { inspect: swap.inspect } }); f.on(); owned(f);
+      const error = (await ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e)) as Error;
+      if (!swap.done()) return;
+      expect(error).toBeInstanceOf(Error); expect(error.message).toMatch(/link|replaced while it was being checked|not inside this Runtime's profile folder/);
+      expect(f.runLogout).not.toHaveBeenCalled(); untouched(how === "link" ? target : join(f.root, "claude-code", "work"));
+    });
+    it(`${how === "link" ? "a link" : "another real folder"} put in place after the inspection BEFORE the backups are deleted: refused, nothing outside is deleted`, async () => {
+      const target = outside(), swap = swapping(2, how, target); const f = fixture({ ownership: { inspect: swap.inspect } }); f.on(); owned(f);
+      const error = (await ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor }).catch((e: Error) => e)) as Error;
+      if (!swap.done()) return;
+      expect(error).toBeInstanceOf(Error); expect(error.message).toMatch(/link|replaced while it was being checked|not inside this Runtime's profile folder/);
+      expect(f.runLogout).toHaveBeenCalledTimes(1);                                                // the first look was clean: the logout ran against the folder that was there
+      untouched(how === "link" ? target : join(f.root, "claude-code", "work"));
+    });
+  }
+  it("control: nothing replaced: the sign-out completes and deletes this profile's own backup", async () => {
+    const swap = swapping(99, "link", scratch()); const f = fixture({ ownership: { inspect: swap.inspect } }); f.on(); const directory = owned(f); mkdirSync(join(directory, "backups")); writeFileSync(join(directory, "backups", ".claude.json.backup.1"), "mine");
+    await expect(ask(f, "accounts.signout", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ loggedIn: false });
+    expect(existsSync(join(directory, "backups", ".claude.json.backup.1"))).toBe(false); expect(readdirSync(join(f.root, "claude-code"))).toEqual(["work"]); expect(f.runLogout).toHaveBeenCalledTimes(1);
+  });
+});
+
+
+describe("an audit log with an unreadable end stops the operations that need their record", () => {
+  it("a last record that is not JSON: the removal is refused, nothing is removed, nothing is appended; once the log is readable again the removal works", async () => {
+    const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE); writeFileSync(log, `{"at":"2026-11-06T12:00:00.000Z","actor":"local","action":"switch","outcome":"ok","detail":"on","switch":"accounts"}\nnot json\n`);
+    const kept = readFileSync(log, "utf8");
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/could not write its audit log/);
+    expect(existsSync(directory)).toBe(true); expect(readFileSync(log, "utf8")).toBe(kept);
+    writeFileSync(log, kept.split("\n")[0] + "\n"); f.tick(6000);
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
+    for (const line of readFileSync(log, "utf8").split("\n").filter(Boolean)) expect(() => JSON.parse(line)).not.toThrow();
+  });
+  it("an incomplete tail left by an interrupted write is repaired, the operation goes ahead, and every line of the log parses", async () => {
+    const f = fixture(); f.on(); const directory = owned(f); const log = join(f.pairing, AUDIT_FILE);
+    writeFileSync(log, `{"at":"2026-11-06T12:00:00.000Z","actor":"local","action":"switch","outcome":"ok","detail":"on","switch":"accounts"}\n{"at":"2026-11-06T12:00:01.000Z","actor":"admin:u1","act`);
+    await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).resolves.toEqual({ removed: true });
+    expect(existsSync(directory)).toBe(false); const rows = readFileSync(log, "utf8").split("\n").filter(Boolean).map(line => JSON.parse(line));
+    expect(rows.map((row: any) => `${row.action}:${row.outcome}`)).toEqual(["switch:ok", "profile.remove:started", "profile.remove:ok"]);
   });
 });

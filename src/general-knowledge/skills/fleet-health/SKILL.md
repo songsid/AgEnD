@@ -20,7 +20,7 @@ kiro-specific and wrong for claude-code / codex / grok / antigravity.
 When the user wants the live screen (not just a status word):
 - `get_instance_logs("<name>")` — recent output (the raw terminal stream).
 - Raw terminal (last resort, no tool for the live pane):
-  `tmux capture-pane -t agend:<name> -e -p | tail -20` on the default AGEND_HOME (an isolated home uses session `agend-<hash>` on its own `-L` socket; `agend attach <name>` works in both) — keep `-e`: without it the screen's styling is lost.
+  `agend tmux capture-pane -t agend:<name> -e -p | tail -20` on the default AGEND_HOME (an isolated home uses session `agend-<hash>`; `agend tmux` always reaches this fleet's own tmux and socket, and `agend attach <name>` works in both) — keep `-e`: without it the screen's styling is lost.
 
 **Faint text is not input.** A CLI paints its own suggestion or placeholder in the input box
 exactly like typed text, only faint (Claude Code: `❯ Try "…"`, or a suggested next prompt).
@@ -41,4 +41,4 @@ Do this when the user asks, or confirm first — don't silently restart others' 
 
 A genuinely wedged CLI can sometimes be freed without a restart by interrupting it —
 that is the cancel key, exposed to users as the Cancel button / `/cancel`. Only drop to
-`tmux send-keys -t agend:<name> C-c` (kiro) / `Escape` (others) if the tools aren't enough.
+`agend tmux send-keys -t agend:<name> C-c` (kiro) / `Escape` (others) if the tools aren't enough.

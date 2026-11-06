@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const real: { append?: (...args: any[]) => void } = {};
-vi.mock("../src/runtime-remote-setup.js", async importOriginal => { const original = await importOriginal<typeof import("../src/runtime-remote-setup.js")>(); real.append = original.appendAudit; return { ...original, appendAudit: vi.fn((...args: Parameters<typeof original.appendAudit>) => original.appendAudit(...args)) }; });
+const real: { append?: (...args: any[]) => void; set?: (...args: any[]) => any } = {};
+vi.mock("../src/runtime-remote-setup.js", async importOriginal => { const original = await importOriginal<typeof import("../src/runtime-remote-setup.js")>(); real.append = original.appendAudit; real.set = original.setRemoteSwitch; return { ...original, appendAudit: vi.fn((...args: Parameters<typeof original.appendAudit>) => original.appendAudit(...args)), setRemoteSwitch: vi.fn((...args: Parameters<typeof original.setRemoteSwitch>) => original.setRemoteSwitch(...args)) }; });
 const { runtimeMain } = await import("../src/runtime-cli.js");
 const setup = await import("../src/runtime-remote-setup.js");
 
 const directories: string[] = [];
-afterEach(() => { vi.restoreAllMocks(); vi.mocked(setup.appendAudit).mockImplementation((...args) => real.append!(...args)); for (const path of directories.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); } });
+afterEach(() => { vi.restoreAllMocks(); vi.mocked(setup.appendAudit).mockImplementation((...args) => real.append!(...args)); vi.mocked(setup.setRemoteSwitch).mockImplementation((...args) => real.set!(...args)); for (const path of directories.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); } });
 function fixture() {
   const make = (): string => { const path = mkdtempSync(join(tmpdir(), "agend-cli-switch-audit-")); directories.push(path); return path; };
   const home = make(), program = make(), runtimeHome = join(home, ".agend-runtime"), out: string[] = [], err: string[] = [];
@@ -45,7 +45,30 @@ describe("remote-setup records which switch, until when, and what really happene
     const f = fixture(); let calls = 0;
     vi.mocked(setup.appendAudit).mockImplementation((...args) => { calls++; if (calls === 2) throw new Error("disk full"); return real.append!(...args); });
     await expect(f.run(["remote-setup", "accounts", "on"])).rejects.toThrow(/turned off again/);
-    expect(setup.readRemoteSwitches(f.runtimeHome).accounts.on).toBe(false); expect(summary(f.rows())).toEqual(["accounts:on:started"]);
+    expect(setup.readRemoteSwitches(f.runtimeHome).accounts.on).toBe(false); expect(summary(f.rows())).toEqual(["accounts:on:started", "accounts:on:failed:failed"]);
+  });
+  it("the successful rollback is proven by reading the saved switch back, and only then reported as turned off again", async () => {
+    const f = fixture(); let calls = 0;
+    vi.mocked(setup.appendAudit).mockImplementation((...args) => { calls++; if (calls === 2) throw new Error("disk full"); return real.append!(...args); });
+    await expect(f.run(["remote-setup", "accounts", "on"])).rejects.toThrow(/turned off again/);
+    expect(setup.readRemoteSwitches(f.runtimeHome).accounts.on).toBe(false); expect(summary(f.rows())).toEqual(["accounts:on:started", "accounts:on:failed:failed"]);
+  });
+  it("DOUBLE FAILURE: the result record cannot be written and turning the switch back off fails too: the outcome is unconfirmed, never `turned off again`, and the switch really is still on", async () => {
+    const f = fixture(); let appends = 0, sets = 0;
+    vi.mocked(setup.appendAudit).mockImplementation((...args) => { appends++; if (appends === 2) throw new Error("disk full"); return real.append!(...args); });
+    vi.mocked(setup.setRemoteSwitch).mockImplementation((...args) => { sets++; if (sets === 2) throw new Error("EPERM"); return real.set!(...args); });
+    const error = await f.run(["remote-setup", "accounts", "on"]).catch((e: Error) => e) as Error;
+    expect(error).toBeInstanceOf(Error); expect(error.message).toMatch(/unconfirmed/); expect(error.message).toMatch(/could not be confirmed/); expect(error.message).not.toMatch(/turned off again/);
+    expect(error.message).toMatch(/agend-runtime remote-setup accounts off/); expect(setup.readRemoteSwitches(f.runtimeHome).accounts.on).toBe(true);        // what the message warns about is the truth
+    expect(summary(f.rows())).toEqual(["accounts:on:started", "accounts:on:failed:unconfirmed"]);
+  });
+  it("DOUBLE FAILURE, the other way: the rollback writes without error but the file still reads on: also unconfirmed", async () => {
+    const f = fixture(); let appends = 0, sets = 0;
+    vi.mocked(setup.appendAudit).mockImplementation((...args) => { appends++; if (appends === 2) throw new Error("disk full"); return real.append!(...args); });
+    vi.mocked(setup.setRemoteSwitch).mockImplementation((...args) => { sets++; if (sets === 2) return { on: false }; return real.set!(...args); });
+    const error = await f.run(["remote-setup", "accounts", "on", "--for", "1h"]).catch((e: Error) => e) as Error;
+    expect(error.message).toMatch(/unconfirmed/); expect(error.message).not.toMatch(/turned off again/); expect(setup.readRemoteSwitches(f.runtimeHome).accounts.on).toBe(true);
+    expect(summary(f.rows())).toEqual(["accounts:on:started:until", "accounts:on:failed:until:unconfirmed"]);
   });
   it("the record of the attempt cannot be written: on is refused before anything is set", async () => {
     const f = fixture(); vi.mocked(setup.appendAudit).mockImplementation(() => { throw new Error("disk full"); });

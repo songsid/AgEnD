@@ -39,7 +39,8 @@ async function shell(path: string, opts: { narrow?: boolean } = {}) {
   await settle(4);
   return { pg, navStore };
 }
-const row = (pg: AppPage) => [...pg.root.querySelectorAll(".p-fleet nav.seg > a")] as any[];
+// M-2542: the tab row is in the header on a desktop (.fleet-tabs), under it on a phone (.seg) — either way the panel's navigation.
+const row = (pg: AppPage) => [...pg.root.querySelectorAll(".p-fleet nav[data-trust='panel-navigation'] > a")] as any[];
 const actions = (pg: AppPage) => [...(pg.root.querySelector(".p-fleet .panel-head .panel-actions") as any).children] as any[];
 const docs = (pg: AppPage) => pg.root.querySelector(".p-fleet .panel-head a.hd-docs") as any;
 const shape = (a: any) => ({ href: a?.getAttribute("href"), target: a?.getAttribute("target"), rel: a?.getAttribute("rel"),
@@ -59,7 +60,7 @@ describe("Fleet overview → Docs", () => {
   });
   it("is not a Fleet tab: the tab row is the six tabs (#2122 added Usage; #2347 §10 moved Config to Settings), unchanged", async () => {
     const { pg } = await shell("/ui/fleet/org");
-    expect([row(pg).map(a => a.getAttribute("href")), pg.root.querySelectorAll(".p-fleet nav.seg a[target]").length]).toEqual(
+    expect([row(pg).map(a => a.getAttribute("href")), pg.root.querySelectorAll(".p-fleet nav[data-trust='panel-navigation'] a[target]").length]).toEqual(
       [["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage"], 0]);
   });
   it("follows the dashboard's language: zh-TW opens /zh-tw/docs, and back to English", async () => {

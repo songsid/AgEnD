@@ -139,8 +139,16 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
       catch (error) { try { appendAudit(store.directory, entry("failed")); } catch { /* the failure itself is what is thrown */ } throw error; }
       try { appendAudit(store.directory, entry("ok")); }
       catch {
-        try { setRemoteSwitch(store.directory, what, false); } catch { /* reported below either way */ }
-        throw new Error("The audit log (audit.jsonl in this profile folder) could not be written after the switch was set, so the switch was turned off again. Fix that file or folder and run this again.");
+        // The switch was set but its record could not be completed: put it back off, and say "off" only if the saved switch is READ BACK as off. If that
+        // cannot be shown (the write failed, or the file still says on) the outcome is unconfirmed and the person is told exactly that.
+        let confirmedOff = false;
+        try { setRemoteSwitch(store.directory, what, false, undefined, now); confirmedOff = !readRemoteSwitches(store.directory, now)[what].on; } catch { confirmedOff = false; }
+        if (confirmedOff) {
+          try { appendAudit(store.directory, entry("failed")); } catch { /* best effort */ }
+          throw new Error("The audit log (audit.jsonl in this profile folder) could not be written after the switch was set, so the switch was turned off again. Fix that file or folder and run this again.");
+        }
+        try { appendAudit(store.directory, { ...entry("failed"), reason: "unconfirmed" }); } catch { /* best effort */ }
+        throw new Error(`The audit log (audit.jsonl in this profile folder) could not be written after the "${what}" switch was turned on, and turning the switch back off could not be confirmed (unconfirmed: the switch may still be on). Run agend-runtime remote-setup ${what} off, and inspect remote-setup.json and audit.jsonl in this profile folder.`);
       }
     } else {
       try { result = setRemoteSwitch(store.directory, what, false, undefined, now); }
@@ -250,7 +258,13 @@ export async function runtimeMain(argv = process.argv.slice(2), options: Runtime
     process.stdout.write(`Credential profile for agents that do not choose one: ${flags["--credential-profile"]}${before && before !== flags["--credential-profile"] ? ` (was ${before})` : ""}\n`);
   }
   const client = new RuntimeClient({ store, credentialProfilesRoot: credentialRoot, report: text => process.stdout.write(`${text}\n`) });
-  const stop = (): void => { void client.stop().catch(() => { process.exitCode = 1; }); };
+  const stop = (): void => {
+    void client.stop().catch(error => {
+      // An account process was not confirmed ended: the Runtime keeps its lock, so say so and let the next Ctrl+C try again.
+      process.exitCode = 1; process.stderr.write(`${error instanceof Error ? error.message : "Runtime stop was not completed"}. Press Ctrl+C to try again.\n`);
+      process.once("SIGINT", stop); process.once("SIGTERM", stop);
+    });
+  };
   process.once("SIGINT", stop); process.once("SIGTERM", stop);
   try { await client.start(); await client.waitUntilStopped(); }
   finally { process.removeListener("SIGINT", stop); process.removeListener("SIGTERM", stop); }

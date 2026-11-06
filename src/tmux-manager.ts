@@ -5,6 +5,7 @@ import type { TerminalConfig } from "./types.js";
 import { tmuxWindowTarget, tmuxReadArgs, type TmuxReadPort, type TmuxReadQuery } from "./tmux-read.js";
 import { tmuxExecHelper } from "./tmux-exec-helper.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
+import { bundledTmuxEnabled, tmuxBinary, tmuxConfArgs, tmuxEnv } from "./tmux-binary.js";
 
 const execAsync = promisify(execFile);
 /**
@@ -12,11 +13,15 @@ const execAsync = promisify(execFile);
  * grows with the fleet's memory (#1235, #1956) — so the fleet's spawn helper starts it when it is running; otherwise it
  * is the direct call, attributed as "tmux.spawn" as before. Either way: the same command, once; the same result.
  */
-const exec = ((file: string, args: string[], opts?: { timeout?: number; maxBuffer?: number }) =>
-  tmuxExecHelper.exec(file, args, opts ?? {}, () => measureSyncWork("tmux.spawn", () => opts === undefined ? execAsync(file, args) : execAsync(file, args, opts)))
-) as unknown as typeof execAsync;
+const exec = ((file: string, args: string[], given?: { timeout?: number; maxBuffer?: number }) => {
+  // M-2457: the bundled tmux runs with its own environment (tmux-binary.ts); off, the call is exactly as before.
+  const opts = bundledTmuxEnabled() ? { ...(given ?? {}), env: tmuxEnv() } : given;
+  return tmuxExecHelper.exec(file, args, opts ?? {}, () => measureSyncWork("tmux.spawn", () => opts === undefined ? execAsync(file, args) : execAsync(file, args, opts)));
+}) as unknown as typeof execAsync;
+/** The bundled tmux's environment for a call, or nothing (off): spread into the options. */
+const bundledEnv = (): { env?: NodeJS.ProcessEnv } => (bundledTmuxEnabled() ? { env: tmuxEnv() } : {});
 /** `exec`, bounded when a timeout is given — and in exactly the old (file, args) form when it is not. */
-const execBounded = (args: string[], timeoutMs?: number) => timeoutMs ? exec("tmux", args, { timeout: timeoutMs }) : exec("tmux", args);
+const execBounded = (args: string[], timeoutMs?: number) => timeoutMs ? exec(tmuxBinary(), args, { timeout: timeoutMs }) : exec(tmuxBinary(), args);
 /** Keys sendKeySequence may send: cursor moves and deletions inside an input line. */
 const EDITING_KEYS: ReadonlySet<string> = new Set(["C-a", "C-e", "C-u", "C-k", "BSpace", "DC", "Home", "End", "Left", "Right"]);
 
@@ -59,13 +64,14 @@ function execTmuxWithInput(tmuxArgs: string[], input: string, timeoutMs?: number
         if (error) { Object.assign(error, { stdout: String(stdout ?? ""), stderr: String(stderr ?? "") }); fail(error); } else ok({ stdout: String(stdout ?? ""), stderr: String(stderr ?? "") });
       };
       // Options only when a bound is asked for: every other caller keeps execFile's (file, args, callback) form.
+      const env = bundledEnv();
       const child = measureSyncWork("tmux.spawn", () => timeoutMs
-        ? execFile("tmux", tmuxArgs, { timeout: timeoutMs }, cb)
-        : execFile("tmux", tmuxArgs, cb));
+        ? execFile(tmuxBinary(), tmuxArgs, { timeout: timeoutMs, ...env }, cb)
+        : env.env ? execFile(tmuxBinary(), tmuxArgs, env, cb) : execFile(tmuxBinary(), tmuxArgs, cb));
       child?.stdin?.on("error", fail);
       child?.stdin?.end(input);
     });
-    tmuxExecHelper.exec("tmux", tmuxArgs, { ...(timeoutMs ? { timeout: timeoutMs } : {}), input }, direct)
+    tmuxExecHelper.exec(tmuxBinary(), tmuxArgs, { ...(timeoutMs ? { timeout: timeoutMs } : {}), input }, direct)
       .then(({ stdout, stderr }) => done(null, stdout, stderr), (err: Error & { stdout?: string; stderr?: string }) => done(err, err.stdout ?? "", err.stderr ?? ""));
   });
 }
@@ -112,10 +118,11 @@ export class TmuxManager implements Pane {
     TmuxManager.socketName = name;
   }
 
-  /** Prefix tmux args with -L when socket isolation is active. */
+  /** Prefix tmux args with -L when socket isolation is active (and, with the bundled tmux, its -f config). */
   private static tmuxArgs(args: string[]): string[] {
-    if (!TmuxManager.socketName) return args;
-    return ["-L", TmuxManager.socketName, ...args];
+    const conf = tmuxConfArgs();
+    if (!TmuxManager.socketName) return conf.length ? [...conf, ...args] : args;
+    return ["-L", TmuxManager.socketName, ...conf, ...args];
   }
 
   constructor(
@@ -137,7 +144,7 @@ export class TmuxManager implements Pane {
       // timeout or spawn failure rejects instead of being read as "absent".
       if (!(await TmuxManager.sessionExistsStrict(name))) {
         try {
-          await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+          await exec(tmuxBinary(), TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
         } catch (err) {
           if (!String(err).includes("duplicate session")) throw err;
         }
@@ -145,7 +152,7 @@ export class TmuxManager implements Pane {
 
       // This is deliberately a session option, not `set-option -g`: enabling the
       // global default would also change tmux sessions that AgEnD does not own.
-      await exec("tmux", TmuxManager.tmuxArgs([
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs([
         "set-option", "-t", name, "mouse", "on",
       ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     })().finally(() => {
@@ -160,7 +167,7 @@ export class TmuxManager implements Pane {
   /** PID identifies a concrete tmux server generation. */
   static async getServerPid(sessionName: string): Promise<number | null> {
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs([
         "display-message", "-p", "-t", sessionName, "#{pid}",
       ]));
       const pid = Number.parseInt(stdout.trim(), 10);
@@ -172,7 +179,7 @@ export class TmuxManager implements Pane {
 
   static async sessionExists(name: string): Promise<boolean> {
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["has-session", "-t", name]));
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs(["has-session", "-t", name]));
       return true;
     } catch { return false; }
   }
@@ -184,7 +191,7 @@ export class TmuxManager implements Pane {
    */
   static async sessionExistsStrict(name: string): Promise<boolean> {
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["has-session", "-t", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs(["has-session", "-t", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
       return true;
     } catch (err) {
       const e = err as { code?: unknown; killed?: boolean; stderr?: unknown };
@@ -196,7 +203,7 @@ export class TmuxManager implements Pane {
 
   static async killSession(name: string): Promise<void> {
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["kill-session", "-t", name]));
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs(["kill-session", "-t", name]));
     } catch {
       // Expected if session doesn't exist
     }
@@ -204,7 +211,7 @@ export class TmuxManager implements Pane {
 
   static async listWindows(sessionName: string, readPort?: TmuxReadPort): Promise<Array<{ id: string; name: string }>> {
     try {
-      const stdout = readPort ? await TmuxManager.portRead(readPort, { kind: "windows", session: sessionName }, 10_000) : (await exec("tmux", TmuxManager.tmuxArgs([
+      const stdout = readPort ? await TmuxManager.portRead(readPort, { kind: "windows", session: sessionName }, 10_000) : (await exec(tmuxBinary(), TmuxManager.tmuxArgs([
         "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
       ]))).stdout;
       return stdout.trim().split("\n").filter(Boolean).map(line => {
@@ -217,7 +224,7 @@ export class TmuxManager implements Pane {
   /** Bounded health/login read: errors REJECT instead of proving "no windows". */
   static async listWindowsStrict(sessionName: string, readPort?: TmuxReadPort): Promise<Array<{ id: string; name: string }>> {
     const stdout = readPort ? await TmuxManager.portRead(readPort, { kind: "windows", session: sessionName }, LOGIN_TMUX_OP_TIMEOUT_MS)
-      : (await exec("tmux", TmuxManager.tmuxArgs([
+      : (await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS })).stdout;
     return stdout.trim().split("\n").filter(Boolean).map(line => {
@@ -228,7 +235,7 @@ export class TmuxManager implements Pane {
 
   static async getPanePid(sessionName: string, windowId: string, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<number | null> {
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs([
         "list-panes", "-t", tmuxWindowTarget(sessionName, windowId), "-F", "#{pane_pid}",
       ]), { timeout: timeoutMs });
       const pid = parseInt(stdout.trim(), 10);
@@ -239,7 +246,7 @@ export class TmuxManager implements Pane {
   /** #2015: every pane of the session as its shell's pid and its window's name (one read; empty on any failure). */
   static async listPanePids(sessionName: string, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<Array<{ pid: number; window: string }>> {
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs([
         "list-panes", "-s", "-t", sessionName, "-F", "#{pane_pid}|||#{window_name}",
       ]), { timeout: timeoutMs });
       return stdout.trim().split("\n").filter(Boolean).flatMap(line => {
@@ -260,7 +267,7 @@ export class TmuxManager implements Pane {
   private async read(query: TmuxReadQuery, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
     if ("window" in query) tmuxWindowTarget(query.session, query.window);
     if (this.readPort) return TmuxManager.portRead(this.readPort, query, timeoutMs);
-    return (await exec("tmux", TmuxManager.tmuxArgs(tmuxReadArgs(query)), { timeout: timeoutMs })).stdout;
+    return (await exec(tmuxBinary(), TmuxManager.tmuxArgs(tmuxReadArgs(query)), { timeout: timeoutMs })).stdout;
   }
 
   /** Window name handed to createWindow(), kept so a cleanup can find a window whose id we never learned. */
@@ -286,7 +293,7 @@ export class TmuxManager implements Pane {
         }
         this.windowId = survivor.id;
         await this.respawnWindow(command, cwd);
-        await exec("tmux", TmuxManager.tmuxArgs([
+        await exec(tmuxBinary(), TmuxManager.tmuxArgs([
           "set-window-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
           "allow-rename", "off",
         ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
@@ -298,7 +305,7 @@ export class TmuxManager implements Pane {
     if (windowName) args.push("-n", windowName);
     args.push("-P", "-F", "#{window_id}", command);
     // Hard bound: a wedged tmux must not hold a login/install teardown open forever.
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(args), { timeout: 15_000 });
+    const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs(args), { timeout: 15_000 });
     this.windowId = stdout.trim();
     try {
       // Apply the configured geometry and hand sizing to real terminals. The
@@ -306,7 +313,7 @@ export class TmuxManager implements Pane {
       // what makes `window-size latest` safe here (see applyLogicalSize).
       await this.applyLogicalSize();
       if (windowName) {
-        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId), "allow-rename", "off"]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
+        await exec(tmuxBinary(), TmuxManager.tmuxArgs(["set-window-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId), "allow-rename", "off"]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
       }
     } catch (err) {
       // Do not leave a live instance in an unpinned geometry if setup fails.
@@ -322,7 +329,7 @@ export class TmuxManager implements Pane {
     // Apply before respawn so the new CLI sees the intended COLUMNS/LINES from
     // its first frame. Reapplying is idempotent and repairs external drift.
     await this.applyLogicalSize();
-    await exec("tmux", TmuxManager.tmuxArgs([
+    await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "respawn-window", "-k", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       "-c", cwd, command,
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
@@ -345,12 +352,12 @@ export class TmuxManager implements Pane {
   private async applyLogicalSize(): Promise<void> {
     if (!this.windowId) throw new Error("Cannot size tmux window without a window id");
     const target = tmuxWindowTarget(this.sessionName, this.windowId);
-    await exec("tmux", TmuxManager.tmuxArgs([
+    await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "resize-window", "-t", target,
       "-x", String(this.logicalSize.columns),
       "-y", String(this.logicalSize.rows),
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
-    await exec("tmux", TmuxManager.tmuxArgs([
+    await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "set-window-option", "-t", target, "window-size", "latest",
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
@@ -358,7 +365,7 @@ export class TmuxManager implements Pane {
   async killWindow(): Promise<void> {
     if (!this.windowId) return;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", tmuxWindowTarget(this.sessionName, this.windowId)]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs(["kill-window", "-t", tmuxWindowTarget(this.sessionName, this.windowId)]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     } catch {
       // Expected if window already exited
     }
@@ -374,7 +381,7 @@ export class TmuxManager implements Pane {
     if (!this.windowId && !name) return true;          // nothing was ever asked for
     const mine = (w: { id: string; name: string }) => (this.windowId ? w.id === this.windowId : w.name === name);
     const list = async () => {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(["list-windows", "-t", this.sessionName, "-F", "#{window_id}|||#{window_name}"]), { timeout: 10_000 });
+      const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs(["list-windows", "-t", this.sessionName, "-F", "#{window_id}|||#{window_name}"]), { timeout: 10_000 });
       return stdout.trim().split("\n").filter(Boolean).map(line => { const [id, n] = line.split("|||"); return { id, name: n ?? "" }; });
     };
     try {
@@ -384,7 +391,7 @@ export class TmuxManager implements Pane {
       // many duplicates exist: list (10 s) + kills (10 s) + list (10 s) ≤ 30 s.
       const targets = (await list()).filter(mine);
       await Promise.all(targets.map(w =>
-        exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${w.id}`]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => { /* judged by the re-list */ })));
+        exec(tmuxBinary(), TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${w.id}`]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => { /* judged by the re-list */ })));
       return !(await list()).some(mine);
     } catch (err) {
       // No such session at all ⇒ no window either; anything else is unknown → not confirmed.
@@ -408,7 +415,7 @@ export class TmuxManager implements Pane {
 
   /** Enable remain-on-exit so dead panes are preserved for exit code capture. */
   async setRemainOnExit(): Promise<void> {
-    await exec("tmux", TmuxManager.tmuxArgs([
+    await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "set-option", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       "remain-on-exit", "on",
     ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
@@ -449,11 +456,11 @@ export class TmuxManager implements Pane {
   async getWindowGeometry(): Promise<TmuxLogicalSize & { mode: string }> {
     if (!this.windowId) throw new Error("Cannot inspect tmux window without a window id");
     const target = tmuxWindowTarget(this.sessionName, this.windowId);
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+    const { stdout } = await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "display-message", "-p", "-t", target,
       "#{window_width} #{window_height}",
     ]));
-    const { stdout: modeOutput } = await exec("tmux", TmuxManager.tmuxArgs([
+    const { stdout: modeOutput } = await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "show-window-options", "-v", "-t", target, "window-size",
     ]));
     const [columnsRaw, rowsRaw] = stdout.trim().split(/\s+/);
@@ -497,7 +504,7 @@ export class TmuxManager implements Pane {
 
   async sendKeys(text: string): Promise<boolean> {
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-l", "-t", tmuxWindowTarget(this.sessionName, this.windowId), text]));
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs(["send-keys", "-l", "-t", tmuxWindowTarget(this.sessionName, this.windowId), text]));
       return true;
     } catch { return false; }
   }
@@ -511,7 +518,7 @@ export class TmuxManager implements Pane {
   async sendKeySequence(keys: readonly string[]): Promise<boolean> {
     if (keys.length === 0 || !keys.every(key => EDITING_KEYS.has(key))) return false;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", tmuxWindowTarget(this.sessionName, this.windowId), ...keys]));
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs(["send-keys", "-t", tmuxWindowTarget(this.sessionName, this.windowId), ...keys]));
       return true;
     } catch { return false; }
   }
@@ -625,10 +632,10 @@ export class TmuxManager implements Pane {
       const target = tmuxWindowTarget(this.sessionName, this.windowId);
       if (!(await this.loadAndPaste(text))) return false;
       await new Promise(r => setTimeout(r, 500));
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
+      await exec(tmuxBinary(), TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
       if (retryEnter) {
         await new Promise(r => setTimeout(r, 1000));
-        await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
+        await exec(tmuxBinary(), TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
       }
       return true;
     } catch (err) {
@@ -654,7 +661,7 @@ export class TmuxManager implements Pane {
       throw new Error(`Invalid log path (contains control characters): ${JSON.stringify(logPath)}`);
     }
     const escaped = logPath.replace(/'/g, "'\\''");
-    await exec("tmux", TmuxManager.tmuxArgs([
+    await exec(tmuxBinary(), TmuxManager.tmuxArgs([
       "pipe-pane", "-t", tmuxWindowTarget(this.sessionName, this.windowId),
       `cat >> '${escaped}'`,
     ]));

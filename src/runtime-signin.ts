@@ -99,7 +99,7 @@ export interface SignInLaunch {
   method: SignInMethod;
 }
 export type SignInSpawn = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
-export interface SignInDeps { spawn?: SignInSpawn; now?: () => number; ttlMs?: number; scratchRoot?: string; kill?: (child: ChildProcess) => void; /** The ten minutes ran out: the owner records it, and this ends the attempt. */ onTimeout?: () => void }
+export interface SignInDeps { spawn?: SignInSpawn; now?: () => number; ttlMs?: number; scratchRoot?: string; kill?: (child: ChildProcess) => void; /** How long close() waits for the child's `close` after killing it (default 5 s). */ closeWaitMs?: number; /** The ten minutes ran out: the owner records it, and this ends the attempt. */ onTimeout?: () => void }
 
 /** A process that was told to stop and was not confirmed gone: `ended` settles when it really has. Whoever owns the profile (or the install lock) keeps it until then. */
 export class ProcessNotConfirmedEnded extends Error { constructor(readonly ended: Promise<unknown>) { super("The process could not be confirmed ended"); this.name = "ProcessNotConfirmedEnded"; } }
@@ -173,7 +173,7 @@ export class RuntimeSignIn {
       try { this.child?.stdin?.end(); } catch { /* already closed */ }
       if (!this.exited) { (this.deps.kill ?? killTree)(this.child!); }
       let timeout: ReturnType<typeof setTimeout> | undefined;
-      const ended = await Promise.race([this.gone.then(() => true), new Promise<boolean>(done => { timeout = setTimeout(() => done(false), CLOSE_WAIT_MS); timeout.unref?.(); })]);
+      const ended = await Promise.race([this.gone.then(() => true), new Promise<boolean>(done => { timeout = setTimeout(() => done(false), this.deps.closeWaitMs ?? CLOSE_WAIT_MS); timeout.unref?.(); })]);
       clearTimeout(timeout);
       if (!ended) throw new SignInRefusal("The sign-in process could not be confirmed ended", "failed");
       this.raw = ""; this.removeScratch(); this.released = true;

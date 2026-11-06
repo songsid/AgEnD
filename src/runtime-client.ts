@@ -190,6 +190,8 @@ export class RuntimeClient {
   private readonly stoppedListeners = new Set<() => void>();
   private activity = new RuntimeUpdateActivity();
   private stopPromise: Promise<void> | undefined;
+  /** A stop that could not finish (an account process was not confirmed gone): everything is still held, and stop() may be called again. */
+  private stopIncomplete = false;
   private generation = 0;
   private updateProtocol = false;
   private preparingUpdate = false;
@@ -216,6 +218,9 @@ export class RuntimeClient {
   async start(): Promise<void> {
     if (!this.stopped) return;
     if (this.stopPromise) { await this.stopPromise; this.stopPromise = undefined; this.activity = new RuntimeUpdateActivity(); }
+    // A previous stop that was not completed still owns a pairing lock and possibly a sign-in or logout process that was not confirmed ended: nothing starts
+    // over it, and its account module is never replaced while it holds anything.
+    if (this.stopIncomplete || this.unlock !== null || (this.remoteAccounts && !this.remoteAccounts.idle())) throw new Error("The previous stop was not completed (an account process was not confirmed ended). Call stop() again, or inspect processes, before starting");
     let credentials = this.options.store.credentials(); if (!credentials) throw new Error("Pair this runtime before connecting");
     validateRuntimeServer(credentials.server);
     this.stopped = false; this.closed = false; this.stopReason = undefined;
@@ -272,7 +277,7 @@ export class RuntimeClient {
       if (response.statusCode === 401 || response.statusCode === 403) {
         this.report("Runtime credential was refused. Re-pair after the machine is authorized.");
         this.stopReason = { kind: "refused", ...(response.statusCode === 403 ? { detail: "HTTP 403" } : {}) };
-        void this.stop();
+        void this.stop().catch(error => this.report(error instanceof Error ? error.message : "Runtime stop was not completed"));
       } else socket.terminate();
     });
     socket.on("close", (code,reason) => {
@@ -288,7 +293,7 @@ export class RuntimeClient {
         const why = reason.toString().replace(/[^ -~]/g, "?").slice(0, 120);
         this.report(this.selfClosed === socket ? "This Runtime could not read a message from AgEnD and closed the connection." : `AgEnD closed the connection (code 1008${why ? `: ${why}` : ""}).`);
         this.stopReason = this.selfClosed === socket ? { kind: "incompatible" } : { kind: why === "Machine revoked" ? "revoked" : why === "Connection replaced" ? "replaced" : why.startsWith(RUNTIME_REINSTALL_CLOSE_PREFIX) ? "reinstall" : "rejected", ...(why ? { detail: why } : {}) };
-        void this.stop({retirePanes:why==="Machine revoked"}); return;
+        void this.stop({retirePanes:why==="Machine revoked"}).catch(error => this.report(error instanceof Error ? error.message : "Runtime stop was not completed")); return;
       }
       this.report("Disconnected. Existing execution is not replayed; reconnecting…");
       if (!this.graceTimer) this.graceTimer = setTimeout(() => {
@@ -336,7 +341,7 @@ export class RuntimeClient {
       }
       this.updateWait = undefined; clearTimeout(pending.timer); pending.accept(control.phase); return;
     }
-    if (value.type === "revoked") { this.report("This machine was revoked by AgEnD."); this.stopReason = { kind: "revoked" }; await this.stop({retirePanes:true}); return; }
+    if (value.type === "revoked") { this.report("This machine was revoked by AgEnD."); this.stopReason = { kind: "revoked" }; await this.stop({retirePanes:true}).catch(error => this.report(error instanceof Error ? error.message : "Runtime stop was not completed")); return; }
     if (!this.welcomed) throw new Error("Runtime handshake is incomplete");
     if (value.type === "ping") { this.send({ v: 1, type: "pong" }); return; }
     if (value.type === "tool.result") {
@@ -769,12 +774,14 @@ export class RuntimeClient {
     for (const pending of this.pendingTools.values()) { clearTimeout(pending.timer); pending.reject(new Error("Runtime disconnected")); } this.pendingTools.clear(); }
   stop(options:{retirePanes?:boolean}={}): Promise<void> {
     if (this.stopPromise) return this.stopPromise;
-    if (this.stopped) return Promise.resolve();
-    this.stopped = true; this.welcomed = false;
+    if (this.stopped && !this.stopIncomplete) return Promise.resolve();
+    this.stopped = true; this.welcomed = false; this.stopIncomplete = false;
     this.installAbort.abort();
     this.activity.close();
-    // Own cleanup before callbacks (bridge.close, pane cleanup) can re-enter stop().
-    return this.stopPromise = Promise.resolve().then(() => this.stopOwned(options));
+    // Own cleanup before callbacks (bridge.close, pane cleanup) can re-enter stop(). A stop that fails leaves the lock and the account module held and can be
+    // called again.
+    const stopping: Promise<void> = Promise.resolve().then(() => this.stopOwned(options)).catch(error => { if (this.stopPromise === stopping) this.stopPromise = undefined; this.stopIncomplete = true; throw error; });
+    return this.stopPromise = stopping;
   }
   private async stopOwned(options:{retirePanes?:boolean}): Promise<void> {
     if (this.updateWait) { const pending = this.updateWait; this.updateWait = undefined; clearTimeout(pending.timer); pending.reject(Error("Runtime update stopped")); }
@@ -788,8 +795,9 @@ export class RuntimeClient {
     if (socket) { socket.close(); if (socket.readyState !== WebSocket.CLOSED) socket.terminate(); }
     // A cancelled start may still finish its durable credential write. Do not release the profile to another writer.
     await this.startupRotation?.catch(() => {});
-    // A sign-in that is open ends with the connection (its child is killed), and the folded counts of the audit log are written.
-    await this.remoteAccounts?.stop().catch(() => {});
+    // A sign-in that is open ends with the connection (its child is killed), and the folded counts of the audit log are written. A login or logout process that
+    // is not confirmed gone fails the stop HERE, before the pairing's lock is let go, so no other client can start over a process that may still be writing.
+    if (this.remoteAccounts) { await this.remoteAccounts.stop(); if (!this.remoteAccounts.idle()) throw new Error("Account process shutdown was not confirmed; inspect processes before stopping or restarting"); }
     await this.paneOpening?.then(async host=>{
       try{if(options.retirePanes&&"retireOwned" in host)await host.retireOwned();}
       finally{await host.stop();}

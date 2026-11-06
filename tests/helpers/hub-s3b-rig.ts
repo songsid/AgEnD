@@ -94,8 +94,9 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string; adm
     identity: { hubId, memberOrigin: "https://127.0.0.1:9", webOrigin, spkiSha256: "a".repeat(64), issuerPublicKey: keys.publicKey.export({ type: "spki", format: "pem" }).toString() },
     fenceFleet: () => {}, now: opts.now });
   const config = Object.freeze({ hubId, name: "Team Hub", webOrigin, administrator: admin });
-  const http = createHubHttp({ uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}),
-    transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now }, sql);
+  const httpDeps: Parameters<typeof createHubHttp>[0] = { uow, audit, directory, pairing, store, config, issuer, content, ...(attachments ? { attachments } : {}),
+    transport: () => (transportOn && enabled ? transport : null), current: () => ({ serverEnabled: () => enabled, memberEnabled: () => false, epoch: () => 0 }), now: opts.now };
+  let http = createHubHttp(httpDeps, sql);
 
   const server: Server = createServer((req, res) => { if (!http.handle(req, res)) { res.writeHead(404); res.end("fleet-404"); } });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -127,7 +128,8 @@ export async function s3bRig(opts: { now?: () => number; webOrigin?: string; adm
   const frame = <T extends string, P>(type: T, payload: P, l: HubLinkContext) => ({ v: 1 as const, type, requestId: randomUUID(), linkEpoch: l.linkEpoch, payload });
 
   return {
-    db, http, base, hubId, admin, addPerson, people, directory, issuer, keys, store, pairing, audits, contents, sent, signIn, call, link, frame, config,
+    db, get http() { return http; }, base, hubId, admin, addPerson, people, directory, issuer, keys, store, pairing, audits, contents, sent, signIn, call, link, frame, config,
+    restartHttp: async () => { await http.close(); http = createHubHttp(httpDeps, sql); },
     get directoryCalls() { return directoryCalls; },
     setEligible: (login: string, v: boolean) => { people.get(login)!.eligible = v; },
     /** The directory renames an account (its key stays); the old login may later be given to someone else. */

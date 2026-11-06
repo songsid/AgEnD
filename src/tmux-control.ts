@@ -5,7 +5,7 @@ import { EventEmitter } from "node:events";
 import { StringDecoder } from "node:string_decoder";
 import { randomUUID } from "node:crypto";
 import type { Logger } from "./logger.js";
-import { getTmuxSocketName } from "./paths.js";
+import { tmuxBinary, tmuxConfArgs, tmuxEnvOption, tmuxSocket } from "./tmux-binary.js";
 import { measureSyncWork } from "./sync-work-attribution.js";
 import { TmuxReadLane, TmuxReadError, TMUX_READ_MAX_BYTES, tmuxReadArgs, tmuxCommandToken,
   type TmuxReadQuery, type TmuxReadPort } from "./tmux-read.js";
@@ -91,7 +91,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort, Pan
   private attachment: Attachment | null = null;
   private activeRead: ControlRead | null = null;
   private reconnectAfter = 0;
-  private readonly socket = getTmuxSocketName();
+  private readonly socket = tmuxSocket();
   private readonly reads: TmuxReadLane;
   private registrationSerial = 0;
   private registrationTokens = new Map<string, number>();
@@ -195,7 +195,7 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort, Pan
   }
 
   read(query: TmuxReadQuery, timeoutMs = 10_000): Promise<string> {
-    if (!this.isFor(query.session, getTmuxSocketName())) {
+    if (!this.isFor(query.session, tmuxSocket())) {
       return Promise.reject(new TmuxReadError("command", "tmux read scope mismatch"));
     }
     try { return this.reads.read(tmuxReadArgs(query), timeoutMs); }
@@ -534,8 +534,8 @@ export class TmuxControlClient extends EventEmitter implements TmuxReadPort, Pan
     const args = ["-C", "attach", "-f", "ignore-size", "-t", this.sessionName];
     let proc: ChildProcess;
     try {
-      proc = measureSyncWork("tmux.spawn", () => spawn("tmux", this.socket ? ["-L", this.socket, ...args] : args,
-        { stdio: ["pipe", "pipe", "pipe"] }));
+      proc = measureSyncWork("tmux.spawn", () => spawn(tmuxBinary(), [...(this.socket ? ["-L", this.socket] : []), ...tmuxConfArgs(), ...args],
+        { stdio: ["pipe", "pipe", "pipe"], ...tmuxEnvOption() }));
     } catch {
       this.reconnectAfter = performance.now() + RECONNECT_MS;
       this.scheduleReconnect();
