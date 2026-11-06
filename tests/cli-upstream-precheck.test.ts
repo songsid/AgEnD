@@ -169,6 +169,23 @@ describe("precheck.py's verdict", () => {
     expect(r.out.trim().split("\n").at(-2)).toMatch(/^BASIS: hard=[1-9]\d*; hinted=0$/);
     expect(r.out).toContain("BASIS-DETAIL: missing 1,");
   });
+  it("a literal sources.json marks retired upstream is expected to go: listed, not a finding (NONE when nothing else changed)", () => {
+    const d = scratch(), m = join(d, "manifest.json");
+    writeFileSync(m, JSON.stringify({ format: 1, source: "test", backends: { fake: { literals: LITS.map(l => l.symbol === "getErrorPatterns" ? { ...l, retiredAfter: "1.2.3" } : l) } } }));
+    writeFileSync(join(d, "old.bin"), OLD); writeFileSync(join(d, "new.bin"), OLD.replace("Rate limited, retrying soon", pad(27)));
+    const r = run(join(d, "old.bin"), join(d, "new.bin"), m);
+    expect(r.out).toContain("MISSING (in old, not in new): 0");
+    expect(r.out).toMatch(/RETIRED UPSTREAM \(expected[^)]*\): 1\n  \[error\] 1 -> 0  "Rate limited, retrying soon" .*last in 1\.2\.3\)/);
+    expect(r.out.trim().split("\n").at(-2)).toBe("BASIS: hard=0; hinted=0");
+    expect(r.verdict).toBe("PRECHECK: NONE");
+  });
+  it("the manifest carries sources.json's retired marks (kiro's V2→V3 ease-in, gone after 3.0.0)", () => {
+    const kiro = (JSON.parse(readFileSync(join(process.cwd(), "scripts/manual/cli-upstream-precheck/manifest.json"), "utf8")) as { backends: Record<string, { literals: { symbol: string; retiredAfter?: string }[] }> }).backends["kiro-cli"]!.literals;
+    const retired = kiro.filter(l => l.retiredAfter);
+    expect(retired.length).toBeGreaterThan(0);
+    expect(retired.every(l => /^KIRO_V3_EASE_IN(?:_V2_USER)?\./.test(l.symbol) && l.retiredAfter === "3.0.0")).toBe(true);
+    expect(kiro.filter(l => /^KIRO_V3_EASE_IN(?:_V2_USER)?\./.test(l.symbol)).every(l => l.retiredAfter === "3.0.0")).toBe(true);
+  });
   it("only a count changed: MINOR", () => {
     expect(pair(OLD.replace("tail", `esc to interrupt now${pad(4)}tail`)).verdict).toBe("PRECHECK: MINOR");
   });

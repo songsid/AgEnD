@@ -17,9 +17,11 @@ import ts from "typescript";
 
 export const SURFACES = ["dialog", "approval", "trust", "onboarding", "resume", "error", "idle-busy", "input-box", "exit", "other"] as const;
 export type Surface = typeof SURFACES[number];
-export interface ManifestLiteral { text: string; kind: "string" | "template" | "regex"; surface: Surface; file: string; line: number; symbol: string }
+/** retiredAfter: the last upstream release that had this text (sources.json `retired`): AgEnD keeps it for hosts still on
+ * an older release, and precheck lists it as expected-missing instead of a hard finding. */
+export interface ManifestLiteral { text: string; kind: "string" | "template" | "regex"; surface: Surface; file: string; line: number; symbol: string; retiredAfter?: string }
 export interface Manifest { format: 1; source: string; backends: Record<string, { literals: ManifestLiteral[] }> }
-interface SourceEntry { file: string; symbols?: string[]; exclude?: string[]; surfaces?: Record<string, Surface> }
+interface SourceEntry { file: string; symbols?: string[]; exclude?: string[]; surfaces?: Record<string, Surface>; retired?: Record<string, string> }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = join(HERE, "..", "..", "..");
@@ -182,7 +184,8 @@ export function literalsOf(entry: SourceEntry, source?: string): ManifestLiteral
   collect(sf);
   const add = (t: string, kind: ManifestLiteral["kind"], at: ts.Node, names: string[]) => {
     const line = sf.getLineAndCharacterOfPosition(at.getStart(sf)).line + 1;
-    out.push({ text: t, kind, surface: surfaceOf(names, entry.surfaces), file: entry.file, line, symbol: names.join(".") || "(top level)" });
+    const retired = names[0] !== undefined && entry.retired && Object.hasOwn(entry.retired, names[0]) ? entry.retired[names[0]] : undefined;
+    out.push({ text: t, kind, surface: surfaceOf(names, entry.surfaces), file: entry.file, line, symbol: names.join(".") || "(top level)", ...(retired ? { retiredAfter: retired } : {}) });
   };
   const isStringRaw = (n: ts.Node): n is ts.TaggedTemplateExpression =>
     ts.isTaggedTemplateExpression(n) && ts.isPropertyAccessExpression(n.tag) && ts.isIdentifier(n.tag.expression) && n.tag.expression.text === "String" && n.tag.name.text === "raw";
@@ -262,7 +265,7 @@ export function manifestJson(m: Manifest): string { return JSON.stringify(m, nul
  */
 export function manifestKeys(m: Manifest): string[] {
   const out: string[] = [];
-  for (const [b, { literals }] of Object.entries(m.backends)) for (const l of literals) out.push(JSON.stringify([b, l.text, l.kind, l.surface, l.file, l.symbol]));
+  for (const [b, { literals }] of Object.entries(m.backends)) for (const l of literals) out.push(JSON.stringify([b, l.text, l.kind, l.surface, l.file, l.symbol, l.retiredAfter ?? null]));
   return out.sort();
 }
 
