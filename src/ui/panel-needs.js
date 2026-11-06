@@ -195,7 +195,9 @@ export function NeedsPanel({ navKey }) {
   useEffect(() => { lease.interval(() => tick((n) => n + 1), 30_000); }, [lease]);
   // The chat store owns a prompt's busy/answered state; redraw when it changes (and when it arrives).
   useEffect(() => { if (owner) return owner.subscribe(() => tick((n) => n + 1)); return undefined; }, [owner, lease]);
-  const groups = groupNeeds(items);
+  const updates = items.filter(item => item.runtimeUpdate);
+  const groups = groupNeeds(items.filter(item => !item.runtimeUpdate));
+  if (updates.length) groups.push({ instance: "", items: updates });
   const nowMs = Date.now();
   return html`<div data-effect-panel="needs" class="panel p-needs">
     <${PanelHeader} title=${tn("title")} sub=${items.length + asks.length ? t("app.needsCount", items.length + asks.length) : null} />
@@ -206,8 +208,8 @@ export function NeedsPanel({ navKey }) {
         ${decidedHere.map(([id, d]) => html`<${ProposalResult} key=${id} result=${d} />`)}
       </section>` : null}
       ${!items.length && !asks.length && !decidedHere.length ? html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
-        : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config"])} class="n-group" aria-label=${g.instance}>
-          <h2 class="n-group-head">${g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
+        : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config", !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
+          <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
         </section>`)}
       <${NotifyToggle} />

@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { bootFixture, freshPage } from "../smoke-fixture/index.mts";
+import { bootFixture, freshPage, mounted } from "../smoke-fixture/index.mts";
 const repo=process.env.REPO!, out=process.env.OUT!;if(!repo||!out)throw Error("REPO and OUT required");
 mkdirSync(out,{recursive:true,mode:0o700});process.env.AGEND_REMOTE_RUNTIME="1";
 const oldHead="941296864bf30e60ee092a356665518401582b63", old=(path:string)=>execFileSync("git",["show",`${oldHead}:${path}`],{cwd:repo,encoding:"utf8"});
@@ -36,6 +36,7 @@ for(const device of ["desk","phone"] as const)for(const lang of ["en","zh-TW"] a
       }
     }});
     const page=p.page;
+    if(!await mounted(page,30000))throw Error("App bootstrap did not mount before navigation");
     await page.evaluate(async()=>{await import("/ui/js/runtime-commands.js");});
     // Keep the real older module instances, then fetch the current lazy panel in the same document.
     if(mode==="retained"){await p.ctx.unroute("**/assets/app-i18n.js*");await p.ctx.unroute("**/ui/js/runtime-commands.js*");}
@@ -48,6 +49,8 @@ for(const device of ["desk","phone"] as const)for(const lang of ["en","zh-TW"] a
     if(mode!=="old-panel"){
       need(cards.includes(lang==="en"?"Update pending":"更新待執行"),"pending copy");need(cards.includes(lang==="en"?"Update failed":"更新失敗"),"failed copy");
       need(cards.includes(target.version)&&cards.includes("aaaaaaaa")&&cards.includes("2.3.5-alpha.11"),"target and running code are distinct");
+      await page.locator('.runtime-update-notice').nth(0).screenshot({path:join(out,`${label}-pending.png`)});
+      await page.locator('.runtime-update-notice').nth(1).screenshot({path:join(out,`${label}-failed.png`)});
       const button=page.getByRole("button",{name:lang==="en"?"Show reinstall command":"顯示重新安裝指令"});await button.first().click();await page.waitForSelector(".runtime-command-card");
       const commands=await page.locator(".runtime-command-card").innerText();
       need(commands.includes("AGEND_RUNTIME_INSTALL_DIR")&&commands.includes("[Guid]::NewGuid()"),"fresh separate root");
@@ -57,10 +60,13 @@ for(const device of ["desk","phone"] as const)for(const lang of ["en","zh-TW"] a
     await page.screenshot({path:join(out,`${label}-runtime.png`),fullPage:true});
     await navigate("/ui/needs");await page.waitForSelector(".n-item");
     const needs=await page.locator(".n-item").allInnerTexts();need(needs.some((text:string)=>text.includes(target.version)&&text.includes("aaaaaaaa")),"failed target in Needs you");need(!needs.join(" ").includes("runtime.update."),"no raw server locale key");
-    if(mode!=="old-panel")need(await page.locator('.n-item a[href="/settings/runtimes"]').count()===1,"repair navigation without an approval action");
+    if(mode!=="old-panel"){
+      need(await page.locator('.n-item a[href="/settings/runtimes"]').count()===1,"repair navigation without an approval action");
+      need((await page.locator('.n-group-head').allInnerTexts()).includes(lang==="en"?"Runtime update needs attention":"Runtime 更新需要處理"),"Runtime has its own heading");
+    }
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth);need(overflow<=1,"no phone overflow");need(p.errors.length===0,JSON.stringify(p.errors));
     await page.screenshot({path:join(out,`${label}-needs.png`),fullPage:true});results.push({label,pass:true,errors:p.errors});
-  }catch(error){results.push({label,pass:false,error:String(error)});}finally{await p?.ctx.close();}
+  }catch(error){results.push({label,pass:false,error:String(error),errors:p?.errors??[]});if(p)await p.page.screenshot({path:join(out,`${label}-failure.png`),fullPage:true});}finally{await p?.ctx.close();}
 }
 }finally{await fm.stopNeedsYou();hub.close();await fx.close();}
 writeFileSync(join(out,"results.json"),JSON.stringify({oldHead,oldModules:[oldI18n,oldCommands,oldPanel,oldNeeds].map(text=>createHash("sha256").update(text).digest("hex")),results},null,2));

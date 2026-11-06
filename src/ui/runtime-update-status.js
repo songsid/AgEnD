@@ -1,16 +1,6 @@
 import { html } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
-import { runtimeInstallCommand } from "./runtime-commands.js";
-
-/** Uses an existing export even when the older lazy commands module is retained in a tab. */
-export function runtimeFreshInstallCommand(server, scriptSha256) {
-  const command = runtimeInstallCommand(server, scriptSha256);
-  if (!command) return "";
-  return `$agendFresh = $null; $agendFresh = Join-Path $env:LOCALAPPDATA ('agend-runtime-' + [Guid]::NewGuid().ToString('N')); `
-    + `if ($agendFresh -and -not (Test-Path -LiteralPath $agendFresh)) { $env:AGEND_RUNTIME_INSTALL_DIR = $agendFresh; `
-    + `if ($env:AGEND_RUNTIME_INSTALL_DIR -eq $agendFresh) { ${command} } else { throw 'A fresh Runtime folder could not be selected' } } `
-    + `else { throw 'A fresh Runtime folder could not be selected' }`;
-}
+export { runtimeFreshInstallCommand } from "./runtime-update-commands.js";
 
 // Lazy-owned copy also works with a shell opened before this feature existed.
 register("runtimeUpdate", {

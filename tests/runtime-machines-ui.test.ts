@@ -84,6 +84,16 @@ describe("remote machine UI",()=>{
     const notice=p.root.querySelector(".runtime-update-notice");expect(notice.textContent).toContain(updateUi.runtimeUpdateText("unknown"));expect(notice.textContent).toContain(updateUi.runtimeUpdateText("last"));expect(notice.textContent).not.toContain(updateUi.runtimeUpdateText("current"));
     expect(updateUi.runtimeFreshInstallCommand("https://other.test/path",SCRIPT_SHA)).toBe("");expect(updateUi.runtimeFreshInstallCommand("https://other.test","invalid")).toBe("");
   });
+  it("Needs you groups the failed build under Runtime and offers navigation without an approval action",async()=>{
+    const {NeedsPanel}=await import("/ui/js/panel-needs.js"),updateUi=await import("/ui/js/runtime-update-status.js");
+    app.appStore.set({proposals:[],needs:[{id:"runtime-update:fake:hash",type:"runtime",instance:"",reason:"dialog",runtimeUpdate:true,since:1,detail:"Fake desktop: update failed 2.3.5-alpha.12 / aaaaaaaa"}]});
+    try {
+      await p.mount(h(NeedsPanel,{navKey:"runtime-needs"}));await settle(8);
+      expect(p.root.querySelector(".n-group-head").textContent).toBe(updateUi.runtimeUpdateText("attention"));
+      expect(p.root.querySelector('.n-item a[href="/settings/runtimes"]').textContent).toBe(updateUi.runtimeUpdateText("open"));
+      expect(p.root.querySelector(".n-item").textContent).toContain("2.3.5-alpha.12");expect(p.root.querySelectorAll(".n-item button")).toEqual([]);
+    } finally {app.appStore.set({needs:[]});}
+  });
   it("shows the selected Runtime's reported version, build and compatibility, with an explicit legacy fallback",async()=>{
     machines[0]={...machines[0],runtimeInfo:{version:"2.3.5-alpha",buildId:"a".repeat(64),protocolVersions:[1],capabilities:["exec","mcp","panes"]},runtimeCompatibility:"compatible"};
     await p.mount(h(Panel,{navKey:"runtime-version-info"}));await settle(12);

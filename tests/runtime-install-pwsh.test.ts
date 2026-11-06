@@ -9,6 +9,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import type { RuntimeBundle } from "../src/runtime-bundle.js";
 import { RUNTIME_BUNDLE_PATH, RUNTIME_INSTALL_SCRIPT_PATH, RuntimeInstallService } from "../src/runtime-install.js";
 import { runtimeInstallCommand } from "../src/ui/runtime-commands.js";
+import { runtimeFreshInstallCommand } from "../src/ui/runtime-update-commands.js";
 import { extractPsFunction } from "./support/installer-ps-extract.js";
 import { acquireRuntimeInstallLock, parseRuntimeInstallLock, RUNTIME_INSTALL_LOCK } from "../src/runtime-update-lock.js";
 import { readRuntimeInstallReceipt, RUNTIME_INSTALL_RECEIPT } from "../src/runtime-update-install.js";
@@ -144,6 +145,24 @@ const serveScript = (bytes: Buffer, status = 200) => (req: IncomingMessage, res:
 };
 
 describe.skipIf(!pwsh)("with pwsh: the page's command and install.ps1, run against a loopback server", { timeout: 180_000 }, () => {
+  it("the fresh-root repair command runs only in a new folder with the pinned script; blocked controls never fall back", async () => {
+    const s=scratch(), sentinel="Write-Output ('FRESH-RAN:' + $env:AGEND_RUNTIME_INSTALL_DIR)", quoted=(value:string)=>`'${value.replace(/'/g,"''")}'`;
+    const file=join(s.root,"fresh-command.ps1");writeFileSync(file,runtimeFreshInstallCommand("https://paired.example.test",sha(Buffer.from(sentinel))));
+    const out=await helperRun(s,`$ErrorActionPreference='Continue'
+      function global:Invoke-WebRequest { param($Uri,[switch]$UseBasicParsing); [pscustomobject]@{Content=$global:Sentinel} }
+      function global:Test-Path { param($LiteralPath); if($global:Collision){return $true}; Microsoft.PowerShell.Management\\Test-Path -LiteralPath $LiteralPath }
+      foreach($case in @('valid','no-home','exists','bad-download')) {
+        $env:LOCALAPPDATA=${quoted(s.local)}; $env:AGEND_RUNTIME_INSTALL_DIR=${quoted(s.install)}
+        $global:Collision=$case -eq 'exists'; $global:Sentinel=${quoted(sentinel)}
+        if($case -eq 'no-home'){$env:LOCALAPPDATA=''}
+        if($case -eq 'bad-download'){$global:Sentinel='Write-Output UNVERIFIED'}
+        Write-Output ('CASE:'+$case)
+        try { & ${quoted(file)} } catch { Write-Output ('BLOCKED:'+$case) }
+      }`);
+    expect((out.match(/FRESH-RAN:/g)??[])).toHaveLength(1);expect(out).toContain(`FRESH-RAN:${join(s.local,"agend-runtime-")}`);
+    for(const blocked of ['no-home','exists','bad-download'])expect(out).toContain(`BLOCKED:${blocked}`);
+    expect(out).not.toContain('UNVERIFIED');expect(readdirSync(s.local)).toEqual([]);
+  });
   it("runs the page's command: downloads the script, checks its hash, then installs under <LOCALAPPDATA>\\agend-runtime\\<version> and only prints the connect command", async () => {
     const s = scratch(), r = await run(s);
     expect(r.code, r.out).toBe(0); expect(r.verifyFailed).toBe(false);
