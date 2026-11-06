@@ -36,8 +36,13 @@ describe("static", () => {
     expect(code).not.toMatch(/\$null = Invoke-Watched[^\n]*dism\.exe/);          // no discarded DISM exit code
   });
   it("a fresh install that did not produce the distro falls back to the image import", () => {
-    const fresh = code.slice(code.indexOf('-Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")'));
-    expect(fresh).toMatch(/^[^\n]+\n\s+\$afterFresh = Get-WslDistroNames\n\s+if \(\$null -ne \$afterFresh -and \$afterFresh -notcontains \$UBUNTU_DISTRO\) \{\n[^\n]+\n\s+if \(-not \(Install-AgendDistro \$UBUNTU_DISTRO \$wslPath\)\) \{/);
+    const shared = code.slice(code.indexOf('function Install-AgendDistro('), code.indexOf('function Write-WslDeclined'));
+    expect(code).toContain('Install-AgendDistro $UBUNTU_DISTRO $wslPath -UseVersionName:$useVersionName -InstalledName ([ref]$UBUNTU_DISTRO)');
+    expect(shared).toMatch(/-Arguments @\("--install", \$candidate, "--name", \$target, "--location", \$location, "--no-launch"\)/);
+    expect(shared.indexOf('$after = Get-WslDistroNames')).toBeLessThan(shared.indexOf('$image = Get-UbuntuWslImage $candidate'));
+    expect(shared).toContain('if ($after -contains $target) {');
+    expect(shared).toContain('-Arguments @("--import", $target, $location, $file, "--version", "2")');
+
   });
   it("the WSL MSI download has a deadline", () => {
     expect(code).toMatch(/Invoke-InstallDownload -Uri \$msiAsset\.browser_download_url -OutFile \$wslMsi -TimeoutSec \d+/);

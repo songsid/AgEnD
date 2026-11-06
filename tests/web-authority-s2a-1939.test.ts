@@ -373,6 +373,45 @@ describe("§0 sessions authorized once: the store", () => {
       expect(t.s.prune(() => true)).toEqual({ dropped: 0, durable: true });
       expect(t.restart()).toEqual([B]);
     });
+    it("#3082 review: the old file already gone (unlink ENOENT) counts as removed — durable, and a later failed write only owes the newest", () => {
+      const t = twoSaved();
+      t.m.io.fail = true;
+      const unlinks: string[] = [];
+      t.m.io.unlink = p => { unlinks.push(p); t.m.files.delete(p); throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); };
+      expect(t.s.prune(a => a.handle !== H)).toEqual({ dropped: 1, durable: true });
+      expect(t.l.warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining("removed the old file"));
+      // `persisted` was reset with the removal: nothing on disk can come back, so the next failed write is only "behind"
+      // and removes nothing more.
+      expect(t.s.prune(a => a.handle !== B)).toEqual({ dropped: 1, durable: true });
+      expect(unlinks).toEqual(["/a.json"]);
+      expect(t.l.warn).toHaveBeenLastCalledWith(expect.anything(), expect.stringContaining("will retry"));
+      expect(t.restart()).toEqual([]);
+    });
+    it("#3082 review: list() retries an owed write once its wait is over — not before", () => {
+      const t = twoSaved();
+      t.m.io.fail = true;
+      t.s.authorize("c".repeat(16), OWNER, 3, 1, 3 + HOUR_MS);                                     // owed
+      t.m.io.fail = false;
+      t.advance(SESSION_AUTHORIZATIONS_RETRY_MS - 1); t.s.list();
+      expect(t.restart(), "not before its wait").toEqual([H, B]);
+      t.advance(1); t.s.list();
+      expect(t.restart(), "retried by list()").toEqual([H, B, "c".repeat(16)]);
+    });
+    it("#3082 review: neither rewritten nor removed — 'could not be removed' is said once per failure streak, not at every retry", () => {
+      const t = twoSaved();
+      t.m.io.fail = true; t.m.io.failUnlink = true;
+      const said = () => t.l.warn.mock.calls.filter((c: unknown[]) => String(c[1]).includes("could not be removed")).length;
+      t.s.prune(a => a.handle !== H);
+      for (let i = 0; i < 5; i++) { t.advance(SESSION_AUTHORIZATIONS_RETRY_MS); t.s.list(); }      // five retries, all refused
+      expect(said()).toBe(1);
+      t.m.io.fail = false; t.m.io.failUnlink = false;
+      t.advance(SESSION_AUTHORIZATIONS_RETRY_MS); t.s.list();                                       // a write lands: the streak ends
+      expect(t.restart()).toEqual([B]);
+      t.s.authorize(H, OWNER, 4, 1, 4 + HOUR_MS);                                                   // H back on disk
+      t.m.io.fail = true; t.m.io.failUnlink = true;
+      t.s.prune(a => a.handle !== H);                                                               // a new streak
+      expect(said()).toBe(2);
+    });
     it("a file that is only behind (nothing dropped on it) is not removed: a restart only forgets the newest", () => {
       const t = twoSaved();
       t.m.io.fail = true;
