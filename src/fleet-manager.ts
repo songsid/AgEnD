@@ -328,7 +328,7 @@ import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
-import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
+import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardOffIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
 import {
   mayUseTool,
   resolveToolSet,
@@ -18894,9 +18894,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.taskBoardWaker?.stop();
     // #2303: each instance's cards at once, read at every claim (a fleet.yaml edit applies to the next one).
     db.board.setCardLimit((name) => boardCardLimit(this.fleetConfig, name));
+    // An instance with the task board switched off is handed no cards and sent no notices (read at each write and wake).
+    db.board.setBoardOff((name) => taskBoardOffIn(this.fleetConfig, name));
     const waker = this.taskBoardWaker = new TaskBoardWaker({
       deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
       // #2785 (c), #2801: the maker's own message already told it; the board's line would repeat it.
       messagedAbout: (from, to, codes, sinceMs) => {
         const outbox = this.deliveryOutbox;
