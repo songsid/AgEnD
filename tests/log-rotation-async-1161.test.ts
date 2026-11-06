@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, appendFileSync, constants, promises as fsp } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, appendFileSync, unlinkSync, symlinkSync, constants, promises as fsp } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { rotateLogIfNeeded, rotateLogIfNeededAsync } from "../src/logger.js";
@@ -57,8 +57,8 @@ describe("rotateLogIfNeededAsync: same result as the sync rotation", () => {
     writeFileSync(log, "A".repeat(100));
     const open = vi.spyOn(fsp, "open");
     await rotateLogIfNeededAsync(log, 50, 3);
-    // Truncate opens O_WRONLY|O_NOFOLLOW; pin that the live file is not re-read (O_RDONLY).
-    expect(open.mock.calls.filter(([, flags]) => isReadOnlyOpen(flags))).toEqual([]);
+    // Copy opens the live file O_RDONLY|O_NOFOLLOW once. No second (delta) re-read.
+    expect(open.mock.calls.filter(([, flags]) => isReadOnlyOpen(flags))).toHaveLength(1);
   });
 
   it("a ballooned log is dropped in place without a copy, rotated files removed", async () => {
@@ -182,6 +182,37 @@ describe("rotateLogIfNeededAsync: the writer keeps appending while the copy runs
     }) as never);
     await rotateLogIfNeededAsync(log, 50, 3);
     expect(order).toEqual(["copied", "truncated"]);
+  });
+
+  it("a live path swapped to a symlink mid-copy does not put the target in .1", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const victim = join(dir, "victim.log");
+    writeFileSync(victim, "SECRET");
+    const realCopy = fsp.copyFile.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => {
+      unlinkSync(log);
+      symlinkSync(victim, log);
+      await realCopy(src, dst, mode);
+    });
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(victim, "utf8")).toBe("SECRET");
+    expect(readFileSync(`${log}.1`, "utf8")).toBe("A".repeat(100));
+  });
+
+  it("a .1 path swapped to a symlink after the copy does not take the delta", async () => {
+    writeFileSync(log, "A".repeat(100));
+    const victim = join(dir, "victim.log");
+    writeFileSync(victim, "SECRET");
+    const realCopy = fsp.copyFile.bind(fsp);
+    vi.spyOn(fsp, "copyFile").mockImplementation(async (src, dst, mode) => {
+      await realCopy(src, dst, mode);
+      unlinkSync(String(dst));
+      symlinkSync(victim, String(dst));
+      appendFileSync(log, "LATE");
+    });
+    await rotateLogIfNeededAsync(log, 50, 3);
+    expect(readFileSync(victim, "utf8")).toBe("SECRET");
+    expect(readFileSync(log, "utf8")).toBe(`${"A".repeat(100)}LATE`);
   });
 });
 
