@@ -37,7 +37,8 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
   const env = { ...process.env, USERPROFILE: user, HOME: user, LOCALAPPDATA: join(user, 'AppData', 'Local'), APPDATA: join(user, 'AppData', 'Roaming'),
     PATH: `${dirname(process.execPath)};${join(systemRoot, 'System32')}`, AGEND_RUNTIME_NO_PATH: '1', AGEND_RUNTIME_INSTALL_DIR: install };
   const log = [], events = [], requests = [], proofs = new Map(), machineId = randomUUID();
-  let target = a, generations = 0, normal = 0, trial = 0, busy = 0, activations = 0, activates = [], runner, observe, matches, store, scan, failure, runnerFailure;
+  let target = a, generations = 0, normal = 0, trial = 0, busy = 0, activations = 0, activates = [], runner, observe, matches, acquire, store, scan, failure, runnerFailure;
+  let holdArchive = false, heldArchive;
   const waitFor = (check, label) => until(() => { if (runnerFailure) throw runnerFailure; return check(); }, label);
   const server = createServer((req, res) => {
     requests.push(req.url);
@@ -46,7 +47,10 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
     }
     res.setHeader('ETag', `"${target.version}-${target.sha256}"`);
     if (req.url === '/runtime/v1/bundle/windows.json') { res.end(JSON.stringify({ version: target.version, sha256: target.sha256, bytes: target.bytes })); return; }
-    if (req.url === '/runtime/v1/bundle/windows.zip') { res.end(mode === 'sha' && target === b ? a.archive : target.archive); return; }
+    if (req.url === '/runtime/v1/bundle/windows.zip') {
+      if (holdArchive) { heldArchive = res; return; }
+      res.end(mode === 'sha' && target === b ? a.archive : target.archive); return;
+    }
     res.writeHead(404).end();
   });
   const sockets = new WebSocketServer({ noServer: true });
@@ -104,7 +108,25 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
     assert.equal(await installing.finished, 0); assert.equal(pointer(), folderA);
     const receipt = JSON.parse(readFileSync(join(install, '.agend-runtime-install.json'), 'utf8')); assert.deepEqual(receipt.origins, [origin]); assert.equal(receipt.shared, false);
     const imported = await import(pathToFileURL(join(install, folderA, 'dist/runtime-client-store.js')));
-    ({ observeRuntimeProcess: observe, runtimeProcessMatches: matches } = await import(pathToFileURL(join(install, folderA, 'dist/runtime-update-lock.js'))));
+    ({ observeRuntimeProcess: observe, runtimeProcessMatches: matches, acquireRuntimeInstallLock: acquire } = await import(pathToFileURL(join(install, folderA, 'dist/runtime-update-lock.js'))));
+    if (mode === 'busy') {
+      const lease = await acquire(install, { type: 'installer' });
+      try {
+        const conflict = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], env, log);
+        assert.notEqual(await conflict.finished, 0); lease.assert(); assert.equal(pointer(), folderA);
+      } finally { lease.release(); }
+      holdArchive = true;
+      const powershell = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], env, log);
+      await until(() => !!heldArchive, 'PowerShell-held download');
+      const lockFile = join(install, '.agend-runtime-install.lock/owner.json'), proof = JSON.parse(readFileSync(lockFile, 'utf8'));
+      assert.equal(matches(proof, await observe(proof.pid)), true);
+      await assert.rejects(acquire(install, { type: 'supervisor' }), error => error.reason === 'held');
+      holdArchive = false; heldArchive.end(a.archive); assert.equal(await powershell.finished, 0);
+      // A positively ended PowerShell writer may be reclaimed by Node with the exact original proof.
+      const lockDir = join(install, '.agend-runtime-install.lock'); mkdirSync(lockDir); writeFileSync(join(lockDir, 'owner.json'), JSON.stringify(proof));
+      const stale = await acquire(install, { type: 'supervisor' }); stale.release();
+      console.log(JSON.stringify({ leg: mode, step: 'native-shared-lock-controls-pass' }));
+    }
     store = new imported.RuntimeClientStore(profile); store.saveCredentials({ server: origin, machineId, credential: 'b'.repeat(64), name: 'Fake rehearsal Runtime' });
     const credentials = readFileSync(join(profile, 'connection.json'), 'utf8');
     runner = execute(join(systemRoot, 'System32/cmd.exe'), ['/d', '/s', '/c', `""${join(install, 'bin/agend-runtime.cmd')}" run --profile "${profile}""`], env, log);
@@ -126,6 +148,17 @@ for (const mode of ['busy', 'sha', 'forward', 'rollback', 'lost-ack']) {
     for (const proof of proofs.values()) if (matches(proof, await observe(proof.pid)) === true) process.kill(proof.pid);
     for (const proof of proofs.values()) await until(async () => matches(proof, await observe(proof.pid)) === false, 'owned process exit', 30_000);
     if (runner) await runner.finished;
+    if (!failure && mode === 'busy') {
+      // Reverse direction: PowerShell reclaims an actually ended Node writer, not a made-up PID.
+      const proof = proofs.values().next().value, lockDir = join(install, '.agend-runtime-install.lock');
+      assert.ok(proof); mkdirSync(lockDir); writeFileSync(join(lockDir, 'owner.json'), JSON.stringify({ version: 1, type: 'supervisor', nonce: randomUUID(), ...proof }));
+      target = a;
+      const command = runtimeInstallCommand(origin, createHash('sha256').update(template.replaceAll('@@AGEND_RUNTIME_VERSION@@', a.version).replaceAll('@@AGEND_RUNTIME_SHA256@@', a.sha256)).digest('hex'));
+      const encoded = Buffer.from(`[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); ${command}; if ($LASTEXITCODE) { exit $LASTEXITCODE }`, 'utf16le').toString('base64');
+      const reclaiming = execute(join(systemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], env, log);
+      assert.equal(await reclaiming.finished, 0); assert.equal(existsSync(lockDir), false); assert.equal(pointer(), folderA);
+      results.at(-1).nativeSharedLockControls = ['Node blocks PowerShell', 'PowerShell blocks Node', 'Node reaps ended PowerShell', 'PowerShell reaps ended Node'];
+    }
     for (const ws of sockets.clients) ws.terminate(); await new Promise(done => sockets.close(done));
     server.closeAllConnections(); await new Promise(done => server.close(done));
     if (!failure) rmSync(root, { recursive: true, force: true });
