@@ -245,6 +245,7 @@ describe("the Fleet page's chip, rendered", () => {
       await settle(4);
       const chip = pg.root.querySelector(".panel-head .host-mem");
       expect(chip.querySelector(".host-mem-top").textContent).toBe("Largest: python3 18.1 GB (dev-a) · node 176 MB (the fleet) · tmux: server 9 MB (tmux)");
+      expect(chip.querySelector(".host-mem-top").getAttribute("title")).toBe(chip.querySelector(".host-mem-top").textContent);
       expect(chip.textContent.startsWith("Host memory pressure: elevated — new agents start one at a time, at least 5 s apart")).toBe(true);
       store.applyStatus({ instances: [], uptime: 1, host_memory: null, host_memory_top: TOP_WIRE });
       await settle(4);
