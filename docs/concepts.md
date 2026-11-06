@@ -273,6 +273,15 @@ finishing it from review with done.
   instances.
 - Can't: substitute for chat consensus — a blocked card still needs the person
   (or the dispatcher) to answer.
+- Roles, projects (#3195; the user's decision 9af8d799, 2026-11-06): an agent
+  may create a project (`create_project`: name, description) and move a main
+  task into, between or out of projects by the project's id (`update` with
+  `project`, or `move_project` for several, each card on its own) when it may
+  edit that card: unassigned, assigned to it, created by it, or dispatched by
+  it. Archived projects are refused; a sub task follows its main task and
+  never moves alone. A project's lead, renaming and archiving stay a person's,
+  and a person may do all of it. Before this, creating projects and moving a
+  main task between them were a person's only.
 - Code: the `task` tool (`src/channel/mcp-tools.ts:79-80`).
 - Refs: —
 

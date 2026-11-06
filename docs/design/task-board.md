@@ -21,7 +21,7 @@ did not fit it, and nothing in it waited for the person:
 
 | | |
 |---|---|
-| Project | A group of related work, created by the person (name, description, archived). |
+| Project | A group of related work (name, description, archived), created by the person or an agent; only the person changes or archives one (#3195). |
 | Main task (M-n) | An outcome. In a project, or in none ("No project": every `task` tool task for now). |
 | Sub task (S-n) | A step of a main task; not split further. Its project is its main task's. |
 
@@ -201,6 +201,13 @@ a `status` is one write: a refused move leaves the fields as they were); `get` o
 / `parent` answer with the card or a line per card. The answers are plain text (`src/scheduler/task-board-text.ts`):
 an agent reads a card in a dozen short lines, not a JSON record. The tool's own tasks are answered as before; list rows
 carry `code`.
+
+A field an action does not take is refused by name and nothing is written (#3195). Projects (#3195, the user's decision
+9af8d799): `create_project` (name, description) creates one; `update` with `project` (the project's id, or null /
+`"none"`) moves a main task into, between or out of projects when the agent may edit that card (unassigned, its own,
+its creation or one it dispatches), its sub tasks following; `move_project` (`ids` + `project`) does that for several,
+each card moved or refused on its own with a line per card. Archived projects are refused; a project's lead, renaming
+and archiving stay the person's.
 
 The loop the person's confirmation needs closes through the tool: `done` on a held card answers that it waits for the
 person; `mine` lists "sent back to you" with the reason; `get` shows the comments new to the assignee and the latest
