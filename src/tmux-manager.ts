@@ -136,7 +136,12 @@ export class TmuxManager implements Pane {
 
   // === Static session-level methods ===
 
+  /** M-2457 §6: while set, no session is created (an old tmux server AgEnD could not prove its own may hold the socket). */
+  private static heldReason: string | null = null;
+  static setHold(reason: string | null): void { TmuxManager.heldReason = reason; }
+
   static async ensureSession(name: string): Promise<void> {
+    if (TmuxManager.heldReason) throw new Error(TmuxManager.heldReason);
     const existing = TmuxManager.ensureSessionInFlight.get(name);
     if (existing) return existing;
     const operation = (async () => {
