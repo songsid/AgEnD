@@ -9,7 +9,7 @@ import { afterAll, beforeAll } from "vitest";
 export const hasPwsh = spawnSync(process.platform === "win32" ? "where.exe" : "which", ["pwsh"]).status === 0;
 // Leave headroom inside Vitest's unchanged 10 s hook limit. Startup and a case
 // are different operations; cold pwsh must not spend the first case's budget.
-const STARTUP_MS = 8_000;
+const STARTUP_MS = 30_000; // DIAGNOSTIC observation window; draft, not final budget.
 export class InstallerPsBatch {
   private child?: ChildProcessWithoutNullStreams;
   private dir?: string;
@@ -25,7 +25,7 @@ export class InstallerPsBatch {
   constructor(private templates: Record<string, string>, warmInSetup = true) {
     // Lazy until fixture setup; every consumer (including adapters) gets a warm
     // worker before its first case, without enlarging either Vitest timeout.
-    if (warmInSetup) beforeAll(async () => { if (hasPwsh) await this.ready(); });
+    if (warmInSetup) beforeAll(async () => { if (hasPwsh) await this.ready(); }, 31_000); // DIAGNOSTIC START hook only
     afterAll(async () => {
       if (this.child) {
         if (this.child.exitCode === null && this.child.signalCode === null) {
@@ -44,7 +44,7 @@ export class InstallerPsBatch {
       this.readyResolve = resolve; this.readyReject = reject;
     });
     this.startupTimer = setTimeout(() => {
-      this.fail(new Error("pwsh startup readiness exceeded 8 s"));
+      this.fail(new Error("pwsh startup readiness exceeded 30 s"));
       this.child?.kill();
     }, STARTUP_MS);
     try { this.start(); } catch (e) { this.fail(e instanceof Error ? e : new Error(String(e))); }
@@ -111,7 +111,9 @@ while($null -ne ($line=[Console]::ReadLine())) {
     this.child.stderr.on("data", (b: Buffer) => { this.stderr += b; });
     createInterface({ input: this.child.stdout }).on("line", line => {
       try {
-        if (line === "__AGEND_BOOT__" && this.readyResolve) { bootstrapMs = performance.now() - started; return; }
+        if (line === "__AGEND_BOOT__" && this.readyResolve) { bootstrapMs = performance.now() - started;
+          if (process.env.CI) process.stderr.write(`[pwsh-bootstrap] ${JSON.stringify({bootstrapMs:Math.round(bootstrapMs), templateBytes:Object.values(this.templates).reduce((n,s)=>n+Buffer.byteLength(s),0)})}\n`);
+          return; }
         const ready = /^__AGEND_READY__(\d+)$/.exec(line);
         if (ready && this.readyResolve) {
           clearTimeout(this.startupTimer); this.startupTimer = undefined;
