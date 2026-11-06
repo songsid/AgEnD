@@ -116,9 +116,12 @@ async function main(argv) {
     // Paths of this build never reach the binary: the second build, in another directory, must be byte-identical.
     CFLAGS: `-O2 -fstack-protector-strong -D_FORTIFY_SOURCE=2 -ffile-prefix-map=${work}=. -I${deps}/include -I${deps}/include/ncursesw`,
     CPPFLAGS: `-I${deps}/include -I${deps}/include/ncursesw`,
-    LDFLAGS: `-L${deps}/lib`,
+    // macOS: ld64 records each object file's absolute path in the debug map (N_OSO) and hashes the output into LC_UUID,
+    // which strip keeps — so the paths must be relative (-oso_prefix) and ar must write no member dates (ZERO_AR_DATE),
+    // else the second build differs (the first macOS dry run with jemalloc fixed, run 42266564411: "differ: char 1705").
+    LDFLAGS: `-L${deps}/lib${darwin ? ` -Wl,-oso_prefix,${work}/` : ""}`,
     PKG_CONFIG_PATH: join(deps, "lib/pkgconfig"),
-    ...(darwin ? { MACOSX_DEPLOYMENT_TARGET: "11.0" } : {}),
+    ...(darwin ? { MACOSX_DEPLOYMENT_TARGET: "11.0", ZERO_AR_DATE: "1" } : {}),
     ...toolchainEnv(target, sources),
   };
   const parts = partsFor(sources, target);

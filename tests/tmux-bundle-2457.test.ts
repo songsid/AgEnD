@@ -433,4 +433,11 @@ describe("the darwin build links jemalloc the way tmux's configure finds it", ()
     expect(src).toMatch(/PKG_CONFIG_PATH: join\(deps, "lib\/pkgconfig"\)/);
     expect(partsFor(readSources(), "darwin-arm64")).toContain("jemalloc");
   });
+
+  it("a darwin build is reproducible: object paths relative in the debug map, ar member dates zeroed", () => {
+    // ld64 hashes the output (debug map included) into LC_UUID, which strip keeps; the second build runs elsewhere.
+    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
+    expect(src).toContain("LDFLAGS: `-L${deps}/lib${darwin ? ` -Wl,-oso_prefix,${work}/` : \"\"}`");
+    expect(src).toMatch(/darwin \? \{ MACOSX_DEPLOYMENT_TARGET: "11\.0", ZERO_AR_DATE: "1" \}/);
+  });
 });
