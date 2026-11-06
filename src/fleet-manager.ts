@@ -191,6 +191,18 @@ export const LIVE_TASK_STATUSES: string[] = ["open", "claimed", "blocked", "revi
  * " \t " and [" ", "\t"] both normalize to undefined (not treated as explicit
  * filters). The same result drives the live-only default and the cap decision.
  */
+/**
+ * #3195: the saved value of each plain-update field the call named (assignee, priority, result), read back from the
+ * task — so the answer shows what was persisted, not what was asked. Status is always in the ack already.
+ */
+export function savedFields(t: Task, named: Record<string, unknown>): Partial<Pick<Task, "assignee" | "priority" | "result">> {
+  const out: Partial<Pick<Task, "assignee" | "priority" | "result">> = {};
+  if (named.assignee !== undefined) out.assignee = t.assignee;
+  if (named.priority !== undefined) out.priority = t.priority;
+  if (named.result !== undefined) out.result = t.result;
+  return out;
+}
+
 export function normalizeStatusFilter(v: unknown): string | string[] | undefined {
   if (typeof v === "string") {
     const s = v.trim();
@@ -12249,6 +12261,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const asStatusFilter = normalizeStatusFilter;
     // #1336: small write ack — identifying fields only.
     const ack = (t: Task) => ({ id: t.id, status: t.status, updated_at: t.updated_at });
+    // #3195: an update's ack also carries what was SAVED for each field it named, read back from the task.
+    const updatedAck = (t: Task, named: Record<string, unknown>) => ({ ...ack(t), ...savedFields(t, named) });
     // The board's notes for the write (a send-back reason, a comment the assignee had not seen): with the ack when any.
     const noted = <T extends object>(a: T): T | (T & { notes: string[] }) => { const notes = db.board.takeNotes(); return notes.length ? { ...a, notes } : a; };
     try {
@@ -12300,12 +12314,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         case "update": {
           const id = asStr(args.id);
           if (!id) return { error: "id is required" };
-          return noted(ack(db.updateTask(db.getTaskByPrefix(id).id, {
+          return noted(updatedAck(db.updateTask(db.getTaskByPrefix(id).id, {
             status: asStatus(args.status),
             assignee: asStr(args.assignee),
             result: asStr(args.result),
             priority: asPriority(args.priority),
-          }, { kind: "instance", name: instance })));
+          }, { kind: "instance", name: instance }), args));
         }
         default: return { error: `Unknown task action: ${action}` };
       }
@@ -12459,7 +12473,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             result: payload.result as string | undefined,
             priority: payload.priority as string | undefined,
           } as Record<string, unknown>, { kind: "instance", name: meta.instance_name || instanceName });
-          result = noted(ack(logTask));
+          // #3195: with what was SAVED for each field the update named, read back from the task.
+          result = noted({ ...ack(logTask), ...savedFields(logTask, payload) });
           break;
         default:
           throw new Error(`Unknown task action: ${action}`);
