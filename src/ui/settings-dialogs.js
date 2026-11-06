@@ -317,7 +317,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
       <div class="field">${L(tn("description"), "instance.description", "ag-desc")}<input id="ag-desc" type="text" value=${f.description} onInput=${(e) => set("description")(e.target.value)} /></div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
         backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
-      ${(f.backend || defaults.backend || "claude-code") === "codex" ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed")}
+      ${(f.backend || defaults.backend || "claude-code") === "codex" && inst.runtime !== "windows" ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed")}
         <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
           options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
         <p class="note">${tn("codexSpeedHint")}</p></div>` : null}

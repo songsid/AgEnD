@@ -213,8 +213,14 @@ jobs:
   # Real pwsh/installer suites run alone: the START gate cannot reserve CPU
   # from unrelated Vitest workers in a general unit shard.
   test-pwsh:
-    runs-on: ubuntu-24.04
+    name: test-pwsh${{ matrix.os == 'ubuntu-26.04' && ' (ubuntu-26.04)' || '' }}
+    runs-on: ${{ matrix.os }}
     needs: [detect-changes, setup]
+    strategy:
+      fail-fast: false
+      matrix:
+        # The unit shards' release OS matrix: 24.04 on PRs and branches, 24.04 and 26.04 on tags, manual and scheduled runs.
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))) && '["ubuntu-24.04", "ubuntu-26.04"]' || '["ubuntu-24.04"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Skip installer tests on a text-only PR
