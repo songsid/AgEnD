@@ -14,7 +14,7 @@ const clean:Array<()=>unknown>=[];afterEach(async()=>{for(const f of clean.splic
 async function fixture(provider:"codex"|"claude-code"="claude-code"){
  const root=mkdtempSync(join(tmpdir(),"agend-native-manager-"));clean.push(()=>rmSync(root,{recursive:true,force:true}));const bridge:any={start:vi.fn(()=>{throw Error("No exec spawn");}),get:()=>null,prepareWorkspace:vi.fn()};
  const store=new WindowsAgents(root,bridge),agent=await store.create({name:"Native",cwd:"C:\\scratch",cli:provider,sandbox:"read-only"});store.bindInstance(agent.id,"native");const config={...nativeInstanceConfig(agent),native_adapter:"pane" as const},hostBootId=randomUUID(),machineId=randomUUID();let owner:PaneMcpOwner|undefined,exit=(value:any)=>{};
- const process={pid:12345,write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:()=>({dispose(){}}),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
+ const process={pid:12345,version:provider==="codex"?"0.165.0":"2.1.316",write:vi.fn(),resize:vi.fn(),pause:vi.fn(),resume:vi.fn(),kill:vi.fn(()=>exit({exitCode:0})),onData:()=>({dispose(){}}),onExit:(fn:typeof exit)=>{exit=fn;return{dispose(){}};}};
  const spawn=vi.fn(async()=>process),host=new RuntimePaneHost({sessionProof:async()=>"saved",store:new RuntimePaneStore(join(root,"runner")),bootId:hostBootId,systemBootId:"a".repeat(64),online:()=>true,maxAgents:()=>4,spawn,mcpConnection:(value,tools)=>{owner=value;return{endpoint:"http://127.0.0.1:1/agent",token:"a".repeat(64),owner:value,tools};},transcript:()=>({read:async cursor=>{if(!cursor)throw Error("Fixture requires a transcript cursor");return {state:"pending" as const,cursor,data:"",lines:[],complete:false,gap:false};},close:async()=>{}})});let hostAbandoned=false;clean.push(()=>hostAbandoned?Promise.resolve():host.stop());
  let published=false,version=provider==="codex"?"Codex 0.165.0":"Claude Code 2.1.316";const invoke=vi.fn(async()=>({result:"ok"})),endpoint={machineId:"local",online:()=>true,epoch:()=>"connection-1",version:()=>version,call:vi.fn((request:any)=>host.request(request)),subscribe:()=>()=>{}};
  const options:NativePaneManagerOptions={home:root,store,config:()=>config,endpoint:async()=>endpoint,admit:vi.fn(),instructions:()=>"Fixed scoped instructions",menu:()=>[{name:"reply"}],allowed:()=>true,published:()=>published,invoke};
@@ -66,8 +66,16 @@ it("changed retained settings or an unknown active profile hold instead of fresh
  const f=await fixture(),first=await f.manager.prepare("native",f.config,()=>{});await first.acquire(()=>{});await first.release("detach");f.config.model="different-model";
  await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("settings differ");expect(f.spawn).toHaveBeenCalledOnce();expect(f.process.kill).not.toHaveBeenCalled();
 });
-it.each(["Claude Code 2.1.315","Claude Code 2.1.316-alpha","prefix 1.2.1.316","unknown"])("unaudited version %s is refused before a launch manifest or reservation",async version=>{
- const f=await fixture();f.version(version);await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("not passed");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).not.toHaveBeenCalled();
+it.each(["prefix 1.2.1.316","unknown","Claude Code 2.1.316 2.1.317"])("an unreadable version %s is refused before a launch manifest or reservation",async version=>{
+ const f=await fixture();f.version(version);await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("could not be read");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).not.toHaveBeenCalled();
+});
+it("a known-broken version is refused with its reason before a launch manifest or reservation (cc3ce4fe)",async()=>{
+ const {NATIVE_CLI_DENIED}=await import("../src/runtime-pane-native.js");NATIVE_CLI_DENIED["claude-code"]["2.1.399"]="it never shows its input box";
+ try{const f=await fixture();f.version("Claude Code 2.1.399");await expect(f.manager.prepare("native",f.config,()=>{})).rejects.toThrow("Claude Code 2.1.399 is known not to work in AgEnD's Windows panes (it never shows its input box)");expect(f.store.get(f.agent.id).activeId).toBeUndefined();expect(f.spawn).not.toHaveBeenCalled();}
+ finally{delete NATIVE_CLI_DENIED["claude-code"]["2.1.399"];}
+});
+it.each(["Claude Code 2.1.315","Claude Code 2.1.399","Claude Code 2.1.316-alpha"])("an unaudited version %s is prepared like an audited one (cc3ce4fe)",async version=>{
+ const f=await fixture();f.version(version);await expect(f.manager.prepare("native",f.config,()=>{})).resolves.toBeDefined();
 });
 it("a profile changed while host discovery is held cannot be admitted from its old snapshot",async()=>{
  const f=await fixture();let release!:(value:any)=>void;f.endpoint.call.mockImplementationOnce(()=>new Promise(done=>{release=done;}));const pending=f.manager.prepare("native",f.config,()=>{});await Promise.resolve();await Promise.resolve();f.store.reservePane(f.agent.id,randomUUID());release({hostBootId:randomUUID(),panes:[]});await expect(pending).rejects.toThrow("changed during host");expect(f.spawn).not.toHaveBeenCalled();
