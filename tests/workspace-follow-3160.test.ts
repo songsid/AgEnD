@@ -110,6 +110,21 @@ afterAll(() => rmSync(base, { recursive: true, force: true }));
 const step = (paths: string[], kind: FollowStep["kind"] = "read"): FollowStep => ({ seq: 1, at: 1, kind, tool: "Read", paths, exact: true });
 
 describe("resolveFollowSteps: confined like the panel's reads", () => {
+  it.each([
+    [{ cmd: "rg NEEDLE_LITERAL src # retry NEEDLE_LITERAL" }, ["src"]],
+    [{ command: ["grep", "-c", "cat NEEDLE_LITERAL", "README.md"] }, ["README.md"]],
+    [{ cmd: "rg 'NEEDLE_LITERAL' 'src/#literal.ts'" }, ["src/#literal.ts"]],
+    [{ command: ["/bin/bash", "-lc", "rg 'cat NEEDLE_LITERAL' src"] }, ["src"]],
+    [{ cmd: "rg NEEDLE_LITERAL src#literal.ts" }, ["src#literal.ts"]],
+    [{ command: ["rg", "NEEDLE_LITERAL", "src", "#literal"] }, ["src", "#literal"]],
+  ])("projects only paths from commented commands and literal argv: %j", async (input, expected) => {
+    const parsed = followStepOf("local_shell", input);
+    expect(parsed).not.toBeNull();
+    const safe = await resolveFollowSteps(await workspaceRoot(work, join(work, "state")), [{ ...parsed!, seq: 1, at: 1 }]);
+    expect(safe.flatMap(s => s.paths.map(p => p.path))).toEqual(expected);
+    expect(JSON.stringify(safe)).not.toContain("NEEDLE_LITERAL");
+  });
+
   it("inside (absolute or relative) → the folder's own path; a directory is marked; a file about to be written is kept", async () => {
     const ws = await workspaceRoot(work, join(work, "state"));
     const r = await resolveFollowSteps(ws, [step([join(work, "src", "a.ts"), "src/a.ts", "src", ".", "src/new-file.ts"])]);

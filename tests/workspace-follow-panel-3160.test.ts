@@ -200,6 +200,50 @@ describe("Follow agent (#3160)", () => {
     }
   });
 
+  it.each(["scroll", "off", "live"])("automatic directory navigation keeps the accepted view until commit (%s)", async action => {
+    serve();
+    follow = [{ supported: true, running: true, turn: 1, steps: [step(1, "read", [P("src/a.ts")])] }];
+    const doc = await chat(); await openWs(); followBtn(doc).click(); await wait();
+    const original = globalThis.fetch;
+    let release!: () => void, entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    globalThis.fetch = (async (...args: any[]) => {
+      if (String(args[0]).includes("op=list&path=src")) { entered(); await new Promise<void>(resolve => { release = resolve; }); }
+      return (original as any)(...args);
+    }) as any;
+    follow = [{ supported: true, running: true, turn: 1, steps: [step(2, "search", [P("src", { dir: true })])] }];
+    await started;
+    expect(doc.querySelector(".ws-viewer-head .ws-path")?.textContent).toBe("src/a.ts");
+    if (action === "scroll") fire(doc.querySelector(".ws-body"), "wheel");
+    if (action === "off") followBtn(doc).click();
+    release(); await wait();
+    if (action === "live") {
+      expect(doc.querySelector(".ws-viewer-head")).toBeNull();
+      expect(doc.querySelector(".ws-entries")).not.toBeNull();
+    } else {
+      expect(doc.querySelector(".ws-viewer-head .ws-path")?.textContent).toBe("src/a.ts");
+      expect(followBtn(doc).getAttribute("aria-pressed")).toBe("false");
+    }
+    expect(doc.querySelector(".ws-body")?.textContent).not.toContain("Loading");
+  });
+
+  it("keeps Changes when the first automatic directory load is cancelled", async () => {
+    serve();
+    const doc = await chat(); await openWs();
+    const original = globalThis.fetch;
+    let release!: () => void, entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    globalThis.fetch = (async (...args: any[]) => {
+      if (String(args[0]).includes("op=list&path=src")) { entered(); await new Promise<void>(resolve => { release = resolve; }); }
+      return (original as any)(...args);
+    }) as any;
+    follow = [{ supported: true, running: true, turn: 1, steps: [step(1, "search", [P("src", { dir: true })])] }];
+    followBtn(doc).click(); await started;
+    followBtn(doc).click(); release(); await wait();
+    expect(doc.querySelector('.ws-panel [role="tab"][aria-selected="true"]')?.textContent).toBe("Changes");
+    expect(doc.querySelector(".ws-entries")).toBeNull();
+  });
+
   it("a replacement launch with repeated turn/cursor numbers replaces the strip", async () => {
     serve();
     follow = [{ supported: true, running: true, scope: "launch-a", turn: 1, steps: [step(1, "read", [P("src/a.ts")])] },

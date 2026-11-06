@@ -122,12 +122,21 @@ export class TranscriptMonitor extends EventEmitter {
   async reconciliationCheckpoint(): Promise<TranscriptCheckpoint | null> {
     if (this.source?.checkpoint) {
       const generation = this.generation;
+      const previousPath = this.source.currentPath?.();
       const checkpoint = await this.source.checkpoint();
+      if (generation !== this.generation) return null;
       // #1641 R3: what the checkpoint moved past (a switch's retract and carried-in start, a skipped boundary) reaches
       // the ledger before the delivery it guards — not at the next poll.
       const turns = this.source.takeTurns?.() ?? [];
+      if (previousPath !== this.source.currentPath?.()) this.emit("workspace_reset");
+      // Checkpoints skip tool records, but their consumed starts still end Follow's previous turn.
+      // Normal polls use ordered workspace_follow records; do not reset again from their ledger batch.
+      for (const turn of turns) {
+        if (generation !== this.generation) return null;
+        if (turn.kind === "start") this.emit("workspace_follow", { type: "turn" });
+      }
       if (turns.length && generation === this.generation) this.emit("turns", turns);
-      return checkpoint;
+      return generation === this.generation ? checkpoint : null;
     }
     const path = await this.resolveTranscriptPath();
     if (!path) return null;
@@ -190,14 +199,23 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   private async _doPoll(): Promise<void> {
+    const generation = this.generation;
     // Always compare against the freshly resolved path — never just "do I
     // have a path". A resumed claude-code writes a NEW transcript after a
     // restart; a monitor pinned to the persisted previous path watches a file
     // that never grows again and reports nothing, with no error (#528 trap 1).
     const current = await this.resolveTranscriptPath();
+    if (generation !== this.generation) return;
     if (current && current !== this.transcriptPath) {
-      this.emit("workspace_reset");
       const replacedKnownTranscript = this.transcriptPath !== null;
+      const fromStart = !replacedKnownTranscript && this.createdThisRun(current);
+      let initialOffset = 0;
+      if (!replacedKnownTranscript && !fromStart) {
+        try { initialOffset = await lastLineBoundary(current); } catch { return; }
+        if (generation !== this.generation) return;
+      }
+      this.emit("workspace_reset");
+      if (generation !== this.generation) return;
       this.transcriptPath = current;
       if (replacedKnownTranscript) {
         // Work resumed during our own startup must be observable → read the
@@ -217,8 +235,7 @@ export class TranscriptMonitor extends EventEmitter {
         // this run's new session, whose first records (a failed first call, e.g. an exhausted credit balance) must
         // not be skipped: read it from the start. A filesystem without a creation time keeps the EOF baseline.
         try {
-          const fromStart = this.createdThisRun(current);
-          this.byteOffset = fromStart ? 0 : await lastLineBoundary(current);
+          this.byteOffset = initialOffset;
           // A file created after the boundary can still be a COPY of an older conversation (a profile switch copies it
           // into the new profile): its records from before the boundary are history for the alarms. A new session's own
           // first records are written after the CLI started, which is after this monitor began (less a little skew).
@@ -237,7 +254,6 @@ export class TranscriptMonitor extends EventEmitter {
 
     try {
       // #1218 P0: bounded looks (READ_MAX_BYTES each), a few per poll, each awaited; the rest waits for the next poll.
-      const generation = this.generation;
       for (let look = 0; look < LOOKS_PER_POLL; look++) {
         const read = await readNewLines(this.transcriptPath, this.byteOffset, { skipping: this.skipping });
         if (generation !== this.generation) return;
@@ -250,6 +266,7 @@ export class TranscriptMonitor extends EventEmitter {
         if (generation !== this.generation) return;
         this.pendingLong = resolved.pending;
         for (const record of resolved.records) {
+          if (generation !== this.generation) return;
           if ("long" in record) { this.processLongHead(record.long.head); continue; }
           try {
             const entry = JSON.parse(record.line);

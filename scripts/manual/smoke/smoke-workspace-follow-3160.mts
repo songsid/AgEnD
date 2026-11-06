@@ -92,6 +92,22 @@ try {
       await o.page.waitForFunction(() => document.querySelector(".ws-follow")!.getAttribute("aria-pressed") === "false");
       await driver.step(1); await o.page.waitForFunction(() => document.querySelectorAll(".ws-step").length === 2);
       check(await o.page.locator(".ws-viewer-head .ws-path").textContent() === "src/a.ts", `${tag} paused search moved file`);
+      // Hold automatic directory navigation, then turn Follow off: the accepted file must remain after response.
+      let entered!: () => void, release!: () => void, continued!: () => void, held = false;
+      const started = new Promise<void>(resolve => { entered = resolve; });
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      const resumed = new Promise<void>(resolve => { continued = resolve; });
+      const matchDir = (url: string) => { const q = new URL(url); return q.pathname === "/ui/workspace" && q.searchParams.get("op") === "list" && q.searchParams.get("path") === "src"; };
+      const holdDirectory = async (route: any) => { const hold = !held && matchDir(route.request().url()); if (hold) { held = true; entered(); await gate; } await route.continue(); if (hold) continued(); };
+      await o.page.route("**/ui/workspace?**", holdDirectory);
+      await o.page.click(".ws-follow");
+      await Promise.race([started, o.page.waitForTimeout(15000).then(() => { throw Error(`${tag} directory hold not reached`); })]);
+      await o.page.click(".ws-follow");
+      const directoryResponse = o.page.waitForResponse((r: any) => matchDir(r.url()));
+      release(); await resumed; await o.page.unroute("**/ui/workspace?**", holdDirectory);
+      await (await directoryResponse).finished(); await o.page.waitForTimeout(100);
+      check(await o.page.locator(".ws-viewer-head .ws-path").textContent() === "src/a.ts", `${tag} cancelled directory replaced accepted view`);
+      check(await o.page.locator(".ws-follow").getAttribute("aria-pressed") === "false", `${tag} cancelled directory resumed Follow`);
       await o.page.click(".ws-follow"); await o.page.waitForSelector(".ws-entries");
       await driver.step(2); await o.page.waitForSelector(".ws-line.hl-edit");
       const highlighted = await o.page.locator(".ws-line.hl-edit").evaluateAll((els: Element[]) => els.map(e => Number(e.getAttribute("data-line"))));

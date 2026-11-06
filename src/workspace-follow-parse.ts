@@ -45,6 +45,7 @@ function firstCommandWords(line: string): string[] {
     const c = line[i]!;
     if (quote) { if (c === quote) quote = null; else cur += c; continue; }
     if (c === "'" || c === '"') { quote = c; has = true; continue; }
+    if (c === "#" && !has && !cur) break; // An unquoted comment starts only at a word boundary.
     if (c === "|" || c === ";" || c === "&" || c === ">" || c === "<") break;
     if (/\s/.test(c)) { if (has || cur) { words.push(cur); cur = ""; has = false; } continue; }
     cur += c;
@@ -60,8 +61,12 @@ function shellWords(input: unknown): string[] {
   if (typeof c === "string") return firstCommandWords(c);
   if (Array.isArray(c) && c.every((x) => typeof x === "string")) {
     const a = c as string[];
-    const at = a.findIndex((x) => x === "-c" || x === "-lc");
-    return at >= 0 && a[at + 1] ? firstCommandWords(a[at + 1]!) : a;
+    const executable = a[0]?.split("/").pop();
+    if (["sh", "bash", "dash", "zsh", "ksh"].includes(executable ?? "")) {
+      // A literal argv's -c may be grep's count option. Only admit the simple, proven shell wrapper shapes.
+      return (a[1] === "-c" || a[1] === "-lc") && a[2] ? firstCommandWords(a[2]) : [];
+    }
+    return a;
   }
   return [];
 }

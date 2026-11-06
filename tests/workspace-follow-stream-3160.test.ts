@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -70,6 +70,55 @@ describe("Follow's ordered observations through the production source, monitor a
     await d.transcriptMonitor.pollIncrement();
     expect(d.workspaceFollow().steps).toMatchObject([{ id: "call-2", phase: "done" }]);
     d.transcriptMonitor.stop();
+  });
+
+  it.each(["turn", "source"])("a checkpoint-consumed %s transition resets Follow before the next tool", async transition => {
+    const root = temp(), sessions = join(root, "sessions"), day = join(sessions, "2026", "11", "07"), work = join(root, "work");
+    mkdirSync(day, { recursive: true }); mkdirSync(work);
+    const meta = event("session_meta", { id: "checkpoint-session", cwd: work });
+    const first = join(day, "rollout-first.jsonl"); writeFileSync(first, meta);
+    const source = new CodexRolloutSource(work, sessions, Date.now(), new RolloutIndex(sessions, { ttlMs: 0 }));
+    const d = owner(source);
+    appendFileSync(first, event("event_msg", { type: "task_started", turn_id: "turn-1" }) + call("first", "first.ts"));
+    await d.transcriptMonitor.pollIncrement();
+    const before = d.workspaceFollow();
+    expect(before.steps.map((s: any) => s.paths)).toEqual([["first.ts"]]);
+    const next = transition === "turn" ? first : join(day, "rollout-next.jsonl");
+    const boundary = event("event_msg", { type: "task_started", turn_id: "turn-2" });
+    if (transition === "turn") appendFileSync(first, event("event_msg", { type: "task_complete", turn_id: "turn-1" }) + boundary);
+    else { writeFileSync(next, meta + boundary); const later = new Date(Date.now() + 1000); utimesSync(next, later, later); }
+    expect((await d.transcriptMonitor.reconciliationCheckpoint())?.path).toBe(next);
+    const checkpoint = d.workspaceFollow();
+    expect(checkpoint.steps).toEqual([]);
+    expect(checkpoint.turn).toBeGreaterThan(before.turn);
+    if (transition === "source") expect(checkpoint.scope).not.toBe(before.scope);
+    appendFileSync(next, call("second", "second.ts"));
+    if (transition === "source") { const later = new Date(Date.now() + 1000); utimesSync(next, later, later); }
+    await d.transcriptMonitor.pollIncrement();
+    expect(d.workspaceFollow().steps.map((s: any) => s.paths)).toEqual([["second.ts"]]);
+    d.transcriptMonitor.stop();
+  });
+
+  it.each(["stop", "live"])("held Claude path lookup cannot cross a stop fence (%s control)", async action => {
+    const root = temp(), first = join(root, "first.jsonl"), next = join(root, "next.jsonl");
+    writeFileSync(first, "");
+    writeFileSync(next, JSON.stringify({ type: "assistant", timestamp: new Date(Date.now() + 1000).toISOString(), message: { role: "assistant", content: [
+      { type: "tool_use", id: "late", name: "Read", input: { file_path: "late.ts" } },
+    ] } }) + "\n");
+    const d = owner(null, "claude"), m = d.transcriptMonitor;
+    m.resolveTranscriptPath = async () => first; await m.pollIncrement();
+    let release!: (path: string) => void;
+    m.resolveTranscriptPath = () => new Promise<string>(resolve => { release = resolve; });
+    const pending = m.pollIncrement();
+    if (action === "stop") m.stop();
+    const atRelease = d.workspaceFollow();
+    release(next); await pending;
+    if (action === "stop") {
+      expect(d.workspaceFollow().steps).toEqual([]);
+      expect(d.workspaceFollow().scope).toBe(atRelease.scope);
+      expect(m.transcriptPath).toBe(first);
+    } else expect(d.workspaceFollow().steps.map((s: any) => s.paths)).toEqual([["late.ts"]]);
+    m.stop();
   });
 
   it("rotates the scope on monitor replacement/stop and ignores an old monitor's late observations", () => {

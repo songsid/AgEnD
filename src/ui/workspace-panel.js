@@ -114,9 +114,11 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
   };
   const loadDir = async (path, automatic = false) => {
     const mine = ++gen.current;
-    setListing({ state: "loading", path }); setFile(null);
+    if (!automatic) { setListing({ state: "loading", path }); setFile(null); }
     const r = await read(instance, "list", path);
     if (!valid(mine, automatic)) return;
+    if (automatic) setTab("files");
+    setFile(null);
     setDir(path);
     setListing(r.ok ? { state: "ready", body: r.body, path } : { state: "failed", error: r.error, path });
   };
@@ -127,6 +129,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
     if (step) loadDirQuiet(parentOf(path), mine, automatic);
     const [r, d] = await Promise.all([read(instance, "file", path), step && step.kind === "edit" && !step.editLines ? read(instance, "diff", path) : null]);
     if (!valid(mine, automatic)) return;
+    if (automatic) setTab("files");
     const hl = !step ? null : step.kind === "edit" ? { kind: "edit", exact: !!step.editLines, lines: step.editLines ? new Set(step.editLines) : d && d.ok ? changedLines(d.body.patch) : new Set() }
       : step.range ? { kind: "read", from: step.range.from, to: step.range.to } : null;
     setFile(r.ok ? { path, state: "ready", body: r.body, hl } : { path, state: "failed", error: r.error });
@@ -149,7 +152,7 @@ export function WorkspacePanel({ open, name, panel, fs, enterFs, leaveFs, onKey,
     setCurrent(step.id || step.seq);
     if (!p || p.hidden) return;                                                     // listed, never opened
     if (step.phase === "failed") return;
-    setTab("files");
+    if (!automatic) setTab("files");
     if (!p.dir && (step.kind === "read" || step.kind === "edit")) {
       setHlEntry(p.path);
       loadFile(p.path, step, automatic);

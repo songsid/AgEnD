@@ -12,7 +12,7 @@ const cases = [
   ["backend-gate", "src/web-api.ts", 'const supported = backend === "claude-code" || backend === "codex";', 'const supported = true;', route],
   ["secret-hidden", "src/workspace-follow.ts", 'hidden: isHiddenPath(place.rel)', 'hidden: false && isHiddenPath(place.rel)', unit],
   ["exact-edit-lines", "src/workspace-follow.ts", 'step.kind === "edit" && event.editLines ?', 'step.kind === "read" && event.editLines ?', stream],
-  ["manual-race", "src/ui/workspace-panel.js", 'if (!valid(mine, automatic)) return;\n    const hl =', '/* stale automatic response accepted */\n    const hl =', ui],
+  ["manual-race", "src/ui/workspace-panel.js", 'if (!valid(mine, automatic)) return;\n    if (automatic) setTab("files");\n    const hl =', '/* stale automatic response accepted */\n    if (automatic) setTab("files");\n    const hl =', ui],
   ["default-off", "src/ui/workspace-panel.js", 'if (follow === "off") return undefined;', 'if (false && follow === "off") return undefined;', ui],
   ["hidden-poll", "src/ui/workspace-panel.js", 'if (stopped || busy || (typeof document !== "undefined" && document.hidden)) return;', 'if (stopped || busy) return;', ui],
   ["launch-recheck", "src/web-api.ts", 'frame.supported && frame.running && frame.scope && live?.workspaceFollow?.(0).scope !== frame.scope', 'false', route],
@@ -20,10 +20,18 @@ const cases = [
   ["search-pattern-sentinel", "src/workspace-follow-parse.ts", 'const explicitPattern = ["-e", "-f", "--regexp", "--file"].some(flag => options.has(flag));', 'const explicitPattern = args.some(w => w.startsWith("-e") || w.startsWith("--regexp"));', unit],
   ["search-files-sentinel", "src/workspace-follow-parse.ts", 'const filesOnly = options.has("--files");', 'const filesOnly = args.includes("--files");', unit],
   ["completion-order", "src/ui/workspace-panel.js", 'const newestStep = (steps) => steps.reduce((latest, step) => !latest || step.seq > latest.seq ? step : latest, null);', 'const newestStep = (steps) => steps[steps.length - 1];', ui],
+  ["shell-comment", "src/workspace-follow-parse.ts", 'if (c === "#" && !has && !cur) break;', 'if (false) break;', unit],
+  ["shell-wrapper", "src/workspace-follow-parse.ts", 'if (["sh", "bash", "dash", "zsh", "ksh"].includes(executable ?? ""))', 'if (true)', unit],
+  ["checkpoint-turn", "src/transcript-monitor.ts", 'if (turn.kind === "start") this.emit("workspace_follow", { type: "turn" });', '/* checkpoint start omitted */', stream],
+  ["checkpoint-source", "src/transcript-monitor.ts", 'if (previousPath !== this.source.currentPath?.()) this.emit("workspace_reset");', '/* checkpoint adoption omitted */', stream],
+  ["lookup-stop-fence", "src/transcript-monitor.ts", 'const current = await this.resolveTranscriptPath();\n    if (generation !== this.generation) return;', 'const current = await this.resolveTranscriptPath();', stream],
+  ["directory-commit", "src/ui/workspace-panel.js", 'if (!automatic) { setListing({ state: "loading", path }); setFile(null); }', 'setListing({ state: "loading", path }); setFile(null);', ui],
+  ["directory-tab", "src/ui/workspace-panel.js", 'if (!automatic) setTab("files");', 'setTab("files");', ui],
 ];
 const out = ".artifacts/workspace-follow-mutations"; mkdirSync(out, { recursive: true });
 const selected = process.argv.length > 2 ? cases.filter(([name]) => process.argv.slice(2).includes(name)) : cases;
 if (!selected.length) throw Error("No selected mutants");
+for (const [name, file, before] of selected) if (readFileSync(file, "utf8").split(before).length !== 2) throw Error(`${name}: expected exactly one target`);
 const previous = process.argv.length > 2 && existsSync(`${out}/results.json`) ? JSON.parse(readFileSync(`${out}/results.json`, "utf8")) : [];
 const results = []; let restore = () => {};
 for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => { restore(); process.exit(143); });

@@ -1,1 +1,4 @@
-Files & changes can now follow a local Claude Code or Codex agent as it reads, searches and edits files. Follow starts off, pauses when you scroll or choose a file, and keeps a short history for the current turn. Read ranges and known edit hunks are highlighted; other edit highlights are labelled as uncommitted changes. The existing local-admin, folder and secret-file restrictions apply.
+---
+section: Added
+---
+- Files & changes can now follow a local Claude Code or Codex agent as it reads, searches and edits files. Follow starts off, pauses when you scroll or choose a file, and keeps a short history for the current turn. Read ranges and known edit hunks are highlighted; other edit highlights are labelled as uncommitted changes. The existing local-admin, folder and secret-file restrictions apply.
