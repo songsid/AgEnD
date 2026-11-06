@@ -2586,6 +2586,54 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .tw-unread { flex-shrink: 0; display: inline-flex; color: var(--accent); }
 .d-board .tw-lines { margin-top: var(--s-1); }
 
+/* A project's Filter and Display, its filters as chips, and the project as a list (fleet-task-view.js). */
+.menu-text { gap: var(--s-1); }
+/* Under the project's header, as Linear's options row: Filter, Display, then the filters in force. */
+.tb-view-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-3) 0; }
+.tb-view-bar > .menu > .menu-text.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.tb-view-bar .menu-list { left: 0; right: auto; max-height: min(70vh, 520px); overflow-y: auto; }
+.tb-columns.no-done { grid-template-columns: repeat(4, minmax(176px, 1fr)); }
+.tb-filters { display: contents; }
+.tb-chip { display: inline-flex; align-items: center; min-height: 30px; max-width: 100%; border: 1px solid var(--border); border-radius: var(--r-full); background: var(--surface); font-size: var(--fs-xs); }
+.tb-chip-field { padding: 0 var(--s-2) 0 var(--s-3); color: var(--text-2); white-space: nowrap; }
+.tb-chip-op, .tb-chip-x { align-self: stretch; padding: 0 var(--s-2); border: 0; border-left: 1px solid var(--border); background: none; color: var(--text-2); font-size: var(--fs-xs); cursor: pointer; }
+.tb-chip.not .tb-chip-op { color: var(--danger); font-weight: var(--fw-semibold); }
+.tb-chip-op:hover, .tb-chip-x:hover { background: var(--surface-2); color: var(--text); }
+.tb-chip-x { display: inline-flex; align-items: center; border-radius: 0 var(--r-full) var(--r-full) 0; }
+.tb-chip .menu { min-width: 0; }
+.tb-chip .menu-text { min-height: 28px; max-width: 240px; padding: 0 var(--s-2); border: 0; border-left: 1px solid var(--border); border-radius: 0; background: none; }
+.tb-chip .menu-text > span { overflow: hidden; text-overflow: ellipsis; }
+.tb-list { display: flex; flex-direction: column; gap: var(--s-4); }
+.tb-group-head { display: flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-1); padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background: var(--surface); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.tb-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.tb-row { border-bottom: 1px solid var(--border); cursor: pointer; }
+.tb-row:hover { background: var(--surface); }
+.tb-row.flash { animation: tb-flash 1.6s var(--ease); }
+.tb-row-line { display: flex; align-items: center; gap: var(--s-2); min-height: 40px; padding: var(--s-1) var(--s-2); font-size: var(--fs-sm); min-width: 0; }
+.tb-row.is-sub .tb-row-line { padding-left: var(--s-6); }
+.tb-row-main { flex-shrink: 0; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
+.tb-row-text { flex: 1; display: flex; align-items: baseline; gap: var(--s-2); min-width: 0; }
+.tb-row-title { flex-shrink: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: var(--fw-medium); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-row-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.tb-row-note { flex: 1 1 0; min-width: 0; font-size: var(--fs-xs); color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-row-tags { display: inline-flex; align-items: center; gap: var(--s-1); flex-shrink: 0; }
+.tb-row-progress { display: inline-flex; align-items: center; gap: var(--s-1); flex-shrink: 0; padding: 2px var(--s-1); border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font-size: var(--fs-xs); white-space: nowrap; }
+.tb-row-progress > .tb-bar { width: 48px; }
+button.tb-row-progress { cursor: pointer; }
+button.tb-row-progress:hover { background: var(--surface-2); }
+.tb-row-who { display: inline-flex; flex-shrink: 0; width: 140px; min-width: 0; font-size: var(--fs-xs); }
+.tb-row-who .tb-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-row-time { flex-shrink: 0; width: 7em; font-size: var(--fs-xs); text-align: right; white-space: nowrap; }
+.tb-row > .tb-subs { margin: 0 var(--s-2) var(--s-2) var(--s-6); }
+@media (max-width: 899px) {
+  /* A phone's row: number and title on the first line, the rest under them. */
+  .tb-row-line { flex-wrap: wrap; row-gap: var(--s-1); }
+  .tb-row-text { flex: 1 1 calc(100% - 96px); }
+  .tb-row-who { width: auto; }
+  .tb-row-time { width: auto; margin-left: auto; }
+  .tb-row.is-sub .tb-row-line { padding-left: var(--s-4); }
+}
+
 /* One card, in the app's dialog. */
 .tc { display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
 .tc-head { display: flex; align-items: center; gap: var(--s-2); }
@@ -2655,7 +2703,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .tb-board-page .tb-columns { flex: 1; align-items: stretch; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tb-tile.flash { animation: none; }
+  .tb-tile.flash, .tb-row.flash { animation: none; }
   .tb-chev { transition: none; }
 }
 

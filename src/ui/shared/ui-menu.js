@@ -7,9 +7,10 @@ import { t } from "./app-i18n.js";
 /**
  * items: [{ key, label, icon?, onSelect, danger?, disabled? }] (falsy entries are skipped). `checked` makes a radio item;
  * `checkbox: true` with `checked` a checkbox item (#2217 hotfix: the chat's card menu), which toggles and keeps the menu
- * open. `active`: the button shows a pressed look (what it controls is on), without changing its role.
+ * open. `active`: the button shows a pressed look (what it controls is on), without changing its role. `text` makes it a
+ * labelled button (the task board's Filter and Display, a filter's values); `icon=""` leaves its icon out.
  */
-export function Menu({ items, label, icon = "more", cls = "", active = false }) {
+export function Menu({ items, label, icon = "more", cls = "", active = false, text = "" }) {
   const [open, setOpen] = useState(false);
   const btn = useRef(null), list = useRef(null);
   const shown = (items || []).filter(Boolean);
@@ -33,8 +34,8 @@ export function Menu({ items, label, icon = "more", cls = "", active = false }) 
   }
   function choose(item) { setOpen(false); btn.current && btn.current.focus(); item.onSelect(); }
   return html`<div class=${`menu ${cls}`}>
-    <button ref=${btn} type="button" class=${`icon-btn${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"}
-      aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => setOpen(!open)}><${Icon} name=${icon} /></button>
+    <button ref=${btn} type="button" class=${`${text ? "btn btn-sm menu-text" : "icon-btn"}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"}
+      aria-label=${text ? (label ? `${text}, ${label}` : text) : label || t("app.more")} title=${label || t("app.more")} onClick=${() => setOpen(!open)}>${icon ? html`<${Icon} name=${icon} size=${text ? 16 : undefined} />` : null}${text ? html`<span>${text}</span>` : null}</button>
     ${open ? html`<div data-trust="menu" ref=${list} class="menu-list" role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
       ${shown.map(item => item.heading
         ? html`<div key=${item.key} class="menu-heading" role="presentation">${item.label}</div>`

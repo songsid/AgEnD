@@ -5,7 +5,7 @@
 // (an agent's tool, another tab) arrives as a "tasks" stream event with the board's revision; the board reads again
 // when its revision moved. Over the temporary public link the board is read-only (the server refuses its writes there).
 // A card moves by drag, by Alt+arrow keys on its title, or by its dialog ("Move to…", up and down) — touch and keyboard
-// need no drag.
+// need no drag. A project shows as the board or as a list, and filters stack (fleet-task-view.js).
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
@@ -15,18 +15,19 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, UNASSIGNED, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, Who, answerBlocked, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, onPublicLink, projectKey, projectStats, readStored, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardDialog } from "./fleet-task-card.js";
+import { DisplayMenu, FilterBar, FilterMenu, ListView, SubList, doneShown, formatFilters, keepFilters, listRows, mainMatches, readDisplay, startFilters, writeDisplay } from "./fleet-task-view.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
 
 const PROJECT_KEY = "agend_tasks_project";
-const FILTER_KEY = "agend_tasks_assignee";
 
 // ── The tab ───────────────────────────────────────────────
 
 /**
  * Fleet › Tasks. `?card=M-3` in the address opens that card (a link from a notice). The project last looked at is
- * remembered on this device.
+ * remembered on this device; on a project's board the address says which (`?tp=`) and its filters (`?tf=`), so the
+ * filtered board can be sent as a link — and such a link opens it.
  */
 export function TaskBoardTab({ lease }) {
   const [state, setState] = useState(null);
@@ -34,8 +35,9 @@ export function TaskBoardTab({ lease }) {
   const [version, setVersion] = useState({ n: 0, ifMoved: false });
   const writable = !onPublicLink();
   const [at, setAtRaw] = useState(() => {
-    const v = readStored(PROJECT_KEY, "");
-    return v === "" ? null : v === NO_PROJECT ? NO_PROJECT : Number(v);
+    let v = readStored(PROJECT_KEY, "");
+    try { v = new URLSearchParams(globalThis.location?.search || "").get("tp") ?? v; } catch { /* no address bar */ }
+    return v === "" ? null : v === NO_PROJECT ? NO_PROJECT : Number.isInteger(Number(v)) ? Number(v) : null;
   });
   const [openId, setOpenId] = useState(() => {
     try { return new URLSearchParams(globalThis.location?.search || "").get("card"); } catch { return null; }
@@ -43,8 +45,13 @@ export function TaskBoardTab({ lease }) {
   const [tick, setTick] = useState(0);
   const [flashed, setFlashed] = useState(() => new Map());
   const [dialog, setDialog] = useState(null);
-  // The Done column's "All": every done main task is read only when asked for (the server keeps recent ones otherwise).
-  const [allDone, setAllDone] = useState(false);
+  // How a project shows (board or list, …) and its filters: remembered on this device, the filters also in the address.
+  const [display, setDisplayRaw] = useState(readDisplay);
+  const [filters, setFiltersRaw] = useState(() => startFilters(globalThis.location?.search));
+  const setDisplay = (d) => { setDisplayRaw(d); writeDisplay(d); };
+  const setFilters = (f) => { setFiltersRaw(f); keepFilters(f); };
+  // Finished cards "All": every done main task is read only when asked for (the server keeps recent ones otherwise).
+  const allDone = display.done === "all";
   const seq = useRef(0);
   const setAt = (v) => { setAtRaw(v); writeStored(PROJECT_KEY, v === null ? null : String(v)); };
   const reload = (ifMoved = false) => setVersion((v) => ({ n: v.n + 1, ifMoved }));
@@ -89,6 +96,18 @@ export function TaskBoardTab({ lease }) {
     return () => { off(); offConn(); if (timer) clearTimeout(timer); };
   }, [lease]);
 
+  // The project and its filters in the address (Home has neither), for a link to this very board.
+  useEffect(() => {
+    try {
+      const u = new URL(globalThis.location.href);
+      const before = u.search;
+      const f = formatFilters(filters);
+      if (at === null) { u.searchParams.delete("tp"); u.searchParams.delete("tf"); }
+      else { u.searchParams.set("tp", String(at)); if (f) u.searchParams.set("tf", f); else u.searchParams.delete("tf"); }
+      if (u.search !== before) globalThis.history.replaceState(globalThis.history.state, "", u);
+    } catch { /* no address bar */ }
+  }, [at, filters]);
+
   const openCard = (id) => {
     setOpenId(id);
     try { const u = new URL(globalThis.location.href); u.searchParams.set("card", id); globalThis.history.replaceState(globalThis.history.state, "", u); } catch { /* no address bar */ }
@@ -112,7 +131,8 @@ export function TaskBoardTab({ lease }) {
   const project = at === null ? null : at === NO_PROJECT ? NO_PROJECT : projects.find((p) => p.id === at) || null;
   const body = project === null
     ? html`<${Home} cards=${cards} projects=${projects} stats=${stats} writable=${writable} onOpenProject=${setAt} onOpen=${openCard} onDialog=${setDialog} onInstances=${showInstances} reload=${reload} />`
-    : html`<${ProjectBoard} project=${project} cards=${cards} stats=${stats} flashed=${flashed} allDone=${allDone} writable=${writable} onAllDone=${setAllDone} onBack=${() => setAt(null)}
+    : html`<${ProjectBoard} project=${project} cards=${cards} stats=${stats} flashed=${flashed} display=${display} filters=${filters} writable=${writable}
+        onDisplay=${setDisplay} onFilters=${setFilters} onBack=${() => setAt(null)}
         onOpen=${openCard} onCreate=${() => setDialog({ kind: "main", project: project === NO_PROJECT ? null : project.id })} onInstances=${showInstances} reload=${reload} />`;
   return html`<div class="tb">
     ${writable ? null : html`<p class="tb-readonly" role="note"><${Icon} name="eye" size=${16} />${t("tasks.readOnly")}</p>`}
@@ -264,13 +284,10 @@ function SearchBox({ onOpen }) {
 
 // ── A project's board ─────────────────────────────────────
 
-function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writable, onAllDone, onBack, onOpen, onCreate, onInstances, reload }) {
-  const { instances } = useStore(appStore);
-  const [assignee, setAssigneeRaw] = useState(() => readStored(FILTER_KEY, ""));
+function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filters, writable, onDisplay, onFilters, onBack, onOpen, onCreate, onInstances, reload }) {
   const [expanded, setExpanded] = useState({});
   const [drag, setDrag] = useState(null);
   const [spot, setSpot] = useState(null);
-  const setAssignee = (v) => { setAssigneeRaw(v); writeStored(FILTER_KEY, v || null); };
   const key = project === NO_PROJECT ? NO_PROJECT : project.id;
   const archived = project !== NO_PROJECT && project.archived;
   const stats = statsOf(key);
@@ -281,11 +298,20 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writab
     for (const c of cards) if (c.kind === "sub" && c.parentId && c.status !== "cancelled") m.set(c.parentId, [...(m.get(c.parentId) || []), c]);
     return m;
   }, [cards]);
-  const matches = (c) => !assignee || (assignee === UNASSIGNED ? c.assignee === null : c.assignee === assignee);
-  const mains = cards.filter((c) => c.kind === "main" && projectKey(c) === key && c.status !== "cancelled"
-    && (c.status !== "done" || allDone || recentlyDone(c, now))
-    && (matches(c) || (subsOf.get(c.id) || []).some(matches)));
-  const names = [...new Set([...instances.map((i) => i.name), ...cards.map((c) => c.assignee).filter(Boolean)])].sort();
+  const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
+  const live = cards.filter((c) => c.kind === "main" && projectKey(c) === key && c.status !== "cancelled");
+  // What the filters offer: this project's main tasks and their sub tasks.
+  const own = live.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]);
+  const mains = live.filter((c) => doneShown(c, display.done, now) && mainMatches(c, subsOf.get(c.id), filters));
+  // Finished cards hidden: no Done column (a card is still confirmed or finished from its dialog).
+  const columns = display.done === "hide" ? COLUMNS.filter((s) => s !== "done") : COLUMNS;
+  const toggleSubs = (id) => setExpanded({ ...expanded, [id]: !expanded[id] });
+  const empty = () => html`<${Empty} icon="tasks" title=${filters.length ? t("tasks.emptyFiltered") : t("tasks.emptyBoard")} hint=${filters.length || archived ? undefined : t("tasks.emptyBoardHint")} />`;
+  const listBody = () => {
+    const rows = listRows(mains, subsOf, display, filters, now);
+    return rows.length === 0 ? empty() : html`<${ListView} rows=${rows} display=${display} subsOf=${subsOf} byId=${byId} flashed=${flashed} now=${now}
+      expanded=${expanded} onToggleSubs=${toggleSubs} onOpen=${onOpen} />`;
+  };
 
   const dropping = useRef(false);
   // A card moved from the keyboard is drawn again in its new place, and the focus it had goes with the old tile: give it
@@ -326,7 +352,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writab
     if (e.key === "ArrowUp" && i > 0) void drop(card, card.status, column[i - 2]?.id ?? null, column[i - 1].id);
     else if (e.key === "ArrowDown" && i < column.length - 1) void drop(card, card.status, column[i + 1].id, column[i + 2]?.id ?? null);
     else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      const to = COLUMNS[COLUMNS.indexOf(card.status) + (e.key === "ArrowLeft" ? -1 : 1)];
+      const to = columns[columns.indexOf(card.status) + (e.key === "ArrowLeft" ? -1 : 1)];
       if (to) void drop(card, to, null, null);
     }
   }
@@ -364,28 +390,28 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, allDone, writab
         ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
       </div>
       <span class="tb-grow"></span>
-      <select class="tb-select" value=${assignee} aria-label=${t("tasks.filterLabel")} onChange=${(e) => setAssignee(e.target.value)}>
-        <option value="">${t("tasks.everyone")}</option>
-        <option value=${UNASSIGNED}>${t("tasks.nobody")}</option>
-        ${names.map((n) => html`<option key=${n} value=${n}>${n}</option>`)}
-      </select>
       <${InstancesButton} onClick=${onInstances} />
       ${archived || !writable ? null : html`<button type="button" class="btn btn-primary" onClick=${onCreate}><${Icon} name="plus" size=${16} />${t("tasks.newMain")}</button>`}
     </div>
-    ${mains.length === 0 && !drag ? html`<${Empty} icon="tasks" title=${assignee ? t("tasks.emptyFiltered") : t("tasks.emptyBoard")} hint=${assignee || archived ? undefined : t("tasks.emptyBoardHint")} />`
-    : html`<div class="tb-scroll"><div class="tb-columns">
-      ${COLUMNS.map((status) => {
+    <div class="tb-view-bar">
+      <${FilterMenu} cards=${own} filters=${filters} onChange=${onFilters} />
+      <${DisplayMenu} display=${display} onChange=${onDisplay} />
+      <${FilterBar} cards=${own} filters=${filters} onChange=${onFilters} />
+    </div>
+    ${display.view === "list" ? listBody() : mains.length === 0 && !drag ? empty()
+    : html`<div class="tb-scroll"><div class=${`tb-columns${columns.length < COLUMNS.length ? " no-done" : ""}`}>
+      ${columns.map((status) => {
         const list = mains.filter((c) => c.status === status);
         const line = spot && spot.status === status ? spot.index : -1;
         return html`<section key=${status} class=${`tb-col st-${status}${drag ? " can-drop" : ""}${line >= 0 ? " over" : ""}`} aria-label=${t(`tasks.${status}`)}
           onDragOver=${(e) => over(e, status)} onDrop=${(e) => dropOn(e, status, list)}>
           <h3 class="tb-col-head"><span class="tb-dot"></span>${t(`tasks.${status}`)}
-            ${status === "done" ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onAllDone(!allDone)}>${allDone ? t("tasks.all") : t("tasks.recent")}</button>` : null}
+            ${status === "done" ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onDisplay({ ...display, done: display.done === "all" ? "recent" : "all" })}>${display.done === "all" ? t("tasks.all") : t("tasks.recent")}</button>` : null}
             <span class="tb-count">${list.length}</span></h3>
           ${cellItems(list, drag ? drag.id : null, line, (card, dragging) => {
             const lit = Math.max(flashed.get(card.id) || 0, ...(subsOf.get(card.id) || []).map((s) => flashed.get(s.id) || 0));
             return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} writable=${writable}
-              expanded=${!!expanded[card.id]} onToggleSubs=${() => setExpanded({ ...expanded, [card.id]: !expanded[card.id] })}
+              expanded=${!!expanded[card.id]} onToggleSubs=${() => toggleSubs(card.id)}
               onOpen=${onOpen} onKeyMove=${(e) => keyMove(card, e)}
               onDragStart=${(e) => { e.dataTransfer.setData("text/plain", card.id); e.dataTransfer.effectAllowed = "move"; setDrag(card); }} onDragEnd=${end} />`;
           })}
@@ -445,13 +471,7 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
       ${progress.blocked ? html`<span class="tb-flag st-blocked"><${Icon} name="alert" size=${12} />${progress.blocked}</span>` : null}
       <${Icon} name="chevron" size=${14} cls=${expanded ? "tb-chev open" : "tb-chev"} />
     </button>` : null}
-    ${hasSubs && expanded ? html`<ul class="tb-subs" onClick=${(e) => e.stopPropagation()}>
-      ${subs.map((s) => html`<li key=${s.id}><button type="button" onClick=${() => onOpen(s.id)} title=${`${s.id} ${s.title} (${t(`tasks.${s.status}`)})`}>
-        <span class=${`tb-dot st-${s.status}`} aria-label=${t(`tasks.${s.status}`)}></span><span class="tb-code">${s.id}</span><span class="tb-sub-title">${s.title}</span>
-        ${s.assignee ? html`<span class="tb-who">${s.assignee}</span>` : null}</button>
-        ${s.status === "blocked" && s.blockedReason ? html`<div class="tb-sub-blocked">${s.blockedReason}</div>` : null}</li>`)}
-      ${older > 0 ? html`<li class="muted tb-sub-more">${t("tasks.olderSubs", older)}</li>` : null}
-    </ul>` : null}
+    ${hasSubs && expanded ? html`<${SubList} subs=${subs} older=${older} onOpen=${onOpen} />` : null}
     ${now ? html`<div class="tb-tile-now" title=${now.cards.map((c) => `${c.id} ${c.title}`).join("\n")}>
       <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${now.cards[0].id}</span>
       <span class="tb-now-title">${now.cards[0].title}</span>${now.cards.length > 1 ? html`<span class="muted">${t("tasks.moreCards", now.cards.length - 1)}</span>` : null}</div>` : null}
