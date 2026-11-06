@@ -1,6 +1,6 @@
 /** Explicit owner-requested browser certificate preparation; no network, shell, trust-store or Hub identity changes. */
 import { generateKeyPairSync, createHash } from "node:crypto";
-import { mkdtempSync, writeFileSync, rmSync, lstatSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, lstatSync, unlinkSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { isIP } from "node:net";
 import { promisify } from "node:util";
@@ -50,10 +50,14 @@ export async function createBrowserCertificate(home: string, origin: string): Pr
   try {
     // OpenSSL's key loader needs a file on supported builds. Only its private path is in argv, never key bytes.
     writeFileSync(files.keyFile, key, { flag: "wx", mode: 0o600 });
-    const { stdout: cert } = await promisify(execFile)("/usr/bin/openssl", ["req", "-new", "-x509", "-sha256", "-days", "30", "-config", "/dev/null",
-      "-key", files.keyFile, "-subj", "/CN=AgEnD Hub", "-addext", `subjectAltName=${isIP(host) ? "IP" : "DNS"}:${host}`,
-      "-addext", "basicConstraints=critical,CA:FALSE", "-addext", "keyUsage=critical,digitalSignature", "-addext", "extendedKeyUsage=serverAuth"],
+    // LibreSSL requires a real distinguished-name section. Keep all extensions in this private, self-contained
+    // config instead of depending on the host's openssl.cnf or optional command-line extension flags.
+    const configFile = join(dir, "openssl.cnf");
+    writeFileSync(configFile, `[req]\nprompt=no\ndistinguished_name=dn\nx509_extensions=server\n[dn]\nCN=AgEnD Hub\n[server]\nsubjectAltName=${isIP(host) ? "IP" : "DNS"}:${host}\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n`, { flag: "wx", mode: 0o600 });
+    const { stdout: cert } = await promisify(execFile)("/usr/bin/openssl", ["req", "-new", "-x509", "-sha256", "-days", "30", "-config", configFile,
+      "-key", files.keyFile],
     { timeout: 10_000, maxBuffer: 64 * 1024, env: { PATH: "/usr/bin:/bin", LANG: "C" } }).catch(() => { throw Error("browser_certificate_generation_failed"); });
+    unlinkSync(configFile);
     if (!checkBrowserTls(cert, key, u.origin, Date.now()).ok) throw Error("browser_certificate_generation_failed");
     writeFileSync(files.certFile, cert, { flag: "wx", mode: 0o600 });
     writeFileSync(join(dir, "material.json"), JSON.stringify({ v: 1, origin: u.origin, certSha256: digest(cert), keySha256: digest(key) }), { flag: "wx", mode: 0o600 });
