@@ -36,8 +36,9 @@
     "license": "BSD-2-Clause",
     "licenseFile": "COPYING",
     "platforms": [
-      "darwin"
-    ]
+      "darwin-arm64"
+    ],
+    "comment": "darwin-arm64 only: on darwin-x64 the statically linked jemalloc 5.3.0 tmux server died at once after its first client left (publish-tmux dry runs 42268291999 and 42273319563; docs/design/bundled-tmux.md §3), so darwin-x64 uses the system allocator."
   },
   "musl": {
     "version": "1.2.5",

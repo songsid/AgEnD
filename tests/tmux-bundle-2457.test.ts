@@ -434,6 +434,14 @@ describe("the darwin build links jemalloc the way tmux's configure finds it", ()
     expect(partsFor(readSources(), "darwin-arm64")).toContain("jemalloc");
   });
 
+  it("jemalloc per target: darwin-arm64 links it, darwin-x64 and Linux do not (§3: x86_64's server died with it)", () => {
+    const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
+    expect(["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"].map(t => partsFor(readSources(), t).includes("jemalloc"))).toEqual([true, false, false, false]);
+    // configure gets --enable-jemalloc only where it is linked, and an explicit --disable-jemalloc on the other Mac
+    // (tmux's configure would otherwise look for one itself and could link a Homebrew dylib).
+    expect(src).toContain('if (parts.includes("jemalloc")) tmuxArgs.push("--enable-jemalloc");\n  else if (darwin) tmuxArgs.push("--disable-jemalloc");');
+  });
+
   it("a darwin build is reproducible: object paths relative in the debug map, ar member dates zeroed", () => {
     // ld64 hashes the output (debug map included) into LC_UUID, which strip keeps; the second build runs elsewhere.
     const src = readFileSync(join(process.cwd(), "scripts", "tmux", "build-tmux.mjs"), "utf8");
