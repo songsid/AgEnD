@@ -265,10 +265,14 @@ export async function findCli(id: NativeCliId): Promise<NativeCliExecutable | nu
  */
 export interface CredentialProfileAnswer { loggedIn: boolean | null; /** Masked e-mail and plan, when that answer has an account in it. */ identity?: AccountIdentity }
 export async function probeCredentialProfileStatus(cli: CredentialProfileCli, directory: string, find: (id: NativeCliId) => Promise<NativeCliExecutable | null> = findCli,
-  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env)): Promise<CredentialProfileAnswer> {
+  run: (executable: NativeCliExecutable, args: string[], env: NodeJS.ProcessEnv) => Promise<NativeCommandOutput> = (entry, args, env) => output(entry.command, [...entry.args, ...args], 15_000, env),
+  /** The requester's live check (an install's consent and connection): asked before the CLI is looked for and again before its status program is started. */
+  authorized?: () => boolean): Promise<CredentialProfileAnswer> {
   const provider = nativeProvider(cli);
   if (!provider.authProbe || !isCredentialProfileCli(cli)) return { loggedIn: null };
+  if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery");
   const executable = await find(cli);
+  if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery");
   if (!executable) return { loggedIn: null };
   const result = await run(executable, [...nativeUpdateGuard(cli), ...provider.authProbe], withCredentialProfile(nativeCliEnvironment(), cli, directory));
   const status = parseClaudeAuthStatus(result.text), identity = status.loggedIn === true && result.ok ? identityOf(status) : undefined;

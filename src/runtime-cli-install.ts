@@ -326,22 +326,49 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
   // an automatic switch cannot run at once. It is kept until the install's last child process has really ended, not only until this call returns.
   const lockRoot = deps.installRoot ?? managedInstallRoot() ?? deps.root;
   if (lockRoot === deps.root && process.platform !== "win32") { try { chmodSync(deps.root, 0o700); } catch { /* the lock module refuses a folder it cannot trust */ } }
+  // The folder the lock lives in (the CLI folder itself when no install root is given) is the one looked at before the wait, and it must still be that one when the wait
+  // ends and the lock folder, its owner record and the marker are written. A root that is not there is left to the lock module to refuse.
+  let lockRootWas: { id: bigint; dev: bigint; real: string } | undefined;
+  try { const stat = plain(lockRoot); lockRootWas = { id: stat.ino, dev: stat.dev, real: realpathSync(lockRoot) }; } catch (error) { if (error instanceof CliInstallError && existsSync(lockRoot)) throw error; }
+  const checkLockRoot = (): void => {
+    if (!lockRootWas) return;
+    try {
+      const stat = plain(lockRoot);
+      if (stat.ino !== lockRootWas.id || stat.dev !== lockRootWas.dev || realpathSync(lockRoot) !== lockRootWas.real) throw new Error("replaced");
+    } catch (error) { if (error instanceof CliInstallError) throw error; throw changed(); }
+  };
   const locks = await lockModule();
+  const baseObserve = deps.lockOptions?.observe ?? (process.platform !== "win32" ? localLockOptions().observe! : locks.observeRuntimeProcess);
+  const baseOptions = deps.lockOptions ?? (process.platform !== "win32" ? localLockOptions() : {});
   let lock: RuntimeInstallLock;
-  try { lock = await locks.acquireRuntimeInstallLock(lockRoot, { type: "installer", ...(deps.lockOptions ?? (process.platform !== "win32" ? localLockOptions() : {})) }); }
+  try {
+    lock = await locks.acquireRuntimeInstallLock(lockRoot, { type: "installer", ...baseOptions,
+      // Around every wait for a process observation the folders are looked at: swapped meanwhile, the acquisition stops before it creates anything.
+      observe: async pid => { checkLockRoot(); contained(); const seen = await baseObserve(pid); checkLockRoot(); contained(); return seen; } });
+  }
   catch (error) {
+    if (error instanceof CliInstallError) throw error;
     if (error instanceof locks.RuntimeInstallLockError && error.reason === "held") fail("busy", "A CLI install or Runtime update is already running on this computer; wait for it to end");
+    checkLockRoot(); contained();                // a folder swapped during the wait is reported as that, whatever the lock module said
     return fail("install-failed", "This computer could not lock its Runtime install folder, so nothing was installed");
   }
   // While the lock holds this marker nothing may reclaim it, even if this process is gone: a Runtime that dies with a child still running leaves the marker behind, so a
   // later owner sees uncertainty (a lock with anything beside its owner record stays held) instead of a free lock.
   const lockDir = join(lockRoot, locks.RUNTIME_INSTALL_LOCK), inflight = join(lockDir, "inflight");
-  /** The lock is positively not ours any more: its folder is gone (and the root is there), or another owner's record is in it. Anything unreadable or unclear is NOT that. */
+  /**
+   * The lock is positively not ours any more. Both ways need the folder the lock lives in to be the very one it was taken in (a folder moved away and replaced by an
+   * empty one of the same name proves nothing): its lock folder is gone (and nothing else), or a COMPLETE, valid record of another owner is in it, read through the lock
+   * module's own bounded, non-link reader. Anything unreadable, malformed, linked, partial or unclear is NOT that.
+   */
   const notOursAnymore = (): boolean => {
-    try { lstatSync(lockRoot); } catch { return false; }
+    try { checkLockRoot(); locks.assertRuntimeInstallDirectory(lockRoot); } catch { return false; }
     try { lstatSync(lockDir); } catch (error) { return (error as NodeJS.ErrnoException).code === "ENOENT"; }
-    try { const nonce = (JSON.parse(readFileSync(join(lockDir, "owner.json"), "utf8")) as { nonce?: unknown } | null)?.nonce; return typeof nonce === "string" && nonce !== lock.record.nonce; }
-    catch { return false; }
+    try {
+      locks.assertRuntimeInstallDirectory(lockDir);
+      const file = locks.readRuntimeInstallFile(join(lockDir, "owner.json"), 2048);
+      if (!file) return false;
+      return locks.parseRuntimeInstallLock(JSON.parse(file.text)).nonce !== lock.record.nonce;
+    } catch { return false; }
   };
   /**
    * Gives the lock back (marker first). A release that fails, or a lock that cannot be looked at, keeps the lease, never counts as released, and is tried again until it
@@ -356,6 +383,9 @@ export async function installManagedCli(id: unknown, deps: InstallDeps): Promise
     if (attempt()) return undefined;
     return new Promise<void>(done => { const again = (): void => { if (attempt()) done(); else setTimeout(again, deps.releaseRetryMs ?? 1000).unref?.(); }; setTimeout(again, deps.releaseRetryMs ?? 1000).unref?.(); });
   };
+  // Straight after the acquisition, before the marker or anything else is written: the lock's folder and the CLI folders are still the ones that were looked at.
+  try { checkLockRoot(); contained(); }
+  catch (error) { const retry = letGo(); throw retry && error instanceof CliInstallError ? new CliInstallError(error.reason, error.message, { ended: retry }) : error; }
   try { writeFileSync(inflight, JSON.stringify({ cli: id, version: cli.version }), { flag: "wx", mode: 0o600 }); }
   catch {
     const retry = letGo();

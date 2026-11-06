@@ -82,7 +82,7 @@ export interface RuntimeClientOptions {
   /** Test seam; production asks the CLI itself (`claude auth status` under that profile's folder). */
   credentialLogin?: (cli: CredentialProfileCli, directory: string) => Promise<boolean | null>;
   /** Test seam for the same check with the account in it (masked e-mail, plan). Wins over `credentialLogin`. */
-  credentialStatus?: (cli: CredentialProfileCli, directory: string) => Promise<CredentialProfileAnswer>;
+  credentialStatus?: (cli: CredentialProfileCli, directory: string, authorized?: () => boolean) => Promise<CredentialProfileAnswer>;
   /** How often to look for a sign-in made by `agend-runtime login` in another window (default 5 s). */
   credentialWatchMs?: number;
   /**
@@ -490,10 +490,12 @@ export class RuntimeClient {
     }, this.options.credentialWatchMs ?? 5000);
     this.credentialWatch.unref?.();
   }
-  private statusOf(cli: CredentialProfileCli, directory: string): Promise<CredentialProfileAnswer> {
-    if (this.options.credentialStatus) return this.options.credentialStatus(cli, directory);
+  private statusOf(cli: CredentialProfileCli, directory: string, authorized?: () => boolean): Promise<CredentialProfileAnswer> {
+    if (this.options.credentialStatus) return authorized ? this.options.credentialStatus(cli, directory, authorized) : this.options.credentialStatus(cli, directory);
     if (this.options.credentialLogin) return this.options.credentialLogin(cli, directory).then(loggedIn => ({ loggedIn }));
-    return probeCredentialProfileStatus(cli, directory);
+    // The lookup of the CLI is the Runtime's own (a test or the install work may supply one); production leaves it to `findCli`.
+    const find = this.options.remoteAccounts?.find;
+    return probeCredentialProfileStatus(cli, directory, find ? id => find(id as CredentialProfileCli) : undefined, undefined, authorized);
   }
   private remember(root: string, cli: CredentialProfileCli, name: string, answer: CredentialProfileAnswer): void {
     rememberCredentialStatus(root, cli, name, answer); this.credentialStamp = this.stamp();   // our own write is not "another window"
@@ -516,7 +518,7 @@ export class RuntimeClient {
     const still = (): void => { if (authorized && !authorized()) throw new Error("Authorization expired during CLI discovery"); };
     if (force) for (const name of listCredentialProfileNames(root, "claude-code")) {
       still();
-      try { const answer = await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name)); still(); this.remember(root, "claude-code", name, answer); }
+      try { const answer = await this.statusOf("claude-code", requireCredentialProfile(root, "claude-code", name), authorized); still(); this.remember(root, "claude-code", name, answer); }
       catch { still(); this.remember(root, "claude-code", name, { loggedIn: null }); }
     }
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
