@@ -65,12 +65,15 @@ const ids=new Set(),pin=()=>{const id=store.get(agent.id).threadId;if(id)ids.add
 const intent=async()=>JSON.parse(await readFile(join(coordinator,'native-panes',agent.id,'active.json'),'utf8'));
 const walSize=async()=>{try{return (await stat(codexHome+'/state_5.sqlite-wal')).size;}catch{return 0;}};
 const rollouts=async()=>{const out=[];const walk=async d=>{let rows;try{rows=await readdir(d,{withFileTypes:true});}catch{return;}for(const r of rows){if(r.isDirectory())await walk(d+'/'+r.name);else if(r.name.endsWith('.jsonl'))out.push(d+'/'+r.name);}};await walk(codexHome+'/sessions');return out;};
+const{coherentSqliteWal}=await load('runtime-pane-codex-index.js');
+// Shape only (frame counts per generation), read from a copy of the WAL bytes; nothing is written back.
+const walShape=async()=>{const b=await readFile(codexHome+'/state_5.sqlite-wal'),frame=24+b.readUInt32BE(8),n=(b.length-32)/frame;let current=0,commits=0;for(let i=0;i<n;i++){const at=32+i*frame;if(b.readUInt32BE(at+8)===b.readUInt32BE(16)&&b.readUInt32BE(at+12)===b.readUInt32BE(20)){current++;if(b.readUInt32BE(at+4))commits++;}}return{frames:n,currentGeneration:current,commits,coherent:coherentSqliteWal(b)};};
 let passed=false,phase='start';
 try{
  // Leg 1+2: no-turn pin, clean stop, then the automatic fresh.
  phase='leg2-first-start';log('phase:'+phase);await fleet.startInstance(name,config,true);const original=pin();assert(original);
  await until(()=>fleet.daemons.get(name)?.nativePauseReady(),'idle before stop',60000);await fleet.stopInstance(name);assert(!store.get(agent.id).activeId);
- receipt.legs.wal={walBytesAfterCleanExit:await walSize(),rollouts:(await rollouts()).length};assert(receipt.legs.wal.walBytesAfterCleanExit>0,'Windows Codex left no WAL');assert.equal(receipt.legs.wal.rollouts,0);
+ receipt.legs.wal={walBytesAfterCleanExit:await walSize(),rollouts:(await rollouts()).length,...await walShape()};assert.equal(receipt.legs.wal.coherent,true,'Windows Codex WAL is not fully current-generation and committed');assert(receipt.legs.wal.walBytesAfterCleanExit>0,'Windows Codex left no WAL');assert.equal(receipt.legs.wal.rollouts,0);
  phase='leg2-automatic-fresh';log('phase:'+phase);const noticesBefore=notices.length;
  await fleet.startInstance(name,config,true);const fresh=pin(),i=await intent(),snap=fleet.daemons.get(name).nativePaneLifecycle.snapshot();
  assert(fresh&&fresh!==original);assert.equal(i.fresh?.automatic,true);assert.equal(i.fresh.previous.sessionId,original);assert.equal(i.fresh.sessionId,fresh);
@@ -89,7 +92,7 @@ try{
  // Leg 4: the row only in the WAL holds.
  phase='leg4-wal-only';log('phase:'+phase);await until(()=>fleet.daemons.get(name)?.nativePauseReady(),'idle before stop',60000);await fleet.stopInstance(name);
  const rollout=(await rollouts()).find(p=>p.endsWith('-'+fresh+'.jsonl'));const held=root+'/held/'+rollout.split('/').at(-1);await rename(rollout,held);
- const walOnly={walBytes:await walSize()};
+ const walOnly={walBytes:await walSize(),...await walShape()};
  await assert.rejects(fleet.startInstance(name,config,true),e=>e.name==='NativePaneRecoveryError'&&e.recovery?.kind==='session-unconfirmed');
  assert.equal(pin(),fresh);assert.equal(store.get(agent.id).activeId,undefined);walOnly.held=true;walOnly.noAutomaticFresh=true;
  await rename(held,rollout);
