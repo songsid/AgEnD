@@ -141,6 +141,8 @@ jobs:
           cache: npm
       - name: Run test shard ${{ matrix.shard }}/4
         if: needs.detect-changes.outputs.text-only != 'true'
+        env:
+          AGEND_CI_TEST_PARTITION: unit
         run: |
           npm ci
           npm run build
@@ -201,6 +203,38 @@ jobs:
           AGEND_HUB_RIG_ENV="$OUT/rig.env" npx vitest run tests/hub-directory-rig.test.ts tests/hub-init-rig.test.ts tests/hub-compose-rig.test.ts --reporter=json --outputFile="$RUNNER_TEMP/hub-rig.json" >/dev/null
           node -e 'const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); const n = r.numPassedTests; console.log("rig tests passed:", n); if (!(n > 20) || r.numPendingTests > 0) process.exit(1)' "$RUNNER_TEMP/hub-rig.json"
 
+  # Real pwsh/installer suites run alone: the START gate cannot reserve CPU
+  # from unrelated Vitest workers in a general unit shard.
+  test-pwsh:
+    runs-on: ubuntu-latest
+    needs: [detect-changes, setup]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Skip installer tests on a text-only PR
+        if: needs.detect-changes.outputs.text-only == 'true'
+        run: echo "Text-only PR — installer tests skipped."
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: needs.detect-changes.outputs.text-only != 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Prepare installer test build
+        if: needs.detect-changes.outputs.text-only != 'true'
+        run: |
+          command -v pwsh
+          docker version
+          npm ci
+          npm run build
+      # Cold runtime/JIT preparation is bounded and timed separately; helper START
+      # and case deadlines remain10s. A preparation failure prevents test admission.
+      - name: Prepare PowerShell runtime
+        if: needs.detect-changes.outputs.text-only != 'true'
+        timeout-minutes: 2
+        run: node scripts/ci/prepare-pwsh.mjs
+      - name: Run isolated installer tests
+        if: needs.detect-changes.outputs.text-only != 'true'
+        run: npx vitest run --config vitest.config.pwsh.ts
+
   # ── tests that read docs ─────────────────────────────────────────────────────
   # Always runs. Heavy work only on text-only PRs, where the four shards skip.
   docs-tests:
@@ -234,7 +268,7 @@ jobs:
   # never `skipped`.
   build:
     runs-on: ubuntu-latest
-    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, hub-directory, docs-tests, install-smoke, node20-rollback-smoke]
+    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, test-pwsh, hub-directory, docs-tests, install-smoke, node20-rollback-smoke]
     if: always()
     steps:
       - name: Check all jobs succeeded
@@ -244,6 +278,7 @@ jobs:
           SETUP: ${{ needs.setup.result }}
           SHARD: ${{ needs.test-shard.result }}
           INTEGRATION: ${{ needs.test-integration.result }}
+          PWSH: ${{ needs.test-pwsh.result }}
           HUB_DIRECTORY: ${{ needs.hub-directory.result }}
           DOCS_TESTS: ${{ needs.docs-tests.result }}
           SMOKE: ${{ needs.install-smoke.result }}
@@ -260,7 +295,7 @@ jobs:
             exit 1
           fi
           failed=()
-          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "hub-directory:$HUB_DIRECTORY" "docs-tests:$DOCS_TESTS" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "test-pwsh:$PWSH" "hub-directory:$HUB_DIRECTORY" "docs-tests:$DOCS_TESTS" "install-smoke:$SMOKE" "node20-rollback-smoke:$ROLLBACK"; do
             name="${name_result%%:*}"
             result="${name_result##*:}"
             if [ "$result" != "success" ]; then

@@ -80,7 +80,7 @@ describe("CI admission and cancellation", () => {
     return execFileSync("/bin/bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", aggregate.run!], {
       encoding: "utf8", env: { PATH: process.env.PATH, CHANGELOG: "success",
         ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success",
-        HUB_DIRECTORY: "success", DOCS_TESTS: "success", SMOKE: result, ROLLBACK: "success", ...extra },
+        HUB_DIRECTORY: "success", PWSH: "success", DOCS_TESTS: "success", SMOKE: result, ROLLBACK: "success", ...extra },
       stdio: "pipe",
     });
   }
