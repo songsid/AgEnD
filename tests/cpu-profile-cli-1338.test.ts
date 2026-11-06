@@ -38,6 +38,7 @@ function harness() {
     startFleetOrExit,
     installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     process, console: { log: vi.fn(), warn: vi.fn(), error: vi.fn() }, DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
+    loadRawFleetConfig: () => ({ hub: { enabled: false } }),
     DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", redirectToService: () => false, claimFleetSingleton: vi.fn(() => true), startCpuProfileFromEnvironment: startProfile,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),
     loadConfigModule: async () => ({ loadFleetConfig: () => ({ health_port: 1 }) }),

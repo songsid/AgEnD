@@ -12,15 +12,15 @@ function fixture(){const root=mkdtempSync(join(tmpdir(),"agend-runtime-info-"));
 afterEach(()=>{for(const root of directories.splice(0)){if(!resolve(root).startsWith(resolve(tmpdir())+sep))throw Error("Unsafe fixture path");rmSync(root,{recursive:true,force:true});}});
 describe("runtime program version information",()=>{
   it("fingerprints the actual fixed program modules, distinguishes builds of the same version and ignores private files",()=>{
-    const f=fixture(),first=readRuntimeInfo(f);expect(first).toMatchObject({version:"2.3.5-alpha",protocolVersions:[1],capabilities:["exec","mcp"]});expect(first.buildId).toMatch(/^[a-f0-9]{64}$/);
+    const f=fixture(),first=readRuntimeInfo(f);expect(first).toMatchObject({version:"2.3.5-alpha",protocolVersions:[1],capabilities:["exec","mcp","credential-profiles","account-identity"]});expect(first.buildId).toMatch(/^[a-f0-9]{64}$/);
     writeFileSync(join(f.moduleDirectory,"credentials.json"),"PRIVATE_DATA");expect(readRuntimeInfo(f).buildId).toBe(first.buildId);
     writeFileSync(join(f.moduleDirectory,"runtime-client.js"),"changed runtime program");expect(readRuntimeInfo(f).buildId).not.toBe(first.buildId);expect(readRuntimeInfo(f).version).toBe(first.version);
     const changed=readRuntimeInfo(f);writeFileSync(f.packagePath,JSON.stringify({name:"@songsid/agend-runtime",version:"2.3.6"}));expect(readRuntimeInfo(f).buildId).not.toBe(changed.buildId);
   });
   it("keeps a known version when build assets are incomplete, and keeps absent or invalid package versions unknown",()=>{
-    const f=fixture();rmSync(join(f.moduleDirectory,"runtime-client.js"));expect(readRuntimeInfo(f)).toEqual({version:"2.3.5-alpha",protocolVersions:[1],capabilities:["exec","mcp"]});
+    const f=fixture();rmSync(join(f.moduleDirectory,"runtime-client.js"));expect(readRuntimeInfo(f)).toEqual({version:"2.3.5-alpha",protocolVersions:[1],capabilities:["exec","mcp","credential-profiles","account-identity"]});
     for(const raw of ['{"name":"another-package","version":"9.9.9"}','{"name":"@songsid/agend-runtime","version":"not-semver"}','{']){
-      writeFileSync(f.packagePath,raw);expect(readRuntimeInfo(f)).toEqual({protocolVersions:[1],capabilities:["exec","mcp"]});
+      writeFileSync(f.packagePath,raw);expect(readRuntimeInfo(f)).toEqual({protocolVersions:[1],capabilities:["exec","mcp","credential-profiles","account-identity"]});
     }
     rmSync(f.packagePath);expect(readRuntimeInfo(f).version).toBeUndefined();
   });

@@ -41,6 +41,7 @@ function cli(manager: FleetManager) {
     startFleetOrExit,
     installFleetProcessHandlers: (options: Parameters<typeof installFleetProcessHandlers>[0]) => installFleetProcessHandlers({ ...options, writeFatal: vi.fn() }),
     DATA_DIR: "/private-unused", FLEET_CONFIG_PATH: "/private-unused/fleet.yaml",
+    loadRawFleetConfig: () => ({ hub: { enabled: false } }),
     DIRECT_FLEET_START_ENV: "AGEND_FLEET_START_DIRECT", redirectToService: () => false, claimFleetSingleton: () => true, describeSignalSource: () => "fake signal", Promise,
     loadFleetManager: async () => ({ FleetManager: class { constructor() { return manager; } } }),
   });

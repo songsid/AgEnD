@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { HUB_REPORT_TARGET } from "../src/hub-report-target.js";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -228,6 +228,60 @@ describe("#3147 r2: a failed incarnation write never revives old consent", () =>
       (fm as any).fleetConfig = { instances: { worker: { ...a } } };
       expect((fm as any).hubAgentToken("worker")).toBeNull(); // the old id is still on disk: never handed out again here
     } finally { chmodSync(join(dir, "hub-member"), 0o700); rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("M-2451 (#3147 residual): an invalidation hub-member/ could not keep survives a restart", () => {
+  const a = { working_directory: "/tmp/w", backend: "claude-code" };
+  const make = (dir: string, instances: Record<string, unknown>) => { const fm = new FleetManager(dir); (fm as any).fleetConfig = { instances }; return fm; };
+  const marker = (dir: string) => existsSync(join(dir, "hub-member-invalidate.pending"));
+
+  it.skipIf(process.getuid?.() === 0)("A → B → A with hub-member/ unwritable: no restart revives the original token", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-hub-2451-"));
+    try {
+      const original = (make(dir, { worker: { ...a } }) as any).hubAgentToken("worker");
+      expect(original).toMatch(/^[0-9a-f]{64}$/);
+      chmodSync(join(dir, "hub-member"), 0o500);
+      const fm = make(dir, { worker: { ...a } });
+      expect((fm as any).hubAgentToken("worker")).toBeNull();   // this process cannot rewrite it: no token, fail closed
+      (fm as any).fleetConfig = { instances: { worker: { ...a, working_directory: "/tmp/b" } } };   // a hand edit, reloaded
+      (fm as any).observeHubAgentIncarnations();
+      expect(marker(dir)).toBe(true);   // the withdrawal is recorded outside hub-member/
+      // The file is back to A (hand edit), then a restart while hub-member/ is still unwritable: nothing handed out.
+      expect((make(dir, { worker: { ...a } }) as any).hubAgentToken("worker")).toBeNull();
+      chmodSync(join(dir, "hub-member"), 0o700);
+      // A restart once it is writable: every incarnation was cleared first, so a new token, never the original.
+      const after = (make(dir, { worker: { ...a } }) as any).hubAgentToken("worker");
+      expect(after).toMatch(/^[0-9a-f]{64}$/);
+      expect(after).not.toBe(original);
+      expect(marker(dir)).toBe(false);
+      expect((make(dir, { worker: { ...a } }) as any).hubAgentToken("worker")).toBe(after);   // and it then lasts
+    } finally { chmodSync(join(dir, "hub-member"), 0o700); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it.skipIf(process.getuid?.() === 0)("a removal with hub-member/ unwritable, then re-added and restarted: a new token", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-hub-2451-"));
+    try {
+      const fm = make(dir, { worker: { ...a } });
+      const original = (fm as any).hubAgentToken("worker");
+      chmodSync(join(dir, "hub-member"), 0o500);
+      (fm as any).fleetConfig = { instances: {} };
+      (fm as any).observeHubAgentIncarnations();
+      expect(marker(dir)).toBe(true);
+      chmodSync(join(dir, "hub-member"), 0o700);
+      const readded = (make(dir, { worker: { ...a } }) as any).hubAgentToken("worker");
+      expect(readded).toMatch(/^[0-9a-f]{64}$/);
+      expect(readded).not.toBe(original);
+    } finally { chmodSync(join(dir, "hub-member"), 0o700); rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("control: an ordinary restart with nothing pending keeps the token and writes no marker", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-hub-2451-"));
+    try {
+      const token = (make(dir, { worker: { ...a } }) as any).hubAgentToken("worker");
+      expect((make(dir, { worker: { ...a } }) as any).hubAgentToken("worker")).toBe(token);
+      expect(marker(dir)).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 

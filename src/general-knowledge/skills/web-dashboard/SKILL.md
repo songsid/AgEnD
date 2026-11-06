@@ -79,7 +79,7 @@ lists every page (**Pages (N)**), shows a page at phone or tablet width, and goe
 - `/web revoke` (in chat) signs every browser out, withdraws an unused code and closes the public link.
 
 **`/view` without signing in.** `web.view_access`: `open` (default) or `session`. With `open`, anyone who can reach
-the local address sees every instance's live terminal and the roster (status, context %, model, effort, backend,
+the local address sees every instance's live terminal (for Claude Code with its earlier conversation, as below) and the roster (status, context %, model, effort, backend,
 tags, name, description, avatars, cards) and the usage meters — read only; editing says "Sign in to edit". Over a
 public link `/view` always needs sign-in.
 
@@ -101,7 +101,7 @@ They can chat there unless `web.guests.chat` is false, run only the commands the
 agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the
 agent sees them as `via web (guest)`. A guest's app has no Fleet, Settings or Needs you. Each person is **Chat** (the
 default) or **Trusted** (#2855, `level: trusted` on the grant; Chat → Trusted waits for a fleet admin): a Trusted guest
-also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once) and **search** of the chat
+also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once; for Claude Code with its earlier conversation) and **search** of the chat
 messages it can already see (6 a minute, 20 results; no messages between agents, tasks or settings). To invite someone: turn it
 on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
 send `/web`). The Guests section is not in Settings over the public link.
@@ -239,14 +239,25 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
 - **Tasks** — the task board: Home lists **projects** (with % done) and what waits for the person (**Confirm** /
   **Send back** finished work, **Answer** a blocked card — #2756: only the cards the person handed out, as Needs you;
   an agent's card in review says "Waiting for <agent>"); **No project** holds `task`-tool tasks. A project is a board
-  of main tasks (M-n) by status — To do, In progress, Blocked, To confirm, Done — with drag to move, an assignee
-  filter and each main task's sub tasks (S-n). A card opens in a dialog: every field editable, its sub tasks, comments,
+  of main tasks (M-n) by status — To do, In progress, Blocked, To confirm, Done — with drag to move and each main
+  task's sub tasks (S-n). **Filter** (status, assignee or nobody, priority, size; each chip **is** / **is not**; a main
+  task stays when it or a sub task matches) and **Display** (board or **list**; the list grouped by status, assignee or
+  priority, ordered by board order, priority, last change, newest or title; **Sub tasks as rows of their own**;
+  finished cards last 7 days / all / hidden). The project and filters are in the address (`?tp=`, `?tf=`): a link opens
+  that filtered board; the choices are remembered per device (`agend_tasks_display`, `agend_tasks_filters`). A card opens in a dialog: every field editable, its sub tasks, comments,
   progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
   (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
-  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A main
+  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A right
+  click on a card (tile, list row, waiting row; or the menu key / Shift+F10) opens its menu: Open, Confirm / Send
+  back / Answer when it waits for the person, Move to, Assignee, Priority, Copy link / number, Cancel (Shift+right
+  click keeps the browser's menu). An open card's arrows (or K / J) step to the previous / next card the page showed
+  (a sub task: its siblings). A main
   task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
   **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
-  to them first). Read-only over the public link.
+  to them first). An agent with the task board off (Dashboard access) is greyed out as an assignee: the board hands
+  it no cards. **Insights** (beside the project's numbers): its cards counted per assignee / status / priority / size,
+  each row a bar split by status, priority or size, every card or main tasks only — what the board shows
+  (`agend_tasks_insights` keeps the choices). Read-only over the public link.
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't
@@ -383,6 +394,11 @@ to that instance's Log).
 
 **Chat | View | Log | Details** switch at the top of an instance.
 - **View** — the live terminal (read only), the identity card, and **Edit profile** (or **Sign in to edit** when signed out).
+  Scrolling up (or **Earlier output**) shows what scrolled off: tmux's scrollback; for Claude Code, its earlier
+  conversation from its transcript, drawn in Claude's own terminal style above the live screen under **History above**
+  (long output folded, click to expand; older pages near the top; the latest ~1000 steps), tool results included.
+  Everyone who may open the View sees it — a signed-in admin, an anonymous reader under `view_access: open`, a Trusted
+  guest for its agents (the user's decision on #3069); the Log tab's switch plays no part.
 - **Log** — [the Log tab](#the-log-tab).
 - **Details** — Configuration (display name, description, directory, bound to, tags; "Read only — change it in
   Settings." with **Edit in Settings**), Runtime (backend, model, effort, cost, context, 5 h and 7 d rate), Recent

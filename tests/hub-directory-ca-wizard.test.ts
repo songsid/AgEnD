@@ -34,7 +34,7 @@ function setup(answers: Parameters<typeof scriptedIO>[0], o: { cancelled?: boole
     const ask = io.io.ask;
     io.io.ask = async question => { if (/Trust these exact CA/.test(question)) throw new WizardCancelled(); return ask(question); };
   }
-  const run = () => runHubInitWizard({ home, io: io.io, initializer: createHubInitializer({ home, identity, probe: { pidAlive: () => false } }),
+  const run = () => runHubInitWizard({ checkNetwork: async () => [], home, io: io.io, initializer: createHubInitializer({ home, identity, probe: { pidAlive: () => false } }),
     createDirectory: person.create, readFile: p => readFileSync(p, "utf8"), service: { installed: () => false, install: async () => { throw Error("not requested"); } },
     ...(!o.noFetch ? { directoryCertificates: { inspect: inspectDirectoryCertificate, fetch: (...args: Parameters<typeof fetchDirectoryCa>) => { fetchCalls++; return fetchDirectoryCa(...args); } } } : {}) });
   return { run, home, io, identity, person, fetchCount: () => fetchCalls, hiddenCount: () => hiddenPrompts };

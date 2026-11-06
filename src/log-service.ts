@@ -88,6 +88,11 @@ export type LogAnswer =
     ev: number;
   };
 
+/** LogService.readBack's answer: the steps before `end`, or why there are none (`reason`, no `steps`). */
+export type ReadBack =
+  | { backend: string; format: "claude" | "codex" | null; reason: string; key?: undefined; steps?: undefined }
+  | { backend: string; format: "claude" | "codex"; key: string; steps: LogStep[]; before: number | null; end: number; reset?: boolean; reason?: undefined };
+
 const parserFor = (format: "claude" | "codex") => (format === "claude" ? new ClaudeStepParser() : new CodexStepParser());
 /** The long records worth reading whole for a Log (a reply, a turn record); every other long one by its head. */
 const wholeFor = (format: "claude" | "codex") => (head: string) => (format === "claude"
@@ -123,6 +128,29 @@ export class LogService {
     if (q.before !== undefined && !fresh) return { ...answer, ...(await this.backward(src.path, src.format, q.before, Math.min(q.limit ?? LOG_OLDER_LIMIT, LOG_OLDER_LIMIT))), after: null };
     const back = await this.backward(src.path, src.format, undefined, Math.min(q.limit ?? LOG_STEPS_LIMIT, LOG_STEPS_LIMIT));
     return { ...answer, ...back, ...((fresh || past) && (q.after !== undefined || q.before !== undefined) ? { reset: true } : {}) };
+  }
+
+  /**
+   * Claude history in the View (view-history.ts): the steps before `end` (the newest when undefined), at most `limit` —
+   * read the way the Log reads them, but without the Log's switch, its watch or its events: the View's own access rules
+   * were applied before this is asked (view-api.ts). `end` of a cursor for another transcript (a new session), or past
+   * this one's end, reads the newest instead (`reset`). Null: no such instance.
+   */
+  async readBack(name: string, q: { end?: number; key?: string; limit: number }): Promise<ReadBack | null> {
+    if (!this.deps.known(name)) return null;
+    const src = this.deps.source(name);
+    if (!src.format || !src.path) return { backend: src.backend, format: src.format, reason: src.reason ?? (src.format ? "no_transcript" : "unsupported") };
+    let st: { dev: number; ino: number; size: number };
+    try { st = await stat(src.path); } catch { return { backend: src.backend, format: src.format, reason: "no_transcript" }; }
+    const key = `${st.dev}-${st.ino}`;
+    const limit = Math.max(1, Math.min(q.limit, LOG_STEPS_LIMIT));
+    const stale = q.end !== undefined && ((q.key !== undefined && q.key !== key) || q.end > st.size);
+    if (q.end !== undefined && !stale) {
+      const back = await this.backward(src.path, src.format, q.end, limit);
+      return { backend: src.backend, format: src.format, key, steps: back.steps, before: back.before, end: q.end };
+    }
+    const back = await this.backward(src.path, src.format, undefined, limit);
+    return { backend: src.backend, format: src.format, key, steps: back.steps, before: back.before, end: back.after, ...(stale ? { reset: true } : {}) };
   }
 
   /** The steps before `end` (the newest when undefined), at most `limit`, and where older ones start. */

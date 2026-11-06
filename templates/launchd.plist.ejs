@@ -25,7 +25,9 @@
     <true/>
     <key>KeepAlive</key>
     <true/>
-    <key>StandardOutPath</key>
+<% if (launchdSessionType) { %>    <key>LimitLoadToSessionType</key>
+    <string><%= launchdSessionType %></string>
+<% } %>    <key>StandardOutPath</key>
     <string><%= logPath %></string>
     <key>StandardErrorPath</key>
     <string><%= logPath %></string>

@@ -380,6 +380,8 @@ export interface IncidentEventSource {
   requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean; reason?: PauseReason }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
   isCodexLivePane?(): Promise<boolean>;
+  /** #3186 review: a usage-pause notice the second opinion dropped was not told — its repeats must reach it again. */
+  clearUsagePauseNotice?(): void;
   /** Existing occurrence count used to preserve Codex capacity history on restart. */
   getErrorPatternOccurrenceCount?(type: "model_error", pattern: RegExp): number;
   /** #2648: kiro only — what a model error on its current launch should do (restart once, say once, or nothing). */
@@ -1526,6 +1528,9 @@ export class InstanceLifecycle {
         if (verdict === "available") {
           this.ctx.logger.debug({ name, backend: "claude-code" },
             "quota pattern ignored — live usage has capacity (stale pane history)");
+          // Not told: the daemon's one-notice-per-pause mark must not hold back the next repeat (the usage API can lag
+          // the CLI right as the limit hits; the next "reached again" is verified again).
+          if (data.verifyQuota) daemon.clearUsagePauseNotice?.();
           return;
         }
         if (verdict === "unknown") {
@@ -2518,6 +2523,18 @@ export class InstanceLifecycle {
     this.ctx.logger.info({ name }, "Instance removed");
   }
 
+  /**
+   * Whether a new instance made in `adapterId`'s world records it as channel_id: in a fleet with more than one
+   * connection, or when that world is not the first one (where a missing channel_id would route). A single-connection
+   * fleet's fleet.yaml stays as it was.
+   */
+  private bindsAdapter(adapterId: string): boolean {
+    const fleet = this.ctx.fleetConfig;
+    const channels = fleet?.channels ?? (fleet?.channel ? [fleet.channel] : []);
+    const first = channels[0] ? (channels[0].id ?? channels[0].type) : undefined;
+    return channels.length > 1 || adapterId !== first;
+  }
+
   /** Handle create_instance tool call from a daemon. */
   async handleCreate(
     args: LifecycleCreateArgs,
@@ -2784,6 +2801,9 @@ export class InstanceLifecycle {
         ...getEffectiveInstanceDefaults(this.ctx.fleetConfig!.defaults ?? {}),
         working_directory: workDir,
         ...(createdTopicId != null ? { topic_id: createdTopicId } : {}),
+        // The topic was made in the caller's world (a Discord General in a fleet that lists Telegram first, or the
+        // inverse): the instance is bound to that adapter, so routing and replies use it — not the fleet's first one.
+        ...(createdTopicId != null && adapterId && this.bindsAdapter(adapterId) ? { channel_id: adapterId } : {}),
         ...(description ? { description } : {}),
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(args.model ? { model: args.model } : {}),

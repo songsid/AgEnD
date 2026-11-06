@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NeedsYouHub, type NeedsYouHubContext } from "../src/needs-you-hub.js";
-import type { DeliveryInput, InstanceInput, PromptInput } from "../src/needs-you.js";
+import type { DeliveryInput, InstanceInput, MissedOfflineInput, PromptInput } from "../src/needs-you.js";
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
@@ -59,6 +59,8 @@ function rig() {
     deliveries: [] as DeliveryInput[],
     hubExecution: [] as import("../src/needs-you.js").HubExecutionAttentionInput[],
     hubStorageUnavailable: false,
+    missed: [] as MissedOfflineInput[],
+    missedAcked: new Set<string>(),
     owners: { alpha: "dcA", beta: "dcB" } as Record<string, string | undefined>,
     admins: { dcA: ["100"], dcB: ["200"] } as Record<string, string[]>,
     acked: new Map<string, string>(),
@@ -92,6 +94,13 @@ function rig() {
       if (state.ackThrows) throw new Error("SQLITE_BUSY");
       if (state.acked.has(deliveryId)) return false;
       state.acked.set(deliveryId, by);
+      return true;
+    },
+    missedOffline: () => state.missed.filter(m => !state.missedAcked.has(m.id)),
+    acknowledgeMissed: (id) => {
+      if (state.missedAcked.has(id)) return false;
+      if (!state.missed.some(m => m.id === id)) return false;
+      state.missedAcked.add(id);
       return true;
     },
     settings: () => state.settings,
@@ -238,6 +247,21 @@ describe("§6.1 the web's Acknowledge: any item, any world", () => {
     expect(r.hub.webAcknowledge("prompt:abc", "web:x").status).toBe(400);
     r.state.ackThrows = true;
     expect(r.hub.webAcknowledge("delivery:d3", "web:x")).toEqual({ status: 500, message: "needs.ack_failed" });
+  });
+
+  it("a missed-offline item is Acknowledgeable from the web", async () => {
+    const r = rig();
+    r.state.missed = [{
+      id: "missed:tg:9", instance: "alpha", owner: "dcA", username: "han",
+      place: "Test Group · #101", preview: "hello after restart", since: 999_000,
+    }];
+    r.hub.start();
+    await r.advance(0);
+    expect(r.hub.webItems().map(i => [i.type, i.id, i.reason])).toEqual([["missed", "missed:tg:9", "missed_offline"]]);
+    expect(r.hub.webAcknowledge("missed:tg:9", "web:x")).toEqual({ status: 200, message: "needs.ack_done" });
+    await r.advance(0);
+    expect(r.hub.webItems()).toEqual([]);
+    expect(r.hub.webAcknowledge("missed:tg:9", "web:x").status).toBe(409);
   });
 });
 

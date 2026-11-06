@@ -1,6 +1,7 @@
 /** Shared, side-effect-free validation for native creation and its settings confirmation. */
 import { z } from "zod";
 import type { FleetConfig } from "./types.js";
+import { validCredentialProfileName } from "./runtime-credential-profiles.js";
 
 export const NativeInstanceCreateArgs = z.object({
   runtime: z.literal("windows"), native_adapter:z.enum(["exec","pane"]).optional(), channel_id:z.string().min(1).max(160).optional(), topic_name: z.string().max(64).optional(),
@@ -9,7 +10,10 @@ export const NativeInstanceCreateArgs = z.object({
   model: z.string().max(160).optional(), description: z.string().max(512).optional(),
   systemPrompt: z.string().max(8000).optional(), sandbox: z.enum(["read-only", "workspace-write"]).default("read-only"),
   tags: z.array(z.string().min(1).max(64)).max(32).optional(),
+  /** A NAME only: a Claude sign-in kept on the chosen Runtime computer. The server never accepts, stores or sends a folder for it. */
+  credentialProfile: z.string().max(64).refine(validCredentialProfileName,"Invalid credential profile name").optional(),
 }).strict().superRefine((value,ctx)=>{
+  if(value.credentialProfile&&(!value.machineId||value.backend!=="claude-code"))ctx.addIssue({code:"custom",message:"A credential profile is a Claude Code sign-in kept on a paired Runtime computer"});
   if(value.native_adapter==="pane"&&!['codex','claude-code'].includes(value.backend))ctx.addIssue({code:"custom",message:"Persistent Windows panes support Codex and Claude Code only"});
   if(value.channel_id&&value.native_adapter!=="pane")ctx.addIssue({code:"custom",message:"Only persistent panes allocate topics"});
 });
@@ -42,7 +46,7 @@ export function parseNativeInstanceCreate(body: unknown) {
   const profile = { name, cli: input.backend, ...(cwd ? { cwd } : {}),
     ...(input.machineId ? { machineId: input.machineId } : {}), model: input.model,
     description: input.description ?? "", instructions: input.systemPrompt ?? "", sandbox: input.sandbox,
-    ...(input.tags ? { tags: input.tags } : {}) };
+    ...(input.tags ? { tags: input.tags } : {}), ...(input.credentialProfile ? { credentialProfile: input.credentialProfile } : {}) };
   return { input, profile };
 }
 export type NativeInstanceCreateInput = ReturnType<typeof parseNativeInstanceCreate>;

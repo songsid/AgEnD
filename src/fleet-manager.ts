@@ -1,3 +1,4 @@
+import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
 import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
@@ -17,6 +18,7 @@ import { WorkingRecoveryCoordinator, WORKING_RECOVERY_KIND, buildWorkingRecovery
 import { PUBLIC_TUNNEL_TOKEN_ENV, PUBLIC_TUNNEL_TOKEN_HINT, normalizePublicTunnelToken } from "./public-tunnel-config.js";
 import { humanOwnerObjectId, webHumanOrigin, type HumanOrigin } from "./human-delivery-receipts.js";
 import { SettingsBaselines } from "./settings-baseline.js";
+import { hubMembershipSettings } from "./hub-membership-settings.js";
 import { prepareSettingsEffect } from "./settings-effect.js";
 import { settingsDisplay } from "./settings-change.js";
 import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
@@ -106,6 +108,10 @@ import { kiroLogGate } from "./kiro-log-gate.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+// Describe this running program, not files an updater may replace later. No reads on dashboard polls.
+const RUNNING_BUILD = readInstalledBuild();
+if (RUNNING_BUILD.source) Object.freeze(RUNNING_BUILD.source);
+Object.freeze(RUNNING_BUILD);
 import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig, WebVerifiedAuthorityConfig } from "./types.js";
 
 /** Fallback access policy for a channel with no `access:` block — open (no gate). */
@@ -137,7 +143,8 @@ import { ParkedNotices, PARKED_NOTICE_LEDGER_FILE } from "./parked-notices.js";
 import { formatFleetTime } from "./tz-utils.js";
 import { createAdapter } from "./channel/factory.js";
 import { isWebChannelEcho, WEB_ECHO_PREFIX } from "./web-channel-echo.js";
-import { TelegramAdapter } from "./channel/adapters/telegram.js";
+import { TelegramAdapter, type MissedOfflineInbound } from "./channel/adapters/telegram.js";
+import { MissedOfflineStore } from "./missed-offline.js";
 import { createBackend } from "./backend/factory.js";
 import { readEffortMetadata } from "./backend/effort-metadata.js";
 import { codexEffort, flagEffort } from "./backend/launch-effort.js";
@@ -243,15 +250,17 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
+import { RUNTIME_CREDENTIAL_CAPABILITY } from "./runtime-credential-profiles.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
-import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED } from "./native-instance-registry.js";
+import { isWindowsInstance, isNativePaneInstance, isNativeExecInstance, WINDOWS_CONFIG_REFUSED, nativeCredentialProfile } from "./native-instance-registry.js";
 import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./native-instance-api.js";
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
+import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
@@ -287,7 +296,8 @@ import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
-import { LOGIN_FLOWS, checkAuthStatus, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
+import { LOGIN_FLOWS, checkAuthStatus, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
+import type { AccountIdentity } from "./claude-auth-status.js";
 import { LoginSession } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
@@ -355,7 +365,7 @@ import { CompactWatch, launchIdentity } from "./compact-watch.js";
 import { agyLegacyAgentsFile, danglingSymlink, migrateAgyAgentsFile } from "./backend/antigravity.js";
 import { claudeConfigDirFor, claudeProjectKey } from "./backend/claude-code.js";
 import { sharedRolloutIndex } from "./rollout-index.js";
-import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
+import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardOffIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
 import {
   mayUseTool,
   resolveToolSet,
@@ -441,7 +451,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -669,6 +679,8 @@ const INSTALL_TIMEOUT_MS = 10 * 60 * 1000;
  * while anything real shows signs of life well before the old two minutes.
  */
 const PROGRESS_MIN_ELAPSED_MS = 30_000;
+/** M-2391: the threshold tick fires this long after it, never a millisecond before (timers can fire early). */
+const PROGRESS_THRESHOLD_MARGIN_MS = 50;
 /** How much of a tool summary the progress line will show before eliding. */
 const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
@@ -1296,11 +1308,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       machineAvailable:id=>remoteRuntimeEnabled() && this.runtimeCoordinator().machine(id)?.status==="online",
       machineGeneration:id=>this.runtimeCoordinator().machine(id)?.bootId??null,
       paneAvailable:id=>this.runtimeCoordinator().machine(id)?.paneProtocol===1,
-      validateMachine:(id,cli,sandbox)=>{
+      validateMachine:(id,cli,sandbox,credentialProfile)=>{
         const machine=this.runtimeCoordinator().machine(id);
         const provider=machine?.inventory?.clis.find(row=>row.id===cli && row.runnable && row.supports.resume);
         if(!machine || machine.status!=="online" || machine.platform!=="win32" || !provider)throw new Error("Choose an online runtime and an available CLI");
         if(sandbox==="read-only" && !provider.readOnlySupport)throw new Error("This runtime CLI cannot enforce read-only execution");
+        if(credentialProfile!==undefined){
+          // Fail closed at selection time, not at the first message: an old Runtime would ignore the name and run another account.
+          if(!machine.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY))throw new Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
+          const row=machine.inventory?.credentialProfiles?.profiles.find(profile=>profile.name===credentialProfile);
+          if(!row)throw new Error(`This computer has not reported a credential profile named "${credentialProfile}". On that computer run: agend-runtime login claude-code ${credentialProfile}, then choose Detect again in that computer's CLI diagnostics (Settings → Runtime).`);
+          if(row.loggedIn===false)throw new Error(`Credential profile "${credentialProfile}" is not signed in on that computer. Sign in there: agend-runtime login claude-code ${credentialProfile}`);
+        }
       },
       emit:(event,data)=>{
         this.emitSseEvent(event,event === "status" ? this.getUiStatus() : data);
@@ -1483,8 +1502,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.shuttingDown || !isNativePaneInstance(now) || now?.native_agent_id !== config.native_agent_id
           || now?.machine_id !== config.machine_id || now?.working_directory !== config.working_directory || now?.backend !== config.backend
           || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow
-          || now?.general_topic !== config.general_topic || now?.native_general_binding !== config.native_general_binding)
+          || now?.general_topic !== config.general_topic || now?.native_general_binding !== config.native_general_binding
+          || nativeCredentialProfile(now) !== nativeCredentialProfile(config))
           throw Error("Native pane configuration or lifetime changed");
+        // Fail closed: a Runtime that does not report the capability would start the terminal on the computer's own account.
+        if (nativeCredentialProfile(config) && !this.runtimeCoordinator().machine(config.machine_id!)?.runtimeInfo?.capabilities.includes(RUNTIME_CREDENTIAL_CAPABILITY))
+          throw Error("This computer's Runtime is too old to choose a Claude account. Update the Runtime on that computer, then try again.");
         if (config.machine_id ? this.remotePaneDrain || !remoteRuntimeEnabled() : this.localPaneDrain || !localWindowsCliEnabled()) throw Error("Native runtime is switched off");
       },
       endpoint: async (agent,cleanup=false) => {
@@ -1964,12 +1987,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!Object.prototype.hasOwnProperty.call(instances, agent)) return null;
     if (this.hubIncarnationsBroken) return null;
     let id: string | null;
-    try { id = this.hubAgentIncarnation(agent, instances[agent]!, true); }
+    try { this.settleHubIncarnations(); id = this.hubIncarnationsBroken ? null : this.hubAgentIncarnation(agent, instances[agent]!, true); }
     catch (err) { this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be saved; the agent is not a deliverable representative"); return null; }
     return id ? createHash("sha256").update(JSON.stringify(["agend-hub-agent-v2", agent, id])).digest("hex") : null;
   }
   private hubIncarnationsPath(): string { return join(this.dataDir, "hub-member", "agent-incarnations.json"); }
   /**
+   * M-2451 (#3147 residual): written beside hub-member/, in the data directory itself, when an invalidation could not be
+   * made durable in hub-member/. A later process that finds it invalidates every incarnation before handing out any
+   * token, so a restart never revives consent the earlier process had to withdraw (A→B→A, or a removal, while hub-member/
+   * was unwritable).
+   */
+  private hubIncarnationsMarkerPath(): string { return join(this.dataDir, "hub-member-invalidate.pending"); }
+  /** Whether this process has settled the incarnations on disk (the marker handled, the file proven writable). */
+  private hubIncarnationsSettled = false;
+  /**
+   * Once per process, before the first token: an invalidation an earlier process could not persist (the marker) clears
+   * every incarnation; and an existing file must be rewritable here, else this process is broken (no token at all) —
+   * an incarnation this process could not rotate must never be handed out. Fails closed: any doubt marks it broken.
+   */
+  private settleHubIncarnations(): void {
+    if (this.hubIncarnationsSettled || this.hubIncarnationsBroken || !this.dataDir) return;
+    const path = this.hubIncarnationsPath(), marker = this.hubIncarnationsMarkerPath();
+    if (existsSync(marker)) {
+      try { unlinkSync(path); } catch (err) {
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          this.hubIncarnationsBroken = true;
+          this.logger.warn({ err: (err as Error)?.message }, "An earlier Hub consent invalidation is still pending and cannot be applied; no Hub representative token is handed out");
+          return;
+        }
+      }
+      // The clear is durable; a marker that cannot be removed only clears again next time (over-invalidation, never revival).
+      try { unlinkSync(marker); } catch { /* left: harmless */ }
+      this.logger.warn("An earlier Hub consent invalidation was applied: every Hub representative needs a republish");
+    }
+    if (existsSync(path)) this.writeHubIncarnations(this.readHubIncarnations());   // throws (broken) when hub-member/ is not writable
+    this.hubIncarnationsSettled = true;
+  }  /**
    * #3147 r2: set when an invalidation could not be made durable in any way (neither the atomic write nor removing the
    * file worked). From then on this process hands out no representative token at all, and the transitions the fleet
    * controls (a config save, a removal) are refused instead of applied.
@@ -1998,7 +2052,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         unlinkSync(path);
       } catch (gone) {
-        if ((gone as NodeJS.ErrnoException)?.code !== "ENOENT") { this.hubIncarnationsBroken = true; throw err; }
+        if ((gone as NodeJS.ErrnoException)?.code !== "ENOENT") {
+          this.hubIncarnationsBroken = true;
+          // M-2451: record the withdrawal outside hub-member/, so a restart does not revive what this process withdrew.
+          try { writeFileSync(this.hubIncarnationsMarkerPath(), "", { mode: 0o600 }); } catch { /* the data directory too: nothing durable is left */ }
+          throw err;
+        }
       }
       this.logger.warn({ err: (err as Error)?.message }, "Hub agent incarnations could not be saved; every earlier Hub consent is invalidated (republish needed)");
       return "cleared";
@@ -2024,6 +2083,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Only against a loaded configuration: never forget every agent because none is loaded yet.
     if (!this.dataDir || !this.fleetConfig?.instances) return;
     try {
+      this.settleHubIncarnations();
+      if (this.hubIncarnationsBroken) throw new Error("Hub agent incarnations cannot be written here");
       if (!existsSync(this.hubIncarnationsPath())) return;
       const instances = this.fleetConfig.instances;
       for (const agent of Object.keys(this.readHubIncarnations())) {
@@ -2345,6 +2406,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
+  private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
   private configHistoryTimer: ReturnType<typeof setInterval> | null = null;
   private loadedFleetSource: ConfigSource | null = null;
@@ -2960,6 +3022,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const baselines = this.settingsBaselineReader = new SettingsBaselines({ dataDir: this.dataDir, configPath: () => this.configPath,
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       generalLocation: input => this.previewGeneralLocation(input),
+      hubMembership: raw => hubMembershipSettings(raw),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
       hubBrowserCertificate: (input: unknown, binding: string) => {
         const control = this.hubBrowserCertificate();
@@ -3659,6 +3722,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.topicCommands = new TopicCommands(this);
     this.topicArchiver = new TopicArchiver(this);
     this.statuslineWatcher = new StatuslineWatcher(this);
+    this.missedOfflineStore = new MissedOfflineStore(this.dataDir);
   }
 
   /** #1266: a reply's buttons — the store (reply-buttons.db) and what a click does. Created on first use. */
@@ -4992,9 +5056,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** AgEnD package version (for the Settings "current version" / What's New). */
   get currentVersion(): string {
-    try { return JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version ?? "unknown"; }
-    catch { return "unknown"; }
+    return RUNNING_BUILD.version;
   }
+
+  get currentBuild() { return RUNNING_BUILD; }
 
   /**
    * Resolve a slash-command target in a channel. Classic channels are looked up
@@ -5629,6 +5694,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       changed: () => this.emitSseEvent("status", this.getUiStatus()),
     });
+  }
+
+  /**
+   * Claude history in the View: an instance's earlier conversation for its View, from the transcript the Log reads —
+   * the View's route applied its own access rules first (view-api.ts); the Log's switch plays no part.
+   */
+  viewHistory(name: string, q: ViewHistoryQuery): Promise<ViewHistoryAnswer | null> {
+    return viewHistory((n, rq) => this.log.readBack(n, rq), name, q);
   }
 
   /** #1218: GET /ui/steps — an instance's steps, read on demand (null: no such instance). */
@@ -10641,8 +10714,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    *                 that should be running is running
    *  - `degraded` — reachable, but something the operator should look at (an
    *                 adapter retrying, an instance crashed or stopped)
-   *  - `down`     — the fleet cannot do its job: no adapter is connected, so no
-   *                 message can arrive or be answered
+   *  - `down`     — no configured adapter is connected, or a dedicated Hub's
+   *                 server mount is unavailable
    *
    * Deliberately does NOT gate the systemd watchdog — see the comment at the
    * WATCHDOG timer for why.
@@ -10659,6 +10732,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     memory: FleetMemory;
     hostMemory: MemoryPressureSnapshot & { topProcesses?: MemoryHog[]; topProcessesAt?: string };
     problems: string[];
+    warnings: string[];
+    /** Local server mount availability; absent when the Hub server switch is off. */
+    hub?: { server: import("./hub/runtime.js").HubServerHealth };
   } {
     const names = Object.keys(this.fleetConfig?.instances ?? {});
     const counts = { configured: names.length, running: 0, crashed: 0, paused: 0, stopped: 0 };
@@ -10683,10 +10759,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (effectiveStatus === "connected") connected++;
     }
 
-    const problems: string[] = [];
+    const problems: string[] = [], warnings: string[] = [];
+    const rawHub = this.rawFleetConfig?.hub as { enabled?: unknown } | undefined;
+    const hub = rawHub?.enabled === true ? { server: this.shuttingDown ? "stopped" as const
+      : this.hubRuntime?.serverHealth?.(rawHub) ?? "unavailable" as const } : undefined;
+    const hubOnly = !!hub && names.length === 0 && this.adapterState.size === 0;
+    if (hub && hub.server !== "ready") problems.push(`Hub server is ${hub.server}`);
     const hostMemory = this.memoryPressure.snapshot();
-    if (!this.memoryPressure.advisoryOnly() && (hostMemory.level === "critical" || hostMemory.level === "elevated")) {
-      problems.push(`host memory pressure is ${hostMemory.level}`);
+    if (hostMemory.level === "critical" || hostMemory.level === "elevated") {
+      const pressure = `host memory pressure is ${hostMemory.level}`;
+      if (hubOnly) warnings.push(pressure);
+      else if (!this.memoryPressure.advisoryOnly()) problems.push(pressure);
     }
     if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
     if (counts.crashed > 0) problems.push(`${counts.crashed} instance(s) crashed`);
@@ -10695,9 +10778,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (!this.startupComplete) problems.push("startup has not completed");
 
-    // "down" is reserved for "cannot receive or answer a message at all". A fleet
-    // with adapters configured but none connected is exactly that.
-    const status = this.adapterState.size > 0 && connected === 0
+    // Preserve adapter scoring. A dedicated Hub also cannot serve its workload before its server mount is ready.
+    const status = (this.adapterState.size > 0 && connected === 0) || (hubOnly && hub?.server !== "ready")
       ? "down"
       : problems.length > 0 ? "degraded" : "ok";
 
@@ -10710,7 +10792,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       memory: readFleetMemory(),
       hostMemory: this.memoryTop && (hostMemory.level === "elevated" || hostMemory.level === "critical")
         ? { ...hostMemory, topProcesses: this.memoryTop.processes, topProcessesAt: this.memoryTop.at } : hostMemory,
-      problems,
+      problems, warnings, ...(hub ? { hub } : {}),
     };
   }
 
@@ -10784,6 +10866,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, "adapter.callback_query"));
+    adapter.on("missed_offline", (ev: MissedOfflineInbound) => {
+      if (!isCurrentAdapter()) return;
+      this.recordMissedOffline(ev);
+    });
 
     this.bindTopicClosedHandler(adapter, adapterId, "adapter.topic_closed");
 
@@ -10934,6 +11020,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       await this.receiveAdapterCallback(data, adapterId, adapter, isCurrentAdapter);
     }, this.logger, `adapter[${adapterId}].callback_query`));
+    adapter.on("missed_offline", (ev: MissedOfflineInbound) => {
+      if (!isCurrentAdapter()) return;
+      this.recordMissedOffline(ev);
+    });
 
     this.bindTopicClosedHandler(adapter, adapterId, `adapter[${adapterId}].topic_closed`);
 
@@ -11628,6 +11718,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ownerUser && suffix.toLowerCase() !== ownerUser.toLowerCase()) return false;
     }
     return true;
+  }
+
+  /** File a Telegram update that was too old to inject; Needs you lists it until Acknowledge. */
+  private recordMissedOffline(ev: MissedOfflineInbound): void {
+    if (!this.missedOfflineStore) this.missedOfflineStore = new MissedOfflineStore(this.dataDir);
+    const stub: InboundMessage = {
+      source: "telegram", adapterId: ev.adapterId, chatId: ev.chatId, threadId: ev.threadId,
+      messageId: ev.messageId, userId: ev.userId, username: ev.username, text: ev.preview,
+      timestamp: ev.timestamp, isBotMessage: false,
+    };
+    const threadId = this.inboundRouteThreadId(stub);
+    const target = threadId ? this.resolveInboundTarget(stub, threadId) : undefined;
+    let instance = target?.name ?? "";
+    if (!instance) {
+      instance = Object.entries(this.fleetConfig?.instances ?? {}).find(([name, cfg]) =>
+        cfg.general_topic && this.getInstanceAdapterId(name) === ev.adapterId)?.[0] ?? "";
+    }
+    const place = [ev.chatTitle, ev.threadId ? `#${ev.threadId}` : ""].filter(Boolean).join(" · ") || ev.chatId;
+    this.missedOfflineStore.add({
+      id: `missed:${ev.adapterId}:${ev.updateId}`,
+      adapterId: ev.adapterId,
+      instance,
+      username: ev.username,
+      place,
+      preview: ev.preview,
+      since: ev.timestamp.getTime(),
+    });
+    this.logger.info({ adapterId: ev.adapterId, updateId: ev.updateId, instance, chatId: ev.chatId, threadId: ev.threadId },
+      "Telegram message missed while AgEnD was offline — filed for Needs you");
+    this.needsYou?.poke();
   }
 
   /**
@@ -16810,6 +16930,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
         return this.deliveryOutbox.acknowledge(deliveryId, by);
       },
+      missedOffline: () => (this.missedOfflineStore?.list(Date.now()) ?? []).map(m => ({
+        id: m.id, instance: m.instance, owner: m.adapterId, username: m.username, place: m.place, preview: m.preview, since: m.since,
+      })),
+      acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
@@ -18808,7 +18932,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const publication = this.beginCancelButtonPublication(instanceName, correlationId);
-    const initialProgressText = FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName, 0, 1));
+    // M-2391: a re-post below a reply (preserveProgress) continues the same turn — its elapsed time continues from
+    // the live bubble's start, as its tool list does. Restarting it at 0 meant an agent replying more often than the
+    // threshold never showed elapsed time at all. A fresh turn (no preserve) starts at 0 as before.
+    const carriedStart = preserveProgress ? this.liveButtonStart(instanceName) : undefined;
+    const carriedMs = carriedStart !== undefined ? Math.max(0, Date.now() - carriedStart) : 0;
+    const initialProgressText = carriedStart !== undefined && carriedMs >= this.progressMinElapsedMs()
+      ? FleetManager.progressText(carriedMs, null, this.progressMinElapsedMs(), this.progressPrefixFor(instanceName, carriedMs))
+      : FleetManager.progressText(0, null, 1, this.progressPrefixFor(instanceName, 0, 1));
 
     try {
       const sent = await adapter.notifyAlert(chatId, {
@@ -18834,7 +18965,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Elapsed time is measured from when this button was posted — i.e. from
         // when the work was handed over — not from the pane's working transition,
         // which resets if the CLI blips idle mid-turn.
-        startedAt: Date.now(),
+        startedAt: carriedStart ?? Date.now(),
         // Matches the text notifyAlert just posted, so the first 60s tick does
         // not re-edit identical text — which put a "(edited)" mark on Discord
         // with nothing visibly changed.
@@ -19106,6 +19237,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return PROGRESS_MIN_ELAPSED_MS;
   }
 
+  /** M-2391: when the instance's live (not retiring) bubble started — the current turn's start — or undefined. */
+  private liveButtonStart(instanceName: string): number | undefined {
+    const starts = [...this.cancelButtons.values()].filter((e) => e.instanceName === instanceName && !e.retiring && typeof e.startedAt === "number")
+      .map((e) => e.startedAt as number);
+    return starts.length ? Math.min(...starts) : undefined;
+  }
+
   private startProgressTicker(entry: CancelButtonEntry): void {
     const tick = () => this.refreshBubble(entry);
     entry.progressTimer = setInterval(tick, PROGRESS_UPDATE_INTERVAL_MS);
@@ -19115,7 +19253,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // one additional edit per turn that lives past the threshold.
     const firstAt = this.progressMinElapsedMs() - (Date.now() - (entry.startedAt ?? Date.now()));
     if (firstAt > 0 && firstAt < PROGRESS_UPDATE_INTERVAL_MS) {
-      const firstTick = setTimeout(tick, firstAt);
+      // M-2391: a little past the threshold — a timer can fire a millisecond before Date.now() reaches it, which
+      // rendered the unchanged "處理中…" text and skipped the edit until the next 60 s interval.
+      const firstTick = setTimeout(tick, firstAt + PROGRESS_THRESHOLD_MARGIN_MS);
       firstTick.unref?.();
     }
   }
@@ -19468,6 +19608,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+        if (event.phase === "done") this.forgetSignInIdentities();   // a sign-in may be a different account now
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
         if (event.phase === "starting") {
@@ -19503,7 +19644,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
-      changed: () => broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")),
+      // The accounts are forgotten when ANY sign-in ends, even one a later one replaced (it may be a different account now), and not at every step of a
+      // running one: `changed` only tells the pages to read again.
+      changed: () => { broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
+      loginEnded: () => this.forgetSignInIdentities(),
     });
     return this.webBackendLoginsInstance;
   }
@@ -19519,6 +19663,56 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2233: Settings → Agents' sign-in list — every backend's default login as the availability snapshot has it, then
    * each credential profile an agent uses (its own login state, read offline).
    */
+  /** Which account each sign-in is, as the host's own `claude auth status` said (masked; see checkAuthIdentity). Keys are `backend\0profile` in a Map: a name is data, never a property. */
+  private readonly signInIdentities = new Map<string, { identity: AccountIdentity | null; at: number }>();
+  /** Reads in flight, by the same key: a second request for a sign-in that is already being read joins it instead of starting another process. */
+  private readonly signInIdentityReads = new Map<string, Promise<boolean>>();
+  /** Raised each time the accounts are forgotten: a read that began before is never allowed to write what it found. */
+  private signInIdentityGeneration = 0;
+  private signInIdentitySlots = 0;
+  private readonly signInIdentityWaiters: Array<() => void> = [];
+  private signInIdentity(backend: string, profile?: string): AccountIdentity | undefined { return this.signInIdentities.get(`${backend}\0${profile ?? ""}`)?.identity ?? undefined; }
+  /** A sign-in finished (or changed): forget what was read and let no read that was already running put its answer back. */
+  private forgetSignInIdentities(): void { this.signInIdentityGeneration++; this.signInIdentities.clear(); this.signInIdentityReads.clear(); }
+  /** At most three `claude auth status` at once across the whole host, however many requests ask. */
+  private async withSignInIdentitySlot<T>(task: () => Promise<T>): Promise<T> {
+    while (this.signInIdentitySlots >= 3) await new Promise<void>(resolve => this.signInIdentityWaiters.push(resolve));
+    this.signInIdentitySlots++;
+    try { return await task(); } finally { this.signInIdentitySlots--; this.signInIdentityWaiters.shift()?.(); }
+  }
+  /** One `claude auth status` for a sign-in (the default one, or a credential profile's folder). */
+  private async readSignInIdentity(target: SignInTarget): Promise<AccountIdentity | undefined> {
+    let env: Record<string, string> | undefined;
+    if (target.profile) env = credentialProfileEnv(this.dataDir, target.backend, target.profile) ?? undefined;
+    return checkAuthIdentity(target.backend, env);
+  }
+  /**
+   * Start reading, in the background, the account of each Claude Code sign-in that is signed in (the default and every profile an agent uses) and
+   * not read in the last five minutes. It never waits and never blocks a request: the list shows what is already known, and the pages are told to
+   * read it again when something new was learned. A sign-in already being read is not read twice, and a read that began before the accounts were
+   * forgotten (a sign-in finished meanwhile) is dropped. No login, no network request of ours, nothing logged.
+   */
+  refreshSignInIdentities(): void {
+    const now = Date.now(), fresh = (target: SignInTarget): boolean => { const entry = this.signInIdentities.get(`${target.backend}\0${target.profile ?? ""}`); return !!entry && now - entry.at < 5 * 60_000; };
+    const started: Array<Promise<boolean>> = [];
+    for (const target of this.backendSignInTargets()) {
+      const key = `${target.backend}\0${target.profile ?? ""}`;
+      if (target.state !== "usable" || !authIdentitySupported(target.backend) || fresh(target) || this.signInIdentityReads.has(key)) continue;
+      const generation = this.signInIdentityGeneration;
+      const read: Promise<boolean> = this.withSignInIdentitySlot(() => this.readSignInIdentity(target)).then(identity => {
+        if (generation !== this.signInIdentityGeneration) return false;            // forgotten while it ran: its answer may be the old account
+        this.signInIdentities.set(key, { identity: identity ?? null, at: Date.now() }); return true;
+      }).catch(() => {
+        // A read that threw is an answer too: remembered as "no account" for the same five minutes, so every GET does not try again.
+        if (generation === this.signInIdentityGeneration) this.signInIdentities.set(key, { identity: null, at: Date.now() });
+        return false;
+      }).finally(() => { if (this.signInIdentityReads.get(key) === read) this.signInIdentityReads.delete(key); });
+      this.signInIdentityReads.set(key, read); started.push(read);
+    }
+    if (started.length) void Promise.all(started).then(results => {
+      if (results.some(Boolean)) broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));   // read the list again: it knows more now
+    });
+  }
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
     for (const row of this.backendAvailabilityRows()) {
@@ -19530,6 +19724,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(flow?.remoteLogin === "unsupported" ? { hostCommand: flow.command } : {}),
         ...(row.state === "not_installed" && install ? { install } : {}),
         ...(row.state === "too_old" && install ? { update: install } : {}),
+        ...(this.signInIdentity(row.backend) ? { identity: this.signInIdentity(row.backend) } : {}),
       });
     }
     const seen = new Set<string>();
@@ -19543,7 +19738,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const signIn = dashboardSignInSupported(backend, profile);
       const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
       out.push({ backend, profile, state: login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown", signIn,
-        ...(hostCommand ? { hostCommand } : {}) });
+        ...(hostCommand ? { hostCommand } : {}), ...(this.signInIdentity(backend, profile) ? { identity: this.signInIdentity(backend, profile) } : {}) });
     }
     return out;
   }
@@ -20456,9 +20651,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.taskBoardWaker?.stop();
     // #2303: each instance's cards at once, read at every claim (a fleet.yaml edit applies to the next one).
     db.board.setCardLimit((name) => boardCardLimit(this.fleetConfig, name));
+    // An instance with the task board switched off is handed no cards and sent no notices (read at each write and wake).
+    db.board.setBoardOff((name) => taskBoardOffIn(this.fleetConfig, name));
     const waker = this.taskBoardWaker = new TaskBoardWaker({
       deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
+      boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
       // #2785 (c), #2801: the maker's own message already told it; the board's line would repeat it.
       messagedAbout: (from, to, codes, sinceMs) => {
         const outbox = this.deliveryOutbox;
@@ -23585,6 +23783,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    // Stop receive admission before the first await or any instance shutdown; outbound
+    // adapters remain available below to retire notices and pending prompts.
+    for (const state of this.adapterState.values()) {
+      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
+    }
+    const inboundStopped = Promise.all([...this.adapters.values()].map(async adapter => {
+      try { await adapter.stopReceiving?.(); }
+      catch (err) { this.logger.warn({ adapterId: adapter.id, err }, "Adapter receive stop failed; inbound remains fenced"); }
+    }));
     this.workingRecovery?.reset();
     if (this.workingRecoveryTimer) clearInterval(this.workingRecoveryTimer);
     this.workingRecoveryTimer = null;
@@ -23645,6 +23852,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // A login/install window is a dedicated tmux server with its own TTL
     // timer and HTTP listener living in THIS process: without an explicit
     // shutdown it would outlive us as an owner-less login CLI (sol B3).
+    await inboundStopped;
     await publicStopped;
     await sharesStopped?.catch(() => {});
     await profileStopped;
@@ -23656,10 +23864,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.cpuProfileControl?.close();
     this.cpuProfileControl = null;
     await this.shutdownLoginWindows();
-    // Cancel adapter retry timers
-    for (const state of this.adapterState.values()) {
-      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
-    }
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
@@ -26116,6 +26320,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           res.end(JSON.stringify({
             ...sysInfo,
             version: this.currentVersion,
+            build: gatewayRequestContext(req) ? undefined : this.currentBuild,
             instances: enriched,
             publicLink: this.getPublicWebStatus(),
           }));

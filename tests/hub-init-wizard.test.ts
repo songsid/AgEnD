@@ -49,7 +49,7 @@ function setup(opts: { home?: string; directory?: Parameters<typeof fakeDirector
   const initializer = createHubInitializer({ home, identity, probe: { pidAlive: () => false } });
   const run = (answers: Parameters<typeof scriptedIO>[0]) => {
     const io = scriptedIO(answers);
-    return runHubInitWizard({ io: io.io, home, initializer, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control,
+    return runHubInitWizard({ checkNetwork: async () => [], io: io.io, home, initializer, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control,
       ...(opts.generate ? { createBrowserCertificate: (origin: string) => createBrowserCertificate(home, origin),
         recoverBrowserCertificate: (plan: HubInitPlan) => recoverBrowserCertificate(home, plan.webOrigin, plan.webTls) } : {}),
     }).then((outcome) => ({ outcome, io }));
@@ -117,6 +117,9 @@ describe("agend hub init — the whole flow", () => {
     const identity = await t.identity.read(t.home);
     expect(io.text()).toContain("https://hub.example.test:9443");
     expect(io.text()).toContain(identity!.spkiSha256);
+    expect(io.text()).toContain("Hub installation record");
+    expect(io.text()).toContain("agend uninstall");
+    expect(io.text()).toContain("does not erase");
   });
 
   it("asks for the service with an exact word: anything else installs nothing; an installed service is not reinstalled", async () => {
@@ -167,7 +170,7 @@ describe("an interrupted setup", () => {
     const svc = service();
     const dir = fakeDirectory({ [`alice:${USER_PW}`]: { ok: true, person: ADMIN } });
     const first = scriptedIO([...addresses, ...tls(), ...directoryAnswers(), ...signIn(), "y", "30", "180", "initialize"]);
-    expect(await runHubInitWizard({ io: first.io, home, initializer: cut, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control })).toBe("refused");
+    expect(await runHubInitWizard({ checkNetwork: async () => [], io: first.io, home, initializer: cut, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control })).toBe("refused");
     expect(first.text()).toContain("power cut");
     expect(first.text()).toContain("The Hub stays off.");
     expect(existsSync(join(home, "fleet.yaml"))).toBe(false);
@@ -175,7 +178,7 @@ describe("an interrupted setup", () => {
     const initializer = createHubInitializer({ home, identity, probe: { pidAlive: () => false } });
     const run = (answers: Parameters<typeof scriptedIO>[0]) => {
       const io = scriptedIO(answers);
-      return runHubInitWizard({ io: io.io, home, initializer, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control }).then((outcome) => ({ outcome, io }));
+      return runHubInitWizard({ checkNetwork: async () => [], io: io.io, home, initializer, createDirectory: dir.create, readFile: (p) => readFileSync(p, "utf8"), service: svc.control }).then((outcome) => ({ outcome, io }));
     };
     const declined = await run(["n"]);
     expect(declined.outcome).toBe("cancelled");
@@ -384,7 +387,7 @@ describe("browser certificate generation in init", () => {
   it("reports a bounded generation failure without installing anything or echoing the underlying error", async () => {
     const t = setup(), io = scriptedIO([...addresses, "generate"]);
     const initializer = createHubInitializer({ home: t.home, identity: t.identity, probe: { pidAlive: () => false } });
-    const outcome = await runHubInitWizard({ io: io.io, home: t.home, initializer, createDirectory: t.dir.create,
+    const outcome = await runHubInitWizard({ checkNetwork: async () => [], io: io.io, home: t.home, initializer, createDirectory: t.dir.create,
       readFile: path => readFileSync(path, "utf8"), service: t.svc.control,
       createBrowserCertificate: async () => { throw Error("SENSITIVE-SENTINEL"); } });
     expect(outcome).toBe("cancelled"); expect(io.text()).toContain("Could not generate"); expect(io.text()).not.toContain("SENSITIVE-SENTINEL");
@@ -395,7 +398,7 @@ describe("browser certificate generation in init", () => {
     try {
       const initializer = createHubInitializer({ home: t.home, identity: t.identity, probe: { pidAlive: () => false } });
       const io = scriptedIO([...addresses, "generate", "y", ...directoryAnswers(), ...signIn(), "n"]);
-      const outcome = runHubInitWizard({ io: io.io, home: t.home,
+      const outcome = runHubInitWizard({ checkNetwork: async () => [], io: io.io, home: t.home,
         initializer: { ...initializer, inspect: async () => {
           if (generated.length) throw Error("inspection unavailable");
           return initializer.inspect();
@@ -418,15 +421,15 @@ describe("browser certificate generation in init", () => {
     const deps = { home, createDirectory: dir.create, readFile: (path: string) => readFileSync(path, "utf8"), service: svc.control,
       createBrowserCertificate: (origin: string) => createBrowserCertificate(home, origin),
       recoverBrowserCertificate: (plan: HubInitPlan) => recoverBrowserCertificate(home, plan.webOrigin, plan.webTls) };
-    expect(await runHubInitWizard({ ...deps, initializer: cut, io: first.io })).toBe("refused");
+    expect(await runHubInitWizard({ checkNetwork: async () => [], ...deps, initializer: cut, io: first.io })).toBe("refused");
     const plan = (await cut.inspect()).incomplete!.plan, cert = readFileSync(plan.webTls.certFile), key = readFileSync(plan.webTls.keyFile);
     expect(plan.webTls.generated).toBe(true); expect(first.text()).toContain(plan.webTls.certFile);
     const initializer = createHubInitializer({ home, identity, probe: { pidAlive: () => false } });
     const declined = scriptedIO(["n"]);
-    expect(await runHubInitWizard({ ...deps, initializer, io: declined.io })).toBe("cancelled");
+    expect(await runHubInitWizard({ checkNetwork: async () => [], ...deps, initializer, io: declined.io })).toBe("cancelled");
     expect(readFileSync(plan.webTls.keyFile)).toEqual(key);
     const resumed = scriptedIO(["y", { hidden: BIND_PW }, "initialize", "no"]);
-    expect(await runHubInitWizard({ ...deps, initializer, io: resumed.io, createBrowserCertificate: async () => { throw Error("must not regenerate"); } })).toBe("initialized");
+    expect(await runHubInitWizard({ checkNetwork: async () => [], ...deps, initializer, io: resumed.io, createBrowserCertificate: async () => { throw Error("must not regenerate"); } })).toBe("initialized");
     expect(readFileSync(join(home, "hub/web-tls/cert.pem"))).toEqual(cert); expect(readFileSync(join(home, "hub/web-tls/key.pem"))).toEqual(key);
     expect(existsSync(plan.webTls.certFile)).toBe(false); expect(identity.provisions).toBe(1);
   });

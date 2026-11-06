@@ -1,6 +1,8 @@
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
 import { generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
+import { adaptersWithoutGeneral, type ChannelLike } from "./platform-general.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
+import { CODEX_SPEEDS, isCodexSpeed } from "./backend/codex-speed.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
 import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 import { STATUS_EMOJI_CONFIG_KEYS, statusEmojiProblem, type StatusEmojiKey } from "./status-emojis.js";
@@ -201,6 +203,10 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
           // #2010: opt-in Claude prompt-cache TTL ("1h" | "5m"); unset leaves the CLI's own choice.
           if (backendName === "claude-code" && settings.prompt_cache_ttl !== undefined && !PROMPT_CACHE_TTLS.includes(settings.prompt_cache_ttl as never)) {
             err(`${optionPath}.prompt_cache_ttl`, `must be one of: ${PROMPT_CACHE_TTLS.join(", ")}`);
+          }
+          // M-2446: Codex speed, allow-listed (codex itself silently drops an unknown tier).
+          if (backendName === "codex" && settings.speed !== undefined && !isCodexSpeed(settings.speed)) {
+            err(`${optionPath}.speed`, `must be one of: ${CODEX_SPEEDS.join(", ")}`);
           }
           if (backendName === "codex" && settings.provider !== undefined) {
             if (typeof settings.provider !== "string") {
@@ -681,6 +687,17 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (generalNames(config as Parameters<typeof generalNames>[0]).length > 1) warn("instances", "more than one general_topic instance on a fleet with no chat connection — keep one General (untick the others)");
   } else if (generalCount === 0) {
     warn("instances", "no general_topic instance — there is no general dispatcher to receive un-topic'd messages");
+  } else if (isObj(config.instances)) {
+    // A fleet with more than one connection: each connection with its own group needs its own General (the fleet makes
+    // one by itself only for the first). A persona bot in an earlier connection's guild shares that General.
+    const chans = (Array.isArray(config.channels) ? config.channels : isObj(config.channel) ? [config.channel] : [])
+      .filter((ch): ch is Record<string, unknown> => isObj(ch) && typeof ch.type === "string");
+    if (chans.length > 1) {
+      const defaults = isObj(config.defaults) ? config.defaults : undefined;
+      for (const id of adaptersWithoutGeneral(config.instances as Parameters<typeof adaptersWithoutGeneral>[0], chans as unknown as ChannelLike[], defaults)) {
+        warn("instances", `no general_topic instance for connection "${id}" — messages there outside an agent's topic have no dispatcher (add a General with channel_id: ${id}, or run \`agend quickstart\` → Add another platform)`);
+      }
+    }
   }
 
   return { valid: errors.length === 0, errors, warnings };

@@ -84,6 +84,7 @@ import { handleNativeModelCatalog } from "./native-model-catalog.js";
 import { claudeDocumentedModels } from "./model-catalog-defaults.js";
 import { handleRuntimeRequest } from "./runtime-api.js";
 import type { RuntimeCoordinator } from "./runtime-coordinator.js";
+import { taskBoardOffNames } from "./dashboard-permissions.js";
 import { topicFields, type TopicDeleteOutcome } from "./instance-topic-delete.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
@@ -378,6 +379,8 @@ export interface WebApiContext {
   readonly browserBackendSignIns?: import("./browser-backend-signins.js").BrowserBackendSignIns;
   /** #2233: Settings → Agents' sign-in list (FleetManager.backendSignInTargets). */
   backendSignInTargets?(): import("./web-backend-login.js").SignInTarget[];
+  /** Starts, in the background, reading the account behind each Claude Code sign-in (masked). Never awaited: the list answers at once with what is known. */
+  refreshSignInIdentities?(): void;
   readonly dataDir: string;
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
@@ -1152,7 +1155,14 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
   const logins = ctx.webBackendLogins;
   if (!logins) { json(res, 404, { error: "sign_in_unavailable" }); return true; }
   const action = /^\/ui\/backend-login\/(check|start|cancel)$/.exec(path)?.[1];
-  if (reading && path === "/ui/backend-login" && [...url.searchParams.keys()].length === 0) { json(res, 200, { login: logins.view(first.handle), targets: ctx.backendSignInTargets?.() ?? [] }); return true; }
+  if (reading && path === "/ui/backend-login" && [...url.searchParams.keys()].length === 0) {
+    // The sign-in view (its access code included) is answered at once and never waits for an account to be read: that happens in the background
+    // and the page is told to read again when something new is known.
+    try { ctx.refreshSignInIdentities?.(); } catch { /* the list is served with what is known */ }
+    try { json(res, 200, { login: logins.view(first.handle), targets: ctx.backendSignInTargets?.() ?? [] }); }
+    catch { json(res, 503, { error: "sign_in_unavailable" }); }
+    return true;
+  }
   if (method !== "POST" || !action) { json(res, 404, { error: "not_found" }); return true; }
   (async () => {
     let bytes: Buffer;
@@ -2979,7 +2989,10 @@ export function handleWebRequest(
         // board for a revision, so it is built once per (revision, done=all, minute) — the minute for the 14-day
         // window. The public link's reads are filtered per request (hidden instances) and are built each time.
         // #2757 review: and by the dispatchers gone (a deleted one makes its cards the person's, the revision unchanged).
-        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}`;
+        // The instances with the task board switched off: no card is handed to them (the pickers mark them), and a
+        // fleet.yaml edit changes them with the revision unchanged.
+        const boardOff = taskBoardOffNames(ctx.fleetConfig).filter((n) => !hiddenName(n));
+        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}:${boardOff.join("\u0000")}`;
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
         const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
@@ -2988,7 +3001,7 @@ export function handleWebRequest(
         // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
         // public link, not a hidden one.
         const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone), projects, leads, stats: board.projectStats(ctx.dispatcherGone) });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone) });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;

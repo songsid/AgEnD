@@ -19,6 +19,8 @@ import { checkNodeVersion } from "./node-version-guard.js";
 checkNodeVersion();
 
 import { Command, Option } from "commander";
+import { registerBuildInfoCommand } from "./build-provenance-cli.js";
+import { launchdServiceDomain } from "./launchd-service-domain.js";
 import { registerBugReportCommand } from "./bug-report-cli.js";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
@@ -196,6 +198,7 @@ program
   .enablePositionalOptions();
 
 registerBugReportCommand(program, pkgVersion);
+registerBuildInfoCommand(program);
 
 function signalFleetReload(): void {
   const pidPath = join(DATA_DIR, "fleet.pid");
@@ -307,6 +310,20 @@ fleet
           return;
         }
       } catch { /* fleet not running, fall through */ }
+    }
+
+    // A service manager owns stop/start sequencing. Before this replacement claims any shared fleet state,
+    // an enabled Hub waits for the previous process and both old listener endpoints to close.
+    if ((loadRawFleetConfig(FLEET_CONFIG_PATH).hub as { enabled?: unknown } | undefined)?.enabled === true) {
+      const [{ waitForHubServiceStart, HubServiceStartError }, { ht }] = await Promise.all([
+        import("./hub/service-start.js"), import("./hub/init/text.js"),
+      ]);
+      console.log(ht("service_drain_wait"));
+      try { await waitForHubServiceStart(DATA_DIR); }
+      catch (err) {
+        const reason = err instanceof HubServiceStartError ? err.reason : "config";
+        console.error(ht(`service_drain_${reason}`)); process.exitCode = 1; return;
+      }
     }
 
     // Claim the singleton before constructing FleetManager: its constructor and
@@ -1393,7 +1410,7 @@ program
       const systemUnit = getSystemServicePath();
       const ownService = systemUnit ? null : getServicePath();
       const manager = systemUnit ? { kind: "systemd" as const, unit: "agend", user: false, unitPath: systemUnit }
-        : ownService && detectPlatform() === "macos" ? { kind: "launchd" as const, label: "com.agend.fleet", plistPath: ownService, domain: `gui/${process.getuid?.() ?? 501}` }
+        : ownService && detectPlatform() === "macos" ? { kind: "launchd" as const, label: "com.agend.fleet", plistPath: ownService, domain: launchdServiceDomain() }
         : ownService ? { kind: "systemd" as const, unit: "com.agend.fleet", user: true, unitPath: ownService }
         : { kind: "detached" as const };
       // C6: a failure before the fleet runs the new install puts the previous package back too (taken before npm).
@@ -1492,8 +1509,7 @@ program
       // delete so a newer plan published during the slow bootout is left (#2376 / #2439).
       if (manager.kind === "launchd") {
         const { consumeCarriedOutPlan } = await import("./service-plan.js");
-        const uid = process.getuid?.() ?? 501;
-        consumeCarriedOutPlan(DATA_DIR, `gui/${uid}/com.agend.fleet`, planDeps());
+        consumeCarriedOutPlan(DATA_DIR, `${launchdServiceDomain()}/com.agend.fleet`, planDeps());
       }
       // #1853: in a WSL terminal without the Windows desktop shortcuts, say once how to make them (never makes them).
       if (outcome.ok) await import("./windows-shortcuts.js").then(m => m.printUpdateShortcutsHint(DATA_DIR)).catch(() => { /* a hint never fails an update */ });
@@ -1802,7 +1818,14 @@ program
       existingDefinition: existingPath ? (() => { try { return readFileSync(existingPath, "utf-8"); } catch { return null; } })() : null,
       isDefault: isDefaultAgendHome,
     });
-    const serviceVars = { label: "com.agend.fleet", execPath, path: process.env.PATH!, ...service };
+    const isHub = (loadRawFleetConfig(FLEET_CONFIG_PATH).hub as { enabled?: unknown } | undefined)?.enabled === true;
+    if (isHub && opts.activate !== false) {
+      const [{ assertHubServiceInstallIdle }, { ht }] = await Promise.all([import("./hub/service-start.js"), import("./hub/init/text.js")]);
+      try { assertHubServiceInstallIdle(service.workingDirectory); }
+      catch { console.error(ht("service_install_idle")); process.exitCode = 1; return; }
+    }
+    const serviceVars = { label: "com.agend.fleet", execPath, path: process.env.PATH!, ...service,
+      ...(!existingPath && isHub ? { launchdSessionType: "Background" as const } : {}) };
     // #1450 C6: on launchd, writing a new plist without activating is a PLANNED activation — proven, recorded, and
     // left for `agend restart` (a reload there would itself start the job). See service-plan.ts.
     if (opts.activate === false && detectPlatform() === "macos") {
@@ -1814,9 +1837,10 @@ program
       if (!expectation.ok) { console.error(`  ✗ ${expectation.reason}`); process.exitCode = 1; return; }
       const uid = process.getuid?.() ?? 501;
       const plistPath = launchdPlistPath(serviceVars.label);
+      const domain = serviceVars.launchdSessionType === "Background" ? `user/${uid}` : launchdServiceDomain(serviceVars.label);
       mkdirSync(dirname(plistPath), { recursive: true });
       const outcome = refreshLaunchdWithoutActivating({
-        label: serviceVars.label, target: `gui/${uid}/${serviceVars.label}`, plistPath, newPlist: renderLaunchdPlist(serviceVars),
+        label: serviceVars.label, target: `${domain}/${serviceVars.label}`, plistPath, newPlist: renderLaunchdPlist(serviceVars),
         expected: expectation.expected, pkgDir: dirname(dirname(execPath)), agendHome: DATA_DIR,
       }, planDeps());
       if (!outcome.ok) { console.error(`  ✗ ${outcome.message}`); process.exitCode = 1; return; }
@@ -1854,8 +1878,10 @@ program
     if (opts.activate !== false) {
       const pidPath = join(DATA_DIR, "fleet.pid");
       try {
-        activateService(svcPath, pidPath);
-        console.log(t("install.running"));
+        if (isHub) activateService(svcPath, pidPath, { preservePidFile: true });
+        else activateService(svcPath, pidPath);
+        if (isHub) { const { ht } = await import("./hub/init/text.js"); console.log(ht("service_ok")); }
+        else console.log(t("install.running"));
       } catch (err) {
         console.error(t("install.start_failed", (err as Error).message));
         const plat = detectPlatform();
@@ -2007,7 +2033,7 @@ program
       // A service file means the service manager owns this fleet. Falling back
       // to a detached process here creates a second fleet when the bus recovers.
       console.error("Failed to start the installed AgEnD service; refusing to start a detached duplicate.");
-      console.error(t("cli.service_retry", process.platform === "darwin" ? "launchctl print gui/$(id -u)/com.agend.fleet" : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"));
+      console.error(t("cli.service_retry", process.platform === "darwin" ? `launchctl print ${launchdServiceDomain()}/com.agend.fleet` : systemServicePath ? "systemctl status agend" : "systemctl --user status com.agend.fleet"));
       // #2356: a service file that cannot run here (never activated, no session for it) would otherwise leave no start.
       console.error(t("cli.service_direct_hint"));
       process.exitCode = 1;
@@ -2300,7 +2326,8 @@ program
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
       const label = "com.agend.fleet";
-      const target = `gui/${uid}/${label}`;
+      const domain = launchdServiceDomain(label, { uid });
+      const target = `${domain}/${label}`;
       const deps = planDeps();
       const printed = deps.run("launchctl", ["print", target]);
       if (printed.status === 0) {
@@ -2321,7 +2348,7 @@ program
           }
           if (await handOffLaunchdActivation("restart")) return;
           const { activateService } = await import("./service-activation.js");
-          const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain: `gui/${uid}` },
+          const outcome = activateService({ kind: "launchd", label, plistPath: plan.plistPath, domain },
             { bin: expectation.expected.entry, entry: expectation.expected.entry, node: expectation.expected.node, dir: pkgDir }, {
               ...deps,
               readFirstLine: path => deps.readFile(path)?.split("\n", 1)[0] ?? null,
@@ -2341,7 +2368,12 @@ program
         // pendingPlan itself stays read-only (#2376).
         consumeCarriedOutPlan(DATA_DIR, target, deps);
         if (expectation.ok && refuses(guard.guardLaunchd(captureRun, target, plistPath, deps.readFile, expectation.expected, guardDeps))) return;
-        if (run(`launchctl kickstart -k ${target}`)) { console.log("Service restarted."); return; }
+        if (run(`launchctl kickstart -k ${target}`)) {
+          if ((loadRawFleetConfig(FLEET_CONFIG_PATH).hub as { enabled?: unknown } | undefined)?.enabled === true) {
+            const { ht } = await import("./hub/init/text.js"); console.log(ht("service_restart_requested"));
+          } else console.log("Service restarted.");
+          return;
+        }
         console.error(`  ✗ launchctl kickstart -k ${target} failed.`);
         process.exitCode = 1;
         return;
@@ -2551,6 +2583,9 @@ program
 // #3095 Hub (experimental, off by default): `agend hub init` sets up a team Hub on this machine. Nothing Hub-related
 // loads unless this command runs.
 const hub = program.command("hub").description("AgEnD Hub (experimental): a team Hub where colleagues sign in with the directory");
+hub.command("handoff")
+  .description("Show this Hub's installation record, pairing steps and stop/uninstall guidance")
+  .action(async () => { const { runHubHandoffCommand } = await import("./hub/init/handoff.js"); await runHubHandoffCommand(); });
 hub
   .command("init")
   .description("Set up this machine as a team Hub: addresses, browser certificate, directory (LDAPS), administrator, service")
@@ -3125,7 +3160,9 @@ async function listInstanceNames(config: import("./types.js").FleetConfig): Prom
 
 async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?: boolean; running?: boolean; team?: string; backend?: string; display?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
-    const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
+    const config = (yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) ?? {}) as import("./types.js").FleetConfig;
+    // A fleet.yaml without an `instances:` section is an empty fleet (as `agend doctor` and the fleet read it), not a crash.
+    if (!config.instances || typeof config.instances !== "object") config.instances = {};
     const names = Object.keys(config.instances);
 
     // --names-only feeds shell completion, so it must return before any tmux or
@@ -3182,6 +3219,8 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
 
     if (allNames.length === 0) {
       console.log("No instances configured.");
+      // The same hint `agend doctor` gives for this file.
+      console.log("Hint: no general_topic instance — there is no general dispatcher to receive un-topic'd messages. Run `agend doctor`.");
       await printResources();
       return;
     }
@@ -3211,17 +3250,24 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean; resources?:
       ? (channelTypes.has("telegram") ? "TG" : channelTypes.has("discord") ? "DC" : "—")
       : null;
 
+    // A fleet instance's source is the adapter the fleet routes it by: its channel_id, else the first connection
+    // (FleetManager.getInstanceAdapterId) — never guessed from its topic id, so `ls` and routing cannot disagree.
+    const channelList = config.channels?.length ? config.channels : config.channel ? [config.channel] : [];
+    const typeByAdapter = new Map(channelList.map((ch) => [ch.id ?? ch.type, ch.type] as const));
+    const firstAdapter = channelList[0] ? (channelList[0].id ?? channelList[0].type) : undefined;
+    const sourceOfType = (type: string | undefined): string => (type === "telegram" ? "TG" : type === "discord" ? "DC" : "—");
+    const { isNativeExecInstance } = await import("./native-instance-registry.js");
     const getSource = (name: string, inst?: Record<string, unknown>): string => {
+      // A Windows exec agent has no chat binding (getInstanceAdapterId gives none): no source, in any fleet. A pane keeps its own.
+      if (inst && isNativeExecInstance(inst as Parameters<typeof isNativeExecInstance>[0])) return "—";
       if (singleSource) return singleSource;
       if (classicNames.has(name)) {
         // Telegram IDs are short/negative, Discord snowflakes are 17+ digits.
         const matchedChId = classicChannelIdByName.get(name) ?? "";
         return matchedChId.startsWith("-") || matchedChId.length < 17 ? "TG" : "DC";
       }
-      const topicId = String(inst?.topic_id ?? "");
-      if (topicId.length >= 17) return "DC";
-      if (topicId.length > 0 && topicId.length < 17) return "TG";
-      return "—";
+      const bound = typeof inst?.channel_id === "string" && inst.channel_id ? inst.channel_id : firstAdapter;
+      return sourceOfType(bound === undefined ? undefined : typeByAdapter.get(bound));
     };
 
     // Row collection runs concurrently (see ls-rows.ts): the per-instance

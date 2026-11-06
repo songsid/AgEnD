@@ -28,13 +28,15 @@ const wdOf = (n: string) => fm.fleetConfig.instances[n].working_directory as str
 const now = Date.now(), base = now - 3 * 3_600_000;
 const iso = (t: number) => new Date(t).toISOString();
 // Claude: 40 responses a minute apart; each: a thinking block (1 s of thinking, stamped at +3 s) and a text block at +9 s.
+// M-2452: as Claude Code writes them — the final stop_reason and usage on EVERY block line; a response is finished when
+// the next one begins, so the session goes on with one more (its last, still open: not timed, as in a live session).
 {
   const lines: string[] = [];
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 41; i++) {
     const t = base + i * 60_000, id = `msg_${String(i).padStart(3, "0")}`;
     lines.push(JSON.stringify({ type: "user", timestamp: iso(t), message: { role: "user", content: "go" } }));
     const usage = { input_tokens: 5, cache_read_input_tokens: 1000, cache_creation_input_tokens: 0, output_tokens: 600 };
-    lines.push(JSON.stringify({ type: "assistant", timestamp: iso(t + 3_000), thinkingDurationMs: 1_000, message: { id, role: "assistant", model: "claude-opus-4-5", stop_reason: null, content: [{ type: "thinking", thinking: "…" }], usage } }));
+    lines.push(JSON.stringify({ type: "assistant", timestamp: iso(t + 3_000), thinkingDurationMs: 1_000, message: { id, role: "assistant", model: "claude-opus-4-5", stop_reason: "end_turn", content: [{ type: "thinking", thinking: "…" }], usage } }));
     lines.push(JSON.stringify({ type: "assistant", timestamp: iso(t + 9_000), message: { id, role: "assistant", model: "claude-opus-4-5", stop_reason: "end_turn", content: [{ type: "text", text: "done" }], usage } }));
   }
   const dir = join(process.env.CLAUDE_CONFIG_DIR!, "projects", claudeProjectKey(wdOf(A!)));
@@ -89,7 +91,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
   check(s.speed[X!] === (zh ? "100 token/秒" : "100 tok/s"), `${c.device}: Codex ${s.speed[X!]}`);
   const claudeLine = s.card.find((l: string) => l.startsWith("claude-opus-4-5")), codexLine = s.card.find((l: string) => l.startsWith("gpt-5.5"));
   check(!!codexLine && codexLine.includes(zh ? "5 個請求中有 5 個可計時" : "5 of 5 requests timed") && !codexLine.includes("p10"), `${c.device}: Codex card line (under 30: no spread) "${codexLine}"`);
-  check(!!claudeLine && claudeLine.includes(zh ? "40 個請求中有 40 個可計時" : "40 of 40 requests timed") && claudeLine.includes("p10–p90"), `${c.device}: Claude card line (40: a spread) "${claudeLine}"`);
+  check(!!claudeLine && claudeLine.includes(zh ? "41 個請求中有 40 個可計時" : "40 of 41 requests timed") && claudeLine.includes("p10–p90"), `${c.device}: Claude card line (40 timed, the open last one not: a spread) "${claudeLine}"`);
   check(s.note === (zh ? "輸出 token ÷ 模型本身的回應時間（不含工具執行時間）；方法參考 tokdash。" : "Output tokens ÷ the model's own response time (tool time excluded); method after tokdash."), `${c.device}: the basis note`);
   check(!s.overflow, `${c.device}: no horizontal overflow`);
   check(p.errors.length === 0, `${c.device}: no page errors (${p.errors.join(" | ")})`);

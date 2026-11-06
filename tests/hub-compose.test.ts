@@ -18,6 +18,8 @@ import { createHubServerFactory, type HubHttpDeps, type HubHttpEntry } from "../
 import type { HubMountedService } from "../src/hub/mount.js";
 import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
 import { freeHubPort } from "./helpers/hub-rig.js";
+import { readHubSecretFile } from "../src/hub/init/secret-file.js";
+import { readPrivateFile } from "../src/hub/private-files.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -26,7 +28,7 @@ afterEach(() => {
 
 const BIND = "Bind-" + "z".repeat(20);
 
-async function initializedHub() {
+async function initializedHub(bindPassword = BIND) {
   mkdirSync(".artifacts", { recursive: true });
   const home = mkdtempSync(join(process.cwd(), ".artifacts/hub-compose-"));
   chmodSync(home, 0o700);
@@ -47,7 +49,7 @@ async function initializedHub() {
     coexistence: "dedicated" as const,
   };
   const init = createHubInitializer({ home, identity: hubIdentityProvider(), probe: { pidAlive: () => false } });
-  const c = await init.prepareConfirmation(plan, { bindPassword: BIND });
+  const c = await init.prepareConfirmation(plan, { bindPassword });
   await init.commit(plan, c.reference);
   const config = yaml.load(readFileSync(join(home, "fleet.yaml"), "utf8")) as { hub: Record<string, unknown> };
   return { home, config, plan, webPort, memberPort, caPem: readFileSync(certs.caCert, "utf8") };
@@ -113,6 +115,23 @@ function factory(home: string, http?: HubHttpEntry, extra: Pick<import("../src/h
 }
 
 describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a really initialized Hub", () => {
+  it.each(["\uFEFF Dummy-import-秘密\r\n", "Dummy-import-秘密\r\n"])("passes exact imported secret bytes through commit and runtime directory composition (%j)", async password => {
+    const sourceHome = mkdtempSync(join(process.cwd(), ".artifacts/hub-secret-source-")); roots.push(sourceHome);
+    const source = join(sourceHome, "bind"); writeFileSync(source, password, { mode: 0o600 });
+    const hub = await initializedHub(readHubSecretFile(source));
+    expect(readFileSync(join(hub.home, "hub/secrets/directory-bind"))).toEqual(Buffer.from(password));
+    const f = factory(hub.home, fakeHttp().entry);
+    const service = await f.create(hub.config.hub, () => true);
+    try { expect(f.directories.map(s => Buffer.from(s.bindPassword))).toEqual([Buffer.from(password)]); }
+    finally { await service.close(); }
+    expect(readFileSync(source)).toEqual(Buffer.from(password));
+    // The opt-in is specific to opaque secrets. Default JSON/config reads retain their BOM-as-encoding behavior.
+    writeFileSync(join(hub.home, "hub/json-control"), '\uFEFF{"enabled":false}', { mode: 0o600 });
+    const json = readPrivateFile(hub.home, "hub/json-control");
+    expect(json).toBe('{"enabled":false}');
+    expect(JSON.parse(json)).toEqual({ enabled: false });
+  });
+
   it("without S3 in the build: hub-incomplete, before opening anything", async () => {
     const hub = await initializedHub();
     const f = factory(hub.home);
@@ -222,7 +241,9 @@ describe.skipIf(process.platform === "win32")("Hub runtime (S5b lifecycle)", () 
     const hub = await initializedHub();
     const http = fakeHttp();
     const runtime = new HubRuntime({ home: hub.home, log: () => {}, components: { http: async () => http.entry } });
+    expect(runtime.serverHealth(hub.config.hub)).toBe("starting");
     await runtime.apply(hub.config);
+    expect(runtime.serverHealth(hub.config.hub)).toBe("ready");
     expect(runtime.currentHolds()).toEqual([]);
     expect((await get(hub.webPort, "/hub/v1/ping", hub.caPem)).status).toBe(200);
     const deps = http.state.deps;

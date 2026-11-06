@@ -536,7 +536,14 @@ function serviceOf(kind, deps) {
   var home = deps.env.HOME || os.homedir();
   if (kind === "system") return { kind: kind, unit: "agend", scope: [], file: deps.systemUnit || "/etc/systemd/system/agend.service" };
   if (kind === "user") return { kind: kind, unit: "com.agend.fleet", scope: ["--user"], file: path.join(home, ".config", "systemd", "user", "com.agend.fleet.service") };
-  if (kind === "launchd") return { kind: kind, label: "com.agend.fleet", domain: "gui/" + deps.uid, file: path.join(home, "Library", "LaunchAgents", "com.agend.fleet.plist") };
+  if (kind === "launchd") {
+    var plist = path.join(home, "Library", "LaunchAgents", "com.agend.fleet.plist");
+    var definition = null;
+    try { definition = fs.readFileSync(plist, "utf8"); }
+    catch (e) { if (!e || e.code !== "ENOENT") throw Error("Cannot read the service definition; no launchd domain was selected"); }
+    var background = require("./launchd-session-type.cjs").sessionType(definition) === "Background";
+    return { kind: kind, label: "com.agend.fleet", domain: (background ? "user/" : "gui/") + deps.uid, file: plist };
+  }
   return null;
 }
 var MANAGER_MS = 15 * 60 * 1000;   // a stop waits out the fleet's own stop grace; a start, its READY

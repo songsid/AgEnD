@@ -15,6 +15,8 @@ export interface PaneLinkOptions {
   directory: string;
   server: string;
   machineId: string;
+  /** This Runtime's credential profile root, handed to a NEW pane host so it can map a profile name to a folder under it. */
+  credentialRoot?: string;
   online(): boolean;
   maxAgents(): number;
   epoch?(): string;
@@ -45,7 +47,7 @@ export class RuntimePaneLink {
       try { process.kill(descriptor.pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") live = false; }
     }
     if (!live) {
-      const child = spawn(process.execPath, [fileURLToPath(new URL("./runtime-pane-service.js", import.meta.url)), directory, scope], {
+      const child = spawn(process.execPath, [fileURLToPath(new URL("./runtime-pane-service.js", import.meta.url)), directory, scope, ...(options.credentialRoot ? [options.credentialRoot] : [])], {
         detached: true, windowsHide: true, stdio: "ignore", shell: false, env: nativeCliEnvironment(),
       });
       let failed = false; child.on("error", () => { failed = true; }); child.unref();
@@ -101,7 +103,8 @@ export class RuntimePaneLink {
           if (value?.type !== "response" || typeof value.id !== "string" || typeof value.ok !== "boolean") throw Error("Invalid pane reply");
           const pending = link.pending.get(value.id); if (!pending) return;
           link.pending.delete(value.id); clearTimeout(pending.timer);
-          if (value.ok) pending.resolve(value.result); else pending.reject(Error("Pane host refused operation; inspect its owned snapshot"));
+          const refusal = typeof value.refusal === "string" && value.refusal.length <= 500 && !/[\x00-\x1f\x7f]/.test(value.refusal) ? value.refusal : undefined;
+          if (value.ok) pending.resolve(value.result); else pending.reject(Error(refusal ?? "Pane host refused operation; inspect its owned snapshot"));
         } catch { socket.close(1008, "Invalid pane host frame"); }
       });
     });
