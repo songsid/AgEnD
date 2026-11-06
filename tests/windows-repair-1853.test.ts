@@ -7,7 +7,7 @@
  * - Broken: the fast path re-runs the official install.sh in that Linux (pinned to the version on disk, so a beta is
  *   not swapped for the stable release), checks `agend --version`, then offers the shortcuts as usual. No WSL, backend
  *   or setup step is redone; a failed repair stops and says the data is kept.
- * The probe runs in real bash with a fake npm and agend; the PowerShell helpers in pwsh with a fake native wsl.exe.
+ * The probe runs in real bash with a fake npm and agend; the PowerShell helpers in one pwsh worker with a fixed private fake wsl.exe.
  * A real broken host is the user's Windows checklist.
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -15,6 +15,8 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { extractPsAssignments, extractPsFunction } from "./support/installer-ps-extract.js";
+import { InstallerC2Batch, hasPwsh as pwsh } from "./support/installer-pwsh-c2.js";
 
 const INSTALLER = join(import.meta.dirname, "..", "website", "public", "install-agend.ps1");
 const text = readFileSync(INSTALLER, "utf8");
@@ -24,7 +26,7 @@ const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
 const scratch = (p: string) => { const d = mkdtempSync(join(tmpdir(), p)); dirs.push(d); return d; };
 
-describe("the probe of a Linux, in real bash", () => {
+describe.skipIf(process.platform === "win32" || !existsSync("/bin/bash"))("the probe of a Linux, in real bash", () => {
   function host() {
     const d = scratch("agend-1853repair-");
     mkdirSync(join(d, "home", ".agend"), { recursive: true });
@@ -36,7 +38,7 @@ describe("the probe of a Linux, in real bash", () => {
     tool("agend", "exit 127");
     // Only this host: never the real AGEND_HOME of whoever runs the test.
     const env = { HOME: join(d, "home"), PATH: `${join(d, "bin")}:/usr/bin:/bin` };
-    const probe = () => spawnSync("bash", ["-c", PROBE], { encoding: "utf8", env, cwd: d }).stdout;
+    const probe = () => spawnSync("/bin/bash", ["-c", PROBE], { encoding: "utf8", timeout:5000, env, cwd: d }).stdout;
     return { d, tool, probe };
   }
   it("an update cut off half way (only npm's retired copy left): broken, with that copy's version", () => {
@@ -72,7 +74,7 @@ describe("the probe of a Linux, in real bash", () => {
     writeFileSync(join(root, "@songsid", ".agend-RmEK4vIL", "package.json"), '{\n  "name": "@songsid/agend",\n  "version": "2.3.0-beta.16"\n}\n');
     writeFileSync(join(root, "@songsid", "agend", "partial.tmp"), "");               // npm's half-written new copy
     for (const [n, b] of [["npm", `echo '${root}'`], ["agend", "exit 127"]]) { writeFileSync(join(spaced, "bin", n), `#!/bin/sh\n${b}\n`); chmodSync(join(spaced, "bin", n), 0o755); }
-    const probe = () => spawnSync("bash", ["-c", PROBE], { encoding: "utf8", env: { HOME: home, PATH: `${join(spaced, "bin")}:/usr/bin:/bin` }, cwd: spaced });
+    const probe = () => spawnSync("/bin/bash", ["-c", PROBE], { encoding: "utf8", timeout:5000, env: { HOME: home, PATH: `${join(spaced, "bin")}:/usr/bin:/bin` }, cwd: spaced });
     expect(probe().stdout).toBe("AGEND_BROKEN\nAGEND_VERSION=2.3.0-beta.16\n");   // npm's root with a space
     renameSync(join(root, "@songsid"), join(root, "moved"));
     writeFileSync(join(home, ".agend", "fleet.yaml"), "");
@@ -87,7 +89,10 @@ describe("the probe of a Linux, in real bash", () => {
   });
 });
 
-const pwsh = spawnSync("pwsh", ["-NoProfile", "-c", "1"], { encoding: "utf8" }).status === 0;
+const prelude = ['Find-ExistingAgend','Invoke-AgendRepair','Invoke-AgendInWsl','Invoke-BoundedWsl','Get-WslAgendCommand',
+ 'Read-InstallRecord','Get-AgendShortcutDir','Get-AgendInstallShScript','Get-InstallSources'].map(n => extractPsFunction(text,n)).join('\n')
+ + '\n' + extractPsAssignments(text,['AGEND_PROBE','AGEND_DISTRO_BASE']);
+const batch = new InstallerC2Batch({installer:prelude});
 /** A native wsl.exe: answers the probe with `probeAnswer`, the repair with `repairExit`, agend --version with `versionExit`. */
 function fakeWsl(o: { probeAnswer?: string; repairExit?: number; versionExit?: number } = {}) {
   const bin = scratch("agend-1853repair-bin-");
@@ -104,41 +109,31 @@ exit 0
   return bin;
 }
 const calls = (bin: string) => existsSync(join(bin, "calls.txt")) ? readFileSync(join(bin, "calls.txt"), "utf8") : "";
-function withHelpers(body: string, bin: string) {
-  const dir = scratch("agend-1853repair-ps-");
-  const file = join(dir, "t.ps1");
-  writeFileSync(file, `$ErrorActionPreference = 'Stop'
-$t = $null; $e = $null
-$ast = [System.Management.Automation.Language.Parser]::ParseFile('${INSTALLER}', [ref]$t, [ref]$e)
-foreach ($fn in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) { . ([scriptblock]::Create($fn.Extent.Text)) }
-foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -match '^\\$(WSL_COMMAND_FN|RESTART_FN|AGEND_PROBE|AGEND_DISTRO_BASE)$' }, $false)) { . ([scriptblock]::Create($a.Extent.Text)) }
-. ([scriptblock]::Create($WSL_COMMAND_FN)); . ([scriptblock]::Create($RESTART_FN))
-$script:OnWindows = $false
-$env:LOCALAPPDATA = Join-Path $env:TMPDIR 'localappdata'
-function Get-InstalledWslVersion { return [version]'2.6.3.0' }
-# Exercise repair decisions while keeping the owned-step transport inert.
+async function withHelpers(body: string, bin: string) {
+ const dir = scratch('agend-1853repair-ps-');
+ return batch.run('installer', `function Get-InstalledWslVersion { return [version]'2.6.3.0' }
+function wsl.exe { & $env:C2_WSL @args }
+# Exercise repair decisions while the platform boundary runs only the fixed scratch stub.
 function Invoke-WslStep { param($Label,$Usually,$UpperMinutes,$Distro,$User,$Script)
-    & wsl.exe -d $Distro -u $User --exec bash -lc $Script | Out-Host
-    return $LASTEXITCODE
+ & $env:C2_WSL -d $Distro -u $User --exec bash -lc $Script | ForEach-Object { Write-Host $_ }
+ return $LASTEXITCODE
 }
-${body}`);
-  const r = spawnSync("pwsh", ["-NoProfile", "-File", file], { encoding: "utf8", timeout: 60_000, env: { ...process.env, TMPDIR: dir, PATH: `${bin}:${process.env.PATH}` } });
-  if (r.error || r.signal || r.status !== 0) throw new Error(`pwsh ended ${r.error ?? r.signal ?? r.status}:\n${r.stdout}${r.stderr}`);
-  return r.stdout + r.stderr;
+${body}`, dir, {PATH:bin+':'+process.env.PATH, C2_WSL:join(bin,'wsl.exe')});
 }
+
 const PRELUDE = "export PATH=$HOME/.local/bin:$PATH; source $HOME/.nvm/nvm.sh 2>/dev/null; ";
 
-describe.skipIf(!pwsh)("with pwsh: finding and repairing a broken AgEnD", { timeout: 90_000 }, () => {
-  it("the probe's broken answer: that Linux, broken, with the version on disk; found is not broken", () => {
-    const broken = withHelpers(`$r = Find-ExistingAgend; Write-Output ("R=" + $r.Distro + "|" + $r.User + "|" + $r.Broken + "|" + $r.Version)`,
-      fakeWsl({ probeAnswer: "AGEND_BROKEN\nAGEND_VERSION=2.3.0-beta.16\n" }));
+describe.skipIf(!pwsh || process.platform === "win32")("with pwsh: finding and repairing a broken AgEnD", () => {
+  it("the probe's broken answer: that Linux, broken, with the version on disk; found is not broken", async () => {
+    const broken = (await withHelpers(`$r = Find-ExistingAgend; Write-Output ("R=" + $r.Distro + "|" + $r.User + "|" + $r.Broken + "|" + $r.Version)`,
+      fakeWsl({ probeAnswer: "AGEND_BROKEN\nAGEND_VERSION=2.3.0-beta.16\n" })));
     expect(broken).toContain("R=AgEnD|root|True|2.3.0-beta.16");
-    const found = withHelpers(`$r = Find-ExistingAgend; Write-Output ("R=" + $r.Distro + "|" + $r.Broken)`, fakeWsl({ probeAnswer: "AGEND_FOUND\n" }));
+    const found = (await withHelpers(`$r = Find-ExistingAgend; Write-Output ("R=" + $r.Distro + "|" + $r.Broken)`, fakeWsl({ probeAnswer: "AGEND_FOUND\n" })));
     expect(found).toContain("R=AgEnD|False");
   });
-  it("the repair: the official installer in that Linux, on the channel of the version on disk (a beta stays on beta), then agend --version", () => {
+  it("the repair: the official installer in that Linux, on the channel of the version on disk (a beta stays on beta), then agend --version", async () => {
     const bin = fakeWsl();
-    const out = withHelpers(`Write-Output ("OK=" + (Invoke-AgendRepair 'AgEnD' 'root' '2.3.0-beta.16'))`, bin);
+    const out = (await withHelpers(`Write-Output ("OK=" + (Invoke-AgendRepair 'AgEnD' 'root' '2.3.0-beta.16'))`, bin));
     expect(out).toContain("OK=True");
     const log = calls(bin).trim().split("\n");
     // #2286 review: never the old version itself — it may predate the installer that repairs (#2264).
@@ -149,16 +144,16 @@ describe.skipIf(!pwsh)("with pwsh: finding and repairing a broken AgEnD", { time
     expect(log[1]).toBe(`-d AgEnD -u root --exec timeout --signal=TERM --kill-after=2s 25 bash -lc ${PRELUDE}agend --version`);
     expect(log[0]).not.toContain('"');
   });
-  it("a stable version, no version found, or one that is not a version: the installer's default (latest), never the text pasted in", () => {
+  it("a stable version, no version found, or one that is not a version: the installer's default (latest), never the text pasted in", async () => {
     for (const v of ["2.2.7", "", "1.0; rm -rf ~", "$(id)", "2.3.0-beta.16; id"]) {
       const bin = fakeWsl();
-      withHelpers(`$null = Invoke-AgendRepair 'AgEnD' 'root' '${v.replace(/'/g, "''")}'`, bin);
+      (await withHelpers(`$null = Invoke-AgendRepair 'AgEnD' 'root' '${v.replace(/'/g, "''")}'`, bin));
       expect(calls(bin).split("\n")[0], v).toMatch(/; bash < \$f \)$/);
       expect(calls(bin).split("\n")[0], v).not.toMatch(/AGEND_VERSION/);
     }
   });
-  it.each([["the installer fails", { repairExit: 1 }], ["agend still does not run afterwards", { versionExit: 127 }]])("%s: not repaired", (_n, o) => {
-    expect(withHelpers(`Write-Output ("OK=" + (Invoke-AgendRepair 'AgEnD' 'root' '2.3.0'))`, fakeWsl(o))).toContain("OK=False");
+  it.each([["the installer fails", { repairExit: 1 }], ["agend still does not run afterwards", { versionExit: 127 }]])("%s: not repaired", async (_n, o) => {
+    expect((await withHelpers(`Write-Output ("OK=" + (Invoke-AgendRepair 'AgEnD' 'root' '2.3.0'))`, fakeWsl(o)))).toContain("OK=False");
   });
 });
 
