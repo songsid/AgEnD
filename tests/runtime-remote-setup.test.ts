@@ -163,3 +163,25 @@ describe("the audit log cannot be flooded (review item 6)", () => {
     for (const repeated of [0, 1, -3, 1.5, 1e12, NaN]) expect(() => formatAuditLine({ actor: "a", action: "signin", outcome: "refused", repeated })).toThrow(/closed form/);
   });
 });
+
+describe("`since` on a folded line (round 3)", () => {
+  const rows = (dir: string): Array<Record<string, unknown>> => readFileSync(join(dir, AUDIT_FILE), "utf8").trim().split("\n").map(line => JSON.parse(line));
+  const refused = (actor: string) => ({ actor, action: "signin" as const, outcome: "refused" as const, reason: "busy" as const });
+  it("records where the folded run began (a closed ISO time); `at` is when the line was written", () => {
+    const dir = home(); let now = Date.UTC(2026, 10, 6, 12, 0, 0); const log = new AuditLog(dir, () => now);
+    log.append(refused("a")); now += 10_000; log.append(refused("b")); now += 10_000; log.append(refused("c"));
+    now += AUDIT_FOLD_MS; log.append(refused("d"));
+    const all = rows(dir); expect(all).toHaveLength(2);
+    expect(all[0]).not.toHaveProperty("since"); expect(all[1]).toMatchObject({ repeated: 3, since: "2026-11-06T12:00:00.000Z", at: "2026-11-06T12:01:20.000Z" });
+  });
+  it("a flush carries it too, and a single refusal never has one", () => {
+    const dir = home(); let now = Date.UTC(2026, 10, 6, 12, 0, 0); const log = new AuditLog(dir, () => now);
+    for (let i = 0; i < 5; i++) { log.append(refused("x")); now += 1000; }
+    log.flush(); expect(rows(dir)[1]).toMatchObject({ repeated: 4, since: "2026-11-06T12:00:00.000Z" }); expect(rows(dir)[0]).not.toHaveProperty("since");
+  });
+  it("is part of the closed form: only with a repeat count, only as a UTC ISO time", () => {
+    expect(() => formatAuditLine({ actor: "a", action: "signin", outcome: "refused", repeated: 3, since: "2026-11-06T12:00:00.000Z" })).not.toThrow();
+    for (const since of ["yesterday", "2026-11-06", "2026-11-06T12:00:00Z", "2026-11-06T12:00:00.000+08:00", "https://x", ""]) expect(() => formatAuditLine({ actor: "a", action: "signin", outcome: "refused", repeated: 3, since }), since).toThrow(/closed form/);
+    expect(() => formatAuditLine({ actor: "a", action: "signin", outcome: "refused", since: "2026-11-06T12:00:00.000Z" })).toThrow(/closed form/);
+  });
+});

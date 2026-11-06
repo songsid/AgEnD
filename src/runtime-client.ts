@@ -81,7 +81,7 @@ export interface RuntimeClientOptions {
    * operations: the CLI lookup, the logout run, the CLI installer (its presence is what makes this Runtime report `cli-install`), the sign-in
    * process factory, and the folder-link inspector. Supplying anything here lets a non-Windows test Runtime offer `remote-signin`.
    */
-  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "install" | "knowsCli" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
+  remoteAccounts?: Partial<Pick<RemoteAccountsDeps, "find" | "runLogout" | "installer" | "signIn" | "ownership" | "environment" | "now" | "switchWatchMs">> & { systemBootId?: () => Promise<string | undefined> };
 }
 const MAX_FRAME = 256 * 1024;
 const MAX_TOOL = 64 * 1024;
@@ -155,7 +155,7 @@ export class RuntimeClient {
     this.runtimeInfo = options.credentialProfilesRoot ? info : { ...info, capabilities: info.capabilities.filter(name => name !== RUNTIME_CREDENTIAL_CAPABILITY) };
     // Remote account operations need the profile folder, and a way to run the Windows CLI (native Windows, or a test's own). `cli-install` also needs an installer.
     const remote = !!options.credentialProfilesRoot && (process.platform === "win32" || !!options.remoteAccounts);
-    this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities.filter(name => name !== REMOTE_SIGNIN_CAPABILITY || remote), ...(remote && options.remoteAccounts?.install ? [CLI_INSTALL_CAPABILITY] : [])] };
+    this.runtimeInfo = { ...this.runtimeInfo, capabilities: [...this.runtimeInfo.capabilities.filter(name => name !== REMOTE_SIGNIN_CAPABILITY || remote), ...(remote && options.remoteAccounts?.installer ? [CLI_INSTALL_CAPABILITY] : [])] };
     this.bridge = options.bridge ?? new WindowsCliBridge(nativeWindowsTransport, join(options.store.directory, WINDOWS_CLI_INVENTORY_FILE));
   }
   private report(text: string): void { this.options.report?.(text); }
@@ -460,10 +460,10 @@ export class RuntimeClient {
         const timer = setTimeout(() => { child.kill(); done(null); }, 30_000); timer.unref?.();
         child.on("error", () => { clearTimeout(timer); done(null); }); child.on("close", code => { clearTimeout(timer); done(code); });
       })),
-      inUse: name => this.profileInUse(name),
+      inUse: name => this.profileInUse(name), report: text => this.report(text),
       defaultProfile: () => { try { return this.options.store.credentialDefault(); } catch { return undefined; } },
       changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
-      ...(extra?.install ? { install: extra.install } : {}), ...(extra?.knowsCli ? { knowsCli: extra.knowsCli } : {}), ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
+      ...(extra?.installer ? { installer: extra.installer } : {}), ...(extra?.switchWatchMs ? { switchWatchMs: extra.switchWatchMs } : {}), ...(extra?.signIn ? { signIn: extra.signIn } : {}), ...(extra?.ownership ? { ownership: extra.ownership } : {}),
       ...(extra?.now ? { now: extra.now } : {}),
     });
   }

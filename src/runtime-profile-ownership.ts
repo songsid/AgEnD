@@ -128,6 +128,8 @@ export interface OwnedProfileOptions {
   protectedHomes?: readonly string[];
   /** Test seam: runs between the checks and the delete, where a hostile process on the same computer could swap the folder. */
   afterChecks?: () => void;
+  /** A line for the person at this computer (never for AgEnD): used when a removal could neither finish nor be undone. */
+  report?: (text: string) => void;
 }
 /**
  * The folder of a profile that this Runtime created and that is where it should be, with no link at any level. Throws a
@@ -182,7 +184,10 @@ export async function removeOwnedProfile(pairingDirectory: string, root: string,
   } catch (error) {
     restore();
     // Neither deleted nor put back: say where it is, locally (`agend-runtime profile list` names it). Nothing here deletes or restores it by itself.
-    if (!restored) throw new Error("The profile folder could not be removed or put back and is left under a temporary name; see agend-runtime profile list on that computer");
+    if (!restored) {
+      try { options.report?.("A credential profile removal could not finish and could not be undone: its folder is left under a temporary name and may still hold a sign-in. On this computer run: agend-runtime profile list"); } catch { /* a report must not change the outcome */ }
+      throw new Error("The profile folder could not be removed or put back and is left under a temporary name; see agend-runtime profile list on that computer");
+    }
     throw error;
   }
   if (existsSync(moved) || existsSync(directory)) throw new Error("The profile folder could not be fully removed");
