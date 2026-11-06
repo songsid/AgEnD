@@ -4,6 +4,7 @@ import type { NativeTaskInput } from "./windows-cli-worker.js";
 import { createHash } from "node:crypto";
 import type { PaneMcpBody } from "./runtime-pane-mcp-protocol.js";
 import type { RuntimePaneRequest, RuntimePaneSnapshot } from "./runtime-pane-protocol.js";
+import type { RuntimeUpdateControl, RuntimeUpdateClientPhase, RuntimeUpdateServerPhase } from "./runtime-update-protocol.js";
 
 export const RUNTIME_PROTOCOL_VERSION = 1;
 export const RUNTIME_CONNECT_PATH = "/runtime/v1/connect";
@@ -85,8 +86,8 @@ export interface RuntimeMachine {
 export interface RuntimePairing { pairingId: string; code: string; expiresAt: number }
 export interface RuntimePairResult { machineId: string; claimSecret: string; status: "pending"; expiresAt: number }
 export type RuntimeClaimResult = { status: "pending" } | { status: "approved"; machineId: string; credential: string };
-export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1; runtimeInfo?: RuntimeInfo }
-export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number }
+export interface RuntimeHello { v: 1; type: "hello"; bootId: string; inventory?: WindowsCliProbe; name?: string; platform?: string; paneProtocol?: 1; runtimeInfo?: RuntimeInfo; updateTrialId?: string }
+export interface RuntimeWelcome { v: 1; type: "welcome"; machineId: string; generation: number; updateProtocol?: 1 }
 export interface RuntimeRequest { v: 1; type: "request"; id: string; operation: RuntimeOperation; payload: unknown }
 export interface RuntimeResponse { v: 1; type: "response"; id: string; ok: boolean; result?: unknown; error?: string }
 export interface RuntimeTaskEvent { v: 1; type: "task"; seq: number; task: WindowsCliTask }
@@ -98,5 +99,5 @@ export interface RuntimePaneReply { v: 1; type: "pane.response"; id: string; ok:
 export interface RuntimePaneOutput { v: 1; type: "pane.output"; snapshot: RuntimePaneSnapshot }
 export interface RuntimePaneToolCall { v: 1; type: "pane.tool.request"; id: string; body: PaneMcpBody }
 export interface RuntimePaneToolResult { v: 1; type: "pane.tool.result"; id: string; ok: boolean; result?: unknown }
-export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall | RuntimePaneToolResult;
-export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput | RuntimePaneToolCall;
+export type RuntimeServerMessage = RuntimeWelcome | RuntimeRequest | RuntimeToolResult | RuntimePaneCall | RuntimePaneToolResult | RuntimeUpdateControl<RuntimeUpdateServerPhase>;
+export type RuntimeClientMessage = RuntimeHello | RuntimeResponse | RuntimeTaskEvent | RuntimeInventoryEvent | RuntimeToolCall | RuntimePaneReply | RuntimePaneOutput | RuntimePaneToolCall | RuntimeUpdateControl<RuntimeUpdateClientPhase>;

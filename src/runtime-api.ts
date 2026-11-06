@@ -52,7 +52,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     return true;
   }
   const hub = ctx.runtimeCoordinator!();
-  // The header token (an agent's) may still use these routes, but it is shown no account: only a local administrator session is (accountIdentityVisible).
+  // The header token (an agent's) may still use these routes, but it is shown no account: only an admin session on the directly reached dashboard is (accountIdentityVisible).
   const machineFor = (machine: RuntimeMachine): RuntimeMachine => accountIdentityVisible(req, url, ctx) ? machine : machineWithoutAccountIdentity(machine);
   if (method === "GET" && url.pathname === "/ui/runtimes") { json(res, 200, { enabled: true, machines: hub.listMachines().map(machineFor) }); return true; }
   const tasksRoute = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})\/tasks(?:\/([a-z0-9-]{16,80})\/cancel)?$/.exec(url.pathname);
