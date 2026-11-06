@@ -8,8 +8,9 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { RuntimePaneLink } from "../src/runtime-pane-link.js";
+import { readPaneHostDescriptor } from "../src/runtime-pane-private.js";
 import { runtimeJobDigest } from "../src/runtime-client-store.js";
-it("requires the exact owned host process to exit after descriptor, lock and listener disappear", async () => {
+it.each(["discovered", "retained"] as const)("requires the exact owned %s host process to exit after descriptor, lock and listener disappear", async mode => {
   const directory = mkdtempSync(join(tmpdir(), "agend-update-host-exit-"));
   const options = { directory, server: "http://127.0.0.1:19280", machineId: "12345678-1234-4321-abcd-123456789012", online: () => true, maxAgents: () => 4 };
   const scope = runtimeJobDigest({ server: options.server, machineId: options.machineId });
@@ -35,14 +36,16 @@ it("requires the exact owned host process to exit after descriptor, lock and lis
   const child = spawn(process.execPath, ["--input-type=module", "-e", script], { stdio: ["ignore", "ignore", "pipe", "ipc"] });
   let error = ""; child.stderr!.on("data", data => { error += data.toString(); });
   const exit = once(child, "close"), kill = vi.spyOn(process, "kill");
+  let retained: RuntimePaneLink | undefined;
   try {
     const [ready] = await Promise.race([once(child, "message"), exit.then(() => { throw Error(`Fake host failed: ${error}`); })]);
     expect(ready).toBe("ready");
+    if (mode === "retained") retained = await RuntimePaneLink.attach(readPaneHostDescriptor(join(directory, "pane-host"), scope)!, options);
     const closed = once(child, "message"); let complete = false;
-    const drained = RuntimePaneLink.drainExistingForUpdate(options, () => true).then(() => { complete = true; });
+    const drained = RuntimePaneLink.drainExistingForUpdate(options, () => true, retained).then(() => { complete = true; });
     expect((await closed)[0]).toBe("listener-closed");
     await vi.waitFor(() => expect(kill.mock.calls.filter(args => args[0] === child.pid && args[1] === 0).length).toBeGreaterThanOrEqual(2));
     expect(complete).toBe(false); child.send("exit"); await exit; await drained;
     expect(complete).toBe(true);
-  } finally { kill.mockRestore(); if (child.exitCode === null) { child.kill(); await exit; } rmSync(directory, { recursive: true, force: true }); }
+  } finally { await retained?.stop(); kill.mockRestore(); if (child.exitCode === null) { child.kill(); await exit; } rmSync(directory, { recursive: true, force: true }); }
 });

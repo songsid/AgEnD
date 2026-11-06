@@ -6,12 +6,18 @@ import { createServer, request, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import WebSocket from "ws";
 import { RuntimeClient, type RuntimeClientOptions, type RuntimeBridge } from "../src/runtime-client.js";
-import { RuntimeClientStore } from "../src/runtime-client-store.js";
+import { RuntimeClientStore, runtimeJobDigest } from "../src/runtime-client-store.js";
 import { RuntimeCoordinator } from "../src/runtime-coordinator.js";
+import { RuntimePaneLink } from "../src/runtime-pane-link.js";
+import { RuntimePaneHost, type RuntimePaneHostOptions } from "../src/runtime-pane-host.js";
+import { startPaneService } from "../src/runtime-pane-service.js";
+import { paneMcpHttp } from "../src/windows-pane-mcp.js";
+import type { RuntimePaneSnapshot } from "../src/runtime-pane-protocol.js";
 import type { NativeMcpConnection } from "../src/windows-cli-providers.js";
 import type { WindowsCliTask } from "../src/windows-cli.js";
-const roots: string[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [], clients: RuntimeClient[] = [];
+const roots: string[] = [], hubs: RuntimeCoordinator[] = [], servers: Server[] = [], clients: RuntimeClient[] = [], services: Array<() => Promise<void>> = [];
 function directory() { const path = mkdtempSync(join(tmpdir(), "agend-update-client-")); roots.push(path); return path; }
 function held<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 async function fixture(extra: Partial<RuntimeClientOptions> = {}) {
@@ -39,10 +45,58 @@ async function fixture(extra: Partial<RuntimeClientOptions> = {}) {
 }
 afterEach(async () => {
   for (const client of clients.splice(0)) await client.stop();
+  for (const close of services.splice(0)) await close();
   for (const hub of hubs.splice(0)) hub.close();
   for (const server of servers.splice(0)) await new Promise<void>(done => server.close(() => done()));
   for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true });
   vi.restoreAllMocks();
+});
+it("a refused prepare preserves the live pane link, output and MCP forwarding", async () => {
+  let service!: Awaited<ReturnType<typeof startPaneService>>, hostOptions!: RuntimePaneHostOptions;
+  let output: (text: string) => void = () => {}, exited: (value: { exitCode: number }) => void = () => {};
+  const process = { pid: 32123, write: vi.fn(), resize: vi.fn(), pause: vi.fn(), resume: vi.fn(), kill: vi.fn(() => exited({ exitCode: 0 })),
+    onData: (fn: typeof output) => { output = fn; return { dispose() {} }; }, onExit: (fn: typeof exited) => { exited = fn; return { dispose() {} }; } };
+  const f = await fixture({ openPaneLink: options => RuntimePaneLink.attach(service.descriptor, options) });
+  const credentials = f.store.credentials()!;
+  service = await startPaneService({ directory: join(f.store.directory, "pane-host"), scope: runtimeJobDigest({ server: credentials.server, machineId: f.machineId }),
+    createHost: options => { hostOptions = options; return new RuntimePaneHost({ ...options, spawn: async () => process }); } });
+  services.push(() => service.close());
+  const pane = await f.hub.callPane(f.machineId, { action: "open", operationId: randomUUID(), launch: { paneId: randomUUID(), agentId: randomUUID(), instance: "pane-agent",
+    cli: "codex", cwd: "C:\\fixture", sandbox: "read-only", columns: 80, rows: 24 } }) as RuntimePaneSnapshot;
+  const live = (f.client as any).paneHost as RuntimePaneLink;
+  const attach = vi.spyOn(RuntimePaneLink, "attach"), forwarded = vi.fn(async () => ({ result: { tools: [] } }));
+  (f.hub as any).options.handlePaneMcp = forwarded;
+  expect(await f.client.prepareUpdate(randomUUID())).toBe(false);
+  expect(attach).not.toHaveBeenCalled(); expect(live.connected()).toBe(true); expect(f.client.online()).toBe(true);
+  const changed = vi.fn(); const unsubscribe = f.hub.subscribe(changed);
+  try {
+    output("still forwarding after refused update\r\n");
+    await vi.waitFor(() => expect(changed.mock.calls.some(([event]) => event.type === "pane" && event.pane?.paneId === pane.paneId)).toBe(true));
+    const owner = { hostBootId: pane.hostBootId, paneId: pane.paneId, launchId: pane.launchId, agentId: pane.agentId, instance: pane.instance };
+    expect(await paneMcpHttp(hostOptions.mcpConnection!(owner, ["reply"]), { op: "pane-mcp", method: "tools/list", params: {}, owner, helperId: randomUUID() })).toEqual({ result: { tools: [] } });
+    expect(forwarded).toHaveBeenCalledOnce(); expect(process.kill).not.toHaveBeenCalled();
+  } finally { unsubscribe(); }
+});
+it("rechecks physical idle after host drain without committing or stopping", async () => {
+  const drained = held<void>(), entered = held<void>();
+  const f = await fixture({ drainPaneHostForUpdate: async () => { entered.resolve(); await drained.promise; } });
+  let idle = true; f.bridge.idleForUpdate = () => idle;
+  const preparing = f.client.prepareUpdate(randomUUID()); await entered.promise;
+  idle = false; drained.resolve(); expect(await preparing).toBe(false);
+  expect(f.client.online()).toBe(true); expect(f.bridge.close).not.toHaveBeenCalled();
+  expect(f.hub.paneTransportEpoch(f.machineId)).not.toBeNull();
+});
+it("a trial refuses activation acknowledgement when the physical idle proof changes in flight", async () => {
+  const id = randomUUID(), f = await fixture({ managedUpdate: { trialId: id }, reconnectMs: 60_000 });
+  let idle = true; f.bridge.idleForUpdate = () => idle;
+  const send = (f.hub as any).send.bind(f.hub);
+  vi.spyOn(f.hub as any, "send").mockImplementation((connection: unknown, frame: any) => {
+    if (frame.type === "update.control" && frame.phase === "activated") idle = false;
+    return send(connection, frame);
+  });
+  const outcome = f.client.activateTrial(id).catch(() => false);
+  expect(await outcome).toBe(false); expect(f.client.online()).toBe(false); expect(f.bridge.probe).not.toHaveBeenCalled();
+  expect((f.client as any).trialFence).toBeDefined();
 });
 it("negotiates both idle fences, proves a never-created pane host absent and completes stop before returning", async () => {
   const f = await fixture();
@@ -96,6 +150,25 @@ it("a trial publishes nothing or probes no CLI until activation and then accepts
   expect(await f.client.activateTrial(id)).toBe(true); expect(f.client.online()).toBe(true);
   expect(await f.hub.call(f.machineId, "workspace", { agentId: randomUUID() })).toMatchObject({ cwd: "C:\\fixture" });
   expect(f.bridge.probe).toHaveBeenCalled();
+});
+it("withholds a persisted completed job throughout trial welcome and publishes it only after activation", async () => {
+  const f = await fixture(), id = randomUUID();
+  vi.mocked(f.bridge.start).mockImplementation((raw: any) => ({ id: raw.requestId, cli: raw.cli, cwd: raw.cwd, sandbox: raw.sandbox,
+    status: "completed", output: "retained fixture receipt", startedAt: 1, finishedAt: 2, outcomeConfirmed: true }));
+  await f.hub.call(f.machineId, "run", { task: { requestId: id, cli: "codex", cwd: "C:\\fixture", prompt: "Fixture", sandbox: "read-only" } });
+  await vi.waitFor(() => expect(f.hub.hasActiveTask(f.machineId)).toBe(false));
+  await f.client.stop(); vi.mocked(f.bridge.probe).mockClear();
+  const trialId = randomUUID(), frames: any[] = [], authenticated = held<void>();
+  const trial = new RuntimeClient({ store: f.store, bridge: f.bridge, managedUpdate: { trialId, authenticated: () => authenticated.resolve() },
+    socketFactory: (url, credential) => {
+      const ws = new WebSocket(url, { headers: { Authorization: `Bearer ${credential}` } }), send = ws.send.bind(ws);
+      vi.spyOn(ws, "send").mockImplementation((data: any) => { frames.push(JSON.parse(data.toString())); send(data); }); return ws;
+    } });
+  clients.push(trial); await trial.start(); await authenticated.promise;
+  expect(f.store.get(id)?.task.output).toBe("retained fixture receipt");
+  expect(frames.filter(frame => frame.type === "task")).toEqual([]); expect(f.bridge.probe).not.toHaveBeenCalled();
+  expect(await trial.activateTrial(trialId)).toBe(true);
+  expect(frames.filter(frame => frame.type === "task")).toEqual([expect.objectContaining({ task: expect.objectContaining({ id, output: "retained fixture receipt" }) })]);
 });
 it("concurrent stop and waitUntilStopped share cleanup through profile unlock", async () => {
   const f = await fixture(), work = held<void>(), entered = held<void>();

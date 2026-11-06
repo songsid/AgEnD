@@ -124,6 +124,23 @@ it("closes a trial that publishes ordinary state before activation", async () =>
   candidate.send({ v: 1, type: "inventory", inventory: { home: "C:\\trial", clis: [], probedAt: 1 } });
   expect((await closed)[0]).toBe(1008); expect(f.hub.machine(f.machineId)?.status).toBe("offline");
 });
+it.each(["ready", "activate"] as const)("refuses %s while the exact connection has acquired output backpressure", async phase => {
+  const f = await fixture(), id = randomUUID(), p = await f.peer(phase === "activate" ? { updateTrialId: id } : {});
+  if (phase === "ready") expect((await p.control("prepare", id)).phase).toBe("prepared");
+  const connection = (f.hub as any).connections.get(f.machineId);
+  let buffered = 1;
+  vi.spyOn(connection.ws, "bufferedAmount", "get").mockImplementation(() => buffered);
+  expect((await p.control(phase, id)).phase).toBe("busy");
+  expect(connection.update?.phase).not.toBe("committed");
+  if (phase === "activate") {
+    expect(f.hub.machine(f.machineId)?.status).toBe("offline");
+    buffered = 0; expect((await p.control("activate", id)).phase).toBe("activated");
+    expect(f.hub.machine(f.machineId)?.status).toBe("online");
+  } else {
+    buffered = 0; expect((await p.control("prepare", id)).phase).toBe("prepared");
+    expect((await p.control("ready", id)).phase).toBe("commit");
+  }
+});
 function held<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 it("retains a one-shot MCP handler across terminal evidence and connection replacement", async () => {
   const work = held<unknown>(), handleMcp = vi.fn(() => work.promise), f = await fixture({ handleMcp }), p = await f.peer();

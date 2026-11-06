@@ -537,10 +537,11 @@ export class RuntimeClient {
       if (await this.updateRpc("prepare", id, ["prepared", "busy", "cancelled"]) !== "prepared") return false;
       if (this.options.drainPaneHostForUpdate) await this.options.drainPaneHostForUpdate(() => fence.current());
       else {
-        if (this.options.createPaneHost || this.options.openPaneLink) throw Error("Injected pane host requires its own positive idle proof");
         const { RuntimePaneLink } = await import("./runtime-pane-link.js");
+        const existing = this.paneHost instanceof RuntimePaneLink && this.paneHost.connected() ? this.paneHost : undefined;
+        if (!existing && (this.options.createPaneHost || this.options.openPaneLink)) throw Error("Injected pane host requires its own positive idle proof");
         await RuntimePaneLink.drainExistingForUpdate({ directory: this.options.store.directory, server: this.credentials!.server, machineId: this.credentials!.machineId,
-          online: () => current(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, mcp: (body, owned) => this.paneMcp(body, owned) }, () => fence.current());
+          online: () => current(), maxAgents: () => this.machinePaneLimit, epoch: () => this.paneEpoch, mcp: (body, owned) => this.paneMcp(body, owned) }, () => fence.current(), existing);
       }
       if (!fence.current() || !this.locallyIdle()) return false;
       if (await this.updateRpc("ready", id, ["commit", "busy", "cancelled"]) !== "commit") return false;

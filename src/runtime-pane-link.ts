@@ -69,7 +69,7 @@ export class RuntimePaneLink {
     return this.attach(descriptor, options);
   }
   /** Attach-only discovery under the foreground profile lock. Never starts or recovers a host to manufacture idle. */
-  static async drainExistingForUpdate(options: PaneLinkOptions, current: () => boolean): Promise<void> {
+  static async drainExistingForUpdate(options: PaneLinkOptions, current: () => boolean, existing?: RuntimePaneLink): Promise<void> {
     const directory = join(options.directory, "pane-host"), scope = runtimeJobDigest({ server: options.server, machineId: options.machineId });
     const stat = (path: string) => {
       try { return lstatSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
@@ -80,16 +80,24 @@ export class RuntimePaneLink {
       return true;
     };
     if (!current()) throw Error("Runtime update fence expired");
-    if (!checkDirectory(directory)) return;
+    if (!checkDirectory(directory)) {
+      if (existing?.connected()) throw Error("Connected pane host discovery is unconfirmed");
+      return;
+    }
     const descriptor = readPaneHostDescriptor(directory, scope);
     if (!descriptor) {
+      if (existing?.connected()) throw Error("Connected pane host discovery is unconfirmed");
       // Descriptor absence alone also occurs during host startup and shutdown.
       if (stat(join(directory, "runtime.lock"))) throw Error("Pane host shutdown is unconfirmed");
       if (checkDirectory(join(directory, "state")) && new RuntimePaneStore(join(directory, "state")).list().some(row => row.snapshot.state !== "exited")) throw Error("Pane reservations remain unconfirmed");
       if (!current()) throw Error("Runtime update fence expired");
       return;
     }
-    const link = await this.attach(descriptor, options);
+    // Attaching replaces the host's current client. Reuse our live link so a busy refusal
+    // preserves its output and MCP transport; discovery is only for a detached Runtime.
+    if (existing?.connected() && existing.hostBootId !== descriptor.hostBootId) throw Error("Connected pane host boot changed");
+    const retained = existing?.connected() ? existing : undefined;
+    const link = retained ?? await this.attach(descriptor, options);
     try {
       if (!current()) throw Error("Runtime update fence expired");
       await link.drainForUpdate();
@@ -102,7 +110,7 @@ export class RuntimePaneLink {
         if (performance.now() >= deadline) throw Error("Pane host physical shutdown is unconfirmed");
         await new Promise(done => setTimeout(done, 25));
       }
-    } finally { await link.stop(); }
+    } finally { if (!retained) await link.stop(); }
   }
   /** Authenticated discovery seam; fixtures bind only private loopback services. */
   static attach(descriptor: PaneHostDescriptor, options: Pick<PaneLinkOptions, "online" | "maxAgents" | "output" | "epoch" | "mcp" | "disconnected">): Promise<RuntimePaneLink> {
