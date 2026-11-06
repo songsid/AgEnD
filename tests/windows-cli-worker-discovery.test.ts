@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmdirSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
+import { nativeCliEnvironment, NATIVE_CLI_IDS, npmCliShimTarget, npmNativeExecutable, npmNativeShimTarget, prepareNativeWorkspace, probeNativeClis, validateNativeTask, type NativeCliExecutable, type NativeCliId } from "../src/windows-cli-worker.js";
 
 afterEach(() => vi.unstubAllEnvs());
 const workspaces: string[]=[];
@@ -140,6 +140,47 @@ describe("native Node shims and environment", () => {
     expect(npmCliShimTarget("codex", shim.replace("node_modules", "..\\node_modules"))).toBeNull();
     expect(npmCliShimTarget("kiro-cli", 'SET ELECTRON_RUN_AS_NODE=1\n"%dp0%\\..\\Kiro.exe" cli.js %*')).toBeNull();
     expect(npmCliShimTarget("grok", shim)).toBeNull();
+  });
+
+  describe("npm Claude Code", () => {
+    const legacy = '@ECHO off\nSET "_prog=node"\n"%_prog%" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*';
+    const modern = '@ECHO off\nGOTO start\n:find_dp0\nSET dp0=%~dp0\nEXIT /b\n:start\nSETLOCAL\nCALL :find_dp0\n\n"%dp0%\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe"   %*\n';
+    const dir = "C:\\Users\\u\\AppData\\Roaming\\npm";
+    const pkg = `${dir}\\node_modules\\@anthropic-ai\\claude-code`;
+    const nested = `${pkg}\\node_modules\\@anthropic-ai\\claude-code-win32-x64\\claude.exe`;
+    const bin = `${pkg}\\bin\\claude.exe`;
+    const fs = (files: Record<string, number>) => [(p: string) => p in files, (p: string) => files[p]] as const;
+    it("keeps the legacy cli.js shim on the node path and recognizes the new native shim", () => {
+      expect(npmCliShimTarget("claude-code", legacy)).toBe("node_modules/@anthropic-ai/claude-code/cli.js");
+      expect(npmNativeShimTarget("claude-code", legacy)).toBeNull();
+      expect(npmCliShimTarget("claude-code", modern)).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern)).toBe("node_modules/@anthropic-ai/claude-code/bin/claude.exe");
+    });
+    it("only recognizes the exact known path shape, for Claude Code only", () => {
+      expect(npmNativeShimTarget("codex", modern)).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern.replace("claude-code", "evil"))).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern.replace("node_modules", "..\\node_modules"))).toBeNull();
+      expect(npmNativeShimTarget("claude-code", '@echo off\ncalc.exe "%dp0%\\other.exe" %*')).toBeNull();
+      expect(npmNativeShimTarget("claude-code", modern + " ".repeat(33 * 1024))).toBeNull();
+    });
+    it("prefers the nested platform executable and ignores the ignore-scripts placeholder", () => {
+      const [exists, size] = fs({ [nested]: 200_000_000, [bin]: 500 });
+      expect(npmNativeExecutable("claude-code", dir, exists, size, "x64")).toBe(nested);
+    });
+    it("uses bin\\claude.exe when it is the real binary", () => {
+      const [exists, size] = fs({ [bin]: 200_000_000 });
+      expect(npmNativeExecutable("claude-code", dir, exists, size, "x64")).toBe(bin);
+    });
+    it("finds a hoisted platform package", () => {
+      const hoisted = `${dir}\\node_modules\\@anthropic-ai\\claude-code-win32-x64\\claude.exe`;
+      const [exists, size] = fs({ [hoisted]: 200_000_000, [bin]: 500 });
+      expect(npmNativeExecutable("claude-code", dir, exists, size, "x64")).toBe(hoisted);
+    });
+    it("reports nothing when only a placeholder or nothing is installed", () => {
+      expect(npmNativeExecutable("claude-code", dir, ...fs({ [bin]: 500 }), "x64")).toBeNull();
+      expect(npmNativeExecutable("claude-code", dir, ...fs({}), "x64")).toBeNull();
+      expect(npmNativeExecutable("codex", dir, ...fs({ [bin]: 200_000_000 }), "x64")).toBeNull();
+    });
   });
 
   it("drops inherited Linux instance paths and Node injection while keeping Windows login configuration", () => {
