@@ -331,7 +331,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (!live()) { send(res, 503, { code: "unavailable" }); return true; }
     if (path === "/") { res.writeHead(302, { Location: "/ui/hub", "Cache-Control": "no-store" }); res.end(); return true; }
     if (path === "/web" || path === "/ui" || path === "/ui/hub" || path === "/ui/hub/exposures" || path === "/ui/hub/admin") {
-      serveHubWorkspaceShell(res, { name: deps.config.name });
+      serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview });
       return true;
     }
     if (path.startsWith("/ui/js/")) {

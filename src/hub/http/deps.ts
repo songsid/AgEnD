@@ -32,6 +32,7 @@ export interface HubHttpDeps {
   pairing: HubPairingService;
   store: HubTransportStore;
   config: HubHttpConfig;
+  preview?: Readonly<import("../preview.js").HubPreviewView>;
   issuer: HubIssuer;
   /** Re-read on every use: null before HubServer exists and after fence/close — then work is unavailable, never queued. */
   transport(): Pick<HubServerTransport, "send"> | null;
