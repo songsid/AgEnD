@@ -80,7 +80,27 @@ function Get-WslDistroNames {return ,@('Ubuntu-22.04')}
 $wslStageVerified=$false
 . ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(extractLeadingStatement(source, "if (Stage-Done 1)")).toString("base64")}'))))
 Write-Output ('TARGET='+$UBUNTU_DISTRO+' VERIFIED='+$wslStageVerified+' LOCATION=['+(Get-ProgressValue 'WSL_INSTALL_PATH')+']')`));
-  expect(out).toContain('TARGET=Ubuntu-24.04 VERIFIED=False LOCATION=[]');
+  expect(out).toContain('TARGET=Ubuntu-26.04 VERIFIED=False LOCATION=[]');
+ });
+ it.each(['Ubuntu-24.04','Ubuntu-22.04','AgEnD-2'])('a saved %s location before the first download survives an installer upgrade',async target=>{
+  const out=await run(`$UBUNTU_DISTRO='Ubuntu-26.04';$Force=$false
+$leaf=if('${target}' -like 'AgEnD*'){'${target}'}else{'Ubuntu'}
+@('WSL_INSTALL_DISTRO=${target}',('WSL_INSTALL_PATH=D:\\WSL\\'+$leaf))|Set-Content -LiteralPath $ProgressFile
+. ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(extractLeadingStatement(source, "if ((Test-Path $ProgressFile) -and -not $Force)")).toString("base64")}'))))
+function Read-Host {throw 'Saved location must not prompt'}
+$location=Get-WslInstallLocation $disks 'C:\\' $UBUNTU_DISTRO $leaf
+Write-Output ('TARGET='+$UBUNTU_DISTRO+' LOCATION='+$location.Path)`);
+  expect(out).toContain('TARGET='+target+' LOCATION=D:\\WSL\\'+(target.startsWith('AgEnD')?target:'Ubuntu'));
+ });
+ it.each(['Ubuntu-24.04','Ubuntu-22.04'])('a saved %s stage stays on its distro even when 26.04 is installed',async target=>{
+  const out=await run(`$UBUNTU_DISTRO='${target}'
+@('DISTRO=${target}','STAGE_1_DONE','WSL_INSTALL_DISTRO=${target}','WSL_INSTALL_PATH=D:\\WSL\\Ubuntu')|Set-Content -LiteralPath $ProgressFile
+function Get-InstalledWslVersion {return [version]'2.6.1'}
+function Get-WslDistroNames {return ,@('Ubuntu-26.04','${target}')}
+$wslStageVerified=$false
+. ([scriptblock]::Create([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${Buffer.from(extractLeadingStatement(source, "if (Stage-Done 1)")).toString("base64")}'))))
+Write-Output ('TARGET='+$UBUNTU_DISTRO+' VERIFIED='+$wslStageVerified+' LOCATION='+(Get-ProgressValue 'WSL_INSTALL_PATH'))`);
+  expect(out).toContain('TARGET='+target+' VERIFIED=True LOCATION=D:\\WSL\\Ubuntu');
  });
  it('an existing recorded distro and an unknown list preserve its exact location',async ()=>{
   const out=(await run(`'DISTRO=AgEnD'|Set-Content -LiteralPath $ProgressFile
@@ -105,7 +125,7 @@ it('drive override is validated and explicitly passed across both Windows launch
  expect(source.indexOf('Save-WslDrive $AgendWslDrive')).toBeLessThan(source.indexOf('Write-Step 1 $TOTAL'));
  const list=source.slice(source.indexOf('function Get-WslDistroNames'),source.indexOf('function Get-WslRegisteredNames'));
  expect(list).not.toContain('[Console]::OutputEncoding');
- expect(source).toContain("$UBUNTU_DISTRO = 'Ubuntu-24.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive");
+ expect(source).toContain("$UBUNTU_DISTRO = 'Ubuntu-26.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive");
  const resolver=(s:string)=>s.slice(s.indexOf('function Resolve-AgendWslDrive'),s.indexOf('\n}',s.indexOf('function Resolve-AgendWslDrive'))+2);
  expect(resolver(source)).toBe(resolver(boot));
 });
