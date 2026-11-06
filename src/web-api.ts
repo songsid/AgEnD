@@ -61,7 +61,8 @@ import { WEB_CHAT_CARDS_OVERFLOW, catchUpWindow, newWebMessageId, parseLastEvent
 import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
-import { workspaceChanges, workspaceFile, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
+import { workspaceChanges, workspaceFile, workspaceFileDiff, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
+import { resolveFollowSteps, type FollowStep } from "./workspace-follow.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { resolveToolSet } from "./tool-permissions.js";
 import type { WebSessionStore, SessionRecord, WebDeviceRow } from "./web-session.js";
@@ -1998,7 +1999,7 @@ export function handleWebRequest(
     const offered = !isGeneralInstance(ctx.fleetConfig as never, instance) && resolveToolSet(cfg as never, instance) !== "coordinator"
       && cfg.runtime !== "windows" && !(cfg as { machine_id?: unknown }).machine_id;
     if (!offered) { json(res, 404, { error: "workspace_not_offered" }); return true; }
-    if (!["changes", "list", "file", "image"].includes(op)) { json(res, 400, { error: "op: changes | list | file | image" }); return true; }
+    if (!["changes", "list", "file", "image", "diff", "follow"].includes(op)) { json(res, 400, { error: "op: changes | list | file | image | diff | follow" }); return true; }
     const workDir = String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
     void (async () => {
       try {
@@ -2008,6 +2009,19 @@ export function handleWebRequest(
           if (op === "changes") return { kind: "json" as const, body: await workspaceChanges(ws) };
           if (op === "list") return { kind: "json" as const, body: await workspaceList(ws, p.get("path") ?? "") };
           if (op === "file") return { kind: "json" as const, body: await workspaceFile(ws, p.get("path")) };
+          if (op === "diff") return { kind: "json" as const, body: await workspaceFileDiff(ws, p.get("path")) };
+          if (op === "follow") {
+            // #3160: this turn's file steps, from the CLI's own record, confined to this folder (outside paths dropped,
+            // secret-looking ones marked hidden). Polled by an open panel with Follow on; nothing is pushed.
+            const backend = String(cfg.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
+            const supported = backend === "claude-code" || backend === "codex";
+            const d = ctx.daemons.get(instance) as { workspaceFollow?: (after: number, turn?: number) => { turn: number; steps: FollowStep[]; last: number } } | undefined;
+            const after = Number(p.get("after") ?? 0), turnQ = p.get("turn");
+            const snap = supported && d && typeof d.workspaceFollow === "function"
+              ? d.workspaceFollow(Number.isSafeInteger(after) && after >= 0 ? after : 0, turnQ !== null && /^\d{1,9}$/.test(turnQ) ? Number(turnQ) : undefined)
+              : { turn: 0, steps: [], last: 0 };
+            return { kind: "json" as const, body: { supported, running: !!d, turn: snap.turn, last: snap.last, steps: await resolveFollowSteps(ws, snap.steps) } };
+          }
           return { kind: "image" as const, body: await workspaceImage(ws, p.get("path")) };
         };
         const out = await answer();
