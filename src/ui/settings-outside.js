@@ -99,6 +99,25 @@ function Qr({ uri }) {
 }
 
 /**
+ * Refs #3061 review (P2 2): ONE enrolment request at a time, however often the dialog is closed and opened again. The server
+ * keeps a single pending secret: every POST /ui/outside/enroll replaces it. With the dialog able to close while a request
+ * is still out, "close, open again" used to send a second one; whichever reached the server last then decided which secret
+ * would confirm, and when that was the first (closed) one, the secret on the screen — the second's — was already replaced:
+ * its valid code failed. Dropping the first answer in the page cannot undo what the server did. So while a request is out
+ * the next dialog waits for that same answer and shows it (it is the only secret there is); a new one is asked for only
+ * when none is. Held outside the card: a card that is unmounted and mounted again (the person went to another section and
+ * back) meets the same request.
+ */
+let enrolling = null;
+function askEnrollment() {
+  if (!enrolling) {
+    const asked = (async () => { try { return await api("/ui/outside/enroll", { method: "POST", body: "{}" }); } catch { return null; } })();
+    enrolling = asked.finally(() => { enrolling = null; });
+  }
+  return enrolling;
+}
+
+/**
  * #3035 review: how often the card reads the state again while it is shown — quickly while the link is opening (the
  * switch answers before the link is up), slowly otherwise (its lifetime ending, a wait starting or ending elsewhere).
  */
@@ -156,8 +175,7 @@ export function OutsideCard() {
     const id = ++live.current.dlg;
     live.current.dlgOpen = true;
     setDlg({ kind, enroll: null }); setCode(""); setMsg("");
-    let r = null;
-    try { r = await api("/ui/outside/enroll", { method: "POST", body: "{}" }); } catch { r = null; }
+    const r = await askEnrollment();                                              // one at a time: a request still out is this dialog's too
     if (!live.current.mounted || id !== live.current.dlg) return;                 // closed (or gone) while it was asked
     if (r && r.ok && r.body && r.body.secret) setDlg({ kind, enroll: r.body });
     else { closeDlg(); toast(t("app.failed"), false); }

@@ -11,24 +11,43 @@
  *  - no second question before "Set up again" opens it; an enrolment the server answers after the dialog closed, or will
  *    not give at all, opens nothing;
  *  - both languages. Only on this computer: from elsewhere there is no button, so no dialog (settings-outside-3008).
+ * Review of #3165 (P2 2), the last describe: closing and opening the dialog again while a request for a secret is still out must not
+ * leave the screen showing a secret the server no longer holds. The server here is the REAL pending-secret store
+ * (WebRemoteAccess), and a request can be held on its way to it, so the order the requests REACH it in is the test's to choose.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
+import { WebRemoteAccess, base32Decode, hotp, totpStep } from "../src/web-remote-access.js";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const schema = buildSettingsImpactSchema();
 let p: AppPage, status: any;
 let sent: Array<{ method: string; path: string; body: any }> = [];
 let answers: Record<string, { status: number; body: any }> = {};
 let holds: Record<string, Promise<void>> = {};
+/** One hold per request, in the order they are made (a request that finds none runs at once) — unlike `holds`, which stops every request of its kind. */
+let holdEach: Record<string, Array<Promise<void>>> = {};
+/** When set, the enrolment routes are answered by this real store (as the fleet does for this computer's admin) instead of by fixed answers. */
+let store: WebRemoteAccess | null = null;
+const OWNER = "owner-session-handle";
 const realFetch = (globalThis as any).fetch;
 const ENROLL = { secret: "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP", uri: "otpauth://totp/AgEnD%3Apc?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=AgEnD&algorithm=SHA1&digits=6&period=30", expiresInMs: 600000 };
 const fakeFetch = async (path: string, init: { method?: string; body?: string } = {}) => {
   const method = init.method ?? "GET";
   sent.push({ method, path, body: init.body ? JSON.parse(init.body) : undefined });
+  const queued = holdEach[`${method} ${path}`];
+  if (queued && queued.length) await queued.shift();                 // on its way to the server: the server has not seen it yet
   const hold = holds[`${method} ${path}`];
   if (hold) await hold;
+  if (store && method === "POST" && path === "/ui/outside/enroll") { const r = store.beginEnrollment(OWNER, "pc"); return { ok: true, status: 200, json: async () => r }; }
+  if (store && method === "POST" && path === "/ui/outside/enroll/confirm") {
+    const r = store.confirmEnrollment(OWNER, JSON.parse(init.body ?? "{}").code);
+    return { ok: r === "ok", status: r === "ok" ? 200 : 400, json: async () => (r === "ok" ? { ok: true } : { error: r }) };
+  }
   const preset = answers[`${method} ${path}`];
   if (preset) return { ok: preset.status < 300, status: preset.status, json: async () => preset.body };
   const body = (() => {
@@ -48,7 +67,7 @@ const fakeFetch = async (path: string, init: { method?: string; body?: string } 
 };
 beforeAll(() => { p = page({ url: "http://127.0.0.1:19280/settings/access" }); (globalThis as any).fetch = fakeFetch; });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; });
-beforeEach(() => { sent = []; answers = {}; holds = {}; });
+beforeEach(() => { sent = []; answers = {}; holds = {}; holdEach = {}; store = null; });
 afterEach(async () => { await p.unmount(); });
 
 const base = { webOnly: true, here: true, enrolled: false, enrolledAt: null, outside: false, pausedForMs: 0, link: null };
@@ -269,6 +288,113 @@ describe("Refs #3061: the authenticator set-up is a dialog", () => {
       d = on.dialog();
       expect([text(d.querySelector(".dlg-title")), text(d.querySelector("#outAgainNote"))]).toEqual(["重新綁定驗證器", "舊 App 的代碼會失效，所有從外面登入的人都會被登出。"]);
     } finally { i18n.setLang("en"); }
+  });
+});
+
+describe("Refs #3061 review (P2 2): closing and opening the dialog again while a secret is being asked for", () => {
+  const dirs: string[] = [];
+  afterEach(() => { store?.close(); store = null; for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  const realStore = () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-enroll-")); dirs.push(dir);
+    return (store = new WebRemoteAccess(join(dir, "web-remote-access.json"), { warn() {} }));
+  };
+  const enrolls = () => sent.filter(s => s.method === "POST" && s.path === "/ui/outside/enroll").length;
+  /** What the screen shows as the key, as the app takes it (no spaces). */
+  const shownKey = (w: Awaited<ReturnType<typeof open>>) => text(w.$("#outKey")).replace(/\s/g, "");
+  /** The code an authenticator holding that key shows now. */
+  const codeFor = (secret: string) => hotp(base32Decode(secret)!, totpStep(Date.now()));
+  const pendingSecret = (s: WebRemoteAccess): string => (s as any).pending.secret;
+
+  it("control: set up, and set up again, with nothing delayed — the key on the screen is the one that confirms", async () => {
+    const server = realStore();
+    const w = await open();
+    await w.click(w.$("#outSetUp"));
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    expect(shownKey(w)).toBe(pendingSecret(server));
+    const first = shownKey(w);
+    await w.type(w.$("#outCode"), codeFor(first));
+    status = ENROLLED;
+    await w.click(w.$("#outConfirm"));
+    expect([w.dialog(), server.enrolled]).toEqual([null, true]);
+    // Set up again: a new key, which replaces the first only once its own code is given.
+    await w.click(w.$("#outAgain"));
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    expect(shownKey(w)).not.toBe(first);
+    expect(shownKey(w)).toBe(pendingSecret(server));
+    await w.type(w.$("#outCode"), codeFor(shownKey(w)));
+    await w.click(w.$("#outConfirm"));
+    expect([w.dialog(), server.enrolled]).toEqual([null, true]);
+    expect(enrolls()).toBe(2);
+  });
+
+  it("A is held on its way to the server, the dialog is closed and opened again: the key shown is the one the server holds, and it confirms", async () => {
+    const server = realStore();
+    let releaseA!: () => void;
+    holdEach["POST /ui/outside/enroll"] = [new Promise<void>(r => { releaseA = r; })];       // A: the server has not seen it
+    const w = await open();
+    await w.click(w.$("#outSetUp"));                                                        // A asked for
+    await w.esc();                                                                          // Cancel while it is out
+    await w.click(w.$("#outSetUp"));                                                        // …and again: B
+    expect(w.$("#outEnrollLoading")).not.toBeNull();
+    // B is not a second request: the dialog waits for the one that is out (a second one reaching the server first would be replaced by A).
+    expect(enrolls()).toBe(1);
+    releaseA(); await settle(14);
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    expect(w.$("#outKey")).not.toBeNull();
+    expect(shownKey(w)).toBe(pendingSecret(server));                                         // what the screen shows is what the server holds
+    await w.type(w.$("#outCode"), codeFor(shownKey(w)));
+    status = ENROLLED;
+    await w.click(w.$("#outConfirm"));
+    expect([w.dialog(), server.enrolled, w.$("#outState").textContent]).toEqual([null, true, "Authenticator set up"]);
+    expect(enrolls()).toBe(1);
+  });
+
+  it("the card gone and back while A is out (another section and back): the next dialog meets the same request", async () => {
+    const server = realStore();
+    let releaseA!: () => void;
+    holdEach["POST /ui/outside/enroll"] = [new Promise<void>(r => { releaseA = r; })];
+    const first = await open();
+    await first.click(first.$("#outSetUp"));
+    const w = await open();                                                                  // unmounted and mounted again
+    await w.click(w.$("#outSetUp"));
+    expect(enrolls()).toBe(1);
+    releaseA(); await settle(14);
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    expect(shownKey(w)).toBe(pendingSecret(server));
+    await w.type(w.$("#outCode"), codeFor(shownKey(w)));
+    status = ENROLLED;
+    await w.click(w.$("#outConfirm"));
+    expect(server.enrolled).toBe(true);
+  });
+
+  it("once the first request has answered, opening the dialog again asks for a new key (no stale one is reused)", async () => {
+    const server = realStore();
+    const w = await open();
+    await w.click(w.$("#outSetUp"));
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    const first = shownKey(w);
+    await w.esc();
+    await w.click(w.$("#outSetUp"));
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    expect(enrolls()).toBe(2);
+    expect(shownKey(w)).not.toBe(first);
+    expect(shownKey(w)).toBe(pendingSecret(server));
+  });
+
+  it("A that fails while the dialog is open again closes that dialog with the usual failure, and the next try asks anew", async () => {
+    let releaseA!: () => void;
+    holdEach["POST /ui/outside/enroll"] = [new Promise<void>(r => { releaseA = r; })];
+    answers["POST /ui/outside/enroll"] = { status: 403, body: { error: "outside_not_here" } };
+    const w = await open();
+    await w.click(w.$("#outSetUp"));
+    await w.esc();
+    await w.click(w.$("#outSetUp"));
+    releaseA(); await settle(14);
+    expect(w.dialog()).toBeNull();
+    delete answers["POST /ui/outside/enroll"];
+    await w.click(w.$("#outSetUp"));
+    for (let n = 0; n < 40 && !w.$("#outKey"); n++) await settle(4);
+    expect([enrolls(), w.$("#outKey") !== null]).toEqual([2, true]);
   });
 });
 
