@@ -2170,11 +2170,13 @@ const updateTeam: Handler = (ctx, rawArgs, respond) => {
 
 // ── Fleet Templates ────────────────────────────────────────────────────
 
-const deployTemplate: Handler = async (ctx, rawArgs, respond) => {
+const deployTemplate: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(DeployTemplateArgs, rawArgs, "deploy_template");
   if (!v.ok) { respond(null, v.error); return; }
   const { template: templateName, directory: rawDirectory, name: deploymentNameArg, branch } = v.data;
   const deploymentName = deploymentNameArg || templateName;
+  // Its topics are made in the caller's world and the instances bound to it, as create_instance does.
+  const callerAdapterId = meta?.instanceName ? ctx.getWorldForInstance?.(meta.instanceName)?.id : undefined;
 
   // Reject relative paths; require absolute or ~-prefixed. Resolve and normalize (collapses `..`).
   const expanded = rawDirectory.replace(/^~/, process.env.HOME || "~");
@@ -2257,7 +2259,7 @@ const deployTemplate: Handler = async (ctx, rawArgs, respond) => {
             const r = res as { name: string; status?: string };
             resolve({ success: true, name: r.name, status: r.status });
           }
-        });
+        }, callerAdapterId);
       });
 
       if (!result.success) {
