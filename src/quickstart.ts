@@ -18,6 +18,7 @@ import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
 import { dashboardLines, dashboardPort, webOnlyConfigFile } from "./next-steps.js";
 import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
+import { platformGeneralPlan } from "./platform-general.js";
 
 /** `agend restart` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH): the service-aware
  *  restart — systemd unit, launchd job or detached hand-off (#2356; never the in-process `fleet restart --reload`). */
@@ -499,6 +500,24 @@ export async function fetchWebSignInCode(run: () => { status: number | null; std
   }
 }
 
+/**
+ * User 2026-11-06: a platform added with its own group gets its own General — the fleet makes one by itself only for
+ * the first connection. Asked with Yes as the default, saying the cost. Nothing is asked for a persona or when a
+ * General already answers for that connection. Returns whether one was added (to config.instances; caller writes).
+ */
+export async function offerPlatformGeneral(rl: { question(q: string): Promise<string> }, config: Record<string, any>, channels: any[], index: number, home = DATA_DIR): Promise<boolean> {
+  config.instances ??= {};
+  const plan = platformGeneralPlan(config.instances, channels, index, home);
+  if (!plan) return false;
+  const platformName = channels[index]?.type === "telegram" ? "Telegram" : channels[index]?.type === "discord" ? "Discord" : String(channels[index]?.type);
+  const answer = (await rl.question(`  ${t("setup.platform_general.ask", platformName, plan.name)} `)).trim().toLowerCase();
+  if (answer === "n" || answer === "no") { console.log(`  ${dim(t("setup.platform_general.skipped", plan.name))}`); return false; }
+  mkdirSync(plan.instance.working_directory, { recursive: true, mode: 0o700 });
+  config.instances[plan.name] = plan.instance;
+  console.log(`  ${green("✓")} ${t("setup.platform_general.created", plan.name)}`);
+  return true;
+}
+
 export function buildChannelConfig(p: PlatformResult): Record<string, any> {
   if (!isAdminUserId(p.type, p.userId)) throw new Error(t(`setup.admin.${p.type}_invalid`));
   const cfg: Record<string, any> = {
@@ -775,6 +794,14 @@ export async function runQuickstart(): Promise<void> {
         const available = ["telegram", "discord"].filter(t => !existingTypes.includes(t));
         if (available.length === 0) {
           console.log(`  Both platforms already configured.`);
+          // A platform added before (or declined then) without its General: offered again — never a second one.
+          let added = false;
+          for (let i = 1; i < channels.length; i++) added = (await offerPlatformGeneral(rl, config, channels, i)) || added;
+          if (added) {
+            config.channels = channels;
+            writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
+            console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
+          }
           await maybeUpdateClassicBot(rl);
           printDone();
           return;
@@ -797,6 +824,8 @@ export async function runQuickstart(): Promise<void> {
         const result = platformType === "telegram" ? await runTelegramFlow(rl) : await runDiscordFlow(rl);
         channels.push(buildChannelConfig(result));
         config.channels = channels;
+
+        await offerPlatformGeneral(rl, config, channels, channels.length - 1);
 
         writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
         console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);

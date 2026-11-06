@@ -1,4 +1,5 @@
 import { publicLinkModeProblem, publicLinkPatchShape } from "./public-web-link.js";
+import { adaptersWithoutGeneral, type ChannelLike } from "./platform-general.js";
 import { PROMPT_CACHE_TTLS, validateProvider } from "./backend/types.js";
 import { CODEX_SPEEDS, isCodexSpeed } from "./backend/codex-speed.js";
 import { DELIVERY_WORKER_MODES, type WebConfig } from "./types.js";
@@ -641,6 +642,16 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
   }
   if (generalCount === 0) {
     warn("instances", "no general_topic instance — there is no general dispatcher to receive un-topic'd messages");
+  } else if (isObj(config.instances)) {
+    // A fleet with more than one connection: each connection with its own group needs its own General (the fleet makes
+    // one by itself only for the first). A persona bot in an earlier connection's guild shares that General.
+    const chans = (Array.isArray(config.channels) ? config.channels : isObj(config.channel) ? [config.channel] : [])
+      .filter((ch): ch is Record<string, unknown> => isObj(ch) && typeof ch.type === "string");
+    if (chans.length > 1) {
+      for (const id of adaptersWithoutGeneral(config.instances as Parameters<typeof adaptersWithoutGeneral>[0], chans as unknown as ChannelLike[])) {
+        warn("instances", `no general_topic instance for connection "${id}" — messages there outside an agent's topic have no dispatcher (add a General with channel_id: ${id}, or run \`agend quickstart\` → Add another platform)`);
+      }
+    }
   }
 
   return { valid: errors.length === 0, errors, warnings };
