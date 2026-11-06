@@ -1,6 +1,6 @@
 /**
  * Who is shown the account (masked e-mail and plan) on the routes that also serve the CLI's header token: /ui/runtimes* and /ui/windows-cli/probe.
- * A local administrator SESSION sees it; every other caller gets the same answer without it (names and signed-in state stay).
+ * An admin SESSION on the directly reached dashboard sees it; every other caller gets the same answer without it (names and signed-in state stay).
  */
 import { IncomingMessage, ServerResponse, createServer, type Server } from "node:http";
 import { Readable } from "node:stream";

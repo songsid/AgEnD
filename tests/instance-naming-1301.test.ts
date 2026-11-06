@@ -275,8 +275,12 @@ describe("create_instance naming (#1301)", () => {
     fm.saveFleetConfig();
     const secondaryDelete = vi.fn(async () => {});
     let resolveSecondaryCreate: ((topicId: string) => void) | undefined;
+    // M-2543: the fake says when creation reaches it — the test waits for that event, not for a count of loop turns
+    // (a loaded CI shard ran out of 1000 setImmediate turns before handleCreate got here).
+    let reached!: () => void;
+    const createReached = new Promise<void>((r) => { reached = r; });
     const secondaryAdapter = {
-      createTopic: () => new Promise<string>((resolve) => { resolveSecondaryCreate = resolve; }),
+      createTopic: () => new Promise<string>((resolve) => { resolveSecondaryCreate = resolve; reached(); }),
       deleteTopic: secondaryDelete,
     };
     fm.worlds.set("secondary", { adapter: secondaryAdapter } as never);
@@ -291,9 +295,11 @@ describe("create_instance naming (#1301)", () => {
     );
     // Let handleCreate reach the create await, then vanish the world
     // (settings rebuild) while creation is awaiting.
-    for (let i = 0; i < 1000 && !resolveSecondaryCreate; i++) {
-      await new Promise((r) => setImmediate(r));
-    }
+    await Promise.race([
+      createReached,
+      // handleCreate ending without ever reaching createTopic is a failure, said at once — not a hang.
+      pending.then(() => { throw new Error(`handleCreate finished before it reached createTopic (${String(failure ?? result)})`); }),
+    ]);
     expect(resolveSecondaryCreate).toBeDefined();
     fm.worlds.delete("secondary");
     resolveSecondaryCreate!("123456");

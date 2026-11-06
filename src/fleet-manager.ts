@@ -278,7 +278,7 @@ import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log
 import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
-import { WebChatDiskStore } from "./web-chat-store.js";
+import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
@@ -1943,6 +1943,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             quota: agent => this.hubAgentQuota(agent),
             deliver: input => this.deliverHubQuestion(input),
             agentToken: agent => this.hubAgentToken(agent),
+            // attachments-v1: a question's files go into the agent's inbox; an answer's come from its own paths.
+            files: { stateDir: this.dataDir,
+              inboxDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "inbox") : null,
+              scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
           },
           attachExposures: api => this.attachHubMemberExposures(api),
@@ -2260,13 +2264,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** The member link as the "Connect to a Hub" view shows it (S5's client lifecycle). */
   private hubMemberLink: "online" | "offline" | "revoked" = "offline";
   /** OutboundContext: the Hub representative's answer hook (null: no member service running, or not a Hub answer). */
-  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
+  hubReport(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }): Promise<import("./hub-report-target.js").HubReportOutcome> | null {
     return this.hubReports?.(input) ?? null;
   }
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The member side's report_result hook for HUB_REPORT_TARGET while a representative service runs (else null). */
-  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
+  private hubReports: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("./hub-report-target.js").HubReportExtras }) => Promise<import("./hub/representative.js").HubReportOutcome> | null) | null = null;
   /** The one in-flight creation (single flight): overlapping first observations share it, Stop waits for it. */
   private hubRuntimeInit: Promise<import("./hub/runtime.js").HubRuntime> | null = null;
   private hubEffectsReady = false;

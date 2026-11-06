@@ -339,7 +339,11 @@ function hubMarks() {
   const tokens = String((typeof document !== "undefined" && document.body?.dataset?.hub) || "").split(/\s+/);
   return { hub: tokens.includes("hub"), member: tokens.includes("member") };
 }
-/** The Hub workspace's sidebar: its brand and name, Ask / My exposures / Administration, the session. */
+/**
+ * The Hub workspace's sidebar: its brand and name, the conversation list (#3226 B: the Hub's lazy module's HubNav —
+ * New chat, a filter, the rooms) and the session with its menu. A Hub module without HubNav (one from before) gets the
+ * three page links instead.
+ */
 function HubSidebar({ route }) {
   const name = String(document.body?.dataset?.hubName || "").trim();
   const tab = route && route.panel === "hub" ? route.tab : "ask";
@@ -350,12 +354,19 @@ function HubSidebar({ route }) {
       <a class="brand hub-brand" href="/ui/hub" onClick=${closeDrawer}>${t("hubShell.brand")}${name ? html`<span class="hub-brand-name"> · ${name}</span>` : null}</a>
       <button type="button" class="icon-btn side-collapse" onClick=${toggleSidebar} aria-label=${narrow() ? t("app.closeMenu") : t("app.collapse")} title=${narrow() ? t("app.closeMenu") : t("app.collapse")} aria-controls="sidebar"><${Icon} name="sidebar" /></button>
     </div>
-    <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
-      ${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}
+    <nav data-trust="navigation" class="side-nav hub-side-nav" aria-label=${t("app.menu")}>
+      <${HubNavSlot} fallback=${html`${row("ask", "/ui/hub", "chat")}${row("exposures", "/ui/hub/exposures", "globe")}${row("admin", "/ui/hub/admin", "key")}`} />
     </nav>
     <div class="side-foot" data-trust="navigation"><${HubSessionSlot} /></div>
     <${SidebarResize} />
   </aside>`;
+}
+/** #3226 B: the conversation list from the Hub's lazy module; `fallback` until it loads, or when it has none. */
+function HubNavSlot({ fallback }) {
+  const [mod, setMod] = useState(null);
+  const [none, setNone] = useState(false);
+  useEffect(() => { let live = true; import("/ui/js/panel-hub.js").then((m) => { if (!live) return; if (m.HubNav) setMod(() => m.HubNav); else setNone(true); }, () => { if (live) setNone(true); }); return () => { live = false; }; }, []);
+  return mod ? html`<${mod} onPick=${closeDrawer} />` : none ? fallback : null;
 }
 /** The Hub's own session row (S3b): who is signed in to the Hub, and Sign out — from the Hub's lazy module, never /auth/. */
 function HubSessionSlot() {

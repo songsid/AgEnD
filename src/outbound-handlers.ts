@@ -72,7 +72,7 @@ import {
   validateArgs,
 } from "./outbound-schemas.js";
 import type { CrossInstanceRecord } from "./search/search-docs.js";
-import { HUB_REPORT_TARGET, type HubReportOutcome } from "./hub-report-target.js";
+import { HUB_REPORT_TARGET, parseHubReportExtras, type HubReportExtras, type HubReportOutcome } from "./hub-report-target.js";
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
@@ -123,7 +123,7 @@ export interface OutboundContext {
    * The Hub representative's answer hook (docs/design/hub-representative-agent.md): a report to HUB_REPORT_TARGET with
    * a live Hub-issued correlation id from the agent it was delivered to. null: not a Hub answer (ordinary routing).
    */
-  hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean }): Promise<HubReportOutcome> | null;
+  hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null;
   /** Persist a cross-instance action before its MCP call is acknowledged. */
   admitDurableDelivery?(input: {
     operationId: string;
@@ -205,6 +205,8 @@ export interface OutboundMeta {
   senderSessionName: string | undefined;
   operationId?: string;
   sourceDaemonBootId?: string;
+  /** report_result's Hub-only fields (files, buttons, poll), already validated for the agend-hub target. */
+  hubExtras?: HubReportExtras;
 }
 
 type Respond = (result: unknown, error?: string) => void;
@@ -438,13 +440,18 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       return;
     }
     const callerCurrent = () => !ctx.getDaemonBootId || ctx.getDaemonBootId(meta.instanceName) === bootSent;
-    const claimed = ctx.hubReport({ correlationId: parsedCorrelationId, caller: meta.instanceName, text: message, callerCurrent });
+    const claimed = ctx.hubReport({ correlationId: parsedCorrelationId, caller: meta.instanceName, text: message, callerCurrent, ...(meta.hubExtras ? { extras: meta.hubExtras } : {}) });
     if (claimed) {
       const outcome = await claimed;
       if (outcome.ok) respond({ sent: true, target: HUB_REPORT_TARGET, correlation_id: parsedCorrelationId, message: outcome.message });
       else respond(null, outcome.message);
       return;
     }
+  }
+  // Files or buttons only ever travel with a live Hub answer: never dropped silently onto an ordinary message.
+  if (meta.hubExtras && Object.keys(meta.hubExtras).length) {
+    respond(null, `report_result files/buttons/poll need a live Hub question: target_instance "${HUB_REPORT_TARGET}" with the correlation_id it gave you.`);
+    return;
   }
 
   let targetIpc = ctx.instanceIpcClients.get(targetName);
@@ -1831,7 +1838,7 @@ const delegateTask = wrapAsSend(
   },
 );
 
-const reportResult = wrapAsSend(
+const reportResultSend = wrapAsSend(
   ReportResultArgs,
   "report_result",
   ({ target_instance, summary, artifacts }) => {
@@ -1845,6 +1852,15 @@ const reportResult = wrapAsSend(
     }
   },
 );
+
+/** report_result: its Hub-only fields are checked for the target first (another target carrying any is refused). */
+const reportResult: Handler = (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(ReportResultArgs, rawArgs, "report_result");
+  if (!v.ok) { respond(null, v.error); return; }
+  const parsed = parseHubReportExtras(v.data.target_instance, v.data);
+  if (!parsed.ok) { respond(null, parsed.message); return; }
+  return reportResultSend(ctx, rawArgs, respond, Object.keys(parsed.extras).length ? { ...meta, hubExtras: parsed.extras } : meta);
+};
 
 /** #2942: the settings an agent may ask to change on a Windows agent — the web editor's, of those the MCP schema offers. */
 const WINDOWS_MCP_EDITABLE = new Set(["display_name", "description", "model"]);
