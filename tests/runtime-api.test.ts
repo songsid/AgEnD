@@ -89,7 +89,7 @@ describe("runtime package download", () => {
   function setup() {
     const coordinator = vi.fn((): RuntimeCoordinator => { throw Error("Downloads must not create a coordinator"); });
     const ctx: RuntimeApiContext = { webToken: token, runtimeCoordinator: coordinator };
-    const file = { bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff]), filename: "agend-runtime-windows-2.3.3.zip", sha256: "a".repeat(64) };
+    const file = { bytes: Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff]), filename: "agend-runtime-windows-2.3.3.zip", sha256: "a".repeat(64), version: "2.3.3" };
     const bundle = vi.fn(() => file);
     const download = (req = request(path)) => {
       const res = new Response(req);

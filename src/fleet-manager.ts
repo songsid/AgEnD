@@ -250,6 +250,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { windowsCliEnabled, closeWindowsBridge, inventoryProbed, LOCAL_WINDOWS_CLI_OFF } from "./windows-cli.js";
 import { localWindowsCliEnabled, remoteRuntimeEnabled, setConfiguredRuntimeSwitches, maxAgentsPerMachine } from "./runtime-switches.js";
+import { RuntimeInstallService } from "./runtime-install.js";
 import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
@@ -1253,6 +1254,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private localPaneRelay: import("./local-pane-endpoint.js").LocalPaneEndpoint | null = null;
   private openingLocalPane: Promise<import("./local-pane-endpoint.js").LocalPaneEndpoint> | null = null;
   private runtimeHub: RuntimeCoordinator | null = null;
+  private runtimeInstall: RuntimeInstallService | undefined;
   private runtimeExecutor: RuntimeWindowsBridge | null = null;
   private runtimeStatusScheduled = false;
   private readonly reconciledRemoteResults = new Set<string>();
@@ -26049,8 +26051,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
+      const publicUrl = new URL(req.url ?? "/",`http://localhost:${port}`);
       if(remoteRuntimeEnabled() && !gatewayRequestContext(req)
-        && this.runtimeCoordinator().handlePublicRequest(req,res,new URL(req.url ?? "/",`http://localhost:${port}`)))return;
+        && this.runtimeCoordinator().handlePublicRequest(req,res,publicUrl))return;
+      // The read-only installer files (/runtime/install.ps1 and the bundle ZIP) grant nothing. They answer 404 while remote runtimes
+      // are off or on a public gateway link, and touch no other path.
+      if((this.runtimeInstall ??= new RuntimeInstallService()).handle(req,res,publicUrl))return;
 
       // Branding is public, after Host admission: automatic favicon requests
       // must not become noisy web-token 401s in the browser console.
