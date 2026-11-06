@@ -14,7 +14,7 @@ const response = (body: any, status = 200) => ({ ok: status < 400, status, json:
 const catalogRows = [{ id: "claude-code", version: "2.1.316" }, { id: "codex", version: "0.165.0" }];
 let p: AppPage, Panel: any, app: any, windowsCatalog: any, catalog: any, i18n: any;
 const card = (id = idA) => p.root.querySelector(`[data-machine-id="${id}"]`);
-const rowOf = (cli: string) => card().querySelector(`.runtime-install-list [data-cli="${cli}"]`);
+const rowOf = (cli: string) => card().querySelector(`.runtime-cli-install-list [data-cli="${cli}"]`);
 const installButton = (cli: string) => rowOf(cli).querySelector("button");
 
 beforeAll(async () => {
@@ -85,7 +85,7 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     expect(installButton("claude-code").textContent).toBe("Install pinned 2.1.316");
     expect(rowOf("codex").textContent).toContain("Not installed"); expect(installButton("codex").textContent).toBe("Install 0.165.0");
     expect(installButton("codex").disabled).toBe(false);
-    expect(card().querySelector(".runtime-install-off")).toBeNull();
+    expect(card().querySelector(".runtime-cli-install-off")).toBeNull();
   });
   it("a CLI that is already the audited version has no install button", async () => {
     machines = [machine(idA, "Desktop", { inventory: { home: "C:\\D", clis: [{ ...claude, version: "2.1.316" }] } })];
@@ -96,8 +96,8 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     setup = { ...setup, switches: { accounts: { on: false }, install: { on: false } } };
     await p.mount(h(Panel, { navKey: "install-off" })); await settle(14);
     expect(installButton("codex").disabled).toBe(true);
-    expect(card().querySelector(".runtime-install-off").textContent).toContain("has not turned this on");
-    expect(card().querySelector(".runtime-install pre code").textContent).toBe("agend-runtime remote-setup install on --for 2h");
+    expect(card().querySelector(".runtime-cli-install-off").textContent).toContain("has not turned this on");
+    expect(card().querySelector(".runtime-cli-install pre code").textContent).toBe("agend-runtime remote-setup install on --for 2h");
   });
   it("sends only the CLI id after the person confirms, and follows the install to its end", async () => {
     await p.mount(h(Panel, { navKey: "install-run" })); await settle(14);
@@ -122,23 +122,23 @@ describe("Settings → Runtime: install a CLI on a paired computer", () => {
     setup = { capable: false, online: true, switches: null, job: null, catalog: catalogRows };
     machines = [machine(idA, "Desktop"), machine(idB, "Sleeping", { status: "offline" })];
     await p.mount(h(Panel, { navKey: "install-old" })); await settle(14);
-    expect(card().querySelector(".runtime-install").textContent).toContain("Update the Runtime on that computer to install CLIs from here.");
-    expect(card(idB).querySelector(".runtime-install").textContent).toContain("That computer is offline.");
-    expect(card().querySelector(".runtime-install-list")).toBeNull();
+    expect(card().querySelector(".runtime-cli-install").textContent).toContain("Update the Runtime on that computer to install CLIs from here.");
+    expect(card(idB).querySelector(".runtime-cli-install").textContent).toContain("That computer is offline.");
+    expect(card().querySelector(".runtime-cli-install-list")).toBeNull();
   });
   it("is not offered for a computer whose Runtime does not report cli-install", async () => {
     await p.mount(h(Panel, { navKey: "install-none" })); await settle(14);
-    expect(card(idB).querySelector(".runtime-install")).toBeNull();
+    expect(card(idB).querySelector(".runtime-cli-install")).toBeNull();
   });
   it("shows the official commands for the CLIs it does not install, to be run by the computer's owner", async () => {
     await p.mount(h(Panel, { navKey: "install-others" })); await settle(14);
-    const others = card().querySelector(".runtime-install-others").textContent;
+    const others = card().querySelector(".runtime-cli-install-others").textContent;
     expect(others).toContain("irm https://x.ai/cli/install.ps1 | iex"); expect(others).toContain("irm https://antigravity.google/cli/install.ps1 | iex"); expect(others).toContain("needs an administrator");
   });
   it("is in zh-TW too", async () => {
     i18n.setLang("zh-TW", { store: false });
     await p.mount(h(Panel, { navKey: "install-zh" })); await settle(14);
-    expect(card().querySelector(".runtime-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0");
+    expect(card().querySelector(".runtime-cli-install h4").textContent).toBe("安裝 CLI"); expect(installButton("codex").textContent).toBe("安裝 0.165.0");
     i18n.setLang("en", { store: false });
   });
 });

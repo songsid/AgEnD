@@ -79,7 +79,7 @@ describe("callAccount: the server's way to an account or install operation", () 
     setRemoteSwitch(f.dir, "install", true);
     await expect(f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR })).rejects.toThrow(/not the one this AgEnD version expects/);
     next = new Error("ENOENT: no such file C:\\Users\\secret\\x");
-    const error = await f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }).catch(e => e as Error);
+    const error = (await f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }).catch(e => e)) as Error;
     expect(error.message).toMatch(/could not be completed/); expect(error.message).not.toMatch(/secret|ENOENT/);
     expect(audit(f.dir).at(-1)).toMatch(/"outcome":"failed"/);
   });
@@ -117,7 +117,7 @@ describe("callAccount: the server's way to an account or install operation", () 
     const install = vi.fn(async () => ({ version: "x" }));
     const f = await fixture({ remoteAccounts: { find: async () => null, environment: () => ({}), installer: { knows: () => { throw new Error("C:\\Users\\secret\\boom"); }, install } } });
     setRemoteSwitch(f.dir, "install", true);
-    for (let i = 0; i < 40; i++) { const error = await f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }).catch(e => e as Error); expect(error.message).toMatch(/could not be completed/); expect(error.message).not.toMatch(/secret|boom/); }
+    for (let i = 0; i < 40; i++) { const error = (await f.hub.callAccount(f.machineId, "cli.install", { cli: "codex", actor: ACTOR }).catch(e => e)) as Error; expect(error.message).toMatch(/could not be completed/); expect(error.message).not.toMatch(/secret|boom/); }
     expect(install).not.toHaveBeenCalled();
     const lines = audit(f.dir).map(line => JSON.parse(line)).filter(line => line.action === "cli.install");
     expect(lines.length).toBeLessThanOrEqual(2);
@@ -128,7 +128,7 @@ describe("callAccount: the server's way to an account or install operation", () 
     const f = await fixture({ remoteAccounts: { find: async () => { throw new Error("C:\\Users\\secret\\boom"); }, environment: () => ({}) } });
     setRemoteSwitch(f.dir, "accounts", true);
     for (let i = 0; i < 100; i++) {
-      const error = await f.hub.callAccount(f.machineId, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor: ACTOR }).catch(e => e as Error);
+      const error = (await f.hub.callAccount(f.machineId, "signin.start", { cli: "claude-code", profile: "work", method: "subscription", actor: ACTOR }).catch(e => e)) as Error;
       expect(error.message).not.toMatch(/secret|boom/);
     }
     const lines = audit(f.dir).map(line => JSON.parse(line)).filter(line => line.action === "signin");

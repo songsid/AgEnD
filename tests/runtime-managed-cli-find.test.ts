@@ -28,7 +28,9 @@ afterEach(() => {
   process.chdir(cwd); vi.unstubAllEnvs();
   for (const path of scratch.splice(0)) { if (!resolve(path).startsWith(resolve(tmpdir()) + sep)) throw Error("Unexpected fixture path"); rmSync(path, { recursive: true, force: true }); }
 });
-const touch = (path: string): void => { mkdirSync(join(path, ".."), { recursive: true }); writeFileSync(path, "MZ"); };
+// #3234 skips a claude.exe under 1 MiB (the ~500 byte placeholder `npm i --ignore-scripts` leaves), so a stand-in for a real copy found elsewhere must be at least that big.
+const REAL_SIZE = 1024 * 1024;
+const touch = (path: string, size = 2): void => { mkdirSync(join(path, ".."), { recursive: true }); writeFileSync(path, Buffer.alloc(size, "M")); };
 const MANAGED = "C:/managed/cli";
 const managedProgram = (version = INSTALLABLE_CLIS["claude-code"].version): string => join(MANAGED, "claude-code", version, INSTALLABLE_CLIS["claude-code"].native.path);
 const pointTo = (version: string): void => { mkdirSync(join(MANAGED, "claude-code"), { recursive: true }); writeFileSync(join(MANAGED, "claude-code", "current.json"), JSON.stringify({ version })); };
@@ -36,18 +38,19 @@ const OUTSIDE = "C:/home/.local/bin/claude.exe";
 
 describe("findCli: the CLI this Runtime installed comes first", () => {
   it("uses the managed version, not the one found elsewhere, when AGEND_MANAGED_CLI_ROOT names a folder that holds it", async () => {
-    touch(managedProgram()); pointTo(INSTALLABLE_CLIS["claude-code"].version); touch(OUTSIDE);
+    touch(managedProgram()); pointTo(INSTALLABLE_CLIS["claude-code"].version); touch(OUTSIDE, REAL_SIZE);
     vi.stubEnv(MANAGED_CLI_ROOT_ENV, MANAGED);
     const found = await findCli("claude-code");
     expect(found).toEqual({ path: managedProgram(), command: managedProgram(), args: [] });
+    expect(found!.path.replace(/\\/g, "/")).toMatch(/node_modules\/@anthropic-ai\/claude-code-win32-x64\/claude\.exe$/);   // the real nested binary, never the bin\claude.exe placeholder
   });
   it("falls back to the one found on the computer when the pointer's version is not the pin", async () => {
-    touch(managedProgram()); pointTo("2.1.0"); touch(OUTSIDE);
+    touch(managedProgram()); pointTo("2.1.0"); touch(OUTSIDE, REAL_SIZE);
     vi.stubEnv(MANAGED_CLI_ROOT_ENV, MANAGED);
     expect(await findCli("claude-code")).toEqual({ path: OUTSIDE, command: OUTSIDE, args: [] });
   });
   it("falls back when there is no pointer, when the pointed-at program is missing, and when the variable is not a drive path or is not set", async () => {
-    touch(OUTSIDE);
+    touch(OUTSIDE, REAL_SIZE);
     vi.stubEnv(MANAGED_CLI_ROOT_ENV, MANAGED);
     expect((await findCli("claude-code"))?.path).toBe(OUTSIDE);                       // no pointer
     pointTo(INSTALLABLE_CLIS["claude-code"].version);

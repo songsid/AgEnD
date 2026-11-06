@@ -99,16 +99,16 @@ export function CliInstall({ machine, lease, onChanged }) {
     return html`<li key=${cli.id} data-cli=${cli.id}><strong>${cli.label}</strong><span class="note">${state}</span>
       ${upToDate ? null : html`<button type="button" class="btn btn-sm" disabled=${!allowed || !online || busy || running || !pinned} onClick=${start}>${entry ? text("reinstall", pinned) : text("install", pinned)}</button>`}</li>`;
   };
-  return html`<div class="runtime-install"><h4>${text("title")}</h4><p class="note">${text("lead")}</p>
+  return html`<div class="runtime-cli-install"><h4>${text("title")}</h4><p class="note">${text("lead")}</p>
     ${!online ? html`<p class="note" role="status">${text("offline")}</p>` : view && !view.capable ? html`<p class="note" role="status">${text("old")}</p>` : html`
-      <ul class="runtime-install-list" aria-label=${text("title")}>${INSTALL_CLIS.map(row)}</ul>
+      <ul class="runtime-cli-install-list" aria-label=${text("title")}>${INSTALL_CLIS.map(row)}</ul>
       ${view && !view.switches ? html`<p class="note" role="status">${text("unreadable")}</p>` : null}
-      ${switchState && !allowed ? html`<p class="note runtime-install-off" role="status">${text("switchOff")}</p><pre><code>${SWITCH_COMMAND}</code></pre>` : null}
+      ${switchState && !allowed ? html`<p class="note runtime-cli-install-off" role="status">${text("switchOff")}</p><pre><code>${SWITCH_COMMAND}</code></pre>` : null}
       ${allowed ? html`<p class="note">${switchState.until ? text("switchUntil", new Date(switchState.until).toLocaleString()) : text("switchOn")}</p>` : null}
       ${running ? html`<p class="note" role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${text("installing")}</p>` : null}
       ${note ? html`<p class="note" role="status">${note}</p>` : null}
       ${error ? html`<p class="runtime-error" role="alert">${error}</p>` : null}`}
-    <details class="runtime-install-others"><summary>${text("othersTitle")}</summary><p class="note">${text("othersLead")}</p>
+    <details class="runtime-cli-install-others"><summary>${text("othersTitle")}</summary><p class="note">${text("othersLead")}</p>
       <ul>${OFFICIAL_COMMANDS.map(item => html`<li key=${item.id}><strong>${item.label}</strong>${item.administrator ? html` <span class="note">(${text("needsAdmin")})</span>` : null}<pre><code>${item.command}</code></pre></li>`)}</ul></details>
   </div>`;
 }
