@@ -1,5 +1,5 @@
 /** Real private files, producer archives and loopback HTTP; inert clients/process observations, never native execution. */
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { createServer } from "node:http";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
@@ -275,4 +275,47 @@ it("close owns a held start callback and does not release the install row before
   await Promise.resolve(); await Promise.resolve(); expect(closed).toBe(false);
   expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toHaveLength(1);
   finish(); await starting; await closing; expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([]);
+});
+it("retries an uncertain activation using the same durable attempt and never rolls back", async () => {
+  const f = await fixture(), h = await handoff(f), controller = await RuntimeUpdateController.resume(h.options, h.init, h.channel); f.own(controller);
+  h.options.makeClient = opts => {
+    const value = new InertClient(opts, h.next); f.clients.push(value);
+    value.activate.mockRejectedValueOnce(Error("Lost acknowledgement fixture")); return value as unknown as RuntimeClient;
+  };
+  await controller.startTrial(h.id);
+  expect(f.clients[0].activate.mock.calls).toEqual([[h.id], [h.id]]); expect(f.children).toEqual([]);
+  expect(f.selected()).toEqual(h.next); expect(f.journal().read().attempt).toBeUndefined();
+});
+it("a lockless manual selection wins over rollback without changing pairing or the selected third build", async () => {
+  const f = await fixture(), h = await handoff(f), controller = await RuntimeUpdateController.resume(h.options, h.init, h.channel); f.own(controller);
+  const lock = await acquireRuntimeInstallLock(f.root, { ownProof: self }); let third;
+  try { third = stageRuntimeUpdate(f.root, c.bytes, metadata(c), lock); } finally { lock.release(); }
+  h.options.makeClient = opts => {
+    const original = opts.managedUpdate!.authenticated!;
+    opts.managedUpdate!.authenticated = info => { writeFileSync(join(f.root, "bin", "current.txt"), third.folder, { mode: 0o600 }); original(info); };
+    const value = new InertClient(opts, { ...h.next, buildId: "f".repeat(64) }); f.clients.push(value); return value as unknown as RuntimeClient;
+  };
+  await controller.startTrial(h.id); expect(f.selected()).toEqual(third); expect(f.journal().read().attempt?.phase).toBe("rollback");
+  expect(readFileSync(join(f.store.directory, "connection.json"), "utf8")).toBe(f.credentials);
+});
+it("ordinary startup cannot bypass an unfinished trial journal", async () => {
+  const f = await fixture(), h = await handoff(f);
+  await expect(f.open()).rejects.toThrow(/recovery is unfinished/);
+  expect(f.clients).toEqual([]); expect(f.requests).toEqual([]); expect(f.journal().read().attempt?.id).toBe(h.id);
+  expect(readdirSync(join(f.root, ".agend-runtime-owners"))).toEqual([`${h.ownerId}.json`]);
+});
+it.each(["alive", "unknown"] as const)("another same-origin %s owner defers updates before any download", async state => {
+  const f = await fixture(), other = { ...self, pid: 900_000 }, id = randomUUID(), original = f.controllerOptions.observe!;
+  f.controllerOptions.observe = async pid => pid === other.pid ? state === "alive" ? { state, proof: other } : { state } : original(pid);
+  mkdirSync(join(f.root, ".agend-runtime-owners"), { mode: 0o700 });
+  writeFileSync(join(f.root, ".agend-runtime-owners", `${id}.json`), JSON.stringify({ version: 1, id, installId: f.installId, origin: f.origin, parent: other }), { mode: 0o600 });
+  const controller = (await f.open())!; await controller.start(); await expect(controller.checkNow()).rejects.toThrow(/owned|unknown/);
+  expect(f.requests).toEqual([]); expect(f.children).toEqual([]); expect(f.clients[0].online()).toBe(true);
+});
+it("a hash-matching malformed archive is terminal for that target without stopping the current client", async () => {
+  const f = await fixture(), bytes = Buffer.from("not a Runtime archive fixture"), target = { ...b, bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
+  f.setTarget(target); const controller = (await f.open())!; await controller.start();
+  await expect(controller.checkNow()).rejects.toThrow(/archive/); expect(f.journal().read().failed).toEqual({ version: b.version, sha256: target.sha256 });
+  expect(f.clients[0].prepare).not.toHaveBeenCalled(); expect(f.children).toEqual([]); expect(f.selected()).toEqual(f.program);
+  await controller.checkNow(); expect(f.requests.filter(p => p.endsWith(".zip"))).toHaveLength(1);
 });

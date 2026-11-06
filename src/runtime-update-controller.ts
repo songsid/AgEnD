@@ -11,7 +11,7 @@ import { credentialProfilesRoot } from "./runtime-credential-profiles.js";
 import { nativeCliEnvironment } from "./windows-cli-worker.js";
 import { fetchRuntimeUpdateArchive, fetchRuntimeUpdateMetadata, runtimeUpdateNeeded, RuntimeUpdateArtifactError } from "./runtime-update-artifact.js";
 import { RuntimeUpdateJournal, type RuntimeUpdateBinding } from "./runtime-update-journal.js";
-import { RuntimeUpdateIpc, type RuntimeUpdateIpcMessage, type RuntimeUpdateIpcPeer } from "./runtime-update-ipc.js";
+import { RuntimeUpdateIpc, parseRuntimeUpdateIpc, type RuntimeUpdateIpcMessage, type RuntimeUpdateIpcPeer } from "./runtime-update-ipc.js";
 import { acquireRuntimeInstallLock, assertRuntimeInstallDirectory, observeRuntimeProcess, runtimeProcessMatches, type RuntimeInstallLock, type RuntimeProcessObservation, type RuntimeProcessProof } from "./runtime-update-lock.js";
 import { readRuntimeInstallReceipt, readRuntimeInstalledProgram, readRuntimeSelectedProgram, selectRuntimeProgram, stageRuntimeUpdate, type RuntimeInstalledProgram } from "./runtime-update-install.js";
 import { adoptRuntimeInstallOwner, assertRuntimeInstallExclusive, attachRuntimeInstallChild, readRuntimeInstallOwner, registerRuntimeInstallOwner, releaseRuntimeInstallOwner, type RuntimeInstallOwner } from "./runtime-update-owners.js";
@@ -105,6 +105,9 @@ export class RuntimeUpdateController {
   /** The new controller is initially only a helper. It cannot start a client before its exact old parent exits. */
   static async resume(options: RuntimeUpdateControllerOptions, init: Init, channel: RuntimeUpdateIpc,
     cancelled: () => boolean = () => false): Promise<RuntimeUpdateController> {
+    const snapshot = parseRuntimeUpdateIpc(init);
+    if (snapshot.type !== "init" || snapshot.profile !== options.store.directory) throw Error("Runtime handoff profile changed");
+    init = snapshot;
     const install = layout(options.moduleDirectory ?? dirname(fileURLToPath(import.meta.url)));
     if (!install?.program) throw Error("Runtime update program is unverified");
     const store = options.store, credentials = store.credentials(); if (!credentials) throw Error("Runtime pairing is unavailable");
@@ -274,7 +277,12 @@ export class RuntimeUpdateController {
       await this.locked(async lock => {
         await assertRuntimeInstallExclusive(this.install.root, this.owner, lock, this.observe);
         if (this.closed || !same(readRuntimeSelectedProgram(this.install.root), program)) return;
-        const next = stageRuntimeUpdate(this.install.root, bytes, metadata, lock);
+        let next: RuntimeInstalledProgram;
+        try { next = stageRuntimeUpdate(this.install.root, bytes, metadata, lock); }
+        catch (error) {
+          if (error instanceof RuntimeUpdateArtifactError && ["archive", "checksum"].includes(error.reason)) this.journal.rememberFailure(metadata, () => this.current(lock));
+          throw error;
+        }
         if (!await client.prepareUpdate(id)) return;
         retired = true;
         if (this.closed) return;
