@@ -134,7 +134,7 @@ describe("the audit lock", () => {
   it("held by a live process: the writer waits, then refuses, and neither repairs, cuts nor appends (fail closed); the other one's lock is left alone", async () => {
     auditLockTiming.waitMs = 60;
     const d = dir(); appendAudit(d, entry); appendFileSync(join(d, AUDIT_FILE), incompleteTail); const before = readFileSync(join(d, AUDIT_FILE), "utf8");
-    const other = sleeping(); const foreign = JSON.stringify({ pid: other.pid, token: "0123456789abcdef" });
+    const other = sleeping(); const foreign = JSON.stringify({ pid: other.pid, token: "aaaaaaaaaaaaaaaa" });
     try {
       writeFileSync(lockOf(d), foreign); const started = Date.now();
       expect(() => appendAudit(d, second)).toThrow(/busy/); expect(Date.now() - started).toBeGreaterThanOrEqual(50);
@@ -143,9 +143,9 @@ describe("the audit lock", () => {
   });
   it("held by a process that is gone: the lock is cleared and taken over", () => {
     const d = dir(); const gone = spawnSync(process.execPath, ["-e", "0"]); expect(gone.pid).toBeGreaterThan(0);
-    writeFileSync(lockOf(d), JSON.stringify({ pid: gone.pid, token: "0123456789abcdef" }));
+    writeFileSync(lockOf(d), JSON.stringify({ pid: gone.pid, token: "aaaaaaaaaaaaaaaa" }));
     appendAudit(d, entry); expect(lines(d)).toHaveLength(1); expect(existsSync(lockOf(d))).toBe(false);
-    writeFileSync(lockOf(d), JSON.stringify({ pid: process.pid, token: "fedcba9876543210" }));      // this process's pid, a token it does not hold: left over (a reused pid)
+    writeFileSync(lockOf(d), JSON.stringify({ pid: process.pid, token: "bbbbbbbbbbbbbbbb" }));      // this process's pid, a token it does not hold: left over (a reused pid)
     appendAudit(d, second); expect(lines(d)).toHaveLength(2); expect(existsSync(lockOf(d))).toBe(false);
   });
   it("a lock file with nothing readable in it is waited for while it is new (its writer may be filling it), and cleared when it has been there too long", () => {
@@ -155,7 +155,7 @@ describe("the audit lock", () => {
     appendAudit(d, entry); expect(lines(d)).toHaveLength(1); expect(existsSync(lockOf(d))).toBe(false);
   });
   it("is released only if the file is still ours: a lock another process holds by then is not removed", async () => {
-    const d = dir(); const other = sleeping(); const foreign = JSON.stringify({ pid: other.pid, token: "0123456789abcdef" });
+    const d = dir(); const other = sleeping(); const foreign = JSON.stringify({ pid: other.pid, token: "aaaaaaaaaaaaaaaa" });
     try {
       appendAudit(d, entry); appendFileSync(join(d, AUDIT_FILE), incompleteTail);
       hook = { on: "truncate", run: () => { expect(existsSync(lockOf(d))).toBe(true); rmSync(lockOf(d)); writeFileSync(lockOf(d), foreign); } };    // ours was cleared as stale and taken over

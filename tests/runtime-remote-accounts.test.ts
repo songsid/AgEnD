@@ -897,7 +897,7 @@ describe("P2: another audit writer's accepted record is never cut by an operatio
     writeFileSync(log, `${seed}{"at":"2026-11-06T12:00:01.000Z","actor":"admin:u1","act`); const before = readFileSync(log, "utf8");
     const holder = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" }); const lock = join(f.pairing, AUDIT_LOCK_FILE);
     try {
-      writeFileSync(lock, JSON.stringify({ pid: holder.pid, token: "0123456789abcdef" }));
+      writeFileSync(lock, JSON.stringify({ pid: holder.pid, token: "aaaaaaaaaaaaaaaa" }));
       await expect(ask(f, "accounts.remove", { cli: "claude-code", profile: "work", actor })).rejects.toThrow(/could not write its audit log/);
       expect(existsSync(directory)).toBe(true); expect(readFileSync(log, "utf8")).toBe(before); expect(existsSync(lock)).toBe(true);
       rmSync(lock); f.tick(6000);
