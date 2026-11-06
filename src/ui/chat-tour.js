@@ -9,7 +9,7 @@
 // the agent (#1369 review).
 import { t, onLang } from "/assets/app-i18n.js";
 import { shellStore, closeDrawer } from "/assets/app-shell.js";
-import "./chat-strings.js";
+import "/assets/chat-strings.js";
 
 const TOUR_KEY = "agend_tour_done";
 const byId = (id) => document.getElementById(id);

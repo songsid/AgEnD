@@ -133,7 +133,7 @@ describe("the notices in the page's language", () => {
 // ── preview.js on its own: the dictionary is optional, and the server's reason travels as a code ──
 
 function loadPreview(store: Record<string, string> = {}) {
-  const src = readFileSync(join(process.cwd(), "src", "ui", "preview.js"), "utf8");
+  const src = readFileSync(join(process.cwd(), "src", "ui", "shared", "preview.js"), "utf8");
   const m = { exports: {} as any };
   const ls = new Map(Object.entries(store));
   const root: any = { location: { origin: ORIGIN }, localStorage: { getItem: (k: string) => ls.get(k) ?? null, setItem: (k: string, v: string) => ls.set(k, v), removeItem: (k: string) => ls.delete(k) },
@@ -194,7 +194,7 @@ describe("preview.js's words", () => {
 
 describe("every word has both languages", () => {
   it("each key preview.js says and each server code has an en and a zh-TW string", async () => {
-    const src = readFileSync(join(process.cwd(), "src", "ui", "preview.js"), "utf8");
+    const src = readFileSync(join(process.cwd(), "src", "ui", "shared", "preview.js"), "utf8");
     const keys = [...src.matchAll(/say\("([A-Za-z_]+)"/g)].map(m => m[1]!).filter(k => !k.endsWith("_"));   // "pvServer_" + code: the codes below
     // The server's one list (#1556 review): a code added there without its words fails here.
     const codes = PREVIEW_OFF_CODES.map(c => `pvServer_${c}`);

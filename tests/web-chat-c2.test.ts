@@ -614,7 +614,7 @@ describe("files an agent attaches to its reply are shown in the web chat", () =>
 // ── the page ────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe("chat-render.js: file helpers", () => {
-  const SRC = readFileSync(join(process.cwd(), "src", "ui", "chat-render.js"), "utf8");
+  const SRC = readFileSync(join(process.cwd(), "src", "ui", "shared", "chat-render.js"), "utf8");
   const c = vm.createContext({}); vm.runInContext(SRC, c);
   const R = (c as any).AgendChatRender;
   const f = (name: string, size: number) => ({ name, size });
