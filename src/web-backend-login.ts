@@ -11,6 +11,7 @@
  *   sessions see that a sign-in is running (backend, device, phase) and may cancel it; nothing more.
  * - A sign-in whose session signs out, expires or is revoked is cancelled (WEB_LOGIN_WATCH_MS).
  */
+import type { AccountIdentity } from "./claude-auth-status.js";
 import { randomBytes } from "node:crypto";
 import type { ChannelAdapter } from "./channel/types.js";
 import type { LoginChat, LoginStartOptions, WebLoginSink } from "./login-controller.js";
@@ -48,6 +49,8 @@ export interface SignInTarget {
   install?: string;
   /** Too old: the command that installs the current version over it. */
   update?: string;
+  /** Which account this sign-in is (a masked e-mail and a plan), Claude Code only, from the host's own `claude auth status`. Local administrators only: this list is never served to anyone else. */
+  identity?: AccountIdentity;
 }
 
 export interface WebLoginRequester {

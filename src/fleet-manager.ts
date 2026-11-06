@@ -296,7 +296,8 @@ import { discordGeneralChannelId } from "./discord-general.js";
 import { parseEnvText } from "./env-file.js";
 import { isDisallowedIntentsError, isRejectedTokenError } from "./discord-permissions.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, setCapacityLookup, usageProviderIdForBackend } from "./usage/usage-api.js";
-import { LOGIN_FLOWS, checkAuthStatus, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
+import { LOGIN_FLOWS, checkAuthStatus, checkAuthIdentity, authIdentitySupported, LOGIN_BACKEND_ALIASES, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
+import type { AccountIdentity } from "./claude-auth-status.js";
 import { LoginSession } from "./login-manager.js";
 import { runOnLoginShell } from "./login-shell.js";
 import { tightenInstanceDirs } from "./private-dir.js";
@@ -450,7 +451,7 @@ type ReconcileObserver = (
   error?: string,
 ) => void;
 import { kiroHome } from "./backend/kiro-kas-store.js";
-import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
+import { CHAT_PROFILE_LOGIN_BACKENDS, credentialHomeSpec, credentialProfileHome, credentialProfileEnv, credentialProfileLogin, credentialProfileLoginCommand, credentialProfileStoreHome, credentialSwitchCarriesConversation, credentialSwitchStartsFresh, instanceCredentialProfile, listConfiguredProfiles } from "./backend/credential-profile.js";
 import { carryClaudeConversation, type CarryResult } from "./backend/claude-carry.js";
 import { mergeBackendOptions, profileKey, profileName, profileOf, type ClassicProfile } from "./classic-bindings.js";
 import {
@@ -19598,6 +19599,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       changed: (event, owner, launched) => {
         try { this.eventLog?.insert("login", "browser_backend_signin", event); } catch { /* safe metadata only */ }
         broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+        if (event.phase === "done") this.signInIdentities.clear();   // a sign-in may be a different account now
         this.needsYou?.poke();
         if (!this.browserSignInOwnerCurrent(owner)) return;
         if (event.phase === "starting") {
@@ -19633,7 +19635,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       cancel: () => this.cancelLoginSession(),
       notice: ({ shown, label, handle }) => this.notifyFleetError(t("login.web_dashboard_notice", shown, label, handle.slice(0, 8))),
       // No details in the event: each page reads its own view (GET /ui/backend-login), as its session may see it.
-      changed: () => broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")),
+      changed: () => { this.signInIdentities.clear(); broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed")); },
     });
     return this.webBackendLoginsInstance;
   }
@@ -19649,6 +19651,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #2233: Settings → Agents' sign-in list — every backend's default login as the availability snapshot has it, then
    * each credential profile an agent uses (its own login state, read offline).
    */
+  /** Which account each sign-in is, as the host's own `claude auth status` said (masked; see checkAuthIdentity). Keys are `backend\0profile` in a Map: a name is data, never a property. */
+  private readonly signInIdentities = new Map<string, { identity: AccountIdentity | null; at: number }>();
+  private signInIdentity(backend: string, profile?: string): AccountIdentity | undefined { return this.signInIdentities.get(`${backend}\0${profile ?? ""}`)?.identity ?? undefined; }
+  /**
+   * Read, for the sign-in list, the account of each Claude Code sign-in that is signed in (the default and every profile an agent uses). Bounded: at most
+   * three at a time, each limited by the auth check's own timeout, the whole wait capped, and a sign-in's answer reused for five minutes. No login, no network
+   * request of ours, nothing logged. What it could not read in time is simply shown the next time.
+   */
+  async refreshSignInIdentities(): Promise<void> {
+    const now = Date.now(), fresh = (target: SignInTarget): boolean => { const entry = this.signInIdentities.get(`${target.backend}\0${target.profile ?? ""}`); return !!entry && now - entry.at < 5 * 60_000; };
+    const pending = this.backendSignInTargets().filter(target => target.state === "usable" && authIdentitySupported(target.backend) && !fresh(target));
+    const work = (async () => {
+      for (let index = 0; index < pending.length; index += 3) await Promise.all(pending.slice(index, index + 3).map(async target => {
+        let env: Record<string, string> | undefined;
+        if (target.profile) { try { env = credentialProfileEnv(this.dataDir, target.backend, target.profile) ?? undefined; } catch { return; } }
+        const identity = await checkAuthIdentity(target.backend, env);
+        this.signInIdentities.set(`${target.backend}\0${target.profile ?? ""}`, { identity: identity ?? null, at: Date.now() });
+      }));
+    })().catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([work, new Promise<void>(done => { timer = setTimeout(done, 4000); })]);
+    clearTimeout(timer);
+  }
   backendSignInTargets(): SignInTarget[] {
     const out: SignInTarget[] = [];
     for (const row of this.backendAvailabilityRows()) {
@@ -19660,6 +19685,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(flow?.remoteLogin === "unsupported" ? { hostCommand: flow.command } : {}),
         ...(row.state === "not_installed" && install ? { install } : {}),
         ...(row.state === "too_old" && install ? { update: install } : {}),
+        ...(this.signInIdentity(row.backend) ? { identity: this.signInIdentity(row.backend) } : {}),
       });
     }
     const seen = new Set<string>();
@@ -19673,7 +19699,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const signIn = dashboardSignInSupported(backend, profile);
       const hostCommand = signIn ? null : credentialProfileLoginCommand(this.dataDir, backend, profile);
       out.push({ backend, profile, state: login === "logged-in" ? "usable" : login === "signed-out" ? "not_signed_in" : "unknown", signIn,
-        ...(hostCommand ? { hostCommand } : {}) });
+        ...(hostCommand ? { hostCommand } : {}), ...(this.signInIdentity(backend, profile) ? { identity: this.signInIdentity(backend, profile) } : {}) });
     }
     return out;
   }

@@ -38,7 +38,7 @@
 
 import { claudeLoginScreenActive } from "./backend/claude-code.js";
 import { agyLoginScreenActive } from "./backend/antigravity.js";
-import { parseClaudeAuthStatus } from "./claude-auth-status.js";
+import { identityOf, parseClaudeAuthStatus, type AccountIdentity } from "./claude-auth-status.js";
 
 export interface AuthCheck {
   /** argv of a cheap, LLM-token-free status probe (5s timeout). */
@@ -377,6 +377,22 @@ async function runAuthCheckProcess(argv: string[], timeoutMs: number, env?: Reco
  * uncertain check must never block a re-login the admin asked for.
  * `env`: a credential profile's variable, so the probe reads that profile's login rather than the default one.
  */
+/**
+ * Which account is a backend's sign-in (the default one, or a credential profile's `env`): a masked e-mail and a plan, from the SAME `auth status`
+ * answer `authCheck` reads, so no extra login and no network request is made for it. Only Claude Code's answer carries an account; for any other
+ * backend nothing is run and nothing is shown. The output is parsed and dropped here: it is never logged or kept, and what is returned is masked.
+ */
+const AUTH_IDENTITY = new Map<string, (output: string) => AccountIdentity | undefined>([["claude-code", output => identityOf(parseClaudeAuthStatus(output))]]);
+export function authIdentitySupported(backend: string): boolean { return AUTH_IDENTITY.has(backend); }
+export async function checkAuthIdentity(backend: string, env?: Record<string, string>): Promise<AccountIdentity | undefined> {
+  const parse = AUTH_IDENTITY.get(backend), check = LOGIN_FLOWS[backend]?.authCheck;
+  if (!parse || !check) return undefined;
+  const run = authCheckRunnerOverride ?? runAuthCheckProcess;
+  try {
+    const { code, output } = await (env ? run(check.argv, AUTH_CHECK_TIMEOUT_MS, env) : run(check.argv, AUTH_CHECK_TIMEOUT_MS));
+    return code === 0 && (!check.valid || check.valid(output)) ? parse(output) : undefined;
+  } catch { return undefined; }
+}
 export async function checkAuthStatus(check: AuthCheck, env?: Record<string, string>): Promise<AuthCheckResult> {
   const run = authCheckRunnerOverride ?? runAuthCheckProcess;
   try {
