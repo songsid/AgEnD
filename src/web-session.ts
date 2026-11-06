@@ -23,7 +23,7 @@
  * See `docs/design/web-unification-secure-login.zh-TW.md` §3.3.
  */
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 export type SessionSurface = "local" | "gateway";
@@ -319,6 +319,9 @@ export class WebSessionStore {
   private readonly exposureEnd: (exposureId: string) => number | null;
   private readonly maxSessions: number;
   private readonly path: string | null;
+  /** #3270: where "a host session was once authorized" is kept — its own file, so a failed session save (which removes web-sessions.json) cannot forget it. */
+  private readonly markerPath: string | null;
+  private hostAuthorized = false;
   private readonly warn: (message: string) => void;
   private dirty = false;
   private lastPersist = 0;
@@ -337,8 +340,12 @@ export class WebSessionStore {
     this.exposureEnd = opts.exposureEnd ?? (() => null);
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
+    this.markerPath = opts.dataDir ? join(opts.dataDir, "web-host-authorized") : null;
     this.warn = opts.onWarn ?? (() => {});
     this.ops = { writeFileSync, renameSync, unlinkSync, fsyncSync, openSync, closeSync, ...opts.fileOps };
+    // #3270: authorized before if the marker is there — or if a sessions file already exists: a fleet from before the marker
+    // (or one that lost it) has had sessions, and the safe reading of "unknown" is "not first-install".
+    if (this.markerPath && (existsSync(this.markerPath) || (this.path && existsSync(this.path)))) this.hostAuthorized = true;
     this.load();
   }
 
@@ -409,6 +416,7 @@ export class WebSessionStore {
     };
     this.byHash.set(record.idHash, record);
     if (input.pending) this.pending.add(record.idHash);
+    if (record.host === true) this.markHostAuthorized();
     this.enforceCaps();
     this.persistNow();
     return { sessionId, record };
@@ -445,6 +453,27 @@ export class WebSessionStore {
       this.persistIfDue(now);
     }
     return record;
+  }
+
+  /**
+   * #3270: a host session (the one `agend web`'s code makes) has EVER been made on this fleet. Set by the first one and
+   * never cleared — not by signing out, not by expiry, not by rotating the token — so "no host session right now" cannot
+   * pass for "first install": an operator who signs out every day never gets a first-install code. Decides whether a
+   * host code may be a first-install (bootstrap) code, and withdraws an unused one the moment it turns true.
+   */
+  get hostEverAuthorized(): boolean { return this.hostAuthorized; }
+
+  private markHostAuthorized(): void {
+    if (this.hostAuthorized) return;
+    this.hostAuthorized = true;
+    if (!this.markerPath) return;
+    try {
+      mkdirSync(dirname(this.markerPath), { recursive: true, mode: 0o700 });
+      writeFileSync(this.markerPath, `${new Date(this.now()).toISOString()}\n`, { mode: 0o600 });
+    } catch (err) {
+      // Kept in memory for this run; a restart that cannot read it would treat the fleet as new — say so.
+      this.warn(`could not record that a host session was authorized (${(err as Error).message}): a restart may offer a first-install code again`);
+    }
   }
 
   /** Recheck a retained server record without retaining/replaying its bearer cookie. */

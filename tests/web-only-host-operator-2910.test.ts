@@ -161,8 +161,13 @@ describe("#2910 D1 a real fleet: `agend web --code`, signed in on this computer"
   it("web-only, signed in from another machine (a forwarded request): a host session, never authorized — not even when later used here", async () => {
     const h = await startFleet();
     try {
+      // #3270: a fresh fleet's first code is a first-install code, which only this computer's own loopback can redeem.
+      const first = JSON.parse((await raw(h.port, "POST", "/auth/issue-code", { "x-agend-token": h.token, origin: h.origin })).body).code as string;
+      expect((await raw(h.port, "POST", "/auth/login", { "content-type": "application/json", origin: h.origin, "x-forwarded-for": "10.0.0.9" }, JSON.stringify({ code: first }))).status).toBe(401);
+      const local = await h.signIn(first);                    // …this computer still can — and the codes after it are ordinary ones
       const s = await h.signIn(undefined, { "x-forwarded-for": "10.0.0.9" });
-      expect([s.record.host, h.any.sessionAuthorizationStore().list().length, (await h.status(s.cookie)).reason]).toEqual([true, 0, "host_sign_in"]);
+      expect([s.record.host, h.any.sessionAuthorizationStore().list().length, (await h.status(s.cookie)).reason]).toEqual([true, 1, "host_sign_in"]);
+      expect(h.any.sessionAuthorizationStore().list().map((a: { handle: string }) => a.handle)).toEqual([local.record.handle]);   // only the one made here
     } finally { await h.stop(); }
   }, 20_000);
   it("web-only: a code sent by chat (/dashboard) is never the host's; asking to authorize a host session asks no one", async () => {

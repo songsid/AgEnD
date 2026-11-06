@@ -500,9 +500,11 @@ export function handleAuthRequest(
       const guestCodes = ctx.webGuestLoginCodes ?? null;
       const audience = gateway?.exposureId ?? "local";
       const guestPausedMs = guestCodes?.pausedForMs() ?? 0;
+      // #3270: what a long-lived first-install code additionally needs — this computer's own loopback peer, and no host session ever authorized.
+      const redeemContext = { loopbackPeer: !gateway && classifyWebPeer(req) === "loopback", hostEverAuthorized: sessions.hostEverAuthorized };
       const result: LoginRedeemResult = guestPausedMs > 0 ? { kind: "paused", retryAfterMs: Math.max(guestPausedMs, codes.pausedForMs(audience)) }
-        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience)
-        : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience);
+        : codes.pausedForMs(audience) > 0 ? codes.redeem(body.code, tokenEpoch(token), audience, redeemContext)
+        : guestCodes?.match(body.code, tokenEpoch(token), audience) ?? codes.redeem(body.code, tokenEpoch(token), audience, redeemContext);
       if (result.kind === "invalid") guestCodes?.recordWrong(body.code);
       if (result.kind === "paused") {
         json(res, 429, { error: LOGIN_PAUSED_MESSAGE }, { "Retry-After": String(Math.ceil(result.retryAfterMs / 1000)) });
@@ -626,9 +628,15 @@ export function handleAuthRequest(
       return true;
     }
     // #2910 D1: the shell's own code — the host operator's on a web-only fleet (fleet-manager authorizeHostSession).
-    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true });
-    ctx.logger.info({ source: "cli" }, "Web login code issued");
-    json(res, 200, { code: issued.display, expiresAt: issued.expiresAt });
+    // #3270: before any host session has ever been authorized on this fleet (a fresh install — not "none right now"), the
+    // code outlives a walk away from the install: a long TTL, redeemable from this computer only, and only until the first
+    // host session exists. Never for a code that is going into a URL (`agend web` opening the browser says so): that
+    // code can reach browser history, so it keeps the ordinary lifetime.
+    const viaUrl = String(req.headers["x-agend-code-delivery"] ?? "").toLowerCase() === "url";
+    const bootstrap = !viaUrl && !!ctx.webSessions && !ctx.webSessions.hostEverAuthorized;
+    const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true, ...(bootstrap ? { bootstrap: true as const } : {}) });
+    ctx.logger.info({ source: "cli", ...(issued.bootstrap ? { bootstrap: true } : {}) }, "Web login code issued");
+    json(res, 200, { code: issued.display, expiresAt: issued.expiresAt, ...(issued.bootstrap ? { bootstrap: true } : {}) });
     return true;
   }
 

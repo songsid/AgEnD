@@ -2632,14 +2632,18 @@ program
     const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
     const port = fleet.health_port ?? 19280;
     // The code is minted by the running fleet (it lives in that process's memory), so ask it — with
-    // the header token, the one credential a local script has. No credential ever goes into a URL:
-    // the browser is opened on the sign-in page and the code is typed there.
+    // the header token, the one credential a local script has. The token never goes into a URL, and neither does the code
+    // in anything printed or sent to a server (the only place it appears is a `#fragment`, below).
     let code: string;
-    let minutes: number;
+    let lifetime: string;
+    const link = await import("./web-signin-link.js");
+    const { describeCodeLifetime, webSigninLinks } = link;
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/auth/issue-code`, {
         method: "POST",
-        headers: { "X-Agend-Token": token },
+        // #3270: a code that is going into a URL keeps the ordinary short lifetime; the long first-install one is only for
+        // a code that is printed (`--code`) and typed.
+        headers: { "X-Agend-Token": token, ...(opts.code ? {} : { "X-Agend-Code-Delivery": "url" }) },
         signal: AbortSignal.timeout(5000),
       });
       const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; error?: string };
@@ -2648,16 +2652,28 @@ program
         process.exit(1);
       }
       code = body.code;
-      minutes = Math.max(1, Math.round(((body.expiresAt ?? Date.now()) - Date.now()) / 60_000));
+      lifetime = describeCodeLifetime((body.expiresAt ?? Date.now()) - Date.now());
     } catch {
       console.error(t("cli.fleet_unreachable", port));
       process.exit(1);
     }
-    const signin = `http://localhost:${port}/signin${guide ? `?next=${encodeURIComponent(guide)}` : ""}`;
-    console.log(`Sign-in page: ${signin}`);
-    console.log(`Code:         ${code}   (works once, valid ~${minutes} min)`);
+    // #3270: the terminal gets the clean address and the code (a WSL or headless user copies them). The browser this command
+    // opens on this computer reaches `#code=…` through a 0600 launch file — never through a command line, which other users of
+    // the machine can read — and the sign-in page clears the fragment from the address bar before doing anything else.
+    const links = webSigninLinks(port, code, guide || undefined);
+    console.log(`Sign-in page: ${links.display}`);
+    console.log(`Code:         ${code}   (works once, valid ${lifetime})`);
     if (opts.code) return;
-    openInBrowser(signin);
+    if (link.isWsl()) { openInBrowser(links.display); return; }          // the code stays out of a Windows command line: type it
+    let launch: string | null = null;
+    try {
+      link.sweepSigninLaunchFiles(DATA_DIR, Date.now());
+      launch = link.writeSigninLaunchFile(DATA_DIR, links.open);
+      link.scheduleSigninLaunchCleanup(launch);
+    } catch (err) {
+      console.error(`Could not prepare the automatic sign-in (${(err as Error).message}). Type the code on the page instead.`);
+    }
+    openInBrowser(launch ? link.launchFileArgument(launch) : links.display);
   });
 
 program
