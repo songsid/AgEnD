@@ -3739,7 +3739,9 @@ program
   .description("Go back to an older AgEnD (2.3.x): stop the fleet, close AgEnD's own tmux server and confirm it, then install that version and start it. Stops before installing anything if the close can't be confirmed.")
   .argument("<version>", "the version to go back to, e.g. 2.3.4")
   .option("-y, --yes", "Confirm when run from a fleet agent session (this affects every instance)")
-  .action(async (version: string, opts: { yes?: boolean }) => {
+  .addOption(new Option("--package <spec>", "install this npm spec (e.g. a verified tarball) instead of @songsid/agend@<version>").hideHelp())
+  .addOption(new Option("--no-start", "install only; do not start the older version (CI)").hideHelp())
+  .action(async (version: string, opts: { yes?: boolean; package?: string; start?: boolean }) => {
     if (!gateFleetControl(DATA_DIR, "rollback", { yes: opts.yes, target: version })) process.exit(1);
     const { rollback } = await import("./tmux-rollback.js");
     const { readServerRecord } = await import("./tmux-server.js");
@@ -3759,9 +3761,12 @@ program
         }
         return false;
       },
-      async install(v) { const r = spawnSync("npm", ["install", "-g", `@songsid/agend@${v}`], { stdio: "inherit" }); return { ok: r.status === 0, detail: `npm exited ${r.status ?? r.signal}` }; },
+      async install(v) { const r = spawnSync("npm", ["install", "-g", opts.package ?? `@songsid/agend@${v}`], { stdio: "inherit" }); return { ok: r.status === 0, detail: `npm exited ${r.status ?? r.signal}` }; },
       // The newly installed version's own `agend start` (the one now on PATH), never this process's code.
-      async startService() { const r = spawnSync("agend", ["start"], { stdio: "inherit" }); return { ok: r.status === 0, detail: `agend start exited ${r.status ?? r.signal}` }; },
+      async startService() {
+        if (opts.start === false) return { ok: true, detail: "skipped" };
+        const r = spawnSync("agend", ["start"], { stdio: "inherit" }); return { ok: r.status === 0, detail: `agend start exited ${r.status ?? r.signal}` };
+      },
       out: line => console.log(line),
     });
     if (!result.ok) { console.error(`  ✗ ${result.message}`); process.exit(1); }

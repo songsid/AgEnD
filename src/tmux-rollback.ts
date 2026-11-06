@@ -59,7 +59,7 @@ export async function rollback(d: RollbackDeps): Promise<RollbackResult> {
       }
       // Not this version's pin (a sentinel no copy can have), so the recorded server is always ended, never kept.
       const why = await reconcileServer({ agendHome: d.agendHome, socket: d.socket, current: { binary: "(rollback)", sha256: "0".repeat(64) }, probes: p });
-      if (why) return { ok: false, stage: "close", message: `Rollback stopped before installing anything: ${why.replace(/ Nothing was stopped and no agent was started\..*$/, "")}. Still on ${d.from}; agend start brings the fleet back.` };
+      if (why) return { ok: false, stage: "close", message: `Rollback stopped before installing anything: ${why.replace(/\.? Nothing was stopped and no agent was started\..*$/, "")}. Still on ${d.from}; agend start brings the fleet back.` };
       const living = async () => { const out: number[] = []; for (const pid of panes) if (await p.proc(pid)) out.push(pid); return out; };
       let left = await living();
       for (let i = 0; i < 100 && left.length; i++) { await p.sleep(100); left = await living(); }
@@ -77,6 +77,6 @@ export async function rollback(d: RollbackDeps): Promise<RollbackResult> {
   d.out(`  ✓ Installed ${d.to}`);
   const started = await d.startService();
   if (!started.ok) return { ok: false, stage: "start", message: `${d.to} is installed but did not start (${started.detail}). Run agend start.` };
-  d.out(`  ✓ Started on ${d.to}`);
+  d.out(started.detail === "skipped" ? `  · Not started (--no-start); agend start runs ${d.to}` : `  ✓ Started on ${d.to}`);
   return { ok: true };
 }
