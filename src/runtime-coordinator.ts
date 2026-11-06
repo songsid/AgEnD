@@ -121,6 +121,7 @@ const TOMBSTONE_CAP = 65_536, TOMBSTONE_KEEP_MS = 30 * 24 * 3_600_000;
 interface Connection {
   ws: WebSocket; machineId: string; generation: number; bootId?: string; ready: boolean; alive: boolean; helloTimer: NodeJS.Timeout;
   activity: RuntimeUpdateActivity; managedUpdate?: boolean; updateStatusProtocol?: boolean;
+  statusAllowance?: { at: number; tokens: number };
   hello?: { runtimeInfo?: RuntimeInfo; paneProtocol?: 1; inventory?: WindowsCliProbe };
   update?: { id: string; phase: "prepared" | "committed" | "trial"; fence: RuntimeUpdateFence };
   activatedUpdateId?: string;
@@ -191,7 +192,10 @@ export class RuntimeCoordinator {
     }
     for (const command of this.state.commands) if (command.state === "pending") command.state = interrupted(command);
     for (const row of this.state.machines) if (row.machine.runtimeInfo !== undefined) row.machine.runtimeInfo = parseRuntimeInfo(row.machine.runtimeInfo);
-    for (const row of this.state.machines) if (row.machine.updateReport !== undefined) row.machine.updateReport = parseRuntimeUpdateReport(row.machine.updateReport);
+    for (const row of this.state.machines) if (row.machine.updateReport !== undefined) {
+      try { row.machine.updateReport = parseRuntimeUpdateReport(row.machine.updateReport); }
+      catch { delete row.machine.updateReport; } // A damaged diagnostic never prevents normal Runtime admission.
+    }
     this.save();
     this.heartbeat = setInterval(() => {
       for (const connection of this.connections.values()) {
@@ -509,7 +513,11 @@ export class RuntimeCoordinator {
       const report = parseRuntimeUpdateStatusFrame(value);
       if (!connection.updateStatusProtocol || report.bootId !== connection.bootId || report.generation !== connection.generation) throw new RuntimeProtocolError("Runtime status belongs to another connection");
       if (JSON.stringify(row.machine.updateReport?.status) === JSON.stringify(report.status)) return;
-      row.machine.updateReport = { bootId: report.bootId, generation: report.generation, reportedAt: this.now(), status: report.status };
+      const now = this.now(), allowance = connection.statusAllowance;
+      const tokens = allowance ? Math.min(8, allowance.tokens + Math.max(0, now - allowance.at) / 5000) : 8;
+      if (tokens < 1) return; // Diagnostic churn cannot force unbounded writes or hold task admission.
+      connection.statusAllowance = { at: now, tokens: tokens - 1 };
+      row.machine.updateReport = { bootId: report.bootId, generation: report.generation, reportedAt: now, status: report.status };
       this.save(); this.emit({ type: "machine", machineId: connection.machineId }); return;
     }
     if (value.type === "pane.tool.request") {

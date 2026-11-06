@@ -90,6 +90,7 @@ export interface NeedsYouHubContext {
   configIssues?(): NonNullable<import("./needs-you.js").NeedsYouInputs["configIssues"]>;
   hubExecution?(): import("./needs-you.js").HubExecutionAttentionInput[];
   hubHolds?(): import("./needs-you.js").HubHoldInput[];
+  runtimeUpdates?(): import("./needs-you.js").RuntimeUpdateAttentionInput[];
   /**
    * The person's move on a card from the chat: confirm it, send it back with `text` (the reason), or answer its blocked
    * question with `text`. Checked against the version the button showed; the answer is said to the clicker.
@@ -269,7 +270,7 @@ export class NeedsYouHub {
     }
     let hubHolds: import("./needs-you.js").HubHoldInput[] = [];
     try { hubHolds = this.ctx.hubHolds?.() ?? []; } catch { /* the holds are also in the fleet log */ }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
@@ -363,10 +364,10 @@ export class NeedsYouHub {
   /** A line's words: why it waits — and for a card, which card and what it asks or lacks (the chat shows no detail). */
   private lineTitle(item: NeedsYouItem): string {
     // #2822: a usage-limit hold names its model in the title (the chat shows no detail line).
-    const reason = item.reason === "usage_limit"
+    const reason = item.runtimeUpdate ? this.ctx.t("runtime.update.attention") : item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);
-    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.generalLocation) && item.detail ? `${reason}: ${item.detail}` : reason;
+    return (item.type === "task" || item.type === "config" || item.type === "missed" || item.type === "runtime" || item.generalLocation) && item.detail ? `${reason}: ${item.detail}` : reason;
   }
 
   /** #2352: a lane can carry a list here: its instance is this world's now, and has a channel of its own. */

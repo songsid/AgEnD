@@ -56,6 +56,34 @@ const openDiagnostics=async(id="")=>{
 };
 
 describe("remote machine UI",()=>{
+  it.each(["en","zh-TW"])("shows pending/failed targets and a pinned separate-install repair without creating a pairing (%s)",async lang=>{
+    const i18n=await import("/assets/app-i18n.js"), updateUi=await import("/ui/js/runtime-update-status.js");i18n.setLang(lang,{store:false});
+    try {
+      const target={version:"2.3.5-alpha.12",bundleSha256:"a".repeat(64)}, bootId="32345678-1234-4321-abcd-123456789012";
+      machines=[{...machine(idA,"Fake desktop"),bootId,generation:3,runtimeInfo:{version:"2.3.5-alpha.11",buildId:"b".repeat(64),capabilities:["managed-update-status-v1"]},updateReport:{bootId,generation:3,reportedAt:1,status:{state:"pending",target}}}];
+      await p.mount(h(Panel,{navKey:`update-pending-${lang}`}));await settle(12);
+      let notice=p.root.querySelector(".runtime-update-notice");
+      expect(notice.textContent).toContain(updateUi.runtimeUpdateText("pending",target.version,"aaaaaaaa"));expect(notice.textContent).toContain("2.3.5-alpha.11");
+      expect(notice.getAttribute("role")).toBe("status");expect(notice.querySelector("button")).toBeNull();
+      machines[0]={...machines[0],updateReport:{...machines[0].updateReport,status:{state:"failed",target}}};catalog.forgetRuntimeCatalog();await p.unmount();
+      await p.mount(h(Panel,{navKey:`update-failed-${lang}`}));await settle(12);
+      notice=p.root.querySelector(".runtime-update-notice");expect(notice.textContent).toContain(updateUi.runtimeUpdateText("failed",target.version,"aaaaaaaa"));expect(notice.getAttribute("role")).toBe("alert");
+      machines[0]={...machines[0],updateReport:{...machines[0].updateReport,status:{state:"manual",reason:"shared"}}};catalog.forgetRuntimeCatalog();await p.unmount();
+      await p.mount(h(Panel,{navKey:`update-manual-${lang}`}));await settle(12);
+      p.root.querySelector(".runtime-update-notice button").click();await settle(12);
+      const text=p.root.textContent;expect(text).toContain(updateUi.runtimeUpdateText("repairHint"));
+      const copied=p.root.querySelectorAll("code").map((code:any)=>code.textContent).join(" ");
+      expect(copied).toContain(SCRIPT_SHA);expect(copied).toContain("AGEND_RUNTIME_INSTALL_DIR");expect(copied).toContain("[Guid]::NewGuid()");expect(copied).toContain("$agend = 'http://localhost'");expect(copied).toContain("$agend/runtime/install.ps1");
+      expect(copied).not.toContain("PAIR-TEST-CODE");expect(requests.some(r=>r.path==="/ui/runtimes/installer")).toBe(true);expect(requests.some(r=>r.path==="/ui/runtimes/pairing")).toBe(false);
+    } finally {i18n.setLang("en",{store:false});}
+  });
+  it("never labels an offline/old-boot current report as the current connection's build",async()=>{
+    const updateUi=await import("/ui/js/runtime-update-status.js");
+    machines=[{...machine(idA,"Fake desktop","offline"),bootId:"new",generation:4,updateReport:{bootId:"old",generation:3,reportedAt:1,status:{state:"current"}}}];
+    await p.mount(h(Panel,{navKey:"update-old-report"}));await settle(12);
+    const notice=p.root.querySelector(".runtime-update-notice");expect(notice.textContent).toContain(updateUi.runtimeUpdateText("unknown"));expect(notice.textContent).toContain(updateUi.runtimeUpdateText("last"));expect(notice.textContent).not.toContain(updateUi.runtimeUpdateText("current"));
+    expect(updateUi.runtimeFreshInstallCommand("https://other.test/path",SCRIPT_SHA)).toBe("");expect(updateUi.runtimeFreshInstallCommand("https://other.test","invalid")).toBe("");
+  });
   it("shows the selected Runtime's reported version, build and compatibility, with an explicit legacy fallback",async()=>{
     machines[0]={...machines[0],runtimeInfo:{version:"2.3.5-alpha",buildId:"a".repeat(64),protocolVersions:[1],capabilities:["exec","mcp","panes"]},runtimeCompatibility:"compatible"};
     await p.mount(h(Panel,{navKey:"runtime-version-info"}));await settle(12);

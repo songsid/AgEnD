@@ -26,6 +26,7 @@ import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, se
 import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
+import { runtimeUpdateText } from "./runtime-update-status.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
@@ -88,6 +89,7 @@ register("needs", {
 const tn = (k, ...v) => t(`needs.${k}`, ...v);
 /** Stale shells keep the old app-i18n.js; a missing key would otherwise show as app.needs_reason_*. */
 function itemReason(item) {
+  if (item.runtimeUpdate) return runtimeUpdateText("attention");
   const text = reasonText(item);
   if (typeof text === "string" && text.startsWith("app.needs_reason_") && (item.type === "missed" || item.reason === "missed_offline")) {
     return tn("typeMissed");
@@ -266,6 +268,7 @@ function NeedsItem({ item, nowMs, owner }) {
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
         ${item.type === "task" && item.card ? html`<a class="btn btn-sm" href=${`/ui/fleet?card=${encodeURIComponent(item.card.code)}`}>${tn("openCard")}</a>` : null}
+        ${item.runtimeUpdate ? html`<a class="btn btn-sm" href="/settings/runtimes">${runtimeUpdateText("open")}</a>` : null}
         ${item.kiroChoice === true ? html`<a class="btn btn-sm" href="https://github.com/songsid/AgEnD/blob/main/src/general-knowledge/skills/kiro-engine-migration/SKILL.md" target="_blank" rel="noopener noreferrer">${tn("kiroMigration")}</a>` : null}
         ${item.instance ? html`<a class="btn btn-sm btn-ghost" href=${chatPath(item.instance)}>${tn(item.kiroChoice === true ? "kiroOpen" : "open")}</a>` : null}
       </div>

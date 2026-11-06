@@ -12,9 +12,9 @@ export interface RuntimeUpdateReport { bootId: string; generation: number; repor
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 function keys(value: Record<string, unknown>, fields: string[]): boolean { return Object.keys(value).length === fields.length && fields.every(key => Object.hasOwn(value, key)); }
 export function parseRuntimeUpdateStatus(value: unknown): RuntimeUpdateStatus {
-  if (!object(value) || Buffer.byteLength(JSON.stringify(value)) > 1024) throw Error("Invalid Runtime update status");
-  if (["unknown", "current"].includes(String(value.state)) && keys(value, ["state"])) return { state: value.state as "unknown" | "current" };
-  if (["pending", "failed"].includes(String(value.state)) && keys(value, ["state", "target"]) && object(value.target) && keys(value.target, ["version", "bundleSha256"])
+  if (!object(value) || typeof value.state !== "string" || Buffer.byteLength(JSON.stringify(value)) > 1024) throw Error("Invalid Runtime update status");
+  if (["unknown", "current"].includes(value.state) && keys(value, ["state"])) return { state: value.state as "unknown" | "current" };
+  if (["pending", "failed"].includes(value.state) && keys(value, ["state", "target"]) && object(value.target) && keys(value.target, ["version", "bundleSha256"])
     && validRuntimeVersion(value.target.version) && typeof value.target.bundleSha256 === "string" && /^[a-f0-9]{64}$/.test(value.target.bundleSha256))
     return { state: value.state as "pending" | "failed", target: { version: value.target.version, bundleSha256: value.target.bundleSha256 } };
   if (value.state === "manual" && keys(value, ["state", "reason"]) && typeof value.reason === "string" && ["unmanaged", "shared", "another-runtime", "recovery", "damaged"].includes(value.reason))

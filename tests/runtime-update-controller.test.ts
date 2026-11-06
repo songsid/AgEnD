@@ -39,6 +39,7 @@ afterAll(() => { sa?.cleanup(); sb?.cleanup(); sc?.cleanup(); });
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 
 class InertClient {
+  readonly setUpdateStatus = vi.fn();
   readonly bootId = randomUUID(); readonly prepare = vi.fn(async (_id: string) => { if (this.busy) return false; await this.stop(); return true; });
   private stopped = false; private done!: () => void; private readonly completion = new Promise<void>(resolve => { this.done = resolve; });
   busy = true; starts = 0; stops = 0; stopReason = undefined;
@@ -139,6 +140,7 @@ it("downloads only the paired fixed endpoints, stages verified code and leaves a
   expect(f.clients[0].prepare).toHaveBeenCalledOnce(); expect(f.clients[0].stops).toBe(0); expect(f.clients[0].online()).toBe(true);
   expect(f.selected()).toEqual(f.program); expect(f.children).toEqual([]); expect(f.journal().read().attempt).toBeUndefined();
   expect(f.reports.join(" ")).toMatch(/pending.*Waiting for idle/);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenCalledWith({ state: "pending", target: { version: b.version, bundleSha256: b.sha256 } });
   expect(readFileSync(join(f.store.directory, "connection.json"), "utf8")).toBe(f.credentials);
 });
 it("starts the exact verified child only after a positive idle stop and records its proof before arming", async () => {
@@ -157,6 +159,7 @@ it("remembers a checksum failure, never stops a client or retries that hash", as
   expect(f.journal().read().failed).toEqual({ version: b.version, sha256: b.sha256 }); expect(f.clients[0].prepare).not.toHaveBeenCalled();
   expect(f.children).toEqual([]); await controller.checkNow(); expect(f.requests.filter(p => p.endsWith(".zip"))).toHaveLength(1);
   expect(f.selected()).toEqual(f.program); expect(f.clients[0].online()).toBe(true);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenLastCalledWith({ state: "failed", target: { version: b.version, bundleSha256: b.sha256 } });
 });
 
 async function handoff(f: Awaited<ReturnType<typeof fixture>>) {
@@ -202,7 +205,15 @@ it("selects and connects a gated trial, persists activation intent before its ex
   await controller.startTrial(h.id);
   expect(f.clients[0].options.managedUpdate?.trialId).toBe(h.id); expect(f.clients[0].activate).toHaveBeenCalledOnce();
   expect(f.journal().read().attempt).toBeUndefined(); expect(f.journal().read().failed).toBeUndefined(); expect(f.selected()).toEqual(h.next);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenLastCalledWith({ state: "current" });
   expect(readFileSync(join(f.store.directory, "connection.json"), "utf8")).toBe(f.credentials);
+});
+it("the verified rollback controller reports the failed target through its normal new connection", async () => {
+  const f = await fixture(), h = await handoff(f); f.journal().advance(h.id, "rollback", () => {});
+  const options = { ...f.controllerOptions }, init = { ...h.init, role: "rollback" as const };
+  const controller = await RuntimeUpdateController.resume(options, init, h.channel); f.own(controller); await controller.start();
+  expect(f.clients[0].options.updateStatus).toEqual({ state: "failed", target: { version: b.version, bundleSha256: b.sha256 } });
+  expect(f.selected()).toEqual(f.program); expect(f.clients[0].online()).toBe(true);
 });
 
 it("a wrong candidate build rolls back before activation and arms only the verified old controller", async () => {
@@ -348,6 +359,7 @@ it("refuses a downgrade before downloading or stopping, while aligning a differe
 it("a shared managed root stays connected but never downloads or prepares an update", async () => {
   const f = await fixture({ shared: true }), controller = (await f.open())!; await controller.start();
   await expect(controller.checkNow()).rejects.toThrow(/shared/); expect(f.requests).toEqual([]);
+  expect(f.clients[0].setUpdateStatus).toHaveBeenLastCalledWith({ state: "manual", reason: "shared" });
   expect(f.clients[0].online()).toBe(true); expect(f.clients[0].prepare).not.toHaveBeenCalled(); expect(f.children).toEqual([]);
 });
 it("a helper startup refusal is positively stopped before restarting the old Runtime, with pairing and selection kept", async () => {
