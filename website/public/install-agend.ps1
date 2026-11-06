@@ -16,7 +16,7 @@ $ErrorActionPreference = "Stop"
 $ProgressFile = "$env:USERPROFILE\.agend-install-progress"
 
 # ── 固定版本（避免環境不一致）──────────────────────────────
-$UBUNTU_DISTRO = "Ubuntu-24.04"
+$UBUNTU_DISTRO = "Ubuntu-26.04"
 $AGEND_USER = "root"  # AgEnD 安裝在這個 Linux 使用者底下（記到 install.json，捷徑用它，不寫死）
 $NODE_VERSION = "22"  # LTS 穩定版，AgEnD 需要 22+
 
@@ -616,12 +616,13 @@ function Wait-WslRoot([string]$distro, [int]$tries = 3, [int]$pauseSeconds = 5) 
 }
 # ── 另外安裝一個 AgEnD 專用的 Ubuntu（#1853，使用者 2026-10-20 實測後的要求）──────────
 # 已經有 Ubuntu 的電腦：建議另外裝一個只給 AgEnD 用的（名稱 AgEnD，被占用就 AgEnD-2、AgEnD-3…），原本的完全不動。
-# WSL 2.4.4 以上用 `wsl --install Ubuntu-24.04 --name <名稱> --location <位置> --no-launch`（tar 格式的發行版才能指定
+# WSL 2.4.4 以上用 `wsl --install Ubuntu-26.04 --name <名稱> --location <位置> --no-launch`（tar 格式的發行版才能指定
 # 名稱，見 Microsoft 文件 build-custom-distro）；較舊的 WSL，或裝完沒看到這個名稱，就從 Microsoft 的發行版清單取官方
 # 的 .wsl（比對 SHA256）再 `wsl --import`。選定的名稱記在安裝進度和 install.json，之後的每一步、兩個捷徑、
 # agend shortcuts 和修復都用它。之前已經裝過的 AgEnD 專用 Linux 會直接沿用，不會再裝一個。
 $AGEND_DISTRO_BASE = 'AgEnD'
 $WSL_NAME_MIN = [version]'2.4.4'
+$UBUNTU_INSTALL_CANDIDATES = @('Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04')
 $DISTRO_LIST_URL = 'https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json'
 
 # 這台電腦上的 Linux 名稱：只看清單，不啟動任何一個。wsl.exe 自己的輸出要設 WSL_UTF8=1 才是 UTF-8（否則 UTF-16LE）。
@@ -661,7 +662,7 @@ function Get-DistroSituation($names) {
     if ($null -eq $names) { return @{ State = 'unknown' } }
     $agend = Get-ExistingAgendDistro $names
     if ($agend) { return @{ State = 'reuse'; Agend = $agend } }
-    $ubuntu = @(@('Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu') | Where-Object { $names -contains $_ })[0]
+    $ubuntu = @(@('Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu') | Where-Object { $names -contains $_ })[0]
     if ($ubuntu) { return @{ State = 'ubuntu'; Ubuntu = $ubuntu } }
     return @{ State = 'none' }
 }
@@ -693,8 +694,8 @@ function Read-DistroChoice([string]$existing) {
     if ($answer -eq '2') { return 'existing' }
     return 'quit'
 }
-# Microsoft 發行版清單裡 Ubuntu 24.04 的官方 .wsl（這台電腦的架構）：@{ Url; Sha256 }，拿不到就 $null。
-function Get-UbuntuWslImage([string]$version = 'Ubuntu-24.04') {
+# Microsoft 發行版清單裡所選 Ubuntu 版本的官方 .wsl（這台電腦的架構）：@{ Url; Sha256 }，拿不到就 $null。
+function Get-UbuntuWslImage([string]$version = 'Ubuntu-26.04') {
     try { $list = Invoke-RestMethod -Uri $DISTRO_LIST_URL -TimeoutSec 30 -UseBasicParsing } catch { return $null }
     $entry = @($list.ModernDistributions.Ubuntu | Where-Object { $_.Name -eq $version })[0]
     if (-not $entry) { return $null }
@@ -702,38 +703,57 @@ function Get-UbuntuWslImage([string]$version = 'Ubuntu-24.04') {
     if (-not $image -or -not $image.Url -or -not $image.Sha256) { return $null }
     return @{ Url = [string]$image.Url; Sha256 = (([string]$image.Sha256) -replace '^0x', '').ToUpperInvariant() }
 }
-# 另外安裝 AgEnD 專用的 Ubuntu，名稱 $name，放在 $location。回傳 $true：這個名稱的 Linux 已經在了。
-function Install-AgendDistro([string]$name, [string]$location) {
+# 新安裝依序試 26.04、24.04、22.04；專用 Linux 保留 $name，普通新安裝用實際版本名稱。
+# 只有確認沒有建立目標時才換版本；逾時、不明結果與 SHA256 不符都停止。$InstalledName 供接續與捷徑記下實際名稱。
+function Install-AgendDistro([string]$name, [string]$location, [switch]$UseVersionName, [ref]$InstalledName) {
     $version = Get-InstalledWslVersion
-    if ($version -and $version -ge $WSL_NAME_MIN) {
-        $installCode = Invoke-Watched -Label "下載並安裝 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "Ubuntu-24.04", "--name", $name, "--location", $location, "--no-launch")
-        $after = Get-WslDistroNames
-        if ($null -eq $after) { Write-Err "裝完之後讀不到 Linux 清單，無法確認 $name 有沒有裝好；沒有再做任何事。"; return $false }
-        if ($after -contains $name) {
-            if ($installCode -notin @(0,3010)) { Write-Err "Linux 安裝結束碼 $installCode，尚未標記完成；請重新執行以驗證現況。"; return $false }
-            return $true
+    foreach ($candidate in $UBUNTU_INSTALL_CANDIDATES) {
+        $target = if ($UseVersionName) { $candidate } else { $name }
+        if ($candidate -ne $UBUNTU_INSTALL_CANDIDATES[0]) {
+            Write-Warn ("{0} 無法安裝，改試 {1}；既有的 Linux 不會遷移。 / Previous Ubuntu unavailable; trying {1}. Existing installs are not migrated." -f $previous, $candidate)
         }
-        if ($installCode -eq 124) { Write-Err 'Linux installation timed out; check WSL before retrying.'; return $false }
-        Write-Warn "WSL 沒有用 $name 這個名稱裝好，改用官方的 Ubuntu 映像檔匯入..."
+        if ($version -and $version -ge $WSL_NAME_MIN) {
+            $installCode = Invoke-Watched -Label "下載並安裝 $candidate（$target）" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", $candidate, "--name", $target, "--location", $location, "--no-launch")
+            $after = Get-WslDistroNames
+            if ($null -eq $after) { Write-Err "裝完之後讀不到 Linux 清單，無法確認 $target 有沒有裝好；沒有再做任何事。"; return $false }
+            if ($after -contains $target) {
+                if ($installCode -notin @(0,3010)) { Write-Err "Linux 安裝結束碼 $installCode，尚未標記完成；請重新執行以驗證現況。"; return $false }
+                if ($InstalledName) { $InstalledName.Value = $target }
+                Write-Ok "已安裝 $candidate（WSL 名稱：$target）。 / Installed $candidate (WSL name: $target)."
+                return $true
+            }
+            if ($installCode -eq 124) { Write-Err 'Linux installation timed out; check WSL before retrying.'; return $false }
+            Write-Warn "$candidate 未透過 WSL 安裝，改試官方映像檔（$target）。"
+        }
+        $previous = $candidate
+        $image = Get-UbuntuWslImage $candidate
+        if (-not $image) { Write-Warn "拿不到 $candidate 的官方映像檔（可能是版本或網路問題）。 / Official $candidate image unavailable."; continue }
+        $file = Join-Path ([IO.Path]::GetTempPath()) ("agend-ubuntu-" + [Guid]::NewGuid().ToString('N') + ".wsl")
+        $prevProgress = $ProgressPreference
+        try {
+            Write-Info "正在下載官方的 $candidate（幾百 MB，請稍候）... / Downloading official $candidate..."
+            $ProgressPreference = 'SilentlyContinue'
+            try { Invoke-InstallDownload -Uri $image.Url -OutFile $file -TimeoutSec 1800 } catch { Write-Warn "下載 $candidate 失敗：$_"; continue }
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash
+            # A failed integrity check is never a reason to try another image.
+            if ($hash -ne $image.Sha256) { Write-Err "下載的 Ubuntu 和官方的檢查碼不符，沒有安裝。"; return $false }
+            New-Item -ItemType Directory -Path $location -Force | Out-Null
+            $importCode = Invoke-Watched -Label "匯入 $candidate（$target）" -Usually "通常需要 1–3 分鐘" -UpperMinutes 10 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--import", $target, $location, $file, "--version", "2")
+            $after = Get-WslDistroNames
+            if ($null -eq $after -or $importCode -eq 124) { Write-Err 'Linux import outcome is unconfirmed; check WSL before retrying.'; return $false }
+            if ($after -contains $target) {
+                if ($importCode -notin @(0,3010)) { Write-Err "Linux 匯入結束碼 $importCode，請重新執行以驗證現況。"; return $false }
+                if ($InstalledName) { $InstalledName.Value = $target }
+                Write-Ok "已安裝 $candidate（WSL 名稱：$target）。 / Installed $candidate (WSL name: $target)."
+                return $true
+            }
+        } finally {
+            $ProgressPreference = $prevProgress
+            Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
+        }
     }
-    $image = Get-UbuntuWslImage
-    if (-not $image) { Write-Err "拿不到官方 Ubuntu 映像檔的清單（可能是網路問題），沒有安裝。"; return $false }
-    $file = Join-Path ([IO.Path]::GetTempPath()) ("agend-ubuntu-" + [Guid]::NewGuid().ToString('N') + ".wsl")
-    $prevProgress = $ProgressPreference
-    try {
-        Write-Info "正在下載官方的 Ubuntu 24.04（幾百 MB，請稍候）..."
-        $ProgressPreference = 'SilentlyContinue'    # Windows PowerShell 5.1 的下載進度列會讓下載慢很多
-        try { Invoke-InstallDownload -Uri $image.Url -OutFile $file -TimeoutSec 1800 } catch { Write-Err "下載 Ubuntu 失敗：$_"; return $false }
-        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash
-        if ($hash -ne $image.Sha256) { Write-Err "下載的 Ubuntu 和官方的檢查碼不符，沒有安裝。"; return $false }
-        New-Item -ItemType Directory -Path $location -Force | Out-Null
-        $importCode = Invoke-Watched -Label "匯入 AgEnD 專用的 Ubuntu（$name）" -Usually "通常需要 1–3 分鐘" -UpperMinutes 10 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--import", $name, $location, $file, "--version", "2")
-        $after = Get-WslDistroNames
-        return ($importCode -in @(0,3010) -and $null -ne $after -and $after -contains $name)
-    } finally {
-        $ProgressPreference = $prevProgress
-        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
-    }
+    Write-Err "Ubuntu 26.04、24.04、22.04 都沒有安裝成功；請確認網路與 WSL 狀態後重試。 / Ubuntu 26.04, 24.04 and 22.04 could not be installed; check the network and WSL, then retry."
+    return $false
 }
 
 # 沒有同意重新啟動整個 WSL：乾淨地停下來，說明之後怎麼繼續（重新執行同一行安裝指令會從這一步接著做）。
@@ -1155,7 +1175,7 @@ function Find-ExistingAgend {
     $record = Read-InstallRecord
     $candidates = @()
     if ($record) { $candidates += ,@($record.Distro, $record.User) }
-    foreach ($d in @($AGEND_DISTRO_BASE, 'Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu')) { $candidates += ,@($d, 'root') }
+    foreach ($d in @($AGEND_DISTRO_BASE, 'Ubuntu-26.04', 'Ubuntu-24.04', 'Ubuntu-22.04', 'Ubuntu')) { $candidates += ,@($d, 'root') }
     foreach ($c in $candidates) {
         $r = Invoke-AgendInWsl $c[0] $c[1] $AGEND_PROBE
         if ($r.Code -ne 0) { continue }
@@ -2476,7 +2496,7 @@ Save-WslDrive $AgendWslDrive
 $TOTAL = 5
 
 # ═══════════════════════════════════════════════════════════
-# 階段 1: 安裝 WSL + Ubuntu 24.04
+# 階段 1: 安裝 WSL + Ubuntu 26.04（失敗時依序嘗試 24.04、22.04）
 # ═══════════════════════════════════════════════════════════
 
 Write-Step 1 $TOTAL "安裝 WSL ($UBUNTU_DISTRO)"
@@ -2486,7 +2506,7 @@ if (Stage-Done 1) {
     if (Get-InstalledWslVersion) {
         $currentNames = Get-WslDistroNames
         if ($null -eq $currentNames) { throw 'Cannot verify the saved WSL stage; no Linux distributions were changed.' }
-        if (Clear-MissingWslTarget $currentNames) { $UBUNTU_DISTRO = 'Ubuntu-24.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive; Save-WslDrive $AgendWslDrive }
+        if (Clear-MissingWslTarget $currentNames) { $UBUNTU_DISTRO = 'Ubuntu-26.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive; Save-WslDrive $AgendWslDrive }
         $wslStageVerified = (Stage-Done 1) -and $currentNames -contains $UBUNTU_DISTRO
     }
     if (-not $wslStageVerified) { Clear-InstallStage 1 }
@@ -2536,7 +2556,7 @@ if ($wslStageVerified) {
     # ── 1d: 這台電腦已經有哪些 Linux（只看清單，不啟動任何一個）──
     # 之前裝過 AgEnD 專用的就沿用；有 Ubuntu 就問（建議另外裝一個）；都沒有就照常安裝 $UBUNTU_DISTRO。
     $names = Get-WslDistroNames
-    if (Clear-MissingWslTarget $names) { $UBUNTU_DISTRO = 'Ubuntu-24.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive; Save-WslDrive $AgendWslDrive }
+    if (Clear-MissingWslTarget $names) { $UBUNTU_DISTRO = 'Ubuntu-26.04'; $AgendWslDrive = Resolve-AgendWslDrive $WslDrive; Save-WslDrive $AgendWslDrive }
     $situation = Get-DistroSituation $names
     if ($situation.State -eq 'unknown') {
         Write-Err "讀不到這台電腦上的 Linux 清單。為了不動到你原本的 Linux，先停在這裡，沒有安裝或修改任何東西。"
@@ -2569,25 +2589,15 @@ if ($wslStageVerified) {
 
         # 安裝
         Write-Info "正在安裝 $UBUNTU_DISTRO，請不要關閉視窗..."
-        if ($choice -eq 'separate') {
-            if (-not (Install-AgendDistro $UBUNTU_DISTRO $wslPath)) {
-                Write-Err "AgEnD 專用的 Ubuntu 沒有安裝成功；你原本的 Linux 都沒有被動到。"
-                Write-Info "  請確認網路正常，再執行同一行安裝指令。"
-                Read-Host "按 Enter 結束"; exit 1
-            }
-        } else {
-            $null = Invoke-Watched -Label "下載並安裝 $UBUNTU_DISTRO" -Usually "通常需要 3–10 分鐘" -UpperMinutes 15 -TimeoutSeconds 1800 -NoProgressSeconds 0 -Encoding utf16 -File "wsl.exe" -Arguments @("--install", "-d", $UBUNTU_DISTRO, "--location", $wslPath, "--no-launch")
-            # 較舊的 WSL 不認得 --location，或安裝沒有成功：和另外安裝時一樣，改用官方映像檔匯入（#2650 第 7 項）。
-            $afterFresh = Get-WslDistroNames
-            if ($null -ne $afterFresh -and $afterFresh -notcontains $UBUNTU_DISTRO) {
-                Write-Warn "$UBUNTU_DISTRO 沒有用這個方式裝好，改用官方的 Ubuntu 映像檔..."
-                if (-not (Install-AgendDistro $UBUNTU_DISTRO $wslPath)) {
-                    Write-Err "$UBUNTU_DISTRO 沒有安裝成功。"
-                    Write-Info "  請確認網路正常，再執行同一行安裝指令。"
-                    Read-Host "按 Enter 結束"; exit 1
-                }
-            }
+        $useVersionName = $choice -ne 'separate'
+        if (-not (Install-AgendDistro $UBUNTU_DISTRO $wslPath -UseVersionName:$useVersionName -InstalledName ([ref]$UBUNTU_DISTRO))) {
+            Write-Err "Ubuntu 沒有安裝成功；你原本的 Linux 都沒有被動到。"
+            Write-Info "  請確認網路正常，再執行同一行安裝指令。"
+            Read-Host "按 Enter 結束"; exit 1
         }
+
+        # The fallback may have chosen a different version name; retain its exact location on resume.
+        Add-Content -LiteralPath $ProgressFile -Value ("WSL_INSTALL_DISTRO=" + $UBUNTU_DISTRO)
 
         # 驗證
         Write-Info "正在驗證安裝結果..."

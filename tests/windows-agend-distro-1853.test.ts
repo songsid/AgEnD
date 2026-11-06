@@ -3,7 +3,7 @@
  * the recommended choice — so the existing Ubuntu is never changed.
  * - [1] a separate AgEnD Ubuntu (recommended) / [2] the existing one (its settings change) / Enter quits. Only 1 or 2.
  * - The name is the first free one of AgEnD, AgEnD-2, …; an AgEnD Linux from an earlier install is reused, never a third.
- * - WSL 2.4.4+: `wsl --install Ubuntu-24.04 --name <name> --location <disk>\WSL\<name> --no-launch` (a tar-based
+ * - WSL 2.4.4+: `wsl --install Ubuntu-26.04 --name <name> --location <disk>\WSL\<name> --no-launch` (a tar-based
  *   distribution; Microsoft's build-custom-distro doc). Older WSL, or the name not there afterwards: Microsoft's
  *   distribution list's official .wsl, checked against its SHA256, then `wsl --import <name> <location> <file> --version 2`.
  * - The chosen name is what everything after uses: the progress, install.json, both shortcuts, the repair fast path.
@@ -28,20 +28,20 @@ describe("the existing-Ubuntu choice (static)", () => {
     const stage = body.slice(body.indexOf("$names = Get-WslDistroNames"), body.indexOf('Add-Content -Path $ProgressFile -Value "DISTRO=$UBUNTU_DISTRO"'));
     expect(stage).toMatch(/\$agendDistro = \$situation\.Agend/);
     // #2279 review: an unreadable list stops stage 1 before any choice, install or reuse.
-    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*if \(Clear-MissingWslTarget \$names\) \{ \$UBUNTU_DISTRO = 'Ubuntu-24\.04'; \$AgendWslDrive = Resolve-AgendWslDrive \$WslDrive; Save-WslDrive \$AgendWslDrive \}\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
+    expect(stage).toMatch(/^\$names = Get-WslDistroNames\n\s*if \(Clear-MissingWslTarget \$names\) \{ \$UBUNTU_DISTRO = 'Ubuntu-26\.04'; \$AgendWslDrive = Resolve-AgendWslDrive \$WslDrive; Save-WslDrive \$AgendWslDrive \}\n\s*\$situation = Get-DistroSituation \$names\n\s*if \(\$situation\.State -eq 'unknown'\) \{\n[^\n]*讀不到這台電腦上的 Linux 清單[^\n]*\n[^\n]*\n\s*Read-Host "按 Enter 結束"; exit 1\n\s*\}\n\s*\$agendDistro/);
     expect(stage).toMatch(/if \(\$situation\.State -eq 'reuse'\) \{ \$choice = 'reuse' \} elseif \(\$situation\.State -eq 'ubuntu'\) \{ \$choice = Read-DistroChoice \$installedDistroName \}/);
     expect(stage).toMatch(/if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO = Get-FreeAgendDistroName \$names \}/);
     expect(stage).toMatch(/\$leaf = if \(\$choice -eq 'separate'\) \{ \$UBUNTU_DISTRO \} else \{ 'Ubuntu' \}/);
     expect(stage).toMatch(/\$location = Get-WslInstallLocation \(Get-LocalDisks\) \(\$env:SystemDrive \+ '\\'\) \$UBUNTU_DISTRO \$leaf \$AgendWslDrive/);
     expect(stage).toMatch(/\$disk = \$location\.Disk; \$wslPath = \$location\.Path/);
-    expect(stage).toMatch(/if \(-not \(Install-AgendDistro \$UBUNTU_DISTRO \$wslPath\)\) \{/);
+    expect(stage).toMatch(/Install-AgendDistro \$UBUNTU_DISTRO \$wslPath -UseVersionName:\$useVersionName -InstalledName \(\[ref\]\$UBUNTU_DISTRO\)/);
     expect(stage).not.toMatch(/wsl -d \$name -u root --exec echo/);                     // no more starting each Ubuntu to see if it is there
     // The chosen name is saved with the progress, and the end of the install records it (install.json) and makes the shortcuts.
     expect(body).toMatch(/Add-Content -Path \$ProgressFile -Value "DISTRO=\$UBUNTU_DISTRO"/);
     expect(body).toMatch(/\$shortcuts = @\(Install-AgendShortcuts \$UBUNTU_DISTRO \$AGEND_USER\)/);
   });
   it("the repair fast path also looks in AgEnD's own Linux; a record for another Linux is said, and asked about (no by default)", () => {
-    expect(code).toMatch(/foreach \(\$d in @\(\$AGEND_DISTRO_BASE, 'Ubuntu-24\.04', 'Ubuntu-22\.04', 'Ubuntu'\)\)/);
+    expect(code).toMatch(/foreach \(\$d in @\(\$AGEND_DISTRO_BASE, 'Ubuntu-26\.04', 'Ubuntu-24\.04', 'Ubuntu-22\.04', 'Ubuntu'\)\)/);
     const fast = body.slice(body.indexOf("$existing = Find-ExistingAgend"), body.indexOf('Write-Info "檢查網路連線..."'));
     expect(fast).toMatch(/\$prior = Get-InstallRecordConflict \$existing\.Distro \$existing\.User/);
     expect(fast).toMatch(/\(y\/N\)"\n\s*\$update = \(\[string\]\$ans\) -match '\^\\s\*\[yY\]\\s\*\$'/);
@@ -65,7 +65,7 @@ const helperNames = [
   "Confirm-StopInstall", "Read-StepKey", "Test-CtrlC", "Stop-InstallChild",
 ];
 const prelude = helperNames.map(name => extractPsFunction(text, name)).join("\n") + "\n" +
-  extractPsAssignments(text, ["AGEND_DISTRO_BASE", "WSL_NAME_MIN", "DISTRO_LIST_URL", "WSL_COMMAND_FN", "RESTART_FN", "DASHBOARD_OPENER_FN"]);
+  extractPsAssignments(text, ["AGEND_DISTRO_BASE", "WSL_NAME_MIN", "DISTRO_LIST_URL", "UBUNTU_INSTALL_CANDIDATES", "WSL_COMMAND_FN", "RESTART_FN", "DASHBOARD_OPENER_FN"]);
 const batch = new InstallerPsBatch({ installer: prelude });
 const dirs: string[] = [];
 afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
@@ -100,7 +100,7 @@ const imageHash = createHash("sha256").update(IMAGE).digest("hex");
 const imageStubs = (o: { badHash?: boolean; noList?: boolean } = {}) => `
 function Invoke-RestMethod { param($Uri, $TimeoutSec, [switch]$UseBasicParsing)
   ${o.noList ? "throw 'offline'" : ""}
-  return [pscustomobject]@{ ModernDistributions = [pscustomobject]@{ Ubuntu = @([pscustomobject]@{ Name = 'Ubuntu-24.04'; Amd64Url = [pscustomobject]@{ Url = 'https://releases.ubuntu.com/24.04.5/ubuntu-24.04.5-wsl-amd64.wsl'; Sha256 = '0x${o.badHash ? "00" + imageHash.slice(2) : imageHash.toUpperCase()}' } }) } } }
+  return [pscustomobject]@{ ModernDistributions = [pscustomobject]@{ Ubuntu = @([pscustomobject]@{ Name = 'Ubuntu-26.04'; Amd64Url = [pscustomobject]@{ Url = 'https://releases.ubuntu.com/26.04.1/ubuntu-26.04.1-wsl-amd64.wsl'; Sha256 = '0x${o.badHash ? "00" + imageHash.slice(2) : imageHash.toUpperCase()}' } }) } } }
 function Invoke-InstallDownload { param($Uri, $OutFile, [switch]$UseBasicParsing, $TimeoutSec) Add-Content (Join-Path $env:TMPDIR 'downloads.txt') $Uri; [IO.File]::WriteAllText($OutFile, '${IMAGE}') }
 `;
 
@@ -188,7 +188,7 @@ Write-Output ("D=" + (Get-ExistingAgendDistro @('AGEND')))`, fakeWsl([])));
 function Get-InstalledWslVersion { return [version]'2.6.3.0' }
 Write-Output ("OK=" + (Install-AgendDistro 'AgEnD' 'D:\\WSL\\AgEnD'))`, bin));
     expect(out).toContain("OK=True");
-    expect(calls(bin)).toBe("--install Ubuntu-24.04 --name AgEnD --location D:\\WSL\\AgEnD --no-launch\n--list --quiet\n");
+    expect(calls(bin)).toBe("--install Ubuntu-26.04 --name AgEnD --location D:\\WSL\\AgEnD --no-launch\n--list --quiet\n");
     expect(existsSync(join(dir, "downloads.txt"))).toBe(false);
   });
   it("--name not supported (the name never appears): the official image, its SHA256 checked, then wsl --import; the download is removed", async () => {
@@ -198,11 +198,11 @@ Write-Output ("OK=" + (Install-AgendDistro 'AgEnD' 'D:\\WSL\\AgEnD'))`, bin));
 function Get-InstalledWslVersion { return [version]'2.6.3.0' }
 Write-Output ("OK=" + (Install-AgendDistro 'AgEnD' '${loc}'))
 Write-Output ("LEFT=" + @(Get-ChildItem ([IO.Path]::GetTempPath()) -Filter 'agend-ubuntu-*.wsl').Count)`, bin));
-    expect(out).toContain("WSL 沒有用 AgEnD 這個名稱裝好，改用官方的 Ubuntu 映像檔匯入...");
+    expect(out).toContain("Ubuntu-26.04 未透過 WSL 安裝，改試官方映像檔（AgEnD）。");
     expect(out).toContain("OK=True");
-    expect(readFileSync(join(dir, "downloads.txt"), "utf8")).toBe("https://releases.ubuntu.com/24.04.5/ubuntu-24.04.5-wsl-amd64.wsl\n");
+    expect(readFileSync(join(dir, "downloads.txt"), "utf8")).toBe("https://releases.ubuntu.com/26.04.1/ubuntu-26.04.1-wsl-amd64.wsl\n");
     const log = calls(bin).trim().split("\n");
-    expect(log[0]).toMatch(/^--install Ubuntu-24\.04 --name AgEnD /);
+    expect(log[0]).toMatch(/^--install Ubuntu-26\.04 --name AgEnD /);
     expect(log.find(l => l.startsWith("--import"))).toMatch(new RegExp(`^--import AgEnD ${loc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\S+agend-ubuntu-[0-9a-f]{32}\\.wsl --version 2$`));
     expect(out).toContain("LEFT=0");
   });
@@ -216,7 +216,7 @@ Write-Output ("OK=" + (Install-AgendDistro 'AgEnD-2' '${join(scratch("agend-1853
     expect(calls(bin)).toMatch(/^--import AgEnD-2 /m);
   });
   it.each([["a download whose SHA256 is not the official one", { badHash: true }, "下載的 Ubuntu 和官方的檢查碼不符，沒有安裝。"],
-    ["no distribution list (offline)", { noList: true }, "拿不到官方 Ubuntu 映像檔的清單（可能是網路問題），沒有安裝。"]])("%s: nothing imported, said plainly", async (_n, stub, said) => {
+    ["no distribution list (offline)", { noList: true }, "Ubuntu 26.04、24.04、22.04 都沒有安裝成功"]])("%s: nothing imported, said plainly", async (_n, stub, said) => {
     const bin = fakeWsl([]);
     const { out } = (await withHelpers(`${imageStubs(stub)}
 function Get-InstalledWslVersion { return [version]'2.3.26.0' }
@@ -224,7 +224,85 @@ Write-Output ("OK=" + (Install-AgendDistro 'AgEnD' '${join(scratch("agend-1853di
     expect(out).toContain("OK=False");
     expect(out).toContain(said);
     expect(calls(bin)).not.toMatch(/--import/);
+    if (stub.badHash) expect(out).not.toContain('trying Ubuntu-24.04');
   });
+
+  it("the default image and both architectures use 26.04 with the official hash", async () => {
+    const { out } = await withHelpers(`
+function Invoke-RestMethod { return @{ModernDistributions=@{Ubuntu=@(
+ @{Name='Ubuntu-26.04'; Amd64Url=@{Url='https://example.test/26-amd.wsl';Sha256='0xABC'};Arm64Url=@{Url='https://example.test/26-arm.wsl';Sha256='DEF'}},
+ @{Name='Ubuntu-24.04'; Amd64Url=@{Url='wrong';Sha256='000'}})}} }
+$env:PROCESSOR_ARCHITECTURE='AMD64';$a=Get-UbuntuWslImage
+$env:PROCESSOR_ARCHITECTURE='ARM64';$b=Get-UbuntuWslImage
+Write-Output ('AMD='+$a.Url+'/'+$a.Sha256+' ARM='+$b.Url+'/'+$b.Sha256)`, fakeWsl([]));
+    expect(out).toContain('AMD=https://example.test/26-amd.wsl/ABC ARM=https://example.test/26-arm.wsl/DEF');
+  });
+  const fallbackHarness = (opts: { direct?: string; images?: string; downloadFails?: string; importCode?: number; unknown?: boolean; occupied?: boolean; timeout?: boolean } = {}) => `
+${imageStubs()}
+$script:present=@();$script:operations=@();$script:images=@();$script:downloads=@()
+function Get-InstalledWslVersion { return [version]'2.6.3' }
+function Get-WslDistroNames { ${opts.unknown ? 'return $null' : 'return ,$script:present'} }
+function Get-UbuntuWslImage { param($version);$script:images+= $version; if (${opts.images ?? '$false'}) { return @{Url=$version;Sha256='${imageHash}'} };return $null }
+function Invoke-InstallDownload { param($Uri,$OutFile,$TimeoutSec);$script:downloads+=$Uri; ${opts.downloadFails ? `if($Uri -eq '${opts.downloadFails}') {throw 'download unavailable'}` : ''};[IO.File]::WriteAllText($OutFile,'${IMAGE}') }
+function Invoke-Watched { param($Arguments)
+ $script:operations+=($Arguments -join ' ')
+ if($Arguments[0] -eq '--install') {
+  if(${opts.occupied ? '$true' : opts.direct ?? '$false'}) {$script:present=@($Arguments[3]);return ${opts.occupied ? 1 : 0}}
+  return ${opts.timeout ? 124 : 1}
+ }
+ ${opts.importCode ? `return ${opts.importCode}` : '$script:present=@($Arguments[1]);return 0'}
+}
+$selected='Ubuntu-26.04'
+$ok=Install-AgendDistro 'Ubuntu-26.04' (Join-Path $env:TMPDIR 'linux') -UseVersionName -InstalledName ([ref]$selected)
+Write-Output ('OK='+$ok+' SELECTED='+$selected)
+Write-Output ('OPS='+($script:operations -join '|'))
+Write-Output ('IMAGES='+($script:images -join ','))
+Write-Output ('DOWNLOADS='+($script:downloads -join ','))
+`;
+  it('unsupported 26.04, with no image: falls back to 24.04 and reports the actual saved name', async () => {
+    const { out } = await withHelpers(fallbackHarness({direct:"$Arguments[1] -eq 'Ubuntu-24.04'"}), fakeWsl([]));
+    expect(out).toContain('OK=True SELECTED=Ubuntu-24.04');
+    expect(out).toContain('Ubuntu-26.04 無法安裝，改試 Ubuntu-24.04');
+    expect(out).toContain('trying Ubuntu-24.04');
+    expect(out).toContain('IMAGES=Ubuntu-26.04');
+    expect(out).not.toContain('--install Ubuntu-22.04');
+  });
+  it('failed 26.04 download and unavailable 24.04 reach 22.04 in order', async () => {
+    const { out } = await withHelpers(fallbackHarness({images:"$version -eq 'Ubuntu-26.04'",downloadFails:'Ubuntu-26.04',direct:"$Arguments[1] -eq 'Ubuntu-22.04'"}), fakeWsl([]));
+    expect(out).toContain('OK=True SELECTED=Ubuntu-22.04');
+    expect(out).toContain('IMAGES=Ubuntu-26.04,Ubuntu-24.04');
+    expect(out).toContain('DOWNLOADS=Ubuntu-26.04');
+    expect(out).toMatch(/OPS=--install Ubuntu-26\.04 .*\|--install Ubuntu-24\.04 .*\|--install Ubuntu-22\.04 /);
+  });
+  it('an old WSL imports the first available 24.04 image, checks its hash, and keeps a custom name', async () => {
+    const {out} = await withHelpers(`${imageStubs()}
+function Get-InstalledWslVersion { return [version]'2.3.26' }
+function Invoke-RestMethod {return @{ModernDistributions=@{Ubuntu=@(@{Name='Ubuntu-24.04';Amd64Url=@{Url='https://example.test/24.wsl';Sha256='${imageHash}'}})}}}
+$selected='AgEnD-2';$ok=Install-AgendDistro 'AgEnD-2' (Join-Path $env:TMPDIR 'linux') -InstalledName ([ref]$selected)
+Write-Output ('OK='+$ok+' SELECTED='+$selected)
+Write-Output ('LEFT='+@(Get-ChildItem ([IO.Path]::GetTempPath()) -Filter 'agend-ubuntu-*.wsl').Count)`, fakeWsl([]));
+    expect(out).toContain('OK=True SELECTED=AgEnD-2');
+    expect(out).toContain('已安裝 Ubuntu-24.04');
+    expect(out).toContain('LEFT=0');
+  });
+  it('an unsupported direct install can import the 26.04 image before downgrading', async () => {
+    const { out } = await withHelpers(fallbackHarness({images:'$true'}), fakeWsl([]));
+    expect(out).toContain('OK=True SELECTED=Ubuntu-26.04');
+    expect(out).toContain('DOWNLOADS=Ubuntu-26.04');
+    expect(out).not.toContain('--install Ubuntu-24.04');
+  });
+  it.each([
+    ['unreadable post-install inventory', {unknown:true}],
+    ['a failed command that nevertheless created the target', {occupied:true}],
+    ['an installation timeout', {timeout:true}],
+    ['an import timeout', {images:'$true',importCode:124}],
+  ])('%s stops without another install', async (_label, options) => {
+    const { out } = await withHelpers(fallbackHarness(options), fakeWsl([]));
+    expect(out).toContain('OK=False SELECTED=Ubuntu-26.04');
+    expect(out).not.toContain('--install Ubuntu-24.04');
+    expect(out).not.toContain('--install Ubuntu-22.04');
+  });
+
   it("the shortcuts and install.json follow the chosen Linux; a record for another one is reported", async () => {
     const { out } = (await withHelpers(`New-Item -ItemType Directory -Path (Join-Path $env:LOCALAPPDATA 'AgEnD') -Force | Out-Null
 Set-Content -LiteralPath (Join-Path $env:LOCALAPPDATA 'AgEnD/install.json') -Value '{"distro":"Ubuntu-24.04","user":"root"}'
