@@ -69,7 +69,8 @@ describe("PowerShell CI resource partition", () => {
     expect(serial.steps[preparation]?.["timeout-minutes"]).toBe(2);
     expect(serial.steps[preparation]?.["continue-on-error"]).toBeUndefined();
     expect(serial.steps[preparation]?.run).toBe("node scripts/ci/prepare-pwsh.mjs");
-    expect(serial.steps.findIndex(s => s.name === "PowerShell version")).toBeGreaterThan(at);
+    // The bounded preparation already reports the version.
+    expect(serial.steps.some(s => s.run?.trim() === "pwsh --version")).toBe(false);
     expect(jobs.build?.needs).toContain("test-pwsh");
   });
   it.each(["success", "failure", "cancelled", "skipped", ""])("the actual aggregate fails closed for installer result %j", result => {
