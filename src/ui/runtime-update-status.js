@@ -14,7 +14,7 @@ register("runtimeUpdate", {
     recovery: "An interrupted update needs a fresh separate installation. Keep the existing profile and pairing.",
     damaged: "This installation could not be verified. Reinstall into a fresh separate folder.",
     running: "Running: {0} / build {1}", last: "Last reported update status; this connection has not confirmed it.",
-    repair: "Show reinstall command", repairTitle: "Enable automatic Runtime updates", repairHint: "Note the profile folder shown by agend-runtime status, then close this Runtime. This command selects a fresh separate folder and verifies the installer from this AgEnD, leaving PATH unchanged. The installer prints a full-path run command; enter that same existing profile folder when asked. Your pairing is kept; no new pairing code is needed.",
+    repair: "Show reinstall command", repairTitle: "Enable automatic Runtime updates", repairHint: "Run agend-runtime status with the same --profile or AGEND_RUNTIME_HOME as this Runtime, note its profile folder, then close this Runtime. This command selects a fresh separate folder and verifies the installer from this AgEnD, leaving PATH unchanged. The installer prints a full-path run command; enter that same existing profile folder when asked. Your pairing is kept; no new pairing code is needed.",
     attention: "Runtime update needs attention", open: "Open Runtime settings",
   },
   "zh-TW": {
@@ -27,7 +27,7 @@ register("runtimeUpdate", {
     recovery: "中斷的更新需要重新安裝到獨立目錄。請保留既有設定檔與配對。",
     damaged: "無法驗證此安裝。請重新安裝到全新的獨立目錄。",
     running: "執行中：{0}／組建 {1}", last: "這是上次回報的更新狀態，目前連線尚未確認。",
-    repair: "顯示重新安裝指令", repairTitle: "啟用 Runtime 自動更新", repairHint: "先記下 agend-runtime status 顯示的設定檔資料夾，再關閉此 Runtime。指令會選擇全新的獨立目錄，並驗證來自這台 AgEnD 的安裝程式，不會變更 PATH。請執行安裝程式顯示的完整路徑 run 指令，並在詢問時輸入原本的設定檔資料夾；既有配對會保留，不需要新的配對碼。",
+    repair: "顯示重新安裝指令", repairTitle: "啟用 Runtime 自動更新", repairHint: "沿用此 Runtime 原本的 --profile 或 AGEND_RUNTIME_HOME 執行 agend-runtime status，記下設定檔資料夾，再關閉此 Runtime。指令會選擇全新的獨立目錄，並驗證來自這台 AgEnD 的安裝程式，不會變更 PATH。請執行安裝程式顯示的完整路徑 run 指令，並在詢問時輸入原本的設定檔資料夾；既有配對會保留，不需要新的配對碼。",
     attention: "Runtime 更新需要處理", open: "開啟 Runtime 設定",
   },
 });

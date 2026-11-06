@@ -387,7 +387,7 @@
         Write-Host ''
         if ([string]$env:AGEND_RUNTIME_REPAIR -eq '1') {
             Write-Host 'AgEnD Runtime is installed. Keep your existing profile and pairing; PATH was not changed.'
-            Write-Host 'Use the profile folder shown by your old Runtime status. Run this exact new executable and enter that same folder:'
+            Write-Host 'Use the same existing profile folder, including any previous --profile or AGEND_RUNTIME_HOME. Run this exact new executable and enter that folder:'
             $literalShim = $shim.Replace("'", "''")
             Write-Host ('  $agendProfile = $null; $agendProfile = Read-Host ''Existing Runtime profile folder (same as before)''; if ($agendProfile) { & ''' + $literalShim + ''' run --profile $agendProfile } else { throw ''Existing Runtime profile folder is required'' }')
         } else {
