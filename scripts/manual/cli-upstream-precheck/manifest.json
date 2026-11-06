@@ -929,7 +929,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/daemon.ts",
-     "line": 1192,
+     "line": 1195,
      "symbol": "detectMalformedClaudeToolCall.closingTags"
     },
     {
@@ -2005,7 +2005,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2013,7 +2013,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2021,7 +2021,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2029,7 +2029,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 5371,
+     "line": 5395,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2161,7 +2161,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2169,7 +2169,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2177,7 +2177,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -2185,7 +2185,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13542,
+     "line": 13579,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2193,7 +2193,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13543,
+     "line": 13580,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2201,7 +2201,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13543,
+     "line": 13580,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2209,7 +2209,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13543,
+     "line": 13580,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2217,7 +2217,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13543,
+     "line": 13580,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2225,7 +2225,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13543,
+     "line": 13580,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2233,7 +2233,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13543,
+     "line": 13580,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2241,7 +2241,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13544,
+     "line": 13581,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2249,7 +2249,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13640,
+     "line": 13677,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2257,7 +2257,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13763,
+     "line": 13800,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2265,7 +2265,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13763,
+     "line": 13800,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -3178,7 +3178,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 842,
-     "symbol": "KIRO_V3_EASE_IN.header"
+     "symbol": "KIRO_V3_EASE_IN.header",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Don't ask again",
@@ -3186,7 +3187,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 843,
-     "symbol": "KIRO_V3_EASE_IN.options"
+     "symbol": "KIRO_V3_EASE_IN.options",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Remind me later",
@@ -3202,7 +3204,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 843,
-     "symbol": "KIRO_V3_EASE_IN.options"
+     "symbol": "KIRO_V3_EASE_IN.options",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Your agent configs are still in the 2.0 format",
@@ -3258,7 +3261,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 875,
-     "symbol": "KIRO_V3_EASE_IN_V2_USER.header"
+     "symbol": "KIRO_V3_EASE_IN_V2_USER.header",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Switch to V3 and upgrade my configs",
@@ -3266,7 +3270,8 @@
      "surface": "onboarding",
      "file": "src/backend/kiro.ts",
      "line": 876,
-     "symbol": "KIRO_V3_EASE_IN_V2_USER.options"
+     "symbol": "KIRO_V3_EASE_IN_V2_USER.options",
+     "retiredAfter": "3.0.0"
     },
     {
      "text": "Your agent configs are still in the V2 format",
@@ -3665,7 +3670,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3673,7 +3678,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3681,7 +3686,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3781,7 +3786,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/backend/grok.ts",
-     "line": 35,
+     "line": 40,
      "symbol": "GROK_LEGEND_QUESTION"
     },
     {
@@ -3789,7 +3794,7 @@
      "kind": "regex",
      "surface": "other",
      "file": "src/backend/grok.ts",
-     "line": 36,
+     "line": 41,
      "symbol": "GROK_LEGEND_SCROLLBACK"
     },
     {
@@ -3797,7 +3802,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 48,
+     "line": 53,
      "symbol": "grokWeeklyLimitActive.pattern"
     },
     {
@@ -3805,7 +3810,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 67,
+     "line": 72,
      "symbol": "grokWeeklyLimitActive.title"
     },
     {
@@ -3813,7 +3818,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 68,
+     "line": 73,
      "symbol": "grokWeeklyLimitActive.submit"
     },
     {
@@ -3821,7 +3826,7 @@
      "kind": "regex",
      "surface": "input-box",
      "file": "src/backend/grok.ts",
-     "line": 410,
+     "line": 493,
      "symbol": "GrokBackend.isDeliveryComposerPane"
     },
     {
@@ -3829,7 +3834,7 @@
      "kind": "regex",
      "surface": "idle-busy",
      "file": "src/backend/grok.ts",
-     "line": 426,
+     "line": 509,
      "symbol": "GrokBackend.getReadyPattern"
     },
     {
@@ -3837,7 +3842,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 514,
+     "line": 597,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3845,7 +3850,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 514,
+     "line": 597,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3853,7 +3858,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 514,
+     "line": 597,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3861,7 +3866,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 514,
+     "line": 597,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3869,7 +3874,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 515,
+     "line": 598,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3877,7 +3882,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 522,
+     "line": 605,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3885,7 +3890,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 526,
+     "line": 609,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3893,7 +3898,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 526,
+     "line": 609,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3901,7 +3906,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 526,
+     "line": 609,
      "symbol": "GrokBackend.getErrorPatterns.notice"
     },
     {
@@ -3909,7 +3914,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 535,
+     "line": 618,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3917,7 +3922,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 535,
+     "line": 618,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3925,7 +3930,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 535,
+     "line": 618,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3933,7 +3938,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 535,
+     "line": 618,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -3941,7 +3946,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 536,
+     "line": 619,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -3949,7 +3954,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 570,
+     "line": 656,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3957,7 +3962,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 576,
+     "line": 662,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3965,7 +3970,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 576,
+     "line": 662,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -3973,7 +3978,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3981,7 +3986,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -3989,7 +3994,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4161,7 +4166,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4169,7 +4174,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
@@ -4177,7 +4182,7 @@
      "kind": "regex",
      "surface": "resume",
      "file": "src/daemon.ts",
-     "line": 824,
+     "line": 827,
      "symbol": "LEGACY_NO_CONVERSATION"
     },
     {
