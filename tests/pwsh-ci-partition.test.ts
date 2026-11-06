@@ -10,7 +10,7 @@ import { discoverPwshSuites } from "./support/pwsh-ci-discovery.js";
 interface Job {
   if?: string; needs?: string[]; "runs-on"?: string;
   strategy?: { matrix: { os: string } };
-  steps: Array<{ name?: string; if?: string; run?: string; env?: Record<string, string> }>;
+  steps: Array<{ name?: string; if?: string; run?: string; env?: Record<string, string>; "timeout-minutes"?: number; "continue-on-error"?: boolean }>;
 }
 const workflow = () => yaml.load(readFileSync(".github/workflows/ci.yml", "utf8")) as { jobs: Record<string, Job> };
 
@@ -58,10 +58,17 @@ describe("PowerShell CI resource partition", () => {
     const at = serial.steps.findIndex(s => s.name === "Run isolated installer tests");
     expect(at).toBeGreaterThan(-1);
     expect(serial.steps[at]?.if).toBe("needs.detect-changes.outputs.text-only != 'true'");
-    expect(serial.steps[at]?.run).toContain("command -v pwsh");
     expect(serial.steps[at]?.run).toContain("npx vitest run --config vitest.config.pwsh.ts");
-    // No extra pwsh process warms the cache before the actual test clock.
-    expect(serial.steps.slice(0, at + 1).some(s => s.run?.includes("pwsh --version"))).toBe(false);
+    const build = serial.steps.findIndex(s => s.name === "Prepare installer test build");
+    const preparation = serial.steps.findIndex(s => s.name === "Prepare PowerShell runtime");
+    expect(build).toBeGreaterThan(-1);
+    expect(serial.steps[build]?.run).toContain("command -v pwsh");
+    expect(preparation).toBeGreaterThan(build);
+    expect(preparation).toBeLessThan(at);
+    expect(serial.steps[preparation]?.if).toBe("needs.detect-changes.outputs.text-only != 'true'");
+    expect(serial.steps[preparation]?.["timeout-minutes"]).toBe(2);
+    expect(serial.steps[preparation]?.["continue-on-error"]).toBeUndefined();
+    expect(serial.steps[preparation]?.run).toBe("node scripts/ci/prepare-pwsh.mjs");
     expect(serial.steps.findIndex(s => s.name === "PowerShell version")).toBeGreaterThan(at);
     expect(jobs.build?.needs).toContain("test-pwsh");
   });

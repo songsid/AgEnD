@@ -218,14 +218,22 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Run isolated installer tests
+      - name: Prepare installer test build
         if: needs.detect-changes.outputs.text-only != 'true'
         run: |
           command -v pwsh
           docker version
           npm ci
           npm run build
-          npx vitest run --config vitest.config.pwsh.ts
+      # Cold runtime/JIT preparation is bounded and timed separately; helper START
+      # and case deadlines remain10s. A preparation failure prevents test admission.
+      - name: Prepare PowerShell runtime
+        if: needs.detect-changes.outputs.text-only != 'true'
+        timeout-minutes: 2
+        run: node scripts/ci/prepare-pwsh.mjs
+      - name: Run isolated installer tests
+        if: needs.detect-changes.outputs.text-only != 'true'
+        run: npx vitest run --config vitest.config.pwsh.ts
       # Record the runtime AFTER tests, not as an unbounded pre-warm before START.
       - name: PowerShell version
         if: always() && needs.detect-changes.outputs.text-only != 'true'
