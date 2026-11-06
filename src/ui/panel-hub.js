@@ -17,7 +17,8 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
 // #3226 B: the chat is the fleet chat's own drawing (PR A's shared modules), in the fleet chat's words.
-import { createThread } from "/assets/chat-thread.js";
+import { createThread, msgKey } from "/assets/chat-thread.js";
+import { PreviewPanel, closePanel, panelStore } from "/assets/preview-panel.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { RailFrame } from "/assets/side-rail.js";
 import "/assets/chat-strings.js";
@@ -28,6 +29,7 @@ import { ho, linkHubOwnerCss } from "./hub-owner-strings.js";
 import { createHubChatStore } from "./hub-chat-store.js";
 import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quota.js";
 import { PageHead } from "/assets/page-head.js";
+import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
 import { PendingFiles, hf, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
 
 const TITLES = { ask: "askTitle", exposures: "exposuresTitle", admin: "adminTitle" };
@@ -318,6 +320,26 @@ function HubRoomView({ room: given }) {
   useEffect(() => () => { alive.current = false; }, []);
   const input = useRef(null);
   useEffect(() => { setTitle(room.exposureName || hw("askTitle")); }, [room.exposureName]);
+  // #3226 E: the side panel for this room's HTML pages (the fleet's panel). Its "Reply about this page" / Point at it
+  // lines go into this composer; leaving the room closes it.
+  const split = useRef(null), threadRef = useRef(null);
+  const panelKey = roomPanelKey(given.id);
+  const [panelOpen, setPanelOpen] = useState(() => panelOpenFor(panelKey));
+  useEffect(() => { bootHubPreview(); }, []);
+  useEffect(() => {
+    setPanelOpen(panelOpenFor(panelKey));
+    const off = panelStore.subscribe(() => setPanelOpen(panelOpenFor(panelKey)));
+    const release = bindRoomFeedback({
+      findMsg: (key) => store.messages().find((x) => msgKey(x) === key) || null,
+      addLine: (line) => setDraft((d) => draftWithLine(d, line)),
+      focus: () => {
+        const el = input.current; if (!el) return;
+        el.focus();
+        setTimeout(() => { try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
+      },
+    });
+    return () => { off(); release(); };
+  }, [store]);
   const closed = store.closed() || room.state === "closed";
   const frozen = !closed && room.exposureState === "frozen";
   const working = store.working();
@@ -348,19 +370,26 @@ function HubRoomView({ room: given }) {
     if (refused.length) setMsg(refused.join(" "));
   } } : null;
   const onKeyDown = (e) => { if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); send(); } };
-  const toggleInfo = () => { if (!wide) { setSheet(true); return; } setRail((v) => { setRailPref(!v); return !v; }); };
+  const toggleInfo = () => {
+    if (!wide) { setSheet(true); return; }
+    // The panel is where the rail was: the info button puts the rail back (and closes the page).
+    if (panelOpen) { closePanel(); setRail(true); setRailPref(true); return; }
+    setRail((v) => { setRailPref(!v); return !v; });
+  };
   const tag = closed ? html`<span class="tag danger">${hc("tagClosed")}</span>` : frozen ? html`<span class="tag warn">${hc("tagFrozen")}</span>`
     : html`<${QuotaChip} room=${room} fallback=${html`<span class="tag ok">${hc("tagCanAsk")}</span>`} />`;
   const back = !wide ? html`<a class="icon-btn hub-back" href="/ui/hub" aria-label=${hc("back")} title=${hc("back")}><${Icon} name="back" /></a>` : null;
   const info = html`<${HubRoomInfo} room=${room} closed=${closed} />`;
-  return html`<div class=${`hub-chat${wide && rail ? " with-rail" : ""}`}>
+  // The panel takes the info rail's place while it shows a page (the rail's button brings the rail back).
+  const showRail = wide && rail && !panelOpen;
+  return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`} ref=${split}>
     <section class="hub-chat-main" aria-label=${name}>
       <header class="hub-chat-head" data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
         <span class="hub-chat-title"><strong>${name}</strong><span class="s">${room.ownerName ? hc("answersFor", room.ownerName) : ""}</span></span>
         ${tag}
-        <button type="button" class="icon-btn" aria-pressed=${wide ? String(rail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
+        <button type="button" class="icon-btn" aria-pressed=${wide ? String(showRail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
       </header>
-      <${HubThread} store=${store} name=${name} />
+      <${HubThread} store=${store} name=${name} panelKey=${panelKey} threadRef=${threadRef} />
       <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
         ${closed ? html`<p class="hub-banner danger" role="status">${hc("closed")}</p>` : null}
         ${frozen ? html`<p class="hub-banner warn" role="status">${hc("frozen", name)}</p>` : null}
@@ -377,7 +406,9 @@ function HubRoomView({ room: given }) {
         ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
       </div></div>
     </section>
-    ${wide && rail ? html`<${RailFrame} trust="hub-context" label=${hc("infoLabel")} title=${hc("info")} closeLabel=${hc("hideInfo")}
+    <${PreviewPanel} name=${panelKey} split=${split} msgs=${() => store.messages()} subscribe=${(fn) => store.subscribe(() => fn(panelKey, "msgs"))}
+      keyOf=${msgKey} reveal=${(k) => threadRef.current && threadRef.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setHubPreviewOptIn(true, commit)} />
+    ${showRail ? html`<${RailFrame} trust="hub-context" label=${hc("infoLabel")} title=${hc("info")} closeLabel=${hc("hideInfo")}
       onClose=${() => { setRail(false); setRailPref(false); }}>${info}</${RailFrame}>` : null}
     ${!wide && sheet ? html`<${Dialog} title=${hc("info")} label=${hc("infoLabel")} onClose=${() => setSheet(false)}><div class="hub-rail-sheet">${info}</div></${Dialog}>` : null}
   </div>`;
@@ -391,7 +422,7 @@ function HubWorkBar({ name, since }) {
 }
 
 /** The thread: the fleet chat's own (createThread), fed by the room's store. */
-function HubThread({ store, name }) {
+function HubThread({ store, name, panelKey, threadRef }) {
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
@@ -402,7 +433,9 @@ function HubThread({ store, name }) {
     list.className = "thread"; list.setAttribute("role", "log"); list.setAttribute("aria-live", "off"); list.setAttribute("aria-label", name);
     const thread = createThread(list, doc.createElement("div"), {
       t: threadT, tf: threadT, isUser: (x) => x.role === "user", onJump: setJump, onEmpty: setEmpty, canReply: () => false,
-      setPreviewOptIn: () => {}, copyText, download: () => {}, toggleWrap: () => {}, notice: (text) => toast(text, false),
+      // #3226 E: an HTML page opens in the room's side panel, at the Hub's own preview address (hub-preview.js).
+      setPreviewOptIn: setHubPreviewOptIn, copyText, download: downloadHtml, toggleWrap: () => {}, notice: (text) => toast(text, false),
+      panel: roomPanelOpts(panelKey),
       clickReplyButton: (id, index) => { void store.clickButton(id, index).then((r) => {
         if (!r.ok && r.code !== "busy" && r.code !== "stopped") { toast(errText(r), false); store.refresh(); }
       }); },
@@ -411,15 +444,23 @@ function HubThread({ store, name }) {
       emojis: () => false, mentions: () => null,
     });
     th.current = thread;
+    if (threadRef) threadRef.current = thread;
     host.current.append(list);
     thread.attach(scroller.current);
     thread.render(store.messages());
     const off = store.subscribe(() => thread.render(store.messages()));
+    // A card shows whether this browser allows previews and whether the panel has its page.
+    const P = globalThis.AgendPreview;
+    const offOpt = P && typeof P.onChange === "function" ? P.onChange(() => thread.refreshCards()) : () => {};
+    const offPanel = panelStore.subscribe(() => thread.refreshCards());
     const sc = scroller.current;
     const onScroll = () => thread.onScroll();
     sc.addEventListener("scroll", onScroll, { passive: true });
     list.addEventListener("click", thread.onClick);
-    return () => { off(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick); thread.dispose(true); list.remove(); th.current = null; };
+    return () => {
+      off(); offOpt(); offPanel(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick);
+      thread.dispose(true); list.remove(); th.current = null; if (threadRef && threadRef.current === thread) threadRef.current = null;
+    };
   }, [store]);
   return html`<div class="scroller hub-scroller" ref=${scroller}>
     <div class="thread-host" ref=${host}></div>

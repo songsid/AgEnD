@@ -1,6 +1,6 @@
 # Hub HTML preview origin
 
-This is the server half of chat proposal [#3226](https://github.com/songsid/AgEnD/issues/3226). It follows the [revised seam](https://github.com/songsid/AgEnD/issues/3226#issuecomment-6689091238): the fleet's existing static shim and opaque sandbox replace the initial capability-URL proposal. There are no bearer URLs, mint routes, preview cookies or server-side preview sessions. The Hub panel UI follows separately.
+This is the server half of chat proposal [#3226](https://github.com/songsid/AgEnD/issues/3226). It follows the [revised seam](https://github.com/songsid/AgEnD/issues/3226#issuecomment-6689091238): the fleet's existing static shim and opaque sandbox replace the initial capability-URL proposal. There are no bearer URLs, mint routes, preview cookies or server-side preview sessions. The panel UI is described under [The panel](#the-panel).
 
 An initialized Hub can opt in locally in its `fleet.yaml`:
 
@@ -24,6 +24,17 @@ The guarantee remains the fleet's [account boundary](1306-inline-html-preview.md
 Validation uses scratch homes, real loopback HTTPS listeners and D1 storage, a fake directory and member delivery, and the unchanged fleet preview code. `scripts/manual/hub-preview/accept.mts` produces before/after desktop/phone PNGs in EN/zh-TW, including cached-shell modules. It is explicitly a server acceptance fixture, not the pending panel UI. Unit/integration coverage includes default-off, config admission, fencing/reload, certificate renewal, failed-bind cleanup, session/grant revocation, strict response surface and the shared handshake checks. Semantic mutations cover authorization, boot/channel/single-render guards and listener admission.
 
 Rollback: remove `hub.web.preview_port` and reload to stop the listener and remove the shell allowance, or revert this server feature. It adds no database schema component. Keep the normal D1 database rollback restrictions when moving to a build older than D1.
+
+## The panel
+
+A Hub room uses the fleet's own side panel. The panel, its actions, versions and pages are served from `/assets/` (`src/ui/shared/`) by both listeners. The fleet's `/ui/js/preview-panel.js` registers the two pieces only the fleet shows: Files & changes (`workspace-panel.js`) and a page's Share (`page-share-dialog.js`). The Hub never loads either of them. `src/ui/hub-preview.js` is the Hub's half. It does the following:
+
+- reads the shell's preview data once per page;
+- words the opt-in for this Hub in this browser, kept in the Hub origin's own storage;
+- keys the panel to the room (`hub-room:<id>`);
+- sends the panel's lines into the room's composer, each once. The Hub has no reply-to.
+
+While the panel shows a page, it takes the info rail's place, and the info button brings the rail back. Leaving the room closes the panel. On a phone the panel is a sheet, as in the fleet. The banner's "I understand" lasts for the tab, because the Hub has no fleet session handle.
 
 ## 設定與邊界
 
