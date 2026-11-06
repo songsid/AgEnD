@@ -228,6 +228,10 @@ describe("Daemon native-queue fallback does not treat waitUntilIdle → false as
 
       const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
       const backend = createBackend("grok", dir);
+      // #3199: grok now reads its boxed prompt. This case pins the readerless
+      // steer-handoff idle-wait (#1490 row 70); a working reader returns
+      // "handoff-box-unread" on this Claude-shaped pane and never reaches the wait.
+      Object.assign(backend, { readInputRow: undefined });
       const daemon = new Daemon("r70-test", {
         working_directory: "/tmp",
         backend: "grok",
