@@ -257,17 +257,19 @@ describe("Follow agent (#3160)", () => {
   it("does no polling while hidden and coalesces navigation while keeping the turn strip", async () => {
     serve();
     const doc = await chat(); await openWs();
-    Object.defineProperty(doc, "hidden", { configurable: true, value: true });
-    followBtn(doc).click(); await wait();
-    expect(follows()).toBe(0);
-    Object.defineProperty(doc, "hidden", { configurable: true, value: false });
     const previous = wsp.FOLLOW_TIMING.applyMs; wsp.FOLLOW_TIMING.applyMs = 100;
+    // Advance Date.now and the render/poll timer queue together; real settle() can cross another coalescing window.
+    vi.useFakeTimers({ now: Date.UTC(2026, 10, 7) });
     try {
+      Object.defineProperty(doc, "hidden", { configurable: true, value: true });
+      followBtn(doc).click(); await vi.advanceTimersByTimeAsync(120);
+      expect(follows()).toBe(0);
+      Object.defineProperty(doc, "hidden", { configurable: true, value: false });
       follow = Array.from({ length: 6 }, (_, i) => ({ supported: true, running: true, turn: 1, steps: [step(i + 1, "read", [P(i % 2 ? "src/b.ts" : "src/a.ts")])] }));
-      await wait(160);
+      await vi.advanceTimersByTimeAsync(160);
       expect(doc.querySelectorAll(".ws-step").length).toBe(6);
       expect(calls.filter(u => u.includes("op=file")).length).toBeLessThanOrEqual(2);
-    } finally { wsp.FOLLOW_TIMING.applyMs = previous; }
+    } finally { wsp.FOLLOW_TIMING.applyMs = previous; vi.useRealTimers(); }
   });
 
   it("a backend Follow does not cover, or an agent that is not running, is said in words", async () => {
