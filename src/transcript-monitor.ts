@@ -184,7 +184,9 @@ export class TranscriptMonitor extends EventEmitter {
       this.transcriptPath = current;
       if (replacedKnownTranscript) {
         // Work resumed during our own startup must be observable → read the
-        // replacement from the top — but what it carries over is history for the alarms (historyBefore).
+        // replacement from the top — but what it carries over is history for the alarms (historyBefore). One gap,
+        // accepted: records the old file got after our last poll and before the switch are newer than seenThrough and
+        // are told once from the copy (at most a poll interval's worth).
         this.historyBefore = Math.max(this.attachBoundary, this.seenThrough);
         this.byteOffset = 0;
         this.skipping = false;
