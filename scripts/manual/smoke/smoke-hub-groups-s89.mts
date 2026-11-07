@@ -64,7 +64,7 @@ const WELCOME: Record<string, unknown> = {
 };
 const json = (route: any, body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json; charset=utf-8", body: JSON.stringify(body) });
 /** The group contract's routes and the session's mark, supplied in the browser until S-88 composes them; the new lazy modules from REPO. */
-async function contract(page: any, welcome: keyof typeof WELCOME, opts: { mark?: boolean } = {}) {
+async function contract(page: any, welcome: keyof typeof WELCOME, opts: { mark?: boolean; roomsDenied?: boolean; policyState?: string } = {}) {
   const mark = opts.mark !== false;
   await page.route((u: URL) => u.pathname === "/hub/v1/session", async (route: any) => {
     // Both the read (GET) and the sign-in's answer (POST) carry the session the page keeps; DELETE (sign out) passes as is.
@@ -75,9 +75,11 @@ async function contract(page: any, welcome: keyof typeof WELCOME, opts: { mark?:
   await page.route((u: URL) => NEW_MODULES.some((f) => u.pathname === `/ui/js/${f}`), (route: any) =>
     route.fulfill({ status: 200, contentType: "text/javascript; charset=utf-8", body: readFileSync(join(REPO, "src/ui", new URL(route.request().url()).pathname.slice("/ui/js/".length)), "utf8") }));
   await page.route((u: URL) => u.pathname === "/hub/v1/me/welcome", (route: any) => json(route, WELCOME[welcome]));
+  // As the real Hub answers a person whose groups don't include chatting (Cairn #3372 browser run).
+  if (opts.roomsDenied) await page.route((u: URL) => u.pathname === "/hub/v1/rooms", (route: any) => route.request().method() === "GET" ? json(route, { code: "denied" }, 403) : route.continue());
   await page.route((u: URL) => u.pathname.startsWith("/hub/v1/admin/group-policy"), (route: any) => {
     const p = new URL(route.request().url()).pathname, m = route.request().method();
-    if (p === "/hub/v1/admin/group-policy" && m === "GET") return json(route, { ok: true, groupPolicyV1: true, supported: true, binding: "ready", policy: POLICY, paused: [] });
+    if (p === "/hub/v1/admin/group-policy" && m === "GET") return json(route, { ok: true, groupPolicyV1: true, supported: true, binding: "ready", policy: { ...POLICY, ...(opts.policyState ? { state: opts.policyState } : {}) }, paused: [] });
     if (p.endsWith("/preview")) return json(route, { ok: true, previewDigest: "d".repeat(64), expiresAt: Date.now() + 60_000, policyRevision: 4, authorizationVersion: 1, impact: IMPACT });
     if (p.endsWith("/resolve")) return json(route, { ok: true, realm: "corp", objectId: "2f1e2d3c-4b5a-4968-8776-655443322112", dn: "CN=Hub-MultiFleet,OU=Groups,DC=example,DC=test" });
     if (m === "PUT") return json(route, { ok: true, policyRevision: 5, state: "enabled" });
@@ -110,16 +112,16 @@ try {
     const tag = `${c.device}-${c.theme}-${c.lang}`;
     // ── the welcome, in its three states ──
     for (const state of ["none", "ask", "full"] as const) {
-      const o = await open(c, "/ui/hub", (p) => contract(p, state));
+      const o = await open(c, "/ui/hub", (p) => contract(p, state, { roomsDenied: state === "none" }));
       await signIn(o.page, "bo");
       await o.page.waitForSelector(".hub-welcome-page .hub-welcome-card", { timeout: 10000 });
       await o.page.waitForTimeout(300);
       const w = await o.page.evaluate(`({ cards: [...document.querySelectorAll(".hub-welcome-card")].map((x) => [x.dataset.entry, x.getAttribute("aria-disabled"), !!x.querySelector(".btn")]),
-        none: !!document.querySelector('[data-welcome="no-actions"]'), nothing: !!document.querySelector('[data-welcome="nothing-shared"]'), fleets: document.querySelector('[data-welcome="fleets"]')?.textContent || "" })`);
+        none: !!document.querySelector('[data-welcome="no-actions"]'), alerts: document.querySelectorAll('.error-state, [role=alert]').length, nothing: !!document.querySelector('[data-welcome="nothing-shared"]'), fleets: document.querySelector('[data-welcome="fleets"]')?.textContent || "" })`);
       await o.page.screenshot({ path: shot(`${tag}-welcome-${state}`), fullPage: true });
       const want = state === "none" ? [["chat", "true", false], ["connect", "true", false]] : state === "ask" ? [["chat", "false", true], ["connect", "true", false]] : [["chat", "false", true], ["connect", "false", false]];
       check(`${tag}-welcome-${state}`, JSON.stringify(w.cards) === JSON.stringify(want) && w.none === (state === "none") && w.nothing === (state !== "none")     /* Bo has nothing shared: chat-allowed states say so */
-        && (state !== "full" || /0/.test(w.fleets)) && !(await overflow(o.page)) && await clean(o), { w, errs: o.errs, foreign: o.foreign, csp: await o.csp() });
+        && w.alerts === 0 && (state !== "full" || /0/.test(w.fleets)) && !(await overflow(o.page)) && await clean(o), { w, errs: o.errs, foreign: o.foreign, csp: await o.csp() });
       await o.ctx.close();
     }
     // ── Administration: the entry, then the editor ──
@@ -140,6 +142,19 @@ try {
     check(`${tag}-editor`, ed.rows === 2 && ed.url === "/ui/hub/admin?view=groups" && /Bo Wu/.test(ed.preview) && /Sales numbers/.test(ed.preview) && /Dee Lin/.test(ed.preview) && !(await overflow(d.page)) && await clean(d),
       { ed: { ...ed, preview: ed.preview.slice(0, 160) }, errs: d.errs, foreign: d.foreign, csp: await d.csp() });
     await d.ctx.close();
+    // ── never enabled: Turn on is pending until saved; the card keeps the saved state (Cairn #3372) ──
+    const n = await open(c, "/ui/hub/admin", (p) => contract(p, "full", { policyState: "never-enabled" }));
+    await signIn(n.page, "admin");
+    await n.page.waitForSelector('[data-entry="group-permissions"] .btn', { timeout: 10000 }); await n.page.click('[data-entry="group-permissions"] .btn');
+    await n.page.waitForSelector(".hub-groups-state .btn", { timeout: 10000 });
+    const head0 = await n.page.evaluate(`document.querySelector(".hub-groups-state h3").textContent`);
+    await n.page.click(".hub-groups-state .btn"); await n.page.waitForTimeout(400);
+    const nv = await n.page.evaluate(`({ head: document.querySelector(".hub-groups-state h3").textContent, pending: document.querySelector(".hub-groups-state [data-pending]")?.getAttribute("data-pending") || null,
+      save: document.querySelector(".hub-groups-preview .btn-primary")?.textContent || "" })`);
+    await n.page.evaluate(`document.querySelector(".hub-groups-state").scrollIntoView({ block: "start" })`); await n.page.waitForTimeout(150);
+    await n.page.screenshot({ path: shot(`${tag}-editor-pending-on`) });
+    check(`${tag}-editor-pending`, nv.head === head0 && nv.pending === "on" && !(await overflow(n.page)) && await clean(n), { head0, nv, errs: n.errs, csp: await n.csp() });
+    await n.ctx.close();
   }
   // ── SKEW ──
   const serveOld = (files: string[]) => async (page: any) => page.route((u: URL) => files.some((f) => u.pathname === `/ui/js/${f}` || u.pathname === `/assets/${f}`), (route: any) => {

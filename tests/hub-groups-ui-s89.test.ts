@@ -128,6 +128,28 @@ describe("Administration → Group permissions", () => {
     expect(saves).toHaveLength(1); expect(saves[0]![1]).toEqual(sent); expect(saves[0]![2]).toBe("d".repeat(64));
     expect(pg.document.querySelector("dialog, [role=dialog]")).toBe(null);
   });
+  it("before the first save, Turn on is shown as pending — the card keeps saying Off until it is saved (Cairn #3372)", async () => {
+    const f = fake({ groupPolicy: async () => ({ ok: true, groupPolicyV1: true, supported: true, binding: "ready", policy: { ...POLICY, state: "never-enabled" }, paused: [] }) });
+    const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
+    await until(() => pg.root.querySelector(".hub-groups-state .btn"));
+    const card = () => pg.root.querySelector(".hub-groups-state");
+    expect(text(card().querySelector("h3"))).toBe("Off"); expect(card().querySelector("[data-pending]")).toBe(null);
+    fire(card().querySelector(".btn"), "click"); await settle(20);
+    expect(text(card().querySelector("h3"))).toBe("Off");
+    expect(card().querySelector("[data-pending]").getAttribute("data-pending")).toBe("on");
+    expect(text(card())).toContain("Not saved"); expect(text(card())).toContain("Turns on when you save.");
+    expect(text(card().querySelector(".btn"))).toBe("Undo");
+    fire(card().querySelector(".btn"), "click"); await settle(20);
+    expect(card().querySelector("[data-pending]")).toBe(null); expect(text(card().querySelector(".btn"))).toBe("Turn on");
+  });
+  it("turning a saved policy off is pending too, and says what it pauses", async () => {
+    const f = fake(); const pg = await mountWith(f.c, h(editor.HubGroupPolicyPage, {}));
+    await until(() => pg.root.querySelector(".hub-groups-state .btn"));
+    const card = () => pg.root.querySelector(".hub-groups-state");
+    expect(text(card().querySelector("h3"))).toBe("On");
+    fire(card().querySelector(".btn"), "click"); await settle(20);
+    expect(text(card().querySelector("h3"))).toBe("On"); expect(card().querySelector("[data-pending]").getAttribute("data-pending")).toBe("off");
+  });
   it("the preview's effects are listed, the admin losing chat included", async () => {
     const f = fake({ previewGroupPolicy: async () => ({ ok: true, previewDigest: "e".repeat(64), expiresAt: 1, policyRevision: 4, authorizationVersion: 1, impact: {
       losingActions: [{ personId: { realm: "corp", objectId: ID1 }, name: "Bo Wu", login: "bo" }], losingPublication: [{ personId: { realm: "corp", objectId: ID2 }, name: "Cy", login: null }],
@@ -209,6 +231,23 @@ describe("discovery and gating", () => {
     await until(() => pg.root.querySelector('[data-groups="unavailable"]'), 200);
     expect(text(pg.root.querySelector('[data-groups="unavailable"]'))).toBe("Group permissions aren't available on this Hub yet. Update the Hub, then try again.");
     expect(base.calls.some(x => x[0] === "groupPolicy")).toBe(false);
+  });
+  it("group permissions on, chatting not in this person's access: the list's refusal is quiet, not an error (Cairn #3372)", async () => {
+    for (const code of ["denied", "revoked"]) {
+      const f = fake({ rooms: async () => ({ ok: false, status: 403, code }) });
+      const pg = await mountWith(f.c, h(panel.HubPanel, { route: { panel: "hub", tab: "ask" } }));
+      await until(() => pg.root.querySelector(".hub-welcome-page"), 300); await settle(10);
+      expect(text(pg.root), code).not.toContain("You're not allowed to do that");
+      expect(pg.root.querySelector(".hub-home-list [role=alert], .hub-home-list .err"), code).toBe(null);
+      await pg.unmount(); mounted.splice(mounted.indexOf(pg), 1); pg.restore(); client.setHubClient(null); panel.resetHubSession();
+    }
+  });
+  it("without group permissions the same refusal is still said", async () => {
+    const f = fake({ rooms: async () => ({ ok: false, status: 403, code: "denied" }),
+      session: async () => ({ ok: true, signedIn: true, displayName: "Ada", login: "ada", admin: true, csrf: "x" }) });
+    const pg = await mountWith(f.c, h(panel.HubNav, {}));
+    await until(() => text(pg.root).includes("You're not allowed to do that"), 300);
+    expect(text(pg.root)).toContain("You're not allowed to do that");
   });
   it("the signed-in landing is the welcome when marked; the chat list otherwise", async () => {
     const f = fake();

@@ -210,7 +210,10 @@ function useRead(read) {
 export const ROOMS_MS = 30_000;
 export function refreshRooms() {
   return roomsReading ??= hubClient().rooms().then((r) => {
-    roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
+    // With group permissions on, a person whose groups don't include chatting is refused the list: that is their access, shown
+    // by the welcome, not a failure (Cairn #3372) — the list stays empty and quiet. Every chat action still asks the server.
+    if (!r.ok && (r.code === "denied" || r.code === "revoked") && groupPolicyOn(session, hubClient())) roomsStore.set({ loaded: true, rooms: [], error: null, denied: true });
+    else roomsStore.set(r.ok ? { loaded: true, rooms: r.rooms || [], error: null } : { ...roomsStore.get(), loaded: true, error: errText(r) });
   }, () => roomsStore.set({ ...roomsStore.get(), loaded: true, error: hw("errFailed") })).finally(() => { roomsReading = null; });
 }
 /** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden). */
@@ -258,7 +261,7 @@ export function HubNav({ onPick } = {}) {
     <div class="hub-sec">${hc("chats")}</div>
     ${rs.error ? html`<${ErrorState} message=${rs.error} onRetry=${refreshRooms} />` : null}
     ${!rs.loaded ? html`<${Skeleton} variant="rows" lines=${4} />` : null}
-    ${rs.loaded && !rs.error && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
+    ${rs.loaded && !rs.error && !rs.denied && !rs.rooms.length ? html`<p class="note hub-list-empty">${hc("noChatsHint")}</p>` : null}
     ${rs.rooms.length && !shown.length ? html`<p class="note hub-list-empty">${hc("noMatch")}</p>` : null}
     <ul class="hub-rooms" role="list">${shown.map((r) => html`<li key=${r.id}>
       <a class=${`hub-room-row${current === r.id ? " active" : ""}${r.state === "closed" ? " closed" : ""}`} href=${roomPath(r.id)} aria-current=${current === r.id ? "page" : undefined} onClick=${(e) => pick(e, r)}>

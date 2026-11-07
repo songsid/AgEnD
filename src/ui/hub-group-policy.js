@@ -103,7 +103,10 @@ export function HubGroupPolicyPage() {
   const head = html`<${PageHead} title=${hg("title")} scope=${hg("experimental")} lead=${hg("lead")} />`;
   if (error) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout"><${ErrorState} message=${error} onRetry=${load} /></div></div>`;
   if (!view) return html`<div class="col hub-owner hub-groups">${head}<div class="s-section-layout"><section class="card"><${Skeleton} variant="rows" lines=${4} /></section></div></div>`;
-  const stateKey = state === "enabled" ? "Enabled" : state === "suspended" ? "Suspended" : "Never";
+  // The card names the SAVED state; a turn on/off not saved yet is shown as pending, never as already on (Cairn #3372).
+  const saved = policy ? policy.state : "never-enabled";
+  const stateKey = saved === "enabled" ? "Enabled" : saved === "suspended" ? "Suspended" : "Never";
+  const pending = !!policy && state !== saved;
   const paused = Array.isArray(view.paused) ? view.paused : [];
   const pv = preview && preview.ok ? preview.impact || {} : null;
   const list = (rows, label) => rows && rows.length ? html`<div class="hub-groups-impact"><b>${label}</b><ul>${rows.map((r, i) => html`<li key=${i}>${r.name || r.label || r.dn || r.id}${r.login ? html` <small class="note"><code>${r.login}</code></small>` : null}</li>`)}</ul></div>` : null;
@@ -114,7 +117,10 @@ export function HubGroupPolicyPage() {
       ${view.binding === "repair-required" ? html`<p class="err" role="alert" data-reason="repair">${hg("repair")}</p>` : null}
       ${msg ? html`<p class=${msg.ok ? "note" : "err"} role=${msg.ok ? "status" : "alert"}>${msg.text}</p>` : null}
       ${!policy ? null : html`<section class="card hub-groups-state"><h3>${hg(`state${stateKey}`)}</h3><p class="note">${hg(`state${stateKey}Hint`)}</p>
-        ${editable ? html`<div class="hub-groups-actions">${state === "enabled"
+        ${pending ? html`<p class="note" role="status" data-pending=${state === "enabled" ? "on" : "off"}><span class="tag warn">${hg("notSaved")}</span> ${hg(state === "enabled" ? "pendingOn" : "pendingOff")}</p>` : null}
+        ${editable ? html`<div class="hub-groups-actions">${pending
+          ? html`<button type="button" class="btn btn-sm" onClick=${() => setState(saved)}>${hg("undo")}</button>`
+          : state === "enabled"
           ? html`<button type="button" class="btn btn-sm" onClick=${() => setState("suspended")}>${hg("turnOff")}</button>`
           : html`<button type="button" class="btn btn-sm" onClick=${() => setState("enabled")}>${hg("turnOn")}</button>`}</div>` : null}
       </section>
