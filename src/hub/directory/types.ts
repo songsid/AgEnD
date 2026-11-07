@@ -45,10 +45,13 @@ export type SignInResult =
   | { readonly ok: true; readonly person: DirectoryPerson }
   | { readonly ok: false; readonly reason: SignInRefusal };
 
-/** Local initialization only: finding an account does not authenticate it or issue a session. */
-export type InitializationLookupResult =
+/** A service-account lookup does not authenticate the selected person or issue a session. */
+export type DirectoryLookupResult =
   | { readonly ok: true; readonly person: DirectoryPerson }
   | { readonly ok: false; readonly reason: "bad-input" | "not-found" | "not-eligible" | "unavailable" };
+
+/** The local initializer retains its existing signature. */
+export type InitializationLookupResult = DirectoryLookupResult;
 
 export type IneligibleReason =
   | "gone" // no entry carries this object id any more (deleted, or recreated with a new id)
@@ -69,6 +72,8 @@ export interface HubDirectory {
   signIn(login: string, password: string): Promise<SignInResult>;
   /** Narrow service-account lookup for local init, never exposed as a browser lookup endpoint. Missing = unavailable. */
   lookupForInitialization?(login: string): Promise<InitializationLookupResult>;
+  /** Authenticated Hub-admin pairing selection only; not a public lookup, sign-in or grant. Missing keeps the existing known-person path. */
+  lookupForPairing?(login: string): Promise<DirectoryLookupResult>;
   /** Per-request eligibility (design §4): exists, same immutable id, enabled. No cache; unreachable = not eligible. */
   checkEligibility(key: PersonKey): Promise<Eligibility>;
   /** Release the directory; later calls refuse (unavailable). */

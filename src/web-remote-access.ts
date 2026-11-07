@@ -16,7 +16,7 @@
  * The secret never leaves this module except once, to the host operator who is setting it up (beginEnrollment). It is
  * never logged, never in a status, a Notice or an error.
  */
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { t } from "./locale.js";
@@ -208,6 +208,15 @@ export class WebRemoteAccess {
       pausedForMs: Math.max(0, this.state.pausedUntil - this.now()) };
   }
   get enrolled(): boolean { return !!this.state.totp; }
+  /**
+   * #3355 review (Prism P2): which app is set up — an opaque id of this enrollment (its secret and when it was set up), null
+   * when none. Replacing the app, or removing it and setting one up again, gives another id: what a code from the old one
+   * authorized can tell it no longer holds. Never the secret itself.
+   */
+  get enrollment(): string | null {
+    const t = this.state.totp;
+    return t ? createHash("sha256").update(`agend-totp-enrollment\0${t.secret}\0${t.enrolledAt}`).digest("hex").slice(0, 32) : null;
+  }
   /** The sessions authorized from outside since the last revocation (their receipts hold). */
   get admitted(): ReadonlySet<string> { return new Set(this.state.handles); }
 

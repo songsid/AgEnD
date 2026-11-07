@@ -15,7 +15,6 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
-import { hostSessionHere } from "../src/authority/web-authority.js";
 import { csrfTokenFor, tokenEpoch, type SessionRecord } from "../src/web-session.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { prepareSettingsEffect } from "../src/settings-effect.js";
@@ -26,31 +25,7 @@ import { setLocale } from "../src/locale.js";
 const dirs: string[] = [], stores: SettingsConfirmationStore[] = [];
 afterEach(() => { for (const s of stores.splice(0)) s.close(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); vi.restoreAllMocks(); });
 
-// ── The helper ──
-describe("hostSessionHere: the host operator's own session, used from this computer", () => {
-  const session = (over: Partial<SessionRecord> = {}) => ({ handle: "0123456789abcdef", tier: "admin", surface: "local", host: true, ...over }) as SessionRecord;
-  const req = (headers: Record<string, string> = {}, address = "127.0.0.1") => ({ socket: { remoteAddress: address }, headers: { host: "127.0.0.1:8470", ...headers } });
-  it.each([
-    ["a host session over loopback", session(), req(), true],
-    ["forwarded (x-forwarded-for)", session(), req({ "x-forwarded-for": "198.51.100.7" }), false],
-    ["forwarded (Forwarded)", session(), req({ forwarded: "for=198.51.100.7" }), false],
-    ["a public Host", session(), req({ host: "agend.example.test" }), false],
-    ["a LAN peer", session(), req({}, "192.168.1.20"), false],
-    ["a non-host session on loopback (never bare loopback)", session({ host: undefined }), req(), false],
-    ["a guest", session({ tier: "guest" as never }), req(), false],
-    ["a read session", session({ tier: "read" as never }), req(), false],
-    ["an account's session", session({ owner: { adapterId: "dc", userId: "1" } } as never), req(), false],
-    ["a gateway session", session({ surface: "gateway" as never }), req(), false],
-    ["no session (a header token)", null, req(), false],
-  ] as const)("%s → %s", (_why, s, r, expected) => {
-    expect(hostSessionHere(s, r as never)).toBe(expected);
-  });
-  it("a request bound to the public gateway is never here, even over loopback", () => {
-    const r = req() as never;
-    bindGatewayRequest(r, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
-    expect(hostSessionHere(session(), r)).toBe(false);
-  });
-});
+// The helper's own table is B2b's (tests/settings-totp-confirm-b2b.test.ts, "hostSessionHere …").
 
 // ── A real fleet: its web server, sign-in over HTTP ──
 interface Res { status: number; headers: Record<string, string | string[] | undefined>; body: string }
@@ -92,13 +67,13 @@ async function startFleet(config: Record<string, unknown> = {}) {
 }
 type Fleet = Awaited<ReturnType<typeof startFleet>>;
 /** A held change (connecting a Telegram bot — it needs confirming) with an apply that only records it ran. */
-function held(h: Fleet) {
+function held(h: Fleet, opts: { noSelfConfirm?: true } = {}) {
   const store = new SettingsConfirmationStore({ audit: vi.fn(), notify: vi.fn() }); stores.push(store);
   const effect = prepareSettingsEffect("PUT", "/api/settings/fleet/channels", [{ ...CHAT.channel, id: "tg" }], { config: h.fm.fleetConfig, classic: {} });
   const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
   const view = store.propose({ session: "browser", key: `k${Math.random()}`, bytes: 1, source: "web_session", section: effect.diff!.section, requestedBy: "browser",
     fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: effect.diff!.affectedConnections, authority: effect.diff!.authority,
-    current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+    ...opts, current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
   return { store, view, apply };
 }
 
@@ -129,6 +104,9 @@ describe("D3 on a chat fleet: a change no General can take is confirmed by the h
       bindGatewayRequest(gw, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://abc.trycloudflare.com", isCurrent: () => true });
       expect(h.any.settingsSelfConfirmation(a.store, gw, a.view.id)).toBeNull();
       expect(a.apply).not.toHaveBeenCalled();
+      // A change that opens a link (#2453 noSelfConfirm) is not widened by D3: it still waits (residual, for the leader).
+      const link = held(h, { noSelfConfirm: true });
+      expect(h.any.settingsSelfConfirmation(link.store, h.reqOf(host.sessionId), link.view.id)).toBeNull();
     } finally { await h.stop(); }
   }, 20_000);
   it("a change a General can take keeps its card (D1); asked again when it is confirmed: a General come up, or the session signed out, refuses it", async () => {

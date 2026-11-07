@@ -67,6 +67,11 @@ function publish() {
       withdraw: view.can_withdraw && view.state === "pending" ? () => withdraw(view.id) : null,
       // #2868: this browser may confirm it itself now (the server's read says so; it checks again on the click).
       applyNow: view.can_self_confirm && view.state === "pending" ? () => applyNow(view.id) : null,
+      // alpha.6 #2c (hmsg-468cc290): a web-only fleet's own page may confirm it with the authenticator's code.
+      confirmWithCode: view.totp === "ready" && view.state === "pending" ? (code) => confirmWithCode(view.id, code) : null,
+      totpNotSetUp: view.totp === "not_set_up" && view.state === "pending",
+      // Over a link (the leader's ruling (b)): no code here — confirm it in the host computer's own browser, or in General.
+      onHost: view.totp === "on_host" && view.state === "pending",
       dismiss: TERMINAL.has(view.state) ? () => forget(view.id) : null,
     })),
   });
@@ -166,6 +171,27 @@ export async function applyNow(id) {
   // Refused (403: not allowed here any more): read it again, so "Apply now" goes until the server offers it again.
   if (e.view.can_self_confirm) update({ ...e.view, can_self_confirm: false }, token);
   return { ok: false, status: res.status };
+}
+
+/**
+ * alpha.6 feedback #2c (the user's decision hmsg-468cc290): confirm a pending change on this computer's own page with the
+ * owner's authenticator code. The server checks the code (each time step once, the fleet-wide wrong-code limit) and asks
+ * again at execution. { ok } or why not: "wrong", "paused" (retryAfterMs), "not_here" (this page can no longer), "unavailable".
+ */
+export async function confirmWithCode(id, code) {
+  const e = tracked.get(id);
+  if (!e) return { ok: false, error: "not_here" };
+  const token = ticket(e);
+  let res;
+  try { res = await api(`/api/settings/pending/${encodeURIComponent(id)}/confirm-totp`, { method: "POST", body: JSON.stringify({ code: String(code || "").replace(/\s+/g, ""), digest: String(e.view.confirm_digest || "") }) }); }
+  catch { return { ok: false, error: "unavailable" }; }
+  if (isPendingResponse(res) && res.body.pending_change.id === id) { update(res.body.pending_change, token); schedule(); return { ok: true }; }
+  if (res.status === 401 && res.body && res.body.error === "wrong_code") return { ok: false, error: "wrong" };
+  if (res.status === 429) return { ok: false, error: "paused", retryAfterMs: Number(res.body && res.body.retryAfterMs) || null };
+  // The change is not the one this page showed (#3352 security review, point 2): read it again; the code was not used.
+  if (res.status === 409 && res.body && res.body.error === "confirmation_changed") return { ok: false, error: "changed" };
+  if (res.status === 403) { if (e.view.totp) update({ ...e.view, totp: undefined }, token); return { ok: false, error: "not_here" }; }
+  return { ok: false, error: "unavailable" };
 }
 
 /** This session's requests still open on the server (after a reload): followed like new ones. */

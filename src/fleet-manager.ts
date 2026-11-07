@@ -24,7 +24,7 @@ import { SettingsBaselines } from "./settings-baseline.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
 import { prepareSettingsEffect } from "./settings-effect.js";
 import { settingsDisplay } from "./settings-change.js";
-import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
+import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView, type SettingsNoCardReason } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
@@ -403,7 +403,7 @@ import { guestSessionPolicy, localSessionPolicy, sessionVia, tokenEpoch, WebSess
 import { WebNotices, WEB_NOTICES_FILE, type NoticeKind } from "./web-notices.js";
 import { DeviceLoginRequests } from "./web-device-login.js";
 import { isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess } from "./web-remote-access.js";
-import { authorityNow, classifyWebPeer, evaluateWebAuthority, hostSessionHere, HOST_OPERATOR, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
@@ -3162,6 +3162,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
       selfConfirm: (req, id) => this.settingsSelfConfirmation(store, req, id),
+      totp: { state: (req, id) => this.settingsTotpState(store, req, id), confirm: (req, id, code, digest) => this.settingsTotpConfirm(store, req, id, code, digest) },
       directAgentCreation: true,
       job: async id => {
         const settlement = this.settingsJobSettlements.get(id);
@@ -3199,8 +3200,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // `agend settings confirm` on the host. The host's own session, used on this computer (hostSessionHere: its code came
     // from `agend web` here; never bare loopback), carries that same trust — it confirms at Save, with no click added. A
     // change a General can take keeps its card (D1). Asked again at execution: the same session, still here, still no card.
-    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.)
-    if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && !this.settingsCardPossible(store, id)) {
+    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) A change that opens a
+    // link (#2453 noSelfConfirm) is not widened here; the outward Hub changes the leader ruled on (hostLocalConfirm) are.
+    if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && !this.settingsCardPossible(store, id)
+      && (store.selfConfirmable(id) || store.hostLocalConfirmable(id))) {
       const handle = auth.session.handle;
       const here = (): boolean => { const now = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
         return now.kind === "ok" && now.session.handle === handle && hostSessionHere(now.session, req) && !this.isWebOnlyFleet(); };
@@ -3214,8 +3217,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // this computer's admin signed in from outside (the authenticator's code, over the link connections from outside
     // opened): the web-only fleet's owner, judged below by the same authority as here (hostOperator).
     if (gatewayRequestContext(req) && auth.session.remote !== "totp") return null;
-    // …and never a change that turns the named-link option on: that one needs a General's card or the host.
-    if (!store.selfConfirmable(id)) return null;
+    // …and never a change that turns the named-link option on: that one needs a General's card or the host. B2b (the leader's
+    // ruling on #3352 F1; threat model A 64a289a0): the outward Hub changes (hostLocalConfirm) are the one exception — for
+    // the host operator's own local session only (below).
+    if (!store.selfConfirmable(id) && !store.hostLocalConfirmable(id)) return null;
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
@@ -3229,13 +3234,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ask. Asked again at execution: still the host operator now (this computer, not revoked or run out), still web-only.
     const hostOperator = (a: { adapter_id: string; user_id: string } | null): boolean =>
       !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId && this.isWebOnlyFleet();
-    if (hostOperator(actor)) {
+    // The host operator's own LOCAL session: its host session (the bootstrap or launch link), over loopback with no
+    // forwarding header and no gateway (classifyWebPeer, as #3345). Only that one may Apply-now an outward Hub change.
+    const hostLocal = (): boolean => hostSessionHere(record, req);
+    if (hostOperator(actor) && (store.selfConfirmable(id) || hostLocal())) {
       return {
         label: t("settings_confirm.host_operator_label"),
-        current: () => hostOperator(verified()),
+        current: () => hostOperator(verified()) && (store.selfConfirmable(id) || hostLocal()),
         done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed from the web by this computer's admin"); },
       };
     }
+    if (!store.selfConfirmable(id)) return null;
     const chat = this.settingsChatAuthority(store, id);
     if (!chat) return null;
     const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
@@ -3252,6 +3261,79 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       followStop: async (name, begin) => { const route = destinations.find(item => item.current()); if (!route) throw Error("Settings route expired"); await route.followStop(name, begin); },
       done: view => this.settingsWebConfirmedNotice(view, affected, name, chat.platform),
     };
+  }
+
+  /**
+   * alpha.6 feedback #2c — the user's decision hmsg-468cc290 (option A; decisions 28c2d3a3/0471da59 keep the second factor): on a
+   * web-only fleet, a pending change can be confirmed on THIS computer's own page with the owner's authenticator code, by a
+   * local admin session that is not the host operator (who already has "Apply now"), on this computer or the LAN. Never over
+   * a link (named or quick), never a guest; only a change that can be self-confirmed at all (a named-link opener cannot); the code is checked by
+   * the same store as signing in from outside (#3008): each time step once, the fleet-wide wrong-code limit. Asked again at
+   * execution (`current`): the same session, still an admin here (this computer or the LAN), the fleet still web-only, the
+   * same app still set up (not replaced, nor removed and set up again). Audited by the store under its own label; a correct and a refused use are logged.
+   */
+  private settingsTotpSession(req: IncomingMessage): { handle: string; current(): boolean } | null {
+    // Who is offered the code (the leader's ruling, (b) — Fable's view; threat model 64a289a0): on a web-only fleet, an admin
+    // session with no chat account, on this computer (loopback, no forwarding header) or on the LAN — any such session not
+    // otherwise allowed (a local non-host session may be another OS user). NEVER over a link, named or quick: "over a link" is
+    // the gateway's own context, never a peer address (both links are tunnels arriving from 127.0.0.1). Never a guest.
+    // The code is the authority; the session only carries it (#3352 security review, point 4).
+    const allowed = (): { handle: string } | null => {
+      if (!this.isWebOnlyFleet()) return null;
+      const auth = authorizeSession(req, this.webToken, this.webSessions, { touch: false });
+      if (auth.kind !== "ok") return null;
+      const s = auth.session, gateway = gatewayRequestContext(req);
+      if (s.tier !== "admin" || s.owner) return null;
+      if (gateway) return null;
+      const peer = webPeerOf(req);
+      return s.surface === "local" && (peer === "loopback" || peer === "lan") ? { handle: s.handle } : null;
+    };
+    const first = allowed();
+    if (!first) return null;
+    return { handle: first.handle, current: () => { const now = allowed(); return !!now && now.handle === first.handle && !!this.webRemoteAccess()?.enrolled; } };
+  }
+  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | null {
+    if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id))) return null;
+    // Over a link (web-only fleet): never a code here — the card says to do it in the host computer's own browser, or in General.
+    if (gatewayRequestContext(req)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "on_host" : null;
+    if (!this.settingsTotpSession(req)) return null;
+    if (this.settingsSelfConfirmation(store, req, id)) return null;          // "Apply now" already (the host operator here)
+    return this.webRemoteAccess()?.enrolled ? "ready" : "not_set_up";
+  }
+  settingsTotpConfirm(store: SettingsConfirmationStore, req: IncomingMessage, id: string, code: string, digest: string):
+    { label: string; current(): boolean; audit?: Record<string, unknown>; done?(view: SettingsPendingView): void } | { error: "wrong" | "paused" | "unavailable" | "not_here" | "changed"; retryAfterMs?: number } {
+    if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id)) || this.settingsSelfConfirmation(store, req, id)) return { error: "not_here" };
+    const local = this.settingsTotpSession(req), access = this.webRemoteAccess();
+    if (!local || !local.current() || !access?.enrolled) return { error: "not_here" };
+    // #3352 security review, point 2: the code confirms exactly the change the page showed — checked before the code is.
+    if (digest !== store.confirmDigest(id)) return { error: "changed" };
+    const shown = store.inspectHost(id)?.view.summary ?? [];
+    // #3355 review (Prism P2): the code's authority is the app it came from. Bound to that enrollment through execution — an
+    // app replaced, or removed and set up again, while the change waits ends it, for good (a later match never revives it).
+    const enrollment = access.enrollment;
+    const v = access.verify(code);
+    if (v.kind === "ok") {
+      if (!enrollment) return { error: "not_here" };
+      this.logger.info({ id, handle: local.handle }, "Settings change confirmed on this computer with the authenticator code");
+      let lost = false;
+      const current = (): boolean => {
+        if (!lost && !(local.current() && this.webRemoteAccess()?.enrollment === enrollment)) lost = true;
+        return !lost;
+      };
+      return { label: t("settings_confirm.totp_label"), current, audit: { confirmed_with: "authenticator_code", summary: shown },
+        done: view => { this.logger.info({ id: view.id, state: view.state }, "Settings change confirmed with the authenticator code: done"); } };
+    }
+    if (v.kind === "paused") return { error: "paused", retryAfterMs: v.retryAfterMs };
+    if (v.kind === "not_enrolled") return { error: "not_here" };
+    if (v.kind === "unavailable") return { error: "unavailable" };
+    if (v.skewSteps !== null) this.logger.warn({ offsetSeconds: v.skewSteps * TOTP_STEP_SECONDS }, "A wrong authenticator code matched a nearby time step: this computer's clock may be off");
+    this.logger.info({ id, handle: local.handle }, "Settings change: a wrong authenticator code was refused");
+    if (v.paused) {
+      this.logger.warn({ waitMs: v.retryAfterMs }, "Authenticator codes paused after wrong codes");
+      this.recordWebNotice("fleet", t("outside.notice_paused", outsideDuration(v.retryAfterMs), v.wrong));
+      return { error: "paused", retryAfterMs: v.retryAfterMs };
+    }
+    return { error: "wrong" };
   }
 
   /**
@@ -3613,13 +3695,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return Object.keys(this.fleetConfig?.instances ?? {}).some(name => !!this.settingsGeneralRoute(name, authority.platform, excluded));
   }
 
-  private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
+  private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void | SettingsNoCardReason> {
     const generation = this.settingsGeneration;
     const authority = this.settingsChatAuthority(store, view.id);
     if (!authority) {
       this.logger.info({ id: view.id }, "Settings authority is unknown or spans platforms; host CLI confirmation required");
-      return;
+      return this.settingsNoCardReason(null, [...store.affectedConnections(view.id), ...(store.authorityOf(view.id)?.connections ?? [])], false);
     }
+    let attempted = false;
     const excluded = new Set(store.affectedConnections(view.id));
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       const route = this.settingsGeneralRoute(name, authority.platform, excluded);
@@ -3630,6 +3713,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && this.settingsGeneration === generation
         && route.current() && authority.current();
       if (!current()) continue;
+      attempted = true;
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
           instanceName: name, adapterId, adapter, chatId, threadId: topic,
@@ -3658,6 +3742,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // No platform confirmation was reachable. Host inspection is still required.
     this.logger.info({ id: view.id }, "Settings change requires local `agend settings confirm <id>`");
+    return this.settingsNoCardReason(authority.platform, store.affectedConnections(view.id), attempted);
+  }
+
+  /**
+   * alpha.6 feedback #2c: why no General could take a change's confirm card, so the page says what is missing in plain words
+   * (the user's decision hmsg-77256f66: never "type a host command"). `platform` null: the authority is unknown or spans
+   * platforms. `attempted`: a General route existed and posting to it failed.
+   */
+  private settingsNoCardReason(platform: "telegram" | "discord" | null, affected: readonly string[], attempted: boolean): SettingsNoCardReason | undefined {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    if (!channels.length) return "no_chat";
+    if (attempted) return "post_failed";
+    // No General at all comes first: then there is no authority to resolve either (the primary General's is unknown).
+    if (!Object.values(this.fleetConfig?.instances ?? {}).some(cfg => cfg?.general_topic === true)) return "no_general";
+    // #3352 review N1: "spans platforms" only when it does — the connections the change touches are on more than one platform.
+    // Any other unresolved authority (a duplicated or missing connection id): no specific reason; the page says the general one.
+    if (!platform) {
+      const touched = new Set(affected);
+      const types = new Set(channels.filter(ch => touched.has(ch.id ?? ch.type)).map(ch => ch.type));
+      return types.size > 1 ? "cross_platform" : undefined;
+    }
+    const excluded = new Set(affected);
+    const generals = Object.keys(this.fleetConfig?.instances ?? {}).filter(name => this.fleetConfig?.instances[name]?.general_topic === true)
+      .filter(name => { const id = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name); return !!id && !!adapter && adapter.type === platform && !excluded.has(id); });
+    if (!generals.length) return "no_general";
+    if (!generals.some(name => this.adapterState.get(this.getInstanceAdapterId(name)!)?.status === "connected")) return "chat_disconnected";
+    if (!generals.some(name => !!this.getGroupIdForInstance(name) && String(this.fleetConfig?.instances[name]?.topic_id ?? "") !== "")) return "no_topic";
+    return "post_failed";
   }
 
   private kiroMigrateDeps(): KiroMigrateDeps {
@@ -22242,7 +22354,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // re-enters this path.
       const selfMentionRe = new RegExp(`<@${adapterBotUserId}>`, "g");
       const strippedText = text.replace(selfMentionRe, "").trim();
-      if (!strippedText && !msg.attachments?.length) return;
+      // A bare @mention says nothing by itself, so it is dropped (unchanged)... unless it is a REPLY that carries the mention: then the
+      // replied-to message is what is being asked about, and it travels as reply_to_text (#3340). Telegram already forwards this shape
+      // ("/chat @bot (you)"). Only with the mention in the text: an empty reply to one of our own messages (addressed through #2551, a
+      // sticker or embed only) stays dropped, never an empty turn quoting our own answer (Fable #3342 F1).
+      if (!strippedText && !msg.attachments?.length && !(msg.replyToText && mentionTag && addressText.includes(mentionTag))) return;
       const selfMarker = mentionWorld?.botUsername ? `@${mentionWorld.botUsername} (you)` : `${mentionTag} (you)`;
       const cleanText = text.replace(selfMentionRe, selfMarker).trim();
 

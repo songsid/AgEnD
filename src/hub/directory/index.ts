@@ -1,5 +1,5 @@
 /** AgEnD Hub directory sign-in (S-43). Import this module only when the Hub is enabled; it loads the LDAP client lazily. */
-export type { DirectoryPerson, Eligibility, HubDirectory, IneligibleReason, InitializationLookupResult, PersonKey, SignInRefusal, SignInResult } from "./types.js";
+export type { DirectoryPerson, DirectoryLookupResult, Eligibility, HubDirectory, IneligibleReason, InitializationLookupResult, PersonKey, SignInRefusal, SignInResult } from "./types.js";
 export { personKeyString, samePerson } from "./types.js";
 export type { DirectoryProfile, HubDirectoryConfig } from "./config.js";
 export { HubDirectoryConfigError, resolveDirectoryConfig } from "./config.js";

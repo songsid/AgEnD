@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { connect, createServer, type Server, type Socket } from "node:net";
 import { Attribute, Change, Client } from "ldapts";
 import { createHubDirectory, HubDirectoryConfigError, type HubDirectory, type HubDirectoryDiagnostic } from "../src/hub/directory/index.js";
+import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { guidBytesToString } from "../src/hub/directory/profiles.js";
 
 const envFile = process.env.AGEND_HUB_RIG_ENV;
@@ -96,6 +97,31 @@ describe.skipIf(!enabled)("hub directory sign-in against the fake directory (S-4
       const untrusted = directory({caPem:readFileSync(rig.AGEND_HUB_RIG_OTHER_CA!,"utf8")});
       expect(await untrusted.lookupForInitialization!("alice")).toEqual({ok:false,reason:"unavailable"});
       await d.close(); await untrusted.close();
+    });
+  });
+
+  describe("admin pairing for a directory owner who has never signed in (#3336)", () => {
+    it("makes a code through the real HTTP API without creating a person, session or grant for the resolved owner", async () => {
+      const adminLogin = `pair-admin-${tag()}`, ownerLogin = `pair-owner-${tag()}`;
+      const administrator = await addAdPerson(adminLogin, `pw-${adminLogin}`), owner = await addAdPerson(ownerLogin, pw());
+      const administratorKey = { realm: "rig", objectId: guidBytesToString(administrator.guid)! };
+      const ownerKey = { realm: "rig", objectId: guidBytesToString(owner.guid)! };
+      const d = directory({ profile: "ad" }), r = await s3bRig({ directory: d, administrator: administratorKey });
+      try {
+        // This real strict-LDAPS AD driver already knows the owner; no personal bind is needed to select them.
+        expect(await d.lookupForInitialization!(ownerLogin)).toMatchObject({ ok: true, person: { key: ownerKey } });
+        const signedIn = await r.signIn(adminLogin); expect(signedIn.status).toBe(200);
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 1 });
+        const response = await r.call(signedIn, "POST", "/hub/v1/admin/pairings", { login: ownerLogin });
+        expect(response.status).toBe(200); expect(response.json.code).toMatch(/^[a-f0-9]{12}$/);
+        expect(r.store.read().pairings).toHaveLength(1);
+        expect(r.store.read().pairings[0]).toMatchObject({ owner: ownerKey, ownerConfirmed: false, adminApproved: false, state: "offered" });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_people").get()).toEqual({ n: 1 });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_sessions").get()).toEqual({ n: 1 });
+        expect(r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get()).toEqual({ n: 0 });
+        const pending = r.pairing.pair({ code: response.json.code }); expect(pending.owner).toEqual(ownerKey);
+        expect(await r.pairing.claim({ pairingId: pending.pairingId, fleetId: pending.fleetId, claimSecret: pending.claimSecret })).toEqual({ status: "pending" });
+      } finally { await r.close(); await d.close(); }
     });
   });
 

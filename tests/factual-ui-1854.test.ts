@@ -63,10 +63,15 @@ describe("#1854 rank 9: directions and claims in Settings and Log", () => {
     const [en, zh] = both("settings.accessMovedHint");
     expect([en.includes("Connections & Bots"), en.includes("under Connections."), zh.includes("連線與機器人"), zh.includes("「連線」")]).toEqual([false, true, false, true]);
   });
-  it("a loosening change waits for a fleet admin in chat (General topic) or on the host — Web's lead and the Log's wait", () => {
+  // #3326 D1 (decision 721ca0c3, "never guide users to type a host command"): where it waits is General in Telegram or
+  // Discord, or the dashboard's own card (Apply now, or the authenticator code) — never "on the host".
+  it("a loosening change waits for a fleet admin in General or on the dashboard's card, never \"on the host\" — Web's lead and the Log's wait", () => {
     const [lead, leadZh] = both("settings.webLead"), [wait, waitZh] = both("log.enabling");
-    expect([lead, wait].map(s => s.includes("in chat (General topic) or on the host"))).toEqual([true, true]);
-    expect([leadZh, waitZh].map(s => s.includes("在聊天（General topic）或主機上確認"))).toEqual([true, true]);
+    expect([lead.includes("in General in Telegram or Discord, or here on the dashboard where its card offers that"), wait.includes("the confirmation card says where")]).toEqual([true, true]);
+    expect([leadZh.includes("在 Telegram 或 Discord 的 General，或在儀表板上卡片提供確認的地方"), waitZh.includes("確認卡片上有說明確認方式")]).toEqual([true, true]);
+    expect([lead, wait, leadZh, waitZh].some(s => /on the host|主機上確認/.test(s))).toBe(false);
+    // #3354 review F1: the card is at the top on a desk but at the bottom on a phone — no position in the words.
+    expect([wait, waitZh].some(s => /above|below|上方|下方/.test(s))).toBe(false);
   });
   it("the public-link hint says previews get their own tunnel (no false \"No preview exposure\")", () => {
     const [en, zh] = both("settings.publicLinkHint");
