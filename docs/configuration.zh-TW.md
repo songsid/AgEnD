@@ -135,21 +135,21 @@ Cloudflare 的公共解析器（1.1.1.1 / 1.0.0.1）解析 tunnel 名稱，再�
 
 `access` 可省略。**省略整個區塊時，執行時使用 `open` fallback**，不是 `locked`；既有持久化模式仍可能覆蓋它。若要限制聊天存取，請明確設定 `mode: locked` 與 `allowed_users`。
 
-下表的 fallback 值只適用於整段省略時；明確提供的區塊不會逐欄補上這些值。請填寫 `mode`、`allowed_users` 陣列，以及使用 pairing 時的配對限制。
+下表的 fallback 值只適用於整段省略時；明確提供的區塊不會逐欄補上這些值。請填寫 `mode` 與 `allowed_users` 陣列。要新增允許的使用者，請開啟「設定 → 連線 → 該 bot → 允許使用者」。
 
 | 欄位 | 型別 | 整段省略時的 fallback | 說明 |
 |------|------|----------------------|------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`／`pairing` 僅允許有效名單中的使用者；`pairing` 另可用 `/pair` 申請。`open` 允許所有使用者；bot 另有入口篩選，見[權限表](permissions.md#bot-and-webhook-messages) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked` 與舊設定的 `pairing` 別名都只允許有效名單中的使用者；不再發放存取碼。`open` 允許所有使用者；bot 另有入口篩選，見[權限表](permissions.md#bot-and-webhook-messages) |
 | `allowed_users` | (number\|string)[] | `[]` | 與持久化名單取聯集；ID 以字串比較 |
-| `max_pending_codes` | number | `0` | 同時持有配對碼的不同使用者數量上限；pairing 請設定正數 |
-| `code_expiry_minutes` | number | `0` | 配對碼有效分鐘數；pairing 請設定正數 |
+| `max_pending_codes` | number | `0` | 舊設定的相容欄位；已不使用 |
+| `code_expiry_minutes` | number | `0` | 舊設定的相容欄位；已不使用 |
 
 **持久化狀態與管理權限：**
 
 - 主 adapter 使用 `<dataDir>/access/access.json`；額外 adapter 使用 `access/access-<adapterId>.json`。`dataDir` 預設為 `~/.agend`，可由 `AGEND_HOME` 指定。
-- 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；配對核准會加入持久化名單。
+- 已儲存的 mode 優先於 YAML。已儲存的使用者與 YAML `allowed_users` 合併、去重；既有持久化授權會保留。舊的待核准存取碼已無作用，不會授予存取權。
 - `locked`／`pairing` 下，撤銷使用者必須讓持久化與 YAML 兩份名單都不再授權；只改其中一份可能仍允許存取。`open` 本來就不限制使用者。
-- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或已核准配對本身不授予 fleet admin，YAML 名單空白時沒有人有此權限，這個 bot 的 `/web`、`/update`、`/doctor` 也就關閉（回覆會指出是哪個設定）。沒有 `web.access` 這個設定：`agend validate` 會對它以及 `web` 底下其他不認得的鍵提出警告。這些以及驗證器的其他警告，也會出現在 `agend doctor`，以及 fleet 啟動時的 `daemon.log`。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
+- Fleet 管理指令另看**呼叫所經 adapter 的 YAML `access.allowed_users`**。Open 存取或持久化聊天授權本身不授予 fleet admin，YAML 名單空白時沒有人有此權限，這個 bot 的 `/web`、`/update`、`/doctor` 也就關閉（回覆會指出是哪個設定）。沒有 `web.access` 這個設定：`agend validate` 會對它以及 `web` 底下其他不認得的鍵提出警告。這些以及驗證器的其他警告，也會出現在 `agend doctor`，以及 fleet 啟動時的 `daemon.log`。ClassicBot 有獨立的 `defaults.admin_users`；見[權限表](permissions.md)。
 
 ---
 
