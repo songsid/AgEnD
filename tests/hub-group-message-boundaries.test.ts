@@ -8,6 +8,8 @@ import { HUB_GROUP_RESOURCES_MIGRATION, createHubGroupResources } from "../src/h
 import { createHubGroupAuthorization } from "../src/hub/group-policy/authorization.js";
 import { HubCore } from "../src/hub/http/core.js";
 import { HubPolicyService } from "../src/hub/policy.js";
+import { HubSessions } from "../src/hub/sessions.js";
+import type { IncomingMessage } from "node:http";
 import { HubRoomsService } from "../src/hub/rooms.js";
 import { buttonsDigest } from "../src/hub/buttons-model.js";
 import { messageContentDigest } from "../src/hub/identity.js";
@@ -217,6 +219,20 @@ describe("group permits at message effects", () => {
     release({ kind: "complete", person: w.asker, groups: [group], observedAt: 100_000 });
     expect((await pending).status).toBe(503);
     expect(w.r.db.prepare("SELECT COUNT(*) n FROM hub_messages").get()).toEqual({ n: 1 });
+  });
+
+  it("withholds room content when building its projection invalidates the permit", async () => {
+    const w = await world(); expect((await w.ask()).status).toBe(200);
+    const get = w.r.httpDeps.content.get.bind(w.r.httpDeps.content);
+    vi.spyOn(w.r.httpDeps.content, "get").mockImplementation(ref => { const value = get(ref); w.actions.close(); return value; });
+    const ctx = new HubSessions(w.core).context({ headers: { cookie: w.a.cookie } } as IncomingMessage);
+    await expect(w.rooms.read(ctx, w.roomId, 0, "direct-projection")).rejects.toMatchObject({ code: "unavailable" });
+  });
+  it("a frame assembled after reentrant invalidation is withheld before transport hand-off", async () => {
+    const w = await world(); w.r.setTransport(false); expect((await w.ask()).status).toBe(200); w.r.setTransport(true);
+    const sign = w.r.httpDeps.issuer.sign.bind(w.r.httpDeps.issuer);
+    vi.spyOn(w.r.httpDeps.issuer, "sign").mockImplementation(envelope => { const identity = sign(envelope); w.actions.close(); return identity; });
+    expect(await w.rooms.flush(w.fleetId)).toBe(false); expect(w.r.sent).toEqual([]); expect(w.message().sent_epoch).toBe(0);
   });
 
 });
