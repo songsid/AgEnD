@@ -696,6 +696,7 @@ register("pendingHost", {
     codeUnavailable: "The code could not be checked. Try again.",
     codeChanged: "This change is no longer the one shown here. Reload the page and check it again.",
     onHost: "This change can't be confirmed over a link. Confirm it in the browser on the computer running AgEnD, or in General.",
+    hostBrowser: "This change opens a link to this fleet, so only the browser on the computer running AgEnD can confirm it. Do it there.",
     codeSetUp: "To confirm changes here with a code, set up an authenticator app in Access & security.",
   },
   "zh-TW": {
@@ -721,6 +722,7 @@ register("pendingHost", {
     codeUnavailable: "無法檢查代碼，請再試一次。",
     codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
     onHost: "這項變更無法透過連結確認。請在執行 AgEnD 的那台電腦的瀏覽器中確認，或在 General 確認。",
+    hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
     codeSetUp: "若要在這裡用代碼確認變更，請先到「存取與安全」設定驗證器 App。",
   },
 });
@@ -768,6 +770,7 @@ function PendingHow({ p }) {
     ${why ? html`<p class="note pending-why">${t(`pendingHost.${why}_do`)}${go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null}</p>` : null}
     ${p.confirmWithCode && !p.applyNow ? html`<${PendingCode} p=${p} />` : null}
     ${p.onHost && !p.applyNow ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>` : null}
+    ${p.hostBrowser && !p.applyNow ? html`<p class="note pending-host-browser">${t("pendingHost.hostBrowser")}</p>` : null}
     ${p.totpNotSetUp && !p.applyNow ? html`<p class="note pending-code-setup">${t("pendingHost.codeSetUp")} <a class="btn btn-sm" href=${settingsPath("access")}>${t("pendingHost.go")}</a></p>` : null}
     ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
       <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}

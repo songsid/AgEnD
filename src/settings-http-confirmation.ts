@@ -31,7 +31,7 @@ export type SettingsRequestHandler = (req: IncomingMessage, res: ServerResponse,
  * execution — or why not.
  */
 export interface SettingsTotpConfirmation {
-  state(req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | null;
+  state(req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | "host_browser" | null;
   confirm(req: IncomingMessage, id: string, code: string, digest: string): (SettingsSelfConfirmation & { audit?: Record<string, unknown> }) | { error: "wrong" | "paused" | "unavailable" | "not_here" | "changed"; retryAfterMs?: number };
 }
 function json(res: ServerResponse, status: number, body: unknown): void {
@@ -154,6 +154,7 @@ export class SettingsHttpConfirmation {
       requestFingerprint, fingerprint: effect.diff.fingerprint, section: effect.diff.section, requestedBy: principal.label,
       source: principal.source, summary: effect.diff.summary, affectedConnections: effect.diff.affectedConnections, authority: effect.diff.authority,
       ...(effect.diff.noSelfConfirm ? { noSelfConfirm: true as const } : {}), ...(effect.diff.hostLocalConfirm ? { hostLocalConfirm: true as const } : {}),
+      ...(effect.diff.hostSessionOnly ? { hostSessionOnly: true as const } : {}),
       bytes: raw.length, remainingMs: effect.proof?.remainingMs,
       current: () => principal.current(), snapshot: () => this.options.snapshot(),
       unchanged: async () => (await this.options.baseline()).fingerprint === baseline.fingerprint && settingsFingerprint(this.options.snapshot()) === snapshot,

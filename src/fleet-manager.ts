@@ -2539,6 +2539,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupDashboard: FleetStartup | null = null;
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   private adapterRetryInFlight = new Map<string, Promise<void>>();
+  /** #3365 review P2: connections whose adapter could not be confirmed stopped — none is admitted for them until a restart. */
+  private adapterTeardownUnknown = new Set<string>();
   /** Web Settings secret rotation is deliberately separate from reconnect
    * recovery: a rotation must build a fresh provider client with the new token,
    * and stale callbacks from the old client must not win. */
@@ -3200,13 +3202,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // `agend settings confirm` on the host. The host's own session, used on this computer (hostSessionHere: its code came
     // from `agend web` here; never bare loopback), carries that same trust — it confirms at Save, with no click added. A
     // change a General can take keeps its card (D1). Asked again at execution: the same session, still here, still no card.
-    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) A change that opens a
-    // link (#2453 noSelfConfirm) is not widened here; the outward Hub changes the leader ruled on (hostLocalConfirm) are.
+    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) The noSelfConfirm changes
+    // the leader ruled on are included: the outward Hub changes (hostLocalConfirm) and a link option turned on
+    // (hostSessionOnly, cid-d3) — this session is exactly the one those allow.
     // "No card": none could be posted now, or the one tried could not be (posting failed or ran out — the view says
     // host_cli; #3362 review N1).
     const noCard = (): boolean => !this.settingsCardPossible(store, id) || store.inspect(id)?.confirmation.kind === "host_cli";
     if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && noCard()
-      && (store.selfConfirmable(id) || store.hostLocalConfirmable(id))) {
+      && (store.selfConfirmable(id) || store.hostLocalConfirmable(id) || store.hostSessionConfirmable(id))) {
       // A card that could not be posted stays unposted (no card is attached later): fixed now, not re-read at execution,
       // where the store has already marked the change as confirmed from the web.
       const handle = auth.session.handle, postFailed = store.inspect(id)?.confirmation.kind === "host_cli";
@@ -3225,7 +3228,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // …and never a change that turns the named-link option on: that one needs a General's card or the host. B2b (the leader's
     // ruling on #3352 F1; threat model A 64a289a0): the outward Hub changes (hostLocalConfirm) are the one exception — for
     // the host operator's own local session only (below).
-    if (!store.selfConfirmable(id) && !store.hostLocalConfirmable(id)) return null;
+    if (!store.selfConfirmable(id) && !store.hostLocalConfirmable(id) && !store.hostSessionConfirmable(id)) return null;
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
@@ -3240,7 +3243,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const hostOperator = (a: { adapter_id: string; user_id: string } | null): boolean =>
       !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId && this.isWebOnlyFleet();
     // The host operator's own LOCAL session: its host session (the bootstrap or launch link), over loopback with no
-    // forwarding header and no gateway (classifyWebPeer, as #3345). Only that one may Apply-now an outward Hub change.
+    // forwarding header and no gateway (classifyWebPeer, as #3345). Only that one may Apply-now an outward Hub change, or a
+    // link option turned on (hostSessionOnly — the outside sign-in, a gateway, never may).
     const hostLocal = (): boolean => hostSessionHere(record, req);
     if (hostOperator(actor) && (store.selfConfirmable(id) || hostLocal())) {
       return {
@@ -3297,7 +3301,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!first) return null;
     return { handle: first.handle, current: () => { const now = allowed(); return !!now && now.handle === first.handle && !!this.webRemoteAccess()?.enrolled; } };
   }
-  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | null {
+  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | "host_browser" | null {
+    // A link option turned on (hostSessionOnly): never a code. On a web-only fleet (no General to send it to), any session
+    // but the host's own here is told in plain words to do it in the browser on the AgEnD computer.
+    if (store.hostSessionConfirmable(id)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "host_browser" : null;
     if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id))) return null;
     // Over a link (web-only fleet): never a code here — the card says to do it in the host computer's own browser, or in General.
     if (gatewayRequestContext(req)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "on_host" : null;
@@ -11035,6 +11042,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const MAX_DELAY_MS = 5 * 60_000;
     const state = this.adapterState.get(adapterId);
     if (this.shuttingDown || !state || state.retryTimer || this.adapterRetryInFlight.has(adapterId)) return;
+    if (this.adapterTeardownUnknown.has(adapterId)) return;          // #3365 review P2: held until a restart, never retried
     const delay = Math.min(INITIAL_DELAY_MS * Math.pow(2, Math.min(state.retryCount, 6)), MAX_DELAY_MS);
     this.logger.info({ adapterId, attempt: state.retryCount + 1, delay_ms: delay }, "Scheduling adapter retry");
     const timer = setTimeout(() => {
@@ -11281,6 +11289,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -11436,6 +11445,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const check = (): void => {
       operation?.assert(); assertSettingsLease(`connection:${this.dataDir}:${ownerId}`, operation?.owner);
       if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("adapter admission superseded");
+      if (this.adapterTeardownUnknown.has(ownerId)) throw new Error("an earlier adapter for this connection could not be confirmed stopped — restart AgEnD");
     };
     check();
     const botToken = process.env[channelConfig.bot_token_env];
@@ -26339,6 +26349,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let store: SecretStore | undefined;
     const generation = this.settingsGeneration;
     let replaced = false;
+    // S-91: whether an adapter ran before. One that did not is never "restored" by starting it with the old token (the token
+    // that would not start it); a failed start goes back to the background retry instead.
+    const wasRunning = this.adapters.has(job.connectionId);
     try {
       if (!channel || !envKey || !allowed.has(envKey)) throw new Error("connection is not configured for secret rotation");
       const owners = (this.fleetConfig?.channels
@@ -26373,15 +26386,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         try {
           store!.restoreIfCurrent(before);
           if (process.env[envKey] === secret) { if (oldToken === undefined) delete process.env[envKey]; else process.env[envKey] = oldToken; }
-          // Build a fresh adapter from the restored token. If the old adapter
-          // was stopped already, this is the only safe way to return to the
-          // previous runtime without claiming a disk-only rollback succeeded.
-          const cleanup = { owner: execution?.owner ?? Symbol("secret-cleanup"), assert: () => {
-            if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("secret cleanup superseded");
-          } };
-          const restored = await this.rebuildAdapterForSecret(job.connectionId, this.secureConnectionChannel(job.connectionId) ?? channel!, true, cleanup);
-          if (!restored) throw new Error("adapter rollback did not become connected");
-          job.result = "rolled_back";
+          if (!wasRunning) {
+            // S-91: it was not running: the new adapter that did not come up is taken down (never left half-started), and
+            // the connection is the background retry's again, as before the token was entered.
+            if (await this.dropAdapterAfterFailedStart(job.connectionId, message)) job.result = "rolled_back";
+            else { job.result = "rollback_failed"; job.error = "the new adapter could not be confirmed stopped; restart AgEnD"; }
+          } else {
+            // Build a fresh adapter from the restored token. If the old adapter
+            // was stopped already, this is the only safe way to return to the
+            // previous runtime without claiming a disk-only rollback succeeded.
+            const cleanup = { owner: execution?.owner ?? Symbol("secret-cleanup"), assert: () => {
+              if (this.shuttingDown || this.settingsGeneration !== generation) throw new Error("secret cleanup superseded");
+            } };
+            const restored = await this.rebuildAdapterForSecret(job.connectionId, this.secureConnectionChannel(job.connectionId) ?? channel!, true, cleanup);
+            if (!restored) throw new Error("adapter rollback did not become connected");
+            job.result = "rolled_back";
+          }
         } catch (rollbackErr) {
           this.logger.error({ connectionId: job.connectionId, reason: safeSecretError(rollbackErr, oldToken, [secret]) }, "Settings connection secret rollback failed");
           job.result = "rollback_failed";
@@ -26397,16 +26417,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * S-91: how a connection stands against what this process set up at start. "same": its adapter start ran (and failed, or
+   * found no token), so starting it now is what the background retry does. "changed": its binding waits for the restart —
+   * never started live, whatever its role (#3365 review P2). "added": #1519 P6's rule.
+   */
+  private startedWithConnection(connectionId: string, channel: ChannelConfig): "same" | "changed" | "added" {
+    const started = this.startupFleetConfig;
+    const list = started?.channels ?? (started?.channel ? [started.channel] : []);
+    const then = list.find(item => (item.id ?? item.type) === connectionId);
+    return !then ? "added" : isDeepStrictEqual(then, channel) ? "same" : "changed";
+  }
+
+  /**
+   * S-91: a token's live start for a connection that was not running did not come up. Whatever adapter it left is taken
+   * down (handlers off, stopped, unregistered), and the connection goes back to the background retry with the error.
+   */
+  private async dropAdapterAfterFailedStart(connectionId: string, error: string): Promise<boolean> {
+    const fresh = this.adapters.get(connectionId);
+    // #3365 review P3: the primary's prune interval goes with it (a later start sets it up again, once).
+    if (this.getPrimaryAdapterId() === connectionId && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
+    let stopped = true;
+    if (fresh) {
+      fresh.removeAllListeners();
+      stopped = await fresh.stop().then(() => true, () => false);
+      if (this.adapters.get(connectionId) === fresh) this.adapters.delete(connectionId);
+      if (this.worlds.get(connectionId)?.adapter === fresh) this.worlds.delete(connectionId);
+      if (this.adapter === fresh) this.adapter = null;
+    }
+    const previous = this.adapterState.get(connectionId);
+    if (previous?.retryTimer) clearTimeout(previous.retryTimer);
+    if (!stopped) {
+      // #3365 review P2: a stop that failed leaves the provider client's end unknown (it may still poll the bot). Said so —
+      // never "rolled back" — and no adapter for this connection is admitted again in this process: no retry, and every
+      // start refuses it (startSingleAdapterOwned / startAdditionalAdapterOwned). A restart of AgEnD clears it.
+      this.adapterTeardownUnknown.add(connectionId);
+      this.adapterState.set(connectionId, { status: "failed", retryCount: previous?.retryCount ?? 0, lastError: "the new adapter could not be confirmed stopped — restart AgEnD" });
+      this.logger.error({ connectionId, reason: error }, "Settings connection secret: the adapter that did not start could not be confirmed stopped");
+      return false;
+    }
+    if (this.shuttingDown || !this.secureConnectionChannel(connectionId)) return true;
+    this.adapterState.set(connectionId, { status: "retrying", retryCount: previous?.retryCount ?? 0, lastError: error });
+    this.scheduleAdapterRetry(connectionId);
+    return true;
+  }
+
   /** Stop the old provider client and construct a new one from process.env. */
   private async rebuildAdapterForSecret(connectionId: string, channel: ChannelConfig, force = false, execution?: Pick<SettingsExecution, "owner" | "assert">): Promise<boolean> {
     const generation = this.settingsGeneration;
     const current = (): boolean => !this.shuttingDown && this.settingsGeneration === generation;
     const check = (): void => { execution?.assert(); if (!current()) throw new Error("adapter operation superseded"); };
     check();
+    // S-91: never two starts of one connection at once. A background retry in flight finishes first: it read the token
+    // before this one was stored, so it gives way (its own check), or it came up and is replaced below like any adapter.
+    const inFlight = this.adapterRetryInFlight.get(connectionId);
+    if (inFlight) { await inFlight.catch(() => {}); check(); }
     const old = this.adapters.get(connectionId);
-    // No adapter: a connection that is not the primary, in a fleet already running connections, starts now (#1519 P6);
-    // otherwise the secret is valid on disk and the next start adopts it.
-    if (!old && !force && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    // No adapter: one this process started with, unchanged since (its start failed, or it had no token), starts now — S-91,
+    // the way the background retry starts it, the primary included. One added since starts now when it is not the primary
+    // and the fleet runs connections (#1519 P6). One changed since (its binding pending) never does: the secret is valid on
+    // disk and the next start adopts it with its binding.
+    if (!old && !force) {
+      const since = this.startedWithConnection(connectionId, channel);
+      if (since === "changed") return false;
+      if (since === "added" && (this.getPrimaryAdapterId() === connectionId || this.adapters.size === 0)) return false;
+    }
     if (!old) { const pending = this.adapterState.get(connectionId)?.retryTimer; if (pending) clearTimeout(pending); }
     const primary = this.getPrimaryAdapterId() === connectionId;
     const previousState = this.adapterState.get(connectionId);
@@ -26446,9 +26521,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
       return true;
     }
+    // S-91: a retry timer set while it was coming up (the in-flight retry's own, giving way) must not start it a second time.
+    const settled = (): true => { const st = this.adapterState.get(connectionId); if (st?.retryTimer) { clearTimeout(st.retryTimer); st.retryTimer = undefined; } return true; };
     while (performance.now() < deadline) {
       const health = fresh.getHealthSnapshot?.();
-      if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return true;
+      if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return settled();
       await new Promise(resolve => setTimeout(resolve, 100)); check();
     }
     throw new Error("new adapter did not become connected");
