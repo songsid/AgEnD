@@ -183,7 +183,7 @@ describe("#3327 a real fleet", () => {
     try {
       const codes = h.any.webLoginCodes, issued = vi.spyOn(codes, "issue");
       // Prism's probes: the header token through a forwarding proxy, or a non-loopback Host — no code, so no session.
-      for (const away of [{ "x-forwarded-for": "198.51.100.70" }, { forwarded: "for=198.51.100.70" }, { host: "agend.example.test" }]) {
+      for (const away of [{ "x-forwarded-for": "198.51.100.70" }, { forwarded: "for=198.51.100.70" }, { host: "agend.example.test" }] as Record<string, string>[]) {
         const res = await h.issue(away);
         expect([res.status, JSON.parse(res.body).code], JSON.stringify(away)).toEqual([403, undefined]);
       }
