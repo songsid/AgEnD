@@ -429,6 +429,15 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     expect(r.answers).toBe(true);
   });
 
+  // Fable #3312 F1: the wait's own last observation decides. Runner CI saw the server reaped between two separate asks
+  // (the second one then read a vanished /proc entry): "gone", then "not gone", and the install was refused.
+  it("one observation of the server gone is the proof: it is not asked again and contradicted", async () => {
+    let asks = 0;
+    const r = await scenario({ gone: () => ++asks === 1 });   // gone at the first look; any later look says otherwise
+    expect(r.proved.ok, r.proved.reason).toBe(true);
+    expect(asks).toBe(1);
+  });
+
   it("refused when the recorded server pid never exits — nothing unlinked", async () => {
     const r = await scenario({ gone: () => false });
     expect(r.proved.ok).toBe(false);
@@ -459,6 +468,27 @@ describe("verifyTmux: an unknown observation is never taken for the server's exi
     expect(bundle.processGone(process.pid)).toBe(false);
     const child = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
     expect(bundle.processGone(Number(child.stdout))).toBe(true);
+  });
+});
+
+// Fable #3312 F1 (runner CI): a zombie can be reaped between kill(0) and the /proc read; that read then fails, and the
+// old check called it "still running", refusing the install. Asked again, ESRCH is the proof; anything else is not.
+describe("processGone across a reap", () => {
+  const io = (kills: Array<"ok" | "ESRCH" | "EPERM">, read: string | NodeJS.ErrnoException) => ({
+    kill: () => { const k = kills.shift() ?? "ok"; if (k !== "ok") throw Object.assign(new Error(k), { code: k }); },
+    read: () => { if (typeof read !== "string") throw read; return read; },
+  });
+  const enoent = Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  it.each<[string, Array<"ok" | "ESRCH" | "EPERM">, string | NodeJS.ErrnoException, boolean]>([
+    ["no such process", ["ESRCH"], "", true],
+    ["a zombie", ["ok"], "123 (tmux: server) Z 1 1", true],
+    ["running", ["ok"], "123 (tmux: server) S 1 1", false],
+    ["reaped between kill(0) and the /proc read", ["ok", "ESRCH"], enoent, true],
+    ["its /proc entry unreadable but kill(0) still answers", ["ok", "ok"], enoent, false],
+    ["a permission error is never 'gone'", ["EPERM"], "", false],
+    ["an unreadable /proc for another reason is never 'gone'", ["ok", "ESRCH"], Object.assign(new Error("EACCES"), { code: "EACCES" }), false],
+  ])("%s → %s", (_why, kills, read, want) => {
+    expect(bundle.processGone(123, "linux", io(kills, read))).toBe(want);
   });
 });
 
