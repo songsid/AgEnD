@@ -34,7 +34,7 @@ export type AddRefusal = "backend" | "name" | "exists" | "case_clash" | "unsafe_
 export type RemoveRefusal = "backend" | "name" | "confirm" | "in_use" | "users_unknown" | "signing_in" | "missing" | "unsafe" | "default_home" | "failed";
 
 export type AddResult = { ok: true } | { ok: false; error: AddRefusal; clash?: string };
-export type RemoveResult = { ok: true } | { ok: false; error: RemoveRefusal; users?: ProfileUsers };
+export type RemoveResult = { ok: true; keychainLeft?: true } | { ok: false; error: RemoveRefusal; users?: ProfileUsers };
 
 export interface ProfileFs {
   /** The account running AgEnD; null where the platform has none (then ownership is not checked). */
@@ -121,7 +121,7 @@ export function ownProfileFolder(dataDir: string, backend: string, name: string,
 }
 
 /** Remove a profile's folder, or refuse (nothing deleted). See the module comment for every rule. */
-export function removeAccountProfile(dataDir: string, req: RemoveRequest, fs: ProfileFs = realFs()): RemoveResult {
+export function removeAccountProfile(dataDir: string, req: RemoveRequest, fs: ProfileFs = realFs(), opts: { dryRun?: boolean } = {}): RemoveResult {
   const { backend, name } = req;
   if (!PROFILE_CLIS.has(backend)) return { ok: false, error: "backend" };
   if (!validCredentialProfileName(name)) return { ok: false, error: "name" };
@@ -133,6 +133,8 @@ export function removeAccountProfile(dataDir: string, req: RemoveRequest, fs: Pr
   const own = ownProfileFolder(dataDir, backend, name, fs);
   if (!own.ok) return own;
   const { base, home, st, realRoot } = own;
+  // #3212 PR 3: every check above, nothing changed — the caller runs what must come first (macOS: Claude Code's own logout).
+  if (opts.dryRun) return { ok: true };
   // Out of sight first (a hidden name the listing never shows), then the same folder again, then deleted.
   const parked = join(base, `.removing-${name}-${randomBytes(6).toString("hex")}`);
   try { renameSync(home, parked); } catch { return { ok: false, error: "failed" }; }

@@ -473,6 +473,28 @@ import { carryClaudeConversation, type CarryResult } from "./backend/claude-carr
 import { classicProfile, mergeBackendOptions, profileKey, profileName, profileOf, readClassicBindings, readClassicBindingsStrict, type ClassicProfile } from "./classic-bindings.js";
 import { ACCOUNT_CLIS, PROFILE_CLIS, buildAccountsView, profilesOnDisk, weeklyUsage, type AccountUsage, type AccountsView } from "./accounts-view.js";
 import { addAccountProfile, removeAccountProfile, type AddResult, type RemoveResult } from "./accounts-profiles.js";
+import { signOutAccount, type SignOutResult } from "./accounts-signout.js";
+import { spawn as spawnQuiet } from "./child-process.js";
+
+/**
+ * #3212 PR 3: a CLI's logout, quietly: no shell, no input, no output kept; stopped with SIGINT after a minute (kiro dumps
+ * core on SIGTERM). On macOS, whether a Keychain item with a service name is reachable (`security`, read-only).
+ */
+function runQuiet(binary: string, args: readonly string[], env: NodeJS.ProcessEnv, timeoutMs = 60_000): Promise<{ code: number | null }> {
+  return new Promise(resolve => {
+    let child: ReturnType<typeof spawnQuiet>;
+    try { child = spawnQuiet(binary, [...args], { env, stdio: "ignore", windowsHide: true }); } catch { resolve({ code: null }); return; }
+    const timer = setTimeout(() => { try { child.kill("SIGINT"); } catch { /* gone */ } }, timeoutMs);
+    timer.unref?.();
+    child.once("error", () => { clearTimeout(timer); resolve({ code: null }); });
+    child.once("exit", code => { clearTimeout(timer); resolve({ code }); });
+  });
+}
+const ACCOUNT_SIGN_OUT_DEPS: Pick<import("./accounts-signout.js").SignOutDeps, "run" | "keychainHas" | "platform"> = {
+  platform: process.platform,
+  run: (binary: string, args: readonly string[], env: NodeJS.ProcessEnv) => runQuiet(binary, args, env),
+  keychainHas: async (service: string) => (await runQuiet("security", ["find-generic-password", "-s", service], process.env, 15_000)).code === 0,
+};
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -20034,7 +20056,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * or the login window held for this backend by a sign-in whose profile is not known yet); see accounts-profiles.ts.
    * The fleet log records who removed which backend's profile — never what was in it.
    */
-  removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): RemoveResult {
+  async removeAccountProfile(backend: string, name: unknown, confirm: unknown, by: string): Promise<RemoveResult> {
     const profile = typeof name === "string" ? name : "";
     // #3291 review (Prism P2-3): one folder on a case-insensitive disk (Windows, default macOS) — `Work` and `work` are the
     // same account for every safety check here.
@@ -20068,9 +20090,45 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const held = this.loginWindow.current;
     const signingIn = (this.loginController?.signingIn(backend, profile) ?? false)
       || (held?.backend === backend && !this.loginController?.activeBackend);
-    const result = removeAccountProfile(this.dataDir, { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" });
-    if (result.ok) this.logger.info({ backend, profile, by }, "Credential profile removed from Settings → Accounts");
+    const request = { backend, name, confirm, users, signingIn, usersUnknown: rooms.kind === "unknown" };
+    // #3212 PR 3: on macOS, Claude Code keeps the account's token in the Keychain, outside the folder — its own logout
+    // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.
+    let keychainLeft = false;
+    const signOutDeps = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
+    if (backend === "claude-code" && signOutDeps.platform === "darwin") {
+      const dry = removeAccountProfile(this.dataDir, request, undefined, { dryRun: true });
+      if (!dry.ok) { this.logger.info({ backend, profile: validCredentialProfileName(name) ? name : "(invalid)", by, refused: dry.error }, "Credential profile removal refused"); return dry; }
+      const out = await signOutAccount(this.dataDir, { backend, profile, confirm: true, signingIn: false }, signOutDeps);
+      if (!out.ok) { this.logger.info({ backend, profile, by, refused: "logout_failed" }, "Credential profile removal refused"); return { ok: false, error: "failed" }; }
+      keychainLeft = out.keychainLeft === true;
+    }
+    const removed = removeAccountProfile(this.dataDir, request);
+    const result: RemoveResult = removed.ok && keychainLeft ? { ok: true, keychainLeft: true } : removed;
+    if (result.ok) this.logger.info({ backend, profile, by, ...(keychainLeft ? { keychainLeft } : {}) }, "Credential profile removed from Settings → Accounts");
     else this.logger.info({ backend, profile: validCredentialProfileName(name) ? name : "(invalid)", by, refused: result.error }, "Credential profile removal refused");
+    return result;
+  }
+
+  /**
+   * #3212 PR 3: Settings → Accounts → Sign out (accounts-signout.ts): the CLI's own logout for the default sign-in
+   * (`profile` null) or a named account. Refused while a sign-in for it runs (case-insensitive, as Remove). The fleet
+   * log records who signed out which backend's account; then every page reads the sign-ins again.
+   */
+  /** How a CLI's logout is run and the Keychain asked (a test's stand-in; the platform with it). */
+  accountSignOutDeps = ACCOUNT_SIGN_OUT_DEPS;
+  async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string): Promise<SignOutResult> {
+    const named = typeof profile === "string" ? profile : null;
+    const held = this.loginWindow.current;
+    const signingIn = (this.loginController?.signingIn(backend, named) ?? false)
+      || (held?.backend === backend && !this.loginController?.activeBackend);
+    const result = await signOutAccount(this.dataDir, { backend, profile: profile ?? null, confirm, signingIn }, this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS);
+    const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
+    if (result.ok) {
+      this.logger.info({ backend, profile: shown, by, ...(result.keychainLeft ? { keychainLeft: true } : {}) }, "Account signed out from Settings → Accounts");
+      this.forgetSignInIdentities();
+      void this.backendAvailability.refresh([backend], { force: true }).catch(() => {});
+      broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+    } else this.logger.info({ backend, profile: shown, by, refused: result.error }, "Account sign-out refused");
     return result;
   }
 
