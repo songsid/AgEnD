@@ -373,6 +373,8 @@ import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { NeedsYouHub, type NeedsYouWorld, type WebNeedsItem } from "./needs-you-hub.js";
+import { SignInKeepAlive, isKeepAliveBackend, type KeepAliveView, type SetResult as KeepAliveSetResult } from "./signin-keepalive.js";
+import { BACKEND_LABELS } from "./interaction-observation.js";
 import type { InstanceInput, PromptInput } from "./needs-you.js";
 import { GENERAL_NAME, GENERAL_PAUSE_ERROR, adoptGeneralByName, freeGeneralName, isGeneralInstance } from "./general-instance.js";
 import { buildOrgChart, type OrgChart } from "./web-org.js";
@@ -2484,6 +2486,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private kiroMigrationRuns = new Map<string, { token: symbol; stopGeneration: number }>();
   /** #1386 "Needs you": the list, its live chat messages and Acknowledge. Started with the fleet (finishStartup). */
   private needsYou: NeedsYouHub | null = null;
+  /** #3292: "Keep sign-in alive" (signin-keepalive.ts); built at startup, stopped at shutdown. */
+  private signInKeepAlive: SignInKeepAlive | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
@@ -4942,6 +4946,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private finishStartup(bootUpdateMarker: UpdateMarkerIdentity | null = null): void {
     this.startupComplete = true;
     this.startNeedsYou();
+    this.startSignInKeepAlive();
     // Resolve whatever a previous run — or a setup host that crashed — left
     // behind. A tunnel nobody is tracking is a public entrance nobody is
     // watching, and the fleet starting is the moment there is finally a process
@@ -17231,6 +17236,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
+      signInKeepAlive: () => this.keepAliveAttention(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
       runtimeUpdates: () => remoteRuntimeEnabled() ? runtimeUpdateAttention(this.runtimeHub?.listMachines() ?? [], t, this.worlds.keys().next().value) : [],
       hubHolds: () => this.hubHolds.map(h => {
@@ -20051,7 +20057,77 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (at && w) usage.set(at, w);
       }
     } catch { /* the view without usage */ }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage });
+    // #3292: each Claude Code / Codex row's "Keep sign-in alive" part (the setting, its last run, the dates its file says).
+    const keepAlive = new Map<string, KeepAliveView>();
+    const ka = this.keepAliveService();
+    for (const backend of ACCOUNT_CLIS) {
+      if (!isKeepAliveBackend(backend)) continue;
+      for (const profile of [null, ...new Set([...(diskProfiles.get(backend) ?? []).map(d => d.profile), ...targets.filter(t => t.backend === backend && t.profile).map(t => t.profile!)])]) {
+        const v = ka.view(backend, profile); if (v) keepAlive.set(`${backend}\0${profile ?? ""}`, v);
+      }
+    }
+    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive });
+  }
+
+  /** #3292: the keep-alive service (built on first use, so the Accounts view can read settings before startup finishes). */
+  private keepAliveService(): SignInKeepAlive {
+    return this.signInKeepAlive ??= new SignInKeepAlive({
+      dataDir: this.dataDir,
+      log: (level, msg, fields) => this.logger[level](fields, msg),
+      homeOf: (backend, profile) => profile ? credentialProfileHome(this.dataDir, backend, profile) : credentialHomeSpec(backend)?.sharedRoot() ?? null,
+      inUse: (backend, profile) => this.keepAliveInUse(backend, profile),
+      claim: backend => { const c = this.loginWindow.tryClaim("keepalive", backend); return c ? { release: () => { this.loginWindow.release(c); } } : null; },
+      changed: () => {
+        this.needsYou?.poke();
+        broadcastSseEvent(this.sseClients, "backend_login", {}, err => this.logger.debug({ err }, "backend_login event failed"));
+      },
+      claudeKeychain: process.platform === "darwin",
+    });
+  }
+  private startSignInKeepAlive(): void { this.keepAliveService().start(); }
+
+  /**
+   * #3292: a sign-in is in use when a running host agent was launched on it, a ClassicBot room is bound to it (or the rooms
+   * cannot be read), or a sign-in for it is running. Codex refresh tokens are single-use: a refresh beside a live user could
+   * spend the one it holds; and a sign-in in use is kept alive by that use.
+   */
+  private keepAliveInUse(backend: string, profile: string | null): boolean {
+    const same = (p: string | null | undefined) => profile === null ? !p : !!p && p.toLowerCase() === profile.toLowerCase();
+    const defaults = this.fleetConfig?.defaults, defaultBackend = defaults?.backend ?? "claude-code";
+    for (const [, daemon] of this.daemons ?? []) {
+      let snap: InstanceConfig | undefined;
+      try { snap = daemon.getConfigSnapshot?.(); } catch { snap = undefined; }
+      if (!snap || isWindowsInstance(snap) || (snap.backend ?? defaultBackend) !== backend) continue;
+      let launched: string | null = null;
+      try { launched = instanceCredentialProfile(snap, defaults, backend); } catch { return true; }
+      if (same(launched)) return true;
+    }
+    const rooms = readClassicBindingsStrict(this.dataDir);
+    if (rooms.kind !== "ok") return true;
+    for (const b of rooms.bindings) {
+      const cli = b.backend ?? defaultBackend;
+      if (cli === backend && same(profileName(classicProfile(b.backend_options, defaults?.backend_options, cli)))) return true;
+    }
+    return this.loginController?.signingIn(backend, profile) ?? false;
+  }
+
+  /** #3292: Needs you's lines for kept sign-ins, in the fleet's language (posted in General's world, like config issues). */
+  private keepAliveAttention(): import("./needs-you.js").SignInKeepAliveInput[] {
+    const ka = this.signInKeepAlive; if (!ka) return [];
+    const day = (ms: number | undefined) => ms === undefined ? "?" : new Date(ms).toISOString().slice(0, 10);
+    const owner = this.worlds.keys().next().value;
+    return ka.attention().map(a => ({
+      backend: a.backend, profile: a.profile, kind: a.kind, since: a.since, signIn: dashboardSignInSupported(a.backend, a.profile),
+      ...(owner ? { owner } : {}),
+      detail: t(`keepalive.${a.kind}`, BACKEND_LABELS[a.backend] ?? a.backend, a.profile ?? t("keepalive.default_name"), day(a.kind === "transient" ? a.failedSince ?? a.since : a.endsAt)),
+    }));
+  }
+
+  /** #3292: Settings → Accounts → Keep sign-in alive (POST /ui/accounts/keep-alive). `by`: the session's label, for the fleet log. */
+  setAccountKeepAlive(backend: unknown, profile: unknown, enabled: unknown, fallback: unknown, by: string): KeepAliveSetResult {
+    const r = this.keepAliveService().set(backend, profile, enabled, fallback);
+    if (r.ok) this.logger.info({ backend, profile: profile ?? "(default)", enabled, by }, "Keep sign-in alive changed from Settings → Accounts");
+    return r;
   }
 
   /**
@@ -24340,6 +24416,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.configHistoryTimer) clearInterval(this.configHistoryTimer);
     this.configHistoryTimer = null;
     const needsStopped = this.stopNeedsYou();
+    this.signInKeepAlive?.stop();
     // #1490 P3: stop() now returns a Promise; await it so the final
     // ledger flush completes before process.exit(0) in doStopAll's caller.
     const cacheStopped = this.cacheService?.stop() ?? Promise.resolve();
