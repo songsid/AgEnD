@@ -4,7 +4,7 @@ import type { HubAuditStore } from "../audit/index.js";
 import type { HubActor, PersonKey } from "../types.js";
 import { personKeyString } from "../identity.js";
 import { identifier, person, validated } from "../validation.js";
-import { createHubGroupResources, parseHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
+import { createHubGroupResources, HubGroupEnrollmentRefusal, parseHubGroupResource, type HubGroupResource, type HubGroupResourceView } from "./resources.js";
 import { HubGroupPolicyError, type GroupCheckContext, type HubGroupPolicyBinding, type HubGroupPolicyStore } from "./store.js";
 
 export class HubGroupAuthorizationError extends HubGroupPolicyError {
@@ -61,7 +61,7 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     && JSON.stringify(a.resource) === JSON.stringify(b.resource);
 
   const run = async (input: HubGroupResource, incoming: GroupCheckContext,
-    operation: "check" | "enroll" | "resume", requireAdmin?: () => Promise<HubActor>): Promise<HubGroupPermit> => {
+    operation: "check" | "enroll" | "resume" | "asker", requireAdmin?: () => Promise<HubActor>): Promise<HubGroupPermit> => {
     // Capture caller-owned inputs and callbacks before any directory or administrator await.
     const resource = parseHubGroupResource(input), ctx = capture(incoming);
     assert(ctx.current);
@@ -112,7 +112,18 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
       invalidated = true;
     } });
     let outcome: "allow" | "deny" | "held" | "resume-required";
-    if (operation === "enroll") {
+    if (operation === "asker" && !resources.read(resource)) {
+      // Only canonical asker provenance is created on first use. Fleet/exposure enrollment
+      // remains the explicit owner-consent path; it can never be inferred from a question.
+      try { await resources.register(resource, ctx); }
+      catch (error) {
+        // Two first actions can race. A newly present row must pass another fresh check;
+        // neither a conflict nor a previous positive result stands in for that check.
+        if (error instanceof HubGroupEnrollmentRefusal) throw new HubGroupAuthorizationError(error.outcome);
+        if (!(error instanceof HubGroupPolicyError) || error.code !== "conflict" || !resources.read(resource)) throw error;
+      }
+      outcome = (await resources.check(resource, ctx)).outcome;
+    } else if (operation === "enroll") {
       await resources.register(resource, ctx); outcome = "allow";
     } else {
       const decision = actor ? await resources.resume(resource, actor, ctx) : await resources.check(resource, ctx);
@@ -135,6 +146,10 @@ export function createHubGroupAuthorization(options: HubGroupAuthorizationOption
     } });
   };
   return {
+    asker(input: PersonKey, ctx: GroupCheckContext) {
+      const owner = validated(person, input);
+      return run({ kind: "asker", id: owner.objectId, revision: 1, owner }, ctx, "asker");
+    },
     check(resource: HubGroupResource, ctx: GroupCheckContext) { return run(resource, ctx, "check"); },
     /** Only after ordinary owner/local-consent/grant/quota checks; this creates provenance, not the actual resource. */
     enroll(resource: HubGroupResource, ctx: GroupCheckContext) { return run(resource, ctx, "enroll"); },

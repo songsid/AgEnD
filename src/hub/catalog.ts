@@ -20,7 +20,7 @@ import { HubProtocolError } from "./validation.js";
 import { personKeyString } from "./identity.js";
 import type { HubExposure, HubExposureSnapshot, HubGrant, HubRequestContext, PersonKey } from "./types.js";
 import type { HubLinkContext } from "./server.js";
-import { personByLogin, personFromString, type HubCore } from "./http/core.js";
+import { personByLogin, personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 
 /** P1 grants last at most this long; the owner chooses within it. */
 export const GRANT_MAX_MS = 365 * 24 * 60 * 60_000;
@@ -110,7 +110,7 @@ export class HubCatalogService {
   /** What this person may see: their own exposures (with the grants on them) and what is granted to them now. */
   async visible(ctx: HubRequestContext): Promise<HubCatalogView> {
     const person = await ctx.requirePerson(), me = personKeyString(person), now = this.core.now();
-    return this.core.atomic((db) => {
+    const initial = this.core.atomic((db) => {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
       const mine = (db.prepare("SELECT * FROM hub_exposures WHERE owner=? AND state<>'withdrawn' ORDER BY display_name").all(me) as ExposureRow[]).map((row) => {
         const grants = (db.prepare("SELECT * FROM hub_grants WHERE exposure_id=? AND state='active' AND expires_at>? ORDER BY approved_at").all(row.id, now) as GrantRow[])
@@ -126,6 +126,20 @@ export class HubCatalogService {
       }
       return { mine, askable };
     });
+    const context = this.core.groupContext(ctx), proofs: HubOperationPermit[] = [], askable: HubCatalogView["askable"][number][] = [];
+    try { proofs.push(await this.core.groupAsker(person, context)); }
+    catch (e) { if (e instanceof HubProtocolError && e.code === "denied") return { mine: initial.mine, askable }; throw e; }
+    for (const candidate of initial.askable) {
+      try { proofs.push(await this.core.groupExposure(candidate.exposure.id, null, context)); askable.push(candidate); }
+      catch (e) { if (!(e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked"))) throw e; }
+    }
+    for (const proof of proofs) proof.assertCurrent();
+    // Recheck ordinary grants after all asynchronous group reads too.
+    return this.core.atomic(db => ({ mine: initial.mine, askable: askable.filter(candidate => {
+      const e = readExposure(db, candidate.exposure.id), g = readGrant(db, candidate.grant.id);
+      return e && g && exposureOf(e).state === "published" && grantOf(g).revision === candidate.grant.revision
+        && grantApplies(grantOf(g), exposureOf(e), person, this.core.now());
+    }) }), { assertCurrent: () => { for (const proof of proofs) proof.assertCurrent(); } });
   }
 
   /** Grant one known Hub person `ask` on the owner's exposure at the revision the owner saw. */

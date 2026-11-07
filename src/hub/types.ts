@@ -185,6 +185,8 @@ export type HubActor =
   | { kind: "local-host"; sessionId: string; directoryBinding: PersonKey | null };
 export interface HubRequestContext {
   readonly requestId: string;
+  /** Synchronous session/lifetime fence for a permit immediately before its effect; never directory authority. */
+  isCurrent?(): boolean;
   current(): Promise<HubActor>; // authenticates again, checks mode/session/body continuation
   requirePerson(): Promise<PersonKey>; // fresh directory eligibility; host repair is not an asker
   requireAdmin(): Promise<HubActor>; // current local host or explicit Hub admin assignment

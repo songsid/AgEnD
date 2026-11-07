@@ -25,7 +25,7 @@ import type { HubAnswer, HubExposure, HubReceipt, HubReconcile, HubReconcileRepl
 import type { HubLinkContext } from "./server.js";
 import { exposureOf, grantApplies, grantOf, readExposure, readGrant } from "./catalog.js";
 import { POSITIVE, QUESTION_LIFETIME_MS, TERMINAL, messageFacts, readMessage, type HubPolicyService, type MessageRow } from "./policy.js";
-import { personFromString, type HubCore } from "./http/core.js";
+import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 
 /** One accepted poll per room and session in this window (hub.md §5: at most once per ten seconds). */
 export const ROOM_POLL_MS = 10_000;
@@ -105,28 +105,29 @@ export class HubRoomsService {
       throw new HubProtocolError("revoked");
     return { room: r, exposure, grant };
   }
-  private async ownerEligible(ctx: HubRequestContext, roomId: string): Promise<{ asker: import("./types.js").PersonKey; room: RoomRow }> {
+  private async ownerEligible(ctx: HubRequestContext, roomId: string): Promise<{ asker: import("./types.js").PersonKey; room: RoomRow; permit: HubOperationPermit }> {
     const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const room = this.core.atomic((db) => db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow | undefined);
     if (!room || room.asker !== me) throw new HubProtocolError("not-found");
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
-    return { asker, room };
+    const permit = await this.core.groupExposure(room.exposure_id, asker, this.core.groupContext(ctx));
+    return { asker, room, permit };
   }
 
   /** Before any upload body is read: the asker, their room and grant, a link that takes files, and room in their budget. */
   async uploadAdmit(ctx: HubRequestContext, roomId: string, declaredBytes: number): Promise<void> {
-    const store = this.store(), { asker } = await this.ownerEligible(ctx, roomId), now = this.core.now();
+    const store = this.store(), { asker, permit } = await this.ownerEligible(ctx, roomId), now = this.core.now();
     this.core.atomic((db) => {
       const { exposure } = this.askerRoom(db, roomId, asker, now, "ask");
       this.requireFiles(exposure.fleetId);
       store.admit(db, { uploader: personKeyString(asker) }, declaredBytes);
-    });
+    }, permit);
   }
   /** The asker's file for a later question in this room: only while the fleet's link takes files. Pending one hour. */
   async upload(ctx: HubRequestContext, roomId: string, name: string, bytes: Buffer): Promise<HubFileView> {
-    const store = this.store(), { asker } = await this.ownerEligible(ctx, roomId), now = this.core.now();
+    const store = this.store(), { asker, permit } = await this.ownerEligible(ctx, roomId), now = this.core.now();
     return this.core.atomic((db, tx) => {
       const { room, exposure, grant } = this.askerRoom(db, roomId, asker, now, "ask");
       this.requireFiles(exposure.fleetId);
@@ -135,11 +136,11 @@ export class HubRoomsService {
         reasonCode: `question:${ref.size}:${ref.mime}:${ref.sha256}`, contentRef: this.core.deps.content.put(tx, { question: ref.name }),
         roomId, fleetId: exposure.fleetId, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision });
       return fileView(roomId, ref);
-    });
+    }, permit);
   }
   /** One of this room's files, for its asker while read-own-room holds; every read is audited. */
   async download(ctx: HubRequestContext, roomId: string, fileId: string): Promise<{ name: string; mime: string; image: boolean; bytes: Buffer }> {
-    const store = this.store(), { asker } = await this.ownerEligible(ctx, roomId), now = this.core.now();
+    const store = this.store(), { asker, permit } = await this.ownerEligible(ctx, roomId), now = this.core.now();
     return this.core.atomic((db, tx) => {
       const { exposure, grant } = this.askerRoom(db, roomId, asker, now, "read-own-room");
       const row = store.row(db, fileId);
@@ -149,7 +150,7 @@ export class HubRoomsService {
         reasonCode: `${row.direction}:${row.size}:${row.mime}:${row.sha256}`, ...(row.message_id ? { messageId: row.message_id } : {}),
         roomId, fleetId: exposure.fleetId, exposureId: exposure.id, ownerAtEvent: exposure.owner, grantId: grant.id, grantRevision: grant.revision });
       return { name: row.name, mime: row.mime, image: isInlineImage(row.mime), bytes };
-    });
+    }, permit);
   }
 
   /** Open (or find) the asker's room for one exposure under one grant that applies to them now. */
@@ -158,6 +159,7 @@ export class HubRoomsService {
     const owner = this.core.atomic((db) => readExposure(db, exposureId)?.owner);
     if (!owner || !(await this.core.eligible(personFromString(owner)))) throw new HubProtocolError("not-found");
     await ctx.current();
+    const permit = await this.core.groupExposure(exposureId, asker, this.core.groupContext(ctx));
     return this.core.atomic((db, tx) => {
       const e = readExposure(db, exposureId), g = readGrant(db, grantId);
       if (!e || !g) throw new HubProtocolError("not-found");
@@ -174,7 +176,7 @@ export class HubRoomsService {
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: asker }, action: "room.opened", result: "completed",
         roomId: room.id, fleetId: exposure.fleetId, exposureId, ownerAtEvent: exposure.owner, grantId, grantRevision: grant.revision });
       return { ...roomOf(room), exposure };
-    });
+    }, permit);
   }
 
   /**
@@ -185,9 +187,21 @@ export class HubRoomsService {
    * has negotiated (D's link.features; none until then).
    */
   async list(ctx: HubRequestContext): Promise<readonly HubRoomListItem[]> {
-    const me = personKeyString(await ctx.requirePerson());
-    return this.core.atomic((db) => (db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, last_at DESC LIMIT 100`).all(me) as RoomViewRow[])
-      .map((r) => roomListItem(r, this.featuresOf(r.fleet_id))));
+    const asker = await ctx.requirePerson(), me = personKeyString(asker), context = this.core.groupContext(ctx);
+    const askerPermit = await this.core.groupAsker(asker, context);
+    const rows = this.core.atomic(db => db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, last_at DESC LIMIT 100`).all(me) as RoomViewRow[]);
+    const proofs = new Map<string, HubOperationPermit | null>();
+    for (const row of rows) if (!proofs.has(row.exposure_id)) {
+      try { proofs.set(row.exposure_id, await this.core.groupExposure(row.exposure_id, null, context)); }
+      catch (e) { if (e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked")) proofs.set(row.exposure_id, null); else throw e; }
+    }
+    askerPermit.assertCurrent();
+    return this.core.atomic(db => rows.flatMap(row => {
+      const proof = proofs.get(row.exposure_id); if (proof === null) return [];
+      proof?.assertCurrent();
+      const fresh = db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(row.id, me) as RoomViewRow | undefined;
+      return fresh ? [roomListItem(fresh, this.featuresOf(fresh.fleet_id))] : [];
+    }), askerPermit);
   }
 
   /**
@@ -213,10 +227,15 @@ export class HubRoomsService {
    * route asks it after its own read, but this answers alone). The messages answer carries it, fresh each poll.
    */
   async view(ctx: HubRequestContext, roomId: string): Promise<HubRoomListItem> {
-    const me = personKeyString(await ctx.requirePerson());
+    const asker = await ctx.requirePerson(), me = personKeyString(asker);
     const row = this.core.atomic((db) => db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined);
     if (!row) throw new HubProtocolError("not-found");
-    return roomListItem(row, this.featuresOf(row.fleet_id));
+    const permit = await this.core.groupExposure(row.exposure_id, asker, this.core.groupContext(ctx));
+    return this.core.atomic(db => {
+      const fresh = db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(roomId, me) as RoomViewRow | undefined;
+      if (!fresh) throw new HubProtocolError("not-found");
+      return roomListItem(fresh, this.featuresOf(fresh.fleet_id));
+    }, permit);
   }
 
   /** What the room's fleet link negotiated (D's link.features, #3241): none while it has no current link. */
@@ -235,9 +254,10 @@ export class HubRoomsService {
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
+    const permit = await this.core.groupExposure(room.exposure_id, asker, this.core.groupContext(ctx));
     const out = this.core.atomic((db, tx) => this.insertQuestion(db, tx, {
       roomId, asker, idempotencyKey, text, requestId: ctx.requestId, actor: { kind: "person", person: asker },
-    }, fileIds));
+    }, fileIds), permit);
     if (out.fleet) void this.flush(out.fleet);
     return out.receipt;
   }
@@ -280,6 +300,7 @@ export class HubRoomsService {
     const ownerId = this.core.atomic((db) => readExposure(db, room.exposure_id)?.owner);
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
+    const permit = await this.core.groupExposure(room.exposure_id, asker, this.core.groupContext(ctx));
     const rows = this.core.atomic((db) => {
       const r = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow;
       const e = readExposure(db, r.exposure_id), g = readGrant(db, r.grant_id);
@@ -293,7 +314,7 @@ export class HubRoomsService {
     const store = this.core.deps.attachments;
     const files = store ? this.core.atomic((db) => new Map(rows.map(m => [m.id, { question: store.forMessage(db, m.id, "question"), answer: store.forMessage(db, m.id, "answer") }]))) : null;
     const views = this.core.atomic(db => new Map(rows.map(m => [m.id, this.buttons.view(db, m.id)])));
-    return rows.map((m) => {
+    const entries = rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
       // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, as B maps them.
@@ -302,6 +323,7 @@ export class HubRoomsService {
         ...(q?.question !== undefined ? { question: q.question } : {}), ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
         ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}) };
     });
+    permit.assertCurrent(); return entries;
   }
 
   /**
@@ -319,8 +341,12 @@ export class HubRoomsService {
         .all(fleetId, link.linkEpoch) as MessageRow[]);
       for (const first of pending) {
         if (!link.current()) return false;
-        let eligible = false;
-        try { eligible = await this.policy.peopleEligible(first); } catch { return false; }
+        let eligible = true, permit: HubOperationPermit | undefined;
+        try { permit = await this.policy.operation(first, link); }
+        catch (e) {
+          if (e instanceof HubProtocolError && e.code === "revoked") eligible = false;
+          else return false; // Group unknown/denied holds the queue; never fabricates delivery or cancellation.
+        }
         const now = this.core.now();
         const frame = this.core.atomic((db, tx): HubServerFrame | null => {
           const msg = readMessage(db, first.id);
@@ -350,11 +376,12 @@ export class HubRoomsService {
           return { v: 1, type: "question", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { text, identity, ...(files.length ? { attachments: files } : {}) } };
         });
         if (!frame) continue;
+        try { permit?.assertCurrent(); } catch { return false; }
         const transport = this.core.deps.transport();
         if (!transport || !link.current()) return false;
         // Socket acceptance only. Recorded as sent on this link after S1 accepted it; a crash in between re-sends the
         // same message id, which the member dedups.
-        try { await transport.send(fleetId, frame); } catch { return false; }
+        try { permit?.assertCurrent(); await transport.send(fleetId, frame); } catch { return false; }
         this.core.atomic((db, tx) => {
           db.prepare("UPDATE hub_messages SET sent_epoch=? WHERE id=? AND stage='queued'").run(link.linkEpoch, first.id);
           this.core.audit(tx, { requestId: frame.requestId, actor: { kind: "local-host" }, action: "question.sent", result: "allowed",
@@ -402,7 +429,7 @@ export class HubRoomsService {
       if (first.answer_id !== a.answerId || first.answer_digest !== a.contentDigest) throw new HubProtocolError("conflict");
       return { ...receiptOf(first), contentDigest: first.content_digest, stage: "answered", sequence: Math.max(1, first.member_sequence) };
     }
-    if (!(await this.policy.peopleEligible(first))) throw new HubProtocolError("revoked");
+    const permit = await this.policy.operation(first, link);
     if (!link.current()) throw new HubProtocolError("stale");
     const now = this.core.now();
     const receipt = this.core.atomic((db, tx) => {
@@ -429,7 +456,7 @@ export class HubRoomsService {
       }
       const done = readMessage(db, a.messageId)!;
       return { messageId: done.id, contentDigest: done.content_digest, stage: "answered" as const, sequence: Math.max(1, done.member_sequence), at: done.stage_at };
-    });
+    }, permit);
     this.buttons.arm();
     return receipt;
   }
@@ -443,7 +470,7 @@ export class HubRoomsService {
     const located = this.core.atomic((db) => { const row = store.row(db, input.id); return { row, msg: row?.message_id ? readMessage(db, row.message_id) : undefined }; });
     const ours = (row: typeof located.row, msg: typeof located.msg) => !!row && row.direction === "question" && row.state === "bound" && !!msg && msg.fleet_id === link.fleetId;
     if (!ours(located.row, located.msg)) throw new HubProtocolError("not-found");
-    if (!(await this.policy.peopleEligible(located.msg!))) throw new HubProtocolError("revoked");
+    const permit = await this.policy.operation(located.msg!, link);
     if (!link.current()) throw new HubProtocolError("stale");
     const now = this.core.now();
     return this.core.atomic((db, tx) => {
@@ -457,7 +484,7 @@ export class HubRoomsService {
         reasonCode: `question:${row!.size}:${row!.mime}:${row!.sha256}`, messageId: msg!.id, roomId: msg!.room_id, fleetId: link.fleetId, exposureId: msg!.exposure_id,
         ownerAtEvent: personFromString(msg!.owner), grantId: msg!.grant_id, grantRevision: msg!.grant_revision });
       return { id: row!.id, offset: input.offset, total: chunk.total, sha256: row!.sha256, data: chunk.data.toString("base64") };
-    });
+    }, permit);
   }
   /** attachments-v1: one chunk of an answer's file from the member, before the answer that names it. */
   attachmentPut(input: HubAttachmentChunk, link: HubLinkContext): { id: string; offset: number } {

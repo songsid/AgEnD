@@ -1,4 +1,4 @@
-/** Durable foundation only: not composed or exposed by a route until action fences and the enable preview land. */
+/** Durable policy state; composed never-enabled. Activation still requires the confirmed impact/enrollment flow. */
 import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";

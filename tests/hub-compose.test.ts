@@ -3,7 +3,7 @@
  * a scratch home), with a fake S3 entry. Local listeners on 127.0.0.1 only; no directory is contacted (S2's client is
  * built but never signs in), nothing outside the scratch home is touched.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { request } from "node:https";
 import { connect } from "node:net";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
@@ -23,6 +23,7 @@ import { readHubSecretFile } from "../src/hub/init/secret-file.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
 
 const roots: string[] = [];
+beforeAll(() => mkdirSync(".artifacts", { recursive: true }));
 afterEach(() => {
   for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true });
 });
@@ -136,6 +137,29 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     expect(JSON.parse(json)).toEqual({ enabled: false });
   });
 
+  it("composes group permits off by default, preserves intact never-enabled repair, and fences them on close", async () => {
+    const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
+    const service = await f.create(hub.config.hub, () => true);
+    const context = { requestId: randomUUID(), current: () => true };
+    expect(http.state.deps!.groups).toBeDefined();
+    const permit = await http.state.deps!.groups!.asker(ADMIN.key, context);
+    expect(permit.source).toBe("legacy"); permit.assertCurrent();
+    await service.close(); expect(() => permit.assertCurrent()).toThrow();
+    const changed = { ...hub.config.hub, directory: { ...(hub.config.hub.directory as object), baseDn: "ou=staff,dc=example,dc=test" } };
+    const next = await f.create(changed, () => true);
+    try { expect((await http.state.deps!.groups!.asker(ADMIN.key, context)).source).toBe("legacy"); }
+    finally { await next.close(); }
+    // Once enabled, a different authority generation must fail protected actions, while
+    // construction/sign-in/admin repair remain available instead of opening the strict old store.
+    const db = new Database(join(hub.home, "hub/hub.sqlite"));
+    const row = db.prepare("SELECT body FROM hub_group_policy").get() as { body: string };
+    const policy = JSON.parse(row.body); policy.state = "enabled";
+    db.prepare("UPDATE hub_group_policy SET body=?").run(JSON.stringify(policy)); db.close();
+    const repaired = await f.create(changed, () => true);
+    try { await expect(http.state.deps!.groups!.asker(ADMIN.key, context)).rejects.toMatchObject({ reason: "repair-required" }); }
+    finally { await repaired.close(); }
+  });
+
   it("wires an existing administrator revoke to the live member server's post-commit authorization refresh", async () => {
     const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
     const service = await f.create(hub.config.hub, () => true), refresh = vi.spyOn(HubServer.prototype, "refreshAuthorization");
@@ -172,7 +196,7 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     // Private state set, created together.
     for (const p of ["hub/hub.sqlite", "hub/floors/transport", "hub/keys/content.key"]) expect(statSync(join(hub.home, p)).mode & 0o777, p).toBe(0o600);
     const db = new Database(join(hub.home, "hub/hub.sqlite"), { readonly: true });
-    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["s1-transport", "s3-http", "s5-audit", "s5-browser-tls", "s5-instance", "s5-retention", "s7-attachments"]);
+    expect((db.prepare("SELECT component, version FROM hub_schema ORDER BY component").all() as { component: string }[]).map((r) => r.component)).toEqual(["s1-transport", "s3-http", "s5-audit", "s5-browser-tls", "s5-group-policy", "s5-group-resources", "s5-instance", "s5-retention", "s7-attachments"]);
     expect((db.prepare("SELECT hub_id FROM hub_instance").get() as { hub_id: string }).hub_id).toBe(hub.config.hub.hubId);
     db.close();
 

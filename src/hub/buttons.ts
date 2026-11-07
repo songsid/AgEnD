@@ -140,6 +140,7 @@ export class HubButtonsService {
     if (actor.kind !== "directory" || personKeyString(actor.person) !== me) throw new HubProtocolError("denied");
     const auditActor = { kind: "person" as const, person: asker };
     this.check();
+    const permit = await this.core.groupExposure(first.exposure_id, asker, this.core.groupContext(ctx));
     const out = this.core.atomic((db, tx) => {
       const row = this.row(db, setId); if (!row || row.room_id !== roomId) throw new HubProtocolError("not-found");
       const { msg, buttons: b } = this.authorized(db, row, this.core.now());
@@ -180,7 +181,7 @@ export class HubButtonsService {
       }
       db.prepare("INSERT INTO hub_button_operations VALUES(?,?,?,?,?)").run(roomId, key, setId, digest, JSON.stringify(receipt));
       return { receipt, fleetId: msg.fleet_id };
-    });
+    }, permit);
     this.arm();
     if (out.fleetId) this.queue.flush(out.fleetId);
     return out.receipt;
@@ -238,11 +239,12 @@ export class HubButtonsService {
         const msg = this.core.atomic(db => this.source(db, first).msg);
         if (!(await this.core.eligible(personFromString(msg.asker))) || !(await this.core.eligible(personFromString(msg.owner)))) throw new HubProtocolError("unavailable");
         this.check();
+        const permit = await this.core.groupExposure(msg.exposure_id, personFromString(msg.asker), { requestId: randomUUID(), current: () => !this.stopped && this.core.live() });
         const fleetId = this.core.atomic((db, tx) => {
           const row = this.row(db, first.id)!;
           if (!["owed", "held"].includes(row.result_state)) return null;
           this.queueResults(db, tx, row, randomUUID()); return msg.fleet_id;
-        });
+        }, permit);
         if (fleetId) this.queue.flush(fleetId);
       } catch (err) {
         this.check();
