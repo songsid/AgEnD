@@ -1,0 +1,11 @@
+# Refreshing Hub authorization without retiring a member
+
+Group policy composition for [#3298](https://github.com/songsid/AgEnD/issues/3298) needs a reconnect-safe refresh after a committed authorization-version change. `fenceFleet` is unsuitable: it retires the member as replaced/revoked, which intentionally stops automatic reconnect.
+
+`HubServer.refreshAuthorization()` captures the connections present when called and ends those exact sockets as unavailable. It leaves the listener open and preserves fleet credentials, membership and owner consent. A reentrant replacement is not selected in place of the captured connection. The normal client reconnect and reconciliation paths obtain the current version and a new link epoch; pending operations are not replayed.
+
+The current-version gate is independent of that close. `bindingCurrent` can require the exact revocation version as well as fleet identity/generation/status. Each server link captures the version returned by its authenticated connect. Once a durable change advances that version, old dispatch, replies and authorization work fail the current-link check even before refresh closes the socket. A handshake held across the change refuses before it can retire a newer connection. Upgrade completion rechecks the same binding before publishing its connection.
+
+The composition caller must commit the policy/resource/audit change and transport revocation version together, then call refresh synchronously after success. Unknown directory facts cannot advance a version or trigger suspension. Group policy is still uncomposed/off in this transport slice; it neither implements nor activates the Settings policy editor. Existing explicit member revoke still retires that member. There is no new wire frame, privilege, role, token or execution path.
+
+Acceptance uses real private loopback TLS/WSS with fake directory and clients, plus a controlled reentrant connection-map case. It covers old-version refusal before refresh, a pending authorization refused once, no resend, fresh reconnect with listener preserved, a stale pending handshake versus a newer connection, and a version change at upgrade completion. No real directory/account, live fleet, pilot, native service or personal CLI is used. Rollback is a code revert; no migration is added.
