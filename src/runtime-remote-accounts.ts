@@ -56,8 +56,12 @@ export interface RemoteAccountsDeps {
   defaultProfile(): string | undefined;
   /** Takes a share of the Runtime's activity (the update fence waits for it): held for each request and for as long as a sign-in is open. Returns the release. */
   enter?: () => () => void;
-  /** A cached answer was written or forgotten: the caller re-reports the computer's inventory. */
-  changed(): void;
+  /**
+   * A cached answer was written or forgotten: the caller re-reports the computer's inventory. With `authorized` (an account operation that is still waiting for its answer)
+   * the new inventory is sent BEFORE this resolves, so that the dashboard reads the new state as soon as it has the answer; asked, before each of its steps, whether the
+   * switch is still on and the request's connection still the live one. Without it (an install) the report is only started.
+   */
+  changed(authorized?: () => boolean): void | Promise<void>;
   /** A CLI was installed: the caller detects again for real (not from its cache) and sends that inventory before this resolves. */
   installed?(authorized?: () => boolean): void | Promise<void>;
   /** Installs a CLI from the closed table and returns the version that landed. Absent: this Runtime cannot install (and does not claim to). */
@@ -172,6 +176,15 @@ export class RemoteAccounts {
     if (using) throw new ProfileOwnershipRefusal(`Credential profile "${name}" is in use by a running ${using === "pane" ? "terminal" : "task"} on this computer; stop it first`, "in_use");
   }
 
+  /**
+   * Re-reports the computer's inventory and waits for it to be sent, so that an account operation's answer reaches the server AFTER the inventory it changed (#3190 Part 3c):
+   * the Accounts view reads the inventory the moment it has the answer. A revoked consent (the switch off, a changed connection) stops it, and a failed report is not a failed
+   * operation: the change was made, and the next detection shows it.
+   */
+  private async refreshed(ctx: Ctx): Promise<void> {
+    const authorized = (): boolean => { try { this.gate(ctx, "accounts"); return true; } catch { return false; } };
+    try { await this.deps.changed(authorized); } catch { /* the change was made; the next detection reports it */ }
+  }
   private record(entry: AuditEntry, required: boolean): void {
     try { this.audit.append(entry); }
     catch { if (required) throw new RemoteSetupRefusal("This computer could not write its audit log, so nothing was done", "failed"); }
@@ -346,6 +359,7 @@ export class RemoteAccounts {
           try { createRuntimeProfile(credentialRoot, cli, input.profile); }
           catch { throw new ProfileOwnershipRefusal("The profile folder could not be created", "invalid_request"); }
           this.record({ actor, action: "profile.add", outcome: "ok", cli, profile: input.profile }, false);
+          await this.refreshed(ctx);                                    // the new profile is in the report before the dashboard is answered
         }
         const directory = await requireOwnedProfile(pairingDirectory, credentialRoot, cli, input.profile, this.deps.ownership);
         // The switch and the connection once more, in the same synchronous step as the child is started (the slot waits before it calls this).
@@ -445,7 +459,7 @@ export class RemoteAccounts {
       const identity = answer.loggedIn === true && answer.identity ? parseAccountIdentity(answer.identity) : undefined;
       rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) });
       if (this.meta && this.meta.profile === input.profile) this.meta.signedIn = answer.loggedIn === true;
-      this.deps.changed();
+      await this.refreshed(ctx);
       return { loggedIn: answer.loggedIn, ...(identity ? { identity } : {}) };
     } finally { this.activeChecks--; }
   }
@@ -487,7 +501,7 @@ export class RemoteAccounts {
             return this.deps.status(cli, directory);
           });
         rememberCredentialStatus(this.deps.credentialRoot, cli, input.profile, { loggedIn: answer.loggedIn });
-        this.deps.changed();
+        await this.refreshed(ctx);
         if (answer.loggedIn !== false) throw new SignInRefusal(`Credential profile "${input.profile}" is still signed in after sign-out`, "failed");
         return { loggedIn: false as const };
       },
@@ -510,7 +524,7 @@ export class RemoteAccounts {
         // The protection (the default profile, tasks, terminals, the switch) is asked again, synchronously, immediately before the rename: `beforeCommit`.
         await removeOwnedProfile(this.deps.pairingDirectory, this.deps.credentialRoot, cli, input.profile,
           { ...this.deps.ownership, ...(this.deps.report ? { report: this.deps.report } : {}), beforeCommit: () => this.finalLook(ctx, input.profile, true), beforeDelete: () => this.finalLook(ctx, input.profile, true) });
-        this.deps.changed();
+        await this.refreshed(ctx);
         return { removed: true as const };
       },
     });

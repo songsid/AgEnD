@@ -40,6 +40,18 @@ register("accountsManage", {
     removedKeychainLeft: "Account “{0}” removed, but a Keychain item for it is still on this Mac. Remove it in Keychain Access.",
     err_unsupported: "This CLI can't be signed out from here.", err_signout_failed: "{0}'s logout didn't succeed. Try again, or run it on the host.",
     defName: "default sign-in", acctName: "account “{0}”",
+    // #3190 Part 3c: an account on a paired computer (its Runtime does the work; the computer's owner has to allow it there).
+    addTitleMachine: "Add a {0} account on {1}", addLeadMachine: "A named account is a separate sign-in kept on {0}. Name it, then sign it in here. Its folder is made by that computer's Runtime.",
+    removeLeadMachine: "This deletes the account's folder on {0}: its sign-in and its own copies of conversations. That computer's Runtime does it, and records it.",
+    inUseMachineDefault: "This computer's default account for agents (change it on that computer: agend-runtime profile default NAME)",
+    signOutLeadMachine: "AgEnD asks {0}'s Runtime to run {1}'s own logout for this account. Its conversations stay.",
+    err_machine_unknown: "That computer is not paired any more.", err_machine_offline: "That computer is offline. Start its Runtime, then try again.",
+    err_machine_unsupported: "That computer's Runtime is too old for this. Update the Runtime on it, then try again.",
+    err_machine_accounts_off: "The owner of that computer has not allowed this. On that computer run: agend-runtime remote-setup accounts on",
+    err_machine_unreachable: "That computer did not answer. Check its Runtime window, then try again.",
+    err_machine_profile_not_owned: "This account was not created by AgEnD's Runtime, so it can only be changed on that computer.",
+    err_machine_default_login: "That is the Windows user's own sign-in on that computer, which is never changed from here.",
+    err_machine_refused: "That computer did not do it.",
   },
   "zh-TW": {
     add: "＋ 新增帳號", addTitle: "新增 {0} 帳號", addLead: "具名帳號是這台主機上另一組登入。先取名，再登入。",
@@ -69,6 +81,18 @@ register("accountsManage", {
     removedKeychainLeft: "已移除帳號「{0}」，但這台 Mac 上仍有它的鑰匙圈項目。請在「鑰匙圈存取」中刪除。",
     err_unsupported: "這個 CLI 無法在這裡登出。", err_signout_failed: "{0} 的登出沒有成功。請再試一次，或在主機上執行。",
     defName: "預設登入", acctName: "帳號「{0}」",
+    // #3190 Part 3c：配對電腦上的帳號（由那台電腦的 Runtime 執行；需要電腦的擁有者在那裡允許）。
+    addTitleMachine: "在 {1} 新增 {0} 帳號", addLeadMachine: "具名帳號是保存在 {0} 上的另一組登入。先取名，再在這裡登入。它的資料夾由那台電腦的 Runtime 建立。",
+    removeLeadMachine: "這會刪除 {0} 上該帳號的資料夾：它的登入，以及它自己的對話副本。由那台電腦的 Runtime 執行並記錄。",
+    inUseMachineDefault: "這台電腦給 Agent 用的預設帳號（請在那台電腦上更改：agend-runtime profile default NAME）",
+    signOutLeadMachine: "AgEnD 會請 {0} 的 Runtime 用 {1} 自己的登出指令登出這個帳號。它的對話會保留。",
+    err_machine_unknown: "那台電腦已不再配對。", err_machine_offline: "那台電腦離線了。請先啟動它的 Runtime，再試一次。",
+    err_machine_unsupported: "那台電腦的 Runtime 太舊，無法這樣做。請先更新它的 Runtime，再試一次。",
+    err_machine_accounts_off: "那台電腦的擁有者尚未允許這件事。請在那台電腦上執行：agend-runtime remote-setup accounts on",
+    err_machine_unreachable: "那台電腦沒有回應。請檢查它的 Runtime 視窗，再試一次。",
+    err_machine_profile_not_owned: "這個帳號不是 AgEnD 的 Runtime 建立的，只能在那台電腦上更改。",
+    err_machine_default_login: "那是那台電腦上 Windows 使用者自己的登入，這裡永遠不會更改它。",
+    err_machine_refused: "那台電腦沒有執行。",
   },
 });
 const tm = (k, ...v) => t(`accountsManage.${k}`, ...v);
@@ -86,6 +110,8 @@ async function send(method, path, body) {
   } catch { return { ok: false, error: "failed" }; }
 }
 const errText = (r) => {
+  // A computer's own refusal sentence (its Runtime's words, bounded; no path, URL, code or output) says more than ours does.
+  if (r.error === "machine_refused" && typeof r.message === "string" && r.message) return r.message;
   const key = `err_${r.error}`, s = tm(key, r.clash || "");
   return s === `accountsManage.${key}` ? tm("err_failed") : s;
 };
@@ -100,7 +126,7 @@ function useLive() {
   useEffect(() => () => { live.current = false; }, []);
   return live;
 }
-export function AddAccountDialog({ cli, label, onClose, onAdded }) {
+export function AddAccountDialog({ cli, label, machine = null, onClose, onAdded }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -112,15 +138,15 @@ export function AddAccountDialog({ cli, label, onClose, onAdded }) {
   const go = async () => {
     if (busy || !validAccountName(trimmed)) return;
     setBusy(true); setErr("");
-    const r = await send("POST", `/ui/accounts/${encodeURIComponent(cli.backend)}`, { name: trimmed });
+    const r = await send("POST", `/ui/accounts/${encodeURIComponent(cli.backend)}`, { name: trimmed, ...(machine ? { machine: machine.id } : {}) });
     if (!live.current) return;
     setBusy(false);
     if (!r.ok) { setErr(errText(r)); return; }
     onClose(); onAdded(trimmed);
   };
-  return html`<${Dialog} title=${tm("addTitle", label)} onClose=${onClose} busy=${busy} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
+  return html`<${Dialog} title=${machine ? tm("addTitleMachine", label, machine.name) : tm("addTitle", label)} onClose=${onClose} busy=${busy} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
     <button type="button" class="btn btn-primary" disabled=${busy || !validAccountName(trimmed)} onClick=${go}>${busy ? tm("adding") : tm("addGo")}</button>`}>
-    <p>${tm("addLead")}</p>
+    <p>${machine ? tm("addLeadMachine", machine.name) : tm("addLead")}</p>
     <div class="field"><label for="acctAddName">${tm("nameLabel")}</label>
       <input id="acctAddName" ref=${input} value=${name} maxlength="64" autocomplete="off" spellcheck=${false}
         onInput=${(e) => { setName(e.target.value); setErr(""); }} onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); void go(); } }} />
@@ -139,11 +165,12 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   const [err, setErr] = useState("");
   const [users, setUsers] = useState(row.usedBy);    // the server's answer replaces it when it knows better
   const live = useLive();
+  const machine = row.scope && row.scope.kind === "machine" ? row.scope : null;   // #3190 Part 3c: an account on a paired computer
   const inUse = users.agents.length > 0 || users.classic.length > 0 || users.fleetDefault;
   const go = async () => {
     if (busy || inUse || typed !== row.profile) return;
     setBusy(true); setErr("");
-    const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed });
+    const r = await send("DELETE", `/ui/accounts/${encodeURIComponent(cli.backend)}/${encodeURIComponent(row.profile)}`, { confirm: typed, ...(machine ? { machine: machine.id } : {}) });
     if (!live.current) return;
     setBusy(false);
     if (r.ok) { toast(r.keychainLeft ? tm("removedKeychainLeft", row.profile) : tm("removed", row.profile), !r.keychainLeft); onClose(); onRemoved(); return; }
@@ -153,10 +180,10 @@ export function RemoveAccountDialog({ cli, row, label, onClose, onMove, onRemove
   const moveBtn = (user) => html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => { onClose(); onMove(user); }}>${tm("move")}</button>`;
   return html`<${Dialog} title=${tm("removeTitle", label, row.profile)} onClose=${onClose} busy=${busy} actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
     <button type="button" class="btn btn-danger" disabled=${busy || inUse || typed !== row.profile} onClick=${go}>${busy ? tm("removing") : tm("removeGo")}</button>`}>
-    <p>${cli.backend === "claude-code" ? tm("removeLeadClaude") : tm("removeLead")}${tm("sep")}${tm("removeAfter")}</p>
+    <p>${machine ? tm("removeLeadMachine", machine.name) : cli.backend === "claude-code" ? tm("removeLeadClaude") : tm("removeLead")}${tm("sep")}${tm("removeAfter")}</p>
     ${inUse ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("inUse")}</strong></p><ul>
       ${users.agents.map((name) => html`<li><span>${tm("inUseAgent", name)}</span>${moveBtn({ kind: "agent", name })}</li>`)}
-      ${users.fleetDefault ? html`<li><span>${tm("inUseDefault", label)}</span>${moveBtn({ kind: "default" })}</li>` : null}
+      ${users.fleetDefault ? html`<li><span>${machine ? tm("inUseMachineDefault") : tm("inUseDefault", label)}</span>${machine ? null : moveBtn({ kind: "default" })}</li>` : null}
       ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span><small class="note">${tm("roomHow")}</small></li>`)}
     </ul></div>` : html`<div class="field"><label for="acctRemoveName">${tm("typeLabel", row.profile)}</label>
       <input id="acctRemoveName" value=${typed} autocomplete="off" spellcheck=${false} onInput=${(e) => { setTyped(e.target.value); setErr(""); }}
@@ -177,10 +204,11 @@ export function SignOutDialog({ cli, row, label, mode = "signout", onClose, onMo
   const users = row.usedBy;
   const any = users.agents.length > 0 || users.classic.length > 0 || users.fleetDefault;
   const which = row.profile ? tm("acctName", row.profile) : tm("defName");
+  const machine = row.scope && row.scope.kind === "machine" ? row.scope : null;   // #3190 Part 3c: an account on a paired computer
   const go = async () => {
     if (busy) return;
     setBusy(true); setErr("");
-    const r = await send("POST", `/ui/accounts/${encodeURIComponent(cli.backend)}/signout`, { profile: row.profile || null, confirm: true });
+    const r = await send("POST", `/ui/accounts/${encodeURIComponent(cli.backend)}/signout`, { profile: row.profile || null, confirm: true, ...(machine ? { machine: machine.id } : {}) });
     if (!live.current) return;
     setBusy(false);
     if (!r.ok) { setErr(r.error === "failed" ? tm("err_signout_failed", label) : errText(r)); return; }
@@ -191,10 +219,10 @@ export function SignOutDialog({ cli, row, label, mode = "signout", onClose, onMo
   return html`<${Dialog} title=${mode === "switch" ? tm("switchTitle", label) : tm("signOutTitle", label, which)} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" disabled=${busy} onClick=${onClose}>${tm("cancel")}</button>
     <button type="button" class=${mode === "switch" ? "btn btn-primary" : "btn btn-danger"} disabled=${busy} onClick=${go}>${busy ? tm("signingOut") : mode === "switch" ? tm("switchGo") : tm("signOutGo")}</button>`}>
-    <p>${mode === "switch" ? tm("switchLead", label) : tm("signOutLead", label)}</p>
+    <p>${mode === "switch" ? tm("switchLead", label) : machine ? tm("signOutLeadMachine", machine.name, label) : tm("signOutLead", label)}</p>
     ${any ? html`<div class="s-account-inuse" role="status"><p><strong>${tm("stopUsers")}</strong></p><ul>
       ${users.agents.map((name) => html`<li><span>${tm("inUseAgent", name)}</span>${mode === "switch" ? null : moveBtn({ kind: "agent", name })}</li>`)}
-      ${users.fleetDefault && row.profile ? html`<li><span>${tm("inUseDefault", label)}</span>${moveBtn({ kind: "default" })}</li>` : null}
+      ${users.fleetDefault && row.profile ? html`<li><span>${machine ? tm("inUseMachineDefault") : tm("inUseDefault", label)}</span>${machine ? null : moveBtn({ kind: "default" })}</li>` : null}
       ${users.classic.map((key) => html`<li><span>${tm("inUseRoom", key)}</span></li>`)}
     </ul></div>` : html`<p class="note">${tm("nobody")}</p>`}
     ${err ? html`<p class="err" role="alert">${err}</p>` : null}

@@ -16,6 +16,7 @@ import { RuntimeClientStore, runtimeJobDigest, validateRuntimeServer, type Runti
 import { RUNTIME_ROTATE_PATH, RUNTIME_REINSTALL_CLOSE_PREFIX, runtimeClaimFingerprint } from "./runtime-protocol.js";
 import { readRuntimeInfo } from "./runtime-build-info.js";
 import { ProcessNotConfirmedEnded, RemoteAccounts, type RemoteAccountsDeps, type RemoteInstaller } from "./runtime-remote-accounts.js";
+import { isCreatedProfile } from "./runtime-profile-ownership.js";
 import { killTree } from "./runtime-signin.js";
 import { CLI_INSTALL_CAPABILITY, REMOTE_SIGNIN_CAPABILITY } from "./runtime-remote-setup.js";
 import { managedCliRoot, managedInstaller, nativeInstallSupported } from "./runtime-cli-install.js";
@@ -542,7 +543,7 @@ export class RuntimeClient {
       catch { still(); this.remember(root, "claude-code", name, { loggedIn: null }); }
     }
     let name: string | undefined; try { name = this.options.store.credentialDefault(); } catch { /* reported as no default; a run refuses with the real error */ }
-    return credentialProfileReport(root, name);
+    return credentialProfileReport(root, name, profile => isCreatedProfile(root, "claude-code", profile));
   }
   private computerBoot: Promise<string | undefined> | undefined;
   private computerBootValue: string | undefined;
@@ -593,7 +594,13 @@ export class RuntimeClient {
       // Throws when `credential-default.json` cannot be read: an unreadable default is not "no default" (the remove then answers `unconfirmed`).
       defaultProfile: () => this.options.store.credentialDefault(),
       enter: () => this.activity.enter(),
-      changed: () => { this.credentialStamp = this.stamp(); void this.refreshInventory(false).catch(() => {}); },
+      // With `authorized` (an account operation still waiting for its answer, which already holds a share of the Runtime's activity) the new inventory is sent over the same
+      // connection BEFORE the answer, so the dashboard that reads it on the answer sees the change; a revoked consent sends nothing. Without it (an install) it is only started.
+      changed: authorized => {
+        this.credentialStamp = this.stamp();
+        if (authorized) return authorized() ? this.readInventory(false, authorized).then(() => {}, () => {}) : undefined;
+        void this.refreshInventory(false).catch(() => {});
+      },
       // A CLI was just installed: the cached list is stale, so detect for real and send it (this request already holds a share of the Runtime's activity).
       installed: async authorized => { await this.readInventory(true, authorized); },
       // Native Windows installs from the Runtime's own closed table (3b); a test supplies its own installer.
