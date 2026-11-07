@@ -35,8 +35,8 @@ function withProfile(name = "spare") {
   mkdirSync(home, { recursive: true }); writeFileSync(join(home, ".credentials.json"), "{}");
   return { data, home };
 }
-const remove = (data: string, over: Partial<Parameters<typeof removeAccountProfile>[1]> = {}, fs = me()) =>
-  removeAccountProfile(data, { backend: "claude-code", name: "spare", confirm: "spare", users: NOBODY, signingIn: false, ...over }, fs);
+const remove = (data: string, over: Partial<Parameters<typeof removeAccountProfile>[1]> = {}, fs = me(), opts: Parameters<typeof removeAccountProfile>[3] = {}) =>
+  removeAccountProfile(data, { backend: "claude-code", name: "spare", confirm: "spare", users: NOBODY, signingIn: false, ...over }, fs, opts);
 
 describe("Remove: every refusal deletes nothing", () => {
   it("in use by an agent, a ClassicBot room or the fleet default: refused, and who uses it is named", () => {
@@ -107,6 +107,18 @@ describe("Remove: every refusal deletes nothing", () => {
     mkdirSync(join(real, "credential-profiles", "claude-code", "spare"), { recursive: true });
     expect(remove(linked)).toEqual({ ok: true });                       // AGEND_HOME through a link: fine
     expect(existsSync(join(real, "credential-profiles", "claude-code", "spare"))).toBe(false);
+  });
+});
+
+describe("Remove after a wait (#3305 review P2-2)", () => {
+  it("a dry run proves everything and changes nothing; the real removal must find the same folder", () => {
+    const { data, home } = withProfile();
+    const dry = remove(data, {}, me(), { dryRun: true });
+    expect([dry.ok, existsSync(home)]).toEqual([true, true]);
+    const identity = (dry as any).identity;
+    expect(remove(data, {}, me(), { expect: { ...identity, ino: identity.ino + 1 } })).toEqual({ ok: false, error: "unsafe" });
+    expect(existsSync(home)).toBe(true);
+    expect(remove(data, {}, me(), { expect: identity })).toEqual({ ok: true });
   });
 });
 
