@@ -25,8 +25,10 @@ export function groupPolicyMigration(hubId: string, realm: string, generation: s
 export type HubGroupPolicyBinding = { readonly kind: "ready" } | {
   readonly kind: "repair-required";
   /** Only an intact, same-Hub/same-realm never-enabled record may preserve legacy behavior. */
-  readonly legacy: boolean;
-};
+  readonly legacy: true;
+  /** Validated selected binding plus the complete stored policy; never a strict-store read. */
+  readonly fingerprint: string;
+} | { readonly kind: "repair-required"; readonly legacy: false };
 /** Read-only composition probe: a directory-generation change must not take sign-in/admin repair down. */
 export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: string, realm: string, generation: string): HubGroupPolicyBinding {
   try {
@@ -36,11 +38,15 @@ export function inspectHubGroupPolicyBinding(db: Database.Database, hubId: strin
     const policy = parseGroupPolicy(parseStrictJson(row.body));
     if (policy.realm !== binding.realm) return { kind: "repair-required", legacy: false };
     if (policy.generation === binding.generation) return { kind: "ready" };
-    return { kind: "repair-required", legacy: policy.state === "never-enabled" };
+    if (policy.state !== "never-enabled") return { kind: "repair-required", legacy: false };
+    const fingerprint = createHash("sha256").update(JSON.stringify({ hubId: row.hub_id,
+      realm: binding.realm, generation: binding.generation, policy })).digest("hex");
+    return { kind: "repair-required", legacy: true, fingerprint };
   } catch { return { kind: "repair-required", legacy: false }; }
 }
 
-const resources = z.strictObject({ fleetId: identifier.optional(), exposureId: identifier.optional(), messageId: identifier.optional(), roomId: identifier.optional() });
+const resources = z.strictObject({ fleetId: identifier.optional(), exposureId: identifier.optional(), messageId: identifier.optional(), roomId: identifier.optional(),
+  revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional() });
 export interface GroupCheckContext {
   requestId: string;
   resource?: z.infer<typeof resources>;
@@ -76,8 +82,9 @@ export function createHubGroupPolicyStore(options: {
     resource: validated(resources, input.resource ?? {}), current: input.current });
   const record = (actor: HubAuditRecord["actor"], action: string, result: HubAuditRecord["result"], p: HubGroupPolicy, ctx: ReturnType<typeof context>, payload: unknown) => {
     const id = randomUUID(), at = now(), body = JSON.stringify({ ...ctx.resource, generation: binding.generation, policyRevision: p.revision, payload });
+    const { revision: _resourceRevision, ...resourceIds } = ctx.resource;
     const output: unknown = audit.appendInTransaction({ id, sequence: 0, at, requestId: ctx.requestId, actor, action, result, policyVersion: p.revision,
-      ...ctx.resource, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
+      ...resourceIds, reasonCode: createHash("sha256").update(body).digest("hex") }, db);
     if (output && (typeof output === "object" || typeof output === "function") && typeof (output as { then?: unknown }).then === "function") {
       try { (output as PromiseLike<unknown>).then(undefined, () => undefined); } catch { /* refused either way */ }
       throw new HubGroupPolicyError("audit");
