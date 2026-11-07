@@ -82,6 +82,11 @@ try {
     const { ctx, page } = await fx.page(c, { path: `/ui/chat/${agent}` });
     await page.emulateMedia({ reducedMotion: c.lang === "zh-TW" ? "reduce" : "no-preference" });
     await throttle(page);
+    if (process.env.MODE === "access") {
+      await navigateHold(page, tag, "access", "/settings/access", u => u.pathname === "/api/settings/web-authority" || u.pathname === "/api/settings/guests",
+        async () => { await page.locator(".s-web-authority").scrollIntoViewIfNeeded(); });
+      await ctx.close(); continue;
+    }
     if (process.env.MODE === "profile") {
       await navigateHold(page, tag, "profile", "/settings/preferences", u => u.pathname === "/ui/profile");
       await ctx.close(); continue;
@@ -114,7 +119,7 @@ try {
       await navigateHold(page, tag, "needs", "/ui/needs", u => u.pathname === "/ui/events" || u.pathname === "/ui/poll", async () => { await page.waitForSelector(".p-needs", { timeout: 30_000 }); });
       await navigateHold(page, tag, "notices", "/ui/notices", u => u.pathname === "/ui/notices/list", async () => { await page.waitForSelector(".p-notices", { timeout: 30_000 }); });
       await navigateHold(page, tag, "profile", "/settings/preferences", u => u.pathname === "/ui/profile");
-      await navigateHold(page, tag, "access", "/settings/access", u => u.pathname === "/api/settings/web-authority" || u.pathname === "/api/settings/guests");
+      await navigateHold(page, tag, "access", "/settings/access", u => u.pathname === "/api/settings/web-authority" || u.pathname === "/api/settings/guests", async () => { await page.locator(".s-web-authority").scrollIntoViewIfNeeded(); });
       await ctx.close(); continue;
     }
     if (process.env.MODE !== "signin") {
@@ -150,6 +155,20 @@ try {
     await signedOut.addInitScript((lang: string) => localStorage.setItem("agend_lang", lang), c.lang);
     const signin = await signedOut.newPage(); await throttle(signin);
     await navigateHold(signin, tag, "signin", "/signin", u => u.pathname === "/auth/session");
+    if (process.env.EXPECT_SKELETON === "1") {
+      await signin.locator("#form").waitFor({ state: "visible" });
+      if (!await signin.locator("#form .hint").isVisible()) throw new Error(`${tag}: settled sign-in hint is hidden`);
+      await signin.screenshot({ path: join(OUT, `${tag}-signin-ready.png`) });
+      if (c.device === "phone") {
+        await signin.setViewportSize({ width: 844, height: 390 });
+        await signin.locator("details.help:not([hidden])").evaluateAll((els: HTMLDetailsElement[]) => els.forEach(el => { el.open = true; }));
+        const r = await signin.locator(".signin-card").boundingBox();
+        if (!r || r.y < 0) throw new Error(`${tag}: landscape sign-in top clipped ${JSON.stringify(r)}`);
+        if (!await signin.locator("#form .hint").isVisible()) throw new Error(`${tag}: landscape sign-in hint is hidden`);
+        await signin.screenshot({ path: join(OUT, `${tag}-signin-landscape.png`), fullPage: true });
+        results.cases.push({ tag, name: "signin-settled-landscape", top: r.y, hintVisible: true });
+      }
+    }
     await signedOut.close();
   }
 } finally {

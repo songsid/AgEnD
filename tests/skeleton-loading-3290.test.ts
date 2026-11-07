@@ -32,6 +32,7 @@ describe("#3290 shared loading states", () => {
     expect(app).toContain('class="sk-boot"');
     expect(app).toContain('class="sk-line sk-thumb"');
     expect(signin).toContain('id="checking" class="skeleton sk-signin"');
+    expect(signin).not.toContain('href="/assets/app.css"');
     for (const markup of [app, signin]) expect(markup).toContain('href="/assets/loading.css"');
     expect(css).toMatch(/prefers-reduced-motion: reduce[^}]+animation: none; opacity: 1/s);
   });
