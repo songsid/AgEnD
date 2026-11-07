@@ -343,8 +343,7 @@ shortcuts from `agend shortcuts`). The rest is alpha only
 - General can run on a Windows pane: "Run General on" moves General to an
   approved, online paired PC while the coordinator — and chat and
   administrator authority — stay on the host (#3007).
-- People are allowed through **Settings → Connections → the bot → Allowed
-  users**, not runtime pairing. Legacy people-access codes are removed;
+- People are allowed through **Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot)**, not runtime pairing. Legacy people-access codes are removed;
   existing saved grants remain. This does not grant fleet-admin authority.
 - Code (alpha branch): `docs/remote-runtime.md`, `docs/windows-cli-preview.md`,
   `docs/windows-general.md`; `src/runtime-bundle.ts`.
