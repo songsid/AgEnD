@@ -10,10 +10,14 @@ register("settingsHubSection", {
   en: {
     publicLink: "Hub settings are only on this fleet's own dashboard, not over the public link.",
     relatedTitle: "Hub", relatedHint: "Connect this fleet to a team Hub and choose which agents to share.",
+    groupsTitle: "Group permissions", groupsHint: "Let members of chosen directory groups chat with agents, share agents or connect their fleet. Set on the Hub, signed in as its administrator.",
+    groupsOpen: "Open on the Hub", experimental: "Experimental",
   },
   "zh-TW": {
     publicLink: "Hub 設定只在這個 Fleet 自己的儀表板上提供，公開連結上沒有。",
     relatedTitle: "Hub", relatedHint: "將這個 Fleet 連線至團隊 Hub，並選擇要分享的 Agent。",
+    groupsTitle: "群組權限", groupsHint: "讓指定目錄群組的成員與代理對話、分享代理或連接自己的艦隊。在 Hub 上以管理員身分登入後設定。",
+    groupsOpen: "在 Hub 上開啟", experimental: "實驗性",
   },
 });
 export const hubSectionText = (key) => t(`settingsHubSection.${key}`);
@@ -25,11 +29,27 @@ function Lazy({ load, pick }) {
   return Card ? html`<${Card} />` : null;
 }
 
-export function HubSection({ overPublicLink, hubHost }) {
+/**
+ * #3298 S-89: where the Hub's group permissions are set, found from this fleet's Settings. Only a link: the Hub's own sign-in and
+ * its own capability marks decide what opens there (this page never reads a Hub session across origins). The address is this
+ * fleet's own configured Hub web origin, accepted only as a bare HTTPS origin.
+ */
+export function hubGroupsHref(webOrigin) {
+  try { const u = new URL(String(webOrigin || "")); return u.protocol === "https:" && u.origin === String(webOrigin).replace(/\/$/, "") ? `${u.origin}/ui/hub/admin?view=groups` : null; } catch { return null; }
+}
+function GroupPermissionsRow({ href }) {
+  return html`<section class="card s-group" id="hub-group-permissions"><h3>${hubSectionText("groupsTitle")} <span class="tag">${hubSectionText("experimental")}</span></h3>
+    <p class="note">${hubSectionText("groupsHint")}</p>
+    <div class="s-row"><a class="btn btn-sm" href=${href} target="_blank" rel="noopener noreferrer">${hubSectionText("groupsOpen")}</a></div></section>`;
+}
+
+export function HubSection({ overPublicLink, hubHost, hubOrigin }) {
+  const groupsHref = hubHost ? hubGroupsHref(hubOrigin) : null;
   if (overPublicLink) return html`<section class="card s-group" id="hub-public-link"><p class="note">${hubSectionText("publicLink")}</p></section>`;
   return html`<div class="s-hub-section">
     <${Lazy} load=${() => import("./settings-hub-membership.js")} pick=${(m) => m.HubMembershipSettings} />
     ${hubHost ? html`<${Lazy} load=${() => import("./settings-hub-retention.js")} pick=${(m) => m.HubRetentionSettings} />
       <${Lazy} load=${() => import("./settings-hub-browser-certificate.js")} pick=${(m) => m.HubBrowserCertificateSettings} />` : null}
+    ${groupsHref ? html`<${GroupPermissionsRow} href=${groupsHref} />` : null}
   </div>`;
 }
