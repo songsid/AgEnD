@@ -241,6 +241,7 @@
   const clock = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
   function devStop() {
     hideQr();
+    if ($("devLoading")) $("devLoading").hidden = true;
     if (!dev) return;
     dev.stopped = true;
     clearTimeout(dev.poll); clearInterval(dev.tick);
@@ -288,13 +289,15 @@
     devStop();
     $("form").hidden = true; $("device").hidden = false; $("devNew").hidden = true;
     hideQr();
-    $("devCode").textContent = "XXXX-XXXX";
+    $("devCode").textContent = "";
+    if ($("devLoading")) { $("devLoading").hidden = false; $("devLoading").setAttribute?.("aria-label", t("dev_title")); }
     devSay("", false, true);
     const mine = { stopped: false, poll: 0, tick: 0, deadline: 0, lost: 0 };
     dev = mine;
     let made;
     try { made = await devCall("", mine); } catch { if (!mine.stopped) devEnded(t("dev_failed"), true); return; }
     if (mine.stopped || !made) return;
+    if ($("devLoading")) $("devLoading").hidden = true;
     const { r, body } = made;
     if (!r.ok || !body || typeof body.code !== "string") {
       if (r.status === 429) {

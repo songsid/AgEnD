@@ -2,6 +2,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { useLease } from "/assets/app-ctx.js";
 import { Icon } from "/assets/ui-icons.js";
+import { Skeleton } from "/assets/ui-states.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Menu } from "/assets/ui-menu.js";
 import { appStore, useStore } from "/assets/app-store.js";
@@ -259,6 +260,8 @@ function RuntimeSwitches({ lease, onChanged, computers }) {
     <p>${machineText("guidePair")}</p><p>${machineText("guideApprove")}</p>
     <a class="runtime-guide-link" href=${RUNTIME_DOCS} target="_blank" rel="noopener noreferrer">${machineText("remoteRuntimeDocs")}<${Icon} name="external" size=${14} /></a>
   </details><p class="note">${machineText("connectionNote")}</p></details>`;
+  if (!view && !unavailable) return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}><h3>${machineText("switches")}</h3>
+    ${error ? html`<p role="alert">${error}</p><button type="button" class="btn btn-sm" onClick=${() => { setError(""); load().catch(e => setError(machineText("switchFailed", e.message))); }}>${machineText("retry")}</button>` : html`<${Skeleton} variant="rows" lines=${3} />`}</section></div></div>`;
   if (unavailable) return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}><div class="runtime-switches-main"><h3>${machineText("switches")}</h3><p class="note">${machineText("switchesUnavailable")}</p></div></section></div></div>`;
   return html`<div class="runtime-layout"><div class="runtime-main">${computers}<section class="runtime-switches" aria-label=${machineText("switches")}>
     <details class="runtime-policy s-ui-disclosure"><summary><${Icon} name="settings" size=${22} /><span><strong>${machineText("policies")}</strong><small>${machineText("policySummary")}</small></span></summary>
@@ -400,7 +403,7 @@ export function RuntimesPanel({navKey}) {
   const approveStep=step(4,machineText("stepApprove"),html`<p class="note">${machineText("stepApproveHint")}</p>`);
   const windowsSteps=html`${addressStep}
       ${step(2,machineText("stepInstall"),html`<p class="note">${machineText("stepInstallHint")}</p>
-        ${installer.status === "loading" || installer.status === "idle" ? html`<p class="note" role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${machineText("installerLoading")}</p>` : null}
+        ${installer.status === "loading" || installer.status === "idle" ? html`<${Skeleton} lines=${3} label=${machineText("installerLoading")} />` : null}
         ${installer.status === "error" ? html`<p class="runtime-installer-error" role="alert">${machineText("installerUnavailable")} <button type="button" class="btn btn-ghost btn-sm" onClick=${() => void loadInstaller()}>${machineText("installerRetry")}</button></p>` : null}
         ${installCommand ? html`${commandCard("install",machineText("installCommand"),installCommand)}<p class="note runtime-installer-hash">${machineText("installerHash")} <code>${installer.sha}</code></p><p class="note">${machineText("tlsHelp")}</p><p class="note">${machineText("restrictedHelp")}</p>` : null}`)}
       ${step(3,machineText("stepConnect"),html`<p class="note">${machineText("stepConnectHint")}</p>${windowsConnectCommand ? commandCard("connect",machineText("connectCommand"),windowsConnectCommand) : null}`)}
@@ -410,11 +413,11 @@ export function RuntimesPanel({navKey}) {
       ${step(3,machineText("stepLaunch"),html`<p class="note">${machineText("stepLaunchHint")}</p>${command ? html`<details class="runtime-manual-command"><summary>${machineText("manualCommand")}</summary><label><span>${machineText("command")}</span><input class="runtime-command" value=${command} readOnly=${true} spellcheck=${false} /></label><p class="note">${machineText("manualMultiHint")}</p></details>` : null}`)}
       ${approveStep}`;
 
-  const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><span class="note">${machineText("machineCount",allMachines.length)}</span></div>
-    <section class="runtime-machines" aria-label=${machineText("machines")}>${allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} lease=${lease} onChanged=${state.refresh} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} repairUpdate=${setRepairMachine} />`)}</section>
+  const computers = html`<section class="runtime-computers"><div class="runtime-computers-heading"><h3>${machineText("computersTitle")}</h3><span class="note">${state.data ? machineText("machineCount",allMachines.length) : state.loading ? html`<${Skeleton} variant="inline" lines=${1} />` : "—"}</span></div>
+    <section class="runtime-machines" aria-label=${machineText("machines")}>${!state.data && state.loading ? html`<${Skeleton} variant="cards" lines=${2} label=${machineText("loading")} />` : allMachines.map(machine=>html`<${MachineCard} key=${machine.isLocal ? "local" : machine.id} lease=${lease} onChanged=${state.refresh} machine=${machine} busy=${!!busy || !!machine.probing} action=${action} openDiagnostics=${openDiagnostics} probe=${probeTarget} repairUpdate=${setRepairMachine} />`)}</section>
     ${repairMachine ? html`<${Dialog} title=${runtimeUpdateText("repairTitle")} onClose=${() => setRepairMachine(null)}>
       <p>${runtimeUpdateText("repairHint")}</p>
-      ${installer.status === "idle" || installer.status === "loading" ? html`<p role="status">${machineText("installerLoading")}</p>` : null}
+      ${installer.status === "idle" || installer.status === "loading" ? html`<${Skeleton} lines=${3} label=${machineText("installerLoading")} />` : null}
       ${installer.status === "error" ? html`<p role="alert">${machineText("installerUnavailable")} <button class="btn btn-sm" onClick=${() => void loadInstaller()}>${machineText("installerRetry")}</button></p>` : null}
       ${installer.status === "ready" ? commandCard("update-repair",machineText("installCommand"),runtimeFreshInstallCommand(typeof location === "undefined" ? "" : location.origin,installer.sha)) : null}
     </${Dialog}>` : null}
@@ -424,7 +427,6 @@ export function RuntimesPanel({navKey}) {
   return html`<section class="runtime-settings">
     <header class="runtime-heading s-page-head"><div><h2>${machineText("title")}<span class="s-scope">${machineText("fleetScope")}</span></h2><p class="s-page-lead">${machineText("lead")}</p></div><div><button type="button" class="btn btn-primary btn-sm" disabled=${!!busy || state.data?.enabled !== true} onClick=${connect}><${Icon} name="plus" size=${15} />${machineText("connect")}</button>${state.data?.enabled === true && !pairing ? download(true) : null}<button type="button" class="btn btn-sm" disabled=${state.loading} onClick=${state.refresh}><${Icon} name="restart" size=${15} />${machineText("refresh")}</button></div></header>
     ${state.data?.enabled === false ? html`<p class="note">${machineText("disabled")}</p>` : null}
-    ${state.loading && !state.data ? html`<p role="status" aria-busy="true"><span class="out-spin" aria-hidden="true"></span> ${machineText("loading")}</p>` : null}
     ${error || state.error ? html`<div class="runtime-error" role="alert"><p>${error || state.error}</p>${state.data && state.error ? html`<p>${machineText("seenCached")}</p>` : null}<button type="button" class="btn btn-sm" onClick=${state.refresh}>${machineText("retry")}</button></div>` : null}
     ${pairing ? html`<section class="runtime-pairing" aria-label=${machineText("pairing")}><header><h3>${machineText("pairing")}</h3><p class="note">${machineText("pairingHint")}</p></header><div class="runtime-pairing-body"><div class="runtime-install">${installTabs}<div id="runtime-install-panel" class="runtime-install-panel" role="tabpanel" aria-labelledby=${`runtime-install-tab-${tab}`} data-install-method=${tab}><ol class="runtime-steps">
       ${tab === "windows" ? windowsSteps : zipSteps}
