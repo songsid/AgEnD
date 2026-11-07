@@ -56,7 +56,8 @@ describe("#3290 Hub initial reads", () => {
   it("keeps room lookup and history pending separately, then ends the empty history skeleton", async () => {
     const rooms = held(), history = held(); api({ "/hub/v1/rooms": () => rooms.promise, [`/hub/v1/rooms/${ROOM}/messages`]: () => history.promise });
     await mount("ask", `?room=${ROOM}`); await until(() => p!.root.querySelector(".hub-room-loading .skeleton"));
-    rooms.release([200, { rooms: [room] }]); await until(() => p!.root.querySelector(".hub-scroller .skeleton"));
+    rooms.release([200, { rooms: [room] }]); await until(() => p!.root.querySelector("#msgIn"));
+    expect(p!.root.querySelector(".hub-scroller .skeleton")).not.toBeNull();
     expect(p!.root.querySelector(".hub-room-empty")).toBeNull();
     expect(p!.root.querySelector("#msgIn")).not.toBeNull();
     history.release([200, { entries: [], room }]); await until(() => p!.root.querySelector(".hub-room-empty"));
