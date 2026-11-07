@@ -611,7 +611,9 @@ function HubMine() {
 
 /** One shared agent: who may ask (allow, revoke), whether askers see its quota (G), who asked lately, pause. */
 function HubAgentPage({ x, act, msg }) {
-  const [allowing, setAllowing] = useState(false);
+  // #3338: this page is reached only through catalog.mine; the link opens a form, never a grant.
+  // Read the closed intent once on this keyed agent page, so cancel/save/reloads never reopen it.
+  const [allowing, setAllowing] = useState(() => x.state === "published" && new URLSearchParams(location.search).get("grant") === "1");
   const [activity, reloadActivity] = useRead(() => readActivity(x.id));
   const revoke = async (g) => {
     if (!(await confirmDialog({ message: hw("revokeAsk", g.subjectName || g.subjectLogin), confirmLabel: hw("revoke"), danger: true }))) return;
@@ -649,7 +651,7 @@ function HubAgentPage({ x, act, msg }) {
       ${shared ? html`<section class="card hub-danger"><h3>${ho("pauseTitle")}</h3><p class="note">${ho("pauseLead")}</p>
         <div class="field-row"><button type="button" class="btn btn-sm btn-danger" onClick=${freeze}>${ho("pauseGo")}</button></div></section>` : null}
     </div>
-    ${allowing ? html`<${AllowDialog} x=${x} act=${act} onClose=${() => setAllowing(false)} />` : null}
+    ${allowing && shared ? html`<${AllowDialog} x=${x} act=${act} onClose=${() => setAllowing(false)} />` : null}
   </div>`;
 }
 
@@ -692,7 +694,7 @@ function HubAdminPage() {
     setMsg(null);
     const r = await hubClient().createPairing(login.trim());
     if (!r.ok) { setMsg(errText(r)); return; }
-    setOffer({ code: r.code, expiresAt: r.expiresAt, login: login.trim() }); setLogin(""); reload();
+    setOffer({ code: r.code, expiresAt: r.expiresAt, memberOrigin: r.memberOrigin, login: login.trim() }); setLogin(""); reload();
   };
   const approve = async (p) => {
     if (!(await confirmDialog({ message: hw("approveAsk", compareGroups(p.fingerprint)), confirmLabel: hw("approve") }))) return;
@@ -721,7 +723,10 @@ function HubAdminPage() {
           <li class=${offer || pairings.length ? "done" : "now"}><div class="hub-step-body"><span><b>${ho("stepCode")}</b><small class="note">${ho("stepCodeHint")}</small></span>
             <form class="hub-step-form" onSubmit=${create}><label class="field"><span class="sr-only">${ho("ownerLogin")}</span><input placeholder=${ho("ownerLogin")} autocomplete="off" spellcheck=${false} autocapitalize="none" value=${login} onInput=${(e) => setLogin(e.target.value)} /></label>
               <button type="submit" class="btn btn-sm" disabled=${!login.trim()}>${ho("makeCode")}</button></form>
-            ${offer ? html`<div class="hub-offer" role="status"><small class="note">${ho("codeFor", offer.login)}</small><code class="hub-code">${offer.code}</code><small class="note">${hw("expires", when(offer.expiresAt))}</small></div>` : null}</div></li>
+            ${offer ? html`<div class="hub-offer" role="status"><small class="note">${ho("codeFor", offer.login)}</small><code class="hub-code">${offer.code}</code><small class="note">${hw("expires", when(offer.expiresAt))}</small>
+              ${offer.memberOrigin ? html`<div class="field"><span>${ho("memberAddress")}</span><span class="hub-origin"><code>${offer.memberOrigin}</code></span><small class="note">${ho("memberAddressHint")}</small></div>
+                <button type="button" class="btn btn-sm" onClick=${async () => { const ok = await copyText(`${ho("memberAddress")}: ${offer.memberOrigin}\n${ho("codeFor", offer.login)}: ${offer.code}\n${hw("expires", when(offer.expiresAt))}`); toast(ho(ok ? "handoffCopied" : "handoffCopyFailed"), !ok); }}><${Icon} name="copy" size=${14} />${ho("copyHandoff")}</button>`
+                : html`<small class="note">${ho("memberAddressMissing")}</small>`}</div>` : null}</div></li>
           <li class=${pairings.some((p) => p.ownerConfirmed) ? "done" : pairings.length ? "now" : ""}><div class="hub-step-body"><span><b>${ho("stepOwner")}</b><small class="note">${ho("stepOwnerHint")}</small></span></div></li>
           <li class=${pairings.some((p) => p.ownerConfirmed && !p.adminApproved) ? "now" : ""}><div class="hub-step-body"><span><b>${ho("stepApprove")}</b><small class="note">${ho("stepApproveHint")}</small></span></div></li>
         </ol>

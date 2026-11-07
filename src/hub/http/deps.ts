@@ -13,6 +13,7 @@ import type { HubPollBallot } from "../types.js";
 export interface HubHttpConfig {
   readonly hubId: string;
   readonly name: string;
+  readonly memberOrigin: string;
   readonly webOrigin: string;
   readonly administrator: PersonKey;
 }

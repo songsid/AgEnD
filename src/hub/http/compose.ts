@@ -293,7 +293,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       const owner = await guard(() => pairingOwnerByLogin(core, ctx, login));
       if (!owner) throw new HubProtocolError("not-found");
       const offer = await guard(() => deps.pairing.create(ctx, owner));
-      return send(res, 200, offer);
+      return send(res, 200, { ...offer, memberOrigin: deps.config.memberOrigin });
     }
     if ((r = /^\/hub\/v1\/admin\/pairings\/([^/]+)\/approve$/.exec(path))) {
       if (method !== "POST") throw new HttpError(405, "method");
