@@ -120,7 +120,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
   const opensPublicLink = () => (before.fleet?.web?.verified_authority?.named_link !== true && after.fleet?.web?.verified_authority?.named_link === true)
     || (!quickLinkEffective(before.fleet?.web?.verified_authority) && quickLinkEffective(after.fleet?.web?.verified_authority));
   const scoped = (diff: SettingsChangeDiff | null, authority?: SettingsChangeAuthority): SettingsChangeDiff | null => diff
-    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const } : {}) } : null;
+    ? { ...diff, authority: authority ?? settingsEffectAuthority(before.fleet, after.fleet, before.classic, after.classic), ...(opensPublicLink() ? { noSelfConfirm: true as const, hostSessionOnly: true as const } : {}) } : null;
   const secret = (path === "/api/settings/public-tunnel-token/apply" ? `/api/settings/secrets/${PUBLIC_TUNNEL_SECRET_ID}/apply` : path).match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   const connection = path.match(/^\/api\/settings\/connections\/([^/]+)\/(secret|binding)\/apply$/);
   if (path === "/api/settings/general-location") {

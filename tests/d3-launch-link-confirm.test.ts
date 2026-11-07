@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -21,6 +21,7 @@ import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
 import { setLocale } from "../src/locale.js";
+import { base32Encode, base32Decode, hotp, totpStep, WEB_REMOTE_ACCESS_FILE } from "../src/web-remote-access.js";
 
 const dirs: string[] = [], stores: SettingsConfirmationStore[] = [];
 afterEach(() => { for (const s of stores.splice(0)) s.close(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); vi.restoreAllMocks(); });
@@ -63,11 +64,11 @@ async function startFleet(config: Record<string, unknown> = {}) {
   };
   const reqOf = (sessionId: string, extra: Record<string, string> = {}) => ({ method: "PUT", socket: { remoteAddress: "127.0.0.1" },
     headers: { host: `127.0.0.1:${port}`, origin, "sec-fetch-site": "same-origin", cookie: `agend_session=${sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(sessionId), ...extra } });
-  return { fm, any, stop, signIn, reqOf };
+  return { fm, any, port, stop, signIn, reqOf };
 }
 type Fleet = Awaited<ReturnType<typeof startFleet>>;
 /** A held change (connecting a Telegram bot — it needs confirming) with an apply that only records it ran. */
-function held(h: Fleet, opts: { noSelfConfirm?: true; hostLocalConfirm?: true } = {}) {
+function held(h: Fleet, opts: { noSelfConfirm?: true; hostLocalConfirm?: true; hostSessionOnly?: true } = {}) {
   const store = new SettingsConfirmationStore({ audit: vi.fn(), notify: vi.fn() }); stores.push(store);
   const effect = prepareSettingsEffect("PUT", "/api/settings/fleet/channels", [{ ...CHAT.channel, id: "tg" }], { config: h.fm.fleetConfig, classic: {} });
   const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
@@ -104,7 +105,7 @@ describe("D3 on a chat fleet: a change no General can take is confirmed by the h
       bindGatewayRequest(gw, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://abc.trycloudflare.com", isCurrent: () => true });
       expect(h.any.settingsSelfConfirmation(a.store, gw, a.view.id)).toBeNull();
       expect(a.apply).not.toHaveBeenCalled();
-      // A change that opens a link (#2453 noSelfConfirm) is not widened by D3: it still waits (residual, for the leader).
+      // A noSelfConfirm change with no host exception (neither a Hub change nor a link option) is not widened by D3.
       const link = held(h, { noSelfConfirm: true });
       expect(h.any.settingsSelfConfirmation(link.store, h.reqOf(host.sessionId), link.view.id)).toBeNull();
       // …while an outward Hub change the leader ruled on (noSelfConfirm + hostLocalConfirm, #3355) is (#3362 review F1).
@@ -155,4 +156,115 @@ describe("D3 on a chat fleet: a change no General can take is confirmed by the h
       (h.fm.fleetConfig as any).channel = channel;
     } finally { await h.stop(); }
   }, 20_000);
+});
+
+// ── The leader's ruling on D3's residual (cid-d3): a link option turned on (#2453), by the host's own session here only ──
+describe("a link option turned on (#2453): the host operator's own session here confirms it, on either fleet type; nobody else", () => {
+  const link = { noSelfConfirm: true as const, hostSessionOnly: true as const };
+  it("the effect marks only turning a link option on: named_link or quick_link on → noSelfConfirm + hostSessionOnly; off → neither", () => {
+    const fleet = (va?: Record<string, unknown>) => ({ defaults: {}, instances: {}, ...CHAT, web: va ? { verified_authority: va } : {} }) as never;
+    const judge = (va: unknown, current?: Record<string, unknown>) => prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: fleet(current), classic: {} }).diff;
+    for (const on of [judge({ named_link: true }), judge({ quick_link: true }, { quick_link: false })]) expect([on?.noSelfConfirm, on?.hostSessionOnly]).toEqual([true, true]);
+    expect(judge({ named_link: null }, { named_link: true })).toBeNull();
+    const other = judge({ max_session_hours: 6 }, { max_session_hours: 1 });
+    expect(other?.hostSessionOnly).toBeUndefined();
+  });
+  it("chat fleet: the host's session here confirms it (no General can take it, D3); a forwarded request or another code's session cannot; no authenticator code", async () => {
+    setLocale("en");
+    const h = await startFleet(CHAT);
+    try {
+      const host = await h.signIn(), chatCode = await h.signIn(h.fm.issueDashboardLogin()!.display);
+      const a = held(h, link);
+      expect(h.any.settingsSelfConfirmation(a.store, h.reqOf(host.sessionId, { "x-forwarded-for": "198.51.100.7" }), a.view.id)).toBeNull();
+      expect(h.any.settingsSelfConfirmation(a.store, h.reqOf(chatCode.sessionId), a.view.id)).toBeNull();
+      expect(h.any.settingsTotpState(a.store, h.reqOf(chatCode.sessionId), a.view.id)).toBeNull();     // a chat fleet: General's card
+      const self = h.any.settingsSelfConfirmation(a.store, h.reqOf(host.sessionId), a.view.id);
+      expect(self?.label).toBe("This computer's admin");
+      expect((await a.store.decide(a.view.id, "confirm", { ...self, via: "web" })).state).toBe("applied");
+      // A General can take it: its card, as every other change (D1).
+      vi.spyOn(h.any, "settingsCardPossible").mockReturnValue(true);
+      const b = held(h, link);
+      expect(h.any.settingsSelfConfirmation(b.store, h.reqOf(host.sessionId), b.view.id)).toBeNull();
+    } finally { await h.stop(); }
+  }, 20_000);
+  it("web-only fleet: Apply now for the host operator here; any other session — forwarded, another code's, the outside sign-in — is told to use the AgEnD computer's browser, and a code is refused", async () => {
+    setLocale("en");
+    const h = await startFleet();
+    try {
+      const host = await h.signIn();
+      const a = held(h, link);
+      const away = h.reqOf(host.sessionId, { "x-forwarded-for": "198.51.100.7" });
+      expect(h.any.settingsSelfConfirmation(a.store, away, a.view.id)).toBeNull();
+      expect(h.any.settingsTotpState(a.store, away, a.view.id)).toBe("host_browser");
+      expect(h.any.settingsTotpConfirm(a.store, away, a.view.id, "123456", "x")).toEqual({ error: "not_here" });
+      const gw = h.reqOf(host.sessionId);
+      bindGatewayRequest(gw, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://abc.trycloudflare.com", isCurrent: () => true });
+      expect([h.any.settingsSelfConfirmation(a.store, gw, a.view.id), h.any.settingsTotpState(a.store, gw, a.view.id)]).toEqual([null, "host_browser"]);
+      const self = h.any.settingsSelfConfirmation(a.store, h.reqOf(host.sessionId), a.view.id);
+      expect([self?.label, h.any.settingsTotpState(a.store, h.reqOf(host.sessionId), a.view.id)]).toEqual(["This computer's admin", null]);
+      expect((await a.store.decide(a.view.id, "confirm", { ...self, via: "web" })).state).toBe("applied");
+      // Over HTTP, through the Settings gate: the flag reaches the held change (a forwarded Save waits, and its page says why).
+      const put = await raw(h.port, "PUT", "/api/settings/fleet/web", { ...h.reqOf(host.sessionId, { "x-forwarded-for": "198.51.100.7" }).headers,
+        "content-type": "application/json", "idempotency-key": `k${Math.random()}` }, JSON.stringify({ verified_authority: { named_link: true } }));
+      expect(put.status).toBe(202);
+      const pending = JSON.parse(put.body).pending_change;
+      expect([pending.state, pending.totp]).toEqual(["pending", "host_browser"]);
+      // An ordinary noSelfConfirm change without the link flag keeps #2453 for the host operator too.
+      const plain = held(h, { noSelfConfirm: true });
+      expect(h.any.settingsSelfConfirmation(plain.store, h.reqOf(host.sessionId), plain.view.id)).toBeNull();
+    } finally { await h.stop(); }
+  }, 20_000);
+});
+
+// ── #3366 review (Fable F1, F2): the two guards that alone keep a link opener from non-host paths ──
+describe("a link opener never reaches a web-verified admin's Apply now, nor an authenticator code (#3366 review)", () => {
+  const TOKEN = "c".repeat(48), SECRET = base32Encode(Buffer.from("0123456789abcdefghij"));
+  function fixture(chat: boolean) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-3366-")); dirs.push(dir);
+    if (!chat) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), JSON.stringify({ v: 1, totp: { secret: SECRET, enrolledAt: 1, lastStep: 0 }, outside: false, wrong: 0, level: 0, pausedUntil: 0, handles: [] }), { mode: 0o600 });
+    const fm = new FleetManager(dir), any = fm as any;
+    fm.fleetConfig = { defaults: { backend: "codex" }, ...(chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001" }] } : {}),
+      instances: { general: { working_directory: dir, general_topic: true } } } as any;
+    writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
+    const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
+    // An ordinary admin session on this computer — not the host's (no `host`), as a browser signed in with a code.
+    const c = any.webSessions.create({ tier: "admin", surface: "local", label: "browser", tokenEpoch: tokenEpoch(TOKEN) });
+    const req: any = { method: "POST", socket: { remoteAddress: "127.0.0.1" }, headers: { host: "127.0.0.1:19280", origin: "http://127.0.0.1:19280",
+      "sec-fetch-site": "same-origin", cookie: `agend_session=${c.sessionId}`, [WEB_CSRF_HEADER]: csrfTokenFor(c.sessionId) } };
+    const propose = (link: boolean) => {
+      // A link opener, or an ordinary held change (connecting another Telegram bot).
+      const effect = link ? prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: { named_link: true } }, { config: fm.fleetConfig, classic: {} } as any)
+        : prepareSettingsEffect("PUT", "/api/settings/fleet/channels", [{ id: "b", type: "telegram", mode: "topic", group_id: "-1002", bot_token_env: "T2" }], { config: fm.fleetConfig, classic: {} } as any);
+      const apply = vi.fn(async (_c: () => boolean, execution: any) => execution.commit(() => "applied"));
+      const view = store.propose({ session: "browser", key: `k${Math.random()}`, bytes: 1, source: "web_session", section: effect.diff!.section, requestedBy: "browser",
+        fingerprint: effect.diff!.fingerprint, summary: effect.diff!.summary, affectedConnections: effect.diff!.affectedConnections, authority: effect.diff!.authority,
+        ...(effect.diff!.noSelfConfirm ? { noSelfConfirm: true as const } : {}), ...(effect.diff!.hostSessionOnly ? { hostSessionOnly: true as const } : {}),   // as the gate passes them
+        current: () => true, unchanged: async () => true, snapshot: () => null, apply }).view;
+      return { view, apply };
+    };
+    return { fm, any, store, req, record: c.record, propose };
+  }
+  it("F1 — chat fleet: a web-verified admin of the General's connection gets Apply now for an ordinary change, never for a link opener", () => {
+    const f = fixture(true);
+    expect(f.record.host).toBeUndefined();
+    // Web-verified as admin 1 of connection "a", which a General card could reach (the #2170 path's own inputs).
+    vi.spyOn(f.fm, "webAuthority").mockReturnValue({ authority: { kind: "web-verified", actor: { adapter_id: "a", user_id: "1" }, session: { handle: f.record.handle } } } as any);
+    vi.spyOn(f.any, "settingsChatAuthority").mockReturnValue({ platform: "telegram", current: () => true, admin: () => true });
+    vi.spyOn(f.any, "settingsNoticeGenerals").mockReturnValue([{ current: () => true, followStop: async () => {} }]);
+    vi.spyOn(f.any, "settingsCardPossible").mockReturnValue(true);
+    const ordinary = f.propose(false), link = f.propose(true);
+    expect([f.store.selfConfirmable(ordinary.view.id), f.store.hostSessionConfirmable(link.view.id)]).toEqual([true, true]);
+    expect(f.any.settingsSelfConfirmation(f.store, f.req, ordinary.view.id)?.label).toBeTruthy();   // control: the path is open
+    expect(f.any.settingsSelfConfirmation(f.store, f.req, link.view.id)).toBeNull();               // …but never for #2453
+  });
+  it("F2 — web-only fleet: a correct authenticator code with the right digest, POSTed for a link opener, is refused; nothing applied", async () => {
+    const f = fixture(false);
+    const link = f.propose(true), ordinary = f.propose(false);
+    const code = hotp(base32Decode(SECRET)!, totpStep(Date.now()));
+    expect(f.any.settingsTotpConfirm(f.store, f.req, link.view.id, code, f.store.confirmDigest(link.view.id))).toEqual({ error: "not_here" });
+    expect(link.apply).not.toHaveBeenCalled();
+    // Control: the same session and app confirm an ordinary change with a code.
+    const r = f.any.settingsTotpConfirm(f.store, f.req, ordinary.view.id, hotp(base32Decode(SECRET)!, totpStep(Date.now() + 30_000)), f.store.confirmDigest(ordinary.view.id));
+    expect(r.label).toBe("Authenticator code");
+  });
 });

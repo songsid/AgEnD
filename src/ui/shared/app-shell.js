@@ -696,6 +696,7 @@ register("pendingHost", {
     codeUnavailable: "The code could not be checked. Try again.",
     codeChanged: "This change is no longer the one shown here. Reload the page and check it again.",
     onHost: "This change can't be confirmed over a link. Confirm it in the browser on the computer running AgEnD, or in General.",
+    hostBrowser: "This change opens a link to this fleet, so only the browser on the computer running AgEnD can confirm it. Do it there.",
     codeSetUp: "To confirm changes here with a code, set up an authenticator app in Access & security.",
   },
   "zh-TW": {
@@ -721,6 +722,7 @@ register("pendingHost", {
     codeUnavailable: "無法檢查代碼，請再試一次。",
     codeChanged: "這項變更已不是這裡顯示的內容，請重新整理頁面再確認一次。",
     onHost: "這項變更無法透過連結確認。請在執行 AgEnD 的那台電腦的瀏覽器中確認，或在 General 確認。",
+    hostBrowser: "這項變更會開放一條連到這個 fleet 的連結，只有執行 AgEnD 的那台電腦上的瀏覽器能確認。請到那裡操作。",
     codeSetUp: "若要在這裡用代碼確認變更，請先到「存取與安全」設定驗證器 App。",
   },
 });
@@ -768,6 +770,7 @@ function PendingHow({ p }) {
     ${why ? html`<p class="note pending-why">${t(`pendingHost.${why}_do`)}${go ? html` <a class="btn btn-sm" href=${settingsPath(go)}>${t("pendingHost.go")}</a>` : null}</p>` : null}
     ${p.confirmWithCode && !p.applyNow ? html`<${PendingCode} p=${p} />` : null}
     ${p.onHost && !p.applyNow ? html`<p class="note pending-on-host">${t("pendingHost.onHost")}</p>` : null}
+    ${p.hostBrowser && !p.applyNow ? html`<p class="note pending-host-browser">${t("pendingHost.hostBrowser")}</p>` : null}
     ${p.totpNotSetUp && !p.applyNow ? html`<p class="note pending-code-setup">${t("pendingHost.codeSetUp")} <a class="btn btn-sm" href=${settingsPath("access")}>${t("pendingHost.go")}</a></p>` : null}
     ${p.applyNow ? html`<div class="pending-self"><span class="note">${t("app.pendingSelf")}</span>
       <button type="button" class="btn btn-sm btn-primary" onClick=${apply}>${t("app.pendingApplyNow")}</button></div>` : null}
@@ -816,8 +819,9 @@ export async function refreshRestartPending() {
  * Restart now asks first and is never automatic (the leader's default: a Save that restarted on its own once took 33
  * agents down at once). Asked again whenever a Save or a restart settles. Left to the Save in hand while it runs or offers
  * its own restart (Settings' card, or the line above in another panel). Over a temporary public link it says so and
- * offers nothing. S-92 (#3326 D1): with no Settings job to carry the restart (a hand edit) it offers Restart now too —
- * the server makes the job (`restartRunner(null)`); the line saying where else to restart is for a page that cannot.
+ * offers nothing. S-92 (#3326 D1): Restart now whenever the page can restart — with no Settings job behind it (a hand
+ * edit) too: the server makes the job (`restartRunner(null)`). The muted hint (#3363's words: chat fleets send /restart in
+ * General, web-only fleets are told to restart AgEnD, no command) is for a page that cannot restart.
  */
 function RestartLine() {
   const { restartPending: pending, settingsOp: op, restartRunner, connections } = useStore(appStore);
@@ -830,6 +834,8 @@ function RestartLine() {
   const seen = `${pending.jobId}|${pending.keys.join(",")}`;
   if (later === seen) return null;
   const canRestart = typeof restartRunner === "function";
+  // connections === 0 is web-only; null is unknown — do not name General.
+  const hint = !canRestart ? t(connections > 0 ? "app.restartOnHostChat" : "app.restartOnHost") : null;
   const restart = async () => {
     // S-92: on a fleet with no chat connection the restart is announced in the dashboard's Notices, not a chat channel.
     const message = t(connections === 0 ? "app.restartConfirmWebOnly" : "app.restartConfirm");
@@ -847,7 +853,7 @@ function RestartLine() {
   return html`<div data-trust="status" class="conn restart-line lbar" role="status">
     <span>${t("app.restartWaiting", Math.max(1, pending.keys.length))}</span>
     ${pending.keys.length ? html`<span class="muted restart-keys">${pending.keys.join(", ")}</span>` : null}
-    ${!canRestart ? html`<span class="muted">${t("app.restartOnHost")}</span>` : null}
+    ${hint ? html`<span class="muted">${hint}</span>` : null}
     ${canRestart ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${restart}>${t("app.restartNow")}</button>` : null}
     <button type="button" class="btn btn-sm" onClick=${() => setLater(seen)}>${t("app.restartLater")}</button></div>`;
 }

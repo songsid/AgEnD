@@ -3208,13 +3208,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // `agend settings confirm` on the host. The host's own session, used on this computer (hostSessionHere: its code came
     // from `agend web` here; never bare loopback), carries that same trust — it confirms at Save, with no click added. A
     // change a General can take keeps its card (D1). Asked again at execution: the same session, still here, still no card.
-    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) A change that opens a
-    // link (#2453 noSelfConfirm) is not widened here; the outward Hub changes the leader ruled on (hostLocalConfirm) are.
+    // (A web-only fleet's host operator has its own rule below, with its revocable authorization.) The noSelfConfirm changes
+    // the leader ruled on are included: the outward Hub changes (hostLocalConfirm) and a link option turned on
+    // (hostSessionOnly, cid-d3) — this session is exactly the one those allow.
     // "No card": none could be posted now, or the one tried could not be (posting failed or ran out — the view says
     // host_cli; #3362 review N1).
     const noCard = (): boolean => !this.settingsCardPossible(store, id) || store.inspect(id)?.confirmation.kind === "host_cli";
     if (!this.isWebOnlyFleet() && hostSessionHere(auth.session, req) && noCard()
-      && (store.selfConfirmable(id) || store.hostLocalConfirmable(id))) {
+      && (store.selfConfirmable(id) || store.hostLocalConfirmable(id) || store.hostSessionConfirmable(id))) {
       // A card that could not be posted stays unposted (no card is attached later): fixed now, not re-read at execution,
       // where the store has already marked the change as confirmed from the web.
       const handle = auth.session.handle, postFailed = store.inspect(id)?.confirmation.kind === "host_cli";
@@ -3233,7 +3234,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // …and never a change that turns the named-link option on: that one needs a General's card or the host. B2b (the leader's
     // ruling on #3352 F1; threat model A 64a289a0): the outward Hub changes (hostLocalConfirm) are the one exception — for
     // the host operator's own local session only (below).
-    if (!store.selfConfirmable(id) && !store.hostLocalConfirmable(id)) return null;
+    if (!store.selfConfirmable(id) && !store.hostLocalConfirmable(id) && !store.hostSessionConfirmable(id)) return null;
     const record = auth.session, gateway = !!gatewayRequestContext(req), peer = webPeerOf(req);
     const verified = (): { adapter_id: string; user_id: string } | null => {
       const now = this.webAuthority({ session: record, gateway, peer });
@@ -3248,7 +3249,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const hostOperator = (a: { adapter_id: string; user_id: string } | null): boolean =>
       !!a && a.adapter_id === HOST_OPERATOR.adapterId && a.user_id === HOST_OPERATOR.userId && this.isWebOnlyFleet();
     // The host operator's own LOCAL session: its host session (the bootstrap or launch link), over loopback with no
-    // forwarding header and no gateway (classifyWebPeer, as #3345). Only that one may Apply-now an outward Hub change.
+    // forwarding header and no gateway (classifyWebPeer, as #3345). Only that one may Apply-now an outward Hub change, or a
+    // link option turned on (hostSessionOnly — the outside sign-in, a gateway, never may).
     const hostLocal = (): boolean => hostSessionHere(record, req);
     if (hostOperator(actor) && (store.selfConfirmable(id) || hostLocal())) {
       return {
@@ -3305,7 +3307,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!first) return null;
     return { handle: first.handle, current: () => { const now = allowed(); return !!now && now.handle === first.handle && !!this.webRemoteAccess()?.enrolled; } };
   }
-  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | null {
+  settingsTotpState(store: SettingsConfirmationStore, req: IncomingMessage, id: string): "ready" | "not_set_up" | "on_host" | "host_browser" | null {
+    // A link option turned on (hostSessionOnly): never a code. On a web-only fleet (no General to send it to), any session
+    // but the host's own here is told in plain words to do it in the browser on the AgEnD computer.
+    if (store.hostSessionConfirmable(id)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "host_browser" : null;
     if (!(store.selfConfirmable(id) || store.hostLocalConfirmable(id))) return null;
     // Over a link (web-only fleet): never a code here — the card says to do it in the host computer's own browser, or in General.
     if (gatewayRequestContext(req)) return this.isWebOnlyFleet() && !this.settingsSelfConfirmation(store, req, id) ? "on_host" : null;
@@ -25618,7 +25623,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return {
           ok: false,
           status: 503,
-          error: "the restart rate-limit file cannot be read — remove self-restart.json from the data dir on the host, or run `agend restart` there",
+          error: this.isWebOnlyFleet()
+            ? "the restart rate-limit file cannot be read"
+            : "the restart rate-limit file cannot be read — send /restart in General",
         };
       }
       return {
@@ -25660,7 +25667,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return {
         ok: false,
         status: 409,
-        error: "no chat channel is available to announce the restart — run `agend restart` on the host instead",
+        error: "no chat channel is available to announce the restart",
       };
     }
 

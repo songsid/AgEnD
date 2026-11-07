@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
-import { setLocale } from "../src/locale.js";
+import { setLocale, t } from "../src/locale.js";
 
 describe("interactive prompt General assistance", () => {
   let dir: string;
@@ -209,6 +209,34 @@ describe("interactive prompt General assistance", () => {
     await (fm as any).handleInteractivePromptAssist(callback(confirmId), "telegram-main");
 
     expect(ipcSend).toHaveBeenCalledOnce();
+  });
+
+  it("Confirm on General's own prompt retires the buttons without delivering; copy names View as inspection", async () => {
+    const { fm, notifyAlert, editMessageRemoveButtons, ipcSend } = setup();
+    await fm.notifyInteractivePrompt("general", "password");
+    const alert = notifyAlert.mock.calls[0][1];
+    expect(alert.choices.map((c: { id: string }) => c.id.split(":").at(-1))).toEqual(["confirm", "cancel"]);
+    const confirmId = alert.choices[0].id as string;
+
+    await (fm as any).handleInteractivePromptAssist(callback(confirmId), "telegram-main");
+
+    expect(ipcSend).not.toHaveBeenCalled();
+    expect(editMessageRemoveButtons).toHaveBeenCalledWith(
+      "fleet-group",
+      "assist-message",
+      t("interactive.self_assist", "general"),
+      "general-topic",
+    );
+    const text = t("interactive.self_assist", "general");
+    expect(text).toMatch(/View shows the prompt/);
+    expect(text).not.toMatch(/buttons in General/);
+    expect(text).not.toMatch(/agend attach/);
+    expect(text).not.toMatch(/Open its View/);
+    expect((fm as any).pendingNonceButtons.size).toBe(0);
+    setLocale("zh-TW");
+    expect(t("interactive.self_assist", "general")).toMatch(/View 可以看提示/);
+    expect(t("interactive.self_assist", "general")).not.toMatch(/按按鈕/);
+    setLocale("en");
   });
 
   it("rejects a non-admin click without consuming the valid button", async () => {

@@ -64,7 +64,9 @@ describe("Settings → Agents → Accounts (#3212)", () => {
     expect(text(off.querySelector(".s-actions button"))).toBe("Sign in");
     expect(off.querySelector(".s-actions").textContent).not.toContain("Move agents here");      // a signed-out account takes no agents
     const team2 = rowOf("codex", "team2");
-    expect([team2.querySelector(".s-actions button")?.textContent ?? null, text(team2.querySelector("details code"))]).toEqual(["Move agents here…", "CODEX_HOME=/x codex login"]);
+    expect(team2.querySelector(".s-actions button")?.textContent ?? null).toBe("Move agents here…");
+    expect(text(team2.querySelector("details"))).toContain("Send /login in chat");
+    expect(team2.querySelector("details code")).toBeNull();
   });
 
   it("an offline computer's accounts are drawn read-only under its name, with the reason (the machine scope)", async () => {
