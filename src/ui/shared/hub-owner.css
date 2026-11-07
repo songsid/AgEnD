@@ -14,8 +14,8 @@
 .hub-row-text .note { overflow-wrap: anywhere; }
 .hub-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .hub-card-head h3 { margin: 0; color: var(--text); font-size: var(--fs-lg); text-transform: none; letter-spacing: 0; }
-.hub-grant { display: flex; flex-direction: column; gap: var(--s-3); }
-.hub-grant .field { margin: 0; }
+.hub-grant.form { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-3); }
+.hub-grant.form .field { flex: none; margin: 0; }
 .hub-danger h3 { color: var(--danger); }
 .hub-steps { list-style: none; margin: var(--s-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-3); counter-reset: hub-step; }
 .hub-steps > li { display: flex; align-items: flex-start; gap: var(--s-3); counter-increment: hub-step; }

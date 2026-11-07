@@ -84,7 +84,7 @@ try{
  console.log('Owner/admin approved');await fleet.page.locator('.hub-paired').waitFor({timeout:25000});check('pairing retained fingerprint approvals',fp.replaceAll(' ','').length>=32&&fm.hubMemberPairing().view().state==='paired');
  await fleet.page.locator('.hub-exposure input').last().click();await applyPending(fleet.page);await fleet.page.locator('.hub-exposure.is-shared a').waitFor({timeout:20000});
  const href=await fleet.page.locator('.hub-exposure.is-shared a').getAttribute('href');result.continuation=href;await fleet.page.locator('.hub-exposure.is-shared').scrollIntoViewIfNeeded();await shot(fleet.page,'workflow-published');const id=new URL(href).searchParams.get('agent');check('exact agent link',new URL(href).origin===webOrigin&&!!id&&new URL(href).searchParams.get('grant')==='1');
- console.log('Agent published');const fresh=await hubPage(c,new URL(href).pathname+new URL(href).search);await fresh.page.locator('.hub-signin').waitFor();await signIn(fresh.page,'olivia');await fresh.page.locator('.hub-grant').waitFor();
+ console.log('Agent published');const [freshPage]=await Promise.all([fleet.ctx.waitForEvent('page'),fleet.page.locator('.hub-exposure.is-shared a').click()]);const fresh={page:freshPage,ctx:fleet.ctx};await fresh.page.locator('.hub-signin').waitFor();await signIn(fresh.page,'olivia');await fresh.page.locator('.hub-grant').waitFor();
  await shot(fresh.page,'workflow-signed-in-grant');check('signed-out continuation restored grant form',(await fresh.page.locator('.hub-grant').count())===1);
  // The asker must have signed in once; grants resolve the directory's current identity.
  const asker=await hubPage(c,'/ui/hub');await signIn(asker.page,'alex');
@@ -93,12 +93,12 @@ try{
  await asker.page.locator('#msgIn').fill('Fixture question after contextual grant');await asker.page.locator('#sendBtn').click();
  for(let n=0;n<100&&!deliveries.length;n++)await new Promise(r=>setTimeout(r,100));check('question reached real representative admission',deliveries.some(d=>d.ok),deliveries);
  check('workflow CSP',!(await admin.page.evaluate(()=>window.__csp)).length&&!(await fresh.page.evaluate(()=>window.__csp)).length&&!(await fleet.page.evaluate(()=>window.__csp)).length);
- const adminCookies=await admin.ctx.cookies(),ownerCookies=await owner.ctx.cookies();await fresh.ctx.close();await asker.ctx.close();await admin.ctx.close();await owner.ctx.close();await fleet.ctx.close();
+ const adminCookies=await admin.ctx.cookies(),ownerCookies=await owner.ctx.cookies();await fresh.page.close();await asker.ctx.close();await admin.ctx.close();await owner.ctx.close();await fleet.ctx.close();
  if(!process.env.INTEGRATED){for(const device of ['desk','phone'])for(const theme of ['light','dark'])for(const lang of ['en','zh-TW'])for(const mode of ['before','current']){
   const c={device,theme,lang},tag=`${mode}-${device}-${theme}-${lang}`;const entry:any={tag};result.cases.push(entry);
   const a=await hubPage(c,'/ui/hub/admin',mode,adminCookies);await a.page.locator('.hub-step-form input').fill('olivia');await a.page.locator('.hub-step-form button').click();await a.page.locator('.hub-code').waitFor();await shot(a.page,tag+'-code');entry.code=await geometry(a.page,'.hub-offer');
   const f=await fx.page(c as any,{path:'/settings/hub'});await setup(f.ctx,c,mode);await f.page.reload();await f.page.locator('.hub-exposure.is-shared').waitFor();await f.page.locator('.hub-exposure.is-shared').scrollIntoViewIfNeeded();await shot(f.page,tag+'-share');entry.share=await geometry(f.page,'.hub-exposure.is-shared');
-  if(mode==='current'){const p=await hubPage(c,new URL(href).pathname+new URL(href).search,mode,ownerCookies);await p.page.locator('.hub-grant').waitFor();await shot(p.page,tag+'-grant');entry.dialog=await geometry(p.page,'.dlg');check(tag+' no overflow',[...entry.code,...entry.share,...entry.dialog].every((b:any)=>b.left>=-1&&b.right<=b.inner+1),entry);await p.ctx.close()}
+  if(mode==='current'){const p=await hubPage(c,new URL(href).pathname+new URL(href).search,mode,ownerCookies);await p.page.locator('.hub-grant').waitFor();await shot(p.page,tag+'-grant');entry.dialog=await geometry(p.page,'.dlg');entry.fields=await geometry(p.page,'.hub-grant .field');check(tag+' stacked form fields',entry.fields.every((b:any)=>b.width>=entry.dialog[0].width-60),entry);check(tag+' no overflow',[...entry.code,...entry.share,...entry.dialog].every((b:any)=>b.left>=-1&&b.right<=b.inner+1),entry);await p.ctx.close()}
   await a.ctx.close();await f.ctx.close();
  }
  for(const c of [{device:'desk',theme:'dark',lang:'en'},{device:'phone',theme:'light',lang:'zh-TW'}]){
