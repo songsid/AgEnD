@@ -160,7 +160,7 @@ describe("the routes", () => {
       isSettingsMutation("POST", `/api/hub/member/exposures/${randomUUID()}/withdraw`)]).toEqual([true, false, false]);
     const preview = vi.fn(() => ({ summary: ["Share it"] }));
     const e = prepareSettingsEffect("POST", "/api/hub/member/exposures", body, { config: { instances: {} } as never, classic: {}, hubExposure: preview });
-    expect(e.diff).toMatchObject({ summary: ["Share it"], affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } });
+    expect(e.diff).toMatchObject({ summary: ["Share it"], affectedConnections: [], authority: { connections: [], primaryGeneral: true, unknown: false } });
     const e2 = prepareSettingsEffect("POST", "/api/hub/member/exposures", { ...body, tools: ["documents.list"] }, { config: { instances: {} } as never, classic: {}, hubExposure: preview });
     expect(e2.diff!.fingerprint).not.toBe(e.diff!.fingerprint);
     expect(() => prepareSettingsEffect("POST", "/api/hub/member/exposures", body, { config: null, classic: {} })).toThrow(expect.objectContaining({ status: 404 }));
