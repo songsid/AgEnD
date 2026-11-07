@@ -119,7 +119,7 @@ describe("independent chat updater plan", () => {
     if (event === "error") child.emit("error", Error("private manager detail"));
     else child.emit("exit", event === "exit" ? 1 : null, event === "signal" ? "SIGTERM" : null);
     child.emit("exit", 1, null); expect(fail).toHaveBeenCalledOnce();
-    expect(fail.mock.calls[0][0]).toContain("host shell"); expect(fail.mock.calls[0][0]).not.toContain("private manager detail");
+    expect(fail.mock.calls[0][0]).toContain("AgEnD could not finish the update automatically. Manual repair is not available here."); expect(fail.mock.calls[0][0]).not.toContain("private manager detail");
   });
 });
 
@@ -160,8 +160,8 @@ describe.each(["en", "zh-TW"] as const)("#1854 real entry failure copy in %s", l
     const failed = await handler(platform);
     expect(effects).toHaveLength(0);
     expect(failed.mock.calls).toEqual([[language === "en"
-      ? "Run `agend update` from a host shell. /update cannot verify the installed AgEnD (fixture install unproven)."
-      : "請在主機終端機執行 `agend update`。 /update 無法驗證已安裝的 AgEnD（fixture install unproven）。"]]);
+      ? "AgEnD could not finish the update automatically. Manual repair is not available here. /update cannot verify the installed AgEnD (fixture install unproven)."
+      : "AgEnD 無法自動完成更新。這裡尚無手動修復功能。 /update 無法驗證已安裝的 AgEnD（fixture install unproven）。"]]);
     expect(defaultUpdateLaunchDeps.cgroup).not.toHaveBeenCalled();
   });
 
@@ -171,8 +171,8 @@ describe.each(["en", "zh-TW"] as const)("#1854 real entry failure copy in %s", l
     const failed = await handler(platform);
     expect(effects).toHaveLength(0);
     expect(failed.mock.calls).toEqual([[language === "en"
-      ? "Run `agend update` from a host shell. /update cannot prepare an independent updater (cannot read the fleet's service cgroup)."
-      : "請在主機終端機執行 `agend update`。 /update 無法準備獨立的更新程序（cannot read the fleet's service cgroup）。"]]);
+      ? "AgEnD could not finish the update automatically. Manual repair is not available here. /update cannot prepare an independent updater (cannot read the fleet's service cgroup)."
+      : "AgEnD 無法自動完成更新。這裡尚無手動修復功能。 /update 無法準備獨立的更新程序（cannot read the fleet's service cgroup）。"]]);
   });
 });
 
@@ -201,7 +201,7 @@ describe.each(["discord", "telegram"] as const)("real %s update entry", platform
   it("scope refusal cannot fall back to the fleet cgroup", async () => {
     const failed = await handler(platform); effects[0].child.emit("exit", 1, null);
     expect(failed).toHaveBeenCalledOnce(); expect(effects).toHaveLength(1);
-    expect(failed.mock.calls[0][0]).toContain("host shell");
+    expect(failed.mock.calls[0][0]).toContain("AgEnD could not finish the update automatically. Manual repair is not available here.");
   });
   it("revoked admin during the async plan cannot launch", async () => {
     let allowed = true; vi.mocked(defaultUpdateLaunchDeps.version).mockImplementation(async () => { allowed = false; return "systemd 255\n"; });

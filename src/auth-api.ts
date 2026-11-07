@@ -525,7 +525,7 @@ export function handleAuthRequest(
 }
 
 export const REVOCATION_NOT_DURABLE_MESSAGE =
-  "Signed out for now, but the change could not be saved: the session file could not be updated or removed, so a fleet restart may bring the session back. Fix the permissions on ~/.agend/web-sessions.json and sign out again, or rotate the token (agend web-token rotate).";
+  "Signed out for now, but the change could not be saved: the session file could not be updated or removed, so a fleet restart may bring the session back. This page cannot repair session storage.";
 
 /**
  * A revocation that holds only in memory is reported as a failure (500), never as "ok": the browser is

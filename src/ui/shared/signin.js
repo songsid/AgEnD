@@ -11,6 +11,7 @@
   const $ = (id) => document.getElementById(id);
   const T = {
     en: {
+      signout_unsaved: "Signed out for now, but the change could not be saved: a restart may bring the session back. This page cannot repair session storage.",
       checking: "Checking your session…", title: "Sign in to AgEnD", lead: "Enter your sign-in code.",
       label: "One-time code", submit: "Sign in", working: "Signing in…",
       hint: "No code? Send /web in General, then press a sign-in button to get one.",
@@ -29,6 +30,7 @@
       resend_refused_web: "A new code could not be sent. Run agend web --code on the AgEnD computer for one.",
     },
     "zh-TW": {
+      signout_unsaved: "暫時登出了，但變更沒能儲存：重新啟動後這個工作階段可能會回來。這個頁面無法修復工作階段的儲存問題。",
       checking: "正在確認登入狀態…", title: "登入 AgEnD", lead: "輸入登入碼。",
       label: "一次性登入碼", submit: "登入", working: "登入中…",
       hint: "沒收到？在 General 傳 /web，再按登入按鈕取碼。",
@@ -120,7 +122,7 @@
     // A sign-out the server could not make durable says so here, once (agend-auth.js signOut).
     try {
       const note = sessionStorage.getItem("agend_signout_note");
-      if (note) { sessionStorage.removeItem("agend_signout_note"); $("msg").textContent = note; }
+      if (note) { sessionStorage.removeItem("agend_signout_note"); $("msg").textContent = note.startsWith("Signed out for now, but the change could not be saved") ? t("signout_unsaved") : note; }
     } catch { /* private mode */ }
     $("code").focus();
     offerResend();
