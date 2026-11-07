@@ -59,6 +59,8 @@ describe.skipIf(process.platform !== "linux")("agend web / view without a browse
     const { code, stdout, stderr } = await runCli(["web"]);
     expect(stdout).toMatch(/Sign-in page: http:\/\/localhost:\d+\/signin/);
     expect(stdout).toContain("ABCD-2345");
+    // #3270: the clean address, the code and one line for a browser that does not open the page — on every run that opens one.
+    expect(stdout).toContain("If the page did not open (a Snap or Flatpak browser may not), open the address above in your browser and type the code.");
     expect(stderr).toContain("Could not open a browser (xdg-open: ENOENT). Open the link above yourself.");
     expect(stderr).not.toMatch(/Unhandled|at ChildProcess/);
     expect(code).toBe(0);
@@ -96,8 +98,10 @@ describe.skipIf(process.platform !== "linux")("agend web / view without a browse
     expect(stdout).not.toContain("#code=");
     // A code that goes into a URL is asked for as one: the ordinary lifetime, never the first-install one.
     expect(deliveries).toEqual(["url"]);
-    // …and the file is a 0600 one that a detached helper deletes after SIGNIN_LAUNCH_FILE_TTL_MS (the delay and the helper
-    // are covered in signin-launch-cleanup-3270.test.ts; waiting out a real 45 s here would only slow the suite).
+    // The same one-line way on for a Snap or Flatpak browser that cannot read the launch file: the address above, the code.
+    expect(stdout).toMatch(/Sign-in page: http:\/\/localhost:\d+\/signin\nCode: +ABCD-2345 .*\nIf the page did not open/);
+    // …and the file is a 0600 one that a detached helper deletes after SIGNIN_LAUNCH_FILE_TTL_MS, 2 minutes (the delay and the
+    // helper are covered in signin-launch-cleanup-3270.test.ts; waiting out a real 2 minutes here would only slow the suite).
     const file = decodeURIComponent(new URL(opened).pathname);
     if (process.platform !== "win32") expect((statSync(file).mode & 0o777).toString(8)).toBe("600");
     expect(existsSync(file)).toBe(true);
@@ -110,26 +114,41 @@ describe.skipIf(process.platform !== "linux")("agend web / view without a browse
     expect(stdout).toContain("ABCD-2345");
     await expect.poll(read(argv)).toMatch(/^http:\/\/localhost:\d+\/signin$/);
     expect(existsSync(join(home, "signin-launch"))).toBe(false);
-    // Nothing goes into a URL on WSL — the person types the printed code — so it may be the 24 h first-install one: no `url` header.
+    // Nothing goes into a URL on WSL — the person types the printed code — but WSL never gets the first-install hour either
+    // (a Windows process is loopback there and can read this distro's files): nothing is asked for, no delivery header at all.
     expect(deliveries).toEqual([undefined]);
+    expect(stdout).toContain("If the page did not open");
   });
 
-  it("agend web --code: prints the page and code, opens nothing", async () => {
+  it("agend web --code: prints the page and code, opens nothing — and, with stdout not a terminal, asks for the 5-minute code (non-tty)", async () => {
     const seen = join(home, "opened.txt");
     writeFileSync(join(bin, "xdg-open"), `#!/bin/sh\nprintf '%s' "$1" > '${seen}'\n`);
     chmodSync(join(bin, "xdg-open"), 0o755);
     const { code, stdout } = await runCli(["web", "--code"]);
-    expect([code, stdout.includes("ABCD-2345"), stdout.includes("#code=")]).toEqual([0, true, false]);
+    expect([code, stdout.includes("ABCD-2345"), stdout.includes("#code="), stdout.includes("If the page did not open")]).toEqual([0, true, false, false]);
     await new Promise(r => setTimeout(r, 300));
     expect(() => readFileSync(seen, "utf8")).toThrow();
-    expect(deliveries).toEqual([undefined]);                       // a printed code may be the first-install one
+    // A pipe, a redirect, an install script's log: never the first-install hour, so it says so rather than saying nothing.
+    expect(deliveries).toEqual(["non-tty"]);
     expect(existsSync(join(home, "signin-launch"))).toBe(false);
   });
 
-  it("agend web: a 24 h first-install code is described in hours", async () => {
+  it("agend web --code on WSL: nothing is asked for, whatever stdout is", async () => {
+    const { code, stdout } = await runCli(["web", "--code"], { AGEND_WSL: "1" });
+    expect([code, stdout.includes("ABCD-2345")]).toEqual([0, true]);
+    expect(deliveries).toEqual([undefined]);
+  });
+
+  it("agend web --code: a first-install code is described in minutes, with what to do after them", async () => {
     server.removeAllListeners("request");
-    server.on("request", (_req, res) => { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ code: "ABCD-2345", expiresAt: Date.now() + 24 * 3_600_000, bootstrap: true })); });
+    server.on("request", (_req, res) => { res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify({ code: "ABCD-2345", expiresAt: Date.now() + 60 * 60_000, bootstrap: true })); });
     const { stdout } = await runCli(["web", "--code"]);
-    expect(stdout).toContain("(works once, valid ~24 h)");
+    expect(stdout).toContain("(works once, valid ~60 min; after that run agend web again for a new one)");
+    expect(stdout).not.toContain("~24 h");
+  });
+
+  it("agend web --code: an ordinary code says nothing about running it again", async () => {
+    const { stdout } = await runCli(["web", "--code"]);
+    expect(stdout).toContain("(works once, valid ~5 min)");
   });
 });

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createContext, runInContext } from "node:vm";
 import { mkdtempSync, readFileSync as readFile, rmSync, statSync, utimesSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { SIGNIN_LAUNCH_FILE_TTL_MS, describeCodeLifetime, isWsl, launchFileArgument, signinLaunchHtml, sweepSigninLaunchFiles, webSigninLinks, writeSigninLaunchFile } from "../src/web-signin-link.js";
+import { SIGNIN_FALLBACK_HINT, SIGNIN_LAUNCH_FILE_TTL_MS, codeDeliveryFor, describeCodeLifetime, isWsl, launchFileArgument, signinLaunchHtml, sweepSigninLaunchFiles, webSigninLinks, writeSigninLaunchFile } from "../src/web-signin-link.js";
 
 const SRC = readFileSync(join(process.cwd(), "src", "ui", "shared", "signin.js"), "utf8");
 
@@ -150,8 +150,30 @@ describe("#3270 agend web: what is printed and what the browser is given", () =>
     expect(webSigninLinks(19280, "ABCD-2345", "checklist")).toEqual({ display: "http://localhost:19280/signin?next=checklist", open: "http://localhost:19280/signin?next=checklist#code=ABCD-2345" });
     expect(webSigninLinks(1, "ABCD-2345").display).not.toContain("ABCD");
   });
-  it("describes a lifetime as minutes, or hours for a first-install code", () => {
-    expect([5 * 60_000, 59 * 60_000, 24 * 3_600_000, 24 * 3_600_000 - 5000].map(describeCodeLifetime)).toEqual(["~5 min", "~59 min", "~24 h", "~24 h"]);
+  it("describes a lifetime in minutes — the first-install code's hour is \"~60 min\"", () => {
+    expect([5 * 60_000, 59 * 60_000, 60 * 60_000, 60 * 60_000 - 5000, 1000].map(describeCodeLifetime)).toEqual(["~5 min", "~59 min", "~60 min", "~60 min", "~1 min"]);
+  });
+  it("tells the person what to do when a Snap or Flatpak browser does not open the page: the address above, the code", () => {
+    expect(SIGNIN_FALLBACK_HINT).toMatch(/Snap or Flatpak/);
+    expect(SIGNIN_FALLBACK_HINT).toMatch(/open the address above/);
+    expect(SIGNIN_FALLBACK_HINT).toMatch(/type the code/);
+    expect(SIGNIN_FALLBACK_HINT.split("\n")).toHaveLength(1);
+  });
+});
+
+describe("#3270 agend web: where the code is shown decides how long it may live (X-Agend-Code-Delivery)", () => {
+  it("only --code on an interactive terminal off WSL asks for the first-install lifetime", () => {
+    expect(codeDeliveryFor({ printOnly: true, stdoutIsTty: true, wsl: false })).toBe("tty");
+  });
+  it("--code with stdout piped or redirected (an install script's log) says so: non-tty", () => {
+    expect(codeDeliveryFor({ printOnly: true, stdoutIsTty: false, wsl: false })).toBe("non-tty");
+  });
+  it("opening the browser through the launch file says url, on a terminal or not", () => {
+    expect(codeDeliveryFor({ printOnly: false, stdoutIsTty: true, wsl: false })).toBe("url");
+    expect(codeDeliveryFor({ printOnly: false, stdoutIsTty: false, wsl: false })).toBe("url");
+  });
+  it("on WSL nothing is asked for, whatever stdout is", () => {
+    for (const printOnly of [true, false]) for (const stdoutIsTty of [true, false]) expect(codeDeliveryFor({ printOnly, stdoutIsTty, wsl: true })).toBeUndefined();
   });
 });
 
@@ -191,20 +213,20 @@ describe("#3270 agend web: the launch file keeps the code out of every command l
     const fresh = writeSigninLaunchFile(home, "http://localhost:1/signin#code=BBBB-3333");
     const other = join(home, "signin-launch", "keep.txt");
     writeFileSync(other, "x");
-    utimesSync(old, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
-    utimesSync(other, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+    utimesSync(old, new Date(Date.now() - 180_000), new Date(Date.now() - 180_000));
+    utimesSync(other, new Date(Date.now() - 180_000), new Date(Date.now() - 180_000));
     expect(sweepSigninLaunchFiles(home, Date.now())).toBe(1);
     expect([existsSync(old), existsSync(fresh), existsSync(other)]).toEqual([false, true, true]);
     expect(readdirSync(join(home, "signin-launch")).length).toBe(2);
     expect(sweepSigninLaunchFiles(join(home, "none"), Date.now())).toBe(0);    // no directory: nothing, no throw
   }));
 
-  it("the file lives 45 s — long enough for a browser that is slow to start — and a run's sweep spares a younger one", () => withHome(home => {
-    expect(SIGNIN_LAUNCH_FILE_TTL_MS).toBe(45_000);
+  it("the file lives 2 minutes — long enough for a browser that is slow to start, inside the code's 5 — and a run's sweep spares a younger one", () => withHome(home => {
+    expect(SIGNIN_LAUNCH_FILE_TTL_MS).toBe(120_000);
     const young = writeSigninLaunchFile(home, "http://localhost:1/signin#code=AAAA-2222");
     const old = writeSigninLaunchFile(home, "http://localhost:1/signin#code=BBBB-3333");
-    utimesSync(young, new Date(Date.now() - 30_000), new Date(Date.now() - 30_000));
-    utimesSync(old, new Date(Date.now() - 50_000), new Date(Date.now() - 50_000));
+    utimesSync(young, new Date(Date.now() - 100_000), new Date(Date.now() - 100_000));
+    utimesSync(old, new Date(Date.now() - 130_000), new Date(Date.now() - 130_000));
     expect(sweepSigninLaunchFiles(home, Date.now())).toBe(1);
     expect([existsSync(young), existsSync(old)]).toEqual([true, false]);
   }));

@@ -10,14 +10,22 @@
  * The launch file is the Jupyter pattern: the opener (`xdg-open`, `open`, `explorer`) is handed the path of a `0600` HTML
  * file in the AgEnD home, and the file's page sends the browser on to `open`. A URL given to the opener is its argv, which
  * other users of the machine can read for as long as the process lives (`/proc/<pid>/cmdline`, `ps`) — and one of them is on
- * loopback too, so reading it is enough to redeem the code first. The file is deleted a few seconds later by a detached
+ * loopback too, so reading it is enough to redeem the code first. The file is deleted two minutes later by a detached
  * helper (so the command can exit at once), and any a crash left behind is swept at the next run.
+ *
+ * What the terminal always carries too — on every launch, not only on WSL or a headless machine — is the clean address and the
+ * code, with one line saying what to do if the page does not open. A browser installed as a Snap or Flatpak (Ubuntu's default
+ * Firefox is a snap) cannot read a file under a hidden directory of the home folder, and shows an error page for the launch file:
+ * the person then opens the printed address and types the printed code, as they did before this existed.
  */
-import { spawn } from "node:child_process";
-import { chmodSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { spawn } from "./child-process.js";
+import { chmodSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { pathToFileURL } from "node:url";
+import { isWsl } from "./wsl-detect.js";
+
+export { isWsl };
 
 export interface WebSigninLinks {
   readonly display: string;
@@ -29,15 +37,33 @@ export function webSigninLinks(port: number, code: string, nextTarget?: string):
   return { display, open: `${display}#code=${encodeURIComponent(code)}` };
 }
 
-/** "valid ~5 min" / "valid ~24 h": a first-install code lasts a day, and "~1440 min" reads as a typo. */
+/** "valid ~5 min" / "valid ~60 min": the longest a code lives is the first-install hour. */
 export function describeCodeLifetime(ms: number): string {
-  const minutes = Math.max(1, Math.round(ms / 60_000));
-  if (minutes < 120) return `~${minutes} min`;
-  return `~${Math.round(minutes / 60)} h`;
+  return `~${Math.max(1, Math.round(ms / 60_000))} min`;
 }
 
-/** How long the launch file lives: long enough for a browser that is still starting, short enough to be gone when it matters. */
-export const SIGNIN_LAUNCH_FILE_TTL_MS = 45_000;
+/**
+ * How long the launch file lives: long enough for a browser that is cold-starting on a slow machine (more than 45 s happens),
+ * and still well inside the 5-minute life of the code it carries — a file left that long holds a code that is nearly spent.
+ */
+export const SIGNIN_LAUNCH_FILE_TTL_MS = 120_000;
+
+/** What `agend web` prints after the address and the code whenever it opens a browser: the way on when the page does not open. */
+export const SIGNIN_FALLBACK_HINT = "If the page did not open (a Snap or Flatpak browser may not), open the address above in your browser and type the code.";
+
+/**
+ * What `agend web` tells `/auth/issue-code` about where the code it gets will be shown (the `X-Agend-Code-Delivery` header).
+ * Only a code that is printed to an interactive terminal on a machine that is not WSL may ask for the first-install lifetime
+ * (`tty`); a code that goes into a launch-file URL (`url`) or to stdout that is not a terminal — a pipe, a redirect, an
+ * install script's log (`non-tty`) — keeps the ordinary 5 minutes, because a long-lived code must never end up in a log or in
+ * browser history. On WSL nothing is asked for: the server refuses the long lifetime there anyway.
+ */
+export type CodeDelivery = "tty" | "url" | "non-tty";
+export function codeDeliveryFor(opts: { printOnly: boolean; stdoutIsTty: boolean; wsl: boolean }): CodeDelivery | undefined {
+  if (!opts.printOnly) return opts.wsl ? undefined : "url";      // the browser is opened: through a launch file, or (WSL) on the clean address
+  if (opts.wsl) return undefined;
+  return opts.stdoutIsTty ? "tty" : "non-tty";
+}
 const LAUNCH_PREFIX = "agend-signin-";
 const LAUNCH_SUFFIX = ".html";
 
@@ -85,16 +111,9 @@ export function scheduleSigninLaunchCleanup(path: string, delayMs = SIGNIN_LAUNC
   } catch { /* swept by the next run */ }
 }
 
-/**
- * Whether this is WSL, where the opener hands a Linux path to a Windows browser (interop, `wslview`) whose command line the
- * Windows user's processes can read and which may not see a file in the distro at all. There `agend web` opens the clean
- * address and the person types the code.
- */
-export function isWsl(env: NodeJS.ProcessEnv = process.env, readVersion: () => string = () => readFileSync("/proc/version", "utf8")): boolean {
-  if (env.AGEND_WSL === "0") return false;                               // tests, and a machine the detection gets wrong
-  if (env.AGEND_WSL === "1" || env.WSL_DISTRO_NAME || env.WSL_INTEROP) return true;
-  try { return /microsoft|wsl/i.test(readVersion()); } catch { return false; }
-}
+// `isWsl` (./wsl-detect.ts, re-exported above): on WSL the opener hands a Linux path to a Windows browser (interop, `wslview`)
+// whose command line the Windows user's processes can read and which may not see a file in the distro at all. There `agend web`
+// opens the clean address and the person types the code.
 
 /** What the opener is given for the launch file: Windows' `explorer` takes the path, the others take a file:// URL. */
 export function launchFileArgument(path: string, platform: NodeJS.Platform = process.platform): string {

@@ -54,6 +54,7 @@ import {
 } from "./web-auth.js";
 import { csrfTokenFor, labelFromUserAgent, sessionIdHash, tokenEpoch, type SessionRecord, type SessionTier, type WebSessionStore } from "./web-session.js";
 import { classifyWebPeer, type WebPeer } from "./authority/web-authority.js";
+import { isWsl } from "./wsl-detect.js";
 import type { GuestLoginCodes, LoginCodeOwner, LoginCodeRecipient, LoginRedeemResult, WebLoginCodes } from "./web-login.js";
 import { buildDeviceCookie, readDeviceCookies, DEVICE_COOKIE, DEVICE_COOKIE_SECURE, type ReturningDevice } from "./web-returning-device.js";
 import { fleetCookieName } from "./web-cookie-names.js";
@@ -628,12 +629,17 @@ export function handleAuthRequest(
       return true;
     }
     // #2910 D1: the shell's own code — the host operator's on a web-only fleet (fleet-manager authorizeHostSession).
-    // #3270: before any host session has ever been authorized on this fleet (a fresh install — not "none right now"), the
-    // code outlives a walk away from the install: a long TTL, redeemable from this computer only, and only until the first
-    // host session exists. Never for a code that is going into a URL (`agend web` opening the browser says so): that
-    // code can reach browser history, so it keeps the ordinary lifetime.
-    const viaUrl = String(req.headers["x-agend-code-delivery"] ?? "").toLowerCase() === "url";
-    const bootstrap = !viaUrl && !!ctx.webSessions && !ctx.webSessions.hostEverAuthorized;
+    // #3270: the first host code on a fresh install (no host session EVER authorized — not "none right now") may live for an
+    // hour instead of five minutes, redeemable from this computer only and only until the first host session exists. Every
+    // one of these must hold, and a missing header is the ordinary 5 minutes:
+    //   - the caller says the code is going to an interactive terminal (`X-Agend-Code-Delivery: tty`; `agend web --code` with a
+    //     TTY on stdout). A code for a URL (`url`: browser history), for a pipe or a redirect (`non-tty`: an install log, a
+    //     service's journal) or from a caller that does not say, is never the long one;
+    //   - this is not WSL: Windows processes reach the fleet as loopback there and can read the distro's files;
+    //   - no host session was ever authorized here (the persisted marker).
+    // Nothing logged below carries the code itself — only that a first-install one was issued.
+    const delivery = String(req.headers["x-agend-code-delivery"] ?? "").trim().toLowerCase();
+    const bootstrap = delivery === "tty" && !isWsl() && !!ctx.webSessions && !ctx.webSessions.hostEverAuthorized;
     const issued = ctx.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(token), host: true, ...(bootstrap ? { bootstrap: true as const } : {}) });
     ctx.logger.info({ source: "cli", ...(issued.bootstrap ? { bootstrap: true } : {}) }, "Web login code issued");
     json(res, 200, { code: issued.display, expiresAt: issued.expiresAt, ...(issued.bootstrap ? { bootstrap: true } : {}) });

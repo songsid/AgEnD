@@ -38,14 +38,16 @@ export const LOGIN_CODE_TTL_MS = 5 * 60 * 1000;
 /**
  * #3270: the first code this computer's own shell asks for, before any host session has EVER been authorized on this
  * fleet (WebSessionStore.hostEverAuthorized — a fresh install, never "no session right now"), outlives the person
- * walking away from the install. It is as strong as any other: only the web token's holder can ask for it, it is
- * redeemed from this computer only (never over a gateway or from a LAN peer), it dies the moment the first host session
- * exists, and the usual attempt budget and breaker still apply. It is never given to a code that goes into a URL.
- *
- * How long a code that sits in a terminal before its first sign-in may live is the owner's call (the upstream review
- * suggests 30–60 minutes, or none): this one line is the whole of that decision.
+ * walking away from the install: sixty minutes instead of five (the maintainer's ruling on the upstream issue). It is
+ * as strong as any other: only the web token's holder can ask for it, it is redeemed from this computer only (never over
+ * a gateway or from a LAN peer), it dies the moment the first host session exists, and the usual attempt budget and
+ * breaker still apply. Three more bounds, set where the code is issued (auth-api.ts /auth/issue-code): it is asked for
+ * by an interactive terminal only (`X-Agend-Code-Delivery: tty` — never a code going into a URL, a pipe, a redirect or an
+ * install log, and never a fleet log line), and never on WSL, where a Windows process counts as loopback and can read the
+ * distro's files. The hour starts with the first such code (a re-run inside it shares its end); after it, every code is
+ * the ordinary 5 minutes, and `agend web` prints a new one.
  */
-export const BOOTSTRAP_LOGIN_CODE_TTL_MS = 24 * 60 * 60 * 1000;
+export const BOOTSTRAP_LOGIN_CODE_TTL_MS = 60 * 60 * 1000;
 /** Same reasoning as setup: eight characters on a phone get mistyped. */
 export const MAX_LOGIN_CODE_ATTEMPTS = 5;
 export const LOGIN_BREAKER_WINDOW_MS = 15 * 60 * 1000;
@@ -126,6 +128,13 @@ export interface WebLoginCodesOptions {
 
 export class WebLoginCodes {
   private outstanding: Outstanding | null = null;
+  /**
+   * #3270: when the first-install hour ends — one hour after the first bootstrap code this process issued. A bootstrap code
+   * never outlives it, and once it has passed every code is the ordinary 5 minutes ("after that, the normal 5-minute code
+   * applies"). Kept in memory on purpose: the codes themselves are, so a restart simply starts a new hour for a fleet that
+   * still has never had a host session.
+   */
+  private bootstrapWindowEnd: number | null = null;
   /** Per-audience wrong-try times. A public guesser must not pause or burn a local code. */
   private readonly failuresByAudience = new Map<string, number[]>();
   private readonly pausedUntilByAudience = new Map<string, number>();
@@ -149,9 +158,13 @@ export class WebLoginCodes {
     const tier = opts.tier ?? "admin";
     // #2910 D1: a host code is the shell's own: an admin code for this computer, sent to no account.
     const host = !!opts.host && !opts.owner && !opts.recipient && tier === "admin" && (opts.audience ?? "local") === "local";
-    // #3270: only a host code can be a bootstrap code; the caller says no host session exists (it holds the session store).
-    const bootstrap = host && opts.bootstrap === true;
-    const expiresAt = this.now() + (bootstrap ? BOOTSTRAP_LOGIN_CODE_TTL_MS : LOGIN_CODE_TTL_MS);
+    // #3270: only a host code can be a bootstrap code; the caller says no host session exists (it holds the session store)
+    // and that the code goes to an interactive terminal off WSL. It lives until the end of the first-install hour — an hour
+    // from the first one issued, shared by a re-run inside it — and not at all once that hour is over.
+    const now = this.now();
+    if (host && opts.bootstrap === true && this.bootstrapWindowEnd === null) this.bootstrapWindowEnd = now + BOOTSTRAP_LOGIN_CODE_TTL_MS;
+    const bootstrap = host && opts.bootstrap === true && this.bootstrapWindowEnd !== null && now < this.bootstrapWindowEnd;
+    const expiresAt = bootstrap ? this.bootstrapWindowEnd! : now + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
     this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner,
       ...(host ? { host: true as const } : {}),

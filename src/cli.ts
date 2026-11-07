@@ -2636,36 +2636,43 @@ program
     // in anything printed or sent to a server (the only place it appears is a `#fragment`, below).
     let code: string;
     let lifetime: string;
+    let firstInstall = false;
     const link = await import("./web-signin-link.js");
-    const { describeCodeLifetime, webSigninLinks } = link;
-    // #3270: only a code that will travel inside a local launch file (the browser is opened for it, off WSL) keeps the ordinary
-    // short lifetime. `--code` and WSL print the code and the person types it — nothing reaches a URL — so they may get the
-    // long first-install one.
-    const codeDeliveredByUrl = !opts.code && !link.isWsl();
+    const { codeDeliveryFor, describeCodeLifetime, webSigninLinks } = link;
+    const wsl = link.isWsl();
+    // #3270: say where this code will be shown, because that decides how long it may live. Only `--code` printing to an
+    // interactive terminal off WSL asks for the first-install hour (`tty`); stdout that is a pipe, a redirect or an install
+    // log (`non-tty`) and a code that goes into the launch file's URL (`url`) get the ordinary 5 minutes, and on WSL (where a
+    // Windows process counts as loopback and can read this distro's files) nothing is asked for — the fleet refuses it too.
+    const delivery = codeDeliveryFor({ printOnly: !!opts.code, stdoutIsTty: process.stdout.isTTY === true, wsl });
+    const codeDeliveredByUrl = delivery === "url";
     try {
       const resp = await fetch(`http://127.0.0.1:${port}/auth/issue-code`, {
         method: "POST",
-        headers: { "X-Agend-Token": token, ...(codeDeliveredByUrl ? { "X-Agend-Code-Delivery": "url" } : {}) },
+        headers: { "X-Agend-Token": token, ...(delivery ? { "X-Agend-Code-Delivery": delivery } : {}) },
         signal: AbortSignal.timeout(5000),
       });
-      const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; error?: string };
+      const body = await resp.json().catch(() => ({})) as { code?: string; expiresAt?: number; bootstrap?: boolean; error?: string };
       if (!resp.ok || !body.code) {
         console.error(`Could not get a sign-in code: ${body.error ?? resp.statusText}`);
         process.exit(1);
       }
       code = body.code;
+      firstInstall = body.bootstrap === true;
       lifetime = describeCodeLifetime((body.expiresAt ?? Date.now()) - Date.now());
     } catch {
       console.error(t("cli.fleet_unreachable", port));
       process.exit(1);
     }
-    // #3270: the terminal gets the clean address and the code (a WSL or headless user copies them). The browser this command
-    // opens on this computer reaches `#code=…` through a 0600 launch file — never through a command line, which other users of
-    // the machine can read — and the sign-in page clears the fragment from the address bar before doing anything else.
+    // #3270: the terminal gets the clean address and the code on every run (a WSL or headless user copies them, and so does
+    // anyone whose Snap or Flatpak browser cannot open the launch file). The browser this command opens on this computer
+    // reaches `#code=…` through a 0600 launch file — never through a command line, which other users of the machine can
+    // read — and the sign-in page clears the fragment from the address bar before doing anything else.
     const links = webSigninLinks(port, code, guide || undefined);
     console.log(`Sign-in page: ${links.display}`);
-    console.log(`Code:         ${code}   (works once, valid ${lifetime})`);
+    console.log(`Code:         ${code}   (works once, valid ${lifetime}${firstInstall ? "; after that run agend web again for a new one" : ""})`);
     if (opts.code) return;
+    console.log(link.SIGNIN_FALLBACK_HINT);
     if (!codeDeliveredByUrl) { openInBrowser(links.display); return; }   // WSL: the code stays out of a Windows command line: type it
     let launch: string | null = null;
     try {

@@ -1,14 +1,16 @@
 /**
  * #3270: the first code `agend web --code` asks for — before a host session has EVER been authorized on this fleet — lasts
- * 24 hours instead of 5 minutes, and in exchange it is redeemable from this computer only, and only until the first host
- * session exists. A code that is going into a URL (`agend web` opening the browser) never gets the long lifetime, and "no
- * session right now" (signed out, expired) is not "first install".
+ * 60 minutes instead of 5, and in exchange it is bounded four ways: redeemable from this computer only and only until the
+ * first host session exists; asked for by an interactive terminal only (`X-Agend-Code-Delivery: tty` — a code for a URL, a
+ * pipe, a redirect or an install log, or from a caller that does not say, is the ordinary 5 minutes); never on WSL (a Windows
+ * process is loopback there and can read the distro's files); and never in a log line. "No session right now" (signed out,
+ * expired) is not "first install", and an hour after the first one every code is the ordinary 5 minutes again.
  *
  * Real: WebLoginCodes, WebSessionStore and the real auth routes (handleAuthRequest) over a real HTTP socket. A manual
  * clock moves both the code store and the session store. "Not this computer" is what classifyWebPeer calls it: a Host
  * name that is not a loopback name, or a forwarding header.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,9 +23,14 @@ import { BOOTSTRAP_LOGIN_CODE_TTL_MS, LOGIN_CODE_TTL_MS, MAX_LOGIN_CODE_ATTEMPTS
 const TOKEN = "bootstrap-test-web-token-0123456789abcdef";
 const EPOCH = tokenEpoch(TOKEN);
 const MIN = 60_000, HOUR = 60 * MIN;
-const quiet = { info() {}, warn() {}, debug() {}, error() {}, trace() {}, fatal() {}, child() { return quiet; } };
+const logged: string[] = [];
+const record = (level: string) => (...args: unknown[]) => { logged.push(`${level} ${args.map(a => (typeof a === "string" ? a : JSON.stringify(a))).join(" ")}`); };
+const quiet = { info: record("info"), warn: record("warn"), debug: record("debug"), error: record("error"), trace: record("trace"), fatal: record("fatal"), child() { return quiet; } };
 
 const servers: Server[] = [];
+// Not WSL unless a test says so: the fleet looks at its own machine, and this suite may run on one.
+beforeEach(() => { vi.stubEnv("AGEND_WSL", "0"); });
+afterEach(() => { vi.unstubAllEnvs(); });
 afterEach(async () => { for (const s of servers.splice(0)) await new Promise<void>(r => { s.closeAllConnections?.(); s.close(() => r()); }); });
 
 async function fleet(opts: { dataDir?: string } = {}) {
@@ -47,14 +54,15 @@ async function fleet(opts: { dataDir?: string } = {}) {
     req.on("error", reject); req.end(payload);
   });
   const local = { host: `127.0.0.1:${port}`, origin: `http://127.0.0.1:${port}` };
-  const issue = (viaUrl = false) => call("/auth/issue-code", { "x-agend-token": TOKEN, host: local.host, ...(viaUrl ? { "x-agend-code-delivery": "url" } : {}) });
+  // `delivery` is what `agend web` says about where the code will be shown; a terminal (`tty`) unless a test says otherwise, `null` = no header.
+  const issue = (delivery: string | null = "tty") => call("/auth/issue-code", { "x-agend-token": TOKEN, host: local.host, ...(delivery ? { "x-agend-code-delivery": delivery } : {}) });
   const login = (code: string, as: "local" | "lan" | "forwarded" = "local") => call("/auth/login", as === "lan" ? { host: "agend.lan.test", origin: "http://agend.lan.test" }
     : as === "forwarded" ? { ...local, "x-forwarded-for": "203.0.113.9" } : local, { code });
   return { clock, codes, sessions, issue, login, advance: (ms: number) => { clock.t += ms; } };
 }
 
 describe("#3270 issuing: the first code, and the ones after a host session has existed", () => {
-  it("before any host session: a 24 h bootstrap code; once one was authorized every later code is 5 min — signed out or not", async () => {
+  it("before any host session: a 60 minute bootstrap code; once one was authorized every later code is 5 min — signed out or not", async () => {
     const f = await fleet();
     const first = await f.issue();
     expect([first.status, first.body.bootstrap, (first.body.expiresAt as number) - f.clock.t]).toEqual([200, true, BOOTSTRAP_LOGIN_CODE_TTL_MS]);
@@ -74,14 +82,52 @@ describe("#3270 issuing: the first code, and the ones after a host session has e
     expect([fourth.body.bootstrap, (fourth.body.expiresAt as number) - f.clock.t]).toEqual([undefined, LOGIN_CODE_TTL_MS]);
   });
 
-  it("a code asked for to go into a URL (agend web opening the browser) is always the ordinary 5 minutes, even on a fresh install", async () => {
+  it("a code that does not go to an interactive terminal is the ordinary 5 minutes, even on a fresh install: a URL, a pipe or redirect, no header, or a made-up one", async () => {
+    for (const delivery of ["url", "non-tty", null, "", "TTYX", "wsl", "pipe"]) {
+      const f = await fleet();
+      const asked = await f.issue(delivery);
+      expect([delivery, asked.status, asked.body.bootstrap, (asked.body.expiresAt as number) - f.clock.t]).toEqual([delivery, 200, undefined, LOGIN_CODE_TTL_MS]);
+      f.advance(LOGIN_CODE_TTL_MS);
+      expect([delivery, (await f.login(asked.body.code as string)).status]).toEqual([delivery, 401]);
+      // …and it did not use up the first-install allowance: a code printed to a terminal after it still is one.
+      expect([delivery, (await f.issue("tty")).body.bootstrap]).toEqual([delivery, true]);
+    }
+  });
+
+  it("the header is read case-insensitively and trimmed, and only `tty` opens the long lifetime", async () => {
+    for (const delivery of ["tty", "TTY", " Tty "]) expect([delivery, (await (await fleet()).issue(delivery)).body.bootstrap]).toEqual([delivery, true]);
+  });
+
+  it("on WSL a code for a terminal is still the ordinary 5 minutes — and keeps the allowance for a machine that is not", async () => {
+    vi.stubEnv("AGEND_WSL", "1");
     const f = await fleet();
-    const viaUrl = await f.issue(true);
-    expect([viaUrl.body.bootstrap, (viaUrl.body.expiresAt as number) - f.clock.t]).toEqual([undefined, LOGIN_CODE_TTL_MS]);
+    const asked = await f.issue("tty");
+    expect([asked.status, asked.body.bootstrap, (asked.body.expiresAt as number) - f.clock.t]).toEqual([200, undefined, LOGIN_CODE_TTL_MS]);
     f.advance(LOGIN_CODE_TTL_MS);
-    expect((await f.login(viaUrl.body.code as string)).status).toBe(401);
-    // …and it did not use up the first-install allowance: a printed code after it still is one.
-    expect((await f.issue()).body.bootstrap).toBe(true);
+    expect((await f.login(asked.body.code as string)).status).toBe(401);
+    vi.stubEnv("AGEND_WSL", "0");
+    expect((await f.issue("tty")).body.bootstrap).toBe(true);
+  });
+
+  it("WSL is recognised by the fleet from its own environment, not from what the caller says", async () => {
+    vi.stubEnv("AGEND_WSL", "");                                             // detection falls back to the environment
+    vi.stubEnv("WSL_DISTRO_NAME", "Ubuntu");
+    const f = await fleet();
+    expect((await f.issue("tty")).body.bootstrap).toBeUndefined();
+  });
+
+  it("a bootstrap code is never written to a log: not by the fleet, not in a line about it", async () => {
+    logged.length = 0;
+    const f = await fleet();
+    const first = await f.issue("tty");
+    const second = await f.issue("non-tty");
+    await f.login(first.body.code as string);
+    await f.login("WRONGCDE");
+    expect(logged.some(line => /Web login code issued/.test(line))).toBe(true);             // it does say one was issued…
+    for (const code of [first.body.code as string, second.body.code as string]) {
+      const bare = code.replace("-", "");
+      expect(logged.filter(line => line.includes(code) || line.includes(bare))).toEqual([]);  // …never which
+    }
   });
 
   it("the marker is persisted: a restart (a new store on the same directory) still knows, even if the sessions file is gone", async () => {
@@ -185,8 +231,8 @@ describe("#3270 issuing: the first code, and the ones after a host session has e
 });
 
 describe("#3270 redeeming a bootstrap code", () => {
-  it("works from this computer after 30 minutes and after 12 hours; the first redemption spends it", async () => {
-    for (const wait of [30 * MIN, 12 * HOUR, 24 * HOUR - 1]) {
+  it("works from this computer after 10 minutes, after 30, and up to the last moment of the hour; the first redemption spends it", async () => {
+    for (const wait of [10 * MIN, 30 * MIN, 60 * MIN - 1]) {
       const f = await fleet();
       const code = (await f.issue()).body.code as string;
       f.advance(wait);
@@ -196,11 +242,35 @@ describe("#3270 redeeming a bootstrap code", () => {
     }
   });
 
-  it("is gone after 24 hours", async () => {
+  it("is gone after 60 minutes, not after 24 hours", async () => {
+    expect(BOOTSTRAP_LOGIN_CODE_TTL_MS).toBe(60 * 60 * 1000);
     const f = await fleet();
     const code = (await f.issue()).body.code as string;
     f.advance(BOOTSTRAP_LOGIN_CODE_TTL_MS);
     expect((await f.login(code)).status).toBe(401);
+  });
+
+  it("after the hour every code is the ordinary 5 minutes again — the person runs agend web once more and signs in within them", async () => {
+    const f = await fleet();
+    const first = await f.issue();
+    f.advance(BOOTSTRAP_LOGIN_CODE_TTL_MS + MIN);
+    expect((await f.login(first.body.code as string)).status).toBe(401);
+    const again = await f.issue();                                          // `agend web --code` on a terminal, a minute past the hour
+    expect([again.body.bootstrap, (again.body.expiresAt as number) - f.clock.t]).toEqual([undefined, LOGIN_CODE_TTL_MS]);
+    f.advance(4 * MIN);
+    expect((await f.login(again.body.code as string)).status).toBe(200);
+  });
+
+  it("a re-run inside the hour gets a code that ends with the first one's hour, not a fresh one", async () => {
+    const f = await fleet();
+    const first = await f.issue();
+    const start = f.clock.t;
+    f.advance(40 * MIN);
+    const rerun = await f.issue();
+    expect([rerun.body.bootstrap, rerun.body.expiresAt]).toEqual([true, first.body.expiresAt]);
+    expect((first.body.expiresAt as number) - start).toBe(BOOTSTRAP_LOGIN_CODE_TTL_MS);
+    f.advance(20 * MIN);
+    expect((await f.login(rerun.body.code as string)).status).toBe(401);
   });
 
   it("an ordinary code (a host session was authorized before) still dies at 5 minutes", async () => {
