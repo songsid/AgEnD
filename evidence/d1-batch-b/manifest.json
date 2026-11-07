@@ -1,0 +1,1807 @@
+{
+  "main": {
+    "head": "2217bae936981e9553c8db4d5e385fe833ed57cf",
+    "sourceSha256": {
+      "changes/3326-d1-batch-b.md": "be1fe0a300efdb48d63612803916f184f292757e76ad93eb7027bfb7b3dcc8f0",
+      "changes/3326-d1-batch-b.zh-TW.md": "42e353ad67249d8c67f78a60bd769415fd5e381e93e04c3704aba0af3261a206",
+      "src/auth-api.ts": "8d09d202c19255d5175708bc5bf9cd933c44fba0e37be1718bbae799185efd79",
+      "src/config-validator.ts": "369473ff0bfa5418803b399c31063d5387f936a8e57e307b34568aa785614220",
+      "src/locale.ts": "91bb7c1c785bd75a10ce2599f52de6e54639ac00e50bb3db0b1f3f7d2735b634",
+      "src/outbound-handlers.ts": "39641e400aa5fa4e0c7c1f2762ecd8eb80d8b1706f9c04192938dbb80743930b",
+      "src/quickstart-api.ts": "534db1df302b9366b02b17f7fb64e7d2d21247d9472095d6c8c67eafcaaa1477",
+      "src/ui/settings-strings.js": "619c5ee8c155b5aa1cdc8bc90ffdbed88da1e83cfd8fffc811b253957d63b92d",
+      "src/ui/shared/setup-host-text.js": "e0aa339adb8cccd773591ab91bd0720f46503caaa11662154f5bc2bbc3ea8f6f",
+      "src/ui/shared/signin.js": "1def4f423b3a53a51fbba507056d1eaaf610fe847ffd656518822861e8620789",
+      "src/ui/shared/web-authorize.js": "73986dee22abbf92ef82ea8139f2316d23cc147e5afe8260359466bd672c739a",
+      "tests/d1-batch-b-copy-3326.test.ts": "dbe8762b6f053565a9d3156132a80f8af7dd89c690420fea3240d407a04a924f",
+      "tests/web-authorize-chip-1939.test.ts": "0de870d5e8e5bb9759a6f3a44ab8915b3779e2dbeb38d0a0be8966bc1c997f5a"
+    },
+    "tests": {
+      "tests": {
+        "numTotalTests": 185,
+        "numPassedTests": 185,
+        "numFailedTests": 0,
+        "numPendingTests": 0
+      },
+      "final": {
+        "numTotalTests": 62,
+        "numPassedTests": 62,
+        "numFailedTests": 0,
+        "numPendingTests": 0
+      },
+      "log-tests": {
+        "numTotalTests": 42,
+        "numPassedTests": 42,
+        "numFailedTests": 0,
+        "numPendingTests": 0
+      }
+    },
+    "pngCount": 80,
+    "browser": {
+      "head": "2217bae936981e9553c8db4d5e385fe833ed57cf",
+      "base": "6083ff0a4",
+      "hasAccounts": false,
+      "browser": "156.0.8078.4",
+      "rows": [
+        {
+          "key": "before-desk-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-CSP",
+          "ok": true
+        }
+      ],
+      "failed": []
+    },
+    "retention": {
+      "head": "2217bae936981e9553c8db4d5e385fe833ed57cf",
+      "rows": [
+        {
+          "case": "before-desk-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 579,
+            "y": 828,
+            "width": 688,
+            "height": 72
+          },
+          "errors": []
+        },
+        {
+          "case": "before-desk-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 579,
+            "y": 852,
+            "width": 688,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "before-desk-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 579,
+            "y": 828,
+            "width": 688,
+            "height": 72
+          },
+          "errors": []
+        },
+        {
+          "case": "before-desk-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 579,
+            "y": 852,
+            "width": 688,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 36,
+            "y": 492,
+            "width": 318,
+            "height": 144
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 36,
+            "y": 540,
+            "width": 318,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 36,
+            "y": 492,
+            "width": 318,
+            "height": 144
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 36,
+            "y": 540,
+            "width": 318,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 579,
+            "y": 852,
+            "width": 688,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 579,
+            "y": 855,
+            "width": 688,
+            "height": 24
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 579,
+            "y": 852,
+            "width": 688,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 579,
+            "y": 855,
+            "width": 688,
+            "height": 24
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 36,
+            "y": 540,
+            "width": 318,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 36,
+            "y": 588,
+            "width": 318,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 36,
+            "y": 540,
+            "width": 318,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 36,
+            "y": 588,
+            "width": 318,
+            "height": 48
+          },
+          "errors": []
+        }
+      ]
+    }
+  },
+  "alpha": {
+    "head": "c5a5af4350523e3f019ec8ebee8f2933db7311a8",
+    "sourceSha256": {
+      "changes/3326-d1-batch-b.md": "be1fe0a300efdb48d63612803916f184f292757e76ad93eb7027bfb7b3dcc8f0",
+      "changes/3326-d1-batch-b.zh-TW.md": "42e353ad67249d8c67f78a60bd769415fd5e381e93e04c3704aba0af3261a206",
+      "src/auth-api.ts": "8023c513a24c03e72d469450199534bcc8fba0d56cbca80648f51f1e8ed833c9",
+      "src/config-validator.ts": "17ab80c8b9fd7f9c53962934c5e1684fcdb093c57c938d0ccc1eb9890c0eb217",
+      "src/locale.ts": "efee6e88eb5e2f458e8e0cf49194c388fb08e57fb9b0d0ff981b3e117aece4b1",
+      "src/outbound-handlers.ts": "cafea1181f4b9fd57617b02869ccdc485ff2c730a2fc9ff635397743b90fcb3f",
+      "src/quickstart-api.ts": "9f22170045e6cd6943e4af61ad333f693343fba491bb39c2ab41cdc062ca35f2",
+      "src/ui/accounts-manage.js": "ad8d081f2ea47d786ae24171fddcfdbe28cb3c2b5ddbe3a0ca401d6c772533c5",
+      "src/ui/settings-devices.js": "faeb348fbf611283070f5a20dc6fc15eed3af9ae7f4040de0150af7db613ee65",
+      "src/ui/settings-strings.js": "12193221dd89cef524faa7e619723aafeafac0ced2e026d3caa96957fe7f20a7",
+      "src/ui/shared/setup-host-text.js": "e0aa339adb8cccd773591ab91bd0720f46503caaa11662154f5bc2bbc3ea8f6f",
+      "src/ui/shared/signin.js": "156987c638ea786d05c8914c65eaa04422330a51d1e79085527f070facee9731",
+      "src/ui/shared/web-authorize.js": "73986dee22abbf92ef82ea8139f2316d23cc147e5afe8260359466bd672c739a",
+      "tests/accounts-signout-ui-3212.test.ts": "04433399db58be67daacd70af85a57bab058b5bda7e95314d7130144fd52018c",
+      "tests/d1-batch-b-copy-3326.test.ts": "dbe8762b6f053565a9d3156132a80f8af7dd89c690420fea3240d407a04a924f",
+      "tests/web-authorize-chip-1939.test.ts": "0de870d5e8e5bb9759a6f3a44ab8915b3779e2dbeb38d0a0be8966bc1c997f5a"
+    },
+    "tests": {
+      "tests": {
+        "numTotalTests": 220,
+        "numPassedTests": 220,
+        "numFailedTests": 0,
+        "numPendingTests": 0
+      },
+      "final": {
+        "numTotalTests": 70,
+        "numPassedTests": 70,
+        "numFailedTests": 0,
+        "numPendingTests": 0
+      },
+      "log-tests": {
+        "numTotalTests": 42,
+        "numPassedTests": 42,
+        "numFailedTests": 0,
+        "numPendingTests": 0
+      }
+    },
+    "pngCount": 96,
+    "browser": {
+      "head": "c5a5af4350523e3f019ec8ebee8f2933db7311a8",
+      "base": "ec359a490",
+      "hasAccounts": true,
+      "browser": "156.0.8078.4",
+      "rows": [
+        {
+          "key": "before-desk-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-desk-dark-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "before-phone-dark-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-desk-dark-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-light-zh-TW:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-en:no-CSP",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no_account-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:chat-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no_account-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:host_sign_in-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:host-no-owner-or-General",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:host_sign_in-fit",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-auth-POST",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:readonly-no-command",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:signout-no-detour",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:retry-enabled",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:retry-completes-here",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-page-overflow",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:signout-warning-localized",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-browser-errors",
+          "ok": true
+        },
+        {
+          "key": "after-phone-dark-zh-TW:no-CSP",
+          "ok": true
+        }
+      ],
+      "failed": []
+    },
+    "retention": {
+      "head": "c5a5af4350523e3f019ec8ebee8f2933db7311a8",
+      "rows": [
+        {
+          "case": "before-desk-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 500,
+            "y": 669.578125,
+            "width": 846,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "before-desk-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 500,
+            "y": 669.578125,
+            "width": 846,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "before-desk-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 500,
+            "y": 669.578125,
+            "width": 846,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "before-desk-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 500,
+            "y": 669.578125,
+            "width": 846,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 16,
+            "y": 509.765625,
+            "width": 358,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 16,
+            "y": 509.578125,
+            "width": 358,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Set web.search.retention_days in fleet.yaml (1–3650 days, or 0 for no age limit); it takes effect at the next fleet start.",
+          "box": {
+            "x": 16,
+            "y": 509.765625,
+            "width": 358,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "before-phone-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。在 fleet.yaml 設定 web.search.retention_days（1–3650 天，或 0 代表不限天數），下次啟動 fleet 後生效。",
+          "box": {
+            "x": 16,
+            "y": 509.578125,
+            "width": 358,
+            "height": 96
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 500,
+            "y": 669.578125,
+            "width": 846,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 500,
+            "y": 693.578125,
+            "width": 846,
+            "height": 24
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 500,
+            "y": 669.578125,
+            "width": 846,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "after-desk-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 500,
+            "y": 693.578125,
+            "width": 846,
+            "height": 24
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-light-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 16,
+            "y": 533.765625,
+            "width": 358,
+            "height": 72
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-light-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 16,
+            "y": 557.578125,
+            "width": 358,
+            "height": 48
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-dark-en",
+          "ok": true,
+          "text": "Global search keeps entries with no age limit by default. The daily prune still caps the index at 300,000 rows (oldest first). Retention cannot be changed here.",
+          "box": {
+            "x": 16,
+            "y": 533.765625,
+            "width": 358,
+            "height": 72
+          },
+          "errors": []
+        },
+        {
+          "case": "after-phone-dark-zh-TW",
+          "ok": true,
+          "text": "全域搜尋預設不限天數。每日清理仍會把索引上限維持在 30 萬筆（先刪最舊的）。這裡無法變更保存期限。",
+          "box": {
+            "x": 16,
+            "y": 557.578125,
+            "width": 358,
+            "height": 48
+          },
+          "errors": []
+        }
+      ]
+    }
+  }
+}

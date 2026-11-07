@@ -1,0 +1,32 @@
+[
+  {
+    "line": "main",
+    "mutant": "retention-hint",
+    "failedTests": 1
+  },
+  {
+    "line": "main",
+    "mutant": "legacy-cleanup-alias",
+    "failedTests": 1
+  },
+  {
+    "line": "main",
+    "mutant": "signout-localizer",
+    "failedTests": 2
+  },
+  {
+    "line": "alpha",
+    "mutant": "retention-hint",
+    "failedTests": 1
+  },
+  {
+    "line": "alpha",
+    "mutant": "legacy-cleanup-alias",
+    "failedTests": 1
+  },
+  {
+    "line": "alpha",
+    "mutant": "signout-localizer",
+    "failedTests": 2
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "line": "main",
+    "file": "src/auth-api.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "main",
+    "file": "src/config-validator.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "main",
+    "file": "src/locale.ts",
+    "failedAssertions": 3,
+    "passedAssertions": 2
+  },
+  {
+    "line": "main",
+    "file": "src/outbound-handlers.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "main",
+    "file": "src/quickstart-api.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "main",
+    "file": "src/ui/settings-strings.js",
+    "failedAssertions": 3,
+    "passedAssertions": 2
+  },
+  {
+    "line": "main",
+    "file": "src/ui/shared/setup-host-text.js",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "main",
+    "file": "src/ui/shared/signin.js",
+    "failedAssertions": 2,
+    "passedAssertions": 3
+  },
+  {
+    "line": "main",
+    "file": "src/ui/shared/web-authorize.js",
+    "failedAssertions": 2,
+    "passedAssertions": 3
+  },
+  {
+    "line": "alpha",
+    "file": "src/auth-api.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "alpha",
+    "file": "src/config-validator.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "alpha",
+    "file": "src/locale.ts",
+    "failedAssertions": 3,
+    "passedAssertions": 2
+  },
+  {
+    "line": "alpha",
+    "file": "src/outbound-handlers.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "alpha",
+    "file": "src/quickstart-api.ts",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "alpha",
+    "file": "src/ui/accounts-manage.js",
+    "failedAssertions": 2,
+    "passedAssertions": 3
+  },
+  {
+    "line": "alpha",
+    "file": "src/ui/settings-devices.js",
+    "failedAssertions": 2,
+    "passedAssertions": 3
+  },
+  {
+    "line": "alpha",
+    "file": "src/ui/settings-strings.js",
+    "failedAssertions": 3,
+    "passedAssertions": 2
+  },
+  {
+    "line": "alpha",
+    "file": "src/ui/shared/setup-host-text.js",
+    "failedAssertions": 1,
+    "passedAssertions": 4
+  },
+  {
+    "line": "alpha",
+    "file": "src/ui/shared/signin.js",
+    "failedAssertions": 2,
+    "passedAssertions": 3
+  },
+  {
+    "line": "alpha",
+    "file": "src/ui/shared/web-authorize.js",
+    "failedAssertions": 2,
+    "passedAssertions": 3
+  }
+]
