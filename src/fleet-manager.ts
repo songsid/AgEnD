@@ -24,7 +24,7 @@ import { SettingsBaselines } from "./settings-baseline.js";
 import { hubMembershipSettings } from "./hub-membership-settings.js";
 import { prepareSettingsEffect } from "./settings-effect.js";
 import { settingsDisplay } from "./settings-change.js";
-import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView } from "./settings-confirmation.js";
+import { SettingsConfirmationError, SettingsConfirmationStore, settingsSourceLabel, type SettingsPendingView, type SettingsNoCardReason } from "./settings-confirmation.js";
 import { SettingsHttpConfirmation, type SettingsSelfConfirmation } from "./settings-http-confirmation.js";
 import { SettingsControlServer } from "./settings-control.js";
 import { SettingsRouteLifetime } from "./settings-route-lifetime.js";
@@ -3587,13 +3587,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } });
   }
 
-  private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void> {
+  private async promptSettingsChange(store: SettingsConfirmationStore, view: SettingsPendingView): Promise<void | SettingsNoCardReason> {
     const generation = this.settingsGeneration;
     const authority = this.settingsChatAuthority(store, view.id);
     if (!authority) {
       this.logger.info({ id: view.id }, "Settings authority is unknown or spans platforms; host CLI confirmation required");
-      return;
+      return this.settingsNoCardReason(null, [...store.affectedConnections(view.id), ...(store.authorityOf(view.id)?.connections ?? [])], false);
     }
+    let attempted = false;
     const excluded = new Set(store.affectedConnections(view.id));
     for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
       const route = this.settingsGeneralRoute(name, authority.platform, excluded);
@@ -3604,6 +3605,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const current = (): boolean => !retired && (attached || performance.now() < postingDeadline) && this.settingsGeneration === generation
         && route.current() && authority.current();
       if (!current()) continue;
+      attempted = true;
       try {
         const posted = this.postNonceButtonPromptOrThrow({ prefix: "settings-confirm:", alertType: "clear_confirm",
           instanceName: name, adapterId, adapter, chatId, threadId: topic,
@@ -3632,6 +3634,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // No platform confirmation was reachable. Host inspection is still required.
     this.logger.info({ id: view.id }, "Settings change requires local `agend settings confirm <id>`");
+    return this.settingsNoCardReason(authority.platform, store.affectedConnections(view.id), attempted);
+  }
+
+  /**
+   * alpha.6 feedback #2c: why no General could take a change's confirm card, so the page says what is missing in plain words
+   * (the user's decision hmsg-77256f66: never "type a host command"). `platform` null: the authority is unknown or spans
+   * platforms. `attempted`: a General route existed and posting to it failed.
+   */
+  private settingsNoCardReason(platform: "telegram" | "discord" | null, affected: readonly string[], attempted: boolean): SettingsNoCardReason | undefined {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    if (!channels.length) return "no_chat";
+    if (attempted) return "post_failed";
+    // No General at all comes first: then there is no authority to resolve either (the primary General's is unknown).
+    if (!Object.values(this.fleetConfig?.instances ?? {}).some(cfg => cfg?.general_topic === true)) return "no_general";
+    // #3352 review N1: "spans platforms" only when it does — the connections the change touches are on more than one platform.
+    // Any other unresolved authority (a duplicated or missing connection id): no specific reason; the page says the general one.
+    if (!platform) {
+      const touched = new Set(affected);
+      const types = new Set(channels.filter(ch => touched.has(ch.id ?? ch.type)).map(ch => ch.type));
+      return types.size > 1 ? "cross_platform" : undefined;
+    }
+    const excluded = new Set(affected);
+    const generals = Object.keys(this.fleetConfig?.instances ?? {}).filter(name => this.fleetConfig?.instances[name]?.general_topic === true)
+      .filter(name => { const id = this.getInstanceAdapterId(name), adapter = this.getAdapterForInstance(name); return !!id && !!adapter && adapter.type === platform && !excluded.has(id); });
+    if (!generals.length) return "no_general";
+    if (!generals.some(name => this.adapterState.get(this.getInstanceAdapterId(name)!)?.status === "connected")) return "chat_disconnected";
+    if (!generals.some(name => !!this.getGroupIdForInstance(name) && String(this.fleetConfig?.instances[name]?.topic_id ?? "") !== "")) return "no_topic";
+    return "post_failed";
   }
 
   private kiroMigrateDeps(): KiroMigrateDeps {

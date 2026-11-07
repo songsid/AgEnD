@@ -81,7 +81,7 @@ describe("Hub retention policy", () => {
     const path = "/api/settings/hub/retention", input = { contentDays: 7, eventDays: 30, revision: 1 };
     expect(isSettingsMutation("PUT", path)).toBe(true);
     const a = prepareSettingsEffect("PUT", path, input, context).diff!;
-    expect(a).toMatchObject({ section: "access", authority: { connections: [], primaryGeneral: false, unknown: false } });
+    expect(a).toMatchObject({ section: "access", authority: { connections: [], primaryGeneral: true, unknown: false } });
     expect(a.summary.join(" ")).toContain("7 days"); expect(a.summary.join(" ")).toContain("30 days");
     expect(prepareSettingsEffect("PUT", path, { ...input, eventDays: 90 }, context).diff!.fingerprint).not.toBe(a.fingerprint);
     expect(() => prepareSettingsEffect("PUT", path, { ...input, eventDays: -1 }, context)).toThrow("invalid_retention");

@@ -52,10 +52,35 @@ describe("where to confirm it", () => {
     expect((await card(view({ confirmation: { kind: "chat", code: ID, where: [{ platform: "discord", connection: "team-b" }] } }))).text()).toContain("in General on Discord (team-b).");
     expect((await card(view({ confirmation: { kind: "chat" } }))).text()).toContain("in General on Discord / Telegram.");
   });
-  it("host_cli: the command is the way, shown at once, not folded; nothing to authorize", async () => {
+  // alpha.6 feedback #2c (the user's decision hmsg-77256f66): never "type this on the host" as the card's instruction — it says
+  // why no General could take it and what would; the host's command stays folded under Advanced, a last resort.
+  it("host_cli: says no General could take it, never as a host command; the command only folded under Advanced; nothing to authorize", async () => {
     const c = await card(view({ confirmation: { kind: "host_cli", code: ID } }));
-    expect(c.text()).toContain(`No General can take the confirm card. Confirm it on the host: agend settings confirm ${ID}`);
-    expect([c.p.root.querySelector(".pending-host"), c.button("Authorize this browser")]).toEqual([null, undefined]);
+    expect(c.text()).toContain("No General could take the confirm card for this change.");
+    expect(c.text()).not.toContain("Confirm it on the host");
+    const fold = c.p.root.querySelector(".pending-card details.pending-host") as any;
+    expect([fold?.querySelector("code").textContent, fold?.open ?? false]).toEqual([`agend settings confirm ${ID}`, false]);
+    expect(c.button("Authorize this browser")).toBeUndefined();
+  });
+  it.each([
+    ["no_chat", "This fleet has no chat app connected, so there is no General to send the confirm card to.", "/settings/chat"],
+    ["cross_platform", "This change affects chat apps on more than one platform, so no single General can confirm it.", null],
+    ["no_general", "No agent is the General in a connected chat app, so there is nowhere to send the confirm card.", "/settings"],
+    ["chat_disconnected", "General's chat app is not connected right now, so the confirm card could not be sent.", "/settings/chat"],
+    ["no_topic", "General has no topic in its chat yet, so the confirm card had nowhere to go.", null],
+    ["post_failed", "The confirm card could not be posted in General.", "/settings/chat"],
+  ])("host_cli %s: why in plain words, what to do, and where", async (reason, why, href) => {
+    const c = await card(view({ confirmation: { kind: "host_cli", code: ID, reason } }));
+    expect(c.text()).toContain(why);
+    expect(!!c.p.root.querySelector(".pending-card .pending-why")).toBe(true);
+    const link = c.p.root.querySelector(".pending-card .pending-why a") as any;
+    expect(link ? link.getAttribute("href") : null).toBe(href);
+    // The command is never the instruction: outside the Advanced fold the card does not show it.
+    const outside = (c.p.root.querySelector(".pending-card")!.textContent ?? "").replace(c.p.root.querySelector(".pending-card details.pending-host")!.textContent ?? "", "");
+    expect(outside).not.toContain("agend settings confirm");
+  });
+  it("a reason this page does not know (a newer server) reads as the general sentence", async () => {
+    expect((await card(view({ confirmation: { kind: "host_cli", code: ID, reason: "something_new" } }))).text()).toContain("No General could take the confirm card for this change.");
   });
   it("zh-TW", async () => {
     const c = await card(view({ confirmation: { kind: "chat", code: ID, where: [{ platform: "discord", connection: "discord" }] } }), undefined, "zh-TW");

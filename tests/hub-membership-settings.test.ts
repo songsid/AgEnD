@@ -22,7 +22,7 @@ describe("pure Hub membership Settings policy", () => {
   it("enabling is an access confirmation; off and unchanged apply without a pending change", () => {
     expect(isSettingsMutation("PUT", path)).toBe(true);
     const on = effect({}, { enabled: true }).diff!;
-    expect(on).toMatchObject({ section: "access", affectedConnections: [], authority: { connections: [], primaryGeneral: false, unknown: false } });
+    expect(on).toMatchObject({ section: "access", affectedConnections: [], authority: { connections: [], primaryGeneral: true, unknown: false } });
     expect(on.summary.join(" ")).toContain("Pairing and sharing an agent are separate");
     expect(effect({ hub_member: { enabled: true } }, { enabled: false }).diff).toBeNull();
     expect(effect({ hub_member: { enabled: true } }, { enabled: true }).diff).toBeNull();
