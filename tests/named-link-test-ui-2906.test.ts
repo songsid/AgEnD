@@ -88,7 +88,7 @@ describe("#2906 Test connection on the page", () => {
     expect((await run())[1]).toBe("✗ This machine answers on port 19282 — Your sign-in ended, so nothing was started. Sign in again and test again.");
     answer = { status: 200, body: { ...(steps([["values", true, "ok"], ["origin", true, "ok"], ["tunnel", true, "ok"], ["dns", true, "ok"], ["reach", true, "ok"]]).body), cleanup: "unconfirmed" } };
     i18n.setLang("zh-TW"); await p.unmount(); await run();
-    expect(p.root.querySelector(".named-test [role=alert]").textContent).toBe("無法確認測試用的連接器已經停止。請先執行 agend restart，再測試或開啟連結。");
+    expect(p.root.querySelector(".named-test [role=alert]").textContent).toBe("無法確認測試用的連接器已經停止。請先重新啟動 AgEnD（立即重新啟動，或在 General 傳 /restart），再測試或開啟連結。");
   });
   it("busy (409) and a failed request say so; the button is disabled while it runs", async () => {
     answer = { status: 409, body: { error: "test_running" } };

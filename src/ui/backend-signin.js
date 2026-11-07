@@ -340,13 +340,13 @@ register("signin", {
     hostTitle: "CLI sign-ins", hostHint: "Accounts used by CLIs on the host running AgEnD.",
     hostBadge: "AgEnD host", hostProfile: "Credential profile: {0}", hostLoading: "Reading CLI sign-ins…", hostEmpty: "No CLI sign-ins were reported on this host.",
     installHelp: "Installation instructions", updateHelp: "Update instructions", hostHelp: "Sign-in instructions",
-    commandHint: "Run these instructions in a terminal on the host running AgEnD.",
+    commandHint: "Use Sign in on this page, or send /login in chat.",
   },
   "zh-TW": {
     hostTitle: "CLI 登入", hostHint: "執行 AgEnD 的主機上，各個 CLI 使用的帳號。",
     hostBadge: "AgEnD 主機", hostProfile: "憑證設定檔：{0}", hostLoading: "正在讀取 CLI 登入狀態…", hostEmpty: "這台主機尚未回報 CLI 登入項目。",
     installHelp: "安裝說明", updateHelp: "更新說明", hostHelp: "登入說明",
-    commandHint: "請在執行 AgEnD 的主機終端機中操作。",
+    commandHint: "請用這一頁的「登入」，或在聊天傳 /login。",
   },
 });
 
