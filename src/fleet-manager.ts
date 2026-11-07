@@ -2230,6 +2230,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
+  /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
+  hubGroupPermissions(): boolean { return this.hubRuntime?.groupPermissionsAvailable() ?? false; }
 
   private observeRuntimeSwitches(): void {
     setConfiguredRuntimeSwitches(this.fleetConfig?.runtimes);

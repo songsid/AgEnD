@@ -210,6 +210,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // #3226 C: the owner and admin pages' stylesheet (linked by hub-owner-strings.js; an older hub-chat.css lacks it).
   "hub-owner.css": { file: join("shared", "hub-owner.css"), type: "text/css; charset=utf-8" },
   "hub-quota.css": { file: join("shared", "hub-quota.css"), type: "text/css; charset=utf-8" },
+  // #3298 S-89: the welcome and group permissions pages (linked by hub-group-strings.js; an older hub-chat.css lacks them).
+  "hub-groups.css": { file: join("shared", "hub-groups.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).

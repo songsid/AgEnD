@@ -4171,6 +4171,8 @@ export interface AppShellContext {
    * FleetConfig carries no `hub`/`hub_member` — and the Hub runtime already follows it (FleetManager.applyHubSwitches).
    */
   getRawFleetConfig?(): unknown;
+  /** #3298 S-89: this fleet's own Hub offers group permissions (marks the page `data-hub-groups`). */
+  hubGroupPermissions?(): boolean;
 }
 export type AppShellMode = "full" | "view-only";
 
@@ -4331,7 +4333,12 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
   let config: HubSwitches = null;
   try { config = (ctx.getRawFleetConfig?.() ?? null) as HubSwitches; } catch { config = null; }
   // hub.md §1: member handlers are local-owner-only and unavailable through the public gateway — no member mark there.
-  return hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
+  const member = hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
+  // #3298 S-89 (leader, #3372 N2): Settings → Hub's Group permissions row only when this fleet's own Hub has them composed —
+  // learned in this process, never by reading a Hub session across origins. Never over the public link.
+  let groups = false;
+  try { groups = ctx.hubGroupPermissions?.() === true; } catch { groups = false; }
+  return member + (groups && !gatewayRequestContext(req) ? ' data-hub-groups="1"' : "");
 }
 function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: string | null | undefined) => string): string {
   const badge = ctx.guestBadge?.(owner);

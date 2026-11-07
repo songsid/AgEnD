@@ -8,7 +8,7 @@ import type { HubAuditRecord, PersonKey } from "../types.js";
 import type { HubDirectory } from "../directory/types.js";
 import type { PolicyGroupFacts } from "../directory/groups.js";
 import { identifier, parseStrictJson, person, validated } from "../validation.js";
-import { evaluateGroupPolicy, initialGroupPolicy, parseGroupCapability, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
+import { GROUP_CAPABILITIES, evaluateGroupPolicy, initialGroupPolicy, parseGroupCapability, parseGroupPolicy, type GroupCapability, type HubGroupDecision, type HubGroupPolicy } from "./model.js";
 
 export class HubGroupPolicyError extends Error {
   constructor(readonly code: "unavailable" | "conflict" | "unsupported" | "invalid" | "audit") { super(`group_policy_${code}`); }
@@ -59,6 +59,12 @@ export interface HubGroupPolicyStore {
   replace(input: unknown, actor: PersonKey, context: GroupCheckContext): HubGroupPolicy;
   /** No cache. Result does not perform suspension; only authoritative negative may be used for that later. */
   check(subject: PersonKey, capability: GroupCapability, context: GroupCheckContext): Promise<HubGroupDecision>;
+  /**
+   * S-89 welcome DISPLAY only: the current policy and the three pure decisions from ONE fresh membership read (no read when never
+   * enabled). No audit, registration, suspension or permit; never reusable as authority — every action still calls `check` or a
+   * permit. Shares `check`'s in-flight bounds and freshness rule; unknown stays unknown.
+   */
+  describe(subject: PersonKey, context: GroupCheckContext): Promise<{ readonly policy: HubGroupPolicy; readonly decisions: Readonly<Record<GroupCapability, HubGroupDecision>> }>;
 }
 export function createHubGroupPolicyStore(options: {
   db: Database.Database; hubId: string; realm: string; generation: string; directory: HubDirectory;
@@ -135,6 +141,30 @@ export function createHubGroupPolicyStore(options: {
           { person: who, capability: cap, ...decision });
         return decision;
       }).immediate();
+    } finally {
+      const left = (inflight.get(key) ?? 1) - 1;
+      if (left) inflight.set(key, left); else inflight.delete(key);
+      total--;
+    }
+  }, async describe(subject, incoming) {
+    const who = validated(person, subject), ctx = context(incoming);
+    assert(ctx.current);
+    const before = read();
+    const all = (p: HubGroupPolicy, facts: PolicyGroupFacts) => Object.freeze(Object.fromEntries(GROUP_CAPABILITIES.map((cap) => [cap, evaluateGroupPolicy(p, who, cap, facts)]))) as Readonly<Record<GroupCapability, HubGroupDecision>>;
+    if (before.state === "never-enabled") return Object.freeze({ policy: before, decisions: all(before, { kind: "unknown" }) });
+    const key = `${who.realm}/${who.objectId}`, count = inflight.get(key) ?? 0;
+    if (count >= 4 || total >= 32) throw new HubGroupPolicyError("unavailable");
+    inflight.set(key, count + 1); total++;
+    try {
+      const started = now(); let facts: PolicyGroupFacts = { kind: "unknown" };
+      if (before.state === "enabled" && directory.groupPolicy === "ad-direct-guid" && directory.realm === binding.realm) {
+        try { facts = await directory.readPolicyGroups?.(Object.freeze({ ...who })) ?? { kind: "unknown" }; } catch { /* no partial/negative proof */ }
+      }
+      assert(ctx.current);
+      if (facts.kind !== "unknown" && (facts.observedAt < started || facts.observedAt > now())) facts = { kind: "unknown" };
+      // The policy as it is now (a change during the read is shown as it stands; nothing here decides anything).
+      const p = read();
+      return Object.freeze({ policy: p, decisions: all(p, p.revision === before.revision ? facts : { kind: "unknown" }) });
     } finally {
       const left = (inflight.get(key) ?? 1) - 1;
       if (left) inflight.set(key, left); else inflight.delete(key);
