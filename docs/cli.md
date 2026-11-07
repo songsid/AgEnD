@@ -394,11 +394,10 @@ agend topic unbind <name>       # Unbind instance from topic
 agend access list <name>        # List allowed users
 agend access remove <name> <uid> # Remove user
 agend access lock <name>        # Lock instance access (whitelist only)
-agend access unlock <name>      # Unlock instance access (enable pairing)
-agend access pair <name> <uid>  # Generate pairing code
+agend access unlock <name>      # Use the saved allowlist (legacy pairing mode)
 ```
 
-`access pair` generates a code; it does not approve one. There is no CLI code-confirmation command or `access add`. An owner can grant access through the configured user list; saved and YAML lists are combined as described in [access configuration](configuration.md#channelaccess).
+Access codes are no longer generated or confirmed. Add allowed users in **Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot)** and apply through the existing confirmation. `unlock` retains the legacy `pairing` mode name but still admits only the effective allowlist; it does not open access. Saved and YAML grants are combined as described in [access configuration](configuration.md#channelaccess).
 
 ## Setup & installation
 

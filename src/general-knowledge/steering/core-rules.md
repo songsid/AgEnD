@@ -37,8 +37,8 @@ fleet.yaml `channel.access.mode` valid values:
 
 | Mode | Behavior |
 |------|----------|
-| `locked` | Only `allowed_users` can interact (default) |
-| `pairing` | A user sends `/pair` (Telegram), gets a code, and the owner grants access |
+| `locked` | Only the effective allowlist can interact |
+| `pairing` | Legacy alias for allowlist-only access; no access codes |
 | `open` | All users can interact, no restrictions |
 
 Example:
@@ -47,14 +47,16 @@ channel:
   access:
     mode: open          # everyone can use
     # mode: locked      # whitelist only (add allowed_users)
-    # mode: pairing     # /pair gives a code the owner approves
+    # mode: pairing     # legacy allowlist-only alias
     allowed_users: [123456789]  # only needed for locked/pairing
 ```
 
 **When to use each:**
 - `locked` — production, private bot, security-sensitive
-- `pairing` — semi-open, users request access with admin approval
+- `pairing` — old configuration alias for allowlist-only access; use `locked` for new configuration
 - `open` — public demo, shared team bot, testing
+
+Add allowed users in Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot), using the existing confirmation. Runtime/Hub pairing is separate.
 
 ## Dangerous Working Directories
 

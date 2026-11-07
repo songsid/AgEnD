@@ -131,21 +131,21 @@ Each entry configures a platform adapter (Telegram or Discord).
 
 `access` is optional. **Omitting the entire block uses an `open` runtime fallback**, not `locked`; an existing persisted mode can still override it. To restrict chat access, explicitly set `mode: locked` and `allowed_users`.
 
-The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode`, an `allowed_users` array and, for pairing, the pairing limits explicitly.
+The fallback values below apply only when the whole block is omitted; an explicit block is not filled field by field. Set `mode` and an `allowed_users` array explicitly. Manage the bot’s allowed users in **Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot)**.
 
 | Field | Type | Whole-block fallback | Description |
 |-------|------|----------------------|-------------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked`/`pairing` admit the effective allowlist; `pairing` also accepts `/pair` requests. `open` admits all users; bots have separate ingress filters, see [permissions](permissions.md#bot-and-webhook-messages) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"open"` | `locked` and the legacy `pairing` alias admit the effective allowlist; access codes are no longer issued. `open` admits all users; bots have separate ingress filters, see [permissions](permissions.md#bot-and-webhook-messages) |
 | `allowed_users` | (number\|string)[] | `[]` | Unioned with the persisted list; IDs compare as strings |
-| `max_pending_codes` | number | `0` | Max distinct users with pending pairing codes; set a positive limit for pairing |
-| `code_expiry_minutes` | number | `0` | Pairing code TTL in minutes; set a positive duration for pairing |
+| `max_pending_codes` | number | `0` | Legacy compatibility field; unused |
+| `code_expiry_minutes` | number | `0` | Legacy compatibility field; unused |
 
 **Persisted state and administration:**
 
 - The primary adapter uses `<dataDir>/access/access.json`; additional adapters use `access/access-<adapterId>.json`. `dataDir` defaults to `~/.agend`, or `AGEND_HOME` when set.
-- A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; approved pairing adds to the saved list.
+- A saved mode takes precedence over YAML. Saved users and YAML `allowed_users` are unioned and deduplicated; existing saved grants are retained. Old pending codes are inert and cannot grant access.
 - Under `locked`/`pairing`, revocation must remove the grant from both lists; changing only one can leave access enabled. `open` does not restrict users in the first place.
-- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or approved pairing alone does not grant fleet admin; an empty YAML list grants nobody that role, and `/web`, `/update` and `/doctor` are then off for that bot (the reply names the key). There is no `web.access`: `agend validate` warns about it and any other unknown key under `web`. These warnings, and every other one the validator gives, also show in `agend doctor` and in `daemon.log` when the fleet starts. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
+- Fleet admin commands separately require an entry in the **invoking adapter's YAML `access.allowed_users`**. Open access or a saved chat grant alone does not grant fleet admin; an empty YAML list grants nobody that role, and `/web`, `/update` and `/doctor` are then off for that bot (the reply names the key). There is no `web.access`: `agend validate` warns about it and any other unknown key under `web`. These warnings, and every other one the validator gives, also show in `agend doctor` and in `daemon.log` when the fleet starts. ClassicBot has separate `defaults.admin_users`; see [permissions](permissions.md).
 
 #### channel.options (Discord)
 

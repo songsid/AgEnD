@@ -14,7 +14,7 @@ function makeAdapter(opts: { topicProbe?: "periodic" | "on-demand" } = {}): Tele
   const root = mkdtempSync(join(tmpdir(), "agend-tg-gone-"));
   roots.push(root);
   // Permissive access stub so a dispatched update travels the whole handler chain.
-  const accessManager = { isAllowed: () => ({ allowed: true }), generateCode: () => "000000", confirmCode: () => null } as never;
+  const accessManager = { isAllowed: () => ({ allowed: true }) } as never;
   const adapter = new TelegramAdapter({ id: "telegram", botToken: TOKEN, accessManager, inboxDir: root, ...opts });
   (adapter as any).lastChatId = "-100123";
   return adapter;
