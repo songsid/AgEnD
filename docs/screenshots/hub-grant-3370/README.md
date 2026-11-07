@@ -39,6 +39,12 @@ npm run typecheck:tests
 
 The smoke runner is `scripts/manual/smoke/smoke-hub-grant-3370.mts`; its header documents the required paths. `MODE=before REPO=<base checkout>` captures the regression. `MODE=current REPO=<feature checkout>` checks success, unknown/disabled refusal, no recipient identity/session creation, and cached-shell rendering. Private logs and fixture secrets stay in ignored `.artifacts`, never in these images.
 
+## Local verification
+
+On alpha-aligned head `e8bccea1623f546b10caa992d03bc4ee3dfb758b`, all 349 tests in the 13 suites above passed with no skips. Both typechecks, `git diff --check` and the changelog guard passed. The plain merge imports only alpha's unrelated structured-sign-in fix; the Hub patch used for the browser matrix is unchanged.
+
+All 15 mutants were caught by failing assertions, with the source restored afterwards: missing pre-lookup owner/revision check; missing post-lookup exposure check; skipped fresh recipient check; wrong selected realm; wrong selected login; mismatched current immutable key; changed current login; separate operation budgets; relaxed per-login bound; omitted grant audit; missing owner/withdrawal projection fence; missing catalog session fence; omitted dialog refusal; missing public dictionary route; wrong diagnostic operation. Import or compilation failures were not counted as detections.
+
 ## Limits and rollback
 
 Only the Hub alpha changes; main has no Hub feature to twin. No schema or protocol change. Older injected directory drivers without the additive grant method keep the known-person fallback. Existing group checks still decide whether a granted recipient may actually use an agent; granting creates no enrollment or asker provenance. Until a recipient signs in, the owner catalog resolves a missing label with one existing bounded immutable-ID check per unique recipient, without caching an allow decision. Directory failure can therefore withhold that fresh label.
