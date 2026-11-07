@@ -46,7 +46,7 @@ function routes() {
   const hub = new RuntimeCoordinator(temp("agend-3327-api-")); hubs.push(hub);
   const sessions = new WebSessionStore(), ctx: RuntimeApiContext = { webToken: token, webSessions: sessions, runtimeCoordinator: () => hub };
   /** One POST as `who`; `during` runs while the body is still unread (a revocation then). */
-  const make = (path: string, body: unknown, who: Who, during?: (handle: string) => void) => {
+  const make = (path: string, body: unknown, who: Who, during?: (handle: string) => void, extra: Record<string, string> = {}) => {
     const req = Readable.from([JSON.stringify(body)]) as unknown as IncomingMessage;
     req.method = "POST"; req.url = path; req.headers = { host: "localhost" };
     Object.defineProperty(req, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
@@ -59,13 +59,14 @@ function routes() {
       Object.assign(req.headers, { cookie: `${WEB_SESSION_COOKIE}=${sessionId}`, origin: "http://localhost", "x-agend-csrf": csrfTokenFor(sessionId) });
       if (who === "gateway") bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "http://localhost", isCurrent: () => true });
     }
+    Object.assign(req.headers, extra);
     const res = new Res(req); handleRuntimeRequest(req, res, new URL(path, "http://localhost"), ctx);
     during?.(handle);
     return res;
   };
   const pending = () => { const p = hub.createPairing(), m = hub.pair({ code: p.code, name: "Desk", platform: "win32" }); return { ...m, fingerprint: hub.machine(m.machineId)!.pairingFingerprint!, path: `/ui/runtimes/machines/${m.machineId}/approve` }; };
   const claim = (m: { machineId: string; claimSecret: string }) => hub.claim({ machineId: m.machineId, claimSecret: m.claimSecret });
-  return { hub, sessions, make, pending, claim };
+  return { hub, sessions, ctx, make, pending, claim };
 }
 
 describe("#3327 the Runtime routes: a pairing code and an approval only from a page session", () => {
@@ -133,16 +134,20 @@ async function startFleet(config: Record<string, unknown> = {}) {
   const stop = () => new Promise<void>(resolve => { const s = any.healthServer as Server | null; any.healthServer = null; s ? s.close(() => resolve()) : resolve(); });
   const bare = (method: string, path: string, body: unknown) => raw(port, method, path, { "x-agend-token": tok, origin, "content-type": "application/json" }, JSON.stringify(body));
   /** A page session: here, the token's own bootstrap (`/auth/issue-code`, then `/auth/login`) — the owner, per 64a289a0. */
-  const page = async () => {
-    const code = JSON.parse((await raw(port, "POST", "/auth/issue-code", { "x-agend-token": tok, origin })).body).code as string;
-    const res = await raw(port, "POST", "/auth/login", { "content-type": "application/json", origin }, JSON.stringify({ code }));
+  /** `issue`: headers on the code's request (`agend web` runs here: none); `extra`: on the sign-in and every later write. */
+  const issue = (extra: Record<string, string> = {}) => raw(port, "POST", "/auth/issue-code", { "x-agend-token": tok, origin, ...extra });
+  const page = async (extra: Record<string, string> = {}) => {
+    const issued = await issue();
+    expect(issued.status).toBe(200);
+    const code = JSON.parse(issued.body).code as string;
+    const res = await raw(port, "POST", "/auth/login", { "content-type": "application/json", origin, ...extra }, JSON.stringify({ code }));
     expect(res.status).toBe(200);
     const set = res.headers["set-cookie"], cookie = (Array.isArray(set) ? set[0] : set)!.split(";")[0]!, sessionId = cookie.split("=")[1]!;
     const post = (path: string, body: unknown, csrf = true) => raw(port, "POST", path, { cookie, origin, "content-type": "application/json",
-      ...(csrf ? { [WEB_CSRF_HEADER]: csrfTokenFor(sessionId) } : {}) }, JSON.stringify(body));
+      ...(csrf ? { [WEB_CSRF_HEADER]: csrfTokenFor(sessionId) } : {}), ...extra }, JSON.stringify(body));
     return { cookie, sessionId, post };
   };
-  return { fm, any, port, stop, bare, page, notices };
+  return { fm, any, port, stop, bare, issue, page, notices };
 }
 function runtimeOf(fm: FleetManager) {
   const hub = fm.runtimeCoordinator(); if (!hubs.includes(hub)) hubs.push(hub);
@@ -170,6 +175,26 @@ describe("#3327 a real fleet", () => {
       expect([approve.mock.calls.length, r.hub.machine(m.machineId)!.status, r.claim(m)]).toEqual([0, "pending", { status: "pending" }]);
       const ok = await s.post(m.path, { fingerprint: m.fingerprint });                // click 2: Approve computer
       expect(ok.status).toBe(200);
+      expect(r.claim(m)).toMatchObject({ status: "approved" });
+    } finally { await h.stop(); }
+  }, 30_000);
+  it.each([["chat fleet", CHAT], ["web-only fleet", {}]] as const)("%s: the token's remote bootstrap is fenced — issue-code from elsewhere mints nothing (#3345 review)", async (_name, config) => {
+    const h = await startFleet(config as Record<string, unknown>);
+    try {
+      const codes = h.any.webLoginCodes, issued = vi.spyOn(codes, "issue");
+      // Prism's probes: the header token through a forwarding proxy, or a non-loopback Host — no code, so no session.
+      for (const away of [{ "x-forwarded-for": "198.51.100.70" }, { forwarded: "for=198.51.100.70" }, { host: "agend.example.test" }]) {
+        const res = await h.issue(away);
+        expect([res.status, JSON.parse(res.body).code], JSON.stringify(away)).toEqual([403, undefined]);
+      }
+      expect(issued).not.toHaveBeenCalled();
+      // D3 / the owner: `agend web` on this computer still gets its code; typed into a browser elsewhere (a LAN, the
+      // owner's own proxy) it signs in as before, and the page's two clicks pair — no step added.
+      const s = await h.page({ "x-forwarded-for": "198.51.100.70" });
+      const r = runtimeOf(h.fm), made = await s.post("/ui/runtimes/pairing", {});
+      expect(made.status).toBe(201);
+      const m = r.pair(JSON.parse(made.body).code);
+      expect((await s.post(m.path, { fingerprint: m.fingerprint })).status).toBe(200);
       expect(r.claim(m)).toMatchObject({ status: "approved" });
     } finally { await h.stop(); }
   }, 30_000);
