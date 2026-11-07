@@ -365,7 +365,7 @@ export function claudeColdResumePromptState(pane: string): { titled: boolean; ex
 /**
  * The option rows, live-captured on 2.1.318 and 2.1.319 (2026-11-07, first live capture): a description is painted in a
  * column to the right of its label on the SAME row, after two or more spaces, and wraps inside that column onto rows of
- * its own (`claude-2.1.319-cold-resume-*` fixtures, 80/100/160 columns). 2.1.319 adds a third option behind the server
+ * its own (`claude-2.1.31[89]-cold-resume-live-*` fixtures, 80 and 160 columns). 2.1.319 adds a third option behind the server
  * flag `tengu_eager_brooks`, on the launch trigger only: "Resume from summary" (compacts, then continues). Escape keeps
  * its meaning (`onCancel` → "dismiss": the prompt goes, the full conversation stays — checked live at 0/0.3/1.5 s).
  */
